@@ -8,8 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 )
 
 // serverConfigStoreInterface is the unified store contract. A read returns the section's layers; each
@@ -22,16 +22,20 @@ type serverConfigStoreInterface interface {
 
 // serverConfigStore is the database-backed (writable) store.
 type serverConfigStore struct {
-	dbProvider   provider.DBProviderInterface
-	deploymentID string
+	dbProvider provider.DBProviderInterface
 }
 
 // newServerConfigStore creates a new instance of serverConfigStore.
 func newServerConfigStore() serverConfigStoreInterface {
 	return &serverConfigStore{
-		dbProvider:   provider.GetDBProvider(),
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		dbProvider: provider.GetDBProvider(),
 	}
+}
+
+// scope returns the deployment id this request acts for, falling back to the configured
+// identifier for a context that never passed through the edge.
+func (s *serverConfigStore) scope(ctx context.Context) string {
+	return deployment.Resolve(ctx)
 }
 
 // getDBClient is a helper method to get the database client.
@@ -50,7 +54,7 @@ func (s *serverConfigStore) GetServerConfig(ctx context.Context, name ConfigName
 		return storeLayers{}, err
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetServerConfigByName, string(name), s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryGetServerConfigByName, string(name), s.scope(ctx))
 	if err != nil {
 		return storeLayers{}, fmt.Errorf("failed to get server config: %w", err)
 	}
@@ -73,7 +77,7 @@ func (s *serverConfigStore) UpsertServerConfig(ctx context.Context, cfg ServerCo
 	}
 
 	_, err = dbClient.ExecuteContext(ctx, queryUpsertServerConfig, string(cfg.Name), string(cfg.Value),
-		s.deploymentID)
+		s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to upsert server config: %w", err)
 	}

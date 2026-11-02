@@ -5,6 +5,7 @@ import {ResourceAvatar} from '@thunderid/components';
 import ConnectionConstants from '../constants/connection-constants';
 import {defaultConnectionRoutePaths, type ConnectionRoutePaths} from '../hooks/useConnectionRoutes';
 import {
+  ConnectionInstanceCategories,
   ConnectionTypes,
   type ConnectionCardModel,
   type ConnectionInstance,
@@ -38,6 +39,7 @@ function isTrustedIdpInstance(instance: ConnectionInstance): boolean {
  *   wizard entry point).
  * - coming-soon vendors → one static, non-interactive card.
  * - instances whose type has no vendor meta are not rendered.
+ * - the email sender named by `defaultEmailSenderId` is marked as the default.
  *
  * Pure function — no i18n, no hooks — so it is trivially unit-testable. The card carries a
  * `descriptionKey`; the rendering component resolves it.
@@ -46,6 +48,7 @@ export default function buildConnectionCards(
   instances: ConnectionInstance[],
   vendorMetas: ConnectionVendorMeta[],
   routes: ConnectionRoutePaths = defaultConnectionRoutePaths,
+  defaultEmailSenderId?: string,
 ): ConnectionCardModel[] {
   const trustedIdpCards: ConnectionCardModel[] = instances.filter(isTrustedIdpInstance).map(
     (instance): ConnectionCardModel => ({
@@ -93,6 +96,9 @@ export default function buildConnectionCards(
           status: 'configured',
           comingSoon: false,
           navTarget: routes.connections.detail(meta.backendType, instance.id),
+          isDefault:
+            instance.categories.includes(ConnectionInstanceCategories.EMAIL_PROVIDER) &&
+            instance.id === defaultEmailSenderId,
         });
       }
 

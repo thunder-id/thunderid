@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, waitFor, userEvent} from '@thunderid/test-utils';
@@ -42,8 +42,16 @@ vi.mock('@wso2/oxygen-ui', async () => {
       GridRenderCellParams: {} as never,
     },
     ListingTable: {
-      Provider: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
-      Container: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
+      Provider: ({children, variant = undefined}: {children: React.ReactNode; variant?: string}) => (
+        <div data-testid="listing-provider" data-variant={variant}>
+          {children}
+        </div>
+      ),
+      Container: ({children, disablePaper = undefined}: {children: React.ReactNode; disablePaper?: boolean}) => (
+        <div data-testid="listing-container" data-disable-paper={disablePaper}>
+          {children}
+        </div>
+      ),
       DataGrid: ({
         rows = [],
         columns = [],
@@ -87,6 +95,8 @@ vi.mock('@wso2/oxygen-ui', async () => {
                     field: column.field,
                     value,
                     id: rowId,
+                    // The real grid hands an unfocused cell tabIndex -1.
+                    tabIndex: -1,
                   };
 
                   const content = typeof column.renderCell === 'function' ? column.renderCell(params as never) : value;
@@ -235,6 +245,46 @@ describe('UsersList', () => {
       expect(screen.getByTestId('row-user1')).toHaveTextContent('John Doe');
       expect(screen.getByTestId('row-user2')).toHaveTextContent('Jane Smith');
     });
+  });
+
+  it("shows each user's access status, treating an absent status as active", async () => {
+    mockUseGetUsers.mockReturnValue({
+      data: {
+        ...mockUsersData,
+        users: [{...mockUsersData.users[0], status: {value: 'LOCKED'}}, mockUsersData.users[1]],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    render(<UsersList />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Locked')).toBeInTheDocument();
+      expect(screen.getByText('Active')).toBeInTheDocument();
+    });
+  });
+
+  it("keeps the status indicators in the grid's roving focus rather than the page tab order", async () => {
+    render(<UsersList />);
+
+    const indicators = await screen.findAllByRole('img', {name: 'Active'});
+    expect(indicators.length).toBeGreaterThan(0);
+    indicators.forEach((indicator) => expect(indicator).toHaveAttribute('tabindex', '-1'));
+  });
+
+  it('renders the listing as a papered data grid', () => {
+    render(<UsersList />);
+
+    expect(screen.getByTestId('listing-provider')).toHaveAttribute('data-variant', 'data-grid');
+    expect(screen.getByTestId('listing-container')).not.toHaveAttribute('data-disable-paper');
+  });
+
+  it('gives each row action button an accessible name', () => {
+    render(<UsersList />);
+
+    expect(screen.getAllByRole('button', {name: 'Edit'})).toHaveLength(2);
+    expect(screen.getAllByRole('button', {name: 'Delete'})).toHaveLength(2);
   });
 
   it('displays user avatars with initials', async () => {

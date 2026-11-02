@@ -1,6 +1,0 @@
-id: "user-invite-sms"
-displayName: "User Invitation SMS"
-scenario: "USER_INVITE"
-type: "sms"
-contentType: "text/plain"
-body: "You've been invited to register. Complete your account setup here: {{ctx(inviteLink)}}"

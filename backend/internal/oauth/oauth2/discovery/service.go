@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 
+	authzdetail "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/pkce"
@@ -21,23 +22,29 @@ import (
 type DiscoveryServiceInterface interface {
 	GetOAuth2AuthorizationServerMetadata(ctx context.Context) *OAuth2AuthorizationServerMetadata
 	GetOIDCMetadata(ctx context.Context) (*OIDCProviderMetadata, error)
+	ListAuthorizationDetailsTypeMetadata(ctx context.Context) ([]AuthorizationDetailsTypeMetadata, error)
+	GetAuthorizationDetailsTypeMetadata(ctx context.Context, value string) (*AuthorizationDetailsTypeMetadata,
+		error)
 }
 
 // discoveryService implements DiscoveryServiceInterface
 type discoveryService struct {
-	cfg            oauthconfig.Config
-	cryptoProvider providers.RuntimeCryptoProvider
-	jweService     jwe.JWEServiceInterface
+	cfg              oauthconfig.Config
+	cryptoProvider   providers.RuntimeCryptoProvider
+	jweService       jwe.JWEServiceInterface
+	authzDetailTypes providers.AuthorizationDetailTypeProvider
 }
 
 // newDiscoveryService creates a new discovery service instance
 func newDiscoveryService(
-	cryptoProvider providers.RuntimeCryptoProvider, jweService jwe.JWEServiceInterface, cfg oauthconfig.Config,
+	cryptoProvider providers.RuntimeCryptoProvider, jweService jwe.JWEServiceInterface,
+	authzDetailTypes providers.AuthorizationDetailTypeProvider, cfg oauthconfig.Config,
 ) DiscoveryServiceInterface {
 	return &discoveryService{
-		cfg:            cfg,
-		cryptoProvider: cryptoProvider,
-		jweService:     jweService,
+		cfg:              cfg,
+		cryptoProvider:   cryptoProvider,
+		jweService:       jweService,
+		authzDetailTypes: authzDetailTypes,
 	}
 }
 
@@ -53,13 +60,16 @@ func (ds *discoveryService) GetOAuth2AuthorizationServerMetadata(
 		IntrospectionEndpoint:                      ds.getIntrospectionEndpoint(),
 		PushedAuthorizationRequestEndpoint:         ds.getPAREndpoint(),
 		RequirePushedAuthorizationRequests:         ds.isGlobalPARRequired(),
-		ResponseTypesSupported:                     ds.getSupportedResponseTypes(),
-		GrantTypesSupported:                        ds.getSupportedGrantTypes(),
-		TokenEndpointAuthMethodsSupported:          ds.getSupportedTokenEndpointAuthMethods(),
+		ResponseTypesSupported:                     ds.getAllowedResponseTypes(),
+		GrantTypesSupported:                        ds.getAllowedGrantTypes(),
+		TokenEndpointAuthMethodsSupported:          ds.getAllowedTokenEndpointAuthMethods(),
+		TokenEndpointAuthSigningAlgValuesSupported: ds.getSupportedTokenEndpointAuthSigningAlgs(),
 		CodeChallengeMethodsSupported:              ds.getSupportedCodeChallengeMethods(),
 		AuthorizationResponseIssParameterSupported: true,
 		DPoPSigningAlgValuesSupported:              ds.getSupportedDPoPSigningAlgs(),
 		AuthorizationGrantProfilesSupported:        ds.getSupportedAuthorizationGrantProfiles(),
+		ClientIDMetadataDocumentSupported:          ds.cfg.OAuth.CIMD.IsEnabled(),
+		AuthorizationDetailsTypesSupported:         ds.getSupportedAuthorizationDetailsTypes(ctx),
 	}
 
 	if slices.Contains(metadata.GrantTypesSupported, string(providers.GrantTypeCIBA)) {
@@ -73,7 +83,27 @@ func (ds *discoveryService) GetOAuth2AuthorizationServerMetadata(
 	if ds.cfg.OAuth.DCR.IsEnabled() {
 		metadata.RegistrationEndpoint = ds.getRegistrationEndpoint()
 	}
+	if ds.isTypeMetadataEnabled() {
+		metadata.AuthorizationDetailsTypesEndpoint = ds.cfg.BaseURL + constants.OAuth2AuthorizationDetailsTypesEndpoint
+	}
 	return metadata
+}
+
+// getSupportedAuthorizationDetailsTypes returns the registered type values, or nil when none can be read.
+func (ds *discoveryService) getSupportedAuthorizationDetailsTypes(ctx context.Context) []string {
+	if ds.authzDetailTypes == nil {
+		return nil
+	}
+	registered, svcErr := ds.authzDetailTypes.ListAllAuthorizationDetailTypes(ctx)
+	if svcErr != nil {
+		log.GetLogger().Error(ctx, "Failed to list authorization details types", log.String("code", svcErr.Code))
+		return nil
+	}
+	types := make([]string, 0, len(registered))
+	for i := range registered {
+		types = append(types, registered[i].Type)
+	}
+	return types
 }
 
 // GetOIDCMetadata returns OpenID Connect Provider Metadata
@@ -90,24 +120,69 @@ func (ds *discoveryService) GetOIDCMetadata(ctx context.Context) (*OIDCProviderM
 	oidcProviderMetadata := &OIDCProviderMetadata{
 		OAuth2AuthorizationServerMetadata:    *oauth2Meta,
 		UserInfoEndpoint:                     ds.getUserInfoEndpoint(),
-		ScopesSupported:                      ds.getSupportedOIDCScopes(),
-		SubjectTypesSupported:                ds.getSupportedSubjectTypes(),
+		ScopesSupported:                      ds.getAllowedScopes(),
+		SubjectTypesSupported:                ds.getAllowedSubjectTypes(),
 		IDTokenSigningAlgValuesSupported:     signingAlgs,
 		UserInfoSigningAlgValuesSupported:    signingAlgs,
 		UserInfoEncryptionAlgValuesSupported: encryptionAlgs,
 		UserInfoEncryptionEncValuesSupported: encryptionEncs,
 		IDTokenEncryptionAlgValuesSupported:  encryptionAlgs,
 		IDTokenEncryptionEncValuesSupported:  encryptionEncs,
-		ClaimsSupported:                      ds.getSupportedClaims(),
+		ClaimsSupported:                      ds.getAllowedClaims(),
 		ClaimsParameterSupported:             true,
-		AcrValuesSupported:                   ds.getSupportedAcrValues(),
+		// JAR (RFC 9101) is not implemented.
+		RequestParameterSupported:    false,
+		RequestURIParameterSupported: false,
+		AcrValuesSupported:           ds.getSupportedAcrValues(),
 	}
 
 	if ds.cfg.OAuth.Logout.IsEnabled() {
 		oidcProviderMetadata.EndSessionEndpoint = ds.getEndSessionEndpoint()
 	}
+	// Delivery does not depend on the logout endpoint, so neither do these. Every logout token
+	// carries sid, so session support follows delivery itself.
+	backchannel := ds.cfg.OAuth.Logout.Backchannel.IsEnabled()
+	oidcProviderMetadata.BackchannelLogoutSupported = backchannel
+	oidcProviderMetadata.BackchannelLogoutSessionSupported = backchannel
 
 	return oidcProviderMetadata, nil
+}
+
+// ListAuthorizationDetailsTypeMetadata returns the request view of every registered type.
+func (ds *discoveryService) ListAuthorizationDetailsTypeMetadata(
+	ctx context.Context) ([]AuthorizationDetailsTypeMetadata, error) {
+	if ds.authzDetailTypes == nil {
+		return []AuthorizationDetailsTypeMetadata{}, nil
+	}
+	registered, svcErr := ds.authzDetailTypes.ListAllAuthorizationDetailTypes(ctx)
+	if svcErr != nil {
+		return nil, errAuthorizationDetailsTypesUnavailable
+	}
+	types := make([]AuthorizationDetailsTypeMetadata, 0, len(registered))
+	for i := range registered {
+		metadata, err := requestView(&registered[i])
+		if err != nil {
+			return nil, err
+		}
+		types = append(types, *metadata)
+	}
+	return types, nil
+}
+
+// GetAuthorizationDetailsTypeMetadata returns the request view of the type registered under value, or nil.
+func (ds *discoveryService) GetAuthorizationDetailsTypeMetadata(ctx context.Context,
+	value string) (*AuthorizationDetailsTypeMetadata, error) {
+	if ds.authzDetailTypes == nil {
+		return nil, nil
+	}
+	t, svcErr := ds.authzDetailTypes.GetAuthorizationDetailTypeByValue(ctx, value)
+	if svcErr != nil {
+		return nil, errAuthorizationDetailsTypesUnavailable
+	}
+	if t == nil {
+		return nil, nil
+	}
+	return requestView(t)
 }
 
 func (ds *discoveryService) getEndSessionEndpoint() string {
@@ -146,24 +221,27 @@ func (ds *discoveryService) getRegistrationEndpoint() string {
 	return ds.cfg.BaseURL + constants.OAuth2DCREndpoint
 }
 
-func (ds *discoveryService) getSupportedOIDCScopes() []string {
-	scopes := make([]string, 0, len(constants.StandardOIDCScopes))
-	for scope := range constants.StandardOIDCScopes {
-		scopes = append(scopes, scope)
+func (ds *discoveryService) getAllowedScopes() []string {
+	return ds.cfg.OAuth.AllowedScopes
+}
+
+func (ds *discoveryService) getAllowedResponseTypes() []string {
+	return ds.cfg.OAuth.AllowedResponseTypes
+}
+
+// getAllowedGrantTypes returns the allowed grant types to advertise, less jwt-bearer while ID-JAG
+// acceptance, the only use of that grant, is off and the grant is therefore not served.
+func (ds *discoveryService) getAllowedGrantTypes() []string {
+	if ds.cfg.OAuth.IDJAG.Acceptance.IsEnabled() {
+		return ds.cfg.OAuth.AllowedGrantTypes
 	}
-	return scopes
+	return slices.DeleteFunc(slices.Clone(ds.cfg.OAuth.AllowedGrantTypes), func(grantType string) bool {
+		return grantType == string(providers.GrantTypeJWTBearer)
+	})
 }
 
-func (ds *discoveryService) getSupportedResponseTypes() []string {
-	return constants.GetSupportedResponseTypes(ds.cfg)
-}
-
-func (ds *discoveryService) getSupportedGrantTypes() []string {
-	return constants.GetSupportedGrantTypes(ds.cfg)
-}
-
-func (ds *discoveryService) getSupportedTokenEndpointAuthMethods() []string {
-	return constants.GetSupportedTokenEndpointAuthMethods(ds.cfg)
+func (ds *discoveryService) getAllowedTokenEndpointAuthMethods() []string {
+	return ds.cfg.OAuth.AllowedAuthMethods
 }
 
 func (ds *discoveryService) getSupportedCodeChallengeMethods() []string {
@@ -183,11 +261,21 @@ func (ds *discoveryService) isGlobalPARRequired() bool {
 }
 
 func (ds *discoveryService) getSupportedDPoPSigningAlgs() []string {
+	algs := ds.cfg.OAuth.DPoP.AllowedAlgs
+	if len(algs) == 0 {
+		return nil
+	}
+	out := make([]string, len(algs))
+	copy(out, algs)
+	return out
+}
+
+func (ds *discoveryService) getSupportedTokenEndpointAuthSigningAlgs() []string {
 	return ds.cryptoProvider.GetSupportedSigningAlgorithms()
 }
 
-func (ds *discoveryService) getSupportedSubjectTypes() []string {
-	return constants.GetSupportedSubjectTypes()
+func (ds *discoveryService) getAllowedSubjectTypes() []string {
+	return ds.cfg.OAuth.AllowedSubjectTypes
 }
 
 func (ds *discoveryService) getSupportedSigningAlgorithms(ctx context.Context) ([]string, error) {
@@ -224,34 +312,37 @@ func (ds *discoveryService) getSupportedAcrValues() []string {
 	return acrs
 }
 
-func (ds *discoveryService) getSupportedClaims() []string {
-	// Extract claims from OIDC scopes
-	var claims []string
-	claims = append(claims, constants.GetStandardClaims()...)
-
-	for _, scope := range constants.StandardOIDCScopes {
-		claims = append(claims, scope.Claims...)
-	}
-
-	// Remove duplicates
-	claimMap := make(map[string]bool)
-	var uniqueClaims []string
-	for _, claim := range claims {
-		if !claimMap[claim] {
-			claimMap[claim] = true
-			uniqueClaims = append(uniqueClaims, claim)
-		}
-	}
-
-	return uniqueClaims
+func (ds *discoveryService) getAllowedClaims() []string {
+	return ds.cfg.OAuth.AllowedClaims
 }
 
 func (ds *discoveryService) getSupportedAuthorizationGrantProfiles() []string {
 	supportedProfiles := make([]string, 0)
 	// support Identity Assertion JWT Authorization Grant profile if the JWT Bearer grant type is supported
-	if slices.Contains(ds.getSupportedGrantTypes(), string(providers.GrantTypeJWTBearer)) {
+	if slices.Contains(ds.getAllowedGrantTypes(), string(providers.GrantTypeJWTBearer)) {
 		supportedProfiles = append(supportedProfiles, string(constants.SupportedAuthorizationGrantProfileIDJAG))
 	}
 
 	return supportedProfiles
+}
+
+// isTypeMetadataEnabled reports whether the type metadata endpoint is served and advertised.
+func (ds *discoveryService) isTypeMetadataEnabled() bool {
+	return ds.cfg.OAuth.AuthorizationDetails.IsTypeMetadataEnabled()
+}
+
+// requestView returns the metadata a client sees for a type.
+func requestView(t *providers.AuthorizationDetailType) (*AuthorizationDetailsTypeMetadata, error) {
+	schema, err := authzdetail.RequestSchema(t.Schema)
+	if err != nil {
+		return nil, err
+	}
+	return &AuthorizationDetailsTypeMetadata{
+		Type:          t.Type,
+		Name:          t.Name,
+		Description:   t.Description,
+		Version:       t.Version,
+		Schema:        schema,
+		Modifications: authzdetail.ClientModifications(t.Schema),
+	}, nil
 }

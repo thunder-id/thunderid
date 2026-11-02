@@ -1,0 +1,48 @@
+---
+title: Overview
+docType: community
+description: "Overview of the {{ProductName}} SDKs, where each one lives, and how the product consumes them."
+sidebar_position: 1
+hide_table_of_contents: false
+---
+
+# SDK Development
+
+<ProductName /> publishes client SDKs from its [GitHub organization](https://github.com/thunder-id). Each repository groups the SDKs for one language or platform, so a single repository can publish several packages.
+
+## Available SDKs
+
+| SDK | Repository | Contents |
+|-----|------------|----------|
+| JavaScript | [javascript-sdks](https://github.com/thunder-id/javascript-sdks) | The `@thunderid/*` packages: a framework-agnostic core, browser and Node runtimes, and integrations for React, Vue, Next.js, Nuxt, Express, React Router, and TanStack Router |
+| iOS | [ios-sdks](https://github.com/thunder-id/ios-sdks) | The `ThunderID` Swift SDK and the `ThunderIDSwiftUI` component library |
+| Android | [android-sdks](https://github.com/thunder-id/android-sdks) | The `dev.thunderid.android` Kotlin SDK and the `dev.thunderid.compose` Jetpack Compose component library |
+| Flutter | [flutter-sdks](https://github.com/thunder-id/flutter-sdks) | The `thunderid_flutter` plugin, bridging to the native iOS and Android SDKs |
+
+Each repository ships a Quickstart sample app that exercises the full authentication lifecycle. The samples are what the end-to-end suites drive, so they are the fastest way to see an SDK working against a live server.
+
+## How the Product Uses the SDKs
+
+The <ProductName /> frontend consumes two of the JavaScript packages:
+
+- **`@thunderid/react`** provides the authentication context, hooks, and identity state used throughout the Gate and Console apps.
+- **`@thunderid/react-router`** builds on it to add route-level guards and redirect helpers for pages that require a session.
+
+Both are consumed as published npm packages in a normal build. Clone an SDK repository when you need to develop or debug the SDK itself, or to test the product against unreleased SDK changes.
+
+## Contributing to an SDK
+
+Every change goes through the same contract before it is fixed here, an idea, a capability, an error, or a component. See [Development Process](process.mdx) for the specification and threat model it is checked against, the workflow that gets a change through them, and the `sdk-development` skill that automates both for an AI coding agent.
+
+Each SDK also has its own development and testing guide:
+
+- [JavaScript SDKs](../javascript/overview)
+- [iOS SDKs](../ios/overview)
+- [Android SDKs](../android/overview)
+- [Flutter SDKs](../flutter/overview)
+
+## Feature Parity Across the SDKs
+
+A capability is rarely a single SDK change. The same thing usually has to exist in every SDK where it applies before a developer can rely on it, so each pull request in an SDK repository answers whether the change needs to ship in the others too. A required check holds the pull request until it does.
+
+See [Cross-SDK Feature Parity](feature-parity.mdx) for the labels, what accounts for a sibling SDK, and how to record a deferral.

@@ -52,7 +52,7 @@ export default function GroupDeleteDialog({
 
   return (
     <Dialog open={open} onClose={handleCancel} maxWidth="sm" fullWidth>
-      <DialogTitle>{t('delete.title', 'Delete Group')}</DialogTitle>
+      <DialogTitle>{t('delete.title', 'Delete group')}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{mb: 2}}>
           {t('delete.message', 'Are you sure you want to delete this group?')}

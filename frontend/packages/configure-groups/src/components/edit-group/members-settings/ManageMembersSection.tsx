@@ -3,7 +3,7 @@
 
 import {SettingsCard, getInitials} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
-import {Box, Avatar, DataGrid, IconButton} from '@wso2/oxygen-ui';
+import {Box, Avatar, DataGrid, IconButton, ListingTable} from '@wso2/oxygen-ui';
 import {AppWindow, Bot, Trash2, UserRound, UsersRound} from '@wso2/oxygen-ui-icons-react';
 import {useState, useMemo, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -136,21 +136,25 @@ export default function ManageMembersSection({
         },
       }}
     >
-      <Box sx={{height: 400, width: '100%'}}>
-        <DataGrid.DataGrid
-          rows={membersData?.members ?? []}
-          columns={columns}
-          loading={isLoading}
-          getRowId={(row): string => row.id}
-          paginationMode="server"
-          rowCount={membersData?.totalResults ?? 0}
-          paginationModel={paginationModel}
-          onPaginationModelChange={setPaginationModel}
-          pageSizeOptions={[5, 10, 25]}
-          disableRowSelectionOnClick
-          localeText={dataGridLocaleText}
-        />
-      </Box>
+      <ListingTable.Provider variant="data-grid">
+        <ListingTable.Container sx={{height: 400}}>
+          <ListingTable.DataGrid
+            rows={membersData?.members ?? []}
+            columns={columns}
+            loading={isLoading}
+            getRowId={(row): string => (row as Member).id}
+            paginationMode="server"
+            rowCount={membersData?.totalResults ?? 0}
+            paginationModel={paginationModel}
+            onPaginationModelChange={setPaginationModel}
+            pageSizeOptions={[5, 10, 25]}
+            disableRowSelectionOnClick
+            // Filtering is not wired end to end, so the column filter panel stays hidden.
+            disableColumnFilter
+            localeText={dataGridLocaleText}
+          />
+        </ListingTable.Container>
+      </ListingTable.Provider>
     </SettingsCard>
   );
 }

@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice, ResourceAvatar, getInitials} from '@thunderid/components';
+import {AccessStatusIndicator, QueryErrorNotice, ResourceAvatar, getInitials} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
@@ -87,8 +87,18 @@ export default function UsersList() {
         ),
       },
       {
+        field: 'status',
+        headerName: t('users:listing.columns.status', 'Status'),
+        flex: 0.4,
+        minWidth: 110,
+        sortable: false,
+        renderCell: (params: DataGrid.GridRenderCellParams<UserWithDetails>) => (
+          <AccessStatusIndicator status={params.row.status} tabIndex={params.tabIndex} />
+        ),
+      },
+      {
         field: 'ouHandle',
-        headerName: t('users:listing.columns.organizationUnit', 'Organization Unit'),
+        headerName: t('users:listing.columns.organizationUnit', 'Organization unit'),
         flex: 0.5,
         minWidth: 150,
         renderCell: (params: DataGrid.GridRenderCellParams<UserWithDetails>) => (
@@ -109,16 +119,22 @@ export default function UsersList() {
         renderCell: (params: DataGrid.GridRenderCellParams<UserWithDetails>) => (
           <ListingTable.RowActions>
             {params.row.isReadOnly ? (
-              <Tooltip title={t('common:status.readOnly', 'Read Only')}>
-                <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
+              <Tooltip title={t('common:status.readOnly', 'Read only')}>
+                <IconButton
+                  size="small"
+                  disableRipple
+                  sx={{cursor: 'default'}}
+                  aria-label={t('common:status.readOnly', 'Read only')}
+                >
                   <Eye size={16} />
                 </IconButton>
               </Tooltip>
             ) : (
               <>
-                <Tooltip title={t('common:actions.edit')}>
+                <Tooltip title={t('common:actions.edit', 'Edit')}>
                   <IconButton
                     size="small"
+                    aria-label={t('common:actions.edit', 'Edit')}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleEditClick(params.row.id);
@@ -127,10 +143,11 @@ export default function UsersList() {
                     <Pencil size={16} />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title={t('common:actions.delete')}>
+                <Tooltip title={t('common:actions.delete', 'Delete')}>
                   <IconButton
                     size="small"
                     color="error"
+                    aria-label={t('common:actions.delete', 'Delete')}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDeleteClick(params.row.id);
@@ -162,8 +179,8 @@ export default function UsersList() {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
-        <ListingTable.Container disablePaper>
+      <ListingTable.Provider variant="data-grid" loading={isLoading}>
+        <ListingTable.Container>
           <ListingTable.DataGrid
             rows={userData?.users ?? []}
             columns={columns}

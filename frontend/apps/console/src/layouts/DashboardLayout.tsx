@@ -1,6 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {getInitials} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {SignOutButton, User, useThunderID} from '@thunderid/react';
@@ -10,7 +11,6 @@ import {
   Button,
   ColorSchemeImage,
   ColorSchemeToggle,
-  Divider,
   Footer,
   Header,
   Sidebar,
@@ -27,6 +27,9 @@ import {
   Languages,
   Layers,
   LayoutGrid,
+  LogOut,
+  Mail,
+  MessageSquare,
   Palette,
   Server,
   Settings,
@@ -203,8 +206,8 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
           },
           {
             id: 'resource-servers',
-            text: t('navigation:pages.resourceServers', 'Resource Servers'),
-            icon: <Server size={16} />,
+            text: t('navigation:pages.resourceServers', 'Resource servers'),
+            icon: <Server />,
             path: RouteConfig.resourceServers.list(),
           },
         ],
@@ -292,13 +295,32 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
           {
             id: 'design',
             text: t('navigation:pages.design', 'Design'),
-            icon: <Palette size={16} />,
+            icon: <Palette />,
             path: RouteConfig.design.list(),
+          },
+          {
+            id: 'notifications',
+            text: t('navigation:pages.notifications', 'Notifications'),
+            icon: <Mail />,
+            children: [
+              {
+                id: 'email-templates',
+                text: t('navigation:pages.emailTemplates', 'Email templates'),
+                icon: <Mail />,
+                path: RouteConfig.notificationTemplates.channel('email'),
+              },
+              {
+                id: 'sms-templates',
+                text: t('navigation:pages.smsTemplates', 'SMS templates'),
+                icon: <MessageSquare />,
+                path: RouteConfig.notificationTemplates.channel('sms'),
+              },
+            ],
           },
           {
             id: 'translations',
             text: t('navigation:pages.translations'),
-            icon: <Languages size={16} />,
+            icon: <Languages />,
             path: RouteConfig.translations.list(),
           },
         ],
@@ -309,7 +331,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
           {
             id: 'settings',
             text: t('navigation:pages.settings'),
-            icon: <Settings size={16} />,
+            icon: <Settings />,
             path: RouteConfig.settings.list(),
           },
         ],
@@ -362,8 +384,8 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
             <Header.BrandLogo>
               <ColorSchemeImage
                 src={{
-                  light: `${import.meta.env.BASE_URL}/assets/images/logo.svg`,
-                  dark: `${import.meta.env.BASE_URL}/assets/images/logo-inverted.svg`,
+                  light: `${import.meta.env.BASE_URL.replace(/\/$/, '')}/assets/images/logo.svg`,
+                  dark: `${import.meta.env.BASE_URL.replace(/\/$/, '')}/assets/images/logo-inverted.svg`,
                 }}
                 alt={{light: 'Logo (Light)', dark: 'Logo (Dark)'}}
                 height={27}
@@ -377,14 +399,15 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
           <Header.Spacer />
           <Header.Actions>
             <ColorSchemeToggle />
-            <Divider orientation="vertical" flexItem sx={{mx: 1, display: {xs: 'none', sm: 'block'}}} />
             <User>
               {(user) => {
-                const avatar = typeof user?.picture === 'string' ? user.picture : undefined;
+                const name = String(user?.name ?? '');
+                // Two-letter initials when there is no picture, matching the other WSO2 consoles.
+                const avatar = typeof user?.picture === 'string' ? user.picture : name ? getInitials(name) : undefined;
 
                 return (
                   <UserMenu>
-                    <UserMenu.Trigger name={String(user?.name ?? '')} avatar={avatar} showName />
+                    <UserMenu.Trigger name={String(user?.name ?? '')} avatar={avatar} />
                     <UserMenu.Header
                       name={String(user?.name ?? '')}
                       email={String(user?.email ?? '')}
@@ -400,7 +423,11 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
                     <UserMenu.Divider />
                     <SignOutButton>
                       {({signOut}) => (
-                        <UserMenu.Logout label={t('common:userMenu.signOut')} onClick={() => handleSignOut(signOut)} />
+                        <UserMenu.Logout
+                          icon={<LogOut />}
+                          label={t('common:actions.signOut', 'Sign out')}
+                          onClick={() => handleSignOut(signOut)}
+                        />
                       )}
                     </SignOutButton>
                   </UserMenu>

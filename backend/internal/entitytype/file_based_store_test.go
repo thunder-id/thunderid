@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package entitytype
@@ -43,7 +43,8 @@ func (suite *FileBasedStoreTestSuite) TestCreateEntityType() {
 	schema := EntityType{
 		ID:                    "schema-1",
 		Category:              TypeCategoryUser,
-		Name:                  "basic_schema",
+		Handle:                "basic_schema",
+		DisplayName:           "basic_schema",
 		OUID:                  "ou-1",
 		AllowSelfRegistration: true,
 		Schema:                json.RawMessage(schemaJSON),
@@ -56,7 +57,7 @@ func (suite *FileBasedStoreTestSuite) TestCreateEntityType() {
 	retrieved, err := suite.store.GetEntityTypeByID(context.Background(), TypeCategoryUser, "schema-1")
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), schema.ID, retrieved.ID)
-	assert.Equal(suite.T(), schema.Name, retrieved.Name)
+	assert.Equal(suite.T(), schema.Handle, retrieved.Handle)
 	assert.Equal(suite.T(), schema.OUID, retrieved.OUID)
 	assert.Equal(suite.T(), schema.AllowSelfRegistration, retrieved.AllowSelfRegistration)
 }
@@ -66,7 +67,8 @@ func (suite *FileBasedStoreTestSuite) TestCreateEntityType_DuplicateID() {
 	schema := EntityType{
 		ID:                    "schema-1",
 		Category:              TypeCategoryUser,
-		Name:                  "basic_schema",
+		Handle:                "basic_schema",
+		DisplayName:           "basic_schema",
 		OUID:                  "ou-1",
 		AllowSelfRegistration: true,
 		Schema:                json.RawMessage(schemaJSON),
@@ -88,12 +90,13 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityTypeByID_NotFound() {
 	assert.Error(suite.T(), err)
 }
 
-func (suite *FileBasedStoreTestSuite) TestGetEntityTypeByName() {
+func (suite *FileBasedStoreTestSuite) TestGetEntityTypeByHandle() {
 	schemaJSON := testSchemaJSON
 	schema := EntityType{
 		ID:                    "schema-1",
 		Category:              TypeCategoryUser,
-		Name:                  "basic_schema",
+		Handle:                "basic_schema",
+		DisplayName:           "basic_schema",
 		OUID:                  "ou-1",
 		AllowSelfRegistration: true,
 		Schema:                json.RawMessage(schemaJSON),
@@ -103,14 +106,68 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityTypeByName() {
 	assert.NoError(suite.T(), err)
 
 	// Get by name
-	retrieved, err := suite.store.GetEntityTypeByName(context.Background(), TypeCategoryUser, "basic_schema")
+	retrieved, err := suite.store.GetEntityTypeByHandle(context.Background(), TypeCategoryUser, "basic_schema")
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), schema.ID, retrieved.ID)
-	assert.Equal(suite.T(), schema.Name, retrieved.Name)
+	assert.Equal(suite.T(), schema.Handle, retrieved.Handle)
 }
 
-func (suite *FileBasedStoreTestSuite) TestGetEntityTypeByName_NotFound() {
-	_, err := suite.store.GetEntityTypeByName(context.Background(), TypeCategoryUser, "non-existent-name")
+func (suite *FileBasedStoreTestSuite) TestGetEntityTypeByHandle_MatchesHandleNotDisplayName() {
+	schema := EntityType{
+		ID:          "schema-1",
+		Category:    TypeCategoryUser,
+		Handle:      "employee",
+		DisplayName: "Staff Member",
+		OUID:        "ou-1",
+		Schema:      json.RawMessage(testSchemaJSON),
+	}
+	assert.NoError(suite.T(), suite.store.CreateEntityType(context.Background(), schema))
+
+	_, err := suite.store.GetEntityTypeByHandle(context.Background(), TypeCategoryUser, "Staff Member")
+	assert.ErrorIs(suite.T(), err, ErrEntityTypeNotFound)
+
+	retrieved, err := suite.store.GetEntityTypeByHandle(context.Background(), TypeCategoryUser, "employee")
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "Staff Member", retrieved.DisplayName)
+}
+
+func (suite *FileBasedStoreTestSuite) TestGetEntityTypeByHandle_CategoryMismatch() {
+	schema := EntityType{
+		ID:          "schema-1",
+		Category:    TypeCategoryUser,
+		Handle:      "employee",
+		DisplayName: "Employee",
+		OUID:        "ou-1",
+		Schema:      json.RawMessage(testSchemaJSON),
+	}
+	assert.NoError(suite.T(), suite.store.CreateEntityType(context.Background(), schema))
+
+	_, err := suite.store.GetEntityTypeByHandle(context.Background(), TypeCategoryAgent, "employee")
+	assert.ErrorIs(suite.T(), err, ErrEntityTypeNotFound)
+}
+
+func (suite *FileBasedStoreTestSuite) TestGetEntityTypeList_OrderedByDisplayNameThenHandle() {
+	for i, et := range []EntityType{
+		{ID: "s1", Handle: "zeta", DisplayName: "Alpha"},
+		{ID: "s2", Handle: "beta", DisplayName: "Alpha"},
+		{ID: "s3", Handle: "alpha", DisplayName: "Bravo"},
+	} {
+		et.Category = TypeCategoryUser
+		et.Schema = json.RawMessage(testSchemaJSON)
+		assert.NoError(suite.T(), suite.store.CreateEntityType(context.Background(), et), "index %d", i)
+	}
+
+	items, err := suite.store.GetEntityTypeList(context.Background(), TypeCategoryUser, 10, 0)
+	assert.NoError(suite.T(), err)
+	handles := make([]string, 0, len(items))
+	for _, item := range items {
+		handles = append(handles, item.Handle)
+	}
+	assert.Equal(suite.T(), []string{"beta", "zeta", "alpha"}, handles)
+}
+
+func (suite *FileBasedStoreTestSuite) TestGetEntityTypeByHandle_NotFound() {
+	_, err := suite.store.GetEntityTypeByHandle(context.Background(), TypeCategoryUser, "non-existent-name")
 	assert.Error(suite.T(), err)
 }
 
@@ -121,7 +178,8 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityTypeList() {
 		{
 			ID:                    "schema-1",
 			Category:              TypeCategoryUser,
-			Name:                  "basic_schema",
+			Handle:                "basic_schema",
+			DisplayName:           "basic_schema",
 			OUID:                  "ou-1",
 			AllowSelfRegistration: true,
 			Schema:                json.RawMessage(schemaJSON),
@@ -129,7 +187,8 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityTypeList() {
 		{
 			ID:                    "schema-2",
 			Category:              TypeCategoryUser,
-			Name:                  "extended_schema",
+			Handle:                "extended_schema",
+			DisplayName:           "extended_schema",
 			OUID:                  "ou-1",
 			AllowSelfRegistration: false,
 			Schema:                json.RawMessage(schemaJSON),
@@ -137,7 +196,8 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityTypeList() {
 		{
 			ID:                    "schema-3",
 			Category:              TypeCategoryUser,
-			Name:                  "minimal_schema",
+			Handle:                "minimal_schema",
+			DisplayName:           "minimal_schema",
 			OUID:                  "ou-1",
 			AllowSelfRegistration: true,
 			Schema:                json.RawMessage(schemaJSON),
@@ -159,9 +219,9 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityTypeList_WithPagination() {
 	// Create multiple schemas
 	for i := 1; i <= 5; i++ {
 		schema := EntityType{
-			ID:                    "schema-" + string(rune('0'+i)),
-			Category:              TypeCategoryUser,
-			Name:                  "schema_" + string(rune('0'+i)),
+			ID:       "schema-" + string(rune('0'+i)),
+			Category: TypeCategoryUser,
+			Handle:   "schema_", DisplayName: "schema_" + string(rune('0'+i)),
 			OUID:                  "ou-1",
 			AllowSelfRegistration: true,
 			Schema:                json.RawMessage(schemaJSON),
@@ -197,7 +257,8 @@ func (suite *FileBasedStoreTestSuite) TestUpdateEntityTypeByID_ReturnsError() {
 	schema := EntityType{
 		ID:                    "schema-1",
 		Category:              TypeCategoryUser,
-		Name:                  "basic_schema",
+		Handle:                "basic_schema",
+		DisplayName:           "basic_schema",
 		OUID:                  "ou-1",
 		AllowSelfRegistration: true,
 		Schema:                json.RawMessage(schemaJSON),
@@ -224,9 +285,9 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityTypeListCount() {
 	// Add schemas
 	for i := 1; i <= 3; i++ {
 		schema := EntityType{
-			ID:                    "schema-" + string(rune('0'+i)),
-			Category:              TypeCategoryUser,
-			Name:                  "schema_" + string(rune('0'+i)),
+			ID:       "schema-" + string(rune('0'+i)),
+			Category: TypeCategoryUser,
+			Handle:   "schema_", DisplayName: "schema_" + string(rune('0'+i)),
 			OUID:                  "ou-1",
 			AllowSelfRegistration: true,
 			Schema:                json.RawMessage(schemaJSON),
@@ -247,7 +308,8 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityTypeListByOUIDs() {
 		{
 			ID:                    "schema-1",
 			Category:              TypeCategoryUser,
-			Name:                  "schema_1",
+			Handle:                "schema_1",
+			DisplayName:           "schema_1",
 			OUID:                  "ou-1",
 			AllowSelfRegistration: true,
 			Schema:                json.RawMessage(schemaJSON),
@@ -255,7 +317,8 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityTypeListByOUIDs() {
 		{
 			ID:                    "schema-2",
 			Category:              TypeCategoryUser,
-			Name:                  "schema_2",
+			Handle:                "schema_2",
+			DisplayName:           "schema_2",
 			OUID:                  "ou-2",
 			AllowSelfRegistration: false,
 			Schema:                json.RawMessage(schemaJSON),
@@ -263,7 +326,8 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityTypeListByOUIDs() {
 		{
 			ID:                    "schema-3",
 			Category:              TypeCategoryUser,
-			Name:                  "schema_3",
+			Handle:                "schema_3",
+			DisplayName:           "schema_3",
 			OUID:                  "ou-1",
 			AllowSelfRegistration: true,
 			Schema:                json.RawMessage(schemaJSON),
@@ -342,7 +406,7 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityTypeListByOUIDs() {
 			// Verify names if expected
 			var names []string
 			for _, item := range list {
-				names = append(names, item.Name)
+				names = append(names, item.Handle)
 			}
 			assert.ElementsMatch(suite.T(), tc.expectedNames, names)
 		})
@@ -355,7 +419,8 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityTypeListCountByOUIDs() {
 		{
 			ID:                    "schema-1",
 			Category:              TypeCategoryUser,
-			Name:                  "schema_1",
+			Handle:                "schema_1",
+			DisplayName:           "schema_1",
 			OUID:                  "ou-1",
 			AllowSelfRegistration: true,
 			Schema:                json.RawMessage(schemaJSON),
@@ -363,7 +428,8 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityTypeListCountByOUIDs() {
 		{
 			ID:                    "schema-2",
 			Category:              TypeCategoryUser,
-			Name:                  "schema_2",
+			Handle:                "schema_2",
+			DisplayName:           "schema_2",
 			OUID:                  "ou-2",
 			AllowSelfRegistration: false,
 			Schema:                json.RawMessage(schemaJSON),
@@ -371,7 +437,8 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityTypeListCountByOUIDs() {
 		{
 			ID:                    "schema-3",
 			Category:              TypeCategoryUser,
-			Name:                  "schema_3",
+			Handle:                "schema_3",
+			DisplayName:           "schema_3",
 			OUID:                  "ou-1",
 			AllowSelfRegistration: true,
 			Schema:                json.RawMessage(schemaJSON),

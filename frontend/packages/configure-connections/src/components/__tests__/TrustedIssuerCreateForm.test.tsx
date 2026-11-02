@@ -8,8 +8,16 @@ import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import TrustedIssuerCreateForm from '../TrustedIssuerCreateForm';
 
-const {mockMutate, mockReset} = vi.hoisted(() => ({mockMutate: vi.fn(), mockReset: vi.fn()}));
+const {mockMutate, mockReset, mockUseAuthorizationServerMetadata} = vi.hoisted(() => ({
+  mockMutate: vi.fn(),
+  mockReset: vi.fn(),
+  mockUseAuthorizationServerMetadata: vi.fn(),
+}));
 const mutationState = {isPending: false, isError: false};
+
+vi.mock('../../api/useAuthorizationServerMetadata', () => ({
+  default: mockUseAuthorizationServerMetadata,
+}));
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual('react-router');
@@ -25,6 +33,13 @@ vi.mock('../../api/useCreateTrustedIssuer', () => ({
 
 const {useNavigate} = await import('react-router');
 
+const ACCEPTANCE_UNAVAILABLE_HINT = 'This server does not accept identity assertions from any issuer.';
+
+// Stands in for the runtime's authorization server metadata query (data undefined while loading or failed).
+const mockServerMetadata = (data: Record<string, string[]> | undefined): void => {
+  mockUseAuthorizationServerMetadata.mockReturnValue({data});
+};
+
 describe('TrustedIssuerCreateForm', () => {
   let mockNavigate: ReturnType<typeof vi.fn>;
   let onNameConflict: ReturnType<typeof vi.fn<() => void>>;
@@ -39,10 +54,11 @@ describe('TrustedIssuerCreateForm', () => {
     mutationState.isPending = false;
     mutationState.isError = false;
     vi.mocked(useNavigate).mockReturnValue(mockNavigate as unknown as NavigateFunction);
+    mockServerMetadata(undefined);
   });
 
   it('should render the form with the ID-JAG switch off and token exchange switch on by default', () => {
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     expect(screen.getByLabelText(/^Issuer URI/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^JWKS endpoint/)).toBeInTheDocument();
@@ -51,14 +67,14 @@ describe('TrustedIssuerCreateForm', () => {
   });
 
   it('should not render a name field (collected on the wizard name step)', () => {
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
   });
 
   it('should render a Back button that calls onBack, and no Cancel affordance', async () => {
     const user = userEvent.setup();
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     expect(screen.queryByRole('button', {name: /^cancel$/i})).not.toBeInTheDocument();
 
@@ -68,7 +84,7 @@ describe('TrustedIssuerCreateForm', () => {
 
   it('should disable the submit button until all required fields are valid', async () => {
     const user = userEvent.setup();
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     const submitButton = screen.getByTestId('trusted-issuer-create-submit');
     expect(submitButton).toBeDisabled();
@@ -82,7 +98,7 @@ describe('TrustedIssuerCreateForm', () => {
 
   it('should show a validation error when an issuer URI is not https', async () => {
     const user = userEvent.setup();
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     const issuerField = screen.getByLabelText(/^Issuer URI/);
     await user.type(issuerField, 'http://acme.okta.com');
@@ -93,7 +109,7 @@ describe('TrustedIssuerCreateForm', () => {
 
   it('should show a required error when a field is left blank on blur', async () => {
     const user = userEvent.setup();
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     const issuerField = screen.getByLabelText(/^Issuer URI/);
     await user.click(issuerField);
@@ -111,10 +127,11 @@ describe('TrustedIssuerCreateForm', () => {
         issuer: 'https://acme.okta.com',
         jwksEndpoint: 'https://acme.okta.com/keys',
         idJagEnabled: true,
+        ouId: 'ou-1',
       });
     });
 
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
     await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://acme.okta.com/keys');
@@ -122,6 +139,7 @@ describe('TrustedIssuerCreateForm', () => {
 
     expect(mockMutate).toHaveBeenCalledWith(
       {
+        ouId: 'ou-1',
         name: 'Acme Okta',
         issuer: 'https://acme.okta.com',
         jwksEndpoint: 'https://acme.okta.com/keys',
@@ -137,13 +155,25 @@ describe('TrustedIssuerCreateForm', () => {
     });
   });
 
+  it('should report a missing organization unit instead of creating', async () => {
+    const user = userEvent.setup();
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="" onNameConflict={onNameConflict} onBack={onBack} />);
+
+    await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
+    await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://acme.okta.com/keys');
+    await user.click(screen.getByTestId('trusted-issuer-create-submit'));
+
+    expect(screen.getByText('Organization unit is required')).toBeInTheDocument();
+    expect(mockMutate).not.toHaveBeenCalled();
+  });
+
   it('should call onNameConflict on a 409 conflict without navigating', async () => {
     const user = userEvent.setup();
     mockMutate.mockImplementation((_data, opts) => {
       opts.onError({response: {status: 409}});
     });
 
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
     await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://acme.okta.com/keys');
@@ -159,7 +189,7 @@ describe('TrustedIssuerCreateForm', () => {
       opts.onError({response: {status: 500}});
     });
 
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
     await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://acme.okta.com/keys');
@@ -175,7 +205,7 @@ describe('TrustedIssuerCreateForm', () => {
       opts.onError({response: {status: 500}});
     });
 
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
     await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://acme.okta.com/keys');
@@ -192,7 +222,7 @@ describe('TrustedIssuerCreateForm', () => {
     mutationState.isPending = true;
     mutationState.isError = false;
 
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
 
@@ -204,7 +234,7 @@ describe('TrustedIssuerCreateForm', () => {
     mutationState.isPending = false;
     mutationState.isError = true;
 
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
 
@@ -223,7 +253,7 @@ describe('TrustedIssuerCreateForm', () => {
       });
     });
 
-    render(<TrustedIssuerCreateForm name="Beta AD" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Beta AD" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     await user.click(screen.getByRole('switch', {name: /id-jag/i}));
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://beta.example.com');
@@ -233,8 +263,74 @@ describe('TrustedIssuerCreateForm', () => {
     expect(mockMutate).toHaveBeenCalledWith(expect.objectContaining({idJagEnabled: true}), expect.any(Object));
   });
 
+  it('should not let ID-JAG be turned on and explain why when the server does not accept identity assertions', async () => {
+    // A disabled switch has pointer-events: none, so the check is skipped to force the click through.
+    const user = userEvent.setup({pointerEventsCheck: 0});
+    mockServerMetadata({grant_types_supported: ['authorization_code']});
+
+    render(<TrustedIssuerCreateForm name="Beta AD" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
+
+    const idJagSwitch = screen.getByRole('switch', {name: /id-jag/i});
+    expect(idJagSwitch).toBeDisabled();
+    expect(screen.getByText(ACCEPTANCE_UNAVAILABLE_HINT)).toBeInTheDocument();
+
+    await user.click(idJagSwitch);
+    expect(idJagSwitch).not.toBeChecked();
+
+    await user.type(screen.getByLabelText(/^Issuer URI/), 'https://beta.example.com');
+    await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://beta.example.com/keys');
+    await user.click(screen.getByTestId('trusted-issuer-create-submit'));
+
+    expect(mockMutate).toHaveBeenCalledWith(expect.objectContaining({idJagEnabled: false}), expect.any(Object));
+  });
+
+  it('should still let ID-JAG be turned off when it was turned on before the runtime metadata showed it unavailable', async () => {
+    const user = userEvent.setup();
+    const {rerender} = render(
+      <TrustedIssuerCreateForm name="Beta AD" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />,
+    );
+
+    await user.click(screen.getByRole('switch', {name: /id-jag/i}));
+    mockServerMetadata({grant_types_supported: ['authorization_code']});
+    rerender(<TrustedIssuerCreateForm name="Beta AD" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
+
+    const idJagSwitch = screen.getByRole('switch', {name: /id-jag/i});
+    expect(idJagSwitch).toBeChecked();
+    expect(idJagSwitch).not.toBeDisabled();
+
+    await user.click(idJagSwitch);
+
+    expect(idJagSwitch).not.toBeChecked();
+    expect(idJagSwitch).toBeDisabled();
+  });
+
+  it('should let ID-JAG be turned on with no hint when the server accepts identity assertions', async () => {
+    const user = userEvent.setup();
+    mockServerMetadata({
+      grant_types_supported: ['authorization_code', 'urn:ietf:params:oauth:grant-type:jwt-bearer'],
+      authorization_grant_profiles_supported: ['urn:ietf:params:oauth:grant-profile:id-jag'],
+    });
+
+    render(<TrustedIssuerCreateForm name="Beta AD" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
+
+    const idJagSwitch = screen.getByRole('switch', {name: /id-jag/i});
+    expect(idJagSwitch).not.toBeDisabled();
+    expect(screen.queryByText(ACCEPTANCE_UNAVAILABLE_HINT)).not.toBeInTheDocument();
+
+    await user.click(idJagSwitch);
+
+    expect(idJagSwitch).toBeChecked();
+  });
+
+  it('should let ID-JAG be turned on with no hint while the runtime metadata is loading', () => {
+    render(<TrustedIssuerCreateForm name="Beta AD" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
+
+    expect(screen.getByRole('switch', {name: /id-jag/i})).not.toBeDisabled();
+    expect(screen.queryByText(ACCEPTANCE_UNAVAILABLE_HINT)).not.toBeInTheDocument();
+  });
+
   it('should not render a client id field', () => {
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     expect(screen.queryByLabelText(/^Client ID/)).not.toBeInTheDocument();
   });

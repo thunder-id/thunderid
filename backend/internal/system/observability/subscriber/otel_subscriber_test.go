@@ -251,12 +251,13 @@ func (suite *OTelSubscriberTestSuite) TestOnEvent_WithSpanRecorder() {
 	}
 
 	testEvent := &providers.Event{
-		TraceID:   "trace-123",
-		EventID:   "event-123",
-		Type:      "test.event",
-		Timestamp: time.Now(),
-		Component: "TestComponent",
-		Status:    providers.StatusSuccess,
+		TraceID:          "trace-123",
+		EventID:          "event-123",
+		Type:             "test.event",
+		Timestamp:        time.Now(),
+		Component:        "TestComponent",
+		Status:           providers.StatusSuccess,
+		ServerIdentifier: "org-1:development",
 		Data: map[string]interface{}{
 			"test_key": "test_value",
 		},
@@ -279,16 +280,21 @@ func (suite *OTelSubscriberTestSuite) TestOnEvent_WithSpanRecorder() {
 		// Verify span attributes include both metadata and event data
 		attrs := span.Attributes()
 		expectedAttrs := map[string]bool{
-			"event.id":     false,
-			"trace.id":     false,
-			"component":    false,
-			"event.status": false,
-			"test_key":     false, // Event data should now be in tags
+			"event.id":          false,
+			"trace.id":          false,
+			"component":         false,
+			"event.status":      false,
+			"server.identifier": false,
+			"test_key":          false, // Event data should now be in tags
 		}
 
 		for _, attr := range attrs {
 			if _, exists := expectedAttrs[string(attr.Key)]; exists {
 				expectedAttrs[string(attr.Key)] = true
+			}
+			if string(attr.Key) == "server.identifier" {
+				assert.Equal(suite.T(), testEvent.ServerIdentifier, attr.Value.AsString(),
+					"Span attribute 'server.identifier' should carry the event's server identifier")
 			}
 			// Verify test_key value
 			if string(attr.Key) == "test_key" {

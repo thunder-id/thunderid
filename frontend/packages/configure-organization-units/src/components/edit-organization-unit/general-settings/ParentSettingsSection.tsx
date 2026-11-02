@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {Stack, Typography, CircularProgress, TextField, FormControl, FormLabel} from '@wso2/oxygen-ui';
+import {Stack, Typography, CircularProgress, TextField} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link} from 'react-router';
@@ -45,14 +45,9 @@ export default function ParentSettingsSection({organizationUnit}: ParentSettings
   const renderParentInfo = (): JSX.Element => {
     if (!organizationUnit.parent) {
       return (
-        <TextField
-          fullWidth
-          id="parent-ou-input"
-          value={t('organizationUnits:edit.general.ou.noParent.label')}
-          InputProps={{
-            readOnly: true,
-          }}
-        />
+        <Typography variant="body2" color="text.secondary">
+          {t('organizationUnits:edit.general.ou.noParent.label', 'This is a root organization unit.')}
+        </Typography>
       );
     }
 
@@ -98,6 +93,9 @@ export default function ParentSettingsSection({organizationUnit}: ParentSettings
         fullWidth
         id="parent-ou-input"
         value={organizationUnit.parent}
+        inputProps={{
+          'aria-label': t('organizationUnits:edit.general.ou.parent.label', 'Parent organization unit'),
+        }}
         InputProps={{
           readOnly: true,
         }}
@@ -113,13 +111,13 @@ export default function ParentSettingsSection({organizationUnit}: ParentSettings
 
   return (
     <SettingsCard
-      title={t('organizationUnits:edit.general.sections.parentOUSettings.title')}
-      description={t('organizationUnits:edit.general.sections.parentOUSettings.description')}
+      title={t('organizationUnits:edit.general.sections.parentOUSettings.title', 'Parent organization unit')}
+      description={t(
+        'organizationUnits:edit.general.sections.parentOUSettings.description',
+        'The parent organization unit in the hierarchy.',
+      )}
     >
-      <FormControl fullWidth>
-        <FormLabel htmlFor="parent-ou-input">{t('organizationUnits:edit.general.ou.parent.label')}</FormLabel>
-        {renderParentInfo()}
-      </FormControl>
+      {renderParentInfo()}
     </SettingsCard>
   );
 }

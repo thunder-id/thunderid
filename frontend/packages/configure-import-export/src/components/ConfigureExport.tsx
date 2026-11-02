@@ -6,10 +6,12 @@ import {useLogger} from '@thunderid/logger/react';
 import {Box, Button, Chip, ColorSchemeSVG, IconButton, Paper, Stack, Typography} from '@wso2/oxygen-ui';
 import {
   Bot,
+  BoxIcon,
   Building,
   Copy,
   FileDown,
-  Key,
+  Group,
+  IdCard,
   Languages,
   Layers,
   LayoutGrid,
@@ -17,9 +19,9 @@ import {
   Palette,
   Server,
   Settings,
+  ShieldCheck,
   Terminal,
   UserRoundCog,
-  Users,
   UsersRound,
   Workflow,
 } from '@wso2/oxygen-ui-icons-react';
@@ -32,6 +34,7 @@ import FileContentViewer from './FileContentViewer';
 import HowProductRunInHostedIllustration from './HowProductRunInHostedIllustration';
 import ResourceSummaryTable from './ResourceSummaryTable';
 import TemplateVariableDisplay from './TemplateVariableDisplay';
+import useAgentLabels from '../hooks/useAgentLabels';
 import type {ConfigSummaryItem} from '../models/import-configuration';
 import getConfigFileName from '../utils/getConfigFileName';
 import getEnvFileName from '../utils/getEnvFileName';
@@ -86,6 +89,7 @@ export default function ConfigureExport({
   const [expandedUsers, setExpandedUsers] = useState(false);
   const [expandedConnections, setExpandedConnections] = useState(false);
   const [expandedOrgUnits, setExpandedOrgUnits] = useState(false);
+  const [expandedProjects, setExpandedProjects] = useState(false);
   const [expandedSchemas, setExpandedSchemas] = useState(false);
   const [expandedAgentTypes, setExpandedAgentTypes] = useState(false);
   const [expandedTranslations, setExpandedTranslations] = useState(false);
@@ -95,6 +99,8 @@ export default function ConfigureExport({
   const [expandedGroups, setExpandedGroups] = useState(false);
   const [expandedAgents, setExpandedAgents] = useState(false);
   const [expandedServerConfigs, setExpandedServerConfigs] = useState(false);
+  const [expandedCredentialConfigurations, setExpandedCredentialConfigurations] = useState(false);
+  const [expandedPresentationDefinitions, setExpandedPresentationDefinitions] = useState(false);
 
   const nextSteps = [
     t('importExport:configureExport.nextSteps.startWithConfig', {productName}),
@@ -236,6 +242,8 @@ export default function ConfigureExport({
     }
   }, [resources, logger]);
 
+  const getAgentLabel = useAgentLabels(configData);
+
   const command = t('howSolutionWorksIllustration:commandProduction');
 
   // Use resourceCounts from API if available, otherwise fall back to parsing
@@ -251,6 +259,8 @@ export default function ConfigureExport({
   const orgUnitsCount =
     resourceCounts?.['organization_unit'] ??
     (Array.isArray(configData?.['organization_unit']) ? configData['organization_unit'].length : 0);
+  const projectsCount =
+    resourceCounts?.['project'] ?? (Array.isArray(configData?.['project']) ? configData['project'].length : 0);
   const userTypesCount =
     resourceCounts?.['user_type'] ?? (Array.isArray(configData?.['user_type']) ? configData['user_type'].length : 0);
   const agentTypesCount =
@@ -271,6 +281,12 @@ export default function ConfigureExport({
   const serverConfigsCount =
     resourceCounts?.['server_config'] ??
     (Array.isArray(configData?.['server_config']) ? configData['server_config'].length : 0);
+  const credentialConfigurationsCount =
+    resourceCounts?.['credential_configuration'] ??
+    (Array.isArray(configData?.['credential_configuration']) ? configData['credential_configuration'].length : 0);
+  const presentationDefinitionsCount =
+    resourceCounts?.['presentation_definition'] ??
+    (Array.isArray(configData?.['presentation_definition']) ? configData['presentation_definition'].length : 0);
 
   const items: ConfigSummaryItem[] = [];
 
@@ -586,6 +602,67 @@ export default function ConfigureExport({
     });
   }
 
+  // Add projects if present. A project's root organization unit is listed under organization units.
+  if (projectsCount > 0) {
+    const projects = (configData?.['project'] as {displayName?: string; handle?: string; description?: string}[]) ?? [];
+    const displayedProjects = expandedProjects ? projects : projects.slice(0, 5);
+    const remainingCount = projects.length - 5;
+
+    items.push({
+      id: 'projects',
+      label: t('importExport:configureExport.labels.projects'),
+      icon: <BoxIcon size={16} />,
+      value: projectsCount,
+      status: 'ready',
+      dependencyCount: 0,
+      content: (
+        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
+          <Stack spacing={2}>
+            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
+              {displayedProjects.map((project, idx) => (
+                <Stack key={project.handle ?? project.displayName ?? `project-${idx}`} spacing={0.5}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
+                    <BoxIcon size={14} />
+                    <Typography variant="body2" fontWeight={600}>
+                      {project.displayName ??
+                        project.handle ??
+                        t('importExport:configureExport.fallback.unnamedProject')}
+                    </Typography>
+                  </Stack>
+                  {project.description && (
+                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5}}>
+                      {project.description}
+                    </Typography>
+                  )}
+                  {project.handle && project.displayName !== project.handle && (
+                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5, fontFamily: 'monospace'}}>
+                      {project.handle}
+                    </Typography>
+                  )}
+                </Stack>
+              ))}
+            </Stack>
+            {remainingCount > 0 && (
+              <Box sx={{pt: 1, textAlign: 'center'}}>
+                <Chip
+                  label={
+                    expandedProjects
+                      ? t('importExport:configureExport.actions.showLess')
+                      : t('importExport:configureExport.actions.more', {count: remainingCount})
+                  }
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setExpandedProjects(!expandedProjects)}
+                  sx={{cursor: 'pointer'}}
+                />
+              </Box>
+            )}
+          </Stack>
+        </Box>
+      ),
+    });
+  }
+
   // Add organization units if present
   if (orgUnitsCount > 0) {
     const orgUnits =
@@ -649,7 +726,11 @@ export default function ConfigureExport({
   // Add user types if present
   if (userTypesCount > 0) {
     const schemas =
-      (configData?.['user_type'] as {name?: string; handle?: string; allow_self_registration?: boolean}[]) ?? [];
+      (configData?.['user_type'] as {
+        displayName?: string;
+        handle?: string;
+        allow_self_registration?: boolean;
+      }[]) ?? [];
     const displayedSchemas = expandedSchemas ? schemas : schemas.slice(0, 5);
     const remainingCount = schemas.length - 5;
 
@@ -665,11 +746,11 @@ export default function ConfigureExport({
           <Stack spacing={2}>
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedSchemas.map((schema, idx) => (
-                <Stack key={schema.handle ?? schema.name ?? `schema-${idx}`} spacing={0.5}>
+                <Stack key={schema.handle ?? `schema-${idx}`} spacing={0.5}>
                   <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <UserRoundCog size={14} />
                     <Typography variant="body2" fontWeight={600}>
-                      {schema.name ?? schema.handle ?? t('importExport:configureExport.fallback.unnamedSchema')}
+                      {schema.displayName ?? schema.handle ?? t('importExport:configureExport.fallback.unnamedSchema')}
                     </Typography>
                     {schema.allow_self_registration && (
                       <Chip
@@ -707,13 +788,13 @@ export default function ConfigureExport({
 
   // Add agent types if present
   if (agentTypesCount > 0) {
-    const agentTypes = (configData?.['agent_type'] as {name?: string; handle?: string}[]) ?? [];
+    const agentTypes = (configData?.['agent_type'] as {displayName?: string; handle?: string}[]) ?? [];
     const displayedAgentTypes = expandedAgentTypes ? agentTypes : agentTypes.slice(0, 5);
     const remainingCount = agentTypes.length - 5;
 
     items.push({
       id: 'agent-types',
-      label: t('importExport:configureExport.labels.agentTypes', 'Agent Types'),
+      label: t('importExport:configureExport.labels.agentTypes', 'Agent types'),
       icon: <Bot size={16} />,
       value: agentTypesCount,
       status: 'ready',
@@ -723,11 +804,11 @@ export default function ConfigureExport({
           <Stack spacing={2}>
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedAgentTypes.map((agentType, idx) => (
-                <Stack key={agentType.handle ?? agentType.name ?? `agent-type-${idx}`} spacing={0.5}>
+                <Stack key={agentType.handle ?? `agent-type-${idx}`} spacing={0.5}>
                   <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <Bot size={14} />
                     <Typography variant="body2" fontWeight={600}>
-                      {agentType.name ??
+                      {agentType.displayName ??
                         agentType.handle ??
                         t('importExport:configureExport.fallback.unnamedAgentType', 'Unnamed agent type')}
                     </Typography>
@@ -936,7 +1017,7 @@ export default function ConfigureExport({
     items.push({
       id: 'roles',
       label: t('importExport:configureExport.labels.roles'),
-      icon: <Key size={16} />,
+      icon: <ShieldCheck size={16} />,
       value: rolesCount,
       status: 'ready',
       dependencyCount: 0,
@@ -947,7 +1028,7 @@ export default function ConfigureExport({
               {displayedRoles.map((role, idx) => (
                 <Stack key={role.handle ?? role.name ?? `role-${idx}`} spacing={0.5}>
                   <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
-                    <Key size={14} />
+                    <ShieldCheck size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {role.name ?? role.handle ?? t('importExport:configureExport.fallback.unnamedRole')}
                     </Typography>
@@ -995,7 +1076,7 @@ export default function ConfigureExport({
     items.push({
       id: 'groups',
       label: t('importExport:configureExport.labels.groups'),
-      icon: <Users size={16} />,
+      icon: <Group size={16} />,
       value: groupsCount,
       status: 'ready',
       dependencyCount: 0,
@@ -1006,7 +1087,7 @@ export default function ConfigureExport({
               {displayedGroups.map((group, idx) => (
                 <Stack key={group.id ?? group.name ?? `group-${idx}`} spacing={0.5}>
                   <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
-                    <Users size={14} />
+                    <Group size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {group.name ?? t('importExport:configureExport.fallback.unnamedGroup')}
                     </Typography>
@@ -1045,7 +1126,8 @@ export default function ConfigureExport({
     const agents =
       (configData?.['agent'] as {
         id?: string;
-        name?: string;
+        type?: string;
+        attributes?: Record<string, unknown>;
         description?: string;
         inbound_auth_config?: {type?: string; config?: {client_id?: string}}[];
       }[]) ?? [];
@@ -1065,13 +1147,13 @@ export default function ConfigureExport({
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedAgents.map((agent, idx) => {
                 const clientId = agent.inbound_auth_config?.find((cfg) => cfg.type === 'oauth2')?.config?.client_id;
-                const agentKey = agent.id ?? agent.name ?? `agent-${idx}`;
+                const agentKey = agent.id ?? `agent-${idx}`;
                 return (
                   <Stack key={agentKey} spacing={0.5}>
                     <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                       <Bot size={14} />
                       <Typography variant="body2" fontWeight={600}>
-                        {agent.name ?? t('importExport:configureExport.fallback.unnamedAgent')}
+                        {getAgentLabel(agent) ?? t('importExport:configureExport.fallback.unnamedAgent')}
                       </Typography>
                     </Stack>
                     {agent.description && (
@@ -1152,6 +1234,139 @@ export default function ConfigureExport({
                   size="small"
                   variant="outlined"
                   onClick={() => setExpandedServerConfigs(!expandedServerConfigs)}
+                  sx={{cursor: 'pointer'}}
+                />
+              </Box>
+            )}
+          </Stack>
+        </Box>
+      ),
+    });
+  }
+
+  // Add credential configurations (OID4VCI templates) if present
+  if (credentialConfigurationsCount > 0) {
+    const credentialConfigurations =
+      (configData?.['credential_configuration'] as {name?: string; handle?: string; vct?: string}[]) ?? [];
+    const displayedCredentialConfigurations = expandedCredentialConfigurations
+      ? credentialConfigurations
+      : credentialConfigurations.slice(0, 5);
+    const remainingCount = credentialConfigurations.length - 5;
+
+    items.push({
+      id: 'credential-configurations',
+      label: t('importExport:configureExport.labels.credentialConfigurations'),
+      icon: <IdCard size={16} />,
+      value: credentialConfigurationsCount,
+      status: 'ready',
+      dependencyCount: 0,
+      content: (
+        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
+          <Stack spacing={2}>
+            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
+              {displayedCredentialConfigurations.map((credentialConfiguration, idx) => (
+                <Stack
+                  key={
+                    credentialConfiguration.handle ?? credentialConfiguration.name ?? `credential-configuration-${idx}`
+                  }
+                  spacing={0.5}
+                >
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
+                    <IdCard size={14} />
+                    <Typography variant="body2" fontWeight={600}>
+                      {credentialConfiguration.name ??
+                        credentialConfiguration.handle ??
+                        t('importExport:configureExport.fallback.unnamedCredentialConfiguration')}
+                    </Typography>
+                    {credentialConfiguration.vct && (
+                      <Chip label={credentialConfiguration.vct} size="small" sx={{height: 18, fontSize: '0.65rem'}} />
+                    )}
+                  </Stack>
+                  {credentialConfiguration.handle &&
+                    credentialConfiguration.name !== credentialConfiguration.handle && (
+                      <Typography variant="caption" color="text.secondary" sx={{pl: 2.5, fontFamily: 'monospace'}}>
+                        {credentialConfiguration.handle}
+                      </Typography>
+                    )}
+                </Stack>
+              ))}
+            </Stack>
+            {remainingCount > 0 && (
+              <Box sx={{pt: 1, textAlign: 'center'}}>
+                <Chip
+                  label={
+                    expandedCredentialConfigurations
+                      ? t('importExport:configureExport.actions.showLess')
+                      : t('importExport:configureExport.actions.more', {count: remainingCount})
+                  }
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setExpandedCredentialConfigurations(!expandedCredentialConfigurations)}
+                  sx={{cursor: 'pointer'}}
+                />
+              </Box>
+            )}
+          </Stack>
+        </Box>
+      ),
+    });
+  }
+
+  // Add presentation definitions (OID4VP) if present
+  if (presentationDefinitionsCount > 0) {
+    const presentationDefinitions =
+      (configData?.['presentation_definition'] as {name?: string; handle?: string; vct?: string}[]) ?? [];
+    const displayedPresentationDefinitions = expandedPresentationDefinitions
+      ? presentationDefinitions
+      : presentationDefinitions.slice(0, 5);
+    const remainingCount = presentationDefinitions.length - 5;
+
+    items.push({
+      id: 'presentation-definitions',
+      label: t('importExport:configureExport.labels.presentationDefinitions'),
+      icon: <ShieldCheck size={16} />,
+      value: presentationDefinitionsCount,
+      status: 'ready',
+      dependencyCount: 0,
+      content: (
+        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
+          <Stack spacing={2}>
+            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
+              {displayedPresentationDefinitions.map((presentationDefinition, idx) => (
+                <Stack
+                  key={presentationDefinition.handle ?? presentationDefinition.name ?? `presentation-definition-${idx}`}
+                  spacing={0.5}
+                >
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
+                    <ShieldCheck size={14} />
+                    <Typography variant="body2" fontWeight={600}>
+                      {presentationDefinition.name ??
+                        presentationDefinition.handle ??
+                        t('importExport:configureExport.fallback.unnamedPresentationDefinition')}
+                    </Typography>
+                    {presentationDefinition.vct && (
+                      <Chip label={presentationDefinition.vct} size="small" sx={{height: 18, fontSize: '0.65rem'}} />
+                    )}
+                  </Stack>
+                  {presentationDefinition.handle && presentationDefinition.name !== presentationDefinition.handle && (
+                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5, fontFamily: 'monospace'}}>
+                      {presentationDefinition.handle}
+                    </Typography>
+                  )}
+                </Stack>
+              ))}
+            </Stack>
+            {remainingCount > 0 && (
+              <Box sx={{pt: 1, textAlign: 'center'}}>
+                <Chip
+                  label={
+                    expandedPresentationDefinitions
+                      ? t('importExport:configureExport.actions.showLess')
+                      : t('importExport:configureExport.actions.more', {count: remainingCount})
+                  }
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setExpandedPresentationDefinitions(!expandedPresentationDefinitions)}
                   sx={{cursor: 'pointer'}}
                 />
               </Box>

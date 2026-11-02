@@ -5,6 +5,7 @@ package role
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -88,14 +89,15 @@ var (
 	// queryCreateRoleAssignment creates a new role assignment.
 	queryCreateRoleAssignment = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-10",
-		Query: `INSERT INTO "ROLE_ASSIGNMENT" (ROLE_ID, ASSIGNEE_TYPE, ASSIGNEE_ID, DEPLOYMENT_ID)
-			VALUES ($1, $2, $3, $4) ON CONFLICT (ROLE_ID, DEPLOYMENT_ID, ASSIGNEE_TYPE, ASSIGNEE_ID) DO NOTHING`,
+		Query: `INSERT INTO "ROLE_ASSIGNMENT" (ROLE_ID, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, ASSIGNEE_ID, DEPLOYMENT_ID)
+			VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (ROLE_ID, DEPLOYMENT_ID, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, ASSIGNEE_ID) DO NOTHING`,
 	}
 
 	// queryGetRoleAssignments retrieves all assignments for a role with pagination.
 	queryGetRoleAssignments = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-11",
-		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE FROM "ROLE_ASSIGNMENT"
+		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID FROM "ROLE_ASSIGNMENT"
 			WHERE ROLE_ID = $1 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT LIMIT $2 OFFSET $3`,
 	}
 
@@ -109,7 +111,8 @@ var (
 	queryDeleteRoleAssignmentsByIDs = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-13",
 		Query: `DELETE FROM "ROLE_ASSIGNMENT" ` +
-			`WHERE ROLE_ID = $1 AND ASSIGNEE_TYPE = $2 AND ASSIGNEE_ID = $3 AND DEPLOYMENT_ID = $4`,
+			`WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND ASSIGNEE_TYPE = $3 AND ASSIGNEE_ID = $4 ` +
+			`AND DEPLOYMENT_ID = $5`,
 	}
 
 	// queryDeleteAllRoleAssignments deletes all assignments for a role (used for cascade delete).
@@ -148,7 +151,7 @@ var (
 	// queryGetRoleAssignmentsByType retrieves assignments for a role filtered by assignee type with pagination.
 	queryGetRoleAssignmentsByType = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-17",
-		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE FROM "ROLE_ASSIGNMENT"
+		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID FROM "ROLE_ASSIGNMENT"
 			WHERE ROLE_ID = $1 AND ASSIGNEE_TYPE = $5 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT LIMIT $2 OFFSET $3`,
 	}
 
@@ -171,29 +174,120 @@ var (
 		ID:    "RLQ-ROLE_MGT-24",
 		Query: `SELECT COUNT(*) as total FROM "ROLE" WHERE OU_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
+
+	// queryGetRoleAssignmentsInOU retrieves the assignments made in one organization unit for a role.
+	queryGetRoleAssignmentsInOU = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-30",
+		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID FROM "ROLE_ASSIGNMENT"
+			WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND DEPLOYMENT_ID = $5
+			ORDER BY CREATED_AT LIMIT $3 OFFSET $4`,
+	}
+
+	// queryGetRoleAssignmentsCountInOU counts the assignments made in one organization unit for a role.
+	queryGetRoleAssignmentsCountInOU = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-31",
+		Query: `SELECT COUNT(*) as total FROM "ROLE_ASSIGNMENT"
+			WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND DEPLOYMENT_ID = $3`,
+	}
+
+	// queryGetRoleAssignmentsByTypeInOU retrieves the assignments of one assignee type made in one
+	// organization unit for a role.
+	queryGetRoleAssignmentsByTypeInOU = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-32",
+		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID FROM "ROLE_ASSIGNMENT"
+			WHERE ROLE_ID = $1 AND ASSIGNEE_TYPE = $2 AND ASSIGNMENT_OU_ID = $3 AND DEPLOYMENT_ID = $6
+			ORDER BY CREATED_AT LIMIT $4 OFFSET $5`,
+	}
+
+	// queryGetRoleAssignmentsCountByTypeInOU counts the assignments of one assignee type made in one
+	// organization unit for a role.
+	queryGetRoleAssignmentsCountByTypeInOU = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-33",
+		Query: `SELECT COUNT(*) as total FROM "ROLE_ASSIGNMENT"
+			WHERE ROLE_ID = $1 AND ASSIGNEE_TYPE = $2 AND ASSIGNMENT_OU_ID = $3 AND DEPLOYMENT_ID = $4`,
+	}
+
+	// queryDeleteRoleAssignmentsInOU deletes every assignment made in one organization unit for a role.
+	queryDeleteRoleAssignmentsInOU = dbmodel.DBQuery{
+		ID:    "RLQ-ROLE_MGT-34",
+		Query: `DELETE FROM "ROLE_ASSIGNMENT" WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND DEPLOYMENT_ID = $3`,
+	}
 )
+
+// buildGetRolesByNamesQuery constructs a query to fetch roles by a list of names, regardless of
+// organization unit. A name may match more than one role, unlike an ID.
+func buildGetRolesByNamesQuery(names []string, deploymentID string) (dbmodel.DBQuery, []interface{}, error) {
+	if len(names) == 0 {
+		return dbmodel.DBQuery{}, nil, fmt.Errorf("names list cannot be empty")
+	}
+	return buildGetRolesInQuery("RLQ-ROLE_MGT-29", "NAME", len(names)), toArgs(names, deploymentID), nil
+}
+
+// buildGetRolesInQuery constructs a query selecting the roles whose column matches one of count values,
+// followed by the deployment ID.
+func buildGetRolesInQuery(queryID, column string, count int) dbmodel.DBQuery {
+	postgresPlaceholders := make([]string, count)
+	sqlitePlaceholders := make([]string, count)
+	for i := range count {
+		postgresPlaceholders[i] = fmt.Sprintf("$%d", i+1)
+		sqlitePlaceholders[i] = "?"
+	}
+
+	deploymentPlaceholder := fmt.Sprintf("$%d", count+1)
+	baseQuery := `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "ROLE" WHERE ` + column +
+		` IN (%s) AND DEPLOYMENT_ID = %s`
+	postgresQuery := fmt.Sprintf(baseQuery, strings.Join(postgresPlaceholders, ","), deploymentPlaceholder)
+	sqliteQuery := fmt.Sprintf(baseQuery, strings.Join(sqlitePlaceholders, ","), "?")
+
+	return dbmodel.DBQuery{
+		ID:            queryID,
+		Query:         postgresQuery,
+		PostgresQuery: postgresQuery,
+		SQLiteQuery:   sqliteQuery,
+	}
+}
+
+// toArgs binds the values of an IN list followed by the deployment ID.
+func toArgs(values []string, deploymentID string) []interface{} {
+	args := make([]interface{}, 0, len(values)+1)
+	for _, v := range values {
+		args = append(args, v)
+	}
+	return append(args, deploymentID)
+}
+
+// assignmentOUCondition narrows a role assignment condition to the assignments made in one
+// organization unit, numbered at index for PostgreSQL, or leaves it open when no unit is given.
+func assignmentOUCondition(assignmentOUID string, index int) (postgres, sqlite string) {
+	if assignmentOUID == "" {
+		return "", ""
+	}
+	return fmt.Sprintf(" AND ra.ASSIGNMENT_OU_ID = $%d", index), " AND ra.ASSIGNMENT_OU_ID = ?"
+}
 
 // buildAuthorizedPermissionsQuery constructs a database-specific query to retrieve authorized permissions
 // for an entity and/or groups from their assigned roles.
 // It builds separate queries for PostgreSQL and SQLite to handle array parameters correctly.
 func buildAuthorizedPermissionsQuery(
 	entityID string,
-	groupIDs []string,
+	groupIDs, roleIDs []string,
+	assignmentOUID string,
 	resourceServerID string,
 	requestedPermissions []string,
 	deploymentID string,
 ) (dbmodel.DBQuery, []interface{}) {
-	// Base query structure
+	// Base query structure. LEFT JOIN, not INNER JOIN: a role named directly in roleIDs (an
+	// externally derived role, holding no stored assignment) must still surface its permissions.
 	baseQuery := `SELECT DISTINCT rp.PERMISSION
 		FROM "ROLE_PERMISSION" rp
-		INNER JOIN "ROLE_ASSIGNMENT" ra ON rp.ROLE_ID = ra.ROLE_ID AND rp.DEPLOYMENT_ID = $1 AND ra.DEPLOYMENT_ID = $1
+		LEFT JOIN "ROLE_ASSIGNMENT" ra ON rp.ROLE_ID = ra.ROLE_ID AND rp.DEPLOYMENT_ID = $1 AND ra.DEPLOYMENT_ID = $1
 		WHERE rp.DEPLOYMENT_ID = $1 AND `
 
 	var postgresWhere []string
 	var sqliteWhere []string
 
 	// Pre-allocate args slice with estimated capacity
-	argsCapacity := 1 + len(groupIDs) + len(requestedPermissions) // +1 for DEPLOYMENT_ID
+	argsCapacity := 1 + len(groupIDs) + len(roleIDs) + len(requestedPermissions) // +1 for DEPLOYMENT_ID
 	if entityID != "" {
 		argsCapacity++
 	}
@@ -206,12 +300,17 @@ func buildAuthorizedPermissionsQuery(
 
 	// Build entity condition if entityID is provided
 	if entityID != "" {
+		postgresOU, sqliteOU := assignmentOUCondition(assignmentOUID, paramIndex+1)
 		postgresWhere = append(postgresWhere,
-			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'entity' AND ra.ASSIGNEE_ID = $%d)", paramIndex))
+			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'entity' AND ra.ASSIGNEE_ID = $%d%s)", paramIndex, postgresOU))
 		sqliteWhere = append(sqliteWhere,
-			"(ra.ASSIGNEE_TYPE = 'entity' AND ra.ASSIGNEE_ID = ?)")
+			"(ra.ASSIGNEE_TYPE = 'entity' AND ra.ASSIGNEE_ID = ?"+sqliteOU+")")
 		args = append(args, entityID)
 		paramIndex++
+		if assignmentOUID != "" {
+			args = append(args, assignmentOUID)
+			paramIndex++
+		}
 	}
 
 	// Build group condition if groupIDs are provided
@@ -225,13 +324,39 @@ func buildAuthorizedPermissionsQuery(
 			args = append(args, groupID)
 		}
 
+		postgresOU, sqliteOU := assignmentOUCondition(assignmentOUID, paramIndex+len(groupIDs))
+		if assignmentOUID != "" {
+			args = append(args, assignmentOUID)
+		}
 		postgresWhere = append(postgresWhere,
-			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s))",
-				strings.Join(groupPlaceholdersPostgres, ",")))
+			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s)%s)",
+				strings.Join(groupPlaceholdersPostgres, ","), postgresOU))
 		sqliteWhere = append(sqliteWhere,
-			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s))",
-				strings.Join(groupPlaceholdersSqlite, ",")))
+			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s)%s)",
+				strings.Join(groupPlaceholdersSqlite, ","), sqliteOU))
+		if assignmentOUID != "" {
+			paramIndex++
+		}
 		paramIndex += len(groupIDs)
+	}
+
+	// Build the role condition if roleIDs are provided. Matched directly against rp.ROLE_ID, not
+	// through ra, so it needs no assignment row at all.
+	if len(roleIDs) > 0 {
+		rolePlaceholdersPostgres := make([]string, len(roleIDs))
+		rolePlaceholdersSqlite := make([]string, len(roleIDs))
+
+		for i, roleID := range roleIDs {
+			rolePlaceholdersPostgres[i] = fmt.Sprintf("$%d", paramIndex+i)
+			rolePlaceholdersSqlite[i] = "?"
+			args = append(args, roleID)
+		}
+
+		postgresWhere = append(postgresWhere,
+			fmt.Sprintf("rp.ROLE_ID IN (%s)", strings.Join(rolePlaceholdersPostgres, ",")))
+		sqliteWhere = append(sqliteWhere,
+			fmt.Sprintf("rp.ROLE_ID IN (%s)", strings.Join(rolePlaceholdersSqlite, ",")))
+		paramIndex += len(roleIDs)
 	}
 
 	var postgresScopeWhere []string
@@ -255,17 +380,17 @@ func buildAuthorizedPermissionsQuery(
 
 	// Construct PostgreSQL query: AND together the subject block, the optional
 	// resource-server scope, and the permission block.
-	postgresConditions := []string{"(" + strings.Join(postgresWhere, " OR ") + ")"}
-	postgresConditions = append(postgresConditions, postgresScopeWhere...)
-	postgresConditions = append(postgresConditions,
-		fmt.Sprintf("rp.PERMISSION IN (%s)", strings.Join(permPlaceholdersPostgres, ",")))
+	postgresConditions := slices.Concat(
+		[]string{"(" + strings.Join(postgresWhere, " OR ") + ")"},
+		postgresScopeWhere,
+		[]string{fmt.Sprintf("rp.PERMISSION IN (%s)", strings.Join(permPlaceholdersPostgres, ","))})
 	postgresQuery := baseQuery + strings.Join(postgresConditions, " AND ") + " ORDER BY rp.PERMISSION"
 
 	// Construct SQLite query
-	sqliteConditions := []string{"(" + strings.Join(sqliteWhere, " OR ") + ")"}
-	sqliteConditions = append(sqliteConditions, sqliteScopeWhere...)
-	sqliteConditions = append(sqliteConditions,
-		fmt.Sprintf("rp.PERMISSION IN (%s)", strings.Join(permPlaceholdersSqlite, ",")))
+	sqliteConditions := slices.Concat(
+		[]string{"(" + strings.Join(sqliteWhere, " OR ") + ")"},
+		sqliteScopeWhere,
+		[]string{fmt.Sprintf("rp.PERMISSION IN (%s)", strings.Join(permPlaceholdersSqlite, ","))})
 	sqliteQuery := baseQuery + strings.Join(sqliteConditions, " AND ") + " ORDER BY rp.PERMISSION"
 
 	query := dbmodel.DBQuery{
@@ -362,6 +487,7 @@ func buildAllPermissionsForAssigneesQuery(
 func buildUserRolesQuery(
 	entityID string,
 	groupIDs []string,
+	assignmentOUID string,
 	deploymentID string,
 ) (dbmodel.DBQuery, []interface{}) {
 	baseQuery := `SELECT DISTINCT r.NAME
@@ -382,12 +508,17 @@ func buildUserRolesQuery(
 
 	// Build entity condition if entityID is provided
 	if entityID != "" {
+		postgresOU, sqliteOU := assignmentOUCondition(assignmentOUID, paramIndex+1)
 		postgresWhere = append(postgresWhere,
-			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'entity' AND ra.ASSIGNEE_ID = $%d)", paramIndex))
+			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'entity' AND ra.ASSIGNEE_ID = $%d%s)", paramIndex, postgresOU))
 		sqliteWhere = append(sqliteWhere,
-			"(ra.ASSIGNEE_TYPE = 'entity' AND ra.ASSIGNEE_ID = ?)")
+			"(ra.ASSIGNEE_TYPE = 'entity' AND ra.ASSIGNEE_ID = ?"+sqliteOU+")")
 		args = append(args, entityID)
 		paramIndex++
+		if assignmentOUID != "" {
+			args = append(args, assignmentOUID)
+			paramIndex++
+		}
 	}
 
 	// Build group condition if groupIDs are provided
@@ -401,12 +532,16 @@ func buildUserRolesQuery(
 			args = append(args, groupID)
 		}
 
+		postgresOU, sqliteOU := assignmentOUCondition(assignmentOUID, paramIndex+len(groupIDs))
+		if assignmentOUID != "" {
+			args = append(args, assignmentOUID)
+		}
 		postgresWhere = append(postgresWhere,
-			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s))",
-				strings.Join(groupPlaceholdersPostgres, ",")))
+			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s)%s)",
+				strings.Join(groupPlaceholdersPostgres, ","), postgresOU))
 		sqliteWhere = append(sqliteWhere,
-			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s))",
-				strings.Join(groupPlaceholdersSqlite, ",")))
+			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s)%s)",
+				strings.Join(groupPlaceholdersSqlite, ","), sqliteOU))
 	}
 
 	// Construct PostgreSQL query
@@ -437,6 +572,7 @@ func buildUserRolesQuery(
 func buildEntityRoleIDsQuery(
 	entityID string,
 	groupIDs []string,
+	assignmentOUID string,
 	deploymentID string,
 ) (dbmodel.DBQuery, []interface{}) {
 	baseQuery := `SELECT DISTINCT ra.ROLE_ID
@@ -455,12 +591,17 @@ func buildEntityRoleIDsQuery(
 	paramIndex := 2
 
 	if entityID != "" {
+		postgresOU, sqliteOU := assignmentOUCondition(assignmentOUID, paramIndex+1)
 		postgresWhere = append(postgresWhere,
-			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'entity' AND ra.ASSIGNEE_ID = $%d)", paramIndex))
+			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'entity' AND ra.ASSIGNEE_ID = $%d%s)", paramIndex, postgresOU))
 		sqliteWhere = append(sqliteWhere,
-			"(ra.ASSIGNEE_TYPE = 'entity' AND ra.ASSIGNEE_ID = ?)")
+			"(ra.ASSIGNEE_TYPE = 'entity' AND ra.ASSIGNEE_ID = ?"+sqliteOU+")")
 		args = append(args, entityID)
 		paramIndex++
+		if assignmentOUID != "" {
+			args = append(args, assignmentOUID)
+			paramIndex++
+		}
 	}
 
 	if len(groupIDs) > 0 {
@@ -473,12 +614,16 @@ func buildEntityRoleIDsQuery(
 			args = append(args, groupID)
 		}
 
+		postgresOU, sqliteOU := assignmentOUCondition(assignmentOUID, paramIndex+len(groupIDs))
+		if assignmentOUID != "" {
+			args = append(args, assignmentOUID)
+		}
 		postgresWhere = append(postgresWhere,
-			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s))",
-				strings.Join(groupPlaceholdersPostgres, ",")))
+			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s)%s)",
+				strings.Join(groupPlaceholdersPostgres, ","), postgresOU))
 		sqliteWhere = append(sqliteWhere,
-			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s))",
-				strings.Join(groupPlaceholdersSqlite, ",")))
+			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s)%s)",
+				strings.Join(groupPlaceholdersSqlite, ","), sqliteOU))
 	}
 
 	postgresQuery := baseQuery +
@@ -494,6 +639,14 @@ func buildEntityRoleIDsQuery(
 	}
 
 	return query, args
+}
+
+// buildGetRolesByIDsQuery constructs a query to fetch roles by a list of IDs.
+func buildGetRolesByIDsQuery(ids []string, deploymentID string) (dbmodel.DBQuery, []interface{}, error) {
+	if len(ids) == 0 {
+		return dbmodel.DBQuery{}, nil, fmt.Errorf("ids list cannot be empty")
+	}
+	return buildGetRolesInQuery("RLQ-ROLE_MGT-35", "ID", len(ids)), toArgs(ids, deploymentID), nil
 }
 
 // resourcePermissionsFromMap converts a resource-server-keyed map into []ResourcePermissions,

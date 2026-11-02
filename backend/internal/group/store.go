@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package group
@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -40,13 +41,15 @@ type groupStoreInterface interface {
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) error
 	DeleteMembershipsByMember(ctx context.Context, memberType, memberID string) (int64, error)
 	GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error)
+	GetGroupsByNames(ctx context.Context, names []string) ([]GroupBasicDAO, error)
 	IsGroupDeclarative(ctx context.Context, id string) (bool, error)
 	GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]providers.EntityGroup, error)
+	GetTransitiveAncestorGroups(ctx context.Context, groupID string) ([]string, error)
 	GetDirectGroupParents(ctx context.Context, groupIDs []string) ([]string, error)
 }
 
-// maxGroupNestingDepth bounds the ancestor walk so a pathologically deep chain cannot turn an
-// authorization check into an unbounded sequence of queries. Cycles are handled by the visited set.
+// maxGroupNestingDepth bounds a walk through group nesting, up or down, so a pathologically deep chain
+// cannot turn an authorization check into an unbounded sequence of queries. Cycles are handled by the visited set.
 const maxGroupNestingDepth = 32
 
 // resolveTransitiveGroupAncestors returns the IDs of all groups containing groupID, directly or
@@ -90,16 +93,20 @@ func resolveTransitiveGroupAncestors(
 
 // groupStore is the default implementation of groupStoreInterface.
 type groupStore struct {
-	dbProvider   provider.DBProviderInterface
-	deploymentID string
+	dbProvider provider.DBProviderInterface
 }
 
 // newGroupStore creates a new instance of groupStore.
 func newGroupStore() groupStoreInterface {
 	return &groupStore{
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
-		dbProvider:   provider.GetDBProvider(),
+		dbProvider: provider.GetDBProvider(),
 	}
+}
+
+// scope returns the deployment id this request acts for, falling back to the configured
+// identifier for a context that never passed through the edge.
+func (s *groupStore) scope(ctx context.Context) string {
+	return deployment.Resolve(ctx)
 }
 
 // GetGroupListCount retrieves the total count of root groups.
@@ -109,7 +116,7 @@ func (s *groupStore) GetGroupListCount(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countResults, err := dbClient.QueryContext(ctx, QueryGetGroupListCount, s.deploymentID)
+	countResults, err := dbClient.QueryContext(ctx, QueryGetGroupListCount, s.scope(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute group list count query: %w", err)
 	}
@@ -130,7 +137,7 @@ func (s *groupStore) GetGroupList(ctx context.Context, limit, offset int) ([]Gro
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
-	results, err := dbClient.QueryContext(ctx, QueryGetGroupList, limit, offset, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, QueryGetGroupList, limit, offset, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute group list query: %w", err)
 	}
@@ -166,7 +173,7 @@ func (s *groupStore) GetGroupListCountByOUIDs(ctx context.Context, ouIDs []strin
 		return 0, fmt.Errorf("failed to get database client for counter query: %w", err)
 	}
 
-	query, args := buildGetGroupsCountByOUIDsQuery(ouIDs, s.deploymentID)
+	query, args := buildGetGroupsCountByOUIDsQuery(ouIDs, s.scope(ctx))
 
 	var count int
 	countResults, err := dbClient.QueryContext(ctx, query, args...)
@@ -196,7 +203,7 @@ func (s *groupStore) GetGroupListByOUIDs(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client for query: %w", err)
 	}
-	query, args := buildGetGroupsByOUIDsQuery(ouIDs, limit, offset, s.deploymentID)
+	query, args := buildGetGroupsByOUIDsQuery(ouIDs, limit, offset, s.scope(ctx))
 
 	results, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -238,7 +245,7 @@ func (s *groupStore) CreateGroup(ctx context.Context, group GroupDAO) error {
 		group.OUID,
 		group.Name,
 		group.Description,
-		s.deploymentID,
+		s.scope(ctx),
 		now,
 		now,
 	)
@@ -246,7 +253,7 @@ func (s *groupStore) CreateGroup(ctx context.Context, group GroupDAO) error {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
 
-	err = addMembersToGroup(ctx, dbClient, group.ID, group.Members, s.deploymentID)
+	err = addMembersToGroup(ctx, dbClient, group.ID, group.Members, s.scope(ctx))
 	if err != nil {
 		return err
 	}
@@ -261,7 +268,7 @@ func (s *groupStore) GetGroup(ctx context.Context, id string) (GroupDAO, error) 
 		return GroupDAO{}, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, QueryGetGroupByID, id, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, QueryGetGroupByID, id, s.scope(ctx))
 	if err != nil {
 		return GroupDAO{}, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -290,7 +297,7 @@ func (s *groupStore) GetGroupMembers(ctx context.Context, groupID string, limit,
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, QueryGetGroupMembers, groupID, limit, offset, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, QueryGetGroupMembers, groupID, limit, offset, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get group members: %w", err)
 	}
@@ -317,7 +324,7 @@ func (s *groupStore) GetGroupMemberCount(ctx context.Context, groupID string) (i
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countResults, err := dbClient.QueryContext(ctx, QueryGetGroupMemberCount, groupID, s.deploymentID)
+	countResults, err := dbClient.QueryContext(ctx, QueryGetGroupMemberCount, groupID, s.scope(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to get group member count: %w", err)
 	}
@@ -348,7 +355,7 @@ func (s *groupStore) UpdateGroup(ctx context.Context, group GroupDAO) error {
 		group.Name,
 		group.Description,
 		time.Now().UTC(),
-		s.deploymentID,
+		s.scope(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
@@ -370,12 +377,12 @@ func (s *groupStore) DeleteGroup(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, QueryDeleteGroupMembers, id, s.deploymentID)
+	_, err = dbClient.ExecuteContext(ctx, QueryDeleteGroupMembers, id, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to delete group members: %w", err)
 	}
 
-	result, err := dbClient.ExecuteContext(ctx, QueryDeleteGroup, id, s.deploymentID)
+	result, err := dbClient.ExecuteContext(ctx, QueryDeleteGroup, id, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -398,7 +405,7 @@ func (s *groupStore) ValidateGroupIDs(ctx context.Context, groupIDs []string) ([
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	query, args, err := buildBulkGroupExistsQueryFunc(groupIDs, s.deploymentID)
+	query, args, err := buildBulkGroupExistsQueryFunc(groupIDs, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build bulk group exists query: %w", err)
 	}
@@ -434,7 +441,7 @@ func (s *groupStore) CheckGroupNameConflictForCreate(
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	return checkGroupNameConflictForCreate(ctx, dbClient, name, oUID, s.deploymentID)
+	return checkGroupNameConflictForCreate(ctx, dbClient, name, oUID, s.scope(ctx))
 }
 
 // CheckGroupNameConflictForUpdate checks if the new group name conflicts with other groups
@@ -446,7 +453,7 @@ func (s *groupStore) CheckGroupNameConflictForUpdate(
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	return checkGroupNameConflictForUpdate(ctx, dbClient, name, oUID, groupID, s.deploymentID)
+	return checkGroupNameConflictForUpdate(ctx, dbClient, name, oUID, groupID, s.scope(ctx))
 }
 
 // GetGroupsByOrganizationUnitCount retrieves the total count of groups in a specific organization unit.
@@ -457,7 +464,7 @@ func (s *groupStore) GetGroupsByOrganizationUnitCount(ctx context.Context, oUID 
 	}
 
 	countResults, err := dbClient.QueryContext(
-		ctx, QueryGetGroupsByOrganizationUnitCount, oUID, s.deploymentID)
+		ctx, QueryGetGroupsByOrganizationUnitCount, oUID, s.scope(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to get group count by organization unit: %w", err)
 	}
@@ -483,7 +490,7 @@ func (s *groupStore) GetGroupsByOrganizationUnit(
 	}
 
 	results, err := dbClient.QueryContext(
-		ctx, QueryGetGroupsByOrganizationUnit, oUID, limit, offset, s.deploymentID)
+		ctx, QueryGetGroupsByOrganizationUnit, oUID, limit, offset, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get groups by organization unit: %w", err)
 	}
@@ -513,7 +520,7 @@ func (s *groupStore) AddGroupMembers(ctx context.Context, groupID string, member
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	return addMembersToGroup(ctx, dbClient, groupID, members, s.deploymentID)
+	return addMembersToGroup(ctx, dbClient, groupID, members, s.scope(ctx))
 }
 
 // RemoveGroupMembers removes members from a group.
@@ -526,7 +533,7 @@ func (s *groupStore) RemoveGroupMembers(ctx context.Context, groupID string, mem
 	for _, member := range members {
 		_, err := dbClient.ExecuteContext(
 			ctx, QueryDeleteGroupMember,
-			groupID, member.Type, member.ID, s.deploymentID,
+			groupID, member.Type, member.ID, s.scope(ctx),
 		)
 		if err != nil {
 			return fmt.Errorf("failed to remove member from group: %w", err)
@@ -546,7 +553,7 @@ func (s *groupStore) DeleteMembershipsByMember(
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(
-		ctx, QueryDeleteGroupMembershipsByMember, memberType, memberID, s.deploymentID)
+		ctx, QueryDeleteGroupMembershipsByMember, memberType, memberID, s.scope(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete memberships for member: %w", err)
 	}
@@ -555,9 +562,23 @@ func (s *groupStore) DeleteMembershipsByMember(
 
 // GetGroupsByIDs retrieves groups by a list of IDs.
 func (s *groupStore) GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error) {
+	return s.getGroupsInBatches(ctx, groupIDs, buildGetGroupsByIDsQuery)
+}
+
+// GetGroupsByNames retrieves groups by a list of names, regardless of organization unit.
+func (s *groupStore) GetGroupsByNames(ctx context.Context, names []string) ([]GroupBasicDAO, error) {
+	return s.getGroupsInBatches(ctx, names, buildGetGroupsByNamesQuery)
+}
+
+// getGroupsInBatches runs buildQuery over values in chunks of batchSize, collecting every matching
+// group. Shared by GetGroupsByIDs and GetGroupsByNames, which differ only in which query they build.
+func (s *groupStore) getGroupsInBatches(
+	ctx context.Context, values []string,
+	buildQuery func(chunk []string, deploymentID string) (dbmodel.DBQuery, []interface{}, error),
+) ([]GroupBasicDAO, error) {
 	const batchSize = 100
 
-	if len(groupIDs) == 0 {
+	if len(values) == 0 {
 		return []GroupBasicDAO{}, nil
 	}
 
@@ -566,18 +587,18 @@ func (s *groupStore) GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]G
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	groups := make([]GroupBasicDAO, 0, len(groupIDs))
+	groups := make([]GroupBasicDAO, 0, len(values))
 
-	for start := 0; start < len(groupIDs); start += batchSize {
+	for start := 0; start < len(values); start += batchSize {
 		end := start + batchSize
-		if end > len(groupIDs) {
-			end = len(groupIDs)
+		if end > len(values) {
+			end = len(values)
 		}
-		chunk := groupIDs[start:end]
+		chunk := values[start:end]
 
-		query, args, err := buildGetGroupsByIDsQuery(chunk, s.deploymentID)
+		query, args, err := buildQuery(chunk, s.scope(ctx))
 		if err != nil {
-			return nil, fmt.Errorf("failed to build get groups by IDs query: %w", err)
+			return nil, fmt.Errorf("failed to build query: %w", err)
 		}
 
 		results, err := dbClient.QueryContext(ctx, query, args...)
@@ -617,7 +638,7 @@ func (s *groupStore) GetTransitiveGroupsForEntity(
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, QueryGetTransitiveGroupsForMember, entityID, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, QueryGetTransitiveGroupsForMember, entityID, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transitive groups for entity: %w", err)
 	}
@@ -641,6 +662,11 @@ func (s *groupStore) GetTransitiveGroupsForEntity(
 	return groups, nil
 }
 
+// GetTransitiveAncestorGroups resolves the ancestor chain of a single group.
+func (s *groupStore) GetTransitiveAncestorGroups(ctx context.Context, groupID string) ([]string, error) {
+	return resolveTransitiveGroupAncestors(ctx, s, groupID)
+}
+
 // GetDirectGroupParents retrieves the IDs of database groups directly containing any of the given
 // groups.
 func (s *groupStore) GetDirectGroupParents(ctx context.Context, groupIDs []string) ([]string, error) {
@@ -653,7 +679,7 @@ func (s *groupStore) GetDirectGroupParents(ctx context.Context, groupIDs []strin
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	query, args := buildGetDirectGroupParentsQuery(groupIDs, s.deploymentID)
+	query, args := buildGetDirectGroupParentsQuery(groupIDs, s.scope(ctx))
 	results, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get direct group parents: %w", err)

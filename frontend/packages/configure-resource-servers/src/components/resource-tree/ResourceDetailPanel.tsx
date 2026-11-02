@@ -180,7 +180,7 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
   };
 
   const resolveNodeTypeLabel = (): string => {
-    if (selectedNode.type === 'server') return t('resourceServers:detail.types.resourceServer', 'Resource Server');
+    if (selectedNode.type === 'server') return t('resourceServers:detail.types.resourceServer', 'Resource server');
     if (selectedNode.type === 'resource') {
       if (resourceServer.type === 'MCP') return getActionKindLabel(undefined, t);
       return t('resourceServers:detail.types.resource', 'Resource');

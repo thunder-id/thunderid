@@ -13,6 +13,9 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	dbMock "github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+
+	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 type StoreTestSuite struct {
@@ -23,12 +26,12 @@ type StoreTestSuite struct {
 }
 
 func (suite *StoreTestSuite) SetupTest() {
+	loadRuntimeForScope()
 	suite.mockProvider = dbMock.NewDBProviderInterfaceMock(suite.T())
 	suite.mockClient = dbMock.NewDBClientInterfaceMock(suite.T())
 
 	suite.store = &entityTypeStore{
-		dbProvider:   suite.mockProvider,
-		deploymentID: "test-node",
+		dbProvider: suite.mockProvider,
 	}
 }
 
@@ -97,8 +100,16 @@ func (suite *StoreTestSuite) TestGetEntityTypeListByOUIDs() {
 						"id": "schema-1",
 					},
 					{
+						// Invalid row missing the display name
+						"id":       "schema-3",
+						"category": "user",
+						"handle":   "schema-3",
+						"ou_id":    "ou-1",
+					},
+					{
 						"id":                      "schema-2",
 						"category":                "user",
+						"handle":                  "schema-2",
 						"name":                    "Schema 2",
 						"ou_id":                   "ou-1",
 						"allow_self_registration": true,
@@ -114,7 +125,8 @@ func (suite *StoreTestSuite) TestGetEntityTypeListByOUIDs() {
 				{
 					ID:                    "schema-2",
 					Category:              TypeCategoryUser,
-					Name:                  "Schema 2",
+					Handle:                "schema-2",
+					DisplayName:           "Schema 2",
 					OUID:                  "ou-1",
 					AllowSelfRegistration: true,
 				},
@@ -133,6 +145,7 @@ func (suite *StoreTestSuite) TestGetEntityTypeListByOUIDs() {
 					{
 						"id":                      "schema-1",
 						"category":                "user",
+						"handle":                  "schema-1",
 						"name":                    "Schema 1",
 						"ou_id":                   "ou-1",
 						"allow_self_registration": false,
@@ -148,7 +161,8 @@ func (suite *StoreTestSuite) TestGetEntityTypeListByOUIDs() {
 				{
 					ID:                    "schema-1",
 					Category:              TypeCategoryUser,
-					Name:                  "Schema 1",
+					Handle:                "schema-1",
+					DisplayName:           "Schema 1",
 					OUID:                  "ou-1",
 					AllowSelfRegistration: false,
 				},
@@ -274,4 +288,14 @@ func (suite *StoreTestSuite) TestGetEntityTypeListCountByOUIDs() {
 			suite.mockClient.AssertExpectations(suite.T())
 		})
 	}
+}
+
+// loadRuntimeForScope loads a server runtime naming the deployment these tests assert on. The store
+// resolves its deployment from the runtime rather than holding one, and other suites in this package
+// reset the runtime, so it is loaded per test rather than once for the package.
+func loadRuntimeForScope() {
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{
+		Server: engineconfig.ServerConfig{Identifier: "test-node"},
+	})
 }

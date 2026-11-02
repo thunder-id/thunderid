@@ -1,0 +1,208 @@
+---
+toc_progress: quickstart
+title: Vue Quickstart
+docType: quickstart
+sidebar_position: 2
+persona: app
+description: Add {{ProductName}} authentication to a Vue 3 application using the @thunderid/vue SDK.
+---
+
+import {
+  Boxes,
+  Package,
+  LogIn,
+  BookOpen,
+  Clock,
+  Server,
+  Hexagon,
+  FileCode,
+} from '@wso2/oxygen-ui-icons-react';
+
+# Vue Quickstart
+
+Use this guide to add <ProductName /> authentication to a Vue 3 application using the `@thunderid/vue` SDK.
+
+<SdkQuickstartDownload packageId="vue" sample="quickstarts/vue" icon={<VueLogo size={22} />} promptFlow="redirect-based" />
+
+<TutorialHero>
+
+## What You Will Learn
+
+<TutorialHeroItem icon={<Boxes />}>Create a new Vue 3 app using Vite</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>Install the <code>@thunderid/vue</code> package</TutorialHeroItem>
+<TutorialHeroItem icon={<LogIn />}>Add working sign-in and sign-out</TutorialHeroItem>
+<TutorialHeroItem icon={<BookOpen />}>Display the signed-in user's profile</TutorialHeroItem>
+
+## Prerequisites
+
+<TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
+<TutorialHeroItem icon={<Hexagon />}>Node.js installed on your system</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>npm, yarn, or pnpm</TutorialHeroItem>
+<TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
+
+</TutorialHero>
+
+<Stepper stepNode="h2" as="h2">
+
+## Run <ProductName />
+
+Start a local <ProductName /> instance. Pick the method that works best for you:
+
+<RunThunderID />
+
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
+
+## Create an Application
+
+1. Sign in to the Console.
+
+    :::info Test User
+    If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+    :::
+
+2. Navigate to **Applications**.
+3. Click **Add Application**.
+4. From the **Choose a type** page, select **Vue**.
+5. Enter a name (e.g. `My Vue App`).
+6. Click **Create**.
+7. Select how you want to sign in users (e.g., email/password, social login, etc.).
+8. Select Theme settings and other options.
+9. In the Configuration step, click on the banner to add Vite's development server URL to the list of **Authorized Redirect URIs** & **CORS Allowed Origins**. The default is `http://localhost:5173` (adjust the port if your dev server uses a different one).
+
+:::note Note
+Copy the **Client ID** from the **General** tab. You'll need it when configuring the SDK.
+:::
+
+## Create a Vue App
+
+Create your new Vue 3 app using Vite:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm create vite@latest my-vue-app -- --template vue
+    cd my-vue-app
+    npm install
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn create vite my-vue-app --template vue
+    cd my-vue-app
+    yarn install
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm create vite my-vue-app --template vue
+    cd my-vue-app
+    pnpm install
+  </CodeBlock>
+</CodeGroup>
+
+## Install @thunderid/vue
+
+Install the <ProductName /> Vue SDK in your project:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm install @thunderid/vue
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn add @thunderid/vue
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm add @thunderid/vue
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun add @thunderid/vue
+  </CodeBlock>
+</CodeGroup>
+
+## Register the Plugin
+
+Register `ThunderIDPlugin` in `src/main.js`:
+
+```js title="src/main.js" {2,6-8} showLineNumbers
+import { createApp } from 'vue'
+import { ThunderIDPlugin } from '@thunderid/vue'
+import './style.css'
+import App from './App.vue'
+
+const app = createApp(App)
+app.use(ThunderIDPlugin)
+app.mount('#app')
+```
+
+## Build with <ProductName /> Components
+
+Update `src/App.vue` with <ProductName /> authentication components:
+
+:::warning Configuration
+Replace `<your-client-id>` with the Client ID you obtained when creating the application in <ProductName />.
+:::
+
+```vue title="src/App.vue" showLineNumbers
+<script setup>
+import {
+  SignedIn,
+  SignedOut,
+  SignInButton,
+  SignOutButton,
+  UserDropdown,
+} from '@thunderid/vue'
+</script>
+
+<template>
+  <ThunderIDProvider
+    client-id="<your-client-id>"
+    base-url="https://localhost:8090"
+  >
+    <section id="center">
+      <SignedIn>
+        <UserDropdown />
+      </SignedIn>
+      <SignedOut>
+        <SignInButton>Sign In</SignInButton>
+      </SignedOut>
+    </section>
+  </ThunderIDProvider>
+</template>
+```
+
+## Run Your App
+
+Start the development server:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm run dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm run dev
+  </CodeBlock>
+</CodeGroup>
+
+:::note Test credentials
+You'll need a user to sign in with. If you haven't created one yet, open <ConsoleUrl />, navigate to **Users**, and add a test user with an email and password.
+:::
+
+:::tip Success
+Visit your app at 🌐 [http://localhost:5173](http://localhost:5173)
+
+You should see the `<SignInButton />`. Click it to be redirected to the <ProductName />-hosted sign-in page. Login with your test user, then return to your app with the user dropdown displayed.
+:::
+
+</Stepper>
+
+## What's Next
+
+<NextSteps>
+  <NextStepsCard title="Upgrade the Sign-In Flow" href="../../../guides/flows/what-are-flows" description="Add MFA, passkeys, or social login to your flow: no app code changes required." cta="Flow Designer" />
+  <NextStepsCard title="Vue SDK Reference" href="../../../sdks-and-tools/vue/overview" description="Explore the full API reference for the Vue SDK." cta="API Reference" />
+</NextSteps>

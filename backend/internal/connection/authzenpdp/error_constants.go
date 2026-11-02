@@ -1,0 +1,158 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package authzenpdp
+
+import tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
+var (
+	// ErrorNotFound is returned when an AuthZEN PDP connection does not exist.
+	ErrorNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1004",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.connection_not_found",
+			DefaultValue: "Connection not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.connection_not_found_description",
+			DefaultValue: "No connection exists for the supplied identifier",
+		},
+	}
+	// ErrorHasBlockingDependencies is returned when an AuthZEN PDP connection cannot be deleted
+	// because resource servers depend on it.
+	ErrorHasBlockingDependencies = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1005",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.connection_has_blocking_dependencies",
+			DefaultValue: "Connection cannot be deleted",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.connectionservice.connection_has_blocking_dependencies_description",
+			DefaultValue: "The connection cannot be deleted because other resources depend on it. " +
+				"Remove or reassign them first.",
+		},
+	}
+	// ErrorInvalidEndpoint is returned when an AuthZEN PDP endpoint is invalid.
+	ErrorInvalidEndpoint = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1006",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_authzen_pdp_endpoint",
+			DefaultValue: "Invalid AuthZEN PDP endpoint",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_authzen_pdp_endpoint_description",
+			DefaultValue: "The single and batch evaluation endpoints must be absolute URLs.",
+		},
+	}
+	// ErrorInvalidAuthentication is returned when PDP outbound authentication is invalid.
+	ErrorInvalidAuthentication = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1013",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_authzen_pdp_authentication",
+			DefaultValue: "Invalid AuthZEN PDP authentication",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_authzen_pdp_authentication_description",
+			DefaultValue: "Configure valid credentials for the selected authentication method.",
+		},
+	}
+	// ErrorAuthenticationRequiredForEndpointChange is returned when an endpoint change needs fresh credentials.
+	ErrorAuthenticationRequiredForEndpointChange = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1014",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.authzen_pdp_authentication_required_for_endpoint_change",
+			DefaultValue: "Authentication must be updated",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.authzen_pdp_authentication_required_for_endpoint_change_description",
+			DefaultValue: "Enter fresh credentials when changing an AuthZEN PDP endpoint.",
+		},
+	}
+	// ErrorInvalidName is returned when an AuthZEN PDP connection name is missing.
+	ErrorInvalidName = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1010",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_authzen_pdp_name",
+			DefaultValue: "Invalid AuthZEN PDP connection name",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_authzen_pdp_name_description",
+			DefaultValue: "The AuthZEN PDP connection name is required",
+		},
+	}
+	// ErrorAlreadyExists is returned when an AuthZEN PDP has the same name.
+	ErrorAlreadyExists = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1008",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.authzen_pdp_already_exists",
+			DefaultValue: "An AuthZEN PDP connection with the same name already exists",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.authzen_pdp_already_exists_description",
+			DefaultValue: "Choose a different name for the AuthZEN PDP connection",
+		},
+	}
+	// ErrorInvalidSubjectAttributeMapping is returned when a subject attribute mapping does not
+	// match a ThunderID entity type schema.
+	ErrorInvalidSubjectAttributeMapping = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1009",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_subject_attribute_mapping",
+			DefaultValue: "Invalid subject attribute mapping",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.connectionservice.invalid_subject_attribute_mapping_description",
+			DefaultValue: "Each subject mapping must reference an existing entity type and a " +
+				"non-credential attribute. The groups attribute is reserved for group IDs.",
+		},
+	}
+	// ErrorInvalidOU is the error returned when the organization unit given for an AuthZEN PDP connection does not
+	// exist.
+	ErrorInvalidOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1023",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_connection_ou",
+			DefaultValue: "Invalid organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_connection_ou_description",
+			DefaultValue: "The organization unit given for the AuthZEN PDP connection does not exist",
+		},
+	}
+	// ErrorOUUpdateNotAllowed is the error returned when attempting to change the
+	// organization unit of an AuthZEN PDP connection.
+	ErrorOUUpdateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1024",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.connection_ou_update_not_allowed",
+			DefaultValue: "Organization unit update not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.connection_ou_update_not_allowed_description",
+			DefaultValue: "The organization unit of an AuthZEN PDP connection cannot be changed",
+		},
+	}
+	// ErrorOURequired is the error returned when an AuthZEN PDP connection is created without an organization unit.
+	ErrorOURequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.connection_ou_required",
+			DefaultValue: "Organization unit required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.connection_ou_required_description",
+			DefaultValue: "An AuthZEN PDP connection needs an organization unit. Give its ouId in the request",
+		},
+	}
+)

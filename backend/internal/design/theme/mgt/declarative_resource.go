@@ -107,6 +107,33 @@ func (e *themeExporter) ValidateResource(ctx context.Context,
 	return theme.DisplayName, nil
 }
 
+// ViewResource shows an exported theme as a read of it returns it. The export writes the theme
+// configuration as a JSON string, which is read back as the theme loader reads it.
+func (e *themeExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(exported *exportedTheme) (interface{}, error) {
+		themeJSON, err := themeJSONFromValue(exported.Theme)
+		if err != nil {
+			return nil, err
+		}
+		return toThemeGetResponse(&Theme{
+			ID:          exported.ID,
+			Handle:      exported.Handle,
+			DisplayName: exported.DisplayName,
+			Description: exported.Description,
+			Theme:       themeJSON,
+			CreatedAt:   exported.CreatedAt,
+			UpdatedAt:   exported.UpdatedAt,
+		}), nil
+	})
+}
+
+// exportedTheme is a theme as its export writes it.
+type exportedTheme struct {
+	themeRequestWithID `yaml:",inline"`
+	CreatedAt          string `yaml:"createdAt"`
+	UpdatedAt          string `yaml:"updatedAt"`
+}
+
 // GetResourceRules returns the parameterization rules for themes.
 func (e *themeExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return &declarativeresource.ResourceRules{}
@@ -149,6 +176,28 @@ func parseToThemeWrapper(data []byte) (interface{}, error) {
 	return parseToTheme(data)
 }
 
+// themeJSONFromValue converts a document's theme value, a JSON string or a map structure, into
+// JSON bytes.
+func themeJSONFromValue(value interface{}) (json.RawMessage, error) {
+	var themeJSON json.RawMessage
+	if value != nil {
+		// Handle both map structure and string format
+		switch v := value.(type) {
+		case string:
+			// JSON string format
+			themeJSON = []byte(v)
+		default:
+			// Map structure - marshal to JSON
+			themeBytes, err := json.Marshal(value)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal theme to JSON: %w", err)
+			}
+			themeJSON = themeBytes
+		}
+	}
+	return themeJSON, nil
+}
+
 // parseToTheme converts YAML data into a Theme object.
 func parseToTheme(data []byte) (*Theme, error) {
 	var themeRequest themeRequestWithID
@@ -158,22 +207,9 @@ func parseToTheme(data []byte) (*Theme, error) {
 		return nil, err
 	}
 
-	// Convert theme to JSON bytes
-	var themeJSON json.RawMessage
-	if themeRequest.Theme != nil {
-		// Handle both map structure and string format
-		switch v := themeRequest.Theme.(type) {
-		case string:
-			// JSON string format
-			themeJSON = []byte(v)
-		default:
-			// Map structure - marshal to JSON
-			themeBytes, err := json.Marshal(themeRequest.Theme)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal theme to JSON: %w", err)
-			}
-			themeJSON = themeBytes
-		}
+	themeJSON, err := themeJSONFromValue(themeRequest.Theme)
+	if err != nil {
+		return nil, err
 	}
 
 	theme := &Theme{
@@ -191,6 +227,9 @@ func parseToTheme(data []byte) (*Theme, error) {
 // validateThemeWrapper wraps validateThemeForDeclarativeResource to match ResourceConfig.Validator signature.
 // It also checks for duplicates across database stores in composite mode.
 func validateThemeWrapper(dto interface{}, dbStore themeMgtStoreInterface) error {
+	// Declarative resources are validated as they are loaded, outside any request, so there
+	// is no context to carry a deployment id and the configured identifier applies.
+	ctx := context.Background()
 	theme, ok := dto.(*Theme)
 	if !ok {
 		return fmt.Errorf("invalid type: expected *Theme")
@@ -203,7 +242,7 @@ func validateThemeWrapper(dto interface{}, dbStore themeMgtStoreInterface) error
 
 	// In composite mode, check for duplicates in database store
 	if dbStore != nil {
-		exists, err := dbStore.IsThemeExist(theme.ID)
+		exists, err := dbStore.IsThemeExist(ctx, theme.ID)
 		if err != nil {
 			return fmt.Errorf("failed to check for duplicate theme ID '%s': %w", theme.ID, err)
 		}

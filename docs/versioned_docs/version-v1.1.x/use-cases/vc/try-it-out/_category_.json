@@ -1,0 +1,10 @@
+{
+  "position": 2,
+  "label": "Try It Out",
+  "collapsible": true,
+  "collapsed": true,
+  "link": {
+    "type": "doc",
+    "id": "use-cases/vc/try-it-out"
+  }
+}

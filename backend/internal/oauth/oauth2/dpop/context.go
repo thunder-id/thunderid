@@ -10,8 +10,9 @@ type contextKey string
 
 // Context keys for DPoP values propagated across the request pipeline.
 const (
-	proofKey contextKey = "dpop_proof"
-	jktKey   contextKey = "dpop_jkt"
+	proofKey       contextKey = "dpop_proof"
+	jktKey         contextKey = "dpop_jkt"
+	requestPathKey contextKey = "dpop_request_path"
 )
 
 // WithProof attaches a raw DPoP proof JWT to the context for downstream verification.
@@ -42,6 +43,27 @@ func GetJkt(ctx context.Context) string {
 		return ""
 	}
 	if v, ok := ctx.Value(jktKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// WithRequestPath records the path of the request a proof arrived on, so the expected htu can be
+// built from the request rather than from a configured endpoint.
+//
+// RFC 9449 section 4.3 binds a proof to the target URI of the request it accompanies, and one
+// handler may serve more than one path, as the token endpoint does. Only the path travels this
+// way: scheme and host come from the configured public URL, not from headers an attacker can set.
+func WithRequestPath(ctx context.Context, path string) context.Context {
+	return context.WithValue(ctx, requestPathKey, path)
+}
+
+// GetRequestPath returns the path previously attached via WithRequestPath, or "".
+func GetRequestPath(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v, ok := ctx.Value(requestPathKey).(string); ok {
 		return v
 	}
 	return ""

@@ -300,6 +300,7 @@ func (ah *authenticationHandler) HandlePasskeyRegisterStartRequest(w http.Respon
 		regRequest.RelyingPartyName,
 		regRequest.AuthenticatorSelection,
 		regRequest.Attestation,
+		regRequest.Assertion,
 	)
 	if svcErr != nil {
 		ah.handleServiceError(ctx, w, svcErr)
@@ -404,7 +405,8 @@ func (
 	status := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
-		case ErrorInvalidCredentials.Code, ErrorOTPAuthenticationFailed.Code:
+		case ErrorInvalidCredentials.Code, ErrorOTPAuthenticationFailed.Code,
+			common.ErrorAccountLocked.Code, common.ErrorAccountSuspended.Code:
 			status = http.StatusUnauthorized
 		case common.ErrorUserNotFound.Code:
 			status = http.StatusNotFound

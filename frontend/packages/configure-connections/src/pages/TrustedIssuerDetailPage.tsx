@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice, ResourceAvatar, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
+import {DocumentTitle, QueryErrorNotice, ResourceAvatar, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -14,7 +14,9 @@ import {
   PageContent,
   Skeleton,
   Stack,
+  Switch,
   TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import {AlertCircle, ChevronLeft, Trash2} from '@wso2/oxygen-ui-icons-react';
@@ -25,8 +27,10 @@ import useDeleteConnection from '../api/useDeleteConnection';
 import useTrustedIssuer from '../api/useTrustedIssuer';
 import useUpdateTrustedIssuer from '../api/useUpdateTrustedIssuer';
 import ConnectionDeleteDialog from '../components/ConnectionDeleteDialog';
+import OrganizationUnitSection from '../components/OrganizationUnitSection';
 import ConnectionConstants from '../constants/connection-constants';
 import useConnectionRoutes from '../hooks/useConnectionRoutes';
+import useIsIdJagAcceptanceUnavailable from '../hooks/useIsIdJagAcceptanceUnavailable';
 import {ConnectionTypes} from '../models/connection';
 import type {TrustedIssuerFormData} from '../models/trusted-issuer';
 import isConflictError from '../utils/isConflictError';
@@ -47,6 +51,7 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
   const trustedIssuerQuery = useTrustedIssuer(id);
   const updateMutation = useUpdateTrustedIssuer(id ?? '');
   const deleteMutation = useDeleteConnection(ConnectionTypes.OIDC);
+  const isIdJagAcceptanceUnavailable = useIsIdJagAcceptanceUnavailable();
 
   const [editedValues, setEditedValues] = useState<Partial<TrustedIssuerFormData>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -119,6 +124,25 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
     setGeneralError(null);
   };
 
+  const idJagTitle = t(
+    'trustedIssuers:detail.consumption.title',
+    'Identity Assertion JWT Authorization Grant (ID-JAG)',
+  );
+  const idJagUnavailableHint = t(
+    'trustedIssuers:idJag.acceptanceUnavailable',
+    'This server does not accept identity assertions from any issuer.',
+  );
+  // While the runtime does not accept identity assertions, ID-JAG can be turned off but not on, and
+  // the card body says why whether it is on or off.
+  const idJagSwitch = (
+    <Switch
+      checked={values.idJagEnabled}
+      disabled={isIdJagAcceptanceUnavailable && !values.idJagEnabled}
+      onChange={(e) => setField('idJagEnabled', e.target.checked)}
+      slotProps={{input: {'aria-label': idJagTitle, role: 'switch'}}}
+    />
+  );
+
   const isLoading: boolean = trustedIssuerQuery.isLoading;
   const notFound: boolean = !isLoading && !data;
 
@@ -146,6 +170,7 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={data?.name ?? t('navigation:pages.connections', 'Connections')} />
       <Button
         variant="text"
         startIcon={<ChevronLeft size={16} />}
@@ -277,8 +302,10 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
               </Stack>
             </SettingsCard>
 
+            {data?.ouId && <OrganizationUnitSection ouId={data.ouId} />}
+
             <SettingsCard
-              title={t('trustedIssuers:detail.tokenExchange.title', 'Token Exchange')}
+              title={t('trustedIssuers:detail.tokenExchange.title', 'Token exchange')}
               description={t(
                 'trustedIssuers:detail.tokenExchange.description',
                 'Exchange subject tokens from this issuer for access tokens.',
@@ -306,23 +333,31 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
             </SettingsCard>
 
             <SettingsCard
-              title={t(
-                'trustedIssuers:detail.consumption.title',
-                'Identity Assertion JWT Authorization Grant (ID-JAG)',
-              )}
+              title={idJagTitle}
               description={t(
                 'trustedIssuers:detail.idJag.description',
                 'Accept and exchange signed identity assertions from this issuer for access tokens.',
               )}
-              enabled={values.idJagEnabled}
-              onToggle={(checked) => setField('idJagEnabled', checked)}
+              headerAction={
+                isIdJagAcceptanceUnavailable ? (
+                  <Tooltip title={idJagUnavailableHint}>
+                    <span>{idJagSwitch}</span>
+                  </Tooltip>
+                ) : (
+                  idJagSwitch
+                )
+              }
             >
-              <Typography variant="body2" color="text.secondary">
-                {t(
-                  'trustedIssuers:detail.idJag.enabledNote',
-                  'Identity assertions from this issuer are accepted via the ID-JAG protocol.',
-                )}
-              </Typography>
+              {(values.idJagEnabled || isIdJagAcceptanceUnavailable) && (
+                <Typography variant="body2" color="text.secondary">
+                  {isIdJagAcceptanceUnavailable
+                    ? idJagUnavailableHint
+                    : t(
+                        'trustedIssuers:detail.idJag.enabledNote',
+                        'Identity assertions from this issuer are accepted via the ID-JAG protocol.',
+                      )}
+                </Typography>
+              )}
             </SettingsCard>
 
             <SettingsCard title={t('trustedIssuers:detail.dangerZone.title', 'Danger zone')}>

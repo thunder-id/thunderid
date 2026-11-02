@@ -548,7 +548,224 @@ func (suite *ResourceAPITestSuite) TestDeleteResourceWithChildren() {
 	suite.Contains(err.Error(), "400")
 }
 
+// PaginationTestSuite covers paginated list responses and the navigation links they carry.
+type PaginationTestSuite struct {
+	suite.Suite
+	ouID             string
+	resourceServerID string
+	resourceID       string
+}
+
+func TestPaginationTestSuite(t *testing.T) {
+	suite.Run(t, new(PaginationTestSuite))
+}
+
+func (suite *PaginationTestSuite) SetupSuite() {
+	ou := testutils.OrganizationUnit{
+		Handle:      "test_resource_pagination_ou",
+		Name:        "Test OU for Resource Pagination",
+		Description: "Organization unit for resource pagination testing",
+		Parent:      nil,
+	}
+	ouID, err := testutils.CreateOrganizationUnit(ou)
+	suite.Require().NoError(err, "Failed to create test organization unit")
+	suite.ouID = ouID
+
+	rsID, err := createResourceServer(CreateResourceServerRequest{
+		Name:        "Pagination Test Server",
+		Description: "Resource server for pagination testing",
+		OUID:        ouID,
+	})
+	suite.Require().NoError(err, "Failed to create test resource server")
+	suite.resourceServerID = rsID
+
+	resID, err := createResource(rsID, CreateResourceRequest{
+		Name:   "Pagination Parent",
+		Handle: "pagination-parent",
+		Parent: nil,
+	})
+	suite.Require().NoError(err, "Failed to create test resource")
+	suite.resourceID = resID
+}
+
+func (suite *PaginationTestSuite) TearDownSuite() {
+	if suite.resourceID != "" {
+		deleteResource(suite.resourceServerID, suite.resourceID)
+	}
+	if suite.resourceServerID != "" {
+		deleteResourceServer(suite.resourceServerID)
+	}
+	if suite.ouID != "" {
+		testutils.DeleteOrganizationUnit(suite.ouID)
+	}
+}
+
+func (suite *PaginationTestSuite) TestListResourceServersSecondPageLinks() {
+	list, err := listResourceServers(1, 1)
+	suite.Require().NoError(err)
+	suite.Require().Greater(list.TotalResults, 2,
+		"The suite fixtures and defaults should provide more than two resource servers")
+
+	suite.Equal(2, list.StartIndex)
+	suite.Equal(1, list.Count)
+
+	links := linksByRel(list.Links)
+	suite.Equal("/resource-servers?offset=0&limit=1", links["first"])
+	suite.Equal("/resource-servers?offset=0&limit=1", links["prev"])
+	suite.Equal("/resource-servers?offset=2&limit=1", links["next"])
+	suite.Equal(fmt.Sprintf("/resource-servers?offset=%d&limit=1", list.TotalResults-1), links["last"])
+}
+
+// TestListResourceServersPreviousLinkClampedToStart covers the previous-page link when the offset
+// is smaller than the page size, where the previous offset clamps to the start of the collection.
+func (suite *PaginationTestSuite) TestListResourceServersPreviousLinkClampedToStart() {
+	list, err := listResourceServers(1, 5)
+	suite.Require().NoError(err)
+	suite.Equal(2, list.StartIndex)
+
+	var prev string
+	for _, link := range list.Links {
+		if link.Rel == "prev" {
+			prev = link.Href
+		}
+	}
+	suite.Equal("/resource-servers?offset=0&limit=5", prev)
+}
+
+func (suite *PaginationTestSuite) TestListResourcesSecondPageLinks() {
+	for _, handle := range []string{"page-one", "page-two", "page-three"} {
+		resID, err := createResource(suite.resourceServerID, CreateResourceRequest{
+			Name:   handle,
+			Handle: handle,
+			Parent: &suite.resourceID,
+		})
+		suite.Require().NoError(err)
+		defer deleteResource(suite.resourceServerID, resID)
+	}
+
+	list, err := listResources(suite.resourceServerID, suite.resourceID, 1, 1)
+	suite.Require().NoError(err)
+	suite.Equal(3, list.TotalResults)
+	suite.Equal(2, list.StartIndex)
+	suite.Equal(1, list.Count)
+
+	links := linksByRel(list.Links)
+	baseURL := fmt.Sprintf("/resource-servers/%s/resources", suite.resourceServerID)
+	suite.Equal(baseURL+"?offset=0&limit=1", links["first"])
+	suite.Equal(baseURL+"?offset=0&limit=1", links["prev"])
+	suite.Equal(baseURL+"?offset=2&limit=1", links["next"])
+	suite.Equal(baseURL+"?offset=2&limit=1", links["last"])
+}
+
+func (suite *PaginationTestSuite) TestListActionsAtResourceServerSecondPageLinks() {
+	for _, handle := range []string{"action-one", "action-two", "action-three"} {
+		actionID, err := createActionAtResourceServer(suite.resourceServerID, CreateActionRequest{
+			Name:   handle,
+			Handle: handle,
+		})
+		suite.Require().NoError(err)
+		defer deleteAction(suite.resourceServerID, actionID)
+	}
+
+	list, err := listActionsAtResourceServer(suite.resourceServerID, 1, 1)
+	suite.Require().NoError(err)
+	suite.Equal(3, list.TotalResults)
+	suite.Equal(2, list.StartIndex)
+	suite.Equal(1, list.Count)
+
+	links := linksByRel(list.Links)
+	baseURL := fmt.Sprintf("/resource-servers/%s/actions", suite.resourceServerID)
+	suite.Equal(baseURL+"?offset=0&limit=1", links["first"])
+	suite.Equal(baseURL+"?offset=0&limit=1", links["prev"])
+	suite.Equal(baseURL+"?offset=2&limit=1", links["next"])
+	suite.Equal(baseURL+"?offset=2&limit=1", links["last"])
+}
+
+func (suite *PaginationTestSuite) TestListActionsAtResourceSecondPageLinks() {
+	for _, handle := range []string{"nested-one", "nested-two", "nested-three"} {
+		actionID, err := createActionAtResource(suite.resourceServerID, suite.resourceID, CreateActionRequest{
+			Name:   handle,
+			Handle: handle,
+		})
+		suite.Require().NoError(err)
+		defer deleteActionAtResource(suite.resourceServerID, suite.resourceID, actionID)
+	}
+
+	list, err := listActionsAtResource(suite.resourceServerID, suite.resourceID, 1, 1)
+	suite.Require().NoError(err)
+	suite.Equal(3, list.TotalResults)
+	suite.Equal(2, list.StartIndex)
+	suite.Equal(1, list.Count)
+
+	links := linksByRel(list.Links)
+	baseURL := fmt.Sprintf("/resource-servers/%s/resources/%s/actions", suite.resourceServerID, suite.resourceID)
+	suite.Equal(baseURL+"?offset=0&limit=1", links["first"])
+	suite.Equal(baseURL+"?offset=0&limit=1", links["prev"])
+	suite.Equal(baseURL+"?offset=2&limit=1", links["next"])
+	suite.Equal(baseURL+"?offset=2&limit=1", links["last"])
+}
+
+// TestListDeclarativeResourcesWithLimit exercises pagination over the file-backed store. decl-rs-3
+// declares two top level resources, so a limit of one must return a single page per offset.
+func (suite *PaginationTestSuite) TestListDeclarativeResourcesWithLimit() {
+	first, err := listResources(declarativeMCPServerID, "", 0, 1)
+	suite.Require().NoError(err)
+	suite.Equal(2, first.TotalResults)
+	suite.Equal(1, first.Count)
+	suite.Equal(1, first.StartIndex)
+	suite.Require().Len(first.Resources, 1)
+	suite.Equal("tools", first.Resources[0].Handle)
+
+	second, err := listResources(declarativeMCPServerID, "", 1, 1)
+	suite.Require().NoError(err)
+	suite.Equal(2, second.TotalResults)
+	suite.Equal(1, second.Count)
+	suite.Equal(2, second.StartIndex)
+	suite.Require().Len(second.Resources, 1)
+	suite.Equal("prompts", second.Resources[0].Handle)
+
+	links := linksByRel(second.Links)
+	baseURL := fmt.Sprintf("/resource-servers/%s/resources", declarativeMCPServerID)
+	suite.Equal(baseURL+"?offset=0&limit=1", links["first"])
+	suite.Equal(baseURL+"?offset=0&limit=1", links["prev"])
+}
+
+// TestListDeclarativeActionsWithLimit exercises action pagination over the file-backed store.
+func (suite *PaginationTestSuite) TestListDeclarativeActionsWithLimit() {
+	resources, err := listResources(declarativeResourceServerID, "", 0, 100)
+	suite.Require().NoError(err)
+	suite.Require().NotEmpty(resources.Resources)
+
+	var declarativeResourceID string
+	for _, res := range resources.Resources {
+		if res.Handle == declarativeResourceHandle {
+			declarativeResourceID = res.ID
+		}
+	}
+	suite.Require().NotEmpty(declarativeResourceID)
+
+	list, err := listActionsAtResource(declarativeResourceServerID, declarativeResourceID, 1, 1)
+	suite.Require().NoError(err)
+	suite.Equal(2, list.TotalResults)
+	suite.Equal(1, list.Count)
+	suite.Equal(2, list.StartIndex)
+
+	links := linksByRel(list.Links)
+	baseURL := fmt.Sprintf("/resource-servers/%s/resources/%s/actions", declarativeResourceServerID, declarativeResourceID)
+	suite.Equal(baseURL+"?offset=0&limit=1", links["first"])
+	suite.Equal(baseURL+"?offset=0&limit=1", links["prev"])
+}
+
 // Helper functions
+
+// linksByRel returns a map from relation to href for a set of pagination links.
+func linksByRel(links []LinkResponse) map[string]string {
+	byRel := make(map[string]string, len(links))
+	for _, link := range links {
+		byRel[link.Rel] = link.Href
+	}
+	return byRel
+}
 
 func createResource(resourceServerID string, req CreateResourceRequest) (string, error) {
 	client := testutils.GetHTTPClient()

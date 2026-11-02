@@ -1,7 +1,8 @@
 resource_type: user_type
 id: wayfinder-customer-type
 category: user
-name: Customer
+handle: customer
+displayName: Customer
 ouHandle: default
 allowSelfRegistration: true
 systemAttributes:
@@ -47,7 +48,8 @@ schema:
 resource_type: user_type
 id: wayfinder-staff-type
 category: user
-name: Staff
+handle: staff
+displayName: Staff
 ouHandle: default
 allowSelfRegistration: false
 systemAttributes:
@@ -138,8 +140,23 @@ resources:
         description: Allows the upgrade scheduler agent to execute a pending upgrade via CIBA user token
 
 ---
+resource_type: connection
+id: 0193b0a1-1002-7000-8000-000000000001
+name: Wayfinder Mock SMTP
+ouHandle: default
+description: Mock SMTP server that the Wayfinder sample's email steps send through
+type: email-smtp
+host: 127.0.0.1
+port: 2525
+fromAddress: noreply@thunderid.dev
+tls: none
+authentication:
+  type: none
+
+---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000001
+ouHandle: default
 name: Wayfinder Registration Flow
 handle: wayfinder-registration-flow
 flowType: REGISTRATION
@@ -297,6 +314,7 @@ nodes:
 ---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000002
+ouHandle: default
 name: Wayfinder Password Recovery Flow
 handle: wayfinder-recovery-flow
 flowType: RECOVERY
@@ -371,7 +389,8 @@ nodes:
   - id: send_recovery_email
     type: TASK_EXECUTION
     properties:
-      emailTemplate: PASSWORD_RECOVERY
+      senderId: 0193b0a1-1002-7000-8000-000000000001
+      emailTemplate: password-recovery
     executor:
       name: EmailExecutor
       mode: send
@@ -445,6 +464,12 @@ nodes:
     type: TASK_EXECUTION
     executor:
       name: CredentialSetter
+    onSuccess: release_account_locks
+  - id: release_account_locks
+    type: TASK_EXECUTION
+    executor:
+      name: IdentityGovernanceExecutor
+      mode: unlock
     onSuccess: recovery_complete
   - id: recovery_complete
     type: PROMPT
@@ -477,7 +502,57 @@ nodes:
 
 ---
 resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000003
+ouHandle: default
+name: Wayfinder Sign Out Flow
+handle: wayfinder-signout-flow
+flowType: SIGNOUT
+nodes:
+  - id: start
+    type: START
+    onSuccess: session_signout
+  - id: session_signout
+    type: TASK_EXECUTION
+    properties:
+      promptOnSignOut: false
+    executor:
+      name: SessionSignOutExecutor
+    onSuccess: end
+    onIncomplete: prompt_confirm
+  - id: prompt_confirm
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: text_signout_title
+          label: Sign out?
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: text_signout_desc
+          label: You'll need to sign in again to continue.
+          variant: HEADING_6
+        - type: BLOCK
+          id: block_signout
+          components:
+            - type: ACTION
+              id: action_confirm
+              label: Sign out
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - action:
+          ref: action_confirm
+          type: CONFIRM
+          nextNode: session_signout
+  - id: end
+    type: END
+
+---
+resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000005
+ouHandle: default
 name: Wayfinder Staff Onboarding Flow
 handle: wayfinder-onboarding-flow
 flowType: USER_ONBOARDING
@@ -618,7 +693,8 @@ nodes:
   - id: send_invite_email_support
     type: TASK_EXECUTION
     properties:
-      emailTemplate: USER_INVITE
+      senderId: 0193b0a1-1002-7000-8000-000000000001
+      emailTemplate: user-invite
     executor:
       name: EmailExecutor
       mode: send
@@ -647,11 +723,6 @@ nodes:
     next: invite_verify_support
   - id: invite_verify_support
     type: TASK_EXECUTION
-    inputs:
-      - ref: input_invite_token_s
-        identifier: inviteToken
-        type: HIDDEN
-        required: true
     executor:
       name: InviteExecutor
       mode: verify
@@ -738,7 +809,8 @@ nodes:
   - id: send_invite_email_destinations
     type: TASK_EXECUTION
     properties:
-      emailTemplate: USER_INVITE
+      senderId: 0193b0a1-1002-7000-8000-000000000001
+      emailTemplate: user-invite
     executor:
       name: EmailExecutor
       mode: send
@@ -767,11 +839,6 @@ nodes:
     next: invite_verify_destinations
   - id: invite_verify_destinations
     type: TASK_EXECUTION
-    inputs:
-      - ref: input_invite_token_d
-        identifier: inviteToken
-        type: HIDDEN
-        required: true
     executor:
       name: InviteExecutor
       mode: verify
@@ -838,13 +905,22 @@ nodes:
 ---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000010
+ouHandle: default
 name: Wayfinder App Authentication Flow
 handle: wayfinder-app-auth-flow
 flowType: AUTHENTICATION
 nodes:
   - id: start
     type: START
-    onSuccess: prompt_credentials
+    onSuccess: sso_check
+  - id: sso_check
+    type: TASK_EXECUTION
+    executor:
+      name: SSOCheckExecutor
+    properties:
+      checkpointRef: session
+    onSuccess: session
+    onFailure: prompt_credentials
   - id: prompt_credentials
     type: PROMPT
     meta:
@@ -911,8 +987,13 @@ nodes:
     type: TASK_EXECUTION
     executor:
       name: CredentialsAuthExecutor
-    onSuccess: authorization_check
+    onSuccess: session
     onIncomplete: prompt_credentials
+  - id: session
+    type: TASK_EXECUTION
+    executor:
+      name: SessionExecutor
+    onSuccess: authorization_check
   - id: authorization_check
     type: TASK_EXECUTION
     executor:
@@ -948,6 +1029,7 @@ logoUrl: "emoji:✈️"
 authFlowHandle: wayfinder-app-auth-flow
 registrationFlowHandle: wayfinder-registration-flow
 recoveryFlowHandle: wayfinder-recovery-flow
+signOutFlowHandle: wayfinder-signout-flow
 isRegistrationFlowEnabled: true
 isRecoveryFlowEnabled: true
 assertion:
@@ -959,7 +1041,7 @@ assertion:
     - groups
     - username
 allowedUserTypes:
-  - Customer
+  - customer
 inboundAuthConfig:
   - type: oauth2
     config:
@@ -1005,6 +1087,7 @@ inboundAuthConfig:
 ---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000006
+ouHandle: default
 name: Default Wayfinder CIBA Email Notification Flow
 handle: wayfinder-ciba-email-flow
 flowType: AUTHENTICATION
@@ -1032,7 +1115,8 @@ nodes:
   - id: send_notification_email
     type: TASK_EXECUTION
     properties:
-      emailTemplate: CIBA_NOTIFICATION
+      senderId: 0193b0a1-1002-7000-8000-000000000001
+      emailTemplate: ciba-notification
     executor:
       name: EmailExecutor
       mode: send
@@ -1206,6 +1290,7 @@ nodes:
 ---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000007
+ouHandle: default
 name: Default Wayfinder CIBA SMS Notification Flow
 handle: wayfinder-ciba-sms-flow
 flowType: AUTHENTICATION
@@ -1233,7 +1318,7 @@ nodes:
   - id: send_notification_sms
     type: TASK_EXECUTION
     properties:
-      smsTemplate: CIBA_NOTIFICATION
+      smsTemplate: ciba-notification
       senderId: "{{.SMS_SENDER_ID}}"
     executor:
       name: SMSExecutor
@@ -1408,6 +1493,7 @@ nodes:
 ---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000004
+ouHandle: default
 name: Wayfinder Agent Authentication Flow
 handle: wayfinder-agent-auth-flow
 flowType: AUTHENTICATION
@@ -1544,10 +1630,11 @@ nodes:
 ---
 resource_type: agent
 id: wayfinder-concierge
-name: WAYFINDER-CONCIERGE
 description: Wayfinder Concierge AI agent for the Wayfinder Travel sample
 ouHandle: default
 type: default
+attributes:
+  name: WAYFINDER-CONCIERGE
 logoUrl: "emoji:✈️"
 authFlowHandle: wayfinder-agent-auth-flow
 inboundAuthConfig:
@@ -1581,14 +1668,15 @@ inboundAuthConfig:
 # different flows (interactive vs backchannel notification).
 resource_type: agent
 id: wayfinder-upgrade-agent
-name: WAYFINDER-UPGRADE-AGENT
 description: Upgrade scheduler agent — initiates CIBA for users with pending flight upgrade requests
 ouHandle: default
 type: default
+attributes:
+  name: WAYFINDER-UPGRADE-AGENT
 logoUrl: "emoji:✈️"
 authFlowHandle: wayfinder-ciba-email-flow
 allowedUserTypes:
-  - Customer
+  - customer
 inboundAuthConfig:
   - type: oauth2
     config:
@@ -1627,7 +1715,7 @@ url: http://localhost:8787/mcp
 # step is shown.
 authFlowHandle: wayfinder-agent-auth-flow
 allowedUserTypes:
-  - Customer
+  - customer
 inboundAuthConfig:
   - type: oauth2
     config:
@@ -1759,7 +1847,7 @@ assignments:
 ---
 resource_type: user
 id: wayfinder-john-doe
-type: Customer
+type: customer
 ouHandle: default
 attributes:
   username: john.doe
@@ -1776,7 +1864,7 @@ credentials:
 ---
 resource_type: user
 id: wayfinder-jane-smith
-type: Customer
+type: customer
 ouHandle: default
 attributes:
   username: jane.smith
@@ -1790,7 +1878,7 @@ credentials:
 ---
 resource_type: user
 id: wayfinder-alex-carter
-type: Staff
+type: staff
 ouHandle: default
 attributes:
   username: alex.carter
@@ -1856,7 +1944,7 @@ authFlowHandle: default-flow
 isRegistrationFlowEnabled: false
 isRecoveryFlowEnabled: false
 allowedUserTypes:
-  - Customer
+  - customer
 inboundAuthConfig:
   - type: oauth2
     config:
@@ -1887,7 +1975,7 @@ authFlowHandle: default-flow
 isRegistrationFlowEnabled: false
 isRecoveryFlowEnabled: false
 allowedUserTypes:
-  - Customer
+  - customer
 inboundAuthConfig:
   - type: oauth2
     config:

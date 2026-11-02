@@ -20,7 +20,9 @@ import {
 
 # Node.js Quickstart
 
-Use this guide to authenticate a Node.js service to <ProductName /> using the `@thunderid/node` SDK. Unlike the other quickstarts in this section, there's no user and no browser sign-in: the service authenticates as **itself** with the OAuth 2.0 `client_credentials` grant, then uses the resulting access token to call another piece of business logic. Use this pattern for background jobs, cron tasks, or one backend service calling another, where there's no human in the loop to redirect through a login page.
+Use this guide to add <ProductName /> authentication to a Node.js service using the `@thunderid/node` SDK.
+
+<SdkQuickstartDownload packageId="node" sample="quickstarts/node" icon={<NodeLogo size={22} />} promptFlow="redirect-based" />
 
 <TutorialHero>
 
@@ -39,10 +41,6 @@ Use this guide to authenticate a Node.js service to <ProductName /> using the `@
 <TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
 
 </TutorialHero>
-
-:::tip Example Source Code
-Check out the complete <RepoLink path="/tree/main/sdks/javascript-sdks/samples/node/quickstart">Node.js Quickstart Sample</RepoLink> in the <ProductName /> repository.
-:::
 
 <Stepper stepNode="h2" as="h2">
 
@@ -210,22 +208,7 @@ The script authenticates once, prints the scope it received, then calls `getStoc
 
 ## What's Next
 
-<div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '1.5rem'}}>
-
-  <a href="../../../guides/agents/authentication" style={{textDecoration: 'none', color: 'inherit'}}>
-    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
-      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Agent Authentication</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Request specific scopes, narrow tokens to a resource server, and troubleshoot the token endpoint directly.</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>Read the Guide →</div>
-    </div>
-  </a>
-
-  <a href="../../../../sdks/node/overview" style={{textDecoration: 'none', color: 'inherit'}}>
-    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
-      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Node.js SDK Reference</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Explore the full API reference for the <ProductName /> Node.js SDK.</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>API Reference →</div>
-    </div>
-  </a>
-
-</div>
+<NextSteps>
+  <NextStepsCard title="Agent Authentication" href="../../../guides/agents/authentication" description="Request specific scopes, narrow tokens to a resource server, and troubleshoot the token endpoint directly." cta="Read the Guide" />
+  <NextStepsCard title="Node.js SDK Reference" href="../../../sdks-and-tools/node/overview" description="Explore the full API reference for the Node.js SDK." cta="API Reference" />
+</NextSteps>

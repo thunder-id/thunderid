@@ -145,12 +145,15 @@ func (suite *ResolveAPITestSuite) TestResolveDesign_UnsupportedType() {
 }
 
 // Test Resolve Design - Application Not Found
+// An unknown application reports the same "no design" error as a known one with nothing
+// configured, so the response cannot be used to tell whether an application ID exists.
 func (suite *ResolveAPITestSuite) TestResolveDesign_ApplicationNotFound() {
 	_, statusCode, err := suite.resolveDesign("APP", "00000000-0000-0000-0000-000000000000")
 
 	suite.Error(err)
 	suite.Equal(http.StatusNotFound, statusCode)
-	suite.Contains(err.Error(), "DSR-1004")
+	suite.Contains(err.Error(), "DSR-1005")
+	suite.NotContains(err.Error(), "DSR-1004")
 }
 
 // Test Resolve Design - Success Case
@@ -186,6 +189,47 @@ func (suite *ResolveAPITestSuite) TestResolveDesign_ApplicationWithoutDesign() {
 	suite.Error(err)
 	suite.Equal(http.StatusNotFound, statusCode)
 	suite.Contains(err.Error(), "DSR-1005")
+}
+
+// Test Resolve Design - Unknown And Designless Applications Are Indistinguishable
+// This endpoint is unauthenticated, so an anonymous caller must not be able to tell a real
+// application from an unknown ID. Both cases have to answer with the same status and the same
+// body, byte for byte.
+func (suite *ResolveAPITestSuite) TestResolveDesign_UnknownAndDesignlessAreIndistinguishable() {
+	knownAppID := suite.createResolveApplication("Resolve Enumeration Probe", "", "")
+	defer suite.deleteResolveApplication(knownAppID)
+
+	knownStatus, knownBody := suite.rawResolveDesign("APP", knownAppID)
+	unknownStatus, unknownBody := suite.rawResolveDesign("APP", "00000000-0000-0000-0000-0000000000ff")
+
+	suite.Equal(http.StatusNotFound, knownStatus, "body: %s", knownBody)
+	suite.Equal(knownStatus, unknownStatus,
+		"an unknown application must not be distinguishable by status")
+	suite.Equal(knownBody, unknownBody,
+		"an unknown application must not be distinguishable by response body")
+}
+
+// rawResolveDesign issues a resolve request and returns the status and the response body verbatim,
+// so a test can compare two responses without the wrapping that resolveDesign applies.
+//
+// It deliberately uses a client that injects no credentials. The leak this guards against is one an
+// anonymous caller could exploit, and suite.client would attach a bearer token: /design/resolve is
+// not in the test transport's public-prefix list, so the comparison would otherwise run as an
+// authenticated administrator rather than the caller the endpoint is exposed to.
+func (suite *ResolveAPITestSuite) rawResolveDesign(resolveType, id string) (int, string) {
+	url := fmt.Sprintf("%s%s?type=%s&id=%s", testServerURL, resolveBasePath, resolveType, id)
+
+	req, err := http.NewRequest("GET", url, nil)
+	suite.Require().NoError(err)
+
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+
+	return resp.StatusCode, string(bodyBytes)
 }
 
 // Test Resolve Design - Only Theme Configured

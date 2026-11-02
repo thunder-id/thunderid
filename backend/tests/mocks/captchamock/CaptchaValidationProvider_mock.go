@@ -18,10 +18,19 @@ func NewCaptchaValidationProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *CaptchaValidationProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &CaptchaValidationProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type CaptchaValidationProviderMock_Verify_Call struct {
 // Verify is a helper method to define mock.On call
 //   - ctx context.Context
 //   - token string
-func (_e *CaptchaValidationProviderMock_Expecter) Verify(ctx interface{}, token interface{}) *CaptchaValidationProviderMock_Verify_Call {
+func (_e *CaptchaValidationProviderMock_Expecter) Verify(ctx any, token any) *CaptchaValidationProviderMock_Verify_Call {
 	return &CaptchaValidationProviderMock_Verify_Call{Call: _e.mock.On("Verify", ctx, token)}
 }
 

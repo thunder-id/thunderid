@@ -1,32 +1,57 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Box, Button, FormLabel, IconButton, Stack, TextField, Typography} from '@wso2/oxygen-ui';
-import {Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {
+  Box,
+  Button,
+  FormControl,
+  FormHelperText,
+  FormLabel,
+  IconButton,
+  InputAdornment,
+  Stack,
+  TextField,
+  Typography,
+} from '@wso2/oxygen-ui';
+import {Eye, EyeOff, Plus, RotateCcw, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {type JSX, type ReactNode, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {
-  parseKeyValuePairs,
+  decodeKeyValuePairs,
+  encodeKeyValuePairs,
   sanitizeKeyValuePart,
-  serializeKeyValuePairs,
+  type KeyValueFormat,
   type KeyValuePair,
 } from '../utils/keyValuePairs';
 
 interface KeyedPair extends KeyValuePair {
   /** Stable React key, so editing one row never remounts the others. */
   key: number;
+  /** Mask value returned by the API while a stored credential is being replaced. */
+  storedValue?: string;
+  /** Original stored header name, restored when replacement is cancelled. */
+  storedName?: string;
+  /** Whether the stored name and value are being replaced. */
+  replacing?: boolean;
 }
 
 interface KeyValuePairsFieldProps {
   id: string;
-  label: string;
-  /** Stored wire value ("Key: value, Other: value"). */
+  label?: string;
+  /** Form value holding the rows, in `format`. */
   value: string;
+  format?: KeyValueFormat;
   onChange: (value: string) => void;
+  error?: string;
   hint?: ReactNode;
+  /** Masks value inputs and adds a per-row visibility toggle. */
+  maskValues?: boolean;
   namePlaceholder?: string;
   addLabel: string;
+  hasStoredValues?: boolean;
 }
+
+const maskedSecretValue = '******';
 
 interface RowsState {
   rows: KeyedPair[];
@@ -37,52 +62,74 @@ interface RowsState {
 }
 
 /** Rows for the given wire value, always keeping one blank row to type into. */
-function buildRows(raw: string, fromSeq: number): RowsState {
-  const parsed: KeyValuePair[] = parseKeyValuePairs(raw);
+function buildRows(raw: string, format: KeyValueFormat, fromSeq: number): RowsState {
+  const parsed: KeyValuePair[] = decodeKeyValuePairs(raw, format);
   const pairs: KeyValuePair[] = parsed.length > 0 ? parsed : [{name: '', value: ''}];
   return {
-    rows: pairs.map((pair, index) => ({key: fromSeq + index + 1, ...pair})),
+    rows: pairs.map((pair, index) => ({
+      key: fromSeq + index + 1,
+      name: pair.name,
+      value: pair.value,
+      storedValue: pair.value === maskedSecretValue ? maskedSecretValue : undefined,
+      storedName: pair.value === maskedSecretValue ? pair.name : undefined,
+    })),
     seq: fromSeq + pairs.length,
     synced: raw,
   };
 }
 
 /**
- * Row-per-pair editor for a field the API stores as a single "Key: value" string. Rows are local
+ * Row-per-pair editor for a key-value field held as one form value in `format`. Rows are local
  * state (a row being typed has no name yet, so it cannot round-trip through the serialized value),
  * synced back out on every edit and re-derived when the value changes from outside, e.g. a reset.
  */
 export default function KeyValuePairsField({
   id,
-  label,
+  label = undefined,
   value,
+  format = 'string',
   onChange,
+  error = undefined,
   hint = undefined,
+  maskValues = false,
   namePlaceholder = undefined,
   addLabel,
+  hasStoredValues = false,
 }: KeyValuePairsFieldProps): JSX.Element {
   const {t} = useTranslation('connections');
 
-  const [state, setState] = useState<RowsState>(() => buildRows(value, 0));
+  const [state, setState] = useState<RowsState>(() => buildRows(value, format, 0));
+  const [visibleValueKeys, setVisibleValueKeys] = useState<Set<number>>(() => new Set());
 
   // Re-derive when the value changes from outside the editor, e.g. the detail page's Reset. Rows
   // cannot simply be computed from the value on every render: a row being typed has no name yet,
   // so it would not survive the round trip through the serialized form.
   if (value !== state.synced) {
-    setState(buildRows(value, state.seq));
+    setState(buildRows(value, format, state.seq));
   }
 
   const {rows} = state;
 
   const commit = (next: KeyedPair[], seq: number): void => {
-    const serialized: string = serializeKeyValuePairs(next);
+    const included = next
+      .filter((row) => row.replacing === true || row.name.trim() !== '' || row.value.trim() !== '')
+      .map((row): KeyValuePair => {
+        if (row.storedValue !== undefined && !row.replacing) {
+          return {name: row.storedName ?? row.name, value: row.storedValue};
+        }
+        return {name: row.name.trim(), value: row.value.trim()};
+      });
+    const serialized: string =
+      format === 'pairs'
+        ? encodeKeyValuePairs(included, 'pairs')
+        : included.map((row) => `${row.name}: ${row.value}`).join(', ');
     setState({rows: next, seq, synced: serialized});
     onChange(serialized);
   };
 
   const updateRow = (key: number, part: 'name' | 'value', text: string): void => {
     const next: KeyedPair[] = rows.map((row) =>
-      row.key === key ? {...row, [part]: sanitizeKeyValuePart(text, part)} : row,
+      row.key === key ? {...row, [part]: sanitizeKeyValuePart(text, part, format)} : row,
     );
     commit(next, state.seq);
   };
@@ -96,17 +143,43 @@ export default function KeyValuePairsField({
     commit([{key: state.seq + 1, name: '', value: ''}], state.seq + 1);
   };
 
+  const replaceRow = (key: number): void => {
+    const next: KeyedPair[] = rows.map((row) => (row.key === key ? {...row, replacing: true, value: ''} : row));
+    commit(next, state.seq);
+  };
+
+  const cancelReplacingRow = (key: number): void => {
+    const next: KeyedPair[] = rows.map((row) =>
+      row.key === key
+        ? {...row, name: row.storedName ?? row.name, value: row.storedValue ?? '', replacing: false}
+        : row,
+    );
+    commit(next, state.seq);
+  };
+
   // Adding a blank row does not change the serialized value, so the parent is not notified.
   const addRow = (): void =>
     setState((prev) => ({...prev, rows: [...prev.rows, {key: prev.seq + 1, name: '', value: ''}], seq: prev.seq + 1}));
+
+  const toggleValueVisibility = (key: number): void => {
+    setVisibleValueKeys((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   const lastRowIsEmpty: boolean =
     rows.length > 0 && rows[rows.length - 1].name.trim() === '' && rows[rows.length - 1].value.trim() === '';
 
   return (
-    <Box>
-      <FormLabel htmlFor={`${id}-name-1`}>{label}</FormLabel>
-      <Stack direction="column" spacing={1.5} sx={{mt: 1}} data-testid={`${id}-rows`}>
+    <FormControl fullWidth error={Boolean(error)}>
+      {label && <FormLabel htmlFor={`${id}-name-1`}>{label}</FormLabel>}
+      <Stack direction="column" spacing={1.5} sx={label ? {mt: 1} : undefined} data-testid={`${id}-rows`}>
         <Stack direction="row" spacing={1.5}>
           <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{flex: 1}}>
             {t('form.keyValue.name')}
@@ -114,11 +187,14 @@ export default function KeyValuePairsField({
           <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{flex: 1}}>
             {t('form.keyValue.value')}
           </Typography>
-          <Box sx={{width: 40}} />
+          <Box sx={{width: 132}} />
         </Stack>
 
         {rows.map((row, index) => {
           const isOnlyEmptyRow: boolean = rows.length === 1 && row.name === '' && row.value === '';
+          const valueVisible: boolean = visibleValueKeys.has(row.key);
+          const isStoredRow: boolean = hasStoredValues && row.storedValue !== undefined;
+          const isStoredValueLocked: boolean = isStoredRow && !row.replacing;
           return (
             <Stack key={row.key} direction="row" spacing={1.5} alignItems="center">
               <TextField
@@ -126,27 +202,73 @@ export default function KeyValuePairsField({
                 id={`${id}-name-${index + 1}`}
                 value={row.name}
                 placeholder={namePlaceholder}
+                disabled={isStoredValueLocked}
                 onChange={(e) => updateRow(row.key, 'name', e.target.value)}
+                error={Boolean(error)}
                 slotProps={{input: {'aria-label': t('form.keyValue.name')}}}
               />
               <TextField
                 fullWidth
                 id={`${id}-value-${index + 1}`}
-                value={row.value}
+                type={maskValues && !valueVisible ? 'password' : 'text'}
+                value={isStoredValueLocked ? '••••••••••••••••' : row.value}
+                disabled={isStoredValueLocked}
                 onChange={(e) => updateRow(row.key, 'value', e.target.value)}
-                slotProps={{input: {'aria-label': t('form.keyValue.value')}}}
+                error={Boolean(error)}
+                slotProps={{
+                  input: {
+                    'aria-label': t('form.keyValue.value'),
+                    endAdornment: maskValues ? (
+                      <InputAdornment position="end">
+                        <IconButton
+                          onClick={() => toggleValueVisibility(row.key)}
+                          edge="end"
+                          size="small"
+                          aria-label={
+                            valueVisible
+                              ? t('form.keyValue.hideValue', 'Hide value')
+                              : t('form.keyValue.showValue', 'Show value')
+                          }
+                        >
+                          {valueVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </IconButton>
+                      </InputAdornment>
+                    ) : undefined,
+                  },
+                }}
               />
-              {isOnlyEmptyRow ? (
-                <Box sx={{width: 40}} />
-              ) : (
-                <IconButton
-                  onClick={() => removeRow(row.key)}
-                  aria-label={t('form.keyValue.remove')}
-                  data-testid={`${id}-remove-${index + 1}`}
-                >
-                  <Trash2 size={16} />
-                </IconButton>
-              )}
+              <Stack direction="row" spacing={0.5} sx={{width: 132, justifyContent: 'flex-end'}}>
+                {isStoredRow && !row.replacing && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<RotateCcw size={16} />}
+                    onClick={() => replaceRow(row.key)}
+                    data-testid={`${id}-update-${index + 1}`}
+                  >
+                    {t('form.keyValue.update')}
+                  </Button>
+                )}
+                {isStoredRow && row.replacing && (
+                  <Button
+                    variant="text"
+                    size="small"
+                    onClick={() => cancelReplacingRow(row.key)}
+                    data-testid={`${id}-cancel-${index + 1}`}
+                  >
+                    {t('form.keyValue.cancel')}
+                  </Button>
+                )}
+                {!isOnlyEmptyRow && (
+                  <IconButton
+                    onClick={() => removeRow(row.key)}
+                    aria-label={t('form.keyValue.remove')}
+                    data-testid={`${id}-remove-${index + 1}`}
+                  >
+                    <Trash2 size={16} />
+                  </IconButton>
+                )}
+              </Stack>
             </Stack>
           );
         })}
@@ -164,12 +286,8 @@ export default function KeyValuePairsField({
           </Button>
         </Box>
 
-        {hint && (
-          <Typography variant="caption" color="text.secondary">
-            {hint}
-          </Typography>
-        )}
+        {(error ?? hint) && <FormHelperText>{error ?? hint}</FormHelperText>}
       </Stack>
-    </Box>
+    </FormControl>
   );
 }

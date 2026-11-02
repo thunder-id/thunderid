@@ -37,7 +37,8 @@ var attestationGuardOU = testutils.OrganizationUnit{
 }
 
 var attestationGuardUserType = testutils.UserType{
-	Name: "attestation_guard_person",
+	Handle:      "attestation_guard_person",
+	DisplayName: "Attestation Guard Person",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string"},
 		"password": map[string]interface{}{"type": "string", "credential": true},

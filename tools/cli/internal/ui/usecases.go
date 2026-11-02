@@ -37,15 +37,15 @@ type Usecase struct {
 var Usecases = []Usecase{
 	{
 		Emoji:       "👤",
-		Title:       "Consumer Login (B2C)",
-		Description: "Sign in with email, social providers, passkeys and MFA",
+		Title:       "Secured Web Application",
+		Description: "Tryout user journeys of a secured web application",
 		SampleName:  "wayfinder",
 		Command:     "/try-consumer",
 	},
 	{
 		Emoji:       "🤖",
-		Title:       "Agent Login (AgentID)",
-		Description: "Secure access for AI agents and automated workflows acting on behalf of users",
+		Title:       "Secured AI Agent",
+		Description: "Tryout identity security patterns for AI agents and tools",
 		SampleName:  "wayfinder",
 		Command:     "/try-agentid",
 		RequiredConfigs: []ConfigInput{

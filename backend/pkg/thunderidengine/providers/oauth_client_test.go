@@ -33,7 +33,7 @@ func (suite *OAuthClientTestSuite) TearDownTest() {
 
 // setupRuntime initializes a minimal runtime config for a specific subtest.
 // It resets before initializing and registers cleanup via t.Cleanup.
-func (suite *OAuthClientTestSuite) setupRuntime(t *testing.T, oauthCfg engineconfig.OAuthConfig) {
+func (suite *OAuthClientTestSuite) setupRuntime(t *testing.T, oauthCfg sysconfig.OAuthConfig) {
 	t.Helper()
 	sysconfig.ResetServerRuntime()
 	cfg := &sysconfig.Config{OAuth: oauthCfg}
@@ -128,17 +128,17 @@ func (suite *OAuthClientTestSuite) TestOAuthClient_ResolveDefaultAudience() {
 
 func (suite *OAuthClientTestSuite) TestOAuthClient_RequiresPAR() {
 	suite.T().Run("client flag forces PAR", func(t *testing.T) {
-		suite.setupRuntime(t, engineconfig.OAuthConfig{PAR: engineconfig.PARConfig{RequirePAR: false}})
+		suite.setupRuntime(t, sysconfig.OAuthConfig{PAR: engineconfig.PARConfig{RequirePAR: false}})
 		assert.True(t, (&OAuthClient{RequirePushedAuthorizationRequests: true}).RequiresPAR())
 	})
 
 	suite.T().Run("global config forces PAR", func(t *testing.T) {
-		suite.setupRuntime(t, engineconfig.OAuthConfig{PAR: engineconfig.PARConfig{RequirePAR: true}})
+		suite.setupRuntime(t, sysconfig.OAuthConfig{PAR: engineconfig.PARConfig{RequirePAR: true}})
 		assert.True(t, (&OAuthClient{RequirePushedAuthorizationRequests: false}).RequiresPAR())
 	})
 
 	suite.T().Run("neither forces PAR", func(t *testing.T) {
-		suite.setupRuntime(t, engineconfig.OAuthConfig{PAR: engineconfig.PARConfig{RequirePAR: false}})
+		suite.setupRuntime(t, sysconfig.OAuthConfig{PAR: engineconfig.PARConfig{RequirePAR: false}})
 		assert.False(t, (&OAuthClient{RequirePushedAuthorizationRequests: false}).RequiresPAR())
 	})
 }
@@ -146,21 +146,21 @@ func (suite *OAuthClientTestSuite) TestOAuthClient_RequiresPAR() {
 // ----- ValidateRedirectURI -----
 
 func (suite *OAuthClientTestSuite) TestValidateRedirectURI_ExactMatch() {
-	suite.setupRuntime(suite.T(), engineconfig.OAuthConfig{})
+	suite.setupRuntime(suite.T(), sysconfig.OAuthConfig{})
 	err := ValidateRedirectURI(context.Background(),
 		[]string{"https://example.com/callback"}, "https://example.com/callback")
 	assert.NoError(suite.T(), err)
 }
 
 func (suite *OAuthClientTestSuite) TestValidateRedirectURI_NoMatch() {
-	suite.setupRuntime(suite.T(), engineconfig.OAuthConfig{})
+	suite.setupRuntime(suite.T(), sysconfig.OAuthConfig{})
 	err := ValidateRedirectURI(context.Background(),
 		[]string{"https://example.com/callback"}, "https://evil.com/callback")
 	assert.Error(suite.T(), err)
 }
 
 func (suite *OAuthClientTestSuite) TestValidateRedirectURI_EmptyURI() {
-	suite.setupRuntime(suite.T(), engineconfig.OAuthConfig{})
+	suite.setupRuntime(suite.T(), sysconfig.OAuthConfig{})
 
 	suite.T().Run("single registered URI defaults to it", func(t *testing.T) {
 		err := ValidateRedirectURI(context.Background(), []string{"https://example.com/callback"}, "")
@@ -179,41 +179,41 @@ func (suite *OAuthClientTestSuite) TestValidateRedirectURI_EmptyURI() {
 }
 
 func (suite *OAuthClientTestSuite) TestValidateRedirectURI_FragmentRejected() {
-	suite.setupRuntime(suite.T(), engineconfig.OAuthConfig{})
+	suite.setupRuntime(suite.T(), sysconfig.OAuthConfig{})
 	err := ValidateRedirectURI(context.Background(),
 		[]string{"https://example.com/callback#fragment"}, "https://example.com/callback#fragment")
 	assert.Error(suite.T(), err)
 }
 
 func (suite *OAuthClientTestSuite) TestValidateRedirectURI_WildcardDisabled() {
-	suite.setupRuntime(suite.T(), engineconfig.OAuthConfig{AllowWildcardRedirectURI: false})
+	suite.setupRuntime(suite.T(), sysconfig.OAuthConfig{AllowWildcardRedirectURI: false})
 	err := ValidateRedirectURI(context.Background(),
 		[]string{"https://*.example.com/callback"}, "https://sub.example.com/callback")
 	assert.Error(suite.T(), err)
 }
 
 func (suite *OAuthClientTestSuite) TestValidateRedirectURI_WildcardEnabled() {
-	suite.setupRuntime(suite.T(), engineconfig.OAuthConfig{AllowWildcardRedirectURI: true})
+	suite.setupRuntime(suite.T(), sysconfig.OAuthConfig{AllowWildcardRedirectURI: true})
 	err := ValidateRedirectURI(context.Background(),
 		[]string{"https://*.example.com/callback"}, "https://sub.example.com/callback")
 	assert.NoError(suite.T(), err)
 }
 
 func (suite *OAuthClientTestSuite) TestOAuthClient_ValidateRedirectURI() {
-	suite.setupRuntime(suite.T(), engineconfig.OAuthConfig{})
+	suite.setupRuntime(suite.T(), sysconfig.OAuthConfig{})
 	client := &OAuthClient{RedirectURIs: []string{"https://example.com/callback"}}
 	assert.NoError(suite.T(), client.ValidateRedirectURI(context.Background(), "https://example.com/callback"))
 	assert.Error(suite.T(), client.ValidateRedirectURI(context.Background(), "https://other.com/callback"))
 }
 
 func (suite *OAuthClientTestSuite) TestValidateRedirectURI_InvalidRegisteredURI() {
-	suite.setupRuntime(suite.T(), engineconfig.OAuthConfig{})
+	suite.setupRuntime(suite.T(), sysconfig.OAuthConfig{})
 	err := ValidateRedirectURI(context.Background(), []string{"/relative/callback"}, "")
 	assert.ErrorContains(suite.T(), err, "not fully qualified")
 }
 
 func (suite *OAuthClientTestSuite) TestValidateRedirectURI_SkipsInvalidWildcardPattern() {
-	suite.setupRuntime(suite.T(), engineconfig.OAuthConfig{AllowWildcardRedirectURI: true})
+	suite.setupRuntime(suite.T(), sysconfig.OAuthConfig{AllowWildcardRedirectURI: true})
 	err := ValidateRedirectURI(context.Background(),
 		[]string{"https://*", "https://example.com/callback"}, "https://example.com/callback")
 	assert.NoError(suite.T(), err)

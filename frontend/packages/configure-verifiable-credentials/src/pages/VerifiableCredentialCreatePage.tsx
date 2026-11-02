@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FullScreenCreationWizardLayout} from '@thunderid/components';
+import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
 import {
   OrganizationUnitPickerScreen,
   useGetOrganizationUnit,
@@ -31,7 +31,12 @@ import useCreateVerifiableCredential from '../api/useCreateVerifiableCredential'
 import ConfigureName from '../components/create-verifiable-credential/ConfigureName';
 import ClaimsEditor from '../components/CredentialClaimsEditor';
 import useVerifiableCredentialRoutes from '../hooks/useVerifiableCredentialRoutes';
-import {claimRowsToRequest, credentialToClaimRows, type ClaimRow} from '../models/credential-claims';
+import {
+  claimRowsToRequest,
+  credentialToClaimRows,
+  findClaimNameErrors,
+  type ClaimRow,
+} from '../models/credential-claims';
 
 type Step = 'ORGANIZATION_UNIT' | 'NAME' | 'DETAILS' | 'CLAIMS';
 
@@ -103,17 +108,19 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
   }, [hasMultipleOUs]);
 
   const stepLabels: Record<Step, string> = {
-    ORGANIZATION_UNIT: t('create.steps.organizationUnit', 'Organization Unit'),
+    ORGANIZATION_UNIT: t('create.steps.organizationUnit', 'Organization unit'),
     NAME: t('createWizard.steps.name', 'Details'),
     DETAILS: t('create.steps.details', 'Type'),
     CLAIMS: t('create.steps.claims', 'Claims'),
   };
 
+  const claimNameErrors = findClaimNameErrors(claims);
+
   const stepReady: Record<Step, boolean> = {
     ORGANIZATION_UNIT: effectiveOuId !== '',
     NAME: name.trim() !== '' && handle.trim() !== '',
     DETAILS: vct.trim() !== '' && effectiveOuId !== '',
-    CLAIMS: claims.some((c) => c.name.trim() !== ''),
+    CLAIMS: claims.some((c) => c.name.trim() !== '') && Object.keys(claimNameErrors).length === 0,
   };
 
   const stepIndex = stepOrder.indexOf(effectiveStep);
@@ -226,35 +233,41 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
         <Typography variant="body2" color="text.secondary">
           {t('create.claims.help')}
         </Typography>
-        <ClaimsEditor claims={claims} onChange={handleClaimsChange} />
+        <ClaimsEditor claims={claims} onChange={handleClaimsChange} nameErrors={claimNameErrors} />
       </Stack>
     );
   };
+
+  const pageTitle = t('create.title', 'New credential template');
 
   if (effectiveStep === 'ORGANIZATION_UNIT') {
     if (isOuLoading || !hasMultipleOUs) {
       return (
         <Box sx={{minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+          <DocumentTitle title={pageTitle} />
           <CircularProgress />
         </Box>
       );
     }
 
     return (
-      <OrganizationUnitPickerScreen
-        icon={<Home size={26} />}
-        title={t('create.organizationUnit.title', 'Where should this verifiable credential belong?')}
-        subtitle={t(
-          'create.organizationUnit.subtitle',
-          "Choose the organization unit that will own this verifiable credential. You can't change this once created.",
-        )}
-        value={effectiveOuId}
-        onChange={handleOuIdChange}
-        onBack={close}
-        onContinue={handleNext}
-        backLabel={t('common:actions.back', 'Back')}
-        continueLabel={t('common:actions.continue', 'Continue')}
-      />
+      <>
+        <DocumentTitle title={pageTitle} />
+        <OrganizationUnitPickerScreen
+          icon={<Home size={26} />}
+          title={t('create.organizationUnit.title', 'Where should this verifiable credential belong?')}
+          subtitle={t(
+            'create.organizationUnit.subtitle',
+            "Choose the organization unit that will own this verifiable credential. You can't change this once created.",
+          )}
+          value={effectiveOuId}
+          onChange={handleOuIdChange}
+          onBack={close}
+          onContinue={handleNext}
+          backLabel={t('common:actions.back', 'Back')}
+          continueLabel={t('common:actions.continue', 'Continue')}
+        />
+      </>
     );
   }
 
@@ -289,6 +302,7 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
         </Stack>
       }
     >
+      <DocumentTitle title={pageTitle} />
       {effectiveStep !== 'NAME' && (
         <>
           <Typography variant="h4" sx={{mb: 1}}>

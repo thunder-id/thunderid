@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 // sensitiveInputCleanupFlow defines an authentication flow with two prompt nodes for password.
@@ -115,12 +115,13 @@ var (
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{"sensitive_cleanup_user"},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
 	sensitiveCleanupEntityType = testutils.UserType{
-		Name: "sensitive_cleanup_user",
+		Handle:      "sensitive_cleanup_user",
+		DisplayName: "Sensitive Cleanup User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -133,7 +134,7 @@ var (
 	}
 
 	sensitiveCleanupTestUser = testutils.User{
-		Type: sensitiveCleanupEntityType.Name,
+		Type: sensitiveCleanupEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "sensitiveuser",
 			"password": "sensitivepassword"

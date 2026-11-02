@@ -31,6 +31,7 @@ func (f *fileBasedStore) Create(id string, data interface{}) error {
 		FlowType:     flow.FlowType,
 		Interceptors: flow.Interceptors,
 		Nodes:        flow.Nodes,
+		OUID:         flow.OUID,
 	})
 	return err
 }
@@ -46,6 +47,7 @@ func (f *fileBasedStore) CreateFlow(_ context.Context, flowID string, flow *Flow
 		ActiveVersion: 1,
 		Interceptors:  flow.Interceptors,
 		Nodes:         flow.Nodes,
+		OUID:          flow.OUID,
 		CreatedAt:     "",
 		UpdatedAt:     "",
 	}
@@ -74,6 +76,7 @@ func (f *fileBasedStore) ListFlows(_ context.Context, limit, offset int, flowTyp
 				FlowType:      flow.FlowType,
 				Name:          flow.Name,
 				ActiveVersion: flow.ActiveVersion,
+				OUID:          flow.OUID,
 			}
 			flows = append(flows, basicFlow)
 		}
@@ -91,6 +94,56 @@ func (f *fileBasedStore) ListFlows(_ context.Context, limit, offset int, flowTyp
 	}
 
 	return flows[offset:endIndex], totalCount, nil
+}
+
+// ListFlowsByOU implements flowStoreInterface.
+func (f *fileBasedStore) ListFlowsByOU(ctx context.Context, ouID string, limit, offset int, flowType string) (
+	[]BasicFlowDefinition, int, error) {
+	flows, err := f.ownedFlows(ctx, ouID, flowType)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	total := len(flows)
+	if offset >= total {
+		return []BasicFlowDefinition{}, total, nil
+	}
+	return flows[offset:min(offset+limit, total)], total, nil
+}
+
+// ownedFlows lists the flows an organization unit owns, of one type when flowType is set.
+func (f *fileBasedStore) ownedFlows(ctx context.Context, ouID, flowType string) ([]BasicFlowDefinition, error) {
+	all, _, err := f.ListFlows(ctx, int(^uint(0)>>1), 0, flowType)
+	if err != nil {
+		return nil, err
+	}
+	owned := make([]BasicFlowDefinition, 0)
+	for _, flow := range all {
+		if flow.OUID == ouID {
+			owned = append(owned, flow)
+		}
+	}
+	return owned, nil
+}
+
+// ListFlowsByIDs implements flowStoreInterface.
+func (f *fileBasedStore) ListFlowsByIDs(ctx context.Context, ids []string, flowType string) (
+	[]BasicFlowDefinition, error) {
+	all, _, err := f.ListFlows(ctx, int(^uint(0)>>1), 0, flowType)
+	if err != nil {
+		return nil, err
+	}
+	wanted := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		wanted[id] = struct{}{}
+	}
+	found := make([]BasicFlowDefinition, 0, len(ids))
+	for _, flow := range all {
+		if _, ok := wanted[flow.ID]; ok {
+			found = append(found, flow)
+		}
+	}
+	return found, nil
 }
 
 // ListActiveFlowsWithNodes implements flowStoreInterface. File-based flows already carry their node

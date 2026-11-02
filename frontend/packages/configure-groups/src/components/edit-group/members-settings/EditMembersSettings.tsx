@@ -9,7 +9,7 @@ import {useTranslation} from 'react-i18next';
 import AddMemberDialog from './AddMemberDialog';
 import ManageMembersSection from './ManageMembersSection';
 import useAddGroupMembers from '../../../api/useAddGroupMembers';
-import useRemoveGroupMembers from '../../../api/useRemoveGroupMembers';
+import useRemoveGroupMember from '../../../api/useRemoveGroupMember';
 import type {Group, Member} from '../../../models/group';
 
 interface EditMembersSettingsProps {
@@ -23,7 +23,7 @@ interface EditMembersSettingsProps {
 export default function EditMembersSettings({group}: EditMembersSettingsProps): JSX.Element {
   const {t} = useTranslation('groups');
   const addGroupMembers = useAddGroupMembers();
-  const removeGroupMembers = useRemoveGroupMembers();
+  const removeGroupMember = useRemoveGroupMember();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,10 +51,10 @@ export default function EditMembersSettings({group}: EditMembersSettingsProps): 
 
   const handleRemoveMember = useCallback(
     (memberToRemove: Member) => {
-      removeGroupMembers.mutate(
+      removeGroupMember.mutate(
         {
           groupId: group.id,
-          members: [{id: memberToRemove.id, type: memberToRemove.type}],
+          member: {id: memberToRemove.id, type: memberToRemove.type},
         },
         {
           onSuccess: () => {
@@ -66,7 +66,7 @@ export default function EditMembersSettings({group}: EditMembersSettingsProps): 
         },
       );
     },
-    [group.id, removeGroupMembers, t],
+    [group.id, removeGroupMember, t],
   );
 
   return (
@@ -92,7 +92,7 @@ export default function EditMembersSettings({group}: EditMembersSettingsProps): 
                 setAddDialogOpen(true);
               }}
             >
-              {t('edit.members.sections.manage.addMember', 'Add Member')}
+              {t('edit.members.sections.manage.addMember', 'Add member')}
             </Button>
           ) : undefined
         }

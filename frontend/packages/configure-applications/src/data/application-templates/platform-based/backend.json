@@ -1,0 +1,31 @@
+{
+  "id": "backend",
+  "type": "m2m",
+  "displayName": "Backend",
+  "description": "Machine-to-machine backend service",
+  "quickstarts": [
+    {
+      "label": "Node.js",
+      "docsUrl": "{{applications.templates.node.docs}}"
+    }
+  ],
+  "creationFlow": {
+    "steps": ["ORGANIZATION_UNIT", "DETAILS", "COMPLETE"],
+    "previewSteps": [],
+    "allowsUserLogins": false
+  },
+  "defaults": {
+    "name": "Backend Application",
+    "inboundAuthConfig": [
+      {
+        "type": "oauth2",
+        "config": {
+          "grantTypes": ["client_credentials"],
+          "pkceRequired": false,
+          "tokenEndpointAuthMethod": "client_secret_basic",
+          "publicClient": false
+        }
+      }
+    ]
+  }
+}

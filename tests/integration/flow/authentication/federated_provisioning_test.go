@@ -17,6 +17,9 @@ import (
 )
 
 const (
+	errCodeOUNotDirectChild = "FET-1121"
+	errCodeInvalidOU        = "FET-1029"
+
 	// fedProvMockGooglePort must be 8093: testutils.GoogleMockBaseURL hardcodes
 	// http://localhost:8093 as the Google endpoint the server resolves, so the port is load-bearing
 	// rather than arbitrary. Suites in this package run serially and each stops its own mock, so
@@ -43,9 +46,14 @@ type FederatedProvisioningTestSuite struct {
 
 	parentOUID string
 	ouAID      string
+	ouAChildID string
 	ouBID      string
 	ouAName    string
 	ouAHandle  string
+
+	ouAChildHandle      string
+	ouAGrandchildID     string
+	ouAGrandchildHandle string
 
 	primaryTypeID   string
 	primaryTypeName string
@@ -61,6 +69,10 @@ type FederatedProvisioningTestSuite struct {
 	singleAppID    string
 	promptAllAppID string
 
+	promptParentAppID       string
+	directChildrenIDAppID   string
+	directChildrenHandleApp string
+
 	createdFlowIDs []string
 	createdUserIDs []string
 }
@@ -72,9 +84,11 @@ func TestFederatedProvisioningTestSuite(t *testing.T) {
 // buildFederatedProvisioningFlow returns a fresh AUTHENTICATION graph modelled on the proven
 // conditionalExecFlow: federated login, then provisioning gated on userEligibleForProvisioning, then
 // AuthAssert. A builder rather than a package var, because conditionalExecFlow is mutated in place by
-// its own suite and sharing it would race. When ouResolveFrom is non-empty an OUResolverExecutor is
-// inserted ahead of provisioning.
-func buildFederatedProvisioningFlow(handle, idpID, ouResolveFrom string) testutils.Flow {
+// its own suite and sharing it would race. When ouProperties is non-nil an OUResolverExecutor with those
+// properties is inserted ahead of provisioning. When ouInput is set the resolver declares it as its single
+// required input, "ouHandle" to name the OU by handle. The OU prompt asks for ouInput, or ouId when it is empty.
+func buildFederatedProvisioningFlow(
+	handle, idpID string, ouProperties map[string]interface{}, ouInput string) testutils.Flow {
 	provisionNext := "auth_assert"
 	nodes := []map[string]interface{}{
 		{"id": "start", "type": "START", "onSuccess": "google_auth"},
@@ -90,21 +104,28 @@ func buildFederatedProvisioningFlow(handle, idpID, ouResolveFrom string) testuti
 		},
 	}
 
-	if ouResolveFrom != "" {
-		// promptAll shows the whole OU tree and, unlike prompt, does not need the defaultOUID that
-		// UserTypeResolver would have set (ou_resolver_executor.go:210-211). This flow has no
-		// UserTypeResolver, so promptAll is the only workable strategy.
+	if ouProperties != nil {
+		// promptAll shows the whole OU tree and needs no default OU. Plain prompt selects below a parent
+		// OU, and this flow has no UserTypeResolver to set a default one, so it needs parentOuId.
+		promptInput := "ouId"
+		resolver := map[string]interface{}{"name": "OUResolverExecutor"}
+		if ouInput != "" {
+			promptInput = ouInput
+			resolver["inputs"] = []map[string]interface{}{
+				{"ref": "input_ou_resolver", "identifier": ouInput, "type": "TEXT_INPUT", "required": true},
+			}
+		}
 		nodes[1]["onSuccess"] = "resolve_ou"
 		nodes = append(nodes, map[string]interface{}{
 			"id":         "resolve_ou",
 			"type":       "TASK_EXECUTION",
-			"properties": map[string]interface{}{"resolveFrom": ouResolveFrom},
+			"properties": ouProperties,
 			"condition": map[string]interface{}{
 				"key":    "{{ctx(userEligibleForProvisioning)}}",
 				"value":  "true",
 				"onSkip": "auth_assert",
 			},
-			"executor":     map[string]interface{}{"name": "OUResolverExecutor"},
+			"executor":     resolver,
 			"onSuccess":    "provision_user",
 			"onIncomplete": "prompt_ou",
 		})
@@ -114,7 +135,7 @@ func buildFederatedProvisioningFlow(handle, idpID, ouResolveFrom string) testuti
 			"prompts": []map[string]interface{}{
 				{
 					"inputs": []map[string]interface{}{
-						{"ref": "input_ou", "identifier": "ouId", "type": "TEXT_INPUT", "required": true},
+						{"ref": "input_ou", "identifier": promptInput, "type": "TEXT_INPUT", "required": true},
 					},
 					"action": map[string]interface{}{"ref": "action_ou", "nextNode": "resolve_ou"},
 				},
@@ -178,17 +199,35 @@ func (ts *FederatedProvisioningTestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(err, "Failed to create OU B")
 
+	// A child of OU-A, holding no user types of its own. Scenario 11 provisions into it to show the
+	// resolved OU overriding the user type's own OU. It must sit inside OU-A's subtree because a
+	// user type may only be used in its own organization unit or one beneath it; a sibling of OU-A
+	// would be rejected by the user service. It is kept out of OU-B so the self-registration type
+	// counts the other scenarios rely on are unaffected.
+	ts.ouAChildID, err = testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "fedprov-ou-a-child", Name: "Federated Provisioning OU A Child", Parent: &ts.ouAID,
+	})
+	ts.Require().NoError(err, "Failed to create OU A child")
+	ts.ouAChildHandle = "fedprov-ou-a-child"
+
+	// A grandchild of OU-A, to tell a direct child of OU-A from a deeper descendant.
+	ts.ouAGrandchildHandle = "fedprov-ou-a-grandchild"
+	ts.ouAGrandchildID, err = testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: ts.ouAGrandchildHandle, Name: "Federated Provisioning OU A Grandchild", Parent: &ts.ouAChildID,
+	})
+	ts.Require().NoError(err, "Failed to create OU A grandchild")
+
 	// OU-A owns the only self-registration-enabled type used by scenario 10, so the resolved OU is
 	// distinguishable from the one scenario 11 selects.
 	ts.primaryTypeName = "fedprov-selfreg-primary"
 	ts.primaryTypeID, err = testutils.CreateUserType(testutils.UserType{
-		Name: ts.primaryTypeName, OUID: ts.ouAID, AllowSelfRegistration: true, Schema: fedProvSchema,
+		Handle: ts.primaryTypeName, DisplayName: "Primary Type", OUID: ts.ouAID, AllowSelfRegistration: true, Schema: fedProvSchema,
 	})
 	ts.Require().NoError(err, "Failed to create the primary self-registration type")
 
 	ts.altTypeName = "fedprov-selfreg-secondary"
 	ts.altTypeID, err = testutils.CreateUserType(testutils.UserType{
-		Name: ts.altTypeName, OUID: ts.ouBID, AllowSelfRegistration: true, Schema: fedProvSchema,
+		Handle: ts.altTypeName, DisplayName: "Alt Type", OUID: ts.ouBID, AllowSelfRegistration: true, Schema: fedProvSchema,
 	})
 	ts.Require().NoError(err, "Failed to create the secondary self-registration type")
 
@@ -211,16 +250,27 @@ func (ts *FederatedProvisioningTestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(err, "Failed to create the Google IDP")
 
-	ts.noTypesAppID = ts.appForFlow("fedprov_flow_no_types", "", "FedProv No Types App",
+	ts.noTypesAppID = ts.appForFlow("fedprov_flow_no_types", nil, "", "FedProv No Types App",
 		"fedprov_notypes_client", nil)
-	ts.noSelfRegAppID = ts.appForFlow("fedprov_flow_noselfreg", "", "FedProv No Self Reg App",
+	ts.noSelfRegAppID = ts.appForFlow("fedprov_flow_noselfreg", nil, "", "FedProv No Self Reg App",
 		"fedprov_noselfreg_client", []string{ts.noSelfRegName})
-	ts.ambiguousAppID = ts.appForFlow("fedprov_flow_ambiguous", "", "FedProv Ambiguous App",
+	ts.ambiguousAppID = ts.appForFlow("fedprov_flow_ambiguous", nil, "", "FedProv Ambiguous App",
 		"fedprov_ambiguous_client", []string{ts.primaryTypeName, ts.altTypeName})
-	ts.singleAppID = ts.appForFlow("fedprov_flow_single", "", "FedProv Single App",
+	ts.singleAppID = ts.appForFlow("fedprov_flow_single", nil, "", "FedProv Single App",
 		"fedprov_single_client", []string{ts.primaryTypeName, ts.noSelfRegName})
-	ts.promptAllAppID = ts.appForFlow("fedprov_flow_promptall", "promptAll", "FedProv PromptAll App",
-		"fedprov_promptall_client", []string{ts.primaryTypeName, ts.noSelfRegName})
+	ts.promptAllAppID = ts.appForFlow("fedprov_flow_promptall", map[string]interface{}{"resolveFrom": "promptAll"}, "",
+		"FedProv PromptAll App", "fedprov_promptall_client", []string{ts.primaryTypeName, ts.noSelfRegName})
+
+	types := []string{ts.primaryTypeName, ts.noSelfRegName}
+	ts.promptParentAppID = ts.appForFlow("fedprov_flow_prompt_parent",
+		map[string]interface{}{"resolveFrom": "prompt", "parentOuId": ts.ouAID}, "",
+		"FedProv Prompt Parent App", "fedprov_prompt_parent_client", types)
+	ts.directChildrenIDAppID = ts.appForFlow("fedprov_flow_direct_id",
+		map[string]interface{}{"resolveFrom": "prompt", "parentOuId": ts.ouAID, "directChildrenOnly": true},
+		"ouId", "FedProv Direct Children By ID App", "fedprov_direct_id_client", types)
+	ts.directChildrenHandleApp = ts.appForFlow("fedprov_flow_direct_handle",
+		map[string]interface{}{"resolveFrom": "prompt", "parentOuId": ts.ouAID, "directChildrenOnly": true},
+		"ouHandle", "FedProv Direct Children By Handle App", "fedprov_direct_handle_client", types)
 }
 
 // createUserTypeWithSelfRegDisabled posts a user type with allowSelfRegistration explicitly false.
@@ -229,7 +279,8 @@ func (ts *FederatedProvisioningTestSuite) SetupSuite() {
 func (ts *FederatedProvisioningTestSuite) createUserTypeWithSelfRegDisabled(
 	name, ouID string) string {
 	payload := map[string]interface{}{
-		"name":                  name,
+		"handle":                name,
+		"displayName":           name,
 		"ouId":                  ouID,
 		"allowSelfRegistration": false,
 		"schema":                fedProvSchema,
@@ -266,9 +317,10 @@ func (ts *FederatedProvisioningTestSuite) createUserTypeWithSelfRegDisabled(
 
 // appForFlow creates a federated flow with the given OU resolution strategy plus an app bound to it.
 func (ts *FederatedProvisioningTestSuite) appForFlow(
-	flowHandle, ouResolveFrom, appName, clientID string, allowedTypes []string) string {
+	flowHandle string, ouProperties map[string]interface{}, ouInput, appName, clientID string,
+	allowedTypes []string) string {
 	flowID, err := testutils.CreateFlow(
-		buildFederatedProvisioningFlow(flowHandle, ts.idpID, ouResolveFrom))
+		buildFederatedProvisioningFlow(flowHandle, ts.idpID, ouProperties, ouInput))
 	ts.Require().NoError(err, "Failed to create flow %s", flowHandle)
 	ts.createdFlowIDs = append(ts.createdFlowIDs, flowID)
 
@@ -281,7 +333,7 @@ func (ts *FederatedProvisioningTestSuite) appForFlow(
 		AllowedUserTypes: allowedTypes,
 		AuthFlowID:       flowID,
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	})
 	ts.Require().NoError(err, "Failed to create app %s", appName)
@@ -293,7 +345,8 @@ func (ts *FederatedProvisioningTestSuite) TearDownSuite() {
 		ts.T().Logf("Failed to clean up users: %v", err)
 	}
 	for _, appID := range []string{ts.noTypesAppID, ts.noSelfRegAppID, ts.ambiguousAppID,
-		ts.singleAppID, ts.promptAllAppID} {
+		ts.singleAppID, ts.promptAllAppID, ts.promptParentAppID, ts.directChildrenIDAppID,
+		ts.directChildrenHandleApp} {
 		if appID == "" {
 			continue
 		}
@@ -316,7 +369,8 @@ func (ts *FederatedProvisioningTestSuite) TearDownSuite() {
 			ts.T().Logf("Failed to delete user type %s: %v", typeID, err)
 		}
 	}
-	for _, ouID := range []string{ts.ouAID, ts.ouBID, ts.parentOUID} {
+	// Children before parents: an organization unit cannot be removed while it still has children.
+	for _, ouID := range []string{ts.ouAGrandchildID, ts.ouAChildID, ts.ouAID, ts.ouBID, ts.parentOUID} {
 		if err := testutils.DeleteOrganizationUnit(ouID); err != nil {
 			ts.T().Logf("Failed to delete OU %s: %v", ouID, err)
 		}
@@ -455,9 +509,34 @@ func (ts *FederatedProvisioningTestSuite) TestSingleSelfRegistrationTypeProvisio
 	ts.Require().NoError(err, "The assertion must carry the provisioned user type and OU")
 }
 
+// Scenario 12: a user type may only be used in its own organization unit or one beneath it. When a
+// flow resolves an OU outside that subtree the user service rejects the create, and the executor
+// must surface that error rather than flattening it to the generic provisioning failure, so the
+// caller can tell a misconfigured flow from an outage.
+func (ts *FederatedProvisioningTestSuite) TestProvisioningSurfacesUserServiceErrorForCrossOUType() {
+	sub := "fedprov-crossou-" + common.GenerateUniqueUsername("sub")
+	email := sub + "@example.com"
+
+	flowStep := ts.federatedLogin(ts.promptAllAppID, sub, email)
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "ouId"),
+		"promptAll must prompt for an OU selection, got inputs %+v", flowStep.Data.Inputs)
+
+	// OU-B is a sibling of OU-A, so the primary user type defined in OU-A is not usable there.
+	flowStep, err := common.CompleteFlow(flowStep.ExecutionID,
+		map[string]string{"ouId": ts.ouBID}, "action_ou", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OU selection")
+
+	ts.Require().Equal("ERROR", flowStep.FlowStatus, "Provisioning must fail for a cross-OU user type")
+	ts.Require().NotNil(flowStep.Error, "The failure must carry an error")
+	ts.Equal("USR-1023", flowStep.Error.Code,
+		"The user service error must reach the flow unchanged, not be flattened to FET-1021")
+
+	ts.Empty(ts.usersWithEmail(email), "A rejected provisioning must not persist a user")
+}
+
 // Scenario 11: when OUResolverExecutor supplies an OU, getTargetEntityRef keeps it and takes only the
-// user type from the default entity ref (provisioning_executor.go:691-696). promptAll is used because
-// plain prompt needs the defaultOUID that UserTypeResolver would have set, and this flow has none.
+// user type from the default entity ref (provisioning_executor.go:691-696). promptAll is used because it
+// needs no parent OU; the scenarios below cover plain prompt, which selects below a parentOuId.
 func (ts *FederatedProvisioningTestSuite) TestResolvedOUKeptWhileUserTypeComesFromDefaultRef() {
 	sub := "fedprov-promptall-" + common.GenerateUniqueUsername("sub")
 	email := sub + "@example.com"
@@ -470,9 +549,11 @@ func (ts *FederatedProvisioningTestSuite) TestResolvedOUKeptWhileUserTypeComesFr
 	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "ouId"),
 		"promptAll must prompt for an OU selection, got inputs %+v", flowStep.Data.Inputs)
 
-	// Select OU-B, which is NOT the primary user type's own OU.
+	// Select OU-A's child, which is NOT the primary user type's own OU but sits inside its subtree.
+	// A sibling such as OU-B would be rejected: a user type may only be used in its own
+	// organization unit or one beneath it.
 	flowStep, err := common.CompleteFlow(flowStep.ExecutionID,
-		map[string]string{"ouId": ts.ouBID}, "action_ou", flowStep.ChallengeToken)
+		map[string]string{"ouId": ts.ouAChildID}, "action_ou", flowStep.ChallengeToken)
 	ts.Require().NoError(err, "Failed to submit the OU selection")
 	ts.Require().Equal("COMPLETE", flowStep.FlowStatus,
 		"Provisioning must complete with a resolved OU and a defaulted user type")
@@ -481,8 +562,84 @@ func (ts *FederatedProvisioningTestSuite) TestResolvedOUKeptWhileUserTypeComesFr
 	ts.Require().Len(created, 1, "Exactly one user must be provisioned")
 	ts.createdUserIDs = append(ts.createdUserIDs, created[0].ID)
 
-	ts.Equal(ts.ouBID, created[0].OUID,
+	ts.Equal(ts.ouAChildID, created[0].OUID,
 		"The explicitly resolved OU must win over the user type's own OU")
 	ts.Equal(ts.primaryTypeName, created[0].Type,
 		"The user type must still come from the default entity ref")
+}
+
+// completeOUSelection submits the user's OU choice at the prompt and returns the next step.
+func (ts *FederatedProvisioningTestSuite) completeOUSelection(
+	flowStep *common.FlowStep, input, value string) *common.FlowStep {
+	next, err := common.CompleteFlow(flowStep.ExecutionID,
+		map[string]string{input: value}, "action_ou", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OU selection")
+	return next
+}
+
+// assertProvisionedInto checks that exactly one user was provisioned for the email, into the given OU.
+func (ts *FederatedProvisioningTestSuite) assertProvisionedInto(email, ouID string) {
+	created := ts.usersWithEmail(email)
+	ts.Require().Len(created, 1, "Exactly one user must be provisioned")
+	ts.createdUserIDs = append(ts.createdUserIDs, created[0].ID)
+	ts.Equal(ouID, created[0].OUID, "The user must be provisioned into the selected OU")
+}
+
+// Scenario 12: a sign-in flow has no UserTypeResolver and so no default OU. With parentOuId set, the
+// prompt strategy offers a selection below that OU and provisions the user into the chosen one.
+func (ts *FederatedProvisioningTestSuite) TestSignInPromptSelectsBelowParentOU() {
+	sub := "fedprov-parent-" + common.GenerateUniqueUsername("sub")
+	email := sub + "@example.com"
+
+	flowStep := ts.federatedLogin(ts.promptParentAppID, sub, email)
+	ts.Require().NotEqual("ERROR", flowStep.FlowStatus,
+		"prompt with parentOuId must offer a selection, got %+v", flowStep.Error)
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "ouId"),
+		"prompt must ask for an OU below the parent, got inputs %+v", flowStep.Data.Inputs)
+
+	flowStep = ts.completeOUSelection(flowStep, "ouId", ts.ouAChildID)
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus, "Provisioning must complete in the selected OU")
+	ts.assertProvisionedInto(email, ts.ouAChildID)
+}
+
+// Scenario 13: with directChildrenOnly and an ID, a deeper descendant of the parent OU is refused and
+// the selection is asked for again, while a direct child is accepted.
+func (ts *FederatedProvisioningTestSuite) TestDirectChildrenOnlyByID() {
+	sub := "fedprov-direct-id-" + common.GenerateUniqueUsername("sub")
+	email := sub + "@example.com"
+
+	flowStep := ts.federatedLogin(ts.directChildrenIDAppID, sub, email)
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "ouId"),
+		"The flow must ask for an OU ID, got inputs %+v", flowStep.Data.Inputs)
+
+	rejected := ts.completeOUSelection(flowStep, "ouId", ts.ouAGrandchildID)
+	ts.Require().NotNil(rejected.Error, "A grandchild must be refused")
+	ts.Equal(errCodeOUNotDirectChild, rejected.Error.Code, "The refusal must say it is not a direct child")
+	ts.Require().True(common.HasInput(rejected.Data.Inputs, "ouId"), "The selection must be asked for again")
+	ts.Empty(ts.usersWithEmail(email), "A refused selection must not provision a user")
+
+	accepted := ts.completeOUSelection(rejected, "ouId", ts.ouAChildID)
+	ts.Require().Equal("COMPLETE", accepted.FlowStatus, "A direct child must be accepted")
+	ts.assertProvisionedInto(email, ts.ouAChildID)
+}
+
+// Scenario 14: with an ouHandle input on the resolver the user names the OU by handle, which is looked up among the
+// parent OU's direct children only. A handle that exists only deeper in the tree is refused.
+func (ts *FederatedProvisioningTestSuite) TestDirectChildrenOnlyByHandle() {
+	sub := "fedprov-direct-handle-" + common.GenerateUniqueUsername("sub")
+	email := sub + "@example.com"
+
+	flowStep := ts.federatedLogin(ts.directChildrenHandleApp, sub, email)
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "ouHandle"),
+		"The flow must ask for an OU handle, got inputs %+v", flowStep.Data.Inputs)
+
+	rejected := ts.completeOUSelection(flowStep, "ouHandle", ts.ouAGrandchildHandle)
+	ts.Require().NotNil(rejected.Error, "A handle that is not a direct child must be refused")
+	ts.Equal(errCodeInvalidOU, rejected.Error.Code, "The refusal must say the OU is invalid")
+	ts.Require().True(common.HasInput(rejected.Data.Inputs, "ouHandle"), "The selection must be asked for again")
+	ts.Empty(ts.usersWithEmail(email), "A refused selection must not provision a user")
+
+	accepted := ts.completeOUSelection(rejected, "ouHandle", ts.ouAChildHandle)
+	ts.Require().Equal("COMPLETE", accepted.FlowStatus, "A direct child's handle must be accepted")
+	ts.assertProvisionedInto(email, ts.ouAChildID)
 }

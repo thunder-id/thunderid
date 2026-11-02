@@ -1,0 +1,82 @@
+---
+title: Export Resources
+docType: reference
+sidebar_position: 90
+description: Export resources as combined YAML in JSON responses with optional environment file output.
+---
+
+# Export Resources
+
+Use the export API to retrieve <ProductName /> resources:
+
+- `POST /export`: returns a JSON object.
+
+## JSON Response Shape
+
+`POST /export` returns this payload:
+
+```json
+{
+  "resources": "# File: My_App.yaml\napiVersion: thunder/v1\n...",
+  "environment_variables": "MY_APP_CLIENT_ID=\nMY_APP_CLIENT_SECRET=\n"
+}
+```
+
+Field behavior:
+
+- `resources`: Combined YAML output for all exported resources, with `# File:` headers and `---` separators.
+- `environment_variables`: environment file content with one empty assignment per detected template variable.
+
+If the export has no template variables, `environment_variables` is an empty string.
+
+## Template Variable Names
+
+Each parameterized field becomes a template variable named after its resource and the field, in uppercase. The `clientId` field of an application named `My App` becomes `MY_APP_CLIENT_ID`.
+
+<ProductName /> normalizes the resource name so that the generated name is valid in a template placeholder:
+
+- Every character that is not a letter or a digit becomes an underscore, and consecutive underscores collapse into one.
+- A trailing underscore is removed, so a name ending in a separator produces the same variable name as the name without it.
+- A name that starts with a digit gets a leading underscore.
+
+Normalization applies to generated variable names only. Exported file names and the `name` field inside the exported YAML keep the original resource name.
+
+| Resource name | Variable name for `clientId` |
+| --- | --- |
+| `My App` | `MY_APP_CLIENT_ID` |
+| `My-App` | `MY_APP_CLIENT_ID` |
+| `My App-` | `MY_APP_CLIENT_ID` |
+| `2FA App` | `_2FA_APP_CLIENT_ID` |
+
+Because normalization maps several names onto the same prefix, two resources in one export can compete for the same variable name. In that case, the second resource gets a numeric suffix. Exporting both `Wayfinder-Concierge` and `Wayfinder_Concierge` produces `WAYFINDER_CONCIERGE_CLIENT_ID` and `WAYFINDER_CONCIERGE_2_CLIENT_ID`, so each resource keeps its own value in the environment file. Resource types share one namespace, so an application and a connection with the same name also get distinct variable names.
+
+## Internal API Model Reference
+
+The API reference schema also defines an internal `ExportResponse` model (see `ExportResponse.envFile`, backed by the `EnvironmentFile` schema/struct):
+
+```json
+{
+  "files": [
+    {
+      "fileName": "google-idp.yaml",
+      "content": "resource_type: connection\ntype: google\n...",
+      "size": 128
+    }
+  ],
+  "envFile": {
+    "fileName": ".env",
+    "content": "GOOGLE_CLIENT_ID=\nGOOGLE_CLIENT_SECRET=\n",
+    "size": 40
+  },
+  "summary": {
+    "totalFiles": 2,
+    "totalSizeBytes": 168
+  }
+}
+```
+
+When no template variables are detected, `envFile` is omitted (or `null` in internal JSON serialization paths).
+
+## Format Option
+
+In `options.format`, only `yaml` is currently supported for generated resource content.

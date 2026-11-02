@@ -33,7 +33,8 @@ const (
 
 var (
 	testUserType = testutils.UserType{
-		Name: "userinfo-person",
+		Handle:      "userinfo-person",
+		DisplayName: "Userinfo Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -132,16 +133,16 @@ func (ts *UserInfoTestSuite) TearDownSuite() {
 		testutils.DeleteUser(ts.userID)
 	}
 
-	// Clean up organization unit
-	if ts.ouID != "" {
-		testutils.DeleteOrganizationUnit(ts.ouID)
-	}
-
 	// Clean up user type
 	if ts.entityTypeID != "" {
 		if err := testutils.DeleteUserType(ts.entityTypeID); err != nil {
 			ts.T().Logf("Failed to delete user type during teardown: %v", err)
 		}
+	}
+
+	// Clean up organization unit
+	if ts.ouID != "" {
+		testutils.DeleteOrganizationUnit(ts.ouID)
 	}
 }
 
@@ -874,10 +875,10 @@ func (ts *UserInfoTestSuite) TestUserInfo_DefaultClaims() {
 			},
 		},
 		"userInfo": map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouHandle", "ouName", "email"},
+			"userAttributes": []string{"userTypeHandle", "userTypeName", "ouId", "ouHandle", "ouName", "email"},
 		},
 		"scopeClaims": map[string][]string{
-			"profile": {"given_name", "family_name", "userType", "ouId", "ouHandle", "ouName"},
+			"profile": {"given_name", "family_name", "userTypeHandle", "userTypeName", "ouId", "ouHandle", "ouName"},
 		},
 	}
 
@@ -905,16 +906,65 @@ func (ts *UserInfoTestSuite) TestUserInfo_DefaultClaims() {
 	assert.Contains(ts.T(), userInfo, "sub")
 
 	// Verify default claims are present
-	assert.Contains(ts.T(), userInfo, "userType", "userType should be in response")
+	assert.Contains(ts.T(), userInfo, "userTypeHandle", "userTypeHandle should be in response")
+	assert.Contains(ts.T(), userInfo, "userTypeName", "userTypeName should be in response")
+	assert.NotContains(ts.T(), userInfo, "userType", "userType should not be in response when not configured")
 	assert.Contains(ts.T(), userInfo, "ouId", "ouId should be in response")
 	assert.Contains(ts.T(), userInfo, "ouHandle", "ouHandle should be in response")
 	assert.Contains(ts.T(), userInfo, "ouName", "ouName should be in response")
 
 	// Verify the values match the test user's OU
-	assert.Equal(ts.T(), "userinfo-person", userInfo["userType"])
+	assert.Equal(ts.T(), testUserType.Handle, userInfo["userTypeHandle"])
+	assert.Equal(ts.T(), testUserType.DisplayName, userInfo["userTypeName"])
 	assert.Equal(ts.T(), ts.ouID, userInfo["ouId"])
 	assert.Equal(ts.T(), "userinfo-test-ou", userInfo["ouHandle"])
 	assert.Equal(ts.T(), "UserInfo Test OU", userInfo["ouName"])
+}
+
+// TestUserInfo_LegacyUserTypeClaim tests that an app configured with the legacy userType attribute
+// keeps receiving the user type's display name in the UserInfo response.
+func (ts *UserInfoTestSuite) TestUserInfo_LegacyUserTypeClaim() {
+	config := map[string]interface{}{
+		"clientId":      "userinfo_legacy_user_type_client",
+		"clientSecret":  "userinfo_legacy_user_type_secret",
+		"redirectUris":  []string{redirectURI},
+		"grantTypes":    []string{"authorization_code"},
+		"responseTypes": []string{"code"},
+		"scopes":        []string{"openid", "profile"},
+		"token": map[string]interface{}{
+			"idToken": map[string]interface{}{
+				"userAttributes": []string{"email"},
+			},
+		},
+		"userInfo": map[string]interface{}{
+			"userAttributes": []string{"userType"},
+		},
+		"scopeClaims": map[string][]string{
+			"profile": {"userType"},
+		},
+	}
+
+	appID := ts.createApplicationWithConfig("UserInfoLegacyUserTypeApp", config)
+	defer ts.deleteApplication(appID)
+
+	accessToken, err := ts.getAuthorizationCodeTokenWithClient(
+		"openid profile", "userinfo_legacy_user_type_client", "userinfo_legacy_user_type_secret")
+	ts.Require().NoError(err, "Failed to get authorization_code token")
+
+	resp, err := ts.callUserInfo(accessToken)
+	ts.Require().NoError(err, "Failed to call UserInfo endpoint")
+	defer resp.Body.Close()
+
+	assert.Equal(ts.T(), http.StatusOK, resp.StatusCode)
+
+	var userInfo map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&userInfo)
+	ts.Require().NoError(err)
+
+	assert.Equal(ts.T(), testUserType.DisplayName, userInfo["userType"],
+		"userType should carry the user type's display name")
+	assert.NotContains(ts.T(), userInfo, "userTypeHandle", "userTypeHandle should not be in response when not configured")
+	assert.NotContains(ts.T(), userInfo, "userTypeName", "userTypeName should not be in response when not configured")
 }
 
 // createApplicationWithConfig creates an OAuth application with the given config

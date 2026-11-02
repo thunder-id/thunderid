@@ -11,8 +11,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
@@ -22,6 +25,15 @@ type DefinitionServiceTestSuite struct {
 
 func TestDefinitionServiceTestSuite(t *testing.T) {
 	suite.Run(t, new(DefinitionServiceTestSuite))
+}
+
+// SetupTest pins the store mode to mutable so the service's declarative-mode guard has a
+// runtime to read. Suites in this package reset the runtime, so it is re-initialized here.
+func (suite *DefinitionServiceTestSuite) SetupTest() {
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime("", &config.Config{
+		OpenID4VP: config.OpenID4VPConfig{Store: string(serverconst.StoreModeMutable)},
+	}))
 }
 
 // newStatefulDefinitionStore returns a definitionStoreInterface mock backed by an
@@ -88,7 +100,7 @@ func newStatefulDefinitionStore(t *testing.T) *definitionStoreInterfaceMock {
 
 func newTestDefinitionService(t *testing.T) (*definitionService, *definitionStoreInterfaceMock) {
 	store := newStatefulDefinitionStore(t)
-	svc := newPresentationDefinitionService(store, nil).(*definitionService)
+	svc := newPresentationDefinitionService(store, nil)
 	return svc, store
 }
 
@@ -104,12 +116,12 @@ func newOUServiceMock(
 			return exists[id], nil
 		}).Maybe()
 	m.EXPECT().GetOrganizationUnitByPath(mock.Anything, mock.Anything).RunAndReturn(
-		func(_ context.Context, handlePath string) (providers.OrganizationUnit, *tidcommon.ServiceError) {
+		func(_ context.Context, handlePath string) (ou.OrganizationUnit, *tidcommon.ServiceError) {
 			id, ok := byPath[handlePath]
 			if !ok {
-				return providers.OrganizationUnit{}, &tidcommon.InternalServerError
+				return ou.OrganizationUnit{}, &tidcommon.InternalServerError
 			}
-			return providers.OrganizationUnit{ID: id}, nil
+			return ou.OrganizationUnit{ID: id}, nil
 		}).Maybe()
 	m.EXPECT().GetOrganizationUnitHandlesByIDs(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, ids []string) (map[string]string, *tidcommon.ServiceError) {
@@ -148,13 +160,13 @@ func newFailingOUServiceMock(t *testing.T) *oumock.OrganizationUnitServiceInterf
 	m.EXPECT().IsOrganizationUnitExists(mock.Anything, mock.Anything).
 		Return(false, &tidcommon.InternalServerError).Maybe()
 	m.EXPECT().GetOrganizationUnitByPath(mock.Anything, mock.Anything).
-		Return(providers.OrganizationUnit{}, &tidcommon.InternalServerError).Maybe()
+		Return(ou.OrganizationUnit{}, &tidcommon.InternalServerError).Maybe()
 	m.EXPECT().GetOrganizationUnitHandlesByIDs(mock.Anything, mock.Anything).
 		Return(nil, &tidcommon.InternalServerError).Maybe()
 	return m
 }
 
-func (suite *DefinitionServiceTestSuite) TestDefinitionServiceResolvesAndValidatesOU() {
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRequiresAndValidatesOUID() {
 	resolver := newOUServiceMock(suite.T(),
 		map[string]bool{"ou-1": true},
 		map[string]string{"default": "ou-1"},
@@ -169,7 +181,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceResolvesAndValidat
 	suite.Equal(ErrorDefinitionInvalidOU.Code, err.Code)
 
 	created, err := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
-		Handle: "eudi-pid", VCT: "urn:eudi:pid:de:1", OUHandle: "default",
+		Handle: "eudi-pid", VCT: "urn:eudi:pid:de:1", OUID: "ou-1",
 	})
 	suite.Require().Nil(err)
 	suite.Equal("ou-1", created.OUID)
@@ -330,13 +342,13 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceGetUpdateDeleteNot
 	suite.ErrorIs(err, ErrNotFound)
 }
 
-func (suite *DefinitionServiceTestSuite) TestDefinitionServiceResolveOUByPathFails() {
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsMissingOUID() {
 	resolver := newFailingOUServiceMock(suite.T())
 	svc := newPresentationDefinitionService(newStatefulDefinitionStore(suite.T()), resolver)
 	ctx := context.Background()
 
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
-		Handle: "h", VCT: "v", OUHandle: "unknown",
+		Handle: "h", VCT: "v",
 	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionInvalidOU.Code, svcErr.Code)
@@ -393,7 +405,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreatePersistError
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateUUIDError() {
 	store := newDefinitionStoreInterfaceMock(suite.T())
 	store.EXPECT().GetPresentationDefinitionByHandle(mock.Anything, mock.Anything).Return(nil, ErrNotFound)
-	svc := newPresentationDefinitionService(store, nil).(*definitionService)
+	svc := newPresentationDefinitionService(store, nil)
 	svc.uuid = func() (string, error) { return "", errors.New("uuid failed") }
 	ctx := context.Background()
 
@@ -639,4 +651,89 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceIsDeclarativeSucce
 	isDeclarative, svcErr := svc.IsPresentationDefinitionDeclarative(context.Background(), "id-1")
 	suite.Require().Nil(svcErr)
 	suite.False(isDeclarative)
+}
+
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsDuplicateClaims() {
+	ctx := context.Background()
+
+	// The same name twice within one list.
+	svc, _ := newTestDefinitionService(suite.T())
+	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "dup-mandatory", VCT: "v",
+		MandatoryClaims: []string{"tier", "tier"},
+	})
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorDefinitionDuplicateClaim.Code, svcErr.Code)
+	suite.Equal("tier", svcErr.ErrorDescription.Params["claim"])
+
+	// The same name as both mandatory and optional.
+	svc, _ = newTestDefinitionService(suite.T())
+	_, svcErr = svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "dup-across", VCT: "v",
+		MandatoryClaims: []string{"tier"},
+		OptionalClaims:  []string{"full_name", "tier"},
+	})
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorDefinitionDuplicateClaim.Code, svcErr.Code)
+	suite.Equal("tier", svcErr.ErrorDescription.Params["claim"])
+}
+
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsEmptyClaimName() {
+	svc, _ := newTestDefinitionService(suite.T())
+
+	_, svcErr := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
+		Handle: "blank-claim", VCT: "v",
+		OptionalClaims: []string{"  "},
+	})
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorDefinitionEmptyClaimName.Code, svcErr.Code)
+}
+
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceAcceptsDistinctClaims() {
+	svc, _ := newTestDefinitionService(suite.T())
+
+	created, svcErr := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
+		Handle: "distinct-claims", VCT: "v",
+		MandatoryClaims: []string{"tier"},
+		OptionalClaims:  []string{"full_name"},
+	})
+	suite.Require().Nil(svcErr)
+	suite.Equal([]string{"tier"}, created.MandatoryClaims)
+	suite.Equal([]string{"full_name"}, created.OptionalClaims)
+}
+
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsInvalidRequestedClaims() {
+	ctx := context.Background()
+
+	svc, _ := newTestDefinitionService(suite.T())
+	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "dup-requested", VCT: "v",
+		RequestedClaims: []string{"tier", "tier"},
+	})
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorDefinitionDuplicateClaim.Code, svcErr.Code)
+	suite.Equal("tier", svcErr.ErrorDescription.Params["claim"])
+
+	svc, _ = newTestDefinitionService(suite.T())
+	_, svcErr = svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "blank-requested", VCT: "v",
+		RequestedClaims: []string{"  "},
+	})
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorDefinitionEmptyClaimName.Code, svcErr.Code)
+}
+
+// The requested list is the full set the mandatory and optional lists partition, so repeating
+// their names in it is valid and must not be read as a duplicate.
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceAcceptsRequestedClaimsSupersetting() {
+	svc, _ := newTestDefinitionService(suite.T())
+
+	created, svcErr := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
+		Handle: "requested-superset", VCT: "v",
+		RequestedClaims: []string{"tier", "full_name"},
+		MandatoryClaims: []string{"tier"},
+		OptionalClaims:  []string{"full_name"},
+	})
+	suite.Require().Nil(svcErr)
+	suite.Equal([]string{"tier", "full_name"}, created.RequestedClaims)
 }

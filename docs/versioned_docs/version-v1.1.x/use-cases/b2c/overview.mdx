@@ -1,0 +1,66 @@
+---
+title: Understand It
+docType: use-case
+sidebar_position: 1
+description: Coordinating account creation, recovery, tokens, and API trust for consumer access to your application.
+---
+
+# Understand It
+
+A customer signs up for a travel-booking app, books a trip, and comes back a week later to change the dates,
+this time after resetting a password they'd forgotten. To the customer, it's just using the app. To your backend,
+every one of those actions raises the same identity questions:
+
+- Who is this person?
+- Are they really who they say they are?
+- What are they allowed to do?
+- Can you trust that a request really came from them?
+
+Handling those questions is what it takes to build a consumer access solution, and the sign-in screen is only the
+part of it your customer sees.
+
+## The Problem
+
+Your first version probably only needed email and password. As it grows, the same challenges surface whatever you're
+building:
+
+- **Account recovery.** Customers forget passwords, so you need a self-service way back in before resets fill your
+  support queue.
+- **Self-service sign-up and social login.** People expect to register themselves and sign in with accounts they
+  already have, without you hand-building each flow.
+- **Consistent API protection.** Every backend endpoint needs the same authorization check, not a bespoke one
+  reinvented per route.
+- **Auditing and risk controls.** Sensitive actions need stronger verification and an audit trail you can follow
+  across every entry point, not just one.
+- **One account across clients.** Web, mobile, and partner apps have to share a single customer account instead of
+  duplicating identity logic in each.
+
+## How It Works
+
+Solving this puts a dedicated **identity layer** between your app and your customers, and hands it everything to do
+with customer identity. It runs sign-in, sign-up, and account recovery; it stores and manages the customer accounts
+themselves, along with their profiles and the roles that decide what each one can do; it adds stronger verification
+when an action is sensitive; and it issues the signed token your APIs trust. Your app stops owning any of that: it
+hands each journey to the identity layer and gets a token back.
+
+When it signs a customer in, the identity layer can check the credential itself, a password, a passkey, or a one-time
+code against the account it manages, or delegate to an external provider such as Google, Apple, or an enterprise
+identity provider so the customer reuses an account they already have. You can offer either or both. However the
+customer is verified, it is the identity layer, not the provider, that completes the sign-in, and the customer still
+resolves to one account it manages.
+
+<SolutionArchitectureDiagram />
+
+That sign-in produces the one thing your app holds onto: a **signed token**. It says who the customer is and what
+they are allowed to do, signed by the identity layer so it cannot be forged. Your app presents it to your backend
+APIs on every request, and each API trusts the token and checks its permissions rather than re-authenticating the
+customer itself. The identity journey runs once per sign-in; the token-checked API calls run on every request after.
+
+:::tip Not Your Pattern?
+- Users belong to organizations with their own admins and roles: see [Multi-Tenant SaaS Identity](../../b2b/multi-tenant-saas).
+- Users are autonomous agents or machine-to-machine clients: see [Identity for AI Agents](../../ai-agents/overview).
+:::
+
+None of this locks you into a proprietary protocol: it's built on standard [OAuth2 and OpenID Connect](../../../guides/protocols/oauth-oidc), so your team's existing tooling and knowledge already apply, with official SDKs across common web, mobile, and backend frameworks, or call the APIs directly for full control. By the end of this section
+you'll have working sign-up, sign-in, and recovery flows, roles that define what each customer can do, and APIs that
+trust every request that reaches them.

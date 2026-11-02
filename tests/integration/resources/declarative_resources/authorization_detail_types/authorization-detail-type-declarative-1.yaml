@@ -1,0 +1,15 @@
+resource_type: authorization_detail_type
+id: decl-adt-1
+type: https://declarative.example.com/flight
+name: Declarative Flight
+description: A declarative authorization details type
+schema:
+  type: object
+  required:
+    - route
+  properties:
+    route:
+      type: string
+      title: Route
+consentTemplate: "Book a {{route}} flight"
+reuse: true

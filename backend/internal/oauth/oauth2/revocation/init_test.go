@@ -13,8 +13,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/discoverymock"
 )
@@ -49,8 +51,9 @@ func (suite *InitTestSuite) TearDownTest() {
 }
 
 func (suite *InitTestSuite) TestInitialize() {
-	enforcementService, revocationService := Initialize(
-		suite.mockJWTService, nil, time.Hour, true)
+	enforcementService, revocationService, err := Initialize(revocationConfig(10), suite.mockJWTService, nil)
+
+	assert.NoError(suite.T(), err)
 
 	assert.NotNil(suite.T(), enforcementService)
 	assert.Implements(suite.T(), (*EnforcementServiceInterface)(nil), enforcementService)
@@ -66,9 +69,11 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 			RevocationEndpoint: "https://localhost:8090/oauth2/revoke",
 		})
 	mux := http.NewServeMux()
-	_, revocationService := Initialize(suite.mockJWTService, nil, time.Hour, true)
+	_, revocationService, err := Initialize(revocationConfig(10), suite.mockJWTService, nil)
+	assert.NoError(suite.T(), err)
 
-	RegisterRoutes(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, revocationService, nil, 0)
+	RegisterRoutes(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, revocationService, nil, nil,
+		engineconfig.ClientAssertionConfig{}, 0)
 
 	// The pattern includes the method because of CORS middleware wrapping.
 	_, pattern := mux.Handler(&http.Request{Method: "POST", URL: &url.URL{Path: "/oauth2/revoke"}})
@@ -76,4 +81,46 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 
 	_, pattern = mux.Handler(&http.Request{Method: "OPTIONS", URL: &url.URL{Path: "/oauth2/revoke"}})
 	assert.Contains(suite.T(), pattern, "/oauth2/revoke")
+}
+
+func (suite *InitTestSuite) TestInitialize_RejectsNegativeMaxEntriesPerChange() {
+	enforcementService, revocationService, err := Initialize(revocationConfig(-1), suite.mockJWTService, nil)
+
+	assert.ErrorContains(suite.T(), err, "oauth.revocation.criteria.max_entries_per_change")
+	assert.Nil(suite.T(), enforcementService)
+	assert.Nil(suite.T(), revocationService)
+}
+
+func (suite *InitTestSuite) TestInitialize_ReadsTheOAuthConfig() {
+	cfg := revocationConfig(7)
+	cfg.OAuth.RefreshToken.ValidityPeriod = 7200
+	explicit := false
+	cfg.OAuth.Revocation.TokenFamily.OnExplicitRevoke = &explicit
+	cfg.JWT.Leeway = 30
+
+	_, writeService, err := Initialize(cfg, suite.mockJWTService, nil)
+
+	suite.Require().NoError(err)
+	svc, ok := writeService.(*revocationService)
+	suite.Require().True(ok)
+	suite.Equal(7, svc.maxEntriesPerChange)
+	suite.Equal(2*time.Hour, svc.tokenFamilyLifetime)
+	suite.False(svc.revokeTokenFamily)
+	suite.Equal(30*time.Second, svc.validationLeeway)
+}
+
+func (suite *InitTestSuite) TestInitialize_ZeroMaxEntriesPerChangeIsKept() {
+	_, writeService, err := Initialize(revocationConfig(0), suite.mockJWTService, nil)
+
+	suite.Require().NoError(err)
+	svc, ok := writeService.(*revocationService)
+	suite.Require().True(ok)
+	suite.Equal(0, svc.maxEntriesPerChange)
+}
+
+func revocationConfig(maxEntriesPerChange int) oauthconfig.Config {
+	cfg := oauthconfig.Config{}
+	cfg.OAuth.RefreshToken.ValidityPeriod = 3600
+	cfg.OAuth.Revocation.Criteria.MaxEntriesPerChange = maxEntriesPerChange
+	return cfg
 }

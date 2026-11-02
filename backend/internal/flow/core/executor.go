@@ -112,7 +112,7 @@ func (e *executor) ValidatePrerequisites(ctx *providers.NodeContext, execResp *p
 				"Failed to get entity reference for authenticated user, proceeding without user id")
 		} else {
 			authUser = providerAuthUser
-			if entityRef.EntityID != "" {
+			if entityRef != nil && entityRef.EntityID != "" {
 				authenticatedUserAttributes[userAttributeUserID] = entityRef.EntityID
 			}
 		}

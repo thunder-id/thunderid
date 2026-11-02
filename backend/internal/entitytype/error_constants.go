@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package entitytype
@@ -37,17 +37,17 @@ var (
 			DefaultValue: "The entity type with the specified id does not exist",
 		},
 	}
-	// ErrorEntityTypeNameConflict is the error returned when entity type name already exists.
-	ErrorEntityTypeNameConflict = tidcommon.ServiceError{
+	// ErrorEntityTypeHandleConflict is the error returned when entity type handle already exists.
+	ErrorEntityTypeHandleConflict = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "USRS-1003",
 		Error: tidcommon.I18nMessage{
-			Key:          "error.entitytypeservice.entity_type_name_conflict",
-			DefaultValue: "Entity type name conflict",
+			Key:          "error.entitytypeservice.entity_type_handle_conflict",
+			DefaultValue: "Entity type handle conflict",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.entitytypeservice.entity_type_name_conflict_description",
-			DefaultValue: "An entity type with the same name already exists",
+			Key:          "error.entitytypeservice.entity_type_handle_conflict_description",
+			DefaultValue: "An entity type with the same handle already exists",
 		},
 	}
 	// ErrorInvalidEntityTypeRequest is the error returned when entity type request is invalid.
@@ -128,7 +128,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.entitytypeservice.non_displayable_attribute_type_description",
-			DefaultValue: "Display attribute must reference a string or number type",
+			DefaultValue: "Display attribute must reference a string, email, mobile, or number type",
 		},
 	}
 	// ErrorCredentialDisplayAttribute is the error returned when the display attribute
@@ -146,7 +146,8 @@ var (
 		},
 	}
 
-	// ErrorAgentTypeOnlyDefaultAllowed is returned when a non-`default` agent type is created or renamed.
+	// ErrorAgentTypeOnlyDefaultAllowed is returned when an agent type is created or updated with a
+	// handle other than `default`.
 	// Agent types are restricted to a single bootstrap-provisioned `default` schema.
 	ErrorAgentTypeOnlyDefaultAllowed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -158,7 +159,7 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.entitytypeservice.agent_type_only_default_allowed_description",
 			DefaultValue: "Agent types are restricted to a single 'default' schema; " +
-				"create or rename to other names is not permitted",
+				"other handles are not permitted",
 		},
 	}
 
@@ -176,10 +177,84 @@ var (
 			DefaultValue: "The default agent type cannot be deleted. Edit the schema instead",
 		},
 	}
+
+	// ErrorInvalidEntityTypeHandle is returned when the entity type handle has an invalid format.
+	ErrorInvalidEntityTypeHandle = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USRS-1016",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.invalid_entity_type_handle",
+			DefaultValue: "Invalid entity type handle",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.entitytypeservice.invalid_entity_type_handle_description",
+			DefaultValue: "The handle must contain only lowercase letters, numbers, hyphens and underscores, " +
+				"and must start and end with a letter or a number",
+		},
+	}
+
+	// ErrorEntityTypeHandleUpdateNotAllowed is returned when an update attempts to change the handle.
+	ErrorEntityTypeHandleUpdateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USRS-1017",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.entity_type_handle_update_not_allowed",
+			DefaultValue: "Entity type handle cannot be changed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.entity_type_handle_update_not_allowed_description",
+			DefaultValue: "The handle of an entity type cannot be changed once it is created",
+		},
+	}
+
+	// ErrorInvalidPrimaryContactAttribute is returned when a primary contact mapping
+	// does not reference a top-level attribute in the schema.
+	ErrorInvalidPrimaryContactAttribute = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USRS-1018",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.invalid_primary_contact_attribute",
+			DefaultValue: "Invalid primary contact attribute",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.invalid_primary_contact_attribute_description",
+			DefaultValue: "Primary email and mobile must reference a top-level attribute defined in the schema",
+		},
+	}
+
+	// ErrorPrimaryContactTypeMismatch is returned when a primary contact mapping
+	// references an attribute of a different type.
+	ErrorPrimaryContactTypeMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USRS-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.primary_contact_type_mismatch",
+			DefaultValue: "Primary contact type mismatch",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.entitytypeservice.primary_contact_type_mismatch_description",
+			DefaultValue: "Primary email must reference an email attribute and " +
+				"primary mobile must reference a mobile attribute",
+		},
+	}
+
+	// ErrorPrimaryContactNotSupported is returned when primary contact mappings are set on an agent type.
+	ErrorPrimaryContactNotSupported = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USRS-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.primary_contact_not_supported",
+			DefaultValue: "Primary contact not supported",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.primary_contact_not_supported_description",
+			DefaultValue: "Primary email and mobile mappings are supported only for user types",
+		},
+	}
 )
 
 // Per-category ServiceError constants — used as the actual returned errors.
-// ErrorEntityTypeNotFound / ErrorEntityTypeNameConflict / ErrorInvalidEntityTypeRequest
+// ErrorEntityTypeNotFound / ErrorEntityTypeHandleConflict / ErrorInvalidEntityTypeRequest
 // are kept above solely for their .Code value (cross-package comparisons).
 var (
 	ErrorUserTypeNotFound = tidcommon.ServiceError{
@@ -206,28 +281,28 @@ var (
 			DefaultValue: "The agent type with the specified id does not exist",
 		},
 	}
-	ErrorUserTypeNameConflict = tidcommon.ServiceError{
+	ErrorUserTypeHandleConflict = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "USRS-1003",
 		Error: tidcommon.I18nMessage{
-			Key:          "error.entitytypeservice.user_type_name_conflict",
-			DefaultValue: "User type name conflict",
+			Key:          "error.entitytypeservice.user_type_handle_conflict",
+			DefaultValue: "User type handle conflict",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.entitytypeservice.user_type_name_conflict_description",
-			DefaultValue: "A user type with the same name already exists",
+			Key:          "error.entitytypeservice.user_type_handle_conflict_description",
+			DefaultValue: "A user type with the same handle already exists",
 		},
 	}
-	ErrorAgentTypeNameConflict = tidcommon.ServiceError{
+	ErrorAgentTypeHandleConflict = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "USRS-1003",
 		Error: tidcommon.I18nMessage{
-			Key:          "error.entitytypeservice.agent_type_name_conflict",
-			DefaultValue: "Agent type name conflict",
+			Key:          "error.entitytypeservice.agent_type_handle_conflict",
+			DefaultValue: "Agent type handle conflict",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.entitytypeservice.agent_type_name_conflict_description",
-			DefaultValue: "An agent type with the same name already exists",
+			Key:          "error.entitytypeservice.agent_type_handle_conflict_description",
+			DefaultValue: "An agent type with the same handle already exists",
 		},
 	}
 	ErrorInvalidUserTypeRequest = tidcommon.ServiceError{
@@ -264,12 +339,12 @@ func entityTypeNotFoundErr(category TypeCategory) *tidcommon.ServiceError {
 	return &ErrorUserTypeNotFound
 }
 
-// entityTypeNameConflictErr returns the category-specific name-conflict ServiceError.
-func entityTypeNameConflictErr(category TypeCategory) *tidcommon.ServiceError {
+// entityTypeHandleConflictErr returns the category-specific handle-conflict ServiceError.
+func entityTypeHandleConflictErr(category TypeCategory) *tidcommon.ServiceError {
 	if category == TypeCategoryAgent {
-		return &ErrorAgentTypeNameConflict
+		return &ErrorAgentTypeHandleConflict
 	}
-	return &ErrorUserTypeNameConflict
+	return &ErrorUserTypeHandleConflict
 }
 
 // invalidEntityTypeRequestErr returns the category-specific invalid-request ServiceError,
@@ -292,7 +367,7 @@ var (
 	// ErrEntityTypeNotFound is returned when an entity type is not found in the system.
 	ErrEntityTypeNotFound = errors.New("entity type not found")
 
-	// ErrEntityTypeAlreadyExists is returned when an entity type with the same name already exists.
+	// ErrEntityTypeAlreadyExists is returned when an entity type with the same handle already exists.
 	ErrEntityTypeAlreadyExists = errors.New("user type already exists")
 
 	// ErrInvalidSchemaDefinition is returned when the schema definition is invalid.

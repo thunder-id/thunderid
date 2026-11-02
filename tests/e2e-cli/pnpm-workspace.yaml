@@ -1,0 +1,16 @@
+# Marks this directory as its own pnpm workspace root, which stops pnpm walking up to the
+# repository's workspace.
+#
+# This suite is kept out of the main workspace on purpose. It depends on node-pty, which ships no
+# Linux prebuild and therefore compiles with node-gyp. As a member of the root workspace it would
+# force every job that runs `pnpm install --frozen-lockfile` to build a native addon, and the jobs
+# running in minimal containers have no toolchain, so they fail outright on "not found: make".
+#
+# Nothing here is shared with the rest of the repo, so the isolation costs only this file and a
+# second lockfile.
+packages: []
+
+# node-pty has to run its install script to produce the addon. Without this pnpm skips it and
+# every pty.spawn fails at runtime.
+allowBuilds:
+  node-pty: true

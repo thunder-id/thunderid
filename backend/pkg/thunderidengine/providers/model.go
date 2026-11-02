@@ -20,7 +20,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
-	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -37,72 +36,47 @@ type DesignResponse struct {
 	Layout json.RawMessage `json:"layout,omitempty"`
 }
 
-// OrganizationUnit represents an organization unit.
+// OrganizationUnit is the runtime view of an organization unit: its identity and the branding the
+// OAuth and flow layers render. The management model, with its REST, YAML and persistence
+// representations, belongs to the organization unit service.
 type OrganizationUnit struct {
-	ID                        string    `json:"id"                           yaml:"id"`
-	Handle                    string    `json:"handle"                       yaml:"handle"`
-	Name                      string    `json:"name"                         yaml:"name"`
-	Description               string    `json:"description,omitempty"        yaml:"description,omitempty"`
-	Parent                    *string   `json:"parent"                       yaml:"parent"`
-	ThemeID                   string    `json:"themeId,omitempty"            yaml:"themeId,omitempty"`
-	LayoutID                  string    `json:"layoutId,omitempty"           yaml:"layoutId,omitempty"`
-	AuthFlowID                string    `json:"authFlowId,omitempty"         yaml:"authFlowId,omitempty"`
-	RegistrationFlowID        string    `json:"registrationFlowId,omitempty" yaml:"registrationFlowId,omitempty"`
-	IsRegistrationFlowEnabled bool      `json:"isRegistrationFlowEnabled"    yaml:"isRegistrationFlowEnabled"`
-	RecoveryFlowID            string    `json:"recoveryFlowId,omitempty"     yaml:"recoveryFlowId,omitempty"`
-	IsRecoveryFlowEnabled     bool      `json:"isRecoveryFlowEnabled"        yaml:"isRecoveryFlowEnabled"`
-	SignOutFlowID             string    `json:"signOutFlowId,omitempty"           yaml:"signOutFlowId,omitempty"`
-	UserOnboardingFlowID      string    `json:"userOnboardingFlowId,omitempty"    yaml:"userOnboardingFlowId,omitempty"`
-	LogoURL                   string    `json:"logoUrl,omitempty"                 yaml:"logoUrl,omitempty"`
-	TosURI                    string    `json:"tosUri,omitempty"             yaml:"tosUri,omitempty"`
-	PolicyURI                 string    `json:"policyUri,omitempty"          yaml:"policyUri,omitempty"`
-	CookiePolicyURI           string    `json:"cookiePolicyUri,omitempty"    yaml:"cookiePolicyUri,omitempty"`
-	CreatedAt                 time.Time `json:"createdAt"                    yaml:"createdAt"`
-	UpdatedAt                 time.Time `json:"updatedAt"                    yaml:"updatedAt"`
+	ID string
+	// Parent is the ID of the parent organization unit. It is empty only for a root organization unit.
+	Parent          string
+	Handle          string
+	Name            string
+	Description     string
+	LogoURL         string
+	TosURI          string
+	PolicyURI       string
+	CookiePolicyURI string
 }
 
-// OrganizationUnitRequestWithID represents the request body for creating an organization unit
-// in import/declarative paths where preserving IDs is required.
+// OrganizationUnitRequestWithID is the runtime request for provisioning an organization unit. ID
+// may be left empty for the provider to generate one; the flow engine does not set it.
 type OrganizationUnitRequestWithID struct {
-	ID                        string  `json:"id"                           yaml:"id"                           native:"required"`
-	Handle                    string  `json:"handle"                       yaml:"handle"                       native:"required,min=1,max=100"`
-	Name                      string  `json:"name"                         yaml:"name"                         native:"required,min=1,max=100"`
-	Description               string  `json:"description,omitempty"        yaml:"description,omitempty"`
-	Parent                    *string `json:"parent"                       yaml:"parent"`
-	ThemeID                   string  `json:"themeId,omitempty"            yaml:"themeId,omitempty"`
-	LayoutID                  string  `json:"layoutId,omitempty"           yaml:"layoutId,omitempty"`
-	AuthFlowID                string  `json:"authFlowId,omitempty"         yaml:"authFlowId,omitempty"`
-	RegistrationFlowID        string  `json:"registrationFlowId,omitempty" yaml:"registrationFlowId,omitempty"`
-	IsRegistrationFlowEnabled bool    `json:"isRegistrationFlowEnabled"    yaml:"isRegistrationFlowEnabled"`
-	RecoveryFlowID            string  `json:"recoveryFlowId,omitempty"     yaml:"recoveryFlowId,omitempty"`
-	IsRecoveryFlowEnabled     bool    `json:"isRecoveryFlowEnabled"        yaml:"isRecoveryFlowEnabled"`
-	SignOutFlowID             string  `json:"signOutFlowId,omitempty"         yaml:"signOutFlowId,omitempty"`
-	UserOnboardingFlowID      string  `json:"userOnboardingFlowId,omitempty"  yaml:"userOnboardingFlowId,omitempty"`
-	LogoURL                   string  `json:"logoUrl,omitempty"               yaml:"logoUrl,omitempty"               native:"omitempty,url,max=2048"`
-	TosURI                    string  `json:"tosUri,omitempty"             yaml:"tosUri,omitempty"             native:"omitempty,url,max=2048"`
-	PolicyURI                 string  `json:"policyUri,omitempty"          yaml:"policyUri,omitempty"          native:"omitempty,url,max=2048"`
-	CookiePolicyURI           string  `json:"cookiePolicyUri,omitempty"    yaml:"cookiePolicyUri,omitempty"    native:"url,max=2048"`
+	ID          string
+	Handle      string
+	Name        string
+	Description string
+	Parent      *string
 }
 
-// OrganizationUnitListResponse represents the response for listing organization units with pagination.
+// OrganizationUnitListResponse is a page of organization units. The runtime reads TotalResults to
+// decide whether a unit has children; the remaining fields describe the page.
 type OrganizationUnitListResponse struct {
-	TotalResults      int                     `json:"totalResults"`
-	StartIndex        int                     `json:"startIndex"`
-	Count             int                     `json:"count"`
-	OrganizationUnits []OrganizationUnitBasic `json:"organizationUnits"`
-	Links             []utils.Link            `json:"links"`
+	TotalResults      int
+	StartIndex        int
+	Count             int
+	OrganizationUnits []OrganizationUnitBasic
 }
 
-// OrganizationUnitBasic represents the basic information of an organization unit.
+// OrganizationUnitBasic identifies an organization unit within a list response.
 type OrganizationUnitBasic struct {
-	ID          string    `json:"id"`
-	Handle      string    `json:"handle"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	LogoURL     string    `json:"logoUrl,omitempty"`
-	IsReadOnly  bool      `json:"isReadOnly"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID          string
+	Handle      string
+	Name        string
+	Description string
 }
 
 // ResourceServerType represents the type of a resource server.
@@ -184,23 +158,47 @@ type Resource struct {
 	Handle       string   `yaml:"handle"                json:"handle"`
 	Description  string   `yaml:"description,omitempty" json:"description,omitempty"`
 	Parent       *string  `yaml:"-"                     json:"-"`                // Resolved parent ID
-	ParentHandle string   `yaml:"parent,omitempty"      json:"parent,omitempty"` // Parent handle during YAML parsing only
+	ParentHandle string   `yaml:"parent,omitempty"      json:"parent,omitempty"` // Parent reference; the parent's full path once processed
 	Permission   string   `yaml:"-"                     json:"-"`                // Computed permission string
 	Actions      []Action `yaml:"actions,omitempty"     json:"actions,omitempty"`
 }
 
 // ResourceServer represents a resource server in both declarative resources and service layer.
 type ResourceServer struct {
-	ID          string             `yaml:"id"                    json:"-"`
-	Name        string             `yaml:"name"                  json:"name"`
-	Description string             `yaml:"description,omitempty" json:"description,omitempty"`
-	Identifier  string             `yaml:"identifier"            json:"identifier"`
-	Type        ResourceServerType `yaml:"type,omitempty"        json:"type,omitempty"`
-	OUID        string             `yaml:"ouId,omitempty"        json:"ouId"`
-	OUHandle    string             `yaml:"ouHandle,omitempty"    json:"-"`
-	Delimiter   string             `yaml:"delimiter,omitempty"   json:"delimiter,omitempty"   yamlfmt:"quoted"`
-	IsReadOnly  bool               `yaml:"-"                     json:"-"`
-	Resources   []Resource         `yaml:"resources,omitempty"   json:"resources,omitempty"`
+	ID                  string                    `yaml:"id"                    json:"-"`
+	Name                string                    `yaml:"name"                  json:"name"`
+	Description         string                    `yaml:"description,omitempty" json:"description,omitempty"`
+	Identifier          string                    `yaml:"identifier"            json:"identifier"`
+	Type                ResourceServerType        `yaml:"type,omitempty"        json:"type,omitempty"`
+	OUID                string                    `yaml:"ouId,omitempty"        json:"ouId"`
+	OUHandle            string                    `yaml:"ouHandle,omitempty"    json:"-"`
+	Delimiter           string                    `yaml:"delimiter,omitempty"   json:"delimiter,omitempty"   yamlfmt:"quoted"`
+	AuthorizationEngine AuthorizationEngineConfig `yaml:"authorizationEngine,omitempty" json:"authorizationEngine,omitempty"`
+	IsReadOnly          bool                      `yaml:"-"                     json:"-"`
+	Actions             []Action                  `yaml:"actions,omitempty"     json:"actions,omitempty"`
+	Resources           []Resource                `yaml:"resources,omitempty"   json:"resources,omitempty"`
+}
+
+// AuthorizationEngineTypeAuthZENPDP identifies the AuthZEN PDP authorization engine.
+const AuthorizationEngineTypeAuthZENPDP = "authzen_pdp"
+
+// AuthorizationEngineTypeRBAC identifies the default role-based authorization engine.
+const AuthorizationEngineTypeRBAC = "rbac"
+
+// AuthorizationEngineConfig selects the authorization engine for a resource server.
+type AuthorizationEngineConfig struct {
+	Type       string                        `yaml:"type,omitempty"       json:"type,omitempty"`
+	Properties AuthorizationEngineProperties `yaml:"properties,omitempty" json:"properties,omitempty"`
+}
+
+// IsZero reports whether no authorization engine is configured.
+func (c AuthorizationEngineConfig) IsZero() bool {
+	return c.Type == "" && c.Properties.PDPConnectionID == ""
+}
+
+// AuthorizationEngineProperties configures the selected authorization engine.
+type AuthorizationEngineProperties struct {
+	PDPConnectionID string `yaml:"pdpConnectionId,omitempty" json:"pdpConnectionId,omitempty"`
 }
 
 // CompleteFlowDefinition represents a complete flow definition with all details.
@@ -215,6 +213,8 @@ type CompleteFlowDefinition struct {
 	CreatedAt     string                  `json:"createdAt,omitempty"     yaml:"createdAt"              jsonschema:"Timestamp when the flow was created."`
 	UpdatedAt     string                  `json:"updatedAt,omitempty"     yaml:"updatedAt"              jsonschema:"Timestamp when the flow was last updated."`
 	IsReadOnly    bool                    `json:"isReadOnly"              yaml:"isReadOnly"             jsonschema:"Whether the flow is immutable (declarative)."`
+	OUID          string                  `json:"ouId"                    yaml:"ouId,omitempty"         jsonschema:"Organization unit that owns this flow."`
+	OUHandle      string                  `json:"-"                       yaml:"ouHandle,omitempty"`
 }
 
 // InterceptorDefinition describes how an interceptor is declared in the flow definition.
@@ -247,10 +247,11 @@ type NodePosition struct {
 // NodeDefinition represents a single node in a flow definition.
 type NodeDefinition struct {
 	ID           string                   `json:"id"                     yaml:"id"                     jsonschema:"Unique node identifier within the flow. Example: 'start', 'username-password', 'end'"`
-	Type         string                   `json:"type"                   yaml:"type"                   jsonschema:"Node type: 'START' (entry point), 'END' (exit point), 'TASK_EXECUTION' (backend logic), 'PROMPT' (user input), or 'CALL' (invoke another flow)"`
+	Type         string                   `json:"type"                   yaml:"type"                   jsonschema:"Node type: 'START' (entry point), 'END' (exit point), 'TASK_EXECUTION' (backend logic), 'PROMPT' (user input), 'CALL' (invoke another flow), or 'VARIABLES' (declares the flow's variables and resolves them, showing nothing to the user)"`
 	Layout       *NodeLayout              `json:"layout,omitempty"       yaml:"layout,omitempty"       jsonschema:"Optional UI layout information for flow composer (position and size on canvas)"`
 	Meta         interface{}              `json:"meta,omitempty"         yaml:"meta,omitempty"         jsonschema:"Optional metadata. For PROMPT nodes, must include 'components' array for UI rendering. See existing flows for examples."`
 	Prompts      []PromptDefinition       `json:"prompts,omitempty"      yaml:"prompts,omitempty"      jsonschema:"For PROMPT nodes: defines user inputs and actions. Each prompt has inputs (form fields) and an action (what happens on submit)."`
+	Inputs       []VariableDefinition     `json:"inputs,omitempty"       yaml:"inputs,omitempty"       jsonschema:"For VARIABLES nodes only: the variables the flow declares. Each has a type, a default and optionally the rules a value has to meet."`
 	Variant      NodeVariant              `json:"variant,omitempty"      yaml:"variant,omitempty"      jsonschema:"Optional PROMPT node variant. Use 'LOGIN_OPTIONS' to enable login option filtering on this node."`
 	Next         string                   `json:"next,omitempty"         yaml:"next,omitempty"         jsonschema:"For display-only PROMPT nodes: ID of the next node. Mutually exclusive with 'prompts'."`
 	Message      string                   `json:"message,omitempty"      yaml:"message,omitempty"      jsonschema:"For display-only PROMPT nodes: textual message for non-verbose mode."`
@@ -319,6 +320,23 @@ type InputDefinition struct {
 	Required   bool                       `json:"required"             yaml:"required"             jsonschema:"Whether this input is mandatory."`
 	OneTimeUse bool                       `json:"oneTimeUse,omitempty" yaml:"oneTimeUse,omitempty" jsonschema:"When true, the input is removed from the flow context after being consumed."`
 	Validation []ValidationRuleDefinition `json:"validation,omitempty" yaml:"validation,omitempty" jsonschema:"Server-enforced validation rules applied to the submitted value."`
+}
+
+// VariableDefinition declares one variable of a flow. It is described in the vocabulary of a prompt's inputs: an
+// identifier, a type and validation rules, with the options of a select. Because a variable always has a value, it also
+// has a default, and it can bound a number or name the kind of connection it takes.
+type VariableDefinition struct {
+	Identifier      string                     `json:"identifier"                yaml:"identifier"                jsonschema:"Name of the variable, which a '{{var(name)}}' placeholder uses. Starts with a letter and holds letters, digits and underscores."`
+	Type            string                     `json:"type"                      yaml:"type"                      jsonschema:"Input type: 'TEXT_INPUT', 'EMAIL_INPUT', 'PHONE_INPUT', 'NUMBER_INPUT', 'DATE_INPUT', 'BOOLEAN_INPUT', 'SELECT' or 'CONNECTION_SELECT'."`
+	Label           string                     `json:"label,omitempty"           yaml:"label,omitempty"           jsonschema:"Human-readable name shown where a value is set."`
+	Description     string                     `json:"description,omitempty"     yaml:"description,omitempty"     jsonschema:"What the variable is for."`
+	DefaultValue    interface{}                `json:"defaultValue"              yaml:"defaultValue"              jsonschema:"The value the variable has until another is set. Required, and has to be valid for the type."`
+	Validation      []ValidationRuleDefinition `json:"validation,omitempty"      yaml:"validation,omitempty"      jsonschema:"Rules a text value has to meet: 'regex', 'minLength' and 'maxLength'."`
+	Options         []interface{}              `json:"options,omitempty"         yaml:"options,omitempty"         jsonschema:"For a 'SELECT': the values it can take. All booleans make the variable a boolean, all numbers a number, anything else a string."`
+	Min             *float64                   `json:"min,omitempty"             yaml:"min,omitempty"             jsonschema:"For a 'NUMBER_INPUT': the lowest value."`
+	Max             *float64                   `json:"max,omitempty"             yaml:"max,omitempty"             jsonschema:"For a 'NUMBER_INPUT': the highest value."`
+	Category        string                     `json:"category,omitempty"        yaml:"category,omitempty"        jsonschema:"For a 'CONNECTION_SELECT': the kind of connection it takes, such as 'IDENTITY_PROVIDER'."`
+	ConnectionTypes []string                   `json:"connectionTypes,omitempty" yaml:"connectionTypes,omitempty" jsonschema:"For a 'CONNECTION_SELECT': limits it to these vendors, such as 'google'."`
 }
 
 // ValidationRuleDefinition represents a single validation constraint on an input.
@@ -450,6 +468,14 @@ type EntityReference struct {
 	OUID           string `json:"ouId"`
 }
 
+// LinkCandidates are the entities an identity's account-linking attributes matched, sorted by id,
+// with the matched values keyed by local attribute name.
+type LinkCandidates struct {
+	EntityIDs         []string
+	EntityTypes       []string
+	MatchedAttributes map[string]string
+}
+
 // GetAttributesMetadata holds metadata used when retrieving entity attributes.
 type GetAttributesMetadata struct {
 	Locale          string              `json:"locale"`
@@ -543,6 +569,7 @@ type OAuthClient struct {
 	ClientID                           string                  `yaml:"clientId,omitempty"`
 	RedirectURIs                       []string                `yaml:"redirectUris,omitempty"`
 	PostLogoutRedirectURIs             []string                `yaml:"postLogoutRedirectUris,omitempty"`
+	BackchannelLogoutURI               string                  `yaml:"backchannelLogoutUri,omitempty"`
 	GrantTypes                         []GrantType             `yaml:"grantTypes,omitempty"`
 	ResponseTypes                      []ResponseType          `yaml:"responseTypes,omitempty"`
 	TokenEndpointAuthMethod            TokenEndpointAuthMethod `yaml:"tokenEndpointAuthMethod,omitempty"`
@@ -551,6 +578,7 @@ type OAuthClient struct {
 	RequirePushedAuthorizationRequests bool                    `yaml:"requirePushedAuthorizationRequests,omitempty"`
 	DPoPBoundAccessTokens              bool                    `yaml:"dpopBoundAccessTokens,omitempty"`
 	IncludeActClaim                    bool                    `yaml:"includeActClaim,omitempty"`
+	ClientIDMetadataDocument           bool                    `yaml:"clientIdMetadataDocument,omitempty"`
 	EntityCategory                     EntityCategory          `yaml:"entityCategory,omitempty"`
 	Token                              *OAuthTokenConfig       `yaml:"token,omitempty"`
 	Scopes                             []string                `yaml:"scopes,omitempty"`
@@ -606,6 +634,7 @@ type IDTokenConfig struct {
 	ValidityPeriod int64               `json:"validityPeriod,omitempty" yaml:"validityPeriod,omitempty" jsonschema:"ID token validity period in seconds."`
 	UserAttributes []string            `json:"userAttributes,omitempty" yaml:"userAttributes,omitempty" jsonschema:"User attributes to embed in the ID token."`
 	ResponseType   IDTokenResponseType `json:"responseType,omitempty"   yaml:"responseType,omitempty"   jsonschema:"ID token response type (JWT, JWE, NESTED_JWT). Defaults to JWT."`
+	SigningAlg     string              `json:"signingAlg,omitempty"     yaml:"signingAlg,omitempty"     jsonschema:"JWS algorithm used to sign the ID token. Defaults to the server's preferred signing key algorithm."`
 	EncryptionAlg  string              `json:"encryptionAlg,omitempty"  yaml:"encryptionAlg,omitempty"  jsonschema:"JWE key-management algorithm. Required when responseType is JWE or NESTED_JWT."`
 	EncryptionEnc  string              `json:"encryptionEnc,omitempty"  yaml:"encryptionEnc,omitempty"  jsonschema:"JWE content-encryption algorithm. Required when responseType is JWE or NESTED_JWT."`
 }
@@ -675,6 +704,7 @@ func (c *AttestationConfig) WithoutCredentials() *AttestationConfig {
 type OAuthProfile struct {
 	RedirectURIs                       []string            `json:"redirectUris"`
 	PostLogoutRedirectURIs             []string            `json:"postLogoutRedirectUris,omitempty"`
+	BackchannelLogoutURI               string              `json:"backchannelLogoutUri,omitempty"`
 	GrantTypes                         []string            `json:"grantTypes"`
 	ResponseTypes                      []string            `json:"responseTypes"`
 	TokenEndpointAuthMethod            string              `json:"tokenEndpointAuthMethod"`
@@ -683,12 +713,103 @@ type OAuthProfile struct {
 	RequirePushedAuthorizationRequests bool                `json:"requirePushedAuthorizationRequests"`
 	DPoPBoundAccessTokens              bool                `json:"dpopBoundAccessTokens"`
 	IncludeActClaim                    bool                `json:"includeActClaim"`
+	ClientIDMetadataDocument           bool                `json:"clientIdMetadataDocument,omitempty"`
 	Token                              *OAuthTokenConfig   `json:"token,omitempty"`
 	Scopes                             []string            `json:"scopes,omitempty"`
 	UserInfo                           *UserInfoConfig     `json:"userInfo,omitempty"`
 	ScopeClaims                        map[string][]string `json:"scopeClaims,omitempty"`
 	Certificate                        *Certificate        `json:"certificate,omitempty"`
 	AcrValues                          []string            `json:"acrValues,omitempty"`
+}
+
+// AccessLockedMethod is one live automatic lock. Method is the authentication method it holds, or the
+// account key when it holds every method. ExpiresAt is when it lifts on its own, empty when it does
+// not. An entity can hold several at once.
+type AccessLockedMethod struct {
+	Method    string `json:"method"              yaml:"-"`
+	ExpiresAt string `json:"expiresAt,omitempty" yaml:"-"`
+}
+
+// AccessStatusDetails describes a status on a management read. Every field is optional. Since is
+// when a suspension was placed. OperatorNote is never disclosed on a refusal. LockedMethods lists the
+// live automatic locks in registry order, and is empty unless the status is LOCKED.
+type AccessStatusDetails struct {
+	Reason        AccessHoldReason     `json:"reason,omitempty"       yaml:"-"`
+	Since         string               `json:"since,omitempty"        yaml:"-"`
+	OperatorNote  string               `json:"operatorNote,omitempty" yaml:"-"`
+	LockedMethods []AccessLockedMethod `json:"lockedMethods,omitempty" yaml:"-"`
+}
+
+// ApplicationStatusReport exposes only the application lifecycle status.
+type ApplicationStatusReport struct {
+	Value AccessStatus `json:"value"`
+}
+
+// AccessStatusReport is the access status a management read returns: the effective value
+// (SUSPENDED, LOCKED or ACTIVE) and its details, nil when there is nothing to add.
+type AccessStatusReport struct {
+	Value   AccessStatus         `json:"value"             yaml:"-"`
+	Details *AccessStatusDetails `json:"details,omitempty" yaml:"-"`
+}
+
+// AccessDecision is the result of an access check. A refusal's Reason names the hold; a refusal that
+// names none answers as a wrong credential. NotAfter, on an admitted decision, is the latest instant a
+// token issued now for the entity may expire: its lifespan end. It is zero when the lifespan does not
+// end.
+type AccessDecision struct {
+	Admitted bool
+	Reason   AccessRefusalReason
+	NotAfter time.Time
+}
+
+// User represents a user in the system. Status is derived at read time and read-only. LastLoginAt is
+// recorded by the runtime, session reuse included, never by a profile write.
+type User struct {
+	ID          string              `json:"id,omitempty"`
+	OUID        string              `json:"ouId,omitempty"`
+	OUHandle    string              `json:"ouHandle,omitempty"`
+	Type        string              `json:"type,omitempty"`
+	Attributes  json.RawMessage     `json:"attributes,omitempty"`
+	Display     string              `json:"display,omitempty"`
+	IsReadOnly  bool                `json:"isReadOnly"`
+	Status      *AccessStatusReport `json:"status,omitempty"`
+	LastLoginAt string              `json:"lastLoginAt,omitempty"`
+	IsOwnedByOU *bool               `json:"isOwnedByOU,omitempty"`
+	// LinkedAccount, set on create, records the user's linked account in the same write.
+	LinkedAccount *LinkedAccount `json:"-"`
+}
+
+// LinkedAccount names a subject at a connection.
+type LinkedAccount struct {
+	IdpID string
+	Sub   string
+}
+
+// Agent is the service-level model for agent create operations.
+type Agent struct {
+	ID          string          `json:"id,omitempty"`
+	OUID        string          `json:"ouId"`
+	OUHandle    string          `json:"ouHandle,omitempty"`
+	Type        string          `json:"type"`
+	Description string          `json:"description,omitempty"`
+	LogoURL     string          `json:"logoUrl,omitempty"`
+	Owner       string          `json:"owner,omitempty"`
+	Attributes  json.RawMessage `json:"attributes,omitempty"`
+	// ValidUntil is the RFC 3339 instant the agent's lifespan ends; nil registers an agent that does
+	// not expire.
+	ValidUntil *string `json:"validUntil,omitempty"`
+
+	// Delegated marks an agent that acts on behalf of a user. It selects the OAuth grant types applied
+	// and checked when the agent is created and is not stored.
+	Delegated bool `json:"delegated,omitempty"`
+
+	// ProjectID places the agent in the project's root organization unit, or checks that the
+	// organization unit named belongs to the project. It is not stored.
+	ProjectID string `json:"projectId,omitempty"`
+
+	// The service-level model carries the full internal profile.
+	InboundAuthProfile
+	InboundAuthConfig []InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 }
 
 // InboundClient is the persistence shape for protocol-agnostic inbound client record.
@@ -705,6 +826,7 @@ type InboundClient struct {
 	Assertion                 *AssertionConfig
 	LoginConsent              *LoginConsentConfig
 	AllowedUserTypes          []string
+	AllowedAgentTypes         []string
 	SubjectAttribute          map[string]string
 	PasskeyAllowedOrigins     []string
 	// Attestation holds the optional platform attestation config that lets a mobile client prove
@@ -726,16 +848,21 @@ type LoginConsentConfig struct {
 }
 
 // Entity represents a unified identity principal returned by the entity provider.
+// RuntimeAttributes is the entity's runtime data, never serialized or cached with the profile.
 type Entity struct {
-	ID               string          `json:"id,omitempty"`
-	Category         EntityCategory  `json:"category,omitempty"`
-	Type             string          `json:"type,omitempty"`
-	State            EntityState     `json:"state,omitempty"`
-	OUID             string          `json:"ouId,omitempty"`
-	OUHandle         string          `json:"ouHandle,omitempty"`
-	Attributes       json.RawMessage `json:"attributes,omitempty"`
-	SystemAttributes json.RawMessage `json:"systemAttributes,omitempty"`
-	IsReadOnly       bool            `json:"isReadOnly"`
+	ID                string          `json:"id,omitempty"`
+	Category          EntityCategory  `json:"category,omitempty"`
+	Type              string          `json:"type,omitempty"`
+	State             EntityState     `json:"state,omitempty"`
+	OUID              string          `json:"ouId,omitempty"`
+	OUHandle          string          `json:"ouHandle,omitempty"`
+	Attributes        json.RawMessage `json:"attributes,omitempty"`
+	SystemAttributes  json.RawMessage `json:"systemAttributes,omitempty"`
+	RuntimeAttributes json.RawMessage `json:"-"`
+	IsReadOnly        bool            `json:"isReadOnly"`
+	// Display is the value of the entity type's display attribute, falling back to the entity ID.
+	// It is populated only by callers that resolve it, such as the actor provider for agents.
+	Display string `json:"display,omitempty"`
 }
 
 // EntityGroup represents a group with basic information for entity group membership queries.
@@ -751,6 +878,8 @@ type IDPDTO struct {
 	Name                   string                  `yaml:"name"`
 	Description            string                  `yaml:"description,omitempty"`
 	Type                   IDPType                 `yaml:"type"`
+	OUID                   string                  `yaml:"ouId,omitempty"`
+	OUHandle               string                  `yaml:"ouHandle,omitempty"`
 	Properties             []cmodels.Property      `yaml:"properties,omitempty"`
 	AttributeConfiguration *AttributeConfiguration `yaml:"attribute_configuration,omitempty"`
 }
@@ -779,10 +908,10 @@ type UserTypeAttributeMapping struct {
 	Attributes []AttributeMapping `json:"attributes,omitempty" yaml:"attributes,omitempty"`
 }
 
-// AccountLinking configures which attributes resolve the local user for an incoming federated
-// identity when the subject identifier does not. Attributes is a list of external claim names (each
-// resolved to its local counterpart via the IdP's attribute mappings); those with a value are matched
-// together to resolve a unique local user.
+// AccountLinking configures which attributes name an existing local user for an incoming federated
+// identity that has no recorded link. Attributes is a list of external claim names. Each one matches
+// on every local attribute the IdP's attribute mappings copy it to and on the local attribute of the
+// same name; every attribute with a value must match.
 type AccountLinking struct {
 	Attributes []string `json:"attributes,omitempty" yaml:"attributes,omitempty"`
 }
@@ -792,7 +921,168 @@ type AccountLinking struct {
 type AttributeConfiguration struct {
 	UserTypeResolution        *UserTypeResolution        `json:"userTypeResolution,omitempty"        yaml:"user_type_resolution,omitempty"`         //nolint:lll
 	UserTypeAttributeMappings []UserTypeAttributeMapping `json:"userTypeAttributeMappings,omitempty" yaml:"user_type_attribute_mappings,omitempty"` //nolint:lll
-	AccountLinking            *AccountLinking            `json:"accountLinking,omitempty"            yaml:"accountLinking,omitempty"`               //nolint:lll
+	AccountLinking            *AccountLinking            `json:"accountLinking,omitempty"           yaml:"accountLinking,omitempty"`                //nolint:lll
+	AuthorizationMapping      *AuthorizationMapping      `json:"authorizationMapping,omitempty"      yaml:"authorizationMapping,omitempty"`         //nolint:lll
+}
+
+// AuthorizationMapping holds a connection's authorization mapping configuration: explicit
+// value-to-target rules, direct name-based lookups, or both together, in which case their resolved
+// targets union.
+type AuthorizationMapping struct {
+	Rules  []AuthorizationRuleMapping   `json:"rules,omitempty"  yaml:"rules,omitempty"`
+	Direct []AuthorizationDirectMapping `json:"direct,omitempty" yaml:"direct,omitempty"`
+}
+
+// AuthorizationTargetType names what a mapped external attribute value resolves to.
+type AuthorizationTargetType string
+
+// Supported authorization target types.
+const (
+	AuthorizationTargetRole       AuthorizationTargetType = "role"
+	AuthorizationTargetGroup      AuthorizationTargetType = "group"
+	AuthorizationTargetPermission AuthorizationTargetType = "permission"
+)
+
+// AuthorizationTarget names a single local role, group, or permission a mapped attribute value
+// confers. For Role and Group, ID identifies the target directly. For Permission, ResourceServerID
+// and Permission together identify it, since a permission only means something on a resource server.
+type AuthorizationTarget struct {
+	Type             AuthorizationTargetType `json:"type"                       yaml:"type"`
+	ID               string                  `json:"id,omitempty"               yaml:"id,omitempty"`
+	ResourceServerID string                  `json:"resourceServerId,omitempty" yaml:"resourceServerId,omitempty"`
+	Permission       string                  `json:"permission,omitempty"       yaml:"permission,omitempty"`
+}
+
+// AuthorizationOperator names how a rule's Value is compared against a claim's resolved value(s).
+type AuthorizationOperator string
+
+// Supported authorization operators. Equals/not_equals and the ordering operators are scalar
+// comparisons; includes/not_includes test set membership and require a multi-valued claim (see
+// AuthorizationRuleMapping.IsMultiValued).
+const (
+	AuthorizationOperatorEquals             AuthorizationOperator = "equals"
+	AuthorizationOperatorNotEquals          AuthorizationOperator = "not_equals"
+	AuthorizationOperatorGreaterThan        AuthorizationOperator = "greater_than"
+	AuthorizationOperatorLessThan           AuthorizationOperator = "less_than"
+	AuthorizationOperatorGreaterThanOrEqual AuthorizationOperator = "greater_than_or_equal"
+	AuthorizationOperatorLessThanOrEqual    AuthorizationOperator = "less_than_or_equal"
+	AuthorizationOperatorIncludes           AuthorizationOperator = "includes"
+	AuthorizationOperatorNotIncludes        AuthorizationOperator = "not_includes"
+)
+
+// supportedAuthorizationOperators lists all the supported authorization operators.
+var supportedAuthorizationOperators = []AuthorizationOperator{
+	AuthorizationOperatorEquals,
+	AuthorizationOperatorNotEquals,
+	AuthorizationOperatorGreaterThan,
+	AuthorizationOperatorLessThan,
+	AuthorizationOperatorGreaterThanOrEqual,
+	AuthorizationOperatorLessThanOrEqual,
+	AuthorizationOperatorIncludes,
+	AuthorizationOperatorNotIncludes,
+}
+
+// IsValid reports whether the operator is one of the supported values.
+func (o AuthorizationOperator) IsValid() bool {
+	for _, supported := range supportedAuthorizationOperators {
+		if o == supported {
+			return true
+		}
+	}
+	return false
+}
+
+// IsOrdering reports whether the operator compares magnitude rather than equality, which is only
+// meaningful for AuthorizationValueTypeNumber.
+func (o AuthorizationOperator) IsOrdering() bool {
+	switch o {
+	case AuthorizationOperatorGreaterThan, AuthorizationOperatorLessThan,
+		AuthorizationOperatorGreaterThanOrEqual, AuthorizationOperatorLessThanOrEqual:
+		return true
+	}
+	return false
+}
+
+// IsMembership reports whether the operator tests set membership across every value a claim carries,
+// which is only meaningful for a multi-valued claim (see AuthorizationRuleMapping.IsMultiValued).
+func (o AuthorizationOperator) IsMembership() bool {
+	return o == AuthorizationOperatorIncludes || o == AuthorizationOperatorNotIncludes
+}
+
+// AuthorizationValueType names how a claim's value(s) are interpreted: as a scalar to compare
+// (string, number, boolean) or as a set to test membership in (array).
+type AuthorizationValueType string
+
+// Supported authorization value types.
+const (
+	AuthorizationValueTypeString  AuthorizationValueType = "string"
+	AuthorizationValueTypeNumber  AuthorizationValueType = "number"
+	AuthorizationValueTypeBoolean AuthorizationValueType = "boolean"
+	AuthorizationValueTypeArray   AuthorizationValueType = "array"
+)
+
+// supportedAuthorizationValueTypes lists all the supported authorization value types.
+var supportedAuthorizationValueTypes = []AuthorizationValueType{
+	AuthorizationValueTypeString,
+	AuthorizationValueTypeNumber,
+	AuthorizationValueTypeBoolean,
+	AuthorizationValueTypeArray,
+}
+
+// IsValid reports whether the value type is one of the supported values.
+func (t AuthorizationValueType) IsValid() bool {
+	for _, supported := range supportedAuthorizationValueTypes {
+		if t == supported {
+			return true
+		}
+	}
+	return false
+}
+
+// AuthorizationRule matches a claim token against Value using Operator, interpreted per the owning
+// mapping's value type, and grants Targets when it matches.
+type AuthorizationRule struct {
+	Operator AuthorizationOperator `json:"operator"      yaml:"operator"`
+	Value    string                `json:"value"         yaml:"value"`
+	Targets  []AuthorizationTarget `json:"targets"       yaml:"targets"`
+}
+
+// AuthorizationRuleMapping maps values of a single external claim to local roles, groups, or permissions.
+// The result is the union of every matching rule's Targets; an unmapped value confers nothing.
+type AuthorizationRuleMapping struct {
+	Claim     string                 `json:"claim"                yaml:"claim"`
+	ValueType AuthorizationValueType `json:"valueType,omitempty"  yaml:"valueType,omitempty"`
+	Delimiter string                 `json:"delimiter,omitempty"  yaml:"delimiter,omitempty"`
+	Values    []AuthorizationRule    `json:"values"               yaml:"values"`
+}
+
+// AuthorizationDirectMapping feeds every value of a single external claim directly onto local
+// roles, groups, or permissions of TargetType, using each value as the name (or permission string) to
+// look up, rather than an explicit per-value rule table. A value with no unambiguous match confers
+// nothing. ResourceServerID is required when TargetType is permission, since a permission only means
+// something on a resource server; it is otherwise unused.
+type AuthorizationDirectMapping struct {
+	Claim            string                  `json:"claim"                      yaml:"claim"`
+	Delimiter        string                  `json:"delimiter,omitempty"        yaml:"delimiter,omitempty"`
+	TargetType       AuthorizationTargetType `json:"targetType"                 yaml:"targetType"`
+	ResourceServerID string                  `json:"resourceServerId,omitempty" yaml:"resourceServerId,omitempty"`
+}
+
+// EffectiveValueType returns ValueType, defaulting to AuthorizationValueTypeString when unset, so
+// callers never need to special-case the zero value.
+func (m AuthorizationRuleMapping) EffectiveValueType() AuthorizationValueType {
+	if m.ValueType == "" {
+		return AuthorizationValueTypeString
+	}
+	return m.ValueType
+}
+
+// IsMultiValued reports whether the mapping declares a set-membership claim (an array, or a
+// delimited string) rather than a single value to compare.
+func (m AuthorizationRuleMapping) IsMultiValued() bool {
+	valueType := m.EffectiveValueType()
+	return valueType == AuthorizationValueTypeArray ||
+		(valueType == AuthorizationValueTypeString && m.Delimiter != "")
 }
 
 // ConsentElementApproval represents a user's approval decision for a specific element.
@@ -845,7 +1135,7 @@ type ConsentPurposePrompt struct {
 	PurposeID string `json:"purposeId"`
 	// Description is a human-readable description of the consent purpose
 	Description string `json:"description,omitempty"`
-	// Type discriminates between attribute and permission consent purposes.
+	// Type discriminates between attribute, permission and authorization details consent purposes.
 	Type string `json:"type,omitempty"`
 	// Essential is the list of mandatory elements that require user consent
 	Essential []PromptElement `json:"essential"`
@@ -853,13 +1143,85 @@ type ConsentPurposePrompt struct {
 	Optional []PromptElement `json:"optional"`
 }
 
+// ConsentDetailRowOriginServer is the ConsentDetailRow origin of a field value the type's processor supplied.
+const ConsentDetailRowOriginServer = "server"
+
+// ConsentDetailRow is one field of an authorization details object presented for consent.
+type ConsentDetailRow struct {
+	// Path is the dot-separated location of the field within the detail object.
+	Path string `json:"path"`
+	// Label is the display label declared by the type, defaulting to the path.
+	Label string `json:"label"`
+	// Value is the field value as it appears in the detail.
+	Value json.RawMessage `json:"value"`
+	// Modification is the change the user may make to the field before approving, if any.
+	Modification string `json:"modification,omitempty"`
+	// As is the ordering the modification compares the field by, if any.
+	As string `json:"as,omitempty"`
+	// Origin is ConsentDetailRowOriginServer when the value was supplied by the type's processor rather than the
+	// client.
+	Origin string `json:"origin,omitempty"`
+	// Options lists the values the user may add to a list field, when the schema restricts them.
+	Options json.RawMessage `json:"options,omitempty"`
+}
+
+// AuthorizationDetailType is a registered RFC 9396 authorization details type.
+type AuthorizationDetailType struct {
+	ID string
+	// Type is the type value clients send in authorization_details.
+	Type        string
+	Name        string
+	Description string
+	// Version starts at 1 and increments when the schema, the consent template or Reuse changes, or the processor
+	// is added or removed. An approval holds only for the version it was given on.
+	Version int
+	// Schema is the JSON Schema 2020-12 schema, with field policies, that details of the type conform to.
+	Schema          json.RawMessage
+	ConsentTemplate string
+	Processor       *AuthorizationDetailProcessor
+	// Reuse lets a covering earlier approval skip the prompt and keeps the details in the refresh token.
+	Reuse bool
+	// IsReadOnly reports that the type is declaratively defined and cannot be changed through the API.
+	IsReadOnly bool
+}
+
+// AuthorizationDetailProcessor identifies the endpoint that authorizes and enriches a type's details.
+type AuthorizationDetailProcessor struct {
+	Endpoint string `json:"endpoint" yaml:"endpoint"`
+	// AuthenticationProperties hold the outbound authentication for processor calls, credentials encrypted.
+	AuthenticationProperties []cmodels.Property `json:"-" yaml:"-"`
+}
+
+// AuthorizationDetail is a validated RFC 9396 authorization detail carried through an authentication flow.
+type AuthorizationDetail struct {
+	// ID identifies the detail within the request and is never sent to the client.
+	ID string `json:"id"`
+	// Type is the detail's authorization details type value.
+	Type string `json:"type"`
+	// TypeID and TypeVersion identify the type definition the request started on.
+	TypeID      string `json:"typeId"`
+	TypeVersion int    `json:"typeVersion"`
+	// Requested is the detail as the client requested it.
+	Requested json.RawMessage `json:"requested"`
+	// Value is the detail after processing.
+	Value json.RawMessage `json:"value"`
+	// Admitted reports whether the detail passed its type's processor, or the type declares none.
+	Admitted bool `json:"admitted"`
+}
+
 // PromptElement represents a single element within a consent purpose prompt. Parent carries
 // rollup linkage for permission elements (zero value, omitted on the wire, for attribute elements).
 type PromptElement struct {
-	// Name is the canonical element name (attribute name or permission string)
+	// Name is the canonical element name (attribute name, permission string or authorization detail ID)
 	Name string `json:"name"`
 	// Parent is the canonical name of the rollup parent, if any
 	Parent string `json:"parent,omitempty"`
+	// DetailType is the type of an authorization detail element.
+	DetailType string `json:"detailType,omitempty"`
+	// Summary is the rendered consent sentence of an authorization detail element.
+	Summary string `json:"summary,omitempty"`
+	// Rows are the fields of an authorization detail element.
+	Rows []ConsentDetailRow `json:"rows,omitempty"`
 }
 
 // ConsentDecisions holds the user's consent decisions.
@@ -892,6 +1254,9 @@ type ElementDecision struct {
 	Name string `json:"name"`
 	// Approved indicates whether the user approved sharing this element
 	Approved bool `json:"approved"`
+	// Modified holds the user's changes to an authorization detail's fields, keyed by field path, as the type's
+	// field policies allow.
+	Modified map[string]json.RawMessage `json:"modified,omitempty"`
 }
 
 // Consent represents a consent record in the system, containing all relevant details and status.
@@ -914,6 +1279,8 @@ type Consent struct {
 	CreatedTime int64
 	// UpdatedTime is the Unix timestamp when the consent was last updated
 	UpdatedTime int64
+	// GrantedAuthorizationDetails holds the authorization details the recorded decision grants.
+	GrantedAuthorizationDetails []AuthorizationDetail
 }
 
 // ExecutorSupportedProperties describes the properties that an executor supports, including whether each property is required.
@@ -1012,9 +1379,30 @@ type Application struct {
 	PolicyURI string   `yaml:"policyUri,omitempty" json:"policyUri,omitempty" jsonschema:"Privacy Policy URI."`
 	Contacts  []string `yaml:"contacts,omitempty" json:"contacts,omitempty"`
 
+	// Status is the effective access status, derived at read time.
+	Status *ApplicationStatusReport `yaml:"-" json:"status,omitempty" jsonschema:"Effective access status. Read-only."`
+
 	InboundAuthProfile `yaml:",inline"`
 	InboundAuthConfig  []InboundAuthConfigWithSecret `yaml:"inboundAuthConfig,omitempty" json:"inboundAuthConfig,omitempty" jsonschema:"Inbound authentication configuration (OAuth2/OIDC settings)."`
 	Metadata           map[string]interface{}        `yaml:"metadata,omitempty" json:"metadata,omitempty" jsonschema:"Generic metadata key-value pairs."`
+
+	// EntityCategory is the category of the entity backing this runtime application view (app or
+	// agent). Runtime-only: never serialized on the application API or in declarative resources.
+	EntityCategory EntityCategory `yaml:"-" json:"-"`
+}
+
+// OAuthClientID returns the client_id of the application's OAuth inbound auth config, or an empty
+// string when it has no OAuth config.
+func (a *Application) OAuthClientID() string {
+	if a == nil {
+		return ""
+	}
+	for _, inbound := range a.InboundAuthConfig {
+		if inbound.Type == OAuthInboundAuthType && inbound.OAuthConfig != nil {
+			return inbound.OAuthConfig.ClientID
+		}
+	}
+	return ""
 }
 
 // InboundAuthProfile is the wire field block embedded in entity DTOs (requests and responses).
@@ -1033,8 +1421,9 @@ type InboundAuthProfile struct {
 	LayoutID                  string              `json:"layoutId,omitempty"               yaml:"layoutId,omitempty"               jsonschema:"Layout configuration ID. Optional. Customizes the screen structure and component positioning of login pages."`
 	Assertion                 *AssertionConfig    `json:"assertion,omitempty"              yaml:"assertion,omitempty"              jsonschema:"Assertion configuration. Optional. Customize assertion validity periods and included user attributes."`
 	LoginConsent              *LoginConsentConfig `json:"loginConsent,omitempty"           yaml:"loginConsent,omitempty"           jsonschema:"Login consent configuration settings."`
-	AllowedUserTypes          []string            `json:"allowedUserTypes,omitempty"           yaml:"allowedUserTypes,omitempty"           jsonschema:"Allowed user types. Optional. Restricts which user types can register or sign up through this resource."`
-	SubjectAttribute          map[string]string   `json:"subjectAttribute,omitempty"           yaml:"subjectAttribute,omitempty"           jsonschema:"Per-user-type mapping of the schema attribute to use as the token subject (sub) claim, keyed by user type name. The attribute must be unique, required, and string-typed in that user type's schema. When no entry applies, the user's ID is used as the subject."`
+	AllowedUserTypes          []string            `json:"allowedUserTypes,omitempty"           yaml:"allowedUserTypes,omitempty"           jsonschema:"Allowed user type handles. Optional. Restricts which user types can authenticate to, register, or sign up through this resource."`
+	AllowedAgentTypes         []string            `json:"allowedAgentTypes,omitempty"          yaml:"allowedAgentTypes,omitempty"          jsonschema:"Allowed agent type handles. Optional. Agents may authenticate to this resource only when their agent type handle is listed here; when the list is empty no agent can authenticate."`
+	SubjectAttribute          map[string]string   `json:"subjectAttribute,omitempty"           yaml:"subjectAttribute,omitempty"           jsonschema:"Per-user-type mapping of the schema attribute to use as the token subject (sub) claim, keyed by user type handle. The attribute must be unique, required, and string-typed in that user type's schema. When no entry applies, the user's ID is used as the subject."`
 	PasskeyAllowedOrigins     []string            `json:"passkeyAllowedOrigins,omitempty"      yaml:"passkeyAllowedOrigins,omitempty"      jsonschema:"Allowed origins for WebAuthn/passkey operations for this application. Optional. When set, overrides the server-level passkey allowed origins for flow-based passkey operations."`
 	Attestation               *AttestationConfig  `json:"attestation,omitempty"                yaml:"attestation,omitempty"                jsonschema:"Platform attestation configuration. Optional. Enables a mobile client to initiate flows directly by proving its binary identity (e.g. Google Play Integrity), regardless of protocol. The service account credentials are write-only and never returned in responses."`
 }
@@ -1046,6 +1435,7 @@ type OAuthConfigWithSecret struct {
 	ClientSecret                       string                  `json:"clientSecret,omitempty"             yaml:"clientSecret,omitempty"             jsonschema:"OAuth client secret (auto-generated if not provided)"`
 	RedirectURIs                       []string                `json:"redirectUris,omitempty"             yaml:"redirectUris,omitempty"             jsonschema:"Allowed redirect URIs. Required for Public (SPA/Mobile) and Confidential (Server) clients. Omit for M2M."`
 	PostLogoutRedirectURIs             []string                `json:"postLogoutRedirectUris,omitempty"   yaml:"postLogoutRedirectUris,omitempty"   jsonschema:"Allowed post-logout redirect URIs. Optional. A post_logout_redirect_uri supplied to the logout endpoint must match one of these."`
+	BackchannelLogoutURI               string                  `json:"backchannelLogoutUri,omitempty"     yaml:"backchannelLogoutUri,omitempty"     jsonschema:"OIDC Back-Channel Logout endpoint. Optional. ThunderID POSTs a logout token here when a session this client shares ends. Absolute http or https URL; public clients must use https."`
 	GrantTypes                         []GrantType             `json:"grantTypes,omitempty"               yaml:"grantTypes,omitempty"               jsonschema:"OAuth grant types. Common: [authorization_code, refresh_token] for user apps, [client_credentials] for M2M."`
 	ResponseTypes                      []ResponseType          `json:"responseTypes,omitempty"            yaml:"responseTypes,omitempty"            jsonschema:"OAuth response types. Common: [code] for user apps. Omit for M2M."`
 	TokenEndpointAuthMethod            TokenEndpointAuthMethod `json:"tokenEndpointAuthMethod,omitempty"  yaml:"tokenEndpointAuthMethod,omitempty"  jsonschema:"Client authentication method. Use 'none' for Public clients, 'client_secret_basic' for Confidential/M2M."`
@@ -1053,7 +1443,8 @@ type OAuthConfigWithSecret struct {
 	PublicClient                       bool                    `json:"publicClient"                       yaml:"publicClient"                       jsonschema:"Identify if client is public (cannot store secrets). Set true for SPA/Mobile."`
 	RequirePushedAuthorizationRequests bool                    `json:"requirePushedAuthorizationRequests" yaml:"requirePushedAuthorizationRequests" jsonschema:"Require Pushed Authorization Requests (PAR) per RFC 9126."`
 	DPoPBoundAccessTokens              bool                    `json:"dpopBoundAccessTokens"              yaml:"dpopBoundAccessTokens"              jsonschema:"Require DPoP-bound access tokens (RFC 9449)."`
-	IncludeActClaim                    bool                    `json:"includeActClaim"                    yaml:"includeActClaim"                    jsonschema:"Include an implicit on-behalf-of 'act' claim (identifying the application entity) in access tokens issued through this client's authorization code flow. Agents always include it regardless of this setting."`
+	IncludeActClaim                    bool                    `json:"includeActClaim"                    yaml:"includeActClaim"                    jsonschema:"Include an implicit on-behalf-of 'act' claim (identifying the application entity) in access tokens this client obtains for a user through the authorization code, CIBA or jwt-bearer grant, or through token exchange without an actor token. Agents always include it regardless of this setting."`
+	ClientIDMetadataDocument           bool                    `json:"clientIdMetadataDocument,omitempty" yaml:"clientIdMetadataDocument,omitempty" jsonschema:"Registered from a Client ID Metadata Document. The client ID is the document URL and the values must satisfy the document rules. Fixed at creation."`
 	Token                              *OAuthTokenConfig       `json:"token,omitempty"                    yaml:"token,omitempty"                    jsonschema:"Token configuration for access tokens and ID tokens"`
 	Scopes                             []string                `json:"scopes,omitempty"                   yaml:"scopes,omitempty"                   jsonschema:"Allowed OAuth scopes. Add custom scopes as needed for your application."`
 	UserInfo                           *UserInfoConfig         `json:"userInfo,omitempty"                 yaml:"userInfo,omitempty"                 jsonschema:"UserInfo endpoint configuration. Configure user attributes returned from the OIDC userinfo endpoint."`
@@ -1068,10 +1459,18 @@ type InboundAuthConfigWithSecret struct {
 	OAuthConfig *OAuthConfigWithSecret `json:"config,omitempty" yaml:"config,omitempty" jsonschema:"OAuth/OIDC configuration. Required when type is 'oauth2'. Defines OAuth grant types, redirect URIs, client authentication, and PKCE settings."`
 }
 
-// InitiatorRequest holds the original HTTP request data that triggered the flow.
+// InitiatorRequest holds the original HTTP request data that triggered the flow (e.g. the OAuth2
+// authorization request). It is persisted with the flow context for redirect-based flows.
 type InitiatorRequest struct {
 	Headers     map[string][]string `json:"headers,omitempty"     yaml:"headers,omitempty"`
 	QueryParams map[string][]string `json:"queryParams,omitempty" yaml:"queryParams,omitempty"`
+}
+
+// CurrentRequest holds the HTTP request data driving the current flow step. Unlike InitiatorRequest
+// it is transient: it rides on the request context for one execution and is never persisted.
+type CurrentRequest struct {
+	Headers     map[string][]string
+	QueryParams map[string][]string
 }
 
 // NodeContext holds the context for a specific node in the flow execution.
@@ -1186,15 +1585,23 @@ func getDuration(startTime int64, endTime int64) int64 {
 
 // Subject identifies the principal for an access evaluation.
 type Subject struct {
-	Type       string                 `json:"type,omitempty"`
-	ID         string                 `json:"id"`
-	GroupIDs   []string               `json:"groupIds,omitempty"`
+	Category string `json:"category,omitempty"`
+	Type     string `json:"type,omitempty"`
+	// ID is optional: a federated identity with no local record is described by GroupIDs and
+	// RoleIDs alone.
+	ID       string   `json:"id"`
+	GroupIDs []string `json:"groupIds,omitempty"`
+	// RoleIDs names roles the subject holds without a stored assignment, such as those derived
+	// from an external attribute mapping. It is resolved server-side, like GroupIDs, and must never
+	// be populated from request input.
+	RoleIDs    []string               `json:"roleIds,omitempty"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 
 // AccessEvaluationResourceServer identifies the resource server for an access evaluation.
 type AccessEvaluationResourceServer struct {
 	ID         string                 `json:"id,omitempty"`
+	ResourceID string                 `json:"resourceId,omitempty"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 
@@ -1210,6 +1617,9 @@ type AccessEvaluationRequest struct {
 	ResourceServer AccessEvaluationResourceServer `json:"resourceServer"`
 	Permission     Permission                     `json:"permission"`
 	Context        map[string]interface{}         `json:"context,omitempty"`
+	// OUID, when set, evaluates the subject's role assignments, direct and through its groups, in
+	// this organization unit only. Without it, assignments made in any organization unit count.
+	OUID string `json:"ouId,omitempty"`
 }
 
 // AccessEvaluationResponse represents a single fine-grained access evaluation response.
@@ -1222,6 +1632,11 @@ type AccessEvaluationResponse struct {
 type AccessEvaluationsRequest struct {
 	Evaluations []AccessEvaluationRequest `json:"evaluations"`
 }
+
+// AccessEvaluationContextAuthorizationDetails is the evaluation context key for authorization details. Its value
+// is a JSON array (json.RawMessage) of the requested details during a flow and of the granted details at the token
+// endpoint.
+const AccessEvaluationContextAuthorizationDetails = "authorization_details"
 
 // AccessEvaluationsResponse represents a batched fine-grained access evaluation response.
 type AccessEvaluationsResponse struct {
@@ -1249,6 +1664,9 @@ type Event struct {
 
 	// Status indicates the outcome of the event (e.g., "success", "failure", "in_progress").
 	Status string `json:"status"`
+
+	// ServerIdentifier is the identifier of the deployment that generated the event.
+	ServerIdentifier string `json:"server_identifier"`
 
 	// Data contains event-specific structured data.
 	// Use this to store any additional information relevant to the event type.
@@ -1358,7 +1776,10 @@ type CryptoDetails struct {
 
 // PublicKeyInfo describes a public key returned by GetPublicKeys.
 type PublicKeyInfo struct {
-	KeyID               string
+	KeyID string // Unique identifier for the key within the system.
+	Kid   string // Key ID used in JWKS and JWT headers; may be the same as KeyID or thumbprint
+	// Algorithm is the JWA algorithm name for this key (e.g. "RS256", "ES256", "EdDSA", "ML-DSA-65").
+	// Providers must always populate it: it is published verbatim as the JWK "alg" with no fallback.
 	Algorithm           string
 	PublicKey           gocrypto.PublicKey
 	Thumbprint          string

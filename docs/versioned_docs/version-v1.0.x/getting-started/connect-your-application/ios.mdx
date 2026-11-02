@@ -4,7 +4,7 @@ title: iOS Quickstart
 docType: quickstart
 sidebar_position: 8
 persona: app
-description: Add {{ProductName}} authentication to an iOS application using the ThunderID iOS SDK for SwiftUI.
+description: Add {{ProductName}} authentication to an iOS application using the {{ProductName}} iOS SDK.
 ---
 
 import {
@@ -20,7 +20,9 @@ import {
 
 # iOS Quickstart
 
-Use this guide to add <ProductName /> authentication to an iOS application using the <ProductName /> iOS SDK for SwiftUI.
+Use this guide to add <ProductName /> authentication to an iOS application using the <code><ProductName /> iOS SDK</code>.
+
+<SdkQuickstartDownload packageId="ios" sample="quickstarts/ios" icon={<IOSLogo size={22} />} promptFlow="redirect-based" />
 
 <TutorialHero>
 
@@ -38,10 +40,6 @@ Use this guide to add <ProductName /> authentication to an iOS application using
 <TutorialHeroItem icon={<FileCode />}>iOS 16+ deployment target</TutorialHeroItem>
 
 </TutorialHero>
-
-:::tip Example Source Code
-Check out the complete <RepoLink path="/tree/main/sdks/ios/Samples/Quickstart">iOS Quickstart Sample</RepoLink> in the <ProductName /> repository.
-:::
 
 <Stepper stepNode="h2" as="h2">
 
@@ -72,6 +70,12 @@ Once it's running, the console is available at [https://localhost:8090/console](
 
 :::warning
 Copy the **Application ID** from the **General** tab, under **Quick Copy**. You'll need it when configuring the SDK.
+:::
+
+10. Open the **Advanced Settings** tab, turn on **Dev Mode** under **Platform Attestation**, then click **Save**.
+
+:::warning Platform attestation
+Mobile applications prove their binary identity before starting a sign-in flow. If platform attestation is not configured and **Dev Mode** is off, sign-in fails with `FES-1016`, `Attestation not configured`. Dev Mode is a bypass for local development; configure platform attestation for production.
 :::
 
 ## Create an iOS App
@@ -226,22 +230,7 @@ You should see the sign-in form. Enter your test user credentials and tap **Subm
 
 ## What's Next
 
-<div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '1.5rem'}}>
-
-  <a href="../../../guides/flows/what-are-flows" style={{textDecoration: 'none', color: 'inherit'}}>
-    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
-      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Upgrade the sign-in flow</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Add MFA, passkeys, or social login to your flow, no app code changes required.</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>Flow Designer →</div>
-    </div>
-  </a>
-
-  <a href="../../../../sdks/ios/overview" style={{textDecoration: 'none', color: 'inherit'}}>
-    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
-      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>iOS SDK Reference</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Explore the full API reference for the <ProductName /> iOS SDK.</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>API Reference →</div>
-    </div>
-  </a>
-
-</div>
+<NextSteps>
+  <NextStepsCard title="Upgrade the sign-in flow" href="../../../guides/flows/what-are-flows" description="Add MFA, passkeys, or social login to your flow, no app code changes required." cta="Flow Designer" />
+  <NextStepsCard title="iOS SDK Reference" href="../../../sdks-and-tools/ios/overview" description="Explore the full API reference for the iOS SDK." cta="API Reference" />
+</NextSteps>

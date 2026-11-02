@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {ServerConfigLayers} from '@thunderid/utils';
 import type {JSX} from 'react';
 
 /**
@@ -14,6 +15,9 @@ export const ConnectionTypes = {
   TWILIO: 'twilio',
   VONAGE: 'vonage',
   SMS_GATEWAY: 'sms-gateway',
+  AUTHZEN_PDP: 'authzen-pdp',
+  SMTP: 'email-smtp',
+  HTTP: 'http',
 } as const;
 
 export type ConnectionType = (typeof ConnectionTypes)[keyof typeof ConnectionTypes];
@@ -31,6 +35,7 @@ export type ConnectionCategory =
   | 'identity-verification'
   | 'crm'
   | 'data-store'
+  | 'authorization'
   | 'trusted-idp'
   | 'custom';
 
@@ -40,6 +45,9 @@ export type ConnectionCategory =
 export const ConnectionInstanceCategories = {
   IDENTITY_PROVIDER: 'identity-provider',
   SMS_PROVIDER: 'sms-provider',
+  AUTHORIZATION_PDP: 'authorization-pdp',
+  EMAIL_PROVIDER: 'email-provider',
+  HTTP: 'http',
 } as const;
 
 export type ConnectionInstanceCategory =
@@ -53,6 +61,8 @@ export interface ConnectionInstance {
   name: string;
   description?: string;
   type: ConnectionType;
+  /** The organization unit the connection belongs to. */
+  ouId?: string;
   categories: ConnectionInstanceCategory[];
   /**
    * Present only for trust-only OIDC instances (trusted issuers); absent for plain federation
@@ -80,6 +90,13 @@ export interface ConnectionListResponse {
   connections: ConnectionInstance[];
   links: ConnectionListLink[];
 }
+
+/**
+ * Resource types reported in a connection's usages.
+ */
+export const ConnectionUsageResourceTypes = {
+  FLOW: 'flow',
+} as const;
 
 /**
  * A single resource that references a connection (e.g. a flow that uses it).
@@ -122,10 +139,9 @@ export interface AttributeMapping {
 
 /**
  * Resolves which local user type a federated identity maps to (selecting its attribute-mapping
- * profile). `default` is the fixed fallback type. When `externalAttribute` and `valueMapping` are
- * set, the type is derived from the
- * value of that external attribute (`valueMapping` maps an external value to a local user type),
- * falling back to `default`.
+ * profile). `default` is the fixed fallback type. When `externalAttribute` and `valueMapping` are set,
+ * the type is derived from the value of that external attribute (`valueMapping` maps an external value
+ * to a local user type), falling back to `default`.
  */
 export interface UserTypeResolution {
   default: string;
@@ -151,12 +167,96 @@ export interface AccountLinking {
 }
 
 /**
+ * A local role, group, or permission an authorization mapping value confers. For `role` and `group`,
+ * `id` identifies the target directly. For `permission`, `resourceServerId` and `permission` together
+ * identify it, since a permission only means something on a resource server.
+ */
+export type AuthorizationTargetType = 'role' | 'group' | 'permission';
+
+export interface AuthorizationTarget {
+  type: AuthorizationTargetType;
+  id?: string;
+  resourceServerId?: string;
+  permission?: string;
+}
+
+/**
+ * How an authorization rule compares the claim's resolved value against its configured `value`.
+ * `equals`/`not_equals` are valid for a single-valued claim (a `string` mapping with no delimiter,
+ * `number`, or `boolean`). The ordering operators (`greater_than`/`less_than`/`greater_than_or_equal`/
+ * `less_than_or_equal`) are only valid when the mapping's `valueType` is `number`. `includes`/
+ * `not_includes` are valid only for a multi-valued claim (`array`, or `string` with a delimiter set).
+ */
+export type AuthorizationOperator =
+  | 'equals'
+  | 'not_equals'
+  | 'greater_than'
+  | 'less_than'
+  | 'greater_than_or_equal'
+  | 'less_than_or_equal'
+  | 'includes'
+  | 'not_includes';
+
+/** The declared type of a claim's value, used to decide which operators are valid and how the
+ * configured rule value is compared. Defaults to `string` when omitted. */
+export type AuthorizationValueType = 'string' | 'number' | 'boolean' | 'array';
+
+/**
+ * A single rule within an authorization mapping: if any one of the claim's resolved values satisfies
+ * `operator` against `value`, the rule's `targets` are granted.
+ */
+export interface AuthorizationRule {
+  operator: AuthorizationOperator;
+  value: string;
+  targets: AuthorizationTarget[];
+}
+
+/**
+ * Maps values of a single external claim to local roles, groups, or permissions. `claim` is the
+ * source claim, which may be a dot-notation path into a nested claim. A claim value that is a list
+ * contributes each element; a string value splits on `delimiter` when one is configured, otherwise it
+ * is a single value. A rule matches when any one of the claim's resolved values satisfies it; every
+ * matched rule contributes to the union of what it maps to, and an unmatched value confers nothing.
+ * `delimiter` is only meaningful when `valueType` is `string` (or unset).
+ */
+export interface AuthorizationRuleMapping {
+  claim: string;
+  valueType?: AuthorizationValueType;
+  delimiter?: string;
+  values: AuthorizationRule[];
+}
+
+/**
+ * Feeds every value of a single external claim directly onto local roles, groups, or permissions of
+ * `targetType`, using each value as the name (or permission string) to look up, rather than an
+ * explicit per-value rule table. A value with no unambiguous match (none, or more than one, since role
+ * and group names are only unique within an organization unit) confers nothing. `resourceServerId` is
+ * required when `targetType` is `permission`, and not allowed otherwise.
+ */
+export interface AuthorizationDirectMapping {
+  claim: string;
+  delimiter?: string;
+  targetType: AuthorizationTargetType;
+  resourceServerId?: string;
+}
+
+/**
+ * A connection's authorization mapping configuration: explicit value-to-target rules, direct
+ * name-based lookups, or both together, in which case their resolved targets union.
+ */
+export interface AuthorizationMapping {
+  rules?: AuthorizationRuleMapping[];
+  direct?: AuthorizationDirectMapping[];
+}
+
+/**
  * External-to-local attribute mapping configuration for an authentication provider.
  */
 export interface AttributeConfiguration {
   userTypeResolution: UserTypeResolution;
   userTypeAttributeMappings?: UserTypeAttributeMapping[];
   accountLinking?: AccountLinking;
+  authorizationMapping?: AuthorizationMapping;
 }
 
 /**
@@ -226,6 +326,36 @@ export interface VonageConnectionRequest {
 }
 
 /**
+ * How ThunderID authenticates itself on an outbound call. `type` selects the method and
+ * `properties` carries that method's field values, so a method the console was not built
+ * against still round-trips. The fields each method takes come from GET /connections/meta.
+ *
+ * A field the method marks as a credential is write-only: returned masked as "******", and
+ * omitted on update to keep the stored value.
+ */
+export interface OutboundAuthConfig {
+  type: string;
+  properties?: Record<string, string>;
+}
+
+/**
+ * Request payload for an SMTP email connection.
+ */
+export interface SMTPConnectionRequest {
+  name: string;
+  description?: string;
+  host: string;
+  port: number;
+  fromAddress: string;
+  /** Display name shown beside the address in the From header. Omit for the bare address. */
+  fromName?: string;
+  /** Defaults to starttls when omitted. `none` cannot carry credentials. */
+  tls?: 'none' | 'starttls' | 'implicit';
+  /** Omit to send no credentials. */
+  authentication?: OutboundAuthConfig;
+}
+
+/**
  * Request payload for a generic HTTP SMS gateway connection — a webhook ThunderID calls to
  * deliver the message, for SMS providers without a dedicated vendor integration.
  */
@@ -236,8 +366,58 @@ export interface SMSGatewayConnectionRequest {
   url: string;
   httpMethod: string;
   contentType: string;
-  /** Comma-separated "Key: value" pairs sent with every request. */
   httpHeaders?: string;
+  /** Omit to send no credentials. A method other than `none` requires an HTTPS URL. */
+  authentication?: OutboundAuthConfig;
+}
+
+export interface AuthZENPDPConnectionRequest {
+  name: string;
+  description?: string;
+  endpoint: string;
+  batchEndpoint?: string;
+  timeoutMs?: number;
+  retryCount?: number;
+  authentication?: OutboundAuthConfig;
+  subjectAttributeMappings?: AuthZENPDPSubjectAttributeMapping[];
+}
+
+export type OutboundAuthentication = OutboundAuthConfig;
+export type OutboundAuthenticationResponse = OutboundAuthConfig;
+
+/**
+ * Request payload for an HTTP endpoint connection, a service that flow steps call.
+ */
+export interface HTTPConnectionRequest {
+  name: string;
+  description?: string;
+  /** Must be https when authentication is set. */
+  url: string;
+  /** 1 to 20000. Omit for the 10000 default. */
+  timeoutMs?: number;
+  /** Plain headers sent with every request. A PUT replaces the whole list. */
+  headers?: HTTPHeader[];
+  /** Omit to send no credentials. A method other than `none` requires an https URL. */
+  authentication?: OutboundAuthConfig;
+}
+
+export interface HTTPHeader {
+  name: string;
+  value: string;
+}
+
+export interface AuthZENPDPSubjectAttributeMapping {
+  entityType: string;
+  attributes: AuthZENPDPSubjectAttribute[];
+}
+
+export interface AuthZENPDPSubjectAttribute {
+  attribute: string;
+  pdpAttribute?: string;
+}
+
+export interface SubjectMappingValues {
+  subjectAttributeMappings?: AuthZENPDPSubjectAttributeMapping[];
 }
 
 export type ConnectionRequest =
@@ -246,15 +426,30 @@ export type ConnectionRequest =
   | OAuth2ConnectionRequest
   | TwilioConnectionRequest
   | VonageConnectionRequest
-  | SMSGatewayConnectionRequest;
+  | SMSGatewayConnectionRequest
+  | AuthZENPDPConnectionRequest
+  | SMTPConnectionRequest
+  | HTTPConnectionRequest;
 
 /**
- * Vendor response — secrets returned masked as "******". A superset carrying every vendor's
+ * Request payload for creating a connection of any type. Every connection is owned by an organization unit,
+ * chosen once at creation; an update does not carry it, since the owner cannot change.
+ */
+export type CreateConnectionRequest = ConnectionRequest & {
+  /** The organization unit that will own the connection. */
+  ouId: string;
+};
+
+/**
+ * Vendor response — secrets are never returned. A superset carrying every vendor's
  * fields (IdP + SMS); the shared form mapping reads only the fields relevant to each type.
  */
-export interface ConnectionResponse extends OIDCConnectionRequest {
+export interface ConnectionResponse extends Partial<OIDCConnectionRequest> {
   id: string;
   type: ConnectionType;
+  name: string;
+  /** The organization unit the connection belongs to. */
+  ouId: string;
   /** SMS (Twilio) fields. */
   accountSid?: string;
   authToken?: string;
@@ -266,8 +461,24 @@ export interface ConnectionResponse extends OIDCConnectionRequest {
   /** SMS gateway fields. */
   url?: string;
   httpMethod?: string;
-  contentType?: string;
   httpHeaders?: string;
+  contentType?: string;
+  /** AuthZEN PDP fields. */
+  endpoint?: string;
+  batchEndpoint?: string;
+  timeoutMs?: number | string;
+  retryCount?: number | string;
+  subjectAttributeMappings?: AuthZENPDPSubjectAttributeMapping[];
+  /** Email (SMTP) fields. */
+  host?: string;
+  port?: number;
+  fromAddress?: string;
+  fromName?: string;
+  tls?: string;
+  /** HTTP endpoint plain headers. The URL and timeout share the fields above. */
+  headers?: HTTPHeader[] | null;
+  /** Outbound authentication returned with credential values masked. */
+  authentication?: OutboundAuthenticationResponse;
 }
 
 /**
@@ -278,6 +489,7 @@ export interface ConnectionResponse extends OIDCConnectionRequest {
  * - coming-soon: a placeholder tile for a not-yet-wired vendor (no API calls).
  */
 export type ConnectionPresentation = 'branded' | 'custom' | 'coming-soon';
+export type ConnectionGeneralSettingsCardCopy = 'configuration' | 'credentials';
 
 /**
  * Frontend-owned presentation metadata for a vendor.
@@ -295,6 +507,16 @@ export interface ConnectionVendorMeta {
   comingSoon?: boolean;
   /** Whether this connection provisions users and therefore exposes attribute mapping (IdPs only). */
   supportsAttributeMapping?: boolean;
+  /** Whether this connection exposes outbound service authentication settings. */
+  supportsAuthentication?: boolean;
+  /** Changing the `url` origin requires the stored credentials to be entered again. */
+  reentersCredentialsOnOriginChange?: boolean;
+  /** Whether the detail page lists the resources that use this connection. */
+  showsUsages?: boolean;
+  /** Whether this connection exposes subject attribute mappings for authorization requests. */
+  supportsSubjectMapping?: boolean;
+  /** Copy variant for the General tab settings card. */
+  generalSettingsCardCopy?: ConnectionGeneralSettingsCardCopy;
   /** i18n key for the create-wizard setup hint (vendors that need an OAuth app registered first). */
   createHintKey?: string;
 }
@@ -315,4 +537,68 @@ export interface ConnectionCardModel {
   comingSoon: boolean;
   /** Route to navigate to when the card is activated; null for coming-soon. */
   navTarget: string | null;
+  /** Whether this card is the default email sender. */
+  isDefault?: boolean;
 }
+
+/**
+ * One field of an authentication method, as the server describes it. It uses the same
+ * vocabulary as an entity type's property schema, so the console can render a method it was
+ * never compiled against.
+ */
+export interface OutboundAuthField {
+  key: string;
+  type: string;
+  required?: boolean;
+  /** A secret: rendered write-only, omitted on update to keep the stored value. */
+  credential?: boolean;
+  /** When present, the value must be one of these choices. */
+  enum?: string[];
+  /** When present, the pattern the value must match. Compiled client-side. */
+  regex?: string;
+  /** Plain text, or an i18n template pattern of the form "{{t(namespace:key)}}". */
+  displayName: string;
+}
+
+/**
+ * One authentication method a vendor supports, with its fields in render order.
+ */
+export interface OutboundAuthMethod {
+  type: string;
+  displayName: string;
+  /** The method's fields, in render order. Absent for a method that takes none. */
+  fields?: OutboundAuthField[];
+  /**
+   * Describes properties whose names the administrator chooses, such as API-key header names.
+   * Its `key` is unused; each entered name becomes a property.
+   */
+  additionalProperties?: OutboundAuthField;
+}
+
+/**
+ * One entry of GET /connections/meta: what a vendor can be configured with. Only authentication
+ * is described today; the rest of the form is still statically known to the console.
+ */
+export interface ConnectionMetaVendor {
+  vendor: string;
+  authentication: {
+    methods: OutboundAuthMethod[];
+  };
+}
+
+/**
+ * Response of GET /connections/meta. It is a list in both modes: without a vendor filter it
+ * describes every registered vendor, and with one it holds that vendor alone.
+ */
+export interface ConnectionMetaResponse {
+  vendors: ConnectionMetaVendor[];
+}
+
+/**
+ * Value of the `notification` server-config section.
+ */
+export interface NotificationConfigValue {
+  defaultEmailSenderId?: string;
+}
+
+export type NotificationConfigResponse = ServerConfigLayers<NotificationConfigValue>;

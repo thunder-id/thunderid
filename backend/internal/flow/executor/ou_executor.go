@@ -13,7 +13,6 @@ import (
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -24,7 +23,7 @@ const (
 // ouExecutor is responsible for creating organizational units (OUs) within the system.
 type ouExecutor struct {
 	providers.Executor
-	ouService         ou.OrganizationUnitServiceInterface
+	ouService         providers.OrganizationUnitProvider
 	authnProvider     providers.AuthnProviderManager
 	entityTypeService entitytype.EntityTypeServiceInterface
 	logger            *log.Logger
@@ -35,7 +34,7 @@ var _ providers.Executor = (*ouExecutor)(nil)
 // newOUExecutor creates a new instance of OUExecutor with the given parameters.
 func newOUExecutor(
 	flowFactory core.FlowFactoryInterface,
-	ouService ou.OrganizationUnitServiceInterface,
+	ouService providers.OrganizationUnitProvider,
 	authnProvider providers.AuthnProviderManager,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 ) *ouExecutor {
@@ -97,7 +96,7 @@ func (o *ouExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRes
 			if svcErr.Code != authnprovidermgr.ErrorUserNotFound.Code &&
 				svcErr.Code != authnprovidermgr.ErrorAmbiguousUser.Code {
 				execResp.Status = providers.ExecFailure
-				execResp.Error = &ErrFailedToIdentifyUser
+				execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
 				return execResp, nil
 			}
 			logger.Debug(ctx.Context, "User not found or ambiguous, proceeding with OU creation")
@@ -130,9 +129,9 @@ func (o *ouExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRes
 			execResp.Inputs = o.GetRequiredInputs(ctx)
 
 			switch svcErr.Code {
-			case ou.ErrorOrganizationUnitNameConflict.Code:
+			case providers.ErrorOrganizationUnitNameConflict.Code:
 				execResp.Error = &ErrOUNameConflict
-			case ou.ErrorOrganizationUnitHandleConflict.Code:
+			case providers.ErrorOrganizationUnitHandleConflict.Code:
 				execResp.Error = &ErrOUHandleConflict
 			default:
 				execResp.Error = tidcommon.CustomServiceError(ErrOUCreationFailed, tidcommon.I18nMessage{
@@ -208,7 +207,7 @@ func (o *ouExecutor) getDefaultOUID(ctx *providers.NodeContext) (string, error) 
 
 	selfRegEnabledSchemas := make([]entitytype.EntityType, 0)
 	for _, userType := range ctx.Application.AllowedUserTypes {
-		et, svcErr := o.entityTypeService.GetEntityTypeByName(ctx.Context,
+		et, svcErr := o.entityTypeService.GetEntityTypeByHandle(ctx.Context,
 			entitytype.TypeCategoryUser, userType)
 		if svcErr != nil {
 			return "", fmt.Errorf("failed to retrieve entity type for user type %q: %s",

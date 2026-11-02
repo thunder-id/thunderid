@@ -1,14 +1,16 @@
-# ThunderID Console E2E Tests
+# ThunderID Data Plane E2E Tests
 
-End-to-end automation test suite for the Console, built with [Playwright](https://playwright.dev/).
+End-to-end automation test suite for the Data Plane, built with [Playwright](https://playwright.dev/). It runs against the quickstart pack (a Control Plane, the Data Plane it manages, and auth-dp) and drives the Data Plane at `https://localhost:8090`: its Admin Console (users, agents, groups, roles), and the business applications that sign in through it (the React SDK sample, the Wayfinder sample).
+
+Applications, connections, flows, user types and settings are authored on the Control Plane or through the API, so the Console pages for them are not part of this suite; the API and component tests cover them.
 
 ## 📋 Overview
 
-This framework uses the **Page Object Model (POM)** design pattern and Playwright's **Global Setup / Project Dependencies** to handle authentication efficiently.
+This framework uses the **Page Object Model (POM)** design pattern and a per-worker authentication fixture to handle login efficiently.
 
 ### Key Features
 
-- **Centralized Authentication**: Login once via `setup` project, reuse session state across all tests.
+- **Per-Worker Authentication**: Each test worker logs in on first use and reuses its own session state for the rest of its tests. This is deliberate, not just an optimization: the backend rotates refresh tokens and revokes the whole token family if a used one is replayed, so workers cannot share a single login without racing each other's silent token refresh.
 - **Cross-Browser Support**: Configured for Chromium, Firefox, and WebKit (Safari).
 - **Token-Based Auth Support**: Specialized utilities to capture and inject OIDC/OAuth2 tokens for the ThunderID backend.
 - **Robustness**: Auto-retry logic, network idle waits, and intelligent locator handling.
@@ -46,16 +48,16 @@ From the repository root, build the product if you haven't already:
 make build
 ```
 
-This produces the server distribution and sample app packages under `target/dist/`.
+This produces the quickstart pack and the sample app packages under `target/dist/`.
 
 ### Start the Server
 
-Extract the server distribution, run setup (which bootstraps default resources and registers sample app OAuth clients), then start the server:
+Extract the quickstart pack, run setup (which bootstraps all three deployments and the Service Desk Admin account the suite signs in with), then start it:
 
 ```bash
 mkdir -p tests/e2e/server
-unzip "target/dist/thunderid-*.zip" -d tests/e2e/server
-cd tests/e2e/server && ./setup.sh
+unzip "target/dist/thunderid-quickstart-*.zip" -d tests/e2e/server
+cd tests/e2e/server/thunderid-quickstart-* && SERVICE_DESK_USERNAME=admin SERVICE_DESK_PASSWORD=admin ./setup.sh
 ./start.sh &
 ```
 
@@ -103,6 +105,8 @@ To customize the CI environment, add the following to **Settings > Secrets and v
 | `PLAYWRIGHT_TEST_USER_PASSWORD` | **Secret** | Test User Password  | `admin`                  |
 | `PLAYWRIGHT_WORKERS`            | Variable   | Parallel Processing | `6`                      |
 | `PLAYWRIGHT_DEBUG_AUTH`         | Variable   | Auth Debug Logs     | `false`                  |
+
+CI runs the suite in two phases against two independently provisioned servers: everything except the `@wayfinder`-tagged tests first, then the Wayfinder tests alone against a fresh server with its own sample app and mock SMTP inbox. `run-e2e.sh` reproduces both phases locally (see its `--phase` flag).
 
 ---
 
@@ -153,7 +157,7 @@ npx playwright test --grep-invert @slow
 When running tests in parallel or CI, reports are generated as blobs. To merge them into a single HTML report:
 
 ```bash
-npm run posttest
+npm run merge-reports
 ```
 
 ---
@@ -162,28 +166,28 @@ npm run posttest
 
 ### Authentication Flow
 
-We use Playwright's **Project Dependencies** pattern. The `setup` project runs first, authenticates the user, and saves the session state (cookies, localStorage, sessionStorage) to a JSON file. Later test projects import this state.
+There is no dedicated login project. The `authenticatedPage` fixture (`console-admin-auth-utils.ts`) checks a per-worker session file on each test's first use: if it's missing or the token looks expired, it performs an inline login and saves the result; otherwise it reuses the saved state. The file is keyed by `TEST_PARALLEL_INDEX`, so each worker maintains its own session and never shares a refresh token with another worker.
 
 ```mermaid
 sequenceDiagram
-    participant Runner as Test Runner
-    participant Setup as Setup Project (auth.setup.ts)
-    participant AuthFile as .auth/console-admin.json
-    participant Test as Test Project (Chromium/WebKit)
+    participant Test as Test (worker N)
+    participant AuthFile as .auth/console-admin-N.json
     participant App as Console
 
-    Note over Runner, App: Phase 1: Authentication Setup
-    Runner->>Setup: Run auth.setup.ts
-    Setup->>App: Perform Login (UI Interaction)
-    App-->>Setup: Session Tokens (OIDC/OAuth2)
-    Setup->>AuthFile: Save Storage State (JSON)
-
-    Note over Runner, App: Phase 2: Test Execution
-    Runner->>Test: Run *.spec.ts
+    Note over Test, App: First authenticated test on this worker
     Test->>AuthFile: Load Storage State
+    alt Missing or expired
+        Test->>App: Perform Login (UI Interaction)
+        App-->>Test: Session Tokens (OIDC/OAuth2)
+        Test->>AuthFile: Save Storage State (JSON)
+    end
     Test->>App: Inject Tokens & Navigate
     Note right of App: User is already logged in!
     Test->>App: Execute Test Actions (POM)
+
+    Note over Test, App: Later tests on the same worker
+    Test->>AuthFile: Load Storage State (still valid)
+    Test->>App: Inject Tokens & Navigate
 ```
 
 ### Directory Structure
@@ -295,4 +299,3 @@ test("verify feature works", async ({ myFeaturePage }) => {
 ## 🔧 Troubleshooting
 
 - **"Tokens expired"**: The framework handles this automatically via `console-admin-auth-utils.ts`. It detects expired tokens and performs an inline login if necessary.
-- **Double Test Execution**: This happens if `playwright.config.ts` regex matches both setup and spec files. Ensure `setup` project only matches `**/*.setup.ts`.

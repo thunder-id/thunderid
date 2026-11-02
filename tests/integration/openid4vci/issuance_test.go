@@ -41,7 +41,8 @@ var (
 	}
 
 	vciUserSchema = testutils.UserType{
-		Name: "openid4vci-test-person",
+		Handle:      "openid4vci-test-person",
+		DisplayName: "Openid4vci Test Person",
 		Schema: map[string]any{
 			"username":    map[string]any{"type": "string"},
 			"password":    map[string]any{"type": "string", "credential": true},

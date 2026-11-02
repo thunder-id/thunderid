@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package entitytype
@@ -87,7 +87,7 @@ func Initialize(
 func initializeStore(storeMode serverconst.StoreMode, cacheManager cache.CacheManagerInterface) (
 	entityTypeStoreInterface, providers.Transactioner, error) {
 	entityTypeByIDCache := cache.GetCache[*EntityType](cacheManager, "EntityTypeByIDCache")
-	entityTypeByNameCache := cache.GetCache[*EntityType](cacheManager, "EntityTypeByNameCache")
+	entityTypeByHandleCache := cache.GetCache[*EntityType](cacheManager, "EntityTypeByHandleCache")
 
 	switch storeMode {
 	case serverconst.StoreModeComposite:
@@ -96,7 +96,7 @@ func initializeStore(storeMode serverconst.StoreMode, cacheManager cache.CacheMa
 		if err != nil {
 			return nil, nil, err
 		}
-		cachedDBStore := newCachedBackedEntityTypeStore(dbStore, entityTypeByIDCache, entityTypeByNameCache)
+		cachedDBStore := newCachedBackedEntityTypeStore(dbStore, entityTypeByIDCache, entityTypeByHandleCache)
 		return newCompositeEntityTypeStore(fileStore, cachedDBStore), transactioner, nil
 
 	case serverconst.StoreModeDeclarative:
@@ -108,7 +108,7 @@ func initializeStore(storeMode serverconst.StoreMode, cacheManager cache.CacheMa
 		if err != nil {
 			return nil, nil, err
 		}
-		return newCachedBackedEntityTypeStore(dbStore, entityTypeByIDCache, entityTypeByNameCache), transactioner, nil
+		return newCachedBackedEntityTypeStore(dbStore, entityTypeByIDCache, entityTypeByHandleCache), transactioner, nil
 	}
 }
 

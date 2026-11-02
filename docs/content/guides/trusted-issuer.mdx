@@ -145,6 +145,28 @@ configuration:
         requiredClaims:
           - claim: "ouId"
             value: "tenant-123"
+        # Optional, for a control plane: the claim a caller's id is recorded from, and the issuer's
+        # user endpoint the recorded users' names are read from. See the configuration reference
+        # for `server.security.trusted_issuer.user_id_claim` and `user_lookup`.
+        userIdClaim: "sub"
+        userLookup:
+          url: "https://auth.example.com/users/{id}"
+          tokenUrl: "https://auth.example.com/oauth2/token"
+          clientId: "control-plane-lookup"
+          # The client secret comes from an existing Kubernetes Secret, mounted into the pods and read
+          # by the server at load time. It is never a chart value.
+          clientSecretRef:
+            name: "thunderid-user-lookup"
+            key: "client-secret"
+          scopes: ["internal_user_mgt_view"]
+          nameAttribute: "username"
+          cacheTtl: 300
+```
+
+Create the Secret before installing the chart:
+
+```bash
+kubectl create secret generic thunderid-user-lookup --from-literal=client-secret=<lookup-client-secret>
 ```
 
 To configure the Console without editing `apps/console/config.js` directly, set `configuration.consoleClient.trustedIssuer` in the chart values. The fields mirror those in [Configure the Console](#configure-the-console) but use camelCase:

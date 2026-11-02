@@ -57,6 +57,22 @@ func (p *defaultEntityProvider) SearchEntities(
 	return result, nil
 }
 
+// GetLinkedEntities returns the entities linked to a subject at a connection, with OUHandle set.
+func (p *defaultEntityProvider) GetLinkedEntities(
+	idpID, sub string,
+) ([]*providers.Entity, *EntityProviderError) {
+	ctx := security.WithRuntimeContext(context.Background())
+	entities, err := p.entitySvc.GetLinkedEntities(ctx, idpID, sub)
+	if err != nil {
+		return nil, mapEntityError(err)
+	}
+	result := make([]*providers.Entity, 0, len(entities))
+	for i := range entities {
+		result = append(result, toProviderEntity(&entities[i]))
+	}
+	return result, nil
+}
+
 // GetEntity retrieves an entity by ID.
 func (p *defaultEntityProvider) GetEntity(
 	entityID string,
@@ -69,17 +85,12 @@ func (p *defaultEntityProvider) GetEntity(
 	return toProviderEntity(result), nil
 }
 
-// CreateEntity creates a new entity.
-func (p *defaultEntityProvider) CreateEntity(
-	e *providers.Entity, systemCredentials json.RawMessage,
+// GetEntityProfile retrieves an entity's profile by ID, without reading its runtime state.
+func (p *defaultEntityProvider) GetEntityProfile(
+	entityID string,
 ) (*providers.Entity, *EntityProviderError) {
-	if e == nil {
-		return nil, NewEntityProviderError(ErrorCodeInvalidRequestFormat, "Invalid request",
-			"Entity cannot be nil")
-	}
 	ctx := security.WithRuntimeContext(context.Background())
-	svcEntity := toServiceEntity(e)
-	result, err := p.entitySvc.CreateEntity(ctx, svcEntity, systemCredentials)
+	result, err := p.entitySvc.GetEntityProfile(ctx, entityID)
 	if err != nil {
 		return nil, mapEntityError(err)
 	}
@@ -180,6 +191,18 @@ func (p *defaultEntityProvider) GetTransitiveEntityGroups(
 	result := make([]providers.EntityGroup, len(groups))
 	copy(result, groups)
 	return result, nil
+}
+
+// GetTransitiveGroupAncestors resolves the ancestor chain of a single group.
+func (p *defaultEntityProvider) GetTransitiveGroupAncestors(
+	groupID string,
+) ([]string, *EntityProviderError) {
+	ctx := security.WithRuntimeContext(context.Background())
+	ancestors, err := p.entitySvc.GetTransitiveGroupAncestors(ctx, groupID)
+	if err != nil {
+		return nil, mapEntityError(err)
+	}
+	return ancestors, nil
 }
 
 // ValidateEntityIDs validates that the given entity IDs exist.

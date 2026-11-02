@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {renderWithProviders, screen, fireEvent, waitFor, userEvent} from '@thunderid/test-utils';
+import {FlowExecutionFailure} from '@thunderid/utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Resource, Action, ResourceListResponse, ActionListResponse} from '../../../models/resource-server';
 import {ResourceNode, ActionNode} from '../ResourceTreeNode';
@@ -15,8 +16,11 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   return {
     ...actual,
     useConfig: () => ({getServerUrl: () => 'http://localhost:8090'}),
+    useToast: () => ({showToast: mockShowToast}),
   };
 });
+
+const mockShowToast = vi.fn();
 
 vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => ({error: vi.fn(), info: vi.fn(), debug: vi.fn()}),
@@ -262,6 +266,18 @@ describe('ActionNode', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', {name: 'Copy permission string'})).toBeInTheDocument();
     });
+  });
+
+  it('shows the reason a deletion flow refused the action', async () => {
+    const user = userEvent.setup();
+    mockDeleteAction.mockImplementation((_actionId: string, options: {onError: (error: Error) => void}) =>
+      options.onError(new FlowExecutionFailure({code: 'FET-1108'}, 'The action deletion flow did not complete')),
+    );
+    renderWithProviders(<ActionNode {...defaultProps} selectedNodeId={mockAction.id} />);
+
+    await user.click(screen.getByRole('button', {name: 'Delete'}));
+
+    expect(mockShowToast).toHaveBeenCalledWith('This action cannot be deleted in its current state.', 'error');
   });
 
   it('does not show the delete control on hover when read-only', async () => {

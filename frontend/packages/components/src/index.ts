@@ -8,10 +8,13 @@ export {default as CspOriginHint} from './CspOriginHint/CspOriginHint';
 export type {CspOriginHintProps} from './CspOriginHint/CspOriginHint';
 export {resolveCspHint} from './CspOriginHint/resolveCspHint';
 export type {CspResourceType, CspHint} from './CspOriginHint/resolveCspHint';
+export {default as DocumentTitle} from './DocumentTitle/DocumentTitle';
+export type {DocumentTitleProps} from './DocumentTitle/DocumentTitle';
 export {default as ExternalLinkConfirmDialog} from './ExternalLinkConfirm/ExternalLinkConfirmDialog';
 export type {ExternalLinkConfirmDialogProps} from './ExternalLinkConfirm/ExternalLinkConfirmDialog';
 export {default as useExternalLinkConfirmation} from './ExternalLinkConfirm/useExternalLinkConfirmation';
 export type {ExternalLinkConfirmationState} from './ExternalLinkConfirm/useExternalLinkConfirmation';
+export {default as GradientBorderButton} from './GradientBorderButton/GradientBorderButton';
 export {default as Helmet} from './Helmet/Helmet';
 export type {HelmetProps} from './Helmet/Helmet';
 export {default as FullScreenCreationWizardLayout} from './FullScreenCreationWizardLayout/FullScreenCreationWizardLayout';
@@ -20,6 +23,8 @@ export {default as I18nTextInput} from './I18nTextInput/I18nTextInput';
 export type {I18nTextInputLabels, I18nTextInputProps} from './I18nTextInput/I18nTextInput';
 export {default as ExternalLink} from './ExternalLink/ExternalLink';
 export type {ExternalLinkProps} from './ExternalLink/ExternalLink';
+export {default as useFlowListColumns} from './FlowList/useFlowListColumns';
+export type {FlowListColumnsOptions, FlowListRow} from './FlowList/useFlowListColumns';
 export {default as OrganizationUnitSummaryChip} from './OrganizationUnitSummaryChip/OrganizationUnitSummaryChip';
 export type {OrganizationUnitSummaryChipProps} from './OrganizationUnitSummaryChip/OrganizationUnitSummaryChip';
 export {default as PageLoader} from './PageLoader/PageLoader';
@@ -71,6 +76,21 @@ export {default as PageLoadingAnimation} from './lab/components/PageLoadingAnima
 export {default as ResourceAvatar} from './lab/components/ResourceAvatar';
 export {default as SettingsCard} from './lab/components/SettingsCard';
 export {default as UnsavedChangesBar} from './lab/components/UnsavedChangesBar';
+
+// Account status and the identity lifecycle operations
+export {default as AccessStatusIndicator} from './AccountStatus/AccessStatusIndicator';
+export type {AccessStatusIndicatorProps} from './AccountStatus/AccessStatusIndicator';
+export {default as AccessStatusBanner} from './AccountStatus/AccessStatusBanner';
+export type {AccessStatusBannerProps} from './AccountStatus/AccessStatusBanner';
+export {default as AccountStatusAction} from './AccountStatus/AccountStatusAction';
+export type {AccountStatusActionProps} from './AccountStatus/AccountStatusAction';
+export {
+  LIFECYCLE_FLOW_PURPOSES,
+  getLifecycleFlowPurposes,
+  useLifecycleFlows,
+} from './AccountStatus/useAvailableLifecycleActions';
+export type {LifecycleFlowsOptions} from './AccountStatus/useAvailableLifecycleActions';
+export type {LifecycleCategory} from './AccountStatus/lifecycleAction';
 
 // Utils
 export {default as getInitials} from './lab/utils/getInitials';

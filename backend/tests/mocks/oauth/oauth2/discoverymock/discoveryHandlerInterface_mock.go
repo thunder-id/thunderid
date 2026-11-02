@@ -16,10 +16,19 @@ func newDiscoveryHandlerInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *discoveryHandlerInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &discoveryHandlerInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -37,6 +46,98 @@ func (_m *discoveryHandlerInterfaceMock) EXPECT() *discoveryHandlerInterfaceMock
 	return &discoveryHandlerInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// HandleAuthorizationDetailsType provides a mock function for the type discoveryHandlerInterfaceMock
+func (_mock *discoveryHandlerInterfaceMock) HandleAuthorizationDetailsType(w http.ResponseWriter, r *http.Request) {
+	_mock.Called(w, r)
+	return
+}
+
+// discoveryHandlerInterfaceMock_HandleAuthorizationDetailsType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'HandleAuthorizationDetailsType'
+type discoveryHandlerInterfaceMock_HandleAuthorizationDetailsType_Call struct {
+	*mock.Call
+}
+
+// HandleAuthorizationDetailsType is a helper method to define mock.On call
+//   - w http.ResponseWriter
+//   - r *http.Request
+func (_e *discoveryHandlerInterfaceMock_Expecter) HandleAuthorizationDetailsType(w any, r any) *discoveryHandlerInterfaceMock_HandleAuthorizationDetailsType_Call {
+	return &discoveryHandlerInterfaceMock_HandleAuthorizationDetailsType_Call{Call: _e.mock.On("HandleAuthorizationDetailsType", w, r)}
+}
+
+func (_c *discoveryHandlerInterfaceMock_HandleAuthorizationDetailsType_Call) Run(run func(w http.ResponseWriter, r *http.Request)) *discoveryHandlerInterfaceMock_HandleAuthorizationDetailsType_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 http.ResponseWriter
+		if args[0] != nil {
+			arg0 = args[0].(http.ResponseWriter)
+		}
+		var arg1 *http.Request
+		if args[1] != nil {
+			arg1 = args[1].(*http.Request)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *discoveryHandlerInterfaceMock_HandleAuthorizationDetailsType_Call) Return() *discoveryHandlerInterfaceMock_HandleAuthorizationDetailsType_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *discoveryHandlerInterfaceMock_HandleAuthorizationDetailsType_Call) RunAndReturn(run func(w http.ResponseWriter, r *http.Request)) *discoveryHandlerInterfaceMock_HandleAuthorizationDetailsType_Call {
+	_c.Run(run)
+	return _c
+}
+
+// HandleAuthorizationDetailsTypes provides a mock function for the type discoveryHandlerInterfaceMock
+func (_mock *discoveryHandlerInterfaceMock) HandleAuthorizationDetailsTypes(w http.ResponseWriter, r *http.Request) {
+	_mock.Called(w, r)
+	return
+}
+
+// discoveryHandlerInterfaceMock_HandleAuthorizationDetailsTypes_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'HandleAuthorizationDetailsTypes'
+type discoveryHandlerInterfaceMock_HandleAuthorizationDetailsTypes_Call struct {
+	*mock.Call
+}
+
+// HandleAuthorizationDetailsTypes is a helper method to define mock.On call
+//   - w http.ResponseWriter
+//   - r *http.Request
+func (_e *discoveryHandlerInterfaceMock_Expecter) HandleAuthorizationDetailsTypes(w any, r any) *discoveryHandlerInterfaceMock_HandleAuthorizationDetailsTypes_Call {
+	return &discoveryHandlerInterfaceMock_HandleAuthorizationDetailsTypes_Call{Call: _e.mock.On("HandleAuthorizationDetailsTypes", w, r)}
+}
+
+func (_c *discoveryHandlerInterfaceMock_HandleAuthorizationDetailsTypes_Call) Run(run func(w http.ResponseWriter, r *http.Request)) *discoveryHandlerInterfaceMock_HandleAuthorizationDetailsTypes_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 http.ResponseWriter
+		if args[0] != nil {
+			arg0 = args[0].(http.ResponseWriter)
+		}
+		var arg1 *http.Request
+		if args[1] != nil {
+			arg1 = args[1].(*http.Request)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *discoveryHandlerInterfaceMock_HandleAuthorizationDetailsTypes_Call) Return() *discoveryHandlerInterfaceMock_HandleAuthorizationDetailsTypes_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *discoveryHandlerInterfaceMock_HandleAuthorizationDetailsTypes_Call) RunAndReturn(run func(w http.ResponseWriter, r *http.Request)) *discoveryHandlerInterfaceMock_HandleAuthorizationDetailsTypes_Call {
+	_c.Run(run)
+	return _c
+}
+
 // HandleOAuth2AuthorizationServerMetadata provides a mock function for the type discoveryHandlerInterfaceMock
 func (_mock *discoveryHandlerInterfaceMock) HandleOAuth2AuthorizationServerMetadata(w http.ResponseWriter, r *http.Request) {
 	_mock.Called(w, r)
@@ -51,7 +152,7 @@ type discoveryHandlerInterfaceMock_HandleOAuth2AuthorizationServerMetadata_Call 
 // HandleOAuth2AuthorizationServerMetadata is a helper method to define mock.On call
 //   - w http.ResponseWriter
 //   - r *http.Request
-func (_e *discoveryHandlerInterfaceMock_Expecter) HandleOAuth2AuthorizationServerMetadata(w interface{}, r interface{}) *discoveryHandlerInterfaceMock_HandleOAuth2AuthorizationServerMetadata_Call {
+func (_e *discoveryHandlerInterfaceMock_Expecter) HandleOAuth2AuthorizationServerMetadata(w any, r any) *discoveryHandlerInterfaceMock_HandleOAuth2AuthorizationServerMetadata_Call {
 	return &discoveryHandlerInterfaceMock_HandleOAuth2AuthorizationServerMetadata_Call{Call: _e.mock.On("HandleOAuth2AuthorizationServerMetadata", w, r)}
 }
 
@@ -97,7 +198,7 @@ type discoveryHandlerInterfaceMock_HandleOIDCDiscovery_Call struct {
 // HandleOIDCDiscovery is a helper method to define mock.On call
 //   - w http.ResponseWriter
 //   - r *http.Request
-func (_e *discoveryHandlerInterfaceMock_Expecter) HandleOIDCDiscovery(w interface{}, r interface{}) *discoveryHandlerInterfaceMock_HandleOIDCDiscovery_Call {
+func (_e *discoveryHandlerInterfaceMock_Expecter) HandleOIDCDiscovery(w any, r any) *discoveryHandlerInterfaceMock_HandleOIDCDiscovery_Call {
 	return &discoveryHandlerInterfaceMock_HandleOIDCDiscovery_Call{Call: _e.mock.On("HandleOIDCDiscovery", w, r)}
 }
 

@@ -11,8 +11,9 @@
 # Build-time generated artifacts (produced by docs/scripts/prebuild.mjs)
 static/api/next/combined.yaml
 static/api/next/postman/
+static/api/*/postman/collections/modules/
 static/data/releases.json
-static/data/sdk-releases.json
+static/data/ecosystem-releases.json
 static/data/contributors.json
 static/docs/
 

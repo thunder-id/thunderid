@@ -1,0 +1,132 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: react-router
+name: React Router
+icon: ReactRouterLogo
+category: fullstack
+type: integration
+origin: official
+status: ga
+package:
+  name: "@thunderid/react-router"
+  manager: npm
+description: Official {{ProductName}} integration for React Router (formerly Remix) applications.
+docs:
+  overview: /docs/next/sdks-and-tools/react-router/overview
+links:
+  github: https://github.com/thunder-id/javascript-sdks
+  package: https://www.npmjs.com/package/@thunderid/react-router
+apiReference:
+  source: typedoc
+
+sections:
+  - type: api
+    id: api
+    title: API reference
+    intro: Every export is fully typed. The signatures and props below come from the package's own reference documentation,
+      so what is listed here is what the installed version ships.
+    kindTones:
+      function: accent
+    exports:
+    - group: Functions
+      kind: function
+      name: <CallbackRoute />
+      description: 'The `CallbackRoute` component handles the OAuth 2.0 authorization code callback. Mount it at your
+        application''s redirect URI path. It processes the authorization code, validates the CSRF state parameter, exchanges
+        the code for tokens, and navigates the user back to their original destination. :::note `CallbackRoute` must
+        be rendered inside a `ThunderIDProvider` and a React Router context. :::'
+      rowsLabel: Props
+      rows:
+      - name: onError
+        type: '(error: Error) => void'
+        tag: optional
+        description: Called when the callback processing fails (e.g., invalid state, token exchange error)
+      - name: onNavigate
+        type: '(path: string) => void'
+        tag: optional
+        description: Override the default post-callback navigation. Receives the resolved destination path. Defaults
+          to React Router's `navigate()`
+      example: |-
+        import { BrowserRouter, Routes, Route } from 'react-router'
+        import { ThunderIDProvider } from '@thunderid/react'
+        import { CallbackRoute } from '@thunderid/react-router'
+
+        function App() {
+          return (
+            <ThunderIDProvider
+              clientId="<your-client-id>"
+              baseUrl="https://localhost:8090"
+              afterSignInUrl="http://localhost:5173/callback"
+            >
+              <BrowserRouter>
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/callback" element={<CallbackRoute />} />
+                </Routes>
+              </BrowserRouter>
+            </ThunderIDProvider>
+          )
+        }
+    - group: Functions
+      kind: function
+      name: <ProtectedRoute />
+      description: 'The `ProtectedRoute` component wraps a route''s element and enforces authentication. When the user
+        is not signed in it either redirects to a specified URL or renders a fallback element. While authentication
+        state is being resolved it shows a loading state. :::note `ProtectedRoute` must be rendered inside a `ThunderIDProvider`.
+        It also requires React Router''s router context: place it within a `BrowserRouter`, `HashRouter`, or similar.
+        :::'
+      rowsLabel: Props
+      rows:
+      - name: children
+        type: ReactElement
+        tag: required
+        description: The element to render when the user is authenticated
+      - name: redirectTo
+        type: string
+        tag: optional
+        description: Path to redirect unauthenticated users to. Either `redirectTo` or `fallback` must be provided
+      - name: fallback
+        type: ReactElement
+        tag: optional
+        description: Element to render when the user is not authenticated. Either `redirectTo` or `fallback` must be
+          provided
+      - name: loader
+        type: ReactNode
+        tag: optional
+        description: Element to render while authentication state is being resolved. Defaults to `null`
+      - name: onSignIn
+        type: '(defaultSignIn: (options?: Record) => void, signInOptions?: Record) => void'
+        tag: optional
+        description: Override the default sign-in trigger. Called with the built-in `defaultSignIn` function and the
+          `signInOptions` value
+      - name: signInOptions
+        type: Record
+        tag: optional
+        description: Additional parameters forwarded to the authorization request (e.g., `prompt`, `fidp`, `login_hint`,
+          `max_age`, `ui_locales`)
+      example: |-
+        import { BrowserRouter, Routes, Route } from 'react-router'
+        import { ThunderIDProvider } from '@thunderid/react'
+        import { ProtectedRoute } from '@thunderid/react-router'
+        import Dashboard from './pages/Dashboard'
+
+        function App() {
+          return (
+            <ThunderIDProvider clientId="<your-client-id>" baseUrl="https://localhost:8090">
+              <BrowserRouter>
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route
+                    path="/dashboard"
+                    element={
+                      <ProtectedRoute redirectTo="/signin">
+                        <Dashboard />
+                      </ProtectedRoute>
+                    }
+                  />
+                </Routes>
+              </BrowserRouter>
+            </ThunderIDProvider>
+          )
+        }

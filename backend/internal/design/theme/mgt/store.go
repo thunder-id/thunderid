@@ -4,52 +4,58 @@
 package thememgt
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 )
 
 var errThemeNotFound = errors.New("theme not found")
 
 // themeMgtStoreInterface defines the interface for theme management store operations.
 type themeMgtStoreInterface interface {
-	GetThemeListCount() (int, error)
-	GetThemeList(limit, offset int) ([]Theme, error)
-	CreateTheme(id string, theme CreateThemeRequest) error
-	GetTheme(id string) (Theme, error)
-	IsThemeExist(id string) (bool, error)
-	UpdateTheme(id string, theme UpdateThemeRequest) error
-	DeleteTheme(id string) error
-	IsThemeDeclarative(id string) bool
-	IsThemeHandleConflict(handle string, excludeID string) (bool, error)
+	GetThemeListCount(ctx context.Context) (int, error)
+	GetThemeList(ctx context.Context, limit, offset int) ([]Theme, error)
+	CreateTheme(ctx context.Context, id string, theme CreateThemeRequest) error
+	GetTheme(ctx context.Context, id string) (Theme, error)
+	IsThemeExist(ctx context.Context, id string) (bool, error)
+	UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) error
+	DeleteTheme(ctx context.Context, id string) error
+	IsThemeDeclarative(ctx context.Context, id string) bool
+	IsThemeHandleConflict(ctx context.Context, handle string, excludeID string) (bool, error)
 }
 
 // themeMgtStore is the default implementation of themeMgtStoreInterface.
 type themeMgtStore struct {
-	dbProvider   provider.DBProviderInterface
-	deploymentID string
+	dbProvider provider.DBProviderInterface
+}
+
+// scope returns the deployment id this request acts for. The id is put on the context at the
+// edge, so a request scopes by what it names; a context that never passed through the edge,
+// such as a start-up task or a background job, falls back to the configured identifier.
+func (s *themeMgtStore) scope(ctx context.Context) string {
+	return deployment.Resolve(ctx)
 }
 
 // newThemeMgtStore creates a new instance of themeMgtStore.
 func newThemeMgtStore() themeMgtStoreInterface {
 	return &themeMgtStore{
-		dbProvider:   provider.GetDBProvider(),
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		dbProvider: provider.GetDBProvider(),
 	}
 }
 
 // GetThemeListCount retrieves the total count of theme configurations.
-func (s *themeMgtStore) GetThemeListCount() (int, error) {
+func (s *themeMgtStore) GetThemeListCount(ctx context.Context) (int, error) {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return 0, err
 	}
 
-	countResults, err := dbClient.Query(queryGetThemeListCount, s.deploymentID)
+	countResults, err := dbClient.Query(queryGetThemeListCount, s.scope(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute count query: %w", err)
 	}
@@ -58,13 +64,13 @@ func (s *themeMgtStore) GetThemeListCount() (int, error) {
 }
 
 // GetThemeList retrieves theme configurations with pagination.
-func (s *themeMgtStore) GetThemeList(limit, offset int) ([]Theme, error) {
+func (s *themeMgtStore) GetThemeList(ctx context.Context, limit, offset int) ([]Theme, error) {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return nil, err
 	}
 
-	results, err := dbClient.Query(queryGetThemeList, limit, offset, s.deploymentID)
+	results, err := dbClient.Query(queryGetThemeList, limit, offset, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute theme list query: %w", err)
 	}
@@ -82,7 +88,7 @@ func (s *themeMgtStore) GetThemeList(limit, offset int) ([]Theme, error) {
 }
 
 // CreateTheme creates a new theme configuration in the database.
-func (s *themeMgtStore) CreateTheme(id string, theme CreateThemeRequest) error {
+func (s *themeMgtStore) CreateTheme(ctx context.Context, id string, theme CreateThemeRequest) error {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return err
@@ -94,7 +100,7 @@ func (s *themeMgtStore) CreateTheme(id string, theme CreateThemeRequest) error {
 	}
 
 	_, err = dbClient.Execute(queryCreateTheme, id, theme.Handle, theme.DisplayName, theme.Description,
-		themeJSON, s.deploymentID)
+		themeJSON, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -103,13 +109,13 @@ func (s *themeMgtStore) CreateTheme(id string, theme CreateThemeRequest) error {
 }
 
 // GetTheme retrieves a theme configuration by its id.
-func (s *themeMgtStore) GetTheme(id string) (Theme, error) {
+func (s *themeMgtStore) GetTheme(ctx context.Context, id string) (Theme, error) {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return Theme{}, err
 	}
 
-	results, err := dbClient.Query(queryGetThemeByID, id, s.deploymentID)
+	results, err := dbClient.Query(queryGetThemeByID, id, s.scope(ctx))
 	if err != nil {
 		return Theme{}, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -126,13 +132,13 @@ func (s *themeMgtStore) GetTheme(id string) (Theme, error) {
 }
 
 // IsThemeExist checks if a theme configuration exists by its ID.
-func (s *themeMgtStore) IsThemeExist(id string) (bool, error) {
+func (s *themeMgtStore) IsThemeExist(ctx context.Context, id string) (bool, error) {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return false, err
 	}
 
-	results, err := dbClient.Query(queryCheckThemeExists, id, s.deploymentID)
+	results, err := dbClient.Query(queryCheckThemeExists, id, s.scope(ctx))
 	if err != nil {
 		return false, fmt.Errorf("failed to check theme existence: %w", err)
 	}
@@ -150,7 +156,7 @@ func (s *themeMgtStore) IsThemeExist(id string) (bool, error) {
 }
 
 // UpdateTheme updates a theme configuration.
-func (s *themeMgtStore) UpdateTheme(id string, theme UpdateThemeRequest) error {
+func (s *themeMgtStore) UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) error {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return err
@@ -161,7 +167,7 @@ func (s *themeMgtStore) UpdateTheme(id string, theme UpdateThemeRequest) error {
 		return fmt.Errorf("failed to marshal theme: %w", err)
 	}
 
-	_, err = dbClient.Execute(queryUpdateTheme, theme.DisplayName, theme.Description, themeJSON, id, s.deploymentID)
+	_, err = dbClient.Execute(queryUpdateTheme, theme.DisplayName, theme.Description, themeJSON, id, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -170,13 +176,13 @@ func (s *themeMgtStore) UpdateTheme(id string, theme UpdateThemeRequest) error {
 }
 
 // DeleteTheme deletes a theme configuration.
-func (s *themeMgtStore) DeleteTheme(id string) error {
+func (s *themeMgtStore) DeleteTheme(ctx context.Context, id string) error {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return err
 	}
 
-	_, err = dbClient.Execute(queryDeleteTheme, id, s.deploymentID)
+	_, err = dbClient.Execute(queryDeleteTheme, id, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -185,7 +191,7 @@ func (s *themeMgtStore) DeleteTheme(id string) error {
 }
 
 // IsThemeDeclarative checks if a theme is immutable (in database store, all themes are mutable).
-func (s *themeMgtStore) IsThemeDeclarative(id string) bool {
+func (s *themeMgtStore) IsThemeDeclarative(ctx context.Context, id string) bool {
 	return false
 }
 
@@ -354,13 +360,13 @@ func (s *themeMgtStore) buildThemeFromResultRow(row map[string]interface{}) (The
 }
 
 // IsThemeHandleConflict checks if a theme handle already exists for the deployment, excluding a specific ID.
-func (s *themeMgtStore) IsThemeHandleConflict(handle string, excludeID string) (bool, error) {
+func (s *themeMgtStore) IsThemeHandleConflict(ctx context.Context, handle string, excludeID string) (bool, error) {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return false, err
 	}
 
-	results, err := dbClient.Query(queryCheckThemeHandleConflict, handle, s.deploymentID, excludeID)
+	results, err := dbClient.Query(queryCheckThemeHandleConflict, handle, s.scope(ctx), excludeID)
 	if err != nil {
 		return false, fmt.Errorf("failed to check theme handle conflict: %w", err)
 	}

@@ -93,7 +93,7 @@
       "enabled": true
     },
     {
-      "key": "demoSchemaName",
+      "key": "demoSchemaHandle",
       "value": "",
       "type": "default",
       "enabled": true

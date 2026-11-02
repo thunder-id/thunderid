@@ -16,10 +16,19 @@ func newOpenID4VCIStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *openID4VCIStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &openID4VCIStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +71,7 @@ type openID4VCIStoreInterfaceMock_DeleteNonce_Call struct {
 // DeleteNonce is a helper method to define mock.On call
 //   - ctx context.Context
 //   - nonce string
-func (_e *openID4VCIStoreInterfaceMock_Expecter) DeleteNonce(ctx interface{}, nonce interface{}) *openID4VCIStoreInterfaceMock_DeleteNonce_Call {
+func (_e *openID4VCIStoreInterfaceMock_Expecter) DeleteNonce(ctx any, nonce any) *openID4VCIStoreInterfaceMock_DeleteNonce_Call {
 	return &openID4VCIStoreInterfaceMock_DeleteNonce_Call{Call: _e.mock.On("DeleteNonce", ctx, nonce)}
 }
 
@@ -130,7 +139,7 @@ type openID4VCIStoreInterfaceMock_GetNonce_Call struct {
 // GetNonce is a helper method to define mock.On call
 //   - ctx context.Context
 //   - nonce string
-func (_e *openID4VCIStoreInterfaceMock_Expecter) GetNonce(ctx interface{}, nonce interface{}) *openID4VCIStoreInterfaceMock_GetNonce_Call {
+func (_e *openID4VCIStoreInterfaceMock_Expecter) GetNonce(ctx any, nonce any) *openID4VCIStoreInterfaceMock_GetNonce_Call {
 	return &openID4VCIStoreInterfaceMock_GetNonce_Call{Call: _e.mock.On("GetNonce", ctx, nonce)}
 }
 
@@ -198,7 +207,7 @@ type openID4VCIStoreInterfaceMock_GetOffer_Call struct {
 // GetOffer is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *openID4VCIStoreInterfaceMock_Expecter) GetOffer(ctx interface{}, id interface{}) *openID4VCIStoreInterfaceMock_GetOffer_Call {
+func (_e *openID4VCIStoreInterfaceMock_Expecter) GetOffer(ctx any, id any) *openID4VCIStoreInterfaceMock_GetOffer_Call {
 	return &openID4VCIStoreInterfaceMock_GetOffer_Call{Call: _e.mock.On("GetOffer", ctx, id)}
 }
 
@@ -256,7 +265,7 @@ type openID4VCIStoreInterfaceMock_SaveNonce_Call struct {
 //   - ctx context.Context
 //   - nonce string
 //   - rec *nonceRecord
-func (_e *openID4VCIStoreInterfaceMock_Expecter) SaveNonce(ctx interface{}, nonce interface{}, rec interface{}) *openID4VCIStoreInterfaceMock_SaveNonce_Call {
+func (_e *openID4VCIStoreInterfaceMock_Expecter) SaveNonce(ctx any, nonce any, rec any) *openID4VCIStoreInterfaceMock_SaveNonce_Call {
 	return &openID4VCIStoreInterfaceMock_SaveNonce_Call{Call: _e.mock.On("SaveNonce", ctx, nonce, rec)}
 }
 
@@ -319,7 +328,7 @@ type openID4VCIStoreInterfaceMock_SaveOffer_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - rec *offerRecord
-func (_e *openID4VCIStoreInterfaceMock_Expecter) SaveOffer(ctx interface{}, id interface{}, rec interface{}) *openID4VCIStoreInterfaceMock_SaveOffer_Call {
+func (_e *openID4VCIStoreInterfaceMock_Expecter) SaveOffer(ctx any, id any, rec any) *openID4VCIStoreInterfaceMock_SaveOffer_Call {
 	return &openID4VCIStoreInterfaceMock_SaveOffer_Call{Call: _e.mock.On("SaveOffer", ctx, id, rec)}
 }
 

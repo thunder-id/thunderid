@@ -49,7 +49,7 @@ export default function ItemCard({
         {thumbnail}
 
         {isReadOnly ? (
-          <Tooltip title={t('common:status.readOnly', 'Read Only')}>
+          <Tooltip title={t('common:status.readOnly', 'Read only')}>
             <Box
               sx={{
                 position: 'absolute',

@@ -42,7 +42,7 @@ func (suite *InitTestSuite) TearDownTest() {
 func (suite *InitTestSuite) TestInitialize() {
 	cacheManager := cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment")
 
-	svc, exporter, err := Initialize(suite.mux, cacheManager, map[ConfigName]ServerConfigHandlerInterface{})
+	svc, exporter, err := Initialize(suite.mux, cacheManager, map[ConfigName]ServerConfigHandlerInterface{}, nil)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(svc)
 	suite.Require().NotNil(exporter)

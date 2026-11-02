@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package entitytype
@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -65,19 +65,18 @@ type entityTypeStoreInterface interface {
 	GetEntityTypeListCountByOUIDs(ctx context.Context, category TypeCategory, ouIDs []string) (int, error)
 	CreateEntityType(ctx context.Context, entityType EntityType) error
 	GetEntityTypeByID(ctx context.Context, category TypeCategory, schemaID string) (EntityType, error)
-	GetEntityTypeByName(ctx context.Context, category TypeCategory, name string) (EntityType, error)
+	GetEntityTypeByHandle(ctx context.Context, category TypeCategory, handle string) (EntityType, error)
 	UpdateEntityTypeByID(ctx context.Context, category TypeCategory, schemaID string,
 		entityType EntityType) error
 	DeleteEntityTypeByID(ctx context.Context, category TypeCategory, schemaID string) error
 	IsEntityTypeDeclarative(category TypeCategory, schemaID string) bool
-	GetDisplayAttributesByNames(ctx context.Context, category TypeCategory,
-		names []string) (map[string]string, error)
+	GetDisplayAttributesByHandles(ctx context.Context, category TypeCategory,
+		handles []string) (map[string]string, error)
 }
 
 // entityTypeStore is the default implementation of entityTypeStoreInterface.
 type entityTypeStore struct {
-	dbProvider   provider.DBProviderInterface
-	deploymentID string
+	dbProvider provider.DBProviderInterface
 }
 
 // newEntityTypeStore creates a new instance of entityTypeStore.
@@ -88,9 +87,14 @@ func newEntityTypeStore() (entityTypeStoreInterface, providers.Transactioner, er
 		return nil, nil, err
 	}
 	return &entityTypeStore{
-		dbProvider:   dbProvider,
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		dbProvider: dbProvider,
 	}, transactioner, nil
+}
+
+// scope returns the deployment id this request acts for, falling back to the configured
+// identifier for a context that never passed through the edge.
+func (s *entityTypeStore) scope(ctx context.Context) string {
+	return deployment.Resolve(ctx)
 }
 
 // GetEntityTypeListCount retrieves the total count of entity types for the given category.
@@ -100,7 +104,7 @@ func (s *entityTypeStore) GetEntityTypeListCount(ctx context.Context, category T
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countResults, err := dbClient.QueryContext(ctx, queryGetEntityTypeCount, string(category), s.deploymentID)
+	countResults, err := dbClient.QueryContext(ctx, queryGetEntityTypeCount, string(category), s.scope(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute count query: %w", err)
 	}
@@ -127,7 +131,7 @@ func (s *entityTypeStore) GetEntityTypeList(ctx context.Context, category TypeCa
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetEntityTypeList, limit, offset, s.deploymentID, string(category))
+	results, err := dbClient.QueryContext(ctx, queryGetEntityTypeList, limit, offset, s.scope(ctx), string(category))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -164,7 +168,7 @@ func (s *entityTypeStore) GetEntityTypeListByOUIDs(ctx context.Context, category
 	for _, id := range ouIDs {
 		args = append(args, id)
 	}
-	args = append(args, string(category), s.deploymentID, limit, offset)
+	args = append(args, string(category), s.scope(ctx), limit, offset)
 
 	results, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -201,7 +205,7 @@ func (s *entityTypeStore) GetEntityTypeListCountByOUIDs(ctx context.Context, cat
 	for _, id := range ouIDs {
 		args = append(args, id)
 	}
-	args = append(args, string(category), s.deploymentID)
+	args = append(args, string(category), s.scope(ctx))
 
 	countResults, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -237,12 +241,13 @@ func (s *entityTypeStore) CreateEntityType(ctx context.Context, entityType Entit
 		queryCreateEntityType,
 		entityType.ID,
 		string(entityType.Category),
-		entityType.Name,
+		entityType.Handle,
+		entityType.DisplayName,
 		entityType.OUID,
 		entityType.AllowSelfRegistration,
 		string(entityType.Schema),
 		sysAttrs,
-		s.deploymentID,
+		s.scope(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create entity type: %w", err)
@@ -259,7 +264,7 @@ func (s *entityTypeStore) GetEntityTypeByID(ctx context.Context, category TypeCa
 		return EntityType{}, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetEntityTypeByID, schemaID, s.deploymentID, string(category))
+	results, err := dbClient.QueryContext(ctx, queryGetEntityTypeByID, schemaID, s.scope(ctx), string(category))
 	if err != nil {
 		return EntityType{}, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -271,15 +276,15 @@ func (s *entityTypeStore) GetEntityTypeByID(ctx context.Context, category TypeCa
 	return parseEntityTypeFromRow(results[0])
 }
 
-// GetEntityTypeByName retrieves an entity type by its name within a category.
-func (s *entityTypeStore) GetEntityTypeByName(ctx context.Context, category TypeCategory,
-	name string) (EntityType, error) {
+// GetEntityTypeByHandle retrieves an entity type by its handle within a category.
+func (s *entityTypeStore) GetEntityTypeByHandle(ctx context.Context, category TypeCategory,
+	handle string) (EntityType, error) {
 	dbClient, err := s.dbProvider.GetConfigDBClient()
 	if err != nil {
 		return EntityType{}, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetEntityTypeByName, name, s.deploymentID, string(category))
+	results, err := dbClient.QueryContext(ctx, queryGetEntityTypeByHandle, handle, s.scope(ctx), string(category))
 	if err != nil {
 		return EntityType{}, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -307,13 +312,13 @@ func (s *entityTypeStore) UpdateEntityTypeByID(ctx context.Context, category Typ
 	_, err = dbClient.QueryContext(
 		ctx,
 		queryUpdateEntityTypeByID,
-		entityType.Name,
+		entityType.DisplayName,
 		entityType.OUID,
 		entityType.AllowSelfRegistration,
 		string(entityType.Schema),
 		sysAttrs,
 		schemaID,
-		s.deploymentID,
+		s.scope(ctx),
 		string(category),
 	)
 	if err != nil {
@@ -333,7 +338,7 @@ func (s *entityTypeStore) DeleteEntityTypeByID(ctx context.Context, category Typ
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	rowsAffected, err := dbClient.ExecuteContext(ctx, queryDeleteEntityTypeByID, schemaID, s.deploymentID,
+	rowsAffected, err := dbClient.ExecuteContext(ctx, queryDeleteEntityTypeByID, schemaID, s.scope(ctx),
 		string(category))
 	if err != nil {
 		return fmt.Errorf("failed to delete entity type: %w", err)
@@ -351,10 +356,10 @@ func (s *entityTypeStore) IsEntityTypeDeclarative(category TypeCategory, schemaI
 	return false
 }
 
-// GetDisplayAttributesByNames retrieves display attributes for a list of entity type names within a category.
-func (s *entityTypeStore) GetDisplayAttributesByNames(ctx context.Context, category TypeCategory,
-	names []string) (map[string]string, error) {
-	if len(names) == 0 {
+// GetDisplayAttributesByHandles retrieves display attributes for a list of entity type handles within a category.
+func (s *entityTypeStore) GetDisplayAttributesByHandles(ctx context.Context, category TypeCategory,
+	handles []string) (map[string]string, error) {
+	if len(handles) == 0 {
 		return map[string]string{}, nil
 	}
 
@@ -365,12 +370,12 @@ func (s *entityTypeStore) GetDisplayAttributesByNames(ctx context.Context, categ
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	query := buildGetDisplayAttributesByNamesQuery(names)
-	args := make([]interface{}, 0, len(names)+2)
-	for _, name := range names {
-		args = append(args, name)
+	query := buildGetDisplayAttributesByHandlesQuery(handles)
+	args := make([]interface{}, 0, len(handles)+2)
+	for _, handle := range handles {
+		args = append(args, handle)
 	}
-	args = append(args, string(category), s.deploymentID)
+	args = append(args, string(category), s.scope(ctx))
 
 	results, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -379,23 +384,23 @@ func (s *entityTypeStore) GetDisplayAttributesByNames(ctx context.Context, categ
 
 	displayAttrs := make(map[string]string, len(results))
 	for _, row := range results {
-		name, ok := row["name"].(string)
+		handle, ok := row["handle"].(string)
 		if !ok {
-			logger.Error(ctx, "Failed to parse name from display attributes query")
+			logger.Error(ctx, "Failed to parse handle from display attributes query")
 			continue
 		}
 
 		sysAttrs, err := parseSystemAttributes(row["system_attributes"])
 		if err != nil {
 			logger.Error(ctx, "Failed to parse system attributes",
-				log.String("schemaName", name), log.Error(err))
+				log.String("handle", handle), log.Error(err))
 			continue
 		}
 
 		if sysAttrs != nil {
-			displayAttrs[name] = sysAttrs.Display
+			displayAttrs[handle] = sysAttrs.Display
 		} else {
-			displayAttrs[name] = ""
+			displayAttrs[handle] = ""
 		}
 	}
 
@@ -414,7 +419,12 @@ func parseEntityTypeFromRow(row map[string]interface{}) (EntityType, error) {
 		return EntityType{}, fmt.Errorf("failed to parse category as string")
 	}
 
-	name, ok := row["name"].(string)
+	handle, ok := row["handle"].(string)
+	if !ok {
+		return EntityType{}, fmt.Errorf("failed to parse handle as string")
+	}
+
+	displayName, ok := row["name"].(string)
 	if !ok {
 		return EntityType{}, fmt.Errorf("failed to parse name as string")
 	}
@@ -447,7 +457,8 @@ func parseEntityTypeFromRow(row map[string]interface{}) (EntityType, error) {
 	entityType := EntityType{
 		ID:                    schemaID,
 		Category:              TypeCategory(categoryStr),
-		Name:                  name,
+		Handle:                handle,
+		DisplayName:           displayName,
 		OUID:                  oUID,
 		AllowSelfRegistration: allowSelfRegistration,
 		SystemAttributes:      systemAttributes,
@@ -469,7 +480,12 @@ func parseEntityTypeListItemFromRow(row map[string]interface{}) (EntityTypeListI
 		return EntityTypeListItem{}, fmt.Errorf("failed to parse category as string")
 	}
 
-	name, ok := row["name"].(string)
+	handle, ok := row["handle"].(string)
+	if !ok {
+		return EntityTypeListItem{}, fmt.Errorf("failed to parse handle as string")
+	}
+
+	displayName, ok := row["name"].(string)
 	if !ok {
 		return EntityTypeListItem{}, fmt.Errorf("failed to parse name as string")
 	}
@@ -492,7 +508,8 @@ func parseEntityTypeListItemFromRow(row map[string]interface{}) (EntityTypeListI
 	entityTypeListItem := EntityTypeListItem{
 		ID:                    schemaID,
 		Category:              TypeCategory(categoryStr),
-		Name:                  name,
+		Handle:                handle,
+		DisplayName:           displayName,
 		OUID:                  oUID,
 		AllowSelfRegistration: allowSelfRegistration,
 		SystemAttributes:      systemAttributes,

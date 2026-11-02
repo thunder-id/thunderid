@@ -16,10 +16,19 @@ func NewCascadeDeleterMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *CascadeDeleterMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &CascadeDeleterMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type CascadeDeleterMock_CascadeDeleteDependencies_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *CascadeDeleterMock_Expecter) CascadeDeleteDependencies(ctx interface{}, resourceType interface{}, id interface{}) *CascadeDeleterMock_CascadeDeleteDependencies_Call {
+func (_e *CascadeDeleterMock_Expecter) CascadeDeleteDependencies(ctx any, resourceType any, id any) *CascadeDeleterMock_CascadeDeleteDependencies_Call {
 	return &CascadeDeleterMock_CascadeDeleteDependencies_Call{Call: _e.mock.On("CascadeDeleteDependencies", ctx, resourceType, id)}
 }
 

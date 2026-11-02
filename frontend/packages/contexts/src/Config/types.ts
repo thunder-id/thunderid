@@ -266,6 +266,19 @@ export interface TrustedIssuerConfig {
 }
 
 /**
+ * Direct API configuration. Mirrors the backend's `direct_api` deployment config.
+ *
+ * @public
+ */
+export interface DirectApiConfig {
+  /**
+   * Whether the server exposes the Direct API authentication endpoints
+   * (`/auth/**`, `/register/passkey/**`). Defaults to true when omitted.
+   */
+  enabled?: boolean;
+}
+
+/**
  * Runtime overrides for the ThunderID SDK provider (ThunderIDProvider props).
  *
  * Accepts any valid ThunderIDProvider prop. Values are deep-merged on top of
@@ -311,6 +324,12 @@ export interface ProductConfig {
    * `${getServerUrl()}/gate/callback`.
    */
   gate_client?: GateClientConfig;
+
+  /**
+   * Optional Direct API configuration. When `enabled` is false, the Direct API endpoints are
+   * hidden in the UI.
+   */
+  direct_api?: DirectApiConfig;
 
   /** Optional design configuration for theming and UI customization */
   design?: DesignConfig;

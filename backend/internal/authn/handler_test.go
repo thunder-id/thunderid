@@ -271,6 +271,26 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleCredentialsAuthRequestSer
 			expectedErrorCode:  ErrorReservedCredentialType.Code,
 		},
 		{
+			name: "StatedLock",
+			authRequest: map[string]interface{}{
+				"identifiers": map[string]interface{}{"username": "testuser"},
+				"credentials": map[string]interface{}{"password": "testpass"},
+			},
+			serviceError:       &common.ErrorAccountLocked,
+			expectedStatusCode: http.StatusUnauthorized,
+			expectedErrorCode:  common.ErrorAccountLocked.Code,
+		},
+		{
+			name: "StatedSuspension",
+			authRequest: map[string]interface{}{
+				"identifiers": map[string]interface{}{"username": "testuser"},
+				"credentials": map[string]interface{}{"password": "testpass"},
+			},
+			serviceError:       &common.ErrorAccountSuspended,
+			expectedStatusCode: http.StatusUnauthorized,
+			expectedErrorCode:  common.ErrorAccountSuspended.Code,
+		},
+		{
 			name: "ServerError",
 			authRequest: map[string]interface{}{
 				"identifiers": map[string]interface{}{
@@ -766,6 +786,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyRegisterStartReque
 		RelyingPartyID:   "example.com",
 		RelyingPartyName: "Example Corp",
 		Attestation:      "direct",
+		Assertion:        testJWTToken,
 	}
 	regResponse := map[string]interface{}{
 		"publicKeyCredentialCreationOptions": map[string]interface{}{
@@ -789,7 +810,8 @@ func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyRegisterStartReque
 		regRequest.RelyingPartyID,
 		regRequest.RelyingPartyName,
 		regRequest.AuthenticatorSelection,
-		regRequest.Attestation).Return(regResponse, nil)
+		regRequest.Attestation,
+		regRequest.Assertion).Return(regResponse, nil)
 
 	body, _ := json.Marshal(regRequest)
 	req := httptest.NewRequest(http.MethodPost, "/authenticate/passkey/register/start", bytes.NewReader(body))
@@ -819,15 +841,53 @@ func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyRegisterStartReque
 	suite.Equal(common.APIErrorInvalidRequestFormat.Code, errResp.Code)
 }
 
-func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyRegisterStartRequestServiceError() {
+// TestHandlePasskeyRegisterStartRequestMissingAssertion asserts the assertion is rejected as a
+// missing required field, so the request never reaches the service.
+func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyRegisterStartRequestMissingAssertion() {
 	regRequest := PasskeyRegisterStartRequestDTO{
 		UserID:         "user123",
 		RelyingPartyID: "example.com",
 	}
+
+	body, _ := json.Marshal(regRequest)
+	req := httptest.NewRequest(http.MethodPost, "/register/passkey/start", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	suite.handler.HandlePasskeyRegisterStartRequest(w, req)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+	suite.mockService.AssertNotCalled(suite.T(), "StartPasskeyRegistration")
+}
+
+// TestHandlePasskeyRegisterStartRequestMissingUserID asserts userId stays required alongside the
+// assertion, so a caller cannot fall back to an assertion-only request.
+func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyRegisterStartRequestMissingUserID() {
+	regRequest := PasskeyRegisterStartRequestDTO{
+		RelyingPartyID: "example.com",
+		Assertion:      testJWTToken,
+	}
+
+	body, _ := json.Marshal(regRequest)
+	req := httptest.NewRequest(http.MethodPost, "/register/passkey/start", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	suite.handler.HandlePasskeyRegisterStartRequest(w, req)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+	suite.mockService.AssertNotCalled(suite.T(), "StartPasskeyRegistration")
+}
+
+func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyRegisterStartRequestServiceError() {
+	regRequest := PasskeyRegisterStartRequestDTO{
+		UserID:         "user123",
+		RelyingPartyID: "example.com",
+		Assertion:      testJWTToken,
+	}
 	serviceError := &common.ErrorUserNotFound
 
 	suite.mockService.On("StartPasskeyRegistration",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything).
 		Return(nil, serviceError)
 
 	body, _ := json.Marshal(regRequest)

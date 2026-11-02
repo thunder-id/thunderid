@@ -17,10 +17,19 @@ func NewResolverMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ResolverMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ResolverMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type ResolverMock_Resolve_Call struct {
 //   - ctx context.Context
 //   - handleID string
 //   - now time.Time
-func (_e *ResolverMock_Expecter) Resolve(ctx interface{}, handleID interface{}, now interface{}) *ResolverMock_Resolve_Call {
+func (_e *ResolverMock_Expecter) Resolve(ctx any, handleID any, now any) *ResolverMock_Resolve_Call {
 	return &ResolverMock_Resolve_Call{Call: _e.mock.On("Resolve", ctx, handleID, now)}
 }
 

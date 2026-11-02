@@ -5,7 +5,7 @@ import Link from '@docusaurus/Link';
 import type {Content} from '@theme/BlogPostPage';
 import {Box, Typography, useTheme} from '@wso2/oxygen-ui';
 import {JSX} from 'react';
-import BlogAvatar from './BlogAvatar';
+import BlogAuthorGroup from './BlogAuthorGroup';
 import BlogThumbnail from './BlogThumbnail';
 import {formatMetaLine, getCategory, getHeroGradient, getHeroIcon, getThumbnail} from './helpers';
 import useIsDarkMode from '../../hooks/useIsDarkMode';
@@ -14,7 +14,6 @@ export default function BlogFeaturedCard({content}: {content: Content}): JSX.Ele
   const theme = useTheme();
   const isLight = !useIsDarkMode();
   const {metadata} = content;
-  const author = metadata.authors[0];
 
   return (
     <Box sx={{maxWidth: 1200, width: '100%', mx: 'auto', px: {xs: 2, sm: 4}, pt: {xs: 4, md: 5}, pb: {xs: 4, md: 5}}}>
@@ -95,25 +94,15 @@ export default function BlogFeaturedCard({content}: {content: Content}): JSX.Ele
             {metadata.description}
           </Typography>
 
-          {author && (
-            <Box sx={{display: 'flex', alignItems: 'center', gap: 1.25}}>
-              <BlogAvatar name={author.name ?? ''} imageURL={author.imageURL} size={34} />
-              <Box>
-                <Typography sx={{fontSize: '12.5px', fontWeight: 600, color: isLight ? 'rgba(0,0,0,0.82)' : 'rgba(255,255,255,0.82)'}}>
-                  {author.name}
-                </Typography>
-                <Typography
-                  sx={{
-                    fontFamily: 'monospace',
-                    fontSize: '11px',
-                    color: isLight ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)',
-                  }}
-                >
-                  {formatMetaLine(metadata.date, metadata.readingTime)}
-                </Typography>
-              </Box>
-            </Box>
-          )}
+          <BlogAuthorGroup
+            authors={metadata.authors}
+            avatarSize={34}
+            isLight={isLight}
+            nameFontSize="12.5px"
+            subtitleFontSize="11px"
+            subtitleFontFamily="monospace"
+            subtitle={formatMetaLine(metadata.date, metadata.readingTime)}
+          />
         </Box>
       </Box>
     </Box>

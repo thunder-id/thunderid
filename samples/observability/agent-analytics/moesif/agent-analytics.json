@@ -1,0 +1,1229 @@
+{
+ "dashboards": [
+  {
+   "_id": "6aacc6c1ee1ccc4e18869fca",
+   "name": "ThunderID Agent Analytics",
+   "dashboard_ids": [],
+   "workspace_ids": [
+    [
+     "6aacc6c28297a663b5ed752f",
+     "6aacc6c2ee1ccc4e18869fcd",
+     "6aacc6c3ee1ccc4e18869fd6"
+    ],
+    [
+     "6aacc6c78297a663b5ed7548",
+     "6aacc6c55fdc0966f8065b72",
+     "6aacc6c45fdc0966f8065b71"
+    ],
+    [
+     "6aacc6c48297a663b5ed7541",
+     "6aacc6c68297a663b5ed7543",
+     "6aacc6c68297a663b5ed7546"
+    ]
+   ],
+   "parent": null,
+   "sort_order": 1
+  }
+ ],
+ "workspaces": [
+  {
+   "_id": "6aacc6c28297a663b5ed752f",
+   "type": "events",
+   "name": "Agent tokens issued",
+   "args": "",
+   "es_query": {
+    "post_filter": {
+     "bool": {
+      "must": [
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.act_type.raw": "agent"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.component.raw": "AuthHandler"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": [
+          {
+           "term": {
+            "metadata.event_status.raw": "success"
+           }
+          },
+          {
+           "term": {
+            "metadata.event_status.raw": "failure"
+           }
+          }
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "size": 0,
+    "aggs": {
+     "seg": {
+      "filter": {
+       "bool": {
+        "must": [
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.act_type.raw": "agent"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.component.raw": "AuthHandler"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": [
+            {
+             "term": {
+              "metadata.event_status.raw": "success"
+             }
+            },
+            {
+             "term": {
+              "metadata.event_status.raw": "failure"
+             }
+            }
+           ]
+          }
+         }
+        ]
+       }
+      },
+      "aggs": {
+       "metadata.event_status.raw": {
+        "terms": {
+         "field": "metadata.event_status.raw",
+         "size": 5,
+         "min_doc_count": 1,
+         "order": {
+          "weight|sum": "desc"
+         },
+         "missing": "(none)"
+        },
+        "aggs": {
+         "weight|sum": {
+          "sum": {
+           "field": "weight",
+           "missing": 1
+          }
+         }
+        }
+       },
+       "weight|sum": {
+        "sum": {
+         "field": "weight",
+         "missing": 1
+        }
+       }
+      }
+     }
+    },
+    "track_total_hits": false
+   },
+   "dateRange": {
+    "from": "-1d",
+    "to": "now"
+   },
+   "view": "segment",
+   "funnel_query": {},
+   "urlQuery": "?seg[groups][0][field]=metadata.event_status.raw&seg[groups][0][func]=terms&seg[groups][0][by]=metric&seg[groups][0][buckets]=5&seg[showCount]=false&seg[metrics][0][metricName]=sum%28events%29&seg[chartType]=bar&evtcf[filtersGroups][0][0][field]=metadata.act_type.raw&evtcf[filtersGroups][0][0][op]=contains&evtcf[filtersGroups][0][0][value][0]=agent&evtcf[filtersGroups][0][1][field]=metadata.component.raw&evtcf[filtersGroups][0][1][op]=contains&evtcf[filtersGroups][0][1][value][0]=AuthHandler&evtcf[filtersGroups][0][2][field]=metadata.event_status.raw&evtcf[filtersGroups][0][2][op]=eq&evtcf[filtersGroups][0][2][value][0]=success&evtcf[filtersGroups][0][2][value][1]=failure",
+   "viewerFilters": [],
+   "analyticType": "seg",
+   "chartType": "bar",
+   "settings": {
+    "groups": [
+     {
+      "field": "metadata.event_status.raw",
+      "func": "terms",
+      "by": "metric",
+      "buckets": "5"
+     }
+    ],
+    "showCount": "false",
+    "metrics": [
+     {
+      "metricName": "sum(events)"
+     }
+    ],
+    "chartType": "bar"
+   }
+  },
+  {
+   "_id": "6aacc6c2ee1ccc4e18869fcd",
+   "type": "events",
+   "name": "Agent token issuance over time",
+   "args": "",
+   "es_query": {
+    "post_filter": {
+     "bool": {
+      "must": [
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.act_type.raw": "agent"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.component.raw": "AuthHandler"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": [
+          {
+           "term": {
+            "metadata.event_status.raw": "success"
+           }
+          },
+          {
+           "term": {
+            "metadata.event_status.raw": "failure"
+           }
+          }
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "size": 0,
+    "from": 0,
+    "aggs": {
+     "entTmSrs": {
+      "filter": {
+       "bool": {
+        "must": [
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.act_type.raw": "agent"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.component.raw": "AuthHandler"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": [
+            {
+             "term": {
+              "metadata.event_status.raw": "success"
+             }
+            },
+            {
+             "term": {
+              "metadata.event_status.raw": "failure"
+             }
+            }
+           ]
+          }
+         }
+        ]
+       }
+      },
+      "aggs": {
+       "metadata.event_status.raw": {
+        "terms": {
+         "field": "metadata.event_status.raw",
+         "min_doc_count": 1,
+         "size": 10
+        },
+        "aggs": {
+         "request.time": {
+          "date_histogram": {
+           "field": "request.time",
+           "interval": "1h",
+           "time_zone": "UTC"
+          },
+          "aggs": {
+           "weight|sum": {
+            "sum": {
+             "field": "weight",
+             "missing": 1
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "track_total_hits": false
+   },
+   "dateRange": {
+    "from": "-1d",
+    "to": "now"
+   },
+   "view": "time",
+   "funnel_query": {},
+   "urlQuery": "?evt_ts[metricName]=sum%28events%29&evt_ts[interval]=1h&evt_ts[groups][0][field]=metadata.event_status.raw&evt_ts[groups][0][func]=terms&evt_ts[showCount]=false&evt_ts[showGrowth]=false&evt_ts[logScale]=false&evt_ts[stacked]=true&evt_ts[groupby]=&evtcf[filtersGroups][0][0][field]=metadata.act_type.raw&evtcf[filtersGroups][0][0][op]=contains&evtcf[filtersGroups][0][0][value][0]=agent&evtcf[filtersGroups][0][1][field]=metadata.component.raw&evtcf[filtersGroups][0][1][op]=contains&evtcf[filtersGroups][0][1][value][0]=AuthHandler&evtcf[filtersGroups][0][2][field]=metadata.event_status.raw&evtcf[filtersGroups][0][2][op]=eq&evtcf[filtersGroups][0][2][value][0]=success&evtcf[filtersGroups][0][2][value][1]=failure",
+   "viewerFilters": [],
+   "analyticType": "entTmSrs",
+   "chartType": "line",
+   "settings": {
+    "metricName": "sum(events)",
+    "interval": "1h",
+    "groups": [
+     {
+      "field": "metadata.event_status.raw",
+      "func": "terms"
+     }
+    ],
+    "showCount": "false",
+    "showGrowth": "false",
+    "logScale": "false",
+    "stacked": "true",
+    "groupby": ""
+   }
+  },
+  {
+   "_id": "6aacc6c3ee1ccc4e18869fd6",
+   "type": "events",
+   "name": "Delegated against direct",
+   "args": "",
+   "es_query": {
+    "post_filter": {
+     "bool": {
+      "must": [
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.act_type.raw": "agent"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.component.raw": "AuthHandler"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.event_status.raw": "success"
+          }
+         }
+        }
+       }
+      ]
+     }
+    },
+    "size": 0,
+    "aggs": {
+     "seg": {
+      "filter": {
+       "bool": {
+        "must": [
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.act_type.raw": "agent"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.component.raw": "AuthHandler"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.event_status.raw": "success"
+            }
+           }
+          }
+         }
+        ]
+       }
+      },
+      "aggs": {
+       "metadata.agent_acting_for_user.raw": {
+        "terms": {
+         "field": "metadata.agent_acting_for_user.raw",
+         "size": 5,
+         "min_doc_count": 1,
+         "order": {
+          "weight|sum": "desc"
+         },
+         "missing": "Direct"
+        },
+        "aggs": {
+         "weight|sum": {
+          "sum": {
+           "field": "weight",
+           "missing": 1
+          }
+         }
+        }
+       },
+       "weight|sum": {
+        "sum": {
+         "field": "weight",
+         "missing": 1
+        }
+       }
+      }
+     }
+    },
+    "track_total_hits": false
+   },
+   "dateRange": {
+    "from": "-1d",
+    "to": "now"
+   },
+   "view": "segment",
+   "funnel_query": {},
+   "urlQuery": "?seg[groups][0][field]=metadata.agent_acting_for_user.raw&seg[groups][0][func]=terms&seg[groups][0][by]=metric&seg[groups][0][buckets]=5&seg[showCount]=false&seg[metrics][0][metricName]=sum%28events%29&seg[chartType]=pie&evtcf[filtersGroups][0][0][field]=metadata.act_type.raw&evtcf[filtersGroups][0][0][op]=contains&evtcf[filtersGroups][0][0][value][0]=agent&evtcf[filtersGroups][0][1][field]=metadata.component.raw&evtcf[filtersGroups][0][1][op]=contains&evtcf[filtersGroups][0][1][value][0]=AuthHandler&evtcf[filtersGroups][0][2][field]=metadata.event_status.raw&evtcf[filtersGroups][0][2][op]=contains&evtcf[filtersGroups][0][2][value][0]=success",
+   "viewerFilters": [],
+   "analyticType": "seg",
+   "chartType": "pie",
+   "settings": {
+    "groups": [
+     {
+      "field": "metadata.agent_acting_for_user.raw",
+      "func": "terms",
+      "by": "metric",
+      "buckets": "5"
+     }
+    ],
+    "showCount": "false",
+    "metrics": [
+     {
+      "metricName": "sum(events)"
+     }
+    ],
+    "chartType": "pie"
+   }
+  },
+  {
+   "_id": "6aacc6c78297a663b5ed7548",
+   "type": "events",
+   "name": "Work performed for a person",
+   "args": "",
+   "es_query": {
+    "post_filter": {
+     "bool": {
+      "must": [
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.act_type.raw": "agent"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.component.raw": "AuthHandler"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.event_status.raw": "success"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.agent_acting_for_user.raw": "Delegated"
+          }
+         }
+        }
+       }
+      ]
+     }
+    },
+    "size": 0,
+    "aggs": {
+     "seg": {
+      "filter": {
+       "bool": {
+        "must": [
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.act_type.raw": "agent"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.component.raw": "AuthHandler"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.event_status.raw": "success"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.agent_acting_for_user.raw": "Delegated"
+            }
+           }
+          }
+         }
+        ]
+       }
+      },
+      "aggs": {
+       "weight|sum": {
+        "sum": {
+         "field": "weight",
+         "missing": 1
+        }
+       },
+       "metadata.sub.raw": {
+        "terms": {
+         "field": "metadata.sub.raw",
+         "size": 10,
+         "min_doc_count": 1,
+         "order": {
+          "weight|sum": "desc"
+         },
+         "missing": "(none)"
+        },
+        "aggs": {
+         "weight|sum": {
+          "sum": {
+           "field": "weight",
+           "missing": 1
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "track_total_hits": false
+   },
+   "dateRange": {
+    "from": "-1d",
+    "to": "now"
+   },
+   "view": "segment",
+   "funnel_query": {},
+   "urlQuery": "?seg[groups][0][field]=metadata.sub.raw&seg[groups][0][func]=terms&seg[groups][0][by]=metric&seg[groups][0][buckets]=10&seg[showCount]=false&seg[metrics][0][metricName]=sum%28events%29&seg[chartType]=bar&evtcf[filtersGroups][0][0][field]=metadata.act_type.raw&evtcf[filtersGroups][0][0][op]=contains&evtcf[filtersGroups][0][0][value][0]=agent&evtcf[filtersGroups][0][1][field]=metadata.component.raw&evtcf[filtersGroups][0][1][op]=contains&evtcf[filtersGroups][0][1][value][0]=AuthHandler&evtcf[filtersGroups][0][2][field]=metadata.event_status.raw&evtcf[filtersGroups][0][2][op]=contains&evtcf[filtersGroups][0][2][value][0]=success&evtcf[filtersGroups][0][3][field]=metadata.agent_acting_for_user.raw&evtcf[filtersGroups][0][3][op]=contains&evtcf[filtersGroups][0][3][value][0]=Delegated",
+   "viewerFilters": [],
+   "analyticType": "seg",
+   "chartType": "bar",
+   "settings": {
+    "groups": [
+     {
+      "field": "metadata.sub.raw",
+      "func": "terms",
+      "by": "metric",
+      "buckets": "10"
+     }
+    ],
+    "showCount": "false",
+    "metrics": [
+     {
+      "metricName": "sum(events)"
+     }
+    ],
+    "chartType": "bar"
+   }
+  },
+  {
+   "_id": "6aacc6c55fdc0966f8065b72",
+   "type": "events",
+   "name": "Most active agents",
+   "args": "",
+   "es_query": {
+    "post_filter": {
+     "bool": {
+      "must": [
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.act_type.raw": "agent"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.component.raw": "AuthHandler"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.event_status.raw": "success"
+          }
+         }
+        }
+       }
+      ]
+     }
+    },
+    "size": 0,
+    "aggs": {
+     "seg": {
+      "filter": {
+       "bool": {
+        "must": [
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.act_type.raw": "agent"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.component.raw": "AuthHandler"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.event_status.raw": "success"
+            }
+           }
+          }
+         }
+        ]
+       }
+      },
+      "aggs": {
+       "weight|sum": {
+        "sum": {
+         "field": "weight",
+         "missing": 1
+        }
+       },
+       "metadata.client_id.raw": {
+        "terms": {
+         "field": "metadata.client_id.raw",
+         "size": 10,
+         "min_doc_count": 1,
+         "order": {
+          "weight|sum": "desc"
+         },
+         "missing": "(none)"
+        },
+        "aggs": {
+         "weight|sum": {
+          "sum": {
+           "field": "weight",
+           "missing": 1
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "track_total_hits": false
+   },
+   "dateRange": {
+    "from": "-1d",
+    "to": "now"
+   },
+   "view": "segment",
+   "funnel_query": {},
+   "urlQuery": "?seg[groups][0][field]=metadata.client_id.raw&seg[groups][0][func]=terms&seg[groups][0][by]=metric&seg[groups][0][buckets]=10&seg[showCount]=false&seg[metrics][0][metricName]=sum%28events%29&seg[chartType]=bar&evtcf[filtersGroups][0][0][field]=metadata.act_type.raw&evtcf[filtersGroups][0][0][op]=contains&evtcf[filtersGroups][0][0][value][0]=agent&evtcf[filtersGroups][0][1][field]=metadata.component.raw&evtcf[filtersGroups][0][1][op]=contains&evtcf[filtersGroups][0][1][value][0]=AuthHandler&evtcf[filtersGroups][0][2][field]=metadata.event_status.raw&evtcf[filtersGroups][0][2][op]=contains&evtcf[filtersGroups][0][2][value][0]=success",
+   "viewerFilters": [],
+   "analyticType": "seg",
+   "chartType": "bar",
+   "settings": {
+    "groups": [
+     {
+      "field": "metadata.client_id.raw",
+      "func": "terms",
+      "by": "metric",
+      "buckets": "10"
+     }
+    ],
+    "showCount": "false",
+    "metrics": [
+     {
+      "metricName": "sum(events)"
+     }
+    ],
+    "chartType": "bar"
+   }
+  },
+  {
+   "_id": "6aacc6c45fdc0966f8065b71",
+   "type": "events",
+   "name": "Grant types",
+   "args": "",
+   "es_query": {
+    "post_filter": {
+     "bool": {
+      "must": [
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.act_type.raw": "agent"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.component.raw": "AuthHandler"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.event_status.raw": "success"
+          }
+         }
+        }
+       }
+      ]
+     }
+    },
+    "size": 0,
+    "aggs": {
+     "seg": {
+      "filter": {
+       "bool": {
+        "must": [
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.act_type.raw": "agent"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.component.raw": "AuthHandler"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.event_status.raw": "success"
+            }
+           }
+          }
+         }
+        ]
+       }
+      },
+      "aggs": {
+       "metadata.grant_type.raw": {
+        "terms": {
+         "field": "metadata.grant_type.raw",
+         "size": 10,
+         "min_doc_count": 1,
+         "order": {
+          "weight|sum": "desc"
+         },
+         "missing": "(none)"
+        },
+        "aggs": {
+         "weight|sum": {
+          "sum": {
+           "field": "weight",
+           "missing": 1
+          }
+         }
+        }
+       },
+       "weight|sum": {
+        "sum": {
+         "field": "weight",
+         "missing": 1
+        }
+       }
+      }
+     }
+    },
+    "track_total_hits": false
+   },
+   "dateRange": {
+    "from": "-1d",
+    "to": "now"
+   },
+   "view": "segment",
+   "funnel_query": {},
+   "urlQuery": "?seg[groups][0][field]=metadata.grant_type.raw&seg[groups][0][func]=terms&seg[groups][0][by]=metric&seg[groups][0][buckets]=10&seg[showCount]=false&seg[metrics][0][metricName]=sum%28events%29&seg[chartType]=pie&evtcf[filtersGroups][0][0][field]=metadata.act_type.raw&evtcf[filtersGroups][0][0][op]=contains&evtcf[filtersGroups][0][0][value][0]=agent&evtcf[filtersGroups][0][1][field]=metadata.component.raw&evtcf[filtersGroups][0][1][op]=contains&evtcf[filtersGroups][0][1][value][0]=AuthHandler&evtcf[filtersGroups][0][2][field]=metadata.event_status.raw&evtcf[filtersGroups][0][2][op]=contains&evtcf[filtersGroups][0][2][value][0]=success",
+   "viewerFilters": [],
+   "analyticType": "seg",
+   "chartType": "pie",
+   "settings": {
+    "groups": [
+     {
+      "field": "metadata.grant_type.raw",
+      "func": "terms",
+      "by": "metric",
+      "buckets": "10"
+     }
+    ],
+    "showCount": "false",
+    "metrics": [
+     {
+      "metricName": "sum(events)"
+     }
+    ],
+    "chartType": "pie"
+   }
+  },
+  {
+   "_id": "6aacc6c48297a663b5ed7541",
+   "type": "events",
+   "name": "Issuance latency",
+   "args": "",
+   "es_query": {
+    "post_filter": {
+     "bool": {
+      "must": [
+       {
+        "terms": {
+         "metadata.act_type.raw": [
+          "agent"
+         ]
+        }
+       },
+       {
+        "terms": {
+         "metadata.component.raw": [
+          "AuthHandler"
+         ]
+        }
+       },
+       {
+        "terms": {
+         "metadata.event_status.raw": [
+          "success"
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "size": 0,
+    "aggs": {
+     "entTmSrs": {
+      "filter": {
+       "bool": {
+        "must": [
+         {
+          "terms": {
+           "metadata.act_type.raw": [
+            "agent"
+           ]
+          }
+         },
+         {
+          "terms": {
+           "metadata.component.raw": [
+            "AuthHandler"
+           ]
+          }
+         },
+         {
+          "terms": {
+           "metadata.event_status.raw": [
+            "success"
+           ]
+          }
+         }
+        ]
+       }
+      },
+      "aggs": {
+       "metadata.client_id.raw": {
+        "terms": {
+         "field": "metadata.client_id.raw",
+         "size": 5,
+         "min_doc_count": 1,
+         "order": {
+          "duration_ms|weighted_avg": "desc"
+         },
+         "missing": "(none)"
+        },
+        "aggs": {
+         "request.time": {
+          "date_histogram": {
+           "field": "request.time",
+           "interval": "1h",
+           "time_zone": "UTC"
+          },
+          "aggs": {
+           "duration_ms|weighted_avg": {
+            "weighted_avg": {
+             "value": {
+              "field": "duration_ms"
+             },
+             "weight": {
+              "field": "weight",
+              "missing": 1
+             }
+            }
+           }
+          }
+         },
+         "duration_ms|weighted_avg": {
+          "weighted_avg": {
+           "value": {
+            "field": "duration_ms"
+           },
+           "weight": {
+            "field": "weight",
+            "missing": 1
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "track_total_hits": false
+   },
+   "dateRange": {
+    "from": "-1d",
+    "to": "now"
+   },
+   "view": "time",
+   "funnel_query": {},
+   "urlQuery": "?evtcf[filtersGroups][0][filters][0][field]=metadata.act_type.raw&evtcf[filtersGroups][0][filters][0][op]=contains&evtcf[filtersGroups][0][filters][0][value][0]=agent&evtcf[filtersGroups][0][filters][1][field]=metadata.component.raw&evtcf[filtersGroups][0][filters][1][op]=contains&evtcf[filtersGroups][0][filters][1][value][0]=AuthHandler&evtcf[filtersGroups][0][filters][2][field]=metadata.event_status.raw&evtcf[filtersGroups][0][filters][2][op]=contains&evtcf[filtersGroups][0][filters][2][value][0]=success&evt_ts[interval]=1h&evt_ts[metrics][0][metricName]=weighted_avg%28duration_ms%29&evt_ts[groups][0][field]=metadata.client_id.raw&evt_ts[groups][0][func]=terms&evt_ts[groups][0][by]=metric",
+   "viewerFilters": [],
+   "analyticType": "entTmSrs",
+   "chartType": "line",
+   "settings": {
+    "interval": "1h",
+    "metrics": [
+     {
+      "metricName": "weighted_avg(duration_ms)"
+     }
+    ],
+    "groups": [
+     {
+      "field": "metadata.client_id.raw",
+      "func": "terms",
+      "by": "metric"
+     }
+    ]
+   }
+  },
+  {
+   "_id": "6aacc6c68297a663b5ed7543",
+   "type": "events",
+   "name": "Failure reasons",
+   "args": "",
+   "es_query": {
+    "post_filter": {
+     "bool": {
+      "must": [
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.act_type.raw": "agent"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.component.raw": "AuthHandler"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.event_status.raw": "failure"
+          }
+         }
+        }
+       }
+      ]
+     }
+    },
+    "size": 0,
+    "aggs": {
+     "seg": {
+      "filter": {
+       "bool": {
+        "must": [
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.act_type.raw": "agent"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.component.raw": "AuthHandler"
+            }
+           }
+          }
+         },
+         {
+          "bool": {
+           "should": {
+            "term": {
+             "metadata.event_status.raw": "failure"
+            }
+           }
+          }
+         }
+        ]
+       }
+      },
+      "aggs": {
+       "metadata.error_message.raw": {
+        "terms": {
+         "field": "metadata.error_message.raw",
+         "size": 10,
+         "min_doc_count": 1,
+         "order": {
+          "weight|sum": "desc"
+         },
+         "missing": "(none)"
+        },
+        "aggs": {
+         "weight|sum": {
+          "sum": {
+           "field": "weight",
+           "missing": 1
+          }
+         }
+        }
+       },
+       "weight|sum": {
+        "sum": {
+         "field": "weight",
+         "missing": 1
+        }
+       }
+      }
+     }
+    },
+    "track_total_hits": false
+   },
+   "dateRange": {
+    "from": "-1d",
+    "to": "now"
+   },
+   "view": "segment",
+   "funnel_query": {},
+   "urlQuery": "?seg[groups][0][field]=metadata.error_message.raw&seg[groups][0][func]=terms&seg[groups][0][by]=metric&seg[groups][0][buckets]=10&seg[showCount]=false&seg[metrics][0][metricName]=sum%28events%29&seg[chartType]=table&evtcf[filtersGroups][0][0][field]=metadata.act_type.raw&evtcf[filtersGroups][0][0][op]=contains&evtcf[filtersGroups][0][0][value][0]=agent&evtcf[filtersGroups][0][1][field]=metadata.component.raw&evtcf[filtersGroups][0][1][op]=contains&evtcf[filtersGroups][0][1][value][0]=AuthHandler&evtcf[filtersGroups][0][2][field]=metadata.event_status.raw&evtcf[filtersGroups][0][2][op]=contains&evtcf[filtersGroups][0][2][value][0]=failure",
+   "viewerFilters": [],
+   "analyticType": "seg",
+   "chartType": "table",
+   "settings": {
+    "groups": [
+     {
+      "field": "metadata.error_message.raw",
+      "func": "terms",
+      "by": "metric",
+      "buckets": "10"
+     }
+    ],
+    "showCount": "false",
+    "metrics": [
+     {
+      "metricName": "sum(events)"
+     }
+    ],
+    "chartType": "table"
+   }
+  },
+  {
+   "_id": "6aacc6c68297a663b5ed7546",
+   "type": "events",
+   "name": "Agent token events",
+   "args": "",
+   "es_query": {
+    "post_filter": {
+     "bool": {
+      "must": [
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.act_type.raw": "agent"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": {
+          "term": {
+           "metadata.component.raw": "AuthHandler"
+          }
+         }
+        }
+       },
+       {
+        "bool": {
+         "should": [
+          {
+           "term": {
+            "metadata.event_status.raw": "success"
+           }
+          },
+          {
+           "term": {
+            "metadata.event_status.raw": "failure"
+           }
+          }
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "size": 100,
+    "from": 0,
+    "sort": [
+     {
+      "request.time": {
+       "order": "desc"
+      }
+     }
+    ],
+    "aggs": {
+     "evtTypeF1": {
+      "filter": {
+       "match_all": {}
+      },
+      "aggs": {}
+     }
+    }
+   },
+   "dateRange": {
+    "from": "-1d",
+    "to": "now"
+   },
+   "view": "events",
+   "funnel_query": {},
+   "urlQuery": "?evtcf[showCount]=false&evtcf[filtersGroups][0][0][field]=metadata.act_type.raw&evtcf[filtersGroups][0][0][op]=contains&evtcf[filtersGroups][0][0][value][0]=agent&evtcf[filtersGroups][0][1][field]=metadata.component.raw&evtcf[filtersGroups][0][1][op]=contains&evtcf[filtersGroups][0][1][value][0]=AuthHandler&evtcf[filtersGroups][0][2][field]=metadata.event_status.raw&evtcf[filtersGroups][0][2][op]=eq&evtcf[filtersGroups][0][2][value][0]=success&evtcf[filtersGroups][0][2][value][1]=failure",
+   "viewerFilters": [],
+   "analyticType": "evt_log",
+   "chartType": "log",
+   "settings": {
+    "shownFields": []
+   }
+  }
+ ]
+}

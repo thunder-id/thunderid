@@ -230,7 +230,7 @@ export default function LogoPicker({
 
   const showShapeQualifier: boolean = availableShapes.length > 1;
   const avatarLabel: string = t('logo_picker.content_type.avatar', 'Avatar');
-  const textAvatarLabel: string = t('logo_picker.content_type.text_avatar', 'Text Avatar');
+  const textAvatarLabel: string = t('logo_picker.content_type.text_avatar', 'Text avatar');
   const roundedShapeName: string = t('logo_picker.shapes.rounded', 'Rounded');
   const circleShapeName: string = t('logo_picker.shapes.circle', 'Circle');
   const roundedBlankLabel: string = showShapeQualifier ? `${roundedShapeName} ${avatarLabel}` : avatarLabel;

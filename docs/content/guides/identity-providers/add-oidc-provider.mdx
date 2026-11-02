@@ -38,7 +38,7 @@ Open this URL in a browser to find the `authorization_endpoint`, `token_endpoint
 
 ### Step 2: Choose the Connection Type
 
-1. On the **Connection type** step, click **OpenID Connect Provider**.
+1. On the **Connection type** step, click **OpenID Connect provider**.
 2. Click **Continue**.
 
 ### Step 3: Name the Connection
@@ -75,43 +75,83 @@ Under **Federation**, turn on **Enable token exchange** to accept subject tokens
 
 ## Attribute Configuration
 
-External providers emit attributes under their own names, which may differ from the attribute names <ProductName /> uses locally (for example, a provider may emit `given_name` where your user type defines `firstName`). Open the connection and go to the **Attribute Configuration** tab to map external attributes to local user attributes.
+External providers emit attributes under their own names, which may differ from the attribute names <ProductName /> uses locally (for example, a provider may emit `given_name` where your user type defines `firstName`). Open the connection and go to the **Attribute configuration** tab to map external attributes to local user attributes.
 
 ### User Type Resolution
 
-By default, every federated identity resolves to the connection's **Default User Type**. To derive the user type from an incoming claim instead, turn on **Resolve user type from an attribute** and set the attribute whose value decides the user type (for example, `user_type`; supports dot notation for nested claims, for example `profile.role`).
+By default, every federated identity resolves to the connection's **Default user type**. To derive the user type from an incoming claim instead, turn on **Resolve user type from an attribute** and set the attribute whose value decides the user type (for example, `user_type`; supports dot notation for nested claims, for example `profile.role`).
 
-Under **Value Mapping**, map each external attribute value to a local user type (for example, `staff` to `Employee`, `partner` to `Contractor`) using **Add Value**. The **Default User Type** remains the fallback used when the claim is missing or its value has no mapping.
+Under **Value mapping**, map each external attribute value to a local user type (for example, `staff` to `Employee`, `partner` to `Contractor`) using **Add value**. The **Default user type** remains the fallback used when the claim is missing or its value has no mapping.
 
-The resolved user type selects which mapping set applies under **Attribute Mappings**.
+The resolved user type selects which mapping set applies under **Attribute mappings**.
+
+The connection refers to user types by their handle (for example, `person`).
 
 ### Attribute Mappings
 
-Click **Add User Type** to add a mapping set for a user type, then click **Add Mapping** to add attribute mappings within that set. Each mapping has:
+Click **Add user type** to add a mapping set for a user type, then click **Add mapping** to add attribute mappings within that set. Each mapping has:
 
 | Field | Description |
 |-------|-------------|
-| **External Attribute** | The external attribute name (for example, `given_name`). |
-| **Local Attribute** | The target local attribute (for example, `firstName`). Must be an attribute defined in that user type's schema. |
+| **External attribute** | The external attribute name (for example, `given_name`). |
+| **Local attribute** | The target local attribute (for example, `firstName`). Must be an attribute defined in that user type's schema. |
 
 Behavior:
 
 - The external attribute supports complex forms. Use **dot notation** to read a value nested inside another attribute. For example, `email.work` reads the `work` field from an `email` object.
 - The local attribute must be defined in the user type's schema; this is validated when you save the connection.
-- An attribute whose name is mapped is renamed to its local attribute; attributes without a mapping pass through unchanged.
+- Mappings copy rather than rename: the mapped value is published under the local attribute, and the original attribute is kept under its own name. Attributes without a mapping pass through unchanged.
 
 The mapping applies both when a user signs in through this connection in an authentication flow and when a token from this provider is exchanged (see [Trusted Issuer](../../trusted-issuer)). The resulting local attributes flow into the issued access and ID tokens, subject to the application's `userAttributes` configuration.
 
-### Account Linking
+### Authorization Mapping
 
-To resolve an incoming federated identity to an existing local user by attributes when the subject identifier (`sub`) does not match, add attributes under **Account Linking**. Click **Add Attribute** to add an external attribute (for example, `email`) that is matched to find the associated local user.
+Map attribute values this provider asserts, such as group membership, onto local roles, groups, or permissions, under **Authorization mapping**. Click **Add mapping** to add a mapping for a claim, then choose how its values resolve:
+
+- **Direct** (the default): each value the claim asserts is looked up by name against an existing role, group, or permission of the chosen **Target type**. A value with no exact match, or more than one, confers nothing.
+- **Advanced**: turn the mapping's toggle on to compare the claim's values against an explicit rule table instead of matching by name.
+
+| Field | Description |
+|-------|-------------|
+| **Key** | The claim to read (for example, `groups`). Supports dot notation for a nested claim. |
+| **Value type** | Advanced only. How to interpret the claim's value(s): `String`, `Number`, `Boolean`, or `Array`. Defaults to `String`. |
+| **Delimiter** | Splits a string claim into multiple values (for example, a space-delimited scope string). Leave unset for a single value. Only applies when Value Type is `String`. |
+| **Operator** | Advanced only, per rule. `Equals`/`Not Equals` for a single value; `Greater Than`/`Less Than`/`Greater Than or Equal`/`Less Than or Equal` when Value Type is `Number`; `Includes`/`Not Includes` when the claim carries a set of values (an `Array`, or a `String` split by Delimiter). |
+| **Target type** | Direct only. Whether each value is looked up as a `Role`, `Group`, or `Permission`. A `Permission` target also requires a **Resource server**. |
 
 Behavior:
 
-- Resolution tries the subject identifier (`sub`) first. If it resolves an existing user, that user is used.
-- Otherwise, all configured attributes that have a value are matched together (AND) to resolve a unique local user.
-- Each attribute is an external claim name; if it's mapped under **Attribute Mappings** (for example, `email` to `work_email`), the mapped local attribute is used for the lookup instead.
-- If neither `sub` nor the configured attributes resolve a user, the user is treated as new (subject to the flow's provisioning configuration).
+- An advanced rule's targets can span roles, groups, and permissions across more than one resource server at once.
+- A mapped group also grants that group's ancestor groups, transitively, the same as a direct group assignment does.
+- Everything a mapping grants adds to whatever is already assigned directly; it never replaces it.
+- The mapping applies wherever the identity's attributes are read: at sign-in, when a token from this provider is exchanged, and when an identity assertion (ID-JAG) it issued is presented. If resolving the mapping fails, sign-in still proceeds without it; token exchange and ID-JAG consumption fail the request instead, since there is no already-issued session to fall back to.
+- To also assign a mapping's roles and groups the moment an account is first created, rather than only computing them at each sign-in, enable **Seed Groups/Roles From Authorization Mapping** on the flow's Provisioning step. See [Provisioning](../../flows/advanced-configurations#user-provisioning-and-attributes).
+
+### Account Linking
+
+To find an existing local user for an incoming federated identity that has no recorded link to one, add attributes under **Account linking**. Click **Add attribute** to add an external attribute (for example, `email`) that is matched to find candidate local users. To set up linking end to end, including the flow, see [Link Federated Accounts](../link-accounts).
+
+Behavior:
+
+- Resolution tries the recorded link for this connection and subject first. A subject is unique only within the connection that issued it, so both parts are required and a subject on its own never resolves a user.
+- One identity can be linked to several local users, for example a person with an account in each of two organization units. When more than one user holds the link:
+  - In a sign-in flow with a **Resolve User** node, such as one built with the **Account Linking with Verification and Account Selection** widget, the person picks which account to continue with. Without that node, the sign-in fails.
+  - In a registration or onboarding flow, Provisioning counts only the linked users in the organization unit it registers into when cross-OU provisioning is allowed. If none is there, a new user is created with the link. If one is there, the flow completes as that user when registration with an existing user is allowed. Otherwise it fails with "User already exists".
+  - The direct federated authentication API cannot prompt, so it fails.
+
+  See the **Resolve User** executor in [Executor Reference](../../flows/advanced-configurations#executor-reference).
+- Otherwise, every configured attribute that has a value must match. Each local user that matches becomes a candidate. A match does not sign the user in: the flow's Account Linking node has the user verify one of the candidates before linking it. The direct authentication API cannot prompt, so it signs in recorded links only.
+- Each attribute is an external claim name. It matches on every local attribute it's mapped to under **Attribute mappings**, and on the local attribute of the same name, because mappings copy the value there too. For example, with `email` mapped to `username`, linking on `email` finds a user whose `username` or whose `email` holds the incoming address.
+- Each local attribute is matched on the value it would be provisioned with. An attribute with no mapping of its own therefore also works as a local attribute name: linking on `costCenter` with `cost_centre` mapped to `costCenter` matches on the incoming `cost_centre` value.
+- The same-named local attribute is skipped when its name has characters other than letters, digits, and underscores, which includes dot notation. Such an attribute matches only through its mappings, so it must be mapped for every user type, and saving rejects it otherwise. For example, linking on `address.email` requires a mapping such as `address.email` to `email` in each user type.
+- For a mapped attribute, the same-named local attribute is also skipped when another attribute is mapped onto that name, since that attribute's value is what is stored there. For example, with `email` mapped to `contactEmail` and `mail` mapped to `email`, linking on `email` matches on `contactEmail` only.
+- If a configured attribute has a value but nothing to match on, the connection matches no one. This can still happen at sign-in when the identity resolves to a user type that has no attribute mappings and the attribute's name has characters other than letters, digits, and underscores.
+- `userID`, `federatedIdpId`, `credentialUpdatedAt`, and `linkedIds` are reserved and never matched on. Saving rejects a linking attribute that is, or is mapped to, one of them.
+- If the configured attributes match more than one user, including when two of an attribute's local attributes name different users, every matching user is a candidate. The user verifies whichever account is theirs, and that account is the one linked.
+- Each attribute's local attributes are combined with every other's, and each combination is one lookup. For example, two attributes that each match on three local attributes need nine lookups. Saving rejects a configuration that needs more than 10 lookups for any user type.
+- If more than 10 users match, the sign-in fails. An attribute that matches that many users does not identify a person, so treat it as a configuration error.
+- If nothing resolves a user, the user is treated as new (subject to the flow's provisioning configuration).
+- Once a flow resolves or provisions the user, it records the link. Later sign-ins through this connection resolve on that link and never consult the attributes again.
 
 Click **Save changes** to apply your attribute configuration.
 

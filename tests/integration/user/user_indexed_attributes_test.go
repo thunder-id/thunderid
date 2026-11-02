@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -29,7 +30,8 @@ var (
 
 	indexedAttributesEntityTypes = map[string]testutils.UserType{
 		"all_indexed": {
-			Name: "all_indexed",
+			Handle:      "all_indexed",
+			DisplayName: "All Indexed",
 			Schema: map[string]interface{}{
 				"username": map[string]interface{}{
 					"type": "string",
@@ -50,7 +52,8 @@ var (
 			},
 		},
 		"partial_indexed": {
-			Name: "partial_indexed",
+			Handle:      "partial_indexed",
+			DisplayName: "Partial Indexed",
 			Schema: map[string]interface{}{
 				"username": map[string]interface{}{
 					"type": "string",
@@ -68,7 +71,8 @@ var (
 			},
 		},
 		"no_indexed": {
-			Name: "no_indexed",
+			Handle:      "no_indexed",
+			DisplayName: "No Indexed",
 			Schema: map[string]interface{}{
 				"displayName": map[string]interface{}{
 					"type": "string",
@@ -83,7 +87,8 @@ var (
 			},
 		},
 		"mixed_types": {
-			Name: "mixed_types",
+			Handle:      "mixed_types",
+			DisplayName: "Mixed Types",
 			Schema: map[string]interface{}{
 				"username": map[string]interface{}{
 					"type": "string",
@@ -101,6 +106,23 @@ var (
 					},
 				},
 				"tags": map[string]interface{}{
+					"type":  "array",
+					"items": map[string]interface{}{"type": "string"},
+				},
+				"password": map[string]interface{}{
+					"type":       "string",
+					"credential": true,
+				},
+			},
+		},
+		"multi_value": {
+			Handle:      "multi_value",
+			DisplayName: "Multi Value",
+			Schema: map[string]interface{}{
+				"username": map[string]interface{}{
+					"type": "string",
+				},
+				"email": map[string]interface{}{
 					"type":  "array",
 					"items": map[string]interface{}{"type": "string"},
 				},
@@ -843,7 +865,149 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithDifferentIndexedAtt
 	}
 }
 
+// Test Suite 4: Multi-Value Indexed Attributes
+
+func (suite *IndexedAttributesTestSuite) TestAuthenticateWithAnyMultiValueIndexedAttributeValue() {
+	// The repeated value is indexed once.
+	userID := suite.createMultiValueUser("multi_value", "mv_user1",
+		[]string{"mv1a@test.com", "mv1b@test.com", "mv1a@test.com"})
+	defer testutils.DeleteUser(userID)
+
+	for _, email := range []string{"mv1a@test.com", "mv1b@test.com"} {
+		authRequest := map[string]interface{}{
+			"identifiers": map[string]interface{}{"email": email},
+			"credentials": map[string]interface{}{"password": "TestPass123!"},
+		}
+		response, statusCode, err := suite.sendAuthRequest(authRequest)
+		suite.Require().NoError(err)
+		suite.Equal(http.StatusOK, statusCode, "Expected status 200 when authenticating with %s", email)
+		suite.Equal(userID, response.ID)
+	}
+}
+
+func (suite *IndexedAttributesTestSuite) TestUpdateUserRemoveMultiValueIndexedAttributeItem() {
+	userID := suite.createMultiValueUser("multi_value", "mv_shrink",
+		[]string{"mv_shrink_a@test.com", "mv_shrink_b@test.com"})
+	defer testutils.DeleteUser(userID)
+
+	attributesJSON, err := json.Marshal(map[string]interface{}{
+		"username": "mv_shrink",
+		"email":    []string{"mv_shrink_a@test.com"},
+	})
+	suite.Require().NoError(err)
+	suite.Require().NoError(suite.updateUser(userID, testutils.User{
+		Type:       "multi_value",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
+	}))
+
+	response, statusCode, err := suite.sendAuthRequest(map[string]interface{}{
+		"identifiers": map[string]interface{}{"email": "mv_shrink_a@test.com"},
+		"credentials": map[string]interface{}{"password": "TestPass123!"},
+	})
+	suite.Require().NoError(err)
+	suite.Equal(http.StatusOK, statusCode, "The value kept in the list must still authenticate")
+	suite.Equal(userID, response.ID)
+
+	errorResp, statusCode, err := suite.sendAuthRequestExpectingError(map[string]interface{}{
+		"identifiers": map[string]interface{}{"email": "mv_shrink_b@test.com"},
+		"credentials": map[string]interface{}{"password": "TestPass123!"},
+	})
+	suite.Require().NoError(err)
+	suite.Equal(http.StatusNotFound, statusCode, "A value removed from the list must no longer identify the user")
+	suite.Equal("AUTHN-1008", errorResp.Code)
+}
+
+func (suite *IndexedAttributesTestSuite) TestAuthenticateWithSharedMultiValueIndexedAttributeIsAmbiguous() {
+	user1ID := suite.createMultiValueUser("multi_value", "mv_shared1",
+		[]string{"mv_shared@test.com", "mv_shared1@test.com"})
+	defer testutils.DeleteUser(user1ID)
+	user2ID := suite.createMultiValueUser("multi_value", "mv_shared2",
+		[]string{"mv_shared@test.com", "mv_shared2@test.com"})
+	defer testutils.DeleteUser(user2ID)
+
+	authRequest := map[string]interface{}{
+		"identifiers": map[string]interface{}{"email": "mv_shared@test.com"},
+		"credentials": map[string]interface{}{"password": "TestPass123!"},
+	}
+	errorResp, statusCode, err := suite.sendAuthRequestExpectingError(authRequest)
+	suite.Require().NoError(err)
+	suite.Equal(http.StatusUnauthorized, statusCode, "A value held by two users must not authenticate either of them")
+	suite.Equal("AUTH-CRED-1002", errorResp.Code)
+}
+
+func (suite *IndexedAttributesTestSuite) TestListUsersFilterMatchesMultiValueIndexedAttributeItem() {
+	userID := suite.createMultiValueUser("multi_value", "mv_filter",
+		[]string{"mv_filter_a@test.com", "mv_filter_b@test.com"})
+	defer testutils.DeleteUser(userID)
+
+	req, err := http.NewRequest("GET", testutils.TestServerURL+"/users?filter="+
+		url.QueryEscape(`email eq "mv_filter_b@test.com"`), nil)
+	suite.Require().NoError(err)
+	resp, err := suite.client.Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var listResp testutils.UserListResponse
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+	suite.Equal(1, listResp.TotalResults, "A filter on one list item must match the user holding it")
+	suite.Require().Len(listResp.Users, 1)
+	suite.Equal(userID, listResp.Users[0].ID)
+}
+
+func (suite *IndexedAttributesTestSuite) TestIndexedValueLimitExceeded() {
+	emails := make([]string, 101)
+	for i := range emails {
+		emails[i] = fmt.Sprintf("mv_limit%d@test.com", i)
+	}
+
+	_, err := suite.createUserWithEmails("multi_value", "mv_limit_create", emails)
+	suite.Require().Error(err, "More than 100 values for an indexed attribute must be rejected on create")
+	suite.Contains(err.Error(), "got 400")
+	suite.Contains(err.Error(), "USR-1019")
+
+	userID := suite.createMultiValueUser("multi_value", "mv_limit_update", emails[:100])
+	defer testutils.DeleteUser(userID)
+
+	attributesJSON, err := json.Marshal(map[string]interface{}{
+		"username": "mv_limit_update",
+		"email":    emails,
+	})
+	suite.Require().NoError(err)
+	err = suite.updateUser(userID, testutils.User{
+		Type:       "multi_value",
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
+	})
+	suite.Require().Error(err, "More than 100 values for an indexed attribute must be rejected on update")
+	suite.Contains(err.Error(), "status code: 400")
+	suite.Contains(err.Error(), "USR-1019")
+}
+
 // Helper methods
+
+func (suite *IndexedAttributesTestSuite) createUserWithEmails(userType, username string, emails []string) (
+	string, error) {
+	attributesJSON, err := json.Marshal(map[string]interface{}{
+		"username": username,
+		"email":    emails,
+		"password": "TestPass123!",
+	})
+	suite.Require().NoError(err)
+
+	return testutils.CreateUser(testutils.User{
+		Type:       userType,
+		OUID:       suite.ouID,
+		Attributes: json.RawMessage(attributesJSON),
+	})
+}
+
+func (suite *IndexedAttributesTestSuite) createMultiValueUser(userType, username string, emails []string) string {
+	userID, err := suite.createUserWithEmails(userType, username, emails)
+	suite.Require().NoError(err, "Failed to create user %s", username)
+	return userID
+}
 
 func (suite *IndexedAttributesTestSuite) getUser(userID string) (*testutils.User, error) {
 	req, err := http.NewRequest("GET", testutils.TestServerURL+"/users/"+userID, nil)
@@ -889,7 +1053,8 @@ func (suite *IndexedAttributesTestSuite) updateUser(userID string, user testutil
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to update user, status code: %d", resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to update user, status code: %d. Response: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return nil
@@ -923,4 +1088,31 @@ func (suite *IndexedAttributesTestSuite) sendAuthRequest(authRequest map[string]
 	}
 
 	return &response, resp.StatusCode, nil
+}
+
+func (suite *IndexedAttributesTestSuite) sendAuthRequestExpectingError(authRequest map[string]interface{}) (
+	*testutils.ErrorResponse, int, error) {
+	requestJSON, err := json.Marshal(authRequest)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	req, err := http.NewRequest("POST", testutils.TestServerURL+credentialsAuthEndpoint,
+		bytes.NewReader(requestJSON))
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := suite.client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+
+	var errorResp testutils.ErrorResponse
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	_ = json.Unmarshal(bodyBytes, &errorResp)
+
+	return &errorResp, resp.StatusCode, nil
 }

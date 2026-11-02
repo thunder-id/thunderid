@@ -1,0 +1,26 @@
+---
+title: Authorization Integrations
+docType: concept
+sidebar_position: 0
+description: Connect {{ProductName}} authorization flows to supported authorization services and protocols.
+---
+
+# Authorization Integrations
+
+Authorization integrations connect <ProductName /> authorization flows to services that participate in authorization decisions. They provide the protocol-specific configuration that <ProductName /> needs to communicate with each service.
+
+Authorization integrations can cover different roles in the authorization lifecycle. <ProductName /> currently provides an integration for policy decision points.
+
+The available integration types and their configuration guides are listed below.
+
+## Available Authorization Integrations
+
+| Integration type      | Protocol | Purpose                                                                                                          |
+| --------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
+| Policy decision point | AuthZEN  | [Delegate policy evaluation to an AuthZEN-compatible PDP](../authzen). The guide uses Cerbos as the example PDP. |
+
+## Related Guides
+
+- [AuthZEN](../../../protocols/authzen): understand the AuthZEN protocol and the PDP and PEP roles.
+- [Policy Enforcement Point](../../../protocols/authzen/pep): understand how <ProductName /> maps AuthZEN requests and enforces decisions from an AuthZEN-compatible PDP.
+- [Resource Servers](../../../resource-servers): define the resources and actions evaluated by the PDP.

@@ -7,6 +7,8 @@ package importer
 import (
 	"github.com/thunder-id/thunderid/internal/agent"
 	"github.com/thunder-id/thunderid/internal/application"
+	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
@@ -14,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -27,21 +30,24 @@ import (
 // across all domain packages used by the importer. Used to distinguish upsert fallback (create after
 // update-not-found) from other update errors.
 var notFoundErrorCodes = map[string]struct{}{
-	application.ErrorApplicationNotFound.Code:  {},
-	idp.ErrorIDPNotFound.Code:                  {},
-	notification.ErrorSenderNotFound.Code:      {},
-	flowmgt.ErrorFlowNotFound.Code:             {},
-	ou.ErrorOrganizationUnitNotFound.Code:      {},
-	entitytype.ErrorEntityTypeNotFound.Code:    {},
-	role.ErrorRoleNotFound.Code:                {},
-	group.ErrorGroupNotFound.Code:              {},
-	resource.ErrorResourceServerNotFound.Code:  {},
-	thememgt.ErrorThemeNotFound.Code:           {},
-	layoutmgt.ErrorLayoutNotFound.Code:         {},
-	user.ErrorUserNotFound.Code:                {},
-	agent.ErrorAgentNotFound.Code:              {},
-	presentation.ErrorDefinitionNotFound.Code:  {},
-	credential.ErrorConfigurationNotFound.Code: {},
+	application.ErrorApplicationNotFound.Code:       {},
+	idp.ErrorIDPNotFound.Code:                       {},
+	notification.ErrorSenderNotFound.Code:           {},
+	flowmgt.ErrorFlowNotFound.Code:                  {},
+	ou.ErrorOrganizationUnitNotFound.Code:           {},
+	entitytype.ErrorEntityTypeNotFound.Code:         {},
+	role.ErrorRoleNotFound.Code:                     {},
+	group.ErrorGroupNotFound.Code:                   {},
+	resource.ErrorResourceServerNotFound.Code:       {},
+	authzdetailmgt.ErrorTypeNotFound.Code:           {},
+	thememgt.ErrorThemeNotFound.Code:                {},
+	layoutmgt.ErrorLayoutNotFound.Code:              {},
+	user.ErrorUserNotFound.Code:                     {},
+	agent.ErrorAgentNotFound.Code:                   {},
+	presentation.ErrorDefinitionNotFound.Code:       {},
+	credential.ErrorConfigurationNotFound.Code:      {},
+	notificationtemplate.ErrorTemplateNotFound.Code: {},
+	httpconnection.ErrorNotFound.Code:               {},
 }
 
 var (
@@ -89,6 +95,41 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.import.adapterNotConfigured.description",
 			DefaultValue: "The required resource adapter is not configured",
+		},
+	}
+
+	// ErrorDeleteNotSupported represents a deletion requested for a resource type that cannot be
+	// removed at runtime.
+	ErrorDeleteNotSupported = tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
+		Code:  "IMP-1005",
+		Error: tidcommon.I18nMessage{Key: "error.import.deleteNotSupported", DefaultValue: "Deletion not supported"},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.import.deleteNotSupported.description",
+			DefaultValue: "The requested resource type does not support runtime deletion",
+		},
+	}
+
+	// ErrorUnresolvedReference represents a document referring to a variable or secret this deployment
+	// holds no value for.
+	ErrorUnresolvedReference = tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
+		Code:  "IMP-1006",
+		Error: tidcommon.I18nMessage{Key: "error.import.unresolvedReference", DefaultValue: "Unresolved reference"},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.import.unresolvedReference.description",
+			DefaultValue: "The resource refers to a variable or secret this deployment holds no value for",
+		},
+	}
+	// ErrorMisplacedSecret represents a document referring to a secret from a field that is not a
+	// credential, where its value could be read back.
+	ErrorMisplacedSecret = tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
+		Code:  "IMP-1007",
+		Error: tidcommon.I18nMessage{Key: "error.import.misplacedSecret", DefaultValue: "Misplaced secret reference"},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.import.misplacedSecret.description",
+			DefaultValue: "A secret reference may only stand in a field that holds a credential",
 		},
 	}
 )

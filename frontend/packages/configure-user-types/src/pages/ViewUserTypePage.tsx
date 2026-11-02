@@ -1,9 +1,15 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
+import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
-import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
+import {
+  getContactTypesMissingRegex,
+  getErrorMessage,
+  isContactAttributeType,
+  isEqualIgnoringEmpty,
+  resolveAttributeRegex,
+} from '@thunderid/utils';
 import {
   Box,
   Stack,
@@ -36,6 +42,12 @@ import UserTypeConstraints from '../constants/user-type-constraints';
 import useUserTypeRoutes from '../hooks/useUserTypeRoutes';
 import type {PropertyDefinition, UserTypeDefinition, PropertyType, SchemaPropertyInput} from '../types/user-types';
 import getBreakingSchemaChanges from '../utils/getBreakingSchemaChanges';
+
+import {
+  getMissingPrimaryContactTypes,
+  normalizePrimaryContacts,
+  primaryContactMappings,
+} from '../utils/primaryContacts';
 
 interface TabPanelProps {
   children?: ReactNode;
@@ -73,7 +85,7 @@ function convertSchemaToProperties(schema: UserTypeDefinition): SchemaPropertyIn
     unique: 'unique' in value ? (value.unique ?? false) : false,
     credential: 'credential' in value ? (value.credential ?? false) : false,
     enum: 'enum' in value ? (value.enum ?? []) : [],
-    regex: 'regex' in value ? (value.regex ?? '') : '',
+    regex: resolveAttributeRegex(value.type, 'regex' in value ? value.regex : undefined),
     ...('items' in value ? {items: value.items} : {}),
     ...('properties' in value ? {properties: value.properties} : {}),
   }));
@@ -104,11 +116,11 @@ function convertPropertiesToSchema(properties: SchemaPropertyInput[]): UserTypeD
         (propDef as {credential?: boolean}).credential = true;
       }
 
-      if (prop.type === 'string' || prop.type === 'enum') {
+      if (prop.type === 'string' || isContactAttributeType(prop.type) || prop.type === 'enum') {
         if (prop.enum.length > 0) {
           (propDef as {enum?: string[]}).enum = prop.enum;
         }
-        if (prop.regex.trim()) {
+        if (prop.regex.trim() || isContactAttributeType(prop.type)) {
           (propDef as {regex?: string}).regex = prop.regex;
         }
       }
@@ -157,7 +169,7 @@ export default function ViewUserTypePage(): JSX.Element {
 
   // Edited fields (partial — only fields the user has changed)
   const [editedUserType, setEditedUserType] = useState<
-    Partial<{name: string; ouId: string; allowSelfRegistration: boolean; displayAttribute: string}>
+    Partial<{displayName: string; ouId: string; allowSelfRegistration: boolean; displayAttribute: string}>
   >({});
 
   // Edited schema properties (null = no changes, non-null = user edited)
@@ -171,20 +183,32 @@ export default function ViewUserTypePage(): JSX.Element {
   const [breakingAttributes, setBreakingAttributes] = useState<string[]>([]);
 
   // Base properties from server data (useMemo so they're available synchronously)
-  const baseProperties = useMemo(() => (userType ? convertSchemaToProperties(userType.schema) : []), [userType]);
+  const baseProperties = useMemo(
+    () =>
+      userType
+        ? convertSchemaToProperties(userType.schema).map((property) => ({
+            ...property,
+            primary:
+              property.type === 'email'
+                ? userType.systemAttributes?.primaryEmail === property.name
+                : property.type === 'mobile' && userType.systemAttributes?.primaryMobile === property.name,
+          }))
+        : [],
+    [userType],
+  );
 
   // Effective properties (edited or from server)
   const effectiveProperties = editedProperties ?? baseProperties;
 
-  // Effective name
-  const effectiveName = editedUserType.name ?? userType?.name ?? '';
+  // Effective display name
+  const effectiveName = editedUserType.displayName ?? userType?.displayName ?? '';
 
   // Eligible display properties (computed from effective properties)
   const eligibleDisplayProperties = useMemo(
     () =>
       effectiveProperties.filter(
         (p) =>
-          (p.type === 'string' || p.type === 'number' || p.type === 'enum') &&
+          (p.type === 'string' || isContactAttributeType(p.type) || p.type === 'number' || p.type === 'enum') &&
           !p.credential &&
           p.name.trim().length > 0,
       ),
@@ -209,7 +233,7 @@ export default function ViewUserTypePage(): JSX.Element {
   // schema properties against the server's, so reverting every edit by hand clears the bar.
   const hasChanges = useMemo(() => {
     const originalOf: Record<string, unknown> = {
-      name: userType?.name,
+      displayName: userType?.displayName,
       ouId: userType?.ouId,
       allowSelfRegistration: userType?.allowSelfRegistration,
       displayAttribute: userType?.systemAttributes?.display ?? '',
@@ -250,7 +274,7 @@ export default function ViewUserTypePage(): JSX.Element {
       ) {
         return;
       }
-      handleFieldChange('name', trimmedName);
+      handleFieldChange('displayName', trimmedName);
     },
     [handleFieldChange],
   );
@@ -259,7 +283,7 @@ export default function ViewUserTypePage(): JSX.Element {
     (newProperties: SchemaPropertyInput[]): void => {
       updateUserTypeMutation.reset(); // a save error is stale once the form changes
       setValidationError(null);
-      setEditedProperties(newProperties);
+      setEditedProperties(normalizePrimaryContacts(newProperties));
     },
     [updateUserTypeMutation],
   );
@@ -274,20 +298,25 @@ export default function ViewUserTypePage(): JSX.Element {
   const performSave = useCallback(async (): Promise<void> => {
     if (!id || !userType) return;
 
-    const name = (editedUserType.name ?? userType.name).trim();
+    const displayName = (editedUserType.displayName ?? userType.displayName).trim();
     const ouId = (editedUserType.ouId ?? userType.ouId).trim();
     const allowSelfRegistration = editedUserType.allowSelfRegistration ?? userType.allowSelfRegistration;
     const displayAttribute = editedUserType.displayAttribute ?? userType.systemAttributes?.display ?? '';
+
     const schema = convertPropertiesToSchema(effectiveProperties);
+    const systemAttributes = {
+      ...primaryContactMappings(effectiveProperties),
+      ...(displayAttribute ? {display: displayAttribute} : {}),
+    };
 
     try {
       await updateUserTypeMutation.mutateAsync({
         userTypeId: id,
         data: {
-          name,
+          displayName,
           ouId,
           allowSelfRegistration,
-          ...(displayAttribute ? {systemAttributes: {display: displayAttribute}} : {}),
+          ...(Object.keys(systemAttributes).length ? {systemAttributes} : {}),
           schema,
         },
       });
@@ -322,6 +351,36 @@ export default function ViewUserTypePage(): JSX.Element {
       return;
     }
 
+    const missingPrimaryContacts = getMissingPrimaryContactTypes(effectiveProperties);
+    if (missingPrimaryContacts.length > 0) {
+      setValidationError(
+        missingPrimaryContacts
+          .map((type) =>
+            type === 'email'
+              ? t('userTypes:validationErrors.primaryEmail', 'Select one email attribute as the primary email.')
+              : t('userTypes:validationErrors.primaryMobile', 'Select one mobile attribute as the primary mobile.'),
+          )
+          .join(' '),
+      );
+      return;
+    }
+    const missingRegexTypes = getContactTypesMissingRegex(effectiveProperties);
+    if (missingRegexTypes.length > 0) {
+      setValidationError(
+        missingRegexTypes
+          .map((type) =>
+            type === 'email'
+              ? t('userTypes:validationErrors.emailRegexRequired', 'Enter a regular expression for email attributes.')
+              : t(
+                  'userTypes:validationErrors.mobileRegexRequired',
+                  'Enter a regular expression for mobile attributes.',
+                ),
+          )
+          .join(' '),
+      );
+      return;
+    }
+
     // Warn only when a schema change could strand existing users (removed/newly-required/tightened attribute).
     const breaking = getBreakingSchemaChanges(
       convertPropertiesToSchema(baseProperties),
@@ -350,14 +409,22 @@ export default function ViewUserTypePage(): JSX.Element {
   };
 
   // Loading state
+  const resourceTypeTitle = t('navigation:pages.userTypes', 'User types');
+
   if (isLoading) {
-    return <PageLoadingAnimation />;
+    return (
+      <>
+        <DocumentTitle title={resourceTypeTitle} />
+        <PageLoadingAnimation />
+      </>
+    );
   }
 
   // Error state
   if (fetchError) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <QueryErrorNotice
           error={fetchError}
           t={tForErrors}
@@ -373,7 +440,7 @@ export default function ViewUserTypePage(): JSX.Element {
               }}
               startIcon={<ArrowLeft size={16} />}
             >
-              {t('userTypes:edit.back', 'Back to User Types')}
+              {t('userTypes:edit.back', 'Back to user types')}
             </Button>
           }
         />
@@ -385,6 +452,7 @@ export default function ViewUserTypePage(): JSX.Element {
   if (!userType) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <Alert severity="warning" sx={{mb: 2}}>
           {t('userTypes:edit.notFound', 'User type not found')}
         </Alert>
@@ -394,7 +462,7 @@ export default function ViewUserTypePage(): JSX.Element {
           }}
           startIcon={<ArrowLeft size={16} />}
         >
-          {t('userTypes:edit.back', 'Back to User Types')}
+          {t('userTypes:edit.back', 'Back to user types')}
         </Button>
       </PageContent>
     );
@@ -402,6 +470,7 @@ export default function ViewUserTypePage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={userType.displayName} />
       {userType.isReadOnly && (
         <Alert severity="info" sx={{mb: 2}}>
           {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
@@ -410,7 +479,7 @@ export default function ViewUserTypePage(): JSX.Element {
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to={listUrl} />}>
-          {t('userTypes:edit.back', 'Back to User Types')}
+          {t('userTypes:edit.back', 'Back to user types')}
         </PageTitle.BackButton>
         <PageTitle.Header>
           <Stack direction="row" alignItems="center" spacing={1} mb={1}>
@@ -498,7 +567,7 @@ export default function ViewUserTypePage(): JSX.Element {
           <EditSchemaSettings
             properties={effectiveProperties}
             onPropertiesChange={handlePropertiesChange}
-            userTypeName={effectiveName}
+            userTypeHandle={userType.handle}
             disabled={userType.isReadOnly}
           />
         </TabPanel>

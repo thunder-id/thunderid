@@ -1,0 +1,174 @@
+---
+title: Value References
+docType: reference
+description: Name a credential or a configuration value the deployment holds instead of carrying it inline, and have the import put in the value.
+sidebar_position: 5
+---
+
+# Value References
+
+A configuration value can name something the deployment holds instead of carrying it. <ProductName />
+recognizes two prefixes, and an import replaces each with the value held under that name in the
+deployment's variable store.
+
+| Prefix | Refers to | Read back from the store |
+|---|---|---|
+| `sec:` | a secret, such as a client secret | never |
+| `var:` | an ordinary value, such as a client ID | as it is |
+
+```yaml
+resource_type: application
+name: Orders
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: var:APPLICATION_ORDERS_CLIENT_ID
+      clientSecret: sec:APPLICATION_ORDERS_CLIENT_SECRET
+```
+
+The two are independent collections, so the same name may exist in both. The prefix is what says
+which one a reference means. A value with neither prefix is not a reference and is used as it is, and
+so is a value that only contains a reference among other text: a reference is a whole value.
+
+The part after the prefix is the name the store holds the value under. It matches the name an export
+generates for that field, so configuration exported from a control plane and the values a deployment
+holds agree without a second mapping to keep in sync. See [Export Resources](../resource-export.mdx)
+for how those names are derived.
+
+## A List of Values
+
+A field that takes a list, such as an application's redirect URIs, refers to one variable as the
+list's only item. The variable holds the deployment's items as a JSON list of strings, so each
+deployment can have as many as it needs. A variable holding a plain string stands in for one item.
+
+```yaml
+redirectUris:
+  - var:APPLICATION_ORDERS_REDIRECT_URIS
+```
+
+With `APPLICATION_ORDERS_REDIRECT_URIS` set to `["https://orders.example.com/callback", "https://orders.example.com/silent"]`,
+the application is written with both URIs. A list item that is not a reference is kept beside them.
+Only a `var:` reference expands into items. A `sec:` reference is always one value, even when the
+secret it names reads as a JSON list.
+
+A control plane exports an empty list as it is, with no reference, so no gateway has to hold a value
+for it. A client that signs no user in, for example, exports `redirectUris: []`.
+
+## Why Reference Instead of Store
+
+A reference lets configuration move between deployments without carrying values with it. The
+configuration says which value a resource needs; the deployment says what that value is. Two
+deployments can then run the same configuration with different client IDs and secrets, and the
+configuration itself holds nothing sensitive.
+
+## How a Reference Resolves
+
+Before an imported resource is written, each reference in it is replaced with the value the
+deployment's [variable store](../../apis.mdx) holds: a `var:` reference from its variables, a `sec:`
+reference from its secrets. The resource is then written exactly as if the value had been typed in,
+so it is stored the way that field always is. A client secret is hashed, a secret property is
+encrypted, and a client ID is stored as the identifier it is looked up by.
+
+Because the value is put in when the resource is written, changing a variable or a secret later does
+not change resources already written. Import the configuration again to apply a changed value.
+
+## Where a Secret May Stand
+
+A `sec:` reference is accepted only in a field that holds a credential: an application's or agent's
+`clientSecret`, a connection's secret such as `clientSecret`, `authToken`, `apiSecret` or an outbound
+authentication password, and a user's `credentials`. These are the fields an export writes a `sec:`
+placeholder into, and the fields whose stored value is never returned.
+
+A document that refers to a secret from any other field, such as a name, a description, a redirect
+URI or a user attribute, is refused with `IMP-1007` before the secret is read. Resolved there, the
+secret would be stored as an ordinary value that the field's API returns, or that the resource sends
+to another system. A `sec:` reference under a YAML anchor is refused for the same reason. A `var:`
+reference may stand in any field.
+
+A control plane applies the same rule when it captures a
+[configuration version](./configuration-versions.mdx#capture-a-version): a configuration with a secret
+reference outside a credential field is refused with `GTW-1026` before a version is kept, and a diff of
+an earlier version that still holds one lists it under `misplacedSecrets`.
+
+## When a Value Is Not Held
+
+A resource that refers to a name the store does not hold is refused, and the import's result for it
+names every reference it lacked, with the code `IMP-1006`. Other resources in the same import are
+unaffected. The reference text is never written in place of the value: a client secret stored as
+`sec:NAME` would reject every authentication, for a reason that no longer mentions the name.
+
+Set the missing values in the store, then import again.
+
+## A Reference Is Not a Value
+
+The store holds what a reference stands for, so it does not accept a reference as a value. Setting a
+variable or a secret to `var:NAME` or `sec:NAME`, or to a JSON list of strings with such an item in
+it, is refused with the code `VAR-1011`. A value that only begins with `var:` but is not a
+reference name, such as a URL carrying one in its query, is stored as it is, and so is a list that is
+not one of strings.
+
+A placeholder copied into the store in place of a value would otherwise be handed to a resource at
+import, or, when it names the variable it is stored under, resolve without end.
+
+## On a Control Plane
+
+A control plane keeps configuration as references and holds no values, so an import there leaves
+references as they are. They are resolved by the deployment the configuration is applied to.
+
+## Values Captured on a Control Plane
+
+A control plane writes the values its references name to its default gateway as you create and
+change resources, so the gateway holds them when a configuration version is applied to it. Each
+value is stored under the name the export refers to it by: a client ID or a resource server's
+identifier among the gateway's variables, a client secret or a password among its secrets. A list,
+such as an application's redirect URIs, is stored among the variables as the JSON list of its items,
+which is what its reference expands from.
+
+The control plane captures values when you write these resources:
+
+| Resource | Writes that capture values |
+|---|---|
+| Application | create, update |
+| Agent | create, update |
+| User | create, credential update |
+| Connection (identity provider or SMS sender) | create, update |
+| Resource server | create, update |
+
+A captured value comes from the write itself, while the control plane still holds it in plain text.
+This is the only point at which a generated client secret can be captured, because the control plane
+stores only its hash.
+
+Capture follows these rules:
+
+- **Default gateway only.** Values go to the gateway marked `isDefault` in the Gateway API. With no
+  default gateway, nothing is captured. Set a value on any other gateway yourself.
+- **HTTPS only.** The control plane sends a value, and the gateway's management key, only to a
+  gateway whose `baseUrl` starts with `https://`. A gateway on plain HTTP receives nothing.
+- **Never blocks the write.** The values are worked out as the resource is written, and sent to the
+  gateway in the background, so a slow or unreachable gateway does not slow the write. A send that
+  fails is tried again, waiting longer each time up to a minute, ten times in all, and each failure
+  is logged by name, never by value. A newer value for the same name replaces one still on its way.
+  A value that never arrived is reported as missing when you try to apply a version that needs it,
+  and you can set it on the gateway then. A version applied right after a write may find the value
+  not there yet; the apply reports it missing, and the next one finds it. A value still on its way is
+  held in the memory of the node that worked it out, so a restart of that node drops it; it is then
+  reported as missing in the same way.
+- **Replaces what is there.** A value is set whether or not the gateway already holds that name, so
+  writing a resource again replaces the value the gateway held under its name.
+- **Values, never references.** A value that is itself a reference, or a list holding one among its
+  items, is not captured. The export keeps those as they are, so the gateway holds nothing under the
+  name, and a reference stored as a value would never resolve.
+
+### Limits
+
+- **Renames.** Renaming an application, agent, or user changes the names its values are exported
+  under. The control plane captures the client ID under the new name, but not a client secret or
+  password it was not given in the same write, because it holds only their hashes. Set the value
+  under the new name on the gateway yourself.
+- **Imported connections.** Configuration imported into a control plane writes connections without
+  capturing their values. Applications, agents, and users imported into a control plane are captured.
+- **Name collisions.** When two resources' names normalize to the same value name, a full export adds
+  a suffix such as `_2` to one of them. A capture sees one resource at a time and uses the name
+  without the suffix, so set the suffixed value on the gateway yourself.
+- **Overlapping updates.** Two updates to the same resource that run at the same moment can be
+  captured in the opposite order, leaving the earlier value on the gateway until the next write.

@@ -26,11 +26,16 @@ func es256Signer(t *testing.T, key *ecdsa.PrivateKey) SignFunc {
 
 func holderJWK(t *testing.T, pub *ecdsa.PublicKey) map[string]interface{} {
 	t.Helper()
+	// Uncompressed P-256 point: 0x04 || X (32 bytes) || Y (32 bytes).
+	point, err := pub.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
 	return map[string]interface{}{
 		"kty": "EC",
 		"crv": "P-256",
-		"x":   base64.RawURLEncoding.EncodeToString(pub.X.FillBytes(make([]byte, 32))),
-		"y":   base64.RawURLEncoding.EncodeToString(pub.Y.FillBytes(make([]byte, 32))),
+		"x":   base64.RawURLEncoding.EncodeToString(point[1:33]),
+		"y":   base64.RawURLEncoding.EncodeToString(point[33:]),
 	}
 }
 

@@ -22,18 +22,34 @@ type AuthorizationEngine interface {
 	) (*AccessEvaluationsResponse, error)
 }
 
-// Subject identifies the principal for an access evaluation.
+// Subject identifies the principal for an access evaluation. ID is optional: a subject with no
+// local record is described by GroupIDs and RoleIDs alone.
 type Subject struct {
+	Category   string
 	Type       string
 	ID         string
 	GroupIDs   []string
+	RoleIDs    []string
 	Properties map[string]interface{}
 }
 
 // ResourceServer identifies the resource server for an access evaluation.
 type ResourceServer struct {
 	ID         string
+	Identifier string
+	Engine     EngineConfig
 	Properties map[string]interface{}
+}
+
+// EngineConfig identifies the configured authorization engine for a resource server.
+type EngineConfig struct {
+	Type       string
+	Properties EngineProperties
+}
+
+// EngineProperties contains engine-specific resource-server settings.
+type EngineProperties struct {
+	PDPConnectionID string
 }
 
 // Permission identifies the permission string being evaluated.
@@ -48,6 +64,8 @@ type AccessEvaluationRequest struct {
 	ResourceServer ResourceServer
 	Permission     Permission
 	Context        map[string]interface{}
+	// OUID, when set, evaluates the subject's role assignments in this organization unit only.
+	OUID string
 }
 
 // AccessEvaluationResponse represents a single fine-grained access evaluation response.

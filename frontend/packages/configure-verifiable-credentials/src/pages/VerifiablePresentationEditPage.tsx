@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoadingAnimation, QueryErrorNotice} from '@thunderid/components';
+import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice} from '@thunderid/components';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Button, IconButton, PageContent, PageTitle, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
@@ -61,8 +61,15 @@ export default function VerifiablePresentationEditPage(): JSX.Element {
     updateVP.mutate({id: vpId, data: formData});
   };
 
+  const resourceTypeTitle = t('verifiable-presentations:listing.title', 'Presentation definitions');
+
   if (isLoading) {
-    return <PageLoadingAnimation />;
+    return (
+      <>
+        <DocumentTitle title={resourceTypeTitle} />
+        <PageLoadingAnimation />
+      </>
+    );
   }
 
   const backButton = (
@@ -79,6 +86,7 @@ export default function VerifiablePresentationEditPage(): JSX.Element {
   if (error) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <QueryErrorNotice
           error={error}
           t={tForErrors}
@@ -95,11 +103,17 @@ export default function VerifiablePresentationEditPage(): JSX.Element {
     // A disabled query (no vpId yet) reaches here too — that's not "not found", it just hasn't
     // fetched anything.
     if (!vpId) {
-      return <PageLoadingAnimation />;
+      return (
+        <>
+          <DocumentTitle title={resourceTypeTitle} />
+          <PageLoadingAnimation />
+        </>
+      );
     }
 
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <Alert severity="warning" sx={{mb: 2}}>
           {t('verifiable-presentations:edit.notFound')}
         </Alert>
@@ -110,6 +124,7 @@ export default function VerifiablePresentationEditPage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={data.name ?? data.handle} />
       <PageTitle>
         <PageTitle.BackButton component={<Link to={listUrl} />}>
           {t('verifiable-presentations:edit.back')}

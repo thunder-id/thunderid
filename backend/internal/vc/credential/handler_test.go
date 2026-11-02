@@ -51,12 +51,21 @@ func (s *ConfigurationHandlerTestSuite) TestHandleCreate_InvalidBody() {
 	s.Equal(http.StatusBadRequest, rec.Code)
 }
 
+func (s *ConfigurationHandlerTestSuite) TestHandleCreate_RequiresOUID() {
+	req := httptest.NewRequest(http.MethodPost, configurationsPath,
+		strings.NewReader(`{"handle":"eudi-pid","vct":"v","ouHandle":"default"}`))
+	rec := httptest.NewRecorder()
+	s.handler.HandleCreate(rec, req)
+
+	s.Equal(http.StatusBadRequest, rec.Code)
+}
+
 func (s *ConfigurationHandlerTestSuite) TestHandleCreate_ServiceError() {
 	s.service.EXPECT().CreateCredentialConfiguration(mock.Anything, mock.Anything).
 		Return(nil, &ErrorConfigurationAlreadyExists)
 
 	req := httptest.NewRequest(http.MethodPost, configurationsPath,
-		strings.NewReader(`{"handle":"eudi-pid","vct":"v"}`))
+		strings.NewReader(`{"handle":"eudi-pid","vct":"v","ouId":"ou-1"}`))
 	rec := httptest.NewRecorder()
 	s.handler.HandleCreate(rec, req)
 
@@ -122,7 +131,7 @@ func (s *ConfigurationHandlerTestSuite) TestHandleUpdate_Success() {
 	s.service.EXPECT().UpdateCredentialConfiguration(mock.Anything, "cfg-1", mock.Anything).Return(dto, nil)
 
 	req := httptest.NewRequest(http.MethodPut, configurationsPath+"/cfg-1",
-		strings.NewReader(`{"handle":"h","vct":"v"}`))
+		strings.NewReader(`{"handle":"h","vct":"v","ouId":"ou-1"}`))
 	req.SetPathValue("id", "cfg-1")
 	rec := httptest.NewRecorder()
 	s.handler.HandleUpdate(rec, req)
@@ -152,7 +161,7 @@ func (s *ConfigurationHandlerTestSuite) TestHandleUpdate_Immutable() {
 		Return(nil, &ErrorConfigurationImmutable)
 
 	req := httptest.NewRequest(http.MethodPut, configurationsPath+"/cfg-1",
-		strings.NewReader(`{"handle":"h","vct":"v"}`))
+		strings.NewReader(`{"handle":"h","vct":"v","ouId":"ou-1"}`))
 	req.SetPathValue("id", "cfg-1")
 	rec := httptest.NewRecorder()
 	s.handler.HandleUpdate(rec, req)
@@ -196,14 +205,13 @@ func (s *ConfigurationHandlerTestSuite) TestRequestToDTOSanitizes() {
 	req := &credentialConfigurationRequest{
 		Handle:      "  eudi-pid  ",
 		OUID:        " ou-1 ",
-		OUHandle:    " default ",
 		Name:        " EUDI PID ",
 		Description: " A PID credential ",
 		Format:      " dc+sd-jwt ",
 		VCT:         " v ",
 		Claims: []ClaimMapping{
 			{Name: "  given_name  ", DisplayName: "  Given Name  "},
-			{Name: "   ", DisplayName: "dropped"},
+			{Name: "   ", DisplayName: "  unnamed  "},
 		},
 		Display:         &CredentialDisplay{Locale: " en-US ", LogoURI: " uri "},
 		ValiditySeconds: &validity,
@@ -212,22 +220,29 @@ func (s *ConfigurationHandlerTestSuite) TestRequestToDTOSanitizes() {
 	dto := requestToDTO(req)
 	s.Equal("eudi-pid", dto.Handle)
 	s.Equal("ou-1", dto.OUID)
-	s.Equal("default", dto.OUHandle)
 	s.Equal("EUDI PID", dto.Name)
 	s.Equal("A PID credential", dto.Description)
 	s.Equal("dc+sd-jwt", dto.Format)
 	s.Equal("v", dto.VCT)
-	s.Require().Len(dto.Claims, 1)
+	s.Require().Len(dto.Claims, 2)
 	s.Equal("given_name", dto.Claims[0].Name)
 	s.Equal("Given Name", dto.Claims[0].DisplayName)
+	// The unnamed claim is trimmed but retained, so validation can reject it.
+	s.Equal("", dto.Claims[1].Name)
+	s.Equal("unnamed", dto.Claims[1].DisplayName)
 	s.Require().NotNil(dto.Display)
 	s.Equal("en-US", dto.Display.Locale)
 	s.Equal(120, *dto.ValiditySeconds)
 }
 
-func (s *ConfigurationHandlerTestSuite) TestSanitizeClaimsAllEmpty() {
+func (s *ConfigurationHandlerTestSuite) TestSanitizeClaimsKeepsUnnamedForValidation() {
 	out := sanitizeClaims([]ClaimMapping{{Name: "   "}})
-	s.Nil(out)
+	s.Require().Len(out, 1)
+	s.Equal("", out[0].Name)
+}
+
+func (s *ConfigurationHandlerTestSuite) TestSanitizeClaimsNilWhenAbsent() {
+	s.Nil(sanitizeClaims(nil))
 }
 
 func (s *ConfigurationHandlerTestSuite) TestSanitizeDisplayNil() {

@@ -22,6 +22,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/logout/backchannel"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/constants"
@@ -30,6 +32,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/mcp"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/revocationcache"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -83,7 +86,8 @@ func main() {
 	}
 
 	// Register the services.
-	jwtService, runtimeCryptoSvc, importService := registerServices(mux, cacheManager)
+	jwtService, runtimeCryptoSvc, importService, mcpServer, backchannelDispatcher, lockNotifier :=
+		registerServices(mux, cacheManager)
 
 	// When invoked as the bootstrap one-shot (`thunderid bootstrap`), create the
 	// default resources in-process and exit without starting the HTTP server.
@@ -101,6 +105,15 @@ func main() {
 	// still starts and the syncer repopulates the cache on its next tick.
 	revocationEnforcer, revocationSyncer := initRevocationCache(ctx, logger, cfg)
 	revocationSyncer.Start(ctx)
+
+	if backchannelDispatcher != nil {
+		backchannelDispatcher.Start(ctx)
+	}
+
+	// Mount the MCP server's routes now that the revocation enforcer exists — DefaultGuard uses it
+	// to authenticate MCP requests with the same verification and revocation logic as the REST gate.
+	mcpGuard, mcpResourceMeta := mcp.DefaultGuard(jwtService, revocationEnforcer)
+	mcp.Initialize(mux, mcpServer, mcpGuard, mcpResourceMeta)
 
 	// Register static file handlers for frontend applications.
 	registerStaticFileHandlers(ctx, logger, mux, serverHome)
@@ -132,7 +145,8 @@ func main() {
 	// Start server in a goroutine
 	go func() {
 		startupDuration := time.Since(startupStartedAt)
-		logger.Info(ctx, "ThunderID Server started", log.String("startup_time", startupDuration.String()))
+		logger.Info(ctx, "ThunderID Server started",
+			log.String("mode", string(config.GetServerMode())), log.String("startup_time", startupDuration.String()))
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			logger.Fatal(ctx, "Failed to serve requests", log.Error(err))
 		}
@@ -141,7 +155,7 @@ func main() {
 	// Wait for shutdown signal
 	<-sigChan
 	logger.Info(ctx, "Shutting down server...")
-	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer)
+	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, backchannelDispatcher, lockNotifier)
 }
 
 // initRevocationCache builds the Resource Server token-revocation enforcer and its background syncer
@@ -231,26 +245,31 @@ func accessLogExcludePaths(configured []string) []string {
 // createHTTPServer creates and configures an HTTP server with common settings.
 func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Config, mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface, revocationEnforcer revocationcache.EnforcerInterface) *http.Server {
-	securityMiddleware := createSecurityMiddleware(ctx, logger, mux, jwtService, revocationEnforcer)
+	securityMiddleware := createSecurityMiddleware(ctx, logger, cfg, mux, jwtService, revocationEnforcer)
 
 	// Build the middleware chain with proper execution order.
-	// Request flow: CorrelationID (outermost) -> SecurityHeaders -> AccessLog -> Security -> Route Handler (innermost)
+	// Request flow: CorrelationID (outermost) -> DeploymentID -> SecurityHeaders -> AccessLog ->
+	// Security -> Route Handler (innermost)
 	// Note: Middlewares are wrapped in reverse order - the last added will execute first.
 	// The Gate and Console frontend paths are always excluded from the access log to keep it
 	// focused on API traffic. Additional prefixes can be excluded via log.access.exclude_paths.
 	handler := log.AccessLogHandler(logger, accessLogExcludePaths(cfg.Log.Access.ExcludePaths), securityMiddleware)
 	handler = middleware.SecurityHeadersMiddleware()(handler)
+	// Outside the security layer, so that every request carries the deployment id it acts for by the
+	// time any store is reached.
+	handler = middleware.DeploymentIDMiddleware(handler)
 	handler = middleware.CorrelationIDMiddleware(handler)
 
 	// Build the server address using hostname and port from the configurations.
 	serverAddr := fmt.Sprintf("%s:%d", cfg.Server.Hostname, cfg.Server.Port)
 
+	timeouts := cfg.Server.Timeouts
 	server := &http.Server{
 		Addr:              serverAddr,
 		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second, // Mitigate Slowloris attacks
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       120 * time.Second,
+		ReadHeaderTimeout: timeouts.ReadHeader(), // Mitigate Slowloris attacks
+		WriteTimeout:      timeouts.Write(),
+		IdleTimeout:       timeouts.Idle(),
 		ErrorLog:          log.NewServerErrorLog(logger),
 	}
 
@@ -276,9 +295,22 @@ func createTLSListener(ctx context.Context, logger *log.Logger, server *http.Ser
 	return ln
 }
 
-func createSecurityMiddleware(ctx context.Context, logger *log.Logger, mux *http.ServeMux,
-	jwtService jwt.JWTServiceInterface, revocationEnforcer revocationcache.EnforcerInterface) http.Handler {
-	middlewareFunc, err := security.Initialize(jwtService, revocationEnforcer)
+func createSecurityMiddleware(ctx context.Context, logger *log.Logger, cfg *config.Config,
+	mux *http.ServeMux, jwtService jwt.JWTServiceInterface,
+	revocationEnforcer revocationcache.EnforcerInterface) http.Handler {
+	// Record which posture is in force, so it is not inferred from a missing config key. Info, not
+	// Warn: leaving the audience unchecked is the documented default, and config validation already
+	// rejects the one value that would be a mistake.
+	expectedAud := ""
+	if restAudience := cfg.Server.SecurityConfig.REST.Audience; restAudience != nil {
+		expectedAud = *restAudience
+		logger.Info(ctx, "REST API audience validation enabled")
+	} else {
+		logger.Info(ctx, "REST API audience validation not enabled, accepting tokens for any audience")
+	}
+
+	middlewareFunc, err := security.Initialize(jwtService, revocationEnforcer, expectedAud,
+		cfg.Server.SecurityConfig.ManagementAPIKeyHash)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize security middleware", log.Error(err))
 	}
@@ -292,6 +324,8 @@ func gracefulShutdown(
 	server *http.Server,
 	cacheManager cache.CacheManagerInterface,
 	revocationSyncer revocationcache.Syncer,
+	backchannelDispatcher backchannel.DispatcherInterface,
+	lockNotifier identitygovernance.LockNotifierInterface,
 ) {
 	ctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
 	defer cancel()
@@ -305,6 +339,15 @@ func gracefulShutdown(
 
 	// Stop the token-revocation cache syncer.
 	revocationSyncer.Stop()
+
+	// Stop back-channel logout delivery and lock email notices before observability shuts down, so
+	// the final delivery outcomes still reach a subscriber.
+	if backchannelDispatcher != nil {
+		backchannelDispatcher.Stop()
+	}
+	if lockNotifier != nil {
+		lockNotifier.Stop()
+	}
 
 	// Shutdown services
 	unregisterServices()

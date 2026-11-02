@@ -18,10 +18,19 @@ func NewEntityProviderInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *EntityProviderInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &EntityProviderInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -37,76 +46,6 @@ type EntityProviderInterfaceMock_Expecter struct {
 
 func (_m *EntityProviderInterfaceMock) EXPECT() *EntityProviderInterfaceMock_Expecter {
 	return &EntityProviderInterfaceMock_Expecter{mock: &_m.Mock}
-}
-
-// CreateEntity provides a mock function for the type EntityProviderInterfaceMock
-func (_mock *EntityProviderInterfaceMock) CreateEntity(entity *providers.Entity, systemCredentials json.RawMessage) (*providers.Entity, *entityprovider.EntityProviderError) {
-	ret := _mock.Called(entity, systemCredentials)
-
-	if len(ret) == 0 {
-		panic("no return value specified for CreateEntity")
-	}
-
-	var r0 *providers.Entity
-	var r1 *entityprovider.EntityProviderError
-	if returnFunc, ok := ret.Get(0).(func(*providers.Entity, json.RawMessage) (*providers.Entity, *entityprovider.EntityProviderError)); ok {
-		return returnFunc(entity, systemCredentials)
-	}
-	if returnFunc, ok := ret.Get(0).(func(*providers.Entity, json.RawMessage) *providers.Entity); ok {
-		r0 = returnFunc(entity, systemCredentials)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*providers.Entity)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(*providers.Entity, json.RawMessage) *entityprovider.EntityProviderError); ok {
-		r1 = returnFunc(entity, systemCredentials)
-	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
-		}
-	}
-	return r0, r1
-}
-
-// EntityProviderInterfaceMock_CreateEntity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateEntity'
-type EntityProviderInterfaceMock_CreateEntity_Call struct {
-	*mock.Call
-}
-
-// CreateEntity is a helper method to define mock.On call
-//   - entity *providers.Entity
-//   - systemCredentials json.RawMessage
-func (_e *EntityProviderInterfaceMock_Expecter) CreateEntity(entity interface{}, systemCredentials interface{}) *EntityProviderInterfaceMock_CreateEntity_Call {
-	return &EntityProviderInterfaceMock_CreateEntity_Call{Call: _e.mock.On("CreateEntity", entity, systemCredentials)}
-}
-
-func (_c *EntityProviderInterfaceMock_CreateEntity_Call) Run(run func(entity *providers.Entity, systemCredentials json.RawMessage)) *EntityProviderInterfaceMock_CreateEntity_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *providers.Entity
-		if args[0] != nil {
-			arg0 = args[0].(*providers.Entity)
-		}
-		var arg1 json.RawMessage
-		if args[1] != nil {
-			arg1 = args[1].(json.RawMessage)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *EntityProviderInterfaceMock_CreateEntity_Call) Return(entity1 *providers.Entity, entityProviderError *entityprovider.EntityProviderError) *EntityProviderInterfaceMock_CreateEntity_Call {
-	_c.Call.Return(entity1, entityProviderError)
-	return _c
-}
-
-func (_c *EntityProviderInterfaceMock_CreateEntity_Call) RunAndReturn(run func(entity *providers.Entity, systemCredentials json.RawMessage) (*providers.Entity, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_CreateEntity_Call {
-	_c.Call.Return(run)
-	return _c
 }
 
 // DeleteEntity provides a mock function for the type EntityProviderInterfaceMock
@@ -135,7 +74,7 @@ type EntityProviderInterfaceMock_DeleteEntity_Call struct {
 
 // DeleteEntity is a helper method to define mock.On call
 //   - entityID string
-func (_e *EntityProviderInterfaceMock_Expecter) DeleteEntity(entityID interface{}) *EntityProviderInterfaceMock_DeleteEntity_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) DeleteEntity(entityID any) *EntityProviderInterfaceMock_DeleteEntity_Call {
 	return &EntityProviderInterfaceMock_DeleteEntity_Call{Call: _e.mock.On("DeleteEntity", entityID)}
 }
 
@@ -199,7 +138,7 @@ type EntityProviderInterfaceMock_GetEntitiesByIDs_Call struct {
 
 // GetEntitiesByIDs is a helper method to define mock.On call
 //   - entityIDs []string
-func (_e *EntityProviderInterfaceMock_Expecter) GetEntitiesByIDs(entityIDs interface{}) *EntityProviderInterfaceMock_GetEntitiesByIDs_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) GetEntitiesByIDs(entityIDs any) *EntityProviderInterfaceMock_GetEntitiesByIDs_Call {
 	return &EntityProviderInterfaceMock_GetEntitiesByIDs_Call{Call: _e.mock.On("GetEntitiesByIDs", entityIDs)}
 }
 
@@ -263,7 +202,7 @@ type EntityProviderInterfaceMock_GetEntity_Call struct {
 
 // GetEntity is a helper method to define mock.On call
 //   - entityID string
-func (_e *EntityProviderInterfaceMock_Expecter) GetEntity(entityID interface{}) *EntityProviderInterfaceMock_GetEntity_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) GetEntity(entityID any) *EntityProviderInterfaceMock_GetEntity_Call {
 	return &EntityProviderInterfaceMock_GetEntity_Call{Call: _e.mock.On("GetEntity", entityID)}
 }
 
@@ -330,7 +269,7 @@ type EntityProviderInterfaceMock_GetEntityList_Call struct {
 //   - limit int
 //   - offset int
 //   - filters map[string]interface{}
-func (_e *EntityProviderInterfaceMock_Expecter) GetEntityList(category interface{}, limit interface{}, offset interface{}, filters interface{}) *EntityProviderInterfaceMock_GetEntityList_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) GetEntityList(category any, limit any, offset any, filters any) *EntityProviderInterfaceMock_GetEntityList_Call {
 	return &EntityProviderInterfaceMock_GetEntityList_Call{Call: _e.mock.On("GetEntityList", category, limit, offset, filters)}
 }
 
@@ -408,7 +347,7 @@ type EntityProviderInterfaceMock_GetEntityListCount_Call struct {
 // GetEntityListCount is a helper method to define mock.On call
 //   - category providers.EntityCategory
 //   - filters map[string]interface{}
-func (_e *EntityProviderInterfaceMock_Expecter) GetEntityListCount(category interface{}, filters interface{}) *EntityProviderInterfaceMock_GetEntityListCount_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) GetEntityListCount(category any, filters any) *EntityProviderInterfaceMock_GetEntityListCount_Call {
 	return &EntityProviderInterfaceMock_GetEntityListCount_Call{Call: _e.mock.On("GetEntityListCount", category, filters)}
 }
 
@@ -436,6 +375,140 @@ func (_c *EntityProviderInterfaceMock_GetEntityListCount_Call) Return(n int, ent
 }
 
 func (_c *EntityProviderInterfaceMock_GetEntityListCount_Call) RunAndReturn(run func(category providers.EntityCategory, filters map[string]interface{}) (int, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_GetEntityListCount_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetEntityProfile provides a mock function for the type EntityProviderInterfaceMock
+func (_mock *EntityProviderInterfaceMock) GetEntityProfile(entityID string) (*providers.Entity, *entityprovider.EntityProviderError) {
+	ret := _mock.Called(entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEntityProfile")
+	}
+
+	var r0 *providers.Entity
+	var r1 *entityprovider.EntityProviderError
+	if returnFunc, ok := ret.Get(0).(func(string) (*providers.Entity, *entityprovider.EntityProviderError)); ok {
+		return returnFunc(entityID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string) *providers.Entity); ok {
+		r0 = returnFunc(entityID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.Entity)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(string) *entityprovider.EntityProviderError); ok {
+		r1 = returnFunc(entityID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
+		}
+	}
+	return r0, r1
+}
+
+// EntityProviderInterfaceMock_GetEntityProfile_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntityProfile'
+type EntityProviderInterfaceMock_GetEntityProfile_Call struct {
+	*mock.Call
+}
+
+// GetEntityProfile is a helper method to define mock.On call
+//   - entityID string
+func (_e *EntityProviderInterfaceMock_Expecter) GetEntityProfile(entityID any) *EntityProviderInterfaceMock_GetEntityProfile_Call {
+	return &EntityProviderInterfaceMock_GetEntityProfile_Call{Call: _e.mock.On("GetEntityProfile", entityID)}
+}
+
+func (_c *EntityProviderInterfaceMock_GetEntityProfile_Call) Run(run func(entityID string)) *EntityProviderInterfaceMock_GetEntityProfile_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityProviderInterfaceMock_GetEntityProfile_Call) Return(entity *providers.Entity, entityProviderError *entityprovider.EntityProviderError) *EntityProviderInterfaceMock_GetEntityProfile_Call {
+	_c.Call.Return(entity, entityProviderError)
+	return _c
+}
+
+func (_c *EntityProviderInterfaceMock_GetEntityProfile_Call) RunAndReturn(run func(entityID string) (*providers.Entity, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_GetEntityProfile_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetLinkedEntities provides a mock function for the type EntityProviderInterfaceMock
+func (_mock *EntityProviderInterfaceMock) GetLinkedEntities(idpID string, sub string) ([]*providers.Entity, *entityprovider.EntityProviderError) {
+	ret := _mock.Called(idpID, sub)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLinkedEntities")
+	}
+
+	var r0 []*providers.Entity
+	var r1 *entityprovider.EntityProviderError
+	if returnFunc, ok := ret.Get(0).(func(string, string) ([]*providers.Entity, *entityprovider.EntityProviderError)); ok {
+		return returnFunc(idpID, sub)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string, string) []*providers.Entity); ok {
+		r0 = returnFunc(idpID, sub)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*providers.Entity)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(string, string) *entityprovider.EntityProviderError); ok {
+		r1 = returnFunc(idpID, sub)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
+		}
+	}
+	return r0, r1
+}
+
+// EntityProviderInterfaceMock_GetLinkedEntities_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLinkedEntities'
+type EntityProviderInterfaceMock_GetLinkedEntities_Call struct {
+	*mock.Call
+}
+
+// GetLinkedEntities is a helper method to define mock.On call
+//   - idpID string
+//   - sub string
+func (_e *EntityProviderInterfaceMock_Expecter) GetLinkedEntities(idpID any, sub any) *EntityProviderInterfaceMock_GetLinkedEntities_Call {
+	return &EntityProviderInterfaceMock_GetLinkedEntities_Call{Call: _e.mock.On("GetLinkedEntities", idpID, sub)}
+}
+
+func (_c *EntityProviderInterfaceMock_GetLinkedEntities_Call) Run(run func(idpID string, sub string)) *EntityProviderInterfaceMock_GetLinkedEntities_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityProviderInterfaceMock_GetLinkedEntities_Call) Return(entitys []*providers.Entity, entityProviderError *entityprovider.EntityProviderError) *EntityProviderInterfaceMock_GetLinkedEntities_Call {
+	_c.Call.Return(entitys, entityProviderError)
+	return _c
+}
+
+func (_c *EntityProviderInterfaceMock_GetLinkedEntities_Call) RunAndReturn(run func(idpID string, sub string) ([]*providers.Entity, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_GetLinkedEntities_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -477,7 +550,7 @@ type EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call struct {
 
 // GetTransitiveEntityGroups is a helper method to define mock.On call
 //   - entityID string
-func (_e *EntityProviderInterfaceMock_Expecter) GetTransitiveEntityGroups(entityID interface{}) *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) GetTransitiveEntityGroups(entityID any) *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call {
 	return &EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call{Call: _e.mock.On("GetTransitiveEntityGroups", entityID)}
 }
 
@@ -500,6 +573,70 @@ func (_c *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call) Return(ent
 }
 
 func (_c *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call) RunAndReturn(run func(entityID string) ([]providers.EntityGroup, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetTransitiveGroupAncestors provides a mock function for the type EntityProviderInterfaceMock
+func (_mock *EntityProviderInterfaceMock) GetTransitiveGroupAncestors(groupID string) ([]string, *entityprovider.EntityProviderError) {
+	ret := _mock.Called(groupID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTransitiveGroupAncestors")
+	}
+
+	var r0 []string
+	var r1 *entityprovider.EntityProviderError
+	if returnFunc, ok := ret.Get(0).(func(string) ([]string, *entityprovider.EntityProviderError)); ok {
+		return returnFunc(groupID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string) []string); ok {
+		r0 = returnFunc(groupID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(string) *entityprovider.EntityProviderError); ok {
+		r1 = returnFunc(groupID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
+		}
+	}
+	return r0, r1
+}
+
+// EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTransitiveGroupAncestors'
+type EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call struct {
+	*mock.Call
+}
+
+// GetTransitiveGroupAncestors is a helper method to define mock.On call
+//   - groupID string
+func (_e *EntityProviderInterfaceMock_Expecter) GetTransitiveGroupAncestors(groupID any) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
+	return &EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call{Call: _e.mock.On("GetTransitiveGroupAncestors", groupID)}
+}
+
+func (_c *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call) Run(run func(groupID string)) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call) Return(strings []string, entityProviderError *entityprovider.EntityProviderError) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
+	_c.Call.Return(strings, entityProviderError)
+	return _c
+}
+
+func (_c *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call) RunAndReturn(run func(groupID string) ([]string, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -541,7 +678,7 @@ type EntityProviderInterfaceMock_IdentifyEntity_Call struct {
 
 // IdentifyEntity is a helper method to define mock.On call
 //   - filters map[string]interface{}
-func (_e *EntityProviderInterfaceMock_Expecter) IdentifyEntity(filters interface{}) *EntityProviderInterfaceMock_IdentifyEntity_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) IdentifyEntity(filters any) *EntityProviderInterfaceMock_IdentifyEntity_Call {
 	return &EntityProviderInterfaceMock_IdentifyEntity_Call{Call: _e.mock.On("IdentifyEntity", filters)}
 }
 
@@ -605,7 +742,7 @@ type EntityProviderInterfaceMock_SearchEntities_Call struct {
 
 // SearchEntities is a helper method to define mock.On call
 //   - filters map[string]interface{}
-func (_e *EntityProviderInterfaceMock_Expecter) SearchEntities(filters interface{}) *EntityProviderInterfaceMock_SearchEntities_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) SearchEntities(filters any) *EntityProviderInterfaceMock_SearchEntities_Call {
 	return &EntityProviderInterfaceMock_SearchEntities_Call{Call: _e.mock.On("SearchEntities", filters)}
 }
 
@@ -659,7 +796,7 @@ type EntityProviderInterfaceMock_UpdateAttributes_Call struct {
 // UpdateAttributes is a helper method to define mock.On call
 //   - entityID string
 //   - attributes json.RawMessage
-func (_e *EntityProviderInterfaceMock_Expecter) UpdateAttributes(entityID interface{}, attributes interface{}) *EntityProviderInterfaceMock_UpdateAttributes_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) UpdateAttributes(entityID any, attributes any) *EntityProviderInterfaceMock_UpdateAttributes_Call {
 	return &EntityProviderInterfaceMock_UpdateAttributes_Call{Call: _e.mock.On("UpdateAttributes", entityID, attributes)}
 }
 
@@ -718,7 +855,7 @@ type EntityProviderInterfaceMock_UpdateCredentials_Call struct {
 // UpdateCredentials is a helper method to define mock.On call
 //   - entityID string
 //   - credentials json.RawMessage
-func (_e *EntityProviderInterfaceMock_Expecter) UpdateCredentials(entityID interface{}, credentials interface{}) *EntityProviderInterfaceMock_UpdateCredentials_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) UpdateCredentials(entityID any, credentials any) *EntityProviderInterfaceMock_UpdateCredentials_Call {
 	return &EntityProviderInterfaceMock_UpdateCredentials_Call{Call: _e.mock.On("UpdateCredentials", entityID, credentials)}
 }
 
@@ -788,7 +925,7 @@ type EntityProviderInterfaceMock_UpdateEntity_Call struct {
 // UpdateEntity is a helper method to define mock.On call
 //   - entityID string
 //   - entity *providers.Entity
-func (_e *EntityProviderInterfaceMock_Expecter) UpdateEntity(entityID interface{}, entity interface{}) *EntityProviderInterfaceMock_UpdateEntity_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) UpdateEntity(entityID any, entity any) *EntityProviderInterfaceMock_UpdateEntity_Call {
 	return &EntityProviderInterfaceMock_UpdateEntity_Call{Call: _e.mock.On("UpdateEntity", entityID, entity)}
 }
 
@@ -847,7 +984,7 @@ type EntityProviderInterfaceMock_UpdateSystemAttributes_Call struct {
 // UpdateSystemAttributes is a helper method to define mock.On call
 //   - entityID string
 //   - attributes json.RawMessage
-func (_e *EntityProviderInterfaceMock_Expecter) UpdateSystemAttributes(entityID interface{}, attributes interface{}) *EntityProviderInterfaceMock_UpdateSystemAttributes_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) UpdateSystemAttributes(entityID any, attributes any) *EntityProviderInterfaceMock_UpdateSystemAttributes_Call {
 	return &EntityProviderInterfaceMock_UpdateSystemAttributes_Call{Call: _e.mock.On("UpdateSystemAttributes", entityID, attributes)}
 }
 
@@ -906,7 +1043,7 @@ type EntityProviderInterfaceMock_UpdateSystemCredentials_Call struct {
 // UpdateSystemCredentials is a helper method to define mock.On call
 //   - entityID string
 //   - credentials json.RawMessage
-func (_e *EntityProviderInterfaceMock_Expecter) UpdateSystemCredentials(entityID interface{}, credentials interface{}) *EntityProviderInterfaceMock_UpdateSystemCredentials_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) UpdateSystemCredentials(entityID any, credentials any) *EntityProviderInterfaceMock_UpdateSystemCredentials_Call {
 	return &EntityProviderInterfaceMock_UpdateSystemCredentials_Call{Call: _e.mock.On("UpdateSystemCredentials", entityID, credentials)}
 }
 
@@ -975,7 +1112,7 @@ type EntityProviderInterfaceMock_ValidateEntityIDs_Call struct {
 
 // ValidateEntityIDs is a helper method to define mock.On call
 //   - entityIDs []string
-func (_e *EntityProviderInterfaceMock_Expecter) ValidateEntityIDs(entityIDs interface{}) *EntityProviderInterfaceMock_ValidateEntityIDs_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) ValidateEntityIDs(entityIDs any) *EntityProviderInterfaceMock_ValidateEntityIDs_Call {
 	return &EntityProviderInterfaceMock_ValidateEntityIDs_Call{Call: _e.mock.On("ValidateEntityIDs", entityIDs)}
 }
 

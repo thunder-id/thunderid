@@ -1,0 +1,2780 @@
+{
+  "docsSidebar": [
+    {
+      "type": "doc",
+      "id": "index",
+      "label": "Home",
+      "className": "sidebar-doc-home"
+    },
+    {
+      "type": "html",
+      "value": "<div class=\"sidebar-section-label\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z\"/><path d=\"m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z\"/><path d=\"M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0\"/><path d=\"M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5\"/></svg><span>Get Started</span></div>",
+      "className": "sidebar-html-section-header"
+    },
+    {
+      "type": "category",
+      "label": "Get Started",
+      "collapsed": false,
+      "collapsible": false,
+      "className": "sidebar-section",
+      "items": [
+        {
+          "type": "doc",
+          "id": "getting-started/get-thunderid",
+          "label": "Get ThunderID"
+        },
+        {
+          "type": "html",
+          "value": "What are you building?",
+          "className": "sidebar-connect-label"
+        },
+        {
+          "type": "category",
+          "label": "Application",
+          "className": "connect-section connect-section--app",
+          "collapsible": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "getting-started/connect-your-application/react",
+              "label": "React",
+              "customProps": {
+                "icon": "react"
+              }
+            },
+            {
+              "type": "doc",
+              "id": "getting-started/connect-your-application/nextjs",
+              "label": "Next.js",
+              "customProps": {
+                "icon": "next"
+              }
+            },
+            {
+              "type": "doc",
+              "id": "getting-started/connect-your-application/express",
+              "label": "Express",
+              "customProps": {
+                "icon": "express"
+              }
+            },
+            {
+              "type": "doc",
+              "id": "getting-started/connect-your-application/vue",
+              "label": "Vue",
+              "customProps": {
+                "icon": "vue"
+              }
+            },
+            {
+              "type": "doc",
+              "id": "getting-started/connect-your-application/nuxt",
+              "label": "Nuxt",
+              "customProps": {
+                "icon": "nuxt"
+              }
+            },
+            {
+              "type": "doc",
+              "id": "getting-started/connect-your-application/node",
+              "label": "Node.js",
+              "customProps": {
+                "icon": "node"
+              }
+            },
+            {
+              "type": "doc",
+              "id": "getting-started/connect-your-application/browser",
+              "label": "JavaScript",
+              "customProps": {
+                "icon": "javascript"
+              }
+            },
+            {
+              "type": "doc",
+              "id": "getting-started/connect-your-application/ios",
+              "label": "iOS",
+              "customProps": {
+                "icon": "ios"
+              }
+            },
+            {
+              "type": "doc",
+              "id": "getting-started/connect-your-application/android",
+              "label": "Android",
+              "customProps": {
+                "icon": "android"
+              }
+            },
+            {
+              "type": "doc",
+              "id": "getting-started/connect-your-application/flutter",
+              "label": "Flutter",
+              "customProps": {
+                "icon": "flutter"
+              }
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "AI Agent",
+          "className": "connect-section connect-section--agent",
+          "collapsible": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "getting-started/connect-your-agent/langchain",
+              "label": "LangChain",
+              "customProps": {
+                "icon": "langchain"
+              }
+            },
+            {
+              "type": "html",
+              "className": "menu__list-item",
+              "value": "<div class=\"sidebar-coming-soon\"><span class=\"sidebar-cs-icon\"><img src=\"/assets/images/agent/google-adk.svg\" alt=\"\" aria-hidden=\"true\" /></span>Google ADK<span class=\"sidebar-coming-soon-badge\">Soon</span></div>"
+            },
+            {
+              "type": "html",
+              "className": "menu__list-item",
+              "value": "<div class=\"sidebar-coming-soon\"><span class=\"sidebar-cs-icon\"><svg viewBox=\"0 0 512 512\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M256 48 496 464H16Z\"/></svg></span>Vercel AI SDK<span class=\"sidebar-coming-soon-badge\">Soon</span></div>"
+            },
+            {
+              "type": "html",
+              "className": "menu__list-item",
+              "value": "<div class=\"sidebar-coming-soon\"><span class=\"sidebar-cs-icon\"><img src=\"/assets/images/agent/crewai.svg\" alt=\"\" aria-hidden=\"true\" /></span>CrewAI<span class=\"sidebar-coming-soon-badge\">Soon</span></div>"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "MCP",
+          "className": "connect-section connect-section--mcp",
+          "collapsible": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "getting-started/connect-your-mcp/python",
+              "label": "Python",
+              "key": "mcp-server-python",
+              "customProps": {
+                "icon": "python"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "html",
+      "value": "<div class=\"sidebar-section-label sidebar-section-label--ai\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z\"/><path d=\"M5 3v4\"/><path d=\"M19 17v4\"/><path d=\"M3 5h4\"/><path d=\"M17 19h4\"/></svg><span>Build with AI</span></div>",
+      "className": "sidebar-html-section-header sidebar-persona-iam sidebar-persona-not-devops"
+    },
+    {
+      "type": "category",
+      "label": "Build with AI",
+      "collapsed": false,
+      "collapsible": false,
+      "className": "sidebar-section sidebar-persona-iam sidebar-persona-not-devops",
+      "items": [
+        {
+          "type": "doc",
+          "id": "working-with-ai/skills",
+          "label": "Skills"
+        },
+        {
+          "type": "doc",
+          "id": "working-with-ai/mcp-server",
+          "label": "MCP Server"
+        }
+      ]
+    },
+    {
+      "type": "html",
+      "value": "<div class=\"sidebar-section-label\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polygon points=\"12 2 2 7 12 12 22 7 12 2\"/><polyline points=\"2 17 12 22 22 17\"/><polyline points=\"2 12 12 17 22 12\"/></svg><span>Use Cases</span></div>",
+      "className": "sidebar-html-section-header"
+    },
+    {
+      "type": "category",
+      "label": "Use Cases",
+      "collapsed": false,
+      "collapsible": false,
+      "className": "sidebar-section",
+      "items": [
+        {
+          "type": "doc",
+          "id": "use-cases/overview",
+          "label": "Choose your usecase"
+        },
+        {
+          "type": "category",
+          "label": "Secure Consumer Applications",
+          "link": {
+            "type": "doc",
+            "id": "use-cases/b2c/index"
+          },
+          "collapsible": true,
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "use-cases/b2c/overview",
+              "label": "Understand It"
+            },
+            {
+              "type": "category",
+              "label": "Build It",
+              "collapsible": true,
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "use-cases/b2c/build-index",
+                  "label": "What You'll Build"
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/b2c/build-environment",
+                  "label": "Set Up Your Environment"
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/b2c/build-users",
+                  "label": "Model Your Users"
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/b2c/build-access",
+                  "label": "Define Access"
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/b2c/build-flows",
+                  "label": "Build the Sign-In Flows"
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/b2c/build-application",
+                  "label": "Register the Application"
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/b2c/build-onboarding",
+                  "label": "Onboard Internal Staff"
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/b2c/build-run",
+                  "label": "How It All Runs"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "See It in a Sample App",
+              "collapsible": true,
+              "collapsed": true,
+              "link": {
+                "type": "doc",
+                "id": "use-cases/b2c/try-it-out/index"
+              },
+              "items": [
+                {
+                  "type": "category",
+                  "label": "Walkthroughs",
+                  "key": "b2c-walkthroughs",
+                  "collapsible": true,
+                  "collapsed": true,
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "use-cases/b2c/try-it-out/add-login",
+                      "label": "Login"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/b2c/try-it-out/self-sign-up",
+                      "label": "Self Sign-Up"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/b2c/try-it-out/profile-section",
+                      "label": "View Profile"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/b2c/try-it-out/account-recovery",
+                      "label": "Account Recovery"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/b2c/try-it-out/onboard-internal-users",
+                      "label": "Onboard Internal Users"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Design Decisions & Alternatives",
+              "link": {
+                "type": "doc",
+                "id": "use-cases/b2c/architecture-decisions"
+              },
+              "collapsible": true,
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "use-cases/b2c/integration-patterns",
+                  "label": "Choose Integration"
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/b2c/identity-sources",
+                  "label": "Identity Sources"
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/b2c/tokens-and-apis",
+                  "label": "Protect APIs"
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/b2c/operations",
+                  "label": "Run & Observe"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "SaaS Applications (B2B)",
+          "collapsible": true,
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "use-cases/b2b/multi-tenant-saas",
+              "label": "Multi-Tenant SaaS"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "AI Agents",
+          "collapsible": true,
+          "collapsed": true,
+          "items": [
+            {
+              "type": "category",
+              "label": "Agent ID",
+              "collapsible": true,
+              "collapsed": true,
+              "link": {
+                "type": "doc",
+                "id": "use-cases/ai-agents/index"
+              },
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "use-cases/ai-agents/overview",
+                  "label": "Understand It",
+                  "key": "ai-agents-understand-it"
+                },
+                {
+                  "type": "category",
+                  "label": "Solve It",
+                  "collapsible": true,
+                  "collapsed": true,
+                  "link": {
+                    "type": "doc",
+                    "id": "use-cases/ai-agents/solve-index"
+                  },
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-playground",
+                      "label": "Set Up the Playground"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-identity",
+                      "label": "Give the Agent an Identity"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-sign-in",
+                      "label": "Authenticate the Agent"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-credentials",
+                      "label": "Protect Its Credential"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-access",
+                      "label": "What the Agent May Do"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-acts-for-user",
+                      "label": "Act for a User"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-agent-as-resource",
+                      "label": "Who May Call the Agent"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-ambient",
+                      "label": "Approve Without a Browser"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-run",
+                      "label": "How It All Runs",
+                      "key": "ai-agents-how-it-all-runs"
+                    }
+                  ]
+                },
+                {
+                  "type": "category",
+                  "label": "See It in a Sample App",
+                  "collapsible": true,
+                  "collapsed": true,
+                  "key": "ai-agents-see-it-in-a-sample-app",
+                  "link": {
+                    "type": "doc",
+                    "id": "use-cases/ai-agents/try-it-out/index"
+                  },
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/try-it-out/setup",
+                      "label": "Set up sample application",
+                      "key": "ai-agents-setup"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/configure-it-yourself",
+                      "label": "Configure It Yourself",
+                      "key": "ai-agents-configure-it-yourself"
+                    },
+                    {
+                      "type": "category",
+                      "label": "Walkthroughs",
+                      "key": "ai-agents-walkthroughs",
+                      "collapsible": true,
+                      "collapsed": true,
+                      "items": [
+                        {
+                          "type": "doc",
+                          "id": "use-cases/ai-agents/try-it-out/protect-the-agent",
+                          "label": "Protect the Agent"
+                        },
+                        {
+                          "type": "doc",
+                          "id": "use-cases/ai-agents/try-it-out/act-on-its-own",
+                          "label": "Acting on Its Own"
+                        },
+                        {
+                          "type": "doc",
+                          "id": "use-cases/ai-agents/try-it-out/act-on-behalf-of-user",
+                          "label": "Acting on Behalf of a User"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/ai-agents/architecture-decisions",
+                  "label": "Design Decisions & Alternatives",
+                  "key": "ai-agents-architecture-decisions"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Securing MCP",
+              "collapsible": true,
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "use-cases/ai-agents/mcp-authorization/overview",
+                  "label": "Overview",
+                  "key": "mcp-authorization-overview"
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/ai-agents/mcp-authorization/solution-patterns",
+                  "label": "Solution Patterns",
+                  "key": "mcp-authorization-solution-patterns"
+                },
+                {
+                  "type": "category",
+                  "label": "Try It Out",
+                  "collapsible": true,
+                  "collapsed": true,
+                  "key": "mcp-authorization-try-it-out",
+                  "link": {
+                    "type": "doc",
+                    "id": "use-cases/ai-agents/mcp-authorization/try-it-out"
+                  },
+                  "items": [
+                    {
+                      "type": "category",
+                      "label": "Walkthroughs",
+                      "collapsible": true,
+                      "collapsed": true,
+                      "key": "mcp-authorization-walkthroughs",
+                      "items": [
+                        {
+                          "type": "category",
+                          "label": "MCP Authorization",
+                          "collapsible": true,
+                          "collapsed": true,
+                          "key": "mcp-authorization-walkthroughs-mcp-authorization",
+                          "items": [
+                            {
+                              "type": "doc",
+                              "id": "use-cases/ai-agents/mcp-authorization/try-it-out/connect-via-inspector",
+                              "label": "Scope-Based"
+                            },
+                            {
+                              "type": "doc",
+                              "id": "use-cases/ai-agents/mcp-authorization/try-it-out/authzen-authorization",
+                              "label": "AuthZEN-Based"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "category",
+                      "label": "Learn More",
+                      "collapsible": true,
+                      "collapsed": true,
+                      "key": "mcp-authorization-learn-more",
+                      "items": [
+                        {
+                          "type": "doc",
+                          "id": "use-cases/ai-agents/mcp-authorization/identity-concepts",
+                          "label": "Identity Concepts",
+                          "key": "mcp-authorization-identity-concepts"
+                        },
+                        {
+                          "type": "doc",
+                          "id": "use-cases/ai-agents/mcp-authorization/configure-it-yourself",
+                          "label": "Configure It Yourself",
+                          "key": "mcp-authorization-configure-it-yourself"
+                        },
+                        {
+                          "type": "doc",
+                          "id": "use-cases/ai-agents/mcp-authorization/enterprise-managed-authorization",
+                          "label": "Enterprise-Managed Authorization",
+                          "key": "mcp-authorization-ema"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Decentralized Identity",
+          "collapsible": true,
+          "collapsed": true,
+          "key": "use-cases-vc",
+          "items": [
+            {
+              "type": "doc",
+              "id": "use-cases/vc/overview",
+              "label": "Overview",
+              "key": "vc-overview"
+            },
+            {
+              "type": "category",
+              "label": "Try It Out",
+              "collapsible": true,
+              "collapsed": true,
+              "key": "vc-try-it-out",
+              "link": {
+                "type": "doc",
+                "id": "use-cases/vc/try-it-out/index"
+              },
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "use-cases/vc/try-it-out/setup",
+                  "label": "Set up the sample",
+                  "key": "vc-setup"
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/vc/try-it-out/configure-it-yourself",
+                  "label": "Configure It Yourself",
+                  "key": "vc-configure"
+                },
+                {
+                  "type": "category",
+                  "label": "Walkthroughs",
+                  "collapsible": true,
+                  "collapsed": true,
+                  "key": "vc-walkthroughs",
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "use-cases/vc/try-it-out/issue-credential",
+                      "label": "Issue Credential",
+                      "key": "vc-issue"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/vc/try-it-out/verify-at-lounge",
+                      "label": "Verify Credential",
+                      "key": "vc-verify"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "html",
+      "value": "<div class=\"sidebar-section-label\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><polygon points=\"16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76\"/></svg><span>Guides</span></div>",
+      "className": "sidebar-html-section-header sidebar-persona-iam sidebar-persona-not-devops"
+    },
+    {
+      "type": "category",
+      "label": "Guides",
+      "collapsed": false,
+      "collapsible": false,
+      "className": "sidebar-section sidebar-persona-iam sidebar-persona-not-devops",
+      "items": [
+        {
+          "type": "category",
+          "label": "Applications",
+          "collapsed": true,
+          "collapsible": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "guides/applications/manage-applications",
+              "label": "Manage Applications"
+            },
+            {
+              "type": "doc",
+              "id": "guides/applications/application-settings",
+              "label": "Application Settings"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Users",
+          "collapsed": true,
+          "collapsible": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "guides/users/manage-users",
+              "label": "Manage Users"
+            },
+            {
+              "type": "doc",
+              "id": "guides/users/manage-groups",
+              "label": "Manage Groups"
+            },
+            {
+              "type": "doc",
+              "id": "guides/users/manage-roles",
+              "label": "Manage Roles"
+            },
+            {
+              "type": "doc",
+              "id": "guides/users/user-types",
+              "label": "User Types"
+            },
+            {
+              "type": "doc",
+              "id": "guides/users/user-type-reference",
+              "label": "User Type Reference"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Agents",
+          "link": {
+            "type": "doc",
+            "id": "guides/agents/index"
+          },
+          "collapsed": true,
+          "collapsible": true,
+          "items": [
+            {
+              "type": "category",
+              "label": "Manage Agents",
+              "link": {
+                "type": "doc",
+                "id": "guides/agents/manage-agents"
+              },
+              "collapsed": true,
+              "collapsible": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "guides/agents/agent-schema",
+                  "label": "Agent Schema"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Authentication",
+              "key": "agent-authentication",
+              "link": {
+                "type": "doc",
+                "id": "guides/agents/authentication/index"
+              },
+              "collapsed": true,
+              "collapsible": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "guides/agents/authentication/agent-own-token",
+                  "label": "Agent Token"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/agents/authentication/agent-sign-in",
+                  "label": "Agent Sign-In"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/agents/authentication/on-behalf-of-user",
+                  "label": "On Behalf of a User"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/agents/authentication/agent-to-agent",
+                  "label": "Agent to Agent"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "MCP",
+          "key": "guides-mcp",
+          "collapsed": true,
+          "collapsible": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "guides/mcp/overview",
+              "label": "Overview",
+              "key": "guides-mcp-overview"
+            },
+            {
+              "type": "category",
+              "label": "MCP Clients",
+              "collapsed": true,
+              "collapsible": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "guides/mcp/mcp-clients/index",
+                  "label": "Overview",
+                  "key": "guides-mcp-clients-overview"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/mcp/mcp-clients/register-a-client",
+                  "label": "Register in the Console"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/mcp/mcp-clients/dynamic-client-registration",
+                  "label": "Dynamic Client Registration",
+                  "key": "guides-mcp-dynamic-client-registration"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "MCP Server",
+              "collapsed": true,
+              "collapsible": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "guides/mcp/mcp-server/index",
+                  "label": "Overview",
+                  "key": "guides-mcp-server-overview"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/mcp/mcp-server/secure-your-mcp-server",
+                  "label": "Secure Your MCP Server"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Integrations",
+          "collapsed": true,
+          "collapsible": true,
+          "items": [
+            {
+              "type": "category",
+              "label": "Identity Providers",
+              "collapsed": true,
+              "collapsible": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "guides/identity-providers/overview",
+                  "label": "What are Identity Providers?"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/identity-providers/add-google",
+                  "label": "Add Google"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/identity-providers/add-github",
+                  "label": "Add GitHub"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/identity-providers/add-oidc-provider",
+                  "label": "Add OIDC Provider"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/identity-providers/add-oauth-provider",
+                  "label": "Add OAuth 2.0 Provider"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/identity-providers/manage-identity-providers",
+                  "label": "Manage Identity Providers"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/identity-providers/connect-idp-to-application",
+                  "label": "Connect IdP to Application"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/identity-providers/token-exchange-idp",
+                  "label": "Token Exchange",
+                  "key": "idp-token-exchange"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Notifications",
+              "collapsed": true,
+              "collapsible": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "guides/notifications/templates",
+                  "label": "Notification Templates"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/smtp-server/smtp-server-configuration",
+                  "label": "SMTP Server"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/notifications/sms-providers",
+                  "label": "SMS Providers"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "APIM Gateways",
+              "collapsed": true,
+              "collapsible": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/apim-gateways/overview",
+                  "label": "Overview"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/apim-gateways/apisix",
+                  "label": "Apache APISIX"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/apim-gateways/azure-apim",
+                  "label": "Azure API Management"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/apim-gateways/envoy",
+                  "label": "Envoy"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/apim-gateways/kong",
+                  "label": "Kong Konnect"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/apim-gateways/krakend",
+                  "label": "KrakenD"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Workload Identity Federation",
+              "collapsed": true,
+              "collapsible": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/workload-identity-federation/overview",
+                  "label": "Overview",
+                  "key": "wif-overview"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/workload-identity-federation/openai",
+                  "label": "OpenAI"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/workload-identity-federation/claude",
+                  "label": "Claude"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "doc",
+          "id": "guides/organization-units",
+          "label": "Organization Units"
+        },
+        {
+          "type": "category",
+          "label": "Flows",
+          "collapsed": true,
+          "collapsible": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "guides/flows/what-are-flows",
+              "label": "What Are Flows?"
+            },
+            {
+              "type": "doc",
+              "id": "guides/flows/flow-concepts",
+              "label": "Flow Concepts"
+            },
+            {
+              "type": "doc",
+              "id": "guides/flows/build-a-flow",
+              "label": "Build a Flow"
+            },
+            {
+              "type": "doc",
+              "id": "guides/flows/single-sign-on",
+              "label": "Single Sign-On"
+            },
+            {
+              "type": "doc",
+              "id": "guides/flows/advanced-configurations",
+              "label": "Advanced Configurations"
+            }
+          ]
+        },
+        {
+          "type": "doc",
+          "id": "guides/consent",
+          "label": "Consent"
+        },
+        {
+          "type": "doc",
+          "id": "guides/trusted-issuer",
+          "label": "Secure Using a Third-Party IdP"
+        },
+        {
+          "type": "doc",
+          "id": "guides/resource-servers",
+          "label": "Resource Servers"
+        },
+        {
+          "type": "category",
+          "label": "Design",
+          "collapsed": true,
+          "collapsible": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "guides/design/overview",
+              "label": "Style Your Experience"
+            },
+            {
+              "type": "doc",
+              "id": "guides/design/themes",
+              "label": "Themes"
+            },
+            {
+              "type": "doc",
+              "id": "guides/design/layouts",
+              "label": "Layouts"
+            },
+            {
+              "type": "doc",
+              "id": "guides/design/design-catalog",
+              "label": "Design Catalog"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Translations",
+          "collapsed": true,
+          "collapsible": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "guides/i18n/localization",
+              "label": "Localization"
+            },
+            {
+              "type": "doc",
+              "id": "guides/i18n/manage-translations",
+              "label": "Manage Translations"
+            },
+            {
+              "type": "doc",
+              "id": "guides/i18n/resolve-translations",
+              "label": "Resolve Translations"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Protocols & Standards",
+          "collapsed": true,
+          "collapsible": true,
+          "link": {
+            "type": "doc",
+            "id": "guides/protocols/index"
+          },
+          "items": [
+            {
+              "type": "category",
+              "label": "OAuth & OIDC",
+              "collapsed": true,
+              "collapsible": true,
+              "link": {
+                "type": "doc",
+                "id": "guides/protocols/oauth-oidc/index"
+              },
+              "items": [
+                {
+                  "type": "category",
+                  "label": "Grant Types",
+                  "collapsed": true,
+                  "collapsible": true,
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/authorization-code",
+                      "label": "Authorization Code"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/client-credentials",
+                      "label": "Client Credentials"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/refresh-token",
+                      "label": "Refresh Token"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/token-exchange",
+                      "label": "Token Exchange",
+                      "key": "oauth-token-exchange"
+                    },
+                    {
+                      "type": "category",
+                      "label": "Identity Assertion Grant (ID-JAG)",
+                      "link": {
+                        "type": "doc",
+                        "id": "guides/protocols/oauth-oidc/identity-assertion-grant/index"
+                      },
+                      "items": [
+                        {
+                          "type": "doc",
+                          "id": "guides/protocols/oauth-oidc/identity-assertion-grant/issue-identity-assertions",
+                          "label": "Issue Identity Assertions"
+                        },
+                        {
+                          "type": "doc",
+                          "id": "guides/protocols/oauth-oidc/identity-assertion-grant/accept-identity-assertions",
+                          "label": "Accept Identity Assertions"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/backchannel-authentication",
+                      "label": "Backchannel Authentication (CIBA)"
+                    }
+                  ]
+                },
+                {
+                  "type": "category",
+                  "label": "Client Authentication",
+                  "collapsed": true,
+                  "collapsible": true,
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/client-authentication-methods",
+                      "label": "Client Authentication Methods"
+                    }
+                  ]
+                },
+                {
+                  "type": "category",
+                  "label": "Security Extensions",
+                  "collapsed": true,
+                  "collapsible": true,
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/pkce",
+                      "label": "PKCE"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/par",
+                      "label": "Pushed Authorization Requests"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/dpop",
+                      "label": "DPoP — Sender-Constrained Tokens"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/issuer-identification",
+                      "label": "Issuer Identification"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/resource-indicators",
+                      "label": "Resource Indicators"
+                    }
+                  ]
+                },
+                {
+                  "type": "category",
+                  "label": "Token Operations",
+                  "collapsed": true,
+                  "collapsible": true,
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/token-introspection",
+                      "label": "Token Introspection"
+                    }
+                  ]
+                },
+                {
+                  "type": "category",
+                  "label": "Discovery & Registration",
+                  "collapsed": true,
+                  "collapsible": true,
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/server-metadata",
+                      "label": "Server Metadata"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/jwks",
+                      "label": "JWKS"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/dynamic-client-registration",
+                      "label": "Dynamic Client Registration"
+                    }
+                  ]
+                },
+                {
+                  "type": "category",
+                  "label": "OIDC",
+                  "collapsed": true,
+                  "collapsible": true,
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/openid-connect",
+                      "label": "OpenID Connect"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/rp-initiated-logout",
+                      "label": "RP-Initiated Logout"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/userinfo",
+                      "label": "UserInfo"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/claims-and-scopes",
+                      "label": "Claims & Scopes"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "guides/protocols/oauth-oidc/token-formats",
+                      "label": "Token Formats"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Verifiable Credentials",
+              "collapsed": true,
+              "collapsible": true,
+              "link": {
+                "type": "doc",
+                "id": "guides/protocols/openid4vc/index"
+              },
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "guides/protocols/openid4vc/openid4vci",
+                  "label": "OpenID for Verifiable Credential Issuance"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/protocols/openid4vc/openid4vp",
+                  "label": "OpenID for Verifiable Presentations"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "AuthZEN",
+              "collapsed": true,
+              "collapsible": true,
+              "link": {
+                "type": "doc",
+                "id": "guides/protocols/authzen/index"
+              },
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "guides/protocols/authzen/pdp",
+                  "label": "Policy Decision Point"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "html",
+      "value": "<div class=\"sidebar-section-label\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5\"/><path d=\"M9 18h6\"/><path d=\"M10 22h4\"/></svg><span>Key Concepts</span></div>",
+      "className": "sidebar-html-section-header sidebar-persona-not-devops"
+    },
+    {
+      "type": "category",
+      "label": "Key Concepts",
+      "collapsed": false,
+      "collapsible": false,
+      "className": "sidebar-section sidebar-persona-not-devops",
+      "items": [
+        {
+          "type": "category",
+          "label": "Authentication",
+          "collapsible": true,
+          "collapsed": true,
+          "items": [
+            {
+              "type": "category",
+              "label": "Passwordless",
+              "collapsible": true,
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "key-concepts/authentication/passwordless/passkeys",
+                  "label": "Passkeys"
+                },
+                {
+                  "type": "doc",
+                  "id": "key-concepts/authentication/passwordless/magiclink",
+                  "label": "Magic Link"
+                }
+              ]
+            },
+            {
+              "type": "doc",
+              "id": "key-concepts/authentication/integration-models",
+              "label": "Integration Models"
+            },
+            {
+              "type": "doc",
+              "id": "key-concepts/authentication/sessions",
+              "label": "Sessions and Single Sign-On"
+            }
+          ]
+        },
+        {
+          "type": "doc",
+          "id": "key-concepts/authorization",
+          "label": "Authorization"
+        },
+        {
+          "type": "doc",
+          "id": "key-concepts/tokens",
+          "label": "Tokens"
+        },
+        {
+          "type": "category",
+          "label": "Import and Export",
+          "collapsible": true,
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "guides/declarative-configurations/what-is-import-and-export",
+              "label": "What Is Import and Export?"
+            },
+            {
+              "type": "doc",
+              "id": "guides/declarative-configurations/import-resources",
+              "label": "Import Resources"
+            },
+            {
+              "type": "doc",
+              "id": "guides/resource-export",
+              "label": "Export Resources"
+            },
+            {
+              "type": "doc",
+              "id": "guides/declarative-configurations/templates",
+              "label": "Template Resources"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "html",
+      "value": "<div class=\"sidebar-section-label\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"20\" height=\"8\" x=\"2\" y=\"2\" rx=\"2\" ry=\"2\"/><rect width=\"20\" height=\"8\" x=\"2\" y=\"14\" rx=\"2\" ry=\"2\"/><line x1=\"6\" x2=\"6.01\" y1=\"6\" y2=\"6\"/><line x1=\"6\" x2=\"6.01\" y1=\"18\" y2=\"18\"/></svg><span>Deployment</span></div>",
+      "className": "sidebar-html-section-header sidebar-persona-iam"
+    },
+    {
+      "type": "category",
+      "label": "Deployment",
+      "collapsed": false,
+      "collapsible": false,
+      "className": "sidebar-section sidebar-persona-iam",
+      "items": [
+        {
+          "type": "category",
+          "label": "Deployment Paths",
+          "link": {
+            "type": "doc",
+            "id": "deployment/deployment-paths/index"
+          },
+          "collapsible": true,
+          "collapsed": true,
+          "items": [
+            {
+              "type": "category",
+              "label": "Docker",
+              "collapsible": true,
+              "collapsed": false,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "deployment/deployment-paths/docker",
+                  "label": "Deploy with Docker"
+                },
+                {
+                  "type": "doc",
+                  "id": "deployment/deployment-paths/docker-production",
+                  "label": "Production Recommendations"
+                }
+              ]
+            },
+            {
+              "type": "doc",
+              "id": "deployment/deployment-paths/kubernetes",
+              "label": "Kubernetes"
+            },
+            {
+              "type": "doc",
+              "id": "deployment/deployment-paths/openchoreo",
+              "label": "OpenChoreo"
+            }
+          ]
+        },
+        {
+          "type": "doc",
+          "id": "deployment/configuration",
+          "label": "Configure your Instance"
+        },
+        {
+          "type": "doc",
+          "id": "deployment/production-guidelines",
+          "label": "Production Guidelines"
+        },
+        {
+          "type": "doc",
+          "id": "deployment/observability",
+          "label": "Observability"
+        }
+      ]
+    }
+  ],
+  "springSecurityIntegrationSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/spring-security/overview"
+    },
+    {
+      "type": "category",
+      "label": "Guides",
+      "collapsed": false,
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/spring-security/guides/handling-authentication",
+          "label": "Handling Authentication"
+        }
+      ]
+    }
+  ],
+  "expressSdkSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/express/overview"
+    },
+    {
+      "type": "category",
+      "label": "APIs",
+      "collapsed": false,
+      "className": "sidebar-section-icon-apis",
+      "items": [
+        {
+          "type": "category",
+          "label": "Middleware",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/express/apis/middleware/thunderid",
+              "label": "thunderID()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/express/apis/middleware/handle-sign-in",
+              "label": "handleSignIn()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/express/apis/middleware/handle-sign-out",
+              "label": "handleSignOut()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/express/apis/middleware/protect",
+              "label": "protect()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/express/apis/middleware/handle-flow",
+              "label": "handleFlow()"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Client",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/express/apis/client/thunderid-express-client",
+              "label": "ThunderIDExpressClient"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Configuration",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/express/apis/configuration/express-client-config",
+              "label": "ExpressClientConfig"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Constants",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/express/apis/constants/cookie-config",
+              "label": "CookieConfig"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Guides",
+      "collapsed": false,
+      "className": "sidebar-section-icon-guides",
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/express/guides/redirect-flow",
+          "label": "Redirect Flow"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/express/guides/embedded-sign-in",
+          "label": "Embedded Sign-In"
+        }
+      ]
+    }
+  ],
+  "nuxtSdkSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/nuxt/overview"
+    },
+    {
+      "type": "category",
+      "label": "APIs",
+      "collapsed": false,
+      "items": [
+        {
+          "type": "category",
+          "label": "Configuration",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/nuxt/apis/configuration/module-configuration",
+              "label": "Module Configuration"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Composables",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/nuxt/apis/composables/use-thunderid",
+              "label": "useThunderID()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/nuxt/apis/composables/use-user",
+              "label": "useUser()"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Components",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/nuxt/apis/components/thunderid-root",
+              "label": "<ThunderIDRoot />"
+            },
+            {
+              "type": "category",
+              "label": "Control Components",
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/nuxt/apis/components/signed-in",
+                  "label": "<SignedIn />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/nuxt/apis/components/signed-out",
+                  "label": "<SignedOut />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/nuxt/apis/components/loading",
+                  "label": "<Loading />"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Action Components",
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/nuxt/apis/components/sign-in-button",
+                  "label": "<SignInButton />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/nuxt/apis/components/sign-out-button",
+                  "label": "<SignOutButton />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/nuxt/apis/components/sign-up-button",
+                  "label": "<SignUpButton />"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "User Self-care Components",
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/nuxt/apis/components/user",
+                  "label": "<User />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/nuxt/apis/components/user-profile",
+                  "label": "<UserProfile />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/nuxt/apis/components/user-dropdown",
+                  "label": "<UserDropdown />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/nuxt/apis/components/change-credential",
+                  "label": "<ChangeCredential />"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Middleware",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/nuxt/apis/middleware/define-thunderid-middleware",
+              "label": "defineThunderIDMiddleware()"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Server Utilities",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/nuxt/apis/server/use-server-session",
+              "label": "useServerSession()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/nuxt/apis/server/require-server-session",
+              "label": "requireServerSession()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/nuxt/apis/server/get-valid-access-token",
+              "label": "getValidAccessToken()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/nuxt/apis/server/get-thunderid-context",
+              "label": "getThunderIDContext()"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Utilities",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/nuxt/apis/utils/create-route-matcher",
+              "label": "createRouteMatcher()"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Errors",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/nuxt/apis/errors/thunderid-error",
+              "label": "ThunderIDError"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "reactSdkSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/react/overview"
+    },
+    {
+      "type": "category",
+      "label": "APIs",
+      "collapsed": false,
+      "className": "sidebar-section-icon-apis",
+      "items": [
+        {
+          "type": "category",
+          "label": "Contexts",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/react/apis/contexts/thunderid-provider",
+              "label": "<ThunderIDProvider />"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Components",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "category",
+              "label": "Action Components",
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/react/apis/components/sign-in-button",
+                  "label": "<SignInButton />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/react/apis/components/sign-out-button",
+                  "label": "<SignOutButton />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/react/apis/components/sign-up-button",
+                  "label": "<SignUpButton />"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Control Components",
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/react/apis/components/signed-in",
+                  "label": "<SignedIn />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/react/apis/components/signed-out",
+                  "label": "<SignedOut />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/react/apis/components/loading",
+                  "label": "<Loading />"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "User Self-care Components",
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/react/apis/components/user-dropdown",
+                  "label": "<UserDropdown />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/react/apis/components/user-profile",
+                  "label": "<UserProfile />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/react/apis/components/user",
+                  "label": "<User />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/react/apis/components/change-credential",
+                  "label": "<ChangeCredential />"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Hooks",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/react/apis/hooks/use-thunderid",
+              "label": "useThunderID()"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Guides",
+      "collapsed": false,
+      "className": "sidebar-section-icon-guides",
+      "items": [
+        {
+          "type": "category",
+          "label": "Protecting Routes",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/react/guides/protecting-routes/overview"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/react/guides/protecting-routes/react-router",
+              "label": "React Router"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/react/guides/protecting-routes/tanstack-router",
+              "label": "TanStack Router"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/react/guides/protecting-routes/custom",
+              "label": "Custom Implementation"
+            }
+          ]
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/react/guides/accessing-protected-apis",
+          "label": "Accessing Protected APIs"
+        }
+      ]
+    }
+  ],
+  "reactRouterSdkSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/react-router/overview"
+    },
+    {
+      "type": "category",
+      "label": "APIs",
+      "collapsed": false,
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/react-router/apis/protected-route",
+          "label": "<ProtectedRoute />"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/react-router/apis/callback-route",
+          "label": "<CallbackRoute />"
+        }
+      ]
+    }
+  ],
+  "tanstackRouterSdkSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/tanstack-router/overview"
+    },
+    {
+      "type": "category",
+      "label": "APIs",
+      "collapsed": false,
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/tanstack-router/apis/protected-route",
+          "label": "<ProtectedRoute />"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/tanstack-router/apis/callback-route",
+          "label": "<CallbackRoute />"
+        }
+      ]
+    }
+  ],
+  "nodeSdkSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/node/overview"
+    },
+    {
+      "type": "category",
+      "label": "APIs",
+      "collapsed": false,
+      "items": [
+        {
+          "type": "category",
+          "label": "Clients",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/node/apis/clients/thunderid-node-client"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Configuration",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/node/apis/config/thunderid-node-config"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Utilities",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/node/apis/utilities/cookie-config",
+              "label": "CookieConfig"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/node/apis/utilities/cookie-options",
+              "label": "CookieOptions"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/node/apis/utilities/generate-session-id",
+              "label": "generateSessionId()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/node/apis/utilities/get-session-cookie-options",
+              "label": "getSessionCookieOptions()"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Guides",
+      "collapsed": false,
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/node/guides/handling-authentication",
+          "label": "Handling Authentication"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/node/guides/protecting-routes",
+          "label": "Protecting Routes"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/node/guides/accessing-protected-apis",
+          "label": "Accessing Protected APIs"
+        }
+      ]
+    }
+  ],
+  "vueSdkSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/vue/overview"
+    },
+    {
+      "type": "category",
+      "label": "APIs",
+      "collapsed": false,
+      "className": "sidebar-section-icon-apis",
+      "items": [
+        {
+          "type": "category",
+          "label": "Providers",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/vue/apis/providers/thunderid-provider",
+              "label": "<ThunderIDProvider />"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Components",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "category",
+              "label": "Action Components",
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/vue/apis/components/sign-in-button",
+                  "label": "<SignInButton />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/vue/apis/components/sign-out-button",
+                  "label": "<SignOutButton />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/vue/apis/components/sign-up-button",
+                  "label": "<SignUpButton />"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Control Components",
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/vue/apis/components/signed-in",
+                  "label": "<SignedIn />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/vue/apis/components/signed-out",
+                  "label": "<SignedOut />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/vue/apis/components/loading",
+                  "label": "<Loading />"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "User Self-care Components",
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/vue/apis/components/user-dropdown",
+                  "label": "<UserDropdown />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/vue/apis/components/user-profile",
+                  "label": "<UserProfile />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/vue/apis/components/user",
+                  "label": "<User />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/vue/apis/components/change-credential",
+                  "label": "<ChangeCredential />"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Composables",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/vue/apis/composables/use-thunderid",
+              "label": "useThunderID()"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Guides",
+      "collapsed": false,
+      "className": "sidebar-section-icon-guides",
+      "items": [
+        {
+          "type": "category",
+          "label": "Protecting Routes",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/vue/guides/protecting-routes/overview"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/vue/guides/protecting-routes/vue-router",
+              "label": "Vue Router"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/vue/guides/protecting-routes/custom",
+              "label": "Custom Implementation"
+            }
+          ]
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/vue/guides/accessing-protected-apis",
+          "label": "Accessing Protected APIs"
+        }
+      ]
+    }
+  ],
+  "browserSdkSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/browser/overview"
+    },
+    {
+      "type": "category",
+      "label": "APIs",
+      "collapsed": false,
+      "className": "sidebar-section-icon-apis",
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/browser/apis/thunderid-browser-client",
+          "label": "ThunderIDBrowserClient"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/browser/apis/configuration",
+          "label": "Configuration"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/browser/apis/hooks",
+          "label": "Event Hooks"
+        },
+        {
+          "type": "category",
+          "label": "Utilities",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/update-me-credentials",
+              "label": "updateMeCredentials()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/evaluate-password-policy",
+              "label": "evaluatePasswordPolicy()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/evaluate-change-password-form",
+              "label": "evaluateChangePasswordForm()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/resolve-change-credential-policy",
+              "label": "resolveChangeCredentialPolicy()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/supports-credential",
+              "label": "supportsCredential()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/map-credential-update-error",
+              "label": "mapCredentialUpdateError()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/credential-constants",
+              "label": "CredentialConstants"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/create-http-client-fetcher",
+              "label": "createHttpClientFetcher()"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Guides",
+      "collapsed": false,
+      "className": "sidebar-section-icon-guides",
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/browser/guides/accessing-protected-apis",
+          "label": "Accessing Protected APIs"
+        }
+      ]
+    }
+  ],
+  "nextjsSdkSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/nextjs/overview"
+    },
+    {
+      "type": "category",
+      "label": "APIs",
+      "collapsed": false,
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/nextjs/apis/thunderid-provider",
+          "label": "<ThunderIDProvider />"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/nextjs/apis/middleware",
+          "label": "Middleware"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/nextjs/apis/server-actions",
+          "label": "Server Actions"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/nextjs/apis/configuration",
+          "label": "Configuration"
+        },
+        {
+              "type": "category",
+              "label": "Components",
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "category",
+                  "label": "User Self-care Components",
+                  "collapsed": false,
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "sdks-and-tools/nextjs/apis/components/change-credential",
+                      "label": "<ChangeCredential />"
+                    }
+                  ]
+                }
+              ]
+        }
+      ]
+    }
+  ],
+  "javascriptSdkSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/javascript/overview"
+    },
+    {
+      "type": "category",
+      "label": "Core APIs",
+      "collapsed": false,
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/javascript/apis/thunderid-javascript-client",
+          "label": "ThunderIDJavaScriptClient"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/javascript/apis/configuration",
+          "label": "Configuration"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/javascript/apis/http-client",
+          "label": "HttpClient"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/javascript/apis/storage-manager",
+          "label": "StorageManager"
+        }
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Auth Flow Functions",
+      "collapsed": false,
+      "items": [
+        {
+          "type": "category",
+          "label": "V1 Flows",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/javascript/apis/flows/embedded-sign-in-flow",
+              "label": "Embedded Sign-In Flow"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/javascript/apis/flows/embedded-sign-up-flow",
+              "label": "Embedded Sign-Up Flow"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "V2 Flows",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/javascript/apis/flows/embedded-sign-in-flow-v2",
+              "label": "Sign-In Flow"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/javascript/apis/flows/embedded-sign-up-flow-v2",
+              "label": "Sign-Up Flow"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/javascript/apis/flows/embedded-recovery-flow-v2",
+              "label": "Recovery Flow"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/javascript/apis/flows/embedded-onboarding-flow-v2",
+              "label": "User Onboarding Flow"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/javascript/apis/flows/flow-meta-v2",
+              "label": "Flow Meta"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "category",
+      "label": "User & Profile",
+      "collapsed": false,
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/javascript/apis/user/user-profile",
+          "label": "User Profile"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/javascript/apis/user/schemas",
+          "label": "SCIM2 Schemas"
+        }
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Branding & Theme",
+      "collapsed": true,
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/javascript/apis/branding",
+          "label": "Branding"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/javascript/apis/theme",
+          "label": "Theme"
+        }
+      ]
+    },
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/javascript/apis/i18n",
+      "label": "Internationalization"
+    },
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/javascript/apis/errors",
+      "label": "Errors"
+    },
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/javascript/apis/utilities",
+      "label": "Utilities"
+    }
+  ],
+  "iosSdkSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/ios/overview"
+    },
+    {
+      "type": "category",
+      "label": "APIs",
+      "collapsed": false,
+      "className": "sidebar-section-icon-apis",
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/ios/apis/thunderid-client",
+          "label": "ThunderIDClient"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/ios/apis/configuration",
+          "label": "Configuration"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/ios/apis/thunderid-state",
+          "label": "ThunderIDState"
+        },
+        {
+          "type": "category",
+          "label": "Components",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/ios/apis/components/sign-in",
+              "label": "SignIn"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/ios/apis/components/sign-up",
+              "label": "SignUp"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/ios/apis/components/sign-in-button",
+              "label": "SignInButton"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/ios/apis/components/sign-out-button",
+              "label": "SignOutButton"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/ios/apis/components/signed-in",
+              "label": "SignedIn"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/ios/apis/components/signed-out",
+              "label": "SignedOut"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/ios/apis/components/user-profile",
+              "label": "UserProfile"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/ios/apis/components/change-credential",
+              "label": "ChangeCredential"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Guides",
+      "collapsed": false,
+      "className": "sidebar-section-icon-guides",
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/ios/guides/try-the-sample-app",
+          "label": "Try the Sample App"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/ios/guides/accessing-protected-apis",
+          "label": "Accessing Protected APIs"
+        }
+      ]
+    }
+  ],
+  "androidSdkSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/android/overview"
+    },
+    {
+      "type": "category",
+      "label": "APIs",
+      "collapsed": false,
+      "className": "sidebar-section-icon-apis",
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/android/apis/thunderid-client",
+          "label": "ThunderIDClient"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/android/apis/configuration",
+          "label": "Configuration"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/android/apis/thunderid-state",
+          "label": "ThunderIDState"
+        },
+        {
+          "type": "category",
+          "label": "Components",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/android/apis/components/sign-in",
+              "label": "SignIn"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/android/apis/components/sign-up",
+              "label": "SignUp"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/android/apis/components/sign-in-button",
+              "label": "SignInButton"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/android/apis/components/sign-out-button",
+              "label": "SignOutButton"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/android/apis/components/signed-in",
+              "label": "SignedIn"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/android/apis/components/signed-out",
+              "label": "SignedOut"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/android/apis/components/user-profile",
+              "label": "UserProfile"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/android/apis/components/change-credential",
+              "label": "ChangeCredential"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Guides",
+      "collapsed": false,
+      "className": "sidebar-section-icon-guides",
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/android/guides/try-the-sample-app",
+          "label": "Try the Sample App"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/android/guides/accessing-protected-apis",
+          "label": "Accessing Protected APIs"
+        }
+      ]
+    }
+  ],
+  "flutterSdkSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks-and-tools/flutter/overview"
+    },
+    {
+      "type": "category",
+      "label": "APIs",
+      "collapsed": false,
+      "className": "sidebar-section-icon-apis",
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/flutter/apis/thunder-client",
+          "label": "ThunderIDClient"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/flutter/apis/configuration",
+          "label": "Configuration"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/flutter/apis/thunder-state",
+          "label": "ThunderIDState"
+        },
+        {
+          "type": "category",
+          "label": "Widgets",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/flutter/apis/components/sign-in",
+              "label": "SignIn"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/flutter/apis/components/sign-up",
+              "label": "SignUp"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/flutter/apis/components/sign-in-button",
+              "label": "SignInButton"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/flutter/apis/components/sign-out-button",
+              "label": "SignOutButton"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/flutter/apis/components/signed-in",
+              "label": "SignedIn"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/flutter/apis/components/signed-out",
+              "label": "SignedOut"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/flutter/apis/components/user-profile",
+              "label": "UserProfile"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/flutter/apis/components/change-credential",
+              "label": "ChangeCredential"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Guides",
+      "collapsed": false,
+      "className": "sidebar-section-icon-guides",
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/flutter/guides/try-the-sample-app",
+          "label": "Try the Sample App"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/flutter/guides/accessing-protected-apis",
+          "label": "Accessing Protected APIs"
+        }
+      ]
+    }
+  ]
+}

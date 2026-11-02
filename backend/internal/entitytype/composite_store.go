@@ -118,12 +118,12 @@ func (c *compositeEntityTypeStore) GetEntityTypeByID(ctx context.Context, catego
 	)
 }
 
-// GetEntityTypeByName retrieves an entity type by name from either store within a category.
-func (c *compositeEntityTypeStore) GetEntityTypeByName(ctx context.Context, category TypeCategory,
-	schemaName string) (EntityType, error) {
+// GetEntityTypeByHandle retrieves an entity type by handle from either store within a category.
+func (c *compositeEntityTypeStore) GetEntityTypeByHandle(ctx context.Context, category TypeCategory,
+	handle string) (EntityType, error) {
 	return declarativeresource.CompositeGetHelper(
-		func() (EntityType, error) { return c.dbStore.GetEntityTypeByName(ctx, category, schemaName) },
-		func() (EntityType, error) { return c.fileStore.GetEntityTypeByName(ctx, category, schemaName) },
+		func() (EntityType, error) { return c.dbStore.GetEntityTypeByHandle(ctx, category, handle) },
+		func() (EntityType, error) { return c.fileStore.GetEntityTypeByHandle(ctx, category, handle) },
 		ErrEntityTypeNotFound,
 	)
 }
@@ -155,30 +155,30 @@ func (c *compositeEntityTypeStore) IsEntityTypeDeclarative(category TypeCategory
 	)
 }
 
-// GetDisplayAttributesByNames retrieves display attributes from both stores within a category.
-func (c *compositeEntityTypeStore) GetDisplayAttributesByNames(
-	ctx context.Context, category TypeCategory, names []string,
+// GetDisplayAttributesByHandles retrieves display attributes from both stores within a category.
+func (c *compositeEntityTypeStore) GetDisplayAttributesByHandles(
+	ctx context.Context, category TypeCategory, handles []string,
 ) (map[string]string, error) {
-	if len(names) == 0 {
+	if len(handles) == 0 {
 		return map[string]string{}, nil
 	}
 
-	dbResult, dbErr := c.dbStore.GetDisplayAttributesByNames(ctx, category, names)
+	dbResult, dbErr := c.dbStore.GetDisplayAttributesByHandles(ctx, category, handles)
 	if dbErr != nil {
 		return nil, dbErr
 	}
 
-	fileResult, fileErr := c.fileStore.GetDisplayAttributesByNames(ctx, category, names)
+	fileResult, fileErr := c.fileStore.GetDisplayAttributesByHandles(ctx, category, handles)
 	if fileErr != nil {
 		return nil, fileErr
 	}
 
 	merged := make(map[string]string, len(dbResult)+len(fileResult))
-	for name, display := range fileResult {
-		merged[name] = display
+	for handle, display := range fileResult {
+		merged[handle] = display
 	}
-	for name, display := range dbResult {
-		merged[name] = display
+	for handle, display := range dbResult {
+		merged[handle] = display
 	}
 
 	return merged, nil

@@ -33,18 +33,40 @@ const (
 	testServerURL = "https://localhost:8095"
 )
 
+// Fixtures declared in tests/integration/resources/declarative_resources:
+//
+//	decl-group-1 ("Declarative Test Group")   ← holds decl-group-2 as its only member
+//	decl-group-2 ("Declarative Nested Group") ← holds decl-user-1 as its only member
+//
+// Both groups belong to the declarative organization unit decl-ou-1. The nesting means decl-user-1
+// belongs to decl-group-1 only transitively, which the permission-inheritance test relies on.
+const (
+	declGroupID         = "decl-group-1"
+	declGroupName       = "Declarative Test Group"
+	declNestedGroupID   = "decl-group-2"
+	declNestedGroupName = "Declarative Nested Group"
+	declGroupOUID       = "decl-ou-1"
+	declGroupOUHandle   = "decl-ou-1"
+	declGroupMemberID   = "decl-user-1"
+
+	// Credentials of the declarative user, as declared in the users fixture.
+	declGroupMemberPassword = "TempPassword123!"
+)
+
 // MemberType represents the type of member entity.
 type MemberType string
 
 const (
 	MemberTypeUser  MemberType = "user"
+	MemberTypeApp   MemberType = "app"
 	MemberTypeGroup MemberType = "group"
 )
 
 // Member represents a member of a group (either user or another group).
 type Member struct {
-	Id   string     `json:"id"`
-	Type MemberType `json:"type"`
+	Id      string     `json:"id"`
+	Type    MemberType `json:"type"`
+	Display string     `json:"display,omitempty"`
 }
 
 // GroupBasic represents the basic information of a group.
@@ -53,6 +75,8 @@ type GroupBasic struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	OUID        string `json:"ouId"`
+	OUHandle    string `json:"ouHandle,omitempty"`
+	IsReadOnly  bool   `json:"isReadOnly"`
 }
 
 // Group represents a complete group with members.

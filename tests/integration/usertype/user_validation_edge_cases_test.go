@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 type UserValidationEdgeCasesTestSuite struct {
@@ -266,8 +266,9 @@ func (ts *UserValidationEdgeCasesTestSuite) TestUpdateUserChangeType() {
 
 func (ts *UserValidationEdgeCasesTestSuite) createEmployeeSchema() string {
 	schema := CreateUserTypeRequest{
-		Name: "employee",
-		OUID: ts.oUID,
+		Handle:      "employee",
+		DisplayName: "Employee",
+		OUID:        ts.oUID,
 		Schema: json.RawMessage(`{
 			"given_name": {"type": "string"},
 			"family_name": {"type": "string"},
@@ -282,8 +283,9 @@ func (ts *UserValidationEdgeCasesTestSuite) createEmployeeSchema() string {
 
 func (ts *UserValidationEdgeCasesTestSuite) createSchemaWithNumbers() string {
 	schema := CreateUserTypeRequest{
-		Name: "numeric-user",
-		OUID: ts.oUID,
+		Handle:      "numeric-user",
+		DisplayName: "Numeric User",
+		OUID:        ts.oUID,
 		Schema: json.RawMessage(`{
 			"age": {"type": "number"},
 			"salary": {"type": "number"},
@@ -296,8 +298,9 @@ func (ts *UserValidationEdgeCasesTestSuite) createSchemaWithNumbers() string {
 
 func (ts *UserValidationEdgeCasesTestSuite) createSchemaWithStringEnum() string {
 	schema := CreateUserTypeRequest{
-		Name: "status-user",
-		OUID: ts.oUID,
+		Handle:      "status-user",
+		DisplayName: "Status User",
+		OUID:        ts.oUID,
 		Schema: json.RawMessage(`{
 			"name": {"type": "string"},
 			"status": {"type": "string", "enum": ["active", "inactive", "pending"]},
@@ -310,8 +313,9 @@ func (ts *UserValidationEdgeCasesTestSuite) createSchemaWithStringEnum() string 
 
 func (ts *UserValidationEdgeCasesTestSuite) createSchemaWithMixedEnum() string {
 	schema := CreateUserTypeRequest{
-		Name: "mixed-user",
-		OUID: ts.oUID,
+		Handle:      "mixed-user",
+		DisplayName: "Mixed User",
+		OUID:        ts.oUID,
 		Schema: json.RawMessage(`{
 			"name": {"type": "string"},
 			"level": {"type": "number", "enum": [1, 2, 3, 4, 5]},

@@ -3,7 +3,13 @@
 
 package connection
 
-import "github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+import (
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
+	"github.com/thunder-id/thunderid/internal/sharing"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+)
 
 // connectionExportModel is the unified declarative/export representation of a connection,
 // matching the /connections API's typed, vendor-scoped shape (as opposed to the legacy
@@ -17,6 +23,11 @@ type connectionExportModel struct {
 	Type        string `yaml:"type"                  json:"type"`
 	Name        string `yaml:"name"                  json:"name"`
 	Description string `yaml:"description,omitempty" json:"description,omitempty"`
+
+	// OUID is the organization unit the connection belongs to. A document may name it by OUHandle instead, which is
+	// resolved to its id; when both are given the id wins. One of them is required.
+	OUID     string `yaml:"ouId,omitempty"     json:"ouId,omitempty"`
+	OUHandle string `yaml:"ouHandle,omitempty" json:"ouHandle,omitempty"`
 
 	// IdP-backed vendor fields (google, github, oidc, oauth).
 	ClientID              string   `yaml:"clientId,omitempty"              json:"clientId,omitempty"`
@@ -32,8 +43,16 @@ type connectionExportModel struct {
 	TokenExchangeEnabled  *bool    `yaml:"tokenExchangeEnabled,omitempty"  json:"tokenExchangeEnabled,omitempty"`
 	TrustedTokenAudience  string   `yaml:"trustedTokenAudience,omitempty"  json:"trustedTokenAudience,omitempty"`
 
-	//nolint:lll // long struct tag: both yaml and json keys needed for declarative load/export and import
+	//nolint:lll
 	AttributeConfiguration *providers.AttributeConfiguration `yaml:"attributeConfiguration,omitempty" json:"attributeConfiguration,omitempty"`
+
+	// AuthZEN PDP connection fields. The timeout is shared with HTTP endpoint connections.
+	AuthZENPDPEndpoint      string `yaml:"endpoint,omitempty"                 json:"endpoint,omitempty"`
+	AuthZENPDPBatchEndpoint string `yaml:"batchEndpoint,omitempty"            json:"batchEndpoint,omitempty"`
+	TimeoutMS               int    `yaml:"timeoutMs,omitempty"                json:"timeoutMs,omitempty"`
+	AuthZENPDPRetryCount    *int   `yaml:"retryCount,omitempty"               json:"retryCount,omitempty"`
+	//nolint:lll
+	SubjectAttributeMappings []authzenpdp.SubjectAttributeMapping `yaml:"subjectAttributeMappings,omitempty" json:"subjectAttributeMappings,omitempty"`
 
 	// SMS-backed vendor fields (twilio, vonage, sms-gateway).
 	AccountSID  string `yaml:"accountSid,omitempty"  json:"accountSid,omitempty"`
@@ -45,4 +64,22 @@ type connectionExportModel struct {
 	HTTPMethod  string `yaml:"httpMethod,omitempty"  json:"httpMethod,omitempty"`
 	HTTPHeaders string `yaml:"httpHeaders,omitempty" json:"httpHeaders,omitempty"`
 	ContentType string `yaml:"contentType,omitempty" json:"contentType,omitempty"`
+
+	// Email-backed vendor fields (smtp).
+	Host        string `yaml:"host,omitempty"        json:"host,omitempty"`
+	Port        int    `yaml:"port,omitempty"        json:"port,omitempty"`
+	FromAddress string `yaml:"fromAddress,omitempty" json:"fromAddress,omitempty"`
+	FromName    string `yaml:"fromName,omitempty"    json:"fromName,omitempty"`
+	TLS         string `yaml:"tls,omitempty"         json:"tls,omitempty"`
+
+	// HTTP endpoint connection fields. The URL, timeout and authentication are the shared fields
+	// of those names.
+	Headers []httpconnection.Header `yaml:"headers,omitempty" json:"headers,omitempty"`
+
+	// Outbound authentication, shared by every vendor that dials out with credentials.
+	Authentication *outboundauth.Authentication `yaml:"authentication,omitempty" json:"authentication,omitempty"`
+
+	// SharingPolicies are the organization units the connection is shared with. They are read by the sharing
+	// framework and the importer, not by the service of the connection's kind.
+	SharingPolicies []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty" json:"sharingPolicies,omitempty"`
 }

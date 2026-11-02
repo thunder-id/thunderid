@@ -13,6 +13,7 @@ import (
 
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -52,7 +53,7 @@ func newCredentialsAuthExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameCredentialsAuth))
 
 	identifyExec := newIdentifyingExecutor(ExecutorNameCredentialsAuth, defaultInputs, []providers.Input{},
-		flowFactory, entityProvider)
+		flowFactory, entityProvider, nil, nil)
 	base := flowFactory.CreateExecutor(ExecutorNameCredentialsAuth, providers.ExecutorTypeAuthentication,
 		defaultInputs, []providers.Input{}, &providers.ExecutorMeta{})
 
@@ -105,13 +106,13 @@ func (b *credentialsAuthExecutor) Execute(ctx *providers.NodeContext) (*provider
 	err := b.authenticateUser(ctx, execResp)
 	if err != nil {
 		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrUserAuthFailed
+		execResp.Error = errForEntityCategory(ErrEntityAuthFailed, entitytype.TypeCategoryUser)
 		return execResp, nil
 	}
 	if execResp.Status == providers.ExecFailure || execResp.Status == providers.ExecUserInputRequired {
 		return execResp, nil
 	}
-	if !execResp.AuthUser.IsAuthenticated() && ctx.FlowType != providers.FlowTypeRegistration {
+	if !execResp.AuthUser.IsAuthenticated() && !isRegistrationFlow(ctx) {
 		execResp.Status = providers.ExecUserInputRequired
 		if hasPreResolvedUser {
 			execResp.Inputs = b.getCredentialInputs(ctx)
@@ -167,13 +168,13 @@ func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
 	}
 
 	// For registration flows, only check if user exists.
-	if ctx.FlowType == providers.FlowTypeRegistration {
-		_, err := b.IdentifyUser(ctx.Context, userIdentifiers, execResp)
+	if isRegistrationFlow(ctx) {
+		_, err := b.IdentifyEntity(ctx.Context, userIdentifiers, execResp, entitytype.TypeCategoryUser)
 		if err != nil {
 			return err
 		}
 		if execResp.Status == providers.ExecFailure {
-			if execResp.Error != nil && execResp.Error.Code == ErrUserNotFound.Code {
+			if execResp.Error != nil && execResp.Error.Code == ErrEntityNotFound.Code {
 				logger.Debug(ctx.Context,
 					"User not found for the provided attributes. Proceeding with registration flow.")
 				execResp.Status = providers.ExecComplete
@@ -183,7 +184,7 @@ func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
 		}
 		// User found - fail registration.
 		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrUserAlreadyExists
+		execResp.Error = errForEntityCategory(ErrEntityAlreadyExists, entitytype.TypeCategoryUser)
 		return nil
 	}
 
@@ -193,17 +194,27 @@ func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
 		userCredentials, nil, metadata, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr != nil {
+		// A stated hold re-prompts with its own message on the sign-in page.
+		if stated := statedHold(svcErr); stated != nil {
+			b.logger.Debug(ctx.Context, "Authentication refused by a stated hold",
+				log.String(log.LoggerKeyExecutionID, ctx.ExecutionID), log.String("errorCode", stated.Code))
+			execResp.Status = providers.ExecUserInputRequired
+			execResp.Inputs = b.GetRequiredInputs(ctx)
+			execResp.Error = stated
+			return nil
+		}
+
 		if svcErr.Type == tidcommon.ClientErrorType {
 			execResp.Status = providers.ExecUserInputRequired
 			execResp.Inputs = b.GetRequiredInputs(ctx)
 
 			switch svcErr.Code {
 			case authnprovidermgr.ErrorUserNotFound.Code:
-				execResp.Error = &ErrUserNotFound
+				execResp.Error = errForEntityCategory(ErrEntityNotFound, entitytype.TypeCategoryUser)
 			case authnprovidermgr.ErrorAuthenticationFailed.Code:
 				execResp.Error = &ErrInvalidCredentials
 			default:
-				execResp.Error = &ErrUserAuthFailed
+				execResp.Error = errForEntityCategory(ErrEntityAuthFailed, entitytype.TypeCategoryUser)
 			}
 
 			return nil

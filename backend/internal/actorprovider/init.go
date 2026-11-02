@@ -7,6 +7,7 @@ package actorprovider
 
 import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -19,6 +20,7 @@ func Initialize(
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider providers.AuthnProviderManager,
 	roleService role.RoleServiceInterface,
+	entityTypeService entitytype.EntityTypeServiceInterface,
 ) providers.ActorProvider {
-	return newActorProvider(inboundClient, entityProvider, authnProvider, roleService)
+	return newActorProvider(inboundClient, entityProvider, authnProvider, roleService, entityTypeService)
 }

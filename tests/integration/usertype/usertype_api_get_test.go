@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 type GetUserTypeTestSuite struct {
@@ -62,8 +62,9 @@ func (ts *GetUserTypeTestSuite) SetupSuite() {
     }`)
 
 	schema := CreateUserTypeRequest{
-		Name:   ts.testSchemaName,
-		Schema: ts.testSchemaData,
+		Handle:      ts.testSchemaName,
+		DisplayName: "Retrieval Test Schema",
+		Schema:      ts.testSchemaData,
 	}
 
 	ts.testSchemaID = ts.createTestSchema(schema)
@@ -111,7 +112,8 @@ func (ts *GetUserTypeTestSuite) TestGetUserTypeByID() {
 
 	// Verify retrieved schema according to API spec
 	ts.Assert().Equal(ts.testSchemaID, schema.ID, "ID should match")
-	ts.Assert().Equal(ts.testSchemaName, schema.Name, "Name should match")
+	ts.Assert().Equal(ts.testSchemaName, schema.Handle, "Handle should match")
+	ts.Assert().Equal("Retrieval Test Schema", schema.DisplayName, "Display name should match")
 	ts.Assert().JSONEq(string(ts.testSchemaData), string(schema.Schema), "Schema data should match")
 }
 
@@ -305,4 +307,31 @@ func (ts *GetUserTypeTestSuite) deleteTestSchema(schemaID string) {
 		return
 	}
 	defer resp.Body.Close()
+}
+
+// TestGetDefaultPersonUserTypeContacts tests that the default Person type uses contact types
+// with primary contact mappings.
+func (ts *GetUserTypeTestSuite) TestGetDefaultPersonUserTypeContacts() {
+	const personTypeID = "01900000-0000-7000-8000-000000000010"
+
+	resp, err := ts.client.Get(testServerURL + "/user-types/" + personTypeID)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(bodyBytes))
+
+	var person UserType
+	ts.Require().NoError(json.Unmarshal(bodyBytes, &person))
+	ts.Equal(&SystemAttributes{Display: "username", PrimaryEmail: "email", PrimaryMobile: "mobile_number"},
+		person.SystemAttributes)
+
+	var schema map[string]struct {
+		Type  string `json:"type"`
+		Regex string `json:"regex"`
+	}
+	ts.Require().NoError(json.Unmarshal(person.Schema, &schema))
+	ts.Equal("email", schema["email"].Type)
+	ts.Equal("mobile", schema["mobile_number"].Type)
+	ts.Equal(`^\+[1-9]\d{1,14}$`, schema["mobile_number"].Regex)
 }

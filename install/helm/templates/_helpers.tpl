@@ -99,8 +99,7 @@ This is used to trigger pod restarts when auto-generated Secrets change.
 {{- $runtimePersistentPostgres := default dict $runtimePersistent.postgres -}}
 {{- $cache := default dict $configuration.cache -}}
 {{- $redis := default dict $cache.redis -}}
-{{- $smtp := default dict (default dict $configuration.email).smtp -}}
-{{- if or (and $configPostgres.password (not (default dict $configPostgres.passwordRef).key)) (and $runtimeTransientPostgres.password (not (default dict $runtimeTransientPostgres.passwordRef).key)) (and $runtimeTransientRedis.password (not (default dict $runtimeTransientRedis.passwordRef).key)) (and $entityPostgres.password (not (default dict $entityPostgres.passwordRef).key)) (and $runtimePersistentPostgres.password (not (default dict $runtimePersistentPostgres.passwordRef).key)) (and $redis.password (eq $cache.type "redis") (not (default dict $redis.passwordRef).key)) (and $smtp.host $smtp.password (not (default dict $smtp.passwordRef).key)) }}true{{- end }}
+{{- if or (and $configPostgres.password (not (default dict $configPostgres.passwordRef).key)) (and $runtimeTransientPostgres.password (not (default dict $runtimeTransientPostgres.passwordRef).key)) (and $runtimeTransientRedis.password (not (default dict $runtimeTransientRedis.passwordRef).key)) (and $entityPostgres.password (not (default dict $entityPostgres.passwordRef).key)) (and $runtimePersistentPostgres.password (not (default dict $runtimePersistentPostgres.passwordRef).key)) (and $redis.password (eq $cache.type "redis") (not (default dict $redis.passwordRef).key)) }}true{{- end }}
 {{- end }}
 
 {{/*
@@ -195,25 +194,6 @@ Expected input:
 {{- end }}
 
 {{/*
-Generate the SMTP password environment variable definition.
-Injects SMTP_PASSWORD from either the auto-generated Secret or an external one.
-*/}}
-{{- define "thunderid.smtpPasswordEnvVars" -}}
-{{- $defaultDbSecretName := printf "%s-db-credentials" (include "thunderid.fullname" .) -}}
-{{- $configuration := default dict .Values.configuration -}}
-{{- $email := default dict $configuration.email -}}
-{{- $smtp := default dict $email.smtp -}}
-{{- $smtpPasswordRef := default dict $smtp.passwordRef -}}
-{{- if and $smtp.host (or $smtp.password $smtpPasswordRef.key) }}
-- name: SMTP_PASSWORD
-  valueFrom:
-    secretKeyRef:
-      name: {{ if $smtpPasswordRef.key }}{{ $smtpPasswordRef.name | default $defaultDbSecretName }}{{ else }}{{ $defaultDbSecretName }}{{ end }}
-      key: {{ $smtpPasswordRef.key | default "smtp-password" }}
-{{- end }}
-{{- end }}
-
-{{/*
 Generate generic secret-backed environment variable definitions.
 Expected input:
   - secretEnv: list of objects with fields {name, secretName, secretKey, optional}
@@ -298,6 +278,14 @@ Each item may optionally specify a mountPath to override the global base path.
 {{- fail (printf "Invalid %s entry at index %d: expected string or object with key/path." $field $index) }}
 {{- end }}
 {{- end }}
+{{- end }}
+
+{{/*
+The deployment's resource server identifier — the audience its tokens are bound to.
+Defaults to <server.publicUrl>/mcp, matching the System resource server the bootstrap defaults seed.
+*/}}
+{{- define "thunderid.resourceIdentifier" -}}
+{{- .Values.configuration.consoleClient.resourceIdentifier | default (printf "%s/mcp" .Values.configuration.server.publicUrl) -}}
 {{- end }}
 
 {{/*

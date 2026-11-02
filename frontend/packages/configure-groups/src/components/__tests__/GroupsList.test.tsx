@@ -31,12 +31,39 @@ vi.mock('@wso2/oxygen-ui', async () => {
       GridRenderCellParams: {},
     },
     ListingTable: {
-      Provider: ({children, loading = false}: {children: React.ReactNode; loading?: boolean}) => (
-        <div data-testid="listing-table-provider" data-loading={loading ? 'true' : 'false'}>
+      Provider: ({
+        children,
+        loading = false,
+        variant = undefined,
+      }: {
+        children: React.ReactNode;
+        loading?: boolean;
+        variant?: string;
+      }) => (
+        <div data-testid="listing-table-provider" data-loading={loading ? 'true' : 'false'} data-variant={variant}>
           {children}
         </div>
       ),
-      Container: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
+      Container: ({children, disablePaper = false}: {children: React.ReactNode; disablePaper?: boolean}) => (
+        <div data-testid="listing-table-container" data-disable-paper={disablePaper ? 'true' : undefined}>
+          {children}
+        </div>
+      ),
+      CellIcon: ({
+        icon,
+        primary,
+        secondary = undefined,
+      }: {
+        icon: React.ReactNode;
+        primary: React.ReactNode;
+        secondary?: React.ReactNode;
+      }) => (
+        <div data-testid="cell-icon">
+          {icon}
+          <span>{primary}</span>
+          {secondary && <span>{secondary}</span>}
+        </div>
+      ),
       RowActions: ({children}: {children: React.ReactNode}) => <div data-testid="row-actions">{children}</div>,
       DataGrid: ({
         rows = [],
@@ -154,6 +181,49 @@ describe('GroupsList', () => {
     expect(screen.getByTestId('row-g2')).toHaveTextContent('Group Two');
   });
 
+  it('should render the description as a secondary line only when present', () => {
+    renderWithProviders(<GroupsList />);
+
+    const nameCells = screen.getAllByTestId('cell-icon');
+    expect(nameCells[0]).toHaveTextContent('Group OneFirst group');
+    expect(nameCells[1]).toHaveTextContent(/^Group Two$/);
+  });
+
+  it('should not render a secondary line for an empty description', () => {
+    mockUseGetGroups.mockReturnValue({
+      data: {...mockGroupsData, groups: [{id: 'g3', name: 'Group Three', description: '', ouId: 'ou1'}]},
+      isLoading: false,
+      error: null,
+    });
+
+    renderWithProviders(<GroupsList />);
+
+    expect(screen.getByTestId('cell-icon')).toHaveTextContent(/^Group Three$/);
+  });
+
+  it('should render the data grid variant inside a paper container', () => {
+    renderWithProviders(<GroupsList />);
+
+    expect(screen.getByTestId('listing-table-provider')).toHaveAttribute('data-variant', 'data-grid');
+    expect(screen.getByTestId('listing-table-container')).not.toHaveAttribute('data-disable-paper');
+  });
+
+  it('should label the row action buttons', () => {
+    mockUseGetGroups.mockReturnValue({
+      data: {
+        ...mockGroupsData,
+        groups: [...mockGroupsData.groups, {id: 'g3', name: 'System Group', ouId: 'ou1', isReadOnly: true}],
+      },
+      isLoading: false,
+      error: null,
+    });
+    renderWithProviders(<GroupsList />);
+
+    expect(screen.getAllByRole('button', {name: 'Edit'})).toHaveLength(2);
+    expect(screen.getAllByRole('button', {name: 'Delete'})).toHaveLength(2);
+    expect(screen.getByRole('button', {name: 'Read only'})).toBeInTheDocument();
+  });
+
   it('should show loading state', () => {
     mockUseGetGroups.mockReturnValue({
       data: null,
@@ -267,7 +337,7 @@ describe('GroupsList', () => {
     await user.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete Group')).toBeInTheDocument();
+      expect(screen.getByText('Delete group')).toBeInTheDocument();
     });
   });
 
@@ -279,13 +349,13 @@ describe('GroupsList', () => {
     await user.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete Group')).toBeInTheDocument();
+      expect(screen.getByText('Delete group')).toBeInTheDocument();
     });
 
     await user.click(screen.getByText('Cancel'));
 
     await waitFor(() => {
-      expect(screen.queryByText('Delete Group')).not.toBeInTheDocument();
+      expect(screen.queryByText('Delete group')).not.toBeInTheDocument();
     });
   });
 });

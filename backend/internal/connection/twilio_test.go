@@ -42,7 +42,7 @@ func (s *TwilioTestSuite) TestToSenderDTOMapsFields() {
 	})
 	s.Require().NoError(err)
 	s.Equal(ncommon.NotificationSenderTypeMessage, dto.Type)
-	s.Equal(ncommon.MessageProviderTypeTwilio, dto.Provider)
+	s.Equal(ncommon.NotificationProviderTypeTwilio, dto.Provider)
 	s.Equal("OTP over SMS", dto.Description)
 
 	values, err := propertyValues(dto.Properties)
@@ -59,7 +59,7 @@ func (s *TwilioTestSuite) TestCreateMasksSecret() {
 			ID:       "tw-1",
 			Name:     "My Twilio",
 			Type:     ncommon.NotificationSenderTypeMessage,
-			Provider: ncommon.MessageProviderTypeTwilio,
+			Provider: ncommon.NotificationProviderTypeTwilio,
 			Properties: []cmodels.Property{
 				mustProperty(s.T(), ncommon.TwilioPropKeyAccountSID, "AC00000000000000000000000000000000", false),
 				mustProperty(s.T(), ncommon.TwilioPropKeyAuthToken, "s3cret", true),
@@ -73,7 +73,7 @@ func (s *TwilioTestSuite) TestCreateMasksSecret() {
 	})
 	req := httptest.NewRequest(http.MethodPost, "/connections/twilio", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
-	createSMSHandler(s.handler, twilioToSenderDTO, twilioFromSenderDTO)(rr, req)
+	createSenderHandler(s.handler, twilioToSenderDTO, twilioFromSenderDTO)(rr, req)
 
 	s.Equal(http.StatusCreated, rr.Code)
 	var resp twilioConnectionResponse
@@ -91,7 +91,7 @@ func (s *TwilioTestSuite) TestGetRoundTrip() {
 			ID:       "tw-1",
 			Name:     "My Twilio",
 			Type:     ncommon.NotificationSenderTypeMessage,
-			Provider: ncommon.MessageProviderTypeTwilio,
+			Provider: ncommon.NotificationProviderTypeTwilio,
 			Properties: []cmodels.Property{
 				mustProperty(s.T(), ncommon.TwilioPropKeyAccountSID, "AC00000000000000000000000000000000", false),
 				mustProperty(s.T(), ncommon.TwilioPropKeyAuthToken, "s3cret", true),
@@ -102,7 +102,8 @@ func (s *TwilioTestSuite) TestGetRoundTrip() {
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio/tw-1", nil)
 	req.SetPathValue("id", "tw-1")
 	rr := httptest.NewRecorder()
-	getSMSHandler(s.handler, ncommon.MessageProviderTypeTwilio, twilioFromSenderDTO)(rr, req)
+	getSenderHandler(s.handler, ncommon.NotificationSenderTypeMessage,
+		ncommon.NotificationProviderTypeTwilio, twilioFromSenderDTO)(rr, req)
 
 	s.Equal(http.StatusOK, rr.Code)
 	var resp twilioConnectionResponse
@@ -116,13 +117,26 @@ func (s *TwilioTestSuite) TestGetRoundTrip() {
 func (s *TwilioTestSuite) TestGetProviderMismatchReturnsNotFound() {
 	s.mockNotif.On("GetSender", mock.Anything, "vo-1").
 		Return(&ncommon.NotificationSenderDTO{
-			ID: "vo-1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeVonage,
+			ID: "vo-1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeVonage,
 		}, (*tidcommon.ServiceError)(nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio/vo-1", nil)
 	req.SetPathValue("id", "vo-1")
 	rr := httptest.NewRecorder()
-	getSMSHandler(s.handler, ncommon.MessageProviderTypeTwilio, twilioFromSenderDTO)(rr, req)
+	getSenderHandler(s.handler, ncommon.NotificationSenderTypeMessage,
+		ncommon.NotificationProviderTypeTwilio, twilioFromSenderDTO)(rr, req)
 
 	s.Equal(http.StatusNotFound, rr.Code)
+}
+
+func (s *TwilioTestSuite) TestOUCarriedThroughMapping() {
+	dto, err := twilioToSenderDTO(twilioConnectionRequest{
+		Name: "n", OUID: "ou-1", AccountSID: "AC1", AuthToken: "t", SenderID: "+1",
+	})
+	s.Require().NoError(err)
+	s.Equal("ou-1", dto.OUID)
+
+	resp, err := twilioFromSenderDTO(*dto)
+	s.Require().NoError(err)
+	s.Equal("ou-1", resp.OUID)
 }

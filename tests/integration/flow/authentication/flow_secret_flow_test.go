@@ -17,7 +17,8 @@ import (
 
 // This suite verifies the direct flow-initiation guard for POST /flow/execute:
 //   - flow-native apps (non-public, non-redirect, token-exchange capable) must present a valid Flow Secret;
-//   - redirect (authorization_code) and machine-to-machine (client_credentials only) apps are blocked;
+//   - redirect (authorization_code) apps, and apps without the token-exchange grant (client_credentials
+//     only, jwt-bearer only, CIBA only), are blocked;
 //   - flow continuation (executionId) is unaffected by the guard.
 
 var flowSecretGuardOU = testutils.OrganizationUnit{
@@ -28,7 +29,8 @@ var flowSecretGuardOU = testutils.OrganizationUnit{
 }
 
 var flowSecretGuardUserType = testutils.UserType{
-	Name: "flow_secret_guard_person",
+	Handle:      "flow_secret_guard_person",
+	DisplayName: "Flow Secret Guard Person",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string"},
 		"password": map[string]interface{}{"type": "string", "credential": true},
@@ -37,7 +39,7 @@ var flowSecretGuardUserType = testutils.UserType{
 }
 
 var flowSecretGuardUser = testutils.User{
-	Type: flowSecretGuardUserType.Name,
+	Type: flowSecretGuardUserType.Handle,
 	Attributes: json.RawMessage(`{
 		"username": "appsecretguarduser",
 		"password": "testpassword",
@@ -140,6 +142,53 @@ var flowSecretM2MApp = testutils.Application{
 	},
 }
 
+// flowSecretJWTBearerApp is an MCP client that only redeems ID-JAGs with the jwt-bearer grant. It
+// obtains tokens directly and never runs a sign-in flow, so it is not issued a Flow Secret and is
+// blocked from initiating a flow directly.
+var flowSecretJWTBearerApp = testutils.Application{
+	Name:                      "Flow Secret JWT Bearer App",
+	Description:               "JWT-bearer-only application for Flow Secret guard testing",
+	Type:                      "mcp",
+	IsRegistrationFlowEnabled: false,
+	ClientID:                  "flow_secret_jwt_bearer_client",
+	ClientSecret:              "flow_secret_jwt_bearer_secret",
+	AllowedUserTypes:          []string{"flow_secret_guard_person"},
+	InboundAuthConfig: []map[string]interface{}{
+		{
+			"type": "oauth2",
+			"config": map[string]interface{}{
+				"clientId":                "flow_secret_jwt_bearer_client",
+				"clientSecret":            "flow_secret_jwt_bearer_secret",
+				"grantTypes":              []string{"urn:ietf:params:oauth:grant-type:jwt-bearer"},
+				"tokenEndpointAuthMethod": "client_secret_basic",
+			},
+		},
+	},
+}
+
+// flowSecretCIBAApp is a confidential application with only the CIBA grant. CIBA starts its sign-in
+// flow on the server, and the client cannot redeem a flow assertion without the token-exchange grant,
+// so it is not issued a Flow Secret and is blocked from initiating a flow directly.
+var flowSecretCIBAApp = testutils.Application{
+	Name:                      "Flow Secret CIBA App",
+	Description:               "CIBA-only application for Flow Secret guard testing",
+	IsRegistrationFlowEnabled: false,
+	ClientID:                  "flow_secret_ciba_client",
+	ClientSecret:              "flow_secret_ciba_secret",
+	AllowedUserTypes:          []string{"flow_secret_guard_person"},
+	InboundAuthConfig: []map[string]interface{}{
+		{
+			"type": "oauth2",
+			"config": map[string]interface{}{
+				"clientId":                "flow_secret_ciba_client",
+				"clientSecret":            "flow_secret_ciba_secret",
+				"grantTypes":              []string{"urn:openid:params:grant-type:ciba"},
+				"tokenEndpointAuthMethod": "client_secret_basic",
+			},
+		},
+	},
+}
+
 // flowSecretRedirectApp is a confidential application using the redirect-based authorization_code
 // grant. It is blocked from initiating a flow directly and is not issued an Flow Secret.
 var flowSecretRedirectApp = testutils.Application{
@@ -172,6 +221,8 @@ var (
 	flowSecretBackendAppID    string
 	flowSecretM2MAppID        string
 	flowSecretRedirectAppID   string
+	flowSecretJWTBearerAppID  string
+	flowSecretCIBAAppID       string
 )
 
 // FlowSecretFlowTestSuite verifies the Flow Secret guard on direct flow initiation.
@@ -225,6 +276,18 @@ func (ts *FlowSecretFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "failed to create redirect application")
 	flowSecretRedirectAppID = redirectAppID
 
+	flowSecretJWTBearerApp.AuthFlowID = flowID
+	flowSecretJWTBearerApp.OUID = flowSecretGuardOUID
+	jwtBearerAppID, err := testutils.CreateApplication(flowSecretJWTBearerApp)
+	ts.Require().NoError(err, "failed to create jwt-bearer application")
+	flowSecretJWTBearerAppID = jwtBearerAppID
+
+	flowSecretCIBAApp.AuthFlowID = flowID
+	flowSecretCIBAApp.OUID = flowSecretGuardOUID
+	cibaAppID, err := testutils.CreateApplication(flowSecretCIBAApp)
+	ts.Require().NoError(err, "failed to create CIBA application")
+	flowSecretCIBAAppID = cibaAppID
+
 	// The flow-native backend app is eligible for a Flow Secret, so creation must have issued one.
 	ts.Require().NotEmpty(testutils.GetFlowSecret(flowSecretBackendAppID),
 		"backend app should be issued a Flow Secret at creation")
@@ -233,6 +296,10 @@ func (ts *FlowSecretFlowTestSuite) SetupSuite() {
 		"M2M app should not be issued a Flow Secret")
 	ts.Require().Empty(testutils.GetFlowSecret(flowSecretRedirectAppID),
 		"redirect app should not be issued a Flow Secret")
+	ts.Require().Empty(testutils.GetFlowSecret(flowSecretJWTBearerAppID),
+		"jwt-bearer-only app should not be issued a Flow Secret")
+	ts.Require().Empty(testutils.GetFlowSecret(flowSecretCIBAAppID),
+		"CIBA-only app should not be issued a Flow Secret")
 }
 
 func (ts *FlowSecretFlowTestSuite) TearDownSuite() {
@@ -252,6 +319,16 @@ func (ts *FlowSecretFlowTestSuite) TearDownSuite() {
 	if flowSecretRedirectAppID != "" {
 		if err := testutils.DeleteApplication(flowSecretRedirectAppID); err != nil {
 			ts.T().Logf("failed to delete redirect application: %v", err)
+		}
+	}
+	if flowSecretJWTBearerAppID != "" {
+		if err := testutils.DeleteApplication(flowSecretJWTBearerAppID); err != nil {
+			ts.T().Logf("failed to delete jwt-bearer application: %v", err)
+		}
+	}
+	if flowSecretCIBAAppID != "" {
+		if err := testutils.DeleteApplication(flowSecretCIBAAppID); err != nil {
+			ts.T().Logf("failed to delete CIBA application: %v", err)
 		}
 	}
 	for _, id := range ts.config.CreatedFlowIDs {
@@ -332,6 +409,30 @@ func (ts *FlowSecretFlowTestSuite) TestBackendApp_InvalidFlowSecret_Rejected() {
 func (ts *FlowSecretFlowTestSuite) TestM2MApp_DirectInitiation_Forbidden() {
 	status, errResp := ts.executeNewFlow(map[string]interface{}{
 		"applicationId": flowSecretM2MAppID,
+		"flowType":      "AUTHENTICATION",
+	}, "")
+
+	ts.Require().Equal(http.StatusForbidden, status)
+	ts.Require().Equal("FES-1010", errResp.Code)
+}
+
+// A jwt-bearer-only app cannot initiate a flow directly; it is blocked with 403 (FES-1010) and holds
+// no Flow Secret.
+func (ts *FlowSecretFlowTestSuite) TestJWTBearerApp_DirectInitiation_Forbidden() {
+	status, errResp := ts.executeNewFlow(map[string]interface{}{
+		"applicationId": flowSecretJWTBearerAppID,
+		"flowType":      "AUTHENTICATION",
+	}, "")
+
+	ts.Require().Equal(http.StatusForbidden, status)
+	ts.Require().Equal("FES-1010", errResp.Code)
+}
+
+// A CIBA-only app cannot initiate a flow directly; it is blocked with 403 (FES-1010) and holds no
+// Flow Secret.
+func (ts *FlowSecretFlowTestSuite) TestCIBAApp_DirectInitiation_Forbidden() {
+	status, errResp := ts.executeNewFlow(map[string]interface{}{
+		"applicationId": flowSecretCIBAAppID,
 		"flowType":      "AUTHENTICATION",
 	}, "")
 

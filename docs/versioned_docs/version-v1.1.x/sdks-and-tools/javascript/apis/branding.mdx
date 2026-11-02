@@ -1,0 +1,101 @@
+---
+title: Branding
+docType: reference
+displayed_sidebar: javascriptSdkSidebar
+description: Fetch and apply branding preferences from ThunderID for consistent visual styling across auth flows.
+---
+
+# Branding
+
+The branding functions fetch the visual configuration (colors, logos, typography) defined in the <ProductName /> Console and apply it to your UI.
+
+## `getBrandingPreference(config)`
+
+Retrieve the branding preference configuration for an organization or application.
+
+```ts
+import { getBrandingPreference } from '@thunderid/javascript'
+
+const branding = await getBrandingPreference({
+  baseUrl: 'https://localhost:8090',
+  locale: 'en-US',
+})
+
+console.log(branding.preference?.theme?.LIGHT?.colors?.primary?.main)
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `config.baseUrl` | `string` | ✅ | <ProductName /> base URL |
+| `config.locale` | `string` | No | BCP 47 locale for localized branding (e.g., `'en-US'`) |
+| `config.name` | `string` | No | Organization or application name to scope the request |
+| `config.type` | `string` | No | Branding type (e.g., `'ORG'`, `'APP'`) |
+| `config.fetcher` | `function` | No | Custom fetch function override |
+| `config.headers` | `Record<string, string>` | No | Additional request headers |
+
+### Response: `BrandingPreference`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `locale` | `string` | Locale for this branding configuration |
+| `name` | `string` | Organization or application name |
+| `type` | `string` | Branding scope type |
+| `preference` | `BrandingPreferenceConfig` | The branding configuration |
+
+### `BrandingPreferenceConfig`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `theme` | `BrandingTheme` | Light and dark theme variants |
+| `configs` | `object` | General configuration (e.g., `isSelfSignUpEnabled`) |
+| `layout` | `BrandingLayout` | Page layout settings |
+| `organizationDetails` | `BrandingOrganizationDetails` | Display name, support email, and site URL |
+| `urls` | `UrlsConfig` | Links for cookie policy, privacy policy, terms of service |
+
+### `BrandingTheme`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `LIGHT` | `ThemeVariant` | Light mode theme |
+| `DARK` | `ThemeVariant` | Dark mode theme |
+| `activeTheme` | `string` | Which theme variant is active (`'LIGHT'` or `'DARK'`) |
+
+### `ThemeVariant`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `colors` | `ColorsConfig` | Color palette |
+| `buttons` | `ButtonsConfig` | Button styles |
+| `inputs` | `object` | Form input styles |
+| `loginBox` | `object` | Login box dimensions and styling |
+| `loginPage` | `object` | Full page background and font settings |
+| `footer` | `object` | Footer configuration |
+| `images` | `object` | Logo, favicon, and background image URLs |
+| `typography` | `object` | Font families and sizes |
+
+### `ColorsConfig`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `primary` | `ColorVariants` | Primary brand color (`main`, `light`, `dark`, `contrastText`) |
+| `secondary` | `ColorVariants` | Secondary brand color |
+| `background` | `object` | Page and surface background colors |
+| `text` | `object` | Foreground text colors |
+| `alerts` | `object` | Alert/notification colors (info, success, warning, error) |
+| `outlined` | `object` | Outlined component colors |
+| `illustrations` | `object` | Illustration accent colors |
+
+## `transformBrandingPreferenceToTheme(branding)`
+
+Convert a `BrandingPreference` response into a `Theme` object compatible with `createTheme()`. Used internally by the React and Browser SDKs when `preferences.theme.inheritFromBranding` is `true`.
+
+```ts
+import { getBrandingPreference, transformBrandingPreferenceToTheme } from '@thunderid/javascript'
+
+const branding = await getBrandingPreference({ baseUrl: 'https://localhost:8090' })
+const theme = transformBrandingPreferenceToTheme(branding)
+```
+
+**Returns:** `Theme`. See [Theme](../theme) for the shape.

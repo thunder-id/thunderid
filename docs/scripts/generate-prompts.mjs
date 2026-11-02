@@ -22,6 +22,7 @@ const PROMPT_ROOT_SEGMENT = 'prompts';
 
 const VERSION_ROOTS = [
   {sourceDir: join(__dirname, '..', 'content'), versionPath: 'next'},
+  {sourceDir: join(__dirname, '..', 'versioned_docs', 'version-v1.1.x'), versionPath: 'v1.1.x'},
   {sourceDir: join(__dirname, '..', 'versioned_docs', 'version-v1.0.x'), versionPath: 'v1.0.x'},
 ];
 

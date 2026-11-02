@@ -4,6 +4,8 @@
 package agent
 
 import (
+	"errors"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -93,20 +95,6 @@ var (
 		},
 	}
 
-	// ErrorInvalidAgentName is returned when name is empty.
-	ErrorInvalidAgentName = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "AGT-1009",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.agentservice.invalid_agent_name",
-			DefaultValue: "Invalid agent name",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.agentservice.invalid_agent_name_description",
-			DefaultValue: "The agent name must be provided and non-empty",
-		},
-	}
-
 	// ErrorInvalidAgentType is returned when type is empty.
 	ErrorInvalidAgentType = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -146,20 +134,6 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.agentservice.invalid_offset_description",
 			DefaultValue: "The offset parameter must be a non-negative integer",
-		},
-	}
-
-	// ErrorAgentAlreadyExistsWithName is returned when another agent already has the same name.
-	ErrorAgentAlreadyExistsWithName = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "AGT-1013",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.agentservice.agent_already_exists_with_name",
-			DefaultValue: "Agent already exists",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.agentservice.agent_already_exists_with_name_description",
-			DefaultValue: "An agent with the same name already exists",
 		},
 	}
 
@@ -373,6 +347,20 @@ var (
 		},
 	}
 
+	// ErrorInvalidAllowedAgentType is returned when an allowed agent type does not exist.
+	ErrorInvalidAllowedAgentType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1043",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_allowed_agent_type",
+			DefaultValue: "Invalid agent type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_allowed_agent_type_description",
+			DefaultValue: "One or more specified allowed agent types are invalid",
+		},
+	}
+
 	// ErrorThemeNotFound is returned when the referenced theme does not exist.
 	ErrorThemeNotFound = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -515,4 +503,80 @@ var (
 				"and string-typed in an allowed agent type",
 		},
 	}
+
+	// ErrorMissingDelegationGrantType is returned when a delegated agent is given grant types beyond
+	// client credentials but none that lets it act for a user.
+	ErrorMissingDelegationGrantType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1044",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.missing_delegation_grant_type",
+			DefaultValue: "Missing required grant types for a delegated agent",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.missing_delegation_grant_type_description",
+			DefaultValue: "A delegated agent needs at least one of these grant types: {{param(grantTypes)}}",
+		},
+	}
+
+	// ErrorInvalidLifespan is returned when validUntil is not a valid RFC 3339 instant.
+	ErrorInvalidLifespan = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1045",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_lifespan",
+			DefaultValue: "Invalid lifespan",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_lifespan_description",
+			DefaultValue: "validUntil must be an RFC 3339 date and time, or null for an agent that does not expire",
+		},
+	}
+
+	// ErrorLifespanNotInFuture is returned when validUntil is not later than the current time.
+	ErrorLifespanNotInFuture = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1046",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.lifespan_not_in_future",
+			DefaultValue: "Lifespan must end in the future",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.lifespan_not_in_future_description",
+			DefaultValue: "validUntil must be later than the current time",
+		},
+	}
+
+	// ErrorInvalidProject is returned when an agent names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1047",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+
+	// ErrorOUNotInProject is returned when an agent names an organization unit outside the project
+	// it names.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1048",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.ou_not_in_project_description",
+			DefaultValue: "The organization unit must be the project's root organization unit or one below it",
+		},
+	}
 )
+
+// errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339
+// date and time.
+var errInvalidDeclarativeLifespan = errors.New("validUntil must be an RFC 3339 date and time")

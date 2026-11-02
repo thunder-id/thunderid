@@ -73,6 +73,16 @@ func (s *CCClientAttributesTestSuite) TearDownSuite() {
 // createOAuthApp creates a client_credentials OAuth application with the given
 // clientConfig.attributes allow-list.
 func (s *CCClientAttributesTestSuite) createOAuthApp(clientID, clientSecret string, clientAttributes []string) (string, error) {
+	return s.createOAuthAppWithClientConfig(clientID, clientSecret, map[string]interface{}{
+		"attributes": clientAttributes,
+	})
+}
+
+// createOAuthAppWithClientConfig creates a client_credentials OAuth application with the given
+// token.accessToken.clientConfig block.
+func (s *CCClientAttributesTestSuite) createOAuthAppWithClientConfig(
+	clientID, clientSecret string, clientConfig map[string]interface{},
+) (string, error) {
 	app := map[string]interface{}{
 		"name":                      "CC Client Attrs Test App " + clientID,
 		"description":               "Application for CC client-attribute testing",
@@ -89,9 +99,7 @@ func (s *CCClientAttributesTestSuite) createOAuthApp(clientID, clientSecret stri
 					"tokenEndpointAuthMethod": "client_secret_basic",
 					"token": map[string]interface{}{
 						"accessToken": map[string]interface{}{
-							"clientConfig": map[string]interface{}{
-								"attributes": clientAttributes,
-							},
+							"clientConfig": clientConfig,
 						},
 					},
 				},
@@ -126,6 +134,33 @@ func (s *CCClientAttributesTestSuite) createOAuthApp(clientID, clientSecret stri
 		return "", err
 	}
 	return respData["id"].(string), nil
+}
+
+// updateClientAttributes replaces the application's client-token attribute selection, as the Console
+// does when an operator toggles a chip.
+func (s *CCClientAttributesTestSuite) updateClientAttributes(appID, clientID string, attributes []string) error {
+	return testutils.UpdateApplication(appID, testutils.Application{
+		Name:        "CC Client Attrs Test App " + clientID,
+		Description: "Application for CC client-attribute testing",
+		OUID:        s.ouID,
+		Type:        "m2m",
+		InboundAuthConfig: []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                clientID,
+					"clientSecret":            ccClientAttrsClientSecret,
+					"grantTypes":              []string{"client_credentials"},
+					"tokenEndpointAuthMethod": "client_secret_basic",
+					"token": map[string]interface{}{
+						"accessToken": map[string]interface{}{
+							"clientConfig": map[string]interface{}{"attributes": attributes},
+						},
+					},
+				},
+			},
+		},
+	})
 }
 
 // requestToken performs a client_credentials token request for the given client credentials.
@@ -234,6 +269,58 @@ func (s *CCClientAttributesTestSuite) TestCCClientAttrs_PartialAllowList() {
 	s.Assert().NotContains(claims.Additional, "ouHandle", "ouHandle must be excluded when not allow-listed")
 	s.Assert().NotContains(claims.Additional, "groups", "groups must be excluded when not allow-listed")
 	s.Assert().NotContains(claims.Additional, "roles", "roles must be excluded when not allow-listed")
+}
+
+// TestCCClientAttrs_SubTypeApp verifies that an application's client_credentials token carries
+// sub_type=application. Created with no clientConfig, so this covers the creation-time seeding too.
+func (s *CCClientAttributesTestSuite) TestCCClientAttrs_SubTypeApp() {
+	clientID := ccClientAttrsClientID + "_subtype"
+	appID, err := s.createOAuthApp(clientID, ccClientAttrsClientSecret, nil)
+	s.Require().NoError(err)
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+
+	status, body := s.requestToken(clientID, ccClientAttrsClientSecret)
+	s.Require().Equal(http.StatusOK, status)
+	token, ok := body["access_token"].(string)
+	s.Require().True(ok)
+
+	claims, err := testutils.DecodeJWT(token)
+	s.Require().NoError(err)
+
+	s.Assert().Equal("application", claims.Additional["sub_type"],
+		"an application's client_credentials token must be identifiable as an application")
+}
+
+// TestCCClientAttrs_SubTypeRemovedByUpdate verifies that dropping sub_type from the selection stops
+// the claim. Removal is an update, which must be authoritative: re-seeding would make it unremovable.
+func (s *CCClientAttributesTestSuite) TestCCClientAttrs_SubTypeRemovedByUpdate() {
+	clientID := ccClientAttrsClientID + "_subtype_off"
+	appID, err := s.createOAuthApp(clientID, ccClientAttrsClientSecret, nil)
+	s.Require().NoError(err)
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+
+	status, body := s.requestToken(clientID, ccClientAttrsClientSecret)
+	s.Require().Equal(http.StatusOK, status)
+	token, ok := body["access_token"].(string)
+	s.Require().True(ok)
+	claims, err := testutils.DecodeJWT(token)
+	s.Require().NoError(err)
+	s.Require().Equal("application", claims.Additional["sub_type"],
+		"creation must select the claim, otherwise this test cannot show it being removed")
+
+	s.Require().NoError(s.updateClientAttributes(appID, clientID, []string{"ouId"}))
+
+	status, body = s.requestToken(clientID, ccClientAttrsClientSecret)
+	s.Require().Equal(http.StatusOK, status)
+	token, ok = body["access_token"].(string)
+	s.Require().True(ok)
+	claims, err = testutils.DecodeJWT(token)
+	s.Require().NoError(err)
+
+	s.Assert().NotContains(claims.Additional, "sub_type",
+		"sub_type must be omitted entirely, not emitted empty, once it is removed from the selection")
+	s.Assert().Equal(s.ouID, claims.Additional["ouId"],
+		"the rest of the updated selection must still be surfaced")
 }
 
 // TestCCClientAttrs_NoAllowListConfigured verifies that no client-scoped claims are added

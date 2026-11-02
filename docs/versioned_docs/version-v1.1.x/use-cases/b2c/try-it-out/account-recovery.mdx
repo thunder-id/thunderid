@@ -1,0 +1,85 @@
+---
+title: Account Recovery
+docType: use-case
+description: Reset a forgotten password through an email recovery link as John Doe.
+sidebar_position: 5
+---
+
+# Account Recovery
+
+In this walkthrough, John has forgotten his Wayfinder password. He selects **Forgot password?** on the sign-in screen,
+receives a recovery email, opens the link, and sets a new password. <ProductName /> runs the recovery flow end-to-end
+and returns him to Wayfinder ready to sign in with the new credentials.
+
+:::note Prerequisites
+Complete [Set Up Your Environment](../../build-environment) before starting this walkthrough.
+:::
+
+:::info Background
+[Understand It](../../overview) covers the requirements story behind this use case.
+:::
+
+## Set Up Account Recovery
+
+1. Recovery emails are delivered through a SMTP server. Configure a SMTP provider and apply the configuration in
+   `deployment.yaml`.
+
+   **Sample SMTP Configuration:**
+
+   ```yaml
+   email:
+     smtp:
+       host: '<smtp-host>'
+       port: <smtp-port>
+       username: '<smtp-username>'
+       password: '<smtp-password>'
+       from_address: '<from-address>'
+       enable_start_tls: true
+       enable_authentication: true
+   ```
+
+2. Restart <ProductName /> for the changes to take effect.
+
+## Pick Your Pattern
+
+<PatternPicker>
+<Pattern value="redirect" label="Redirect-based" description="Hosted screens, simplest to add" icon="external-link" default>
+
+In the redirect-based pattern, the consumer app sends the user to <ProductName /> for the entire recovery experience.
+The Wayfinder web frontend is configured exactly this way: the **Sign in** button triggers an OIDC redirect to
+
+<ProductName />. From there, the user picks **Forgot password?**, completes the recovery flow, and returns to Wayfinder
+to sign in with the new password.
+
+**Try the Use Case**
+
+1. Open <WayFinderSampleUrl /> and select **Sign in**. The browser navigates to <ProductName />.
+2. On the <ProductName /> sign-in page, select **Forgot password?**.
+3. Enter `john.doe` as the username and submit. <ProductName /> runs the recovery flow and sends a recovery email to
+   `john.doe@example.com`.
+4. Open the email in John's inbox and open the link inside.
+5. <ProductName /> renders a **Set new password** screen. Enter a new password and submit.
+6. <ProductName /> shows a confirmation and returns John to Wayfinder. Select **Sign in** again and sign in with the new
+   password.
+
+</Pattern>
+
+<Pattern value="app-native-steps" label="App-native step-by-step" description="Custom UI, step-by-step control" icon="list-ordered">
+
+Coming soon. See the [App-native pattern](../../integration-patterns#app-native) for what to expect.
+
+</Pattern>
+
+<Pattern value="app-native-managed" label="App-native managed" description="Custom UI, managed outcomes" icon="wand">
+
+Coming soon. See the [App-native pattern](../../integration-patterns#app-native) for what to expect.
+
+</Pattern>
+</PatternPicker>
+
+## Going Deeper
+
+- Want to understand the steps the recovery flow takes? See [Flows](../../build-flows#flows) in the Build It tutorial.
+  Concepts.
+- Prefer to build the recovery flow manually? See
+  [Build the Sign-In Flows](../../build-flows#build-the-account-recovery-flow) in the Build It tutorial.

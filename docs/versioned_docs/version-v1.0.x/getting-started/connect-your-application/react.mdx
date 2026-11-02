@@ -22,6 +22,8 @@ import {
 
 Use this guide to add <ProductName /> authentication to a React application using the `@thunderid/react` SDK.
 
+<SdkQuickstartDownload packageId="react" sample="quickstarts/react" icon={<ReactLogo size={22} />} promptFlow="redirect-based" />
+
 <TutorialHero>
 
 ## What You Will Learn
@@ -126,7 +128,7 @@ Update the `main.jsx` file with the following:
 Replace `<your-client-id>` with the Client ID you obtained when creating the application in <ProductName />.
 :::
 
-```jsx title="src/main.jsx" {3,9-12,14} showLineNumbers>
+```jsx title="src/main.jsx" {3,9-12,14} showLineNumbers
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ThunderIDProvider } from '@thunderid/react'
@@ -222,19 +224,7 @@ You should see the `<SignInButton />`. Click it, you'll be redirected to the <Pr
 
 ## What's Next
 
-<div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '1.5rem'}}>
-  <a href="../../../guides/flows/what-are-flows" style={{textDecoration: 'none', color: 'inherit'}}>
-    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
-      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Upgrade the sign-in flow</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Add MFA, passkeys, or social login to your flow, no app code changes required.</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>Flow Designer →</div>
-    </div>
-  </a>
-  <a href="../../../../sdks/react/overview" style={{textDecoration: 'none', color: 'inherit'}}>
-    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
-      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>React SDK Reference</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Explore the full API reference for the <ProductName /> React SDK.</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>API Reference →</div>
-    </div>
-  </a>
-</div>
+<NextSteps>
+  <NextStepsCard title="Upgrade the sign-in flow" href="../../../guides/flows/what-are-flows" description="Add MFA, passkeys, or social login to your flow, no app code changes required." cta="Flow Designer" />
+  <NextStepsCard title="React SDK Reference" href="../../../sdks-and-tools/react/overview" description="Explore the full API reference for the React SDK." cta="API Reference" />
+</NextSteps>

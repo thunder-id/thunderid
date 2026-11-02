@@ -40,11 +40,14 @@ if [[ $# -eq 0 ]]; then
 else
   for f in "$@"; do
     [[ "$f" == /* ]] || f="$PWD/$f"
-    # Skip agent skill definitions and repo meta-docs (AGENTS.md, README.md,
-    # ARCHITECTURE.md) even if passed explicitly — they're not docs/content pages
-    # and don't follow its conventions (frontmatter, <ProductName />, etc.).
+    # Skip agent skill definitions, internal design docs, and repo meta-docs
+    # (AGENTS.md, README.md, ARCHITECTURE.md) even if passed explicitly — they're
+    # not docs/content pages and don't follow its conventions (frontmatter,
+    # <ProductName />, etc.). docs-internals has its own templates, which carry no
+    # frontmatter and name the product directly.
     case "$f" in
       "$REPO_ROOT"/.agent/skills/*|"$REPO_ROOT"/.claude/skills/*) continue ;;
+      "$REPO_ROOT"/docs-internals/*) continue ;;
       */AGENTS.md|*/README.md|*/ARCHITECTURE.md) continue ;;
     esac
     FILES+=("$f")
@@ -406,7 +409,7 @@ ALL_CONTENT_IDS=$(find "$REPO_ROOT/docs/content" -name '*.mdx' -print0 2>/dev/nu
 
 SIDEBAR_FILES=("$REPO_ROOT/docs/sidebars.ts")
 while IFS= read -r -d '' f; do SIDEBAR_FILES+=("$f"); done \
-  < <(find "$REPO_ROOT/docs/content/sdks" -name 'sidebar.ts' -print0 2>/dev/null)
+  < <(find "$REPO_ROOT/docs/content/sdks-and-tools" -name 'sidebar.ts' -print0 2>/dev/null)
 
 SIDEBAR_IDS=$(grep -horE "id: '[^']+'" "${SIDEBAR_FILES[@]}" 2>/dev/null | sed -E "s/.*id: '([^']+)'.*/\1/" | sort -u)
 

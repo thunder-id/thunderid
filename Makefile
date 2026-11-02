@@ -17,12 +17,33 @@ GOLANGCI_LINT ?= $(TOOL_BIN)/golangci-lint
 MOCKERY ?= $(TOOL_BIN)/mockery
 I18N_EXTRACTOR ?= $(TOOL_BIN)/i18n-extractor
 
+# Tools under tools/. Each is its own Go module with its own Go directive, and `go install`
+# compiles a linter with whatever Go is on PATH. golangci-lint refuses to run when the Go it was
+# built with is older than the module it is linting, so each tool installs its linter into its own
+# bin directory rather than sharing the backend's, where a binary built by the backend's job would
+# carry the backend's Go version.
+TOOLS_DIR := $(realpath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))/tools
+CLI_DIR := $(TOOLS_DIR)/cli
+CLI_TOOL_BIN ?= $(CLI_DIR)/bin/tools
+CLI_GOLANGCI_LINT ?= $(CLI_TOOL_BIN)/golangci-lint
+I18N_EXTRACTOR_DIR := $(TOOLS_DIR)/i18n-extractor
+I18N_EXTRACTOR_TOOL_BIN ?= $(I18N_EXTRACTOR_DIR)/bin/tools
+I18N_EXTRACTOR_GOLANGCI_LINT ?= $(I18N_EXTRACTOR_TOOL_BIN)/golangci-lint
+CLI_E2E_DIR := $(realpath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))/tests/e2e-cli
+
 # Tools versions
-GOLANGCI_LINT_VERSION ?= v1.64.8
-MOCKERY_VERSION ?= v3.5.5
+GOLANGCI_LINT_VERSION ?= v2.14.0
+MOCKERY_VERSION ?= v3.8.0
+MOCKERY_XTOOLS_VERSION ?= v0.51.0
 
 $(TOOL_BIN):
 	mkdir -p $(TOOL_BIN)
+
+$(CLI_TOOL_BIN):
+	mkdir -p $(CLI_TOOL_BIN)
+
+$(I18N_EXTRACTOR_TOOL_BIN):
+	mkdir -p $(I18N_EXTRACTOR_TOOL_BIN)
 
 all: prepare clean build_with_coverage build
 
@@ -34,10 +55,16 @@ prepare:
 clean:
 	./build.sh clean $(OS) $(ARCH)
 
-build: build_frontend build_backend package_samples
+build: build_frontend build_backend build_cp_backend package_samples build_quickstart
 
 build_backend:
 	./build.sh build_backend $(OS) $(ARCH)
+
+build_cp_backend:
+	./build.sh build_cp_backend $(OS) $(ARCH)
+
+build_quickstart:
+	./build.sh build_quickstart $(OS) $(ARCH)
 
 build_frontend:
 	./build.sh build_frontend
@@ -48,6 +75,12 @@ build_docs:
 package_samples:
 	./build.sh package_samples
 
+package_cp:
+	./build.sh package_cp $(OS) $(ARCH)
+
+package_quickstart:
+	./build.sh package_quickstart $(OS) $(ARCH)
+
 test:
 	./build.sh test $(OS) $(ARCH)
 
@@ -56,6 +89,11 @@ test_unit:
 
 test_integration:
 	./build.sh test_integration "$(OS)" "$(ARCH)" "$(RUN)" "$(PACKAGE)"
+
+# Runs tests/integration/controlplane against the Control Plane binary (build_cp_backend), swapped
+# into the distribution build_backend packages.
+test_integration_cp:
+	INTEGRATION_PLANE=control ./build.sh test_integration "$(OS)" "$(ARCH)" "$(RUN)" "$(PACKAGE)"
 
 build_with_coverage:
 	@echo "================================================================"
@@ -78,6 +116,12 @@ build_with_coverage_only:
 
 run:
 	./build.sh run $(OS) $(ARCH)
+
+run_dp:
+	./build.sh run_dp $(OS) $(ARCH)
+
+run_cp:
+	./build.sh run_cp $(OS) $(ARCH)
 
 run_backend:
 	./build.sh run_backend $(OS) $(ARCH)
@@ -108,14 +152,39 @@ docker-build-multiarch-push:
 
 lint: lint_backend lint_frontend
 
-build_tools:
-	./build.sh build_tools
+tools_build:
+	./build.sh tools_build
 
-test_tools:
-	./build.sh test_tools
+tools_test:
+	./build.sh tools_test
 
-lint_tools:
-	./build.sh lint_tools
+tools_lint: $(CLI_GOLANGCI_LINT) $(I18N_EXTRACTOR_GOLANGCI_LINT)
+	./build.sh tools_lint
+
+tools_build_cli:
+	./build.sh tools_build_cli
+
+tools_test_cli:
+	./build.sh tools_test_cli
+
+tools_lint_cli: $(CLI_GOLANGCI_LINT)
+	./build.sh tools_lint_cli
+
+tools_build_i18n_extractor:
+	./build.sh tools_build_i18n_extractor
+
+tools_test_i18n_extractor:
+	./build.sh tools_test_i18n_extractor
+
+tools_lint_i18n_extractor: $(I18N_EXTRACTOR_GOLANGCI_LINT)
+	./build.sh tools_lint_i18n_extractor
+
+tools_test_cli_e2e:
+	cd $(CLI_E2E_DIR) && pnpm install --frozen-lockfile && pnpm test
+
+tools_checks_cli: tools_lint_cli tools_test_cli
+
+tools_checks: tools_lint tools_test
 
 lint_docs:
 	@command -v vale >/dev/null 2>&1 || (echo "vale is not installed. See https://vale.sh/docs/vale-cli/installation/ for installation instructions." && exit 1)
@@ -170,7 +239,7 @@ test_e2e:
 	chmod +x tests/e2e/run-e2e.sh
 	tests/e2e/run-e2e.sh
 
-pr_checks: verify_mocks lint format_check test_unit test_frontend test_integration build_backend build_frontend package_samples
+pr_checks: verify_mocks lint format_check tools_checks test_unit test_frontend test_integration build_backend build_frontend package_samples
 
 help:
 	@echo "Makefile targets:"
@@ -179,15 +248,22 @@ help:
 	@echo "  clean                         - Remove build artifacts."
 	@echo "  build                         - Build $(PRODUCT_NAME) (backend + frontend + samples)."
 	@echo "  build_backend                 - Build the backend Go application."
+	@echo "  build_cp_backend              - Build and package the Control Plane server (backend/cmd/cpserver)."
+	@echo "  build_quickstart              - Build and package a combined Control Plane + Data Plane quickstart, pre-wired together."
 	@echo "  build_frontend                - Build the frontend applications."
 	@echo "  build_docs                    - Build the documentation."
 	@echo "  package_samples               - Package sample applications."
+	@echo "  package_cp                    - Package the Control Plane server (assumes build_cp_backend already ran)."
+	@echo "  package_quickstart            - Package the combined quickstart (assumes build_backend and build_cp_backend already ran)."
 	@echo "  test_unit                     - Run unit tests."
 	@echo "  test_integration              - Run integration tests. Use RUN= for test filter, PACKAGE= for package filter."
+	@echo "  test_integration_cp           - Run the Control Plane integration tests. Needs build_backend and build_cp_backend first."
 	@echo "  build_with_coverage  		   - Build with coverage flags, run unit and integration tests, and generate combined coverage report."
 	@echo "  build_with_coverage_only      - Build with coverage instrumentation (unit tests only, no integration tests)."
 	@echo "  test                          - Run all tests (unit and integration)."
-	@echo "  run                           - Build and run the $(PRODUCT_NAME) server locally."
+	@echo "  run                           - Build and run the quickstart (auth-dp, Data Plane and Control Plane) locally."
+	@echo "  run_dp                        - Build and run the Data Plane and its Admin Console locally."
+	@echo "  run_cp                        - Build and run the Control Plane, its console and auth-dp locally."
 	@echo "  run_backend                   - Build and run the $(PRODUCT_NAME) backend locally."
 	@echo "  debug_backend                 - Build and run the $(PRODUCT_NAME) backend locally in debug mode."
 	@echo "  run_frontend                  - Build and run the frontend applications locally."
@@ -197,9 +273,18 @@ help:
 	@echo "  docker-build-multiarch        - Build multi-arch Docker image with version tag."
 	@echo "  docker-build-multiarch-latest - Build multi-arch Docker image with latest tag."
 	@echo "  docker-build-multiarch-push   - Build and push multi-arch images to registry."
-	@echo "  build_tools                   - Build all tool binaries (CLI + i18n-extractor + npm tools)."
-	@echo "  test_tools                    - Run tests for all tools."
-	@echo "  lint_tools                    - Run linting on all tools."
+	@echo "  tools_build                   - Build all tool binaries (CLI + i18n-extractor + npm tools)."
+	@echo "  tools_test                    - Run tests for all tools."
+	@echo "  tools_lint                    - Run linting on all tools."
+	@echo "  tools_build_cli               - Cross-compile the CLI for all supported platforms."
+	@echo "  tools_test_cli                - Run CLI unit tests."
+	@echo "  tools_lint_cli                - Run golangci-lint on the CLI code."
+	@echo "  tools_checks                  - Lint and test every tool (part of pr_checks)."
+	@echo "  tools_checks_cli              - Run the CLI lint and unit tests."
+	@echo "  tools_test_cli_e2e            - Run the CLI end-to-end suite against a real release."
+	@echo "  tools_build_i18n_extractor    - Build the i18n-extractor binary."
+	@echo "  tools_test_i18n_extractor     - Run i18n-extractor tests."
+	@echo "  tools_lint_i18n_extractor     - Run golangci-lint on the i18n-extractor code."
 	@echo "  lint                          - Run linting on backend and frontend code."
 	@echo "  lint_backend                  - Run golangci-lint on the backend code."
 	@echo "  lint_frontend                 - Run ESLint on the frontend code."
@@ -214,14 +299,17 @@ help:
 	@echo "  generate_i18n                 - Extract i18n messages and generate defaults.go."
 	@echo "  help                          - Show this help message."
 
-.PHONY: all prepare clean build build_backend build_frontend build_docs package_samples run
+.PHONY: all prepare clean build build_backend build_cp_backend build_quickstart build_frontend build_docs package_samples package_cp package_quickstart run
 .PHONY: docker-build docker-build-latest docker-build-multiarch
 .PHONY: docker-build-multiarch-latest docker-build-multiarch-push
-.PHONY: test_unit test_integration build_with_coverage build_with_coverage_only test
+.PHONY: test_unit test_integration test_integration_cp build_with_coverage build_with_coverage_only test
 .PHONY: help go_install_tool
 .PHONY: lint lint_backend lint_frontend lint_docs golangci-lint mockery install-mockery
+.PHONY: tools_build tools_test tools_lint tools_build_cli tools_test_cli tools_lint_cli
+.PHONY: tools_build_i18n_extractor tools_test_i18n_extractor tools_lint_i18n_extractor
+.PHONY: tools_test_cli_e2e tools_checks_cli tools_checks
 .PHONY: verify_mocks format_check test_frontend security_audit test_e2e pr_checks
-.PHONY: run_backend debug_backend run_frontend run_docs
+.PHONY: run_dp run_cp run_backend debug_backend run_frontend run_docs
 
 define go_install_tool
 	cd /tmp && \
@@ -231,12 +319,23 @@ endef
 golangci-lint: $(GOLANGCI_LINT)
 
 $(GOLANGCI_LINT): $(TOOL_BIN)
-	$(call go_install_tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+	$(call go_install_tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+
+$(CLI_GOLANGCI_LINT): $(CLI_TOOL_BIN)
+	cd /tmp && GOBIN=$(CLI_TOOL_BIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+$(I18N_EXTRACTOR_GOLANGCI_LINT): $(I18N_EXTRACTOR_TOOL_BIN)
+	cd /tmp && GOBIN=$(I18N_EXTRACTOR_TOOL_BIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 install-mockery: $(MOCKERY)
 
+# mockery $(MOCKERY_VERSION) pins a golang.org/x/tools that can't read Go 1.27.2 export data, so it
+# is built in a throwaway module with a newer x/tools.
 $(MOCKERY): $(TOOL_BIN)
-	$(call go_install_tool,$(MOCKERY),github.com/vektra/mockery/v3,$(MOCKERY_VERSION))
+	tmp=$$(mktemp -d) && cd $$tmp && go mod init mockery-build >/dev/null 2>&1 && \
+	GOFLAGS= go get github.com/vektra/mockery/v3@$(MOCKERY_VERSION) golang.org/x/tools@$(MOCKERY_XTOOLS_VERSION) && \
+	GOFLAGS= GOBIN=$(TOOL_BIN) go install github.com/vektra/mockery/v3 && \
+	rm -rf $$tmp
 
 install-i18n-extractor: $(I18N_EXTRACTOR)
 

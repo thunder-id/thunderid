@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/oauth/scope"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -73,11 +75,11 @@ func (ts *tokenService) ProcessTokenRequest(
 	grantTypeStr := tokenRequest.GrantType
 	scopeStr := tokenRequest.Scope
 
-	ts.publishTokenIssuanceStartedEvent(ctx, clientID, grantTypeStr, scopeStr)
+	ts.publishTokenIssuanceStartedEvent(ctx, oauthApp, clientID, grantTypeStr, scopeStr)
 
 	// Validate grant_type presence.
 	if grantTypeStr == "" {
-		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
+		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			400, "Missing grant_type parameter", startTime)
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidRequest,
@@ -88,7 +90,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	// Validate grant_type value.
 	grantType := providers.GrantType(grantTypeStr)
 	if !grantType.IsValid() {
-		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
+		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			400, "Invalid grant_type parameter", startTime)
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorUnsupportedGrantType,
@@ -100,7 +102,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	grantHandler, handlerErr := ts.grantHandlerProvider.GetGrantHandler(grantType)
 	if handlerErr != nil {
 		if errors.Is(handlerErr, constants.UnSupportedGrantTypeError) {
-			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
+			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 				400, "Unsupported grant type", startTime)
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorUnsupportedGrantType,
@@ -108,7 +110,7 @@ func (ts *tokenService) ProcessTokenRequest(
 			}
 		}
 		logger.Error(ctx, "Failed to get grant handler", log.Error(handlerErr))
-		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
+		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			500, "Failed to get grant handler", startTime)
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorServerError,
@@ -118,7 +120,7 @@ func (ts *tokenService) ProcessTokenRequest(
 
 	// Validate grant type against the application.
 	if !oauthApp.IsAllowedGrantType(grantType) {
-		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
+		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			401, "Client not authorized for grant type", startTime)
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorUnauthorizedClient,
@@ -126,10 +128,20 @@ func (ts *tokenService) ProcessTokenRequest(
 		}
 	}
 
+	// Other grants carry no authorization details, so the parameter is refused rather than ignored.
+	if tokenRequest.AuthorizationDetails != "" && !acceptsAuthorizationDetails(grantType) {
+		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
+			400, "Unsupported authorization_details", startTime)
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidAuthorizationDetails,
+			ErrorDescription: "authorization_details is not supported for this grant type",
+		}
+	}
+
 	// Validate the token request via the grant handler.
 	tokenError := grantHandler.ValidateGrant(ctx, tokenRequest, oauthApp)
 	if tokenError != nil && tokenError.Error != "" {
-		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
+		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			400, tokenError.ErrorDescription, startTime)
 		return nil, tokenError
 	}
@@ -137,7 +149,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	// Validate and filter scopes.
 	validScopes, scopeError := ts.scopeValidator.ValidateScopes(ctx, tokenRequest.Scope, oauthApp.ClientID)
 	if scopeError != nil {
-		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
+		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			400, scopeError.ErrorDescription, startTime)
 		return nil, &model.ErrorResponse{
 			Error:            scopeError.Error,
@@ -148,29 +160,20 @@ func (ts *tokenService) ProcessTokenRequest(
 
 	dpopErr := ts.verifyDPoPProof(&ctx, oauthApp)
 	if dpopErr != nil {
-		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
+		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			400, dpopErr.ErrorDescription, startTime)
 		return nil, dpopErr
 	}
 
 	// Delegate to the grant handler for token generation.
+	ctx = tokenservice.WithIssuanceDecisions(ctx)
 	tokenRespDTO, tokenError := grantHandler.HandleGrant(ctx, tokenRequest, oauthApp)
 	if tokenError != nil {
-		if tokenError.Error != "" {
-			code := 400
-			if tokenError.Error == constants.ErrorServerError {
-				code = 500
-			}
-			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
-				code, tokenError.ErrorDescription, startTime)
-			if tokenError.Error == constants.ErrorServerError {
-				tokenError.ErrorDescription = "Failed to process token request"
-			}
-		}
+		ts.publishGrantError(ctx, oauthApp, clientID, grantTypeStr, scopeStr, tokenError, startTime)
 		return nil, tokenError
 	}
 	if tokenRespDTO == nil {
-		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
+		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			500, "Grant handler returned empty response", startTime)
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorServerError,
@@ -179,7 +182,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	}
 
 	// Issue refresh token if applicable.
-	if grantType.IssuesRefreshToken() &&
+	if (grantType.IssuesRefreshToken() || tokenRespDTO.IssuesRefreshToken) &&
 		oauthApp.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
 		logger.Debug(ctx, "Issuing refresh token for the token request",
 			log.String("client_id", clientID), log.String("grant_type", grantTypeStr))
@@ -187,7 +190,7 @@ func (ts *tokenService) ProcessTokenRequest(
 		refreshGrantHandler, handlerErr := ts.grantHandlerProvider.GetGrantHandler(providers.GrantTypeRefreshToken)
 		if handlerErr != nil {
 			logger.Error(ctx, "Failed to get refresh grant handler", log.Error(handlerErr))
-			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
+			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 				500, "Failed to get refresh grant handler", startTime)
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorServerError,
@@ -198,7 +201,7 @@ func (ts *tokenService) ProcessTokenRequest(
 		if !ok {
 			logger.Error(ctx, "Failed to cast refresh grant handler",
 				log.String("client_id", clientID), log.String("grant_type", grantTypeStr))
-			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
+			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 				500, "Internal Server Error", startTime)
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorServerError,
@@ -220,11 +223,7 @@ func (ts *tokenService) ProcessTokenRequest(
 			0,
 		)
 		if refreshTokenError != nil && refreshTokenError.Error != "" {
-			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
-				500, refreshTokenError.ErrorDescription, startTime)
-			if refreshTokenError.Error == constants.ErrorServerError {
-				refreshTokenError.ErrorDescription = "Failed to process token request"
-			}
+			ts.publishGrantError(ctx, oauthApp, clientID, grantTypeStr, scopeStr, refreshTokenError, startTime)
 			return nil, refreshTokenError
 		}
 	}
@@ -232,12 +231,14 @@ func (ts *tokenService) ProcessTokenRequest(
 	// Build token response.
 	scopes := strings.Join(tokenRespDTO.AccessToken.Scopes, " ")
 	tokenResponse := &model.TokenResponse{
-		AccessToken:  tokenRespDTO.AccessToken.Token,
-		TokenType:    tokenRespDTO.AccessToken.TokenType,
-		ExpiresIn:    tokenRespDTO.AccessToken.ExpiresIn,
-		RefreshToken: tokenRespDTO.RefreshToken.Token,
-		Scope:        scopes,
-		IDToken:      tokenRespDTO.IDToken.Token,
+		AccessToken:          tokenRespDTO.AccessToken.Token,
+		TokenType:            tokenRespDTO.AccessToken.TokenType,
+		ExpiresIn:            tokenRespDTO.AccessToken.ExpiresIn,
+		RefreshToken:         tokenRespDTO.RefreshToken.Token,
+		Scope:                scopes,
+		IDToken:              tokenRespDTO.IDToken.Token,
+		AuthorizationDetails: tokenRespDTO.AccessToken.AuthorizationDetails,
+		DeviceSecret:         tokenRespDTO.DeviceSecret.Token,
 	}
 
 	// For token exchange, determine the issued_token_type from the request.
@@ -256,7 +257,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	logger.Debug(ctx, "Token generated successfully",
 		log.String("client_id", clientID), log.String("grant_type", grantTypeStr))
 
-	ts.publishTokenIssuedEvent(ctx, clientID, grantTypeStr, scopes, startTime)
+	ts.publishTokenIssuedEvent(ctx, oauthApp, tokenRespDTO, clientID, grantTypeStr, scopes, startTime)
 
 	return tokenResponse, nil
 }
@@ -284,7 +285,7 @@ func (ts *tokenService) verifyDPoPProof(ctx *context.Context, oauthApp *provider
 	result, err := ts.dpopVerifier.Verify(*ctx, dpop.VerifyParams{
 		Proof: proof,
 		HTM:   "POST",
-		HTU:   ts.tokenEndpoint,
+		HTU:   ts.expectedHTU(*ctx),
 	})
 	if err != nil {
 		return &model.ErrorResponse{
@@ -296,8 +297,42 @@ func (ts *tokenService) verifyDPoPProof(ctx *context.Context, oauthApp *provider
 	return nil
 }
 
+// expectedHTU is the URI a proof presented at this endpoint has to be bound to.
+//
+// The path comes from the request, because one handler serves both the bare and the
+// organization-unit-scoped endpoint and a proof is bound to the URI it was sent to (RFC 9449
+// section 4.3). The scheme and host stay those of the configured endpoint: reading them off the
+// request would trust a Host header the attacker who writes the proof can also set.
+func (ts *tokenService) expectedHTU(ctx context.Context) string {
+	path := dpop.GetRequestPath(ctx)
+	if path == "" {
+		return ts.tokenEndpoint
+	}
+	endpoint, err := url.Parse(ts.tokenEndpoint)
+	if err != nil {
+		return ts.tokenEndpoint
+	}
+	// A proxy strips any published path prefix before the mux sees the request, so put it back or
+	// every proof would be compared against a URI the client never called.
+	prefix, found := strings.CutSuffix(endpoint.EscapedPath(), constants.OAuth2TokenEndpoint)
+	if !found {
+		return ts.tokenEndpoint
+	}
+	// Parsed rather than assigned: Path holds the decoded form and RawPath the escaped one, so
+	// assigning an escaped string to Path alone would escape its percent signs a second time.
+	requested, err := url.Parse(prefix + path)
+	if err != nil {
+		return ts.tokenEndpoint
+	}
+	endpoint.Path = requested.Path
+	endpoint.RawPath = requested.RawPath
+	return endpoint.String()
+}
+
 // publishTokenIssuanceStartedEvent publishes an event indicating that token issuance has started.
-func (ts *tokenService) publishTokenIssuanceStartedEvent(ctx context.Context, clientID, grantType, scope string) {
+func (ts *tokenService) publishTokenIssuanceStartedEvent(
+	ctx context.Context, oauthApp *providers.OAuthClient, clientID, grantType, scope string,
+) {
 	if ts.observabilitySvc == nil || !ts.observabilitySvc.IsEnabled() {
 		return
 	}
@@ -310,19 +345,30 @@ func (ts *tokenService) publishTokenIssuanceStartedEvent(ctx context.Context, cl
 		WithStatus(providers.StatusInProgress).
 		WithData(event.DataKey.ClientID, clientID).
 		WithData(event.DataKey.GrantType, grantType).
-		WithData(event.DataKey.Scope, scope)
+		WithData(event.DataKey.Scope, scope).
+		WithData(event.DataKey.CorrelationID, sysContext.GetTraceID(ctx))
+	addAccessingOUData(ctx, evt)
+	addActorData(evt, oauthApp)
 
 	ts.observabilitySvc.PublishEvent(ctx, evt)
 }
 
 func (ts *tokenService) publishTokenIssuedEvent(
-	ctx context.Context, clientID, grantType, scope string, startTime int64,
+	ctx context.Context, oauthApp *providers.OAuthClient, tokenRespDTO *model.TokenResponseDTO,
+	clientID, grantType, scope string, startTime int64,
 ) {
 	if ts.observabilitySvc == nil || !ts.observabilitySvc.IsEnabled() {
 		return
 	}
 
 	duration := time.Now().UnixMilli() - startTime
+
+	// A grant carries a correlation identifier only when it originated in a login flow (via the
+	// authorization code). Grants issued in a single request correlate on their own trace id.
+	correlationID := tokenRespDTO.CorrelationID
+	if correlationID == "" {
+		correlationID = sysContext.GetTraceID(ctx)
+	}
 
 	evt := event.NewEvent(
 		sysContext.GetTraceID(ctx),
@@ -333,15 +379,40 @@ func (ts *tokenService) publishTokenIssuedEvent(
 		WithData(event.DataKey.ClientID, clientID).
 		WithData(event.DataKey.GrantType, grantType).
 		WithData(event.DataKey.Scope, scope).
+		WithData(event.DataKey.CorrelationID, correlationID).
 		WithData(event.DataKey.DurationMs, fmt.Sprintf("%d", duration))
+	addAccessingOUData(ctx, evt)
+	addActorData(evt, oauthApp)
+	addSubjectData(evt, &tokenRespDTO.AccessToken)
 
 	ts.observabilitySvc.PublishEvent(ctx, evt)
 }
 
+// publishGrantError publishes a failed issuance for an error a grant handler returns, as a server error
+// when the handler reports one, and hides a server error's description from the client. An error
+// without a code publishes nothing.
+func (ts *tokenService) publishGrantError(ctx context.Context, oauthApp *providers.OAuthClient,
+	clientID, grantType, scope string, errResp *model.ErrorResponse, startTime int64) {
+	if errResp.Error == "" {
+		return
+	}
+	code := 400
+	if errResp.Error == constants.ErrorServerError {
+		code = 500
+	}
+	publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantType, scope,
+		code, errResp.ErrorDescription, startTime)
+	if errResp.Error == constants.ErrorServerError {
+		errResp.ErrorDescription = "Failed to process token request"
+	}
+}
+
 // publishTokenIssuanceFailedEvent is a package-level helper shared by tokenService and tokenHandler.
+// oauthApp is nil when the request failed before the client was resolved.
 func publishTokenIssuanceFailedEvent(
 	svc providers.ObservabilityProvider,
-	ctx context.Context, clientID, grantType, scope string, statusCode int, message string, startTime int64,
+	ctx context.Context, oauthApp *providers.OAuthClient,
+	clientID, grantType, scope string, statusCode int, message string, startTime int64,
 ) {
 	if svc == nil || !svc.IsEnabled() {
 		return
@@ -368,7 +439,64 @@ func publishTokenIssuanceFailedEvent(
 			"type":    errorType,
 			"message": message,
 		}).
+		WithData(event.DataKey.CorrelationID, sysContext.GetTraceID(ctx)).
 		WithData(event.DataKey.DurationMs, fmt.Sprintf("%d", duration))
+	addAccessingOUData(ctx, evt)
+	addActorData(evt, oauthApp)
 
 	svc.PublishEvent(ctx, evt)
+}
+
+// addAccessingOUData stamps the organization unit a token was requested for. It matters most on a
+// refusal, which deliberately names none, so the event is where an operator finds out which one a
+// request was about. The key's presence means the /ou/{ouId} form was used.
+func addAccessingOUData(ctx context.Context, evt *providers.Event) {
+	if ouID := sysContext.GetAccessingOUID(ctx); ouID != "" {
+		evt.WithData(event.DataKey.AccessingOUID, ouID)
+	}
+}
+
+// addActorData stamps the acting principal onto a token issuance event: the entity category of the
+// principal that authenticated as the client (agent or app) and its resource ID, which
+// cross-references the app_id reported by flow events for the same principal. A nil client leaves
+// the event unchanged.
+func addActorData(evt *providers.Event, oauthApp *providers.OAuthClient) {
+	if oauthApp == nil {
+		return
+	}
+	if actorType := event.PrincipalType(string(oauthApp.EntityCategory)); actorType != "" {
+		evt.WithData(event.DataKey.ActorType, actorType)
+	}
+	if oauthApp.ID != "" {
+		evt.WithData(event.DataKey.EntityID, oauthApp.ID)
+	}
+}
+
+// addSubjectData stamps the issued token's subject and its delegation relationship onto an event, so
+// an agent acting for a user is observable as the actor against that user's subject (RFC 8693). The
+// subject is reported as its entity resource ID, resolved while the token is built: the token's own
+// sub claim is configurable per application through SubjectAttribute and may be a directly
+// identifying attribute, which does not belong in the observability sinks. The actor is resolved
+// under the same rule and omitted when it names no entity, so a delegated issuance whose actor
+// cannot be identified is still reported as delegated, just without an act_sub.
+func addSubjectData(evt *providers.Event, accessToken *model.TokenDTO) {
+	if accessToken == nil {
+		return
+	}
+	if accessToken.SubjectID != "" {
+		evt.WithData(event.DataKey.Subject, accessToken.SubjectID)
+		if subjectType := event.PrincipalType(accessToken.SubjectCategory); subjectType != "" {
+			evt.WithData(event.DataKey.SubjectType, subjectType)
+		}
+	}
+	evt.WithData(event.DataKey.IsDelegated, accessToken.Delegated)
+	if accessToken.ActorSub != "" {
+		evt.WithData(event.DataKey.ActorSub, accessToken.ActorSub)
+	}
+}
+
+// acceptsAuthorizationDetails reports whether the grant type accepts authorization_details.
+func acceptsAuthorizationDetails(grantType providers.GrantType) bool {
+	return grantType == providers.GrantTypeClientCredentials || grantType == providers.GrantTypeAuthorizationCode ||
+		grantType == providers.GrantTypeRefreshToken || grantType == providers.GrantTypeCIBA
 }

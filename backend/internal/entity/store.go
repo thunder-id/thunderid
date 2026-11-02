@@ -10,13 +10,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
+
+// indexedAttr is one row destined for ENTITY_IDENTIFIER.
+type indexedAttr struct {
+	name   string
+	value  string
+	source string
+}
 
 // entityStoreInterface defines the interface for entity store operations.
 type entityStoreInterface interface {
@@ -34,9 +42,11 @@ type entityStoreInterface interface {
 	UpdateSystemCredentials(ctx context.Context, entityID string,
 		creds json.RawMessage) error
 	DeleteEntity(ctx context.Context, id string) error
+	LockEntity(ctx context.Context, id string) (providers.Entity, error)
 
 	// Query
 	IdentifyEntity(ctx context.Context, filters map[string]interface{}) (*string, error)
+	ResolveLinkedAccounts(ctx context.Context, idpID, sub string) ([]string, error)
 	SearchEntities(ctx context.Context, filters map[string]interface{}) ([]providers.Entity, error)
 	GetEntityListCount(ctx context.Context, category string,
 		filters map[string]interface{}) (int, error)
@@ -46,6 +56,14 @@ type entityStoreInterface interface {
 		ouIDs []string, filters map[string]interface{}) (int, error)
 	GetEntityListByOUIDs(ctx context.Context, category string,
 		ouIDs []string, limit, offset int, filters map[string]interface{}) ([]providers.Entity, error)
+	GetEntityListCountBySystemAttributes(ctx context.Context, category string,
+		sysQuery SystemAttributeQuery) (int, error)
+	GetEntityListBySystemAttributes(ctx context.Context, category string,
+		sysQuery SystemAttributeQuery, limit, offset int) ([]providers.Entity, error)
+	GetEntityListCountBySystemAttributesAndOUIDs(ctx context.Context, category string,
+		sysQuery SystemAttributeQuery, ouIDs []string) (int, error)
+	GetEntityListBySystemAttributesAndOUIDs(ctx context.Context, category string,
+		sysQuery SystemAttributeQuery, ouIDs []string, limit, offset int) ([]providers.Entity, error)
 	ValidateEntityIDs(ctx context.Context, entityIDs []string) ([]string, error)
 	GetEntitiesByIDs(ctx context.Context, entityIDs []string) ([]providers.Entity, error)
 	ValidateEntityIDsInOUs(ctx context.Context, entityIDs []string, ouIDs []string) ([]string, error)
@@ -66,7 +84,6 @@ var getDBProvider = provider.GetDBProvider
 
 // entityDBStore is the database implementation of entityStoreInterface.
 type entityDBStore struct {
-	deploymentID      string
 	indexedAttributes map[string]bool
 	dbProvider        provider.DBProviderInterface
 	logger            *log.Logger
@@ -75,8 +92,6 @@ type entityDBStore struct {
 // newEntityDBStore creates a new instance of entityDBStore.
 // Indexed attributes start empty; consumers must call LoadIndexedAttributes after init.
 func newEntityDBStore() (entityStoreInterface, providers.Transactioner, error) {
-	runtime := config.GetServerRuntime()
-
 	dbProvider := getDBProvider()
 	client, err := dbProvider.GetEntityDBClient()
 	if err != nil {
@@ -88,11 +103,16 @@ func newEntityDBStore() (entityStoreInterface, providers.Transactioner, error) {
 	}
 
 	return &entityDBStore{
-		deploymentID:      runtime.Config.Server.Identifier,
 		indexedAttributes: make(map[string]bool),
 		dbProvider:        dbProvider,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "EntityStore")),
 	}, transactioner, nil
+}
+
+// scope returns the deployment id this request acts for, falling back to the configured
+// identifier for a context that never passed through the edge.
+func (es *entityDBStore) scope(ctx context.Context) string {
+	return deployment.Resolve(ctx)
 }
 
 // LoadIndexedAttributes merges the given attributes into the indexed set.
@@ -149,10 +169,9 @@ func (es *entityDBStore) CreateEntity(ctx context.Context, entity providers.Enti
 		ctx,
 		QueryCreateEntity,
 		entity.ID,
-		es.deploymentID,
+		es.scope(ctx),
 		string(entity.Category),
 		entity.Type,
-		string(entity.State),
 		entity.OUID,
 		string(attributes),
 		systemAttrs,
@@ -180,7 +199,7 @@ func (es *entityDBStore) GetEntity(ctx context.Context, id string) (providers.En
 		return providers.Entity{}, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, QueryGetEntityByID, id, es.deploymentID)
+	results, err := dbClient.QueryContext(ctx, QueryGetEntityByID, id, es.scope(ctx))
 	if err != nil {
 		return providers.Entity{}, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -204,7 +223,7 @@ func (es *entityDBStore) GetEntityWithCredentials(ctx context.Context, id string
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, QueryGetEntityWithCredentials, id, es.deploymentID)
+	results, err := dbClient.QueryContext(ctx, QueryGetEntityWithCredentials, id, es.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -247,11 +266,12 @@ func (es *entityDBStore) UpdateEntity(ctx context.Context, entity *providers.Ent
 		systemAttrs = string(entity.SystemAttributes)
 	}
 
+	// entity.State is not written; it lives in the runtime store.
 	rowsAffected, err := dbClient.ExecuteContext(
 		ctx,
 		QueryUpdateEntity,
 		entity.ID, entity.OUID, entity.Type,
-		string(entity.State), string(attributes), systemAttrs, time.Now().UTC(), es.deploymentID,
+		string(attributes), systemAttrs, time.Now().UTC(), es.scope(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to execute update entity query: %w", err)
@@ -261,28 +281,32 @@ func (es *entityDBStore) UpdateEntity(ctx context.Context, entity *providers.Ent
 		return ErrEntityNotFound
 	}
 
-	// Reload the entity to get the authoritative post-update state for identifier sync.
-	// This ensures identifiers reflect what is actually stored in the DB, regardless of
-	// what the caller passed in SystemAttributes.
-	current, err := es.GetEntity(ctx, entity.ID)
+	return es.resyncIdentifiers(ctx, dbClient, entity.ID)
+}
+
+// resyncIdentifiers rebuilds all identifiers of an entity from its stored schema and system attributes.
+// Both sources are re-indexed together, since the system-over-schema precedence for a name depends on
+// both. The entity is reloaded so identifiers reflect what is actually stored in the DB.
+func (es *entityDBStore) resyncIdentifiers(ctx context.Context, dbClient provider.DBClientInterface,
+	entityID string) error {
+	current, err := es.GetEntity(ctx, entityID)
 	if err != nil {
 		return fmt.Errorf("failed to reload entity for identifier sync: %w", err)
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, QueryDeleteIdentifiersByEntity, entity.ID, es.deploymentID)
-	if err != nil {
+	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteIdentifiersByEntity, entityID, es.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to delete identifiers: %w", err)
 	}
 
-	if err := es.syncAttributeIdentifiers(
-		ctx, entity.ID, current.Attributes, current.SystemAttributes, es.indexedAttributes); err != nil {
+	if err = es.syncAttributeIdentifiers(
+		ctx, entityID, current.Attributes, current.SystemAttributes, es.indexedAttributes); err != nil {
 		return fmt.Errorf("failed to sync identifiers: %w", err)
 	}
 
 	return nil
 }
 
-// UpdateAttributes updates only the schema attributes of an entity and re-syncs attribute-sourced identifiers.
+// UpdateAttributes updates only the schema attributes of an entity and re-syncs all identifiers.
 func (es *entityDBStore) UpdateAttributes(ctx context.Context, entityID string, attributes json.RawMessage) error {
 	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
@@ -290,7 +314,7 @@ func (es *entityDBStore) UpdateAttributes(ctx context.Context, entityID string, 
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryUpdateAttributes,
-		entityID, string(attributes), time.Now().UTC(), es.deploymentID)
+		entityID, string(attributes), time.Now().UTC(), es.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to execute update attributes query: %w", err)
 	}
@@ -299,19 +323,10 @@ func (es *entityDBStore) UpdateAttributes(ctx context.Context, entityID string, 
 		return ErrEntityNotFound
 	}
 
-	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteAttributeIdentifiersByEntity,
-		entityID, es.deploymentID); err != nil {
-		return fmt.Errorf("failed to delete attribute identifiers: %w", err)
-	}
-
-	if err = es.syncAttributeIdentifiers(ctx, entityID, attributes, nil, es.indexedAttributes); err != nil {
-		return fmt.Errorf("failed to sync attribute identifiers: %w", err)
-	}
-
-	return nil
+	return es.resyncIdentifiers(ctx, dbClient, entityID)
 }
 
-// UpdateSystemAttributes updates the system attributes of an entity and re-syncs system-sourced identifiers.
+// UpdateSystemAttributes updates only the system attributes of an entity and re-syncs all identifiers.
 func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID string,
 	attrs json.RawMessage) error {
 	dbClient, err := es.dbProvider.GetEntityDBClient()
@@ -320,7 +335,7 @@ func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID st
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryUpdateSystemAttributes,
-		entityID, string(attrs), time.Now().UTC(), es.deploymentID)
+		entityID, string(attrs), time.Now().UTC(), es.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -329,16 +344,7 @@ func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID st
 		return ErrEntityNotFound
 	}
 
-	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteSystemIdentifiersByEntity,
-		entityID, es.deploymentID); err != nil {
-		return fmt.Errorf("failed to delete system identifiers: %w", err)
-	}
-
-	if err = es.syncAttributeIdentifiers(ctx, entityID, nil, attrs, es.indexedAttributes); err != nil {
-		return fmt.Errorf("failed to sync system identifiers: %w", err)
-	}
-
-	return nil
+	return es.resyncIdentifiers(ctx, dbClient, entityID)
 }
 
 // UpdateCredentials updates the credentials of an entity.
@@ -350,7 +356,7 @@ func (es *entityDBStore) UpdateCredentials(ctx context.Context, entityID string,
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryUpdateCredentials,
-		entityID, string(creds), time.Now().UTC(), es.deploymentID)
+		entityID, string(creds), time.Now().UTC(), es.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -371,7 +377,7 @@ func (es *entityDBStore) UpdateSystemCredentials(ctx context.Context, entityID s
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryUpdateSystemCredentials,
-		entityID, string(creds), time.Now().UTC(), es.deploymentID)
+		entityID, string(creds), time.Now().UTC(), es.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -390,7 +396,7 @@ func (es *entityDBStore) DeleteEntity(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryDeleteEntity, id, es.deploymentID)
+	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryDeleteEntity, id, es.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -399,7 +405,7 @@ func (es *entityDBStore) DeleteEntity(ctx context.Context, id string) error {
 		return ErrEntityNotFound
 	}
 
-	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteIdentifiersByEntity, id, es.deploymentID); err != nil {
+	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteIdentifiersByEntity, id, es.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to delete entity identifiers: %w", err)
 	}
 
@@ -411,7 +417,7 @@ func (es *entityDBStore) DeleteEntity(ctx context.Context, id string) error {
 func (es *entityDBStore) syncAttributeIdentifiers(ctx context.Context, entityID string,
 	attributes json.RawMessage, systemAttributes json.RawMessage,
 	indexedAttrs map[string]bool) error {
-	query, args, err := prepareIdentifierQuery(entityID, attributes, systemAttributes, indexedAttrs, es.deploymentID)
+	query, args, err := prepareIdentifierQuery(entityID, attributes, systemAttributes, indexedAttrs, es.scope(ctx))
 	if err != nil {
 		return err
 	}
@@ -440,44 +446,56 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	// Fast path: try indexed identifier store first for all lookups.
-	// This covers both schema-indexed attributes (email, username) and
-	// system identifiers without requiring config.
-	identifyQuery, args, err := buildIdentifyQueryFromIdentifiers(filters, es.deploymentID)
-	if err == nil {
-		results, qErr := dbClient.QueryContext(ctx, identifyQuery, args...)
-		if qErr == nil && len(results) == 1 {
-			if entityID, ok := results[0]["id"].(string); ok {
-				return &entityID, nil
-			}
-		}
-	}
-
-	// Fallback: categorize filters into indexed and non-indexed for JSONB search.
+	// Categorize filters into indexed and non-indexed for the fast path and the JSONB fallback.
 	indexedFilters := make(map[string]interface{})
 	nonIndexedFilters := make(map[string]interface{})
+	// A key with no identifier rows makes the fast path match nothing, so it is skipped.
+	allHaveIdentifierRows := true
 
 	for key, value := range filters {
 		if es.indexedAttributes[key] {
 			indexedFilters[key] = value
 		} else {
 			nonIndexedFilters[key] = value
+			if !strings.HasPrefix(key, authnprovidercm.SystemAttrLinkedIDs+".") {
+				allHaveIdentifierRows = false
+			}
 		}
 	}
 
+	// Fast path: try indexed identifier store first for all lookups.
+	// This covers both schema-indexed attributes (email, username) and
+	// system identifiers without requiring config.
+	identifyQuery, args, err := buildIdentifyQueryFromIdentifiers(filters, es.scope(ctx))
+	if err == nil && allHaveIdentifierRows {
+		results, qErr := dbClient.QueryContext(ctx, identifyQuery, args...)
+		if qErr == nil && len(results) == 1 {
+			if entityID, ok := results[0]["id"].(string); ok {
+				return &entityID, nil
+			}
+		}
+		// Identifier rows are positive matches, so more than one entity for all-indexed filters is a
+		// real ambiguity. The JSON fallback compares whole values and cannot see array items, so it
+		// would report not found, or a single scalar holder, instead.
+		if qErr == nil && len(results) > 1 && len(nonIndexedFilters) == 0 {
+			return nil, ErrAmbiguousEntity
+		}
+	}
+
+	// Fallback: JSONB search, using the identifier table for any indexed filters.
 	var fallbackQuery dbmodel.DBQuery
 	var fallbackArgs []interface{}
 
 	if len(indexedFilters) > 0 && len(nonIndexedFilters) > 0 {
 		// Mixed: identifier table for indexed filters + JSON for non-indexed filters.
-		fallbackQuery, fallbackArgs, err = buildIdentifyQueryHybrid(indexedFilters, nonIndexedFilters, es.deploymentID)
+		fallbackQuery, fallbackArgs, err = buildIdentifyQueryHybrid(indexedFilters, nonIndexedFilters, es.scope(ctx))
 		if err != nil {
 			return nil, fmt.Errorf("failed to build hybrid query: %w", err)
 		}
 	} else {
 		// All-indexed: fast path already tried the identifier table; fall back to JSON search.
 		// All non-indexed: always use JSON search.
-		fallbackQuery, fallbackArgs, err = buildIdentifyQuery(filters, es.deploymentID)
+		fallbackQuery, fallbackArgs, err = buildIdentifyQuery(filters, es.scope(ctx))
 		if err != nil {
 			return nil, fmt.Errorf("failed to build identify query: %w", err)
 		}
@@ -516,6 +534,49 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 	return &entityID, nil
 }
 
+// LockEntity holds the entity's write lock until the surrounding transaction ends and returns the
+// entity as read under that lock.
+func (es *entityDBStore) LockEntity(ctx context.Context, id string) (providers.Entity, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return providers.Entity{}, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryLockEntity, id, es.scope(ctx))
+	if err != nil {
+		return providers.Entity{}, fmt.Errorf("failed to execute query: %w", err)
+	}
+	if rowsAffected == 0 {
+		return providers.Entity{}, ErrEntityNotFound
+	}
+	return es.GetEntity(ctx, id)
+}
+
+// ResolveLinkedAccounts returns the entities linked to a subject at a connection from the identifier
+// index only. A subject no entity is linked to returns an empty list.
+func (es *entityDBStore) ResolveLinkedAccounts(ctx context.Context, idpID, sub string) ([]string, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, QueryResolveIdentifier,
+		linkedIdentifierName(idpID), sub, identifierSourceSystem, es.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+
+	entityIDs := make([]string, 0, len(results))
+	for _, row := range results {
+		entityID, ok := row["id"].(string)
+		if !ok || entityID == "" {
+			return nil, fmt.Errorf("unexpected type for id: %T", row["id"])
+		}
+		entityIDs = append(entityIDs, entityID)
+	}
+	return entityIDs, nil
+}
+
 // SearchEntities searches for all entities matching the provided filters.
 // Unlike IdentifyEntity, this returns all matching entities instead of erroring on ambiguity.
 // Results are capped at MaxPageSize (100) entries; matches beyond that limit are not returned.
@@ -528,7 +589,7 @@ func (es *entityDBStore) SearchEntities(ctx context.Context,
 	}
 
 	searchQuery, args, err := buildEntityListQuery(
-		"", filters, serverconst.MaxPageSize, 0, es.deploymentID)
+		"", filters, es.indexedAttributes, serverconst.MaxPageSize, 0, es.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build search query: %w", err)
 	}
@@ -558,7 +619,7 @@ func (es *entityDBStore) GetEntityListCount(ctx context.Context, category string
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countQuery, args, err := buildEntityCountQuery(category, filters, es.deploymentID)
+	countQuery, args, err := buildEntityCountQuery(category, filters, es.indexedAttributes, es.scope(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to build count query: %w", err)
 	}
@@ -574,7 +635,8 @@ func (es *entityDBStore) GetEntityList(ctx context.Context, category string,
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	listQuery, args, err := buildEntityListQuery(category, filters, limit, offset, es.deploymentID)
+	listQuery, args, err := buildEntityListQuery(
+		category, filters, es.indexedAttributes, limit, offset, es.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build list query: %w", err)
 	}
@@ -598,7 +660,8 @@ func (es *entityDBStore) GetEntityListCountByOUIDs(ctx context.Context, category
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countQuery, args, err := buildEntityCountQueryByOUIDs(category, ouIDs, filters, es.deploymentID)
+	countQuery, args, err := buildEntityCountQueryByOUIDs(
+		category, ouIDs, filters, es.indexedAttributes, es.scope(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to build count query: %w", err)
 	}
@@ -614,7 +677,91 @@ func (es *entityDBStore) GetEntityListByOUIDs(ctx context.Context, category stri
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	listQuery, args, err := buildEntityListQueryByOUIDs(category, ouIDs, filters, limit, offset, es.deploymentID)
+	listQuery, args, err := buildEntityListQueryByOUIDs(
+		category, ouIDs, filters, es.indexedAttributes, limit, offset, es.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build list query: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, listQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute paginated query: %w", err)
+	}
+
+	return buildEntitiesFromResults(results)
+}
+
+// GetEntityListCountBySystemAttributes retrieves the number of entities a system attribute query selects.
+func (es *entityDBStore) GetEntityListCountBySystemAttributes(ctx context.Context, category string,
+	sysQuery SystemAttributeQuery) (int, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	countQuery, args, err := buildEntityCountQueryBySystemAttributes(
+		category, sysQuery, es.indexedAttributes, es.scope(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("failed to build count query: %w", err)
+	}
+
+	return executeCountQuery(dbClient, ctx, countQuery, args)
+}
+
+// GetEntityListBySystemAttributes retrieves the entities a system attribute query selects.
+func (es *entityDBStore) GetEntityListBySystemAttributes(ctx context.Context, category string,
+	sysQuery SystemAttributeQuery, limit, offset int) ([]providers.Entity, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	listQuery, args, err := buildEntityListQueryBySystemAttributes(
+		category, sysQuery, es.indexedAttributes, limit, offset, es.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build list query: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, listQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute paginated query: %w", err)
+	}
+
+	return buildEntitiesFromResults(results)
+}
+
+// GetEntityListCountBySystemAttributesAndOUIDs retrieves the number of entities a system attribute query
+// selects within the given organization units.
+func (es *entityDBStore) GetEntityListCountBySystemAttributesAndOUIDs(ctx context.Context, category string,
+	sysQuery SystemAttributeQuery, ouIDs []string) (int, error) {
+	if len(ouIDs) == 0 {
+		return 0, nil
+	}
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	countQuery, args, err := buildEntityCountQueryBySystemAttributesAndOUIDs(
+		category, sysQuery, ouIDs, es.indexedAttributes, es.scope(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("failed to build count query: %w", err)
+	}
+
+	return executeCountQuery(dbClient, ctx, countQuery, args)
+}
+
+// GetEntityListBySystemAttributesAndOUIDs retrieves the entities a system attribute query selects within
+// the given organization units.
+func (es *entityDBStore) GetEntityListBySystemAttributesAndOUIDs(ctx context.Context, category string,
+	sysQuery SystemAttributeQuery, ouIDs []string, limit, offset int) ([]providers.Entity, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	listQuery, args, err := buildEntityListQueryBySystemAttributesAndOUIDs(
+		category, sysQuery, ouIDs, es.indexedAttributes, limit, offset, es.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build list query: %w", err)
 	}
@@ -638,7 +785,7 @@ func (es *entityDBStore) ValidateEntityIDs(ctx context.Context, entityIDs []stri
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	query, args, err := buildBulkEntityExistsQuery(entityIDs, es.deploymentID)
+	query, args, err := buildBulkEntityExistsQuery(entityIDs, es.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build bulk entity exists query: %w", err)
 	}
@@ -687,7 +834,7 @@ func (es *entityDBStore) GetEntitiesByIDs(ctx context.Context, entityIDs []strin
 		}
 		chunk := entityIDs[start:end]
 
-		query, args, err := buildGetEntitiesByIDsQuery(chunk, es.deploymentID)
+		query, args, err := buildGetEntitiesByIDsQuery(chunk, es.scope(ctx))
 		if err != nil {
 			return nil, fmt.Errorf("failed to build get entities by IDs query: %w", err)
 		}
@@ -723,7 +870,7 @@ func (es *entityDBStore) ValidateEntityIDsInOUs(
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	query, args, err := buildBulkEntityExistsQueryInOUs(entityIDs, ouIDs, es.deploymentID)
+	query, args, err := buildBulkEntityExistsQueryInOUs(entityIDs, ouIDs, es.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build query: %w", err)
 	}
@@ -756,7 +903,7 @@ func (es *entityDBStore) GetGroupCountForEntity(ctx context.Context, entityID st
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countResults, err := dbClient.QueryContext(ctx, QueryGetGroupCountForEntity, entityID, es.deploymentID)
+	countResults, err := dbClient.QueryContext(ctx, QueryGetGroupCountForEntity, entityID, es.scope(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to get group count for entity: %w", err)
 	}
@@ -780,7 +927,7 @@ func (es *entityDBStore) GetEntityGroups(
 	}
 
 	results, err := dbClient.QueryContext(ctx, QueryGetGroupsForEntity,
-		entityID, limit, offset, es.deploymentID)
+		entityID, limit, offset, es.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get groups for entity: %w", err)
 	}
@@ -828,11 +975,6 @@ func buildEntityFromResultRow(row map[string]interface{}) (providers.Entity, err
 		return providers.Entity{}, fmt.Errorf("failed to parse type as string")
 	}
 
-	state, ok := row["state"].(string)
-	if !ok {
-		return providers.Entity{}, fmt.Errorf("failed to parse state as string")
-	}
-
 	var attributes string
 	switch v := row["attributes"].(type) {
 	case string:
@@ -847,7 +989,6 @@ func buildEntityFromResultRow(row map[string]interface{}) (providers.Entity, err
 		ID:       entityID,
 		Category: providers.EntityCategory(category),
 		Type:     entityType,
-		State:    providers.EntityState(state),
 		OUID:     ouID,
 	}
 
@@ -932,18 +1073,47 @@ func executeCountQuery(dbClient provider.DBClientInterface, ctx context.Context,
 	return totalCount, nil
 }
 
+// linkedIdentifierName derives the ENTITY_IDENTIFIER name a connection's links are indexed under.
+func linkedIdentifierName(idpID string) string {
+	return fmt.Sprintf("%s.%s", authnprovidercm.SystemAttrLinkedIDs, idpID)
+}
+
+// linkedIdentifierRows converts the linkedIds system attribute into one indexed identifier per
+// subject. Malformed entries are skipped.
+func linkedIdentifierRows(value interface{}) []indexedAttr {
+	byIDP, ok := value.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	var rows []indexedAttr
+	for idpID, subjects := range byIDP {
+		bySub, ok := subjects.(map[string]interface{})
+		if idpID == "" || !ok {
+			continue
+		}
+		for sub := range bySub {
+			if sub == "" {
+				continue
+			}
+			rows = append(rows, indexedAttr{
+				name:   linkedIdentifierName(idpID),
+				value:  sub,
+				source: identifierSourceSystem,
+			})
+		}
+	}
+	return rows
+}
+
 func prepareIdentifierQuery(
 	entityID string, attributes json.RawMessage, systemAttributes json.RawMessage,
 	indexedAttrs map[string]bool, deploymentID string,
 ) (*dbmodel.DBQuery, []interface{}, error) {
-	type indexedAttr struct {
-		name   string
-		value  string
-		source string
-	}
-	var toInsert []indexedAttr
+	var attrEntries, sysEntries []indexedAttr
 
 	// Extract indexed attributes from schema attributes (source = "attribute").
+	// A value may be a scalar (one identifier value) or an array of scalars (multiple values).
 	if len(attributes) > 0 {
 		var attrMap map[string]interface{}
 		if err := json.Unmarshal(attributes, &attrMap); err != nil {
@@ -953,45 +1123,68 @@ func prepareIdentifierQuery(
 			if !indexedAttrs[attrName] {
 				continue
 			}
-			if valueStr := attrValueToString(attrValue); valueStr != "" {
-				toInsert = append(toInsert, indexedAttr{name: attrName, value: valueStr, source: "attribute"})
+			for _, valueStr := range attrValueToStrings(attrValue) {
+				attrEntries = append(attrEntries,
+					indexedAttr{name: attrName, value: valueStr, source: identifierSourceAttribute})
 			}
 		}
 	}
 
 	// Extract indexed attributes from system attributes (source = "system").
+	sysNames := make(map[string]bool)
 	if len(systemAttributes) > 0 {
 		var sysAttrMap map[string]interface{}
 		if err := json.Unmarshal(systemAttributes, &sysAttrMap); err != nil {
 			return nil, nil, fmt.Errorf("failed to unmarshal system attributes: %w", err)
 		}
 		for attrName, attrValue := range sysAttrMap {
+			// Linked accounts are server-owned and indexed unconditionally. Gating them on
+			// user.indexed_attributes would let a missing config line silently break sign-in through a link.
+			if attrName == authnprovidercm.SystemAttrLinkedIDs {
+				for _, row := range linkedIdentifierRows(attrValue) {
+					sysNames[row.name] = true
+					sysEntries = append(sysEntries, row)
+				}
+				continue
+			}
 			if !indexedAttrs[attrName] {
 				continue
 			}
-			if valueStr := attrValueToString(attrValue); valueStr != "" {
-				toInsert = append(toInsert, indexedAttr{name: attrName, value: valueStr, source: "system"})
+			values := attrValueToStrings(attrValue)
+			if len(values) > 0 {
+				sysNames[attrName] = true
+			}
+			for _, valueStr := range values {
+				sysEntries = append(sysEntries,
+					indexedAttr{name: attrName, value: valueStr, source: identifierSourceSystem})
 			}
 		}
 	}
+
+	// If the same name has indexable values in both schema and system attributes, the system
+	// attribute values win entirely (schema values for that name are dropped, not merged).
+	toInsert := make([]indexedAttr, 0, len(attrEntries)+len(sysEntries))
+	for _, attr := range attrEntries {
+		if !sysNames[attr.name] {
+			toInsert = append(toInsert, attr)
+		}
+	}
+	toInsert = append(toInsert, sysEntries...)
 
 	if len(toInsert) == 0 {
 		return nil, nil, nil
 	}
 
-	// Deduplicate by attribute name; if the same key appears in both schema and system attributes,
-	// the system attribute entry wins (it was appended last and overwrites the schema one).
-	dedupMap := make(map[string]indexedAttr, len(toInsert))
-	dedupOrder := make([]string, 0, len(toInsert))
+	// Deduplicate exact (name, value) repeats, preserving first-seen order.
+	seen := make(map[string]bool, len(toInsert))
+	deduped := make([]indexedAttr, 0, len(toInsert))
 	for _, attr := range toInsert {
-		if _, exists := dedupMap[attr.name]; !exists {
-			dedupOrder = append(dedupOrder, attr.name)
+		key := attr.name + "\x00" + attr.value
+		if seen[key] {
+			continue
 		}
-		dedupMap[attr.name] = attr
-	}
-	deduped := make([]indexedAttr, 0, len(dedupMap))
-	for _, name := range dedupOrder {
-		deduped = append(deduped, dedupMap[name])
+		seen[key] = true
+		deduped = append(deduped, attr)
 	}
 	toInsert = deduped
 
@@ -1028,6 +1221,47 @@ func attrValueToString(value interface{}) string {
 	default:
 		return ""
 	}
+}
+
+// attrValueToStrings converts an attribute value into the identifier values to index.
+// A scalar produces at most one value; an array produces one value per indexable element.
+// Non-indexable elements (e.g. nested objects) are skipped.
+func attrValueToStrings(value interface{}) []string {
+	elements, ok := value.([]interface{})
+	if !ok {
+		if s := attrValueToString(value); s != "" {
+			return []string{s}
+		}
+		return nil
+	}
+
+	values := make([]string, 0, len(elements))
+	for _, elem := range elements {
+		if s := attrValueToString(elem); s != "" {
+			values = append(values, s)
+		}
+	}
+	return values
+}
+
+// validateIndexedValueCounts rejects attributes in which an indexed name has more than
+// maxIndexedValuesPerAttribute values to index. Linked accounts are indexed whatever the
+// configuration, so their subjects are held to the same limit in total across every connection.
+func validateIndexedValueCounts(attrMap map[string]interface{}, indexedAttrs map[string]bool) error {
+	for attrName, attrValue := range attrMap {
+		if attrName == authnprovidercm.SystemAttrLinkedIDs {
+			if len(linkedIdentifierRows(attrValue)) > maxIndexedValuesPerAttribute {
+				return fmt.Errorf("%w: %s holds more than %d links",
+					ErrIndexedValueLimitExceeded, attrName, maxIndexedValuesPerAttribute)
+			}
+			continue
+		}
+		if indexedAttrs[attrName] && len(attrValueToStrings(attrValue)) > maxIndexedValuesPerAttribute {
+			return fmt.Errorf("%w: indexed attribute '%s' has more than %d values",
+				ErrIndexedValueLimitExceeded, attrName, maxIndexedValuesPerAttribute)
+		}
+	}
+	return nil
 }
 
 func validateIndexedAttributesConfig(configuredAttrs []string) error {

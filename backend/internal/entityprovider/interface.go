@@ -18,14 +18,17 @@ type EntityProviderInterface interface {
 	// SearchEntities searches for all entities matching the given filters.
 	SearchEntities(filters map[string]interface{}) ([]*providers.Entity, *EntityProviderError)
 
+	// GetLinkedEntities returns the entities linked to a subject at a connection, with OUHandle set.
+	GetLinkedEntities(idpID, sub string) ([]*providers.Entity, *EntityProviderError)
+
 	// GetEntity retrieves an entity by ID. Credentials are never returned.
 	GetEntity(entityID string) (*providers.Entity, *EntityProviderError)
 
-	// CreateEntity creates a new entity.
-	CreateEntity(entity *providers.Entity,
-		systemCredentials json.RawMessage) (*providers.Entity, *EntityProviderError)
+	// GetEntityProfile retrieves an entity's profile by ID, without its runtime state. State is empty.
+	// Use it whenever the caller does not need the entity's status.
+	GetEntityProfile(entityID string) (*providers.Entity, *EntityProviderError)
 
-	// UpdateEntity updates an existing entity's core fields.
+	// UpdateEntity updates an existing entity's core fields. The entity's state is not written.
 	UpdateEntity(entityID string, entity *providers.Entity) (*providers.Entity, *EntityProviderError)
 
 	// DeleteEntity deletes an entity by ID. Cascades to identifiers.
@@ -49,6 +52,9 @@ type EntityProviderInterface interface {
 
 	// GetTransitiveEntityGroups retrieves all groups an entity belongs to, including inherited groups.
 	GetTransitiveEntityGroups(entityID string) ([]providers.EntityGroup, *EntityProviderError)
+
+	// GetTransitiveGroupAncestors resolves the ancestor chain of a single group.
+	GetTransitiveGroupAncestors(groupID string) ([]string, *EntityProviderError)
 
 	// ValidateEntityIDs validates that the given entity IDs exist. Returns IDs that are invalid.
 	ValidateEntityIDs(entityIDs []string) ([]string, *EntityProviderError)

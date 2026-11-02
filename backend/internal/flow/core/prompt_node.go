@@ -190,6 +190,7 @@ func (n *promptNode) applyValidationFailureRePrompt(ctx *providers.NodeContext, 
 	// via RuntimeData or ForwardedData. UserInputs holds the current submission and
 	// is excluded here because it was empty when the initial prompt was rendered.
 	rePromptInputs := make([]providers.Input, 0, len(actionInputs))
+	extIdentity := GetExternalIdentity(ctx.RuntimeData)
 	for _, input := range actionInputs {
 		if _, inRuntime := ctx.RuntimeData[input.Identifier]; inRuntime {
 			continue
@@ -198,6 +199,12 @@ func (n *promptNode) applyValidationFailureRePrompt(ctx *providers.NodeContext, 
 			if _, isString := val.(string); isString {
 				continue
 			}
+		}
+		// External claims are only a fallback and must never take priority over runtime data. A
+		// credential is never taken from a claim.
+		if val, isClaim := extIdentity.Claim(input.Identifier); isClaim && val != "" &&
+			input.Type != providers.InputTypePassword {
+			continue
 		}
 		rePromptInputs = append(rePromptInputs, input)
 	}
@@ -494,6 +501,7 @@ func (n *promptNode) enrichInputsFromForwardedData(ctx *providers.NodeContext, n
 
 	// Single pass: upsert forwarded inputs — replace existing entries (updating required/options)
 	// or append dynamically derived inputs not yet satisfied by the user.
+	extIdentity := GetExternalIdentity(ctx.RuntimeData)
 	for _, fwdInput := range forwardedInputs {
 		if idx, exists := existingIndexMap[fwdInput.Identifier]; exists {
 			if fwdInput.Required && !nodeResp.Inputs[idx].Required {
@@ -527,6 +535,13 @@ func (n *promptNode) enrichInputsFromForwardedData(ctx *providers.NodeContext, n
 			if val, isString := value.(string); isString && val != "" {
 				continue
 			}
+		}
+		// External claims are only a fallback and must never take priority over runtime data. A
+		// credential is never taken from a claim, and neither is a choice between offered options,
+		// which is the user's to make.
+		if val, ok := extIdentity.Claim(fwdInput.Identifier); ok && val != "" &&
+			fwdInput.Type != providers.InputTypePassword && len(fwdInput.Options) == 0 {
+			continue
 		}
 		nodeResp.Inputs = append(nodeResp.Inputs, fwdInput)
 		existingIndexMap[fwdInput.Identifier] = len(nodeResp.Inputs) - 1
@@ -770,6 +785,7 @@ func (n *promptNode) buildSyntheticComponentList(
 				if needsPassword {
 					cloned["type"] = providers.InputTypePassword
 				}
+
 				promotions[ref] = cloned
 			}
 			continue
@@ -785,13 +801,18 @@ func (n *promptNode) buildSyntheticComponentList(
 		if inputType == "" {
 			inputType = providers.InputTypeText
 		}
-		synthetic = append(synthetic, map[string]interface{}{
+		syntheticComp := map[string]interface{}{
 			"id":       input.Identifier,
 			"ref":      input.Identifier,
 			"type":     inputType,
 			"label":    label,
 			"required": input.Required,
-		})
+		}
+		// Include the input's permitted values on a synthetic SELECT component.
+		if inputType == providers.InputTypeSelect && len(input.Options) > 0 {
+			syntheticComp["options"] = input.Options
+		}
+		synthetic = append(synthetic, syntheticComp)
 	}
 	return synthetic, promotions
 }

@@ -63,7 +63,7 @@ describe('GatePreview', () => {
       renderWithThemeProvider(<GatePreview theme={null} />);
 
       // When loading, the iframe/canvas area is not rendered
-      expect(screen.queryByTitle('Gate Preview')).not.toBeInTheDocument();
+      expect(screen.queryByTitle('Gate preview')).not.toBeInTheDocument();
     });
   });
 
@@ -71,7 +71,7 @@ describe('GatePreview', () => {
     it('should render the preview iframe when a theme is provided', () => {
       renderWithThemeProvider(<GatePreview theme={mockTheme} />);
 
-      expect(screen.getByTitle('Gate Preview')).toBeInTheDocument();
+      expect(screen.getByTitle('Gate preview')).toBeInTheDocument();
     });
 
     it('should not show a progress spinner when theme is provided', () => {
@@ -108,7 +108,7 @@ describe('GatePreview', () => {
     it('should include displayName and "Preview" in the browser chrome', () => {
       renderWithThemeProvider(<GatePreview theme={mockTheme} displayName="My App" />);
 
-      expect(screen.getByText('My App — Preview')).toBeInTheDocument();
+      expect(screen.getByText('My App — preview')).toBeInTheDocument();
     });
   });
 
@@ -116,19 +116,19 @@ describe('GatePreview', () => {
     it('should render without errors when colorScheme is explicitly set to light', () => {
       renderWithThemeProvider(<GatePreview theme={mockTheme} colorScheme="light" />);
 
-      expect(screen.getByTitle('Gate Preview')).toBeInTheDocument();
+      expect(screen.getByTitle('Gate preview')).toBeInTheDocument();
     });
 
     it('should render without errors when colorScheme is explicitly set to dark', () => {
       renderWithThemeProvider(<GatePreview theme={mockTheme} colorScheme="dark" />);
 
-      expect(screen.getByTitle('Gate Preview')).toBeInTheDocument();
+      expect(screen.getByTitle('Gate preview')).toBeInTheDocument();
     });
 
     it('should render without errors when syncColorSchemeWithSystem is true', () => {
       renderWithThemeProvider(<GatePreview theme={mockTheme} syncColorSchemeWithSystem />);
 
-      expect(screen.getByTitle('Gate Preview')).toBeInTheDocument();
+      expect(screen.getByTitle('Gate preview')).toBeInTheDocument();
     });
   });
 
@@ -145,7 +145,7 @@ describe('GatePreview', () => {
 
       renderWithThemeProvider(<GatePreview theme={mockTheme} />);
 
-      const iframe = screen.getByTitle<HTMLIFrameElement>('Gate Preview');
+      const iframe = screen.getByTitle<HTMLIFrameElement>('Gate preview');
       const style = iframe.contentDocument?.querySelector('style');
       expect(style?.getAttribute('nonce')).toBe('abc123');
     });
@@ -153,7 +153,7 @@ describe('GatePreview', () => {
     it('renders the iframe without a nonce attribute when none is available', () => {
       renderWithThemeProvider(<GatePreview theme={mockTheme} />);
 
-      const iframe = screen.getByTitle<HTMLIFrameElement>('Gate Preview');
+      const iframe = screen.getByTitle<HTMLIFrameElement>('Gate preview');
       const style = iframe.contentDocument?.querySelector('style');
       expect(style?.hasAttribute('nonce')).toBe(false);
     });
@@ -174,7 +174,7 @@ describe('GatePreview', () => {
       );
 
       // Preview iframe is still rendered after interactions
-      expect(screen.getByTitle('Gate Preview')).toBeInTheDocument();
+      expect(screen.getByTitle('Gate preview')).toBeInTheDocument();
     });
   });
 });

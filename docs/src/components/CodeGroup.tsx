@@ -1,9 +1,11 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useTabs} from '@docusaurus/theme-common/internal';
 import TabItem from '@theme/TabItem';
-import Tabs from '@theme/Tabs';
-import React, {JSX, PropsWithChildren, ReactElement} from 'react';
+import React, {JSX, PropsWithChildren, ReactElement, useRef} from 'react';
+import {CodeGroupTabsProvider} from './CodeGroupContext';
+import {PACKAGE_MANAGER_ICONS} from './packageManagerIcons';
 
 interface CodeGroupProps {
   /**
@@ -21,15 +23,6 @@ interface CodeBlockProps {
   lang?: string;
   children?: React.ReactNode;
 }
-
-// Known package manager icons
-const KNOWN_ICONS: Record<string, string> = {
-  npm: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' viewBox='0 0 32 32'%3E%3Cpath fill='%23c12127' d='M2 2h28v28H2'/%3E%3Cpath fill='%23fff' d='M7.25 7.25h17.5v17.5h-3.5v-14H16v14H7.25'/%3E%3C/svg%3E",
-  yarn: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' viewBox='0 0 32 32'%3E%3Cpath fill='%232188b6' d='M28.208 24.409a10.5 10.5 0 0 0-3.959 1.822a23.7 23.7 0 0 1-5.835 2.642a1.63 1.63 0 0 1-.983.55a62 62 0 0 1-6.447.577c-1.163.009-1.876-.3-2.074-.776a1.573 1.573 0 0 1 .866-2.074a4 4 0 0 1-.514-.379c-.171-.171-.352-.514-.406-.388c-.225.55-.343 1.894-.947 2.5c-.83.839-2.4.559-3.328.072c-1.019-.541.072-1.813.072-1.813a.73.73 0 0 1-.992-.343a4.85 4.85 0 0 1-.667-2.949a5.37 5.37 0 0 1 1.749-2.895a9.3 9.3 0 0 1 .658-4.4a10.45 10.45 0 0 1 3.165-3.661S6.628 10.747 7.35 8.817c.469-1.262.658-1.253.812-1.308a3.6 3.6 0 0 0 1.452-.857a5.27 5.27 0 0 1 4.41-1.7S15.2 1.4 16.277 2.09a18.4 18.4 0 0 1 1.533 2.886s1.281-.748 1.425-.469a11.33 11.33 0 0 1 .523 6.132a14 14 0 0 1-2.6 5.411c-.135.225 1.551.938 2.615 3.887c.983 2.7.108 4.96.262 5.212c.027.045.036.063.036.063s1.127.09 3.391-1.308a8.5 8.5 0 0 1 4.277-1.604a1.081 1.081 0 0 1 .469 2.11Z'/%3E%3C/svg%3E",
-  pnpm: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' viewBox='0 0 32 32'%3E%3Cpath fill='%23f9ad00' d='M30 10.75h-8.749V2H30Zm-9.626 0h-8.75V2h8.75Zm-9.625 0H2V2h8.749ZM30 20.375h-8.749v-8.75H30Z'/%3E%3Cpath fill='%234e4e4e' d='M20.374 20.375h-8.75v-8.75h8.75Zm0 9.625h-8.75v-8.75h8.75ZM30 30h-8.749v-8.75H30Zm-19.251 0H2v-8.75h8.749Z'/%3E%3C/svg%3E",
-  bun: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' viewBox='0 0 32 32'%3E%3Cpath fill='%23fbf0df' d='M29 17c0 5.65-5.82 10.23-13 10.23S3 22.61 3 17c0-3.5 2.24-6.6 5.66-8.44S14.21 4.81 16 4.81s3.32 1.54 7.34 3.71C26.76 10.36 29 13.46 29 17'/%3E%3Cpath fill='none' stroke='%23000' d='M16 27.65c7.32 0 13.46-4.65 13.46-10.65c0-3.72-2.37-7-5.89-8.85c-1.39-.75-2.46-1.41-3.37-2l-1.13-.69A6.14 6.14 0 0 0 16 4.35a6.9 6.9 0 0 0-3.3 1.23c-.42.24-.86.51-1.32.8c-.87.54-1.83 1.13-3 1.73C4.91 10 2.54 13.24 2.54 17c0 6 6.14 10.65 13.46 10.65Z'/%3E%3Cellipse cx='21.65' cy='18.62' fill='%23febbd0' rx='2.17' ry='1.28'/%3E%3Cellipse cx='10.41' cy='18.62' fill='%23febbd0' rx='2.17' ry='1.28'/%3E%3Cpath fill-rule='evenodd' d='M11.43 18.11a2 2 0 1 0-2-2.05a2.05 2.05 0 0 0 2 2.05m9.2 0a2 2 0 1 0-2-2.05a2 2 0 0 0 2 2.05'/%3E%3Cpath fill='%23fff' fill-rule='evenodd' d='M10.79 16.19a.77.77 0 1 0-.76-.77a.76.76 0 0 0 .76.77m9.2 0a.77.77 0 1 0 0-1.53a.77.77 0 0 0 0 1.53'/%3E%3Cpath fill='%23b71422' stroke='%23000' stroke-width='.75' d='M18.62 19.67a3.3 3.3 0 0 1-1.09 1.75a2.48 2.48 0 0 1-1.5.69a2.53 2.53 0 0 1-1.5-.69a3.28 3.28 0 0 1-1.08-1.75a.26.26 0 0 1 .29-.3h4.58a.27.27 0 0 1 .3.3Z'/%3E%3Cpath fill='%23ccbea7' fill-rule='evenodd' d='M14.93 5.75a6.1 6.1 0 0 1-2.09 4.62c-.1.09 0 .27.11.22c1.25-.49 2.94-1.94 2.23-4.88c-.03-.15-.25-.11-.25.04m.85 0a6 6 0 0 1 .57 5c0 .13.12.24.21.13c.83-1 1.54-3.11-.59-5.31c-.1-.11-.27.04-.19.17Zm1-.06a6.1 6.1 0 0 1 2.53 4.38c0 .14.21.17.24 0c.34-1.3.15-3.51-2.66-4.66c-.12-.02-.21.18-.09.27ZM9.94 9.55a6.27 6.27 0 0 0 3.89-3.33c.07-.13.28-.08.25.07c-.64 3-2.79 3.59-4.13 3.51c-.14-.01-.14-.21-.01-.25'/%3E%3C/svg%3E",
-  deno: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' viewBox='0 0 32 32'%3E%3Cpath fill-rule='evenodd' d='M4.45 21.34A12.5 12.5 0 0 1 3.27 16a12 12 0 0 1 .09-1.46a11 11 0 0 1 .24-1.42a12.75 12.75 0 0 1 9.73-9.57A13 13 0 0 1 16 3.27h1a12.73 12.73 0 0 1 11.57 10.5a13 13 0 0 1 .16 2.23v1a12.6 12.6 0 0 1-3.3 7.61a6.62 6.62 0 0 1-4.7 2.06a4.68 4.68 0 0 1-2.88-1.09a4.58 4.58 0 0 1-1.63-3.09a5.5 5.5 0 0 1 .14-1.61a3.4 3.4 0 0 1 .8-1.53a5 5 0 0 1-1.3-.88a.15.15 0 0 1 0-.19a.16.16 0 0 1 .18-.06a10 10 0 0 0 1.46.37a20 20 0 0 0 2.45.31c2.13.1 4.38-.9 5.05-2.81s.43-3.83-2.08-5s-3.66-2.5-5.69-3.32a5 5 0 0 0-4.3.62c-4.08 2.25-7.72 9.35-6 15.94a.21.21 0 0 1-.1.23a.2.2 0 0 1-.23 0a13 13 0 0 1-1.33-1.73a13 13 0 0 1-.82-1.49'/%3E%3Cpath fill='%23f5f5f5' fill-rule='evenodd' d='M16.65 2A14 14 0 1 1 2 15.35A14 14 0 0 1 16.65 2m3.27 16.85a20 20 0 0 1-2.45-.31a8.6 8.6 0 0 1-1.47-.35a.16.16 0 0 0-.18.06a.15.15 0 0 0 0 .19a5 5 0 0 0 1.3.88a3.4 3.4 0 0 0-.8 1.53a5.5 5.5 0 0 0-.14 1.61a4.58 4.58 0 0 0 1.63 3.09a4.68 4.68 0 0 0 2.88 1.09a6.62 6.62 0 0 0 4.72-2.07a12.73 12.73 0 1 0-18.84 0a.21.21 0 0 0 .35-.19c-1.68-6.59 2-13.69 6-15.94a5 5 0 0 1 4.3-.62c2 .82 3.18 2.18 5.69 3.32s2.78 3 2.08 5s-2.91 2.86-5.07 2.73ZM15.54 8.69c-.82.06-1.36 1.08-1.43 1.73s.25 1.73 1.32 1.71c1.25 0 1.64-1.09 1.5-2.13a1.39 1.39 0 0 0-1.39-1.31'/%3E%3Cpath fill-rule='evenodd' d='M15.54 8.68A1.4 1.4 0 0 1 16.93 10c.14 1-.24 2.12-1.49 2.14c-1.07 0-1.4-1.06-1.33-1.71s.61-1.68 1.43-1.75'/%3E%3C/svg%3E",
-};
 
 /**
  * CodeGroup component for displaying multiple code blocks in tabs
@@ -58,32 +51,39 @@ export default function CodeGroup({
   const firstLabel = childArray[0]?.props?.label;
   const defaultTab = defaultValue ?? firstLabel?.toLowerCase();
 
-  return (
-    <Tabs groupId={groupId} defaultValue={defaultTab}>
-      {childArray.map((child, index) => {
-        const label = child.props?.label ?? `Tab ${index + 1}`;
-        const labelLower = label.toLowerCase();
-        const icon = KNOWN_ICONS[labelLower];
+  // `TabItem` elements built only to feed `useTabs()`'s value/label extraction — never
+  // rendered. Driving selection through the hook ourselves (instead of `@theme/Tabs`'s own
+  // rendering) is what lets the tab switcher live inside the active child's own
+  // `.tid-codeblock__bar` rather than as a separate `<ul>` floating above the code block.
+  const tabItems = childArray.map((child, index) => {
+    const label = child.props?.label ?? `Tab ${index + 1}`;
+    return (
+      <TabItem key={label} value={label.toLowerCase()} label={label}>
+        {null}
+      </TabItem>
+    );
+  });
 
-        return (
-          <TabItem
-            key={label}
-            value={labelLower}
-            label={
-              (icon ? (
-                <span style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
-                  <img src={icon} alt={label} style={{filter: 'grayscale(1) opacity(0.7)', height: '1em', width: '1em'}} />
-                  {label}
-                </span>
-              ) : (
-                label
-              )) as string
-            }
-          >
-            {child}
-          </TabItem>
-        );
-      })}
-    </Tabs>
-  );
+  const {selectedValue, selectValue, tabValues} = useTabs({children: tabItems, groupId, defaultValue: defaultTab});
+
+  // Stable across re-renders (this component never remounts when its active child does),
+  // so it survives the unmount/remount a tab switch triggers below — see CodeGroupContext.
+  const focusOnMountRef = useRef(false);
+
+  const tabs = tabValues.map((tabValue) => ({
+    value: tabValue.value,
+    label: tabValue.label ?? tabValue.value,
+    icon: PACKAGE_MANAGER_ICONS[tabValue.value],
+    active: tabValue.value === selectedValue,
+    onSelect: () => {
+      focusOnMountRef.current = true;
+      selectValue(tabValue.value);
+    },
+  }));
+
+  const activeChild =
+    childArray.find((child, index) => (child.props?.label ?? `Tab ${index + 1}`).toLowerCase() === selectedValue) ??
+    childArray[0];
+
+  return <CodeGroupTabsProvider value={{tabs, focusOnMountRef}}>{activeChild}</CodeGroupTabsProvider>;
 }

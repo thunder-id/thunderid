@@ -2,7 +2,7 @@
 title: AuthZEN
 docType: concept
 sidebar_position: 0
-description: AuthZEN Authorization API 1.0 support in ThunderID, including policy decision point configuration and access evaluation.
+description: AuthZEN Authorization API 1.0 support in {{ProductName}}, including policy decision point and policy enforcement point configuration.
 ---
 
 import {AuthZENFlowDiagram} from '@site/src/components/AuthZENFlowDiagram';
@@ -13,10 +13,10 @@ import {AuthZENFlowDiagram} from '@site/src/components/AuthZENFlowDiagram';
 decisions. A Policy Enforcement Point (PEP) asks a Policy Decision Point (PDP) whether a subject can perform an action
 on a resource.
 
-<ProductName /> supports AuthZEN as a policy decision point. Your gateway, adapter, service, or application acts as the
-PEP and sends the subject, resource, action, and request context to <ProductName />. <ProductName /> evaluates the
-request against resource servers, resources, actions, roles, and role assignments, then returns an allow or deny
-decision.
+<ProductName /> supports AuthZEN as both a policy decision point and a policy enforcement point. As a PDP,
+<ProductName /> evaluates requests from a gateway, adapter, service, or application and returns an allow or deny
+decision. As a PEP, <ProductName /> sends authorization evaluations to a configured AuthZEN PDP and enforces the
+returned decision in its authorization flow.
 
 Use AuthZEN when the authorization decision needs more than token validation or static scope checks. For example, use
 AuthZEN when an API gateway must ask <ProductName /> for a request-time decision before it forwards a request to an
@@ -24,10 +24,10 @@ upstream API.
 
 ## AuthZEN Roles
 
-| Role                           | Description                                                                   | <ProductName /> Support                        |
-| ------------------------------ | ----------------------------------------------------------------------------- | ---------------------------------------------- |
-| Policy Decision Point (PDP)    | Evaluates access requests and returns allow or deny decisions.                | Supported. See [Policy Decision Point](./pdp). |
-| Policy Enforcement Point (PEP) | Enforces the PDP decision before the protected resource receives the request. | Planned for future.                            |
+| Role                           | Description                                                         | <ProductName /> Support                           |
+| ------------------------------ | ------------------------------------------------------------------- | ------------------------------------------------- |
+| Policy Decision Point (PDP)    | Evaluates access requests and returns allow or deny decisions.      | Supported. See [Policy Decision Point](./pdp).    |
+| Policy Enforcement Point (PEP) | Enforces the PDP decision before the protected operation continues. | Supported. See [Policy Enforcement Point](./pep). |
 
 ## How the AuthZEN Flow Works
 
@@ -44,10 +44,12 @@ upstream API.
 For the supported PDP endpoints, request and response examples, and configuration links, see
 [Policy Decision Point](./pdp).
 
+To configure <ProductName /> to enforce decisions from a configured AuthZEN PDP, see [Policy Enforcement Point](./pep).
+
 ## Related Guides
 
 - [Policy Decision Point](./pdp): call <ProductName /> as an AuthZEN PDP.
+- [Policy Enforcement Point](./pep): use <ProductName /> as an AuthZEN PEP with a configured AuthZEN PDP.
 - [Resource Servers](../../resource-servers): define protected APIs, resources, and actions.
 - [Roles](../../users/manage-roles): assign permissions to users, groups, applications, and agents.
-- [Envoy](../../integrations/apim-gateways/envoy): configure Envoy to call <ProductName /> as an
-  AuthZEN PDP.
+- [Envoy](../../integrations/apim-gateways/envoy): configure Envoy to call <ProductName /> as an AuthZEN PDP.

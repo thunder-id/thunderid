@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package model
@@ -12,12 +12,20 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
+var (
+	// Match JavaScript EMAIL_REGEX whitespace semantics.
+	defaultEmailPattern  = regexp.MustCompile(`^[^\s\v\p{Z}\x{FEFF}@]+@[^\s\v\p{Z}\x{FEFF}@]+\.[^\s\v\p{Z}\x{FEFF}@]+$`)
+	defaultMobilePattern = regexp.MustCompile(`^\+[1-9]\d{1,14}$`)
+)
+
 type str struct {
+	valueType   string
 	required    bool
 	unique      bool
 	credential  bool
 	displayName string
 	enum        map[string]struct{}
+	enumOrder   []string
 	pattern     *regexp.Regexp
 }
 
@@ -26,7 +34,7 @@ func (p *str) isUnique() bool {
 }
 
 func (p *str) getType() string {
-	return TypeString
+	return p.valueType
 }
 
 func (p *str) isRequired() bool {
@@ -45,25 +53,30 @@ func (p *str) getDisplayName() string {
 	return p.displayName
 }
 
+// getEnum returns the permitted values in the order the schema declared them.
+func (p *str) getEnum() []string {
+	return p.enumOrder
+}
+
 func (p *str) validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error) {
 	strValue, ok := value.(string)
 	if !ok {
 		logger.Debug(ctx, "Expected string but got different type",
-			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
+			log.String("property", path))
 		return false, nil
 	}
 
 	if p.enum != nil {
 		if _, exists := p.enum[strValue]; !exists {
 			logger.Debug(ctx, "Value not in enum",
-				log.String("property", path), log.String("value", strValue))
+				log.String("property", path))
 			return false, nil
 		}
 	}
 
 	if p.pattern != nil && !p.pattern.MatchString(strValue) {
 		logger.Debug(ctx, "Regex pattern mismatch",
-			log.String("property", path), log.String("value", strValue))
+			log.String("property", path))
 		return false, nil
 	}
 
@@ -88,7 +101,7 @@ func (p *str) validateUniqueness(ctx context.Context,
 	return !found, nil
 }
 
-func compileStringProperty(propMap map[string]json.RawMessage) (property, error) {
+func compileStringProperty(propMap map[string]json.RawMessage, valueType string) (property, error) {
 	allowedFields := map[string]struct{}{
 		"type":        {},
 		"required":    {},
@@ -106,7 +119,7 @@ func compileStringProperty(propMap map[string]json.RawMessage) (property, error)
 		}
 	}
 
-	prop := &str{}
+	prop := &str{valueType: valueType}
 
 	if raw, exists := propMap["required"]; exists {
 		if err := json.Unmarshal(raw, &prop.required); err != nil {
@@ -133,6 +146,9 @@ func compileStringProperty(propMap map[string]json.RawMessage) (property, error)
 	}
 
 	if raw, exists := propMap["enum"]; exists {
+		if valueType != TypeString {
+			return nil, fmt.Errorf("'enum' field is not supported for contact attributes")
+		}
 		var enumRaw []json.RawMessage
 		if err := json.Unmarshal(raw, &enumRaw); err != nil {
 			return nil, fmt.Errorf("'enum' field must be an array")
@@ -142,12 +158,17 @@ func compileStringProperty(propMap map[string]json.RawMessage) (property, error)
 		}
 
 		prop.enum = make(map[string]struct{}, len(enumRaw))
+		prop.enumOrder = make([]string, 0, len(enumRaw))
 		for i, itemRaw := range enumRaw {
 			var value string
 			if err := json.Unmarshal(itemRaw, &value); err != nil {
 				return nil, fmt.Errorf("'enum' array item at index %d must be a string to match property type", i)
 			}
+			if _, seen := prop.enum[value]; seen {
+				continue
+			}
 			prop.enum[value] = struct{}{}
+			prop.enumOrder = append(prop.enumOrder, value)
 		}
 	}
 
@@ -155,7 +176,18 @@ func compileStringProperty(propMap map[string]json.RawMessage) (property, error)
 	if err != nil {
 		return nil, err
 	}
+	if pattern == nil {
+		switch valueType {
+		case TypeEmail:
+			pattern = defaultEmailPattern
+		case TypeMobile:
+			pattern = defaultMobilePattern
+		}
+	}
 	prop.pattern = pattern
+	if prop.credential && prop.valueType != TypeString {
+		return nil, fmt.Errorf("contact attributes cannot be credentials")
+	}
 
 	return prop, nil
 }

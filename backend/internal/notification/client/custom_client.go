@@ -16,6 +16,8 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 )
 
 const (
@@ -24,25 +26,37 @@ const (
 
 // CustomClient implements the NotificationClientInterface for sending messages via a custom message provider.
 type CustomClient struct {
-	name        string
-	url         string
-	httpMethod  string
-	httpHeaders map[string]string
-	contentType string
-	httpClient  syshttp.HTTPClientInterface
+	name          string
+	url           string
+	httpMethod    string
+	httpHeaders   map[string]string
+	authenticator httpauth.Authenticator
+	contentType   string
+	httpClient    syshttp.HTTPClientInterface
 }
 
 // newCustomClient creates a new instance of CustomClient.
-func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (NotificationClientInterface, error) {
+func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (MessageClientInterface, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, customClientLoggerComponentName))
 
 	client := &CustomClient{}
 	client.name = sender.Name
 
 	for _, prop := range sender.Properties {
+		if outboundauth.OwnsPropertyKey(prop.GetName()) {
+			continue
+		}
 		value, err := prop.GetValue()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get property value for %s: %w", prop.GetName(), err)
+		}
+
+		if prop.GetName() == common.CustomPropKeyHTTPHeaders {
+			client.httpHeaders, err = parseCustomHTTPHeaders(value)
+			if err != nil {
+				return nil, err
+			}
+			continue
 		}
 
 		switch prop.GetName() {
@@ -50,19 +64,39 @@ func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (
 			client.url = value
 		case common.CustomPropKeyHTTPMethod:
 			client.httpMethod = strings.ToUpper(value)
-		case common.CustomPropKeyHTTPHeaders:
-			headers, err := client.getHeadersFromString(value)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse HTTP headers: %w", err)
-			}
-			client.httpHeaders = headers
 		case common.CustomPropKeyContentType:
 			client.contentType = strings.ToUpper(value)
 		default:
 			logger.Warn(ctx, "Unknown property for Custom client", log.String("property", prop.GetName()))
 		}
 	}
-	client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
+	config, err := outboundauth.FromProperties(sender.Properties)
+	if err != nil {
+		return nil, err
+	}
+	authenticator, err := httpauth.New(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure API key headers: %w", err)
+	}
+	for name := range client.httpHeaders {
+		if (config.Type == outboundauth.TypeBearer || config.Type == outboundauth.TypeBasic) &&
+			strings.EqualFold(name, "Authorization") {
+			return nil, fmt.Errorf("HTTP header %q is also used for authentication", name)
+		}
+		if config.Type == outboundauth.TypeAPIKey {
+			for authName := range config.Properties {
+				if strings.EqualFold(name, authName) {
+					return nil, fmt.Errorf("HTTP header %q is also used for authentication", name)
+				}
+			}
+		}
+	}
+	client.authenticator = authenticator
+	if config.Enabled() {
+		client.httpClient = syshttp.NewHTTPClientWithoutRedirects(httpClientTimeout, false)
+	} else {
+		client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
+	}
 
 	return client, nil
 }
@@ -78,7 +112,7 @@ func (c *CustomClient) IsChannelSupported(channel common.ChannelType) bool {
 }
 
 // Send dispatches a notification via the requested channel.
-func (c *CustomClient) Send(ctx context.Context, channel common.ChannelType, data common.NotificationData) error {
+func (c *CustomClient) Send(ctx context.Context, channel common.ChannelType, data common.MessageData) error {
 	switch channel {
 	case common.ChannelTypeSMS:
 		return c.sendSMS(ctx, data)
@@ -88,7 +122,7 @@ func (c *CustomClient) Send(ctx context.Context, channel common.ChannelType, dat
 }
 
 // sendSMS sends an SMS via the custom webhook.
-func (c *CustomClient) sendSMS(ctx context.Context, data common.NotificationData) error {
+func (c *CustomClient) sendSMS(ctx context.Context, data common.MessageData) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, customClientLoggerComponentName))
 	logger.Debug(ctx, "Sending SMS via custom client", log.MaskedString("to", data.Recipient))
 
@@ -119,8 +153,13 @@ func (c *CustomClient) sendSMS(ctx context.Context, data common.NotificationData
 		return fmt.Errorf("unsupported content type: %s", c.contentType)
 	}
 
-	for key, value := range c.httpHeaders {
-		req.Header.Set(key, value)
+	if c.authenticator != nil {
+		if err := c.authenticator.Authenticate(ctx, req); err != nil {
+			return err
+		}
+	}
+	for name, value := range c.httpHeaders {
+		req.Header.Set(name, value)
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -145,18 +184,19 @@ func (c *CustomClient) sendSMS(ctx context.Context, data common.NotificationData
 	return nil
 }
 
-// getHeadersFromString parses a string of HTTP headers into a map.
-func (c *CustomClient) getHeadersFromString(headersString string) (map[string]string, error) {
+func parseCustomHTTPHeaders(value string) (map[string]string, error) {
 	headers := make(map[string]string)
-	for _, header := range strings.Split(headersString, ",") {
-		parts := strings.SplitN(header, ":", 2)
-		if len(parts) == 2 {
-			key := strings.TrimSpace(parts[0])
-			value := strings.TrimSpace(parts[1])
-			headers[key] = value
-		} else {
-			return nil, fmt.Errorf("invalid HTTP header format: %s", header)
+	if strings.TrimSpace(value) == "" {
+		return headers, nil
+	}
+	for _, segment := range strings.Split(value, ",") {
+		parts := strings.SplitN(segment, ":", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("failed to parse legacy HTTP headers: invalid header format")
 		}
+		name := strings.TrimSpace(parts[0])
+		headerValue := strings.TrimSpace(parts[1])
+		headers[name] = headerValue
 	}
 	return headers, nil
 }

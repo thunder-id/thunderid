@@ -1,0 +1,90 @@
+---
+title: Cross-SDK Feature Parity
+docType: community
+description: "How {{ProductName}} keeps a capability from shipping in one SDK and going missing in the others, and what the parity check asks of your pull request."
+sidebar_position: 3
+hide_table_of_contents: false
+---
+
+# Cross-SDK Feature Parity
+
+A <ProductName /> capability is rarely a single SDK change. The same thing usually has to exist in the JavaScript, iOS, Android, and Flutter SDKs before a developer can rely on it. Since each SDK lives in its own repository, a reviewer looking at one of them cannot see whether the equivalent work in the others exists, is planned, or was deliberately skipped.
+
+Every pull request in an SDK repository therefore answers one question before it can merge: **does this change need to ship in the other SDKs too?**
+
+## The Rule
+
+A capability counts as delivered once it exists in every SDK where it applies, or once its absence from an SDK is recorded with a reason. Merging it in one repository is the start of that, not the end.
+
+So a pull request that adds, removes, or changes a capability in the public surface of one SDK either links the corresponding pull requests in the other SDK repositories, or states why they are not needed.
+
+## What the Check Asks For
+
+A required check runs on every pull request in [javascript-sdks](https://github.com/thunder-id/javascript-sdks), [ios-sdks](https://github.com/thunder-id/ios-sdks), [android-sdks](https://github.com/thunder-id/android-sdks), and [flutter-sdks](https://github.com/thunder-id/flutter-sdks). It stays red until the pull request carries exactly one of two labels.
+
+| Label | What it asserts |
+|-------|-----------------|
+| `parity/prs-raised` | The ports exist in every other SDK this change reaches, or are recorded as not applying there. |
+| `parity/prs-not-needed` | Nothing to port. A fix, a refactor, docs, CI, a dependency bump, a release, or a change specific to this platform. |
+
+There is no exemption based on the files you touched. Whether a change reaches the other SDKs is a judgement a person makes, not one a file path can be trusted to make for them, so the label is what clears the check. Applying it re-runs the check, which then goes green without a push.
+
+### When You Label It `parity/prs-raised`
+
+That label asserts the capability reaches the other SDKs, so each of them needs a disposition before the check passes. Any one of these accounts for a sibling SDK:
+
+- **A linked pull request**, where the port is already open.
+- **A linked issue**, where the port is deferred and tracked.
+- **A line saying it does not apply**, where the capability has no meaning on that platform.
+
+A partial answer fails the same way no answer does, because answering for one SDK and staying silent about the rest is how a gap gets missed. The failing check names the repositories still unaccounted for.
+
+## Recording Your Dispositions
+
+The check posts one comment carrying a checklist of the sibling repositories, and keeps it up to date as you work. An open pull request raised before the check existed owes the same decision, so it gets the same comment the next time the check runs on it with something to ask for. It also carries a block to copy, listing every SDK still unanswered:
+
+```text
+- thunder-id/ios-sdks: <paste the port link here>
+- thunder-id/android-sdks: <paste the port link here>
+- thunder-id/flutter-sdks: <paste the port link here>
+```
+
+**Reply to that comment with the block, filled in.** The boxes tick themselves when you post it, so nothing needs editing by hand, which matters for contributors who cannot edit a comment the bot owns. Answered SDKs drop out of the block, so it never asks twice.
+
+A link can be a pull request or a tracked issue, written in full or in the shorthand:
+
+```text
+- thunder-id/ios-sdks: https://github.com/thunder-id/ios-sdks/pull/412
+- thunder-id/android-sdks: thunder-id/android-sdks#233
+```
+
+An issue counts as much as a pull request, so a deferred port is recorded rather than forgotten. For an SDK the change does not reach, replace the placeholder with `N/A` and a short reason:
+
+```text
+- thunder-id/flutter-sdks: N/A, it wraps the native SDKs and needs no change
+```
+
+Any of `N/A`, `not applicable`, `not needed`, `no change needed`, or `does not apply` marks it. Write the reason on the same line, since the next person reading the pull request needs to know why, not just that somebody decided.
+
+The checklist itself is maintained by the check. Editing it by hand changes nothing, since every run rewrites it from what the thread says.
+
+## What Is Exempt
+
+Changes that do not touch the public surface need no ports: dependency updates, CI and tooling, documentation, tests, and internal refactors.
+
+Exempt means exempt from porting, not from the decision. These pull requests still carry `parity/prs-not-needed`, which takes a moment and leaves the reasoning on the record.
+
+## Deferring a Port
+
+"No time" is a deferral, not a reason. Open an issue in the repository that lacks the capability, describe the gap in terms of what a developer on that platform cannot do yet, and link it on the pull request. The check accepts a linked issue exactly as it accepts a linked pull request, so a deferral is visible rather than silent.
+
+## Capabilities That Already Differ
+
+The rule applies from the point it was adopted. SDKs that already differ are reconciled through the normal issue backlog, so adopting the rule does not block unrelated work on a pre-existing gap.
+
+## The Contract Behind This
+
+The parity rule is part of the SDK development specification, which also defines the surface every <ProductName /> SDK implements: the layer model, configuration, the client surface, the error model, and the security floor. Read it before adding a capability to an SDK or writing a new one.
+
+- <RepoLink path="/blob/main/docs-internals/sdk-development/spec.md">SDK development specification</RepoLink>
+- <RepoLink path="/blob/main/docs-internals/sdk-development/threat-model.md">SDK threat model</RepoLink>

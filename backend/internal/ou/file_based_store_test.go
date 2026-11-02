@@ -7,7 +7,6 @@ import (
 	"context"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"strconv"
 	"testing"
@@ -43,7 +42,7 @@ func (s *FileBasedStoreTestSuite) SetupTest() {
 }
 
 func (s *FileBasedStoreTestSuite) TestCreateOrganizationUnit() {
-	ou := providers.OrganizationUnit{
+	ou := OrganizationUnit{
 		ID:          "test-ou-1",
 		Handle:      "test",
 		Name:        "Test OU",
@@ -70,13 +69,13 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitNotFound() {
 
 func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitList() {
 	// Create root OUs
-	ou1 := providers.OrganizationUnit{
+	ou1 := OrganizationUnit{
 		ID:     "root-1",
 		Handle: "root1",
 		Name:   "Root 1",
 		Parent: nil,
 	}
-	ou2 := providers.OrganizationUnit{
+	ou2 := OrganizationUnit{
 		ID:     "root-2",
 		Handle: "root2",
 		Name:   "Root 2",
@@ -90,7 +89,7 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitList() {
 
 	// Create child OU (should not be in root list)
 	parentID := testRootOUID
-	child := providers.OrganizationUnit{
+	child := OrganizationUnit{
 		ID:     "child-1",
 		Handle: "child1",
 		Name:   "Child 1",
@@ -106,7 +105,7 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitList() {
 }
 
 func (s *FileBasedStoreTestSuite) TestUpdateNotSupported() {
-	ou := providers.OrganizationUnit{
+	ou := OrganizationUnit{
 		ID:     "test-ou-1",
 		Handle: "test",
 		Name:   "Test OU",
@@ -124,7 +123,7 @@ func (s *FileBasedStoreTestSuite) TestDeleteNotSupported() {
 }
 
 func (s *FileBasedStoreTestSuite) TestCheckOrganizationUnitNameConflict() {
-	ou := providers.OrganizationUnit{
+	ou := OrganizationUnit{
 		ID:     "test-ou-1",
 		Handle: "test",
 		Name:   "Test OU",
@@ -147,7 +146,7 @@ func (s *FileBasedStoreTestSuite) TestCheckOrganizationUnitNameConflict() {
 
 func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitChildren() {
 	// Create parent
-	parent := providers.OrganizationUnit{
+	parent := OrganizationUnit{
 		ID:     testParentOUID,
 		Handle: "parent",
 		Name:   "Parent OU",
@@ -158,13 +157,13 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitChildren() {
 
 	// Create children
 	parentID := testParentOUID
-	child1 := providers.OrganizationUnit{
+	child1 := OrganizationUnit{
 		ID:     "child-1",
 		Handle: "child1",
 		Name:   "Child 1",
 		Parent: &parentID,
 	}
-	child2 := providers.OrganizationUnit{
+	child2 := OrganizationUnit{
 		ID:     "child-2",
 		Handle: "child2",
 		Name:   "Child 2",
@@ -189,21 +188,21 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitChildren() {
 
 func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitByPath() {
 	// Create hierarchy: root -> engineering -> backend
-	root := providers.OrganizationUnit{
+	root := OrganizationUnit{
 		ID:     "root-1",
 		Handle: "root",
 		Name:   "Root",
 		Parent: nil,
 	}
 	rootID := testRootOUID
-	engineering := providers.OrganizationUnit{
+	engineering := OrganizationUnit{
 		ID:     "eng-1",
 		Handle: "engineering",
 		Name:   "Engineering",
 		Parent: &rootID,
 	}
 	engID := "eng-1"
-	backend := providers.OrganizationUnit{
+	backend := OrganizationUnit{
 		ID:     "backend-1",
 		Handle: "backend",
 		Name:   "Backend",
@@ -232,7 +231,7 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitByPath() {
 }
 
 func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitByPath_NotFound() {
-	root := providers.OrganizationUnit{
+	root := OrganizationUnit{
 		ID:     "root-1",
 		Handle: "root",
 		Name:   "Root",
@@ -253,7 +252,7 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitByPath_NotFound() {
 }
 
 func (s *FileBasedStoreTestSuite) TestIsOrganizationUnitExists() {
-	ou := providers.OrganizationUnit{
+	ou := OrganizationUnit{
 		ID:     "test-ou-1",
 		Handle: "test",
 		Name:   "Test OU",
@@ -274,7 +273,7 @@ func (s *FileBasedStoreTestSuite) TestIsOrganizationUnitExists() {
 }
 
 func (s *FileBasedStoreTestSuite) TestCheckOrganizationUnitHandleConflict() {
-	ou := providers.OrganizationUnit{
+	ou := OrganizationUnit{
 		ID:     "test-ou-1",
 		Handle: "test-handle",
 		Name:   "Test OU",
@@ -295,7 +294,7 @@ func (s *FileBasedStoreTestSuite) TestCheckOrganizationUnitHandleConflict() {
 
 	// Test with parent context
 	parentID := testParentOUID
-	child := providers.OrganizationUnit{
+	child := OrganizationUnit{
 		ID:     "child-1",
 		Handle: "child-handle",
 		Name:   "Child",
@@ -317,7 +316,7 @@ func (s *FileBasedStoreTestSuite) TestCheckOrganizationUnitHandleConflict() {
 
 func (s *FileBasedStoreTestSuite) TestCheckOrganizationUnitNameConflict_WithParent() {
 	parentID := testParentOUID
-	parent := providers.OrganizationUnit{
+	parent := OrganizationUnit{
 		ID:     parentID,
 		Handle: "parent",
 		Name:   "Parent",
@@ -326,7 +325,7 @@ func (s *FileBasedStoreTestSuite) TestCheckOrganizationUnitNameConflict_WithPare
 	err := s.store.CreateOrganizationUnit(context.Background(), parent)
 	assert.NoError(s.T(), err)
 
-	child := providers.OrganizationUnit{
+	child := OrganizationUnit{
 		ID:     "child-1",
 		Handle: "child",
 		Name:   "Child Name",
@@ -359,13 +358,13 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitListCount() {
 	assert.Equal(s.T(), 0, count)
 
 	// Add root OUs
-	root1 := providers.OrganizationUnit{
+	root1 := OrganizationUnit{
 		ID:     "root-1",
 		Handle: "root1",
 		Name:   "Root 1",
 		Parent: nil,
 	}
-	root2 := providers.OrganizationUnit{
+	root2 := OrganizationUnit{
 		ID:     "root-2",
 		Handle: "root2",
 		Name:   "Root 2",
@@ -383,7 +382,7 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitListCount() {
 
 	// Add child OU (should not be counted)
 	parentID := testRootOUID
-	child := providers.OrganizationUnit{
+	child := OrganizationUnit{
 		ID:     "child-1",
 		Handle: "child",
 		Name:   "Child",
@@ -402,7 +401,7 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitList_Pagination() {
 	// Create multiple root OUs
 	for i := 1; i <= 5; i++ {
 		iStr := strconv.Itoa(i)
-		ou := providers.OrganizationUnit{
+		ou := OrganizationUnit{
 			ID:     "root-" + iStr,
 			Handle: "root" + iStr,
 			Name:   "Root " + iStr,
@@ -435,7 +434,7 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitList_Pagination() {
 
 func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitChildrenList_Pagination() {
 	// Create parent
-	parent := providers.OrganizationUnit{
+	parent := OrganizationUnit{
 		ID:     testParentOUID,
 		Handle: "parent",
 		Name:   "Parent",
@@ -448,7 +447,7 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitChildrenList_Pagination
 	parentID := testParentOUID
 	for i := 1; i <= 5; i++ {
 		iStr := strconv.Itoa(i)
-		child := providers.OrganizationUnit{
+		child := OrganizationUnit{
 			ID:     "child-" + iStr,
 			Handle: "child" + iStr,
 			Name:   "Child " + iStr,
@@ -474,7 +473,7 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitChildrenList_Pagination
 }
 
 func (s *FileBasedStoreTestSuite) TestCreate_StorerInterface() {
-	ou := &providers.OrganizationUnit{
+	ou := &OrganizationUnit{
 		ID:     "test-ou-1",
 		Handle: "test",
 		Name:   "Test OU",
@@ -492,7 +491,7 @@ func (s *FileBasedStoreTestSuite) TestCreate_StorerInterface() {
 }
 
 func (s *FileBasedStoreTestSuite) TestCreateAndRetrieveWithDesignFields() {
-	ou := providers.OrganizationUnit{
+	ou := OrganizationUnit{
 		ID:                        "design-ou-1",
 		Handle:                    "design-test",
 		Name:                      "Design Test OU",
@@ -526,7 +525,7 @@ func (s *FileBasedStoreTestSuite) TestCreateAndRetrieveWithDesignFields() {
 }
 
 func (s *FileBasedStoreTestSuite) TestListIncludesDesignFields() {
-	ou := providers.OrganizationUnit{
+	ou := OrganizationUnit{
 		ID:       "design-list-1",
 		Handle:   "design-list",
 		Name:     "Design List OU",
@@ -547,13 +546,13 @@ func (s *FileBasedStoreTestSuite) TestListIncludesDesignFields() {
 
 func (s *FileBasedStoreTestSuite) TestChildrenListIncludesDesignFields() {
 	parentID := "design-parent"
-	parent := providers.OrganizationUnit{
+	parent := OrganizationUnit{
 		ID:     parentID,
 		Handle: "parent",
 		Name:   "Parent",
 		Parent: nil,
 	}
-	child := providers.OrganizationUnit{
+	child := OrganizationUnit{
 		ID:       "design-child-1",
 		Handle:   "child",
 		Name:     "Child",
@@ -587,19 +586,19 @@ func (s *FileBasedStoreTestSuite) TestNewFileBasedStore() {
 
 func (s *FileBasedStoreTestSuite) TestFileBasedStore_GetOrganizationUnitsByIDs() {
 	// Create some OUs
-	ou1 := providers.OrganizationUnit{
+	ou1 := OrganizationUnit{
 		ID:     "ou-1",
 		Handle: "handle-1",
 		Name:   "Name 1",
 		Parent: nil,
 	}
-	ou2 := providers.OrganizationUnit{
+	ou2 := OrganizationUnit{
 		ID:     "ou-2",
 		Handle: "handle-2",
 		Name:   "Name 2",
 		Parent: nil,
 	}
-	ou3 := providers.OrganizationUnit{
+	ou3 := OrganizationUnit{
 		ID:     "ou-3",
 		Handle: "handle-3",
 		Name:   "Name 3",
@@ -637,7 +636,7 @@ func (s *FileBasedStoreTestSuite) TestFileBasedStore_GetOrganizationUnitsByIDs()
 
 func (s *FileBasedStoreTestSuite) TestFileBasedStore_IsOrganizationUnitDeclarative() {
 	// Create an OU
-	ou := providers.OrganizationUnit{
+	ou := OrganizationUnit{
 		ID:     "ou-decl",
 		Handle: "handle-decl",
 		Name:   "Name Decl",
@@ -665,9 +664,9 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnit_CorruptedData() {
 }
 
 func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitByHandle() {
-	root := providers.OrganizationUnit{ID: "root-1", Handle: "root", Name: "Root", Parent: nil}
+	root := OrganizationUnit{ID: "root-1", Handle: "root", Name: "Root", Parent: nil}
 	rootID := testRootOUID
-	child := providers.OrganizationUnit{ID: "child-1", Handle: "child", Name: "Child", Parent: &rootID}
+	child := OrganizationUnit{ID: "child-1", Handle: "child", Name: "Child", Parent: &rootID}
 
 	err := s.store.CreateOrganizationUnit(context.Background(), root)
 	s.Require().NoError(err)
@@ -700,7 +699,7 @@ func singleFilterGroup(attr string, op tidcommon.Operator, val interface{}) *tid
 
 func TestMatchesOUFilter(t *testing.T) {
 	baseTime := time.Date(2025, time.January, 1, 10, 0, 0, 0, time.UTC)
-	ou := &providers.OrganizationUnit{
+	ou := &OrganizationUnit{
 		ID:          "ou-1",
 		Handle:      "finance",
 		Name:        "Finance",

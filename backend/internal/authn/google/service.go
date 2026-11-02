@@ -220,8 +220,8 @@ func (g *googleOIDCAuthnService) GetOAuthClientConfig(ctx context.Context, idpID
 }
 
 // Authenticate performs the full Google OIDC authentication flow: exchanges the code for a token,
-// extracts ID token claims, validates the nonce, and resolves the internal user.
-// A missing internal user is NOT an error — the caller decides how to handle it.
+// extracts ID token claims, validates the nonce, and builds the federated token. The entity is
+// resolved later through recorded links.
 func (g *googleOIDCAuthnService) Authenticate(ctx context.Context, idpID string,
 	authzData common.AuthorizationData) (*common.AuthnResult, *tidcommon.ServiceError) {
 	logger := g.logger.With(log.String("idpId", idpID))
@@ -258,7 +258,7 @@ func (g *googleOIDCAuthnService) Authenticate(ctx context.Context, idpID string,
 }
 
 // BuildFederatedAuthResult delegates to the underlying OIDC service, which applies attribute mapping
-// and account-linking resolution uniformly for all federated authenticators.
+// uniformly for all federated authenticators.
 func (g *googleOIDCAuthnService) BuildFederatedAuthResult(ctx context.Context, idpID, sub string,
 	claims map[string]interface{}) (*common.AuthnResult, *tidcommon.ServiceError) {
 	return g.internal.BuildFederatedAuthResult(ctx, idpID, sub, claims)

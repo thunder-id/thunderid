@@ -17,10 +17,19 @@ func NewFlowValidatorInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *FlowValidatorInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &FlowValidatorInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type FlowValidatorInterfaceMock_ValidateFlowDefinition_Call struct {
 // ValidateFlowDefinition is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowDef *FlowDefinition
-func (_e *FlowValidatorInterfaceMock_Expecter) ValidateFlowDefinition(ctx interface{}, flowDef interface{}) *FlowValidatorInterfaceMock_ValidateFlowDefinition_Call {
+func (_e *FlowValidatorInterfaceMock_Expecter) ValidateFlowDefinition(ctx any, flowDef any) *FlowValidatorInterfaceMock_ValidateFlowDefinition_Call {
 	return &FlowValidatorInterfaceMock_ValidateFlowDefinition_Call{Call: _e.mock.On("ValidateFlowDefinition", ctx, flowDef)}
 }
 
@@ -93,6 +102,65 @@ func (_c *FlowValidatorInterfaceMock_ValidateFlowDefinition_Call) Return(service
 }
 
 func (_c *FlowValidatorInterfaceMock_ValidateFlowDefinition_Call) RunAndReturn(run func(ctx context.Context, flowDef *FlowDefinition) *common.ServiceError) *FlowValidatorInterfaceMock_ValidateFlowDefinition_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateSystemFlowDefinition provides a mock function for the type FlowValidatorInterfaceMock
+func (_mock *FlowValidatorInterfaceMock) ValidateSystemFlowDefinition(ctx context.Context, flowDef *FlowDefinition) *common.ServiceError {
+	ret := _mock.Called(ctx, flowDef)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateSystemFlowDefinition")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *FlowDefinition) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, flowDef)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// FlowValidatorInterfaceMock_ValidateSystemFlowDefinition_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateSystemFlowDefinition'
+type FlowValidatorInterfaceMock_ValidateSystemFlowDefinition_Call struct {
+	*mock.Call
+}
+
+// ValidateSystemFlowDefinition is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowDef *FlowDefinition
+func (_e *FlowValidatorInterfaceMock_Expecter) ValidateSystemFlowDefinition(ctx any, flowDef any) *FlowValidatorInterfaceMock_ValidateSystemFlowDefinition_Call {
+	return &FlowValidatorInterfaceMock_ValidateSystemFlowDefinition_Call{Call: _e.mock.On("ValidateSystemFlowDefinition", ctx, flowDef)}
+}
+
+func (_c *FlowValidatorInterfaceMock_ValidateSystemFlowDefinition_Call) Run(run func(ctx context.Context, flowDef *FlowDefinition)) *FlowValidatorInterfaceMock_ValidateSystemFlowDefinition_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *FlowDefinition
+		if args[1] != nil {
+			arg1 = args[1].(*FlowDefinition)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowValidatorInterfaceMock_ValidateSystemFlowDefinition_Call) Return(serviceError *common.ServiceError) *FlowValidatorInterfaceMock_ValidateSystemFlowDefinition_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *FlowValidatorInterfaceMock_ValidateSystemFlowDefinition_Call) RunAndReturn(run func(ctx context.Context, flowDef *FlowDefinition) *common.ServiceError) *FlowValidatorInterfaceMock_ValidateSystemFlowDefinition_Call {
 	_c.Call.Return(run)
 	return _c
 }

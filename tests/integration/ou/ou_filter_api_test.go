@@ -136,6 +136,77 @@ func (suite *OUAPITestSuite) TestListOrganizationUnitsWithInvalidConnector() {
 	suite.Equal("OU-1014", errResp.Code)
 }
 
+// --- Starts-with filter tests ---
+
+// TestListOrganizationUnitsWithStartsWithFilter verifies the sw operator narrows by a name prefix.
+// The variable store needs it to list a resource's values, and the grammar is shared, so it has to
+// mean the same thing on every collection that uses a filter.
+func (suite *OUAPITestSuite) TestListOrganizationUnitsWithStartsWithFilter() {
+	if createdOUID == "" {
+		suite.T().Fatal("OU ID not available")
+	}
+
+	// A prefix of the created OU's name includes it.
+	prefix := ouToCreate.Name[:len("OU API Test")]
+	resp := suite.doFilterRequest("/organization-units", `name sw "`+prefix+`"`)
+	defer resp.Body.Close()
+	suite.Equal(http.StatusOK, resp.StatusCode)
+
+	var listResp OrganizationUnitListResponse
+	suite.decodeBody(resp, &listResp)
+
+	found := false
+	for _, ou := range listResp.OrganizationUnits {
+		if ou.ID == createdOUID {
+			found = true
+		}
+	}
+	suite.True(found, "sw filter with a matching prefix should include the OU")
+
+	// A prefix nothing starts with excludes it.
+	resp2 := suite.doFilterRequest("/organization-units", `name sw "__no_such_prefix__"`)
+	defer resp2.Body.Close()
+	suite.Equal(http.StatusOK, resp2.StatusCode)
+
+	var emptyResp OrganizationUnitListResponse
+	suite.decodeBody(resp2, &emptyResp)
+	for _, ou := range emptyResp.OrganizationUnits {
+		suite.NotEqual(createdOUID, ou.ID, "sw filter with a non-matching prefix should exclude the OU")
+	}
+}
+
+// TestListOrganizationUnitsStartsWithEscapesWildcards verifies that % and _ in the operand are
+// matched literally rather than as LIKE wildcards. Unescaped, "%" would match every OU.
+func (suite *OUAPITestSuite) TestListOrganizationUnitsStartsWithEscapesWildcards() {
+	if createdOUID == "" {
+		suite.T().Fatal("OU ID not available")
+	}
+
+	resp := suite.doFilterRequest("/organization-units", `name sw "%"`)
+	defer resp.Body.Close()
+	suite.Equal(http.StatusOK, resp.StatusCode)
+
+	var listResp OrganizationUnitListResponse
+	suite.decodeBody(resp, &listResp)
+
+	for _, ou := range listResp.OrganizationUnits {
+		suite.NotEqual(createdOUID, ou.ID,
+			"a bare %% matched every OU, so the LIKE operand was not escaped")
+	}
+
+	// An underscore is the other wildcard: it would match any single character.
+	resp2 := suite.doFilterRequest("/organization-units", `name sw "_"`)
+	defer resp2.Body.Close()
+	suite.Equal(http.StatusOK, resp2.StatusCode)
+
+	var underscoreResp OrganizationUnitListResponse
+	suite.decodeBody(resp2, &underscoreResp)
+	for _, ou := range underscoreResp.OrganizationUnits {
+		suite.NotEqual(createdOUID, ou.ID,
+			"a bare _ matched every OU, so the LIKE operand was not escaped")
+	}
+}
+
 // --- Children list AND/OR filter tests ---
 
 // TestGetOrganizationUnitChildrenWithFilterAndExpression verifies AND filtering on children.

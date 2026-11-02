@@ -4,12 +4,16 @@
 package granthandlers
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"slices"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/actorprovider"
+	"github.com/thunder-id/thunderid/internal/attributecache"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
@@ -19,6 +23,7 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -27,7 +32,15 @@ type tokenExchangeGrantHandler struct {
 	tokenBuilder    tokenservice.TokenBuilderInterface
 	tokenValidator  tokenservice.TokenValidatorInterface
 	resourceService providers.ResourceServerProvider
-	cfg             oauthconfig.Config
+	authzService    providers.AuthorizationProvider
+	actorProvider   providers.ActorProvider
+	// authorizeService authorizes a client silently with an SSO session it presents.
+	authorizeService authz.AuthorizeServiceInterface
+	// codeGrant issues the tokens of the authorization code that silent authorization yields, exactly as
+	// the code grant does. It is nil when the authorization code grant is not enabled.
+	codeGrant *authorizationCodeGrantHandler
+	attrCache attributecache.AttributeCacheServiceInterface
+	cfg       oauthconfig.Config
 }
 
 // newTokenExchangeGrantHandler creates a new instance of tokenExchangeGrantHandler.
@@ -35,13 +48,23 @@ func newTokenExchangeGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	tokenValidator tokenservice.TokenValidatorInterface,
 	resourceService providers.ResourceServerProvider,
+	authzService providers.AuthorizationProvider,
+	actorProvider providers.ActorProvider,
+	authorizeService authz.AuthorizeServiceInterface,
+	codeGrant *authorizationCodeGrantHandler,
+	attrCache attributecache.AttributeCacheServiceInterface,
 	cfg oauthconfig.Config,
 ) GrantHandlerInterface {
 	return &tokenExchangeGrantHandler{
-		tokenBuilder:    tokenBuilder,
-		tokenValidator:  tokenValidator,
-		resourceService: resourceService,
-		cfg:             cfg,
+		tokenBuilder:     tokenBuilder,
+		tokenValidator:   tokenValidator,
+		resourceService:  resourceService,
+		authzService:     authzService,
+		actorProvider:    actorProvider,
+		authorizeService: authorizeService,
+		codeGrant:        codeGrant,
+		attrCache:        attrCache,
+		cfg:              cfg,
 	}
 }
 
@@ -133,6 +156,17 @@ func (h *tokenExchangeGrantHandler) ValidateGrant(ctx context.Context, tokenRequ
 		}
 	}
 
+	// A client registered from a metadata document belongs to a third party, so token exchange serves it
+	// only for ID-JAG requests.
+	if oauthApp.ClientIDMetadataDocument &&
+		constants.TokenTypeIdentifier(tokenRequest.RequestedTokenType) != constants.TokenTypeIdentifierIDJAG {
+		return &model.ErrorResponse{
+			Error: constants.ErrorUnauthorizedClient,
+			ErrorDescription: "A client registered from a metadata document can use token exchange only " +
+				"to request ID-JAGs",
+		}
+	}
+
 	return nil
 }
 
@@ -142,6 +176,12 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	*model.TokenResponseDTO, *model.ErrorResponse) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "TokenExchangeGrantHandler"))
 
+	// A device secret follows its own path: the client's flow runs silently on the session the token
+	// names, and the client gets the tokens a login would give it.
+	if isDeviceSecretSubjectToken(tokenRequest) {
+		return h.handleDeviceSecretGrant(ctx, tokenRequest, oauthApp, logger)
+	}
+
 	// An ID-JAG request (draft-ietf-oauth-identity-assertion-authz-grant) follows a distinct path:
 	// it exchanges a self-issued ID token for a JWT authorization grant targeted at an external
 	// resource authorization server, rather than issuing an access token.
@@ -149,17 +189,30 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		return h.handleIDJAGGrant(ctx, tokenRequest, oauthApp)
 	}
 
+	// Enforce RFC 9068 on the subject token: one declared as an access token must carry the at+jwt typ
+	// header. This runs before ValidateSubjectToken because validating a subject auth assertion spends
+	// it, and a token rejected on its typ should not have been spent first.
+	if errResp := h.validateAccessTokenType(tokenRequest.SubjectToken,
+		tokenRequest.SubjectTokenType, "subject_token"); errResp != nil {
+		return nil, errResp
+	}
+
 	// Validate and extract subject token claims. ValidateSubjectToken enforces the RFC 7009 deny list
 	// for self-issued tokens; a revoked token is rejected as invalid_request like any other invalid
 	// subject_token, while an unavailable deny list fails closed with server_error.
 	subjectClaims, err := h.tokenValidator.ValidateSubjectToken(ctx, tokenRequest.SubjectToken, oauthApp)
-	if err != nil {
+	if err != nil { //nolint:dupl // Mirrors the actor_token classification below; only the wording differs.
 		logger.Debug(ctx, "Failed to validate subject token", log.Error(err))
 		switch {
 		case errors.Is(err, revocation.ErrEnforcementUnavailable):
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorServerError,
 				ErrorDescription: "Token revocation status could not be verified",
+			}
+		case errors.Is(err, tokenservice.ErrAuthorizationMappingUnavailable):
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Authorization mapping could not be resolved",
 			}
 		case errors.Is(err, tokenservice.ErrTokenExpired):
 			return nil, &model.ErrorResponse{
@@ -177,19 +230,17 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 				ErrorDescription: "The subject_token audience does not contain this server's issuer or the " +
 					"trusted token audience configured for its issuer",
 			}
+		case errors.Is(err, tokenservice.ErrAssertionReplayed):
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorInvalidRequest,
+				ErrorDescription: "The subject_token has already been redeemed",
+			}
 		default:
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorInvalidRequest,
 				ErrorDescription: "Invalid subject_token",
 			}
 		}
-	}
-
-	// Enforce RFC 9068: a token presented as subject_token_type=access_token must carry the at+jwt typ
-	// header.
-	if errResp := h.validateAccessTokenType(tokenRequest.SubjectToken,
-		tokenRequest.SubjectTokenType, "subject_token"); errResp != nil {
-		return nil, errResp
 	}
 
 	// Enforce subject_token DPoP binding. The proof's jkt is verified earlier in the
@@ -201,7 +252,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	// Validate and extract actor token claims if present
 	var actorClaims *tokenservice.SubjectTokenClaims
 	if tokenRequest.ActorToken != "" {
-		actorClaims, err = h.tokenValidator.ValidateSubjectToken(ctx, tokenRequest.ActorToken, oauthApp)
+		actorClaims, err = h.tokenValidator.ValidateActorToken(ctx, tokenRequest.ActorToken, oauthApp)
 		if err != nil {
 			logger.Debug(ctx, "Failed to validate actor token", log.Error(err))
 			// Attribute the actor_token rejection the same way as the subject_token above.
@@ -210,6 +261,11 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 				return nil, &model.ErrorResponse{
 					Error:            constants.ErrorServerError,
 					ErrorDescription: "Token revocation status could not be verified",
+				}
+			case errors.Is(err, tokenservice.ErrAuthorizationMappingUnavailable):
+				return nil, &model.ErrorResponse{
+					Error:            constants.ErrorServerError,
+					ErrorDescription: "Authorization mapping could not be resolved",
 				}
 			case errors.Is(err, tokenservice.ErrTokenExpired):
 				return nil, &model.ErrorResponse{
@@ -242,8 +298,23 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		}
 	}
 
+	// With no actor_token, the acting party is the authenticated client itself. Agents (and
+	// applications that opt in) record that delegation as an RFC 8693 act claim, matching the
+	// authorization_code and CIBA paths, so a token an agent exchanges on a user's behalf stays
+	// attributable to the agent. An explicit actor_token identifies the actor and takes precedence.
+	if actorClaims == nil && oauthApp.ShouldAppendActorClaim() {
+		actorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
+	}
+	extendDelegationChain(actorClaims, subjectClaims, h.cfg.JWT.Issuer)
+
+	subjectEntityID, subjectCategory, errResp := h.resolveExchangeParties(ctx, subjectClaims, actorClaims, logger)
+	if errResp != nil {
+		return nil, errResp
+	}
+
 	// Determine final scopes
-	finalScopes, errResp := h.getScopes(tokenRequest, subjectClaims.Scopes)
+	finalScopes, errResp := h.getScopes(
+		tokenRequest, subjectClaims.Scopes, subjectClaims.Authorization.Configured)
 	if errResp != nil {
 		return nil, errResp
 	}
@@ -258,7 +329,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	// and carries no resource is not bound to a resource server: its audience is the app's configured
 	// default audiences, falling back to the client_id.
 	targetRS, resErr := resourceindicators.ResolveAudienceBinding(
-		ctx, h.resourceService, tokenRequest.Resources, permissionScopes)
+		ctx, h.resourceService, tokenRequest.Resources, permissionScopes, false)
 	if resErr != nil {
 		return nil, resErr
 	}
@@ -274,24 +345,18 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 			return nil, resErr
 		}
 
+		permissionScopes, errResp = tokenservice.ApplyMappedAuthorization(
+			ctx, h.authzService, h.actorProvider, subjectClaims.Authorization.Targets, targetRS.ID,
+			permissionScopes, subjectClaims.Authorization.Configured, logger)
+		if errResp != nil {
+			return nil, errResp
+		}
+
 		finalScopes = make([]string, 0, len(oidcScopes)+len(permissionScopes))
 		finalScopes = append(finalScopes, oidcScopes...)
 		finalScopes = append(finalScopes, permissionScopes...)
 
 		finalAudiences = []string{targetRS.Identifier}
-	}
-
-	// Resolve how the exchanged token relates to the subject token's revocation family: inherit joins
-	// the subject's family (both revoked together); none (the default, and the empty value) issues an
-	// independent token with no tfid. An unrecognized value is treated as none and surfaced.
-	var exchangedTokenFamilyID string
-	switch h.cfg.OAuth.TokenExchange.TokenFamily {
-	case constants.TokenExchangeTokenFamilyInherit:
-		exchangedTokenFamilyID = subjectClaims.TokenFamilyID
-	case constants.TokenExchangeTokenFamilyNone, "":
-	default:
-		logger.Warn(ctx, "Unrecognized oauth.token_exchange.token_family mode; issuing an independent token",
-			log.String("mode", h.cfg.OAuth.TokenExchange.TokenFamily))
 	}
 
 	// Build access token using token builder
@@ -307,19 +372,107 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		ActorClaims:       actorClaims,
 		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:           dpop.GetJkt(ctx),
-		TokenFamilyID:     exchangedTokenFamilyID,
+		TokenFamilyID:     h.exchangedTokenFamilyID(ctx, subjectClaims, logger),
+		SubjectEntityID:   subjectEntityID,
+		SubjectCategory:   subjectCategory,
 	})
 	if err != nil {
-		logger.Error(ctx, "Failed to generate token", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate token",
-		}
+		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")
 	}
 
 	return &model.TokenResponseDTO{
 		AccessToken: *accessToken,
 	}, nil
+}
+
+// handleDeviceSecretGrant exchanges a device secret: it runs the client's authentication flow silently
+// on the session the token names, as prompt=none does, and issues the tokens the authorization code
+// grant would, with a refresh token when the client allows that grant. A flow that cannot complete
+// without the user is answered with interaction_required.
+func (h *tokenExchangeGrantHandler) handleDeviceSecretGrant(ctx context.Context, tokenRequest *model.TokenRequest,
+	oauthApp *providers.OAuthClient, logger *log.Logger) (*model.TokenResponseDTO, *model.ErrorResponse) {
+	if tokenRequest.ActorToken != "" {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidRequest,
+			ErrorDescription: "A device secret cannot be exchanged with an actor_token",
+		}
+	}
+	if requested := constants.TokenTypeIdentifier(tokenRequest.RequestedTokenType); requested != "" &&
+		requested != constants.TokenTypeIdentifierAccessToken {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidRequest,
+			ErrorDescription: "Only an access token can be requested with a device secret",
+		}
+	}
+	if h.authorizeService == nil || h.codeGrant == nil {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidRequest,
+			ErrorDescription: "device secrets are not accepted",
+		}
+	}
+
+	claims, err := h.tokenValidator.ValidateDeviceSecret(ctx, tokenRequest.SubjectToken)
+	if err != nil {
+		logger.Debug(ctx, "Failed to validate device secret", log.Error(err))
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidRequest,
+			ErrorDescription: "Invalid subject_token",
+		}
+	}
+
+	authCode, authErr := h.authorizeService.AuthorizeWithSSOSession(ctx, oauthApp, authz.SSOSessionAuthorization{
+		SessionData: claims.SessionData,
+		Scope:       tokenRequest.Scope,
+		Resources:   tokenRequest.Resources,
+	})
+	if authErr != nil {
+		switch authErr.Code {
+		case constants.ErrorServerError:
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Failed to process token request",
+			}
+		case constants.ErrorLoginRequired:
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorInteractionRequired,
+				ErrorDescription: "The SSO session cannot be used without user interaction",
+			}
+		default:
+			return nil, &model.ErrorResponse{Error: authErr.Code, ErrorDescription: authErr.Message}
+		}
+	}
+	// The sessions are kept as the caller posted them, so the session the flow ran on must be the
+	// device secret subject's; another user's session posted in its place is refused here. The entity
+	// ID is compared, not the token subject, which each application may map to its own attribute.
+	if authCode.SubjectID == "" || authCode.SubjectID != claims.Subject {
+		logger.Debug(ctx, "Device secret session belongs to another subject")
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidGrant,
+			ErrorDescription: "The device secret's session does not belong to its subject",
+		}
+	}
+
+	tokenResponse, errResp := h.codeGrant.issueTokens(ctx, tokenRequest, oauthApp, authCode,
+		providers.GrantTypeTokenExchange, logger)
+	if errResp != nil {
+		return nil, errResp
+	}
+	tokenResponse.IssuesRefreshToken = true
+	return tokenResponse, nil
+}
+
+// isDeviceSecretSubjectToken reports whether the subject token is a device secret: a JWT, as its
+// subject_token_type says, whose typ header names it one.
+func isDeviceSecretSubjectToken(tokenRequest *model.TokenRequest) bool {
+	if constants.TokenTypeIdentifier(tokenRequest.SubjectTokenType) != constants.TokenTypeIdentifierJWT {
+		return false
+	}
+	header, err := jwt.DecodeJWTHeader(tokenRequest.SubjectToken)
+	if err != nil {
+		return false
+	}
+	typ, _ := header["typ"].(string)
+	return typ == jwt.TokenTypeDeviceSecret
 }
 
 // handleIDJAGGrant issues an ID-JAG (Identity Assertion Authorization Grant) in response to a
@@ -336,8 +489,10 @@ func (h *tokenExchangeGrantHandler) handleIDJAGGrant(ctx context.Context, tokenR
 		return nil, errResp
 	}
 
-	// The application must have ID-JAG enabled and configured with at least one allowed audience.
-	if oauthApp == nil || oauthApp.Token == nil || oauthApp.Token.IDJAG == nil ||
+	// The deployment must allow ID-JAG issuance, and the application must have ID-JAG enabled and
+	// configured with at least one allowed audience.
+	if !h.cfg.OAuth.IDJAG.Issuance.IsEnabled() ||
+		oauthApp == nil || oauthApp.Token == nil || oauthApp.Token.IDJAG == nil ||
 		!oauthApp.Token.IDJAG.Enabled || len(oauthApp.Token.IDJAG.AllowedAudiences) == 0 {
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidTarget,
@@ -413,11 +568,7 @@ func (h *tokenExchangeGrantHandler) handleIDJAGGrant(ctx context.Context, tokenR
 		OAuthApp:  oauthApp,
 	})
 	if err != nil {
-		logger.Error(ctx, "Failed to generate ID-JAG", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate token",
-		}
+		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")
 	}
 
 	return &model.TokenResponseDTO{
@@ -456,23 +607,34 @@ func (h *tokenExchangeGrantHandler) validateAccessTokenType(
 	return nil
 }
 
-// getScopes validates and determines the scopes for the new token.
+// getScopes validates and determines the scopes for the new token. When authorityIsMapping, the
+// subject token's own scope claim is skipped; requested scopes are only candidates for
+// ApplyMappedAuthorization to decide, with no fallback if the mapping resolves nothing.
 func (h *tokenExchangeGrantHandler) getScopes(
 	tokenRequest *model.TokenRequest,
 	subjectScopes []string,
+	authorityIsMapping bool,
 ) ([]string, *model.ErrorResponse) {
-	// If no scopes requested, return subject scopes
 	if tokenRequest.Scope == "" {
+		if authorityIsMapping {
+			// Nothing was requested to evaluate against the mapping, and the subject token's own
+			// scope claim is not an authority here, so there is nothing to grant.
+			return []string{}, nil
+		}
 		return subjectScopes, nil
 	}
 
 	requestedScopes := tokenservice.ParseScopes(tokenRequest.Scope)
-
 	if len(requestedScopes) == 0 {
 		return []string{}, nil
 	}
 
-	// If subject token has no scopes, reject requests asking for scopes
+	if authorityIsMapping {
+		return requestedScopes, nil
+	}
+
+	// If subject token has no scopes, reject requests asking for scopes: with no mapping configured,
+	// the subject token's own scope claim is the only possible authority.
 	if len(subjectScopes) == 0 {
 		return nil, &model.ErrorResponse{
 			Error: constants.ErrorInvalidScope,
@@ -495,4 +657,119 @@ func (h *tokenExchangeGrantHandler) getScopes(
 	}
 
 	return validRequestedScopes, nil
+}
+
+// extendDelegationChain nests a self-issued subject token's act claim under the current actor, keeping
+// the delegation history (RFC 8693 Section 4.1). It replaces the actor_token's own chain and does not
+// repeat an actor that already heads it. An external issuer's chain is not carried, since it names
+// actors in that issuer's namespace.
+func extendDelegationChain(actorClaims, subjectClaims *tokenservice.SubjectTokenClaims, serverIssuer string) {
+	subjectAct := subjectClaims.NestedAct
+	if actorClaims == nil || len(subjectAct) == 0 || subjectClaims.Iss != serverIssuer {
+		return
+	}
+	if isCurrentActor(subjectAct, actorClaims, serverIssuer) {
+		subjectAct, _ = subjectAct["act"].(map[string]interface{})
+	}
+	actorClaims.NestedAct = subjectAct
+}
+
+// isCurrentActor reports whether the act claim names the given actor. A missing issuer on either side
+// means this server, which records the authenticated client as an actor without one.
+func isCurrentActor(
+	act map[string]interface{}, actorClaims *tokenservice.SubjectTokenClaims, serverIssuer string,
+) bool {
+	sub, _ := act["sub"].(string)
+	iss, _ := act["iss"].(string)
+	return sub == actorClaims.Sub && cmp.Or(iss, serverIssuer) == cmp.Or(actorClaims.Iss, serverIssuer)
+}
+
+// exchangedTokenFamilyID resolves how the exchanged token relates to the subject token's revocation
+// family: inherit joins the subject's family (both revoked together); none (the default, and the empty
+// value) issues an independent token with no tfid. An unrecognized value is treated as none and surfaced.
+func (h *tokenExchangeGrantHandler) exchangedTokenFamilyID(ctx context.Context,
+	subjectClaims *tokenservice.SubjectTokenClaims, logger *log.Logger) string {
+	switch h.cfg.OAuth.TokenExchange.TokenFamily {
+	case constants.TokenExchangeTokenFamilyInherit:
+		return subjectClaims.TokenFamilyID
+	case constants.TokenExchangeTokenFamilyNone, "":
+	default:
+		logger.Warn(ctx, "Unrecognized oauth.token_exchange.token_family mode; issuing an independent token",
+			log.String("mode", h.cfg.OAuth.TokenExchange.TokenFamily))
+	}
+	return ""
+}
+
+// resolveExchangeParties names the subject and the actor by resource ID and category, even where the
+// issuing application mapped sub to an attribute, so the token builder checks and caps the exchanged
+// token by those entities. It returns the subject's and records the actor's on actorClaims.
+func (h *tokenExchangeGrantHandler) resolveExchangeParties(ctx context.Context,
+	subjectClaims, actorClaims *tokenservice.SubjectTokenClaims, logger *log.Logger) (
+	string, string, *model.ErrorResponse) {
+	subjectEntityID, subjectCategory, errResp := h.resolveExchangedEntity(ctx, subjectClaims, "subject_token", logger)
+	if errResp != nil {
+		return "", "", errResp
+	}
+	if actorClaims != nil {
+		actorClaims.EntityID, _, errResp = h.resolveExchangedEntity(ctx, actorClaims, "actor_token", logger)
+		if errResp != nil {
+			return "", "", errResp
+		}
+	}
+	return subjectEntityID, subjectCategory, nil
+}
+
+// resolveExchangedEntity returns the resource ID and category of the entity a self-issued subject or
+// actor token names, and empty strings when it cannot tell. An external issuer's sub names no local
+// account, even when it equals a local entity's ID, so it is never resolved. The category is empty
+// when the attribute cache entry does not record it.
+// sub is the resource ID unless the issuing application mapped it to an attribute, in which case the
+// token's aci entry records the entity, as the refresh grant relies on. A sub the actor provider does
+// not find, or cannot look up because the entity provider does not support it, falls back to that
+// entry; any other lookup failure fails the exchange, since an unresolved party is neither checked nor
+// capped. An entry that has expired, or was created before entries recorded the entity, leaves the
+// entity unresolved rather than failing the exchange.
+func (h *tokenExchangeGrantHandler) resolveExchangedEntity(ctx context.Context,
+	claims *tokenservice.SubjectTokenClaims, slot string, logger *log.Logger) (
+	string, string, *model.ErrorResponse) {
+	if h.actorProvider == nil || claims.Sub == "" || claims.Iss != h.cfg.JWT.Issuer {
+		return "", "", nil
+	}
+
+	entity, svcErr := h.actorProvider.GetActor(claims.Sub)
+	if svcErr == nil {
+		if entity == nil {
+			return claims.Sub, "", nil
+		}
+		return claims.Sub, string(entity.Category), nil
+	}
+	if svcErr.Type != tidcommon.ClientErrorType && svcErr.Code != actorprovider.ErrorActorLookupNotSupported.Code {
+		logger.Error(ctx, "Failed to resolve the "+slot+" subject",
+			log.String("error", svcErr.Error.DefaultValue))
+		return "", "", &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to resolve the " + slot + " subject",
+		}
+	}
+	logger.Debug(ctx, "The "+slot+" subject does not resolve to an entity",
+		log.String("error", svcErr.Error.DefaultValue))
+
+	if claims.AttributeCacheID == "" {
+		return "", "", nil
+	}
+	entry, cacheErr := h.attrCache.GetAttributeCache(ctx, claims.AttributeCacheID)
+	if cacheErr != nil && cacheErr.Type != tidcommon.ClientErrorType {
+		logger.Error(ctx, "Failed to read the "+slot+" attribute cache entry",
+			log.String("error", cacheErr.ErrorDescription.DefaultValue))
+		return "", "", &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to resolve the " + slot + " subject",
+		}
+	}
+	if cacheErr != nil || entry == nil || entry.SubjectID == "" {
+		logger.Debug(ctx, "Attribute cache entry of the "+slot+" not found or names no subject",
+			log.String("cache_id", claims.AttributeCacheID))
+		return "", "", nil
+	}
+	return entry.SubjectID, entry.SubjectCategory, nil
 }

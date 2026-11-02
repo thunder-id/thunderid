@@ -34,8 +34,8 @@ The [Decentralized Identity overview](../../overview) covers the issuer-holder-v
 
 - Set `ALLOWED_TIERS=Platinum` in `lounge/.env` and restart the lounge, then re-verify John's `Gold` pass: access is now denied, decided entirely on the verified claim.
 - Edit the `wayfinder-skypass` presentation definition to also request `member_id`, and watch the wallet's disclosure prompt change to include it.
-- Skip the Skyline Lounge kiosk entirely: in the Console go to **Verifiable Credentials** → **Presentations**, click **Verify** next to the Skyline Lounge Access definition, and scan the QR that appears. The Console polls live and shows the verified claims, including the `tier` and `full_name` John disclosed, as soon as the wallet responds.
-- By default, the presentation definition accepts credentials from any issuer. To restrict it to a specific issuer, add the issuer's x509 certificate to `openid4vp.trusted_anchors` in the server configuration, then open the **Skyline Lounge Access** definition in the Console (**Verifiable Credentials → Presentations**), open the **Issuer Trust** tab, and select the certificate.
+- Skip the Skyline Lounge kiosk entirely: in the Console go to **Verifiable credentials** → **Presentations**, click **Verify** next to the Skyline Lounge Access definition, and scan the QR that appears. The Console polls live and shows the verified claims, including the `tier` and `full_name` John disclosed, as soon as the wallet responds.
+- By default, the presentation definition accepts credentials from any issuer. To restrict it to a specific issuer, add the issuer's x509 certificate to `openid4vp.trusted_anchors` in the server configuration, then open the **Skyline Lounge Access** definition in the Console (**Verifiable Credentials → Presentations**), open the **Issuer trust** tab, and select the certificate.
 
 ## Going Deeper
 

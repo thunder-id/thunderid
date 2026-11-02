@@ -6,7 +6,34 @@ cat > tests/integration/resources/deployment.yaml <<EOF
 server:
   hostname: localhost
   port: 8095
+  security:
+    # Exercised by tests/integration/managementapikey: a deployment pipeline authenticating to the
+    # import API without first obtaining OAuth client credentials. This is the SHA-256 digest of
+    # "integration-management-api-key"; the key itself is never configured here.
+    management_api_key_hash: "4955d93012fc5e2ee07b527f13ffe55de32900c410cc198f4d7a9971bb3a9a2d"
+    # Shortened from the 60s default so revocation-enforcement tests (which check a token
+    # immediately after revoking it) don't need a long sleep to observe the deny-list cache pick
+    # up the revocation. Introspection (RFC 7009 hot path) is unaffected — it reads the store
+    # directly rather than through this periodic cache.
+    token_revocation:
+      sync_interval_seconds: 2
+    mcp:
+      # Set explicitly to the identifier this harness already derives from the hostname/port above,
+      # so the configured-audience path runs without changing what MCP enforces. Keep in step with
+      # mcpResourceIdentifier in tests/integration/mcp/mcp_test.go.
+      audience: "https://localhost:8095/mcp"
 
+# Designates the declarative user type (usertype-declarative-1.yaml) as the only SCIM user type
+# allowed to carry the core User schema. Test-created user types are extension-only.
+scim:
+  core_user_type_id: "decl-schema-1"
+
+gateway:
+  # The default of one gateway would refuse the second registration in every uniqueness test before
+  # the rule under test was reached.
+  max_gateways: 5
+  # The suite registers gateways on localhost.
+  allow_private_addresses: true
 
 tls:
   cert_file: "config/certs/server.cert"
@@ -63,7 +90,7 @@ elif [ "$DB_TYPE" = "redis" ]; then
     type: sqlite
     sqlite:
       path: "database/configdb.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
   runtime_transient:
     type: redis
@@ -76,13 +103,13 @@ elif [ "$DB_TYPE" = "redis" ]; then
     type: sqlite
     sqlite:
       path: "database/entitydb.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
   runtime_persistent:
     type: sqlite
     sqlite:
       path: "database/runtime_persistent.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 EOF
 else
   cat >> tests/integration/resources/deployment.yaml <<EOF
@@ -90,25 +117,25 @@ else
     type: sqlite
     sqlite:
       path: "database/configdb.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
   runtime_transient:
     type: sqlite
     sqlite:
       path: "database/runtime_transient.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
   entity:
     type: sqlite
     sqlite:
       path: "database/entitydb.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
   runtime_persistent:
     type: sqlite
     sqlite:
       path: "database/runtime_persistent.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 EOF
 fi
 
@@ -120,6 +147,14 @@ flow:
 
 server_config:
   store: composite
+
+authzen_pdp:
+  store: composite
+
+passkey:
+  allowed_origins:
+    - "https://localhost:8095"
+    - "http://localhost:8095"
 
 oauth:
   allow_wildcard_redirect_uri: true
@@ -136,4 +171,8 @@ oauth:
         - OTP
       "urn:thunder:acr:biometrics":
         - BIO
+  logout:
+    backchannel:
+      # The back-channel logout tests run their receiver on localhost.
+      reject_private_addresses: false
 EOF

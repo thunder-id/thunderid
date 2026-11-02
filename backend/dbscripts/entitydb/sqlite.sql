@@ -1,33 +1,48 @@
 -- Table to store Organization Units
 CREATE TABLE "ORGANIZATION_UNIT" (
     DEPLOYMENT_ID   VARCHAR(255) NOT NULL,
-    OU_ID       VARCHAR(36) PRIMARY KEY,
+    OU_ID       VARCHAR(36) NOT NULL,
     PARENT_ID   VARCHAR(36),
     HANDLE      VARCHAR(100)        NOT NULL,
     NAME        VARCHAR(100)        NOT NULL,
     DESCRIPTION VARCHAR(255),
     METADATA     TEXT,
     CREATED_AT  TEXT NOT NULL,
-    UPDATED_AT  TEXT NOT NULL
+    UPDATED_AT  TEXT NOT NULL,
+    PRIMARY KEY (DEPLOYMENT_ID, OU_ID)
 );
 
 -- Composite index for handle-based OU lookups (queryGetRootOrganizationUnitByHandle, queryGetOrganizationUnitByHandle)
 CREATE INDEX idx_ou_handle_parent ON "ORGANIZATION_UNIT" (DEPLOYMENT_ID, HANDLE, PARENT_ID);
 
+-- Table to store Projects. A project holds only its ID and the root organization unit that backs it;
+-- its handle, name and description are the root organization unit's.
+CREATE TABLE "PROJECT" (
+    DEPLOYMENT_ID   VARCHAR(255) NOT NULL,
+    ID              VARCHAR(36)  NOT NULL,
+    ROOT_OU_ID      VARCHAR(36)  NOT NULL,
+    CREATED_AT      TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (DEPLOYMENT_ID, ID),
+    FOREIGN KEY (DEPLOYMENT_ID, ROOT_OU_ID) REFERENCES "ORGANIZATION_UNIT" (DEPLOYMENT_ID, OU_ID)
+);
+
+-- Each root organization unit backs at most one project; also serves lookups by root OU.
+CREATE UNIQUE INDEX idx_project_root_ou ON "PROJECT" (DEPLOYMENT_ID, ROOT_OU_ID);
+
 -- Table to store Entities (unified identity principals: users, applications, agents)
 CREATE TABLE "ENTITY" (
     DEPLOYMENT_ID       VARCHAR(255) NOT NULL,
-    ID                  VARCHAR(36)  PRIMARY KEY,
+    ID                  VARCHAR(36) NOT NULL,
     CATEGORY            VARCHAR(50)  NOT NULL,
-    TYPE                VARCHAR(50)  NOT NULL,
-    STATE               VARCHAR(50)  NOT NULL,
+    TYPE                VARCHAR(100) NOT NULL,
     OU_ID               VARCHAR(36)  NOT NULL,
     ATTRIBUTES          TEXT,
     SYSTEM_ATTRIBUTES   TEXT,
     CREDENTIALS         TEXT,
     SYSTEM_CREDENTIALS  TEXT,
     CREATED_AT          TEXT NOT NULL,
-    UPDATED_AT          TEXT NOT NULL
+    UPDATED_AT          TEXT NOT NULL,
+    PRIMARY KEY (DEPLOYMENT_ID, ID)
 );
 
 -- Composite index for category-based entity listing
@@ -36,15 +51,19 @@ CREATE INDEX idx_entity_category_deployment ON "ENTITY" (DEPLOYMENT_ID, CATEGORY
 -- Composite index for OU-based entity listing
 CREATE INDEX idx_entity_ou_deployment ON "ENTITY" (DEPLOYMENT_ID, OU_ID);
 
+-- Expression index for looking up agents by their owner
+CREATE INDEX idx_entity_owner ON "ENTITY" (DEPLOYMENT_ID, json_extract(SYSTEM_ATTRIBUTES, '$.owner'));
+
 -- Table to store Groups
 CREATE TABLE "GROUP" (
     DEPLOYMENT_ID   VARCHAR(255) NOT NULL,
-    ID          VARCHAR(36)        PRIMARY KEY,
+    ID          VARCHAR(36) NOT NULL,
     OU_ID       VARCHAR(36)        NOT NULL,
     NAME        VARCHAR(50)        NOT NULL,
     DESCRIPTION VARCHAR(255),
     CREATED_AT  TEXT NOT NULL,
-    UPDATED_AT  TEXT NOT NULL
+    UPDATED_AT  TEXT NOT NULL,
+    PRIMARY KEY (DEPLOYMENT_ID, ID)
 );
 
 -- Composite index for name conflict checks within an OU (QueryCheckGroupNameConflict)
@@ -62,6 +81,7 @@ CREATE TABLE "GROUP_MEMBER_REFERENCE" (
 );
 
 -- Table to store indexed entity identifiers for fast lookups (authentication, identification)
+-- An entity may hold multiple values for the same NAME (e.g. more than one email address).
 CREATE TABLE "ENTITY_IDENTIFIER" (
     DEPLOYMENT_ID   VARCHAR(255) NOT NULL,
     ENTITY_ID       VARCHAR(36)  NOT NULL,
@@ -69,8 +89,9 @@ CREATE TABLE "ENTITY_IDENTIFIER" (
     VALUE           TEXT         NOT NULL,
     SOURCE          VARCHAR(50)  NOT NULL,
     CREATED_AT      TEXT NOT NULL,
-    PRIMARY KEY (ENTITY_ID, DEPLOYMENT_ID, NAME),
-    FOREIGN KEY (ENTITY_ID) REFERENCES "ENTITY" (ID) ON DELETE CASCADE
+    PRIMARY KEY (ENTITY_ID, DEPLOYMENT_ID, NAME, VALUE),
+    FOREIGN KEY (DEPLOYMENT_ID, ENTITY_ID)
+        REFERENCES "ENTITY" (DEPLOYMENT_ID, ID) ON DELETE CASCADE
 );
 
 -- Index for fast identifier lookups (primary use case for authentication)

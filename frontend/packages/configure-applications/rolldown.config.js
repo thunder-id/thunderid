@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {readFileSync} from 'fs';
-import {join} from 'path';
+import {join, resolve} from 'path';
 import {defineConfig} from 'rolldown';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf8'));
@@ -13,15 +13,31 @@ const external = [
   'react/jsx-runtime',
   // Needed to avoid hook ordering issues.
   /^@mui\//,
-  // Peer dep subpaths are not matched by exact string - add them explicitly.
+  // Peer dep subpaths are not matched by exact string — add them explicitly.
   '@thunderid/logger/react',
+  '@hookform/resolvers/zod',
 ];
+
+const alias = {
+  '@': resolve('src'),
+  '@/api': resolve('src', 'api'),
+  '@/components': resolve('src', 'components'),
+  '@/config': resolve('src', 'config'),
+  '@/constants': resolve('src', 'constants'),
+  '@/contexts': resolve('src', 'contexts'),
+  '@/data': resolve('src', 'data'),
+  '@/hooks': resolve('src', 'hooks'),
+  '@/models': resolve('src', 'models'),
+  '@/pages': resolve('src', 'pages'),
+  '@/utils': resolve('src', 'utils'),
+};
 
 const commonOptions = {
   input: join('src', 'index.ts'),
   external,
   target: 'es2020',
   sourcemap: true,
+  resolve: {alias},
 };
 
 export default defineConfig([

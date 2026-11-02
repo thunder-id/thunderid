@@ -27,6 +27,7 @@ If invoked as `/docs <action> [file-path]`, or the request plainly names one of 
 | `seo` | `seo.md` |
 | `review` | `review.md` |
 | `use-case` | `use-case.md` |
+| `diagram` | `diagram.md` |
 
 ### Natural-language form
 
@@ -44,6 +45,7 @@ Otherwise, match the request's intent:
 | Run the full pre-merge review (structure + style + tech together) | `review.md` |
 | Review my changes / review the diff / review before I open a PR, no file named | `review.md` (diff mode — reads every changed file, including uncommitted, instead of one named file) |
 | Structure or audit a use-case section (`docs/content/use-cases/<pattern>/`): page order, diagram design, jargon literacy, scoring rubric | `use-case.md` |
+| Author or design any Mermaid diagram: pick the type (sequence, flowchart, architecture, state), gather the real steps/components, construct and confirm, or debug why one looks wrong | `diagram.md` |
 
 Default to `review.md` if the request just says "review this doc" without naming a dimension or an action word.
 

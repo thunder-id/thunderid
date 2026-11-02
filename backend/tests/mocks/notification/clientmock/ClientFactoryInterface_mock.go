@@ -19,10 +19,19 @@ func NewClientFactoryInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ClientFactoryInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ClientFactoryInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type ClientFactoryInterfaceMock_GetClient_Call struct {
 // GetClient is a helper method to define mock.On call
 //   - ctx context.Context
 //   - sender common.NotificationSenderDTO
-func (_e *ClientFactoryInterfaceMock_Expecter) GetClient(ctx interface{}, sender interface{}) *ClientFactoryInterfaceMock_GetClient_Call {
+func (_e *ClientFactoryInterfaceMock_Expecter) GetClient(ctx any, sender any) *ClientFactoryInterfaceMock_GetClient_Call {
 	return &ClientFactoryInterfaceMock_GetClient_Call{Call: _e.mock.On("GetClient", ctx, sender)}
 }
 

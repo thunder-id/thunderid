@@ -6,10 +6,12 @@ package presentation
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -31,6 +33,14 @@ type PresentationDefinitionServiceInterface interface {
 	IsPresentationDefinitionDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 }
 
+// presentationDefinitionDeclarativeService resolves organization-unit handles
+// while loading declarative presentation definitions.
+type presentationDefinitionDeclarativeService interface {
+	ResolvePresentationDefinitionOUHandle(
+		ctx context.Context, dto *PresentationDefinitionDTO,
+	) *tidcommon.ServiceError
+}
+
 type definitionService struct {
 	store     definitionStoreInterface
 	ouService ou.OrganizationUnitServiceInterface
@@ -41,7 +51,7 @@ type definitionService struct {
 // newPresentationDefinitionService builds a presentation-definition service over the given store.
 func newPresentationDefinitionService(
 	store definitionStoreInterface, ouService ou.OrganizationUnitServiceInterface,
-) PresentationDefinitionServiceInterface {
+) *definitionService {
 	return &definitionService{
 		store:     store,
 		ouService: ouService,
@@ -50,19 +60,33 @@ func newPresentationDefinitionService(
 	}
 }
 
-// resolveOU resolves ouHandle to ouId when needed and verifies the OU exists.
+// ResolvePresentationDefinitionOUHandle resolves a declarative OU handle to its ID.
+func (s *definitionService) ResolvePresentationDefinitionOUHandle(
+	ctx context.Context, dto *PresentationDefinitionDTO,
+) *tidcommon.ServiceError {
+	if dto.OUID != "" {
+		return s.resolveOU(ctx, dto)
+	}
+	if strings.TrimSpace(dto.OUHandle) == "" {
+		return nil
+	}
+	if s.ouService == nil {
+		return &ErrorDefinitionInvalidOU
+	}
+	resolved, svcErr := s.ouService.GetOrganizationUnitByPath(security.WithRuntimeContext(ctx), dto.OUHandle)
+	if svcErr != nil {
+		return &ErrorDefinitionInvalidOU
+	}
+	dto.OUID = resolved.ID
+	return s.resolveOU(ctx, dto)
+}
+
+// resolveOU verifies the requested organization unit exists.
 func (s *definitionService) resolveOU(
 	ctx context.Context, dto *PresentationDefinitionDTO,
 ) *tidcommon.ServiceError {
 	if s.ouService == nil {
 		return nil
-	}
-	if dto.OUID == "" && strings.TrimSpace(dto.OUHandle) != "" {
-		resolved, svcErr := s.ouService.GetOrganizationUnitByPath(ctx, dto.OUHandle)
-		if svcErr != nil {
-			return &ErrorDefinitionInvalidOU
-		}
-		dto.OUID = resolved.ID
 	}
 	if strings.TrimSpace(dto.OUID) == "" {
 		return &ErrorDefinitionInvalidOU
@@ -110,6 +134,9 @@ func (s *definitionService) populateOUHandle(ctx context.Context, dtos ...*Prese
 func (s *definitionService) CreatePresentationDefinition(
 	ctx context.Context, dto *PresentationDefinitionDTO,
 ) (*PresentationDefinitionDTO, *tidcommon.ServiceError) {
+	if isDeclarativeModeEnabled() {
+		return nil, &ErrorDefinitionDeclarativeModeCreateNotAllowed
+	}
 	if svcErr := validateDefinition(dto); svcErr != nil {
 		return nil, svcErr
 	}
@@ -332,6 +359,28 @@ func validateDefinition(dto *PresentationDefinitionDTO) *tidcommon.ServiceError 
 	}
 	if dto.Format != DefaultCredentialFormat {
 		return &ErrorDefinitionUnsupportedFormat
+	}
+	if svcErr := validateClaimNames(dto.RequestedClaims); svcErr != nil {
+		return svcErr
+	}
+	return validateClaimNames(slices.Concat(dto.MandatoryClaims, dto.OptionalClaims))
+}
+
+// validateClaimNames enforces non-empty, unique claim names within one requested list. The
+// mandatory and optional lists are checked as a single list, since a name may not appear as both:
+// the two carry contradictory disclosure requirements. RequestedClaims is checked on its own,
+// because it is the full set those two partition and so legitimately repeats their names.
+func validateClaimNames(claims []string) *tidcommon.ServiceError {
+	seen := make(map[string]bool, len(claims))
+	for _, claim := range claims {
+		name := strings.TrimSpace(claim)
+		if name == "" {
+			return &ErrorDefinitionEmptyClaimName
+		}
+		if seen[name] {
+			return ErrorDefinitionDuplicateClaim.WithParams(map[string]string{"claim": name})
+		}
+		seen[name] = true
 	}
 	return nil
 }

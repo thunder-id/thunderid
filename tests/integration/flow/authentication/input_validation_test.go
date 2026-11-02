@@ -132,7 +132,8 @@ var (
 	}
 
 	validationTestUserType = testutils.UserType{
-		Name: "input_validation_user",
+		Handle:      "input_validation_user",
+		DisplayName: "Input Validation User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},
@@ -140,7 +141,7 @@ var (
 	}
 
 	validationTestUser = testutils.User{
-		Type: validationTestUserType.Name,
+		Type: validationTestUserType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "validuser@example.com",
 			"password": "Validpass1"

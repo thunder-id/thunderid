@@ -3,7 +3,9 @@
 
 package agent
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 // Agent represents the structure for agent request and response in tests.
 type Agent struct {
@@ -11,11 +13,15 @@ type Agent struct {
 	OUID        string          `json:"ouId,omitempty"`
 	OUHandle    string          `json:"ouHandle,omitempty"`
 	Type        string          `json:"type,omitempty"`
-	Name        string          `json:"name,omitempty"`
+	Display     string          `json:"display,omitempty"`
 	Description string          `json:"description,omitempty"`
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 	IsReadOnly  bool            `json:"isReadOnly"`
+	Delegated   bool            `json:"delegated,omitempty"`
+	ValidUntil  *string         `json:"validUntil,omitempty"`
+	Lifespan    *AgentLifespan  `json:"lifespan,omitempty"`
+	Status      *AgentStatus    `json:"status,omitempty"`
 
 	AuthFlowID                string              `json:"authFlowId,omitempty"`
 	RegistrationFlowID        string              `json:"registrationFlowId,omitempty"`
@@ -26,9 +32,54 @@ type Agent struct {
 	InboundAuthConfig         []InboundAuthConfig `json:"inboundAuthConfig,omitempty"`
 }
 
+// AgentLifespan is the lifespan phase reported on agent reads.
+type AgentLifespan struct {
+	Phase string `json:"phase"`
+}
+
+// AgentStatus is the effective access status reported on agent reads.
+type AgentStatus struct {
+	Value string `json:"value"`
+}
+
+// agentAttrs builds the attributes payload of an agent. The agent name is the schema attribute "name", so
+// every agent needs it; extra holds any further attributes and may be nil.
+func agentAttrs(name string, extra map[string]interface{}) json.RawMessage {
+	m := map[string]interface{}{"name": name}
+	for k, v := range extra {
+		m[k] = v
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+// withName adds the agent name to an existing attributes payload.
+func withName(name string, raw json.RawMessage) json.RawMessage {
+	m := map[string]interface{}{}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &m); err != nil {
+			panic(err)
+		}
+	}
+	return agentAttrs(name, m)
+}
+
+// AttrName returns the agent name, which is carried in attributes.name.
+func (a Agent) AttrName() string {
+	var m map[string]interface{}
+	if err := json.Unmarshal(a.Attributes, &m); err != nil {
+		return ""
+	}
+	name, _ := m["name"].(string)
+	return name
+}
+
 // InboundAuthConfig represents an inbound authentication configuration entry.
 type InboundAuthConfig struct {
-	Type   string          `json:"type"`
+	Type   string            `json:"type"`
 	Config *OAuthAgentConfig `json:"config,omitempty"`
 }
 
@@ -48,6 +99,14 @@ type OAuthAgentConfig struct {
 // OAuthTokenConfig represents the OAuth token configuration for an agent's inbound auth config.
 type OAuthTokenConfig struct {
 	AccessToken *AccessTokenConfig `json:"accessToken,omitempty"`
+	IDJAG       *IDJAGConfig       `json:"idJag,omitempty"`
+}
+
+// IDJAGConfig represents the ID-JAG issuance configuration of an agent's OAuth client.
+type IDJAGConfig struct {
+	Enabled          bool     `json:"enabled"`
+	AllowedAudiences []string `json:"allowedAudiences,omitempty"`
+	ValidityPeriod   int64    `json:"validityPeriod,omitempty"`
 }
 
 // AccessTokenConfig represents the access token configuration, split by token subject.
@@ -82,6 +141,16 @@ type AgentGroupListResponse struct {
 	StartIndex   int           `json:"startIndex"`
 	Count        int           `json:"count"`
 	Groups       []AgentGroup  `json:"groups"`
+	Links        []interface{} `json:"links"`
+}
+
+// AgentRoleListResponse is the paginated role list response for an agent. Roles are reported by
+// name, both for direct assignments and for those inherited through group membership.
+type AgentRoleListResponse struct {
+	TotalResults int           `json:"totalResults"`
+	StartIndex   int           `json:"startIndex"`
+	Count        int           `json:"count"`
+	Roles        []string      `json:"roles"`
 	Links        []interface{} `json:"links"`
 }
 

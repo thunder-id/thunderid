@@ -24,7 +24,8 @@ const (
 )
 
 var smsOTPEntityType = testutils.UserType{
-	Name: "smsotp_user",
+	Handle:      "smsotp_user",
+	DisplayName: "Smsotp User",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{
 			"type": "string",
@@ -98,6 +99,11 @@ func (suite *SMSOTPAuthTestSuite) SetupSuite() {
 				Value:    "JSON",
 				IsSecret: false,
 			},
+			{
+				Name:     "http_headers",
+				Value:    "X-SMS-OTP-Test: integration",
+				IsSecret: false,
+			},
 		},
 	}
 
@@ -120,7 +126,7 @@ func (suite *SMSOTPAuthTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:       smsOTPEntityType.Name,
+		Type:       smsOTPEntityType.Handle,
 		OUID:       suite.ouID,
 		Attributes: userAttributesJSON,
 	}
@@ -189,6 +195,8 @@ func (suite *SMSOTPAuthTestSuite) TestSendOTPSuccess() {
 	lastMessage := suite.mockServer.GetLastMessage()
 	suite.Require().NotNil(lastMessage, "OTP message should be sent to mock server")
 	suite.NotEmpty(lastMessage.OTP, "OTP should be extractable from message")
+	suite.Equal("integration", lastMessage.Headers[http.CanonicalHeaderKey("X-SMS-OTP-Test")],
+		"The configured header should be present on the outbound request, got %v", lastMessage.Headers)
 }
 
 func (suite *SMSOTPAuthTestSuite) TestSendOTPInvalidSender() {
@@ -683,9 +691,14 @@ func (suite *SMSOTPAuthTestSuite) sendOTPAndExtract() (string, string) {
 // createNotificationSender creates a custom SMS sender via /connections/sms-gateway. Only the
 // "custom" provider is used by this suite; other providers aren't supported by this helper.
 func (suite *SMSOTPAuthTestSuite) createNotificationSender(sender NotificationSenderRequest) (string, error) {
+	ouID, err := testutils.DefaultConnectionOUID()
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve the connection organization unit: %w", err)
+	}
 	body := map[string]interface{}{
 		"name":        sender.Name,
 		"description": sender.Description,
+		"ouId":        ouID,
 	}
 	for _, prop := range sender.Properties {
 		switch prop.Name {

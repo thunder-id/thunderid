@@ -1,10 +1,12 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {Options as DocsOptions} from '@docusaurus/plugin-content-docs';
 import type * as Preset from '@docusaurus/preset-classic';
 import type {Config} from '@docusaurus/types';
 import {themes as prismThemes} from 'prism-react-renderer';
 import productConfig from './docusaurus.product.config';
+import ecosystemPlugin from './plugins/ecosystemPlugin';
 import personaPlugin from './plugins/personaPlugin';
 import rehypeProductName from './plugins/rehypeProductName';
 import webpackPlugin from './plugins/webpackPlugin';
@@ -44,6 +46,23 @@ const baseUrl =
 
 // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
 const siteUrl = process.env.DOCUSAURUS_URL || productConfig.documentation.deployment.production.url;
+
+// Replace {{ProductName}}, {{productSlug}}, and local-URL placeholders inside code blocks at
+// build time. Shared by every docs plugin instance.
+const docsRehypePlugins: DocsOptions['rehypePlugins'] = [
+  [
+    rehypeProductName,
+    {
+      productName: productConfig.project.name,
+      productSlug: productConfig.project.name.toLowerCase(),
+      replacements: {
+        '{{ConsoleUrl}}': productConfig.local.consoleUrl,
+        '{{WayFinderSampleUrl}}': productConfig.local.samples.wayfinderUrl,
+        '{{WayFinderMailUrl}}': productConfig.local.samples.wayfinderMailUrl,
+      },
+    },
+  ],
+];
 
 const config: Config = {
   title: productConfig.project.name,
@@ -106,6 +125,19 @@ const config: Config = {
 
   headTags: [
     {
+      tagName: 'script',
+      attributes: {},
+      // Reads the same "theme" localStorage key as Docusaurus' own no-flash script, but
+      // stamps the attribute the MUI/Oxygen-UI theme reads (colorSchemeSelector:
+      // "data-color-scheme"). Without this, a hard refresh paints MUI-styled surfaces with
+      // their light-scheme fallback for one frame before OxygenUIThemeProvider mounts and
+      // syncs to the already-correct Docusaurus theme. Docusaurus' stored value can be the
+      // literal string "system" (its tri-state toggle), which must resolve through
+      // prefers-color-scheme here rather than being stamped as-is, since Oxygen-UI's CSS
+      // only defines variables for "dark"/"light".
+      innerHTML: `(function(){try{var t=new URLSearchParams(window.location.search).get("docusaurus-theme")||window.localStorage.getItem("theme");var dark=t==="dark"||(t!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.setAttribute("data-color-scheme",dark?"dark":"light");}catch(e){}})();`,
+    },
+    {
       tagName: 'link',
       attributes: {
         rel: 'icon',
@@ -152,8 +184,86 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     '@docsearch/docusaurus-adapter',
     webpackPlugin,
     personaPlugin,
+    ecosystemPlugin,
     './plugins/docusaurus-plugin-llms-txt',
     './plugins/docusaurus-plugin-markdown-export',
+    [
+      '@docusaurus/plugin-client-redirects',
+      {
+        // The React "Protecting Routes" guide was four pages (a landing page
+        // plus one per router); it is now one page with an in-page selector.
+        // Each old URL lands on the panel it used to be, via the ?router= key
+        // the selector reads.
+        redirects: [
+          {
+            from: '/docs/next/sdks-and-tools/react/guides/protecting-routes/overview',
+            to: '/sdks-and-tools/react/guides/protecting-routes',
+          },
+          {
+            from: '/docs/next/sdks-and-tools/react/guides/protecting-routes/react-router',
+            to: '/sdks-and-tools/react/guides/protecting-routes',
+          },
+          {
+            from: '/docs/next/sdks-and-tools/react/guides/protecting-routes/tanstack-router',
+            to: '/sdks-and-tools/react/guides/protecting-routes',
+          },
+          {
+            from: '/docs/next/sdks-and-tools/react/guides/protecting-routes/custom',
+            to: '/sdks-and-tools/react/guides/protecting-routes',
+          },
+          {
+            from: '/docs/next/guides/organization-units',
+            to: '/docs/next/guides/organization-units/manage-organization-units',
+          },
+        ],
+
+        // The lastVersion is served at the bare /docs/ root. Redirect its versioned
+        // URL (/docs/v1.1.x/) to the root path, so links written against the version
+        // prefix keep working. GitHub Pages can't do server 301s, so these are
+        // generated as static client-side redirect stubs. The current/"Next" docs
+        // (/docs/next/) and older versions (/docs/v1.0.x/) keep their own paths.
+        createRedirects(existingPath: string): string[] | undefined {
+          const from: string[] = [];
+
+          // The SDK docs moved from `sdks/` to `sdks-and-tools/` once agent
+          // plugins and integration guides joined them, since most of what the
+          // section covers is no longer an SDK. Both versions moved together so
+          // the URL shape stays the same across them.
+          if (existingPath.includes('/sdks-and-tools/')) {
+            from.push(existingPath.replace('/sdks-and-tools/', '/sdks/'));
+          }
+
+          if (
+            existingPath.startsWith('/docs/') &&
+            !existingPath.startsWith('/docs/next/') &&
+            !existingPath.startsWith('/docs/v1.0.x/')
+          ) {
+            from.push(existingPath.replace('/docs/', '/docs/v1.1.x/'));
+            // Chain both moves, so a link written against the old path *and*
+            // the version prefix still lands.
+            if (existingPath.includes('/sdks-and-tools/')) {
+              from.push(existingPath.replace('/docs/', '/docs/v1.1.x/').replace('/sdks-and-tools/', '/sdks/'));
+            }
+          }
+
+          return from.length > 0 ? from : undefined;
+        },
+      },
+    ],
+    // Community docs are a separate, unversioned plugin instance. They describe how to
+    // contribute to the project as it stands today, so they are not snapshotted per
+    // release and are served from /community/ instead of /docs/<version>/community/.
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'community',
+        path: 'community',
+        routeBasePath: 'community',
+        sidebarPath: './sidebarsCommunity.ts',
+        editUrl: productConfig.project.source.github.editUrls.content,
+        rehypePlugins: docsRehypePlugins,
+      } satisfies DocsOptions,
+    ],
   ],
 
   presets: [
@@ -166,7 +276,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           // Edit URL for the "edit this page" feature.
           editUrl: productConfig.project.source.github.editUrls.content,
           // Versioning.
-          lastVersion: 'v1.0.x',
+          lastVersion: 'v1.1.x',
           versions: {
             current: {
               label: 'Next',
@@ -176,33 +286,26 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
               // No "Version: Next" pill at the top of every doc page.
               badge: false,
             },
-            'v1.0.x': {
-              label: 'v1.0.x',
-              // Explicit URL segment so the stable release lives at /docs/v1.0.x/
-              // instead of the bare doc root. The version tracks the 1.0 minor line
-              // (1.0.0, 1.0.1, ...), so patch releases reuse these docs.
-              path: 'v1.0.x',
+            'v1.1.x': {
+              label: 'v1.1.x',
+              // No `path` override, so as the lastVersion it is served at the bare doc
+              // root (/docs) as the latest release. The version tracks the 1.1 minor
+              // line (1.1.0, 1.1.1, ...), so patch releases reuse these docs. The
+              // current/"Next" docs stay at /docs/next as a preview.
               // Current stable release: not archived, so no "unmaintained" banner.
               banner: 'none',
-              // No "Version: v1.0.x" pill at the top of every doc page.
+              // No "Version: v1.1.x" pill at the top of every doc page.
+              badge: false,
+            },
+            'v1.0.x': {
+              label: 'v1.0.x',
+              // Served at /docs/v1.0.x. The 1.0 minor line still receives patch
+              // releases, so no "unmaintained" banner.
+              banner: 'none',
               badge: false,
             },
           },
-          // Replace {{ProductName}}, {{productSlug}}, and local-URL placeholders inside code blocks at build time.
-          rehypePlugins: [
-            [
-              rehypeProductName,
-              {
-                productName: productConfig.project.name,
-                productSlug: productConfig.project.name.toLowerCase(),
-                replacements: {
-                  '{{ConsoleUrl}}': productConfig.local.consoleUrl,
-                  '{{WayFinderSampleUrl}}': productConfig.local.samples.wayfinderUrl,
-                  '{{WayFinderMailUrl}}': productConfig.local.samples.wayfinderMailUrl,
-                },
-              },
-            ],
-          ],
+          rehypePlugins: docsRehypePlugins,
         },
         blog: {
           path: 'blog',
@@ -222,6 +325,38 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     image: 'assets/images/og-image.png',
     colorMode: {
       respectPrefersColorScheme: true,
+    },
+    // Mermaid measures label widths with this font, so it must match the CSS
+    // theme in custom.css, otherwise labels get clipped. `base` keeps Mermaid's
+    // own styling minimal and lets custom.css drive the palette for both modes.
+    mermaid: {
+      theme: {light: 'base', dark: 'base'},
+      options: {
+        fontFamily: "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
+        // More room between nodes and ranks so edge-label chips stop overlapping
+        // on wide fan-outs. Defaults are 50/50.
+        flowchart: {
+          nodeSpacing: 50,
+          rankSpacing: 46,
+          padding: 18,
+          // breathing room around subgraph titles so they don't hug the border
+          subGraphTitleMargin: {top: 12, bottom: 14},
+          // 'basis' (default) overshoots and looks loose; monotoneY gives clean,
+          // non-overshooting curves for a top-down flow.
+          curve: 'monotoneY',
+        },
+        sequence: {
+          // Notes carry request/code detail, render them monospace. Use the generic
+          // `monospace` keyword (NOT a web font or `ui-monospace`): Mermaid measures
+          // note width with this exact string, and `monospace` resolves identically
+          // for measurement and render, so the text can't overflow the box.
+          noteFontFamily: 'monospace',
+          noteFontSize: 12,
+          noteAlign: 'left',
+          // inner padding so the code text never touches the panel edge
+          noteMargin: 16,
+        },
+      },
     },
     navbar: {
       title: '',
@@ -248,7 +383,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           label: 'APIs',
         },
         {
-          to: '/sdks',
+          to: '/sdks-and-tools',
           position: 'right',
           label: 'SDKs & Tools',
         },
@@ -265,6 +400,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         {
           type: 'docSidebar',
           sidebarId: 'communitySidebar',
+          docsPluginId: 'community',
           position: 'right',
           label: 'Community',
         },

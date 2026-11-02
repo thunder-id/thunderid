@@ -25,10 +25,10 @@ func (s *FederatedMappingSuite) twoProfiles(
 	return &testutils.AttributeConfiguration{
 		UserTypeResolution: resolution,
 		UserTypeAttributeMappings: []testutils.UserTypeAttributeMapping{
-			{UserType: fedPersonType.Name, Attributes: []testutils.AttributeMapping{
+			{UserType: fedPersonType.Handle, Attributes: []testutils.AttributeMapping{
 				pair("email", "username"), pair("given_name", "firstName"),
 			}},
-			{UserType: fedContractorType.Name, Attributes: []testutils.AttributeMapping{
+			{UserType: fedContractorType.Handle, Attributes: []testutils.AttributeMapping{
 				pair("email", "username"), pair("family_name", "firstName"),
 			}},
 		},
@@ -47,9 +47,9 @@ func (s *FederatedMappingSuite) TestValueMappingHitSelectsThatProfile() {
 	user.Custom["employment"] = "staff"
 
 	attributes := s.register(s.twoProfiles(&testutils.UserTypeResolution{
-		Default:           fedPersonType.Name,
+		Default:           fedPersonType.Handle,
 		ExternalAttribute: "employment",
-		ValueMapping:      map[string]string{"staff": fedContractorType.Name},
+		ValueMapping:      map[string]string{"staff": fedContractorType.Handle},
 	}), user)
 
 	s.Equal(contractorProfileMarker, attributes["firstName"],
@@ -62,9 +62,9 @@ func (s *FederatedMappingSuite) TestValueMappingMissFallsBackToDefaultProfile() 
 	user.Custom["employment"] = "visitor"
 
 	attributes := s.register(s.twoProfiles(&testutils.UserTypeResolution{
-		Default:           fedPersonType.Name,
+		Default:           fedPersonType.Handle,
 		ExternalAttribute: "employment",
-		ValueMapping:      map[string]string{"staff": fedContractorType.Name},
+		ValueMapping:      map[string]string{"staff": fedContractorType.Handle},
 	}), user)
 
 	s.Equal(personProfileMarker, attributes["firstName"],
@@ -74,10 +74,10 @@ func (s *FederatedMappingSuite) TestValueMappingMissFallsBackToDefaultProfile() 
 // B8: with no value mapping configured, the claim value is used directly as the profile key.
 func (s *FederatedMappingSuite) TestDirectClaimValueSelectsProfile() {
 	user := s.baseUser(s.nextSubject())
-	user.Custom["profile_type"] = fedContractorType.Name
+	user.Custom["profile_type"] = fedContractorType.Handle
 
 	attributes := s.register(s.twoProfiles(&testutils.UserTypeResolution{
-		Default:           fedPersonType.Name,
+		Default:           fedPersonType.Handle,
 		ExternalAttribute: "profile_type",
 	}), user)
 
@@ -91,9 +91,9 @@ func (s *FederatedMappingSuite) TestNestedResolutionClaimSelectsProfile() {
 	user.Custom["profile"] = map[string]interface{}{"tier": "staff"}
 
 	attributes := s.register(s.twoProfiles(&testutils.UserTypeResolution{
-		Default:           fedPersonType.Name,
+		Default:           fedPersonType.Handle,
 		ExternalAttribute: "profile.tier",
-		ValueMapping:      map[string]string{"staff": fedContractorType.Name},
+		ValueMapping:      map[string]string{"staff": fedContractorType.Handle},
 	}), user)
 
 	s.Equal(contractorProfileMarker, attributes["firstName"],
@@ -105,10 +105,10 @@ func (s *FederatedMappingSuite) TestNestedResolutionClaimSelectsProfile() {
 // misses and falls back to the default.
 func (s *FederatedMappingSuite) TestResolutionWhitespaceHandlingDiffersByBranch() {
 	direct := s.baseUser(s.nextSubject())
-	direct.Custom["profile_type"] = "  " + fedContractorType.Name + "  "
+	direct.Custom["profile_type"] = "  " + fedContractorType.Handle + "  "
 
 	attributes := s.register(s.twoProfiles(&testutils.UserTypeResolution{
-		Default:           fedPersonType.Name,
+		Default:           fedPersonType.Handle,
 		ExternalAttribute: "profile_type",
 	}), direct)
 	s.Equal(contractorProfileMarker, attributes["firstName"],
@@ -118,9 +118,9 @@ func (s *FederatedMappingSuite) TestResolutionWhitespaceHandlingDiffersByBranch(
 	mapped.Custom["employment"] = "  staff  "
 
 	attributes = s.register(s.twoProfiles(&testutils.UserTypeResolution{
-		Default:           fedPersonType.Name,
+		Default:           fedPersonType.Handle,
 		ExternalAttribute: "employment",
-		ValueMapping:      map[string]string{"staff": fedContractorType.Name},
+		ValueMapping:      map[string]string{"staff": fedContractorType.Handle},
 	}), mapped)
 	s.Equal(personProfileMarker, attributes["firstName"],
 		"a value-mapping lookup does not trim, so a padded value misses and falls back")
@@ -134,9 +134,9 @@ func (s *FederatedMappingSuite) TestResolutionIsCaseSensitive() {
 	mapped.Custom["employment"] = "STAFF"
 
 	attributes := s.register(s.twoProfiles(&testutils.UserTypeResolution{
-		Default:           fedPersonType.Name,
+		Default:           fedPersonType.Handle,
 		ExternalAttribute: "employment",
-		ValueMapping:      map[string]string{"staff": fedContractorType.Name},
+		ValueMapping:      map[string]string{"staff": fedContractorType.Handle},
 	}), mapped)
 	s.Equal(personProfileMarker, attributes["firstName"],
 		"a value-mapping key is matched exactly, so different casing misses")
@@ -145,7 +145,7 @@ func (s *FederatedMappingSuite) TestResolutionIsCaseSensitive() {
 	direct.Custom["profile_type"] = "FED_CONTRACTOR"
 
 	step := s.registerExpectingPrompt(s.twoProfiles(&testutils.UserTypeResolution{
-		Default:           fedPersonType.Name,
+		Default:           fedPersonType.Handle,
 		ExternalAttribute: "profile_type",
 	}), direct)
 	s.assertPromptsFor(step, "username")
@@ -159,9 +159,9 @@ func (s *FederatedMappingSuite) TestNonStringResolutionClaimIsStringified() {
 	numeric.Custom["level"] = 3
 
 	attributes := s.register(s.twoProfiles(&testutils.UserTypeResolution{
-		Default:           fedPersonType.Name,
+		Default:           fedPersonType.Handle,
 		ExternalAttribute: "level",
-		ValueMapping:      map[string]string{"3": fedContractorType.Name},
+		ValueMapping:      map[string]string{"3": fedContractorType.Handle},
 	}), numeric)
 	s.Equal(contractorProfileMarker, attributes["firstName"],
 		"a numeric claim should stringify to its decimal form and match the mapping key")
@@ -170,9 +170,9 @@ func (s *FederatedMappingSuite) TestNonStringResolutionClaimIsStringified() {
 	boolean.Custom["contractor"] = true
 
 	attributes = s.register(s.twoProfiles(&testutils.UserTypeResolution{
-		Default:           fedPersonType.Name,
+		Default:           fedPersonType.Handle,
 		ExternalAttribute: "contractor",
-		ValueMapping:      map[string]string{"true": fedContractorType.Name},
+		ValueMapping:      map[string]string{"true": fedContractorType.Handle},
 	}), boolean)
 	s.Equal(contractorProfileMarker, attributes["firstName"],
 		"a boolean claim should stringify to true/false")

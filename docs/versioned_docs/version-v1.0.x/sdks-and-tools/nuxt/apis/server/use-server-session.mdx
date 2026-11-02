@@ -1,0 +1,78 @@
+---
+title: useServerSession()
+docType: reference
+description: Read the typed session payload from the current H3 event in Nuxt server routes and middleware.
+---
+
+# `useServerSession()`
+
+`useServerSession` reads the <ProductName /> session from the current H3 event and returns the decoded `ThunderIDSessionPayload`, or `null` if no valid session exists.
+
+## Signature
+
+```ts
+useServerSession(event: H3Event): Promise<ThunderIDSessionPayload | null>
+```
+
+## Import
+
+```ts
+import { useServerSession } from '@thunderid/nuxt/server'
+```
+
+## Usage
+
+### In a Nuxt API Route
+
+```ts title="server/api/profile.get.ts" showLineNumbers
+import { useServerSession } from '@thunderid/nuxt/server'
+
+export default defineEventHandler(async (event) => {
+  const session = await useServerSession(event)
+
+  if (!session) {
+    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  }
+
+  return { sub: session.sub, scopes: session.scopes }
+})
+```
+
+### Server Middleware
+
+```ts title="server/middleware/log.ts" showLineNumbers
+import { useServerSession } from '@thunderid/nuxt/server'
+
+export default defineEventHandler(async (event) => {
+  const session = await useServerSession(event)
+  if (session) {
+    console.log('Authenticated request from:', session.sub)
+  }
+})
+```
+
+## Return Value
+
+Returns a `Promise<ThunderIDSessionPayload | null>`. Returns `null` when:
+- No session cookie is present on the request
+- The session cookie cannot be verified (invalid signature or expired)
+
+### `ThunderIDSessionPayload`
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `sub` | `string` | The user's subject identifier |
+| `sessionId` | `string` | The internal session ID |
+| `accessToken` | `string` | The current access token |
+| `accessTokenExpiresAt` | `number \| undefined` | Access token expiry as a Unix timestamp |
+| `refreshToken` | `string \| undefined` | The refresh token, if issued |
+| `idToken` | `string \| undefined` | The ID token, if issued |
+| `scopes` | `string` | Space-separated list of granted scopes |
+| `organizationId` | `string \| undefined` | The active organization ID, if any |
+| `exp` | `number` | JWT expiry timestamp |
+| `iat` | `number` | JWT issued-at timestamp |
+
+## Notes
+
+- Use [`requireServerSession()`](../require-server-session) to throw a `401` automatically instead of handling `null` manually.
+- The session payload is also available synchronously via [`getThunderIDContext()`](../get-thunderid-context) if the SSR plugin has already run.

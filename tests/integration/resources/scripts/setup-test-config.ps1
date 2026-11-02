@@ -19,7 +19,19 @@ $header = @"
 server:
   hostname: localhost
   port: 8095
+  security:
+    # Exercised by tests/integration/managementapikey: a deployment pipeline authenticating to the
+    # import API without first obtaining OAuth client credentials. This is the SHA-256 digest of
+    # "integration-management-api-key"; the key itself is never configured here.
+    management_api_key_hash: "4955d93012fc5e2ee07b527f13ffe55de32900c410cc198f4d7a9971bb3a9a2d"
 
+
+gateway:
+  # The default of one gateway would refuse the second registration in every uniqueness test before
+  # the rule under test was reached.
+  max_gateways: 5
+  # The suite registers gateways on localhost.
+  allow_private_addresses: true
 
 tls:
   cert_file: "config/certs/server.cert"
@@ -85,7 +97,7 @@ if ($DbType -eq "postgres") {
     password: ""
     sslmode: ""
     path: "database/configdb.db"
-    options: "cache=shared"
+    options: "cache=shared&_pragma=foreign_keys(1)"
 
   runtime_transient:
     type: sqlite
@@ -96,7 +108,7 @@ if ($DbType -eq "postgres") {
     password: ""
     sslmode: ""
     path: "database/runtime_transient.db"
-    options: "cache=shared"
+    options: "cache=shared&_pragma=foreign_keys(1)"
 
   entity:
     type: sqlite
@@ -107,7 +119,7 @@ if ($DbType -eq "postgres") {
     password: ""
     sslmode: ""
     path: "database/entitydb.db"
-    options: "cache=shared"
+    options: "cache=shared&_pragma=foreign_keys(1)"
 
   runtime_persistent:
     type: sqlite
@@ -118,7 +130,7 @@ if ($DbType -eq "postgres") {
     password: ""
     sslmode: ""
     path: "database/runtime_persistent.db"
-    options: "cache=shared"
+    options: "cache=shared&_pragma=foreign_keys(1)"
 "@
 }
 

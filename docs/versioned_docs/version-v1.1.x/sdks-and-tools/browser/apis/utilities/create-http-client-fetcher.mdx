@@ -1,0 +1,45 @@
+---
+title: createHttpClientFetcher()
+docType: reference
+description: Build an authenticated fetch-shaped function backed by the SDK's shared HTTP client.
+---
+
+# `createHttpClientFetcher()`
+
+`createHttpClientFetcher` builds a `fetch`-shaped function backed by the SDK's shared `FetchHttpClient` singleton (the same instance `auth.getHttpClient()` returns), so it attaches the access token the way `auth.httpRequest()` does. Pass its return value as [`updateMeCredentials()`](../update-me-credentials)'s `fetcher`; without one, the request goes out unauthenticated.
+
+This is what `@thunderid/react` and `@thunderid/vue` use internally to wire `updateMeCredentials` to their own HTTP client. A vanilla app can reach for it too, as an alternative to hand-rolling a fetcher from `auth.getAccessToken()`; either approach works.
+
+`FetchHttpClient.request` throws on a non-2xx response rather than resolving it. This adapter catches that and reconstructs a `Response`-shaped object from the thrown error, so the core function sees the real status and body instead of treating every failure as a network error. A genuine network error (no response attached) still propagates.
+
+## Signature
+
+```ts
+createHttpClientFetcher(instanceId?: number): (url: string, config: RequestInit) => Promise<Response>
+```
+
+## Parameters
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `instanceId` | `number` | `0` | Which `FetchHttpClient` instance to use, for apps running multiple SDK instances on the same page. |
+
+## Returns
+
+`(url: string, config: RequestInit) => Promise<Response>`
+
+## Usage
+
+```js
+import { createHttpClientFetcher, updateMeCredentials } from '@thunderid/browser'
+
+await updateMeCredentials({
+  baseUrl,
+  payload: { password: newValue },
+  fetcher: createHttpClientFetcher(), // instanceId defaults to 0
+})
+```
+
+## Related
+
+- [`updateMeCredentials()`](../update-me-credentials): The usual consumer of this fetcher

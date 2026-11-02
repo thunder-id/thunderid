@@ -1,13 +1,17 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package granthandlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 	"time"
+
+	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -23,14 +27,24 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
+	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
+	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/authzmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
+
+// noAuthzDetails refuses every detail; the server runtime must be initialized first.
+func noAuthzDetails() providers.AuthorizationDetailProvider {
+	return authzdetailexec.Initialize(nil, time.Second)
+}
 
 const (
 	oidcReadWriteScopes         = "openid read write"
@@ -72,6 +86,7 @@ type AuthorizationCodeGrantHandlerTestSuite struct {
 	mockAuthzService     *authzmock.AuthorizeServiceInterfaceMock
 	mockAttrCacheService *attributecachemock.AttributeCacheServiceInterfaceMock
 	mockResourceService  *resourcemock.ResourceServiceInterfaceMock
+	mockEnforcement      *revocationmock.EnforcementServiceInterfaceMock
 	oauthApp             *providers.OAuthClient
 	testAuthzCode        authz.AuthorizationCode
 	testTokenReq         *model.TokenRequest
@@ -95,6 +110,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) SetupTest() {
 	suite.mockAuthzService = authzmock.NewAuthorizeServiceInterfaceMock(suite.T())
 	suite.mockAttrCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	suite.mockEnforcement = revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
 
 	// Resolve any explicit resource identifier to an echo RS (ID == Identifier); an empty identifier
 	// resolves to the configured default resource server, as the default-aware provider does.
@@ -111,6 +127,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) SetupTest() {
 		Return([]string{}, nil).Maybe()
 
 	suite.handler = &authorizationCodeGrantHandler{
+		authzDetails:    noAuthzDetails(),
 		tokenBuilder:    suite.mockTokenBuilder,
 		authzService:    suite.mockAuthzService,
 		attributeCache:  suite.mockAttrCacheService,
@@ -177,8 +194,8 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) stubDefaultResourceServer()
 }
 
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestNewAuthorizationCodeGrantHandler() {
-	handler := newAuthorizationCodeGrantHandler(
-		suite.mockAuthzService, suite.mockTokenBuilder, suite.mockAttrCacheService, suite.mockResourceService)
+	handler := newAuthorizationCodeGrantHandler(suite.mockAuthzService, suite.mockTokenBuilder,
+		suite.mockAttrCacheService, suite.mockResourceService, suite.mockEnforcement, time.Hour, noAuthzDetails())
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }
@@ -358,6 +375,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_ActorClaim(
 			suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 			suite.stubDefaultResourceServer()
 			suite.handler = &authorizationCodeGrantHandler{
+				authzDetails:    noAuthzDetails(),
 				tokenBuilder:    suite.mockTokenBuilder,
 				authzService:    suite.mockAuthzService,
 				attributeCache:  suite.mockAttrCacheService,
@@ -407,6 +425,121 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_ActorClaim(
 			suite.mockTokenBuilder.AssertExpectations(suite.T())
 		})
 	}
+}
+
+// The code carries the subject resolved during login. Reporting it depends on the handler passing it
+// to the builder, so assert on the build context rather than on the response: without it the builder
+// falls back to resolving the token subject, which is a mapped attribute on some deployments and
+// resolves to nothing, silently dropping the subject from the issuance events.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_PassesCodeSubjectToTheBuilder() {
+	authCode := suite.testAuthzCode
+	authCode.SubjectID = "user-entity-1"
+	authCode.SubjectCategory = string(providers.EntityCategoryUser)
+
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCode, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(tokenCtx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenCtx.SubjectEntityID == "user-entity-1" &&
+				tokenCtx.SubjectCategory == string(providers.EntityCategoryUser)
+		})).Return(&model.TokenDTO{
+		Token:     "test-jwt-token",
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		ClientID:  testClientID,
+		Subject:   testUserID,
+	}, nil)
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_PassesCodeAuthorizationDetailsToTheBuilder() {
+	details := json.RawMessage(testPaymentValues)
+	authCode := suite.testAuthzCode
+	authCode.AuthorizationDetails = testPaymentDetails
+
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCode, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(tokenCtx *tokenservice.AccessTokenBuildContext) bool {
+			return string(tokenCtx.AuthorizationDetails) == testPaymentValues
+		})).Return(&model.TokenDTO{
+		Token:                "test-jwt-token",
+		TokenType:            constants.TokenTypeBearer,
+		IssuedAt:             time.Now().Unix(),
+		ExpiresIn:            3600,
+		ClientID:             testClientID,
+		Subject:              testUserID,
+		AuthorizationDetails: details,
+	}, nil)
+
+	result, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), details, result.AccessToken.AuthorizationDetails)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_RefreshCarriesOnlyReusableDetails() {
+	details := json.RawMessage(`[{"type":"payment_initiation"},{"type":"account_information"}]`)
+	account := providers.AuthorizationDetail{Type: "account_information", TypeID: "type-3", TypeVersion: 1,
+		Value: json.RawMessage(`{"type":"account_information"}`), Admitted: true}
+	refreshable := []providers.AuthorizationDetail{account}
+	authCode := suite.testAuthzCode
+	authCode.AuthorizationDetails = []providers.AuthorizationDetail{{Type: "payment_initiation", TypeID: "type-2",
+		TypeVersion: 2, Value: json.RawMessage(`{"type":"payment_initiation"}`), Admitted: true}, account}
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().RefreshableAuthorizationDetails(mock.Anything, authCode.AuthorizationDetails).
+		Return(refreshable, nil).Once()
+	handler := newAuthorizationCodeGrantHandler(
+		suite.mockAuthzService, suite.mockTokenBuilder, suite.mockAttrCacheService, suite.mockResourceService,
+		suite.mockEnforcement, time.Hour, authzDetails)
+	suite.mockEnforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).Return(nil)
+
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCode, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(tokenCtx *tokenservice.AccessTokenBuildContext) bool {
+			return string(tokenCtx.AuthorizationDetails) == string(details)
+		})).Return(&model.TokenDTO{
+		Token: "test-jwt-token", TokenType: constants.TokenTypeBearer, IssuedAt: time.Now().Unix(),
+		ExpiresIn: 3600, ClientID: testClientID, Subject: testUserID, AuthorizationDetails: details,
+	}, nil)
+
+	result, err := handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), details, result.AccessToken.AuthorizationDetails)
+	assert.Equal(suite.T(), refreshable, result.RefreshableAuthorizationDetails,
+		"the refresh token keeps only the renewed details")
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_CarriesCodeCorrelationID() {
+	authCode := suite.testAuthzCode
+	authCode.CorrelationID = "flow-exec-1"
+
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCode, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token:     "test-jwt-token",
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		ClientID:  testClientID,
+		Subject:   testUserID,
+	}, nil)
+
+	result, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), "flow-exec-1", result.CorrelationID)
 }
 
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_InvalidAuthorizationCode() {
@@ -638,6 +771,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_WithGroups(
 			suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 			suite.stubDefaultResourceServer()
 			suite.handler = &authorizationCodeGrantHandler{
+				authzDetails:    noAuthzDetails(),
 				tokenBuilder:    suite.mockTokenBuilder,
 				authzService:    suite.mockAuthzService,
 				attributeCache:  suite.mockAttrCacheService,
@@ -838,6 +972,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_WithEmptyGr
 			suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 			suite.stubDefaultResourceServer()
 			suite.handler = &authorizationCodeGrantHandler{
+				authzDetails:    noAuthzDetails(),
 				tokenBuilder:    suite.mockTokenBuilder,
 				authzService:    suite.mockAuthzService,
 				attributeCache:  suite.mockAttrCacheService,
@@ -1607,4 +1742,296 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_DownscopeVa
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
+}
+
+// TestResolveAuthTime_ZeroFallsBackToCreation covers codes minted before AuthTime existed as a field:
+// they unmarshal from the runtime store with a zero value, so a code still in flight across an
+// upgrade must not report a year-1 authentication. Its creation time is the right stand-in, since
+// authorization did not consult an existing session for those codes.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestResolveAuthTime_ZeroFallsBackToCreation() {
+	created := time.Now().Add(-2 * time.Minute)
+	code := &authz.AuthorizationCode{TimeCreated: created}
+
+	got := resolveAuthTime(code)
+
+	suite.Equal(created.Unix(), got, "a zero AuthTime should fall back to the code's creation time")
+	suite.Positive(got, "the fallback must never yield a negative Unix timestamp")
+}
+
+// TestResolveAuthTime_PrefersAuthTime verifies the normal path: when the field is set it wins, which
+// is what keeps auth_time stable across a reused session.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestResolveAuthTime_PrefersAuthTime() {
+	authenticated := time.Now().Add(-time.Hour)
+	code := &authz.AuthorizationCode{
+		TimeCreated: time.Now(),
+		AuthTime:    authenticated,
+	}
+
+	got := resolveAuthTime(code)
+
+	suite.Equal(authenticated.Unix(), got,
+		"auth_time must report the authentication, not when the code was minted")
+}
+
+// testSessionID is the SSO session id the grant tests carry through the sid path.
+const testSessionID = "sess-1"
+
+// The code's session id reaches both the ID token and the grant response.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_CarriesCodeSessionID() {
+	authCode := suite.testAuthzCode
+	authCode.Scopes = oidcReadWriteScopes
+	authCode.SessionID = testSessionID
+
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCode, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token:     "test-jwt-token",
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		Scopes:    []string{"openid", "read", "write"},
+		ClientID:  testClientID,
+	}, nil)
+	suite.mockTokenBuilder.On("BuildIDToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.IDTokenBuildContext) bool {
+			return ctx.SessionID == testSessionID
+		})).Return(&model.TokenDTO{Token: "test-id-token"}, nil)
+
+	result, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), testSessionID, result.SessionID)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
+// redeemBoundCode redeems a code bound to testResourceURL against the given deny list, echoing the minted scopes.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) redeemBoundCode(scopes string,
+	rows ...revocation.CriteriaRevocation) (*model.TokenResponseDTO, *model.ErrorResponse) {
+	authCode := suite.testAuthzCode
+	authCode.Scopes = scopes
+	authCode.Resources = []string{testResourceURL}
+	authCode.TokenFamilyID = "family-1"
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCode, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(
+		func(_ context.Context, ctx *tokenservice.AccessTokenBuildContext) (*model.TokenDTO, error) {
+			return &model.TokenDTO{Token: "test-jwt-token", Scopes: ctx.Scopes, ClientID: testClientID}, nil
+		}).Maybe()
+	suite.mockTokenBuilder.On("BuildIDToken", mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "test-id-token"}, nil).Maybe()
+	suite.mockEnforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).
+		RunAndReturn(denyListLookup(rows...))
+	suite.handler.enforcementService = suite.mockEnforcement
+
+	return suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_ScopeRevokedForSubjectAfterIssueIsNotMinted() {
+	result, errResp := suite.redeemBoundCode(oidcReadWriteScopes, revocation.CriteriaRevocation{
+		Criterion: revocation.Criterion{
+			Type:  revocation.CriterionTypeEntityScope,
+			Value: sharedrevocation.EntityScopeCriterionValue(testUserID, testResourceURL, "write"),
+		},
+		Reason: revocation.RevocationReasonRoleAssignmentRemoved,
+		Cutoff: suite.testAuthzCode.TimeCreated.Add(time.Minute),
+	})
+
+	suite.Require().Nil(errResp)
+	suite.Equal([]string{"openid", "read"}, result.AccessToken.Scopes)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_ScopeRevokedDeploymentWideAfterIssueIsNotMinted() {
+	result, errResp := suite.redeemBoundCode(oidcReadWriteScopes, revocation.CriteriaRevocation{
+		Criterion: revocation.Criterion{
+			Type:  revocation.CriterionTypeScope,
+			Value: sharedrevocation.ScopeCriterionValue(testResourceURL, "read"),
+		},
+		Reason: revocation.RevocationReasonActionDeleted,
+		Cutoff: suite.testAuthzCode.TimeCreated.Add(time.Minute),
+	})
+
+	suite.Require().Nil(errResp)
+	suite.Equal([]string{"openid", "write"}, result.AccessToken.Scopes)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_EveryScopeRevokedAfterIssueIsRefused() {
+	revokedAfterIssue := func(scope string) revocation.CriteriaRevocation {
+		return revocation.CriteriaRevocation{
+			Criterion: revocation.Criterion{
+				Type:  revocation.CriterionTypeEntityScope,
+				Value: sharedrevocation.EntityScopeCriterionValue(testUserID, testResourceURL, scope),
+			},
+			Reason: revocation.RevocationReasonRoleAssignmentRemoved,
+			Cutoff: suite.testAuthzCode.TimeCreated.Add(time.Minute),
+		}
+	}
+
+	result, errResp := suite.redeemBoundCode("read write", revokedAfterIssue("read"), revokedAfterIssue("write"))
+
+	suite.Nil(result)
+	suite.Equal(&model.ErrorResponse{
+		Error: constants.ErrorInvalidGrant, ErrorDescription: "The authorization grant has been revoked"}, errResp)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_EveryPermissionRevokedStillMintsOIDCScopes() {
+	result, errResp := suite.redeemBoundCode("openid read", revocation.CriteriaRevocation{
+		Criterion: revocation.Criterion{
+			Type:  revocation.CriterionTypeEntityScope,
+			Value: sharedrevocation.EntityScopeCriterionValue(testUserID, testResourceURL, "read"),
+		},
+		Reason: revocation.RevocationReasonRoleAssignmentRemoved,
+		Cutoff: suite.testAuthzCode.TimeCreated.Add(time.Minute),
+	})
+
+	suite.Require().Nil(errResp)
+	suite.Equal([]string{"openid"}, result.AccessToken.Scopes)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_ScopeRevokedBeforeIssueIsMinted() {
+	result, errResp := suite.redeemBoundCode(oidcReadWriteScopes, revocation.CriteriaRevocation{
+		Criterion: revocation.Criterion{
+			Type:  revocation.CriterionTypeEntityScope,
+			Value: sharedrevocation.EntityScopeCriterionValue(testUserID, testResourceURL, "write"),
+		},
+		Reason: revocation.RevocationReasonRoleAssignmentRemoved,
+		Cutoff: suite.testAuthzCode.TimeCreated.Add(-time.Minute),
+	})
+
+	suite.Require().Nil(errResp)
+	suite.Equal([]string{"openid", "read", "write"}, result.AccessToken.Scopes)
+	suite.mockEnforcement.AssertNumberOfCalls(suite.T(), "EnsureNotRevoked", 1)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_OIDCScopesAreNotRevocationCriteria() {
+	result, errResp := suite.redeemBoundCode("openid profile read", revocation.CriteriaRevocation{
+		Criterion: revocation.Criterion{
+			Type:  revocation.CriterionTypeEntityScope,
+			Value: sharedrevocation.EntityScopeCriterionValue(testUserID, testResourceURL, "profile"),
+		},
+		Reason: revocation.RevocationReasonRoleAssignmentRemoved,
+		Cutoff: suite.testAuthzCode.TimeCreated.Add(time.Minute),
+	})
+
+	suite.Require().Nil(errResp)
+	suite.Equal([]string{"openid", "profile", "read"}, result.AccessToken.Scopes)
+	suite.mockEnforcement.AssertCalled(suite.T(), "EnsureNotRevoked", mock.Anything,
+		revocation.RevocationIdentity{
+			EstablishedAt: suite.testAuthzCode.TimeCreated.UTC().Truncate(time.Second),
+			Criteria: []revocation.Criterion{
+				{Type: revocation.CriterionTypeEntityScope,
+					Value: sharedrevocation.EntityScopeCriterionValue(testUserID, testResourceURL, "read")},
+				{Type: revocation.CriterionTypeScope,
+					Value: sharedrevocation.ScopeCriterionValue(testResourceURL, "read")},
+				{Type: revocation.CriterionTypeTokenFamily, Value: "family-1"},
+				{Type: revocation.CriterionTypeSubject, Value: testUserID},
+				{Type: revocation.CriterionTypeApplicationKey, Value: testClientID},
+			},
+		})
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_GrantRevokedAfterIssueIsRefused() {
+	testCases := []struct {
+		name      string
+		criterion revocation.Criterion
+		reason    revocation.RevocationReason
+	}{
+		{"Subject", revocation.Criterion{Type: revocation.CriterionTypeSubject, Value: testUserID},
+			revocation.RevocationReasonUserDeleted},
+		{"Application", revocation.Criterion{Type: revocation.CriterionTypeApplicationKey, Value: testClientID},
+			revocation.RevocationReasonApplicationSecretRegenerated},
+		{"TokenFamily", revocation.Criterion{Type: revocation.CriterionTypeTokenFamily, Value: "family-1"},
+			revocation.RevocationReasonSessionLogout},
+	}
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+
+			result, errResp := suite.redeemBoundCode(oidcReadWriteScopes, revocation.CriteriaRevocation{
+				Criterion: tc.criterion,
+				Reason:    tc.reason,
+				Cutoff:    suite.testAuthzCode.TimeCreated.Add(time.Minute),
+			})
+
+			suite.Nil(result)
+			suite.Require().NotNil(errResp)
+			suite.Equal(constants.ErrorInvalidGrant, errResp.Error)
+			suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_DenyListUnavailableIsRefused() {
+	authCode := suite.testAuthzCode
+	authCode.Resources = []string{testResourceURL}
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCode, nil)
+	suite.mockEnforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).
+		Return(revocation.ErrEnforcementUnavailable)
+	suite.handler.enforcementService = suite.mockEnforcement
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	suite.Nil(result)
+	suite.Require().NotNil(errResp)
+	suite.Equal(constants.ErrorServerError, errResp.Error)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+}
+
+// boundSessions is the SSO sessions the callback kept on the test code.
+var boundSessions = []model.SessionData{
+	{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-abc"},
+	{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-def"},
+}
+
+// boundCode returns the test code keeping the SSO sessions the callback bound to it.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) boundCode() authz.AuthorizationCode {
+	code := suite.testAuthzCode
+	code.SubjectID = "user-entity-id"
+	code.SessionData = boundSessions
+	return code
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_CarriesTheBoundSessions() {
+	suite.handler.deviceSecretValidity = time.Hour
+	code := suite.boundCode()
+	suite.mockTokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything,
+		mock.MatchedBy(func(c *tokenservice.DeviceSecretBuildContext) bool {
+			return c.OAuthApp == suite.oauthApp && c.SubjectID == "user-entity-id" &&
+				slices.Equal(c.SessionData, boundSessions) && c.ValidityPeriod == 3600
+		})).Return(&model.TokenDTO{Token: "device-secret"}, nil)
+
+	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
+
+	suite.Equal("device-secret", got.Token)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_NoneWhenTheCodeKeepsNoSession() {
+	code := suite.testAuthzCode
+
+	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
+
+	suite.Empty(got.Token)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildDeviceSecret", mock.Anything, mock.Anything)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_NoneWithoutASessionService() {
+	code := suite.boundCode()
+
+	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
+
+	suite.Empty(got.Token)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildDeviceSecret", mock.Anything, mock.Anything)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_BuildFailureIsNotFatal() {
+	suite.handler.deviceSecretValidity = time.Hour
+	code := suite.boundCode()
+	suite.mockTokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything, mock.Anything).
+		Return(nil, errors.New("signing failed"))
+
+	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
+
+	suite.Empty(got.Token)
 }

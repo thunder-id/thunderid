@@ -4,6 +4,7 @@
 package core
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 
@@ -12,22 +13,85 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// GetExternalIdentity decodes the external identity from runtime data. It returns nil when none is
+// set or the entry does not decode.
+func GetExternalIdentity(runtimeData map[string]string) *ExternalIdentity {
+	raw := runtimeData[common.RuntimeKeyExternalIdentity]
+	if raw == "" {
+		return nil
+	}
+	var identity ExternalIdentity
+	if err := json.Unmarshal([]byte(raw), &identity); err != nil {
+		return nil
+	}
+	return &identity
+}
+
+// GetExternalClaim returns one claim of the external identity as a string, and whether it is present.
+// Readers of attribute values consult it after their own sources. Reads of flow control state never
+// do, which is what keeps an external party from steering the flow.
+// TODO: Extract the UserInputs, RuntimeData and external claim lookup the executors repeat into one
+// helper, so the order in which claims are consulted lives in one place.
+func GetExternalClaim(runtimeData map[string]string, name string) (string, bool) {
+	return GetExternalIdentity(runtimeData).Claim(name)
+}
+
+// resolveVariables returns a copy of value with every {{var(name)}} placeholder replaced by the value of the flow
+// variable it names, read from the runtime data of the context. A value that names no variable is returned as it is.
+func resolveVariables(value interface{}, ctx *providers.NodeContext) interface{} {
+	if ctx == nil || len(ctx.RuntimeData) == 0 || len(References(value)) == 0 {
+		return value
+	}
+	return resolve(value, ctx.RuntimeData)
+}
+
 // placeholderPattern matches {{ctx(key)}} with optional whitespace.
 // TODO: Extend to support {{user(key)}}, {{env(key)}}, etc.
 var placeholderPattern = regexp.MustCompile(`{{\s*ctx\(\s*(\w+)\s*\)\s*}}`)
 
-// ResolvePlaceholder resolves a single placeholder string using the "{{ctx(key)}}" syntax.
+// requestPlaceholderPattern matches {{request(<selector>)}} with optional whitespace, capturing the
+// raw selector so it can be parsed into an optional source, a type (header/query) and a name.
+var requestPlaceholderPattern = regexp.MustCompile(`{{\s*request\(\s*([^)]*?)\s*\)\s*}}`)
+
+// variablePlaceholderPattern matches {{var(id)}}, with optional whitespace, and captures the id. It is written like
+// the other placeholders of a node's properties, {{ctx(key)}} and {{request(selector)}}.
+var variablePlaceholderPattern = regexp.MustCompile(`\{\{\s*var\(\s*([A-Za-z][A-Za-z0-9_]*)\s*\)\s*\}\}`)
+
+// Request selector source tokens used in {{request(...)}} placeholders. requestSourceInit refers
+// to the flow-initiation request and requestSourceCurrent to the current flow step request. When the
+// source is omitted, it defaults to current, so {{request(header.X)}} reads the current request.
+const (
+	requestSourceInit    = "init"
+	requestSourceCurrent = "current"
+)
+
+// Request selector type tokens used in {{request(...)}} placeholders. requestTypeHeader selects a
+// request header (case-insensitive) and requestTypeQuery a query parameter (case-sensitive).
+const (
+	requestTypeHeader = "header"
+	requestTypeQuery  = "query"
+)
+
+// ResolvePlaceholder resolves a single placeholder string using the "{{ctx(key)}}" and
+// "{{request(...)}}" syntaxes.
 // If no placeholder is found, the original value is returned.
 // If a placeholder is found but the key doesn't exist in any data source, the placeholder is kept as-is.
+// The external identity's claims are consulted only when allowExternalClaims is set. Flow control
+// reads leave it unset.
 func ResolvePlaceholder(ctx *providers.NodeContext, value string, execResp *providers.ExecutorResponse,
-	authnProvider providers.AuthnProviderManager, logger *log.Logger) string {
+	authnProvider providers.AuthnProviderManager, allowExternalClaims bool, logger *log.Logger) string {
 	if ctx == nil {
 		return value
 	}
 
 	var contextUserRef *providers.EntityReference
+	var extIdentity *ExternalIdentity
+	extIdentityDecoded := false
 
-	return placeholderPattern.ReplaceAllStringFunc(value, func(match string) string {
+	// Resolve {{ctx(...)}} first, then {{request(...)}}: the request pass runs last so {{ctx(...)}}
+	// text inside a request value isn't re-resolved. Credentials are stripped at capture, so no
+	// secret is reachable through a request placeholder.
+	value = placeholderPattern.ReplaceAllStringFunc(value, func(match string) string {
 		submatches := placeholderPattern.FindStringSubmatch(match)
 		if len(submatches) < 2 {
 			return match
@@ -68,6 +132,16 @@ func ResolvePlaceholder(ctx *providers.NodeContext, value string, execResp *prov
 		if runtimeValue, ok := ctx.RuntimeData[key]; ok && runtimeValue != "" {
 			return runtimeValue
 		}
+		// External claims are only a fallback and must never take priority over runtime data.
+		if allowExternalClaims {
+			if !extIdentityDecoded {
+				extIdentity = GetExternalIdentity(ctx.RuntimeData)
+				extIdentityDecoded = true
+			}
+			if claimValue, ok := extIdentity.Claim(key); ok && claimValue != "" {
+				return claimValue
+			}
+		}
 
 		// Check user inputs next
 		if userInputValue, ok := ctx.UserInputs[key]; ok && userInputValue != "" {
@@ -77,6 +151,102 @@ func ResolvePlaceholder(ctx *providers.NodeContext, value string, execResp *prov
 		// If not found, keep the placeholder as-is
 		return match
 	})
+
+	return resolveRequestPlaceholders(ctx, value)
+}
+
+// resolveRequestPlaceholders resolves {{request(...)}} placeholders from the request data on the
+// node context. The selector is "[source.]type.name": source is "init" or "current" (defaulting to
+// current when omitted), type is "header" (case-insensitive) or "query" (case-sensitive). The first
+// value is returned; unresolvable placeholders are kept as-is.
+func resolveRequestPlaceholders(ctx *providers.NodeContext, value string) string {
+	return requestPlaceholderPattern.ReplaceAllStringFunc(value, func(match string) string {
+		submatches := requestPlaceholderPattern.FindStringSubmatch(match)
+		if len(submatches) < 2 {
+			return match
+		}
+
+		source, kind, name, ok := parseRequestSelector(submatches[1])
+		if !ok {
+			return match
+		}
+
+		// The init and current requests are distinct types carrying the same header/query shape;
+		// read the relevant maps for the selected source.
+		var headers, queryParams map[string][]string
+		switch source {
+		case requestSourceInit:
+			if req := ctx.GetInitiatorRequest(); req != nil {
+				headers, queryParams = req.Headers, req.QueryParams
+			} else {
+				return match
+			}
+		case requestSourceCurrent:
+			if req := common.CurrentRequestFrom(ctx.Context); req != nil {
+				headers, queryParams = req.Headers, req.QueryParams
+			} else {
+				return match
+			}
+		}
+
+		var resolved string
+		var found bool
+		switch kind {
+		case requestTypeHeader:
+			resolved, found = firstHeaderValue(headers, name)
+		case requestTypeQuery:
+			resolved, found = firstValue(queryParams[name])
+		}
+		if !found {
+			return match
+		}
+		return resolved
+	})
+}
+
+// parseRequestSelector splits a request selector into its source, type and name components.
+// It accepts "type.name" (source defaults to "current") or "source.type.name". source must be
+// "init" or "current" and type must be "header" or "query"; name is the remainder and may contain dots.
+func parseRequestSelector(selector string) (source, kind, name string, ok bool) {
+	source = requestSourceCurrent
+
+	head, rest, hasRest := strings.Cut(selector, ".")
+	if !hasRest {
+		return "", "", "", false
+	}
+	if head == requestSourceInit || head == requestSourceCurrent {
+		source = head
+		head, rest, hasRest = strings.Cut(rest, ".")
+		if !hasRest {
+			return "", "", "", false
+		}
+	}
+
+	if head != requestTypeHeader && head != requestTypeQuery {
+		return "", "", "", false
+	}
+	if rest == "" {
+		return "", "", "", false
+	}
+	return source, head, rest, true
+}
+
+// firstHeaderValue returns the first value for a header, matching the name case-insensitively.
+func firstHeaderValue(headers map[string][]string, name string) (string, bool) {
+	for key, values := range headers {
+		if strings.EqualFold(key, name) {
+			return firstValue(values)
+		}
+	}
+	return "", false
+}
+
+// firstValue returns the first element of a string slice.
+func firstValue(values []string) (string, bool) {
+	if len(values) == 0 {
+		return "", false
+	}
+	return values[0], true
 }
 
 // fetchContextUserRef attempts to resolve the authenticated user's entity reference using the authn provider.
@@ -140,6 +310,7 @@ func IsOptionalInputPrompted(presentedOptionalInputs map[string]struct{}, identi
 func collectMissingInputs(ctx *providers.NodeContext, presentedOptionalInputs map[string]struct{},
 	requiredInputs []providers.Input, logger *log.Logger) []providers.Input {
 	missing := make([]providers.Input, 0, len(requiredInputs))
+	extIdentity := GetExternalIdentity(ctx.RuntimeData)
 	for _, input := range requiredInputs {
 		if _, ok := ctx.UserInputs[input.Identifier]; ok {
 			continue
@@ -155,6 +326,14 @@ func collectMissingInputs(ctx *providers.NodeContext, presentedOptionalInputs ma
 					log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
 				continue
 			}
+		}
+		// External claims are only a fallback and must never take priority over runtime data. A
+		// credential is never taken from a claim.
+		if value, ok := extIdentity.Claim(input.Identifier); ok && value != "" &&
+			input.Type != providers.InputTypePassword {
+			logger.Debug(ctx.Context, "Input available in external claims, skipping",
+				log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
+			continue
 		}
 		if !input.Required && IsOptionalInputPrompted(presentedOptionalInputs, input.Identifier) {
 			logger.Debug(ctx.Context, "Optional input already prompted, skipping",

@@ -8,6 +8,9 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -21,6 +24,10 @@ import (
 func Initialize(
 	cacheManager cache.CacheManagerInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	roleService role.RoleServiceInterface,
+	groupService group.GroupServiceInterface,
+	resourceService providers.ResourceServerProvider,
+	ouService ou.OrganizationUnitServiceInterface,
 ) (IDPServiceInterface, error) {
 	// Create store and transactioner based on store mode
 	idpStore, transactioner, err := initializeStore(cacheManager)
@@ -28,7 +35,8 @@ func Initialize(
 		return nil, err
 	}
 
-	idpService := newIDPService(idpStore, entityTypeService, transactioner)
+	idpService := newIDPService(idpStore, entityTypeService, roleService, groupService, resourceService, transactioner,
+		ouService)
 	return idpService, nil
 }
 

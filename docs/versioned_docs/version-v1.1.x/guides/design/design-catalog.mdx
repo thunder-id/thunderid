@@ -1,0 +1,148 @@
+---
+title: Design Catalog
+docType: reference
+sidebar_position: 4
+description: Complete reference for theme and layout properties including color schemes, typography, blur effects, and custom stylesheets.
+---
+
+# Design Catalog
+
+This catalog provides the complete property reference for [themes](../themes) and [layouts](../layouts). Refer to this page when configuring your design.
+
+## Theme Properties
+
+### Color Schemes
+
+Every theme supports light and dark color schemes. Set `defaultColorScheme` to `light`, `dark`, or `system` to control which scheme loads by default. The `system` option matches each user's device preference automatically. Define both palettes and let the correct one load based on the user's setting.
+
+Each color scheme defines a full color palette:
+
+| Color | Properties | Description |
+|-------|-----------|-------------|
+| **Primary** | `main`, `dark`, `light`, `contrastText` | Main brand color for buttons, links, and interactive elements. |
+| **Secondary** | `main`, `dark`, `light`, `contrastText` | Supporting brand color for secondary actions and accents. |
+| **Error** | `main`, `contrastText` | Color for error states and validation messages. |
+| **Warning** | `main`, `contrastText` | Color for warning messages. |
+| **Info** | `main`, `contrastText` | Color for informational messages. |
+| **Success** | `main`, `contrastText` | Color for success states and confirmations. |
+| **Background** | `default`, `paper`, `acrylic` | Page background, card or surface background, and frosted glass overlay. |
+| **Text** | `primary`, `secondary` | Primary and muted secondary text colors. |
+
+### Shape
+
+| Property | Description | Default |
+|----------|-------------|---------|
+| `borderRadius` | Corner radius in pixels for cards, buttons, and inputs. | `8` |
+
+### Blur Effects
+
+Blur effects create frosted glass (acrylic) backgrounds on cards and dialog boxes.
+
+| Level | Effect | Default Value |
+|-------|--------|---------|
+| `none` | No blur. | `none` |
+| `light` | Subtle frosted effect. | `blur(5px)` |
+| `medium` | Moderate frosted effect. | `blur(10px)` |
+| `heavy` | Strong frosted effect. | `blur(15px)` |
+
+:::tip
+Pair blur effects with a semi-transparent `background.acrylic` color to create a frosted glass card effect over gradient backgrounds.
+:::
+
+### Gradients
+
+Define CSS gradients for primary and secondary surfaces.
+
+| Property | Description | Default |
+|----------|-------------|---------|
+| `primary` | Gradient for primary surfaces and backgrounds. | `linear-gradient(90deg, #3688FF 0%, #1d5eb4 100%)` |
+| `secondary` | Gradient for secondary surfaces and accents. | `linear-gradient(90deg, #3688FF 0%, #1d5eb4 100%)` |
+
+### Typography
+
+| Property | Description |
+|----------|-------------|
+| `fontFamily` | Font family for all text on authentication screens. Supports browser-safe fonts (Arial, Georgia, Helvetica, Times New Roman, Verdana) and Google Fonts with an import URL. |
+
+### Text Direction
+
+| Value | Description |
+|-------|-------------|
+| `ltr` | Left-to-right text direction (default). |
+| `rtl` | Right-to-left text direction for languages such as Arabic and Hebrew. |
+
+### Component Overrides
+
+Customize the styling of individual UI components such as buttons, text fields, select menus, links, chips, dialog boxes, and popovers. Component overrides accept CSS-in-JS properties for precise control over each element's appearance.
+
+### Default Theme
+
+<ProductName /> ships with a default theme that uses an electric blue primary color and a teal secondary color.
+
+| Property | Light | Dark |
+|----------|-------|------|
+| Primary color | `#3688FF` | `#3688FF` |
+| Secondary color | `#5498b4` | `#5498b4` |
+| Background | `#ffffff` | `#060d1a` |
+| Text | `#181818` | `#ffffff` |
+| Border radius | `8px` | `8px` |
+
+The dark color scheme uses ambient gradient backgrounds that produce a deep navy appearance with subtle blue glow effects.
+
+## Layout Properties
+
+### Screen Type
+
+The `centered` template is the supported screen type. It positions the main content container at the center of the screen.
+
+| Value | Description |
+|-------|-------------|
+| `centered` | Centers the main content container on the screen. |
+
+### Custom Stylesheets
+
+Layouts support injecting custom stylesheets into authentication screens through the `head` configuration. Use custom stylesheets for CSS customizations beyond what theme properties offer.
+
+#### Inline Stylesheets
+
+Embed CSS directly in the layout configuration.
+
+```json
+{
+  "head": {
+    "stylesheets": [
+      {
+        "id": "custom-overrides",
+        "type": "inline",
+        "content": ".auth-card { box-shadow: 0 4px 20px rgba(0,0,0,0.1); }"
+      }
+    ]
+  }
+}
+```
+
+#### External Stylesheets
+
+Link to an external stylesheet hosted over HTTPS.
+
+```json
+{
+  "head": {
+    "stylesheets": [
+      {
+        "id": "brand-styles",
+        "type": "url",
+        "href": "https://cdn.example.com/auth-styles.css"
+      }
+    ]
+  }
+}
+```
+
+:::tip
+Set `disabled` to `true` on a stylesheet to skip injection without removing the entry from your configuration. This approach lets you preview changes before applying them.
+:::
+
+:::warning
+External stylesheets must be served over HTTPS. HTTP URLs are rejected.
+:::

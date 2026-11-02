@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ExternalLink} from '@thunderid/components';
+import {DocumentTitle, ExternalLink} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle, Stack} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -19,8 +19,9 @@ export default function ResourceServersListPage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={t('resourceServers:listing.title', 'Resource servers')} />
       <PageTitle>
-        <PageTitle.Header>{t('resourceServers:listing.title', 'Resource Servers')}</PageTitle.Header>
+        <PageTitle.Header>{t('resourceServers:listing.title', 'Resource servers')}</PageTitle.Header>
         <PageTitle.SubHeader>
           {t(
             'resourceServers:listing.subtitle',

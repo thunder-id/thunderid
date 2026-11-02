@@ -1,0 +1,54 @@
+---
+displayed_sidebar: null
+title: <SignUpButton />
+docType: reference
+description: Trigger the sign-up registration flow from a pre-styled button component in Nuxt applications.
+---
+
+# `<SignUpButton />`
+
+The `SignUpButton` component initiates the sign-up flow when clicked. It is auto-registered by the Nuxt module and requires no imports.
+
+## Usage
+
+### Basic Usage
+
+```vue title="pages/index.vue" showLineNumbers
+<template>
+  <SignUpButton />
+</template>
+```
+
+### Custom Label
+
+```vue title="pages/index.vue" showLineNumbers
+<template>
+  <SignUpButton>Create an account</SignUpButton>
+</template>
+```
+
+### Using the Default Slot for Full Control
+
+```vue title="pages/index.vue" showLineNumbers
+<template>
+  <SignUpButton>
+    <template #default="{ signUp, isLoading }">
+      <button :disabled="isLoading" @click="signUp">
+        {{ isLoading ? 'Redirecting...' : 'Get Started' }}
+      </button>
+    </template>
+  </SignUpButton>
+</template>
+```
+
+## Slots
+
+| Slot | Slot Props | Description |
+| :--- | :--- | :--- |
+| `default` | `{ signUp: () => void, isLoading: boolean }` | Custom content rendered inside the button. If omitted, renders a default "Sign Up" button |
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `preferences` | `Preferences` | ❌ | Customization options for i18n and theming |

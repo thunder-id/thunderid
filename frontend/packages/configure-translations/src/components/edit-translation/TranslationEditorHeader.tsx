@@ -50,7 +50,7 @@ export default function TranslationEditorHeader({
 
   return (
     <PageTitle>
-      <PageTitle.BackButton onClick={onBack}>{t('editor.back', 'Back to Translations')}</PageTitle.BackButton>
+      <PageTitle.BackButton onClick={onBack}>{t('editor.back', 'Back to translations')}</PageTitle.BackButton>
       <PageTitle.Header>
         {selectedLanguage ? (
           <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
@@ -66,7 +66,7 @@ export default function TranslationEditorHeader({
       {!isFallbackLanguage && (
         <PageTitle.Actions>
           <Button size="small" onClick={onResetToDefault} disabled={!hasNamespace || isSaving}>
-            {t('actions.resetToDefault', 'Reset to Default')}
+            {t('actions.resetToDefault', 'Reset to default')}
           </Button>
         </PageTitle.Actions>
       )}

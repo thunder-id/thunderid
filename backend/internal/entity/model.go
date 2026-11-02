@@ -26,6 +26,39 @@ type EntityIdentifier struct {
 	Source   string `json:"source"`
 }
 
+// SystemAttributeQuery selects the entities of a category whose system attributes hold the given
+// values.
+type SystemAttributeQuery struct {
+	// SystemAttributes are matched against the system attributes only. At least one is required.
+	SystemAttributes map[string]interface{}
+	// Attributes are matched the way the list filters match them.
+	Attributes map[string]interface{}
+}
+
+// OUEntityScope selects which of an organization unit's entities a page lists.
+type OUEntityScope int
+
+const (
+	// OUEntityScopeAll lists the entities the organization unit owns, followed by the ones shared into it.
+	// It is the zero value, so a page lists both unless told otherwise.
+	OUEntityScopeAll OUEntityScope = iota
+	// OUEntityScopeOwned lists only the entities the organization unit owns.
+	OUEntityScopeOwned
+	// OUEntityScopeShared lists only the entities shared into the organization unit.
+	OUEntityScopeShared
+)
+
+// OUEntityPage is one page of the entities an organization unit owns, followed by the ones shared
+// into it.
+type OUEntityPage struct {
+	// Owned holds the page's entities the organization unit owns.
+	Owned []providers.Entity
+	// Shared holds the page's entities shared into the organization unit.
+	Shared []providers.Entity
+	// TotalResults counts the owned and shared entities across every page.
+	TotalResults int
+}
+
 // AuthenticateResult represents the result of an entity authentication.
 type AuthenticateResult struct {
 	EntityID       string                   `json:"entityId"`
@@ -65,4 +98,12 @@ type entityStoreEntry struct {
 	Entity            providers.Entity
 	Credentials       json.RawMessage
 	SystemCredentials json.RawMessage
+}
+
+// entityRuntimeData is an entity's row in ENTITY_RUNTIME_DATA. It is not cached with the profile.
+type entityRuntimeData struct {
+	ID         string
+	State      providers.EntityState
+	Attributes json.RawMessage
+	Revision   int64
 }

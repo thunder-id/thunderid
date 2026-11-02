@@ -17,10 +17,19 @@ func NewGraphCacheInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *GraphCacheInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &GraphCacheInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type GraphCacheInterfaceMock_Get_Call struct {
 // Get is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowID string
-func (_e *GraphCacheInterfaceMock_Expecter) Get(ctx interface{}, flowID interface{}) *GraphCacheInterfaceMock_Get_Call {
+func (_e *GraphCacheInterfaceMock_Expecter) Get(ctx any, flowID any) *GraphCacheInterfaceMock_Get_Call {
 	return &GraphCacheInterfaceMock_Get_Call{Call: _e.mock.On("Get", ctx, flowID)}
 }
 
@@ -131,7 +140,7 @@ type GraphCacheInterfaceMock_Invalidate_Call struct {
 // Invalidate is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowID string
-func (_e *GraphCacheInterfaceMock_Expecter) Invalidate(ctx interface{}, flowID interface{}) *GraphCacheInterfaceMock_Invalidate_Call {
+func (_e *GraphCacheInterfaceMock_Expecter) Invalidate(ctx any, flowID any) *GraphCacheInterfaceMock_Invalidate_Call {
 	return &GraphCacheInterfaceMock_Invalidate_Call{Call: _e.mock.On("Invalidate", ctx, flowID)}
 }
 
@@ -189,7 +198,7 @@ type GraphCacheInterfaceMock_Set_Call struct {
 //   - ctx context.Context
 //   - flowID string
 //   - graph core.GraphInterface
-func (_e *GraphCacheInterfaceMock_Expecter) Set(ctx interface{}, flowID interface{}, graph interface{}) *GraphCacheInterfaceMock_Set_Call {
+func (_e *GraphCacheInterfaceMock_Expecter) Set(ctx any, flowID any, graph any) *GraphCacheInterfaceMock_Set_Call {
 	return &GraphCacheInterfaceMock_Set_Call{Call: _e.mock.On("Set", ctx, flowID, graph)}
 }
 

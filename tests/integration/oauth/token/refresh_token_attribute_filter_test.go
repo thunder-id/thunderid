@@ -23,7 +23,8 @@ const (
 )
 
 var rtAttrFilterUserType = testutils.UserType{
-	Name: "rt-attr-filter-person",
+	Handle:      "rt-attr-filter-person",
+	DisplayName: "Rt Attr Filter Person",
 	Schema: map[string]interface{}{
 		"username":    map[string]interface{}{"type": "string"},
 		"password":    map[string]interface{}{"type": "string", "credential": true},

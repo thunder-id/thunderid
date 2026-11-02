@@ -1,0 +1,79 @@
+---
+title: ThunderIDExpressClient
+docType: reference
+description: Express-aware client built on ThunderIDNodeClient with cookie session management and route middleware.
+---
+
+# `ThunderIDExpressClient`
+
+`ThunderIDExpressClient` is the Express-aware client class exported by `@thunderid/express`. It extends `ThunderIDNodeClient` and adds Express-specific request and configuration access.
+
+## Import
+
+```js
+const {ThunderIDExpressClient} = require('@thunderid/express');
+```
+
+## Overview
+
+In most applications, you do not instantiate this class directly. The [`thunderID()`](../../middleware/thunderid) middleware creates and initializes it for you, then attaches it to `req.thunderIDAuth` and `res.thunderIDAuth`.
+
+## Express-Specific Members
+
+### `expressConfig`
+
+Returns the initialized `ExpressClientConfig` value or `undefined` if the client has not been initialized yet.
+
+| Member | Type | Description |
+| :--- | :--- | :--- |
+| `expressConfig` | `ExpressClientConfig \| undefined` | The Express SDK configuration used to initialize the client |
+
+### `getUserFromRequest(req)`
+
+Reads the session ID from `req.cookies[SESSION_COOKIE_NAME]` and returns the current user for that session.
+
+```ts
+getUserFromRequest(req: express.Request): Promise<User | undefined>
+```
+
+```js title="index.js" showLineNumbers
+app.get('/me', async (req, res) => {
+  const user = await req.thunderIDAuth.getUserFromRequest(req);
+  res.json(user);
+});
+```
+
+### `updateUserCredentialsFromRequest(req, payload)`
+
+Reads the session ID from `req.cookies[SESSION_COOKIE_NAME]` and updates that session's credentials, for example `password`, or any other attribute the user type schema declares `credential: true`.
+
+```ts
+updateUserCredentialsFromRequest(req: express.Request, payload: Record<string, string>): Promise<void>
+```
+
+```js title="index.js" showLineNumbers
+app.use(express.json());
+
+app.patch('/me/credentials', async (req, res) => {
+  await req.thunderIDAuth.updateUserCredentialsFromRequest(req, req.body);
+  res.status(204).end();
+});
+```
+
+**Returns:** `Promise<void>` - The underlying endpoint responds with `204 No Content` on success. Throws `ThunderIDAPIError` on failure.
+
+## Inherited Behavior
+
+Because `ThunderIDExpressClient` extends `ThunderIDNodeClient`, inherited Node client methods are also available. This Express SDK section does not provide a full reference for the inherited Node surface.
+
+## Notes
+
+- `getUserFromRequest(req)` and `updateUserCredentialsFromRequest(req, payload)` both depend on `req.cookies`, so mount `cookie-parser` before routes that use them
+- `updateUserCredentialsFromRequest(req, payload)` also depends on `req.body`, so mount `express.json()` (or another body parser) before routes that use it
+- `signIn()` and `signOut()` are also overridden internally to integrate with Express request and response handling, but this page focuses on the public Express-specific additions
+
+## Related APIs
+
+- [`thunderID()`](../../middleware/thunderid)
+- [`ExpressClientConfig`](../../configuration/express-client-config)
+- [`Redirect Flow`](../../../guides/redirect-flow)

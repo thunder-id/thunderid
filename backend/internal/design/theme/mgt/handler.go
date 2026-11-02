@@ -127,17 +127,7 @@ func (th *themeMgtHandler) HandleThemeGetRequest(w http.ResponseWriter, r *http.
 		return
 	}
 
-	themeResponse := Theme{
-		ID:          theme.ID,
-		Handle:      theme.Handle,
-		DisplayName: theme.DisplayName,
-		Description: theme.Description,
-		Theme:       theme.Theme,
-		CreatedAt:   theme.CreatedAt,
-		UpdatedAt:   theme.UpdatedAt,
-	}
-
-	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, themeResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, toThemeGetResponse(theme))
 
 	th.logger.Debug(ctx, "Successfully retrieved theme configuration", log.String("id", id))
 }
@@ -260,4 +250,17 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 	}
 
 	sysutils.WriteErrorResponse(ctx, w, statusCode, errResp)
+}
+
+// toThemeGetResponse builds the body a read of a theme returns.
+func toThemeGetResponse(theme *Theme) Theme {
+	return Theme{
+		ID:          theme.ID,
+		Handle:      theme.Handle,
+		DisplayName: theme.DisplayName,
+		Description: theme.Description,
+		Theme:       theme.Theme,
+		CreatedAt:   theme.CreatedAt,
+		UpdatedAt:   theme.UpdatedAt,
+	}
 }

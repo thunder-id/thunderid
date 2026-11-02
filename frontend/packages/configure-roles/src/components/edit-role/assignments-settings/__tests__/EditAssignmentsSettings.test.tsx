@@ -5,12 +5,12 @@ import userEvent from '@testing-library/user-event';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import * as useAddRoleAssignmentsModule from '../../../../api/useAddRoleAssignments';
-import * as useRemoveRoleAssignmentsModule from '../../../../api/useRemoveRoleAssignments';
+import * as useRemoveRoleAssignmentModule from '../../../../api/useRemoveRoleAssignment';
 import type {RoleAssignment} from '../../../../models/role';
 import EditAssignmentsSettings from '../EditAssignmentsSettings';
 
 vi.mock('../../../../api/useAddRoleAssignments');
-vi.mock('../../../../api/useRemoveRoleAssignments');
+vi.mock('../../../../api/useRemoveRoleAssignment');
 
 vi.mock('../ManageAssignmentsSection', () => ({
   default: ({
@@ -41,6 +41,7 @@ vi.mock('../ManageAssignmentsSection', () => ({
 vi.mock('../AddAssignmentDialog', () => ({
   default: ({
     open,
+    ouId = undefined,
     onClose,
     onAdd,
     initialTab,
@@ -48,6 +49,7 @@ vi.mock('../AddAssignmentDialog', () => ({
   }: {
     open: boolean;
     roleId: string;
+    ouId?: string;
     onClose: () => void;
     onAdd: (assignments: RoleAssignment[]) => void;
     initialTab?: number;
@@ -57,6 +59,7 @@ vi.mock('../AddAssignmentDialog', () => ({
     open ? (
       <div data-testid="add-dialog" role="dialog">
         <span data-testid="initial-tab">{initialTab}</span>
+        <span data-testid="dialog-ou-id">{ouId}</span>
         {error && <div role="alert">{error}</div>}
         <button type="button" onClick={() => onAdd([{id: 'user-3', type: 'user'}])} data-testid="confirm-add">
           Confirm Add
@@ -98,10 +101,10 @@ describe('EditAssignmentsSettings', () => {
       mutate: mockAddMutate,
     } as unknown as ReturnType<typeof useAddRoleAssignmentsModule.default>);
 
-    vi.mocked(useRemoveRoleAssignmentsModule.default).mockReturnValue({
+    vi.mocked(useRemoveRoleAssignmentModule.default).mockReturnValue({
       ...baseMutationState,
       mutate: mockRemoveMutate,
-    } as unknown as ReturnType<typeof useRemoveRoleAssignmentsModule.default>);
+    } as unknown as ReturnType<typeof useRemoveRoleAssignmentModule.default>);
   });
 
   afterEach(() => {
@@ -142,6 +145,15 @@ describe('EditAssignmentsSettings', () => {
       await user.click(screen.getByRole('button', {name: 'Add'}));
 
       expect(screen.getByTestId('add-dialog')).toBeInTheDocument();
+    });
+
+    it("should pass the role's organization unit to the dialog", async () => {
+      const user = userEvent.setup();
+      render(<EditAssignmentsSettings roleId="role-1" ouId="ou-1" />);
+
+      await user.click(screen.getByRole('button', {name: 'Add'}));
+
+      expect(screen.getByTestId('dialog-ou-id')).toHaveTextContent('ou-1');
     });
 
     it('should pass activeAssignmentTab as initialTab to dialog', async () => {
@@ -242,7 +254,7 @@ describe('EditAssignmentsSettings', () => {
   });
 
   describe('Remove Assignment', () => {
-    it('should call removeRoleAssignments.mutate when remove is triggered', async () => {
+    it('should call removeRoleAssignment.mutate when remove is triggered', async () => {
       const user = userEvent.setup();
       renderComponent();
 
@@ -250,7 +262,7 @@ describe('EditAssignmentsSettings', () => {
 
       expect(mockRemoveMutate).toHaveBeenCalledTimes(1);
       expect(mockRemoveMutate).toHaveBeenCalledWith(
-        {roleId: 'role-1', assignments: [{id: 'user-1', type: 'user'}]},
+        {roleId: 'role-1', assignment: {id: 'user-1', type: 'user'}},
         expect.any(Object),
       );
     });

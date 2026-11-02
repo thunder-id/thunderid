@@ -7,6 +7,7 @@ package event
 import (
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -20,12 +21,22 @@ func NewEvent(traceID string, eventType string, component string) *providers.Eve
 	}
 
 	return &providers.Event{
-		TraceID:   traceID,
-		EventID:   eventID,
-		Type:      eventType,
-		Timestamp: time.Now(),
-		Component: component,
-		Status:    providers.StatusInProgress,
-		Data:      make(map[string]interface{}),
+		TraceID:          traceID,
+		EventID:          eventID,
+		Type:             eventType,
+		Timestamp:        time.Now(),
+		Component:        component,
+		Status:           providers.StatusInProgress,
+		ServerIdentifier: serverIdentifier(),
+		Data:             make(map[string]interface{}),
 	}
+}
+
+// serverIdentifier returns the identifier of the deployment that generates events, or an empty
+// string when the server runtime is not initialized.
+func serverIdentifier() string {
+	if !config.IsServerRuntimeInitialized() {
+		return ""
+	}
+	return config.GetServerRuntime().Config.Server.Identifier
 }

@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package model
@@ -33,6 +33,11 @@ func (p *boolean) getDisplayName() string {
 	return p.displayName
 }
 
+// getEnum returns no values: boolean properties do not constrain their value to a fixed set.
+func (p *boolean) getEnum() []string {
+	return nil
+}
+
 func (p *boolean) isUnique() bool {
 	return false
 }
@@ -45,7 +50,7 @@ func (p *boolean) validateValue(ctx context.Context, value interface{}, path str
 	_, ok := value.(bool)
 	if !ok {
 		logger.Debug(ctx, "Expected boolean but got different type",
-			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
+			log.String("property", path))
 		return false, nil
 	}
 	return true, nil

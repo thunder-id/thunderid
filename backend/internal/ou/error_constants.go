@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 )
@@ -52,19 +53,9 @@ var (
 			DefaultValue: "The organization unit with the specified id does not exist",
 		},
 	}
-	// ErrorOrganizationUnitNameConflict is the error returned when an organization unit name conflicts.
-	ErrorOrganizationUnitNameConflict = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "OU-1004",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.ouservice.organization_unit_name_conflict",
-			DefaultValue: "Organization unit name conflict",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.ouservice.organization_unit_name_conflict_description",
-			DefaultValue: "An organization unit with the same name exists under the same parent",
-		},
-	}
+	// ErrorOrganizationUnitNameConflict is the error returned when an organization unit name
+	// conflicts. Defined by the provider contract, since the flow engine branches on its code.
+	ErrorOrganizationUnitNameConflict = providers.ErrorOrganizationUnitNameConflict
 	// ErrorParentOrganizationUnitNotFound is the error returned when parent organization unit is not found.
 	ErrorParentOrganizationUnitNotFound = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -87,8 +78,9 @@ var (
 			DefaultValue: "Organization unit has children",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.ouservice.organization_unit_has_children_description",
-			DefaultValue: "Cannot delete organization unit with children or users/groups",
+			Key: "error.ouservice.organization_unit_has_children_description",
+			DefaultValue: "Cannot delete an organization unit that has child organization units, users, " +
+				"groups, user types, agent types, connections, flows, or sharing policies it issued",
 		},
 	}
 	// ErrorCircularDependency is the error returned when a circular dependency is detected.
@@ -104,19 +96,9 @@ var (
 			DefaultValue: "Setting this parent would create a circular dependency",
 		},
 	}
-	// ErrorOrganizationUnitHandleConflict is the error returned when an organization unit handle conflicts.
-	ErrorOrganizationUnitHandleConflict = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "OU-1008",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.ouservice.organization_unit_handle_conflict",
-			DefaultValue: "Organization unit handle conflict",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.ouservice.organization_unit_handle_conflict_description",
-			DefaultValue: "An organization unit with the same handle already exists under the same parent",
-		},
-	}
+	// ErrorOrganizationUnitHandleConflict is the error returned when an organization unit handle
+	// conflicts. Defined by the provider contract, since the flow engine branches on its code.
+	ErrorOrganizationUnitHandleConflict = providers.ErrorOrganizationUnitHandleConflict
 	// ErrorInvalidHandlePath is the error returned when handle path is invalid.
 	ErrorInvalidHandlePath = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

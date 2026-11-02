@@ -18,10 +18,19 @@ func NewOpenID4VPServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *OpenID4VPServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &OpenID4VPServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type OpenID4VPServiceInterfaceMock_Authenticate_Call struct {
 // Authenticate is a helper method to define mock.On call
 //   - ctx context.Context
 //   - cred *common.OpenID4VPCredential
-func (_e *OpenID4VPServiceInterfaceMock_Expecter) Authenticate(ctx interface{}, cred interface{}) *OpenID4VPServiceInterfaceMock_Authenticate_Call {
+func (_e *OpenID4VPServiceInterfaceMock_Expecter) Authenticate(ctx any, cred any) *OpenID4VPServiceInterfaceMock_Authenticate_Call {
 	return &OpenID4VPServiceInterfaceMock_Authenticate_Call{Call: _e.mock.On("Authenticate", ctx, cred)}
 }
 
@@ -147,7 +156,7 @@ type OpenID4VPServiceInterfaceMock_GetResult_Call struct {
 // GetResult is a helper method to define mock.On call
 //   - ctx context.Context
 //   - state string
-func (_e *OpenID4VPServiceInterfaceMock_Expecter) GetResult(ctx interface{}, state interface{}) *OpenID4VPServiceInterfaceMock_GetResult_Call {
+func (_e *OpenID4VPServiceInterfaceMock_Expecter) GetResult(ctx any, state any) *OpenID4VPServiceInterfaceMock_GetResult_Call {
 	return &OpenID4VPServiceInterfaceMock_GetResult_Call{Call: _e.mock.On("GetResult", ctx, state)}
 }
 
@@ -217,7 +226,7 @@ type OpenID4VPServiceInterfaceMock_Initiate_Call struct {
 // Initiate is a helper method to define mock.On call
 //   - ctx context.Context
 //   - definitionID string
-func (_e *OpenID4VPServiceInterfaceMock_Expecter) Initiate(ctx interface{}, definitionID interface{}) *OpenID4VPServiceInterfaceMock_Initiate_Call {
+func (_e *OpenID4VPServiceInterfaceMock_Expecter) Initiate(ctx any, definitionID any) *OpenID4VPServiceInterfaceMock_Initiate_Call {
 	return &OpenID4VPServiceInterfaceMock_Initiate_Call{Call: _e.mock.On("Initiate", ctx, definitionID)}
 }
 

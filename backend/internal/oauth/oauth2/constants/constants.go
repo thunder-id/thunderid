@@ -7,18 +7,17 @@ package constants
 import (
 	"errors"
 
-	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	systemconst "github.com/thunder-id/thunderid/internal/system/constants"
 )
 
 // OAuth2 request parameters.
 const (
 	RequestParamGrantType           string = "grant_type"
 	RequestParamClientID            string = "client_id"
-	RequestParamClientSecret        string = "client_secret"
-	RequestParamClientAssertion     string = "client_assertion"
-	RequestParamClientAssertionType string = "client_assertion_type"
+	RequestParamClientSecret        string = systemconst.ClientSecretParamName
+	RequestParamClientAssertion     string = systemconst.ClientAssertionParamName
+	RequestParamClientAssertionType string = systemconst.ClientAssertionTypeParamName
 	RequestParamRedirectURI         string = "redirect_uri"
 	RequestParamUsername            string = "username"
 	RequestParamPassword            string = "password"
@@ -46,8 +45,10 @@ const (
 	RequestParamAssertion           string = "assertion"
 	RequestParamClaims              string = "claims"
 	RequestParamClaimsLocales       string = "claims_locales"
+	RequestParamUILocales           string = "ui_locales"
 	RequestParamNonce               string = "nonce"
 	RequestParamPrompt              string = "prompt"
+	RequestParamRequest             string = "request"
 	RequestParamRequestURI          string = "request_uri"
 	RequestParamAcrValues           string = "acr_values"
 	RequestParamMaxAge              string = "max_age"
@@ -59,6 +60,9 @@ const (
 	RequestParamBindingMessage      string = "binding_message"
 	RequestParamRequestedExpiry     string = "requested_expiry"
 	RequestParamAuthReqID           string = "auth_req_id"
+
+	// RequestParamAuthorizationDetails is the RFC 9396 authorization request parameter.
+	RequestParamAuthorizationDetails string = systemconst.AuthorizationDetailsParamName
 )
 
 // OAuth2 HTTP headers.
@@ -114,17 +118,18 @@ const (
 
 // OAuth2 endpoints.
 const (
-	OAuth2TokenEndpoint                   string = "/oauth2/token" // #nosec G101
-	OAuth2AuthorizationEndpoint           string = "/oauth2/authorize"
-	OAuth2IntrospectionEndpoint           string = "/oauth2/introspect"
-	OAuth2RevokeEndpoint                  string = "/oauth2/revoke"
-	OAuth2UserInfoEndpoint                string = "/oauth2/userinfo"
-	OAuth2JWKSEndpoint                    string = "/oauth2/jwks"
-	OAuth2LogoutEndpoint                  string = "/oauth2/logout"
-	OAuth2DCREndpoint                     string = "/oauth2/dcr/register"
-	OAuth2PAREndpoint                     string = "/oauth2/par"
-	OAuth2BackchannelAuthEndpoint         string = "/oauth2/bc-authorize"
-	OAuth2BackchannelAuthCallbackEndpoint string = "/oauth2/bc-authorize/callback"
+	OAuth2TokenEndpoint                     string = "/oauth2/token" // #nosec G101
+	OAuth2AuthorizationEndpoint             string = "/oauth2/authorize"
+	OAuth2IntrospectionEndpoint             string = "/oauth2/introspect"
+	OAuth2RevokeEndpoint                    string = "/oauth2/revoke"
+	OAuth2UserInfoEndpoint                  string = "/oauth2/userinfo"
+	OAuth2JWKSEndpoint                      string = "/oauth2/jwks"
+	OAuth2LogoutEndpoint                    string = "/oauth2/logout"
+	OAuth2DCREndpoint                       string = "/oauth2/dcr/register"
+	OAuth2PAREndpoint                       string = "/oauth2/par"
+	OAuth2BackchannelAuthEndpoint           string = "/oauth2/bc-authorize"
+	OAuth2BackchannelAuthCallbackEndpoint   string = "/oauth2/bc-authorize/callback"
+	OAuth2AuthorizationDetailsTypesEndpoint string = "/oauth2/authorization-details-types"
 )
 
 // OAuth2 token types.
@@ -190,12 +195,18 @@ const (
 	ErrorLoginRequired            string = "login_required"
 	ErrorConsentRequired          string = "consent_required"
 	ErrorAccountSelectionRequired string = "account_selection_required"
+	ErrorInteractionRequired      string = "interaction_required"
 	ErrorInvalidDPoPProof         string = "invalid_dpop_proof"
 	ErrorAuthorizationPending     string = "authorization_pending"
 	ErrorSlowDown                 string = "slow_down"
 	ErrorExpiredToken             string = "expired_token" // #nosec G101
 	ErrorUnknownUserID            string = "unknown_user_id"
 	ErrorInvalidBindingMessage    string = "invalid_binding_message"
+	ErrorRequestNotSupported      string = "request_not_supported"
+	ErrorRequestURINotSupported   string = "request_uri_not_supported"
+
+	// ErrorInvalidAuthorizationDetails is the RFC 9396 error for an unacceptable authorization_details.
+	ErrorInvalidAuthorizationDetails string = "invalid_authorization_details"
 )
 
 // UnSupportedGrantTypeError is returned when an unsupported grant type is requested.
@@ -237,6 +248,10 @@ var StandardOIDCScopes = map[string]model.OIDCScope{
 		Description: "Requests access to user's assigned roles",
 		Claims:      []string{"roles"},
 	},
+	ScopeDeviceSSO: {
+		Name:        ScopeDeviceSSO,
+		Description: "Requests the device secret, which signs the user in to other applications without a redirect",
+	},
 }
 
 // Standard JWT claim names.
@@ -248,18 +263,32 @@ const (
 	ClaimExp      string = "exp"
 	ClaimIat      string = "iat"
 	ClaimJTI      string = "jti"
+	ClaimNbf      string = "nbf"
+	ClaimNonce    string = "nonce"
+	ClaimAtHash   string = "at_hash"
+	ClaimCHash    string = "c_hash"
 	ClaimAuthTime string = "auth_time"
+	ClaimACR      string = "acr"
+	ClaimScope    string = "scope"
 )
 
 // Custom JWT claim names.
 const (
-	ClaimUserType string = "userType"
-	ClaimOUID     string = "ouId"
-	ClaimOUName   string = "ouName"
-	ClaimOUHandle string = "ouHandle"
-	// ClaimName and ClaimOwner carry an agent's system-attribute name/owner on its client token.
-	ClaimName                   string = "name"
-	ClaimOwner                  string = "owner"
+	// ClaimUserType is retained so apps that already list "userType" in their configured user
+	// attributes keep receiving the user type's display name on tokens and userinfo.
+	// TODO: Remove with the next major version bump. Use ClaimUserTypeHandle or ClaimUserTypeName instead.
+	ClaimUserType       string = "userType"
+	ClaimUserTypeHandle string = "userTypeHandle"
+	ClaimUserTypeName   string = "userTypeName"
+	ClaimOUID           string = "ouId"
+	ClaimOUName         string = "ouName"
+	ClaimOUHandle       string = "ouHandle"
+	// ClaimOwner carries an agent's system-attribute owner on its client token.
+	ClaimOwner string = "owner"
+	// ClaimSubValidUntil carries when the subject agent's lifespan ends, its validUntil, on the agent's
+	// client token, in Unix seconds like the other time claims. It is omitted for an agent whose
+	// lifespan does not end.
+	ClaimSubValidUntil          string = "sub_valid_until"
 	ClaimClaimsRequest          string = "claims_req"
 	ClaimClaimsLocales          string = "claims_locales"
 	ClaimCompletedAuthClass     string = "completed_auth_class"
@@ -268,23 +297,63 @@ const (
 	ClaimAuthorizationRequestID string = "authorization_request_id"
 	ClaimClientID               string = "client_id"
 	ClaimAccessTokenSubject     string = "access_token_sub"
+	// ClaimAccessTokenAudience carries the audience of a refresh token's access tokens.
+	ClaimAccessTokenAudience string = "access_token_aud"
+
+	// ClaimAuthorizationDetails carries the granted RFC 9396 authorization details on an access token.
+	ClaimAuthorizationDetails string = "authorization_details"
+	// ClaimGrantedAuthorizationDetails carries the authorization details consent granted on a flow assertion.
+	ClaimGrantedAuthorizationDetails string = "granted_authorization_details"
+	// ClaimRefreshAuthorizationDetails carries the granted authorization details on a refresh token.
+	ClaimRefreshAuthorizationDetails string = "access_token_authorization_details"
+	// ClaimRefreshAuthorizationDetailVersions carries the granted type versions on a refresh token.
+	ClaimRefreshAuthorizationDetailVersions string = "access_token_authorization_detail_versions"
+
 	// ClaimIDP identifies the source identity provider (by issuer) that authenticated the subject of a
 	// jwt-bearer-grant (ID-JAG) access token, so downstream consumers can distinguish a federated
 	// principal from a local one.
 	ClaimIDP string = "idp"
+	// ClaimSubType identifies the identity class of the token subject, so a resource server can apply
+	// policy that differs by class. Emitted on client_credentials tokens.
+	ClaimSubType string = "sub_type"
 	// ClaimTokenFamilyID identifies the token family (one authorization grant) a token belongs to.
 	// A single tfid is minted per grant during the login flow and rides every access and refresh
 	// token of that grant, unchanged across refresh rotation, so revocation can target a whole
 	// family at once. Revocation-only and not a client-managed identifier: it rides the token JWTs
 	// but is not part of any client-facing API.
 	ClaimTokenFamilyID string = "tfid"
+	// ClaimSessionID is the OIDC sid claim the id of the SSO session an authentication belongs to. Carried by ID and
+	// refresh tokens, never by access tokens, and omitted when no session was established.
+	ClaimSessionID string = "sid"
+	// ClaimCorrelationID carries the login flow's execution id on the flow assertion so the
+	// authorization code, and in turn the token issuance events, report the same correlation
+	// identifier as the flow's own observability events. Observability-only: it rides the internal
+	// flow assertion and is never emitted on a client-facing token.
+	ClaimCorrelationID string = "correlation_id"
+	// ClaimSubjectID carries the resource ID of the entity the flow authenticated, and
+	// ClaimSubjectType its entity category. The assertion's own sub claim holds the token subject,
+	// which the application may map to an attribute such as an email address; these two carry the
+	// opaque identity alongside it so token issuance can report the subject without resolving it
+	// again and without reporting a mapped attribute. Both ride the internal flow assertion. sub_id
+	// is also the device secret's sub, and the device secret token exchange compares it to tell the
+	// user apart from another; no other token carries it and no other decision reads it.
+	ClaimSubjectID   string = "sub_id"
+	ClaimSubjectType string = "sub_type"
+)
+
+// Subject type values for the sub_type claim.
+const (
+	// SubTypeApp marks the subject as an application.
+	SubTypeApp string = "application"
+	// SubTypeAgent marks the subject as an agent.
+	SubTypeAgent string = "agent"
 )
 
 // SurfaceableClientSystemClaims is the fixed set of entity system-attribute keys that may be
 // surfaced as client-token claims.
 var SurfaceableClientSystemClaims = map[string]bool{
-	ClaimName:  true,
-	ClaimOwner: true,
+	ClaimOwner:         true,
+	ClaimSubValidUntil: true,
 }
 
 // OIDC subject types.
@@ -313,6 +382,9 @@ const (
 // Standard OIDC scope names.
 const (
 	ScopeOpenID = "openid"
+	// ScopeDeviceSSO asks for the device secret, the SSO session the code was issued from, in the code
+	// exchange response (OpenID Connect Native SSO for Mobile Apps).
+	ScopeDeviceSSO = "device_sso"
 )
 
 const (
@@ -340,50 +412,6 @@ const (
 	SupportedAuthorizationGrantProfileIDJAG = "urn:ietf:params:oauth:grant-profile:id-jag"
 )
 
-// GetSupportedResponseTypes returns all supported OAuth2 response types.
-func GetSupportedResponseTypes(oauthConfig oauthconfig.Config) []string {
-	allowedResponseTypes := oauthConfig.OAuth.AllowedResponseTypes
-	if len(allowedResponseTypes) > 0 {
-		return allowedResponseTypes
-	}
-	result := make([]string, len(providers.SupportedResponseTypes))
-	for i, rt := range providers.SupportedResponseTypes {
-		result[i] = string(rt)
-	}
-	return result
-}
-
-// GetSupportedGrantTypes returns all supported OAuth2 grant types.
-func GetSupportedGrantTypes(oauthConfig oauthconfig.Config) []string {
-	allowedGrantTypes := oauthConfig.OAuth.AllowedGrantTypes
-	if len(allowedGrantTypes) > 0 {
-		return allowedGrantTypes
-	}
-	result := make([]string, len(providers.SupportedGrantTypes))
-	for i, gt := range providers.SupportedGrantTypes {
-		result[i] = string(gt)
-	}
-	return result
-}
-
-// GetSupportedTokenEndpointAuthMethods returns all supported token endpoint authentication methods.
-func GetSupportedTokenEndpointAuthMethods(oauthConfig oauthconfig.Config) []string {
-	allowedAuthMethods := oauthConfig.OAuth.AllowedAuthMethods
-	if len(allowedAuthMethods) > 0 {
-		return allowedAuthMethods
-	}
-	result := make([]string, len(providers.SupportedTokenEndpointAuthMethods))
-	for i, tam := range providers.SupportedTokenEndpointAuthMethods {
-		result[i] = string(tam)
-	}
-	return result
-}
-
-// GetSupportedSubjectTypes returns all supported OIDC subject types.
-func GetSupportedSubjectTypes() []string {
-	return []string{SubjectTypePublic}
-}
-
 // GetStandardClaims returns all standard JWT claims that are always included in tokens.
 func GetStandardClaims() []string {
 	return []string{
@@ -395,3 +423,12 @@ func GetStandardClaims() []string {
 		ClaimAuthTime,
 	}
 }
+
+// Refusals an organization-unit-scoped token request can receive. OUAccessRefusal is deliberately
+// the same answer whether the unit does not exist or the client has no standing in it.
+const (
+	OUAccessRefusal = "Client is not authorized for the requested organization unit"
+
+	OUScopedGrantRefusal = "The grant type is not supported on the organization unit scoped " +
+		"token endpoint"
+)

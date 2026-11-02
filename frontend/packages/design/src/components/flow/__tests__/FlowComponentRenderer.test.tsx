@@ -3,7 +3,9 @@
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {screen, cleanup, fireEvent} from '@testing-library/react';
-import type {EmbeddedFlowComponent} from '@thunderid/react';
+import {ThemeProvider, type EmbeddedFlowComponent} from '@thunderid/react';
+import i18next from 'i18next';
+import {I18nextProvider, initReactI18next} from 'react-i18next';
 import {describe, it, expect, afterEach, vi} from 'vitest';
 import renderWithProviders from '../../../test/renderWithProviders';
 import FlowComponentRenderer from '../FlowComponentRenderer';
@@ -15,6 +17,31 @@ afterEach(() => {
 
 const noop = () => undefined;
 const identity = (s: string | undefined) => s;
+
+describe('FlowComponentRenderer KEY_VALUE_LIST routing', () => {
+  it('renders KeyValueListAdapter when component type is KEY_VALUE_LIST', () => {
+    const component = {
+      id: 'kv-1',
+      type: 'KEY_VALUE_LIST',
+      source: 'linkingPromptDetails',
+    } as unknown as EmbeddedFlowComponent;
+
+    renderWithProviders(
+      <FlowComponentRenderer
+        component={component}
+        index={0}
+        values={{}}
+        isLoading={false}
+        resolve={identity}
+        onInputChange={noop}
+        onSubmit={noop}
+        additionalData={{linkingPromptDetails: [{label: 'Email', value: 'jane@example.com'}]}}
+      />,
+    );
+
+    expect(screen.getByText('jane@example.com')).toBeTruthy();
+  });
+});
 
 describe('FlowComponentRenderer — COPYABLE_TEXT routing', () => {
   it('renders CopyableTextAdapter when component type is COPYABLE_TEXT', () => {
@@ -545,5 +572,92 @@ describe('FlowComponentRenderer — standalone RESEND routing', () => {
     );
 
     expect((document.getElementById('action_resend') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('FlowComponentRenderer — consent client hosts', () => {
+  const consentBlock = {
+    id: 'consent_block',
+    type: 'BLOCK',
+    components: [{id: 'action_allow', type: 'ACTION', eventType: 'SUBMIT', variant: 'PRIMARY', label: 'Allow'}],
+  } as unknown as EmbeddedFlowComponent;
+  const consentPrompt = JSON.stringify([
+    {
+      purposeName: 'permissions:app1',
+      purposeId: '',
+      type: 'permissions',
+      essential: null,
+      optional: [{name: 'system'}],
+    },
+  ]);
+  const deviceWarning =
+    'This app runs on your device. Other programs on your device can use the same address, so continue only if you started this app.';
+  // The consent strings as the Gate's locale bundle provides them.
+  const gateI18n = i18next.createInstance();
+  gateI18n
+    .use(initReactI18next)
+    .init({
+      lng: 'en',
+      resources: {
+        en: {
+          consent: {
+            'client.hosts': 'Published by {{clientIdHost}}. Returns to {{redirectUriHost}}.',
+            'client.deviceWarning': deviceWarning,
+          },
+        },
+      },
+      interpolation: {escapeValue: false},
+    })
+    .catch(() => undefined);
+
+  // The SDK's consent components read the SDK theme, which the Gate's ThunderIDProvider supplies.
+  const renderConsentBlock = (additionalData: Record<string, unknown>) =>
+    renderWithProviders(
+      <I18nextProvider i18n={gateI18n}>
+        <ThemeProvider>
+          <FlowComponentRenderer
+            component={consentBlock}
+            index={0}
+            values={{}}
+            isLoading={false}
+            resolve={identity}
+            onInputChange={noop}
+            onSubmit={noop}
+            additionalData={additionalData}
+          />
+        </ThemeProvider>
+      </I18nextProvider>,
+    );
+
+  it('passes the hosts and the loopback flag from the flow data to the consent prompt', () => {
+    renderConsentBlock({
+      consentPrompt,
+      clientIdHost: 'vscode.dev',
+      redirectUriHost: '127.0.0.1',
+      redirectUriLoopback: 'true',
+    });
+
+    expect(screen.getByText('Published by vscode.dev. Returns to 127.0.0.1.')).toBeTruthy();
+    expect(screen.getByText(deviceWarning)).toBeTruthy();
+  });
+
+  it('shows no device warning when the flow data reports a redirect off the device', () => {
+    renderConsentBlock({
+      consentPrompt,
+      clientIdHost: 'claude.ai',
+      redirectUriHost: 'claude.ai',
+      redirectUriLoopback: 'false',
+    });
+
+    expect(screen.getByText('Published by claude.ai. Returns to claude.ai.')).toBeTruthy();
+    expect(screen.queryByText(deviceWarning)).toBeNull();
+  });
+
+  it('shows no hosts when the flow data has none', () => {
+    renderConsentBlock({consentPrompt});
+
+    expect(screen.queryByText(/Published by/)).toBeNull();
+    expect(screen.queryByText(deviceWarning)).toBeNull();
+    expect(screen.getByRole('button', {name: 'Allow'})).toBeTruthy();
   });
 });

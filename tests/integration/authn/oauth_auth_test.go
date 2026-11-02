@@ -12,8 +12,9 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	flowcommon "github.com/thunder-id/thunderid/tests/integration/flow/common"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -30,7 +31,8 @@ var oauthAuthTestOU = testutils.OrganizationUnit{
 }
 
 var oauthEntityType = testutils.UserType{
-	Name: "oauth_user",
+	Handle:      "oauth_user",
+	DisplayName: "Oauth User",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{
 			"type": "string",
@@ -107,7 +109,7 @@ func (suite *OAuthAuthTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:       oauthEntityType.Name,
+		Type:       oauthEntityType.Handle,
 		OUID:       suite.ouID,
 		Attributes: json.RawMessage(attributesJSON),
 	}
@@ -157,11 +159,27 @@ func (suite *OAuthAuthTestSuite) SetupSuite() {
 				IsSecret: false,
 			},
 		},
+		// Link on email so SetupSuite can record the link below.
+		AttributeConfiguration: &testutils.AttributeConfiguration{
+			AccountLinking: &testutils.AccountLinking{Attributes: []string{"email"}},
+		},
 	}
 
 	idpID, err := testutils.CreateIDP(idp)
 	suite.Require().NoError(err, "Failed to create OAuth IDP")
 	suite.idpID = idpID
+
+	// Record the link the federated sign-ins below resolve through.
+	err = flowcommon.LinkAccount(flowcommon.LinkRequest{
+		Handle:       "authn-oauth-link",
+		ExecutorName: "OAuthExecutor",
+		IDPID:        idpID,
+		OUID:         suite.ouID,
+		UserType:     oauthEntityType.Handle,
+		Username:     "oauthuser",
+		Password:     "Test@1234",
+	})
+	suite.Require().NoError(err, "Failed to record the federated link for the local user")
 }
 
 func (suite *OAuthAuthTestSuite) TearDownSuite() {

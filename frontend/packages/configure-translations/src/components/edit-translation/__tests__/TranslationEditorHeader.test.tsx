@@ -6,14 +6,6 @@ import {render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import TranslationEditorHeader from '@/components/edit-translation/TranslationEditorHeader';
 
-vi.mock('react-i18next', async () => {
-  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
-  return {
-    ...actual,
-    useTranslation: () => ({t: (key: string) => key}),
-  };
-});
-
 vi.mock('@thunderid/i18n', () => ({
   getDisplayNameForCode: (code: string) => `Language(${code})`,
   toFlagEmoji: (code: string) => `Flag(${code})`,
@@ -50,25 +42,25 @@ describe('TranslationEditorHeader', () => {
     it('renders the back button', () => {
       render(<TranslationEditorHeader {...defaultProps} />);
 
-      expect(screen.getByText('Back to Translations')).toBeInTheDocument();
+      expect(screen.getByText('Back to translations')).toBeInTheDocument();
     });
 
     it('renders the reset-to-default action button', () => {
       render(<TranslationEditorHeader {...defaultProps} isFallbackLanguage={false} />);
 
-      expect(screen.getByText('Reset to Default')).toBeInTheDocument();
+      expect(screen.getByText('Reset to default')).toBeInTheDocument();
     });
 
     it('hides Reset to Default button when isFallbackLanguage is true', () => {
       render(<TranslationEditorHeader {...defaultProps} isFallbackLanguage />);
 
-      expect(screen.queryByText('Reset to Default')).not.toBeInTheDocument();
+      expect(screen.queryByText('Reset to default')).not.toBeInTheDocument();
     });
 
     it('shows Reset to Default button when isFallbackLanguage is false', () => {
       render(<TranslationEditorHeader {...defaultProps} isFallbackLanguage={false} />);
 
-      expect(screen.getByText('Reset to Default')).toBeInTheDocument();
+      expect(screen.getByText('Reset to default')).toBeInTheDocument();
     });
   });
 
@@ -76,19 +68,19 @@ describe('TranslationEditorHeader', () => {
     it('disables Reset to Default when hasNamespace is false', () => {
       render(<TranslationEditorHeader {...defaultProps} isFallbackLanguage={false} hasNamespace={false} />);
 
-      expect(screen.getByText('Reset to Default').closest('button')).toBeDisabled();
+      expect(screen.getByText('Reset to default').closest('button')).toBeDisabled();
     });
 
     it('enables Reset to Default when hasNamespace is true and not saving', () => {
       render(<TranslationEditorHeader {...defaultProps} isFallbackLanguage={false} hasNamespace isSaving={false} />);
 
-      expect(screen.getByText('Reset to Default').closest('button')).not.toBeDisabled();
+      expect(screen.getByText('Reset to default').closest('button')).not.toBeDisabled();
     });
 
     it('disables Reset to Default while saving', () => {
       render(<TranslationEditorHeader {...defaultProps} isFallbackLanguage={false} hasNamespace isSaving />);
 
-      expect(screen.getByText('Reset to Default').closest('button')).toBeDisabled();
+      expect(screen.getByText('Reset to default').closest('button')).toBeDisabled();
     });
   });
 
@@ -99,7 +91,7 @@ describe('TranslationEditorHeader', () => {
 
       render(<TranslationEditorHeader {...defaultProps} onBack={onBack} />);
 
-      await user.click(screen.getByText('Back to Translations'));
+      await user.click(screen.getByText('Back to translations'));
 
       expect(onBack).toHaveBeenCalledTimes(1);
     });
@@ -117,7 +109,7 @@ describe('TranslationEditorHeader', () => {
         />,
       );
 
-      await user.click(screen.getByText('Reset to Default'));
+      await user.click(screen.getByText('Reset to default'));
 
       expect(onResetToDefault).toHaveBeenCalledTimes(1);
     });

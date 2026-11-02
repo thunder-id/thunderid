@@ -16,6 +16,11 @@ const ConnectionQueryKeys = {
   SMS_PROVIDERS: 'sms-providers',
 
   /**
+   * Key for email provider queries (consumed by useEmailProviders)
+   */
+  EMAIL_PROVIDERS: 'email-providers',
+
+  /**
    * Key for the paginated connection instances list (GET /connections)
    */
   CONNECTIONS: 'connections',
@@ -36,9 +41,46 @@ const ConnectionQueryKeys = {
   CONNECTION_USAGES: 'connection-usages',
 
   /**
+   * Key for a vendor's configurable options (GET /connections/meta)
+   */
+  CONNECTION_META: 'connection-meta',
+
+  /**
    * Key for a single trusted issuer (GET /connections/oidc/{id})
    */
   TRUSTED_ISSUER: 'trustedIssuer',
+
+  /**
+   * Key for the roles list used by the Authorization Mapping picker (GET /roles)
+   */
+  MAPPING_ROLES: 'mapping-roles',
+
+  /**
+   * Key for the groups list used by the Authorization Mapping picker (GET /groups)
+   */
+  MAPPING_GROUPS: 'mapping-groups',
+
+  /**
+   * Key for all user and agent types used by the Subject Mapping tab.
+   */
+  SUBJECT_MAPPING_TYPES: 'subject-mapping-types',
+
+  /**
+   * Key prefix for server-config sections (GET /server-config/{name})
+   */
+  SERVER_CONFIG: 'server-config',
+
+  /**
+   * Name of the server-config section that holds the default email sender
+   */
+  NOTIFICATION_CONFIG: 'notification',
+
+  /**
+   * Key for the runtime's authorization server metadata (GET /.well-known/oauth-authorization-server)
+   */
+  AUTHORIZATION_SERVER_METADATA: 'authorization-server-metadata',
 } as const;
+
+export const SUBJECT_MAPPING_TYPES_PAGE_SIZE = 100;
 
 export default ConnectionQueryKeys;

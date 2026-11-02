@@ -17,10 +17,19 @@ func NewServiceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ServiceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ServiceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -36,6 +45,107 @@ type ServiceMock_Expecter struct {
 
 func (_m *ServiceMock) EXPECT() *ServiceMock_Expecter {
 	return &ServiceMock_Expecter{mock: &_m.Mock}
+}
+
+// AbsoluteTimeout provides a mock function for the type ServiceMock
+func (_mock *ServiceMock) AbsoluteTimeout() time.Duration {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for AbsoluteTimeout")
+	}
+
+	var r0 time.Duration
+	if returnFunc, ok := ret.Get(0).(func() time.Duration); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Get(0).(time.Duration)
+	}
+	return r0
+}
+
+// ServiceMock_AbsoluteTimeout_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AbsoluteTimeout'
+type ServiceMock_AbsoluteTimeout_Call struct {
+	*mock.Call
+}
+
+// AbsoluteTimeout is a helper method to define mock.On call
+func (_e *ServiceMock_Expecter) AbsoluteTimeout() *ServiceMock_AbsoluteTimeout_Call {
+	return &ServiceMock_AbsoluteTimeout_Call{Call: _e.mock.On("AbsoluteTimeout")}
+}
+
+func (_c *ServiceMock_AbsoluteTimeout_Call) Run(run func()) *ServiceMock_AbsoluteTimeout_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *ServiceMock_AbsoluteTimeout_Call) Return(duration time.Duration) *ServiceMock_AbsoluteTimeout_Call {
+	_c.Call.Return(duration)
+	return _c
+}
+
+func (_c *ServiceMock_AbsoluteTimeout_Call) RunAndReturn(run func() time.Duration) *ServiceMock_AbsoluteTimeout_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DetachApplication provides a mock function for the type ServiceMock
+func (_mock *ServiceMock) DetachApplication(ctx context.Context, appID string) error {
+	ret := _mock.Called(ctx, appID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DetachApplication")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, appID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// ServiceMock_DetachApplication_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DetachApplication'
+type ServiceMock_DetachApplication_Call struct {
+	*mock.Call
+}
+
+// DetachApplication is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+func (_e *ServiceMock_Expecter) DetachApplication(ctx any, appID any) *ServiceMock_DetachApplication_Call {
+	return &ServiceMock_DetachApplication_Call{Call: _e.mock.On("DetachApplication", ctx, appID)}
+}
+
+func (_c *ServiceMock_DetachApplication_Call) Run(run func(ctx context.Context, appID string)) *ServiceMock_DetachApplication_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ServiceMock_DetachApplication_Call) Return(err error) *ServiceMock_DetachApplication_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *ServiceMock_DetachApplication_Call) RunAndReturn(run func(ctx context.Context, appID string) error) *ServiceMock_DetachApplication_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // FindCheckpoint provides a mock function for the type ServiceMock
@@ -75,7 +185,7 @@ type ServiceMock_FindCheckpoint_Call struct {
 //   - ctx context.Context
 //   - sessionID string
 //   - checkpoint string
-func (_e *ServiceMock_Expecter) FindCheckpoint(ctx interface{}, sessionID interface{}, checkpoint interface{}) *ServiceMock_FindCheckpoint_Call {
+func (_e *ServiceMock_Expecter) FindCheckpoint(ctx any, sessionID any, checkpoint any) *ServiceMock_FindCheckpoint_Call {
 	return &ServiceMock_FindCheckpoint_Call{Call: _e.mock.On("FindCheckpoint", ctx, sessionID, checkpoint)}
 }
 
@@ -156,7 +266,7 @@ type ServiceMock_LoadCheckpoint_Call struct {
 // LoadCheckpoint is a helper method to define mock.On call
 //   - ctx context.Context
 //   - in LoadCheckpointInput
-func (_e *ServiceMock_Expecter) LoadCheckpoint(ctx interface{}, in interface{}) *ServiceMock_LoadCheckpoint_Call {
+func (_e *ServiceMock_Expecter) LoadCheckpoint(ctx any, in any) *ServiceMock_LoadCheckpoint_Call {
 	return &ServiceMock_LoadCheckpoint_Call{Call: _e.mock.On("LoadCheckpoint", ctx, in)}
 }
 
@@ -227,7 +337,7 @@ type ServiceMock_Resolve_Call struct {
 //   - flowID string
 //   - flowVersion int
 //   - now time.Time
-func (_e *ServiceMock_Expecter) Resolve(ctx interface{}, handle interface{}, flowID interface{}, flowVersion interface{}, now interface{}) *ServiceMock_Resolve_Call {
+func (_e *ServiceMock_Expecter) Resolve(ctx any, handle any, flowID any, flowVersion any, now any) *ServiceMock_Resolve_Call {
 	return &ServiceMock_Resolve_Call{Call: _e.mock.On("Resolve", ctx, handle, flowID, flowVersion, now)}
 }
 
@@ -308,7 +418,7 @@ type ServiceMock_SaveCheckpoint_Call struct {
 // SaveCheckpoint is a helper method to define mock.On call
 //   - ctx context.Context
 //   - in SaveCheckpointInput
-func (_e *ServiceMock_Expecter) SaveCheckpoint(ctx interface{}, in interface{}) *ServiceMock_SaveCheckpoint_Call {
+func (_e *ServiceMock_Expecter) SaveCheckpoint(ctx any, in any) *ServiceMock_SaveCheckpoint_Call {
 	return &ServiceMock_SaveCheckpoint_Call{Call: _e.mock.On("SaveCheckpoint", ctx, in)}
 }
 
@@ -377,7 +487,7 @@ type ServiceMock_Terminate_Call struct {
 //   - ctx context.Context
 //   - handle string
 //   - flowID string
-func (_e *ServiceMock_Expecter) Terminate(ctx interface{}, handle interface{}, flowID interface{}) *ServiceMock_Terminate_Call {
+func (_e *ServiceMock_Expecter) Terminate(ctx any, handle any, flowID any) *ServiceMock_Terminate_Call {
 	return &ServiceMock_Terminate_Call{Call: _e.mock.On("Terminate", ctx, handle, flowID)}
 }
 
@@ -439,7 +549,7 @@ type ServiceMock_TerminateBySubject_Call struct {
 // TerminateBySubject is a helper method to define mock.On call
 //   - ctx context.Context
 //   - subjectID string
-func (_e *ServiceMock_Expecter) TerminateBySubject(ctx interface{}, subjectID interface{}) *ServiceMock_TerminateBySubject_Call {
+func (_e *ServiceMock_Expecter) TerminateBySubject(ctx any, subjectID any) *ServiceMock_TerminateBySubject_Call {
 	return &ServiceMock_TerminateBySubject_Call{Call: _e.mock.On("TerminateBySubject", ctx, subjectID)}
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -25,12 +26,14 @@ func Initialize(
 	discoveryService discovery.DiscoveryServiceInterface,
 	tokenValidator tokenservice.TokenValidatorInterface,
 	jtiStore jti.JTIStoreInterface,
-	leeway int64,
+	governance providers.IdentityGovernanceProvider,
+	assertionCfg engineconfig.ClientAssertionConfig,
+	jwtLeeway int64,
 ) TokenIntrospectionServiceInterface {
 	introspectionService := newTokenIntrospectionService(tokenValidator)
 	introspectHandler := newTokenIntrospectionHandler(introspectionService)
 	registerRoutes(mux, introspectHandler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, leeway)
+		jtiStore, governance, assertionCfg, jwtLeeway)
 	return introspectionService
 }
 
@@ -43,7 +46,9 @@ func registerRoutes(
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	jtiStore jti.JTIStoreInterface,
-	leeway int64,
+	governance providers.IdentityGovernanceProvider,
+	assertionCfg engineconfig.ClientAssertionConfig,
+	jwtLeeway int64,
 ) {
 	opts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST", "OPTIONS"},
@@ -53,8 +58,8 @@ func registerRoutes(
 	}
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
-	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
-		jtiStore, issuer, leeway)
+	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, governance, jwtService,
+		jtiStore, issuer, assertionCfg, jwtLeeway)
 	handler := clientAuthMiddleware(http.HandlerFunc(introspectHandler.HandleIntrospect))
 
 	pattern, wrappedHandler := middleware.WithCORS(

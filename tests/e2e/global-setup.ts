@@ -29,10 +29,14 @@ async function globalSetup() {
     process.exit(1);
   }
 
-  // Ensure auth directory exists
+  // Clear cached per-worker auth files from a previous run. checkTokensExpired() in
+  // console-admin-auth-utils.ts only looks at a token's own expiry claim - it has no way to tell
+  // that a not-yet-expired token was signed by a server that has since restarted (a new signing
+  // key), so a stale file would otherwise be replayed against a server that will reject it. The
+  // per-worker `authenticatedPage` fixture recreates this directory lazily on its own first login.
   const authDir = path.join(__dirname, "playwright/.auth");
-  if (!fs.existsSync(authDir)) {
-    fs.mkdirSync(authDir, { recursive: true });
+  if (fs.existsSync(authDir)) {
+    fs.rmSync(authDir, { recursive: true, force: true });
   }
 
   console.log("✅ Global setup complete");

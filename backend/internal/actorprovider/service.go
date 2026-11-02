@@ -11,9 +11,12 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // actorProvider delegates actor resolution to inbound-client and entity-provider services, and
@@ -23,6 +26,7 @@ type actorProvider struct {
 	entityProvider entityprovider.EntityProviderInterface
 	authnProvider  providers.AuthnProviderManager
 	roleService    role.RoleServiceInterface
+	entityTypeSvc  entitytype.EntityTypeServiceInterface
 	logger         *log.Logger
 }
 
@@ -33,26 +37,47 @@ func newActorProvider(
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider providers.AuthnProviderManager,
 	roleService role.RoleServiceInterface,
+	entityTypeSvc entitytype.EntityTypeServiceInterface,
 ) providers.ActorProvider {
 	return &actorProvider{
 		inboundClient:  inboundClient,
 		entityProvider: entityProvider,
 		authnProvider:  authnProvider,
 		roleService:    roleService,
+		entityTypeSvc:  entityTypeSvc,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ActorProvider")),
 	}
 }
 
-// GetOAuthClientByClientID returns the OAuth client registered for the given ID.
+// GetOAuthClientByClientID returns the OAuth client registered for the given ID, or nil when there
+// is none.
 func (p *actorProvider) GetOAuthClientByClientID(
 	ctx context.Context, clientID string,
 ) (*providers.OAuthClient, *tidcommon.ServiceError) {
 	client, err := p.inboundClient.GetOAuthClientByClientID(ctx, clientID)
 	if err != nil {
-		if errors.Is(err, inboundclient.ErrInboundClientNotFound) {
-			return nil, &ErrorActorNotFound
-		}
 		p.logger.Error(ctx, "Failed to fetch OAuth client", log.String("clientID", clientID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return toProviderOAuthClient(client), nil
+}
+
+// IsOAuthClientAccessibleFromOU reports whether an OAuth2 client may act on behalf of an
+// organization unit, which the inbound client service answers from the sharing policies.
+func (p *actorProvider) IsOAuthClientAccessibleFromOU(
+	ctx context.Context, client *providers.OAuthClient, ouID string,
+) (bool, *tidcommon.ServiceError) {
+	return p.inboundClient.IsClientAccessibleFromOU(ctx, client, ouID)
+}
+
+// GetOAuthClientByID returns the runtime OAuth client for the given entity UUID, or nil when there
+// is none.
+func (p *actorProvider) GetOAuthClientByID(
+	ctx context.Context, id string,
+) (*providers.OAuthClient, *tidcommon.ServiceError) {
+	client, err := p.inboundClient.GetOAuthClientByEntityID(ctx, id)
+	if err != nil {
+		p.logger.Error(ctx, "Failed to fetch OAuth client by entity ID", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 	return toProviderOAuthClient(client), nil
@@ -103,9 +128,15 @@ func (p *actorProvider) AuthenticateActor(
 
 // GetActor returns the backing entity record for the given actor ID.
 func (p *actorProvider) GetActor(actorID string) (*providers.Entity, *tidcommon.ServiceError) {
-	entity, epErr := p.entityProvider.GetEntity(actorID)
+	entity, epErr := p.entityProvider.GetEntityProfile(actorID)
 	if epErr != nil {
 		return nil, mapEntityProviderError(epErr)
+	}
+	if entity.Category == providers.EntityCategoryAgent {
+		ctx := security.WithRuntimeContext(context.Background())
+		displayPaths := entitytype.ResolveDisplayAttributePaths(
+			ctx, entitytype.TypeCategoryAgent, []string{entity.Type}, p.entityTypeSvc, p.logger)
+		entity.Display = utils.ResolveDisplay(entity.ID, entity.Type, entity.Attributes, displayPaths)
 	}
 	return entity, nil
 }
@@ -124,14 +155,36 @@ func (p *actorProvider) GetActorGroups(
 	return groups, nil
 }
 
+// GetTransitiveGroupAncestors returns the ancestor chain of a single group.
+func (p *actorProvider) GetTransitiveGroupAncestors(
+	groupID string,
+) ([]string, *tidcommon.ServiceError) {
+	ancestors, epErr := p.entityProvider.GetTransitiveGroupAncestors(groupID)
+	if epErr != nil {
+		if epErr.Code == entityprovider.ErrorCodeNotImplemented {
+			return nil, nil
+		}
+		return nil, mapEntityProviderError(epErr)
+	}
+	return ancestors, nil
+}
+
 // GetActorRoles returns the roles assigned to the actor, directly and through the given groups.
 func (p *actorProvider) GetActorRoles(
 	actorID string, groupIDs []string,
 ) ([]string, *tidcommon.ServiceError) {
+	return p.GetActorRolesInOU(actorID, groupIDs, "")
+}
+
+// GetActorRolesInOU returns the names of the roles assigned to the actor directly or through
+// groupIDs, counting only the assignments made in ouID, or those made anywhere when it is empty.
+func (p *actorProvider) GetActorRolesInOU(
+	actorID string, groupIDs []string, ouID string,
+) ([]string, *tidcommon.ServiceError) {
 	if p.roleService == nil {
 		return nil, nil
 	}
-	return p.roleService.GetUserRoles(context.Background(), actorID, groupIDs)
+	return p.roleService.GetUserRoles(context.Background(), actorID, groupIDs, ouID)
 }
 
 func mapEntityProviderError(epErr *entityprovider.EntityProviderError) *tidcommon.ServiceError {
@@ -141,6 +194,8 @@ func mapEntityProviderError(epErr *entityprovider.EntityProviderError) *tidcommo
 	switch epErr.Code {
 	case entityprovider.ErrorCodeEntityNotFound:
 		return &ErrorEntityNotFound
+	case entityprovider.ErrorCodeNotImplemented:
+		return &ErrorActorLookupNotSupported
 	default:
 		return &tidcommon.InternalServerError
 	}
@@ -156,12 +211,14 @@ func toProviderOAuthClient(c *providers.OAuthClient) *providers.OAuthClient {
 		ClientID:                           c.ClientID,
 		RedirectURIs:                       c.RedirectURIs,
 		PostLogoutRedirectURIs:             c.PostLogoutRedirectURIs,
+		BackchannelLogoutURI:               c.BackchannelLogoutURI,
 		TokenEndpointAuthMethod:            c.TokenEndpointAuthMethod,
 		PKCERequired:                       c.PKCERequired,
 		PublicClient:                       c.PublicClient,
 		RequirePushedAuthorizationRequests: c.RequirePushedAuthorizationRequests,
 		DPoPBoundAccessTokens:              c.DPoPBoundAccessTokens,
 		IncludeActClaim:                    c.IncludeActClaim,
+		ClientIDMetadataDocument:           c.ClientIDMetadataDocument,
 		EntityCategory:                     c.EntityCategory,
 		Token:                              c.Token,
 		Scopes:                             c.Scopes,

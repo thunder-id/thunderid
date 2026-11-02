@@ -25,11 +25,15 @@ const (
 	ReasonApplicationDeleted           Reason = "application_deleted"
 	ReasonApplicationSecretRegenerated Reason = "application_secret_regenerated"
 	ReasonRoleAssignmentRemoved        Reason = "role_assignment_removed"
+	ReasonRolePermissionRemoved        Reason = "role_permission_removed"
 	ReasonRoleDeleted                  Reason = "role_deleted"
+	ReasonActionDeleted                Reason = "action_deleted"
+	ReasonGroupDeleted                 Reason = "group_deleted"
 	ReasonGroupMembershipRemoved       Reason = "group_membership_removed"
 	ReasonOrganizationUnitChanged      Reason = "organization_unit_changed"
 	ReasonConsentRevoked               Reason = "consent_revoked"
 	ReasonUserDeleted                  Reason = "user_deleted"
+	ReasonIdentitySuspended            Reason = "identity_suspended"
 )
 
 // CriterionType identifies an artifact attribute used for revocation.
@@ -47,6 +51,10 @@ const (
 	CriterionTypeRole             CriterionType = "role.id"
 	CriterionTypeGroup            CriterionType = "group.id"
 	CriterionTypeConsent          CriterionType = "consent.id"
+	// CriterionTypeEntityScope names the per-principal scope dimension.
+	CriterionTypeEntityScope CriterionType = "entity.scope"
+	// CriterionTypeScope names the deployment-wide scope dimension.
+	CriterionTypeScope CriterionType = "scope"
 	// CriterionTypeCredentialVersion names the credential-version dimension. The value is a version
 	// marker, not a credential.
 	CriterionTypeCredentialVersion CriterionType = "credential.version" // #nosec G101 -- dimension name, not a secret
@@ -81,6 +89,10 @@ type CriteriaRevocation struct {
 	Mode      Mode
 	Cutoff    time.Time
 	Reason    Reason
+	// TTL is how long the deny-list row must survive, for a producer that knows the lifetime of the
+	// artifacts its criterion matches. It only raises the row's lifetime: the service writes the longer of
+	// this and its own default, so zero keeps the default.
+	TTL time.Duration
 }
 
 // boundaryReasons is the single source of truth for reasons that revoke only the artifacts
@@ -88,8 +100,13 @@ type CriteriaRevocation struct {
 // criterion's artifacts outright. The write path, the deny-list SQL, and the Resource Server cache
 // all derive from this slice so they cannot disagree about whether a revocation is terminal.
 var boundaryReasons = []Reason{
+	ReasonIdentitySuspended,
 	ReasonApplicationSecretRegenerated,
 	ReasonRoleAssignmentRemoved,
+	ReasonRolePermissionRemoved,
+	ReasonRoleDeleted,
+	ReasonActionDeleted,
+	ReasonGroupDeleted,
 	ReasonGroupMembershipRemoved,
 	ReasonOrganizationUnitChanged,
 	ReasonConsentRevoked,
@@ -104,4 +121,20 @@ func BoundaryReasons() []Reason {
 // IsBoundaryReason reports whether the reason affects only artifacts established before the action.
 func IsBoundaryReason(reason Reason) bool {
 	return slices.Contains(boundaryReasons, reason)
+}
+
+// AccessRevocationTarget names the principals that lose which scopes in an authorization change.
+type AccessRevocationTarget struct {
+	// EntityIDs are the principals losing the scopes, with groups expanded to their members.
+	EntityIDs []string
+	Scopes    []AudienceScope
+	// AssigneeType is the public type of the principal leaving a role or group, when the change names one.
+	AssigneeType string
+}
+
+// AudienceScope pairs a permission with the resource server audience that gives it meaning.
+type AudienceScope struct {
+	// Audience is the resource server identifier.
+	Audience string
+	Scope    string
 }

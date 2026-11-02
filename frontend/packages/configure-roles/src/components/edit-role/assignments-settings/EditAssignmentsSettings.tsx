@@ -9,11 +9,13 @@ import {useTranslation} from 'react-i18next';
 import AddAssignmentDialog from './AddAssignmentDialog';
 import ManageAssignmentsSection from './ManageAssignmentsSection';
 import useAddRoleAssignments from '../../../api/useAddRoleAssignments';
-import useRemoveRoleAssignments from '../../../api/useRemoveRoleAssignments';
+import useRemoveRoleAssignment from '../../../api/useRemoveRoleAssignment';
 import type {RoleAssignment} from '../../../models/role';
 
 interface EditAssignmentsSettingsProps {
   roleId: string;
+  /** The role's organization unit, which bounds who can be assigned. */
+  ouId?: string;
   isReadOnly?: boolean;
 }
 
@@ -23,11 +25,12 @@ interface EditAssignmentsSettingsProps {
  */
 export default function EditAssignmentsSettings({
   roleId,
+  ouId = undefined,
   isReadOnly = false,
 }: EditAssignmentsSettingsProps): JSX.Element {
   const {t} = useTranslation('roles');
   const addRoleAssignments = useAddRoleAssignments();
-  const removeRoleAssignments = useRemoveRoleAssignments();
+  const removeRoleAssignment = useRemoveRoleAssignment();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,8 +59,8 @@ export default function EditAssignmentsSettings({
 
   const handleRemoveAssignment = useCallback(
     (assignmentToRemove: RoleAssignment) => {
-      removeRoleAssignments.mutate(
-        {roleId, assignments: [{id: assignmentToRemove.id, type: assignmentToRemove.type}]},
+      removeRoleAssignment.mutate(
+        {roleId, assignment: {id: assignmentToRemove.id, type: assignmentToRemove.type}},
         {
           onSuccess: () => {
             setError(null);
@@ -70,7 +73,7 @@ export default function EditAssignmentsSettings({
         },
       );
     },
-    [roleId, removeRoleAssignments, t],
+    [roleId, removeRoleAssignment, t],
   );
 
   return (
@@ -108,6 +111,7 @@ export default function EditAssignmentsSettings({
         <AddAssignmentDialog
           open={addDialogOpen}
           roleId={roleId}
+          ouId={ouId}
           onClose={() => {
             setAddDialogOpen(false);
             setAddError(null);

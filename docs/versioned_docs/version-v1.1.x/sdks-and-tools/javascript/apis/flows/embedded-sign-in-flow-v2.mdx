@@ -1,0 +1,88 @@
+---
+title: Embedded Sign-In Flow (V2)
+docType: reference
+displayed_sidebar: javascriptSdkSidebar
+description: Embedded sign-in flow component (version 2) with improved step handling and structured state management.
+---
+
+# Embedded Sign-In Flow (V2)
+
+`executeEmbeddedSignInFlowV2` drives a step-by-step sign-in sequence using the V2 flow protocol. It supports a richer response model with explicit error states, challenge tokens for multi-factor flows, and assertion-based completion.
+
+## `executeEmbeddedSignInFlowV2(config)`
+
+Initiate or advance a V2 embedded sign-in flow. Call it first without `executionId` to start the flow, then pass the returned `executionId` on subsequent calls.
+
+```ts
+import { executeEmbeddedSignInFlowV2, EmbeddedSignInFlowStatusV2 } from '@thunderid/javascript'
+
+// Step 1 — Initiate the flow
+const step1 = await executeEmbeddedSignInFlowV2({
+  baseUrl: 'https://localhost:8090',
+  payload: {
+    applicationId: '<your-app-id>',
+    flowType: 'SIGN_IN',
+  },
+})
+
+// Step 2 — Submit credentials
+const step2 = await executeEmbeddedSignInFlowV2({
+  baseUrl: 'https://localhost:8090',
+  payload: {
+    executionId: step1.executionId,
+    inputs: {
+      username: 'user@example.com',
+      password: 'password123',
+    },
+  },
+})
+
+if (step2.flowStatus === EmbeddedSignInFlowStatusV2.Complete) {
+  const assertion = step2.assertion // Use to complete the OAuth code exchange
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `config.url` | `string` | ✅ | Full endpoint URL. Mutually exclusive with `baseUrl` |
+| `config.baseUrl` | `string` | ✅ | <ProductName /> base URL |
+| `config.payload` | `EmbeddedSignInFlowRequestV2` | ✅ | Flow request body |
+| `config.payload.applicationId` | `string` | No | Application ID. Required for the first step |
+| `config.payload.flowType` | `string` | No | Flow type. Required for the first step (e.g., `'SIGN_IN'`) |
+| `config.payload.executionId` | `string` | No | Execution ID from a prior response. Required for subsequent steps |
+| `config.payload.action` | `string` | No | Action to take at the current step |
+| `config.payload.inputs` | `Record<string, string>` | No | Step-specific input fields (e.g., credentials) |
+| `config.payload.challengeToken` | `string` | No | Challenge token from a prior step (e.g., for MFA) |
+| `config.authId` | `string` | No | Optional authentication context ID |
+
+## Response: `EmbeddedSignInFlowResponseV2`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `executionId` | `string` | ID to pass in subsequent requests |
+| `flowStatus` | `EmbeddedSignInFlowStatusV2` | Current status of the flow |
+| `type` | `EmbeddedSignInFlowTypeV2` | `View` or `Redirection` |
+| `data` | `EmbeddedFlowResponseDataV2` | UI component tree or redirect data for the current step |
+| `assertion` | `string` | Present when `flowStatus` is `Complete`. Use to exchange for tokens |
+| `challengeToken` | `string` | Present when a challenge is required (e.g., TOTP step) |
+| `redirectUrl` | `string` | Present when `type` is `Redirection` |
+| `error` | `FlowError` | Present when `flowStatus` is `Error` or `Incomplete`. Contains `code`, `message`, and `description` |
+
+## Enums
+
+### `EmbeddedSignInFlowStatusV2`
+
+| Value | Description |
+|-------|-------------|
+| `Incomplete` | Flow has more steps |
+| `Complete` | Authentication succeeded: use `assertion` to obtain tokens |
+| `Error` | Authentication failed, check `error` for details |
+
+### `EmbeddedSignInFlowTypeV2`
+
+| Value | Description |
+|-------|-------------|
+| `View` | The `data` field contains a component tree to render |
+| `Redirection` | Redirect the user to `redirectUrl` |

@@ -17,12 +17,12 @@ Customers arrive on their own. They sign up, sign in, and recover access through
 use the booking API:
 
 ```mermaid
-flowchart LR
+flowchart TD
   app(["Wayfinder application"])
   reg["Registration flow"]
   cu(["Customer user<br/>(e.g. John Doe)"])
   tr["Traveler role"]
-  api[["Booking API<br/>booking:read, booking:create, booking:cancel"]]
+  api["Booking API<br/>booking:read, booking:create, booking:cancel"]
   rec["Account recovery flow<br/>(resets a forgotten password)"]
 
   app -->|starts| reg
@@ -35,7 +35,7 @@ flowchart LR
 Staff arrive by invitation. An admin brings each new member in, landing them with a role scoped to one job:
 
 ```mermaid
-flowchart LR
+flowchart TD
   admin(["Staff admin<br/>(OpsAdmin)"])
   onb["Staff onboarding flow"]
   su(["Staff user<br/>(e.g. Alex Carter)"])
@@ -51,7 +51,9 @@ You will build it in order, each page picking up where the last left off:
 1. **[Set Up Your Environment](../build-environment)** gets <ProductName /> and the sample running.
 2. **[Model Your Users](../build-users)** defines the `Customer` and `Staff` user types and creates your first user.
 3. **[Define Access](../build-access)** adds the booking resource server, its permissions, and the `Traveler` role.
-4. **[Build the Sign-In Flows](../build-flows)** builds the registration and account-recovery journeys.
-5. **[Register the Application](../build-application)** registers the OAuth2 client that runs them.
-6. **[Onboard Internal Staff](../build-onboarding)** adds staff roles and an invitation flow.
-7. **[How It All Runs](../build-run)** traces the finished solution across a single request.
+4. **[Build the Flows](../build-flows)** builds the registration, account-recovery, and sign-out journeys.
+5. **[Customize Notifications](../build-notifications)** tailors the email content those flows send.
+6. **[Register the Application](../build-application)** registers the OAuth2 client that runs them.
+7. **[Onboard Internal Staff](../build-onboarding)** adds staff roles and an invitation flow.
+8. **[Keep Them Signed In](../build-sessions)** adds the session checkpoint, so a return trip skips the sign-in screen.
+9. **[How It All Runs](../build-run)** traces the finished solution across a single request.

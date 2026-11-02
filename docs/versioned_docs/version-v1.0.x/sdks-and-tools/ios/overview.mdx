@@ -1,0 +1,144 @@
+---
+title: iOS SDK Overview
+docType: concept
+displayed_sidebar: iosSdkSidebar
+sidebar_position: 1
+sidebar_label: Overview
+description: Native iOS SDK for {{ProductName}} authentication in Swift applications
+---
+
+# iOS SDK
+
+The <ProductName /> iOS SDK provides two Swift packages for integrating authentication into your iOS and macOS applications:
+
+- **`ThunderID`**: Core authentication client with the full IAM API surface
+- **`ThunderIDSwiftUI`**: Drop-in SwiftUI components built on top of `ThunderID`
+
+Both packages target iOS 16+ and macOS 13+.
+
+## Try the Sample App
+
+See the [Try the iOS Sample App](../guides/try-the-sample-app) guide to run the sample app and see the full authentication lifecycle end to end.
+
+## Installation
+
+<CodeGroup>
+  <CodeBlock lang="text" label="Swift Package Manager">
+    In Xcode, go to File › Add Package Dependencies and enter:
+
+    https://github.com/thunderid/thunderid-ios-sdk
+
+    Select the ThunderIDSwiftUI product (includes ThunderID automatically).
+  </CodeBlock>
+
+  <CodeBlock lang="ruby" label="CocoaPods">
+    pod 'ThunderIDSwiftUI'
+  </CodeBlock>
+</CodeGroup>
+
+## Getting Started
+
+To get started quickly, follow the [iOS Quickstart Guide](../../../getting-started/connect-your-application/ios) for step-by-step setup instructions.
+
+## Quick Example
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+@main
+struct MyApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .thunderIDProvider(config: ThunderIDConfig(
+                    baseUrl: "https://localhost:8090",
+                    clientId: "<your-client-id>",
+                    scopes: ["openid", "profile", "email"],
+                    afterSignInUrl: "io.thunderid.b2c://callback",
+                    afterSignOutUrl: "io.thunderid.b2c://logout",
+                    applicationId: "<your-application-id>"
+                ))
+        }
+    }
+}
+
+struct ContentView: View {
+    @EnvironmentObject var state: ThunderIDState
+
+    var body: some View {
+        SignedIn {
+            VStack {
+                Text("Welcome, \(state.user?.displayName ?? "")!")
+                SignOutButton()
+            }
+        } fallback: {
+            SignIn(applicationId: "<your-application-id>")
+        }
+    }
+}
+```
+
+## Features
+
+### <ProductName />: Core Client
+
+| Method | Description |
+|--------|-------------|
+| `initialize(config:storage:)` | Initialize the SDK with configuration and an optional storage backend |
+| `signIn(payload:request:sessionId:)` | App-native sign-in via the Flow Execution API |
+| `signUp(payload:request:)` | App-native registration via the Flow Execution API |
+| `buildSignInURL(options:)` | Build an OAuth 2.0 authorization URL for redirect-based sign-in |
+| `handleRedirectCallback(url:)` | Exchange an authorization code for tokens after redirect |
+| `getAccessToken(sessionId:)` | Retrieve the current access token, refreshing automatically if needed |
+| `getUser(options:)` | Retrieve the authenticated user from the JWT or `/oauth2/userinfo` |
+| `getUserProfile(options:)` | Fetch the full user profile from `/scim2/Me` |
+| `updateUserProfile(payload:userId:)` | Update the user's profile |
+| `signOut(options:sessionId:)` | Revoke the refresh token and clear the session |
+| `exchangeToken(config:sessionId:)` | Perform an OAuth 2.0 token exchange (STS) |
+| `decodeJwtToken(_:)` | Decode a JWT string into a `Decodable` type |
+
+### `ThunderIDSwiftUI`: Components
+
+#### Actions
+
+| Component | Description |
+|-----------|-------------|
+| `SignInButton(onTap:)` | Pre-styled button that triggers your sign-in flow |
+| `BaseSignInButton(label:isLoading:action:)` | Unstyled button for custom UI |
+| `SignOutButton(onSignOutComplete:)` | Calls `signOut()` and refreshes auth state |
+| `BaseSignOutButton(label:isLoading:action:)` | Unstyled button for custom UI |
+| `SignUpButton(onTap:)` | Pre-styled button that triggers your registration flow |
+
+#### Presentation
+
+| Component | Description |
+|-----------|-------------|
+| `SignIn(applicationId:onComplete:onError:)` | Full embedded sign-in form driven by the Flow Execution API |
+| `BaseSignIn<Content>(applicationId:onComplete:onError:content:)` | Builder variant; receives a `SignInState` for custom form UI |
+| `SignUp(applicationId:onComplete:onError:)` | Full embedded registration form |
+| `BaseSignUp<Content>(...)` | Builder variant for custom registration UI |
+| `UserProfile(onSaved:onError:)` | Editable profile form; loads from `/scim2/Me` and saves via `updateUserProfile` |
+| `BaseUserProfile<Content>(...)` | Builder variant with full control over the form layout |
+
+#### Guards
+
+| Component | Description |
+|-----------|-------------|
+| `SignedIn<Content, Fallback>(content:fallback:)` | Renders `content` only when the user is authenticated |
+| `SignedOut<Content, Fallback>(content:fallback:)` | Renders `content` only when the user is not authenticated |
+
+#### State
+
+| Type | Description |
+|------|-------------|
+| `ThunderIDState` | Reactive `ObservableObject` injected by `.thunderIDProvider(config:)` |
+
+## Customization
+
+The <ProductName /> iOS SDK gives you full control over your application's authentication experience:
+
+- Use `SignIn` and `SignUp` for pre-built forms, or `BaseSignIn` and `BaseSignUp` to render your own UI with the same Flow Execution loop
+- Swap in `BaseSignInButton` and `BaseSignOutButton` to match your design system without touching any auth logic
+- Provide a custom `StorageAdapter` to control where tokens are persisted (default: Keychain)
+- Override localized strings using `ThunderIDI18n` with your own translation bundles

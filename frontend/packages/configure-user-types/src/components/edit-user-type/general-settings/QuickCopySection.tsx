@@ -18,7 +18,7 @@ export default function QuickCopySection({userType, copiedField, onCopyToClipboa
 
   return (
     <SettingsCard
-      title={t('userTypes:edit.general.sections.quickCopy.title', 'Quick Copy')}
+      title={t('userTypes:edit.general.sections.quickCopy.title', 'Quick copy')}
       description={t(
         'userTypes:edit.general.sections.quickCopy.description',
         'Copy user type identifiers for use in your application.',
@@ -26,8 +26,53 @@ export default function QuickCopySection({userType, copiedField, onCopyToClipboa
     >
       <Stack spacing={3}>
         <FormControl fullWidth>
+          <FormLabel htmlFor="user-type-handle-input">
+            {t('userTypes:edit.general.labels.userTypeHandle', 'User type handle')}
+          </FormLabel>
+          <TextField
+            fullWidth
+            id="user-type-handle-input"
+            value={userType.handle}
+            InputProps={{
+              readOnly: true,
+              endAdornment: (
+                <InputAdornment position="end">
+                  <Tooltip
+                    title={
+                      copiedField === 'user_type_handle'
+                        ? t('common:actions.copied', 'Copied')
+                        : t('userTypes:edit.copyHandle', 'Copy user type handle')
+                    }
+                  >
+                    <IconButton
+                      aria-label={
+                        copiedField === 'user_type_handle'
+                          ? t('common:actions.copied', 'Copied')
+                          : t('userTypes:edit.copyHandle', 'Copy user type handle')
+                      }
+                      onClick={() => {
+                        onCopyToClipboard(userType.handle, 'user_type_handle').catch(() => null);
+                      }}
+                      edge="end"
+                    >
+                      {copiedField === 'user_type_handle' ? <Check size={16} /> : <Copy size={16} />}
+                    </IconButton>
+                  </Tooltip>
+                </InputAdornment>
+              ),
+            }}
+            sx={{
+              '& input': {
+                fontFamily: 'monospace',
+                fontSize: '0.875rem',
+              },
+            }}
+          />
+        </FormControl>
+
+        <FormControl fullWidth>
           <FormLabel htmlFor="user-type-id-input">
-            {t('userTypes:edit.general.labels.userTypeId', 'User Type ID')}
+            {t('userTypes:edit.general.labels.userTypeId', 'User type ID')}
           </FormLabel>
           <TextField
             fullWidth

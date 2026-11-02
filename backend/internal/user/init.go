@@ -4,29 +4,42 @@
 package user
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the user service and registers its routes.
+//
+// valueCapturer is optional. Given one, the service hands it every credential it sets on a user, so
+// the values the user's export refers to are kept where a reference finds them.
 func Initialize(
 	mux *http.ServeMux,
 	entityService entity.EntityServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
+	sharingService sharing.SharingServiceInterface,
+	valueCapturer declarativeresource.ValueCapturer,
 ) (UserServiceInterface, oupkg.OUUserResolver, declarativeresource.ResourceExporter, error) {
 	// Step 1: Create service with entity service
-	userService := newUserService(authzService, entityService, ouService, entityTypeService)
+	userService := newUserService(authzService, entityService, ouService, entityTypeService, governance,
+		valueCapturer, sharingService)
+	sharingService.RegisterResourceType(newUserSharingDeclaration(userService))
+	entityService.RegisterSharedCategory(providers.EntityCategoryUser, UserSharingType)
 
 	// Step 2: Load user-specific indexed attributes into the entity store.
 	if err := entityService.LoadIndexedAttributes(getUserIndexedAttributes()); err != nil {
@@ -39,6 +52,11 @@ func Initialize(
 		if err := entityService.LoadDeclarativeResources(makeUserDeclarativeConfig(userService)); err != nil {
 			return nil, nil, nil, err
 		}
+		// After the users, since a declared policy names a user that must already be there.
+		if err := sharingService.LoadDeclarativeResources(
+			context.Background(), makeUserSharingConfig(userService)); err != nil {
+			return nil, nil, nil, err
+		}
 	}
 
 	userHandler := newUserHandler(userService)
@@ -48,7 +66,7 @@ func Initialize(
 	ouUserResolver := newOUUserResolver(entityService, entityTypeService)
 
 	// Create and return exporter
-	exporter := newUserExporter(userService, entityService)
+	exporter := newUserExporter(userService, entityService, entityTypeService, sharingService)
 	return userService, ouUserResolver, exporter, nil
 }
 
@@ -63,6 +81,11 @@ func getUserStoreMode() serverconst.StoreMode {
 		return serverconst.StoreModeDeclarative
 	}
 	return serverconst.StoreModeMutable
+}
+
+// isDeclarativeModeEnabled reports whether users load from resource files only.
+func isDeclarativeModeEnabled() bool {
+	return getUserStoreMode() == serverconst.StoreModeDeclarative
 }
 
 // getUserIndexedAttributes returns the indexed attributes configured for users.
@@ -102,21 +125,47 @@ func registerRoutes(mux *http.ServeMux, userHandler *userHandler) {
 				userHandler.HandleUserGroupsGetRequest(w, r)
 			} else if len(segments) == 2 && segments[1] == "usages" {
 				userHandler.HandleUserUsagesGetRequest(w, r)
+			} else if len(segments) == 2 && segments[1] == sharingPoliciesSegment {
+				userHandler.HandleSharingPolicyListRequest(w, r)
+			} else if isSharingPolicyPath(segments) {
+				r.SetPathValue("policyId", segments[2])
+				userHandler.HandleSharingPolicyGetRequest(w, r)
+			} else if len(segments) == 2 && segments[1] == "overlay-rules" {
+				userHandler.HandleOverlayRuleGetRequest(w, r)
 			} else {
 				http.NotFound(w, r)
 			}
 		}, opts2))
+	// PUT and DELETE dispatch on the whole path, so a sub-path never reaches the user's own handler.
 	mux.HandleFunc(middleware.WithCORS("PUT /users/",
 		func(w http.ResponseWriter, r *http.Request) {
 			path := strings.TrimPrefix(r.URL.Path, "/users/")
-			r.SetPathValue("id", strings.Split(path, "/")[0])
-			userHandler.HandleUserPutRequest(w, r)
+			segments := strings.Split(path, "/")
+			r.SetPathValue("id", segments[0])
+
+			if len(segments) == 1 {
+				userHandler.HandleUserPutRequest(w, r)
+			} else if isSharingPolicyPath(segments) {
+				r.SetPathValue("policyId", segments[2])
+				userHandler.HandleSharingPolicyPutRequest(w, r)
+			} else {
+				http.NotFound(w, r)
+			}
 		}, opts2))
 	mux.HandleFunc(middleware.WithCORS("DELETE /users/",
 		func(w http.ResponseWriter, r *http.Request) {
 			path := strings.TrimPrefix(r.URL.Path, "/users/")
-			r.SetPathValue("id", strings.Split(path, "/")[0])
-			userHandler.HandleUserDeleteRequest(w, r)
+			segments := strings.Split(path, "/")
+			r.SetPathValue("id", segments[0])
+
+			if len(segments) == 1 {
+				userHandler.HandleUserDeleteRequest(w, r)
+			} else if isSharingPolicyPath(segments) {
+				r.SetPathValue("policyId", segments[2])
+				userHandler.HandleSharingPolicyDeleteRequest(w, r)
+			} else {
+				http.NotFound(w, r)
+			}
 		}, opts2))
 	mux.HandleFunc(middleware.WithCORS("POST /users/",
 		func(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +174,9 @@ func registerRoutes(mux *http.ServeMux, userHandler *userHandler) {
 			if len(segments) == 2 && segments[1] == "update-credentials" {
 				r.SetPathValue("id", segments[0])
 				userHandler.HandleUserCredentialUpdateRequest(w, r)
+			} else if len(segments) == 2 && segments[1] == sharingPoliciesSegment {
+				r.SetPathValue("id", segments[0])
+				userHandler.HandleSharingPolicyPostRequest(w, r)
 			} else {
 				http.NotFound(w, r)
 			}
@@ -156,6 +208,13 @@ func registerRoutes(mux *http.ServeMux, userHandler *userHandler) {
 		w.WriteHeader(http.StatusNoContent)
 	}, optsMeta))
 
+	mux.HandleFunc(middleware.WithCORS("GET /users/me/ous",
+		userHandler.HandleSelfOrganizationUnitsGetRequest, optsMeta))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /users/me/ous",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, optsMeta))
+
 	optsSelfCredentials := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
@@ -183,4 +242,9 @@ func registerRoutes(mux *http.ServeMux, userHandler *userHandler) {
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}, opts3))
+}
+
+// isSharingPolicyPath reports whether path segments name one sharing policy: {id}/sharing-policies/{policyId}.
+func isSharingPolicyPath(segments []string) bool {
+	return len(segments) == 3 && segments[1] == sharingPoliciesSegment && segments[2] != ""
 }

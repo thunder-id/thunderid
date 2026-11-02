@@ -27,7 +27,7 @@ func withTerminalWidth(t *testing.T, width int) {
 func TestBannerString_CompactOnNarrowTerminal(t *testing.T) {
 	withTerminalWidth(t, 40)
 
-	out := BannerString()
+	out := BannerString("")
 
 	if strings.Contains(out, `|_   _| |`) {
 		t.Fatalf("expected the compact banner on a 40-column terminal:\n%s", out)
@@ -40,7 +40,7 @@ func TestBannerString_CompactOnNarrowTerminal(t *testing.T) {
 func TestBannerString_ArtOnWideTerminal(t *testing.T) {
 	withTerminalWidth(t, 120)
 
-	out := BannerString()
+	out := BannerString("")
 
 	if !strings.Contains(out, `|_   _| |`) {
 		t.Fatalf("expected the full banner art on a wide terminal:\n%s", out)

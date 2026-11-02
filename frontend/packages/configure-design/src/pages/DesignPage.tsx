@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ExternalLink, QueryErrorNotice} from '@thunderid/components';
+import {DocumentTitle, ExternalLink, QueryErrorNotice} from '@thunderid/components';
 import {useGetThemes, useGetLayouts} from '@thunderid/design';
 import {Box, Button, Grid, PageContent, PageTitle, Skeleton, Typography} from '@wso2/oxygen-ui';
 import {ArrowUpRight, LayoutTemplate, Palette, Plus} from '@wso2/oxygen-ui-icons-react';
@@ -42,6 +42,7 @@ export default function DesignPage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={t('page.title', 'Design')} />
       <PageTitle>
         <PageTitle.Header>{t('page.title', 'Design')}</PageTitle.Header>
         <PageTitle.SubHeader>
@@ -69,7 +70,7 @@ export default function DesignPage(): JSX.Element {
                 });
               }}
             >
-              {t('themes.actions.add.label', 'Add Theme')}
+              {t('themes.actions.add.label', 'Add theme')}
             </Button>
           }
         />

@@ -18,10 +18,19 @@ func newRedisClientMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *redisClientMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &redisClientMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -42,11 +51,11 @@ func (_m *redisClientMock) EXPECT() *redisClientMock_Expecter {
 // Del provides a mock function for the type redisClientMock
 func (_mock *redisClientMock) Del(ctx context.Context, keys ...string) *redis.IntCmd {
 	// string
-	_va := make([]interface{}, len(keys))
+	_va := make([]any, len(keys))
 	for _i := range keys {
 		_va[_i] = keys[_i]
 	}
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, ctx)
 	_ca = append(_ca, _va...)
 	ret := _mock.Called(_ca...)
@@ -74,9 +83,9 @@ type redisClientMock_Del_Call struct {
 // Del is a helper method to define mock.On call
 //   - ctx context.Context
 //   - keys ...string
-func (_e *redisClientMock_Expecter) Del(ctx interface{}, keys ...interface{}) *redisClientMock_Del_Call {
+func (_e *redisClientMock_Expecter) Del(ctx any, keys ...any) *redisClientMock_Del_Call {
 	return &redisClientMock_Del_Call{Call: _e.mock.On("Del",
-		append([]interface{}{ctx}, keys...)...)}
+		append([]any{ctx}, keys...)...)}
 }
 
 func (_c *redisClientMock_Del_Call) Run(run func(ctx context.Context, keys ...string)) *redisClientMock_Del_Call {
@@ -113,7 +122,7 @@ func (_c *redisClientMock_Del_Call) RunAndReturn(run func(ctx context.Context, k
 
 // Eval provides a mock function for the type redisClientMock
 func (_mock *redisClientMock) Eval(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd {
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, ctx, script, keys)
 	_ca = append(_ca, args...)
 	ret := _mock.Called(_ca...)
@@ -143,9 +152,9 @@ type redisClientMock_Eval_Call struct {
 //   - script string
 //   - keys []string
 //   - args ...interface{}
-func (_e *redisClientMock_Expecter) Eval(ctx interface{}, script interface{}, keys interface{}, args ...interface{}) *redisClientMock_Eval_Call {
+func (_e *redisClientMock_Expecter) Eval(ctx any, script any, keys any, args ...any) *redisClientMock_Eval_Call {
 	return &redisClientMock_Eval_Call{Call: _e.mock.On("Eval",
-		append([]interface{}{ctx, script, keys}, args...)...)}
+		append([]any{ctx, script, keys}, args...)...)}
 }
 
 func (_c *redisClientMock_Eval_Call) Run(run func(ctx context.Context, script string, keys []string, args ...interface{})) *redisClientMock_Eval_Call {
@@ -192,7 +201,7 @@ func (_c *redisClientMock_Eval_Call) RunAndReturn(run func(ctx context.Context, 
 
 // EvalRO provides a mock function for the type redisClientMock
 func (_mock *redisClientMock) EvalRO(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd {
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, ctx, script, keys)
 	_ca = append(_ca, args...)
 	ret := _mock.Called(_ca...)
@@ -222,9 +231,9 @@ type redisClientMock_EvalRO_Call struct {
 //   - script string
 //   - keys []string
 //   - args ...interface{}
-func (_e *redisClientMock_Expecter) EvalRO(ctx interface{}, script interface{}, keys interface{}, args ...interface{}) *redisClientMock_EvalRO_Call {
+func (_e *redisClientMock_Expecter) EvalRO(ctx any, script any, keys any, args ...any) *redisClientMock_EvalRO_Call {
 	return &redisClientMock_EvalRO_Call{Call: _e.mock.On("EvalRO",
-		append([]interface{}{ctx, script, keys}, args...)...)}
+		append([]any{ctx, script, keys}, args...)...)}
 }
 
 func (_c *redisClientMock_EvalRO_Call) Run(run func(ctx context.Context, script string, keys []string, args ...interface{})) *redisClientMock_EvalRO_Call {
@@ -271,7 +280,7 @@ func (_c *redisClientMock_EvalRO_Call) RunAndReturn(run func(ctx context.Context
 
 // EvalSha provides a mock function for the type redisClientMock
 func (_mock *redisClientMock) EvalSha(ctx context.Context, sha1 string, keys []string, args ...interface{}) *redis.Cmd {
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, ctx, sha1, keys)
 	_ca = append(_ca, args...)
 	ret := _mock.Called(_ca...)
@@ -301,9 +310,9 @@ type redisClientMock_EvalSha_Call struct {
 //   - sha1 string
 //   - keys []string
 //   - args ...interface{}
-func (_e *redisClientMock_Expecter) EvalSha(ctx interface{}, sha1 interface{}, keys interface{}, args ...interface{}) *redisClientMock_EvalSha_Call {
+func (_e *redisClientMock_Expecter) EvalSha(ctx any, sha1 any, keys any, args ...any) *redisClientMock_EvalSha_Call {
 	return &redisClientMock_EvalSha_Call{Call: _e.mock.On("EvalSha",
-		append([]interface{}{ctx, sha1, keys}, args...)...)}
+		append([]any{ctx, sha1, keys}, args...)...)}
 }
 
 func (_c *redisClientMock_EvalSha_Call) Run(run func(ctx context.Context, sha1 string, keys []string, args ...interface{})) *redisClientMock_EvalSha_Call {
@@ -350,7 +359,7 @@ func (_c *redisClientMock_EvalSha_Call) RunAndReturn(run func(ctx context.Contex
 
 // EvalShaRO provides a mock function for the type redisClientMock
 func (_mock *redisClientMock) EvalShaRO(ctx context.Context, sha1 string, keys []string, args ...interface{}) *redis.Cmd {
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, ctx, sha1, keys)
 	_ca = append(_ca, args...)
 	ret := _mock.Called(_ca...)
@@ -380,9 +389,9 @@ type redisClientMock_EvalShaRO_Call struct {
 //   - sha1 string
 //   - keys []string
 //   - args ...interface{}
-func (_e *redisClientMock_Expecter) EvalShaRO(ctx interface{}, sha1 interface{}, keys interface{}, args ...interface{}) *redisClientMock_EvalShaRO_Call {
+func (_e *redisClientMock_Expecter) EvalShaRO(ctx any, sha1 any, keys any, args ...any) *redisClientMock_EvalShaRO_Call {
 	return &redisClientMock_EvalShaRO_Call{Call: _e.mock.On("EvalShaRO",
-		append([]interface{}{ctx, sha1, keys}, args...)...)}
+		append([]any{ctx, sha1, keys}, args...)...)}
 }
 
 func (_c *redisClientMock_EvalShaRO_Call) Run(run func(ctx context.Context, sha1 string, keys []string, args ...interface{})) *redisClientMock_EvalShaRO_Call {
@@ -455,7 +464,7 @@ type redisClientMock_Expire_Call struct {
 //   - ctx context.Context
 //   - key string
 //   - expiration time.Duration
-func (_e *redisClientMock_Expecter) Expire(ctx interface{}, key interface{}, expiration interface{}) *redisClientMock_Expire_Call {
+func (_e *redisClientMock_Expecter) Expire(ctx any, key any, expiration any) *redisClientMock_Expire_Call {
 	return &redisClientMock_Expire_Call{Call: _e.mock.On("Expire", ctx, key, expiration)}
 }
 
@@ -519,7 +528,7 @@ type redisClientMock_Get_Call struct {
 // Get is a helper method to define mock.On call
 //   - ctx context.Context
 //   - key string
-func (_e *redisClientMock_Expecter) Get(ctx interface{}, key interface{}) *redisClientMock_Get_Call {
+func (_e *redisClientMock_Expecter) Get(ctx any, key any) *redisClientMock_Get_Call {
 	return &redisClientMock_Get_Call{Call: _e.mock.On("Get", ctx, key)}
 }
 
@@ -578,7 +587,7 @@ type redisClientMock_GetDel_Call struct {
 // GetDel is a helper method to define mock.On call
 //   - ctx context.Context
 //   - key string
-func (_e *redisClientMock_Expecter) GetDel(ctx interface{}, key interface{}) *redisClientMock_GetDel_Call {
+func (_e *redisClientMock_Expecter) GetDel(ctx any, key any) *redisClientMock_GetDel_Call {
 	return &redisClientMock_GetDel_Call{Call: _e.mock.On("GetDel", ctx, key)}
 }
 
@@ -613,11 +622,11 @@ func (_c *redisClientMock_GetDel_Call) RunAndReturn(run func(ctx context.Context
 // ScriptExists provides a mock function for the type redisClientMock
 func (_mock *redisClientMock) ScriptExists(ctx context.Context, hashes ...string) *redis.BoolSliceCmd {
 	// string
-	_va := make([]interface{}, len(hashes))
+	_va := make([]any, len(hashes))
 	for _i := range hashes {
 		_va[_i] = hashes[_i]
 	}
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, ctx)
 	_ca = append(_ca, _va...)
 	ret := _mock.Called(_ca...)
@@ -645,9 +654,9 @@ type redisClientMock_ScriptExists_Call struct {
 // ScriptExists is a helper method to define mock.On call
 //   - ctx context.Context
 //   - hashes ...string
-func (_e *redisClientMock_Expecter) ScriptExists(ctx interface{}, hashes ...interface{}) *redisClientMock_ScriptExists_Call {
+func (_e *redisClientMock_Expecter) ScriptExists(ctx any, hashes ...any) *redisClientMock_ScriptExists_Call {
 	return &redisClientMock_ScriptExists_Call{Call: _e.mock.On("ScriptExists",
-		append([]interface{}{ctx}, hashes...)...)}
+		append([]any{ctx}, hashes...)...)}
 }
 
 func (_c *redisClientMock_ScriptExists_Call) Run(run func(ctx context.Context, hashes ...string)) *redisClientMock_ScriptExists_Call {
@@ -709,7 +718,7 @@ type redisClientMock_ScriptLoad_Call struct {
 // ScriptLoad is a helper method to define mock.On call
 //   - ctx context.Context
 //   - script string
-func (_e *redisClientMock_Expecter) ScriptLoad(ctx interface{}, script interface{}) *redisClientMock_ScriptLoad_Call {
+func (_e *redisClientMock_Expecter) ScriptLoad(ctx any, script any) *redisClientMock_ScriptLoad_Call {
 	return &redisClientMock_ScriptLoad_Call{Call: _e.mock.On("ScriptLoad", ctx, script)}
 }
 
@@ -770,7 +779,7 @@ type redisClientMock_Set_Call struct {
 //   - key string
 //   - value any
 //   - expiration time.Duration
-func (_e *redisClientMock_Expecter) Set(ctx interface{}, key interface{}, value interface{}, expiration interface{}) *redisClientMock_Set_Call {
+func (_e *redisClientMock_Expecter) Set(ctx any, key any, value any, expiration any) *redisClientMock_Set_Call {
 	return &redisClientMock_Set_Call{Call: _e.mock.On("Set", ctx, key, value, expiration)}
 }
 
@@ -841,7 +850,7 @@ type redisClientMock_SetArgs_Call struct {
 //   - key string
 //   - value any
 //   - a redis.SetArgs
-func (_e *redisClientMock_Expecter) SetArgs(ctx interface{}, key interface{}, value interface{}, a interface{}) *redisClientMock_SetArgs_Call {
+func (_e *redisClientMock_Expecter) SetArgs(ctx any, key any, value any, a any) *redisClientMock_SetArgs_Call {
 	return &redisClientMock_SetArgs_Call{Call: _e.mock.On("SetArgs", ctx, key, value, a)}
 }
 

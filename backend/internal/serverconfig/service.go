@@ -8,8 +8,12 @@ import (
 	"encoding/json"
 	"sync"
 
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 const loggerComponentName = "ServerConfigService"
@@ -28,26 +32,38 @@ type ServerConfigService interface {
 type serverConfigService struct {
 	store    serverConfigStoreInterface
 	handlers map[ConfigName]ServerConfigHandlerInterface
-	logger   *log.Logger
-	configMu sync.Mutex
+	// observability receives a SERVER_CONFIG_UPDATED event per write. Optional.
+	observability providers.ObservabilityProvider
+	logger        *log.Logger
+	configMu      sync.Mutex
 }
 
 // newServerConfigService creates a new instance of serverConfigService. Handlers are injected at
 // construction, one per supported section. The store may be the mutable, declarative, or composite
 // implementation depending on the configured store mode.
 func newServerConfigService(store serverConfigStoreInterface,
-	handlers map[ConfigName]ServerConfigHandlerInterface) ServerConfigService {
+	handlers map[ConfigName]ServerConfigHandlerInterface,
+	observability providers.ObservabilityProvider) ServerConfigService {
 	return &serverConfigService{
-		store:    store,
-		handlers: handlers,
-		logger:   log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
+		store:         store,
+		handlers:      handlers,
+		observability: observability,
+		logger:        log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
 }
 
-// ListConfigNames returns the supported configuration section names.
+// ListConfigNames returns the configuration section names this server serves.
+//
+// A name is listed only when a handler is registered for it. A server built without the service a
+// section configures, such as a control plane, which runs no sessions, registers no handler for it,
+// and listing the name would offer a section that every read of then fails.
 func (s *serverConfigService) ListConfigNames(_ context.Context) ([]ConfigName, *common.ServiceError) {
-	names := make([]ConfigName, len(supportedConfigNames))
-	copy(names, supportedConfigNames)
+	names := make([]ConfigName, 0, len(supportedConfigNames))
+	for _, name := range supportedConfigNames {
+		if handler, ok := s.handlers[name]; ok && handler != nil {
+			names = append(names, name)
+		}
+	}
 	return names, nil
 }
 
@@ -124,11 +140,13 @@ func (s *serverConfigService) getConfigLayer(ctx context.Context, name string,
 // SetConfig decodes and validates an incoming value against the current layers and persists the raw
 // bytes to the writable layer. A bad incoming value is a client error; the stored bytes are kept as-is.
 func (s *serverConfigService) SetConfig(ctx context.Context,
-	name ConfigName, value json.RawMessage) *common.ServiceError {
+	name ConfigName, value json.RawMessage) (svcErr *common.ServiceError) {
 	handler, svcErr := s.handlerFor(ctx, name)
 	if svcErr != nil {
 		return svcErr
 	}
+	// Only a known section is recorded; the name comes from the request path.
+	defer func() { s.publishConfigWrite(ctx, name, svcErr) }()
 
 	incoming, err := handler.Decode(value)
 	if err != nil {
@@ -159,6 +177,35 @@ func (s *serverConfigService) SetConfig(ctx context.Context,
 		return &common.InternalServerError
 	}
 	return nil
+}
+
+// publishConfigWrite records who wrote which section and the outcome. It never records the value,
+// since a section may hold secrets.
+func (s *serverConfigService) publishConfigWrite(ctx context.Context, name ConfigName,
+	svcErr *common.ServiceError) {
+	actor := security.GetSubject(ctx)
+	if svcErr == nil {
+		s.logger.Debug(ctx, "Server config written", log.String("name", string(name)),
+			log.MaskedString("actor", actor))
+	}
+
+	if s.observability == nil || !s.observability.IsEnabled() {
+		return
+	}
+	eventType, status := event.EventTypeServerConfigUpdated, providers.StatusSuccess
+	if svcErr != nil {
+		eventType, status = event.EventTypeServerConfigUpdateFailed, providers.StatusFailure
+	}
+	evt := event.NewEvent(syscontext.GetTraceID(ctx), string(eventType), event.ComponentServerConfig).
+		WithStatus(status).
+		WithData(event.DataKey.ConfigName, string(name))
+	if actor != "" {
+		evt.WithData(event.DataKey.ActorSub, actor)
+	}
+	if svcErr != nil {
+		evt.WithData(event.DataKey.Error, svcErr.Code)
+	}
+	s.observability.PublishEvent(ctx, evt)
 }
 
 // decodeLayers decodes the stored readOnly and writable layers into typed values. A failure here is an

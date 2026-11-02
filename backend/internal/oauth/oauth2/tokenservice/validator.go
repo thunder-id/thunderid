@@ -5,8 +5,10 @@ package tokenservice
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/idp"
@@ -18,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -33,8 +36,15 @@ const maxIDJAGJTILength = 256
 // yields revocation.ErrEnforcementUnavailable (fail-closed); callers discriminate via errors.Is.
 type TokenValidatorInterface interface {
 	ValidateAccessToken(ctx context.Context, token string) (*AccessTokenClaims, error)
-	ValidateRefreshToken(ctx context.Context, token string, clientID string) (*RefreshTokenClaims, error)
+	ValidateRefreshToken(ctx context.Context, token string) (*RefreshTokenClaims, error)
+	// ValidateSubjectToken validates the credential being redeemed. An auth assertion presented here
+	// is spent and cannot be redeemed again.
 	ValidateSubjectToken(ctx context.Context, token string, oauthApp *providers.OAuthClient) (
+		*SubjectTokenClaims, error)
+	// ValidateActorToken validates the party acting on the subject's behalf. Validation matches
+	// ValidateSubjectToken exactly; an auth assertion presented here is not spent, because the actor
+	// slot identifies a party rather than redeeming a credential.
+	ValidateActorToken(ctx context.Context, token string, oauthApp *providers.OAuthClient) (
 		*SubjectTokenClaims, error)
 	// ValidateIDJAGSubjectToken validates a subject token for the ID-JAG issuance leg of token
 	// exchange (draft-ietf-oauth-identity-assertion-authz-grant). It performs the same validation as
@@ -44,12 +54,12 @@ type TokenValidatorInterface interface {
 	// refresh token into an ID-JAG.
 	ValidateIDJAGSubjectToken(ctx context.Context, token string, oauthApp *providers.OAuthClient) (
 		*SubjectTokenClaims, error)
-	// ValidateToken verifies a self-issued token's signature and enforces revocation without pinning
-	// its type, returning the raw claims. Used by token introspection, which is token-type agnostic.
-	ValidateToken(ctx context.Context, token string) (map[string]interface{}, error)
 	// ValidateIDJAGAssertion validates an ID-JAG assertion presented on the jwt-bearer grant,
 	// binding it to the authenticated client via its client_id claim.
 	ValidateIDJAGAssertion(ctx context.Context, assertion, clientID string) (*IDJAGAssertionClaims, error)
+	// ValidateDeviceSecret validates a device secret presented back to this server: its
+	// signature, its sso-session+jwt type, this server as issuer and audience, and its expiry.
+	ValidateDeviceSecret(ctx context.Context, token string) (*DeviceSecretClaims, error)
 }
 
 // TokenValidator implements TokenValidatorInterface.
@@ -127,7 +137,7 @@ func (tv *tokenValidator) ValidateAccessToken(ctx context.Context, token string)
 
 	jti, _ := extractStringClaim(claims, constants.ClaimJTI)
 	tokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
-	if err := tv.ensureNotRevoked(ctx, revocationIdentity(claims, jti, tokenFamilyID)); err != nil {
+	if err := tv.ensureNotRevoked(ctx, claims, jti, tokenFamilyID); err != nil {
 		return nil, err
 	}
 
@@ -144,10 +154,15 @@ func (tv *tokenValidator) ValidateAccessToken(ctx context.Context, token string)
 
 // ValidateRefreshToken validates a refresh token and extracts the claims.
 func (tv *tokenValidator) ValidateRefreshToken(
-	ctx context.Context, token string, clientID string,
+	ctx context.Context, token string,
 ) (*RefreshTokenClaims, error) {
-	if err := tv.jwtService.VerifyJWT(ctx, token, "", ""); err != nil {
+	if err := tv.jwtService.VerifyJWT(ctx, token, "", tv.cfg.JWT.Issuer); err != nil {
 		return nil, fmt.Errorf("invalid refresh token: %v", err.Error)
+	}
+
+	header, err := jwt.DecodeJWTHeader(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode refresh token header: %w", err)
 	}
 
 	claims, err := jwt.DecodeJWTPayload(token)
@@ -155,13 +170,15 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		return nil, fmt.Errorf("failed to decode refresh token: %w", err)
 	}
 
-	if err := tv.validateOAuth2RefreshClaims(claims, clientID); err != nil {
+	typ, _ := header["typ"].(string)
+	clientID, err := tv.validateOAuth2RefreshClaims(typ, claims)
+	if err != nil {
 		return nil, err
 	}
 
 	// Extract claims
 	sub, _ := extractStringClaim(claims, "access_token_sub")
-	audiences := extractStringSliceClaim(claims, "access_token_aud")
+	audiences := extractStringSliceClaim(claims, constants.ClaimAccessTokenAudience)
 	grantType, _ := extractStringClaim(claims, "grant_type")
 	iat, _ := extractInt64Claim(claims, "iat")
 	exp, _ := extractInt64Claim(claims, "exp")
@@ -170,6 +187,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 	actorSub, _ := extractStringClaim(claims, "act_sub")
 	jti, _ := extractStringClaim(claims, "jti")
 	tokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
+	sessionID, _ := extractStringClaim(claims, constants.ClaimSessionID)
 
 	// Extract claims request if present
 	var claimsRequest *oauth2model.ClaimsRequest
@@ -185,6 +203,11 @@ func (tv *tokenValidator) ValidateRefreshToken(
 	// Extract claims_locales if present
 	claimsLocales, _ := extractStringClaim(claims, "access_token_claims_locales")
 
+	authorizationDetails, err := refreshTokenAuthorizationDetails(token)
+	if err != nil {
+		return nil, err
+	}
+
 	var dpopJkt string
 	if _, exists := claims["dpop_jkt"]; exists {
 		s, err := extractStringClaim(claims, "dpop_jkt")
@@ -194,91 +217,202 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		dpopJkt = s
 	}
 
-	if err := tv.ensureNotRevoked(ctx, revocationIdentity(claims, jti, tokenFamilyID)); err != nil {
+	if err := tv.ensureNotRevoked(ctx, claims, jti, tokenFamilyID); err != nil {
 		return nil, err
 	}
 
 	// Extract user type and organizational unit details if present
 	return &RefreshTokenClaims{
-		Sub:              sub,
-		Audiences:        audiences,
-		GrantType:        grantType,
-		Scopes:           scopes,
-		AttributeCacheID: attributeCacheID,
-		Iat:              iat,
-		ClaimsRequest:    claimsRequest,
-		ClaimsLocales:    claimsLocales,
-		DPoPJkt:          dpopJkt,
-		ActorSub:         actorSub,
-		JTI:              jti,
-		Exp:              exp,
-		TokenFamilyID:    tokenFamilyID,
+		Sub:                  sub,
+		ClientID:             clientID,
+		Claims:               claims,
+		Audiences:            audiences,
+		GrantType:            grantType,
+		Scopes:               scopes,
+		AttributeCacheID:     attributeCacheID,
+		Iat:                  iat,
+		ClaimsRequest:        claimsRequest,
+		ClaimsLocales:        claimsLocales,
+		DPoPJkt:              dpopJkt,
+		ActorSub:             actorSub,
+		JTI:                  jti,
+		Exp:                  exp,
+		TokenFamilyID:        tokenFamilyID,
+		SessionID:            sessionID,
+		AuthorizationDetails: authorizationDetails,
 	}, nil
 }
 
-// ValidateSubjectToken validates a subject token for token exchange.
+// refreshTokenAuthorizationDetails rebuilds the granted authorization details from a refresh token's
+// values and type versions claims.
+func refreshTokenAuthorizationDetails(token string) ([]providers.AuthorizationDetail, error) {
+	// Read from the claim's JSON text so numbers are kept exactly.
+	valuesClaim, exists, err := jwt.DecodeJWTClaim(token, constants.ClaimRefreshAuthorizationDetails)
+	var values []json.RawMessage
+	if err == nil && exists {
+		err = json.Unmarshal(valuesClaim, &values)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("invalid authorization details claim in refresh token: %w", err)
+	}
+	var versions map[string]grantedTypeVersion
+	versionsClaim, exists, err := jwt.DecodeJWTClaim(token, constants.ClaimRefreshAuthorizationDetailVersions)
+	if err == nil && exists {
+		err = json.Unmarshal(versionsClaim, &versions)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("invalid authorization detail versions claim in refresh token: %w", err)
+	}
+	if len(values) == 0 {
+		return nil, nil
+	}
+	details := make([]providers.AuthorizationDetail, 0, len(values))
+	for _, value := range values {
+		var typed struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(value, &typed); err != nil {
+			return nil, fmt.Errorf("invalid authorization details claim in refresh token: %w", err)
+		}
+		version := versions[typed.Type]
+		details = append(details, providers.AuthorizationDetail{
+			Type: typed.Type, TypeID: version.TypeID, TypeVersion: version.Version, Value: value, Admitted: true,
+		})
+	}
+	return details, nil
+}
+
+// ValidateSubjectToken validates the subject token of a token exchange — the credential being
+// redeemed. When it is an auth assertion, redeeming it spends it: the assertion is recorded in the
+// replay store and cannot be redeemed again, here or at the authorization callback.
 func (tv *tokenValidator) ValidateSubjectToken(
 	ctx context.Context,
 	token string,
 	oauthApp *providers.OAuthClient,
 ) (*SubjectTokenClaims, error) {
-	// An ID-JAG is an authorization grant, not a subject token, and must never be redeemable on token
-	// exchange. Reject it up front based on its typ header before any other processing.
+	subjectClaims, payload, err := tv.validateExchangeToken(ctx, token, oauthApp)
+	if err != nil {
+		return nil, err
+	}
+
+	// Redeeming an auth assertion spends it. Done after every other check, so a token rejected for
+	// any other reason is not spent, and only for a self-issued assertion: an external issuer's jti
+	// is not ours to track, exactly as it contributes nothing to the revocation deny list.
+	if tv.isSelfIssuer(subjectClaims.Iss) && tv.isAuthAssertion(payload) {
+		if err := tv.consumeAuthAssertion(ctx, payload); err != nil {
+			return nil, err
+		}
+	}
+
+	return subjectClaims, nil
+}
+
+// ValidateActorToken validates the actor token of a token exchange — the party acting on the
+// subject's behalf. Validation matches the subject token's, except that an auth assertion is refused:
+// the actor slot identifies a party, it does not redeem a credential, and an assertion is a
+// credential awaiting redemption. Refusing it outright is what keeps it from being replayable here,
+// which merely leaving it unspent would not.
+func (tv *tokenValidator) ValidateActorToken(
+	ctx context.Context,
+	token string,
+	oauthApp *providers.OAuthClient,
+) (*SubjectTokenClaims, error) {
+	actorClaims, payload, err := tv.validateExchangeToken(ctx, token, oauthApp)
+	if err != nil {
+		return nil, err
+	}
+
+	if tv.isSelfIssuer(actorClaims.Iss) && tv.isAuthAssertion(payload) {
+		return nil, fmt.Errorf("an auth assertion cannot be presented as an actor_token")
+	}
+
+	return actorClaims, nil
+}
+
+// validateExchangeToken performs the validation both token exchange slots share: issuer routing,
+// signature, audience, time claims, revocation and claim extraction. It returns the extracted claims
+// alongside the raw payload, which is what a caller needs to apply any step specific to its slot.
+func (tv *tokenValidator) validateExchangeToken(
+	ctx context.Context,
+	token string,
+	oauthApp *providers.OAuthClient,
+) (*SubjectTokenClaims, map[string]interface{}, error) {
 	header, err := jwt.DecodeJWTHeader(token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode token header: %w", err)
+		return nil, nil, fmt.Errorf("failed to decode token header: %w", err)
 	}
-	if typ, _ := header["typ"].(string); typ == jwt.TokenTypeIDJAG {
-		return nil, fmt.Errorf("an ID-JAG cannot be presented as a subject_token")
-	}
+	typ, _ := header["typ"].(string)
 
 	claims, err := jwt.DecodeJWTPayload(token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode token: %w", err)
+		return nil, nil, fmt.Errorf("failed to decode token: %w", err)
 	}
 
 	iss, err := extractStringClaim(claims, "iss")
 	if err != nil {
-		return nil, fmt.Errorf("subject token is missing 'iss' claim: %w", err)
+		return nil, nil, fmt.Errorf("subject token is missing 'iss' claim: %w", err)
+	}
+
+	// Refuse a token whose type can never be exchanged, before doing any signature work.
+	selfIssued := tv.isSelfIssuer(iss)
+	if !isExchangeableType(typ, selfIssued) {
+		return nil, nil, fmt.Errorf("a token of type %q cannot be presented as a subject_token", typ)
 	}
 
 	// Try the server's own issuer first.
-	if tv.isSelfIssuer(iss) {
-		if err := tv.verifyTokenSignatureByIssuer(ctx, token, iss); err != nil {
-			return nil, fmt.Errorf("invalid subject token signature: %w", err)
+	if selfIssued {
+		// Refresh tokens minted before rt+jwt carry the generic type; access_token_sub identifies them.
+		// TODO: Remove on the next major version, once no pre-rt+jwt refresh token can still be valid.
+		if _, isLegacyRefresh := claims[constants.ClaimAccessTokenSubject]; isLegacyRefresh &&
+			jwt.IsLegacyRefreshTokenType(typ) {
+			return nil, nil, fmt.Errorf("a refresh token cannot be presented as a subject_token")
 		}
-		selfClaims, err := tv.extractSubjectTokenClaims(token, iss, claims, oauthApp, nil)
+
+		if err := tv.verifyTokenSignatureByIssuer(ctx, token, iss); err != nil {
+			return nil, nil, fmt.Errorf("invalid subject token signature: %w", err)
+		}
+		selfClaims, err := tv.extractSubjectTokenClaims(token, iss, claims, oauthApp, nil, MappedAuthorization{})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		selfTokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
-		if err := tv.ensureNotRevoked(ctx, revocationIdentity(claims, selfClaims.JTI, selfTokenFamilyID)); err != nil {
-			return nil, err
+		if err := tv.ensureNotRevoked(ctx, claims, selfClaims.JTI, selfTokenFamilyID); err != nil {
+			return nil, nil, err
 		}
-		return selfClaims, nil
+		return selfClaims, claims, nil
 	}
 
 	// Not a server-issued token — try external IDP issuers.
 	issuerInfo, resolveErr := tv.resolveExternalIssuer(ctx, iss, claims)
 	if resolveErr != nil {
-		return nil, fmt.Errorf("%w: failed to exchange token for issuer %q: %w",
+		return nil, nil, fmt.Errorf("%w: failed to exchange token for issuer %q: %w",
 			ErrIssuerNotTrusted, iss, resolveErr)
 	}
 
 	svcErr := tv.jwtService.VerifyJWTSignatureWithJWKS(ctx, token, issuerInfo.JWKSURL)
 	if svcErr != nil {
-		return nil, fmt.Errorf("invalid subject token signature: %v", svcErr.Error)
+		return nil, nil, fmt.Errorf("invalid subject token signature: %v", svcErr.Error)
 	}
 
 	auds, audErr := extractAudiences(claims)
 	if audErr != nil {
-		return nil, fmt.Errorf("failed to extract audience from external token: %w", audErr)
+		return nil, nil, fmt.Errorf("failed to extract audience from external token: %w", audErr)
 	}
 	if err := tv.validateExternalTokenAudience(auds, issuerInfo); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return tv.extractSubjectTokenClaims(token, iss, claims, oauthApp, issuerInfo.AttributeMappings)
+	authorization, err := tv.resolveMappedAuthorization(ctx, &issuerInfo.IDPDTO, claims)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to resolve authorization mapping for issuer %q: %w", iss, err)
+	}
+
+	externalClaims, err := tv.extractSubjectTokenClaims(
+		token, iss, claims, oauthApp, issuerInfo.AttributeMappings, authorization)
+	if err != nil {
+		return nil, nil, err
+	}
+	return externalClaims, claims, nil
 }
 
 // ValidateIDJAGSubjectToken validates a subject token for the ID-JAG issuance leg of token exchange
@@ -308,6 +442,9 @@ func (tv *tokenValidator) ValidateIDJAGSubjectToken(
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode subject token payload: %w", err)
 	}
+	// An rt+jwt refresh token is already refused by the typ check above. This catches the ones minted
+	// before rt+jwt existed, which share the generic type with ID tokens.
+	// TODO: Remove on the next major version, once no pre-rt+jwt refresh token can still be valid.
 	if _, isRefreshToken := claims["access_token_sub"]; isRefreshToken {
 		return nil, fmt.Errorf("subject_token must be an ID token, not a refresh token")
 	}
@@ -323,26 +460,45 @@ func (tv *tokenValidator) ValidateIDJAGSubjectToken(
 	return subjectClaims, nil
 }
 
-// ValidateToken verifies a self-issued token's signature (type-agnostic) and enforces the revocation
-// deny list, returning the raw claims. Token introspection uses this because it accepts both access
-// and refresh tokens and must not pin a token type.
-func (tv *tokenValidator) ValidateToken(ctx context.Context, token string) (map[string]interface{}, error) {
-	if err := tv.jwtService.VerifyJWT(ctx, token, "", ""); err != nil {
-		return nil, fmt.Errorf("token verification failed: %v", err.Error)
+// ValidateDeviceSecret validates a device secret presented back to this server.
+func (tv *tokenValidator) ValidateDeviceSecret(ctx context.Context, token string) (
+	*DeviceSecretClaims, error) {
+	header, err := jwt.DecodeJWTHeader(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode device secret header: %w", err)
 	}
-
+	if typ, _ := header["typ"].(string); typ != jwt.TokenTypeDeviceSecret {
+		return nil, fmt.Errorf("not a device secret: expected typ %q", jwt.TokenTypeDeviceSecret)
+	}
+	if svcErr := tv.jwtService.VerifyJWT(ctx, token, tv.cfg.JWT.Issuer, tv.cfg.JWT.Issuer); svcErr != nil {
+		return nil, fmt.Errorf("invalid device secret: %s", svcErr.Error.DefaultValue)
+	}
 	claims, err := jwt.DecodeJWTPayload(token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode token payload: %w", err)
+		return nil, fmt.Errorf("failed to decode device secret: %w", err)
 	}
-
-	jti, _ := extractStringClaim(claims, constants.ClaimJTI)
-	tokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
-	if err := tv.ensureNotRevoked(ctx, revocationIdentity(claims, jti, tokenFamilyID)); err != nil {
-		return nil, err
+	subject, _ := claims[constants.ClaimSub].(string)
+	if subject == "" {
+		return nil, fmt.Errorf("device secret is missing its subject")
 	}
-
-	return claims, nil
+	entries, _ := claims[claimSessionData].([]interface{})
+	sessionData := make([]oauth2model.SessionData, 0, len(entries))
+	for _, raw := range entries {
+		entry, _ := raw.(map[string]interface{})
+		flowIdentifier, _ := entry[claimFlowIdentifier].(string)
+		sessionHandle, _ := entry[claimSessionHandle].(string)
+		if flowIdentifier == "" || sessionHandle == "" {
+			return nil, fmt.Errorf("device secret has a session without its flow identifier or handle")
+		}
+		sessionData = append(sessionData, oauth2model.SessionData{
+			FlowIdentifier: flowIdentifier,
+			SessionHandle:  sessionHandle,
+		})
+	}
+	if len(sessionData) == 0 {
+		return nil, fmt.Errorf("device secret carries no session")
+	}
+	return &DeviceSecretClaims{Subject: subject, SessionData: sessionData}, nil
 }
 
 // ValidateIDJAGAssertion validates an ID-JAG assertion presented on the jwt-bearer grant
@@ -380,6 +536,11 @@ func (tv *tokenValidator) ValidateIDJAGAssertion(
 
 	if svcErr := tv.jwtService.VerifyJWTSignatureWithJWKS(ctx, assertion, issuerInfo.JWKSURL); svcErr != nil {
 		return nil, fmt.Errorf("invalid assertion signature: %v", svcErr.Error)
+	}
+
+	authorization, err := tv.resolveMappedAuthorization(ctx, &issuerInfo.IDPDTO, claims)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve authorization mapping for issuer %q: %w", iss, err)
 	}
 
 	if err := tv.validateTimeClaims(claims); err != nil {
@@ -435,19 +596,19 @@ func (tv *tokenValidator) ValidateIDJAGAssertion(
 	}
 
 	return &IDJAGAssertionClaims{
-		Sub:       sub,
-		Iss:       iss,
-		Scopes:    extractScopesFromClaims(claims, false),
-		Resources: extractStringSliceClaim(claims, "resource"),
-		JTI:       jti,
+		Sub:           sub,
+		Iss:           iss,
+		Scopes:        extractScopesFromClaims(claims, false),
+		Resources:     extractStringSliceClaim(claims, "resource"),
+		JTI:           jti,
+		Authorization: authorization,
 	}, nil
 }
 
-// resolveIDJAGIssuer looks up an external IDP whose issuer property matches the given issuer and
-// requires ID-JAG to be enabled. It mirrors resolveExternalIssuer but is a separate path so token
-// exchange trust resolution is unaffected.
-func (tv *tokenValidator) resolveIDJAGIssuer(ctx context.Context, issuer string) (
-	*tokenExchangeIssuerInfo, error) {
+// resolveIDJAGIssuer looks up a trusted ID-JAG issuer and resolves its authorization mapping (rule-based
+// or direct) against the assertion's claims. A separate path from resolveExternalIssuer so token
+// exchange is unaffected.
+func (tv *tokenValidator) resolveIDJAGIssuer(ctx context.Context, issuer string) (*tokenExchangeIssuerInfo, error) {
 	if tv.idpService == nil {
 		return nil, fmt.Errorf("no external issuers configured")
 	}
@@ -470,7 +631,34 @@ func (tv *tokenValidator) resolveIDJAGIssuer(ctx context.Context, issuer string)
 	return &tokenExchangeIssuerInfo{
 		Issuer:  issuer,
 		JWKSURL: jwksURL,
+		IDPDTO:  idpDTO,
 	}, nil
+}
+
+// resolveMappedAuthorization resolves both AuthorizationRuleMapping (explicit value rules) and
+// AuthorizationDirectMapping (direct name-based lookup) for idpDTO against claims, unioning their
+// targets. The connection's authorization mapping is configured, and therefore the sole authority
+// for scopes, when either list is non-empty.
+func (tv *tokenValidator) resolveMappedAuthorization(
+	ctx context.Context, idpDTO *providers.IDPDTO, claims map[string]interface{},
+) (MappedAuthorization, error) {
+	targets := idp.GetRuleAuthorizationTargets(idpDTO, claims)
+
+	directTargets, svcErr := tv.idpService.GetDirectAuthorizationTargets(ctx, idpDTO, claims)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return MappedAuthorization{}, fmt.Errorf(
+				"%w: %s", ErrAuthorizationMappingUnavailable, svcErr.Error.DefaultValue)
+		}
+		return MappedAuthorization{}, fmt.Errorf("%s", svcErr.Error.DefaultValue)
+	}
+	targets = append(targets, directTargets...)
+
+	am := idpDTO.AttributeConfiguration
+	configured := am != nil && am.AuthorizationMapping != nil &&
+		(len(am.AuthorizationMapping.Rules) > 0 || len(am.AuthorizationMapping.Direct) > 0)
+
+	return MappedAuthorization{Targets: targets, Configured: configured}, nil
 }
 
 // tokenExchangeIssuerInfo holds the resolved properties needed to validate an external token.
@@ -479,6 +667,7 @@ type tokenExchangeIssuerInfo struct {
 	JWKSURL              string
 	TrustedTokenAudience string
 	AttributeMappings    []providers.AttributeMapping
+	IDPDTO               providers.IDPDTO
 }
 
 // resolveExternalIssuer looks up an external IDP whose issuer property matches the given issuer.
@@ -512,6 +701,7 @@ func (tv *tokenValidator) resolveExternalIssuer(
 		JWKSURL:              jwksURL,
 		TrustedTokenAudience: idp.GetPropertyValue(idpDTO.Properties, idp.PropTrustedTokenAudience),
 		AttributeMappings:    idp.GetAttributeMappings(&idpDTO, claims),
+		IDPDTO:               idpDTO,
 	}, nil
 }
 
@@ -541,6 +731,7 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 	claims map[string]interface{},
 	oauthApp *providers.OAuthClient,
 	attributeMappings []providers.AttributeMapping,
+	authorization MappedAuthorization,
 ) (*SubjectTokenClaims, error) {
 	sub, err := extractStringClaim(claims, "sub")
 	if err != nil {
@@ -552,7 +743,12 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 		return nil, err
 	}
 
-	isAuthAssertion := tv.isAuthAssertion(claims)
+	// Assertion handling is scoped to self-issued tokens, matching the isSelfIssuer guard applied at
+	// both other isAuthAssertion call sites and at the revocation check below. An external issuer's
+	// claim vocabulary is not ours to interpret: a trusted IdP that happens to emit "assurance" must
+	// not have its token held to this server's auth assertion audience rules, which it has no reason
+	// to satisfy and which it has already been checked against by validateExternalTokenAudience.
+	isAuthAssertion := tv.isSelfIssuer(iss) && tv.isAuthAssertion(claims)
 
 	// Extract and validate audience claim
 	var auds []string
@@ -600,22 +796,25 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 
 	// Only self-issued tokens participate in deny-list (revocation) enforcement; an external
 	// issuer's jti and token family id have no meaning in this server's deny list.
-	var jti, tokenFamilyID string
+	var jti, tokenFamilyID, attributeCacheID string
 	if tv.isSelfIssuer(iss) {
 		jti, _ = extractStringClaim(claims, "jti")
 		tokenFamilyID, _ = extractStringClaim(claims, constants.ClaimTokenFamilyID)
+		attributeCacheID, _ = extractStringClaim(claims, "aci")
 	}
 
 	return &SubjectTokenClaims{
-		Sub:            sub,
-		Iss:            iss,
-		Aud:            auds,
-		Scopes:         scopes,
-		UserAttributes: userAttributes,
-		NestedAct:      nestedAct,
-		CnfJkt:         cnfJkt,
-		JTI:            jti,
-		TokenFamilyID:  tokenFamilyID,
+		Sub:              sub,
+		Iss:              iss,
+		Aud:              auds,
+		Scopes:           scopes,
+		UserAttributes:   userAttributes,
+		NestedAct:        nestedAct,
+		CnfJkt:           cnfJkt,
+		JTI:              jti,
+		TokenFamilyID:    tokenFamilyID,
+		Authorization:    authorization,
+		AttributeCacheID: attributeCacheID,
 	}, nil
 }
 
@@ -665,30 +864,47 @@ func (tv *tokenValidator) validateTimeClaims(claims map[string]interface{}) erro
 }
 
 // validateOAuth2RefreshClaims validates OAuth2-specific refresh token claims.
-func (tv *tokenValidator) validateOAuth2RefreshClaims(claims map[string]interface{}, clientID string) error {
-	sub, err := extractStringClaim(claims, "sub")
-	if err != nil {
-		return fmt.Errorf("missing or invalid 'sub' claim: %w", err)
+// validateOAuth2RefreshClaims asserts the claim shape unique to a refresh token and returns the client
+// the token was issued to.
+func (tv *tokenValidator) validateOAuth2RefreshClaims(typ string, claims map[string]interface{}) (string, error) {
+	// A refresh token must be typed rt+jwt, or carry the generic type it was minted with before
+	// rt+jwt existed. The claim checks below settle the legacy case: only a refresh token has them.
+	if !jwt.IsRefreshTokenType(typ) && !jwt.IsLegacyRefreshTokenType(typ) {
+		return "", fmt.Errorf("token is not a refresh token (unexpected typ header %q)", typ)
 	}
 
-	if sub != clientID {
-		return fmt.Errorf("refresh token does not belong to the requesting client")
+	clientID, err := extractStringClaim(claims, "sub")
+	if err != nil {
+		return "", fmt.Errorf("missing or invalid 'sub' claim: %w", err)
 	}
 
 	// Validate required refresh token claims
 	if _, err := extractStringClaim(claims, "access_token_sub"); err != nil {
-		return fmt.Errorf("missing or invalid 'access_token_sub' claim: %w", err)
+		return "", fmt.Errorf("missing or invalid 'access_token_sub' claim: %w", err)
 	}
 
-	if auds := extractStringSliceClaim(claims, "access_token_aud"); len(auds) == 0 {
-		return fmt.Errorf("missing or invalid 'access_token_aud' claim")
+	if auds := extractStringSliceClaim(claims, constants.ClaimAccessTokenAudience); len(auds) == 0 {
+		return "", fmt.Errorf("missing or invalid 'access_token_aud' claim")
 	}
 
 	if _, err := extractStringClaim(claims, "grant_type"); err != nil {
-		return fmt.Errorf("missing or invalid 'grant_type' claim: %w", err)
+		return "", fmt.Errorf("missing or invalid 'grant_type' claim: %w", err)
 	}
 
-	return nil
+	return clientID, nil
+}
+
+// consumeAuthAssertion records the assertion's jti in the shared replay store, making it redeemable
+// exactly once. It returns ErrAssertionReplayed when the assertion has already been redeemed — by
+// this endpoint or by the authorization callback, which records under the same namespace.
+//
+// A store failure rejects the assertion rather than admitting it: an unavailable replay store must
+// not degrade into unlimited replay.
+func (tv *tokenValidator) consumeAuthAssertion(ctx context.Context, claims map[string]interface{}) error {
+	assertionJTI, _ := extractStringClaim(claims, constants.ClaimJTI)
+	exp, _ := extractInt64Claim(claims, constants.ClaimExp)
+
+	return utils.ConsumeAuthAssertion(ctx, tv.jtiStore, assertionJTI, time.Unix(exp, 0), tv.cfg.JWT.Leeway)
 }
 
 // isAuthAssertion determines if a JWT token is an auth assertion.
@@ -703,9 +919,13 @@ func (tv *tokenValidator) isAuthAssertion(
 	return false
 }
 
-// ensureNotRevoked delegates the final token validation step to the configured enforcement service.
-func (tv *tokenValidator) ensureNotRevoked(ctx context.Context,
-	identity revocation.RevocationIdentity) error {
+// ensureNotRevoked checks the token's revocation identity with the configured enforcement service.
+func (tv *tokenValidator) ensureNotRevoked(ctx context.Context, claims map[string]interface{},
+	jti, tokenFamilyID string) error {
+	identity, err := revocationIdentity(claims, jti, tokenFamilyID)
+	if err != nil {
+		return err
+	}
 	if tv.enforcementService != nil {
 		return tv.enforcementService.EnsureNotRevoked(ctx, identity)
 	}
@@ -714,29 +934,82 @@ func (tv *tokenValidator) ensureNotRevoked(ctx context.Context,
 
 // revocationIdentity extracts the trusted token attributes used by criteria enforcement.
 //
-// Only the dimensions a writer actually records are enforced here: the token family and the subject.
-// The remaining criterion types the revocation service accepts have no writer yet, and adding them
-// speculatively would widen the deny-list query on every token validation for rows that cannot
-// exist. Extend this alongside the write path, not ahead of it, and keep it in step with the
-// Resource Server cache so both enforcement points cover the same dimensions.
-func revocationIdentity(claims map[string]interface{}, jti, tokenFamilyID string) revocation.RevocationIdentity {
-	criteria := make([]revocation.Criterion, 0, 2)
+// Only the dimensions a writer actually records are enforced here: the token family, the subject, the
+// OAuth client the artifact was issued to, and the scopes it carries. The remaining criterion types
+// the revocation service accepts have no writer yet, and adding them speculatively would widen the
+// deny-list query on every token validation for rows that cannot exist. Extend this alongside the
+// write path, not ahead of it, and keep it in step with the Resource Server cache so both enforcement
+// points cover the same dimensions.
+func revocationIdentity(claims map[string]interface{}, jti, tokenFamilyID string) (
+	revocation.RevocationIdentity, error) {
+	criteria := make([]revocation.Criterion, 0, 3)
 	if tokenFamilyID != "" {
 		criteria = append(criteria,
 			revocation.Criterion{Type: revocation.CriterionTypeTokenFamily, Value: tokenFamilyID})
 	}
 	subject, _ := extractStringClaim(claims, constants.ClaimSub)
-	if accessTokenSubject, _ := extractStringClaim(
-		claims, constants.ClaimAccessTokenSubject); accessTokenSubject != "" {
+	accessTokenSubject, _ := extractStringClaim(claims, constants.ClaimAccessTokenSubject)
+	isRefreshToken := accessTokenSubject != ""
+	if isRefreshToken {
 		subject = accessTokenSubject
 	}
 	if subject != "" {
 		criteria = append(criteria, revocation.Criterion{Type: revocation.CriterionTypeSubject, Value: subject})
 	}
+	if clientKey := revocationClientKey(claims, isRefreshToken); clientKey != "" {
+		criteria = append(criteria,
+			revocation.Criterion{Type: revocation.CriterionTypeApplicationKey, Value: clientKey})
+	}
+	rawScope, _ := extractStringClaim(claims, constants.ClaimScope)
+	scopes := strings.Fields(rawScope)
+	audiences, err := revocation.TokenAudiences(claims, scopes)
+	if err != nil {
+		return revocation.RevocationIdentity{}, fmt.Errorf("invalid audience claim: %w", err)
+	}
+	criteria = append(criteria, revocation.ScopeCriteria(subject, audiences, scopes)...)
 
 	var establishedAt time.Time
 	if issuedAt, ok := claims[constants.ClaimIat].(float64); ok {
 		establishedAt = time.Unix(int64(issuedAt), 0).UTC()
 	}
-	return revocation.RevocationIdentity{JTI: jti, EstablishedAt: establishedAt, Criteria: criteria}
+	return revocation.RevocationIdentity{JTI: jti, EstablishedAt: establishedAt, Criteria: criteria}, nil
+}
+
+// revocationClientKey returns the OAuth client the artifact was issued to, the value the app.key
+// dimension is revoked by. Access tokens carry it in client_id; refresh tokens carry none and are minted
+// with the client as sub, so sub is read only there, where it is not the end user.
+func revocationClientKey(claims map[string]interface{}, isRefreshToken bool) string {
+	if clientID, _ := extractStringClaim(claims, constants.ClaimClientID); clientID != "" {
+		return clientID
+	}
+	if isRefreshToken {
+		clientKey, _ := extractStringClaim(claims, constants.ClaimSub)
+		return clientKey
+	}
+	return ""
+}
+
+// isExchangeableType reports whether a token with this typ header may be presented on token exchange.
+func isExchangeableType(typ string, selfIssued bool) bool {
+	// An ID-JAG is an authorization grant and a logout token is a notification. Neither is a subject
+	// token, whatever its issuer.
+	if typ == jwt.TokenTypeIDJAG || typ == jwt.TokenTypeLogout {
+		return false
+	}
+	if selfIssued {
+		return isExchangeableSelfIssuedType(typ)
+	}
+	// Beyond those two, another issuer's typ is not ours to interpret.
+	return true
+}
+
+// isExchangeableSelfIssuedType reports whether a token this server issued may be presented on token
+// exchange. It must carry the generic JWT type, which ID tokens use, or an access token type, so refresh
+// tokens and any token type added later are refused.
+func isExchangeableSelfIssuedType(typ string) bool {
+	switch typ {
+	case jwt.TokenTypeJWT, jwt.TokenTypeAccessToken, jwt.TokenTypeAccessTokenWithPrefix:
+		return true
+	}
+	return false
 }

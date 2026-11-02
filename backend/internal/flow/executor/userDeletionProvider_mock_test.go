@@ -17,10 +17,19 @@ func newUserDeletionProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *userDeletionProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &userDeletionProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type userDeletionProviderMock_DeleteUser_Call struct {
 // DeleteUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userID string
-func (_e *userDeletionProviderMock_Expecter) DeleteUser(ctx interface{}, userID interface{}) *userDeletionProviderMock_DeleteUser_Call {
+func (_e *userDeletionProviderMock_Expecter) DeleteUser(ctx any, userID any) *userDeletionProviderMock_DeleteUser_Call {
 	return &userDeletionProviderMock_DeleteUser_Call{Call: _e.mock.On("DeleteUser", ctx, userID)}
 }
 
@@ -124,7 +133,7 @@ type userDeletionProviderMock_ValidateDeleteUser_Call struct {
 // ValidateDeleteUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userID string
-func (_e *userDeletionProviderMock_Expecter) ValidateDeleteUser(ctx interface{}, userID interface{}) *userDeletionProviderMock_ValidateDeleteUser_Call {
+func (_e *userDeletionProviderMock_Expecter) ValidateDeleteUser(ctx any, userID any) *userDeletionProviderMock_ValidateDeleteUser_Call {
 	return &userDeletionProviderMock_ValidateDeleteUser_Call{Call: _e.mock.On("ValidateDeleteUser", ctx, userID)}
 }
 

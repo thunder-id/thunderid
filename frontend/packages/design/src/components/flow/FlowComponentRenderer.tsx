@@ -1,7 +1,12 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {EmbeddedFlowComponentType, EmbeddedFlowEventType, type ConsentPurpose} from '@thunderid/react';
+import {
+  EmbeddedFlowComponentType,
+  EmbeddedFlowEventType,
+  isConsentApprovalBlocked,
+  type ConsentPurpose,
+} from '@thunderid/react';
 import type {JSX} from 'react';
 import BlockAdapter, {ResendButtonAdapter} from './adapters/BlockAdapter';
 import ConsentAdapter from './adapters/ConsentAdapter';
@@ -9,6 +14,7 @@ import CopyableTextAdapter from './adapters/CopyableTextAdapter';
 import DividerAdapter from './adapters/DividerAdapter';
 import IconAdapter from './adapters/IconAdapter';
 import ImageAdapter from './adapters/ImageAdapter';
+import KeyValueListAdapter from './adapters/KeyValueListAdapter';
 import QrCodeAdapter from './adapters/QrCodeAdapter';
 import RichTextAdapter from './adapters/RichTextAdapter';
 import StackAdapter from './adapters/StackAdapter';
@@ -17,6 +23,20 @@ import TextAdapter from './adapters/TextAdapter';
 import TimerAdapter from './adapters/TimerAdapter';
 import type {FlowComponent, FlowComponentRendererProps} from '../../models/flow';
 
+type ConsentData = string | ConsentPurpose[] | {purposes: ConsentPurpose[]};
+
+function parseConsentPurposes(consentData: ConsentData): ConsentPurpose[] {
+  try {
+    const parsed = (typeof consentData === 'string' ? JSON.parse(consentData) : consentData) as
+      | ConsentPurpose[]
+      | {purposes?: ConsentPurpose[]}
+      | null;
+    return (Array.isArray(parsed) ? parsed : parsed?.purposes) ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Factory component that maps an embedded flow component to the appropriate adapter.
  *
@@ -24,6 +44,7 @@ import type {FlowComponent, FlowComponentRendererProps} from '../../models/flow'
  * - `TEXT` → {@link TextAdapter}
  * - `RICH_TEXT` → {@link RichTextAdapter}
  * - `IMAGE` → {@link ImageAdapter}
+ * - `KEY_VALUE_LIST` → {@link KeyValueListAdapter}
  * - `ICON` → {@link IconAdapter}
  * - `STACK` → {@link StackAdapter}
  * - `DIVIDER` → {@link DividerAdapter}
@@ -116,14 +137,18 @@ export default function FlowComponentRenderer({
     const isExpiredOnMount = hasTimer && expiresIn <= 0;
 
     if (hasConsent) {
+      const consentData = additionalData?.['consentPrompt'] as ConsentData;
+      // While an approved authorization detail shows a value that cannot be granted, the approving action
+      // is disabled; denying stays available.
       return (
         <>
           <ConsentAdapter
-            consentData={
-              additionalData?.['consentPrompt'] as string | ConsentPurpose[] | {purposes: ConsentPurpose[]} | undefined
-            }
+            consentData={consentData}
             formValues={values}
             onInputChange={onInputChange}
+            clientIdHost={additionalData?.['clientIdHost'] as string | undefined}
+            redirectUriHost={additionalData?.['redirectUriHost'] as string | undefined}
+            redirectUriLoopback={additionalData?.['redirectUriLoopback'] === 'true'}
           />
           <BlockAdapter
             component={component}
@@ -138,6 +163,7 @@ export default function FlowComponentRenderer({
             onSubmit={onSubmit}
             onValidate={onValidate}
             additionalData={additionalData}
+            approvalBlocked={isConsentApprovalBlocked(parseConsentPurposes(consentData), values)}
           />
         </>
       );
@@ -159,6 +185,11 @@ export default function FlowComponentRenderer({
         additionalData={additionalData}
       />
     );
+  }
+
+  // KEY_VALUE_LIST
+  if ((comp.type as EmbeddedFlowComponentType) === EmbeddedFlowComponentType.KeyValueList) {
+    return <KeyValueListAdapter component={comp} resolve={resolve} additionalData={additionalData} />;
   }
 
   // COPYABLE_TEXT

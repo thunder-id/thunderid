@@ -1,0 +1,599 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+import {PageLoader} from '@thunderid/components';
+import {ApplicationCreateProvider} from '@thunderid/configure-applications';
+import {LayoutBuilderProvider, ThemeBuilderProvider} from '@thunderid/configure-design';
+import {GroupCreateProvider} from '@thunderid/configure-groups';
+import type {NotificationChannel} from '@thunderid/configure-notification-templates';
+import {WelcomeRedirect} from '@thunderid/configure-onboarding';
+import {OrganizationUnitProvider} from '@thunderid/configure-organization-units';
+import {RoleCreateProvider} from '@thunderid/configure-roles';
+import {TranslationCreateProvider} from '@thunderid/configure-translations';
+import {UserTypeCreateProvider} from '@thunderid/configure-user-types';
+import {
+  AdministrationModes,
+  AdministrationProvider,
+  RoutesProvider,
+  ToastProvider,
+  type AdministrationConfig,
+} from '@thunderid/contexts';
+import {ProtectedRoute} from '@thunderid/react-router';
+import {lazy, Suspense, type JSX} from 'react';
+import {BrowserRouter, Navigate, Outlet, Route, Routes} from 'react-router';
+import RouteConfig, {ROUTE_SEGMENTS} from './configs/RouteConfig';
+import DashboardLayout from './layouts/DashboardLayout';
+import FullScreenLayout from './layouts/FullScreenLayout';
+
+const ViewAgentTypePage = lazy(() =>
+  import('@thunderid/configure-agent-types').then((m) => ({default: m.ViewAgentTypePage})),
+);
+const CreateOrganizationUnitPage = lazy(() =>
+  import('@thunderid/configure-organization-units').then((m) => ({default: m.CreateOrganizationUnitPage})),
+);
+const OrganizationUnitEditPage = lazy(() =>
+  import('@thunderid/configure-organization-units').then((m) => ({default: m.OrganizationUnitEditPage})),
+);
+const OrganizationUnitsListPage = lazy(() =>
+  import('@thunderid/configure-organization-units').then((m) => ({default: m.OrganizationUnitsListPage})),
+);
+const OrganizationUnitDefaultFlowsSettings = lazy(() =>
+  import('@thunderid/configure-flows').then((m) => ({default: m.OrganizationUnitDefaultFlowsSettings})),
+);
+const TranslationCreatePage = lazy(() =>
+  import('@thunderid/configure-translations').then((m) => ({default: m.TranslationCreatePage})),
+);
+const TranslationsEditPage = lazy(() =>
+  import('./lib/monaco-setup').then(() =>
+    import('@thunderid/configure-translations').then((m) => ({default: m.TranslationsEditPage})),
+  ),
+);
+const TranslationsListPage = lazy(() =>
+  import('@thunderid/configure-translations').then((m) => ({default: m.TranslationsListPage})),
+);
+const NotificationTemplatesListPage = lazy(() =>
+  import('@thunderid/configure-notification-templates').then((m) => ({default: m.NotificationTemplatesListPage})),
+);
+const NotificationTemplateEditPage = lazy(() =>
+  import('@thunderid/configure-notification-templates').then((m) => ({default: m.NotificationTemplateEditPage})),
+);
+const NotificationTemplateCreatePage = lazy(() =>
+  import('@thunderid/configure-notification-templates').then((m) => ({default: m.NotificationTemplateCreatePage})),
+);
+const UserAddPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserAddPage})));
+const UserEditPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserEditPage})));
+const UsersListPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UsersListPage})));
+const ResourceServersListPage = lazy(() =>
+  import('@thunderid/configure-resource-servers').then((m) => ({default: m.ResourceServersListPage})),
+);
+const ResourceServerEditPage = lazy(() =>
+  import('@thunderid/configure-resource-servers').then((m) => ({default: m.ResourceServerEditPage})),
+);
+const CreateResourceServerPage = lazy(() =>
+  import('@thunderid/configure-resource-servers').then((m) => ({default: m.CreateResourceServerPage})),
+);
+
+const AgentOnboardPage = lazy(() => import('@thunderid/configure-agents').then((m) => ({default: m.AgentOnboardPage})));
+const AgentEditPage = lazy(() =>
+  import('./lib/monaco-setup').then(() =>
+    import('@thunderid/configure-agents').then((m) => ({default: m.AgentEditPage})),
+  ),
+);
+const AgentsListPage = lazy(() => import('@thunderid/configure-agents').then((m) => ({default: m.AgentsListPage})));
+const ApplicationCreatePage = lazy(() =>
+  import('@thunderid/configure-applications').then((m) => ({default: m.ApplicationCreatePage})),
+);
+const ApplicationEditPage = lazy(() =>
+  import('./lib/monaco-setup').then(() =>
+    import('@thunderid/configure-applications').then((m) => ({default: m.ApplicationEditPage})),
+  ),
+);
+const ApplicationsListPage = lazy(() =>
+  import('@thunderid/configure-applications').then((m) => ({default: m.ApplicationsListPage})),
+);
+const ApplicationTemplateSelectPage = lazy(() =>
+  import('@thunderid/configure-applications').then((m) => ({default: m.ApplicationTemplateSelectPage})),
+);
+const DesignPage = lazy(() => import('@thunderid/configure-design').then((m) => ({default: m.DesignPage})));
+const LayoutBuilderPage = lazy(() =>
+  import('./lib/monaco-setup').then(() =>
+    import('@thunderid/configure-design').then((m) => ({default: m.LayoutBuilderPage})),
+  ),
+);
+const ThemeBuilderPage = lazy(() => import('@thunderid/configure-design').then((m) => ({default: m.ThemeBuilderPage})));
+const ThemeCreatePage = lazy(() => import('@thunderid/configure-design').then((m) => ({default: m.ThemeCreatePage})));
+const FlowCreatePage = lazy(() => import('@thunderid/configure-flows').then((m) => ({default: m.FlowCreatePage})));
+const FlowsListPage = lazy(() => import('@thunderid/configure-flows').then((m) => ({default: m.FlowsListPage})));
+const CreateGroupPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.CreateGroupPage})));
+const GroupEditPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.GroupEditPage})));
+const GroupsListPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.GroupsListPage})));
+const HomePage = lazy(() => import('@thunderid/configure-onboarding').then((m) => ({default: m.HomePage})));
+const ExportPage = lazy(() =>
+  import('./lib/monaco-setup').then(() =>
+    import('@thunderid/configure-import-export').then((m) => ({default: m.ExportPage})),
+  ),
+);
+const ImportConfigurationSummaryPage = lazy(() =>
+  import('./lib/monaco-setup').then(() =>
+    import('@thunderid/configure-import-export').then((m) => ({default: m.ImportConfigurationSummaryPage})),
+  ),
+);
+const ImportConfigurationUploadPage = lazy(() =>
+  import('@thunderid/configure-import-export').then((m) => ({default: m.ImportConfigurationUploadPage})),
+);
+const ImportConfigurationValidatePage = lazy(() =>
+  import('@thunderid/configure-import-export').then((m) => ({default: m.ImportConfigurationValidatePage})),
+);
+const ImportExportPage = lazy(() =>
+  import('@thunderid/configure-import-export').then((m) => ({default: m.ImportExportPage})),
+);
+const GatewaysListPage = lazy(() =>
+  import('@thunderid/configure-gateways').then((m) => ({default: m.GatewaysListPage})),
+);
+const GatewayDetailPage = lazy(() =>
+  import('@thunderid/configure-gateways').then((m) => ({default: m.GatewayDetailPage})),
+);
+const DeployPage = lazy(() => import('@thunderid/configure-gateways').then((m) => ({default: m.DeployPage})));
+const GatewayExplorerPage = lazy(() =>
+  import('@thunderid/configure-gateways').then((m) => ({default: m.GatewayExplorerPage})),
+);
+const GatewayValuesPage = lazy(() =>
+  import('@thunderid/configure-gateways').then((m) => ({default: m.GatewayValuesPage})),
+);
+const ConnectionsListPage = lazy(() =>
+  import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionsListPage})),
+);
+const ConnectionDetailPage = lazy(() =>
+  import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionDetailPage})),
+);
+const ConnectionConfigureWizardPage = lazy(() =>
+  import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionConfigureWizardPage})),
+);
+const ConnectionCreateWizardPage = lazy(() =>
+  import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionCreateWizardPage})),
+);
+const FlowBuilderPage = lazy(() => import('@thunderid/configure-flows').then((m) => ({default: m.FlowBuilderPage})));
+const CreateRolePage = lazy(() => import('@thunderid/configure-roles').then((m) => ({default: m.CreateRolePage})));
+const RoleEditPage = lazy(() => import('@thunderid/configure-roles').then((m) => ({default: m.RoleEditPage})));
+const RolesListPage = lazy(() => import('@thunderid/configure-roles').then((m) => ({default: m.RolesListPage})));
+const SettingsPage = lazy(() => import('@thunderid/configure-settings').then((m) => ({default: m.SettingsPage})));
+const TrustedIssuerDetailPage = lazy(() =>
+  import('@thunderid/configure-connections').then((m) => ({default: m.TrustedIssuerDetailPage})),
+);
+const VerifiablePresentationsListPage = lazy(() =>
+  import('@thunderid/configure-verifiable-credentials').then((m) => ({default: m.VerifiablePresentationsListPage})),
+);
+const VerifiablePresentationCreatePage = lazy(() =>
+  import('@thunderid/configure-verifiable-credentials').then((m) => ({default: m.VerifiablePresentationCreatePage})),
+);
+const VerifiablePresentationEditPage = lazy(() =>
+  import('@thunderid/configure-verifiable-credentials').then((m) => ({default: m.VerifiablePresentationEditPage})),
+);
+const VerifiableCredentialsListPage = lazy(() =>
+  import('@thunderid/configure-verifiable-credentials').then((m) => ({default: m.VerifiableCredentialsListPage})),
+);
+const VerifiableCredentialCreatePage = lazy(() =>
+  import('@thunderid/configure-verifiable-credentials').then((m) => ({default: m.VerifiableCredentialCreatePage})),
+);
+const VerifiableCredentialEditPage = lazy(() =>
+  import('@thunderid/configure-verifiable-credentials').then((m) => ({default: m.VerifiableCredentialEditPage})),
+);
+const CreateUserTypePage = lazy(() =>
+  import('@thunderid/configure-user-types').then((m) => ({default: m.CreateUserTypePage})),
+);
+const UserTypesListPage = lazy(() =>
+  import('@thunderid/configure-user-types').then((m) => ({default: m.UserTypesListPage})),
+);
+const ViewUserTypePage = lazy(() =>
+  import('@thunderid/configure-user-types').then((m) => ({default: m.ViewUserTypePage})),
+);
+const CreateProjectPage = lazy(() =>
+  import('@thunderid/configure-onboarding').then((m) => ({default: m.CreateProjectPage})),
+);
+const GetStartedPage = lazy(() => import('@thunderid/configure-onboarding').then((m) => ({default: m.GetStartedPage})));
+const WelcomePage = lazy(() => import('@thunderid/configure-onboarding').then((m) => ({default: m.WelcomePage})));
+
+/**
+ * The control plane executes no flows: it holds configuration and deploys it to gateways, which
+ * run the flows. Every administration operation therefore calls the management API directly.
+ */
+const CONTROL_PLANE_ADMINISTRATION: AdministrationConfig = {mode: AdministrationModes.NATIVE};
+
+/**
+ * The console the control plane serves: everything the console offers, plus the gateways the
+ * configuration is deployed to, and without the tryouts, which walk through flows the control
+ * plane does not run.
+ */
+export default function App(): JSX.Element {
+  return (
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
+      <RoutesProvider paths={RouteConfig}>
+        <AdministrationProvider administration={CONTROL_PLANE_ADMINISTRATION}>
+          <ToastProvider>
+            <WelcomeRedirect />
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route
+                  path="/"
+                  element={
+                    <ProtectedRoute>
+                      <DashboardLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<HomePage />} />
+                  <Route path={ROUTE_SEGMENTS.home} element={<HomePage />} />
+                  <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
+                  <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
+                  <Route path={ROUTE_SEGMENTS.userTypes} element={<UserTypesListPage />} />
+                  <Route path={`${ROUTE_SEGMENTS.userTypes}/:id`} element={<ViewUserTypePage />} />
+                  <Route path={`${ROUTE_SEGMENTS.agentTypes}/:id`} element={<ViewAgentTypePage />} />
+                  <Route path={ROUTE_SEGMENTS.connections} element={<ConnectionsListPage />} />
+                  <Route path={`${ROUTE_SEGMENTS.connections}/:type`} element={<ConnectionDetailPage />} />
+                  <Route path={`${ROUTE_SEGMENTS.connections}/:type/:id`} element={<ConnectionDetailPage />} />
+                  <Route
+                    path={ROUTE_SEGMENTS.trustedIssuers}
+                    element={<Navigate to={RouteConfig.connections.list()} replace />}
+                  />
+                  <Route path={`${ROUTE_SEGMENTS.trustedIssuers}/:id`} element={<TrustedIssuerDetailPage />} />
+                  <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />
+                  <Route path={`${ROUTE_SEGMENTS.groups}/:groupId`} element={<GroupEditPage />} />
+                  <Route path={ROUTE_SEGMENTS.roles} element={<RolesListPage />} />
+                  <Route path={`${ROUTE_SEGMENTS.roles}/:roleId`} element={<RoleEditPage />} />
+                  <Route path={ROUTE_SEGMENTS.verifiablePresentations} element={<VerifiablePresentationsListPage />} />
+                  <Route
+                    path={`${ROUTE_SEGMENTS.verifiablePresentations}/:vpId`}
+                    element={<VerifiablePresentationEditPage />}
+                  />
+                  <Route path={ROUTE_SEGMENTS.verifiableCredentials} element={<VerifiableCredentialsListPage />} />
+                  <Route
+                    path={`${ROUTE_SEGMENTS.verifiableCredentials}/:vcId`}
+                    element={<VerifiableCredentialEditPage />}
+                  />
+                  <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
+                  <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
+                  <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
+                  <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
+                  <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
+                  <Route path={ROUTE_SEGMENTS.resourceServers} element={<ResourceServersListPage />} />
+                  <Route
+                    path={`${ROUTE_SEGMENTS.resourceServers}/:resourceServerId`}
+                    element={<ResourceServerEditPage />}
+                  />
+                  <Route path={ROUTE_SEGMENTS.settings} element={<SettingsPage />} />
+                  <Route path={ROUTE_SEGMENTS.gateways} element={<GatewaysListPage />} />
+                  <Route path={`${ROUTE_SEGMENTS.gateways}/:gatewayId`} element={<GatewayDetailPage />} />
+                </Route>
+                {/* Organization Units - wrapped in OrganizationUnitProvider to preserve tree state across navigation */}
+                <Route
+                  path={RouteConfig.organizationUnits.list()}
+                  element={
+                    <ProtectedRoute>
+                      <OrganizationUnitProvider />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route element={<DashboardLayout />}>
+                    <Route index element={<OrganizationUnitsListPage />} />
+                    <Route
+                      path=":id"
+                      element={
+                        <OrganizationUnitEditPage
+                          renderDefaultFlowsSettings={(props) => <OrganizationUnitDefaultFlowsSettings {...props} />}
+                        />
+                      }
+                    />
+                  </Route>
+                  <Route path="create" element={<FullScreenLayout />}>
+                    <Route index element={<CreateOrganizationUnitPage />} />
+                  </Route>
+                </Route>
+                <Route
+                  path={RouteConfig.groups.create()}
+                  element={
+                    <ProtectedRoute>
+                      <GroupCreateProvider>
+                        <FullScreenLayout />
+                      </GroupCreateProvider>
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<CreateGroupPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.roles.create()}
+                  element={
+                    <ProtectedRoute>
+                      <RoleCreateProvider>
+                        <FullScreenLayout />
+                      </RoleCreateProvider>
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<CreateRolePage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.users.add()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<UserAddPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.deploy.list()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<DeployPage />} />
+                  <Route path="gateways/:gatewayId/explore" element={<GatewayExplorerPage />} />
+                  <Route path="gateways/:gatewayId/values" element={<GatewayValuesPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.userTypes.create()}
+                  element={
+                    <ProtectedRoute>
+                      <UserTypeCreateProvider>
+                        <FullScreenLayout />
+                      </UserTypeCreateProvider>
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<CreateUserTypePage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.verifiablePresentations.create()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<VerifiablePresentationCreatePage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.verifiableCredentials.create()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<VerifiableCredentialCreatePage />} />
+                </Route>
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <ApplicationCreateProvider>
+                        <Outlet />
+                      </ApplicationCreateProvider>
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route path={RouteConfig.applications.types()} element={<DashboardLayout />}>
+                    <Route index element={<ApplicationTemplateSelectPage />} />
+                  </Route>
+                  <Route path={RouteConfig.applications.create()} element={<FullScreenLayout />}>
+                    <Route index element={<ApplicationCreatePage />} />
+                  </Route>
+                </Route>
+                <Route
+                  path={RouteConfig.agents.create()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<AgentOnboardPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.resourceServers.create()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<CreateResourceServerPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.flows.create()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<FlowCreatePage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.connections.create()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<ConnectionCreateWizardPage />} />
+                </Route>
+                <Route
+                  path={`/${ROUTE_SEGMENTS.connections}/:type/configure`}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<ConnectionConfigureWizardPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.flows.detail(':flowId')}
+                  element={
+                    <ProtectedRoute>
+                      <DashboardLayout collapseSidebar />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<FlowBuilderPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.importExport.list()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<ImportExportPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.export.page()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<ExportPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.importConfiguration.upload()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<ImportConfigurationUploadPage />} />
+                  <Route path="validate" element={<ImportConfigurationValidatePage />} />
+                  <Route path="summary" element={<ImportConfigurationSummaryPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.welcome.root()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<WelcomePage />} />
+                  <Route path="create-project" element={<CreateProjectPage />} />
+                  <Route path="import-configuration" element={<ImportConfigurationUploadPage />} />
+                  <Route path="import-configuration/validate" element={<ImportConfigurationValidatePage />} />
+                  <Route path="import-configuration/summary" element={<ImportConfigurationSummaryPage />} />
+                  <Route path="get-started" element={<GetStartedPage />} />
+                  <Route
+                    element={
+                      <ApplicationCreateProvider>
+                        <Outlet />
+                      </ApplicationCreateProvider>
+                    }
+                  >
+                    <Route path="get-started/applications/types" element={<ApplicationTemplateSelectPage />} />
+                    <Route path="get-started/applications/create" element={<ApplicationCreatePage />} />
+                  </Route>
+                  <Route path="get-started/agents/create" element={<AgentOnboardPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.design.list()}
+                  element={
+                    <ProtectedRoute>
+                      <DashboardLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<DesignPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.design.themesCreate()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<ThemeCreatePage />} />
+                </Route>
+                <Route
+                  path={`/${ROUTE_SEGMENTS.design}/themes/:themeId`}
+                  element={
+                    <ProtectedRoute>
+                      <ThemeBuilderProvider>
+                        <DashboardLayout />
+                      </ThemeBuilderProvider>
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<ThemeBuilderPage />} />
+                </Route>
+                <Route
+                  path={`/${ROUTE_SEGMENTS.design}/layouts/:layoutId`}
+                  element={
+                    <ProtectedRoute>
+                      <LayoutBuilderProvider>
+                        <DashboardLayout />
+                      </LayoutBuilderProvider>
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<LayoutBuilderPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.translations.create()}
+                  element={
+                    <ProtectedRoute>
+                      <TranslationCreateProvider>
+                        <FullScreenLayout />
+                      </TranslationCreateProvider>
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<TranslationCreatePage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.translations.list()}
+                  element={
+                    <ProtectedRoute>
+                      <DashboardLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<TranslationsListPage />} />
+                  <Route path=":language" element={<TranslationsEditPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.notificationTemplates.list()}
+                  element={
+                    <ProtectedRoute>
+                      <DashboardLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<Navigate to={RouteConfig.notificationTemplates.channel('email')} replace />} />
+                  <Route path=":channel" element={<NotificationTemplatesListPage />} />
+                  <Route path=":channel/:id" element={<NotificationTemplateEditPage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.notificationTemplates.create(':channel' as NotificationChannel)}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<NotificationTemplateCreatePage />} />
+                </Route>
+              </Routes>
+            </Suspense>
+          </ToastProvider>
+        </AdministrationProvider>
+      </RoutesProvider>
+    </BrowserRouter>
+  );
+}

@@ -5,6 +5,19 @@ server:
     # Gates the Direct API endpoints. The secret is generated into config/secrets/direct_auth_secret
     # by setup.sh and read from there at load time. Callers present it in the Direct-Auth-Secret header.
     direct_auth_secret: "file://config/secrets/direct_auth_secret"
+    # Audiences below are RFC 8707 resource indicators, normally the identifier of the resource
+    # server your tokens are bound to. Both accept Go-template environment-variable references
+    # (as used elsewhere in this file's tooling), so a deployment can derive them from its public
+    # URL instead of hardcoding one.
+    rest:
+      # Required of tokens presented to the REST API gate. Omitted leaves the audience unchecked,
+      # since REST authorizes by scope.
+      # audience: "https://localhost:8090/mcp"
+    mcp:
+      # The MCP resource identifier: both the required token audience and the RFC 9728 published
+      # "resource". Mandatory per the MCP spec, so omitting it falls back to this server's own MCP
+      # endpoint rather than disabling the check.
+      # audience: "https://localhost:8090/mcp"
 
 tls:
   min_version: "1.3"
@@ -67,14 +80,3 @@ jwt:
 passkey:
   allowed_origins:
     - "https://localhost:8090"
-
-# This is a sample email client configuration. Update it with real SMTP server details for production use.
-email:
-  smtp:
-    host: "127.0.0.1"
-    port: 2525
-    username: "dev"
-    password: "dev"
-    from_address: "noreply@thunderid.dev"
-    enable_start_tls: false
-    enable_authentication: true

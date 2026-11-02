@@ -73,6 +73,7 @@ resources:
 
 resource_type: flow
 id: 0193b0a1-2001-7000-8000-000000000001
+ouHandle: default
 name: Agent Identity Playground Authentication Flow
 handle: agent-identity-agent-auth-flow
 flowType: AUTHENTICATION
@@ -214,7 +215,7 @@ nodes:
 
 resource_type: user
 id: agent-identity-john
-type: Person
+type: person
 ouHandle: default
 attributes:
   username: johndoe
@@ -240,20 +241,20 @@ credentials:
 
 resource_type: agent
 id: agent-identity-concierge
-name: Concierge
 description: The in-app travel assistant that books trips for customers
 ouHandle: default
 type: default
 logoUrl: "emoji:🧭"
 authFlowHandle: agent-identity-agent-auth-flow
 attributes:
+  name: Concierge
   model: claude-sonnet-5
   modelProvider: anthropic
   function: assistant
 # The user types the Concierge works with: who may sign up through it, and whose schema the user
 # attributes in the tokens below are validated against.
 allowedUserTypes:
-  - Person
+  - person
 inboundAuthConfig:
   - type: oauth2
     config:
@@ -306,12 +307,12 @@ inboundAuthConfig:
 
 resource_type: agent
 id: agent-identity-flight-search
-name: Flight Search Agent
 description: Worker agent that runs the delegated flight-search sub-task
 ouHandle: default
 type: default
 logoUrl: "emoji:✈️"
 attributes:
+  name: Flight Search Agent
   model: claude-sonnet-5
   modelProvider: anthropic
   function: sub-agent

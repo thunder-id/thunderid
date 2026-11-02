@@ -87,7 +87,9 @@ paths:
                       key: "error.authnservice.reserved_credential_type_description"
                       defaultValue: "The provided credentials contain a credential type that is reserved for internal use"
         "401":
-          description: 'Unauthorized: Authentication failed'
+          description: >
+            Unauthorized: Authentication failed. A locked account is refused with `AUTHN-1011` and a
+            suspended account with `AUTHN-1012`.
           content:
             application/json:
               schema:
@@ -197,7 +199,9 @@ paths:
                   key: "error.authnotpservice.invalid_otp_description"
                   defaultValue: "The provided OTP is invalid or empty"
         "401":
-          description: 'Unauthorized: OTP verification failed'
+          description: >
+            Unauthorized: OTP verification failed. A locked account is refused with `AUTHN-1011` and a
+            suspended account with `AUTHN-1012`.
           content:
             application/json:
               schema:
@@ -309,6 +313,13 @@ paths:
                 description:
                   key: "error.authnservice.empty_auth_code_description"
                   defaultValue: "The provided authorization code is empty"
+        "401":
+          description: >
+            Unauthorized: The account is locked (`AUTHN-1011`) or suspended (`AUTHN-1012`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "500":
           description: 'Internal Server Error: An unexpected error occurred while processing the request.'
           content:
@@ -394,6 +405,13 @@ paths:
                 description:
                   key: "error.authnservice.empty_auth_code_description"
                   defaultValue: "The provided authorization code is empty"
+        "401":
+          description: >
+            Unauthorized: The account is locked (`AUTHN-1011`) or suspended (`AUTHN-1012`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "500":
           description: 'Internal Server Error: An unexpected error occurred while processing the request.'
           content:
@@ -479,6 +497,13 @@ paths:
                 description:
                   key: "error.authnservice.empty_auth_code_description"
                   defaultValue: "The provided authorization code is empty"
+        "401":
+          description: >
+            Unauthorized: The account is locked (`AUTHN-1011`) or suspended (`AUTHN-1012`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "500":
           description: 'Internal Server Error: An unexpected error occurred while processing the request.'
           content:
@@ -568,6 +593,13 @@ paths:
                 description:
                   key: "error.authnservice.passkey_authentication_failed_description"
                   defaultValue: "The passkey authentication attempt failed"
+        "401":
+          description: >
+            Unauthorized: The account is locked (`AUTHN-1011`) or suspended (`AUTHN-1012`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "500":
           description: 'Internal Server Error: An unexpected error occurred while processing the request'
           content:
@@ -900,7 +932,7 @@ components:
       properties:
         code:
           type: string
-          description: "Error code. Prefixes: AUTHN-1000 (request format), AUTHN-XXXX (IDP/session), AUTH-CRED-XXXX (credentials), AUTHN-OTP-XXXX (OTP), AUTHN-OTPAUTHN-XXXX (OTP auth), AUTHN-PSK-XXXX (passkey auth and enrollment)."
+          description: "Error code. Prefixes: AUTHN-1000 (request format), AUTHN-XXXX (IDP/session, locked and suspended accounts), AUTH-CRED-XXXX (credentials), AUTHN-OTP-XXXX (OTP), AUTHN-OTPAUTHN-XXXX (OTP auth), AUTHN-PSK-XXXX (passkey auth and enrollment)."
           example: "AUTHN-1000"
         message:
           $ref: '#/components/schemas/I18nMessage'

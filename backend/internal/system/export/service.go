@@ -5,7 +5,9 @@ package export
 
 import (
 	"context"
+	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,9 +35,11 @@ const (
 	resourceTypeUserType                = "user_type"
 	resourceTypeAgentType               = "agent_type"
 	resourceTypeOU                      = "organization_unit"
+	resourceTypeProject                 = "project"
 	resourceTypeUser                    = "user"
 	resourceTypeGroup                   = "group"
 	resourceTypeResourceServer          = "resource_server"
+	resourceTypeAuthorizationDetailType = "authorization_detail_type"
 	resourceTypeRole                    = "role"
 	resourceTypeFlow                    = "flow"
 	resourceTypeTranslation             = "translation"
@@ -45,13 +49,17 @@ const (
 	resourceTypeServerConfig            = "server_config"
 	resourceTypeCredentialConfiguration = "credential_configuration" //nolint:gosec
 	resourceTypePresentationDefinition  = "presentation_definition"
+	resourceTypeNotificationTemplate    = "notification_template"
 )
 
 // parameterizerInterface defines the interface for template parameterization.
 type parameterizerInterface interface {
 	ToParameterizedYAML(ctx context.Context, obj interface{},
 		resourceType string, resourceName string,
-		rules *declarativeresource.ResourceRules) (string, map[string]string, error)
+		rules *declarativeresource.ResourceRules) (string, map[string]string, map[string]bool, error)
+	PlaceholderValues(ctx context.Context, obj interface{},
+		resourceType string, resourceName string,
+		rules *declarativeresource.ResourceRules) (map[string]string, map[string]string, error)
 	VarPrefix(resourceName string) string
 }
 
@@ -85,6 +93,14 @@ func (a *varNameAllocator) nameFor(resourceName string) string {
 // ExportServiceInterface defines the interface for the export service.
 type ExportServiceInterface interface {
 	ExportResources(ctx context.Context, request *ExportRequest) (*ExportResponse, *tidcommon.ServiceError)
+	// PlaceholderValues returns the values an export of one resource would refer to by name, as
+	// variables and secrets keyed by the name the export writes, without exporting anything.
+	//
+	// It reads the resource it is given rather than the stored one, so a caller that has just
+	// written a resource can pass what it wrote, including a value no read returns. The resource
+	// must be of the type the exporter registered for resourceType reads back.
+	PlaceholderValues(ctx context.Context, resourceType string, resource interface{}) (
+		map[string]string, map[string]string, error)
 }
 
 // exportService implements the ExportServiceInterface.
@@ -144,9 +160,11 @@ func (es *exportService) ExportResources(
 		resourceTypeUserType:                request.UserTypes,
 		resourceTypeAgentType:               request.AgentTypes,
 		resourceTypeOU:                      request.OrganizationUnits,
+		resourceTypeProject:                 request.Projects,
 		resourceTypeUser:                    request.Users,
 		resourceTypeGroup:                   request.Groups,
 		resourceTypeResourceServer:          request.ResourceServers,
+		resourceTypeAuthorizationDetailType: request.AuthorizationDetailTypes,
 		resourceTypeRole:                    request.Roles,
 		resourceTypeFlow:                    request.Flows,
 		resourceTypeTranslation:             request.Translations,
@@ -156,6 +174,7 @@ func (es *exportService) ExportResources(
 		resourceTypeServerConfig:            request.ServerConfigs,
 		resourceTypeCredentialConfiguration: request.CredentialConfigurations,
 		resourceTypePresentationDefinition:  request.PresentationDefinitions,
+		resourceTypeNotificationTemplate:    request.NotificationTemplates,
 	}
 
 	// Export resources using the registry
@@ -164,6 +183,11 @@ func (es *exportService) ExportResources(
 		resourceTypes = append(resourceTypes, k)
 	}
 	sort.Strings(resourceTypes)
+
+	// Which resource claimed each template variable, across the whole export. A name is claimed once:
+	// two resources sharing one would import with each other's value, and the later one would also
+	// overwrite the earlier value collected for the environment file.
+	variableOwners := make(map[string]string)
 
 	for _, resourceType := range resourceTypes {
 		resourceIDs := resourceMap[resourceType]
@@ -178,7 +202,16 @@ func (es *exportService) ExportResources(
 			continue
 		}
 
-		files, vars, errors := es.exportResourcesWithExporter(ctx, exporter, resourceIDs, options, varNames)
+		files, vars, errors, duplicate := es.exportResourcesWithExporter(ctx, exporter, resourceIDs, options,
+			varNames, variableOwners)
+		if duplicate != nil {
+			return nil, tidcommon.CustomServiceError(ErrorDuplicateTemplateVariable, tidcommon.I18nMessage{
+				Key: "error.exportservice.duplicate_template_variable_description",
+				DefaultValue: fmt.Sprintf(
+					"%s and %s derive the same template variable, so both would import the same value",
+					duplicate.previous, duplicate.owner),
+			})
+		}
 		exportFiles = append(exportFiles, files...)
 		for k, v := range vars {
 			allVariables[k] = v
@@ -228,6 +261,9 @@ func (es *exportService) ExportResources(
 // payload, populating each entry with its original value where available.
 func (es *exportService) generateEnvFile(files []ExportFile, variables map[string]string) *EnvironmentFile {
 	variablesSet := make(map[string]struct{})
+	// A list the resource does not have is still a range over its variable, which an import cannot
+	// range over as no value, so it is written as an empty list.
+	ranged := make(map[string]bool)
 
 	for _, file := range files {
 		matches := templateVariablePattern.FindAllStringSubmatch(file.Content, -1)
@@ -237,6 +273,9 @@ func (es *exportService) generateEnvFile(files []ExportFile, variables map[strin
 					continue
 				}
 				variablesSet[match[i]] = struct{}{}
+				if i == 2 {
+					ranged[match[i]] = true
+				}
 			}
 		}
 	}
@@ -255,7 +294,11 @@ func (es *exportService) generateEnvFile(files []ExportFile, variables map[strin
 	for _, varName := range varNames {
 		contentBuilder.WriteString(varName)
 		contentBuilder.WriteString("=")
-		contentBuilder.WriteString(variables[varName])
+		value := variables[varName]
+		if value == "" && ranged[varName] {
+			value = "[]"
+		}
+		contentBuilder.WriteString(value)
 		contentBuilder.WriteString("\n")
 	}
 
@@ -274,20 +317,21 @@ func (es *exportService) exportResourcesWithExporter(
 	resourceIDs []string,
 	options *ExportOptions,
 	varNames *varNameAllocator,
-) ([]ExportFile, map[string]string, []declarativeresource.ExportError) {
+	variableOwners map[string]string,
+) ([]ExportFile, map[string]string, []declarativeresource.ExportError, *duplicateVariable) {
 	logger := log.GetLogger().With(log.String("component", "ExportService"))
 	resourceType := exporter.GetResourceType()
 	exportFiles := make([]ExportFile, 0, len(resourceIDs))
 	exportErrors := make([]declarativeresource.ExportError, 0, len(resourceIDs))
 	variableValues := make(map[string]string)
 	var resourceIDList []string
-	if len(resourceIDs) == 1 && resourceIDs[0] == "*" {
+	if slices.Equal(resourceIDs, []string{"*"}) {
 		// Export all resources
 		ids, err := exporter.GetAllResourceIDs(ctx)
 		if err != nil {
 			logger.Warn(ctx, "Failed to get all resources",
 				log.String("resourceType", resourceType), log.Any("error", err))
-			return []ExportFile{}, variableValues, []declarativeresource.ExportError{}
+			return []ExportFile{}, variableValues, []declarativeresource.ExportError{}, nil
 		}
 		resourceIDList = ids
 	} else {
@@ -343,6 +387,13 @@ func (es *exportService) exportResourcesWithExporter(
 			})
 			continue
 		}
+		owner := resourceType + "/" + resourceID
+		if clash, previous := claimedElsewhere(templateContent, variableOwners, owner); clash != "" {
+			return exportFiles, variableValues, exportErrors,
+				&duplicateVariable{owner: owner, previous: previous, name: clash}
+		}
+		claimVariables(templateContent, variableOwners, owner)
+
 		for k, v := range vars {
 			variableValues[k] = v
 		}
@@ -363,20 +414,41 @@ func (es *exportService) exportResourcesWithExporter(
 		exportFiles = append(exportFiles, exportFile)
 	}
 
-	return exportFiles, variableValues, exportErrors
+	return exportFiles, variableValues, exportErrors, nil
+}
+
+// PlaceholderValues names each value the way an export of the resource alone would. An export of
+// several resources can suffix a name to keep two resources whose names normalize alike apart, and
+// which of them is suffixed depends on what else that export holds, so it cannot be known here.
+func (es *exportService) PlaceholderValues(ctx context.Context, resourceType string,
+	resource interface{}) (map[string]string, map[string]string, error) {
+	exporter, exists := es.registry.Get(resourceType)
+	if !exists {
+		return nil, nil, fmt.Errorf("no exporter is registered for resource type %q", resourceType)
+	}
+	logger := log.GetLogger().With(log.String("component", "ExportService"))
+	name, exportErr := exporter.ValidateResource(ctx, resource, "", logger)
+	if exportErr != nil {
+		return nil, nil, fmt.Errorf("the %s cannot be exported: %s", resourceType, exportErr.Error)
+	}
+	return es.parameterizer.PlaceholderValues(ctx, resource, exporter.GetParameterizerType(), name,
+		rulesFor(exporter, resource))
+}
+
+// rulesFor returns the parameterization rules an exporter applies to one resource.
+func rulesFor(exporter declarativeresource.ResourceExporter,
+	data interface{}) *declarativeresource.ResourceRules {
+	if pr, ok := exporter.(declarativeresource.PerResourceRuler); ok {
+		return pr.GetResourceRulesForResource(data)
+	}
+	return exporter.GetResourceRules()
 }
 
 func (es *exportService) generateTemplateFromStruct(ctx context.Context, data interface{},
 	paramResourceType string, resourceName string,
 	exporter declarativeresource.ResourceExporter) (string, map[string]string, error) {
-	var rules *declarativeresource.ResourceRules
-	if pr, ok := exporter.(declarativeresource.PerResourceRuler); ok {
-		rules = pr.GetResourceRulesForResource(data)
-	} else {
-		rules = exporter.GetResourceRules()
-	}
-	template, vars, err := es.parameterizer.ToParameterizedYAML(ctx,
-		data, paramResourceType, resourceName, rules)
+	template, vars, _, err := es.parameterizer.ToParameterizedYAML(ctx,
+		data, paramResourceType, resourceName, rulesFor(exporter, data))
 	if err != nil {
 		return "", nil, err
 	}
@@ -453,4 +525,52 @@ func (es *exportService) generateFolderPath(resourceType string, options *Export
 	}
 
 	return ""
+}
+
+// claimedElsewhere reports the first template variable in content that another resource already
+// claimed, along with that resource. It returns empty strings when nothing is claimed twice.
+func claimedElsewhere(content string, owners map[string]string, resourceID string) (string, string) {
+	for _, name := range templateVariableNames(content) {
+		if previous, taken := owners[name]; taken && previous != resourceID {
+			return name, previous
+		}
+	}
+	return "", ""
+}
+
+// claimVariables records this resource as the owner of every variable its template names.
+func claimVariables(content string, owners map[string]string, resourceID string) {
+	for _, name := range templateVariableNames(content) {
+		owners[name] = resourceID
+	}
+}
+
+// claimedVariablePattern matches the template actions an exporter may write into a resource.
+//
+// It is deliberately broader than templateVariablePattern, whose matching the environment file
+// depends on: a spaced or trimmed action still claims its name here rather than slipping past.
+var claimedVariablePattern = regexp.MustCompile(`\{\{-?\s*(?:range\s+)?\.([A-Za-z_][A-Za-z0-9_]*)\s*-?\}\}`)
+
+// templateVariableNames returns the distinct variables a template names, in the order they appear.
+func templateVariableNames(content string) []string {
+	seen := make(map[string]bool)
+	var names []string
+	for _, match := range claimedVariablePattern.FindAllStringSubmatch(content, -1) {
+		for _, name := range match[1:] {
+			if name != "" && !seen[name] {
+				seen[name] = true
+				names = append(names, name)
+			}
+		}
+	}
+	return names
+}
+
+// duplicateVariable names two resources that derive one template variable, and the variable itself.
+// The name is carried for the log and deliberately not returned to the caller, because it is derived
+// from the resource name, which for a user is their username.
+type duplicateVariable struct {
+	owner    string
+	previous string
+	name     string
 }

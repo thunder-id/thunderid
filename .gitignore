@@ -114,6 +114,8 @@ tmp
 out
 out-tsc
 backend/bin
+tools/cli/bin
+tools/i18n-extractor/bin
 backend/server
 
 # E2E extracted distribution
@@ -129,6 +131,7 @@ backend/coverage_unit.html
 docs/static/api/combined.yaml
 docs/static/api/next/combined.yaml
 docs/static/api/next/postman/
+docs/static/api/*/postman/collections/modules/
 
 # Playwright
 .playwright-cli/

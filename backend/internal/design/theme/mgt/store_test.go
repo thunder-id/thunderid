@@ -4,6 +4,7 @@
 package thememgt
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -13,6 +14,10 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 // ThemeStoreTestSuite contains tests for the theme store.
@@ -28,11 +33,16 @@ func TestThemeStoreTestSuite(t *testing.T) {
 }
 
 func (suite *ThemeStoreTestSuite) SetupTest() {
+	// The store resolves its deployment from the loaded runtime rather than holding one, and
+	// other suites in this package reset the runtime, so load it per test.
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{
+		Server: engineconfig.ServerConfig{Identifier: "test-deployment"},
+	})
 	suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 	suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 	suite.store = &themeMgtStore{
-		dbProvider:   suite.mockDBProvider,
-		deploymentID: "test-deployment",
+		dbProvider: suite.mockDBProvider,
 	}
 }
 
@@ -44,7 +54,7 @@ func (suite *ThemeStoreTestSuite) TestGetThemeListCount_Success() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("Query", mock.Anything, "test-deployment").Return(results, nil)
 
-	count, err := suite.store.GetThemeListCount()
+	count, err := suite.store.GetThemeListCount(context.Background())
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 5, count)
@@ -54,7 +64,7 @@ func (suite *ThemeStoreTestSuite) TestGetThemeListCount_Success() {
 func (suite *ThemeStoreTestSuite) TestGetThemeListCount_DBClientError() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("connection error"))
 
-	count, err := suite.store.GetThemeListCount()
+	count, err := suite.store.GetThemeListCount(context.Background())
 
 	assert.Error(suite.T(), err)
 	assert.Equal(suite.T(), 0, count)
@@ -66,7 +76,7 @@ func (suite *ThemeStoreTestSuite) TestGetThemeListCount_QueryError() {
 	suite.mockDBClient.On("Query", mock.Anything, "test-deployment").
 		Return(nil, errors.New("query error"))
 
-	count, err := suite.store.GetThemeListCount()
+	count, err := suite.store.GetThemeListCount(context.Background())
 
 	assert.Error(suite.T(), err)
 	assert.Equal(suite.T(), 0, count)
@@ -99,7 +109,7 @@ func (suite *ThemeStoreTestSuite) TestGetThemeList_Success() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("Query", mock.Anything, 10, 0, "test-deployment").Return(results, nil)
 
-	themes, err := suite.store.GetThemeList(10, 0)
+	themes, err := suite.store.GetThemeList(context.Background(), 10, 0)
 
 	assert.NoError(suite.T(), err)
 	assert.Len(suite.T(), themes, 2)
@@ -112,7 +122,7 @@ func (suite *ThemeStoreTestSuite) TestGetThemeList_Success() {
 func (suite *ThemeStoreTestSuite) TestGetThemeList_DBClientError() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("connection error"))
 
-	themes, err := suite.store.GetThemeList(10, 0)
+	themes, err := suite.store.GetThemeList(context.Background(), 10, 0)
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), themes)
@@ -124,7 +134,7 @@ func (suite *ThemeStoreTestSuite) TestCreateTheme_Success() {
 	suite.mockDBClient.On("Execute", mock.Anything, "theme-1", "classic", "Test", "Desc",
 		mock.Anything, "test-deployment").Return(int64(1), nil)
 
-	err := suite.store.CreateTheme("theme-1", CreateThemeRequest{
+	err := suite.store.CreateTheme(context.Background(), "theme-1", CreateThemeRequest{
 		Handle:      "classic",
 		DisplayName: "Test",
 		Description: "Desc",
@@ -150,7 +160,7 @@ func (suite *ThemeStoreTestSuite) TestGetTheme_Success() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("Query", mock.Anything, "theme-123", "test-deployment").Return(results, nil)
 
-	theme, err := suite.store.GetTheme("theme-123")
+	theme, err := suite.store.GetTheme(context.Background(), "theme-123")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "theme-123", theme.ID)
@@ -163,7 +173,7 @@ func (suite *ThemeStoreTestSuite) TestGetTheme_NotFound() {
 	suite.mockDBClient.On("Query", mock.Anything, "non-existent", "test-deployment").
 		Return([]map[string]interface{}{}, nil)
 
-	_, err := suite.store.GetTheme("non-existent")
+	_, err := suite.store.GetTheme(context.Background(), "non-existent")
 
 	assert.Error(suite.T(), err)
 	assert.True(suite.T(), errors.Is(err, errThemeNotFound))
@@ -178,7 +188,7 @@ func (suite *ThemeStoreTestSuite) TestGetTheme_MultipleResults() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("Query", mock.Anything, "theme-123", "test-deployment").Return(results, nil)
 
-	_, err := suite.store.GetTheme("theme-123")
+	_, err := suite.store.GetTheme(context.Background(), "theme-123")
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "unexpected number of results")
@@ -192,7 +202,7 @@ func (suite *ThemeStoreTestSuite) TestIsThemeExist_True() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("Query", mock.Anything, "theme-123", "test-deployment").Return(results, nil)
 
-	exists, err := suite.store.IsThemeExist("theme-123")
+	exists, err := suite.store.IsThemeExist(context.Background(), "theme-123")
 
 	assert.NoError(suite.T(), err)
 	assert.True(suite.T(), exists)
@@ -204,7 +214,7 @@ func (suite *ThemeStoreTestSuite) TestIsThemeExist_False() {
 	suite.mockDBClient.On("Query", mock.Anything, "non-existent", "test-deployment").
 		Return([]map[string]interface{}{}, nil)
 
-	exists, err := suite.store.IsThemeExist("non-existent")
+	exists, err := suite.store.IsThemeExist(context.Background(), "non-existent")
 
 	assert.NoError(suite.T(), err)
 	assert.False(suite.T(), exists)
@@ -216,7 +226,7 @@ func (suite *ThemeStoreTestSuite) TestDeleteTheme_Success() {
 	suite.mockDBClient.On("Execute", mock.Anything, "theme-123", "test-deployment").
 		Return(int64(1), nil)
 
-	err := suite.store.DeleteTheme("theme-123")
+	err := suite.store.DeleteTheme(context.Background(), "theme-123")
 
 	assert.NoError(suite.T(), err)
 }
@@ -465,7 +475,7 @@ func (suite *ThemeStoreTestSuite) TestIsThemeHandleConflict_Conflict() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("Query", mock.Anything, "classic", "test-deployment", "").Return(results, nil)
 
-	conflict, err := suite.store.IsThemeHandleConflict("classic", "")
+	conflict, err := suite.store.IsThemeHandleConflict(context.Background(), "classic", "")
 
 	assert.NoError(suite.T(), err)
 	assert.True(suite.T(), conflict)
@@ -479,7 +489,7 @@ func (suite *ThemeStoreTestSuite) TestIsThemeHandleConflict_NoConflict() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("Query", mock.Anything, "unique-handle", "test-deployment", "theme-1").Return(results, nil)
 
-	conflict, err := suite.store.IsThemeHandleConflict("unique-handle", "theme-1")
+	conflict, err := suite.store.IsThemeHandleConflict(context.Background(), "unique-handle", "theme-1")
 
 	assert.NoError(suite.T(), err)
 	assert.False(suite.T(), conflict)
@@ -489,7 +499,7 @@ func (suite *ThemeStoreTestSuite) TestIsThemeHandleConflict_NoConflict() {
 func (suite *ThemeStoreTestSuite) TestIsThemeHandleConflict_DBClientError() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("connection error"))
 
-	conflict, err := suite.store.IsThemeHandleConflict("classic", "")
+	conflict, err := suite.store.IsThemeHandleConflict(context.Background(), "classic", "")
 
 	assert.Error(suite.T(), err)
 	assert.False(suite.T(), conflict)
@@ -501,7 +511,7 @@ func (suite *ThemeStoreTestSuite) TestIsThemeHandleConflict_QueryError() {
 	suite.mockDBClient.On("Query", mock.Anything, "classic", "test-deployment", "").
 		Return(nil, errors.New("query error"))
 
-	conflict, err := suite.store.IsThemeHandleConflict("classic", "")
+	conflict, err := suite.store.IsThemeHandleConflict(context.Background(), "classic", "")
 
 	assert.Error(suite.T(), err)
 	assert.False(suite.T(), conflict)
@@ -511,7 +521,7 @@ func (suite *ThemeStoreTestSuite) TestIsThemeHandleConflict_QueryError() {
 func (suite *ThemeStoreTestSuite) TestUpdateTheme_DBClientError() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("connection error"))
 
-	err := suite.store.UpdateTheme("theme-1", UpdateThemeRequest{
+	err := suite.store.UpdateTheme(context.Background(), "theme-1", UpdateThemeRequest{
 		DisplayName: "Updated",
 		Description: "Updated Desc",
 		Theme:       json.RawMessage(`{"colors": {}}`),
@@ -524,7 +534,7 @@ func (suite *ThemeStoreTestSuite) TestUpdateTheme_DBClientError() {
 func (suite *ThemeStoreTestSuite) TestDeleteTheme_DBClientError() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("connection error"))
 
-	err := suite.store.DeleteTheme("theme-1")
+	err := suite.store.DeleteTheme(context.Background(), "theme-1")
 
 	assert.Error(suite.T(), err)
 }
@@ -543,4 +553,19 @@ func (suite *ThemeStoreTestSuite) TestBuildThemeFromResultRow_OptionalDescriptio
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "", theme.Description)
+}
+
+// A request names the deployment it acts for, and the store must scope by that rather than by the
+// identifier this server was configured with. Getting this wrong reads another deployment's rows,
+// which no other assertion here would catch: every other test runs on an unscoped context, where
+// the two values coincide.
+func (suite *ThemeStoreTestSuite) TestGetThemeListCount_ScopesByTheRequestDeployment() {
+	results := []map[string]interface{}{{"total": int64(5)}}
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("Query", mock.Anything, "acme").Return(results, nil)
+
+	count, err := suite.store.GetThemeListCount(deployment.WithID(context.Background(), "acme"))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), 5, count)
 }

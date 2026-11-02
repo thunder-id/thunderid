@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"gopkg.in/yaml.v3"
@@ -73,22 +71,26 @@ func (e *ouExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommo
 		}
 	}
 
-	// Also get all child OUs recursively (only mutable ones)
-	allIDs := make(map[string]bool)
+	// Also get all child OUs recursively (only mutable ones). The IDs keep the order they are found
+	// in, each parent before its children, so the same OUs always export in the same order; an
+	// export named by its content, as a configuration version is, changes only when they do.
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(ids))
+	add := func(id string) {
+		if !seen[id] {
+			seen[id] = true
+			result = append(result, id)
+		}
+	}
 	for _, id := range ids {
-		allIDs[id] = true
+		add(id)
 		childIDs, err := e.getAllChildIDs(ctx, id)
 		if err != nil {
 			return nil, err
 		}
 		for _, childID := range childIDs {
-			allIDs[childID] = true
+			add(childID)
 		}
-	}
-
-	result := make([]string, 0, len(allIDs))
-	for id := range allIDs {
-		result = append(result, id)
 	}
 
 	return result, nil
@@ -131,7 +133,7 @@ func (e *ouExporter) GetResourceByID(
 func (e *ouExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
-	ou, ok := resource.(*providers.OrganizationUnit)
+	ou, ok := resource.(*OrganizationUnit)
 	if !ok {
 		return "", declarativeresource.CreateTypeError(resourceTypeOU, id)
 	}
@@ -142,6 +144,14 @@ func (e *ouExporter) ValidateResource(ctx context.Context,
 	}
 
 	return ou.Name, nil
+}
+
+// ViewResource shows an exported organization unit as a read of it returns it. Its children, users
+// and groups are resources of their own, so an organization unit has no parts.
+func (e *ouExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(ou *OrganizationUnit) (interface{}, error) {
+		return *ou, nil
+	})
 }
 
 // GetResourceRules returns the parameterization rules for organization units.
@@ -170,7 +180,7 @@ func loadDeclarativeResources(fileStore organizationUnitStoreInterface, dbStore 
 			return validateOUWrapper(data, store, dbStore)
 		},
 		IDExtractor: func(data interface{}) string {
-			return data.(*providers.OrganizationUnit).ID
+			return data.(*OrganizationUnit).ID
 		},
 	}
 
@@ -187,9 +197,9 @@ func parseToOUWrapper(data []byte) (interface{}, error) {
 	return parseToOU(data)
 }
 
-// parseToOU parses YAML data to providers.OrganizationUnit.
-func parseToOU(data []byte) (*providers.OrganizationUnit, error) {
-	var ou providers.OrganizationUnit
+// parseToOU parses YAML data to OrganizationUnit.
+func parseToOU(data []byte) (*OrganizationUnit, error) {
+	var ou OrganizationUnit
 	err := yaml.Unmarshal(data, &ou)
 	if err != nil {
 		return nil, err
@@ -203,9 +213,9 @@ func parseToOU(data []byte) (*providers.OrganizationUnit, error) {
 // In declarative mode, dbStore is nil and only file store is checked.
 // In composite mode, both stores are checked to prevent conflicts.
 func validateOUWrapper(data interface{}, fileStore *fileBasedStore, dbStore organizationUnitStoreInterface) error {
-	ou, ok := data.(*providers.OrganizationUnit)
+	ou, ok := data.(*OrganizationUnit)
 	if !ok {
-		return fmt.Errorf("invalid type: expected *providers.OrganizationUnit")
+		return fmt.Errorf("invalid type: expected *OrganizationUnit")
 	}
 
 	if ou.ID == "" {

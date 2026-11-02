@@ -4,13 +4,28 @@
     "port": 8090,
     "http_only": false,
     "identifier": "default-deployment",
+    "timeouts": {
+      "read_header_seconds": 10,
+      "write_seconds": 10,
+      "idle_seconds": 120
+    },
     "security": {
       "jwks_cache_ttl": 300,
       "trusted_issuer": {
         "issuer": "",
         "jwks_url": "",
         "audience": "",
-        "required_claims": []
+        "required_claims": [],
+        "user_id_claim": "sub",
+        "user_lookup": {
+          "url": "",
+          "token_url": "",
+          "client_id": "",
+          "client_secret": "",
+          "scopes": [],
+          "name_attribute": "username",
+          "cache_ttl": 300
+        }
       },
       "token_revocation": {
         "enabled": true,
@@ -139,6 +154,17 @@
       "enabled" : true,
       "insecure": false
     },
+    "cimd": {
+      "enabled": true
+    },
+    "id_jag": {
+      "issuance": {
+        "enabled": true
+      },
+      "acceptance": {
+        "enabled": true
+      }
+    },
     "par": {
       "require_par": false,
       "expires_in": 60
@@ -147,8 +173,12 @@
       "required": false,
       "iat_window": 60,
       "leeway": 5,
-      "allowed_algs": ["ES256", "PS256", "ES384", "ES512", "EdDSA", "RS256"],
+      "allowed_algs": ["ES256", "PS256", "ES384", "ES512", "EdDSA", "RS256", "ML-DSA-44", "ML-DSA-65", "ML-DSA-87"],
       "max_jti_length": 256
+    },
+    "client_assertion": {
+      "max_lifetime": 300,
+      "max_iat_age": 60
     },
     "allow_wildcard_redirect_uri": false,
     "send_server_errors_to_client": false,
@@ -159,13 +189,30 @@
       "enabled" : true
     },
     "logout" : {
-      "enabled" : true
+      "enabled" : true,
+      "backchannel" : {
+        "enabled" : true,
+        "token_validity_period" : 120,
+        "request_timeout" : 5,
+        "max_attempts" : 3,
+        "retry_delay" : 2,
+        "max_in_flight" : 16,
+        "queue_size" : 1024,
+        "reject_private_addresses" : true
+      }
+    },
+    "authorization_details": {
+      "processor_timeout": 5,
+      "type_metadata_enabled": true
     },
     "revocation": {
       "token_family": {
         "on_refresh_replay": true,
         "on_explicit_revoke": true,
         "on_code_replay": true
+      },
+      "criteria": {
+        "max_entries_per_change": 10000
       }
     },
     "token_exchange": {
@@ -177,11 +224,17 @@
     "auto_infer_registration": false,
     "store": "composite"
   },
+  "direct_api": {
+    "enabled": true
+  },
   "notification": {
     "otp": {
       "length": 6,
       "use_numeric_only": true,
       "validity_period_seconds": 120
+    },
+    "template": {
+      "store": "composite"
     }
   },
   "user": {
@@ -190,6 +243,10 @@
   },
   "group": {
     "store": "composite"
+  },
+  "scim": {
+    "core_user_type_id": "01900000-0000-7000-8000-000000000010",
+    "urn_prefix": "urn:thunderid:params:scim:schemas:"
   },
   "declarative_resources": {
     "enabled": false
@@ -281,10 +338,63 @@
     "default_delimiter": ":",
     "store": "composite"
   },
+  "authorization_detail_type": {
+    "store": "composite"
+  },
+  "resource_sharing": {
+    "allow_child_ou_cross_tree_sharing": false
+  },
+  "account_access": {
+    "user": {
+      "lock_granularity": "authentication_method",
+      "record_last_login": false,
+      "last_login_resolution_seconds": 3600,
+      "default": {
+        "enabled": true,
+        "threshold": 5,
+        "failure_window_seconds": 3600,
+        "lock_durations_seconds": [
+          300,
+          900,
+          1800,
+          3600
+        ],
+        "lock_decay_seconds": 86400,
+        "max_consecutive_failures": 50
+      },
+      "notifications": {
+        "on_lock": {
+          "email": {
+            "enabled": true
+          }
+        }
+      }
+    },
+    "agent": {
+      "lock_granularity": "authentication_method",
+      "record_last_login": false,
+      "last_login_resolution_seconds": 3600,
+      "default": {
+        "enabled": true,
+        "threshold": 5,
+        "failure_window_seconds": 900,
+        "lock_durations_seconds": [
+          60,
+          300,
+          900
+        ],
+        "lock_decay_seconds": 3600,
+        "max_consecutive_failures": 50
+      }
+    }
+  },
   "organization_unit": {
     "store": "composite"
   },
   "identity_provider": {
+    "store": "composite"
+  },
+  "http_connection": {
     "store": "composite"
   },
   "application": {
@@ -320,13 +430,20 @@
       }
     }
   },
+  "authzen_pdp": {
+    "timeout_ms": 1000,
+    "retry_count": 1
+  },
   "consent": {
     "enabled": false,
     "base_url": "",
     "timeout": 5,
     "max_retries": 3
   },
-  "user_provider": {
+  "user_mgt_provider": {
+    "type": "default"
+  },
+  "identity_governance_provider": {
     "type": "default"
   },
   "openid4vp": {
@@ -361,5 +478,17 @@
     "apple": {
       "root_certificate": "-----BEGIN CERTIFICATE-----\nMIICITCCAaegAwIBAgIQC/O+DvHN0uD7jG5yH2IXmDAKBggqhkjOPQQDAzBSMSYw\nJAYDVQQDDB1BcHBsZSBBcHAgQXR0ZXN0YXRpb24gUm9vdCBDQTETMBEGA1UECgwK\nQXBwbGUgSW5jLjETMBEGA1UECAwKQ2FsaWZvcm5pYTAeFw0yMDAzMTgxODMyNTNa\nFw00NTAzMTUwMDAwMDBaMFIxJjAkBgNVBAMMHUFwcGxlIEFwcCBBdHRlc3RhdGlv\nbiBSb290IENBMRMwEQYDVQQKDApBcHBsZSBJbmMuMRMwEQYDVQQIDApDYWxpZm9y\nbmlhMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAERTHhmLW07ATaFQIEVwTtT4dyctdh\nNbJhFs/Ii2FdCgAHGbpphY3+d8qjuDngIN3WVhQUBHAoMeQ/cLiP1sOUtgjqK9au\nYen1mMEvRq9Sk3Jm5X8U62H+xTD3FE9TgS41o0IwQDAPBgNVHRMBAf8EBTADAQH/\nMB0GA1UdDgQWBBSskRBTM72+aEH/pwyp5frq5eWKoTAOBgNVHQ8BAf8EBAMCAQYw\nCgYIKoZIzj0EAwMDaAAwZQIwQgFGnByvsiVbpTKwSga0kP0e8EeDS4+sQmTvb7vn\n53O5+FRXgeLhpJ06ysC5PrOyAjEAp5U4xDgEgllF7En3VcE3iexZZtKeYnpqtijV\noyFraWVIyd/dganmrduC1bmTBGwD\n-----END CERTIFICATE-----\n"
     }
+  },
+  "gateway": {
+    "max_gateways": 1,
+    "max_versions": 3,
+    "auto_apply": false,
+    "allow_private_addresses": false,
+    "removal_confirmation_threshold": 5,
+    "store": "composite",
+    "apply_timeout_seconds": 300
+  },
+  "import": {
+    "timeout_seconds": 120
   }
 }

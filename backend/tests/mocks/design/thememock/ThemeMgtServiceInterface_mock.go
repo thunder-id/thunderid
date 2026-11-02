@@ -19,10 +19,19 @@ func NewThemeMgtServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ThemeMgtServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ThemeMgtServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type ThemeMgtServiceInterfaceMock_CreateTheme_Call struct {
 // CreateTheme is a helper method to define mock.On call
 //   - ctx context.Context
 //   - theme thememgt.CreateThemeRequestWithID
-func (_e *ThemeMgtServiceInterfaceMock_Expecter) CreateTheme(ctx interface{}, theme interface{}) *ThemeMgtServiceInterfaceMock_CreateTheme_Call {
+func (_e *ThemeMgtServiceInterfaceMock_Expecter) CreateTheme(ctx any, theme any) *ThemeMgtServiceInterfaceMock_CreateTheme_Call {
 	return &ThemeMgtServiceInterfaceMock_CreateTheme_Call{Call: _e.mock.On("CreateTheme", ctx, theme)}
 }
 
@@ -137,7 +146,7 @@ type ThemeMgtServiceInterfaceMock_DeleteTheme_Call struct {
 // DeleteTheme is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *ThemeMgtServiceInterfaceMock_Expecter) DeleteTheme(ctx interface{}, id interface{}) *ThemeMgtServiceInterfaceMock_DeleteTheme_Call {
+func (_e *ThemeMgtServiceInterfaceMock_Expecter) DeleteTheme(ctx any, id any) *ThemeMgtServiceInterfaceMock_DeleteTheme_Call {
 	return &ThemeMgtServiceInterfaceMock_DeleteTheme_Call{Call: _e.mock.On("DeleteTheme", ctx, id)}
 }
 
@@ -207,7 +216,7 @@ type ThemeMgtServiceInterfaceMock_GetTheme_Call struct {
 // GetTheme is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *ThemeMgtServiceInterfaceMock_Expecter) GetTheme(ctx interface{}, id interface{}) *ThemeMgtServiceInterfaceMock_GetTheme_Call {
+func (_e *ThemeMgtServiceInterfaceMock_Expecter) GetTheme(ctx any, id any) *ThemeMgtServiceInterfaceMock_GetTheme_Call {
 	return &ThemeMgtServiceInterfaceMock_GetTheme_Call{Call: _e.mock.On("GetTheme", ctx, id)}
 }
 
@@ -278,7 +287,7 @@ type ThemeMgtServiceInterfaceMock_GetThemeList_Call struct {
 //   - ctx context.Context
 //   - limit int
 //   - offset int
-func (_e *ThemeMgtServiceInterfaceMock_Expecter) GetThemeList(ctx interface{}, limit interface{}, offset interface{}) *ThemeMgtServiceInterfaceMock_GetThemeList_Call {
+func (_e *ThemeMgtServiceInterfaceMock_Expecter) GetThemeList(ctx any, limit any, offset any) *ThemeMgtServiceInterfaceMock_GetThemeList_Call {
 	return &ThemeMgtServiceInterfaceMock_GetThemeList_Call{Call: _e.mock.On("GetThemeList", ctx, limit, offset)}
 }
 
@@ -355,7 +364,7 @@ type ThemeMgtServiceInterfaceMock_GetThemeUsages_Call struct {
 //   - id string
 //   - limit int
 //   - offset int
-func (_e *ThemeMgtServiceInterfaceMock_Expecter) GetThemeUsages(ctx interface{}, id interface{}, limit interface{}, offset interface{}) *ThemeMgtServiceInterfaceMock_GetThemeUsages_Call {
+func (_e *ThemeMgtServiceInterfaceMock_Expecter) GetThemeUsages(ctx any, id any, limit any, offset any) *ThemeMgtServiceInterfaceMock_GetThemeUsages_Call {
 	return &ThemeMgtServiceInterfaceMock_GetThemeUsages_Call{Call: _e.mock.On("GetThemeUsages", ctx, id, limit, offset)}
 }
 
@@ -433,7 +442,7 @@ type ThemeMgtServiceInterfaceMock_IsThemeExist_Call struct {
 // IsThemeExist is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *ThemeMgtServiceInterfaceMock_Expecter) IsThemeExist(ctx interface{}, id interface{}) *ThemeMgtServiceInterfaceMock_IsThemeExist_Call {
+func (_e *ThemeMgtServiceInterfaceMock_Expecter) IsThemeExist(ctx any, id any) *ThemeMgtServiceInterfaceMock_IsThemeExist_Call {
 	return &ThemeMgtServiceInterfaceMock_IsThemeExist_Call{Call: _e.mock.On("IsThemeExist", ctx, id)}
 }
 
@@ -478,7 +487,7 @@ type ThemeMgtServiceInterfaceMock_SetDependencyRegistry_Call struct {
 
 // SetDependencyRegistry is a helper method to define mock.On call
 //   - r resourcedependency.Registry
-func (_e *ThemeMgtServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *ThemeMgtServiceInterfaceMock_SetDependencyRegistry_Call {
+func (_e *ThemeMgtServiceInterfaceMock_Expecter) SetDependencyRegistry(r any) *ThemeMgtServiceInterfaceMock_SetDependencyRegistry_Call {
 	return &ThemeMgtServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
 }
 
@@ -544,7 +553,7 @@ type ThemeMgtServiceInterfaceMock_UpdateTheme_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - theme thememgt.UpdateThemeRequest
-func (_e *ThemeMgtServiceInterfaceMock_Expecter) UpdateTheme(ctx interface{}, id interface{}, theme interface{}) *ThemeMgtServiceInterfaceMock_UpdateTheme_Call {
+func (_e *ThemeMgtServiceInterfaceMock_Expecter) UpdateTheme(ctx any, id any, theme any) *ThemeMgtServiceInterfaceMock_UpdateTheme_Call {
 	return &ThemeMgtServiceInterfaceMock_UpdateTheme_Call{Call: _e.mock.On("UpdateTheme", ctx, id, theme)}
 }
 

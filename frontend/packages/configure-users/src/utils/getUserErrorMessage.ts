@@ -36,22 +36,6 @@ function extractErrorCode(error: Error): string | undefined {
 }
 
 /**
- * Reads the interpolation params the flow engine attaches to a parameterized error, so a mapped
- * message resolves its placeholders instead of rendering them literally. Params ride on the
- * message, with the description as a fallback.
- */
-function extractFlowErrorParams(error: Error): Record<string, string> | undefined {
-  const candidate = error as Error & {
-    error?: {
-      description?: {params?: Record<string, string>};
-      message?: {params?: Record<string, string>};
-    };
-  };
-
-  return candidate.error?.message?.params ?? candidate.error?.description?.params;
-}
-
-/**
  * Extracts a localized error message from a user API error response, with a dedicated,
  * actionable message for USR-1027 (blocking dependencies) and normalization for the embedded
  * flow's error envelope.
@@ -89,21 +73,6 @@ export default function getUserErrorMessage(
 
     // Skip the generic code lookup: it would resolve the same errors.USR-1027 key and return its
     // {{dependencies}} placeholder unresolved.
-    return fallbackDefaultValue !== undefined ? t(fallbackKey, {defaultValue: fallbackDefaultValue}) : t(fallbackKey);
-  }
-
-  if (code && !(error as {response?: {data?: {code?: string}}}).response?.data?.code) {
-    // The code came from a flow-shaped envelope getErrorMessage cannot see (response.data.code is
-    // absent), so resolve it here instead of delegating. Mirrors getErrorMessage's two-tier lookup:
-    // the feature namespace first, then the shared catalog for cross-service codes (e.g. SSE-4030).
-    const params = extractFlowErrorParams(error);
-    const options = {...params, defaultValue: ''};
-    const specific = t(`errors.${code}`, options) || t(`common:errors.${code}`, options);
-
-    if (specific) {
-      return specific;
-    }
-
     return fallbackDefaultValue !== undefined ? t(fallbackKey, {defaultValue: fallbackDefaultValue}) : t(fallbackKey);
   }
 

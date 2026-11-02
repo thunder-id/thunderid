@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package authz
@@ -7,7 +7,9 @@ import (
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -23,18 +25,25 @@ func Initialize(
 	flowExecService flowexec.FlowExecServiceInterface,
 	parService par.PARServiceInterface,
 	criteriaRevoker revocation.CriteriaRevokerInterface,
+	ssoSession session.Service,
+	ssoTransport session.HandleTransportInterface,
+	flowProvider providers.FlowProvider,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 	storeProvider providers.RuntimeStoreProvider,
 	transactioner providers.Transactioner,
+	jtiStore jti.JTIStoreInterface,
+	authzDetails providers.AuthorizationDetailProvider,
 ) (AuthorizeServiceInterface, error) {
 	authzCodeStore := newAuthorizationCodeStore(storeProvider)
 	authzReqStore := newAuthorizationRequestStore(storeProvider, cfg.OAuth.AuthorizationRequest.ValidityPeriod)
 
 	authzService := newAuthorizeService(
 		actorProvider, resourceService, jwtService, flowExecService,
-		authzCodeStore, authzReqStore, parService, transactioner, criteriaRevoker, cfg,
+		authzCodeStore, authzReqStore, parService, transactioner, criteriaRevoker,
+		ssoSession, flowProvider, governance, cfg, jtiStore, authzDetails,
 	)
-	authzHandler := newAuthorizeHandler(authzService, cfg)
+	authzHandler := newAuthorizeHandler(authzService, ssoTransport, cfg)
 	registerRoutes(mux, authzHandler)
 	return authzService, nil
 }

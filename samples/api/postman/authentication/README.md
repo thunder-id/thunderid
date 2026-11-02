@@ -171,7 +171,7 @@ These variables will be auto-populated during the resource setup phase:
 | `demoOuId` | Created demo organization unit ID |
 | `demoOuHandle` | Created demo organization unit handle |
 | `demoSchemaId` | Created demo user schema ID |
-| `demoSchemaName` | Created demo user schema name |
+| `demoSchemaHandle` | Handle of the created demo user type |
 | `googleIDPId` | Created Google IDP ID |
 | `githubIDPId` | Created GitHub IDP ID |
 | `thunderidIDPId` | Created Asgardeo IDP ID |

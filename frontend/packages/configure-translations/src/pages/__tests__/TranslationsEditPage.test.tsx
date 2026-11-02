@@ -6,14 +6,6 @@ import {render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import TranslationsEditPage from '@/pages/TranslationsEditPage';
 
-vi.mock('react-i18next', async () => {
-  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
-  return {
-    ...actual,
-    useTranslation: () => ({t: (key: string) => key}),
-  };
-});
-
 const mockNavigate = vi.fn();
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
@@ -240,7 +232,7 @@ describe('TranslationsEditPage', () => {
     it('starts with no dirty changes', () => {
       render(<TranslationsEditPage />);
 
-      expect(screen.queryByText('Save Changes')).not.toBeInTheDocument();
+      expect(screen.queryByText('Save changes')).not.toBeInTheDocument();
     });
 
     it('shows the unsaved-changes bar after a field is changed', async () => {
@@ -249,7 +241,7 @@ describe('TranslationsEditPage', () => {
 
       await user.click(screen.getByText('change field'));
 
-      expect(screen.getByText('Save Changes')).toBeInTheDocument();
+      expect(screen.getByText('Save changes')).toBeInTheDocument();
     });
 
     it('resets dirty changes after Discard is clicked', async () => {
@@ -257,11 +249,11 @@ describe('TranslationsEditPage', () => {
       render(<TranslationsEditPage />);
 
       await user.click(screen.getByText('change field'));
-      expect(screen.getByText('Save Changes')).toBeInTheDocument();
+      expect(screen.getByText('Save changes')).toBeInTheDocument();
 
-      await user.click(screen.getByText('Discard Changes'));
+      await user.click(screen.getByText('Discard changes'));
 
-      expect(screen.queryByText('Save Changes')).not.toBeInTheDocument();
+      expect(screen.queryByText('Save changes')).not.toBeInTheDocument();
     });
 
     it('removes a single dirty key when reset field is called', async () => {
@@ -269,11 +261,11 @@ describe('TranslationsEditPage', () => {
       render(<TranslationsEditPage />);
 
       await user.click(screen.getByText('change field'));
-      expect(screen.getByText('Save Changes')).toBeInTheDocument();
+      expect(screen.getByText('Save changes')).toBeInTheDocument();
 
       await user.click(screen.getByText('reset field'));
 
-      expect(screen.queryByText('Save Changes')).not.toBeInTheDocument();
+      expect(screen.queryByText('Save changes')).not.toBeInTheDocument();
     });
   });
 
@@ -283,7 +275,7 @@ describe('TranslationsEditPage', () => {
       render(<TranslationsEditPage />);
 
       await user.click(screen.getByText('change field'));
-      await user.click(screen.getByText('Save Changes'));
+      await user.click(screen.getByText('Save changes'));
 
       expect(mockMutateAsync).toHaveBeenCalledWith({
         language: 'fr-FR',
@@ -298,7 +290,7 @@ describe('TranslationsEditPage', () => {
       render(<TranslationsEditPage />);
 
       await user.click(screen.getByText('change field'));
-      await user.click(screen.getByText('Save Changes'));
+      await user.click(screen.getByText('Save changes'));
 
       expect(screen.getByText('All translations saved.')).toBeInTheDocument();
     });
@@ -308,9 +300,9 @@ describe('TranslationsEditPage', () => {
       render(<TranslationsEditPage />);
 
       await user.click(screen.getByText('change field'));
-      await user.click(screen.getByText('Save Changes'));
+      await user.click(screen.getByText('Save changes'));
 
-      expect(screen.queryByText('Save Changes')).not.toBeInTheDocument();
+      expect(screen.queryByText('Save changes')).not.toBeInTheDocument();
     });
 
     it('shows the resolved error inline on the page when at least one save request fails', async () => {
@@ -319,7 +311,7 @@ describe('TranslationsEditPage', () => {
       render(<TranslationsEditPage />);
 
       await user.click(screen.getByText('change field'));
-      await user.click(screen.getByText('Save Changes'));
+      await user.click(screen.getByText('Save changes'));
 
       expect(screen.getByRole('alert')).toHaveTextContent('Failed to save some translations.');
     });
@@ -340,11 +332,11 @@ describe('TranslationsEditPage', () => {
       render(<TranslationsEditPage />);
 
       await user.click(screen.getByText('change field'));
-      expect(screen.getByText('Save Changes')).toBeInTheDocument();
+      expect(screen.getByText('Save changes')).toBeInTheDocument();
 
       await user.click(screen.getByText('select namespace'));
 
-      expect(screen.queryByText('Save Changes')).not.toBeInTheDocument();
+      expect(screen.queryByText('Save changes')).not.toBeInTheDocument();
     });
   });
 

@@ -14,6 +14,7 @@
 
 import type { APIRequestContext } from "@playwright/test";
 import { send, sendOk } from "../api-request";
+import { UserTypesApi } from "../user-types-api";
 
 export type ApiFlow = {
   id: string;
@@ -30,9 +31,26 @@ const maxPageSize = 100;
 export class FlowsApi {
   constructor(private readonly request: APIRequestContext) {}
 
-  /** Create a flow directly via the API. */
+  /**
+   * The organization unit a flow created by a test belongs to: the one that owns the bootstrap
+   * "person" user type, resolved the way the other e2e helpers do rather than hardcoding the
+   * bootstrap-default id.
+   */
+  async defaultOuId(): Promise<string> {
+    const personType = await new UserTypesApi(this.request).findByHandle("person");
+    if (!personType) {
+      throw new Error('GET /user-types returned no "person" user type');
+    }
+    return personType.ouId;
+  }
+
+  /**
+   * Create a flow directly via the API. Every flow needs an owning organization unit, so `ouId`
+   * defaults to {@link defaultOuId} when the caller does not give one.
+   */
   async create(data: Record<string, unknown>): Promise<ApiFlow> {
-    const response = await sendOk(this.request, "POST", "/flows", data);
+    const body = { ...data, ouId: data.ouId ?? (await this.defaultOuId()) };
+    const response = await sendOk(this.request, "POST", "/flows", body);
     return (await response.json()) as ApiFlow;
   }
 
@@ -45,7 +63,7 @@ export class FlowsApi {
   async findByHandle(handle: string, flowType?: string): Promise<ApiFlow | undefined> {
     const typeQuery = flowType ? `&flowType=${encodeURIComponent(flowType)}` : "";
 
-    for (let offset = 0; ; ) {
+    for (let offset = 0; ; offset += maxPageSize) {
       const response = await sendOk(this.request, "GET", `/flows?limit=${maxPageSize}&offset=${offset}${typeQuery}`);
       const body = (await response.json()) as { flows?: ApiFlow[]; totalResults?: number };
       const match = body.flows?.find(f => f.handle === handle);
@@ -55,7 +73,6 @@ export class FlowsApi {
       if (!body.flows?.length || offset + body.flows.length >= (body.totalResults ?? 0)) {
         return undefined;
       }
-      offset += body.flows.length;
     }
   }
 
@@ -64,9 +81,19 @@ export class FlowsApi {
     await sendOk(this.request, "PUT", `/flows/${id}`, data);
   }
 
-  /** Delete by id. A 404 counts as success so retries and double-teardown stay idempotent. */
+  /**
+   * Delete by id. A 404 counts as success so retries and double-teardown stay idempotent.
+   *
+   * Never throws: this is only ever called from test teardown, and a flaky network error there
+   * must not mask the failure (or success) a test already reported.
+   */
   async deleteById(id: string): Promise<boolean> {
-    const response = await send(this.request, "DELETE", `/flows/${id}`);
-    return response.ok() || response.status() === 404;
+    try {
+      const response = await send(this.request, "DELETE", `/flows/${id}`);
+      return response.ok() || response.status() === 404;
+    } catch (error) {
+      console.warn(`Cleanup skipped for flow ${id}: ${String(error)}`);
+      return false;
+    }
   }
 }

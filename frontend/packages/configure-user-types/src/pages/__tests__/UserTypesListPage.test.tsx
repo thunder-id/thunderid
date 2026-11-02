@@ -31,7 +31,7 @@ vi.mock('@thunderid/logger/react', () => ({
 vi.mock('../../components/UserTypesList', () => ({
   default: () => (
     <div data-testid="user-types-list">
-      <span>Organization Unit: Root Organization</span>
+      <span>Organization unit: Root Organization</span>
     </div>
   ),
 }));
@@ -45,7 +45,13 @@ describe('UserTypesListPage', () => {
   it('renders page title', () => {
     render(<UserTypesListPage />);
 
-    expect(screen.getByText('User Types')).toBeInTheDocument();
+    expect(screen.getByText('User types')).toBeInTheDocument();
+  });
+
+  it('sets the document title', async () => {
+    render(<UserTypesListPage />);
+
+    await waitFor(() => expect(document.title).toBe('User types | ThunderID'));
   });
 
   it('renders page description', () => {
@@ -70,7 +76,7 @@ describe('UserTypesListPage', () => {
   it('shows organization unit name within the list component', () => {
     render(<UserTypesListPage />);
 
-    expect(screen.getByText('Organization Unit: Root Organization')).toBeInTheDocument();
+    expect(screen.getByText('Organization unit: Root Organization')).toBeInTheDocument();
   });
 
   it('navigates to create page when create button is clicked', async () => {

@@ -11,7 +11,8 @@ import useGetApplications from '../useGetApplications';
 const mockHttpRequest = vi.fn();
 
 // Mock the dependencies
-vi.mock('@thunderid/react', () => ({
+vi.mock('@thunderid/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/react')>()),
   useThunderID: () => ({http: {request: mockHttpRequest}}),
 }));
 
@@ -190,6 +191,23 @@ describe('useGetApplications', () => {
     expect(callArgs.method).toBe('GET');
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(callArgs.headers['Content-Type']).toBe('application/json');
+  });
+
+  it('should pass the filter to the server', async () => {
+    mockHttpRequest.mockResolvedValueOnce({
+      data: mockApplicationListResponse,
+    });
+
+    renderHook(() => useGetApplications({limit: 10, offset: 0, filter: 'ouId eq "ou-1"'}));
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalledTimes(1);
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const callArgs = mockHttpRequest.mock.calls[0][0];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    expect(callArgs.url).toContain('filter=ouId+eq+%22ou-1%22');
   });
 
   it('should use correct query key with pagination params', async () => {

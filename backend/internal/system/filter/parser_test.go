@@ -256,3 +256,72 @@ func TestParseFilterParam(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestParseEqualityFilterParam(t *testing.T) {
+	t.Run("no filter parameter returns nil", func(t *testing.T) {
+		got, err := ParseEqualityFilterParam(url.Values{})
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("one equality expression is returned as a map", func(t *testing.T) {
+		got, err := ParseEqualityFilterParam(url.Values{"filter": []string{`ouId eq "ou-1"`}})
+		require.NoError(t, err)
+		assert.Equal(t, map[string]interface{}{"ouId": "ou-1"}, got)
+	})
+
+	t.Run("an unquoted number keeps its type", func(t *testing.T) {
+		got, err := ParseEqualityFilterParam(url.Values{"filter": []string{"ouId eq 5"}})
+		require.NoError(t, err)
+		assert.Equal(t, map[string]interface{}{"ouId": int64(5)}, got)
+	})
+
+	t.Run("a repeated filter parameter returns error", func(t *testing.T) {
+		_, err := ParseEqualityFilterParam(url.Values{"filter": []string{`ouId eq "ou-1"`, `name eq "x"`}})
+		assert.Error(t, err)
+	})
+
+	for name, expression := range map[string]string{
+		"an empty filter":                   "",
+		"an invalid expression":             "ouId eq",
+		"another operator":                  `ouId sw "ou-1"`,
+		"a second expression joined by and": `ouId eq "ou-1" and name eq "x"`,
+		"a second expression joined by or":  `ouId eq "ou-1" or ouId eq "ou-2"`,
+	} {
+		t.Run(name+" returns error", func(t *testing.T) {
+			_, err := ParseEqualityFilterParam(url.Values{"filter": []string{expression}})
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestSplitOUIDFilter(t *testing.T) {
+	t.Run("no organization unit filter leaves the filters as they are", func(t *testing.T) {
+		filters := map[string]interface{}{"email": "a@b.c"}
+
+		ouID, rest, err := SplitOUIDFilter(filters)
+
+		require.NoError(t, err)
+		assert.Empty(t, ouID)
+		assert.Equal(t, filters, rest)
+	})
+
+	t.Run("the organization unit is taken out and the rest remain", func(t *testing.T) {
+		filters := map[string]interface{}{AttributeOUID: "ou-1", "email": "a@b.c"}
+
+		ouID, rest, err := SplitOUIDFilter(filters)
+
+		require.NoError(t, err)
+		assert.Equal(t, "ou-1", ouID)
+		assert.Equal(t, map[string]interface{}{"email": "a@b.c"}, rest)
+		assert.Contains(t, filters, AttributeOUID, "the caller's filters are not changed")
+	})
+
+	for name, value := range map[string]interface{}{"a number": int64(5), "an empty string": ""} {
+		t.Run("refuses "+name, func(t *testing.T) {
+			_, _, err := SplitOUIDFilter(map[string]interface{}{AttributeOUID: value})
+
+			assert.Error(t, err)
+		})
+	}
+}

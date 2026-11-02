@@ -163,19 +163,7 @@ The agent's client secret defaults to `wayfinder-agent-secret` (set in `thunderi
 
 ### Manual Setup
 
-- Configure SMTP so recovery and invitation emails can be delivered. The sample ships with a built-in local SMTP server (`smtp-server/`) that listens on `127.0.0.1:2525`. No external relay is required. The defaults below match its credentials exactly, so no further editing is needed for local development:
-
-  ```yaml
-  email:
-    smtp:
-      host: "127.0.0.1"
-      port: 2525
-      username: "dev"
-      password: "dev"
-      from_address: "noreply@thunderid.dev"
-      enable_start_tls: false
-      enable_authentication: true
-  ```
+- Recovery and invitation emails are delivered through the `Wayfinder Mock SMTP` email provider connection that the bundle imports. It points at the sample's built-in local SMTP server (`smtp-server/`) on `127.0.0.1:2525`, and every email step in the bundled flows selects it, so no SMTP configuration is needed for local development. To use a real relay instead, update that connection's host, port, TLS, and authentication through the `/connections/email-smtp` API.
 
   Once the sample is running, open `http://localhost:8788` to view captured emails in the inbox UI.
 
@@ -221,7 +209,7 @@ Notifications now arrive as SMS. If you already approved the consent during the 
 
 ## Configure the Sample
 
-`backend/`, `smtp-server/`, `ai-agent/`, `frontend/`, and `lounge/` each ship with a `.env.example` listing only the variables you actually need to set. In each of those folders, copy it to `.env` and fill the placeholders. The `smtp-server/.env.example` defaults already match the `email.smtp` settings in `deployment.yaml`, so it works as-is.
+`backend/`, `smtp-server/`, `ai-agent/`, `frontend/`, and `lounge/` each ship with a `.env.example` listing only the variables you actually need to set. In each of those folders, copy it to `.env` and fill the placeholders. The `smtp-server/.env.example` defaults already match the email provider connection the bundle imports, so it works as-is.
 
 The only placeholder you must replace is in `ai-agent/.env`:
 
@@ -297,7 +285,7 @@ cd frontend    && npm install && npm run dev                 # http://localhost:
 
 The Wayfinder server hosts both the REST API on `/api/*` and the MCP server on `/mcp`. Sample flights, hotels, and trips are held in memory and reloaded on every start, so there is no database to set up. Bookings and upgrade requests are in memory too, and reset when the server restarts.
 
-The SMTP server captures all emails sent by ThunderID (password recovery, staff invitations, CIBA upgrade notifications) and displays them at `http://localhost:8788`. It accepts any username/password, matching the `deployment.yaml` defaults (`dev` / `dev`).
+The SMTP server captures all emails sent by ThunderID (password recovery, staff invitations, CIBA upgrade notifications) and displays them at `http://localhost:8788`. It accepts any username/password, so the bundled email provider connects to it without authentication.
 
 ## Try It
 

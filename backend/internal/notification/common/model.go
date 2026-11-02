@@ -4,28 +4,36 @@
 // Package common contains the common models and constants for notification package.
 package common
 
-import "github.com/thunder-id/thunderid/internal/system/cmodels"
+import (
+	"github.com/thunder-id/thunderid/internal/system/cmodels"
+)
 
-// SMSData represents the data structure for a SMS message.
-type SMSData struct {
-	To   string `json:"to"`
-	Body string `json:"body"`
-}
-
-// NotificationData holds the channel-agnostic payload for sending a notification.
-type NotificationData struct {
+// MessageData holds the channel-agnostic payload for sending a message notification.
+type MessageData struct {
 	Recipient string
 	Body      string
 }
 
+// EmailData holds the payload for sending an email notification.
+type EmailData struct {
+	To      []string
+	CC      []string
+	BCC     []string
+	Subject string
+	Body    string
+	IsHTML  bool
+}
+
 // NotificationSenderDTO represents the data transfer object for a notification sender.
 type NotificationSenderDTO struct {
-	ID          string                 `yaml:"id,omitempty"`
-	Name        string                 `yaml:"name"`
-	Description string                 `yaml:"description,omitempty"`
-	Type        NotificationSenderType `yaml:"-"`
-	Provider    MessageProviderType    `yaml:"provider"`
-	Properties  []cmodels.Property     `yaml:"properties,omitempty"`
+	ID          string                   `yaml:"id,omitempty"`
+	Name        string                   `yaml:"name"`
+	Description string                   `yaml:"description,omitempty"`
+	Type        NotificationSenderType   `yaml:"-"`
+	OUID        string                   `yaml:"ouId,omitempty"`
+	OUHandle    string                   `yaml:"ouHandle,omitempty"`
+	Provider    NotificationProviderType `yaml:"provider"`
+	Properties  []cmodels.Property       `yaml:"properties,omitempty"`
 }
 
 // VerifyOTPDTO represents the service layer data structure for verifying an OTP.

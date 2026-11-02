@@ -6,6 +6,7 @@ package filter
 
 import (
 	"fmt"
+	"maps"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -14,12 +15,16 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
+// AttributeOUID is the filter attribute that lists one organization unit's resources: the ones it owns
+// and the ones shared into it.
+const AttributeOUID = "ouId"
+
 // filterPattern matches a complete single expression (with end anchor) for validation.
-var filterPattern = regexp.MustCompile(`^(\w+(?:\.\w+)*)\s+(eq|gt|lt)\s+(?:"([^"]*)"|(\S+))$`)
+var filterPattern = regexp.MustCompile(`^(\w+(?:\.\w+)*)\s+(eq|gt|lt|sw)\s+(?:"([^"]*)"|(\S+))$`)
 
 // singleExprPrefix matches one expression from the start of the string without an end anchor,
 // used during iterative multi-expression parsing.
-var singleExprPrefix = regexp.MustCompile(`^(\w+(?:\.\w+)*)\s+(eq|gt|lt)\s+(?:"([^"]*)"|(\S+))`)
+var singleExprPrefix = regexp.MustCompile(`^(\w+(?:\.\w+)*)\s+(eq|gt|lt|sw)\s+(?:"([^"]*)"|(\S+))`)
 
 // connectorPrefix matches a leading AND or OR connector (case-insensitive) surrounded by whitespace.
 var connectorPrefix = regexp.MustCompile(`(?i)^\s+(AND|OR)\s+`)
@@ -37,6 +42,26 @@ func ParseFilterParam(query url.Values) (*tidcommon.FilterGroup, error) {
 	}
 
 	return ParseFilterGroup(filterStr)
+}
+
+// ParseEqualityFilterParam reads the "filter" query parameter as a single equality expression and
+// returns it as an attribute to value map. Returns nil when no filter parameter is present.
+func ParseEqualityFilterParam(query url.Values) (map[string]interface{}, error) {
+	if values := query["filter"]; len(values) > 1 {
+		return nil, fmt.Errorf("expected one filter parameter, got %d", len(values))
+	}
+	group, err := ParseFilterParam(query)
+	if err != nil || group == nil {
+		return nil, err
+	}
+	if len(group.Clauses) != 1 {
+		return nil, fmt.Errorf("expected one filter expression, got %d", len(group.Clauses))
+	}
+	expr := group.Clauses[0].Expr
+	if expr.Operator != tidcommon.OperatorEq {
+		return nil, fmt.Errorf("unsupported filter operator: %s", expr.Operator)
+	}
+	return map[string]interface{}{expr.Attribute: expr.Value}, nil
 }
 
 // ParseFilterGroup parses a filter string that may contain multiple expressions joined by AND or OR.
@@ -83,10 +108,27 @@ func ParseFilterGroup(filterStr string) (*tidcommon.FilterGroup, error) {
 	return &tidcommon.FilterGroup{Clauses: clauses}, nil
 }
 
+// SplitOUIDFilter takes the organization unit filter out of parsed equality filters. It returns the
+// organization unit ID, empty when the filters name none, and the filters that remain. A value that
+// is not a non-empty string is refused.
+func SplitOUIDFilter(filters map[string]interface{}) (string, map[string]interface{}, error) {
+	value, ok := filters[AttributeOUID]
+	if !ok {
+		return "", filters, nil
+	}
+	ouID, isString := value.(string)
+	if !isString || ouID == "" {
+		return "", nil, fmt.Errorf("invalid %s filter value: %v", AttributeOUID, value)
+	}
+	rest := maps.Clone(filters)
+	delete(rest, AttributeOUID)
+	return ouID, rest, nil
+}
+
 // ParseFilterExpression parses a single filter expression string of the form:
 //
-//	attribute (eq|gt|lt) "value"
-//	attribute (eq|gt|lt) value
+//	attribute (eq|gt|lt|sw) "value"
+//	attribute (eq|gt|lt|sw) value
 func ParseFilterExpression(filterStr string) (*tidcommon.FilterExpression, error) {
 	matches := filterPattern.FindStringSubmatch(filterStr)
 	if len(matches) == 0 {

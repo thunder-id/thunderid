@@ -17,10 +17,19 @@ func newFlowInferenceServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *flowInferenceServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &flowInferenceServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call struct {
 // InferRegistrationFlow is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authFlow *flowmgt.FlowDefinition
-func (_e *flowInferenceServiceInterfaceMock_Expecter) InferRegistrationFlow(ctx interface{}, authFlow interface{}) *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call {
+func (_e *flowInferenceServiceInterfaceMock_Expecter) InferRegistrationFlow(ctx any, authFlow any) *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call {
 	return &flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call{Call: _e.mock.On("InferRegistrationFlow", ctx, authFlow)}
 }
 

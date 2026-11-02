@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return */
@@ -49,12 +49,24 @@ vi.mock('@wso2/oxygen-ui', async () => {
       GridRenderCellParams: {},
     },
     ListingTable: {
-      Provider: ({children, loading = false}: {children: ReactNode; loading?: boolean}) => (
-        <div data-testid="listing-table-provider" data-loading={loading ? 'true' : 'false'}>
+      Provider: ({
+        children,
+        loading = false,
+        variant = undefined,
+      }: {
+        children: ReactNode;
+        loading?: boolean;
+        variant?: string;
+      }) => (
+        <div data-testid="listing-table-provider" data-loading={loading ? 'true' : 'false'} data-variant={variant}>
           {children}
         </div>
       ),
-      Container: ({children}: {children: ReactNode}): ReactElement => children as ReactElement,
+      Container: ({children, disablePaper = false}: {children: ReactNode; disablePaper?: boolean}) => (
+        <div data-testid="listing-table-container" data-disable-paper={disablePaper ? 'true' : undefined}>
+          {children}
+        </div>
+      ),
       DataGrid: ({
         rows = [],
         columns = [],
@@ -108,10 +120,19 @@ vi.mock('@wso2/oxygen-ui', async () => {
           })}
         </div>
       ),
-      CellIcon: ({primary, icon = undefined}: {primary: string; icon?: ReactNode}) => (
+      CellIcon: ({
+        primary,
+        secondary = undefined,
+        icon = undefined,
+      }: {
+        primary: string;
+        secondary?: ReactNode;
+        icon?: ReactNode;
+      }) => (
         <>
           {icon}
           <span>{primary}</span>
+          {secondary && <span>{secondary}</span>}
         </>
       ),
       RowActions: ({children}: {children: ReactNode}): ReactElement => children as ReactElement,
@@ -179,8 +200,22 @@ describe('UserTypesList', () => {
     startIndex: 1,
     count: 2,
     types: [
-      {id: 'schema1', name: 'Employee Schema', ouId: 'root-ou', ouHandle: 'root', allowSelfRegistration: false},
-      {id: 'schema2', name: 'Contractor Schema', ouId: 'child-ou', ouHandle: 'child', allowSelfRegistration: true},
+      {
+        id: 'schema1',
+        handle: 'employee',
+        displayName: 'Employee Schema',
+        ouId: 'root-ou',
+        ouHandle: 'root',
+        allowSelfRegistration: false,
+      },
+      {
+        id: 'schema2',
+        handle: 'contractor',
+        displayName: 'Contractor Schema',
+        ouId: 'child-ou',
+        ouHandle: 'child',
+        allowSelfRegistration: true,
+      },
     ],
   };
 
@@ -221,6 +256,40 @@ describe('UserTypesList', () => {
 
     expect(screen.getByTestId('row-schema1')).toHaveTextContent('Employee Schema');
     expect(screen.getByTestId('row-schema2')).toHaveTextContent('Contractor Schema');
+  });
+
+  it('uses the data grid variant inside a paper container', () => {
+    render(<UserTypesList />);
+
+    expect(screen.getByTestId('listing-table-provider')).toHaveAttribute('data-variant', 'data-grid');
+    expect(screen.getByTestId('listing-table-container')).not.toHaveAttribute('data-disable-paper');
+  });
+
+  it('names the edit and delete actions of each row', () => {
+    render(<UserTypesList />);
+
+    expect(screen.getAllByRole('button', {name: 'Edit'})).toHaveLength(2);
+    expect(screen.getAllByRole('button', {name: 'Delete'})).toHaveLength(2);
+  });
+
+  it('names the read-only indicator of a read-only user type', () => {
+    mockUseGetUserTypes.mockReturnValue({
+      data: {...mockUserTypesData, types: [{...mockUserTypesData.types[0], isReadOnly: true}]},
+      isLoading: false,
+      error: null,
+      refetch: mockRefetchUserTypes,
+    } as unknown as ReturnType<typeof useGetUserTypesHook>);
+
+    render(<UserTypesList />);
+
+    expect(screen.getByRole('button', {name: 'Read only'})).toBeInTheDocument();
+  });
+
+  it('shows the handle under the display name', () => {
+    render(<UserTypesList />);
+
+    expect(screen.getByTestId('row-schema1')).toHaveTextContent('employee');
+    expect(screen.getByTestId('row-schema2')).toHaveTextContent('contractor');
   });
 
   it('shows organization unit names when available', () => {
@@ -338,7 +407,7 @@ describe('UserTypesList', () => {
     await user.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
+      expect(screen.getByText('Delete user type')).toBeInTheDocument();
       expect(screen.getByText('Are you sure you want to delete this user type?')).toBeInTheDocument();
     });
   });
@@ -351,14 +420,14 @@ describe('UserTypesList', () => {
     await user.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
+      expect(screen.getByText('Delete user type')).toBeInTheDocument();
     });
 
     const cancelButton = screen.getByRole('button', {name: /Cancel/i});
     await user.click(cancelButton);
 
     await waitFor(() => {
-      expect(screen.queryByText('Delete User Type')).not.toBeInTheDocument();
+      expect(screen.queryByText('Delete user type')).not.toBeInTheDocument();
     });
   });
 
@@ -372,7 +441,7 @@ describe('UserTypesList', () => {
     await user.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
+      expect(screen.getByText('Delete user type')).toBeInTheDocument();
     });
 
     const confirmButton = screen.getByRole('button', {name: /delete/i});
@@ -464,7 +533,7 @@ describe('UserTypesList', () => {
     await user.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
+      expect(screen.getByText('Delete user type')).toBeInTheDocument();
     });
 
     const confirmButton = screen.getByRole('button', {name: /delete/i});
@@ -473,7 +542,7 @@ describe('UserTypesList', () => {
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith('schema1');
       // Dialog stays open so user can see error and retry
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
+      expect(screen.getByText('Delete user type')).toBeInTheDocument();
     });
   });
 

@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -16,6 +17,7 @@ import (
 	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
@@ -172,9 +174,14 @@ func (suite *LogoutServiceTestSuite) TestInitiateSignOutFlow_StripsIDTokenHintFr
 		AppID: "app-1",
 		QueryParams: map[string][]string{
 			"id_token_hint":            {"header.payload.sig"},
+			"client_secret":            {"supersecret"},
 			"client_id":                {"client-x"},
 			"post_logout_redirect_uri": {"https://rp.example/after"},
 			"state":                    {"xyz"},
+		},
+		Headers: map[string][]string{
+			"User-Agent":    {"curl/8.0"},
+			"Authorization": {"Bearer secret"},
 		},
 	})
 
@@ -183,9 +190,14 @@ func (suite *LogoutServiceTestSuite) TestInitiateSignOutFlow_StripsIDTokenHintFr
 	suite.Require().NotNil(captured.InitiatorRequest)
 	forwarded := captured.InitiatorRequest.QueryParams
 	suite.NotContains(forwarded, "id_token_hint")
+	// client_secret is a credential param and must be stripped by the sensitive-param filter.
+	suite.NotContains(forwarded, "client_secret")
 	suite.Equal([]string{"client-x"}, forwarded["client_id"])
 	suite.Equal([]string{"https://rp.example/after"}, forwarded["post_logout_redirect_uri"])
 	suite.Equal([]string{"xyz"}, forwarded["state"])
+	// Credential headers must also be stripped; non-sensitive ones preserved.
+	suite.Empty(http.Header(captured.InitiatorRequest.Headers).Get("Authorization"))
+	suite.Equal("curl/8.0", http.Header(captured.InitiatorRequest.Headers).Get("User-Agent"))
 }
 
 func (suite *LogoutServiceTestSuite) TestFilterQueryParams() {
@@ -298,6 +310,20 @@ func makeIDToken(iss, aud string) string {
 	}
 	return enc(map[string]string{"alg": "RS256", "typ": "JWT"}) + "." +
 		enc(map[string]interface{}{"iss": iss, "aud": aud}) + ".sig"
+}
+
+// makeTypedToken builds a token with an arbitrary typ header and extra claims, for asserting that
+// only ID tokens are accepted as an id_token_hint.
+func makeTypedToken(typ, iss, aud string, extra map[string]interface{}) string {
+	enc := func(v interface{}) string {
+		b, _ := json.Marshal(v)
+		return base64.RawURLEncoding.EncodeToString(b)
+	}
+	claims := map[string]interface{}{"iss": iss, "aud": aud}
+	for k, v := range extra {
+		claims[k] = v
+	}
+	return enc(map[string]string{"alg": "RS256", "typ": typ}) + "." + enc(claims) + ".sig"
 }
 
 func makeIDTokenMultiAud(iss string, aud []string, azp string) string {
@@ -438,6 +464,32 @@ func (suite *LogoutServiceTestSuite) TestResolve_IDTokenHintBadSignature() {
 	suite.Require().ErrorIs(err, errInvalidIDTokenHint)
 }
 
+// An access token issued to an application with no configured default audience carries
+// aud=client_id, so it resolves to a valid client. It must still be rejected as an id_token_hint:
+// accepting it would let anyone holding such a token suppress the End-User sign-out confirmation.
+func (suite *LogoutServiceTestSuite) TestResolve_AccessTokenAsIDTokenHintRejected() {
+	svc, jwtSvc, _ := suite.newService()
+	token := makeTypedToken("at+jwt", testIssuer, "client-x", nil)
+	jwtSvc.EXPECT().VerifyJWTSignature(mock.Anything, token).Return(nil)
+
+	_, err := svc.Resolve(context.Background(), LogoutRequest{IDTokenHint: token})
+
+	suite.Require().ErrorIs(err, errInvalidIDTokenHint)
+}
+
+// A refresh token minted before rt+jwt shares the generic JWT typ with ID tokens, so it is separated
+// by its access_token_sub claim, the same way the ID-JAG subject token check does it.
+func (suite *LogoutServiceTestSuite) TestResolve_RefreshTokenAsIDTokenHintRejected() {
+	svc, jwtSvc, _ := suite.newService()
+	token := makeTypedToken("JWT", testIssuer, "client-x",
+		map[string]interface{}{"access_token_sub": "user-1"})
+	jwtSvc.EXPECT().VerifyJWTSignature(mock.Anything, token).Return(nil)
+
+	_, err := svc.Resolve(context.Background(), LogoutRequest{IDTokenHint: token})
+
+	suite.Require().ErrorIs(err, errInvalidIDTokenHint)
+}
+
 func (suite *LogoutServiceTestSuite) TestResolve_IDTokenHintWrongIssuer() {
 	svc, jwtSvc, _ := suite.newService()
 	token := makeIDToken("https://other.issuer", "client-x")
@@ -531,4 +583,17 @@ func (suite *LogoutServiceTestSuite) TestCompleteSignOut_ClearErrorStillReturnsR
 
 	suite.Require().NoError(err)
 	suite.Equal("https://rp.example/after", redirectURI)
+}
+
+// A refresh token minted with the rt+jwt typ is refused as an id_token_hint by the typ check alone,
+// before the access_token_sub claim is consulted.
+func (suite *LogoutServiceTestSuite) TestResolve_RTJWTRefreshTokenAsIDTokenHintRejected() {
+	svc, jwtSvc, _ := suite.newService()
+	token := makeTypedToken(jwt.TokenTypeRefreshToken, testIssuer, "client-x",
+		map[string]interface{}{"access_token_sub": "user-1"})
+	jwtSvc.EXPECT().VerifyJWTSignature(mock.Anything, token).Return(nil)
+
+	_, err := svc.Resolve(context.Background(), LogoutRequest{IDTokenHint: token})
+
+	suite.Require().ErrorIs(err, errInvalidIDTokenHint)
 }

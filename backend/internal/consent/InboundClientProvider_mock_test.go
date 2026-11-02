@@ -17,10 +17,19 @@ func NewInboundClientProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *InboundClientProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &InboundClientProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type InboundClientProviderMock_GetInboundClientAttributes_Call struct {
 // GetInboundClientAttributes is a helper method to define mock.On call
 //   - ctx context.Context
 //   - inboundClientID string
-func (_e *InboundClientProviderMock_Expecter) GetInboundClientAttributes(ctx interface{}, inboundClientID interface{}) *InboundClientProviderMock_GetInboundClientAttributes_Call {
+func (_e *InboundClientProviderMock_Expecter) GetInboundClientAttributes(ctx any, inboundClientID any) *InboundClientProviderMock_GetInboundClientAttributes_Call {
 	return &InboundClientProviderMock_GetInboundClientAttributes_Call{Call: _e.mock.On("GetInboundClientAttributes", ctx, inboundClientID)}
 }
 
@@ -141,7 +150,7 @@ type InboundClientProviderMock_ListInboundClientAttributes_Call struct {
 
 // ListInboundClientAttributes is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *InboundClientProviderMock_Expecter) ListInboundClientAttributes(ctx interface{}) *InboundClientProviderMock_ListInboundClientAttributes_Call {
+func (_e *InboundClientProviderMock_Expecter) ListInboundClientAttributes(ctx any) *InboundClientProviderMock_ListInboundClientAttributes_Call {
 	return &InboundClientProviderMock_ListInboundClientAttributes_Call{Call: _e.mock.On("ListInboundClientAttributes", ctx)}
 }
 

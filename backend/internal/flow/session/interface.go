@@ -3,7 +3,10 @@
 
 package session
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // sessionStore is the package-private persistence contract covering SSO sessions, their
 // per-checkpoint session contexts, and their participants. A single runtime-persistent-DB-backed
@@ -24,6 +27,10 @@ type sessionStore interface {
 	// returns errVersionConflict when the stored version no longer matches, and bumps the in-memory
 	// Version on success.
 	Update(ctx context.Context, s *Session) error
+	// TouchAuthenticatedAt records a fresh authentication inside an existing session and slides the
+	// idle deadline with it. It carries no version guard, so it never loses to a concurrent slide.
+	TouchAuthenticatedAt(ctx context.Context, sessionID string, authenticatedAt,
+		idleExpiresAt time.Time) error
 
 	// CreateContext persists (or overwrites) one checkpoint's session context for a session.
 	CreateContext(ctx context.Context, c SessionContext) error
@@ -31,14 +38,21 @@ type sessionStore interface {
 	GetByCheckpoint(ctx context.Context, sessionID, checkpointID string) (*SessionContext, error)
 	// Delete removes all of a session's checkpoint contexts.
 	Delete(ctx context.Context, sessionID string) error
-	// DeleteSession removes the session row itself.
-	DeleteSession(ctx context.Context, sessionID string) error
+	// DeleteSession removes the session row itself and reports whether a row was removed.
+	DeleteSession(ctx context.Context, sessionID string) (bool, error)
 
 	// Record inserts the participant, or refreshes its LAST_ACTIVE_AT (preserving FIRST_JOINED_AT)
 	// when the application has already joined the session.
 	Record(ctx context.Context, p Participant) error
 	// ListBySessionID returns the applications that have joined the session, oldest first.
 	ListBySessionID(ctx context.Context, sessionID string) ([]Participant, error)
+	// ListBySessionIDs returns the participants of all the given sessions, each session's
+	// participants oldest first.
+	ListBySessionIDs(ctx context.Context, sessionIDs []string) ([]Participant, error)
 	// DeleteBySessionID removes all participants of a session.
 	DeleteBySessionID(ctx context.Context, sessionID string) error
+	// ListByAppID returns every participation of the application, across sessions, oldest first.
+	ListByAppID(ctx context.Context, appID string) ([]Participant, error)
+	// DeleteParticipant removes one application's participation in one session.
+	DeleteParticipant(ctx context.Context, sessionID, appID string) error
 }

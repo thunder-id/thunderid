@@ -20,10 +20,12 @@ const (
 	columnNameExpiryTime     = "expiry_time"
 	columnNameRevokedAt      = "revoked_at"
 	columnNameReason         = "reason"
-	// criterionTypeTokenFamily mirrors the revocation package's token_family criterion type. It is
-	// duplicated here (not imported) so this read-only RS package stays decoupled from the write path.
-	criterionTypeTokenFamily = "token_family"
-	criterionTypeSubject     = "subject"
+	// The criterion types this source reads, shared with the write path.
+	criterionTypeTokenFamily = string(revocation.CriterionTypeTokenFamily)
+	criterionTypeSubject     = string(revocation.CriterionTypeSubject)
+	criterionTypeAppKey      = string(revocation.CriterionTypeApplicationKey)
+	criterionTypeEntityScope = string(revocation.CriterionTypeEntityScope)
+	criterionTypeScope       = string(revocation.CriterionTypeScope)
 )
 
 // dbSource reads the deny-list snapshot from the runtime persistent database. It is the only source today; it
@@ -69,21 +71,55 @@ func (s *dbSource) Snapshot(ctx context.Context) (revokedSnapshot, error) {
 		return revokedSnapshot{}, err
 	}
 
-	subjectRows, err := dbClient.QueryContext(ctx, querySnapshotRevokedSubjects,
+	subjectRows, err := dbClient.QueryContext(ctx, querySnapshotBoundedCriteria,
 		criterionTypeSubject, now, s.deploymentID)
 	if err != nil {
 		return revokedSnapshot{}, fmt.Errorf("error reading revoked subject snapshot: %w", err)
 	}
-	subjects, err := parseSubjectEntries(subjectRows)
+	subjects, err := parseBoundedEntries(subjectRows)
 	if err != nil {
 		return revokedSnapshot{}, err
 	}
 
-	return revokedSnapshot{Tokens: tokens, Families: families, Subjects: subjects}, nil
+	appKeyRows, err := dbClient.QueryContext(ctx, querySnapshotBoundedCriteria,
+		criterionTypeAppKey, now, s.deploymentID)
+	if err != nil {
+		return revokedSnapshot{}, fmt.Errorf("error reading revoked application snapshot: %w", err)
+	}
+	appKeys, err := parseBoundedEntries(appKeyRows)
+	if err != nil {
+		return revokedSnapshot{}, err
+	}
+
+	entityScopeRows, err := dbClient.QueryContext(ctx, querySnapshotBoundedCriteria,
+		criterionTypeEntityScope, now, s.deploymentID)
+	if err != nil {
+		return revokedSnapshot{}, fmt.Errorf("error reading revoked entity scope snapshot: %w", err)
+	}
+	entityScopes, err := parseBoundedEntries(entityScopeRows)
+	if err != nil {
+		return revokedSnapshot{}, err
+	}
+
+	scopeRows, err := dbClient.QueryContext(ctx, querySnapshotBoundedCriteria,
+		criterionTypeScope, now, s.deploymentID)
+	if err != nil {
+		return revokedSnapshot{}, fmt.Errorf("error reading revoked scope snapshot: %w", err)
+	}
+	scopes, err := parseBoundedEntries(scopeRows)
+	if err != nil {
+		return revokedSnapshot{}, err
+	}
+
+	return revokedSnapshot{
+		Tokens: tokens, Families: families, Subjects: subjects, AppKeys: appKeys,
+		EntityScopes: entityScopes, Scopes: scopes,
+	}, nil
 }
 
-// parseSubjectEntries maps subject criteria and retains their token-establishment cutoff.
-func parseSubjectEntries(rows []map[string]interface{}) ([]revokedEntry, error) {
+// parseBoundedEntries maps criteria of one dimension and retains their establishment cutoff, so a
+// bounded reason rejects only artifacts established at or before it.
+func parseBoundedEntries(rows []map[string]interface{}) ([]revokedEntry, error) {
 	entries, err := parseEntries(rows, columnNameCriterionValue)
 	if err != nil {
 		return nil, err

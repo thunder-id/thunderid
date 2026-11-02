@@ -114,7 +114,8 @@ func (s *logoutService) InitiateSignOutFlow(
 	// id_token_hint is used by the OAuth layer to resolve the target client; the sign-out flow
 	// itself never consumes it. Strip it from the forwarded initiator request so we don't persist a
 	// JWT with user identity claims into the flow context store.
-	forwardedQueryParams := filterQueryParams(resolution.QueryParams, constants.RequestParamIDTokenHint)
+	forwardedQueryParams := sysutils.FilterSensitiveQueryParams(
+		filterQueryParams(resolution.QueryParams, constants.RequestParamIDTokenHint))
 
 	initContext := &flowexec.FlowInitContext{
 		ApplicationID: resolution.AppID,
@@ -228,8 +229,25 @@ func (s *logoutService) clientIDFromIDTokenHint(ctx context.Context, idTokenHint
 	if svcErr := s.jwtService.VerifyJWTSignature(ctx, idTokenHint); svcErr != nil {
 		return "", errInvalidIDTokenHint
 	}
+	header, err := jwt.DecodeJWTHeader(idTokenHint)
+	if err != nil {
+		return "", errInvalidIDTokenHint
+	}
+	// The hint must be an ID token, not any other JWT this server signs. An access token issued to an
+	// application with no configured default audience carries aud=client_id, so without this check it
+	// would resolve to a client and be accepted as a hint, which suppresses the End-User sign-out
+	// confirmation.
+	if typ, _ := header["typ"].(string); typ != jwt.TokenTypeJWT {
+		return "", errInvalidIDTokenHint
+	}
 	payload, err := jwt.DecodeJWTPayload(idTokenHint)
 	if err != nil {
+		return "", errInvalidIDTokenHint
+	}
+	// An rt+jwt refresh token is already refused by the typ check above. This catches the ones minted
+	// before rt+jwt existed, which share the generic type with ID tokens.
+	// TODO: Remove on the next major version, once no pre-rt+jwt refresh token can still be valid.
+	if _, isRefreshToken := payload[constants.ClaimAccessTokenSubject]; isRefreshToken {
 		return "", errInvalidIDTokenHint
 	}
 	if iss, _ := payload[constants.ClaimIss].(string); iss != s.issuer {

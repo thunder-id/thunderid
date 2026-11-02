@@ -16,10 +16,19 @@ func newLogoutRequestStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *logoutRequestStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &logoutRequestStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -71,7 +80,7 @@ type logoutRequestStoreInterfaceMock_AddRequest_Call struct {
 // AddRequest is a helper method to define mock.On call
 //   - ctx context.Context
 //   - value logoutRequestContext
-func (_e *logoutRequestStoreInterfaceMock_Expecter) AddRequest(ctx interface{}, value interface{}) *logoutRequestStoreInterfaceMock_AddRequest_Call {
+func (_e *logoutRequestStoreInterfaceMock_Expecter) AddRequest(ctx any, value any) *logoutRequestStoreInterfaceMock_AddRequest_Call {
 	return &logoutRequestStoreInterfaceMock_AddRequest_Call{Call: _e.mock.On("AddRequest", ctx, value)}
 }
 
@@ -128,7 +137,7 @@ type logoutRequestStoreInterfaceMock_ClearRequest_Call struct {
 // ClearRequest is a helper method to define mock.On call
 //   - ctx context.Context
 //   - key string
-func (_e *logoutRequestStoreInterfaceMock_Expecter) ClearRequest(ctx interface{}, key interface{}) *logoutRequestStoreInterfaceMock_ClearRequest_Call {
+func (_e *logoutRequestStoreInterfaceMock_Expecter) ClearRequest(ctx any, key any) *logoutRequestStoreInterfaceMock_ClearRequest_Call {
 	return &logoutRequestStoreInterfaceMock_ClearRequest_Call{Call: _e.mock.On("ClearRequest", ctx, key)}
 }
 
@@ -200,7 +209,7 @@ type logoutRequestStoreInterfaceMock_GetRequest_Call struct {
 // GetRequest is a helper method to define mock.On call
 //   - ctx context.Context
 //   - key string
-func (_e *logoutRequestStoreInterfaceMock_Expecter) GetRequest(ctx interface{}, key interface{}) *logoutRequestStoreInterfaceMock_GetRequest_Call {
+func (_e *logoutRequestStoreInterfaceMock_Expecter) GetRequest(ctx any, key any) *logoutRequestStoreInterfaceMock_GetRequest_Call {
 	return &logoutRequestStoreInterfaceMock_GetRequest_Call{Call: _e.mock.On("GetRequest", ctx, key)}
 }
 

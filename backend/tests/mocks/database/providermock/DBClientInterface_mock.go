@@ -18,10 +18,19 @@ func NewDBClientInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *DBClientInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &DBClientInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -96,7 +105,7 @@ func (_c *DBClientInterfaceMock_BeginTx_Call) RunAndReturn(run func() (model.TxI
 
 // Execute provides a mock function for the type DBClientInterfaceMock
 func (_mock *DBClientInterfaceMock) Execute(query model.DBQuery, args ...interface{}) (int64, error) {
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, query)
 	_ca = append(_ca, args...)
 	ret := _mock.Called(_ca...)
@@ -131,9 +140,9 @@ type DBClientInterfaceMock_Execute_Call struct {
 // Execute is a helper method to define mock.On call
 //   - query model.DBQuery
 //   - args ...interface{}
-func (_e *DBClientInterfaceMock_Expecter) Execute(query interface{}, args ...interface{}) *DBClientInterfaceMock_Execute_Call {
+func (_e *DBClientInterfaceMock_Expecter) Execute(query any, args ...any) *DBClientInterfaceMock_Execute_Call {
 	return &DBClientInterfaceMock_Execute_Call{Call: _e.mock.On("Execute",
-		append([]interface{}{query}, args...)...)}
+		append([]any{query}, args...)...)}
 }
 
 func (_c *DBClientInterfaceMock_Execute_Call) Run(run func(query model.DBQuery, args ...interface{})) *DBClientInterfaceMock_Execute_Call {
@@ -170,7 +179,7 @@ func (_c *DBClientInterfaceMock_Execute_Call) RunAndReturn(run func(query model.
 
 // ExecuteContext provides a mock function for the type DBClientInterfaceMock
 func (_mock *DBClientInterfaceMock) ExecuteContext(ctx context.Context, query model.DBQuery, args ...interface{}) (int64, error) {
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, ctx, query)
 	_ca = append(_ca, args...)
 	ret := _mock.Called(_ca...)
@@ -206,9 +215,9 @@ type DBClientInterfaceMock_ExecuteContext_Call struct {
 //   - ctx context.Context
 //   - query model.DBQuery
 //   - args ...interface{}
-func (_e *DBClientInterfaceMock_Expecter) ExecuteContext(ctx interface{}, query interface{}, args ...interface{}) *DBClientInterfaceMock_ExecuteContext_Call {
+func (_e *DBClientInterfaceMock_Expecter) ExecuteContext(ctx any, query any, args ...any) *DBClientInterfaceMock_ExecuteContext_Call {
 	return &DBClientInterfaceMock_ExecuteContext_Call{Call: _e.mock.On("ExecuteContext",
-		append([]interface{}{ctx, query}, args...)...)}
+		append([]any{ctx, query}, args...)...)}
 }
 
 func (_c *DBClientInterfaceMock_ExecuteContext_Call) Run(run func(ctx context.Context, query model.DBQuery, args ...interface{})) *DBClientInterfaceMock_ExecuteContext_Call {
@@ -305,7 +314,7 @@ func (_c *DBClientInterfaceMock_GetTransactioner_Call) RunAndReturn(run func() (
 
 // Query provides a mock function for the type DBClientInterfaceMock
 func (_mock *DBClientInterfaceMock) Query(query model.DBQuery, args ...interface{}) ([]map[string]interface{}, error) {
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, query)
 	_ca = append(_ca, args...)
 	ret := _mock.Called(_ca...)
@@ -342,9 +351,9 @@ type DBClientInterfaceMock_Query_Call struct {
 // Query is a helper method to define mock.On call
 //   - query model.DBQuery
 //   - args ...interface{}
-func (_e *DBClientInterfaceMock_Expecter) Query(query interface{}, args ...interface{}) *DBClientInterfaceMock_Query_Call {
+func (_e *DBClientInterfaceMock_Expecter) Query(query any, args ...any) *DBClientInterfaceMock_Query_Call {
 	return &DBClientInterfaceMock_Query_Call{Call: _e.mock.On("Query",
-		append([]interface{}{query}, args...)...)}
+		append([]any{query}, args...)...)}
 }
 
 func (_c *DBClientInterfaceMock_Query_Call) Run(run func(query model.DBQuery, args ...interface{})) *DBClientInterfaceMock_Query_Call {
@@ -381,7 +390,7 @@ func (_c *DBClientInterfaceMock_Query_Call) RunAndReturn(run func(query model.DB
 
 // QueryContext provides a mock function for the type DBClientInterfaceMock
 func (_mock *DBClientInterfaceMock) QueryContext(ctx context.Context, query model.DBQuery, args ...interface{}) ([]map[string]interface{}, error) {
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, ctx, query)
 	_ca = append(_ca, args...)
 	ret := _mock.Called(_ca...)
@@ -419,9 +428,9 @@ type DBClientInterfaceMock_QueryContext_Call struct {
 //   - ctx context.Context
 //   - query model.DBQuery
 //   - args ...interface{}
-func (_e *DBClientInterfaceMock_Expecter) QueryContext(ctx interface{}, query interface{}, args ...interface{}) *DBClientInterfaceMock_QueryContext_Call {
+func (_e *DBClientInterfaceMock_Expecter) QueryContext(ctx any, query any, args ...any) *DBClientInterfaceMock_QueryContext_Call {
 	return &DBClientInterfaceMock_QueryContext_Call{Call: _e.mock.On("QueryContext",
-		append([]interface{}{ctx, query}, args...)...)}
+		append([]any{ctx, query}, args...)...)}
 }
 
 func (_c *DBClientInterfaceMock_QueryContext_Call) Run(run func(ctx context.Context, query model.DBQuery, args ...interface{})) *DBClientInterfaceMock_QueryContext_Call {

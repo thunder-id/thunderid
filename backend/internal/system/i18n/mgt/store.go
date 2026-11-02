@@ -8,36 +8,41 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 )
 
 // i18nStoreInterface defines the interface for i18n store operations.
 type i18nStoreInterface interface {
-	GetDistinctLanguages() ([]string, error)
-	GetTranslations() (map[string]map[string]Translation, error)
-	GetTranslationsByNamespace(namespace string) (map[string]map[string]Translation, error)
-	GetTranslationsByKey(key string, namespace string) (map[string]Translation, error)
-	UpsertTranslationsByLanguage(language string, translations []Translation) error
-	UpsertTranslation(trans Translation) error
+	GetDistinctLanguages(ctx context.Context) ([]string, error)
+	GetTranslations(ctx context.Context) (map[string]map[string]Translation, error)
+	GetTranslationsByNamespace(ctx context.Context, namespace string) (map[string]map[string]Translation, error)
+	GetTranslationsByKey(ctx context.Context, key string, namespace string) (map[string]Translation, error)
+	UpsertTranslationsByLanguage(ctx context.Context, language string, translations []Translation) error
+	UpsertTranslation(ctx context.Context, trans Translation) error
 	UpsertTranslations(ctx context.Context, translations []Translation) error
-	DeleteTranslationsByLanguage(language string) error
-	DeleteTranslation(language string, key string, namespace string) error
+	DeleteTranslationsByLanguage(ctx context.Context, language string) error
+	DeleteTranslation(ctx context.Context, language string, key string, namespace string) error
 	DeleteTranslationsByNamespace(ctx context.Context, namespace string) error
 	DeleteTranslationsByKey(ctx context.Context, namespace string, key string) error
 }
 
 // i18nStore is the default implementation of i18nStoreInterface.
 type i18nStore struct {
-	dbProvider   provider.DBProviderInterface
-	deploymentID string
+	dbProvider provider.DBProviderInterface
+}
+
+// scope returns the deployment id this request acts for. The id is put on the context at the
+// edge, so a request scopes by what it names; a context that never passed through the edge,
+// such as a start-up task or a background job, falls back to the configured identifier.
+func (s *i18nStore) scope(ctx context.Context) string {
+	return deployment.Resolve(ctx)
 }
 
 // newI18nStore creates a new instance of i18nStore.
 func newI18nStore() i18nStoreInterface {
 	return &i18nStore{
-		dbProvider:   provider.GetDBProvider(),
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		dbProvider: provider.GetDBProvider(),
 	}
 }
 
@@ -51,13 +56,13 @@ func (s *i18nStore) getDBClient() (provider.DBClientInterface, error) {
 }
 
 // GetDistinctLanguages retrieves all distinct language codes that have translations.
-func (s *i18nStore) GetDistinctLanguages() ([]string, error) {
+func (s *i18nStore) GetDistinctLanguages(ctx context.Context) ([]string, error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return nil, err
 	}
 
-	results, err := dbClient.Query(queryGetDistinctLanguages, s.deploymentID)
+	results, err := dbClient.Query(queryGetDistinctLanguages, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get distinct languages: %w", err)
 	}
@@ -75,13 +80,13 @@ func (s *i18nStore) GetDistinctLanguages() ([]string, error) {
 
 // GetTranslations retrieves all translations.
 // This implements TranslationStoreInterface.
-func (s *i18nStore) GetTranslations() (map[string]map[string]Translation, error) {
+func (s *i18nStore) GetTranslations(ctx context.Context) (map[string]map[string]Translation, error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return nil, err
 	}
 
-	results, err := dbClient.Query(queryGetTranslations, s.deploymentID)
+	results, err := dbClient.Query(queryGetTranslations, s.scope(ctx))
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get translations: %w", err)
@@ -92,13 +97,14 @@ func (s *i18nStore) GetTranslations() (map[string]map[string]Translation, error)
 
 // GetTranslations retrieves all translations of the given namespace.
 // This implements TranslationStoreInterface.
-func (s *i18nStore) GetTranslationsByNamespace(namespace string) (map[string]map[string]Translation, error) {
+func (s *i18nStore) GetTranslationsByNamespace(ctx context.Context,
+	namespace string) (map[string]map[string]Translation, error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return nil, err
 	}
 
-	results, err := dbClient.Query(queryGetTranslationsByNamespace, namespace, s.deploymentID)
+	results, err := dbClient.Query(queryGetTranslationsByNamespace, namespace, s.scope(ctx))
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get translations: %w", err)
@@ -108,13 +114,14 @@ func (s *i18nStore) GetTranslationsByNamespace(namespace string) (map[string]map
 }
 
 // GetTranslationsByKey retrieves a single translation by key, and namespace.
-func (s *i18nStore) GetTranslationsByKey(key string, namespace string) (map[string]Translation, error) {
+func (s *i18nStore) GetTranslationsByKey(ctx context.Context, key string, namespace string) (map[string]Translation,
+	error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return nil, err
 	}
 
-	results, err := dbClient.Query(queryGetTranslation, key, namespace, s.deploymentID)
+	results, err := dbClient.Query(queryGetTranslation, key, namespace, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get translation: %w", err)
 	}
@@ -123,7 +130,8 @@ func (s *i18nStore) GetTranslationsByKey(key string, namespace string) (map[stri
 }
 
 // InsertTranslation inserts a new translation.
-func (s *i18nStore) UpsertTranslationsByLanguage(language string, translations []Translation) error {
+func (s *i18nStore) UpsertTranslationsByLanguage(ctx context.Context, language string,
+	translations []Translation) error {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return err
@@ -134,7 +142,7 @@ func (s *i18nStore) UpsertTranslationsByLanguage(language string, translations [
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	_, err = tx.Exec(queryDeleteTranslationsByLanguage, language, s.deploymentID)
+	_, err = tx.Exec(queryDeleteTranslationsByLanguage, language, s.scope(ctx))
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
 			err = errors.Join(err, fmt.Errorf("failed to rollback transaction: %w", rollbackErr))
@@ -144,7 +152,7 @@ func (s *i18nStore) UpsertTranslationsByLanguage(language string, translations [
 
 	for _, trans := range translations {
 		_, err = tx.Exec(queryInsertTranslation, trans.Key, trans.Language, trans.Namespace,
-			trans.Value, s.deploymentID)
+			trans.Value, s.scope(ctx))
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				err = errors.Join(err, fmt.Errorf("failed to rollback transaction: %w", rollbackErr))
@@ -162,14 +170,14 @@ func (s *i18nStore) UpsertTranslationsByLanguage(language string, translations [
 
 // UpsertTranslation creates or updates a translation.
 // Used for bulk operations where we want to insert or update as needed.
-func (s *i18nStore) UpsertTranslation(trans Translation) error {
+func (s *i18nStore) UpsertTranslation(ctx context.Context, trans Translation) error {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return err
 	}
 
 	_, err = dbClient.Execute(queryUpsertTranslation, trans.Key, trans.Language, trans.Namespace,
-		trans.Value, s.deploymentID)
+		trans.Value, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to upsert translation: %w", err)
 	}
@@ -187,7 +195,7 @@ func (s *i18nStore) UpsertTranslations(ctx context.Context, translations []Trans
 
 	for _, trans := range translations {
 		if _, err = dbClient.ExecuteContext(ctx, queryUpsertTranslation, trans.Key, trans.Language,
-			trans.Namespace, trans.Value, s.deploymentID); err != nil {
+			trans.Namespace, trans.Value, s.scope(ctx)); err != nil {
 			return fmt.Errorf("failed to upsert translation: %w", err)
 		}
 	}
@@ -195,13 +203,13 @@ func (s *i18nStore) UpsertTranslations(ctx context.Context, translations []Trans
 }
 
 // DeleteTranslation deletes a translation by language, key, and namespace.
-func (s *i18nStore) DeleteTranslation(language string, key string, namespace string) error {
+func (s *i18nStore) DeleteTranslation(ctx context.Context, language string, key string, namespace string) error {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return err
 	}
 
-	_, err = dbClient.Execute(queryDeleteTranslation, language, key, namespace, s.deploymentID)
+	_, err = dbClient.Execute(queryDeleteTranslation, language, key, namespace, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to delete translation: %w", err)
 	}
@@ -209,13 +217,13 @@ func (s *i18nStore) DeleteTranslation(language string, key string, namespace str
 }
 
 // DeleteTranslationsByLanguage deletes all translations for the given language.
-func (s *i18nStore) DeleteTranslationsByLanguage(language string) error {
+func (s *i18nStore) DeleteTranslationsByLanguage(ctx context.Context, language string) error {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return err
 	}
 
-	_, err = dbClient.Execute(queryDeleteTranslationsByLanguage, language, s.deploymentID)
+	_, err = dbClient.Execute(queryDeleteTranslationsByLanguage, language, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to delete translation: %w", err)
 	}
@@ -230,7 +238,7 @@ func (s *i18nStore) DeleteTranslationsByKey(ctx context.Context, namespace strin
 		return err
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, queryDeleteTranslationsByKey, namespace, key, s.deploymentID)
+	_, err = dbClient.ExecuteContext(ctx, queryDeleteTranslationsByKey, namespace, key, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to delete translations by namespace and key: %w", err)
 	}
@@ -245,7 +253,7 @@ func (s *i18nStore) DeleteTranslationsByNamespace(ctx context.Context, namespace
 		return err
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, queryDeleteTranslationsByNamespace, namespace, s.deploymentID)
+	_, err = dbClient.ExecuteContext(ctx, queryDeleteTranslationsByNamespace, namespace, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to delete translations by namespace: %w", err)
 	}

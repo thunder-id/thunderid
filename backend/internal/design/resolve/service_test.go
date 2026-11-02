@@ -84,8 +84,10 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_NilApplicationService() 
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
 }
 
-// Test ResolveDesign - Application not found
-func (suite *ResolveServiceTestSuite) TestResolveDesign_ApplicationNotFound() {
+// Test ResolveDesign - an unknown application reports the same error as a known one with no design
+// configured. The resolve endpoint is unauthenticated, so a distinct error here would let an
+// anonymous caller confirm which application IDs exist.
+func (suite *ResolveServiceTestSuite) TestResolveDesign_UnknownApplicationIsIndistinguishable() {
 	suite.mockAppService.On("GetApplication", mock.Anything, "00000000-0000-0000-0000-000000000099").
 		Return(nil, &application.ErrorApplicationNotFound)
 
@@ -94,7 +96,9 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_ApplicationNotFound() {
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), common.ErrorApplicationNotFound.Code, err.Code)
+	assert.Equal(suite.T(), common.ErrorApplicationHasNoDesign.Code, err.Code)
+	assert.Equal(suite.T(), common.ErrorApplicationHasNoDesign.Error, err.Error)
+	assert.Equal(suite.T(), common.ErrorApplicationHasNoDesign.ErrorDescription, err.ErrorDescription)
 }
 
 // Test ResolveDesign - Invalid application ID (passed through to app service)
@@ -375,4 +379,95 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_NilLayoutService() {
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
+}
+
+// Test ResolveDesignContent - Placeholders replaced with resolved token values
+func (suite *ResolveServiceTestSuite) TestResolveDesignContent_Success() {
+	suite.mockThemeService.On("GetTheme", mock.Anything, "t1").Return(
+		&thememgt.Theme{ID: "t1", Theme: json.RawMessage(designTestTheme)}, nil)
+
+	out, err := suite.service.ResolveDesignContent(context.Background(), "t1", "light",
+		`<span style="color: {{design(palette.primary.main)}}">hi</span>`)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), `<span style="color: #fa7b3f">hi</span>`, out)
+}
+
+// Test ResolveDesignContent - resolved values are HTML-escaped, so a quote in a value cannot break out
+// of the style attribute it lands in.
+func (suite *ResolveServiceTestSuite) TestResolveDesignContent_EscapesResolvedValues() {
+	theme := `{"defaultColorScheme": "light", "colorSchemes": {"light": {"palette": {` +
+		`"primary": {"main": "#fff\" onmouseover=\"alert(1)"}}}}}`
+	suite.mockThemeService.On("GetTheme", mock.Anything, "t1").Return(
+		&thememgt.Theme{ID: "t1", Theme: json.RawMessage(theme)}, nil)
+
+	out, err := suite.service.ResolveDesignContent(context.Background(), "t1", "light",
+		`<span style="color: {{design(palette.primary.main)}}">hi</span>`)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(),
+		`<span style="color: #fff&#34; onmouseover=&#34;alert(1)">hi</span>`, out)
+}
+
+// Test ResolveDesignContent - a value containing markup is HTML-escaped, so it renders as text rather
+// than injecting an element.
+func (suite *ResolveServiceTestSuite) TestResolveDesignContent_EscapesMarkupValue() {
+	theme := `{"defaultColorScheme": "light", "colorSchemes": {"light": {"palette": {` +
+		`"primary": {"main": "<script>alert(1)</script>"}}}}}`
+	suite.mockThemeService.On("GetTheme", mock.Anything, "t1").Return(
+		&thememgt.Theme{ID: "t1", Theme: json.RawMessage(theme)}, nil)
+
+	out, err := suite.service.ResolveDesignContent(context.Background(), "t1", "light",
+		"color: {{design(palette.primary.main)}};")
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), "color: &lt;script&gt;alert(1)&lt;/script&gt;;", out)
+}
+
+// Test ResolveDesignContent - Content with no placeholder is returned without loading the theme
+func (suite *ResolveServiceTestSuite) TestResolveDesignContent_NoPlaceholderSkipsThemeFetch() {
+	// No GetTheme expectation is set: an unexpected call would fail the generated mock.
+	out, err := suite.service.ResolveDesignContent(context.Background(), "t1", "light", "plain content")
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), "plain content", out)
+}
+
+// Test ResolveDesignContent - Theme not found propagates the error
+func (suite *ResolveServiceTestSuite) TestResolveDesignContent_ThemeNotFound() {
+	suite.mockThemeService.On("GetTheme", mock.Anything, "missing").
+		Return(nil, &thememgt.ErrorThemeNotFound)
+
+	out, err := suite.service.ResolveDesignContent(context.Background(), "missing", "light",
+		"{{design(palette.primary.main)}}")
+
+	assert.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), thememgt.ErrorThemeNotFound.Code, err.Code)
+	assert.Equal(suite.T(), "", out)
+}
+
+// Test ResolveDesignContent - a theme with no applicable color scheme is a server-side data problem, so
+// it fails closed with InternalServerError rather than resolving against no tokens.
+func (suite *ResolveServiceTestSuite) TestResolveDesignContent_NoApplicableColorScheme() {
+	suite.mockThemeService.On("GetTheme", mock.Anything, "t1").Return(
+		&thememgt.Theme{ID: "t1", Theme: json.RawMessage(`{"foo": "bar"}`)}, nil)
+
+	out, err := suite.service.ResolveDesignContent(context.Background(), "t1", "light",
+		"{{design(palette.primary.main)}}")
+
+	assert.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
+	assert.Equal(suite.T(), "", out)
+}
+
+// Test ResolveDesignContent - Nil theme service
+func (suite *ResolveServiceTestSuite) TestResolveDesignContent_NilThemeService() {
+	service := newDesignResolveService(nil, suite.mockLayoutService, suite.mockAppService)
+
+	out, err := service.ResolveDesignContent(context.Background(), "t1", "light",
+		"{{design(palette.primary.main)}}")
+
+	assert.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
+	assert.Equal(suite.T(), "", out)
 }

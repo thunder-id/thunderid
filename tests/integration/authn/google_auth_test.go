@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+	flowcommon "github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
@@ -31,7 +32,8 @@ var googleAuthTestOU = testutils.OrganizationUnit{
 }
 
 var googleEntityType = testutils.UserType{
-	Name: "google_user",
+	Handle:      "google_user",
+	DisplayName: "Google User",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{
 			"type": "string",
@@ -110,7 +112,7 @@ func (suite *GoogleAuthTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:       googleEntityType.Name,
+		Type:       googleEntityType.Handle,
 		OUID:       suite.ouID,
 		Attributes: json.RawMessage(attributesJSON),
 	}
@@ -145,11 +147,27 @@ func (suite *GoogleAuthTestSuite) SetupSuite() {
 				IsSecret: false,
 			},
 		},
+		// Link on email so SetupSuite can record the link below.
+		AttributeConfiguration: &testutils.AttributeConfiguration{
+			AccountLinking: &testutils.AccountLinking{Attributes: []string{"email"}},
+		},
 	}
 
 	idpID, err := testutils.CreateIDP(idp)
 	suite.Require().NoError(err, "Failed to create Google IDP")
 	suite.idpID = idpID
+
+	// Record the link the federated sign-ins below resolve through.
+	err = flowcommon.LinkAccount(flowcommon.LinkRequest{
+		Handle:       "authn-google-link",
+		ExecutorName: "GoogleOIDCAuthExecutor",
+		IDPID:        idpID,
+		OUID:         suite.ouID,
+		UserType:     googleEntityType.Handle,
+		Username:     "googleuser",
+		Password:     "Test@1234",
+	})
+	suite.Require().NoError(err, "Failed to record the federated link for the local user")
 }
 
 func (suite *GoogleAuthTestSuite) TearDownSuite() {

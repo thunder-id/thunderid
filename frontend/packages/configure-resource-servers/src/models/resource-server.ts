@@ -4,6 +4,29 @@
 import type {PermissionDelimiter} from './permissions';
 
 export type ResourceServerType = 'API' | 'MCP' | 'CUSTOM';
+export const AuthorizationEngines = {
+  RBAC: 'rbac',
+  AUTHZEN_PDP: 'authzen_pdp',
+} as const;
+export type AuthorizationEngine = (typeof AuthorizationEngines)[keyof typeof AuthorizationEngines];
+
+export interface AuthorizationEngineConfig {
+  type: AuthorizationEngine;
+  properties?: {
+    pdpConnectionId?: string;
+  };
+}
+
+export interface AuthZENPDPConnectionSummary {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export interface AuthZENPDPConnectionListResponse {
+  totalResults: number;
+  connections: AuthZENPDPConnectionSummary[];
+}
 
 const DEFAULT_ELIGIBLE_TYPES: readonly ResourceServerType[] = ['API', 'CUSTOM'];
 
@@ -21,6 +44,7 @@ export interface ResourceServer {
   delimiter: string;
   isReadOnly?: boolean;
   type: ResourceServerType;
+  authorizationEngine?: AuthorizationEngineConfig;
 }
 
 export interface ResourceServerListResponse {
@@ -81,6 +105,7 @@ export interface UpdateResourceServerRequest {
   description?: string | null;
   identifier: string;
   ouId: string;
+  authorizationEngine?: AuthorizationEngineConfig;
 }
 
 export interface CreateResourceRequest {

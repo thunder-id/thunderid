@@ -10,6 +10,8 @@ import (
 
 // DCRRegistrationRequest represents the RFC 7591 Dynamic Client Registration request.
 type DCRRegistrationRequest struct {
+	ClientID                           string                 `json:"client_id,omitempty"`
+	ClientSecret                       string                 `json:"client_secret,omitempty"`
 	OUID                               string                 `json:"ou_id,omitempty"`
 	RedirectURIs                       []string               `json:"redirect_uris"`
 	GrantTypes                         []string               `json:"grant_types,omitempty"`
@@ -26,6 +28,7 @@ type DCRRegistrationRequest struct {
 	PolicyURI                          string                 `json:"policy_uri,omitempty"`
 	RequirePushedAuthorizationRequests bool                   `json:"require_pushed_authorization_requests,omitempty"`
 	UserInfoSignedResponseAlg          string                 `json:"userinfo_signed_response_alg,omitempty"`
+	IDTokenSignedResponseAlg           string                 `json:"id_token_signed_response_alg,omitempty"`
 	UserInfoEncryptedResponseAlg       string                 `json:"userinfo_encrypted_response_alg,omitempty"`
 	UserInfoEncryptedResponseEnc       string                 `json:"userinfo_encrypted_response_enc,omitempty"`
 	IDTokenEncryptedResponseAlg        string                 `json:"id_token_encrypted_response_alg,omitempty"`
@@ -61,6 +64,8 @@ type DCRRegistrationResponse struct {
 	ClientID                           string                 `json:"client_id"`
 	ClientSecret                       string                 `json:"client_secret,omitempty"`
 	ClientSecretExpiresAt              int64                  `json:"client_secret_expires_at"`
+	RegistrationAccessToken            string                 `json:"registration_access_token,omitempty"`
+	RegistrationClientURI              string                 `json:"registration_client_uri,omitempty"`
 	RedirectURIs                       []string               `json:"redirect_uris,omitempty"`
 	GrantTypes                         []string               `json:"grant_types,omitempty"`
 	ResponseTypes                      []string               `json:"response_types,omitempty"`
@@ -77,6 +82,7 @@ type DCRRegistrationResponse struct {
 	AppID                              string                 `json:"app_id,omitempty"`
 	RequirePushedAuthorizationRequests bool                   `json:"require_pushed_authorization_requests,omitempty"`
 	UserInfoSignedResponseAlg          string                 `json:"userinfo_signed_response_alg,omitempty"`
+	IDTokenSignedResponseAlg           string                 `json:"id_token_signed_response_alg,omitempty"`
 	UserInfoEncryptedResponseAlg       string                 `json:"userinfo_encrypted_response_alg,omitempty"`
 	UserInfoEncryptedResponseEnc       string                 `json:"userinfo_encrypted_response_enc,omitempty"`
 	IDTokenEncryptedResponseAlg        string                 `json:"id_token_encrypted_response_alg,omitempty"`

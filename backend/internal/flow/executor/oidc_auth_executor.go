@@ -4,8 +4,9 @@
 package executor
 
 import (
+	"cmp"
 	"errors"
-	"slices"
+	"fmt"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -16,7 +17,6 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/idp"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -26,9 +26,6 @@ const (
 	oidcAuthLoggerComponentName = "OIDCAuthExecutor"
 )
 
-// idTokenNonUserAttributes contains the list of non-user attributes that are expected in the ID token.
-var idTokenNonUserAttributes = []string{"aud", "exp", "iat", "iss", "at_hash", "azp", "nonce", "sub"}
-
 // oidcAuthExecutorInterface defines the interface for OIDC authentication executors.
 type oidcAuthExecutorInterface interface {
 	oAuthExecutorInterface
@@ -37,6 +34,7 @@ type oidcAuthExecutorInterface interface {
 // oidcAuthExecutor implements the OIDCAuthExecutorInterface for handling generic OIDC authentication flows.
 type oidcAuthExecutor struct {
 	oAuthExecutorInterface
+	idpService    providers.IDPProvider
 	authService   authnoidc.OIDCAuthnCoreServiceInterface
 	authnProvider providers.AuthnProviderManager
 	idpType       providers.IDPType
@@ -50,7 +48,7 @@ func newOIDCAuthExecutor(
 	name string,
 	defaultInputs, prerequisites []providers.Input,
 	flowFactory core.FlowFactoryInterface,
-	idpService idp.IDPServiceInterface,
+	idpService providers.IDPProvider,
 	authService authnoidc.OIDCAuthnCoreServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 	idpType providers.IDPType,
@@ -71,6 +69,7 @@ func newOIDCAuthExecutor(
 
 	return &oidcAuthExecutor{
 		oAuthExecutorInterface: base,
+		idpService:             idpService,
 		authService:            authService,
 		authnProvider:          authnProvider,
 		idpType:                idpType,
@@ -147,10 +146,12 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		return nil
 	}
 
+	returnedState := consumeFederatedCallbackInputs(ctx)
+
 	// Validate the OAuth state parameter to prevent CSRF attacks.
 	// State is validated only when the client sends it back. Clients that handle CSRF
 	// protection client-side (e.g., via sessionStorage) may omit it.
-	if returnedState, ok := ctx.UserInputs[userInputState]; ok && returnedState != "" {
+	if returnedState != "" {
 		expectedState := ctx.RuntimeData[common.RuntimeKeyOAuthState]
 		if returnedState != expectedState {
 			logger.Debug(ctx.Context, "OAuth state mismatch")
@@ -176,7 +177,9 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		} else {
 			execResp.AuthUser = authUser
 			for key, value := range attributes.Attributes {
-				existingCtxUserAttributes[key] = value
+				if value != nil {
+					existingCtxUserAttributes[key] = value.Value
+				}
 			}
 		}
 	}
@@ -196,7 +199,7 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			execResp.Status = providers.ExecFailure
-			execResp.Error = svcErr
+			execResp.Error = cmp.Or(statedHold(svcErr), svcErr)
 			return nil
 		}
 
@@ -206,20 +209,28 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 	}
 	execResp.AuthUser = authUser
 
-	if !validateFederatedIdentifierConsistency(ctx, federatedAttributes, existingCtxUserAttributes) {
+	// The consistency check compares the identity on the connection's account-linking attributes, so
+	// it cannot be skipped when the connection fails to load.
+	idpDTO, svcErr := o.idpService.GetIdentityProvider(ctx.Context, idpID)
+	if svcErr != nil {
+		return fmt.Errorf("failed to retrieve identity provider %s: %s", idpID, svcErr.Code)
+	}
+
+	if !validateFederatedIdentifierConsistency(ctx, idpDTO, federatedAttributes, existingCtxUserAttributes) {
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrInvalidFederatedUser
 		return nil
 	}
 
-	if len(federatedAttributes) > 0 {
-		if execResp.RuntimeData == nil {
-			execResp.RuntimeData = make(map[string]string)
-		}
-		for key, value := range federatedAttributes {
-			execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
-		}
+	// Keep the connection id with the subject: the idpId runtime entry is overwritten by any later node
+	// with its own connection, so only this pairing tells linking and provisioning which connection
+	// asserted the subject.
+	sub := systemutils.ConvertInterfaceValueToString(federatedAttributes[userAttributeSub])
+	if err := setExternalIdentity(execResp, idpID, sub, federatedAttributes); err != nil {
+		return err
 	}
+
+	resolveAndSetMappedAuthorizationTargets(ctx.Context, execResp, o.idpService, idpDTO, federatedAttributes, logger)
 
 	setFederatedEntityState(ctx.Context, execResp, o.authnProvider)
 
@@ -236,29 +247,4 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 
 	execResp.Status = providers.ExecComplete
 	return nil
-}
-
-// getContextUserAttributes extracts user-facing attributes from the external claims map.
-// TODO: Need to convert attributes as per the IDP to local attribute mapping when the support is implemented.
-func (o *oidcAuthExecutor) getContextUserAttributes(execResp *providers.ExecutorResponse,
-	claims map[string]interface{}) map[string]interface{} {
-	userClaims := make(map[string]interface{})
-
-	for attr, val := range claims {
-		if !slices.Contains(idTokenNonUserAttributes, attr) {
-			userClaims[attr] = systemutils.ConvertInterfaceValueToString(val)
-		}
-	}
-
-	// Append email to runtime data if available.
-	if email, ok := userClaims[userAttributeEmail]; ok {
-		if emailStr, ok := email.(string); ok && emailStr != "" {
-			if execResp.RuntimeData == nil {
-				execResp.RuntimeData = make(map[string]string)
-			}
-			execResp.RuntimeData[userAttributeEmail] = emailStr
-		}
-	}
-
-	return userClaims
 }

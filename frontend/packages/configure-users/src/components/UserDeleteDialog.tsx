@@ -76,7 +76,7 @@ export default function UserDeleteDialog({
 
   return (
     <Dialog open={open} onClose={handleCancel} maxWidth="sm" fullWidth>
-      <DialogTitle>{t('delete.title', 'Delete User')}</DialogTitle>
+      <DialogTitle>{t('delete.title', 'Delete user')}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{mb: 2}}>
           {t('delete.message', 'Are you sure you want to delete this user? This action cannot be undone.')}
@@ -117,11 +117,7 @@ export default function UserDeleteDialog({
               )}
             </List>
           </Alert>
-        ) : (
-          <Alert severity="info" sx={{mb: 2}}>
-            {t('delete.usages.none', 'No agents currently list this user as their owner.')}
-          </Alert>
-        )}
+        ) : null}
 
         {error && (
           <Alert severity="error" sx={{mt: 2}}>

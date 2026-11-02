@@ -63,6 +63,25 @@ func (suite *DefaultEntityProviderTestSuite) TestIdentifyEntity() {
 	suite.Equal(ErrorCodeSystemError, err.Code)
 }
 
+func (suite *DefaultEntityProviderTestSuite) TestGetLinkedEntities() {
+	holders := []providers.Entity{{ID: "e1", OUHandle: "sales"}, {ID: "e2", OUHandle: "support"}}
+	suite.mockService.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").Return(holders, nil).Once()
+
+	got, err := suite.provider.GetLinkedEntities("idp-a", "sub-1")
+	suite.Nil(err)
+	suite.Require().Len(got, 2)
+	suite.Equal("sales", got[0].OUHandle)
+	suite.Equal("support", got[1].OUHandle)
+
+	suite.mockService.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").
+		Return(nil, errors.New("db error")).Once()
+
+	got, err = suite.provider.GetLinkedEntities("idp-a", "sub-1")
+	suite.Nil(got)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorCodeSystemError, err.Code)
+}
+
 func (suite *DefaultEntityProviderTestSuite) TestGetEntity() {
 	expected := &providers.Entity{
 		ID:       testEntityID,
@@ -88,76 +107,29 @@ func (suite *DefaultEntityProviderTestSuite) TestGetEntity() {
 	suite.Equal(ErrorCodeEntityNotFound, err.Code)
 }
 
-func (suite *DefaultEntityProviderTestSuite) TestCreateEntity() {
-	providerEntity := &providers.Entity{
+// A profile read goes to the entity service's profile read, so it never loads the runtime row.
+func (suite *DefaultEntityProviderTestSuite) TestGetEntityProfile() {
+	expected := &providers.Entity{
 		ID:       testEntityID,
-		Category: providers.EntityCategoryApp,
-		Type:     "application",
-	}
-	created := &providers.Entity{
-		ID:       testEntityID,
-		Category: providers.EntityCategoryApp,
-		Type:     "application",
+		Category: providers.EntityCategoryUser,
+		Type:     "customer",
 	}
 
-	// Test Success
-	suite.mockService.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
-		Return(created, nil).Once()
+	suite.mockService.On("GetEntityProfile", mock.Anything, testEntityID).Return(expected, nil).Once()
 
-	e, err := suite.provider.CreateEntity(providerEntity, json.RawMessage(`{}`))
+	e, err := suite.provider.GetEntityProfile(testEntityID)
 	suite.Nil(err)
 	suite.Equal(testEntityID, e.ID)
+	suite.Equal(providers.EntityCategory("user"), e.Category)
+	suite.mockService.AssertNotCalled(suite.T(), "GetEntity", mock.Anything, mock.Anything)
 
-	// Test Nil Entity
-	e, err = suite.provider.CreateEntity(nil, nil)
+	suite.mockService.On("GetEntityProfile", mock.Anything, testEntityID).
+		Return(nil, entity.ErrEntityNotFound).Once()
+
+	e, err = suite.provider.GetEntityProfile(testEntityID)
 	suite.Nil(e)
 	suite.NotNil(err)
-	suite.Equal(ErrorCodeInvalidRequestFormat, err.Code)
-
-	// Test Attribute Conflict
-	suite.mockService.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, entity.ErrAttributeConflict).Once()
-
-	e, err = suite.provider.CreateEntity(providerEntity, nil)
-	suite.Nil(e)
-	suite.NotNil(err)
-	suite.Equal(ErrorCodeAttributeConflict, err.Code)
-
-	// Test Schema Validation Failed
-	suite.mockService.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, entity.ErrSchemaValidationFailed).Once()
-
-	e, err = suite.provider.CreateEntity(providerEntity, nil)
-	suite.Nil(e)
-	suite.NotNil(err)
-	suite.Equal(ErrorCodeSchemaValidationFailed, err.Code)
-
-	// Test Bad Attributes In Request
-	suite.mockService.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, entity.ErrBadAttributesInRequest).Once()
-
-	e, err = suite.provider.CreateEntity(providerEntity, nil)
-	suite.Nil(e)
-	suite.NotNil(err)
-	suite.Equal(ErrorCodeInvalidRequestFormat, err.Code)
-
-	// Test Invalid Credential
-	suite.mockService.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, entity.ErrInvalidCredential).Once()
-
-	e, err = suite.provider.CreateEntity(providerEntity, nil)
-	suite.Nil(e)
-	suite.NotNil(err)
-	suite.Equal(ErrorCodeInvalidRequestFormat, err.Code)
-
-	// Test System Error
-	suite.mockService.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, errors.New("db error")).Once()
-
-	e, err = suite.provider.CreateEntity(providerEntity, nil)
-	suite.Nil(e)
-	suite.NotNil(err)
-	suite.Equal(ErrorCodeSystemError, err.Code)
+	suite.Equal(ErrorCodeEntityNotFound, err.Code)
 }
 
 func (suite *DefaultEntityProviderTestSuite) TestUpdateEntity() {

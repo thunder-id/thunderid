@@ -6,6 +6,8 @@ package declarativeresource
 import (
 	"context"
 
+	"gopkg.in/yaml.v3"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -13,8 +15,19 @@ import (
 
 // ResourceRules defines variables and array variables to parameterize for a resource type.
 type ResourceRules struct {
-	Variables             []string `yaml:"Variables,omitempty"`
-	ArrayVariables        []string `yaml:"ArrayVariables,omitempty"`
+	Variables      []string `yaml:"Variables,omitempty"`
+	ArrayVariables []string `yaml:"ArrayVariables,omitempty"`
+	// SecretVariables are parameterized exactly as Variables are, and additionally reported as
+	// credentials.
+	//
+	// The distinction is not cosmetic. A value placed in a data plane's variable collection is
+	// returned by a read; one placed in its secret collection never is. A client secret listed
+	// under Variables would therefore be readable by anything allowed to list variables, which is
+	// the difference the two collections exist to make.
+	//
+	// A dynamic property carries this on itself, through IsSecret. A field named by a rule has
+	// nothing to carry it, so it is named here instead.
+	SecretVariables       []string `yaml:"SecretVariables,omitempty"`
 	DynamicPropertyFields []string `yaml:"DynamicPropertyFields,omitempty"`
 }
 
@@ -48,6 +61,78 @@ type ResourceExporter interface {
 // to tailor rules based on the resource's own data (e.g. omit client_secret for public clients).
 type PerResourceRuler interface {
 	GetResourceRulesForResource(resource interface{}) *ResourceRules
+}
+
+// SecretFieldLister names the fields of an exported document that hold a credential: the only
+// places an import may put the value a "sec:" reference names.
+//
+// Each field is a path from the document root, keys joined by dots, with "[]" standing for any
+// item of a list, such as "inboundAuthConfig[].config.clientSecret". A trailing ".*" names every
+// key of a mapping, for a map of credentials keyed by name, and a leading "!" excludes one field
+// of it. The paths are the YAML side of the
+// exporter's SecretVariables, which is where its reference export writes "sec:" placeholders.
+type SecretFieldLister interface {
+	SecretFields() []string
+}
+
+// SecretFieldsOf collects, by resource type, the secret fields of every exporter that names them.
+// A resource type absent from the result has no field that may hold a secret.
+func SecretFieldsOf(exporters []ResourceExporter) map[string][]string {
+	fields := map[string][]string{}
+	for _, exporter := range exporters {
+		if lister, ok := exporter.(SecretFieldLister); ok {
+			fields[exporter.GetResourceType()] = append(fields[exporter.GetResourceType()], lister.SecretFields()...)
+		}
+	}
+	return fields
+}
+
+// ReferenceWriter is implemented by an exporter that writes some placeholders itself rather than
+// leaving them to the parameterizer, so it can write them in the style the export uses: a value
+// reference such as "sec:NAME" where the export writes references, a template placeholder such as
+// "{{.NAME}}" where it writes templates.
+type ReferenceWriter interface {
+	WriteValueReferences(references bool)
+}
+
+// ValueCapturer keeps the values a resource's export refers to by name, so that whatever later
+// resolves those names finds them.
+//
+// A service that writes a resource hands it here once the write has succeeded, while it still holds
+// what a read would not return, such as a client secret it has just generated. The resource type is
+// the one its exporter is registered under.
+//
+// It is optional and best-effort: a service with none behaves exactly as before, and a capture that
+// fails is logged by the capturer and never fails the write that triggered it.
+type ValueCapturer interface {
+	CaptureValues(ctx context.Context, resourceType string, resource interface{})
+}
+
+// ResourceViewer is implemented by an exporter that can show a document it exported the way the
+// resource's own read returns it, so a resource kept in a configuration version can be shown as that
+// read would show it. A value reference such as "var:NAME" is shown as it is, not resolved. An error
+// means the document does not read as this resource.
+type ResourceViewer interface {
+	ViewResource(ctx context.Context, document *yaml.Node) (interface{}, error)
+}
+
+// ResourcePartViewer is implemented by a ResourceViewer whose resource has parts: collections the
+// resource's own API serves apart from it, such as a group's members. ViewResourceParts shows every
+// part a document has, keyed by the path below the resource it is served at, each as the read of
+// that path returns it.
+type ResourcePartViewer interface {
+	ViewResourceParts(ctx context.Context, document *yaml.Node) (map[string]interface{}, error)
+}
+
+// DecodeView decodes a document into T and shows it with view, so a viewer reads its document the
+// way every other viewer does. A document that does not decode as T is refused with the decode error.
+func DecodeView[T, V any](document *yaml.Node, view func(*T) (V, error)) (V, error) {
+	var decoded T
+	if err := document.Decode(&decoded); err != nil {
+		var none V
+		return none, err
+	}
+	return view(&decoded)
 }
 
 // ExportError represents errors that occurred during export.

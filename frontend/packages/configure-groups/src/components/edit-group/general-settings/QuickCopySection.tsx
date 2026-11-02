@@ -18,7 +18,7 @@ export default function QuickCopySection({group, copiedField, onCopyToClipboard}
 
   return (
     <SettingsCard
-      title={t('groups:edit.general.sections.quickCopy.title', 'Quick Copy')}
+      title={t('groups:edit.general.sections.quickCopy.title', 'Quick copy')}
       description={t(
         'groups:edit.general.sections.quickCopy.description',
         'Copy group identifiers for use in your application.',

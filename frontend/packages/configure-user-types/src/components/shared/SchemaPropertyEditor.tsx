@@ -3,6 +3,7 @@
 
 import {I18nTextInput} from '@thunderid/components';
 import {useResolveDisplayName} from '@thunderid/hooks';
+import {isContactAttributeType, resolveAttributeRegex} from '@thunderid/utils';
 import {
   Alert,
   Box,
@@ -32,8 +33,10 @@ import {useTranslation} from 'react-i18next';
 import AttributeLibraryPanel from './AttributeLibraryPanel';
 import type {LibraryAttribute, SchemaPropertyInput, UIPropertyType} from '../../types/user-types';
 import {invalidateI18nCache} from '../../utils/invalidateI18nCache';
+import {getMissingPrimaryContactTypes} from '../../utils/primaryContacts';
 
-const supportsUnique = (type: UIPropertyType): boolean => type === 'string' || type === 'number' || type === 'enum';
+const supportsUnique = (type: UIPropertyType): boolean =>
+  type === 'string' || isContactAttributeType(type) || type === 'number' || type === 'enum';
 
 const supportsCredential = (type: UIPropertyType): boolean => type === 'string' || type === 'number';
 
@@ -47,7 +50,7 @@ export interface SchemaPropertyEditorProps {
   onPropertiesChange: (properties: SchemaPropertyInput[]) => void;
   enumInput: Record<string, string>;
   onEnumInputChange: (enumInput: Record<string, string>) => void;
-  userTypeName?: string;
+  userTypeHandle?: string;
   disabled?: boolean;
   /**
    * Whether the editor is operating on an already-persisted schema (edit flow) rather than a
@@ -72,7 +75,7 @@ export default function SchemaPropertyEditor({
   onPropertiesChange,
   enumInput,
   onEnumInputChange,
-  userTypeName = undefined,
+  userTypeHandle = undefined,
   disabled = false,
   isEditMode = false,
   footer = undefined,
@@ -141,21 +144,24 @@ export default function SchemaPropertyEditor({
   ): void => {
     onPropertiesChange(
       properties.map((prop) =>
-        prop.id === id
-          ? {
-              ...prop,
-              [field]: value,
-              // Clear unique when credential is enabled.
-              ...(field === 'credential' && value && {unique: false}),
-              // Reset type-specific fields when the type changes.
-              ...(field === 'type' && {
-                enum: (value as UIPropertyType) === 'enum' ? prop.enum : [],
-                regex: '',
-                unique: supportsUnique(value as UIPropertyType) ? prop.unique : false,
-                credential: supportsCredential(value as UIPropertyType) ? prop.credential : false,
-              }),
-            }
-          : prop,
+        field === 'primary' && prop.id !== id && prop.type === properties.find((candidate) => candidate.id === id)?.type
+          ? {...prop, primary: false}
+          : prop.id === id
+            ? {
+                ...prop,
+                [field]: value,
+                // Clear unique when credential is enabled.
+                ...(field === 'credential' && value && {unique: false}),
+                // Reset type-specific fields when the type changes.
+                ...(field === 'type' && {
+                  enum: (value as UIPropertyType) === 'enum' ? prop.enum : [],
+                  primary: false,
+                  regex: resolveAttributeRegex(value),
+                  unique: supportsUnique(value as UIPropertyType) ? prop.unique : false,
+                  credential: supportsCredential(value as UIPropertyType) ? prop.credential : false,
+                }),
+              }
+            : prop,
       ),
     );
   };
@@ -247,6 +253,7 @@ export default function SchemaPropertyEditor({
                 <Chip label={t('common:form.required', 'Required')} size="small" variant="outlined" />
               )}
               {property.unique && <Chip label={t('userTypes:unique', 'Unique')} size="small" variant="outlined" />}
+              {property.primary && <Chip label={t('userTypes:primary', 'Primary')} size="small" variant="outlined" />}
               {property.credential && (
                 <Chip label={t('userTypes:credential', 'Credential')} size="small" variant="outlined" />
               )}
@@ -272,7 +279,7 @@ export default function SchemaPropertyEditor({
               <Stack spacing={2} sx={{px: 3, pb: 3, pt: 1}}>
                 <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', md: '1fr 1fr'}, gap: 2}}>
                   <FormControl fullWidth>
-                    <FormLabel>{t('userTypes:propertyName', 'Property Name')}</FormLabel>
+                    <FormLabel>{t('userTypes:propertyName', 'Property name')}</FormLabel>
                     <TextField
                       value={property.name}
                       onChange={(e) => handlePropertyChange(property.id, 'name', e.target.value)}
@@ -291,6 +298,8 @@ export default function SchemaPropertyEditor({
                       disabled={disabled}
                     >
                       <MenuItem value="string">{t('userTypes:types.string', 'String')}</MenuItem>
+                      <MenuItem value="email">{t('userTypes:types.email', 'Email')}</MenuItem>
+                      <MenuItem value="mobile">{t('userTypes:types.mobile', 'Mobile')}</MenuItem>
                       <MenuItem value="number">{t('userTypes:types.number', 'Number')}</MenuItem>
                       <MenuItem value="boolean">{t('userTypes:types.boolean', 'Boolean')}</MenuItem>
                       <MenuItem value="enum">{t('userTypes:types.enum', 'Enum')}</MenuItem>
@@ -299,7 +308,7 @@ export default function SchemaPropertyEditor({
                 </Box>
 
                 <I18nTextInput
-                  label={t('userTypes:displayName', 'Display Name')}
+                  label={t('userTypes:displayName', 'Display name')}
                   value={property.displayName}
                   onChange={(newValue: string) => handlePropertyChange(property.id, 'displayName', newValue)}
                   placeholder={t('userTypes:displayNamePlaceholder', 'e.g., First Name')}
@@ -307,12 +316,12 @@ export default function SchemaPropertyEditor({
                   labels={{
                     triggerTooltip: t('userTypes:displayNameI18n.tooltip', 'Configure translation'),
                     popoverTitle: t('userTypes:displayNameI18n.title', 'Translation'),
-                    createTitle: t('userTypes:displayNameI18n.createTitle', 'Create New Translation'),
+                    createTitle: t('userTypes:displayNameI18n.createTitle', 'Create new translation'),
                     createTooltip: t('userTypes:displayNameI18n.createTooltip', 'Create a new translation key'),
                     languageLabel: t('userTypes:displayNameI18n.language', 'Language'),
-                    keyLabel: t('userTypes:displayNameI18n.i18nKey', 'Translation Key'),
+                    keyLabel: t('userTypes:displayNameI18n.i18nKey', 'Translation key'),
                     selectKeyPlaceholder: t('userTypes:displayNameI18n.selectKey', 'Select a translation key'),
-                    valueLabel: t('userTypes:displayNameI18n.translationValue', 'Translation Value'),
+                    valueLabel: t('userTypes:displayNameI18n.translationValue', 'Translation value'),
                     resolvedValueLabel: t('userTypes:displayNameI18n.resolvedValue', 'Resolved value'),
                     keyRequiredError: t('userTypes:displayNameI18n.keyRequired', 'Translation key is required'),
                     valueRequiredError: t('userTypes:displayNameI18n.valueRequired', 'Translation value is required'),
@@ -326,8 +335,8 @@ export default function SchemaPropertyEditor({
                     unknownError: t('common:errors.unknown', 'An unknown error occurred'),
                   }}
                   defaultNewKey={
-                    userTypeName?.trim() && property.name.trim()
-                      ? `${userTypeName.trim()}.${property.name.trim()}`
+                    userTypeHandle?.trim() && property.name.trim()
+                      ? `${userTypeHandle.trim()}.${property.name.trim()}`
                       : undefined
                   }
                 />
@@ -372,6 +381,40 @@ export default function SchemaPropertyEditor({
                         label={
                           <Stack direction="row" alignItems="center" spacing={0.5}>
                             <span>{t('userTypes:unique', 'Unique')}</span>
+                            <Info size={14} color="inherit" />
+                          </Stack>
+                        }
+                      />
+                    </Tooltip>
+                  )}
+                  {isContactAttributeType(property.type) && (
+                    <Tooltip
+                      title={
+                        property.primary &&
+                        properties.some(
+                          (candidate) =>
+                            candidate.id !== property.id && candidate.type === property.type && candidate.name.trim(),
+                        )
+                          ? t(
+                              'userTypes:tooltips.primarySelected',
+                              'Used as the primary contact for users. To change it, select Primary on another attribute of this type',
+                            )
+                          : t('userTypes:tooltips.primary', 'Used as the primary contact for users')
+                      }
+                      placement="top"
+                      arrow
+                    >
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={Boolean(property.primary)}
+                            disabled={disabled || Boolean(property.primary)}
+                            onChange={(event) => handlePropertyChange(property.id, 'primary', event.target.checked)}
+                          />
+                        }
+                        label={
+                          <Stack direction="row" alignItems="center" spacing={0.5}>
+                            <span>{t('userTypes:primary', 'Primary')}</span>
                             <Info size={14} color="inherit" />
                           </Stack>
                         }
@@ -423,11 +466,30 @@ export default function SchemaPropertyEditor({
                 )}
 
                 {/* String: regex pattern */}
-                {property.type === 'string' && (
+                {(property.type === 'string' || isContactAttributeType(property.type)) && (
                   <FormControl fullWidth>
-                    <FormLabel>{t('userTypes:regexPattern', 'Regular Expression Pattern (Optional)')}</FormLabel>
+                    <FormLabel>
+                      {isContactAttributeType(property.type)
+                        ? t('userTypes:contactRegexPattern', 'Regular expression pattern')
+                        : t('userTypes:regexPattern', 'Regular expression pattern (optional)')}
+                    </FormLabel>
                     <TextField
                       value={property.regex}
+                      required={isContactAttributeType(property.type)}
+                      error={isContactAttributeType(property.type) && !property.regex.trim()}
+                      helperText={
+                        isContactAttributeType(property.type) && !property.regex.trim()
+                          ? property.type === 'email'
+                            ? t(
+                                'userTypes:validationErrors.emailRegexRequired',
+                                'Enter a regular expression for email attributes.',
+                              )
+                            : t(
+                                'userTypes:validationErrors.mobileRegexRequired',
+                                'Enter a regular expression for mobile attributes.',
+                              )
+                          : undefined
+                      }
                       onChange={(e) => handlePropertyChange(property.id, 'regex', e.target.value)}
                       placeholder={t('userTypes:regexPlaceholder', 'e.g., ^[a-zA-Z0-9]+$')}
                       size="small"
@@ -439,7 +501,7 @@ export default function SchemaPropertyEditor({
                 {/* Enum: value input + chips */}
                 {property.type === 'enum' && (
                   <FormControl fullWidth>
-                    <FormLabel>{t('userTypes:enumValues', 'Allowed Values (Enum) - Optional')}</FormLabel>
+                    <FormLabel>{t('userTypes:enumValues', 'Allowed values (enum) - optional')}</FormLabel>
                     <Box sx={{display: 'flex', gap: 1, mb: 1}}>
                       <TextField
                         value={enumInput[property.id] ?? ''}
@@ -497,15 +559,22 @@ export default function SchemaPropertyEditor({
               '&:hover': {border: '1px dashed', borderColor: 'primary.main'},
             }}
           >
-            {t('userTypes:addProperty', 'Add Property')}
+            {t('userTypes:addProperty', 'Add property')}
           </Button>
         )}
 
+        {getMissingPrimaryContactTypes(properties).map((type) => (
+          <Alert key={type} severity="error">
+            {type === 'email'
+              ? t('userTypes:validationErrors.primaryEmail', 'Select one email attribute as the primary email.')
+              : t('userTypes:validationErrors.primaryMobile', 'Select one mobile attribute as the primary mobile.')}
+          </Alert>
+        ))}
         {footer}
       </Stack>
 
       <Dialog open={pendingCredentialRemoveId !== null} onClose={() => setPendingCredentialRemoveId(null)}>
-        <DialogTitle>{t('userTypes:removeCredentialDialog.title', 'Remove Credential Flag')}</DialogTitle>
+        <DialogTitle>{t('userTypes:removeCredentialDialog.title', 'Remove credential flag')}</DialogTitle>
         <DialogContent>
           <DialogContentText>
             {isEditMode
@@ -531,7 +600,7 @@ export default function SchemaPropertyEditor({
               setPendingCredentialRemoveId(null);
             }}
           >
-            {t('userTypes:removeCredentialDialog.confirm', 'Remove Credential')}
+            {t('userTypes:removeCredentialDialog.confirm', 'Remove credential')}
           </Button>
         </DialogActions>
       </Dialog>

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {zodResolver} from '@hookform/resolvers/zod';
-import {FullScreenCreationWizardLayout, PageLoadingAnimation} from '@thunderid/components';
+import {DocumentTitle, FullScreenCreationWizardLayout, PageLoadingAnimation} from '@thunderid/components';
 import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
 import {CopyableTextAdapter, type FlowComponent, mapEmbeddedFlowTextColor} from '@thunderid/design';
 import {useLogger} from '@thunderid/logger/react';
@@ -10,11 +10,10 @@ import {
   EmbeddedFlowComponentType,
   EmbeddedFlowEventType,
   InviteUser,
-  useThunderID,
   type EmbeddedFlowComponent,
   type InviteUserRenderProps,
 } from '@thunderid/react';
-import type {ApiError} from '@thunderid/types';
+import type {ApiError, I18nMessage} from '@thunderid/types';
 import {EMAIL_REGEX} from '@thunderid/utils';
 import {
   Box,
@@ -42,7 +41,7 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import {z} from 'zod';
 import CredentialFieldInput from '../components/CredentialFieldInput';
-import useUserRoutes from '../hooks/useUserRoutes';
+import useFlowTextResolver from '../hooks/useFlowTextResolver';
 import getUserErrorMessage from '../utils/getUserErrorMessage';
 
 /** Typed shape for flow sub-components */
@@ -84,8 +83,9 @@ function deriveStepLabel(
 
 const FLOW_NOT_FOUND_ERROR_CODE = 'FLM-1003';
 
-function containsFlowNotFoundText(value: string | undefined): boolean {
-  return value?.toLowerCase().includes('flow not found') ?? false;
+function containsFlowNotFoundText(value: I18nMessage | string | undefined): boolean {
+  const text = typeof value === 'object' ? value.defaultValue : value;
+  return text?.toLowerCase().includes('flow not found') ?? false;
 }
 
 function isMissingOnboardingFlow(error: unknown): boolean {
@@ -178,8 +178,7 @@ function InviteUserStepContent({
     resetFlow,
     isValid: propsIsValid,
   } = renderProps;
-  const {resolveFlowTemplateLiterals: rawResolve} = useThunderID();
-  const resolve = useCallback((text?: string) => (text ? rawResolve(text) : undefined), [rawResolve]);
+  const resolve = useFlowTextResolver();
   const {t} = useTranslation();
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
 
@@ -923,7 +922,7 @@ function InviteUserStepContent({
               onResetLocalState();
             }}
           >
-            {t('users:addAnother', 'Add Another User')}
+            {t('users:addAnother', 'Add another user')}
           </Button>
         </Stack>
       )}
@@ -953,8 +952,7 @@ function InviteUserFlowBridge({
   onClearFlowError: () => void;
   onResetFlowAvailable?: (resetFn: () => void) => void;
 }): JSX.Element {
-  const {resolveFlowTemplateLiterals: rawResolve} = useThunderID();
-  const resolve = useCallback((text?: string) => (text ? rawResolve(text) : undefined), [rawResolve]);
+  const resolve = useFlowTextResolver();
   const {t} = useTranslation();
   const components = renderProps.components as EmbeddedFlowComponent[] | undefined;
 
@@ -1008,12 +1006,14 @@ export default function UserAddPage(): JSX.Element {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const logger = useLogger('UserAddPage');
-  const routes = useUserRoutes();
   const [flowError, setFlowError] = useState<string | null>(null);
+  // Set when the onboarding flow cannot be resolved at all. The run cannot start, so the page
+  // reports it rather than leaving the wizard on a step that will never load.
+  const [isFlowUnavailable, setIsFlowUnavailable] = useState(false);
   const resetFlowRef = useRef<(() => void) | null>(null);
 
   // Track breadcrumb trail of visited step labels, starting with "Add User"
-  const [breadcrumbs, setBreadcrumbs] = useState<string[]>([t('users:addUser', 'Add User')]);
+  const [breadcrumbs, setBreadcrumbs] = useState<string[]>([t('users:addUser', 'Add user')]);
   const prevStepLabelRef = useRef<string>('');
   const [hasOuStep, setHasOuStep] = useState(false);
 
@@ -1023,14 +1023,10 @@ export default function UserAddPage(): JSX.Element {
     });
   }, [navigate, logger]);
 
-  const handleManualCreateFallback = useCallback(() => {
-    logger.info('Falling back to manual user creation because the onboarding flow is unavailable');
-    (async () => {
-      await navigate(routes.addCreate());
-    })().catch((err: unknown) => {
-      logger.error('Failed to navigate to fallback user creation page', {error: err});
-    });
-  }, [navigate, routes, logger]);
+  const handleUnavailableFlow = useCallback(() => {
+    logger.error('The user onboarding flow could not be resolved, so onboarding cannot start');
+    setIsFlowUnavailable(true);
+  }, [logger]);
 
   const handleStepLabelChange = useCallback(
     (label: string) => {
@@ -1064,7 +1060,7 @@ export default function UserAddPage(): JSX.Element {
   }, []);
 
   const handleResetLocalState = useCallback(() => {
-    setBreadcrumbs([t('users:addUser', 'Add User')]);
+    setBreadcrumbs([t('users:addUser', 'Add user')]);
     prevStepLabelRef.current = '';
     setHasOuStep(false);
     setFlowError(null);
@@ -1075,6 +1071,30 @@ export default function UserAddPage(): JSX.Element {
   // With OU step: add one extra OU selection step.
   const totalSteps = hasOuStep ? 5 : 4;
   const progress = Math.min((breadcrumbs.length / totalSteps) * 100, 100);
+
+  if (isFlowUnavailable) {
+    return (
+      <FullScreenCreationWizardLayout
+        onClose={handleClose}
+        progress={0}
+        breadcrumbItems={[{key: 'breadcrumb-0', label: t('users:addUser', 'Add user')}]}
+        footer={null}
+      >
+        <DocumentTitle title={t('users:addUser', 'Add user')} />
+        <Box sx={{p: 3}}>
+          <Alert severity="error">
+            <AlertTitle>
+              {t('users:errors.onboardingFlowUnavailable.title', 'User onboarding is unavailable')}
+            </AlertTitle>
+            {t(
+              'users:errors.onboardingFlowUnavailable.description',
+              'The user onboarding flow could not be resolved. Check that a user onboarding flow is configured for this deployment and that the flow it names exists.',
+            )}
+          </Alert>
+        </Box>
+      </FullScreenCreationWizardLayout>
+    );
+  }
 
   return (
     <FullScreenCreationWizardLayout
@@ -1099,10 +1119,11 @@ export default function UserAddPage(): JSX.Element {
       })}
       footer={null}
     >
+      <DocumentTitle title={t('users:addUser', 'Add user')} />
       <InviteUser
         onError={(err: Error) => {
           if (isMissingOnboardingFlow(err)) {
-            handleManualCreateFallback();
+            handleUnavailableFlow();
             return;
           }
           logger.error('User onboarding error', {error: err});
@@ -1122,7 +1143,7 @@ export default function UserAddPage(): JSX.Element {
         }}
         onFlowChange={(response) => {
           if (isMissingOnboardingFlow(response)) {
-            handleManualCreateFallback();
+            handleUnavailableFlow();
             return;
           }
           if (!response?.error) {

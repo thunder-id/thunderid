@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	sysconst "github.com/thunder-id/thunderid/internal/system/constants"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -48,7 +49,7 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 
 	// Parse the form data from the request body.
 	if err := r.ParseForm(); err != nil {
-		publishTokenIssuanceFailedEvent(th.observabilitySvc, r.Context(), "", "", "",
+		publishTokenIssuanceFailedEvent(th.observabilitySvc, r.Context(), nil, "", "", "",
 			http.StatusBadRequest, err.Error(), startTime)
 		utils.WriteJSONError(r.Context(), w, constants.ErrorInvalidRequest,
 			"Failed to parse request body", http.StatusBadRequest, nil)
@@ -58,7 +59,7 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 	// The DPoP header must appear at most once.
 	dpopHeaders := r.Header.Values(constants.HeaderDPoP)
 	if len(dpopHeaders) > 1 {
-		publishTokenIssuanceFailedEvent(th.observabilitySvc, r.Context(), "", "", "",
+		publishTokenIssuanceFailedEvent(th.observabilitySvc, r.Context(), nil, "", "", "",
 			http.StatusBadRequest, "Multiple DPoP headers", startTime)
 		utils.WriteJSONError(r.Context(), w, constants.ErrorInvalidDPoPProof,
 			"Multiple DPoP headers", http.StatusBadRequest, nil)
@@ -67,6 +68,9 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 	ctx := r.Context()
 	if len(dpopHeaders) == 1 {
 		ctx = dpop.WithProof(ctx, dpopHeaders[0])
+		// The proof is bound to the URI this request was sent to, and one handler serves both the
+		// bare and the organization-unit-scoped path.
+		ctx = dpop.WithRequestPath(ctx, r.URL.EscapedPath())
 	}
 
 	// Get authenticated client from context (set by ClientAuthMiddleware).
@@ -80,25 +84,36 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 
 	// Build the token request domain model from the HTTP form values.
 	tokenRequest := &model.TokenRequest{
-		GrantType:          r.FormValue(constants.RequestParamGrantType),
-		ClientID:           clientInfo.ClientID,
-		ClientSecret:       clientInfo.ClientSecret,
-		Scope:              r.FormValue("scope"),
-		Username:           r.FormValue("username"),
-		Password:           r.FormValue("password"),
-		RefreshToken:       r.FormValue("refresh_token"),
-		CodeVerifier:       r.FormValue("code_verifier"),
-		Code:               r.FormValue("code"),
-		RedirectURI:        r.FormValue("redirect_uri"),
-		Resources:          r.Form[constants.RequestParamResource],
-		SubjectToken:       r.FormValue(constants.RequestParamSubjectToken),
-		SubjectTokenType:   r.FormValue(constants.RequestParamSubjectTokenType),
-		ActorToken:         r.FormValue(constants.RequestParamActorToken),
-		ActorTokenType:     r.FormValue(constants.RequestParamActorTokenType),
-		RequestedTokenType: r.FormValue(constants.RequestParamRequestedTokenType),
-		Audiences:          r.Form[constants.RequestParamAudience],
-		AuthReqID:          r.FormValue(constants.RequestParamAuthReqID),
-		Assertion:          r.FormValue(constants.RequestParamAssertion),
+		GrantType:            r.FormValue(constants.RequestParamGrantType),
+		ClientID:             clientInfo.ClientID,
+		ClientSecret:         clientInfo.ClientSecret,
+		Scope:                r.FormValue("scope"),
+		Username:             r.FormValue("username"),
+		Password:             r.FormValue("password"),
+		RefreshToken:         r.FormValue("refresh_token"),
+		CodeVerifier:         r.FormValue("code_verifier"),
+		Code:                 r.FormValue("code"),
+		RedirectURI:          r.FormValue("redirect_uri"),
+		Resources:            r.Form[constants.RequestParamResource],
+		SubjectToken:         r.FormValue(constants.RequestParamSubjectToken),
+		SubjectTokenType:     r.FormValue(constants.RequestParamSubjectTokenType),
+		ActorToken:           r.FormValue(constants.RequestParamActorToken),
+		ActorTokenType:       r.FormValue(constants.RequestParamActorTokenType),
+		RequestedTokenType:   r.FormValue(constants.RequestParamRequestedTokenType),
+		Audiences:            r.Form[constants.RequestParamAudience],
+		AuthReqID:            r.FormValue(constants.RequestParamAuthReqID),
+		Assertion:            r.FormValue(constants.RequestParamAssertion),
+		AuthorizationDetails: r.FormValue(constants.RequestParamAuthorizationDetails),
+	}
+
+	// Only client_credentials acts for an organization unit.
+	if syscontext.GetAccessingOUID(ctx) != "" &&
+		tokenRequest.GrantType != string(providers.GrantTypeClientCredentials) {
+		logger.Debug(ctx, "Grant type is not available on the organization-unit-scoped endpoint",
+			log.String("grant_type", tokenRequest.GrantType))
+		utils.WriteJSONError(r.Context(), w, constants.ErrorInvalidRequest,
+			constants.OUScopedGrantRefusal, http.StatusBadRequest, nil)
+		return
 	}
 
 	// Delegate all business logic to the token service.

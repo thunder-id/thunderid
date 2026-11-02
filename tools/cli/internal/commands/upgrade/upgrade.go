@@ -45,23 +45,24 @@ func resolveLivePort(opts Opts, activeVersion string) int {
 }
 
 // Run executes the upgrade workflow. baseDir is the parent thunderid directory (e.g. "./thunderid").
-// Returns (upgraded, err): upgraded is false when already on the latest version or the user cancelled.
-func Run(baseDir string, opts Opts) (bool, error) {
+//
+// When upgraded is false, notice (if non-empty) explains why, styled for display as the
+// first message in the REPL the caller reattaches to — printing it directly here would be
+// hidden the moment that REPL's alternate screen takes over the terminal again.
+func Run(baseDir string, opts Opts) (upgraded bool, notice string, err error) {
 	fmt.Print(ui.Dim("  Fetching latest " + product.Name + " release..."))
 	latestVersion, err := release.FetchLatestVersion()
 	if err != nil {
 		// Not being able to check for updates is not a broken upgrade: report it and
 		// leave the running instance alone, so an offline /upgrade does not end the session.
 		fmt.Print("\r\033[2K")
-		ui.Warn("Could not check for a newer " + product.Name + " release.\n" + err.Error())
-		return false, nil
+		return false, ui.Yellow("⚠") + " Could not check for a newer " + product.Name + " release.\n" + err.Error(), nil
 	}
 	fmt.Printf("\r\033[2K  %s Latest %s release: v%s\n\n", ui.Green("✓"), product.Name, latestVersion)
 
 	activeVersion := config.ReadActiveVersion()
 	if activeVersion == latestVersion {
-		ui.Success(product.Name + " v" + latestVersion + " is already the latest version.")
-		return false, nil
+		return false, ui.Green("✓") + " " + product.Name + " v" + latestVersion + " is already the latest version.", nil
 	}
 
 	if activeVersion != "" {
@@ -74,18 +75,21 @@ func Run(baseDir string, opts Opts) (bool, error) {
 
 	livePort := resolveLivePort(opts, activeVersion)
 
-	return true, runUpgrade(baseDir, activeVersion, latestVersion, opts.Verbose, livePort)
+	return true, "", runUpgrade(baseDir, activeVersion, latestVersion, opts.Verbose, livePort)
 }
 
 // Switch stops the running ThunderID instance and starts the selected installed version
 // on the same port. It shows an interactive version picker and returns false if the user
 // cancels or no other versions are installed. On success it starts the new instance and
 // runs a REPL for it.
-func Switch(baseDir, currentVersion string, livePort int, verbose bool) (bool, error) {
+//
+// When switched is false, notice (if non-empty) explains why, styled for display as the
+// first message in the REPL the caller reattaches to — printing it directly here would be
+// hidden the moment that REPL's alternate screen takes over the terminal again.
+func Switch(baseDir, currentVersion string, livePort int, verbose bool, pendingUpgrade string) (switched bool, notice string, err error) {
 	versions := config.ListInstalledVersions(currentVersion)
 	if len(versions) == 0 {
-		ui.Warn("No other installed versions found. Use /upgrade to install a new version.")
-		return false, nil
+		return false, ui.Yellow("⚠") + " No other installed versions found. Use " + ui.Cyan("/upgrade") + " to install a new version.", nil
 	}
 
 	options := make([]huh.Option[string], len(versions))
@@ -99,19 +103,17 @@ func Switch(baseDir, currentVersion string, livePort int, verbose bool) (bool, e
 		Options(options...).
 		Value(&selected).
 		Run(); err != nil {
-		return false, nil // cancelled
+		return false, ui.Dim("Switch cancelled."), nil
 	}
 
 	installPath := config.ReadInstallPath(selected)
 	if installPath == "" {
-		ui.Fatal("Install path not found for v" + selected + ". Re-run setup to restore it.")
-		return false, nil
+		return false, ui.Red("✗") + " Install path not found for v" + selected + ". Re-run setup to restore it.", nil
 	}
 
 	// Validate the install is launchable before touching the running instance.
 	if _, err := setup.FindThunderRoot(installPath); err != nil {
-		ui.Fatal(fmt.Sprintf("v%s is not usable (%s). The install may have been moved or deleted.", selected, err))
-		return false, nil
+		return false, ui.Red("✗") + fmt.Sprintf(" v%s is not usable (%s). The install may have been moved or deleted.", selected, err), nil
 	}
 
 	if livePort <= 0 {
@@ -122,7 +124,7 @@ func Switch(baseDir, currentVersion string, livePort int, verbose bool) (bool, e
 	if err := setup.FreePort(livePort, 10*time.Second); err != nil {
 		fmt.Println()
 		ui.Fatal("Could not stop v" + currentVersion + ": " + err.Error())
-		return false, err
+		return false, "", err
 	}
 	fmt.Printf("\r\033[2K  %s Stopped v%s\n", ui.Green("✓"), currentVersion)
 
@@ -131,23 +133,23 @@ func Switch(baseDir, currentVersion string, livePort int, verbose bool) (bool, e
 	if err != nil {
 		fmt.Println()
 		ui.Fatal("Failed to start v" + selected + ": " + err.Error())
-		return false, err
+		return false, "", err
 	}
 	if err := health.WaitReady(livePort, startupTimeout); err != nil {
 		stopStartedProcess(proc, livePort)
 		fmt.Println()
 		ui.Fatal(fmt.Sprintf("Failed to start v%s: %s", selected, startupFailure(installPath, err)))
-		return false, fmt.Errorf("failed to start v%s: %w", selected, err)
+		return false, "", fmt.Errorf("failed to start v%s: %w", selected, err)
 	}
 	// Persist the active version only once the new instance is up, so a failed
 	// start does not leave the recorded version pointing at nothing.
 	if err := config.WriteActiveVersion(selected); err != nil {
-		return false, fmt.Errorf("failed to update active version: %w", err)
+		return false, "", fmt.Errorf("failed to update active version: %w", err)
 	}
 	fmt.Printf("\r\033[2K  %s Switched to %s v%s  %s\n", ui.Green("✓"), product.Name, selected, ui.Dim("logs: "+setup.LogDir(installPath)))
 
-	_, _, err = ui.RunREPL(selected, proc, installPath, verbose, false, "", "", livePort, nil)
-	return true, err
+	_, _, err = ui.RunREPL(selected, proc, installPath, verbose, false, pendingUpgrade, "", livePort, nil, "")
+	return true, "", err
 }
 
 func runUpgrade(baseDir, activeVersion, newVersion string, verbose bool, livePort int) error {
@@ -204,7 +206,7 @@ func runUpgrade(baseDir, activeVersion, newVersion string, verbose bool, livePor
 	}
 	fmt.Printf("\r\033[2K  %s %s v%s started  %s\n", ui.Green("✓"), product.Name, newVersion, ui.Dim("logs: "+setup.LogDir(newPath)))
 
-	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", "", livePort, creds)
+	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", "", livePort, creds, "")
 	return err
 }
 

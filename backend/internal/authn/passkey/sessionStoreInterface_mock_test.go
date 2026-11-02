@@ -16,10 +16,19 @@ func newSessionStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *sessionStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &sessionStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +71,7 @@ type sessionStoreInterfaceMock_deleteSession_Call struct {
 // deleteSession is a helper method to define mock.On call
 //   - ctx context.Context
 //   - sessionKey string
-func (_e *sessionStoreInterfaceMock_Expecter) deleteSession(ctx interface{}, sessionKey interface{}) *sessionStoreInterfaceMock_deleteSession_Call {
+func (_e *sessionStoreInterfaceMock_Expecter) deleteSession(ctx any, sessionKey any) *sessionStoreInterfaceMock_deleteSession_Call {
 	return &sessionStoreInterfaceMock_deleteSession_Call{Call: _e.mock.On("deleteSession", ctx, sessionKey)}
 }
 
@@ -130,7 +139,7 @@ type sessionStoreInterfaceMock_retrieveSession_Call struct {
 // retrieveSession is a helper method to define mock.On call
 //   - ctx context.Context
 //   - sessionKey string
-func (_e *sessionStoreInterfaceMock_Expecter) retrieveSession(ctx interface{}, sessionKey interface{}) *sessionStoreInterfaceMock_retrieveSession_Call {
+func (_e *sessionStoreInterfaceMock_Expecter) retrieveSession(ctx any, sessionKey any) *sessionStoreInterfaceMock_retrieveSession_Call {
 	return &sessionStoreInterfaceMock_retrieveSession_Call{Call: _e.mock.On("retrieveSession", ctx, sessionKey)}
 }
 
@@ -152,8 +161,8 @@ func (_c *sessionStoreInterfaceMock_retrieveSession_Call) Run(run func(ctx conte
 	return _c
 }
 
-func (_c *sessionStoreInterfaceMock_retrieveSession_Call) Return(v *sessionData, err error) *sessionStoreInterfaceMock_retrieveSession_Call {
-	_c.Call.Return(v, err)
+func (_c *sessionStoreInterfaceMock_retrieveSession_Call) Return(sessionDataMoqParam *sessionData, err error) *sessionStoreInterfaceMock_retrieveSession_Call {
+	_c.Call.Return(sessionDataMoqParam, err)
 	return _c
 }
 
@@ -189,7 +198,7 @@ type sessionStoreInterfaceMock_storeSession_Call struct {
 //   - sessionKey string
 //   - session *sessionData
 //   - expirySeconds int64
-func (_e *sessionStoreInterfaceMock_Expecter) storeSession(ctx interface{}, sessionKey interface{}, session interface{}, expirySeconds interface{}) *sessionStoreInterfaceMock_storeSession_Call {
+func (_e *sessionStoreInterfaceMock_Expecter) storeSession(ctx any, sessionKey any, session any, expirySeconds any) *sessionStoreInterfaceMock_storeSession_Call {
 	return &sessionStoreInterfaceMock_storeSession_Call{Call: _e.mock.On("storeSession", ctx, sessionKey, session, expirySeconds)}
 }
 

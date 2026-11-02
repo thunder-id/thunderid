@@ -14,6 +14,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -31,6 +32,7 @@ type sessionExecutor struct {
 	providers.Executor
 	sso           session.Service
 	authnProvider providers.AuthnProviderManager
+	accessGuard   *accessGuard
 	logger        *log.Logger
 }
 
@@ -40,7 +42,8 @@ var _ providers.Executor = (*sessionExecutor)(nil)
 // persistence; the authn provider resolves the subject's entity reference when saving and is the
 // contract downstream nodes use to read the subject reconstructed on the SSO load path.
 func newSessionExecutor(flowFactory core.FlowFactoryInterface, sso session.Service,
-	authnProvider providers.AuthnProviderManager) *sessionExecutor {
+	authnProvider providers.AuthnProviderManager,
+	accessGuard *accessGuard) *sessionExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "SessionExecutor"),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameSession))
 
@@ -53,6 +56,7 @@ func newSessionExecutor(flowFactory core.FlowFactoryInterface, sso session.Servi
 		Executor:      base,
 		sso:           sso,
 		authnProvider: authnProvider,
+		accessGuard:   accessGuard,
 		logger:        logger,
 	}
 }
@@ -88,17 +92,52 @@ func (e *sessionExecutor) Execute(ctx *providers.NodeContext) (*providers.Execut
 		return execResp, nil
 	}
 
-	if err := e.saveCheckpoint(ctx, execResp, checkpoint, logger); err != nil {
+	// Checked before the save, which logs and drops its errors.
+	entityRef, refErr := e.resolveEntityReference(ctx)
+	svcErr, fault := e.refuseHeldSubject(ctx, entityRef, logger)
+	if fault != nil {
+		return nil, fault
+	}
+	if svcErr != nil {
+		execResp.Status = providers.ExecFailure
+		execResp.Error = svcErr
+		return execResp, nil
+	}
+
+	if err := e.saveCheckpoint(ctx, execResp, checkpoint, entityRef, refErr, logger); err != nil {
 		logger.Error(ctx.Context, "Failed to save SSO checkpoint; continuing without SSO", log.Error(err))
 	}
 	return execResp, nil
+}
+
+// resolveEntityReference resolves the authenticated user's entity reference, or nil when there is none.
+func (e *sessionExecutor) resolveEntityReference(ctx *providers.NodeContext) (
+	*providers.EntityReference, *tidcommon.ServiceError) {
+	if e.authnProvider == nil || !ctx.AuthUser.IsAuthenticated() {
+		return nil, nil
+	}
+	_, entityRef, svcErr := e.authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
+	return entityRef, svcErr
+}
+
+// refuseHeldSubject returns the refusal for a held subject about to be saved into a session. An
+// unresolved reference is left to the save.
+func (e *sessionExecutor) refuseHeldSubject(ctx *providers.NodeContext, entityRef *providers.EntityReference,
+	logger *log.Logger) (*tidcommon.ServiceError, error) {
+	if entityRef == nil {
+		logger.Debug(ctx.Context, "No resolved subject at the session join; nothing to check")
+		return nil, nil
+	}
+
+	return e.accessGuard.refuseIfHeld(ctx.Context, entityRef.EntityID, providers.AccessPlaneSession, "", logger)
 }
 
 // saveCheckpoint resolves the authenticated subject, builds the snapshot from this join's runtime
 // state, and hands it to the SSO session service to attach to the flow execution's session. It emits
 // the handle for the transport layer to set only when the service minted a new session.
 func (e *sessionExecutor) saveCheckpoint(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
-	checkpoint string, logger *log.Logger) error {
+	checkpoint string, entityRef *providers.EntityReference, refErr *tidcommon.ServiceError,
+	logger *log.Logger) error {
 	// Always preserve the already-authenticated user; this executor does not change it on the save
 	// path, but it is an authentication-type executor so it must echo the AuthUser back to keep the
 	// engine's authenticated subject.
@@ -117,6 +156,12 @@ func (e *sessionExecutor) saveCheckpoint(ctx *providers.NodeContext, execResp *p
 		execResp.RuntimeData[common.RuntimeKeyTokenFamilyID] = tokenFamilyID
 	}
 
+	// Re-publish a session id resolved earlier in this execution, since a re-executed join returns at
+	// the idempotency guard below without calling the service.
+	if sessionID := ctx.RuntimeData[common.RuntimeKeySSOSessionID]; sessionID != "" {
+		execResp.RuntimeData[common.RuntimeKeySSOSessionID] = sessionID
+	}
+
 	// Idempotency: if this checkpoint was already saved in this flow execution, re-emit its handle
 	// instead of saving again.
 	savedKey := common.SSOCheckpointKey(common.RuntimeKeySSOSessionSaved, checkpoint)
@@ -125,12 +170,11 @@ func (e *sessionExecutor) saveCheckpoint(ctx *providers.NodeContext, execResp *p
 		return nil
 	}
 
-	// Resolve the subject's entity reference — authn is this executor's responsibility. Its entity id
-	// keys the session and drives the cross-checkpoint subject-consistency check. The AuthUser is
-	// snapshotted as-is below; this executor does not materialize attributes or otherwise change it.
-	_, entityRef, svcErr := e.authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
-	if svcErr != nil {
-		return fmt.Errorf("failed to resolve subject entity reference: %s", svcErr.ErrorDescription.DefaultValue)
+	// The subject's entity reference, resolved in Execute. Its entity id keys the session and drives the
+	// cross-checkpoint subject-consistency check. The AuthUser is snapshotted as-is below; this executor
+	// does not materialize attributes or otherwise change it.
+	if refErr != nil {
+		return fmt.Errorf("failed to resolve subject entity reference: %s", refErr.ErrorDescription.DefaultValue)
 	}
 	if entityRef == nil || entityRef.EntityID == "" {
 		logger.Debug(ctx.Context, "No resolved subject id; skipping checkpoint save")
@@ -164,15 +208,33 @@ func (e *sessionExecutor) saveCheckpoint(ctx *providers.NodeContext, execResp *p
 		return err
 	}
 	// The service declined the save because the freshly authenticated subject conflicts with the
-	// existing session's subject; degrade SSO without failing authentication.
+	// existing session's subject; degrade SSO without failing authentication. A session id carried
+	// from an earlier node belongs to that other subject's session, so clear it. Setting it empty is
+	// what clears it, because the engine merges RuntimeData by overwriting.
 	if result.Skipped {
+		execResp.RuntimeData[common.RuntimeKeySSOSessionID] = ""
 		return nil
+	}
+
+	// Publish the session's authentication time so the assertion reads auth_time from the session
+	// on this path too. Without it resolveAuthTime falls back to the clock, which drifts past the
+	// session's AuthenticatedAt whenever the two land either side of a second boundary, and a later
+	// authorization that correctly reuses the session then reports an earlier auth_time than the
+	// login that created it.
+	if !result.AuthenticatedAt.IsZero() {
+		execResp.RuntimeData[common.RuntimeKeyAuthTime] =
+			strconv.FormatInt(result.AuthenticatedAt.Unix(), 10)
 	}
 
 	execResp.RuntimeData[savedKey] = result.Handle
 	// Publish the session handle as the shared hint so later joins in this execution attach to the
 	// same session directly.
 	execResp.RuntimeData[common.RuntimeKeySSOSessionHandle] = result.Handle
+	// Publish the session id so the auth-assertion node stamps it as the sid claim. Unlike the handle
+	// this never leaves the server as a credential; it only names the session for logout.
+	if result.SessionID != "" {
+		execResp.RuntimeData[common.RuntimeKeySSOSessionID] = result.SessionID
+	}
 	// Emit the cookie only when this call minted the session, and only now that its first checkpoint
 	// is durably saved — so a context-write failure never leaves a cookie for an empty session.
 	if result.Created {
@@ -268,6 +330,11 @@ func (e *sessionExecutor) loadCheckpoint(ctx *providers.NodeContext, execResp *p
 	if tokenFamilyID != "" {
 		execResp.RuntimeData[common.RuntimeKeyTokenFamilyID] = tokenFamilyID
 	}
+	// Same for the session id: it comes from the session now in force, not from the replayed snapshot,
+	// so the sid claim always names the session this grant actually belongs to.
+	if ssoSession.SessionID != "" {
+		execResp.RuntimeData[common.RuntimeKeySSOSessionID] = ssoSession.SessionID
+	}
 
 	logger.Debug(ctx.Context, "Loaded SSO checkpoint",
 		log.String("flowId", session.SSOInputsFrom(ctx.Context).FlowID),
@@ -289,17 +356,38 @@ var requestScopedSnapshotDenyList = map[string]struct{}{
 	common.RuntimeKeyRequiredLocales:             {},
 	common.RuntimeKeyClientID:                    {},
 	common.RuntimeKeyAuthorizationRequestID:      {},
+	// The client and redirect hosts name the establishing client; a replayed copy would show them for
+	// another client at its consent.
+	common.RuntimeKeyClientIDHost:    {},
+	common.RuntimeKeyRedirectURIHost: {},
 	// The token family id is minted fresh per flow execution, so it must not ride a reused snapshot.
 	common.RuntimeKeyTokenFamilyID: {},
+	// The SSO session id is resolved fresh per flow execution; a replayed copy could name another session.
+	common.RuntimeKeySSOSessionID: {},
+	// force_reauth and max_age state what the establishing app's authorization request demanded of
+	// this authentication. Replaying either onto a later join would impose that demand on an app that
+	// never asked: a stale force_reauth re-prompts every reuse, and a stale max_age fails the
+	// assurance check once auth_time is sourced from the session rather than the current time.
+	common.RuntimeKeyForceReauth:    {},
+	common.RuntimeKeyMaxAge:         {},
+	common.RuntimeKeySilentAuthOnly: {},
+	// Authorization details and the consent prompt belong to the establishing authorization request.
+	common.RuntimeKeyRequestedAuthorizationDetails: {},
+	common.RuntimeKeyConsentedAuthorizationDetails: {},
+	common.RuntimeKeyConsentSessionToken:           {},
 	// applicationId has no shared constant (set as a raw literal in enrichRuntimeData).
 	"applicationId": {},
+	// failureReasonJSON is the engine's pending error for the next prompt in this execution (raw
+	// literal in the task execution node); a replayed copy would show it to another app.
+	"failureReasonJSON": {},
 }
 
 // sanitizeSnapshotRuntimeData copies RuntimeData for the durable snapshot, dropping the transient SSO
 // control keys (the per-checkpoint present/saved flags and the shared handle hint) and the
 // request-scoped keys in requestScopedSnapshotDenyList. Persisting the control keys would let a
 // reused snapshot reinject a prior run's control state when its RuntimeData is replayed on load;
-// persisting the request-scoped keys would override a joining app's own request. RuntimeData is
+// persisting the request-scoped keys would override a joining app's own request. Extension data and
+// attempt counts are dropped too, since they answer this application's flow only. RuntimeData is
 // otherwise persisted in full pending the flow-context data-classification revisit. Returns nil when
 // nothing durable remains.
 func sanitizeSnapshotRuntimeData(rd map[string]string) map[string]string {
@@ -313,7 +401,9 @@ func sanitizeSnapshotRuntimeData(rd map[string]string) map[string]string {
 		}
 		if k == common.RuntimeKeySSOSessionHandle ||
 			strings.HasPrefix(k, common.RuntimeKeySSOSessionPresent+":") ||
-			strings.HasPrefix(k, common.RuntimeKeySSOSessionSaved+":") {
+			strings.HasPrefix(k, common.RuntimeKeySSOSessionSaved+":") ||
+			strings.HasPrefix(k, common.ExtensionDataKeyPrefix) ||
+			strings.HasPrefix(k, common.RuntimeKeyExtensionAttemptCount+":") {
 			continue
 		}
 		out[k] = v

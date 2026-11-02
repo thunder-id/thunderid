@@ -44,8 +44,14 @@ const (
 	RevocationReasonApplicationSecretRegenerated = sharedrevocation.ReasonApplicationSecretRegenerated
 	// RevocationReasonRoleAssignmentRemoved revokes artifacts established before a role assignment was removed.
 	RevocationReasonRoleAssignmentRemoved = sharedrevocation.ReasonRoleAssignmentRemoved
-	// RevocationReasonRoleDeleted permanently revokes artifacts that depend on a deleted role.
+	// RevocationReasonRolePermissionRemoved revokes artifacts established before a role's scopes shrank.
+	RevocationReasonRolePermissionRemoved = sharedrevocation.ReasonRolePermissionRemoved
+	// RevocationReasonRoleDeleted revokes artifacts established before a role was deleted.
 	RevocationReasonRoleDeleted = sharedrevocation.ReasonRoleDeleted
+	// RevocationReasonActionDeleted revokes artifacts established before an action was deleted.
+	RevocationReasonActionDeleted = sharedrevocation.ReasonActionDeleted
+	// RevocationReasonGroupDeleted revokes artifacts established before a group was deleted.
+	RevocationReasonGroupDeleted = sharedrevocation.ReasonGroupDeleted
 	// RevocationReasonGroupMembershipRemoved revokes artifacts established before group membership was removed.
 	RevocationReasonGroupMembershipRemoved = sharedrevocation.ReasonGroupMembershipRemoved
 	// RevocationReasonOrganizationUnitChanged revokes artifacts established before an organization-unit change.
@@ -54,6 +60,8 @@ const (
 	RevocationReasonConsentRevoked = sharedrevocation.ReasonConsentRevoked
 	// RevocationReasonUserDeleted permanently revokes artifacts belonging to a deleted user.
 	RevocationReasonUserDeleted = sharedrevocation.ReasonUserDeleted
+	// RevocationReasonIdentitySuspended revokes what a suspended identity held before the hold.
+	RevocationReasonIdentitySuspended = sharedrevocation.ReasonIdentitySuspended
 )
 
 // CriterionType identifies an artifact attribute used for criteria-based revocation.
@@ -71,6 +79,8 @@ const (
 	CriterionTypeGroup             = sharedrevocation.CriterionTypeGroup
 	CriterionTypeConsent           = sharedrevocation.CriterionTypeConsent
 	CriterionTypeCredentialVersion = sharedrevocation.CriterionTypeCredentialVersion
+	CriterionTypeEntityScope       = sharedrevocation.CriterionTypeEntityScope
+	CriterionTypeScope             = sharedrevocation.CriterionTypeScope
 )
 
 // RevocationMode controls whether a criterion applies permanently or only to artifacts established
@@ -91,6 +101,16 @@ type RevocationIdentity = sharedrevocation.Identity
 
 // CriteriaRevocation describes a criteria-based revocation write.
 type CriteriaRevocation = sharedrevocation.CriteriaRevocation
+
+// ScopeCriteria returns the criteria that revoke the scopes a token carries on each of its audiences.
+func ScopeCriteria(subject string, audiences, scopes []string) []Criterion {
+	return sharedrevocation.ScopeCriteria(subject, audiences, scopes)
+}
+
+// TokenAudiences reads the audiences of a token carrying scopes, failing closed when the claim is malformed.
+func TokenAudiences(claims map[string]interface{}, scopes []string) ([]string, error) {
+	return sharedrevocation.TokenAudiences(claims, scopes)
+}
 
 // RevokedToken represents a single revoked token entry in the deny list.
 type RevokedToken struct {

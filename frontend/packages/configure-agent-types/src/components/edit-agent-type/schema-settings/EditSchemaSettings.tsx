@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {I18nTextInput} from '@thunderid/components';
+import {isContactAttributeType, resolveAttributeRegex} from '@thunderid/utils';
 import {
   Box,
   Stack,
@@ -33,7 +34,7 @@ import {invalidateI18nCache} from '../../../utils/invalidateI18nCache';
 export interface EditSchemaSettingsProps {
   properties: SchemaPropertyInput[];
   onPropertiesChange: (properties: SchemaPropertyInput[]) => void;
-  agentTypeName: string;
+  agentTypeHandle: string;
 }
 
 /**
@@ -43,7 +44,7 @@ export interface EditSchemaSettingsProps {
 export default function EditSchemaSettings({
   properties,
   onPropertiesChange,
-  agentTypeName,
+  agentTypeHandle,
 }: EditSchemaSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const [enumInput, setEnumInput] = useState<Record<string, string>>({});
@@ -63,9 +64,12 @@ export default function EditSchemaSettings({
               [field]: value,
               ...(field === 'type' && {
                 enum: (value as string) === 'enum' ? prop.enum : [],
-                regex: '',
+                regex: resolveAttributeRegex(value),
                 unique:
-                  (value as string) === 'string' || (value as string) === 'number' || (value as string) === 'enum'
+                  (value as string) === 'string' ||
+                  isContactAttributeType(value) ||
+                  (value as string) === 'number' ||
+                  (value as string) === 'enum'
                     ? prop.unique
                     : false,
                 credential: (value as string) === 'string' || (value as string) === 'number' ? prop.credential : false,
@@ -171,6 +175,8 @@ export default function EditSchemaSettings({
                   size="small"
                 >
                   <MenuItem value="string">{t('agentTypes:types.string', 'String')}</MenuItem>
+                  <MenuItem value="email">{t('agentTypes:types.email', 'Email')}</MenuItem>
+                  <MenuItem value="mobile">{t('agentTypes:types.mobile', 'Mobile')}</MenuItem>
                   <MenuItem value="number">{t('agentTypes:types.number', 'Number')}</MenuItem>
                   <MenuItem value="boolean">{t('agentTypes:types.boolean', 'Boolean')}</MenuItem>
                   <MenuItem value="enum">{t('agentTypes:types.enum', 'Enum')}</MenuItem>
@@ -179,7 +185,7 @@ export default function EditSchemaSettings({
             </Box>
 
             <I18nTextInput
-              label={t('agentTypes:displayName', 'Display Name')}
+              label={t('agentTypes:displayName', 'Display name')}
               value={property.displayName}
               onChange={(newValue: string) => handlePropertyChange(property.id, 'displayName', newValue)}
               placeholder={t('agentTypes:displayNamePlaceholder', 'e.g., First Name')}
@@ -187,12 +193,12 @@ export default function EditSchemaSettings({
               labels={{
                 triggerTooltip: t('agentTypes:displayNameI18n.tooltip', 'Configure translation'),
                 popoverTitle: t('agentTypes:displayNameI18n.title', 'Translation'),
-                createTitle: t('agentTypes:displayNameI18n.createTitle', 'Create New Translation'),
+                createTitle: t('agentTypes:displayNameI18n.createTitle', 'Create new translation'),
                 createTooltip: t('agentTypes:displayNameI18n.createTooltip', 'Create a new translation key'),
                 languageLabel: t('agentTypes:displayNameI18n.language', 'Language'),
-                keyLabel: t('agentTypes:displayNameI18n.i18nKey', 'Translation Key'),
+                keyLabel: t('agentTypes:displayNameI18n.i18nKey', 'Translation key'),
                 selectKeyPlaceholder: t('agentTypes:displayNameI18n.selectKey', 'Select a translation key'),
-                valueLabel: t('agentTypes:displayNameI18n.translationValue', 'Translation Value'),
+                valueLabel: t('agentTypes:displayNameI18n.translationValue', 'Translation value'),
                 resolvedValueLabel: t('agentTypes:displayNameI18n.resolvedValue', 'Resolved value'),
                 keyRequiredError: t('agentTypes:displayNameI18n.keyRequired', 'Translation key is required'),
                 valueRequiredError: t('agentTypes:displayNameI18n.valueRequired', 'Translation value is required'),
@@ -206,8 +212,8 @@ export default function EditSchemaSettings({
                 unknownError: t('common:errors.unknown', 'An unknown error occurred'),
               }}
               defaultNewKey={
-                agentTypeName.trim() && property.name.trim()
-                  ? `${agentTypeName.trim()}.${property.name.trim()}`
+                agentTypeHandle.trim() && property.name.trim()
+                  ? `${agentTypeHandle.trim()}.${property.name.trim()}`
                   : undefined
               }
             />
@@ -234,7 +240,10 @@ export default function EditSchemaSettings({
                   }
                 />
               </Tooltip>
-              {(property.type === 'string' || property.type === 'number' || property.type === 'enum') && (
+              {(property.type === 'string' ||
+                isContactAttributeType(property.type) ||
+                property.type === 'number' ||
+                property.type === 'enum') && (
                 <Tooltip
                   title={t('agentTypes:tooltips.unique', 'Each user must have a distinct value for this field')}
                   placement="top"
@@ -303,11 +312,30 @@ export default function EditSchemaSettings({
             )}
 
             {/* String: regex pattern */}
-            {property.type === 'string' && (
+            {(property.type === 'string' || isContactAttributeType(property.type)) && (
               <FormControl fullWidth>
-                <FormLabel>{t('agentTypes:regexPattern', 'Regular Expression Pattern (Optional)')}</FormLabel>
+                <FormLabel>
+                  {isContactAttributeType(property.type)
+                    ? t('agentTypes:contactRegexPattern', 'Regular expression pattern')
+                    : t('agentTypes:regexPattern', 'Regular expression pattern (optional)')}
+                </FormLabel>
                 <TextField
                   value={property.regex}
+                  required={isContactAttributeType(property.type)}
+                  error={isContactAttributeType(property.type) && !property.regex.trim()}
+                  helperText={
+                    isContactAttributeType(property.type) && !property.regex.trim()
+                      ? property.type === 'email'
+                        ? t(
+                            'agentTypes:validationErrors.emailRegexRequired',
+                            'Enter a regular expression for email attributes.',
+                          )
+                        : t(
+                            'agentTypes:validationErrors.mobileRegexRequired',
+                            'Enter a regular expression for mobile attributes.',
+                          )
+                      : undefined
+                  }
                   onChange={(e) => handlePropertyChange(property.id, 'regex', e.target.value)}
                   placeholder={t('agentTypes:regexPlaceholder', 'e.g., ^[a-zA-Z0-9]+$')}
                   size="small"
@@ -318,7 +346,7 @@ export default function EditSchemaSettings({
             {/* Enum: value input + chips */}
             {property.type === 'enum' && (
               <FormControl fullWidth>
-                <FormLabel>{t('agentTypes:enumValues', 'Allowed Values (Enum)')}</FormLabel>
+                <FormLabel>{t('agentTypes:enumValues', 'Allowed values (enum)')}</FormLabel>
                 <Box sx={{display: 'flex', gap: 1, mb: 1}}>
                   <TextField
                     value={enumInput[property.id] ?? ''}
@@ -370,7 +398,7 @@ export default function EditSchemaSettings({
           '&:hover': {border: '1px dashed', borderColor: 'primary.main'},
         }}
       >
-        {t('agentTypes:addProperty', 'Add Property')}
+        {t('agentTypes:addProperty', 'Add property')}
       </Button>
 
       {/* Credential Removal Confirmation Dialog */}
@@ -381,7 +409,7 @@ export default function EditSchemaSettings({
           setPendingCredentialRemoveId(null);
         }}
       >
-        <DialogTitle>{t('agentTypes:removeCredentialDialog.title', 'Remove Credential Flag')}</DialogTitle>
+        <DialogTitle>{t('agentTypes:removeCredentialDialog.title', 'Remove credential flag')}</DialogTitle>
         <DialogContent>
           <DialogContentText>
             {t(
@@ -414,7 +442,7 @@ export default function EditSchemaSettings({
               setPendingCredentialRemoveId(null);
             }}
           >
-            {t('agentTypes:removeCredentialDialog.confirm', 'Remove Credential')}
+            {t('agentTypes:removeCredentialDialog.confirm', 'Remove credential')}
           </Button>
         </DialogActions>
       </Dialog>

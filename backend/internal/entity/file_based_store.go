@@ -9,6 +9,7 @@ import (
 	"errors"
 	"strings"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	entitystore "github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -113,6 +114,39 @@ func (f *entityFileBasedStore) UpdateSystemCredentials(ctx context.Context, enti
 // DeleteEntity is not supported in file-based store.
 func (f *entityFileBasedStore) DeleteEntity(ctx context.Context, id string) error {
 	return errors.New("DeleteEntity is not supported in file-based store")
+}
+
+// LockEntity is not supported in file-based store.
+func (f *entityFileBasedStore) LockEntity(ctx context.Context, id string) (providers.Entity, error) {
+	return providers.Entity{}, errors.New("LockEntity is not supported in file-based store")
+}
+
+// ResolveLinkedAccounts finds the declarative entities linked to a subject at a connection.
+func (f *entityFileBasedStore) ResolveLinkedAccounts(ctx context.Context,
+	idpID, sub string) ([]string, error) {
+	resources, err := f.listEntityResources()
+	if err != nil {
+		return nil, err
+	}
+
+	var matches []string
+	for _, resource := range resources {
+		if len(resource.Entity.SystemAttributes) == 0 {
+			continue
+		}
+		var attrs map[string]interface{}
+		if err := json.Unmarshal(resource.Entity.SystemAttributes, &attrs); err != nil {
+			continue
+		}
+		links, ok := attrs[authnprovidercm.SystemAttrLinkedIDs].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if hasLinkedSubject(links, idpID, sub) {
+			matches = append(matches, resource.Entity.ID)
+		}
+	}
+	return matches, nil
 }
 
 // IdentifyEntity identifies an entity with the given filters by linear search.
@@ -264,6 +298,100 @@ func (f *entityFileBasedStore) GetEntityListByOUIDs(ctx context.Context, categor
 	}
 
 	return applyPagination(entities, limit, offset), nil
+}
+
+// GetEntityListCountBySystemAttributes retrieves the number of entities a system attribute query
+// selects from the file store.
+func (f *entityFileBasedStore) GetEntityListCountBySystemAttributes(ctx context.Context, category string,
+	sysQuery SystemAttributeQuery) (int, error) {
+	entities, err := f.listBySystemAttributes(category, sysQuery)
+	if err != nil {
+		return 0, err
+	}
+	return len(entities), nil
+}
+
+// GetEntityListBySystemAttributes retrieves the entities a system attribute query selects from the
+// file store, with pagination.
+func (f *entityFileBasedStore) GetEntityListBySystemAttributes(ctx context.Context, category string,
+	sysQuery SystemAttributeQuery, limit, offset int) ([]providers.Entity, error) {
+	entities, err := f.listBySystemAttributes(category, sysQuery)
+	if err != nil {
+		return nil, err
+	}
+	return applyPagination(entities, limit, offset), nil
+}
+
+// GetEntityListCountBySystemAttributesAndOUIDs retrieves the number of entities a system attribute query
+// selects within the given organization units from the file store.
+func (f *entityFileBasedStore) GetEntityListCountBySystemAttributesAndOUIDs(ctx context.Context,
+	category string, sysQuery SystemAttributeQuery, ouIDs []string) (int, error) {
+	entities, err := f.listBySystemAttributesInOUs(category, sysQuery, ouIDs)
+	if err != nil {
+		return 0, err
+	}
+	return len(entities), nil
+}
+
+// GetEntityListBySystemAttributesAndOUIDs retrieves the entities a system attribute query selects within
+// the given organization units from the file store, with pagination.
+func (f *entityFileBasedStore) GetEntityListBySystemAttributesAndOUIDs(ctx context.Context,
+	category string, sysQuery SystemAttributeQuery, ouIDs []string, limit, offset int) (
+	[]providers.Entity, error) {
+	entities, err := f.listBySystemAttributesInOUs(category, sysQuery, ouIDs)
+	if err != nil {
+		return nil, err
+	}
+	return applyPagination(entities, limit, offset), nil
+}
+
+// listBySystemAttributesInOUs returns the entities a system attribute query selects that belong to one
+// of the given organization units.
+func (f *entityFileBasedStore) listBySystemAttributesInOUs(category string,
+	sysQuery SystemAttributeQuery, ouIDs []string) ([]providers.Entity, error) {
+	entities, err := f.listBySystemAttributes(category, sysQuery)
+	if err != nil {
+		return nil, err
+	}
+
+	ouIDSet := make(map[string]struct{}, len(ouIDs))
+	for _, id := range ouIDs {
+		ouIDSet[id] = struct{}{}
+	}
+	inOUs := make([]providers.Entity, 0, len(entities))
+	for _, e := range entities {
+		if _, ok := ouIDSet[e.OUID]; ok {
+			inOUs = append(inOUs, e)
+		}
+	}
+	return inOUs, nil
+}
+
+// listBySystemAttributes returns the entities of a category that a system attribute query selects. The
+// system attribute values are matched against the system attributes only, and the other filters the
+// way the list filters match them.
+func (f *entityFileBasedStore) listBySystemAttributes(category string,
+	sysQuery SystemAttributeQuery) ([]providers.Entity, error) {
+	resources, err := f.listEntityResources()
+	if err != nil {
+		return nil, err
+	}
+
+	entities := make([]providers.Entity, 0)
+	for _, resource := range resources {
+		if string(resource.Entity.Category) != category {
+			continue
+		}
+		if len(sysQuery.SystemAttributes) == 0 ||
+			!matchesFilters(resource.Entity.SystemAttributes, sysQuery.SystemAttributes) {
+			continue
+		}
+		combined := mergeJSONObjects(resource.Entity.Attributes, resource.Entity.SystemAttributes)
+		if matchesFilters(combined, sysQuery.Attributes) {
+			entities = append(entities, resource.Entity)
+		}
+	}
+	return entities, nil
 }
 
 // GetGroupCountForEntity returns 0 for file-based store (groups are for mutable entities only).
@@ -451,12 +579,27 @@ func matchesFilters(attributes json.RawMessage, filters map[string]interface{}) 
 
 	for key, expected := range filters {
 		value, ok := getNestedValue(attrsMap, key)
-		if !ok || !valuesEqual(value, expected) {
+		if !ok || !matchesValue(value, expected) {
 			return false
 		}
 	}
 
 	return true
+}
+
+// matchesValue reports whether an attribute value matches a filter value. An array matches when
+// any of its elements does, the same way the DB store indexes each array element separately.
+func matchesValue(value interface{}, expected interface{}) bool {
+	items, ok := value.([]interface{})
+	if !ok {
+		return valuesEqual(value, expected)
+	}
+	for _, item := range items {
+		if valuesEqual(item, expected) {
+			return true
+		}
+	}
+	return false
 }
 
 func getNestedValue(data map[string]interface{}, key string) (interface{}, bool) {

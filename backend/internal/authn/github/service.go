@@ -134,8 +134,7 @@ func (g *githubOAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpI
 }
 
 // Authenticate performs the full GitHub OAuth authentication flow: exchanges the code for a token,
-// fetches user info, and resolves the internal user.
-// A missing internal user is NOT an error — the caller decides how to handle it.
+// fetches user info, and builds the federated token. The entity is resolved later through recorded links.
 func (g *githubOAuthAuthnService) Authenticate(ctx context.Context, idpID string,
 	authzData authncm.AuthorizationData) (*authncm.AuthnResult, *tidcommon.ServiceError) {
 	logger := g.logger.With(log.String("idpId", idpID))
@@ -166,7 +165,7 @@ func (g *githubOAuthAuthnService) Authenticate(ctx context.Context, idpID string
 }
 
 // BuildFederatedAuthResult delegates to the underlying OAuth service, which applies attribute mapping
-// and account-linking resolution uniformly for all federated authenticators.
+// uniformly for all federated authenticators.
 func (g *githubOAuthAuthnService) BuildFederatedAuthResult(ctx context.Context, idpID, sub string,
 	claims map[string]interface{}) (*authncm.AuthnResult, *tidcommon.ServiceError) {
 	return g.internal.BuildFederatedAuthResult(ctx, idpID, sub, claims)

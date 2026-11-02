@@ -132,6 +132,16 @@ describe('DashboardLayout', () => {
     expect(screen.getByText('navigation:categories.resources')).toBeInTheDocument();
   });
 
+  // Deploying to gateways is a control plane's: this console, which every other server serves, offers
+  // no way to it.
+  it('offers no Deploy', () => {
+    render(<DashboardLayout />);
+
+    expect(screen.queryByTestId('header-deploy')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /deploy/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', {name: /deploy/i})).not.toBeInTheDocument();
+  });
+
   it('renders navigation items', () => {
     render(<DashboardLayout />);
 
@@ -141,6 +151,20 @@ describe('DashboardLayout', () => {
     expect(screen.getByText('navigation:pages.applications')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.connections')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.flows')).toBeInTheDocument();
+  });
+
+  it.each([false, true])('keeps navigation icon sizes consistent when collapseSidebar is %s', (collapseSidebar) => {
+    render(<DashboardLayout collapseSidebar={collapseSidebar} />);
+
+    const applicationIcon = screen.getByRole('button', {name: 'navigation:pages.applications'}).querySelector('svg');
+    expect(applicationIcon).toBeInTheDocument();
+
+    const navigationIcons = screen.getByRole('navigation').querySelectorAll('.MuiListItemIcon-root svg');
+    expect(navigationIcons.length).toBeGreaterThan(0);
+    navigationIcons.forEach((icon) => {
+      expect(icon).toHaveAttribute('width', applicationIcon?.getAttribute('width'));
+      expect(icon).toHaveAttribute('height', applicationIcon?.getAttribute('height'));
+    });
   });
 
   it('renders footer', () => {
@@ -157,11 +181,11 @@ describe('DashboardLayout', () => {
     render(<DashboardLayout />);
 
     // Open the user menu first
-    const userMenuTrigger = screen.getByLabelText('Test User');
+    const userMenuTrigger = screen.getByLabelText('Account');
     await user.click(userMenuTrigger);
 
     // Click sign out menu item
-    const signOutButton = await screen.findByText('common:userMenu.signOut');
+    const signOutButton = await screen.findByText('common:actions.signOut');
     await user.click(signOutButton);
 
     await waitFor(() => {
@@ -178,11 +202,11 @@ describe('DashboardLayout', () => {
     render(<DashboardLayout />);
 
     // Open the user menu first
-    const userMenuTrigger = screen.getByLabelText('Test User');
+    const userMenuTrigger = screen.getByLabelText('Account');
     await user.click(userMenuTrigger);
 
     // Click sign out menu item
-    const signOutButton = await screen.findByText('common:userMenu.signOut');
+    const signOutButton = await screen.findByText('common:actions.signOut');
     await user.click(signOutButton);
 
     await waitFor(() => {
@@ -206,6 +230,12 @@ describe('DashboardLayout', () => {
     expect(avatarImages.length).toBeGreaterThan(0);
   });
 
+  it('renders two-letter initials in the account menu when there is no profile picture', () => {
+    render(<DashboardLayout />);
+
+    expect(screen.getAllByText('TU').length).toBeGreaterThan(0);
+  });
+
   it('renders with fallback values when user data is missing', () => {
     mockUserData.mockReturnValue(null);
 
@@ -226,7 +256,7 @@ describe('DashboardLayout', () => {
     const user = userEvent.setup();
     render(<DashboardLayout />);
 
-    const userMenuTrigger = screen.getByLabelText('Test User');
+    const userMenuTrigger = screen.getByLabelText('Account');
     await user.click(userMenuTrigger);
 
     const welcomeItem = await screen.findByText('common:userMenu.welcome');
@@ -261,10 +291,10 @@ describe('DashboardLayout', () => {
 
       render(<DashboardLayout />);
 
-      const userMenuTrigger = screen.getByLabelText('Test User');
+      const userMenuTrigger = screen.getByLabelText('Account');
       await user.click(userMenuTrigger);
 
-      const signOutButton = await screen.findByText('common:userMenu.signOut');
+      const signOutButton = await screen.findByText('common:actions.signOut');
       await user.click(signOutButton);
 
       expect(mockClearSession).toHaveBeenCalled();
@@ -278,10 +308,10 @@ describe('DashboardLayout', () => {
 
       render(<DashboardLayout />);
 
-      const userMenuTrigger = screen.getByLabelText('Test User');
+      const userMenuTrigger = screen.getByLabelText('Account');
       await user.click(userMenuTrigger);
 
-      const signOutButton = await screen.findByText('common:userMenu.signOut');
+      const signOutButton = await screen.findByText('common:actions.signOut');
       await user.click(signOutButton);
 
       expect(mockClearSession).toHaveBeenCalled();
@@ -299,10 +329,10 @@ describe('DashboardLayout', () => {
 
       render(<DashboardLayout />);
 
-      const userMenuTrigger = screen.getByLabelText('Test User');
+      const userMenuTrigger = screen.getByLabelText('Account');
       await user.click(userMenuTrigger);
 
-      const signOutButton = await screen.findByText('common:userMenu.signOut');
+      const signOutButton = await screen.findByText('common:actions.signOut');
       await user.click(signOutButton);
 
       expect(mockLoggerError).toHaveBeenCalledWith(expect.stringContaining('Failed to clear local session'), {

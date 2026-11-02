@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
+	"slices"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -16,7 +18,10 @@ import (
 
 	entitypkg "github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/sharing"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -25,7 +30,9 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernancemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
@@ -70,19 +77,19 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 
 		entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 		entityTypeMock.
-			On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+			On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 			Return(&entitytype.EntityType{
 				OUID: parentOU,
 			}, (*tidcommon.ServiceError)(nil)).
 			Once()
 
 		return &userService{
-				ouService:         ouServiceMock,
-				entityTypeService: entityTypeMock,
-			}, testMocks{
-				ouService:         ouServiceMock,
-				entityTypeService: entityTypeMock,
-			}
+			ouService:         ouServiceMock,
+			entityTypeService: entityTypeMock,
+		}, testMocks{
+			ouService:         ouServiceMock,
+			entityTypeService: entityTypeMock,
+		}
 	}
 
 	testCases := []struct {
@@ -122,10 +129,10 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 					Once()
 
 				return &userService{
-						ouService: ouServiceMock,
-					}, testMocks{
-						ouService: ouServiceMock,
-					}
+					ouService: ouServiceMock,
+				}, testMocks{
+					ouService: ouServiceMock,
+				}
 			},
 			expectedErr: &ErrorOrganizationUnitNotFound,
 		},
@@ -142,10 +149,10 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 				}).Once()
 
 				return &userService{
-						ouService: ouServiceMock,
-					}, testMocks{
-						ouService: ouServiceMock,
-					}
+					ouService: ouServiceMock,
+				}, testMocks{
+					ouService: ouServiceMock,
+				}
 			},
 			expectedErr: &ErrorOrganizationUnitNotFound,
 		},
@@ -162,10 +169,10 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 				}).Once()
 
 				return &userService{
-						ouService: ouServiceMock,
-					}, testMocks{
-						ouService: ouServiceMock,
-					}
+					ouService: ouServiceMock,
+				}, testMocks{
+					ouService: ouServiceMock,
+				}
 			},
 			expectedErr: &ErrorInvalidOUID,
 		},
@@ -187,19 +194,19 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 
 				entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 				entityTypeMock.
-					On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+					On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{
 						OUID: parentOU,
 					}, (*tidcommon.ServiceError)(nil)).
 					Once()
 
 				return &userService{
-						ouService:         ouServiceMock,
-						entityTypeService: entityTypeMock,
-					}, testMocks{
-						ouService:         ouServiceMock,
-						entityTypeService: entityTypeMock,
-					}
+					ouService:         ouServiceMock,
+					entityTypeService: entityTypeMock,
+				}, testMocks{
+					ouService:         ouServiceMock,
+					entityTypeService: entityTypeMock,
+				}
 			},
 			expectedErr: &ErrorOrganizationUnitMismatch,
 		},
@@ -219,19 +226,19 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 
 				entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 				entityTypeMock.
-					On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+					On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{
 						OUID: parentOU,
 					}, (*tidcommon.ServiceError)(nil)).
 					Once()
 
 				return &userService{
-						ouService:         ouServiceMock,
-						entityTypeService: entityTypeMock,
-					}, testMocks{
-						ouService:         ouServiceMock,
-						entityTypeService: entityTypeMock,
-					}
+					ouService:         ouServiceMock,
+					entityTypeService: entityTypeMock,
+				}, testMocks{
+					ouService:         ouServiceMock,
+					entityTypeService: entityTypeMock,
+				}
 			},
 			expectedErr: nil,
 		},
@@ -266,19 +273,19 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 
 				entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 				entityTypeMock.
-					On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+					On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{
 						OUID: "e5c3aa8a-d7df-46f8-9f3f-bb3245c95d7c",
 					}, (*tidcommon.ServiceError)(nil)).
 					Once()
 
 				return &userService{
-						ouService:         ouServiceMock,
-						entityTypeService: entityTypeMock,
-					}, testMocks{
-						ouService:         ouServiceMock,
-						entityTypeService: entityTypeMock,
-					}
+					ouService:         ouServiceMock,
+					entityTypeService: entityTypeMock,
+				}, testMocks{
+					ouService:         ouServiceMock,
+					entityTypeService: entityTypeMock,
+				}
 			},
 			expectedErr: nil,
 		},
@@ -302,6 +309,24 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 	}
 }
 
+// A filter on the tree path is refused, an organization unit filter and an attribute filter alike,
+// before the organization unit is resolved.
+func TestUserService_GetUsersByPath_RefusesFilters(t *testing.T) {
+	for name, filters := range map[string]map[string]interface{}{
+		"organization unit": {"ouId": "ou-1"},
+		"attribute":         {"username": "alice"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service := &userService{ouService: oumock.NewOrganizationUnitServiceInterfaceMock(t)}
+
+			resp, err := service.GetUsersByPath(context.Background(), "root", 10, 0, filters, false)
+
+			require.Nil(t, resp)
+			require.Equal(t, &ErrorInvalidFilter, err)
+		})
+	}
+}
+
 func TestUserService_GetUsersByPath_HandlesOUServiceErrors(t *testing.T) {
 	testCases := []struct {
 		name        string
@@ -314,7 +339,7 @@ func TestUserService_GetUsersByPath_HandlesOUServiceErrors(t *testing.T) {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.
 					On("GetOrganizationUnitByPath", mock.Anything, "root").
-					Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{
+					Return(oupkg.OrganizationUnit{}, &tidcommon.ServiceError{
 						Type: tidcommon.ClientErrorType,
 						Code: oupkg.ErrorInvalidHandlePath.Code,
 					}).
@@ -327,27 +352,25 @@ func TestUserService_GetUsersByPath_HandlesOUServiceErrors(t *testing.T) {
 			expectedErr: &ErrorInvalidHandlePath,
 		},
 		{
-			name: "ReturnsInvalidLimitWhenListingUsersFails",
+			name: "ReturnsServerErrorWhenListingUsersFails",
 			setup: func(t *testing.T) *userService {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.
 					On("GetOrganizationUnitByPath", mock.Anything, "root").
-					Return(providers.OrganizationUnit{ID: "ou-id"}, (*tidcommon.ServiceError)(nil)).
+					Return(oupkg.OrganizationUnit{ID: "ou-id"}, (*tidcommon.ServiceError)(nil)).
 					Once()
-				ouServiceMock.
-					On("GetOrganizationUnitUsers", mock.Anything, "ou-id", 10, 0, false).
-					Return((*oupkg.UserListResponse)(nil), &tidcommon.ServiceError{
-						Type: tidcommon.ClientErrorType,
-						Code: oupkg.ErrorInvalidLimit.Code,
-					}).
-					Once()
+				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+				storeMock.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryUser, "ou-id",
+					entitypkg.OUEntityScopeAll, 10, 0, (map[string]interface{})(nil)).
+					Return(nil, errors.New("db error")).Once()
 
 				return &userService{
-					ouService:    ouServiceMock,
-					authzService: newAllowAllAuthz(t),
+					ouService:     ouServiceMock,
+					authzService:  newAllowAllAuthz(t),
+					entityService: storeMock,
 				}
 			},
-			expectedErr: &ErrorInvalidLimit,
+			expectedErr: &tidcommon.InternalServerError,
 		},
 	}
 
@@ -368,7 +391,7 @@ func TestUserService_CreateUserByPath_HandlesOUServiceErrors(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.
 		On("GetOrganizationUnitByPath", mock.Anything, "root/engineering").
-		Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{
+		Return(oupkg.OrganizationUnit{}, &tidcommon.ServiceError{
 			Type: tidcommon.ClientErrorType,
 			Code: oupkg.ErrorInvalidHandlePath.Code,
 		}).
@@ -393,7 +416,7 @@ func TestUserService_CreateUser_CallsCreateEntity(t *testing.T) {
 		Once()
 
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+	entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).
 		Once()
 
@@ -402,7 +425,7 @@ func TestUserService_CreateUser_CallsCreateEntity(t *testing.T) {
 	storeMock.
 		On("CreateEntity", mock.Anything, mock.MatchedBy(func(e *providers.Entity) bool {
 			return e.OUID == testOrgID && e.Type == testUserType && e.ID != ""
-		}), mock.Anything).
+		}), mock.Anything, mock.Anything).
 		Return(&providers.Entity{
 			OUID: testOrgID, Type: testUserType,
 			Attributes: json.RawMessage(`{}`),
@@ -417,7 +440,7 @@ func TestUserService_CreateUser_CallsCreateEntity(t *testing.T) {
 		uuidGenerator:     utils.GenerateUUIDv7,
 	}
 
-	user := &User{
+	user := &providers.User{
 		Type:       testUserType,
 		OUID:       testOrgID,
 		Attributes: json.RawMessage(`{}`),
@@ -431,13 +454,65 @@ func TestUserService_CreateUser_CallsCreateEntity(t *testing.T) {
 	storeMock.AssertNumberOfCalls(t, "CreateEntity", 1)
 }
 
+// A user created with a federated link carries it to the entity layer as the linkedIds system
+// attribute, so the user and its link are written together.
+func TestUserService_CreateUser_WritesLinkedAccount(t *testing.T) {
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
+	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
+		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Once()
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything,
+		&providers.LinkedAccount{IdpID: "idp-a", Sub: "sub-1"}).
+		Return(&providers.Entity{Attributes: json.RawMessage(`{}`)}, nil).Once()
+
+	service := &userService{
+		entityService:     storeMock,
+		ouService:         ouServiceMock,
+		entityTypeService: entityTypeMock,
+		authzService:      newAllowAllAuthz(t),
+		uuidGenerator:     utils.GenerateUUIDv7,
+	}
+
+	created, svcErr := service.CreateUser(context.Background(), &providers.User{
+		Type:          testUserType,
+		OUID:          testOrgID,
+		Attributes:    json.RawMessage(`{}`),
+		LinkedAccount: &providers.LinkedAccount{IdpID: "idp-a", Sub: "sub-1"},
+	})
+	require.Nil(t, svcErr)
+	require.NotNil(t, created)
+}
+
+// A federated link missing its connection or subject names nothing, so the create is rejected
+// before anything is written.
+func TestUserService_CreateUser_RejectsIncompleteLinkedAccount(t *testing.T) {
+	for name, link := range map[string]providers.LinkedAccount{
+		"no connection": {Sub: "sub-1"},
+		"no subject":    {IdpID: "idp-a"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service := &userService{}
+
+			created, svcErr := service.CreateUser(context.Background(), &providers.User{
+				Type: testUserType, OUID: testOrgID, LinkedAccount: &link,
+			})
+			require.Nil(t, created)
+			require.NotNil(t, svcErr)
+			require.Equal(t, ErrorInvalidRequestFormat.Code, svcErr.Code)
+		})
+	}
+}
+
 func TestUserService_CreateUser_UUIDGenerationError(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
 		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+	entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{
@@ -449,7 +524,7 @@ func TestUserService_CreateUser_UUIDGenerationError(t *testing.T) {
 		},
 	}
 
-	user := &User{Type: testUserType, OUID: testOrgID}
+	user := &providers.User{Type: testUserType, OUID: testOrgID}
 
 	created, svcErr := service.CreateUser(context.Background(), user)
 	require.Nil(t, created)
@@ -466,14 +541,14 @@ func TestUserService_CreateUser_PropagatesStoreError(t *testing.T) {
 		Once()
 
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+	entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).
 		Once()
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	storeMock.
-		On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+		On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return((*providers.Entity)(nil), storeErr).
 		Once()
 
@@ -485,7 +560,7 @@ func TestUserService_CreateUser_PropagatesStoreError(t *testing.T) {
 		uuidGenerator:     utils.GenerateUUIDv7,
 	}
 
-	user := &User{
+	user := &providers.User{
 		Type:       testUserType,
 		OUID:       testOrgID,
 		Attributes: json.RawMessage(`{}`),
@@ -527,7 +602,7 @@ func TestUserService_UpdateUserCredentials_Validation(t *testing.T) {
 		userStoreMock := entitymock.NewEntityServiceInterfaceMock(t)
 		userStoreMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 		userStoreMock.
-			On("GetEntity", mock.Anything, svcTestUserID1).
+			On("GetEntityProfile", mock.Anything, svcTestUserID1).
 			Return(&providers.Entity{
 				Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: "Person",
 			}, nil).
@@ -561,7 +636,7 @@ func TestUserService_UpdateUserCredentials_UserNotFound(t *testing.T) {
 	userStoreMock := entitymock.NewEntityServiceInterfaceMock(t)
 	userStoreMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	userStoreMock.
-		On("GetEntity", mock.Anything, svcTestUserID1).
+		On("GetEntityProfile", mock.Anything, svcTestUserID1).
 		Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).
 		Once()
 
@@ -580,7 +655,7 @@ func TestUserService_UpdateUserCredentials_Succeeds(t *testing.T) {
 	userStoreMock := entitymock.NewEntityServiceInterfaceMock(t)
 	userStoreMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	userStoreMock.
-		On("GetEntity", mock.Anything, svcTestUserID1).
+		On("GetEntityProfile", mock.Anything, svcTestUserID1).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: "Person",
 		}, nil).
@@ -640,7 +715,7 @@ func TestUserService_UpdateUserCredentials_Rejections(t *testing.T) {
 			userStoreMock := entitymock.NewEntityServiceInterfaceMock(t)
 			userStoreMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 			userStoreMock.
-				On("GetEntity", mock.Anything, svcTestUserID1).
+				On("GetEntityProfile", mock.Anything, svcTestUserID1).
 				Return(&providers.Entity{
 					Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: "Person",
 				}, nil).
@@ -744,6 +819,7 @@ func TestUserService_UpdateUserAttributes_Succeeds(t *testing.T) {
 		entityService:     storeMock,
 		entityTypeService: schemaMock,
 		authzService:      newAllowAllAuthz(t),
+		governance:        activeGovernance(t),
 	}
 
 	newAttrs := json.RawMessage(`{"email":"new@example.com"}`)
@@ -813,6 +889,7 @@ func TestUserService_GetUser_ReturnsUser(t *testing.T) {
 	service := &userService{
 		entityService: storeMock,
 		authzService:  newAllowAllAuthz(t),
+		governance:    activeGovernance(t),
 	}
 
 	user, err := service.GetUser(context.Background(), userID, false)
@@ -836,7 +913,7 @@ func TestUserService_GetUser_WithIncludeDisplay(t *testing.T) {
 	storeMock.On("GetEntity", mock.Anything, userID).Return(expectedEntity, nil).Once()
 
 	mockSchema := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	mockSchema.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
+	mockSchema.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, []string{"employee"}).
 		Return(map[string]string{"employee": "email"}, nil).Once()
 
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
@@ -848,6 +925,7 @@ func TestUserService_GetUser_WithIncludeDisplay(t *testing.T) {
 		authzService:      newAllowAllAuthz(t),
 		entityTypeService: mockSchema,
 		ouService:         ouServiceMock,
+		governance:        activeGovernance(t),
 	}
 
 	user, err := service.GetUser(context.Background(), userID, true)
@@ -861,7 +939,7 @@ func TestUserService_DeleteUser(t *testing.T) {
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-	storeMock.On("GetEntity", mock.Anything, userID).
+	storeMock.On("GetEntityProfile", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 		}, nil).Once()
@@ -871,6 +949,7 @@ func TestUserService_DeleteUser(t *testing.T) {
 		entityService:      storeMock,
 		authzService:       newAllowAllAuthz(t),
 		dependencyRegistry: newNoBlockingDepsRegistry(),
+		sharingService:     newPurgingSharing(t, userID),
 	}
 
 	err := service.DeleteUser(context.Background(), userID)
@@ -880,14 +959,15 @@ func TestUserService_DeleteUser(t *testing.T) {
 
 func TestUserService_UpdateUser(t *testing.T) {
 	userID := svcTestUserID1
-	updatedUser := User{ID: userID, OUID: testOrgID, Type: testUserType,
-		Attributes: json.RawMessage(`{"updated":"true"}`)}
+	updatedUser := providers.User{ID: userID, OUID: testOrgID, Type: testUserType,
+		Attributes: json.RawMessage(`{"updated":"true"}`),
+		Status:     &providers.AccessStatusReport{Value: providers.AccessStatusSuspended}}
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 
 	// Mock GetUser pre-fetch for authz check
-	storeMock.On("GetEntity", mock.Anything, userID).
+	storeMock.On("GetEntityProfile", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID, Type: testUserType,
 		}, nil).Once()
@@ -906,7 +986,7 @@ func TestUserService_UpdateUser(t *testing.T) {
 		Once()
 
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+	entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).
 		Once()
 	entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
@@ -918,18 +998,77 @@ func TestUserService_UpdateUser(t *testing.T) {
 		ouService:         ouServiceMock,
 		entityTypeService: entityTypeMock,
 		authzService:      newAllowAllAuthz(t),
+		governance:        activeGovernance(t),
 	}
 
 	resp, err := service.UpdateUser(context.Background(), userID, &updatedUser)
-	_ = resp
 	require.Nil(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Status)
+	require.Equal(t, providers.AccessStatusActive, resp.Status.Value, "a status in the request must not be echoed")
 	storeMock.AssertNumberOfCalls(t, "UpdateEntity", 1)
+}
+
+func TestUserService_UpdateUser_ReportsTheGovernedStatus(t *testing.T) {
+	held := identitygovernance.AccessRead{
+		Status: providers.AccessStatusReport{Value: providers.AccessStatusSuspended,
+			Details: &providers.AccessStatusDetails{Reason: providers.AccessHoldReasonAdministrativeSuspension,
+				Since: "2026-10-21T08:00:00Z", OperatorNote: "Under investigation"}},
+		LastLoginAt: "2026-10-20T08:00:00Z",
+	}
+	active := identitygovernance.AccessRead{Status: providers.AccessStatusReport{Value: providers.AccessStatusActive}}
+	cases := []struct {
+		name      string
+		requested providers.AccessStatus
+		read      identitygovernance.AccessRead
+	}{
+		{name: "a held user", requested: providers.AccessStatusActive, read: held},
+		{name: "an active user", requested: providers.AccessStatusSuspended, read: active},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			userID := svcTestUserID1
+			request := providers.User{ID: userID, OUID: testOrgID, Type: testUserType,
+				Attributes: json.RawMessage(`{"updated":"true"}`),
+				Status:     &providers.AccessStatusReport{Value: tc.requested}}
+			updated := &providers.Entity{Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
+				Type: testUserType, Attributes: request.Attributes}
+
+			storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+			storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
+			storeMock.On("GetEntityProfile", mock.Anything, userID).Return(&providers.Entity{
+				Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID, Type: testUserType,
+			}, nil).Once()
+			storeMock.On("UpdateEntity", mock.Anything, userID, mock.Anything).Return(updated, nil).Once()
+			ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+			ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
+				Return(true, (*tidcommon.ServiceError)(nil)).Once()
+			entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+			entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
+				Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Once()
+			entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+				entitytype.AttributeFilter{AllowCredential: true}).
+				Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Once()
+			governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(t)
+			governance.EXPECT().ReadEntityAccess(mock.Anything, *updated).
+				Return(tc.read).Once()
+			service := &userService{entityService: storeMock, ouService: ouServiceMock,
+				entityTypeService: entityTypeMock, authzService: newAllowAllAuthz(t), governance: governance}
+
+			resp, svcErr := service.UpdateUser(context.Background(), userID, &request)
+
+			require.Nil(t, svcErr)
+			require.NotNil(t, resp.Status)
+			require.Equal(t, tc.read.Status, *resp.Status)
+			require.Equal(t, tc.read.LastLoginAt, resp.LastLoginAt)
+		})
+	}
 }
 
 func TestUserService_UpdateUser_RejectsCredentialAttributes(t *testing.T) {
 	userID := svcTestUserID1
 
-	updatedUser := User{
+	updatedUser := providers.User{
 		ID:         userID,
 		OUID:       testOrgID,
 		Type:       testUserType,
@@ -941,14 +1080,14 @@ func TestUserService_UpdateUser_RejectsCredentialAttributes(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 
-	storeMock.On("GetEntity", mock.Anything, userID).
+	storeMock.On("GetEntityProfile", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID, Type: testUserType,
 		}, nil).Once()
 
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
 		Return(true, (*tidcommon.ServiceError)(nil)).Once()
-	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+	entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Once()
 	entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
 		entitytype.AttributeFilter{AllowCredential: true}).
@@ -992,13 +1131,13 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 			) {
 				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
 					Return(true, (*tidcommon.ServiceError)(nil)).Maybe()
-				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+				entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: testOrgID},
 						(*tidcommon.ServiceError)(nil)).Maybe()
 				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
 					entitytype.AttributeFilter{AllowCredential: true}).
 					Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser,
 						ID:       userID,
@@ -1020,13 +1159,13 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 			) {
 				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
 					Return(true, (*tidcommon.ServiceError)(nil)).Maybe()
-				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+				entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: testOrgID},
 						(*tidcommon.ServiceError)(nil)).Maybe()
 				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
 					entitytype.AttributeFilter{AllowCredential: true}).
 					Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser,
 						ID:       userID,
@@ -1048,13 +1187,13 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 			) {
 				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
 					Return(true, (*tidcommon.ServiceError)(nil)).Once()
-				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+				entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: testOrgID},
 						(*tidcommon.ServiceError)(nil)).Once()
 				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
 					entitytype.AttributeFilter{AllowCredential: true}).
 					Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Once()
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser,
 						ID:       userID,
@@ -1080,7 +1219,7 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 				ouServiceMock *oumock.OrganizationUnitServiceInterfaceMock,
 				entityTypeMock *entitytypemock.EntityTypeServiceInterfaceMock,
 			) {
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser,
 						ID:       userID,
@@ -1089,7 +1228,7 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 					}, nil).Once()
 				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
 					Return(true, (*tidcommon.ServiceError)(nil)).Once()
-				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+				entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: testOrgID},
 						(*tidcommon.ServiceError)(nil)).Once()
 				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
@@ -1106,7 +1245,7 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 				ouServiceMock *oumock.OrganizationUnitServiceInterfaceMock,
 				entityTypeMock *entitytypemock.EntityTypeServiceInterfaceMock,
 			) {
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser,
 						ID:       userID,
@@ -1115,7 +1254,7 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 					}, nil).Once()
 				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
 					Return(true, (*tidcommon.ServiceError)(nil)).Once()
-				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+				entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: testOrgID},
 						(*tidcommon.ServiceError)(nil)).Once()
 				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
@@ -1135,7 +1274,7 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 				ouServiceMock *oumock.OrganizationUnitServiceInterfaceMock,
 				entityTypeMock *entitytypemock.EntityTypeServiceInterfaceMock,
 			) {
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser,
 						ID:       userID,
@@ -1144,7 +1283,7 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 					}, nil).Once()
 				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
 					Return(true, (*tidcommon.ServiceError)(nil)).Once()
-				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+				entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: testOrgID},
 						(*tidcommon.ServiceError)(nil)).Once()
 				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
@@ -1164,14 +1303,14 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 			) {
 				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
 					Return(true, (*tidcommon.ServiceError)(nil)).Once()
-				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+				entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: testOrgID},
 						(*tidcommon.ServiceError)(nil)).Once()
 				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
 					entitytype.AttributeFilter{AllowCredential: true}).
 					Return([]entitytype.AttributeInfo{{Attribute: "password"}},
 						(*tidcommon.ServiceError)(nil)).Once()
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser,
 						ID:       userID,
@@ -1194,7 +1333,7 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 				_ *oumock.OrganizationUnitServiceInterfaceMock,
 				_ *entitytypemock.EntityTypeServiceInterfaceMock,
 			) {
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
 			},
 			expectedError: &ErrorUserNotFound,
@@ -1207,7 +1346,7 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 				_ *oumock.OrganizationUnitServiceInterfaceMock,
 				_ *entitytypemock.EntityTypeServiceInterfaceMock,
 			) {
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return((*providers.Entity)(nil), errors.New("db connection lost")).Once()
 			},
 			expectedError: &tidcommon.InternalServerError,
@@ -1216,7 +1355,7 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			updatedUser := User{
+			updatedUser := providers.User{
 				ID:         userID,
 				OUID:       testOrgID,
 				Type:       testUserType,
@@ -1236,6 +1375,7 @@ func TestUserService_UpdateUser_ErrorPaths(t *testing.T) {
 				ouService:         ouServiceMock,
 				entityTypeService: entityTypeMock,
 				authzService:      newAllowAllAuthz(t),
+				governance:        activeGovernance(t),
 			}
 
 			resp, err := service.UpdateUser(ctx, userID, &updatedUser)
@@ -1436,7 +1576,7 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 			entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 			authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 			// The existing user always lives in existingOU.
-			storeMock.On("GetEntity", mock.Anything, userID).
+			storeMock.On("GetEntityProfile", mock.Anything, userID).
 				Return(&providers.Entity{
 					Category: providers.EntityCategoryUser, ID: userID,
 					OUID: existingOU, Type: testUserType,
@@ -1448,7 +1588,7 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 			if tt.expectedErrorCode == "" {
 				ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, mock.Anything).
 					Return(true, (*tidcommon.ServiceError)(nil)).Maybe()
-				entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+				entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 					Return(&entitytype.EntityType{OUID: existingOU},
 						(*tidcommon.ServiceError)(nil)).Maybe()
 				entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
@@ -1470,9 +1610,11 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 				ouService:         ouServiceMock,
 				entityTypeService: entityTypeMock,
 				authzService:      authzMock,
+				governance:        activeGovernance(t),
+				sharingService:    unsharedSharing(t),
 			}
 
-			updatedUser := User{
+			updatedUser := providers.User{
 				ID:         userID,
 				OUID:       tt.userOU,
 				Type:       testUserType,
@@ -1501,7 +1643,7 @@ func TestUserService_UpdateUser_RejectsCredentialInMixedAttributes(t *testing.T)
 	userID := svcTestUserID123
 	testOU := testOrgID
 
-	updatedUser := User{
+	updatedUser := providers.User{
 		ID:   userID,
 		Type: testUserType,
 		OUID: testOU,
@@ -1517,17 +1659,17 @@ func TestUserService_UpdateUser_RejectsCredentialInMixedAttributes(t *testing.T)
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 
-	storeMock.On("GetEntity", mock.Anything, userID).
+	storeMock.On("GetEntityProfile", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: testOU, Type: testUserType,
 		}, nil).Once()
 
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOU).
 		Return(true, (*tidcommon.ServiceError)(nil)).Once()
-	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+	entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 		Return(&entitytype.EntityType{
-			Name: testUserType,
-			OUID: testOU,
+			Handle: testUserType,
+			OUID:   testOU,
 		}, (*tidcommon.ServiceError)(nil)).Once()
 	entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
 		entitytype.AttributeFilter{AllowCredential: true}).
@@ -1563,6 +1705,7 @@ func TestUserService_GetUserList(t *testing.T) {
 	service := &userService{
 		entityService: storeMock,
 		authzService:  newAllowAllAuthz(t),
+		governance:    activeGovernance(t),
 	}
 
 	resp, err := service.GetUserList(context.Background(), limit, offset, filters, false)
@@ -1570,6 +1713,7 @@ func TestUserService_GetUserList(t *testing.T) {
 	require.NotNil(t, resp)
 	require.Equal(t, 5, resp.TotalResults)
 	require.Len(t, resp.Users, 1)
+	require.True(t, *resp.Users[0].IsOwnedByOU, "an unfiltered list holds every user in the unit that owns it")
 }
 
 func TestUserService_GetUserList_ScopedByOUIDs(t *testing.T) {
@@ -1593,6 +1737,7 @@ func TestUserService_GetUserList_ScopedByOUIDs(t *testing.T) {
 	service := &userService{
 		entityService: storeMock,
 		authzService:  authzMock,
+		governance:    activeGovernance(t),
 	}
 
 	resp, err := service.GetUserList(context.Background(), limit, offset, filters, false)
@@ -1600,6 +1745,7 @@ func TestUserService_GetUserList_ScopedByOUIDs(t *testing.T) {
 	require.NotNil(t, resp)
 	require.Equal(t, 3, resp.TotalResults)
 	require.Len(t, resp.Users, 1)
+	require.True(t, *resp.Users[0].IsOwnedByOU)
 }
 
 func TestUserService_GetUserList_EmptyOUIDs(t *testing.T) {
@@ -1623,13 +1769,134 @@ func TestUserService_GetUserList_EmptyOUIDs(t *testing.T) {
 	require.Empty(t, resp.Users)
 }
 
+// ouFilteredService returns a service whose entity service answers the page request for testOrgID with
+// page.
+func ouFilteredService(
+	t *testing.T, authz sysauthz.SystemAuthorizationServiceInterface, page *entitypkg.OUEntityPage,
+) *userService {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryUser, testOrgID,
+		entitypkg.OUEntityScopeAll, 2, 0, map[string]interface{}{}).Return(page, nil).Once()
+	return &userService{
+		entityService: storeMock,
+		authzService:  authz,
+		governance:    activeGovernance(t),
+	}
+}
+
+func TestUserService_GetUserList_FilteredByOU_ListsOwnedThenShared(t *testing.T) {
+	service := ouFilteredService(t, newAllowAllAuthz(t), &entitypkg.OUEntityPage{
+		Owned:        []providers.Entity{{ID: "owned-1", OUID: testOrgID}},
+		Shared:       []providers.Entity{{ID: "shared-1", OUID: "other-ou"}},
+		TotalResults: 3,
+	})
+
+	resp, err := service.GetUserList(context.Background(), 2, 0,
+		map[string]interface{}{"ouId": testOrgID}, false)
+
+	require.Nil(t, err)
+	require.Equal(t, 3, resp.TotalResults)
+	require.Len(t, resp.Users, 2)
+	require.Equal(t, "owned-1", resp.Users[0].ID)
+	require.True(t, *resp.Users[0].IsOwnedByOU)
+	require.Equal(t, "shared-1", resp.Users[1].ID)
+	require.False(t, *resp.Users[1].IsOwnedByOU)
+	require.Len(t, resp.Links, 2)
+	for _, link := range resp.Links {
+		require.Contains(t, link.Href, "filter=ouId+eq+%22"+testOrgID+"%22",
+			"link %q has to list the same organization unit", link.Rel)
+	}
+}
+
+func TestUserService_GetUserList_FilteredByOU_ScopedCallerWithAccess(t *testing.T) {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{IDs: []string{"another-ou", testOrgID}}, nil).Once()
+	service := ouFilteredService(t, authzMock, &entitypkg.OUEntityPage{
+		Owned:        []providers.Entity{{ID: "owned-1", OUID: testOrgID}},
+		Shared:       []providers.Entity{},
+		TotalResults: 1,
+	})
+
+	resp, err := service.GetUserList(context.Background(), 2, 0,
+		map[string]interface{}{"ouId": testOrgID}, false)
+
+	require.Nil(t, err)
+	require.Equal(t, 1, resp.TotalResults)
+	require.Len(t, resp.Users, 1)
+}
+
+func TestUserService_GetUserList_FilteredByOU_CallerWithoutAccessSeesNone(t *testing.T) {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{IDs: []string{"another-ou"}}, nil).Once()
+	service := &userService{
+		entityService: entitymock.NewEntityServiceInterfaceMock(t),
+		authzService:  authzMock,
+	}
+
+	resp, err := service.GetUserList(context.Background(), 10, 0,
+		map[string]interface{}{"ouId": testOrgID}, false)
+
+	require.Nil(t, err)
+	require.Zero(t, resp.TotalResults)
+	require.Empty(t, resp.Users)
+}
+
+func TestUserService_GetUserList_FilteredByOU_Errors(t *testing.T) {
+	tests := []struct {
+		name    string
+		filters map[string]interface{}
+		setup   func(t *testing.T) *userService
+		wantErr *tidcommon.ServiceError
+	}{
+		{
+			name:    "an organization unit that is not a string",
+			filters: map[string]interface{}{"ouId": int64(5)},
+			setup: func(t *testing.T) *userService {
+				return &userService{authzService: sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)}
+			},
+			wantErr: &ErrorInvalidFilter,
+		},
+		{
+			name:    "an organization unit with another condition",
+			filters: map[string]interface{}{"ouId": testOrgID, "username": "alice"},
+			setup: func(t *testing.T) *userService {
+				return &userService{authzService: sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)}
+			},
+			wantErr: &ErrorInvalidFilter,
+		},
+		{
+			name:    "the page read fails",
+			filters: map[string]interface{}{"ouId": testOrgID},
+			setup: func(t *testing.T) *userService {
+				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+				storeMock.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryUser, testOrgID,
+					entitypkg.OUEntityScopeAll, 10, 0, map[string]interface{}{}).
+					Return(nil, errors.New("db error")).Once()
+				return &userService{entityService: storeMock, authzService: newAllowAllAuthz(t)}
+			},
+			wantErr: &tidcommon.InternalServerError,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := tc.setup(t).GetUserList(context.Background(), 10, 0, tc.filters, false)
+
+			require.Nil(t, resp)
+			require.NotNil(t, err)
+			require.Equal(t, tc.wantErr.Code, err.Code)
+		})
+	}
+}
+
 func TestUserService_GetUserGroups(t *testing.T) {
 	mockStore := entitymock.NewEntityServiceInterfaceMock(t)
 	mockStore.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	userID := svcTestUserID123
 	limit, offset := 10, 0
 
-	mockStore.On("GetEntity", mock.Anything, userID).
+	mockStore.On("GetEntityProfile", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 		}, nil).Once()
@@ -1670,7 +1937,7 @@ func TestUserService_GetUserGroups_ErrorCases(t *testing.T) {
 	})
 
 	t.Run("UserNotFound", func(t *testing.T) {
-		mockStore.On("GetEntity", mock.Anything, "u1").
+		mockStore.On("GetEntityProfile", mock.Anything, "u1").
 			Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
 		_, err := service.GetUserGroups(ctx, "u1", 10, 0)
 		require.NotNil(t, err)
@@ -1678,14 +1945,15 @@ func TestUserService_GetUserGroups_ErrorCases(t *testing.T) {
 	})
 
 	t.Run("StoreErrorOnGetUser", func(t *testing.T) {
-		mockStore.On("GetEntity", mock.Anything, "u1").Return((*providers.Entity)(nil), errors.New("db error")).Once()
+		mockStore.On("GetEntityProfile", mock.Anything, "u1").
+			Return((*providers.Entity)(nil), errors.New("db error")).Once()
 		_, err := service.GetUserGroups(ctx, "u1", 10, 0)
 		require.NotNil(t, err)
 		require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 	})
 
 	t.Run("StoreErrorOnCount", func(t *testing.T) {
-		mockStore.On("GetEntity", mock.Anything, "u1").
+		mockStore.On("GetEntityProfile", mock.Anything, "u1").
 			Return(&providers.Entity{
 				Category: providers.EntityCategoryUser, ID: "u1", OUID: testOrgID,
 			}, nil).Once()
@@ -1748,7 +2016,7 @@ func TestUserService_CRUD_ErrorCases(t *testing.T) {
 	})
 
 	t.Run("DeleteUser_NotFound", func(t *testing.T) {
-		mockStore.On("GetEntity", mock.Anything, "u1").
+		mockStore.On("GetEntityProfile", mock.Anything, "u1").
 			Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
 		err := service.DeleteUser(ctx, "u1")
 		require.NotNil(t, err)
@@ -1756,13 +2024,13 @@ func TestUserService_CRUD_ErrorCases(t *testing.T) {
 	})
 
 	t.Run("CreateUser_MissingType", func(t *testing.T) {
-		_, err := service.CreateUser(ctx, &User{ID: "u1"})
+		_, err := service.CreateUser(ctx, &providers.User{ID: "u1"})
 		require.NotNil(t, err)
 		require.Equal(t, ErrorEntityTypeNotFound.Code, err.Code)
 	})
 
 	t.Run("UpdateUser_MissingID", func(t *testing.T) {
-		_, err := service.UpdateUser(ctx, "", &User{})
+		_, err := service.UpdateUser(ctx, "", &providers.User{})
 		require.NotNil(t, err)
 		require.Equal(t, ErrorMissingUserID.Code, err.Code)
 	})
@@ -1770,89 +2038,78 @@ func TestUserService_CRUD_ErrorCases(t *testing.T) {
 
 func TestUserService_GetUsersByPath(t *testing.T) {
 	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(t)
-	service := &userService{ouService: mockOU, authzService: newAllowAllAuthz(t)}
-	ctx := context.Background()
-
 	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").
-		Return(providers.OrganizationUnit{ID: "ou-1"}, nil).
+		Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).
 		Once()
-	mockOU.On("GetOrganizationUnitUsers", mock.Anything, "ou-1", 10, 0, false).Return(&oupkg.UserListResponse{
-		TotalResults: 20,
-		Users:        []oupkg.User{{ID: "u1"}},
-	}, nil).Once()
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryUser, "ou-1",
+		entitypkg.OUEntityScopeAll, 10, 0, (map[string]interface{})(nil)).
+		Return(&entitypkg.OUEntityPage{
+			Owned:        []providers.Entity{{ID: "u1", OUID: "ou-1"}},
+			Shared:       []providers.Entity{{ID: "u2", OUID: "ou-2"}},
+			TotalResults: 20,
+		}, nil).Once()
+	service := &userService{
+		ouService:     mockOU,
+		authzService:  newAllowAllAuthz(t),
+		entityService: storeMock,
+		governance:    activeGovernance(t),
+	}
 
-	resp, err := service.GetUsersByPath(ctx, "root", 10, 0, nil, false)
+	resp, err := service.GetUsersByPath(context.Background(), "root", 10, 0, nil, false)
+
 	require.Nil(t, err)
 	require.Equal(t, 20, resp.TotalResults)
+	require.Equal(t, 2, resp.Count)
+	require.Equal(t, "u1", resp.Users[0].ID)
+	require.True(t, *resp.Users[0].IsOwnedByOU)
+	require.Equal(t, "u2", resp.Users[1].ID)
+	require.Equal(t, "ou-1", resp.Users[1].OUID, "a shared user is listed under the unit it is shared into")
+	require.False(t, *resp.Users[1].IsOwnedByOU)
 	require.NotEmpty(t, resp.Links)
+	require.Contains(t, resp.Links[0].Href, "/users/tree/root")
 }
 
 func TestUserService_GetUsersByPath_WithIncludeDisplay(t *testing.T) {
 	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(t)
-	mockStore := entitymock.NewEntityServiceInterfaceMock(t)
+	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").
+		Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).Once()
+	mockOU.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{"ou-1"}).
+		Return(map[string]string{"ou-1": "root"}, nil).Once()
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryUser, "ou-1",
+		entitypkg.OUEntityScopeAll, 10, 0, (map[string]interface{})(nil)).
+		Return(&entitypkg.OUEntityPage{
+			Owned: []providers.Entity{{ID: "u1", OUID: "ou-1", Type: "employee",
+				Attributes: json.RawMessage(`{"email":"alice@example.com"}`)}},
+			Shared: []providers.Entity{{ID: "u2", OUID: "ou-2", Type: "employee",
+				Attributes: json.RawMessage(`{"email":"bob@example.com"}`)}},
+			TotalResults: 2,
+		}, nil).Once()
 	mockSchema := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	mockSchema.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, []string{"employee"}).
+		Return(map[string]string{"employee": "email"}, nil).Once()
 	service := &userService{
 		ouService:         mockOU,
 		authzService:      newAllowAllAuthz(t),
-		entityService:     mockStore,
+		entityService:     storeMock,
 		entityTypeService: mockSchema,
+		governance:        activeGovernance(t),
 	}
-	ctx := context.Background()
 
-	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").
-		Return(providers.OrganizationUnit{ID: "ou-1"}, nil).Once()
-	mockOU.On("GetOrganizationUnitUsers", mock.Anything, "ou-1", 10, 0, false).
-		Return(&oupkg.UserListResponse{
-			TotalResults: 2,
-			Users:        []oupkg.User{{ID: "u1"}},
-		}, nil).Once()
-	mockStore.On("GetEntitiesByIDs", mock.Anything, []string{"u1"}).
-		Return([]providers.Entity{{
-			ID:         "u1",
-			Type:       "employee",
-			Attributes: json.RawMessage(`{"email":"alice@example.com"}`),
-		}}, nil).Once()
-	mockSchema.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
-		Return(map[string]string{"employee": "email"}, nil).Once()
+	resp, err := service.GetUsersByPath(context.Background(), "root", 10, 0, nil, true)
 
-	resp, err := service.GetUsersByPath(ctx, "root", 10, 0, nil, true)
 	require.Nil(t, err)
 	require.Equal(t, 2, resp.TotalResults)
 	require.Equal(t, "alice@example.com", resp.Users[0].Display)
-}
-
-func TestUserService_GetUsersByPath_WithIncludeDisplay_BatchFetchError(t *testing.T) {
-	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(t)
-	mockStore := entitymock.NewEntityServiceInterfaceMock(t)
-	service := &userService{
-		ouService:     mockOU,
-		authzService:  newAllowAllAuthz(t),
-		entityService: mockStore,
-	}
-	ctx := context.Background()
-
-	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").
-		Return(providers.OrganizationUnit{ID: "ou-1"}, nil).Once()
-	mockOU.On("GetOrganizationUnitUsers", mock.Anything, "ou-1", 10, 0, false).
-		Return(&oupkg.UserListResponse{
-			TotalResults: 1,
-			StartIndex:   1,
-			Count:        1,
-			Users:        []oupkg.User{{ID: "u1"}},
-		}, nil).Once()
-	mockStore.On("GetEntitiesByIDs", mock.Anything, []string{"u1"}).
-		Return([]providers.Entity(nil), errors.New("db connection lost")).Once()
-
-	resp, svcErr := service.GetUsersByPath(ctx, "root", 10, 0, nil, true)
-	require.Nil(t, svcErr)
-	require.Equal(t, 1, resp.TotalResults)
-	// Falls back to bare ID when batch fetch fails
-	require.Equal(t, "u1", resp.Users[0].ID)
-	require.Empty(t, resp.Users[0].Display)
+	require.Equal(t, "root", resp.Users[0].OUHandle)
+	require.Equal(t, "bob@example.com", resp.Users[1].Display)
+	require.Equal(t, "ou-1", resp.Users[1].OUID, "a shared user shows the unit it is shared into")
+	require.Equal(t, "root", resp.Users[1].OUHandle)
 }
 
 func TestNewFunctions(t *testing.T) {
-	svc := newUserService(nil, nil, nil, nil)
+	svc := newUserService(nil, nil, nil, nil, nil, nil, nil)
 	require.NotNil(t, svc)
 
 	handler := newUserHandler(svc)
@@ -1888,12 +2145,13 @@ func TestUserService_MoreErrorCases(t *testing.T) {
 		entityTypeService:  entityTypeMock,
 		authzService:       authzMock,
 		dependencyRegistry: newNoBlockingDepsRegistry(),
+		sharingService:     newPurgingSharing(t, "u1"),
 	}
 	ctx := context.Background()
 
 	t.Run("UpdateUser_StoreError", func(t *testing.T) {
-		userIn := &User{Type: "customer", OUID: testOrgID}
-		storeMock.On("GetEntity", mock.Anything, "u1").
+		userIn := &providers.User{Type: "customer", OUID: testOrgID}
+		storeMock.On("GetEntityProfile", mock.Anything, "u1").
 			Return(&providers.Entity{
 				Category: providers.EntityCategoryUser, ID: "u1", OUID: testOrgID,
 			}, nil).Once()
@@ -1906,7 +2164,7 @@ func TestUserService_MoreErrorCases(t *testing.T) {
 			Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Maybe()
 		ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, mock.Anything).Return(true, nil).Maybe()
 		ouServiceMock.On("IsParent", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
-		entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, mock.Anything).
+		entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, mock.Anything).
 			Return(&entitytype.EntityType{}, nil).Maybe()
 		entityTypeMock.On(
 			"ValidateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
@@ -1924,7 +2182,7 @@ func TestUserService_MoreErrorCases(t *testing.T) {
 	})
 
 	t.Run("DeleteUser_StoreError", func(t *testing.T) {
-		storeMock.On("GetEntity", mock.Anything, "u1").
+		storeMock.On("GetEntityProfile", mock.Anything, "u1").
 			Return(&providers.Entity{
 				Category: providers.EntityCategoryUser, ID: "u1", OUID: testOrgID,
 			}, nil).Once()
@@ -1971,11 +2229,11 @@ func TestUserService_CreateUser_EntityErrors(t *testing.T) {
 				Return(true, (*tidcommon.ServiceError)(nil)).Once()
 
 			entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-			entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+			entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 				Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Once()
 
 			storeMock := entitymock.NewEntityServiceInterfaceMock(t)
-			storeMock.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+			storeMock.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 				Return((*providers.Entity)(nil), tc.entityErr).Once()
 
 			service := &userService{
@@ -1986,7 +2244,7 @@ func TestUserService_CreateUser_EntityErrors(t *testing.T) {
 				uuidGenerator:     utils.GenerateUUIDv7,
 			}
 
-			user := &User{
+			user := &providers.User{
 				Type:       testUserType,
 				OUID:       testOrgID,
 				Attributes: json.RawMessage(`{}`),
@@ -2003,7 +2261,7 @@ func TestUserService_CreateUser_EntityErrors(t *testing.T) {
 func TestUserService_UpdateUser_NilSchemaService(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).
+	storeMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: svcTestUserID1,
 			OUID: testOrgID, Type: testUserType,
@@ -2014,7 +2272,7 @@ func TestUserService_UpdateUser_NilSchemaService(t *testing.T) {
 		authzService:  newAllowAllAuthz(t),
 	}
 
-	user := &User{
+	user := &providers.User{
 		ID:         svcTestUserID1,
 		Type:       testUserType,
 		OUID:       testOrgID,
@@ -2030,7 +2288,7 @@ func TestUserService_UpdateUser_NilSchemaService(t *testing.T) {
 func TestUserService_UpdateUser_SchemaNotFound(t *testing.T) {
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).
+	storeMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: svcTestUserID1,
 			OUID: testOrgID, Type: testUserType,
@@ -2041,7 +2299,7 @@ func TestUserService_UpdateUser_SchemaNotFound(t *testing.T) {
 		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+	entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 		Return(nil, &entitytype.ErrorEntityTypeNotFound).Once()
 
 	service := &userService{
@@ -2051,7 +2309,7 @@ func TestUserService_UpdateUser_SchemaNotFound(t *testing.T) {
 		authzService:      newAllowAllAuthz(t),
 	}
 
-	user := &User{
+	user := &providers.User{
 		ID:         svcTestUserID1,
 		Type:       testUserType,
 		OUID:       testOrgID,
@@ -2254,7 +2512,7 @@ func TestUserService_GetUsersByPath_AuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "root").
-					Return(providers.OrganizationUnit{ID: ouID}, (*tidcommon.ServiceError)(nil)).Once()
+					Return(oupkg.OrganizationUnit{ID: ouID}, (*tidcommon.ServiceError)(nil)).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
@@ -2272,7 +2530,7 @@ func TestUserService_GetUsersByPath_AuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "root").
-					Return(providers.OrganizationUnit{ID: ouID}, (*tidcommon.ServiceError)(nil)).Once()
+					Return(oupkg.OrganizationUnit{ID: ouID}, (*tidcommon.ServiceError)(nil)).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
@@ -2338,7 +2596,7 @@ func TestUserService_CreateUser_AuthzChecks(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := tc.setup(t)
-			user := &User{Type: testUserType, OUID: testOrgID}
+			user := &providers.User{Type: testUserType, OUID: testOrgID}
 			resp, err := svc.CreateUser(context.Background(), user)
 			require.Nil(t, resp)
 			require.NotNil(t, err)
@@ -2468,7 +2726,7 @@ func TestUserService_GetUserGroups_AuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
@@ -2489,7 +2747,7 @@ func TestUserService_GetUserGroups_AuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
@@ -2529,7 +2787,7 @@ func TestUserService_UpdateUser_PreFetchAndAuthzChecks(t *testing.T) {
 		Code:  "SVC-5000",
 		Error: tidcommon.I18nMessage{DefaultValue: "authz error"},
 	}
-	updatedUser := &User{Type: testUserType, OUID: testOrgID,
+	updatedUser := &providers.User{Type: testUserType, OUID: testOrgID,
 		Attributes: json.RawMessage(`{"email":"test@example.com"}`)}
 
 	tests := []struct {
@@ -2542,7 +2800,7 @@ func TestUserService_UpdateUser_PreFetchAndAuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
 				return &userService{
 					entityService: storeMock,
@@ -2556,7 +2814,8 @@ func TestUserService_UpdateUser_PreFetchAndAuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).Return((*providers.Entity)(nil), storeErr).Once()
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
+					Return((*providers.Entity)(nil), storeErr).Once()
 				return &userService{
 					entityService: storeMock,
 					authzService:  newAllowAllAuthz(t),
@@ -2569,7 +2828,7 @@ func TestUserService_UpdateUser_PreFetchAndAuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
@@ -2590,7 +2849,7 @@ func TestUserService_UpdateUser_PreFetchAndAuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
@@ -2745,7 +3004,8 @@ func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) 
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).Return((*providers.Entity)(nil), storeErr).Once()
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
+					Return((*providers.Entity)(nil), storeErr).Once()
 				return &userService{
 					entityService: storeMock,
 					authzService:  newAllowAllAuthz(t),
@@ -2758,7 +3018,7 @@ func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) 
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
@@ -2779,7 +3039,7 @@ func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) 
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
@@ -2829,7 +3089,8 @@ func TestUserService_DeleteUser_PreFetchAndAuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).Return((*providers.Entity)(nil), storeErr).Once()
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
+					Return((*providers.Entity)(nil), storeErr).Once()
 				return &userService{
 					entityService: storeMock,
 					authzService:  newAllowAllAuthz(t),
@@ -2842,7 +3103,7 @@ func TestUserService_DeleteUser_PreFetchAndAuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
@@ -2863,7 +3124,7 @@ func TestUserService_DeleteUser_PreFetchAndAuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntity", mock.Anything, userID).
+				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return(&providers.Entity{
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
@@ -2900,7 +3161,7 @@ func newDeletableUserStore(t *testing.T) *entitymock.EntityServiceInterfaceMock 
 	t.Helper()
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).
+	storeMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: testOrgID,
 		}, nil).Once()
@@ -2943,6 +3204,7 @@ func TestUserService_DeleteUser_AllowedWhenOnlyNonBlockingDependencies(t *testin
 		entityService:      storeMock,
 		authzService:       newAllowAllAuthz(t),
 		dependencyRegistry: registry,
+		sharingService:     newPurgingSharing(t, userID),
 	}
 
 	err := service.DeleteUser(context.Background(), userID)
@@ -3015,7 +3277,7 @@ func TestUserService_DeleteUser_AbortedWhenCascadeFails(t *testing.T) {
 // when the user is declarative.
 func TestUpdateUser_DeclarativeResource(t *testing.T) {
 	userID := svcTestDeclarativeUserID1
-	updatedUser := User{
+	updatedUser := providers.User{
 		ID:         userID,
 		OUID:       "ou1",
 		Type:       "employee",
@@ -3024,7 +3286,7 @@ func TestUpdateUser_DeclarativeResource(t *testing.T) {
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
-	storeMock.On("GetEntity", mock.Anything, userID).
+	storeMock.On("GetEntityProfile", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
@@ -3045,7 +3307,7 @@ func TestUpdateUser_DeclarativeResource(t *testing.T) {
 // TestUpdateUser_DeclarativeCheckError tests that UpdateUser surfaces errors from IsUserDeclarative.
 func TestUpdateUser_DeclarativeCheckError(t *testing.T) {
 	userID := svcTestUserID1
-	updatedUser := User{
+	updatedUser := providers.User{
 		ID:         userID,
 		OUID:       "ou1",
 		Type:       "employee",
@@ -3054,7 +3316,7 @@ func TestUpdateUser_DeclarativeCheckError(t *testing.T) {
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
-	storeMock.On("GetEntity", mock.Anything, userID).
+	storeMock.On("GetEntityProfile", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
@@ -3077,7 +3339,7 @@ func TestUpdateUser_DeclarativeCheckError(t *testing.T) {
 // when IsUserDeclarative encounters ErrEntityNotFound.
 func TestUpdateUser_DeclarativeCheckUserNotFound(t *testing.T) {
 	userID := "non-existent-user"
-	updatedUser := User{
+	updatedUser := providers.User{
 		ID:         userID,
 		OUID:       "ou1",
 		Type:       "employee",
@@ -3086,7 +3348,7 @@ func TestUpdateUser_DeclarativeCheckUserNotFound(t *testing.T) {
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
-	storeMock.On("GetEntity", mock.Anything, userID).
+	storeMock.On("GetEntityProfile", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
@@ -3177,7 +3439,7 @@ func TestUpdateUserCredentials_DeclarativeResource(t *testing.T) {
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
-	storeMock.On("GetEntity", mock.Anything, userID).
+	storeMock.On("GetEntityProfile", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
@@ -3206,7 +3468,7 @@ func TestUpdateUserCredentials_DeclarativeCheckError(t *testing.T) {
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
-	storeMock.On("GetEntity", mock.Anything, userID).
+	storeMock.On("GetEntityProfile", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
@@ -3235,7 +3497,7 @@ func TestDeleteUser_DeclarativeResource(t *testing.T) {
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
-	storeMock.On("GetEntity", mock.Anything, userID).
+	storeMock.On("GetEntityProfile", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
@@ -3259,7 +3521,7 @@ func TestDeleteUser_DeclarativeCheckError(t *testing.T) {
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	// Mock GetUser for pre-fetch
-	storeMock.On("GetEntity", mock.Anything, userID).
+	storeMock.On("GetEntityProfile", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: "ou1", Type: "employee",
 		}, nil).Once()
@@ -3282,11 +3544,11 @@ func TestDeleteUser_DeclarativeCheckError(t *testing.T) {
 
 func TestPopulateUserDisplayNames_Success(t *testing.T) {
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, []string{"employee"}).
 		Return(map[string]string{"employee": "name"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{entityTypeService: schemaMock}
-	users := []User{
+	users := []providers.User{
 		{ID: "user-1", Type: "employee", Attributes: json.RawMessage(`{"name":"Alice"}`)},
 		{ID: "user-2", Type: "employee", Attributes: json.RawMessage(`{"name":"Bob"}`)},
 	}
@@ -3298,12 +3560,12 @@ func TestPopulateUserDisplayNames_Success(t *testing.T) {
 
 func TestPopulateUserDisplayNames_FallbackToID(t *testing.T) {
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, []string{"employee"}).
 		Return(map[string]string{"employee": "missing"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{entityTypeService: schemaMock}
 
-	users := []User{
+	users := []providers.User{
 		{ID: "user-1", Type: "employee", Attributes: json.RawMessage(`{"name":"Alice"}`)},
 	}
 
@@ -3314,7 +3576,7 @@ func TestPopulateUserDisplayNames_FallbackToID(t *testing.T) {
 func TestPopulateUserDisplayNames_EmptyUsers(t *testing.T) {
 	service := &userService{}
 
-	var users []User
+	var users []providers.User
 	service.populateUserDisplayNames(context.Background(), users, nil)
 	// Should not panic.
 }
@@ -3322,7 +3584,7 @@ func TestPopulateUserDisplayNames_EmptyUsers(t *testing.T) {
 func TestPopulateUserDisplayNames_NilSchemaService(t *testing.T) {
 	service := &userService{entityTypeService: nil}
 
-	users := []User{
+	users := []providers.User{
 		{ID: "user-1", Type: "employee", Attributes: json.RawMessage(`{"name":"Alice"}`)},
 	}
 
@@ -3333,7 +3595,7 @@ func TestPopulateUserDisplayNames_NilSchemaService(t *testing.T) {
 
 func TestPopulateUserDisplayNames_SchemaServiceError(t *testing.T) {
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, []string{"employee"}).
 		Return(map[string]string(nil), &tidcommon.ServiceError{
 			Code:  "ERR",
 			Error: tidcommon.I18nMessage{DefaultValue: "err"},
@@ -3341,7 +3603,7 @@ func TestPopulateUserDisplayNames_SchemaServiceError(t *testing.T) {
 
 	service := &userService{entityTypeService: schemaMock}
 
-	users := []User{
+	users := []providers.User{
 		{ID: "user-1", Type: "employee", Attributes: json.RawMessage(`{"name":"Alice"}`)},
 	}
 
@@ -3352,7 +3614,7 @@ func TestPopulateUserDisplayNames_SchemaServiceError(t *testing.T) {
 
 func TestPopulateUserDisplayNames_MultipleTypes(t *testing.T) {
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything,
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything,
 		mock.MatchedBy(func(names []string) bool {
 			if len(names) != 2 {
 				return false
@@ -3370,7 +3632,7 @@ func TestPopulateUserDisplayNames_MultipleTypes(t *testing.T) {
 
 	service := &userService{entityTypeService: schemaMock}
 
-	users := []User{
+	users := []providers.User{
 		{ID: "user-1", Type: "employee", Attributes: json.RawMessage(`{"name":"Alice"}`)},
 		{ID: "user-2", Type: "customer", Attributes: json.RawMessage(`{"email":"bob@example.com"}`)},
 	}
@@ -3402,7 +3664,7 @@ func TestUserService_GetUserList_WithIncludeDisplay(t *testing.T) {
 		}, nil).Once()
 
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, []string{"employee"}).
 		Return(map[string]string{"employee": "name"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
@@ -3421,6 +3683,7 @@ func TestUserService_GetUserList_WithIncludeDisplay(t *testing.T) {
 		entityTypeService: schemaMock,
 		ouService:         ouServiceMock,
 		authzService:      newAllowAllAuthz(t),
+		governance:        activeGovernance(t),
 	}
 
 	resp, err := service.GetUserList(context.Background(), limit, offset, filters, true)
@@ -3438,10 +3701,10 @@ func TestUserService_GetUserList_WithIncludeDisplay(t *testing.T) {
 func TestResolveUserOUHandle_OUHandleResolved(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "default").
-		Return(providers.OrganizationUnit{ID: "ou-resolved"}, (*tidcommon.ServiceError)(nil)).Once()
+		Return(oupkg.OrganizationUnit{ID: "ou-resolved"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	svc := &userService{ouService: ouServiceMock}
-	u := &User{OUHandle: "default"}
+	u := &providers.User{OUHandle: "default"}
 
 	svcErr := svc.ResolveUserOUHandle(context.Background(), u)
 
@@ -3453,7 +3716,7 @@ func TestResolveUserOUHandle_OUHandleResolved(t *testing.T) {
 // ou_id is set and ou_handle is empty.
 func TestResolveUserOUHandle_OUIDAlreadySet(t *testing.T) {
 	svc := &userService{}
-	u := &User{OUID: "ou-direct"}
+	u := &providers.User{OUID: "ou-direct"}
 
 	svcErr := svc.ResolveUserOUHandle(context.Background(), u)
 
@@ -3467,7 +3730,7 @@ func TestResolveUserOUHandle_BothProvided(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 
 	svc := &userService{ouService: ouServiceMock}
-	u := &User{ID: "u1", OUID: "ou-direct", OUHandle: "default"}
+	u := &providers.User{ID: "u1", OUID: "ou-direct", OUHandle: "default"}
 
 	svcErr := svc.ResolveUserOUHandle(context.Background(), u)
 
@@ -3481,10 +3744,10 @@ func TestResolveUserOUHandle_BothProvided(t *testing.T) {
 func TestResolveUserOUHandle_OUHandleNotFound(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "missing").
-		Return(providers.OrganizationUnit{}, &oupkg.ErrorOrganizationUnitNotFound).Once()
+		Return(oupkg.OrganizationUnit{}, &oupkg.ErrorOrganizationUnitNotFound).Once()
 
 	svc := &userService{ouService: ouServiceMock}
-	u := &User{OUHandle: "missing"}
+	u := &providers.User{OUHandle: "missing"}
 
 	svcErr := svc.ResolveUserOUHandle(context.Background(), u)
 
@@ -3496,7 +3759,7 @@ func TestResolveUserOUHandle_OUHandleNotFound(t *testing.T) {
 // ou_id nor ou_handle is provided.
 func TestResolveUserOUHandle_NeitherProvided(t *testing.T) {
 	svc := &userService{}
-	u := &User{}
+	u := &providers.User{}
 
 	svcErr := svc.ResolveUserOUHandle(context.Background(), u)
 
@@ -3508,7 +3771,7 @@ func TestResolveUserOUHandle_NeitherProvided(t *testing.T) {
 // service is nil and ou_handle is supplied (no nil-pointer panic).
 func TestResolveUserOUHandle_NilOUService(t *testing.T) {
 	svc := &userService{ouService: nil}
-	u := &User{OUHandle: "default"}
+	u := &providers.User{OUHandle: "default"}
 
 	svcErr := svc.ResolveUserOUHandle(context.Background(), u)
 
@@ -3532,7 +3795,7 @@ func TestUserService_GetUser_DisplayOUHandleError(t *testing.T) {
 	storeMock.On("GetEntity", mock.Anything, userID).Return(expectedEntity, nil).Once()
 
 	mockSchema := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	mockSchema.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
+	mockSchema.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, []string{"employee"}).
 		Return(map[string]string{"employee": "email"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
@@ -3544,6 +3807,7 @@ func TestUserService_GetUser_DisplayOUHandleError(t *testing.T) {
 		authzService:      newAllowAllAuthz(t),
 		entityTypeService: mockSchema,
 		ouService:         ouServiceMock,
+		governance:        activeGovernance(t),
 	}
 
 	user, err := service.GetUser(context.Background(), userID, true)
@@ -3559,7 +3823,7 @@ func TestUserService_GetUserGroups_GroupsStoreError(t *testing.T) {
 	limit, offset := 10, 0
 
 	mockStore := entitymock.NewEntityServiceInterfaceMock(t)
-	mockStore.On("GetEntity", mock.Anything, userID).
+	mockStore.On("GetEntityProfile", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 		}, nil).Once()
@@ -3584,7 +3848,7 @@ func TestUserService_DeleteUser_NotFoundOnDelete(t *testing.T) {
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-	storeMock.On("GetEntity", mock.Anything, userID).
+	storeMock.On("GetEntityProfile", mock.Anything, userID).
 		Return(&providers.Entity{
 			Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 		}, nil).Once()
@@ -3594,6 +3858,7 @@ func TestUserService_DeleteUser_NotFoundOnDelete(t *testing.T) {
 		entityService:      storeMock,
 		authzService:       newAllowAllAuthz(t),
 		dependencyRegistry: newNoBlockingDepsRegistry(),
+		sharingService:     newPurgingSharing(t, userID),
 	}
 
 	err := service.DeleteUser(context.Background(), userID)
@@ -3609,7 +3874,7 @@ func TestPopulateOUHandles_HandleResolutionError(t *testing.T) {
 		Return(map[string]string(nil), &tidcommon.InternalServerError).Once()
 
 	service := &userService{ouService: ouServiceMock}
-	users := []User{{ID: "user-1", OUID: testOrgID}}
+	users := []providers.User{{ID: "user-1", OUID: testOrgID}}
 
 	service.populateOUHandles(context.Background(), users, log.GetLogger())
 	require.Empty(t, users[0].OUHandle)
@@ -3639,7 +3904,7 @@ func TestValidateOrganizationUnitForUserType_EntityTypeLookupError(t *testing.T)
 		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+	entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 		Return((*entitytype.EntityType)(nil), &tidcommon.InternalServerError).Once()
 
 	service := &userService{ouService: ouServiceMock, entityTypeService: entityTypeMock}
@@ -3658,7 +3923,7 @@ func TestValidateOrganizationUnitForUserType_NilEntityType(t *testing.T) {
 		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+	entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 		Return((*entitytype.EntityType)(nil), (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &userService{ouService: ouServiceMock, entityTypeService: entityTypeMock}
@@ -3764,7 +4029,7 @@ func TestUserService_GetUserUsages_MissingID(t *testing.T) {
 
 func TestUserService_GetUserUsages_NotFound(t *testing.T) {
 	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
-	entityMock.On("GetEntity", mock.Anything, svcTestUserID1).
+	entityMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).
 		Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
 
 	service := &userService{entityService: entityMock}
@@ -3777,7 +4042,7 @@ func TestUserService_GetUserUsages_NotFound(t *testing.T) {
 
 func TestUserService_GetUserUsages_WrongCategory(t *testing.T) {
 	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
-	entityMock.On("GetEntity", mock.Anything, svcTestUserID1).
+	entityMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).
 		Return(&providers.Entity{ID: svcTestUserID1, Category: providers.EntityCategoryAgent}, nil).Once()
 
 	service := &userService{entityService: entityMock}
@@ -3790,7 +4055,7 @@ func TestUserService_GetUserUsages_WrongCategory(t *testing.T) {
 
 func TestUserService_GetUserUsages_RegistryNotSet(t *testing.T) {
 	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
-	entityMock.On("GetEntity", mock.Anything, svcTestUserID1).
+	entityMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).
 		Return(newUserForUsages(svcTestUserID1), nil).Once()
 
 	service := &userService{entityService: entityMock}
@@ -3805,7 +4070,7 @@ func TestUserService_GetUserUsages_RegistryNotSet(t *testing.T) {
 
 func TestUserService_GetUserUsages_WithUsages(t *testing.T) {
 	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
-	entityMock.On("GetEntity", mock.Anything, svcTestUserID1).
+	entityMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).
 		Return(newUserForUsages(svcTestUserID1), nil).Once()
 
 	total := 1
@@ -3837,7 +4102,7 @@ func TestUserService_GetUserUsages_WithUsages(t *testing.T) {
 
 func TestUserService_GetUserUsages_RegistryError(t *testing.T) {
 	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
-	entityMock.On("GetEntity", mock.Anything, svcTestUserID1).
+	entityMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).
 		Return(newUserForUsages(svcTestUserID1), nil).Once()
 
 	service := &userService{
@@ -3853,7 +4118,7 @@ func TestUserService_GetUserUsages_RegistryError(t *testing.T) {
 func TestGetUserMetadata_Success(t *testing.T) {
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	expectedSchema := &entitytype.EntityType{
-		Name:   testUserType,
+		Handle: testUserType,
 		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
 	}
 	entityTypeMock.On("GetEntityTypeSchema", mock.Anything, entitytype.TypeCategoryUser, testUserType).
@@ -3873,12 +4138,13 @@ func TestGetUserMetadata_Success(t *testing.T) {
 		entityService:     entityServiceMock,
 		entityTypeService: entityTypeMock,
 		authzService:      newAllowAllAuthz(t),
+		governance:        activeGovernance(t),
 	}
 
 	schema, svcErr := service.GetUserMetadata(context.Background(), svcTestUserID123)
 	require.Nil(t, svcErr)
 	require.NotNil(t, schema)
-	require.Equal(t, testUserType, schema.Name)
+	require.Equal(t, testUserType, schema.Handle)
 }
 
 func TestGetUserMetadata_GetUserError(t *testing.T) {
@@ -3916,10 +4182,851 @@ func TestGetUserMetadata_GetEntityTypeSchemaError(t *testing.T) {
 		entityService:     entityServiceMock,
 		entityTypeService: entityTypeMock,
 		authzService:      newAllowAllAuthz(t),
+		governance:        activeGovernance(t),
 	}
 
 	schema, svcErr := service.GetUserMetadata(context.Background(), svcTestUserID123)
 	require.Nil(t, schema)
 	require.NotNil(t, svcErr)
 	require.Equal(t, entitytype.ErrorEntityTypeNotFound.Code, svcErr.Code)
+}
+
+// unsharedSharing returns a sharing service that reports the user holds no sharing policy.
+func unsharedSharing(t *testing.T) *sharingmock.SharingServiceInterfaceMock {
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	sharingMock.On("ListPolicies", mock.Anything, UserSharingType, mock.Anything).
+		Return([]sharing.Policy{}, (*tidcommon.ServiceError)(nil)).Maybe()
+	return sharingMock
+}
+
+// A shared user stays in its organization unit, since its policies were issued against that unit.
+func TestSharingPolicy_ASharedUserCannotMove(t *testing.T) {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+		Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: shareOwnerOU, Type: testUserType,
+	}, nil).Once()
+	storeMock.On("IsEntityDeclarative", mock.Anything, svcTestUserID1).Return(false, nil).Maybe()
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	sharingMock.On("ListPolicies", mock.Anything, UserSharingType, svcTestUserID1).
+		Return([]sharing.Policy{userPolicy(shareOwnerOU)}, (*tidcommon.ServiceError)(nil)).Once()
+	service := &userService{
+		entityService:  storeMock,
+		authzService:   newAllowAllAuthz(t),
+		sharingService: sharingMock,
+		governance:     activeGovernance(t),
+	}
+
+	_, err := service.UpdateUser(context.Background(), svcTestUserID1,
+		&providers.User{OUID: shareChildOU, Type: testUserType})
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorSharedUserCannotMove.Code, err.Code)
+}
+
+// newPurgingSharing returns a sharing service that expects the policy purge a user delete runs.
+func newPurgingSharing(t *testing.T, userID string) *sharingmock.SharingServiceInterfaceMock {
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	sharingMock.On("DeletePoliciesForResource", mock.Anything, UserSharingType, userID).
+		Return((*tidcommon.ServiceError)(nil)).Once()
+	return sharingMock
+}
+
+const (
+	shareOwnerOU  = "ou-owner"
+	shareChildOU  = "ou-child"
+	shareOtherOU  = "ou-other"
+	sharePolicyID = "policy-1"
+)
+
+// sharingFixture is a user service wired for sharing calls. Its caller may act only in the
+// organization units listed per action, and every check it makes is recorded.
+type sharingFixture struct {
+	service *userService
+	sharing *sharingmock.SharingServiceInterfaceMock
+	checks  []*sysauthz.ActionContext
+	// userDeclared says whether the fixture's user is declared in a resource file.
+	userDeclared bool
+}
+
+// withUserStore runs the rest of the test with users in the given store mode; empty is the default.
+func withUserStore(t *testing.T, mode string) {
+	t.Helper()
+	config.ResetServerRuntime()
+	require.NoError(t, config.InitializeServerRuntime("test", &config.Config{User: config.UserConfig{Store: mode}}))
+	t.Cleanup(config.ResetServerRuntime)
+}
+
+func newSharingFixture(t *testing.T, allowed map[security.Action][]string) *sharingFixture {
+	f := &sharingFixture{sharing: sharingmock.NewSharingServiceInterfaceMock(t)}
+	withUserStore(t, "")
+
+	store := entitymock.NewEntityServiceInterfaceMock(t)
+	store.On("GetEntity", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+		Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: shareOwnerOU,
+	}, nil).Maybe()
+	store.On("GetEntity", mock.Anything, mock.Anything).Return(nil, entitypkg.ErrEntityNotFound).Maybe()
+	store.EXPECT().IsEntityDeclarative(mock.Anything, svcTestUserID1).RunAndReturn(
+		func(context.Context, string) (bool, error) { return f.userDeclared, nil }).Maybe()
+
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.EXPECT().IsActionAllowed(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, action security.Action, ac *sysauthz.ActionContext) (bool, *tidcommon.ServiceError) {
+			if security.IsRuntimeContext(ctx) {
+				return true, nil
+			}
+			f.checks = append(f.checks, ac)
+			return slices.Contains(allowed[action], ac.OUID), nil
+		}).Maybe()
+
+	f.service = &userService{
+		governance: activeGovernance(t), entityService: store, authzService: authz, sharingService: f.sharing}
+	return f
+}
+
+// userPolicy is a policy over the fixture's user, made by the given organization unit.
+func userPolicy(initiatingOUID string) sharing.Policy {
+	return sharing.Policy{
+		ID: sharePolicyID, ResourceType: UserSharingType, ResourceID: svcTestUserID1,
+		OwningOUID: shareOwnerOU, InitiatingOUID: initiatingOUID, Version: 1,
+	}
+}
+
+func TestSharingPolicy_CreateIsAuthorizedForTheInitiatingOU(t *testing.T) {
+	cases := []struct {
+		name       string
+		allowedIn  string
+		initiating string
+		allowed    bool
+	}{
+		{name: "OwnerSharesItsUser", allowedIn: shareOwnerOU, allowed: true},
+		{name: "ChildReshares", allowedIn: shareChildOU, initiating: shareChildOU, allowed: true},
+		{name: "ChildCannotShareForTheOwner", allowedIn: shareChildOU},
+		{name: "OwnerCannotReshareForTheChild", allowedIn: shareOwnerOU, initiating: shareChildOU},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {tc.allowedIn}})
+			req := sharing.PolicyRequest{InitiatingOUID: tc.initiating}
+			if tc.allowed {
+				f.sharing.On("CreatePolicy", mock.Anything, UserSharingType, svcTestUserID1, shareOwnerOU, req).
+					Return(userPolicy(tc.allowedIn), (*tidcommon.ServiceError)(nil)).Once()
+			}
+
+			_, err := f.service.CreateSharingPolicy(context.Background(), svcTestUserID1, req)
+
+			if tc.allowed {
+				require.Nil(t, err)
+				return
+			}
+			require.NotNil(t, err)
+			require.Equal(t, tidcommon.ErrorUnauthorized.Code, err.Code)
+		})
+	}
+}
+
+// A declared user's own sharing is declared with it, so the owner's policy is refused here.
+func TestSharingPolicy_ADeclaredUsersOwnPolicyIsRefused(t *testing.T) {
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {shareOwnerOU}})
+	f.userDeclared = true
+
+	_, err := f.service.CreateSharingPolicy(context.Background(), svcTestUserID1, sharing.PolicyRequest{})
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorCannotModifyDeclarativeResource.Code, err.Code)
+}
+
+// A unit a declared user is shared into may still reshare: there is nowhere else to record that.
+func TestSharingPolicy_AUnitMayReshareADeclaredUser(t *testing.T) {
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {shareChildOU}})
+	f.userDeclared = true
+	req := sharing.PolicyRequest{InitiatingOUID: shareChildOU}
+	f.sharing.On("CreatePolicy", mock.Anything, UserSharingType, svcTestUserID1, shareOwnerOU, req).
+		Return(userPolicy(shareChildOU), (*tidcommon.ServiceError)(nil)).Once()
+
+	_, err := f.service.CreateSharingPolicy(context.Background(), svcTestUserID1, req)
+
+	require.Nil(t, err)
+}
+
+// Users that load from resource files only have all their sharing declared there, so no policy is
+// written, changed or removed here.
+func TestSharingPolicy_UsersFromFilesOnlyRefuseEveryWrite(t *testing.T) {
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {shareOwnerOU}})
+	withUserStore(t, "declarative")
+	f.sharing.On("GetPolicy", mock.Anything, sharePolicyID).
+		Return(userPolicy(shareOwnerOU), (*tidcommon.ServiceError)(nil))
+	ctx := context.Background()
+
+	_, createErr := f.service.CreateSharingPolicy(ctx, svcTestUserID1, sharing.PolicyRequest{})
+	_, updateErr := f.service.UpdateSharingPolicy(ctx, svcTestUserID1, sharePolicyID, sharing.PolicyRequest{})
+	deleteErr := f.service.DeleteSharingPolicy(ctx, svcTestUserID1, sharePolicyID)
+
+	for _, err := range []*tidcommon.ServiceError{createErr, updateErr, deleteErr} {
+		require.NotNil(t, err)
+		require.Equal(t, ErrorCannotModifyDeclarativeResource.Code, err.Code)
+	}
+}
+
+func TestSharingPolicy_ChecksNeverNameTheUser(t *testing.T) {
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {shareOwnerOU}})
+	f.sharing.On("CreatePolicy", mock.Anything, UserSharingType, svcTestUserID1, shareOwnerOU, mock.Anything).
+		Return(userPolicy(shareOwnerOU), (*tidcommon.ServiceError)(nil)).Once()
+
+	_, err := f.service.CreateSharingPolicy(context.Background(), svcTestUserID1, sharing.PolicyRequest{})
+
+	require.Nil(t, err)
+	require.NotEmpty(t, f.checks)
+	for _, check := range f.checks {
+		require.Empty(t, check.ResourceID, "a sharing check must not let users act on their own record")
+	}
+}
+
+func TestSharingPolicy_UnknownUserAnswersNotFound(t *testing.T) {
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {shareOwnerOU}})
+
+	_, err := f.service.CreateSharingPolicy(context.Background(), "missing-user", sharing.PolicyRequest{})
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorUserNotFound.Code, err.Code)
+}
+
+func TestSharingPolicy_AnotherUsersPolicyIsNotFound(t *testing.T) {
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {shareOwnerOU}})
+	foreign := userPolicy(shareOwnerOU)
+	foreign.ResourceID = "user-2"
+	f.sharing.On("GetPolicy", mock.Anything, sharePolicyID).Return(foreign, (*tidcommon.ServiceError)(nil)).Once()
+
+	_, err := f.service.GetSharingPolicy(context.Background(), svcTestUserID1, sharePolicyID)
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorSharingPolicyNotFound.Code, err.Code)
+}
+
+func TestSharingPolicy_GetIsReadableByTheOwnerOrTheInitiator(t *testing.T) {
+	cases := []struct {
+		name      string
+		allowedIn string
+		readable  bool
+	}{
+		{name: "OwnerReadsAReshare", allowedIn: shareOwnerOU, readable: true},
+		{name: "ChildReadsItsOwnReshare", allowedIn: shareChildOU, readable: true},
+		{name: "UnrelatedUnitCannotRead", allowedIn: shareOtherOU},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {tc.allowedIn}})
+			f.sharing.On("GetPolicy", mock.Anything, sharePolicyID).
+				Return(userPolicy(shareChildOU), (*tidcommon.ServiceError)(nil)).Once()
+
+			_, err := f.service.GetSharingPolicy(context.Background(), svcTestUserID1, sharePolicyID)
+
+			if tc.readable {
+				require.Nil(t, err)
+				return
+			}
+			require.NotNil(t, err)
+			require.Equal(t, tidcommon.ErrorUnauthorized.Code, err.Code)
+		})
+	}
+}
+
+func TestSharingPolicy_OnlyTheInitiatorChangesAPolicy(t *testing.T) {
+	cases := []struct {
+		name       string
+		allowedIn  string
+		initiating string
+		allowed    bool
+	}{
+		{name: "ChildChangesItsReshare", allowedIn: shareChildOU, initiating: shareChildOU, allowed: true},
+		{name: "OwnerCannotChangeTheChildsReshare", allowedIn: shareOwnerOU, initiating: shareChildOU},
+		{name: "ChildCannotChangeTheOwnersShare", allowedIn: shareChildOU, initiating: shareOwnerOU},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name+"/Update", func(t *testing.T) {
+			f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {tc.allowedIn}})
+			f.sharing.On("GetPolicy", mock.Anything, sharePolicyID).
+				Return(userPolicy(tc.initiating), (*tidcommon.ServiceError)(nil)).Once()
+			if tc.allowed {
+				f.sharing.On("UpdatePolicy", mock.Anything, sharePolicyID, mock.Anything).
+					Return(userPolicy(tc.initiating), (*tidcommon.ServiceError)(nil)).Once()
+			}
+
+			_, err := f.service.UpdateSharingPolicy(
+				context.Background(), svcTestUserID1, sharePolicyID, sharing.PolicyRequest{Version: 1})
+
+			if tc.allowed {
+				require.Nil(t, err)
+				return
+			}
+			require.NotNil(t, err)
+			require.Equal(t, tidcommon.ErrorUnauthorized.Code, err.Code)
+		})
+		t.Run(tc.name+"/Delete", func(t *testing.T) {
+			f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {tc.allowedIn}})
+			f.sharing.On("GetPolicy", mock.Anything, sharePolicyID).
+				Return(userPolicy(tc.initiating), (*tidcommon.ServiceError)(nil)).Once()
+			if tc.allowed {
+				f.sharing.On("DeletePolicy", mock.Anything, sharePolicyID).Return((*tidcommon.ServiceError)(nil)).Once()
+			}
+
+			err := f.service.DeleteSharingPolicy(context.Background(), svcTestUserID1, sharePolicyID)
+
+			if tc.allowed {
+				require.Nil(t, err)
+				return
+			}
+			require.NotNil(t, err)
+			require.Equal(t, tidcommon.ErrorUnauthorized.Code, err.Code)
+		})
+	}
+}
+
+func TestSharingPolicy_DeletingAnAbsentPolicySucceeds(t *testing.T) {
+	f := newSharingFixture(t, nil)
+	f.sharing.On("GetPolicy", mock.Anything, sharePolicyID).
+		Return(sharing.Policy{}, &sharing.ErrorPolicyNotFound).Once()
+
+	err := f.service.DeleteSharingPolicy(context.Background(), svcTestUserID1, sharePolicyID)
+
+	require.Nil(t, err)
+}
+
+func TestSharingPolicy_DeleteRefusesADeclaredPolicy(t *testing.T) {
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {shareOwnerOU}})
+	declared := userPolicy(shareOwnerOU)
+	declared.Declared = true
+	f.sharing.On("GetPolicy", mock.Anything, sharePolicyID).Return(declared, (*tidcommon.ServiceError)(nil)).Once()
+
+	err := f.service.DeleteSharingPolicy(context.Background(), svcTestUserID1, sharePolicyID)
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorSharingPolicyDeclared.Code, err.Code)
+}
+
+func TestSharingPolicy_OwnerListsThroughTheFrameworkPage(t *testing.T) {
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {shareOwnerOU}})
+	page := sharing.PolicyList{TotalResults: 1, StartIndex: 1, Count: 1, Policies: []sharing.Policy{
+		userPolicy(shareOwnerOU),
+	}}
+	f.sharing.On("GetPolicyList", mock.Anything, UserSharingType, svcTestUserID1, 30, 0).
+		Return(page, (*tidcommon.ServiceError)(nil)).Once()
+
+	list, err := f.service.ListSharingPolicies(context.Background(), svcTestUserID1, 30, 0)
+
+	require.Nil(t, err)
+	require.Equal(t, page, list)
+}
+
+func TestSharingPolicy_OtherUnitsListOnlyTheirOwnPolicies(t *testing.T) {
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {shareChildOU, shareOtherOU}})
+	f.sharing.On("ListPolicies", mock.Anything, UserSharingType, svcTestUserID1).Return([]sharing.Policy{
+		userPolicy(shareOwnerOU), userPolicy(shareChildOU), userPolicy(shareOtherOU),
+	}, (*tidcommon.ServiceError)(nil)).Once()
+
+	list, err := f.service.ListSharingPolicies(context.Background(), svcTestUserID1, 1, 1)
+
+	require.Nil(t, err)
+	require.Equal(t, 2, list.TotalResults)
+	require.Equal(t, 2, list.StartIndex)
+	require.Equal(t, 1, list.Count)
+	require.Equal(t, shareOtherOU, list.Policies[0].InitiatingOUID)
+}
+
+func TestSharingPolicy_InMemoryListingPastTheLastPageIsEmpty(t *testing.T) {
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {shareChildOU}})
+	f.sharing.On("ListPolicies", mock.Anything, UserSharingType, svcTestUserID1).Return([]sharing.Policy{
+		userPolicy(shareOwnerOU), userPolicy(shareChildOU),
+	}, (*tidcommon.ServiceError)(nil)).Once()
+
+	list, err := f.service.ListSharingPolicies(context.Background(), svcTestUserID1, 30, 5)
+
+	require.Nil(t, err)
+	require.Empty(t, list.Policies)
+	require.Equal(t, 1, list.TotalResults)
+	require.Equal(t, 6, list.StartIndex)
+}
+
+func TestSharingPolicy_AUnitWithNoPoliciesCannotList(t *testing.T) {
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {shareOtherOU}})
+	f.sharing.On("ListPolicies", mock.Anything, UserSharingType, svcTestUserID1).Return([]sharing.Policy{
+		userPolicy(shareOwnerOU),
+	}, (*tidcommon.ServiceError)(nil)).Once()
+
+	_, err := f.service.ListSharingPolicies(context.Background(), svcTestUserID1, 30, 0)
+
+	require.NotNil(t, err)
+	require.Equal(t, tidcommon.ErrorUnauthorized.Code, err.Code)
+}
+
+// Both listings check the page: the owner's, which the framework pages, and another unit's, paged in
+// memory. The framework mock expects no call, so an unchecked page fails the test.
+func TestSharingPolicy_ListingValidatesThePage(t *testing.T) {
+	cases := []struct {
+		name          string
+		limit, offset int
+		expected      string
+	}{
+		{name: "ZeroLimit", limit: 0, offset: 0, expected: ErrorInvalidLimit.Code},
+		{name: "LimitAboveMaximum", limit: 1000000, offset: 0, expected: ErrorInvalidLimit.Code},
+		{name: "NegativeOffset", limit: 10, offset: -1, expected: ErrorInvalidOffset.Code},
+		{name: "OffsetThatWouldOverflow", limit: 10, offset: math.MaxInt, expected: ErrorInvalidOffset.Code},
+	}
+	callers := map[string]string{"Owner": shareOwnerOU, "OtherUnit": shareChildOU}
+	for caller, ouID := range callers {
+		for _, tc := range cases {
+			t.Run(caller+"/"+tc.name, func(t *testing.T) {
+				f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {ouID}})
+
+				_, err := f.service.ListSharingPolicies(context.Background(), svcTestUserID1, tc.limit, tc.offset)
+
+				require.NotNil(t, err)
+				require.Equal(t, tc.expected, err.Code)
+			})
+		}
+	}
+}
+
+func TestSharingPolicy_ResolveOverlay(t *testing.T) {
+	visible := sharing.ResolvedOverlay{OUID: shareChildOU, Visible: true}
+	cases := []struct {
+		name      string
+		allowedIn string
+		ouID      string
+		overlay   sharing.ResolvedOverlay
+		svcErr    *tidcommon.ServiceError
+		expected  string
+	}{
+		{name: "MissingOU", allowedIn: shareOwnerOU, expected: ErrorMissingOUIDParameter.Code},
+		{name: "ChildAsksAboutItself", allowedIn: shareChildOU, ouID: shareChildOU, overlay: visible},
+		{name: "OwnerAsksAboutAnUnreachedUnit", allowedIn: shareOwnerOU, ouID: shareOtherOU,
+			overlay: sharing.ResolvedOverlay{OUID: shareOtherOU}, expected: ErrorUserNotSharedToOU.Code},
+		{name: "OwnerAsksAboutAnUnknownUnit", allowedIn: shareOwnerOU, ouID: "ou-unknown",
+			svcErr: &oupkg.ErrorOrganizationUnitNotFound, expected: ErrorUserNotSharedToOU.Code},
+		{name: "UnrelatedUnitCannotAsk", allowedIn: shareOtherOU, ouID: shareChildOU,
+			expected: tidcommon.ErrorUnauthorized.Code},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {tc.allowedIn}})
+			if tc.ouID != "" && tc.expected != tidcommon.ErrorUnauthorized.Code {
+				f.sharing.On("ResolveOverlayRules", mock.Anything, UserSharingType, svcTestUserID1, tc.ouID).
+					Return(tc.overlay, tc.svcErr).Once()
+			}
+
+			overlay, err := f.service.ResolveSharingOverlay(context.Background(), svcTestUserID1, tc.ouID)
+
+			if tc.expected == "" {
+				require.Nil(t, err)
+				require.True(t, overlay.Visible)
+				return
+			}
+			require.NotNil(t, err)
+			require.Equal(t, tc.expected, err.Code)
+		})
+	}
+}
+
+func TestTranslateSharingError(t *testing.T) {
+	cases := []struct {
+		name     string
+		in       tidcommon.ServiceError
+		expected string
+	}{
+		{name: "PolicyNotFound", in: sharing.ErrorPolicyNotFound, expected: ErrorSharingPolicyNotFound.Code},
+		{name: "PolicyExists", in: sharing.ErrorPolicyExists, expected: ErrorSharingPolicyExists.Code},
+		{name: "VersionMismatch", in: sharing.ErrorVersionMismatch, expected: ErrorSharingPolicyVersionMismatch.Code},
+		{name: "PolicyDeclared", in: sharing.ErrorPolicyDeclared, expected: ErrorSharingPolicyDeclared.Code},
+		{name: "InvalidLimit", in: sharing.ErrorInvalidLimit, expected: ErrorInvalidLimit.Code},
+		{name: "InvalidOffset", in: sharing.ErrorInvalidOffset, expected: ErrorInvalidOffset.Code},
+		{name: "AnyOtherRefusal", in: sharing.ErrorDeclaredPolicyIDConflict, expected: ErrorInvalidSharingPolicy.Code},
+		{name: "ServerError", in: tidcommon.InternalServerError, expected: tidcommon.InternalServerError.Code},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := tc.in
+			out := translateSharingError(&in)
+			require.Equal(t, tc.expected, out.Code)
+			if in.Type == tidcommon.ClientErrorType {
+				require.Equal(t, in.ErrorDescription, out.ErrorDescription, "the framework's reason must survive")
+			}
+		})
+	}
+	require.Nil(t, translateSharingError(nil))
+}
+
+func TestUserService_DeleteUser_AbortedWhenSharingPurgeFails(t *testing.T) {
+	userID := svcTestUserID1
+	storeMock := newDeletableUserStore(t)
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	sharingMock.On("DeletePoliciesForResource", mock.Anything, UserSharingType, userID).
+		Return(&tidcommon.InternalServerError).Once()
+
+	service := &userService{
+		governance:         activeGovernance(t),
+		entityService:      storeMock,
+		authzService:       newAllowAllAuthz(t),
+		dependencyRegistry: newNoBlockingDepsRegistry(),
+		sharingService:     sharingMock,
+	}
+
+	err := service.DeleteUser(context.Background(), userID)
+
+	require.NotNil(t, err)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
+	storeMock.AssertNotCalled(t, "DeleteEntity", mock.Anything, mock.Anything)
+}
+
+// accessTree is the organization unit tree behind the accessible-units tests, laid out as the cloud
+// case: users live in the Customers OU and are shared into the customers' OUs beneath it.
+//
+//	ou-r             (root, not accessible)
+//	└── ou-p         (the user's own: the Customers OU)
+//	    ├── ou-c     (shared: a customer's OU)
+//	    │   └── ou-g (shared)
+//	    └── ou-c2    (shared: the same customer's other OU)
+//	ou-x             (another tree's root, shared)
+//	ou-y             (another tree's root, shared)
+var accessTree = map[string]*string{
+	"ou-r":  nil,
+	"ou-p":  strPtr("ou-r"),
+	"ou-c":  strPtr("ou-p"),
+	"ou-c2": strPtr("ou-p"),
+	"ou-g":  strPtr("ou-c"),
+	"ou-x":  nil,
+	"ou-y":  nil,
+}
+
+func strPtr(s string) *string { return &s }
+
+// newAccessFixture returns a user service whose user lives in ou-p and is shared into the given
+// units, called as that user from the given organization unit.
+func newAccessFixture(t *testing.T, tokenOU string, reached ...string) (*userService, context.Context) {
+	store := entitymock.NewEntityServiceInterfaceMock(t)
+	store.On("GetEntity", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+		Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: "ou-p",
+	}, nil).Maybe()
+
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	sharingMock.On("ListResourceSharedOUIDs", mock.Anything, UserSharingType, svcTestUserID1).
+		Return(reached, (*tidcommon.ServiceError)(nil)).Maybe()
+
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouMock.EXPECT().GetOrganizationUnit(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, id string) (oupkg.OrganizationUnit, *tidcommon.ServiceError) {
+			parent, ok := accessTree[id]
+			if !ok {
+				return oupkg.OrganizationUnit{}, &oupkg.ErrorOrganizationUnitNotFound
+			}
+			return oupkg.OrganizationUnit{ID: id, Handle: id, Name: id, Parent: parent}, nil
+		}).Maybe()
+
+	service := &userService{
+		governance:    activeGovernance(t),
+		entityService: store, authzService: newAllowAllAuthz(t),
+		sharingService: sharingMock, ouService: ouMock,
+	}
+	ctx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest(svcTestUserID1, tokenOU, "", nil, nil))
+	return service, ctx
+}
+
+// unitIDs returns the ids of the listed units, in order.
+func unitIDs(list *AccessibleOrganizationUnitListResponse) []string {
+	ids := make([]string, 0, len(list.OrganizationUnits))
+	for _, ou := range list.OrganizationUnits {
+		ids = append(ids, ou.ID)
+	}
+	return ids
+}
+
+func TestGetAccessibleOrganizationUnits_Scopes(t *testing.T) {
+	cases := []struct {
+		name, tokenOU, scope string
+		expected             []string
+	}{
+		{name: "EveryUnitWhenScopeIsOmitted", tokenOU: "ou-c", scope: "",
+			expected: []string{"ou-p", "ou-c", "ou-c2", "ou-g", "ou-x", "ou-y"}},
+		{name: "SiblingsOfACustomerUnitLeaveOutTheParent", tokenOU: "ou-c", scope: "siblings",
+			expected: []string{"ou-c", "ou-c2"}},
+		{name: "SiblingsOfTheOwnUnit", tokenOU: "ou-p", scope: "siblings", expected: []string{"ou-p"}},
+		{name: "SiblingsOfATopLevelUnitAreTheOtherTopLevelUnits", tokenOU: "ou-x", scope: "siblings",
+			expected: []string{"ou-x", "ou-y"}},
+		{name: "AnOnlyChildIsItsOwnSibling", tokenOU: "ou-g", scope: "siblings", expected: []string{"ou-g"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			service, ctx := newAccessFixture(t, tc.tokenOU, "ou-c", "ou-c2", "ou-g", "ou-x", "ou-y")
+
+			list, err := service.GetAccessibleOrganizationUnits(ctx, tc.scope, 30, 0)
+
+			require.Nil(t, err)
+			require.Equal(t, tc.tokenOU, list.Current)
+			require.Equal(t, tc.expected, unitIDs(list))
+			require.Equal(t, len(tc.expected), list.TotalResults)
+		})
+	}
+}
+
+func TestGetAccessibleOrganizationUnits_OwnUnitFirstThenTheReachByID(t *testing.T) {
+	service, ctx := newAccessFixture(t, "ou-p", "ou-x", "ou-g", "ou-c")
+
+	list, err := service.GetAccessibleOrganizationUnits(ctx, "", 30, 0)
+
+	require.Nil(t, err)
+	require.Equal(t, []string{"ou-p", "ou-c", "ou-g", "ou-x"}, unitIDs(list))
+}
+
+func TestGetAccessibleOrganizationUnits_CurrentFallsBackToTheUsersOwnUnit(t *testing.T) {
+	service, ctx := newAccessFixture(t, "", "ou-c")
+
+	list, err := service.GetAccessibleOrganizationUnits(ctx, "siblings", 30, 0)
+
+	require.Nil(t, err)
+	require.Equal(t, "ou-p", list.Current)
+	require.Equal(t, []string{"ou-p"}, unitIDs(list))
+}
+
+func TestGetAccessibleOrganizationUnits_NoSiblingsWhenTheCurrentUnitIsGone(t *testing.T) {
+	service, ctx := newAccessFixture(t, "ou-removed", "ou-c")
+
+	list, err := service.GetAccessibleOrganizationUnits(ctx, "siblings", 30, 0)
+
+	require.Nil(t, err)
+	require.Empty(t, list.OrganizationUnits)
+	require.Equal(t, 0, list.TotalResults)
+}
+
+func TestGetAccessibleOrganizationUnits_SkipsARemovedUnit(t *testing.T) {
+	service, ctx := newAccessFixture(t, "ou-p", "ou-c", "ou-removed")
+
+	list, err := service.GetAccessibleOrganizationUnits(ctx, "", 30, 0)
+
+	require.Nil(t, err)
+	require.Equal(t, []string{"ou-p", "ou-c"}, unitIDs(list))
+}
+
+func TestGetAccessibleOrganizationUnits_Pages(t *testing.T) {
+	service, ctx := newAccessFixture(t, "ou-p", "ou-c", "ou-g", "ou-x")
+
+	list, err := service.GetAccessibleOrganizationUnits(ctx, "", 2, 1)
+
+	require.Nil(t, err)
+	require.Equal(t, []string{"ou-c", "ou-g"}, unitIDs(list))
+	require.Equal(t, 4, list.TotalResults)
+	require.Equal(t, 2, list.StartIndex)
+	require.Equal(t, 2, list.Count)
+	rels := make([]string, 0, len(list.Links))
+	for _, link := range list.Links {
+		rels = append(rels, link.Rel)
+	}
+	require.Contains(t, rels, "next")
+	require.Contains(t, rels, "prev")
+}
+
+func TestGetAccessibleOrganizationUnits_PastTheLastPageIsEmpty(t *testing.T) {
+	service, ctx := newAccessFixture(t, "ou-p", "ou-c")
+
+	list, err := service.GetAccessibleOrganizationUnits(ctx, "", 30, 5)
+
+	require.Nil(t, err)
+	require.Empty(t, list.OrganizationUnits)
+	require.Equal(t, 2, list.TotalResults)
+	require.Equal(t, 6, list.StartIndex)
+}
+
+func TestGetAccessibleOrganizationUnits_PageLinksKeepTheScope(t *testing.T) {
+	service, ctx := newAccessFixture(t, "ou-c", "ou-c", "ou-c2")
+
+	list, err := service.GetAccessibleOrganizationUnits(ctx, "siblings", 1, 0)
+
+	require.Nil(t, err)
+	require.Equal(t, []string{"ou-c"}, unitIDs(list))
+	require.Equal(t, 2, list.TotalResults)
+	var next string
+	for _, link := range list.Links {
+		if link.Rel == "next" {
+			next = link.Href
+		}
+	}
+	require.Contains(t, next, "/users/me/ous?")
+	require.Contains(t, next, "scope=siblings")
+}
+
+func TestGetAccessibleOrganizationUnits_RefusesACallerWithNoSubject(t *testing.T) {
+	service, _ := newAccessFixture(t, "ou-p")
+	ctx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("", "ou-p", "", nil, nil))
+
+	_, err := service.GetAccessibleOrganizationUnits(ctx, "", 30, 0)
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorAuthenticationFailed.Code, err.Code)
+}
+
+func TestGetAccessibleOrganizationUnits_RefusesABadRequest(t *testing.T) {
+	cases := []struct {
+		name          string
+		scope         string
+		limit, offset int
+		expected      string
+	}{
+		{name: "DroppedScopeChildren", scope: "children", limit: 30, expected: ErrorInvalidScope.Code},
+		{name: "DroppedScopeAll", scope: "all", limit: 30, expected: ErrorInvalidScope.Code},
+		{name: "ZeroLimit", limit: 0, expected: ErrorInvalidLimit.Code},
+		{name: "NegativeOffset", limit: 30, offset: -1, expected: ErrorInvalidOffset.Code},
+		{name: "OffsetThatWouldOverflow", limit: 30, offset: math.MaxInt, expected: ErrorInvalidOffset.Code},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			service, ctx := newAccessFixture(t, "ou-p")
+
+			_, err := service.GetAccessibleOrganizationUnits(ctx, tc.scope, tc.limit, tc.offset)
+
+			require.NotNil(t, err)
+			require.Equal(t, tc.expected, err.Code)
+		})
+	}
+}
+
+// lockedRead returns an access read reporting LOCKED, without details.
+func lockedRead() identitygovernance.AccessRead {
+	return identitygovernance.AccessRead{
+		Status:      providers.AccessStatusReport{Value: providers.AccessStatusLocked},
+		LastLoginAt: "2026-09-09T18:22:04Z",
+	}
+}
+
+// activeGovernance answers every governance read with ACTIVE.
+func activeGovernance(t *testing.T) *identitygovernancemock.IdentityGovernanceServiceInterfaceMock {
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(t)
+	governance.EXPECT().ReadEntityAccess(mock.Anything, mock.Anything).
+		Return(identitygovernance.AccessRead{
+			Status: providers.AccessStatusReport{Value: providers.AccessStatusActive},
+		}).Maybe()
+	governance.EXPECT().ReadAccess(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, entities []providers.Entity) []identitygovernance.AccessRead {
+			reads := make([]identitygovernance.AccessRead, len(entities))
+			for i := range reads {
+				reads[i].Status.Value = providers.AccessStatusActive
+			}
+			return reads
+		}).Maybe()
+	return governance
+}
+
+func TestUserService_GetUser_ReportsTheGovernedStatus(t *testing.T) {
+	stored := &providers.Entity{Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: testOrgID}
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(stored, nil).Once()
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(t)
+	governance.EXPECT().ReadEntityAccess(mock.Anything, *stored).
+		Return(lockedRead()).Once()
+	service := &userService{entityService: storeMock, authzService: newAllowAllAuthz(t), governance: governance}
+
+	user, svcErr := service.GetUser(context.Background(), svcTestUserID1, false)
+
+	require.Nil(t, svcErr)
+	require.NotNil(t, user.Status)
+	require.Equal(t, providers.AccessStatusLocked, user.Status.Value)
+	require.Equal(t, "2026-09-09T18:22:04Z", user.LastLoginAt)
+}
+
+func TestUserService_GetUser_RefusedReadDerivesNoStatus(t *testing.T) {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+		Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: testOrgID}, nil).Once()
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(false, (*tidcommon.ServiceError)(nil)).Once()
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(t)
+	service := &userService{entityService: storeMock, authzService: authzMock, governance: governance}
+
+	user, svcErr := service.GetUser(context.Background(), svcTestUserID1, false)
+
+	require.Nil(t, user)
+	require.NotNil(t, svcErr)
+	governance.AssertNotCalled(t, "ReadAccess", mock.Anything, mock.Anything)
+	governance.AssertNotCalled(t, "ReadEntityAccess", mock.Anything, mock.Anything)
+}
+
+func TestUserService_UpdateUserAttributes_ReportsTheGovernedStatus(t *testing.T) {
+	stored := &providers.Entity{Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType,
+		Attributes: json.RawMessage(`{"email":"old@example.com"}`)}
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
+	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(stored, nil).Once()
+	storeMock.On("UpdateAttributes", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
+	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	schemaMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Once()
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(t)
+	governance.EXPECT().ReadEntityAccess(mock.Anything, *stored).
+		Return(lockedRead()).Once()
+	service := &userService{entityService: storeMock, entityTypeService: schemaMock,
+		authzService: newAllowAllAuthz(t), governance: governance}
+
+	user, svcErr := service.UpdateUserAttributes(context.Background(), svcTestUserID1,
+		json.RawMessage(`{"email":"new@example.com"}`))
+
+	require.Nil(t, svcErr)
+	require.NotNil(t, user.Status)
+	require.Equal(t, providers.AccessStatusLocked, user.Status.Value)
+	require.Equal(t, "2026-09-09T18:22:04Z", user.LastLoginAt)
+}
+
+func TestUserService_GetUserList_ReportsTheGovernedStatus(t *testing.T) {
+	listed := []providers.Entity{
+		{ID: svcTestUserID1, OUID: testOrgID, Category: providers.EntityCategoryUser},
+		{ID: svcTestUserID123, OUID: testOrgID, Category: providers.EntityCategoryUser},
+	}
+	reads := []identitygovernance.AccessRead{
+		lockedRead(), {Status: providers.AccessStatusReport{Value: providers.AccessStatusSuspended}},
+	}
+	filters := map[string]interface{}{}
+	type listSetup func(storeMock *entitymock.EntityServiceInterfaceMock) sysauthz.SystemAuthorizationServiceInterface
+	cases := []struct {
+		name  string
+		setup listSetup
+	}{
+		{name: "all users", setup: func(
+			storeMock *entitymock.EntityServiceInterfaceMock) sysauthz.SystemAuthorizationServiceInterface {
+			storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters).
+				Return(2, nil).Once()
+			storeMock.On("GetEntityList", mock.Anything, providers.EntityCategoryUser, 10, 0, filters).
+				Return(listed, nil).Once()
+			return newAllowAllAuthz(t)
+		}},
+		{name: "users in accessible units", setup: func(
+			storeMock *entitymock.EntityServiceInterfaceMock) sysauthz.SystemAuthorizationServiceInterface {
+			ouIDs := []string{testOrgID}
+			storeMock.On("GetEntityListCountByOUIDs", mock.Anything, providers.EntityCategoryUser, ouIDs, filters).
+				Return(2, nil).Once()
+			storeMock.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryUser, ouIDs, 10, 0,
+				filters).Return(listed, nil).Once()
+			authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+			authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+				Return(&sysauthz.AccessibleResources{IDs: ouIDs}, nil).Once()
+			return authzMock
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+			authz := tc.setup(storeMock)
+			governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(t)
+			governance.EXPECT().ReadAccess(mock.Anything, listed).Return(reads).Once()
+			service := &userService{entityService: storeMock, authzService: authz, governance: governance}
+
+			resp, svcErr := service.GetUserList(context.Background(), 10, 0, filters, false)
+
+			require.Nil(t, svcErr)
+			require.Len(t, resp.Users, 2)
+			require.Equal(t, svcTestUserID1, resp.Users[0].ID)
+			require.Equal(t, providers.AccessStatusLocked, resp.Users[0].Status.Value)
+			require.Equal(t, "2026-09-09T18:22:04Z", resp.Users[0].LastLoginAt)
+			require.Equal(t, svcTestUserID123, resp.Users[1].ID)
+			require.Equal(t, providers.AccessStatusSuspended, resp.Users[1].Status.Value)
+		})
+	}
 }

@@ -18,6 +18,11 @@ vi.mock('../../api/useConnections', () => ({
   default: useConnectionsMock,
 }));
 
+const useGetNotificationConfigMock = vi.hoisted(() => vi.fn());
+vi.mock('../../api/useGetNotificationConfig', () => ({
+  default: useGetNotificationConfigMock,
+}));
+
 const EMPTY_STATE_TITLE = 'No connections match your filters';
 
 const OIDC_FEDERATION: ConnectionInstance = {
@@ -56,19 +61,20 @@ describe('ConnectionsList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConnections([]);
+    useGetNotificationConfigMock.mockReturnValue({data: undefined});
   });
 
   it('hides the category chips that no connection card belongs to', () => {
     render(<ConnectionsList />);
 
-    expect(chipLabels()).toEqual(['Social Login', 'SMS']);
+    expect(chipLabels()).toEqual(['Social login', 'SMS']);
   });
 
   it('shows the enterprise and custom chips once an OIDC connection exists', () => {
     mockConnections([OIDC_FEDERATION]);
     render(<ConnectionsList />);
 
-    expect(chipLabels()).toEqual(['Social Login', 'Enterprise', 'SMS', 'Custom']);
+    expect(chipLabels()).toEqual(['Social login', 'Enterprise', 'SMS', 'Custom']);
 
     selectCategory('Enterprise');
 
@@ -80,9 +86,9 @@ describe('ConnectionsList', () => {
     mockConnections([TRUSTED_ISSUER]);
     render(<ConnectionsList />);
 
-    expect(chipLabels()).toEqual(['Social Login', 'SMS', 'Trusted Token Issuer', 'Custom']);
+    expect(chipLabels()).toEqual(['Social login', 'SMS', 'Trusted token issuer', 'Custom']);
 
-    selectCategory('Trusted Token Issuer');
+    selectCategory('Trusted token issuer');
 
     expect(screen.getByTestId('connection-card-trusted-idp:c2')).toBeInTheDocument();
     expect(screen.queryByText(EMPTY_STATE_TITLE)).not.toBeInTheDocument();
@@ -106,7 +112,7 @@ describe('ConnectionsList', () => {
     mockConnections([]);
     rerender(<ConnectionsList />);
 
-    expect(chipLabels()).toEqual(['Social Login', 'SMS']);
+    expect(chipLabels()).toEqual(['Social login', 'SMS']);
     expect(screen.getByTestId('connection-card-google')).toBeInTheDocument();
     expect(screen.queryByText(EMPTY_STATE_TITLE)).not.toBeInTheDocument();
   });
@@ -128,7 +134,7 @@ describe('ConnectionsList', () => {
   it('shows the branded social login tiles under the social login filter', () => {
     render(<ConnectionsList />);
 
-    selectCategory('Social Login');
+    selectCategory('Social login');
 
     expect(screen.getByTestId('connection-card-google')).toBeInTheDocument();
     expect(screen.getByTestId('connection-card-github')).toBeInTheDocument();
@@ -155,5 +161,30 @@ describe('ConnectionsList', () => {
 
     expect(screen.getByText(EMPTY_STATE_TITLE)).toBeInTheDocument();
     expect(screen.getAllByText('Clear filters').length).toBeGreaterThan(0);
+  });
+
+  it('shows the Default chip on the default email sender card', () => {
+    mockConnections([
+      {id: 'sm1', name: 'Corp SMTP', type: 'email-smtp', categories: ['email-provider']},
+      {id: 'sm2', name: 'Backup SMTP', type: 'email-smtp', categories: ['email-provider']},
+    ]);
+    useGetNotificationConfigMock.mockReturnValue({
+      data: {readOnly: {}, writable: {defaultEmailSenderId: 'sm2'}, merged: {defaultEmailSenderId: 'sm2'}},
+    });
+
+    render(<ConnectionsList />);
+
+    expect(within(screen.getByTestId('connection-card-email-smtp:sm2')).getByText('Default')).toBeInTheDocument();
+    expect(within(screen.getByTestId('connection-card-email-smtp:sm1')).queryByText('Default')).not.toBeInTheDocument();
+  });
+
+  it('reports a notification section that fails to load', () => {
+    mockConnections([{id: 'sm1', name: 'Corp SMTP', type: 'email-smtp', categories: ['email-provider']}]);
+    useGetNotificationConfigMock.mockReturnValue({data: undefined, error: new Error('boom'), refetch: vi.fn()});
+
+    render(<ConnectionsList />);
+
+    expect(screen.getByText('Failed to load the default email sender.')).toBeInTheDocument();
+    expect(within(screen.getByTestId('connection-card-email-smtp:sm1')).queryByText('Default')).not.toBeInTheDocument();
   });
 });

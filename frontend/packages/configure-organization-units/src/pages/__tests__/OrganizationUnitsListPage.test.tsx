@@ -78,7 +78,11 @@ vi.mock('@/contexts/useOrganizationUnit', async () => {
 });
 
 // Mock config (for tree view)
-const stableConfig = {getServerUrl: () => 'http://localhost:8080', getDocumentationLink: () => undefined};
+const stableConfig = {
+  getServerUrl: () => 'http://localhost:8080',
+  getDocumentationLink: () => undefined,
+  config: {brand: {product_name: 'ThunderID'}},
+};
 vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
@@ -103,6 +107,12 @@ describe('OrganizationUnitsListPage', () => {
     renderWithProviders(<OrganizationUnitsListPage />);
 
     expect(screen.getByText(t('organizationUnits:listing.title'))).toBeInTheDocument();
+  });
+
+  it('should set the document title', async () => {
+    renderWithProviders(<OrganizationUnitsListPage />);
+
+    await waitFor(() => expect(document.title).toBe('Organization units (OU) | ThunderID'));
   });
 
   it('should render page subtitle', () => {

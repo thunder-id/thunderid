@@ -3,8 +3,10 @@
 
 import {QueryErrorNotice} from '@thunderid/components';
 import type {BasicApplication} from '@thunderid/configure-applications';
+import {useGetUserTypes} from '@thunderid/configure-users';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import type {User} from '@thunderid/types';
+import {getUserTypeLabel} from '@thunderid/utils';
 import {
   Dialog,
   DialogTitle,
@@ -19,6 +21,7 @@ import {
   Typography,
   Tabs,
   Tab,
+  ListingTable,
 } from '@wso2/oxygen-ui';
 import {AppWindow, Bot, UserRound, UsersRound} from '@wso2/oxygen-ui-icons-react';
 import {useState, useMemo, useCallback, type JSX, type SyntheticEvent} from 'react';
@@ -58,6 +61,7 @@ export default function AddMemberDialog({
   groupId = undefined,
 }: AddMemberDialogProps): JSX.Element {
   const {t} = useTranslation();
+  const {data: userTypesData} = useGetUserTypes();
   const dataGridLocaleText = useDataGridLocaleText();
 
   const [activeTab, setActiveTab] = useState(0);
@@ -211,11 +215,11 @@ export default function AddMemberDialog({
         headerName: t('groups:addMember.columns.userType'),
         width: 150,
         renderCell: (params: DataGrid.GridRenderCellParams<User>): JSX.Element => (
-          <Chip label={params.row.type} size="small" variant="outlined" sx={{textTransform: 'capitalize'}} />
+          <Chip label={getUserTypeLabel(userTypesData?.types ?? [], params.row.type)} size="small" variant="outlined" />
         ),
       },
     ],
-    [t],
+    [t, userTypesData],
   );
 
   const agentColumns: DataGrid.GridColDef<BasicAgent>[] = useMemo(
@@ -251,10 +255,11 @@ export default function AddMemberDialog({
         ),
       },
       {
-        field: 'name',
+        field: 'display',
         headerName: t('groups:addMember.columns.displayName'),
         flex: 1,
         minWidth: 200,
+        valueGetter: (_value, row): string => row.display ?? row.id,
       },
       {
         field: 'id',
@@ -441,25 +446,31 @@ export default function AddMemberDialog({
               </Alert>
             )}
 
-            <Box sx={{height: 400, width: '100%'}}>
-              <DataGrid.DataGrid
-                rows={filteredUsers}
-                columns={userColumns}
-                loading={usersLoading}
-                getRowId={(row): string => row.id}
-                checkboxSelection
-                rowSelectionModel={userSelectionModel}
-                onRowSelectionModelChange={(newSelection) => {
-                  setUserSelectionModel(newSelection);
-                  onErrorDismiss?.();
-                }}
-                paginationModel={userPaginationModel}
-                onPaginationModelChange={setUserPaginationModel}
-                pageSizeOptions={[5, 10]}
-                disableRowSelectionOnClick
-                localeText={dataGridLocaleText}
-              />
-            </Box>
+            <ListingTable.Provider variant="data-grid">
+              <ListingTable.Container sx={{height: 400}}>
+                <ListingTable.DataGrid
+                  rows={filteredUsers}
+                  columns={userColumns}
+                  loading={usersLoading}
+                  getRowId={(row): string => (row as User).id}
+                  checkboxSelection
+                  rowSelectionModel={userSelectionModel}
+                  onRowSelectionModelChange={(newSelection) => {
+                    setUserSelectionModel(newSelection);
+                    onErrorDismiss?.();
+                  }}
+                  paginationModel={userPaginationModel}
+                  onPaginationModelChange={setUserPaginationModel}
+                  pageSizeOptions={[5, 10]}
+                  disableRowSelectionOnClick
+                  // Filtering is not wired end to end, so the column filter panel stays hidden.
+                  disableColumnFilter
+                  localeText={dataGridLocaleText}
+                  // The name and ID lines need the row height the standard density spends on vertical padding.
+                  sx={{'& .MuiDataGrid-cell': {py: 0}}}
+                />
+              </ListingTable.Container>
+            </ListingTable.Provider>
           </>
         )}
 
@@ -481,25 +492,29 @@ export default function AddMemberDialog({
               </Alert>
             )}
 
-            <Box sx={{height: 400, width: '100%'}}>
-              <DataGrid.DataGrid
-                rows={filteredApplications}
-                columns={appColumns}
-                loading={appsLoading}
-                getRowId={(row): string => row.id}
-                checkboxSelection
-                rowSelectionModel={appSelectionModel}
-                onRowSelectionModelChange={(newSelection) => {
-                  setAppSelectionModel(newSelection);
-                  onErrorDismiss?.();
-                }}
-                paginationModel={appPaginationModel}
-                onPaginationModelChange={setAppPaginationModel}
-                pageSizeOptions={[5, 10]}
-                disableRowSelectionOnClick
-                localeText={dataGridLocaleText}
-              />
-            </Box>
+            <ListingTable.Provider variant="data-grid">
+              <ListingTable.Container sx={{height: 400}}>
+                <ListingTable.DataGrid
+                  rows={filteredApplications}
+                  columns={appColumns}
+                  loading={appsLoading}
+                  getRowId={(row): string => (row as BasicApplication).id}
+                  checkboxSelection
+                  rowSelectionModel={appSelectionModel}
+                  onRowSelectionModelChange={(newSelection) => {
+                    setAppSelectionModel(newSelection);
+                    onErrorDismiss?.();
+                  }}
+                  paginationModel={appPaginationModel}
+                  onPaginationModelChange={setAppPaginationModel}
+                  pageSizeOptions={[5, 10]}
+                  disableRowSelectionOnClick
+                  // Filtering is not wired end to end, so the column filter panel stays hidden.
+                  disableColumnFilter
+                  localeText={dataGridLocaleText}
+                />
+              </ListingTable.Container>
+            </ListingTable.Provider>
           </>
         )}
 
@@ -521,25 +536,29 @@ export default function AddMemberDialog({
               </Alert>
             )}
 
-            <Box sx={{height: 400, width: '100%'}}>
-              <DataGrid.DataGrid
-                rows={filteredAgents}
-                columns={agentColumns}
-                loading={agentsLoading}
-                getRowId={(row): string => row.id}
-                checkboxSelection
-                rowSelectionModel={agentSelectionModel}
-                onRowSelectionModelChange={(newSelection) => {
-                  setAgentSelectionModel(newSelection);
-                  onErrorDismiss?.();
-                }}
-                paginationModel={agentPaginationModel}
-                onPaginationModelChange={setAgentPaginationModel}
-                pageSizeOptions={[5, 10]}
-                disableRowSelectionOnClick
-                localeText={dataGridLocaleText}
-              />
-            </Box>
+            <ListingTable.Provider variant="data-grid">
+              <ListingTable.Container sx={{height: 400}}>
+                <ListingTable.DataGrid
+                  rows={filteredAgents}
+                  columns={agentColumns}
+                  loading={agentsLoading}
+                  getRowId={(row): string => (row as BasicAgent).id}
+                  checkboxSelection
+                  rowSelectionModel={agentSelectionModel}
+                  onRowSelectionModelChange={(newSelection) => {
+                    setAgentSelectionModel(newSelection);
+                    onErrorDismiss?.();
+                  }}
+                  paginationModel={agentPaginationModel}
+                  onPaginationModelChange={setAgentPaginationModel}
+                  pageSizeOptions={[5, 10]}
+                  disableRowSelectionOnClick
+                  // Filtering is not wired end to end, so the column filter panel stays hidden.
+                  disableColumnFilter
+                  localeText={dataGridLocaleText}
+                />
+              </ListingTable.Container>
+            </ListingTable.Provider>
           </>
         )}
 
@@ -561,25 +580,29 @@ export default function AddMemberDialog({
               </Alert>
             )}
 
-            <Box sx={{height: 400, width: '100%'}}>
-              <DataGrid.DataGrid
-                rows={groups}
-                columns={groupColumns}
-                loading={groupsLoading}
-                getRowId={(row): string => row.id}
-                checkboxSelection
-                rowSelectionModel={groupSelectionModel}
-                onRowSelectionModelChange={(newSelection) => {
-                  setGroupSelectionModel(newSelection);
-                  onErrorDismiss?.();
-                }}
-                paginationModel={groupPaginationModel}
-                onPaginationModelChange={setGroupPaginationModel}
-                pageSizeOptions={[5, 10]}
-                disableRowSelectionOnClick
-                localeText={dataGridLocaleText}
-              />
-            </Box>
+            <ListingTable.Provider variant="data-grid">
+              <ListingTable.Container sx={{height: 400}}>
+                <ListingTable.DataGrid
+                  rows={groups}
+                  columns={groupColumns}
+                  loading={groupsLoading}
+                  getRowId={(row): string => (row as GroupBasic).id}
+                  checkboxSelection
+                  rowSelectionModel={groupSelectionModel}
+                  onRowSelectionModelChange={(newSelection) => {
+                    setGroupSelectionModel(newSelection);
+                    onErrorDismiss?.();
+                  }}
+                  paginationModel={groupPaginationModel}
+                  onPaginationModelChange={setGroupPaginationModel}
+                  pageSizeOptions={[5, 10]}
+                  disableRowSelectionOnClick
+                  // Filtering is not wired end to end, so the column filter panel stays hidden.
+                  disableColumnFilter
+                  localeText={dataGridLocaleText}
+                />
+              </ListingTable.Container>
+            </ListingTable.Provider>
           </>
         )}
       </DialogContent>
@@ -597,7 +620,7 @@ export default function AddMemberDialog({
           onClick={handleAdd}
           disabled={totalSelected === 0 || isSubmitting || membershipUnavailable}
         >
-          {t('groups:addMember.add', 'Add Selected')}
+          {t('groups:addMember.add', 'Add selected')}
         </Button>
       </DialogActions>
     </Dialog>

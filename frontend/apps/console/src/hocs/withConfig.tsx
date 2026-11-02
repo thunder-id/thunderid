@@ -27,9 +27,9 @@ export default function withConfig<P extends object>(WrappedComponent: Component
     const resourceIdentifier = config.trusted_issuer ? getServerUrl() : getResourceIdentifier();
 
     // In the trusted-issuer (federated) model `baseUrl` points at the authorization server (IdP),
-    // so the SDK would otherwise send resource-server calls (flow execution, flow metadata, and the
-    // user profile) to the IdP instead of the resource server that owns the users and flows. Point
-    // those endpoints back at the resource server URL.
+    // so the SDK would otherwise send resource-server calls (flow execution, flow metadata, the user
+    // profile, and the management collections) to the IdP instead of the resource server that owns
+    // them. Point those endpoints back at the resource server URL.
     const resourceServerUrl = config.trusted_issuer ? getServerUrl().replace(/\/+$/, '') : undefined;
 
     // Behavioral defaults derived from app config and runtime heuristics.
@@ -43,6 +43,9 @@ export default function withConfig<P extends object>(WrappedComponent: Component
               flowExecute: `${resourceServerUrl}/flow/execute`,
               flowMeta: `${resourceServerUrl}/flow/meta`,
               usersMe: `${resourceServerUrl}/users/me`,
+              agents: `${resourceServerUrl}/agents`,
+              applications: `${resourceServerUrl}/applications`,
+              users: `${resourceServerUrl}/users`,
             },
           }
         : {}),

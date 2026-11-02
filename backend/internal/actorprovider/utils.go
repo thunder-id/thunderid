@@ -11,6 +11,9 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// clientPropertyType is the inbound-client property holding the application type.
+const clientPropertyType = "type"
+
 // BuildApplication assembles the runtime application view read from engineCtx.Application.
 // Entity-agnostic: works for any actor with an inbound-client row.
 func BuildApplication(
@@ -41,18 +44,26 @@ func assembleApplication(
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:            client.AuthFlowID,
 			SignOutFlowID:         client.SignOutFlowID,
+			ThemeID:               client.ThemeID,
 			Assertion:             client.Assertion,
 			LoginConsent:          client.LoginConsent,
 			AllowedUserTypes:      client.AllowedUserTypes,
+			AllowedAgentTypes:     client.AllowedAgentTypes,
 			SubjectAttribute:      client.SubjectAttribute,
 			PasskeyAllowedOrigins: client.PasskeyAllowedOrigins,
 		},
 	}
 
-	entityAttrs := readEntitySystemAttributes(entity)
-	if name, ok := entityAttrs["name"].(string); ok {
-		app.Name = name
+	if entity != nil {
+		app.EntityCategory = entity.Category
+		app.OUID = entity.OUID
 	}
+	if appType, ok := client.Properties[clientPropertyType].(string); ok {
+		app.Type = appType
+	}
+
+	entityAttrs := readEntitySystemAttributes(entity)
+	app.Name = entityDisplayName(entity, entityAttrs)
 	if metadata, ok := client.Properties["metadata"].(map[string]interface{}); ok {
 		app.Metadata = metadata
 	}
@@ -79,14 +90,12 @@ func BuildApplicationMetadata(
 	if entity != nil && len(entity.SystemAttributes) > 0 {
 		var attrs map[string]interface{}
 		if err := json.Unmarshal(entity.SystemAttributes, &attrs); err == nil && attrs != nil {
-			if name, ok := attrs["name"].(string); ok {
-				meta.Name = name
-			}
 			if desc, ok := attrs["description"].(string); ok {
 				meta.Description = desc
 			}
 		}
 	}
+	meta.Name = entityDisplayName(entity, readEntitySystemAttributes(entity))
 	if props != nil {
 		if v, ok := props["logo_url"].(string); ok {
 			meta.LogoURL = v
@@ -114,4 +123,15 @@ func readEntitySystemAttributes(entity *providers.Entity) map[string]interface{}
 		return map[string]interface{}{}
 	}
 	return attrs
+}
+
+// entityDisplayName returns the entity's display name. An agent's is the display value the actor
+// provider resolved from its type's display attribute; every other category keeps its name in the
+// system attributes passed in.
+func entityDisplayName(entity *providers.Entity, sysAttrs map[string]interface{}) string {
+	if entity != nil && entity.Category == providers.EntityCategoryAgent {
+		return entity.Display
+	}
+	name, _ := sysAttrs["name"].(string)
+	return name
 }

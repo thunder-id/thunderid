@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -23,10 +24,11 @@ func Initialize(
 	mux *http.ServeMux,
 	authzService providers.AuthorizationProvider,
 	entityProvider entityprovider.EntityProviderInterface,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
 	resourceService resource.ResourceServiceInterface,
 	directAuthGuard directAuthGuardProvider,
 ) AuthZENServiceInterface {
-	service := newService(authzService, entityProvider, resourceService)
+	service := newService(authzService, entityProvider, governance, resourceService)
 	handler := newHandler(service)
 	registerRoutes(mux, handler, directAuthGuard)
 	return service

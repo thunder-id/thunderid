@@ -55,7 +55,9 @@ export abstract class MockHttpServer {
       this.server = createServer((req, res) => {
         Promise.resolve(this.handleRequest(req, res)).catch(err => {
           console.error(`${this.logPrefix} Unhandled error:`, err);
-          this.onInternalError(res);
+          if (!res.headersSent) {
+            this.onInternalError(res);
+          }
         });
       });
 

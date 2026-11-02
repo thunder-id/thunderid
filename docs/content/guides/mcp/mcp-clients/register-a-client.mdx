@@ -1,14 +1,14 @@
 ---
-title: Register an MCP Client in the Console
+title: Configure an MCP Client Manually
 docType: guide
 persona: iam
 sidebar_position: 2
-description: Register an MCP client application in the Console and choose between the user-delegated and machine-to-machine client types.
+description: Configure an MCP client manually in the Console, setting its redirect URIs and choosing between the user-delegated and machine-to-machine client types.
 ---
 
-# Register an MCP Client in the Console
+# Configure an MCP Client Manually
 
-Register an MCP client in the Console when you know its redirect URI ahead of time, such as MCP Inspector or a client you built yourself. This gives you a stable Client ID before the client ever connects.
+Configure an MCP client manually when you know its redirect URI ahead of time, such as MCP Inspector or a client you built yourself. This gives you a stable Client ID before the client ever connects. If the client's vendor publishes a metadata document, [register it from that document](../client-id-metadata-document) instead.
 
 ## Prerequisites
 
@@ -21,10 +21,11 @@ Register an MCP client in the Console when you know its redirect URI ahead of ti
 ## Step 1: Start the Application Wizard
 
 1. Sign in to the <ProductName /> Console.
-2. Navigate to **Applications** and click **Add Application**.
-3. Select **MCP Client**.
-4. Enter a name for the client.
-5. If prompted, select an organization unit.
+2. Navigate to **Applications** and click **Add application**.
+3. Select **MCP client**.
+4. If prompted, select an organization unit.
+5. On **Which MCP client are you connecting?**, select **I'll configure it myself** and click **Continue**.
+6. Enter a name for the client.
 
 ## Step 2: Choose the Client Type
 
@@ -44,7 +45,7 @@ This option configures the Client Credentials flow and registers the client as a
 
 ## Step 3: Finish
 
-Click **Finish**. <ProductName /> creates the application and opens its detail page directly, with no separate completion screen. Open the **General** tab: its **Connection** card shows the **Client ID**. For a machine-to-machine client, generate the **Client Secret** here, since <ProductName /> does not display it automatically after creation (see [Where Credentials Live](#where-credentials-live)).
+Click **Finish**. <ProductName /> creates the application and opens its detail page directly, with no separate completion screen. Open the **General** tab: its **Connection** card shows the **Client ID**. For a machine-to-machine client, generate the **Client secret** here, since <ProductName /> does not display it automatically after creation (see [Where Credentials Live](#where-credentials-live)).
 
 </Stepper>
 
@@ -65,13 +66,13 @@ The application's **General** tab holds a **Connection** card with:
 
 - **Application ID**: the <ProductName /> application identifier.
 - **Client ID**: the OAuth 2.1 client ID, for both client types.
-- **Client Secret**: shown only for the machine-to-machine type, since that is the only confidential MCP client type. The field displays a masked placeholder, never the actual value. Click **Generate** to issue a new secret, which <ProductName /> shows once in a dialog. Copy it immediately: closing the dialog without copying means generating another one, which invalidates the previous secret for any client already using it.
+- **Client secret**: shown only for the machine-to-machine type, since that is the only confidential MCP client type. The field displays a masked placeholder, never the actual value. Click **Generate** to issue a new secret, which <ProductName /> shows once in a dialog. Copy it immediately: closing the dialog without copying means generating another one, which invalidates the previous secret for any client already using it.
 
 ## Access Control
 
 For a user-delegated client, the **General** tab also shows an **Access** card:
 
-- **Allowed User Types**: which user types can sign up through this client. Leave it empty if users should not be able to sign up through it.
+- **Allowed user types**: which user types can sign up through this client. Leave it empty if users should not be able to sign up through it.
 - **Client URI**: an optional public homepage for the client.
 - **Authorized redirect URIs**: the same redirect URIs configured during creation, editable here. At least one is required, and each one follows the [redirect URI rules](#redirect-uri-rules) above.
 
@@ -96,9 +97,9 @@ If the file already exists, append to the existing `allowedOrigins` list instead
 
 To update a client's configuration, open it from the **Applications** list, change the relevant setting on the **General** tab, and click **Save**. Changes take effect immediately for new authentication requests; active sessions and issued tokens are unaffected until they expire.
 
-To rotate credentials for a machine-to-machine client, click **Generate** next to **Client Secret** on the **General** tab. This immediately invalidates the previous secret.
+To rotate credentials for a machine-to-machine client, click **Generate** next to **Client secret** on the **General** tab. This immediately invalidates the previous secret.
 
-To delete a client, open it from the **Applications** list and click **Delete Application** in the danger zone. This is permanent: any caller using the client's Client ID immediately loses the ability to authenticate, though issued tokens remain valid until they expire.
+To delete a client, open it from the **Applications** list and click **Delete application** in the danger zone. This is permanent: any caller using the client's Client ID immediately loses the ability to authenticate, though issued tokens remain valid until they expire.
 
 ## Next Steps
 

@@ -78,6 +78,8 @@ log:
 
 If `log.level` is omitted, <ProductName /> defaults to `info`. An unrecognized value causes the server to exit at startup.
 
+On Kubernetes, set the logging properties under `configuration.log` in your Helm values rather than editing `deployment.yaml`. See [Logging](../deployment-paths/kubernetes#logging).
+
 ### Log Output
 
 By default <ProductName /> writes logs to the console (stdout) only. You can additionally, or instead, write them to a file. Console and file are independent outputs: enable either, both, or neither (with neither enabled, <ProductName /> falls back to the console so logs are never silently lost).
@@ -88,7 +90,7 @@ By default <ProductName /> writes logs to the console (stdout) only. You can add
 | `log.output.file.enabled` | `false` | Write logs to a file |
 | `log.output.file.path` | `logs` | Directory for the log file. A relative path resolves under the <ProductName /> home directory; an absolute path is used as-is |
 | `log.output.file.file_name` | `thunderid.log` | Name of the active log file |
-| `log.output.file.format` | `text` | Log line format: `text` or `json` |
+| `log.output.file.format` | `text` | Log line format: `text` or `json`. Despite its position under `file`, this setting applies to console output as well, so set it to `json` to emit JSON to stdout without enabling file output |
 | `log.output.file.rotation.size.enabled` | `false` | Roll the file over once it reaches `max_size_mb` |
 | `log.output.file.rotation.size.max_size_mb` | `10` | Size (in MB, fractional values allowed, e.g. `0.5`) at which the file is rotated |
 | `log.output.file.rotation.time.enabled` | `false` | Roll the file over on a time schedule |
@@ -123,6 +125,10 @@ log:
 With the configuration above, logs are written to `<THUNDER_HOME>/logs/thunderid.log`. When the active file reaches the configured size limit, it is renamed with a timestamp suffix (for example `thunderid.log.2026-07-06-14-30-00`) and a fresh file is started. Older rotated files are then pruned by the configured backup count and age limit.
 
 Size and time triggers are independent and can run together: with both enabled, the file rolls whenever it exceeds the size limit **or** reaches the next time interval, whichever comes first. Time-based rotation rolls at local midnight and skips days with no log output (so idle days do not create empty files).
+
+:::note
+The format applies to every component's log lines, regardless of when that component was created. The exception is the lines emitted before the logging configuration is applied, during server home resolution and configuration loading. Those use the default text format on stdout, because the format itself is part of the configuration still being loaded.
+:::
 
 :::note
 This is the <ProductName /> **application log** (the `INFO`/`WARN`/`ERROR` lines the server emits). It is separate from the observability event file sink described in the [Observability](../../deployment/observability) guide, which records structured domain events such as token issuance and flow execution.
@@ -181,7 +187,7 @@ Stores identity provider configurations, applications, and authentication flows.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `database.config.sqlite.path` | `database/configdb.db` | SQLite database file path |
-| `database.config.sqlite.options` | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` | SQLite connection options |
+| `database.config.sqlite.options` | `_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)` | SQLite connection options |
 | `database.config.sqlite.max_open_conns` | `500` | Maximum number of open connections |
 | `database.config.sqlite.max_idle_conns` | `100` | Maximum number of idle connections |
 | `database.config.sqlite.conn_max_lifetime` | `3600` | Maximum connection lifetime in seconds |
@@ -219,7 +225,7 @@ Stores short-lived runtime data such as authorization codes, authorization reque
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `database.runtime_transient.sqlite.path` | `database/runtime_transient.db` | SQLite database file path |
-| `database.runtime_transient.sqlite.options` | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` | SQLite connection options |
+| `database.runtime_transient.sqlite.options` | `_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)` | SQLite connection options |
 | `database.runtime_transient.sqlite.max_open_conns` | `500` | Maximum number of open connections |
 | `database.runtime_transient.sqlite.max_idle_conns` | `100` | Maximum number of idle connections |
 | `database.runtime_transient.sqlite.conn_max_lifetime` | `3600` | Maximum connection lifetime in seconds |
@@ -291,7 +297,7 @@ Stores user profiles and credentials.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `database.entity.sqlite.path` | `database/entitydb.db` | SQLite database file path |
-| `database.entity.sqlite.options` | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` | SQLite connection options |
+| `database.entity.sqlite.options` | `_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)` | SQLite connection options |
 | `database.entity.sqlite.max_open_conns` | `500` | Maximum number of open connections |
 | `database.entity.sqlite.max_idle_conns` | `100` | Maximum number of idle connections |
 | `database.entity.sqlite.conn_max_lifetime` | `3600` | Maximum connection lifetime in seconds |
@@ -329,7 +335,7 @@ Stores SSO sessions, revoked tokens, and consent records. This database is requi
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `database.runtime_persistent.sqlite.path` | `database/runtime_persistent.db` | SQLite database file path |
-| `database.runtime_persistent.sqlite.options` | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` | SQLite connection options |
+| `database.runtime_persistent.sqlite.options` | `_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)` | SQLite connection options |
 | `database.runtime_persistent.sqlite.max_open_conns` | `500` | Maximum number of open connections |
 | `database.runtime_persistent.sqlite.max_idle_conns` | `100` | Maximum number of idle connections |
 | `database.runtime_persistent.sqlite.conn_max_lifetime` | `3600` | Maximum connection lifetime in seconds |
@@ -448,16 +454,18 @@ OAuth 2.0 and OpenID Connect settings.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `oauth.refresh_token.renew_on_grant` | `false` | If `true`, issues a new refresh token on each access token grant |
+| `oauth.refresh_token.renew_on_grant` | `true` | If `true`, issues a new refresh token on each access token grant. Set to `false` to reuse the existing refresh token until it expires |
 | `oauth.refresh_token.revoke_previous_on_renew` | `true` | If `true`, revokes the consumed refresh token after a successful renewal. Applies when `renew_on_grant` is enabled |
 | `oauth.refresh_token.validity_period` | `86400` | Refresh token validity period in seconds (24 hours) |
 | `oauth.authorization_code.validity_period` | `600` | Authorization code validity period in seconds (10 minutes) |
+| `oauth.authorization_request.validity_period` | `3600` | How long the authorization request context stays valid while the user completes the login flow, in seconds (60 minutes). A non-positive value falls back to the default |
 | `oauth.dcr.enabled` | `true` | If `true`, enables the Dynamic Client Registration endpoint |
 | `oauth.dcr.insecure` | `false` | If `true`, allows insecure dynamic client registration (development only) |
 | `oauth.allowed_auth_methods` | `["client_secret_basic", "client_secret_post", "private_key_jwt", "none"]` | Client token endpoint authentication methods allowed during client registration |
 | `oauth.allowed_response_types` | `["code"]` | OAuth response types allowed during client registration |
 | `oauth.allowed_grant_types` | `["client_credentials", "authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:token-exchange", "urn:openid:params:grant-type:ciba", "urn:ietf:params:oauth:grant-type:jwt-bearer"]` | OAuth grant types allowed during client registration |
 | `oauth.allow_wildcard_redirect_uri` | `false` | If `true`, allows wildcard patterns in registered redirect URIs: `*` and `**` in the path component, and `*` in the host component (label-internal, alphanumeric only). When `false`, only exact redirect URI matching is performed and registering a wildcard URI returns a `400 Bad Request` error. |
+| `oauth.send_server_errors_to_client` | `false` | If `true`, an authentication flow failure that maps to the OAuth `server_error` code is reported to the client, as RFC 6749 section 4.1.2.1 requires. If `false`, the authorization code flow shows the error page instead of redirecting to the client, and CIBA leaves the request pending so the polling client times out. Denials (`access_denied`) are always reported to the client and are not affected by this setting. |
 
 :::note
 Enabling `oauth.allow_wildcard_redirect_uri` affects all applications in the deployment. See [Use Wildcard Redirect URIs](../../guides/applications/application-settings#use-wildcard-redirect-uris) for pattern syntax and matching rules.
@@ -781,7 +789,30 @@ Signing keys are configured as an array. Each key has the following properties:
   key_file: "config/certs/signing.key"
 ```
 
-The key type under `crypto.keys` determines the algorithm in `id_token_signing_alg_values_supported` in the OIDC discovery document. RSA keys advertise `RS256`; ECDSA `P-256`, `P-384`, and `P-521` keys advertise `ES256`, `ES384`, and `ES512`; Ed25519 keys advertise `EdDSA`. If multiple keys are configured, all resulting algorithms are included without duplicates.
+The key type under `crypto.keys` determines the algorithm in `id_token_signing_alg_values_supported` in the OIDC discovery document. RSA keys advertise `RS256`; ECDSA `P-256`, `P-384`, and `P-521` keys advertise `ES256`, `ES384`, and `ES512`; Ed25519 keys advertise `EdDSA`; ML-DSA-44, ML-DSA-65, and ML-DSA-87 keys advertise `ML-DSA-44`, `ML-DSA-65`, and `ML-DSA-87`. If multiple keys are configured, all resulting algorithms are included without duplicates.
+
+#### Sign Tokens with ML-DSA
+
+To sign tokens with ML-DSA, add an ML-DSA key pair to `crypto.keys` and set [`jwt.preferred_key_id`](#jwt-configuration) to its ID:
+
+```yaml
+crypto:
+  keys:
+    - id: "mldsa-key"
+      cert_file: "config/certs/mldsa-signing.cert"
+      key_file: "config/certs/mldsa-signing.key"
+jwt:
+  preferred_key_id: "mldsa-key"
+```
+
+<ProductName /> signs tokens with the key that `jwt.preferred_key_id` selects. The ML-DSA private key must be a PKCS#8 key as defined in RFC 9881, in any of its three formats: seed-only, expanded-key-only, or both. To create the key pair for the example above with OpenSSL 3.5 or later, run the following commands in `config/certs`. The second command creates a self-signed certificate for the key.
+
+```bash
+openssl genpkey -algorithm ML-DSA-65 -out mldsa-signing.key
+openssl req -new -x509 -key mldsa-signing.key -out mldsa-signing.cert -days 365 -subj "/CN=ML-DSA signing key"
+```
+
+Clients and resource servers that verify these tokens must support ML-DSA. <ProductName /> publishes ML-DSA public keys at the [JWKS](../../guides/protocols/oauth-oidc/jwks) endpoint as `AKP` keys, as defined in RFC 9964.
 
 ## Attribute Cache Configuration
 
@@ -812,6 +843,8 @@ email:
 ```
 
 For the full property reference and provider-specific examples, see [Configure SMTP Server](../../guides/smtp-server/smtp-server-configuration).
+
+On Kubernetes, set these properties under `configuration.email.smtp` in your Helm values rather than editing `deployment.yaml`. The chart also sources the SMTP password from a Kubernetes Secret. See [Email](../deployment-paths/kubernetes#email).
 
 ## Notification Configuration
 
@@ -1026,7 +1059,7 @@ Configure flow defaults in either of these ways:
   value:
     authFlow:
       defaultHandle: default-flow
-      expirySeconds: 1800
+      expirySeconds: 3600
     registrationFlow:
       expirySeconds: 3600
     recoveryFlow:
@@ -1040,7 +1073,7 @@ Configure flow defaults in either of these ways:
   Content-Type: application/json
 
   {
-    "authFlow": { "defaultHandle": "default-flow", "expirySeconds": 1800 },
+    "authFlow": { "defaultHandle": "default-flow", "expirySeconds": 3600 },
     "registrationFlow": { "expirySeconds": 3600 }
   }
   ```

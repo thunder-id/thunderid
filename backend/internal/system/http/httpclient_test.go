@@ -5,6 +5,8 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -238,14 +240,18 @@ func (suite *HTTPClientTestSuite) TestSSRFSafeDialContext() {
 	for _, addr := range blockedAddrs {
 		_, err := ssrfSafeDialContext(context.Background(), "tcp", addr)
 		assert.ErrorContains(suite.T(), err, "private address", "addr %s should be blocked", addr)
+		assert.ErrorIs(suite.T(), err, ErrPrivateAddress, "addr %s should wrap ErrPrivateAddress", addr)
 	}
+	_, err := ssrfSafeDialContext(context.Background(), "tcp", "0.0.0.0:443")
+	assert.ErrorIs(suite.T(), err, ErrPrivateAddress)
 
 	// Public IP: SSRF check passes; use an already-canceled context so the dial fails
 	// immediately and deterministically with context.Canceled.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := ssrfSafeDialContext(ctx, "tcp", "1.1.1.1:443")
+	_, err = ssrfSafeDialContext(ctx, "tcp", "1.1.1.1:443")
 	assert.Error(suite.T(), err)
+	assert.NotErrorIs(suite.T(), err, ErrPrivateAddress)
 	assert.NotContains(suite.T(), err.Error(), "private address")
 	assert.NotContains(suite.T(), err.Error(), "resolved to no usable")
 }
@@ -280,4 +286,160 @@ func (suite *HTTPClientTestSuite) TestPostForm() {
 	assert.Equal(suite.T(), http.StatusOK, resp.StatusCode)
 
 	_ = resp.Body.Close()
+}
+
+func (suite *HTTPClientTestSuite) TestNewHTTPClientWithoutRedirects() {
+	timeout := 3 * time.Second
+	client := NewHTTPClientWithoutRedirects(timeout, false)
+	assert.Implements(suite.T(), (*HTTPClientInterface)(nil), client)
+
+	httpClient := client.(*HTTPClient)
+	assert.Equal(suite.T(), timeout, httpClient.client.Timeout)
+	transport := httpClient.client.Transport.(*http.Transport)
+	assert.Nil(suite.T(), transport.DialContext, "no SSRF dial guard unless asked for")
+}
+
+func (suite *HTTPClientTestSuite) TestClientWithoutRedirects_DoesNotFollowRedirects() {
+	landed := false
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		landed = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer redirecting.Close()
+
+	client := NewHTTPClientWithoutRedirects(5*time.Second, false)
+	resp, err := client.Post(redirecting.URL, "application/x-www-form-urlencoded",
+		strings.NewReader("logout_token=x"))
+
+	assert.NoError(suite.T(), err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(suite.T(), http.StatusFound, resp.StatusCode, "the redirect is returned, not followed")
+	assert.Equal(suite.T(), target.URL, resp.Header.Get("Location"))
+	assert.False(suite.T(), landed, "the redirect target must never be called")
+}
+
+func (suite *HTTPClientTestSuite) TestClientWithoutRedirects_ReachesLoopback() {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// httptest binds to 127.0.0.1, which the SSRF-guarded client would refuse to dial.
+	resp, err := NewHTTPClientWithoutRedirects(5*time.Second, false).Get(server.URL)
+
+	assert.NoError(suite.T(), err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(suite.T(), http.StatusOK, resp.StatusCode)
+}
+
+func (suite *HTTPClientTestSuite) TestClientWithoutRedirects_HonoursTimeout() {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	resp, err := NewHTTPClientWithoutRedirects(50*time.Millisecond, false).Get(server.URL)
+
+	assert.Error(suite.T(), err)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+}
+
+func (suite *HTTPClientTestSuite) TestNewHTTPClientWithRootCAs() {
+	timeout := 3 * time.Second
+	roots := x509.NewCertPool()
+	client := NewHTTPClientWithRootCAs(timeout, roots, false)
+	assert.Implements(suite.T(), (*HTTPClientInterface)(nil), client)
+
+	httpClient := client.(*HTTPClient)
+	assert.Equal(suite.T(), timeout, httpClient.client.Timeout)
+	transport := httpClient.client.Transport.(*http.Transport)
+	assert.Same(suite.T(), roots, transport.TLSClientConfig.RootCAs)
+	assert.Equal(suite.T(), uint16(tls.VersionTLS13), transport.TLSClientConfig.MinVersion)
+	assert.Nil(suite.T(), transport.DialContext, "no SSRF dial guard")
+}
+
+func (suite *HTTPClientTestSuite) TestClientWithRootCAs_TrustsOnlyTheGivenAuthorities() {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	trusted := x509.NewCertPool()
+	trusted.AddCert(server.Certificate())
+
+	client := NewHTTPClientWithRootCAs(5*time.Second, trusted, false)
+	resp, err := client.Get(server.URL)
+	assert.NoError(suite.T(), err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(suite.T(), http.StatusOK, resp.StatusCode)
+	client.(*HTTPClient).CloseIdleConnections()
+
+	refused, err := NewHTTPClientWithRootCAs(5*time.Second, x509.NewCertPool(), false).Get(server.URL)
+	if refused != nil {
+		_ = refused.Body.Close()
+	}
+	var unknownAuthority x509.UnknownAuthorityError
+	assert.ErrorAs(suite.T(), err, &unknownAuthority, "a certificate from another authority is refused")
+}
+
+func (suite *HTTPClientTestSuite) TestClientWithRootCAs_DoesNotFollowRedirects() {
+	landed := false
+	target := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		landed = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+	redirecting := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer redirecting.Close()
+	trusted := x509.NewCertPool()
+	trusted.AddCert(redirecting.Certificate())
+	trusted.AddCert(target.Certificate())
+
+	resp, err := NewHTTPClientWithRootCAs(5*time.Second, trusted, false).Get(redirecting.URL)
+
+	assert.NoError(suite.T(), err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(suite.T(), http.StatusFound, resp.StatusCode, "the redirect is returned, not followed")
+	assert.False(suite.T(), landed, "the redirect target must never be called")
+}
+
+func (suite *HTTPClientTestSuite) TestIsPrivateHost() {
+	for _, host := range []string{"localhost", "LOCALHOST", "app.localhost", "127.0.0.1", "::1", "169.254.169.254",
+		"10.1.2.3", "172.20.0.1", "192.168.0.1", "fd12::1", "fe80::1", "0.0.0.0", "::"} {
+		assert.True(suite.T(), IsPrivateHost(host), host)
+	}
+	for _, host := range []string{"rp.example.com", "8.8.8.8", "2001:4860:4860::8888", "172.32.0.1"} {
+		assert.False(suite.T(), IsPrivateHost(host), host)
+	}
+}
+
+func (suite *HTTPClientTestSuite) TestClientWithoutRedirects_RejectPrivateUsesTheSSRFGuard() {
+	client := NewHTTPClientWithoutRedirects(time.Second, true).(*HTTPClient)
+	transport := client.client.Transport.(*http.Transport)
+	assert.NotNil(suite.T(), transport.DialContext, "the SSRF-safe dialer is wired in")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// httptest binds to 127.0.0.1, which the guard refuses.
+	resp, err := client.Get(server.URL)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+	assert.Error(suite.T(), err)
+}
+
+func (suite *HTTPClientTestSuite) TestSSRFSafeDialContext_RefusesUnspecifiedAddress() {
+	_, err := ssrfSafeDialContext(context.Background(), "tcp", "0.0.0.0:443")
+	assert.Error(suite.T(), err)
 }

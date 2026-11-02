@@ -1,0 +1,89 @@
+---
+title: Notification Templates
+docType: guide
+sidebar_position: 1
+persona: iam
+description: Manage the email and SMS content {{ProductName}} sends for OTPs, invitations, magic links, password recovery, and CIBA approvals, and learn which runtime values, translations, and design tokens go in each.
+---
+
+# Notification Templates
+
+The OTPs, invitations, magic links, password recovery links, and CIBA approval messages your flows send all come from notification templates. A notification template is the content <ProductName /> sends on one channel: the subject and body of an email, or the body of an SMS. You manage templates while the server runs, from the Console or the Notification Templates API, so an edit takes effect on the next send with no file to touch and no restart.
+
+The content is not fixed text. It carries placeholders that <ProductName /> resolves when the message goes out, drawing on translations, the applicable design, and the values the flow produced.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get <ProductName />](../../../getting-started/get-thunderid).
+- An access token with the `system:notificationtemplate` scope to change templates, or `system:notificationtemplate:view` to read them.
+- For delivery, an [email provider](../email-providers) or [SMS provider](../sms-providers), selected on the flow's notification step.
+
+## Manage Templates
+
+Templates live in the config database, and you work with them from the Console or over the API.
+
+In the Console, open **Customize → Notifications**, which splits into **Email Templates** and **SMS Templates**. Use **New template** to create one, or open an existing template to edit its display name, description, content, and, for email, its light or dark color scheme. Preview the result before you save. You can delete a template, unless a flow still references it. **Import / Export** moves templates as declarative resources for a GitOps workflow.
+
+Over the API, manage templates under `/notification-templates/{channel}/templates`, where `{channel}` is `email` or `sms`:
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/notification-templates/{channel}/templates` | List the channel's templates. |
+| `POST` | `/notification-templates/{channel}/templates` | Create a template. |
+| `GET` | `/notification-templates/{channel}/templates/{id}` | Read a template. |
+| `PUT` | `/notification-templates/{channel}/templates/{id}` | Update a template. The handle does not change. |
+| `DELETE` | `/notification-templates/{channel}/templates/{id}` | Delete a template, unless a flow references it. |
+
+By default a template is a database row you edit freely through the Console and API, and any template declared in a file is merged in as a read-only entry. To keep templates in version control only, set `notification.template.store` to `declarative`, where templates come from files alone and the API and Console refuse writes with a `403`. To use the database alone and ignore file-declared templates, set it to `mutable`. See [Import Declarative Resources](../declarative-configurations/import-resources.mdx#notification-templates).
+
+## Writing Template Content
+
+An email template has a subject and a body; an SMS template has a body only. Each field is text with three kinds of placeholder, which <ProductName /> resolves in order, translations first, then design, then the runtime values:
+
+- `{{t(key)}}` resolves to translated text from the `notification` translation namespace, so you author one template rather than one copy per language.
+- `{{design(token)}}` resolves a design token, such as `{{design(palette.primary.main)}}`, against the applicable theme. It is allowed only in an email body, never in a subject or in SMS.
+- `{{ctx(key)}}` resolves to a value the sender supplies at send time, such as `{{ctx(otpCode)}}`.
+
+The placeholder syntax has a few limits to account for when writing a template:
+
+- **Keys are case sensitive.** `{{ctx(otpCode)}}` resolves; `{{ctx(otpcode)}}` does not.
+- **There are no filters, defaults, conditionals, or loops.** Placeholders are substituted as-is, so anything conditional belongs in a different template.
+- **Rendering is fail-closed.** If a referenced translation key, a `{{design(...)}}` token, or a `{{ctx(...)}}` value cannot be resolved, <ProductName /> does not send the message and reports the error, rather than delivering it with a raw `{{...}}` left in place. A typo in a key name stops the send instead of reaching the user.
+
+That last point is why context tokens need care: a `{{ctx(...)}}` placeholder only resolves if something earlier produced its value, and referencing one that nothing supplies fails the send. The [token catalog](../template-tokens) lists every token you can insert and, for context tokens, which values each scenario guarantees.
+
+Content is also checked when you save it. A malformed or unsupported placeholder, or a `{{design(...)}}` token in a subject or in SMS, is rejected before the template is stored. This catches syntax and channel mistakes at save time; whether every `{{ctx(...)}}` value actually resolves is known only at send time, where an unresolved one fails the send as described above.
+
+### The Values a Sender Supplies
+
+The runtime supplies a set of `{{ctx(...)}}` values, and each sending scenario guarantees at least a few of them. See [Context Tokens](../template-tokens#context-tokens) in the token catalog for the complete list and the per-scenario availability.
+
+These are the values a handle guarantees, not the complete set. A template rendered inside a flow can also use whatever the flow already holds. The recipient's user claims, such as `{{ctx(mobile_number)}}`, and any runtime data the flow produced are available as `{{ctx(...)}}` values too. The exception is the standalone SMS OTP endpoint, which runs outside a flow and supplies only `otpCode` and `expiryTime`.
+
+In an HTML email body, <ProductName /> HTML-escapes each `{{ctx(...)}}` value before inserting it, so a value that contains `<` or `&` reads as text rather than markup. Translation and design results are content you authored, and are not escaped.
+
+### Localizing and Theming
+
+Because copy is written as `{{t(...)}}` keys rather than literal text, wording stays out of the template and lives in the `notification` translation namespace. Create and edit those keys from the editor's token panel or the Console **Translations** page. <ProductName /> currently renders every notification in the system default language, `en-US`, falling back to the nearest available value for a key; sending each recipient their own language is an upcoming enhancement. For email, `{{design(...)}}` tokens resolve against the chosen theme and color scheme, so a template follows your branding without carrying a copy of it. The [token catalog](../template-tokens) lists the design and translation tokens you can insert.
+
+### The Standalone SMS OTP Endpoint
+
+`POST /auth/otp/sms/send` renders the `otp` SMS template outside of any flow. Because no flow is running, there is no application, user, or identity provider to draw from, and the endpoint supplies only two values:
+
+- `otpCode`
+- `expiryTime`
+
+Keep the `otp` SMS template to those two keys. Any other `{{ctx(...)}}` placeholder has nothing to resolve against, and because rendering is fail-closed, it stops the send.
+
+## SMS Length
+
+An SMS segment holds 160 characters. When a rendered SMS body exceeds that, <ProductName /> logs a warning and still sends the message; the provider then splits it into multiple segments, which most providers bill separately.
+
+Write SMS bodies against the rendered length, not the template length. A body that looks short can grow well past 160 characters once a long `inviteLink` or a long `appName` is substituted in.
+
+## Next Steps
+
+- [Notification Template Tokens](../template-tokens): The complete catalog of context, design, and translation tokens
+- [Configure an SMS Provider](../sms-providers): Connect the gateway that delivers your SMS templates
+- [Configure an Email Provider](../email-providers): Connect the mail server that delivers your email templates
+- [Build a Flow](../../flows/build-a-flow): Add the notification step that renders a template

@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any */
@@ -147,7 +147,8 @@ const addAttribute = async (user: ReturnType<typeof userEvent.setup>, id: string
 describe('ViewUserTypePage', () => {
   const mockUserType: ApiUserType = {
     id: 'schema-123',
-    name: 'Employee Schema',
+    handle: 'employee',
+    displayName: 'Employee Schema',
     ouId: 'root-ou',
     allowSelfRegistration: false,
     schema: {
@@ -266,6 +267,12 @@ describe('ViewUserTypePage', () => {
       expect(screen.getByDisplayValue('schema-123')).toBeInTheDocument();
     });
 
+    it('renders the immutable handle as a read-only copy field', () => {
+      render(<ViewUserTypePage />);
+
+      expect(screen.getByDisplayValue('employee')).toHaveAttribute('readonly');
+    });
+
     it('displays General and Schema tabs', () => {
       render(<ViewUserTypePage />);
 
@@ -364,7 +371,7 @@ describe('ViewUserTypePage', () => {
     it('displays self registration toggle', () => {
       render(<ViewUserTypePage />);
 
-      expect(screen.getByText('Self Registration')).toBeInTheDocument();
+      expect(screen.getByText('Self registration')).toBeInTheDocument();
       // SettingsCard renders a Switch component with role="switch"
       const toggle = screen.getByRole('switch');
       expect(toggle).not.toBeChecked();
@@ -385,7 +392,7 @@ describe('ViewUserTypePage', () => {
     it('displays display attribute section', () => {
       render(<ViewUserTypePage />);
 
-      expect(screen.getByText('Display Attribute')).toBeInTheDocument();
+      expect(screen.getByText('Display attribute')).toBeInTheDocument();
     });
 
     it('displays danger zone with delete button', async () => {
@@ -394,7 +401,7 @@ describe('ViewUserTypePage', () => {
 
       await user.click(screen.getByRole('tab', {name: /advanced/i}));
 
-      expect(screen.getByText('Danger Zone')).toBeInTheDocument();
+      expect(screen.getByText('Danger zone')).toBeInTheDocument();
       expect(screen.getByRole('button', {name: /^delete$/i})).toBeInTheDocument();
     });
 
@@ -829,7 +836,7 @@ describe('ViewUserTypePage', () => {
         expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
           userTypeId: 'schema-123',
           data: expect.objectContaining({
-            name: 'Employee Schema',
+            displayName: 'Employee Schema',
             ouId: 'child-ou',
             allowSelfRegistration: false,
             schema: expect.any(Object) as Record<string, unknown>,
@@ -860,10 +867,12 @@ describe('ViewUserTypePage', () => {
         expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
           userTypeId: 'schema-123',
           data: expect.objectContaining({
-            name: 'Updated Schema',
+            displayName: 'Updated Schema',
           }),
         });
       });
+      const [{data: sentData}] = mockUpdateMutateAsync.mock.calls[0] as [{data: Record<string, unknown>}];
+      expect(sentData).not.toHaveProperty('handle');
     });
 
     it('saves schema changes from Schema tab', async () => {
@@ -1550,7 +1559,7 @@ describe('ViewUserTypePage', () => {
     });
   });
 
-  describe('Display Attribute Eligibility', () => {
+  describe('Display attribute Eligibility', () => {
     it('clears display attribute when the selected property is removed', async () => {
       const user = userEvent.setup();
       const userTypeWithDisplay: ApiUserType = {
@@ -1727,5 +1736,121 @@ describe('ViewUserTypePage', () => {
         expect(mockNavigate).toHaveBeenCalledWith('/user-types');
       });
     });
+  });
+  it.each(['email', 'mobile'] as const)('blocks saving with a specific missing primary %s message', async (type) => {
+    const user = userEvent.setup();
+    mockUseGetUserType.mockReturnValue({
+      data: {...mockUserType, schema: {contact: {type}, backup: {type}}, systemAttributes: {}},
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    render(<ViewUserTypePage />);
+    await user.click(screen.getByTestId('select-ou-child'));
+    await user.click(screen.getByRole('button', {name: /^save$/i}));
+    expect(
+      screen.getByText(
+        type === 'email'
+          ? 'Select one email attribute as the primary email.'
+          : 'Select one mobile attribute as the primary mobile.',
+      ),
+    ).toBeInTheDocument();
+    expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('reports a missing primary before the breaking schema change warning', async () => {
+    const user = userEvent.setup();
+    mockUseGetUserType.mockReturnValue({
+      data: {
+        ...mockUserType,
+        schema: {
+          status: {type: 'string', required: true, enum: ['ACTIVE', 'INACTIVE']},
+          contact: {type: 'email'},
+          backup: {type: 'email'},
+        },
+        systemAttributes: {},
+      },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    render(<ViewUserTypePage />);
+    await goToSchemaTab(user);
+    await expandProperty(user, 'status');
+    const activeChip = (await screen.findByText('ACTIVE')).closest('.MuiChip-root');
+    await user.click(within(activeChip as HTMLElement).getByTestId('CancelIcon'));
+    await user.click(screen.getByRole('button', {name: /^save$/i}));
+    expect(screen.getAllByText('Select one email attribute as the primary email.').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it.each(['@example.com$', ''])('preserves saved contact regex %j during unrelated edits', async (regex) => {
+    const user = userEvent.setup();
+    mockUseGetUserType.mockReturnValue({
+      data: {
+        ...mockUserType,
+        systemAttributes: {display: 'work', primaryEmail: 'recovery', primaryMobile: 'phone'},
+        schema: {
+          work: {type: 'email', unique: true, regex},
+          recovery: {type: 'email', regex: '@recover.example.com$'},
+          phone: {type: 'mobile'},
+        },
+      },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    mockUpdateMutateAsync.mockResolvedValue(undefined);
+    render(<ViewUserTypePage />);
+    await user.click(screen.getByRole('button', {name: /edit user type name/i}));
+    const name = screen.getByRole('textbox', {name: /user type name/i});
+    await user.clear(name);
+    await user.type(name, 'Renamed{Enter}');
+    await user.click(screen.getByRole('button', {name: /^save$/i}));
+    await waitFor(() =>
+      expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
+        userTypeId: 'schema-123',
+        data: expect.objectContaining({
+          systemAttributes: {display: 'work', primaryEmail: 'recovery', primaryMobile: 'phone'},
+          schema: {
+            work: {
+              type: 'email',
+              required: false,
+              unique: true,
+              regex: regex || '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
+            },
+            recovery: {type: 'email', required: false, regex: '@recover.example.com$'},
+            phone: {type: 'mobile', required: false, regex: '^\\+[1-9]\\d{1,14}$'},
+          },
+        }),
+      }),
+    );
+  });
+  it.each(['email', 'mobile'] as const)('blocks saving an empty %s regex', async (type) => {
+    const user = userEvent.setup();
+    mockUseGetUserType.mockReturnValue({
+      data: {
+        ...mockUserType,
+        schema: {contact: {type, regex: '^custom$'}},
+        systemAttributes: type === 'email' ? {primaryEmail: 'contact'} : {primaryMobile: 'contact'},
+      },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    render(<ViewUserTypePage />);
+    await user.click(screen.getByRole('tab', {name: /schema/i}));
+    await user.click(screen.getByText('contact'));
+    await user.clear(screen.getByDisplayValue('^custom$'));
+    await user.click(screen.getByRole('button', {name: /^save$/i}));
+    expect(
+      screen.getAllByText(
+        type === 'email'
+          ? 'Enter a regular expression for email attributes.'
+          : 'Enter a regular expression for mobile attributes.',
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
   });
 });

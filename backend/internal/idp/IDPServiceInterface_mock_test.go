@@ -19,10 +19,19 @@ func NewIDPServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *IDPServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &IDPServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -54,7 +63,7 @@ type IDPServiceInterfaceMock_ApplySchemaAwareDefaults_Call struct {
 // ApplySchemaAwareDefaults is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idp *providers.IDPDTO
-func (_e *IDPServiceInterfaceMock_Expecter) ApplySchemaAwareDefaults(ctx interface{}, idp interface{}) *IDPServiceInterfaceMock_ApplySchemaAwareDefaults_Call {
+func (_e *IDPServiceInterfaceMock_Expecter) ApplySchemaAwareDefaults(ctx any, idp any) *IDPServiceInterfaceMock_ApplySchemaAwareDefaults_Call {
 	return &IDPServiceInterfaceMock_ApplySchemaAwareDefaults_Call{Call: _e.mock.On("ApplySchemaAwareDefaults", ctx, idp)}
 }
 
@@ -124,7 +133,7 @@ type IDPServiceInterfaceMock_CreateIdentityProvider_Call struct {
 // CreateIdentityProvider is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idp *providers.IDPDTO
-func (_e *IDPServiceInterfaceMock_Expecter) CreateIdentityProvider(ctx interface{}, idp interface{}) *IDPServiceInterfaceMock_CreateIdentityProvider_Call {
+func (_e *IDPServiceInterfaceMock_Expecter) CreateIdentityProvider(ctx any, idp any) *IDPServiceInterfaceMock_CreateIdentityProvider_Call {
 	return &IDPServiceInterfaceMock_CreateIdentityProvider_Call{Call: _e.mock.On("CreateIdentityProvider", ctx, idp)}
 }
 
@@ -183,7 +192,7 @@ type IDPServiceInterfaceMock_DeleteIdentityProvider_Call struct {
 // DeleteIdentityProvider is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpID string
-func (_e *IDPServiceInterfaceMock_Expecter) DeleteIdentityProvider(ctx interface{}, idpID interface{}) *IDPServiceInterfaceMock_DeleteIdentityProvider_Call {
+func (_e *IDPServiceInterfaceMock_Expecter) DeleteIdentityProvider(ctx any, idpID any) *IDPServiceInterfaceMock_DeleteIdentityProvider_Call {
 	return &IDPServiceInterfaceMock_DeleteIdentityProvider_Call{Call: _e.mock.On("DeleteIdentityProvider", ctx, idpID)}
 }
 
@@ -211,6 +220,82 @@ func (_c *IDPServiceInterfaceMock_DeleteIdentityProvider_Call) Return(serviceErr
 }
 
 func (_c *IDPServiceInterfaceMock_DeleteIdentityProvider_Call) RunAndReturn(run func(ctx context.Context, idpID string) *common.ServiceError) *IDPServiceInterfaceMock_DeleteIdentityProvider_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetDirectAuthorizationTargets provides a mock function for the type IDPServiceInterfaceMock
+func (_mock *IDPServiceInterfaceMock) GetDirectAuthorizationTargets(ctx context.Context, idp *providers.IDPDTO, claims map[string]interface{}) ([]providers.AuthorizationTarget, *common.ServiceError) {
+	ret := _mock.Called(ctx, idp, claims)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetDirectAuthorizationTargets")
+	}
+
+	var r0 []providers.AuthorizationTarget
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.IDPDTO, map[string]interface{}) ([]providers.AuthorizationTarget, *common.ServiceError)); ok {
+		return returnFunc(ctx, idp, claims)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.IDPDTO, map[string]interface{}) []providers.AuthorizationTarget); ok {
+		r0 = returnFunc(ctx, idp, claims)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.AuthorizationTarget)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *providers.IDPDTO, map[string]interface{}) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, idp, claims)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// IDPServiceInterfaceMock_GetDirectAuthorizationTargets_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetDirectAuthorizationTargets'
+type IDPServiceInterfaceMock_GetDirectAuthorizationTargets_Call struct {
+	*mock.Call
+}
+
+// GetDirectAuthorizationTargets is a helper method to define mock.On call
+//   - ctx context.Context
+//   - idp *providers.IDPDTO
+//   - claims map[string]interface{}
+func (_e *IDPServiceInterfaceMock_Expecter) GetDirectAuthorizationTargets(ctx any, idp any, claims any) *IDPServiceInterfaceMock_GetDirectAuthorizationTargets_Call {
+	return &IDPServiceInterfaceMock_GetDirectAuthorizationTargets_Call{Call: _e.mock.On("GetDirectAuthorizationTargets", ctx, idp, claims)}
+}
+
+func (_c *IDPServiceInterfaceMock_GetDirectAuthorizationTargets_Call) Run(run func(ctx context.Context, idp *providers.IDPDTO, claims map[string]interface{})) *IDPServiceInterfaceMock_GetDirectAuthorizationTargets_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *providers.IDPDTO
+		if args[1] != nil {
+			arg1 = args[1].(*providers.IDPDTO)
+		}
+		var arg2 map[string]interface{}
+		if args[2] != nil {
+			arg2 = args[2].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *IDPServiceInterfaceMock_GetDirectAuthorizationTargets_Call) Return(authorizationTargets []providers.AuthorizationTarget, serviceError *common.ServiceError) *IDPServiceInterfaceMock_GetDirectAuthorizationTargets_Call {
+	_c.Call.Return(authorizationTargets, serviceError)
+	return _c
+}
+
+func (_c *IDPServiceInterfaceMock_GetDirectAuthorizationTargets_Call) RunAndReturn(run func(ctx context.Context, idp *providers.IDPDTO, claims map[string]interface{}) ([]providers.AuthorizationTarget, *common.ServiceError)) *IDPServiceInterfaceMock_GetDirectAuthorizationTargets_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -253,7 +338,7 @@ type IDPServiceInterfaceMock_GetIDPUsages_Call struct {
 // GetIDPUsages is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpID string
-func (_e *IDPServiceInterfaceMock_Expecter) GetIDPUsages(ctx interface{}, idpID interface{}) *IDPServiceInterfaceMock_GetIDPUsages_Call {
+func (_e *IDPServiceInterfaceMock_Expecter) GetIDPUsages(ctx any, idpID any) *IDPServiceInterfaceMock_GetIDPUsages_Call {
 	return &IDPServiceInterfaceMock_GetIDPUsages_Call{Call: _e.mock.On("GetIDPUsages", ctx, idpID)}
 }
 
@@ -323,7 +408,7 @@ type IDPServiceInterfaceMock_GetIdentityProvider_Call struct {
 // GetIdentityProvider is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpID string
-func (_e *IDPServiceInterfaceMock_Expecter) GetIdentityProvider(ctx interface{}, idpID interface{}) *IDPServiceInterfaceMock_GetIdentityProvider_Call {
+func (_e *IDPServiceInterfaceMock_Expecter) GetIdentityProvider(ctx any, idpID any) *IDPServiceInterfaceMock_GetIdentityProvider_Call {
 	return &IDPServiceInterfaceMock_GetIdentityProvider_Call{Call: _e.mock.On("GetIdentityProvider", ctx, idpID)}
 }
 
@@ -393,7 +478,7 @@ type IDPServiceInterfaceMock_GetIdentityProviderByName_Call struct {
 // GetIdentityProviderByName is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpName string
-func (_e *IDPServiceInterfaceMock_Expecter) GetIdentityProviderByName(ctx interface{}, idpName interface{}) *IDPServiceInterfaceMock_GetIdentityProviderByName_Call {
+func (_e *IDPServiceInterfaceMock_Expecter) GetIdentityProviderByName(ctx any, idpName any) *IDPServiceInterfaceMock_GetIdentityProviderByName_Call {
 	return &IDPServiceInterfaceMock_GetIdentityProviderByName_Call{Call: _e.mock.On("GetIdentityProviderByName", ctx, idpName)}
 }
 
@@ -462,7 +547,7 @@ type IDPServiceInterfaceMock_GetIdentityProviderList_Call struct {
 
 // GetIdentityProviderList is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *IDPServiceInterfaceMock_Expecter) GetIdentityProviderList(ctx interface{}) *IDPServiceInterfaceMock_GetIdentityProviderList_Call {
+func (_e *IDPServiceInterfaceMock_Expecter) GetIdentityProviderList(ctx any) *IDPServiceInterfaceMock_GetIdentityProviderList_Call {
 	return &IDPServiceInterfaceMock_GetIdentityProviderList_Call{Call: _e.mock.On("GetIdentityProviderList", ctx)}
 }
 
@@ -528,7 +613,7 @@ type IDPServiceInterfaceMock_GetIdentityProvidersByProperty_Call struct {
 //   - ctx context.Context
 //   - propertyKey string
 //   - propertyValue string
-func (_e *IDPServiceInterfaceMock_Expecter) GetIdentityProvidersByProperty(ctx interface{}, propertyKey interface{}, propertyValue interface{}) *IDPServiceInterfaceMock_GetIdentityProvidersByProperty_Call {
+func (_e *IDPServiceInterfaceMock_Expecter) GetIdentityProvidersByProperty(ctx any, propertyKey any, propertyValue any) *IDPServiceInterfaceMock_GetIdentityProvidersByProperty_Call {
 	return &IDPServiceInterfaceMock_GetIdentityProvidersByProperty_Call{Call: _e.mock.On("GetIdentityProvidersByProperty", ctx, propertyKey, propertyValue)}
 }
 
@@ -565,6 +650,65 @@ func (_c *IDPServiceInterfaceMock_GetIdentityProvidersByProperty_Call) RunAndRet
 	return _c
 }
 
+// ResolveIdentityProviderOU provides a mock function for the type IDPServiceInterfaceMock
+func (_mock *IDPServiceInterfaceMock) ResolveIdentityProviderOU(ctx context.Context, idp *providers.IDPDTO) *common.ServiceError {
+	ret := _mock.Called(ctx, idp)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveIdentityProviderOU")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.IDPDTO) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, idp)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveIdentityProviderOU'
+type IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call struct {
+	*mock.Call
+}
+
+// ResolveIdentityProviderOU is a helper method to define mock.On call
+//   - ctx context.Context
+//   - idp *providers.IDPDTO
+func (_e *IDPServiceInterfaceMock_Expecter) ResolveIdentityProviderOU(ctx any, idp any) *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call {
+	return &IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call{Call: _e.mock.On("ResolveIdentityProviderOU", ctx, idp)}
+}
+
+func (_c *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call) Run(run func(ctx context.Context, idp *providers.IDPDTO)) *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *providers.IDPDTO
+		if args[1] != nil {
+			arg1 = args[1].(*providers.IDPDTO)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call) Return(serviceError *common.ServiceError) *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call) RunAndReturn(run func(ctx context.Context, idp *providers.IDPDTO) *common.ServiceError) *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetDependencyRegistry provides a mock function for the type IDPServiceInterfaceMock
 func (_mock *IDPServiceInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
 	_mock.Called(r)
@@ -578,7 +722,7 @@ type IDPServiceInterfaceMock_SetDependencyRegistry_Call struct {
 
 // SetDependencyRegistry is a helper method to define mock.On call
 //   - r resourcedependency.Registry
-func (_e *IDPServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *IDPServiceInterfaceMock_SetDependencyRegistry_Call {
+func (_e *IDPServiceInterfaceMock_Expecter) SetDependencyRegistry(r any) *IDPServiceInterfaceMock_SetDependencyRegistry_Call {
 	return &IDPServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
 }
 
@@ -644,7 +788,7 @@ type IDPServiceInterfaceMock_UpdateIdentityProvider_Call struct {
 //   - ctx context.Context
 //   - idpID string
 //   - idp *providers.IDPDTO
-func (_e *IDPServiceInterfaceMock_Expecter) UpdateIdentityProvider(ctx interface{}, idpID interface{}, idp interface{}) *IDPServiceInterfaceMock_UpdateIdentityProvider_Call {
+func (_e *IDPServiceInterfaceMock_Expecter) UpdateIdentityProvider(ctx any, idpID any, idp any) *IDPServiceInterfaceMock_UpdateIdentityProvider_Call {
 	return &IDPServiceInterfaceMock_UpdateIdentityProvider_Call{Call: _e.mock.On("UpdateIdentityProvider", ctx, idpID, idp)}
 }
 

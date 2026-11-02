@@ -48,7 +48,7 @@ describe('ImportConfigurationValidatePage', () => {
 
   it('renders validate title', () => {
     render(<ImportConfigurationValidatePage />);
-    expect(screen.getByText('Validating Configuration')).toBeInTheDocument();
+    expect(screen.getByText('Validating configuration')).toBeInTheDocument();
   });
 
   it('renders the four validation steps', () => {
@@ -101,7 +101,7 @@ describe('ImportConfigurationValidatePage', () => {
 
     render(<ImportConfigurationValidatePage />);
 
-    expect(screen.getByRole('button', {name: 'Upload Different File'})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Upload different file'})).toBeInTheDocument();
   });
 
   it('navigates to /welcome/import-configuration when upload different file is clicked', async () => {
@@ -113,7 +113,7 @@ describe('ImportConfigurationValidatePage', () => {
     const user = userEvent.setup();
     render(<ImportConfigurationValidatePage />);
 
-    await user.click(screen.getByRole('button', {name: 'Upload Different File'}));
+    await user.click(screen.getByRole('button', {name: 'Upload different file'}));
 
     expect(mockNavigate).toHaveBeenCalledWith('/welcome/import-configuration');
   });

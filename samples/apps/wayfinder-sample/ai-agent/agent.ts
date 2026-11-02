@@ -25,7 +25,7 @@ dotenv.config({
   path: resolve(__dirname, ".env"),
 });
 
-// Local-dev TLS bypass: Thunder ships with a self-signed cert on localhost,
+// Local-dev TLS bypass: ThunderID ships with a self-signed cert on localhost,
 // so fetch() and the SDK would otherwise refuse to talk to it.
 // We disable Node's TLS verification ONLY when the configured base URL points
 // at localhost / 127.0.0.1 to keep production builds safe.
@@ -35,7 +35,7 @@ if (
 ) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   console.warn(
-    "[ai-agent] Local Thunder detected — NODE_TLS_REJECT_UNAUTHORIZED set to 0. Do not use this build in production.",
+    "[ai-agent] Local ThunderID detected, NODE_TLS_REJECT_UNAUTHORIZED set to 0. Do not use this build in production.",
   );
 }
 
@@ -59,7 +59,7 @@ function createModel(): BaseChatModel {
   if (LLM_PROVIDER === "gemini" || LLM_PROVIDER === "google") {
     return new ChatGoogleGenerativeAI({
       apiKey: process.env.LLM_API_KEY || "",
-      model: process.env.MODEL_NAME || "gemini-2.5-flash",
+      model: process.env.MODEL_NAME || "gemini-flash-lite-latest",
     });
   }
 
@@ -229,24 +229,26 @@ const AGENT_ACCESS_SCOPE = process.env.AGENT_ACCESS_SCOPE || "agent:access";
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
 // When "id_token_hint", the scheduler sends the user's OIDC ID token to bc-authorize
 // instead of their email. The CIBA flow on the server must set loginHintAttribute: "userID"
-// so Thunder resolves the hint as an entity ID (see thunderid-config/thunderid.env).
-const CIBA_HINT_TYPE = (process.env.CIBA_HINT_TYPE || "login_hint").toLowerCase();
+// so ThunderID resolves the hint as an entity ID (see thunderid-config/thunderid.env).
+const CIBA_HINT_TYPE = (
+  process.env.CIBA_HINT_TYPE || "login_hint"
+).toLowerCase();
 // Upgrade scheduler is opt-in. Set UPGRADE_SCHEDULER_ENABLED=true to start the
 // background loop that polls for pending upgrade requests and processes them via CIBA.
-const UPGRADE_SCHEDULER_ENABLED = process.env.UPGRADE_SCHEDULER_ENABLED === "true";
+const UPGRADE_SCHEDULER_ENABLED =
+  process.env.UPGRADE_SCHEDULER_ENABLED === "true";
 
 const USER_CONTEXT_TOOLS = new Set<string>([
-    "create_booking",
-    "delete_all_bookings",
-    "get_flight_bookings",
-    "get_profile",
-    "request_upgrade",
-    "upgrade_booking",
+  "create_booking",
+  "delete_all_bookings",
+  "get_flight_bookings",
+  "get_profile",
+  "request_upgrade",
+  "upgrade_booking",
 ]);
 
 const OBO_SCOPES =
-  "openid booking:read booking:create " +
-  "booking:cancel booking:upgrade";
+  "openid booking:read booking:create " + "booking:cancel booking:upgrade";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -391,12 +393,16 @@ async function exchangeCodeForUserToken(
     throw new Error(`Token exchange failed (${response.status}): ${text}`);
   }
 
-    let payload: { access_token?: string; id_token?: string; expires_in?: number };
-    try {
-        payload = JSON.parse(text);
-    } catch {
-        throw new Error(`Token exchange returned non-JSON response: ${text}`);
-    }
+  let payload: {
+    access_token?: string;
+    id_token?: string;
+    expires_in?: number;
+  };
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new Error(`Token exchange returned non-JSON response: ${text}`);
+  }
 
   if (!payload.access_token) {
     throw new Error(`Token exchange response missing access_token: ${text}`);
@@ -422,11 +428,11 @@ async function exchangeCodeForUserToken(
     console.warn("[obo] failed to decode access token for logging", decodeErr);
   }
 
-    return {
-        accessToken: payload.access_token,
-        idToken: payload.id_token ?? undefined,
-        expiresAt: Date.now() + (payload.expires_in ?? 3600) * 1000,
-    };
+  return {
+    accessToken: payload.access_token,
+    idToken: payload.id_token ?? undefined,
+    expiresAt: Date.now() + (payload.expires_in ?? 3600) * 1000,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -434,18 +440,19 @@ async function exchangeCodeForUserToken(
 // ---------------------------------------------------------------------------
 
 async function initiateCiba(
-    hint: string,
-    bindingMessage: string,
+  hint: string,
+  bindingMessage: string,
 ): Promise<{ authReqId: string; interval: number; expiresIn: number }> {
-    const hintParam = CIBA_HINT_TYPE === "id_token_hint" ? "id_token_hint" : "login_hint";
-    const body = new URLSearchParams({
-        [hintParam]: hint,
-        scope: `openid upgrade:process`,
-        // RFC 8707: bind the CIBA request to the MCP resource server so the issued
-        // access token's aud is the MCP server and upgrade:process resolves against it.
-        resource: MCP_SERVER_URL,
-        binding_message: bindingMessage,
-    });
+  const hintParam =
+    CIBA_HINT_TYPE === "id_token_hint" ? "id_token_hint" : "login_hint";
+  const body = new URLSearchParams({
+    [hintParam]: hint,
+    scope: `openid upgrade:process`,
+    // RFC 8707: bind the CIBA request to the MCP resource server so the issued
+    // access token's aud is the MCP server and upgrade:process resolves against it.
+    resource: MCP_SERVER_URL,
+    binding_message: bindingMessage,
+  });
 
   const basicAuth = Buffer.from(
     `${upgradeAgentConfig.agentID}:${upgradeAgentConfig.agentSecret}`,
@@ -566,20 +573,20 @@ async function getUserContextTool(
     throw new Error("No user token available");
   }
 
-    if (!session.userToolsByName) {
-        const headers: Record<string, string> = {
-            Authorization: `Bearer ${session.userToken.accessToken}`,
-        };
-        if (session.userToken.idToken) {
-            headers["x-id-token"] = session.userToken.idToken;
-        }
-        const userClient = new MultiServerMCPClient({
-            travel: {
-                transport: "http",
-                url: MCP_SERVER_URL,
-                headers,
-            },
-        });
+  if (!session.userToolsByName) {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${session.userToken.accessToken}`,
+    };
+    if (session.userToken.idToken) {
+      headers["x-id-token"] = session.userToken.idToken;
+    }
+    const userClient = new MultiServerMCPClient({
+      travel: {
+        transport: "http",
+        url: MCP_SERVER_URL,
+        headers,
+      },
+    });
 
     const userTools = (await userClient.getTools()) as unknown as MCPLikeTool[];
     session.userToolsByName = new Map(userTools.map((t) => [t.name, t]));
@@ -893,7 +900,7 @@ async function createAgent() {
     await ensureMcpConnection();
   } else {
     console.log(
-      "[ai-agent] Thunder not configured — running without agent authentication.",
+      "[ai-agent] ThunderID not configured, running without agent authentication.",
     );
     console.log(
       "[ai-agent] Set THUNDER_BASE_URL, AGENT_ID, and AGENT_SECRET to enable OAuth flows.",
@@ -1194,22 +1201,22 @@ async function processOneUpgrade(): Promise<boolean> {
     return false;
   }
 
-    let pendingResult: {
-        pendingCount: number;
-        request: {
-            id: string;
-            userId: string;
-            email: string;
-            idToken?: string | null;
-            bookingId: string;
-            fromFlightId: string;
-            toFlightId: string;
-            priceDifference: number;
-            route: { from: string; to: string; airline: string };
-            fromCabin: string;
-            toCabin: string;
-        } | null;
-    } | null = null;
+  let pendingResult: {
+    pendingCount: number;
+    request: {
+      id: string;
+      userId: string;
+      email: string;
+      idToken?: string | null;
+      bookingId: string;
+      fromFlightId: string;
+      toFlightId: string;
+      priceDifference: number;
+      route: { from: string; to: string; airline: string };
+      fromCabin: string;
+      toCabin: string;
+    } | null;
+  } | null = null;
 
   try {
     const raw = await getPendingTool.func({}, undefined, undefined);
@@ -1236,10 +1243,10 @@ async function processOneUpgrade(): Promise<boolean> {
     return false;
   }
 
-    const { request, pendingCount } = pendingResult;
-    console.log(
-        `[upgrade-scheduler] Found ${pendingCount} pending upgrade(s). Processing: ${request.id} for user: ${request.userId}`,
-    );
+  const { request, pendingCount } = pendingResult;
+  console.log(
+    `[upgrade-scheduler] Found ${pendingCount} pending upgrade(s). Processing: ${request.id} for user: ${request.userId}`,
+  );
 
   const priceDiff =
     request.priceDifference > 0
@@ -1247,30 +1254,35 @@ async function processOneUpgrade(): Promise<boolean> {
       : "no extra cost";
   const bindingMessage = `WF-UPG: Approve ${request.route.from}→${request.route.to} ${request.fromCabin}→${request.toCabin} upgrade (${priceDiff})?`;
 
-    const cibaHint = CIBA_HINT_TYPE === "id_token_hint" ? (request.idToken ?? null) : request.email;
+  const cibaHint =
+    CIBA_HINT_TYPE === "id_token_hint"
+      ? (request.idToken ?? null)
+      : request.email;
 
-    if (!cibaHint) {
-        console.error(`[upgrade-scheduler] No ${CIBA_HINT_TYPE} available for upgrade ${request.id} (user: ${request.userId}) — skipping`);
-        return false;
-    }
+  if (!cibaHint) {
+    console.error(
+      `[upgrade-scheduler] No ${CIBA_HINT_TYPE} available for upgrade ${request.id} (user: ${request.userId}) — skipping`,
+    );
+    return false;
+  }
 
-    let authReqId: string;
-    let pollIntervalSeconds: number;
+  let authReqId: string;
+  let pollIntervalSeconds: number;
 
-    try {
-        const cibaResponse = await initiateCiba(cibaHint, bindingMessage);
-        authReqId = cibaResponse.authReqId;
-        pollIntervalSeconds = cibaResponse.interval;
-        console.log(
-            `[upgrade-scheduler] CIBA initiated for ${request.userId} | auth_req_id: ${authReqId}`,
-        );
-    } catch (err) {
-        console.error(
-            `[upgrade-scheduler] CIBA initiation failed for ${request.userId}:`,
-            err,
-        );
-        return false; // Sleep before retrying to avoid overwhelming Thunder
-    }
+  try {
+    const cibaResponse = await initiateCiba(cibaHint, bindingMessage);
+    authReqId = cibaResponse.authReqId;
+    pollIntervalSeconds = cibaResponse.interval;
+    console.log(
+      `[upgrade-scheduler] CIBA initiated for ${request.userId} | auth_req_id: ${authReqId}`,
+    );
+  } catch (err) {
+    console.error(
+      `[upgrade-scheduler] CIBA initiation failed for ${request.userId}:`,
+      err,
+    );
+    return false; // Sleep before retrying to avoid overwhelming ThunderID
+  }
 
   // Poll until approved, denied, or expired
   let currentIntervalMs = Math.max(pollIntervalSeconds + 1, 6) * 1000;
@@ -1291,13 +1303,11 @@ async function processOneUpgrade(): Promise<boolean> {
       return true;
     }
 
-        if (pollResult.status === "approved") {
-            cibaUserToken = pollResult.accessToken;
-            console.log(
-                `[upgrade-scheduler] CIBA approved for ${request.userId}`,
-            );
-            break;
-        }
+    if (pollResult.status === "approved") {
+      cibaUserToken = pollResult.accessToken;
+      console.log(`[upgrade-scheduler] CIBA approved for ${request.userId}`);
+      break;
+    }
 
     if (pollResult.status === "slow_down") {
       currentIntervalMs += 5000;
@@ -1311,12 +1321,12 @@ async function processOneUpgrade(): Promise<boolean> {
       continue;
     }
 
-        // denied / expired / error
-        console.log(
-            `[upgrade-scheduler] CIBA ${pollResult.status} for upgrade ${request.id} (user: ${request.userId})`,
-        );
-        return true;
-    }
+    // denied / expired / error
+    console.log(
+      `[upgrade-scheduler] CIBA ${pollResult.status} for upgrade ${request.id} (user: ${request.userId})`,
+    );
+    return true;
+  }
 
   if (!cibaUserToken) {
     return true;
@@ -1368,17 +1378,19 @@ async function processOneUpgrade(): Promise<boolean> {
 }
 
 function startUpgradeScheduler(): void {
-    if (!UPGRADE_SCHEDULER_ENABLED) {
-        console.log("[upgrade-scheduler] Upgrade scheduler is disabled (set UPGRADE_SCHEDULER_ENABLED=true to enable).");
-        return;
-    }
+  if (!UPGRADE_SCHEDULER_ENABLED) {
+    console.log(
+      "[upgrade-scheduler] Upgrade scheduler is disabled (set UPGRADE_SCHEDULER_ENABLED=true to enable).",
+    );
+    return;
+  }
 
-    if (!THUNDER_BASE_URL || !agentConfig.agentID || !agentConfig.agentSecret) {
-        console.log(
-            "[upgrade-scheduler] Thunder not configured — upgrade scheduler disabled.",
-        );
-        return;
-    }
+  if (!THUNDER_BASE_URL || !agentConfig.agentID || !agentConfig.agentSecret) {
+    console.log(
+      "[upgrade-scheduler] ThunderID not configured, upgrade scheduler disabled.",
+    );
+    return;
+  }
 
   if (!upgradeAgentConfig.agentID || !upgradeAgentConfig.agentSecret) {
     console.log(
@@ -1494,25 +1506,31 @@ async function runAgentServer() {
       return;
     }
 
-        if (url.pathname === "/chat/consent" && request.method === "POST") {
-            try {
-                await handleConsent(request, response);
-            } catch (error) {
-                console.error("Unhandled error in /chat/consent:", error);
-                if (!response.headersSent) {
-                    sendJson(response, 500, { error: "Internal server error" });
-                }
-            }
-            return;
+    if (url.pathname === "/chat/consent" && request.method === "POST") {
+      try {
+        await handleConsent(request, response);
+      } catch (error) {
+        console.error("Unhandled error in /chat/consent:", error);
+        if (!response.headersSent) {
+          sendJson(response, 500, { error: "Internal server error" });
         }
+      }
+      return;
+    }
 
-        if (url.pathname === "/api/demo/process-upgrades" && request.method === "POST") {
-            processOneUpgrade().catch((err) =>
-                console.error("[upgrade-scheduler] Background trigger failed:", err)
-            );
-            sendJson(response, 202, { message: "Upgrade processing triggered in background. One pending upgrade will be processed." });
-            return;
-        }
+    if (
+      url.pathname === "/api/demo/process-upgrades" &&
+      request.method === "POST"
+    ) {
+      processOneUpgrade().catch((err) =>
+        console.error("[upgrade-scheduler] Background trigger failed:", err),
+      );
+      sendJson(response, 202, {
+        message:
+          "Upgrade processing triggered in background. One pending upgrade will be processed.",
+      });
+      return;
+    }
 
     sendJson(response, 404, { error: "Not found" });
   });

@@ -12,8 +12,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -22,11 +24,13 @@ import (
 
 // cibaGrantHandler handles the OpenID Connect CIBA grant type (poll mode).
 type cibaGrantHandler struct {
-	cibaService     ciba.CIBAServiceInterface
-	tokenBuilder    tokenservice.TokenBuilderInterface
-	attributeCache  attributecache.AttributeCacheServiceInterface
-	resourceService providers.ResourceServerProvider
-	logger          *log.Logger
+	cibaService        ciba.CIBAServiceInterface
+	tokenBuilder       tokenservice.TokenBuilderInterface
+	attributeCache     attributecache.AttributeCacheServiceInterface
+	resourceService    providers.ResourceServerProvider
+	enforcementService revocation.EnforcementServiceInterface
+	authzDetails       providers.AuthorizationDetailProvider
+	logger             *log.Logger
 }
 
 // newCIBAGrantHandler creates a new instance of cibaGrantHandler.
@@ -35,13 +39,17 @@ func newCIBAGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
+	enforcementService revocation.EnforcementServiceInterface,
+	authzDetails providers.AuthorizationDetailProvider,
 ) GrantHandlerInterface {
 	return &cibaGrantHandler{
-		cibaService:     cibaService,
-		tokenBuilder:    tokenBuilder,
-		attributeCache:  attributeCache,
-		resourceService: resourceService,
-		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAGrantHandler")),
+		cibaService:        cibaService,
+		tokenBuilder:       tokenBuilder,
+		attributeCache:     attributeCache,
+		resourceService:    resourceService,
+		enforcementService: enforcementService,
+		authzDetails:       authzDetails,
+		logger:             log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAGrantHandler")),
 	}
 }
 
@@ -143,9 +151,13 @@ func (h *cibaGrantHandler) HandleGrant(ctx context.Context, tokenRequest *model.
 	case ciba.CIBAStatePending:
 		return nil, h.handlePending(ctx, record, now)
 	case ciba.CIBAStateDenied:
+		description := record.FailureDescription
+		if description == "" {
+			description = "The user denied the authentication request"
+		}
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorAccessDenied,
-			ErrorDescription: "The user denied the authentication request",
+			ErrorDescription: description,
 		}
 	case ciba.CIBAStateFailed:
 		return nil, &model.ErrorResponse{
@@ -158,7 +170,7 @@ func (h *cibaGrantHandler) HandleGrant(ctx context.Context, tokenRequest *model.
 			ErrorDescription: "The authentication request has already been used",
 		}
 	case ciba.CIBAStateAuthenticated:
-		return h.issueTokens(ctx, record, oauthApp)
+		return h.issueTokens(ctx, tokenRequest, record, oauthApp)
 	default:
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidGrant,
@@ -190,8 +202,8 @@ func (h *cibaGrantHandler) handlePending(ctx context.Context, record *ciba.CIBAA
 }
 
 // issueTokens builds the access, refresh, and (when openid) ID tokens, then marks the request consumed.
-func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAuthRequest,
-	oauthApp *providers.OAuthClient) (*model.TokenResponseDTO, *model.ErrorResponse) {
+func (h *cibaGrantHandler) issueTokens(ctx context.Context, tokenRequest *model.TokenRequest,
+	record *ciba.CIBAAuthRequest, oauthApp *providers.OAuthClient) (*model.TokenResponseDTO, *model.ErrorResponse) {
 	// Use AuthorizedScopes (StandardScopes + authorized permissions from assertion) when available.
 	// Falls back to StandardScopes (OIDC only) if callback hasn't been processed yet.
 	scopeStr := record.AuthorizedScopes
@@ -219,48 +231,63 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 		attrs = cacheEntry.Attributes
 	}
 
+	authorizationDetails, errResp := modifyGrantedAuthorizationDetails(ctx, h.authzDetails,
+		record.AuthorizationDetails, tokenRequest.AuthorizationDetails)
+	if errResp != nil {
+		return nil, errResp
+	}
+	refreshableDetails, errResp := refreshableAuthorizationDetails(ctx, h.authzDetails,
+		record.AuthorizationDetails)
+	if errResp != nil {
+		return nil, errResp
+	}
+
 	userSubConfig := oauthApp.UserAccessTokenConfig()
-	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, &tokenservice.AccessTokenBuildContext{
-		Subject:           record.UserID,
-		Audiences:         accessTokenAudiences,
-		ClientID:          oauthApp.ClientID,
-		Scopes:            accessTokenScopes,
-		SubjectAttributes: tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
-		AttributeCacheID:  record.AttributeCacheID,
-		GrantType:         string(providers.GrantTypeCIBA),
-		OAuthApp:          oauthApp,
-		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
-	})
+	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
+		Subject:              record.UserID,
+		SubjectEntityID:      record.SubjectID,
+		SubjectCategory:      record.SubjectCategory,
+		Audiences:            accessTokenAudiences,
+		ClientID:             oauthApp.ClientID,
+		Scopes:               accessTokenScopes,
+		SubjectAttributes:    tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
+		AttributeCacheID:     record.AttributeCacheID,
+		GrantType:            string(providers.GrantTypeCIBA),
+		OAuthApp:             oauthApp,
+		ValidityPeriod:       userSubConfig.ValidityPeriodOrZero(),
+		DPoPJkt:              dpop.GetJkt(ctx),
+		AuthorizationDetails: authorizationDetails,
+	}
+	if oauthApp.ShouldAppendActorClaim() {
+		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
+	}
+	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, accessTokenCtx)
 	if err != nil {
-		h.logger.Error(ctx, "Failed to generate access token", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate token",
-		}
+		return nil, tokenBuildErrorResponse(ctx, h.logger, err, "Failed to generate token")
 	}
 	// The refresh token preserves this single audience for continuity.
 	accessToken.OriginalAudiences = accessTokenAudiences
 
 	tokenResponse := &model.TokenResponseDTO{
-		AccessToken: *accessToken,
+		AccessToken:                     *accessToken,
+		SessionID:                       record.SessionID,
+		RefreshableAuthorizationDetails: refreshableDetails,
 	}
 
 	if slices.Contains(accessTokenScopes, constants.ScopeOpenID) {
 		idToken, idErr := h.tokenBuilder.BuildIDToken(ctx, &tokenservice.IDTokenBuildContext{
-			Subject:        record.UserID,
-			Audience:       oauthApp.ClientID,
-			Scopes:         accessTokenScopes,
-			UserAttributes: attrs,
-			AuthTime:       record.AuthTime.Unix(),
-			OAuthApp:       oauthApp,
-			CompletedACR:   record.CompletedACR,
+			Subject:         record.UserID,
+			Audience:        oauthApp.ClientID,
+			Scopes:          accessTokenScopes,
+			UserAttributes:  attrs,
+			AuthTime:        record.AuthTime.Unix(),
+			OAuthApp:        oauthApp,
+			CompletedACR:    record.CompletedACR,
+			SessionID:       record.SessionID,
+			SubjectEntityID: accessToken.SubjectID,
 		})
 		if idErr != nil {
-			h.logger.Error(ctx, "Failed to generate ID token", log.Error(idErr))
-			return nil, &model.ErrorResponse{
-				Error:            constants.ErrorServerError,
-				ErrorDescription: "Failed to generate token",
-			}
+			return nil, tokenBuildErrorResponse(ctx, h.logger, idErr, "Failed to generate token")
 		}
 		tokenResponse.IDToken = *idToken
 	}
@@ -295,6 +322,7 @@ func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
 ) ([]string, []string, *model.ErrorResponse) {
 	oidcScopes, permissionScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(scopeStr, oauthApp.ScopeClaims)
 
+	var audiences []string
 	if len(record.Resources) == 0 {
 		if len(permissionScopes) > 0 {
 			return nil, nil, &model.ErrorResponse{
@@ -302,28 +330,43 @@ func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
 				ErrorDescription: "The authentication request is not bound to a resource server",
 			}
 		}
-		return []string{oauthApp.ResolveDefaultAudience(oauthApp.ClientID)}, oidcScopes, nil
-	}
-
-	resourceIdentifier := record.Resources[0]
-	rs, svcErr := h.resourceService.GetResourceServerByIdentifier(ctx, resourceIdentifier)
-	if svcErr != nil {
-		h.logger.Error(ctx, "Failed to resolve stored CIBA resource server",
-			log.String("error", svcErr.ErrorDescription.DefaultValue))
-		return nil, nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to process token request",
+		audiences = []string{oauthApp.ResolveDefaultAudience(oauthApp.ClientID)}
+	} else {
+		resourceIdentifier := record.Resources[0]
+		rs, svcErr := h.resourceService.GetResourceServerByIdentifier(ctx, resourceIdentifier)
+		if svcErr != nil {
+			h.logger.Error(ctx, "Failed to resolve stored CIBA resource server",
+				log.String("error", svcErr.ErrorDescription.DefaultValue))
+			return nil, nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Failed to process token request",
+			}
 		}
+
+		var dErr *model.ErrorResponse
+		permissionScopes, dErr = resourceindicators.DownscopeToResourceServer(
+			ctx, h.resourceService, rs.ID, permissionScopes)
+		if dErr != nil {
+			return nil, nil, dErr
+		}
+		audiences = []string{resourceIdentifier}
 	}
 
-	downscoped, dErr := resourceindicators.DownscopeToResourceServer(
-		ctx, h.resourceService, rs.ID, permissionScopes)
-	if dErr != nil {
-		return nil, nil, dErr
+	// A reused session's AuthTime predates the authorization decision, which AuthorizedAt records;
+	// records stored before AuthorizedAt existed fall back to AuthTime.
+	establishedAt := record.AuthTime
+	if record.AuthorizedAt.After(establishedAt) {
+		establishedAt = record.AuthorizedAt
 	}
-
-	scopes := make([]string, 0, len(oidcScopes)+len(downscoped))
-	scopes = append(scopes, oidcScopes...)
-	scopes = append(scopes, downscoped...)
-	return []string{resourceIdentifier}, scopes, nil
+	scopes, errResp := excludeRevokedScopes(ctx, h.enforcementService, revocation.RevocationIdentity{
+		EstablishedAt: establishedAt,
+		Criteria: []revocation.Criterion{
+			{Type: revocation.CriterionTypeSubject, Value: record.UserID},
+			{Type: revocation.CriterionTypeApplicationKey, Value: record.ClientID},
+		},
+	}, record.UserID, audiences, oidcScopes, permissionScopes)
+	if errResp != nil {
+		return nil, nil, errResp
+	}
+	return audiences, scopes, nil
 }

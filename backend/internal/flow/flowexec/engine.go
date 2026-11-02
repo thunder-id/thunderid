@@ -8,12 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 	"time"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
@@ -32,14 +34,24 @@ type flowEngineInterface interface {
 	Execute(ctx *EngineContext) (FlowStep, *tidcommon.ServiceError)
 }
 
+// variableValueProvider supplies the values the variables of a flow hold for an organization unit it was shared with,
+// where they differ from the owner's defaults, when the application driving the flow is owned by or shared with that
+// unit. An engine given none leaves every flow on the defaults its owner declared.
+type variableValueProvider interface {
+	GetEffectiveVariableValues(
+		ctx context.Context, flowID string, app providers.Application, ouID string,
+	) (map[string]string, *tidcommon.ServiceError)
+}
+
 // FlowEngine is the main engine implementation for orchestrating flow executions.
 type flowEngine struct {
-	executorRegistry  executor.ExecutorRegistryInterface
-	interceptorRunner InterceptorRunnerInterface
-	observabilitySvc  providers.ObservabilityProvider
-	flowProvider      providers.FlowProvider
-	graphBuilder      graphbuilder.GraphBuilderInterface
-	logger            *log.Logger
+	executorRegistry       executor.ExecutorRegistryInterface
+	interceptorRunner      InterceptorRunnerInterface
+	observabilitySvc       providers.ObservabilityProvider
+	flowProvider           providers.FlowProvider
+	graphBuilder           graphbuilder.GraphBuilderInterface
+	variableValuesProvider variableValueProvider
+	logger                 *log.Logger
 }
 
 // newFlowEngine creates a new flow engine with the given dependencies.
@@ -49,14 +61,16 @@ func newFlowEngine(
 	observabilitySvc providers.ObservabilityProvider,
 	flowProvider providers.FlowProvider,
 	graphBuilder graphbuilder.GraphBuilderInterface,
+	variableValuesProvider variableValueProvider,
 ) flowEngineInterface {
 	return &flowEngine{
-		executorRegistry:  executorRegistry,
-		interceptorRunner: interceptorRunner,
-		observabilitySvc:  observabilitySvc,
-		flowProvider:      flowProvider,
-		graphBuilder:      graphBuilder,
-		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowEngine")),
+		executorRegistry:       executorRegistry,
+		interceptorRunner:      interceptorRunner,
+		observabilitySvc:       observabilitySvc,
+		flowProvider:           flowProvider,
+		graphBuilder:           graphBuilder,
+		variableValuesProvider: variableValuesProvider,
+		logger:                 log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowEngine")),
 	}
 }
 
@@ -164,10 +178,25 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 		FlowID:      ssoFlowID(ctx),
 		FlowVersion: ctx.SSOFlowVersion,
 	})
+	// The application's subject type constraints ride on the context for the same reason: the authn
+	// providers enforce them below the flow graph, so no node has to carry or check them. Only an
+	// authentication flow signs a subject in to the application; the other flow types resolve the
+	// eligible entity types through their own executors.
+	nodeCtxContext := ssoCtx
+	if ctx.FlowType == providers.FlowTypeAuthentication {
+		nodeCtxContext = authnprovidercm.WithSubjectTypeConstraints(ssoCtx, authnprovidercm.SubjectTypeConstraints{
+			AllowedUserTypes:  ctx.Application.AllowedUserTypes,
+			AllowedAgentTypes: ctx.Application.AllowedAgentTypes,
+		})
+	}
+	// A recovery flow is marked too, so the default provider checks its proofs at the recovery plane.
+	if ctx.FlowType == providers.FlowTypeRecovery {
+		nodeCtxContext = authnprovidercm.WithRecoveryFlow(nodeCtxContext)
+	}
 	fe.replayPromptInputs(ctx)
 
 	nodeCtx := &providers.NodeContext{
-		Context:           ssoCtx,
+		Context:           nodeCtxContext,
 		ExecutionID:       ctx.ExecutionID,
 		FlowType:          ctx.FlowType,
 		EntityID:          ctx.AppID,
@@ -239,6 +268,9 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 	publishNodeExecutionStartedEvent(ctx, currentNode, fe.observabilitySvc)
 
 	nodeResp, nodeErr := currentNode.Execute(nodeCtx)
+	if nodeErr == nil {
+		nodeErr = fe.applyVariableValues(ctx, currentNode, nodeResp, logger)
+	}
 	executionEndTime := time.Now().UnixMilli()
 
 	if consumed := nodeCtx.GetConsumedInputs(); len(consumed) > 0 {
@@ -419,6 +451,55 @@ func (fe *flowEngine) runPostRequestInterceptorsOnExit(
 	}
 
 	return true, nil
+}
+
+// applyVariableValues makes a VARIABLES node resolve to the values its flow holds for the organization unit a prompt
+// picked, when the flow was shared with that unit. A flow resolves for no other unit: not the one that owns the flow
+// nor the one that owns the application. A flow the unit owns, or does not hold, runs on its own defaults. A connection
+// variable that is still without a connection then stops the flow.
+func (fe *flowEngine) applyVariableValues(
+	ctx *EngineContext, node core.NodeInterface, nodeResp *common.NodeResponse, logger *log.Logger,
+) *tidcommon.ServiceError {
+	if nodeResp == nil || node.GetType() != common.NodeTypeVariables {
+		return nil
+	}
+	if nodeResp.RuntimeData == nil {
+		nodeResp.RuntimeData = make(map[string]string)
+	}
+	if svcErr := fe.applyHeldValues(ctx, node, nodeResp, logger); svcErr != nil {
+		return svcErr
+	}
+	if unset := core.UnsetConnectionVariables(node, nodeResp.RuntimeData); len(unset) > 0 {
+		logger.Warn(ctx.Context, "The flow needs a connection that is not set for the organization unit",
+			log.String("flowID", ctx.Graph.GetID()), log.String("ouID", ctx.RuntimeData[common.RuntimeKeyOUID]),
+			log.String("variables", strings.Join(unset, ",")))
+		return &ErrorFlowConnectionNotSet
+	}
+	return nil
+}
+
+// applyHeldValues puts the values the organization unit a prompt picked holds in place of the defaults.
+func (fe *flowEngine) applyHeldValues(
+	ctx *EngineContext, node core.NodeInterface, nodeResp *common.NodeResponse, logger *log.Logger,
+) *tidcommon.ServiceError {
+	unit := ctx.RuntimeData[common.RuntimeKeyOUID]
+	if fe.variableValuesProvider == nil || ctx.Graph == nil || ctx.Graph.GetID() == "" || unit == "" {
+		return nil
+	}
+	raws, svcErr := fe.variableValuesProvider.GetEffectiveVariableValues(
+		ctx.Context, ctx.Graph.GetID(), ctx.Application, unit)
+	if svcErr != nil {
+		logger.Error(ctx.Context, "Failed to read the values of the variables for the organization unit",
+			log.String("flowID", ctx.Graph.GetID()), log.String("ouID", unit), log.String("code", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+	values, err := core.VariableRuntimeValues(node, raws)
+	if err != nil {
+		logger.Error(ctx.Context, "The value of a variable is not usable", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	maps.Copy(nodeResp.RuntimeData, values)
+	return nil
 }
 
 // trackPresentedOptionalInputs records the optional inputs presented in an incomplete view response
@@ -1440,8 +1521,8 @@ func publishNodeExecutionStartedEvent(
 		WithData(event.DataKey.NodeID, node.GetID()).
 		WithData(event.DataKey.NodeType, string(node.GetType())).
 		WithData(event.DataKey.StepNumber, fmt.Sprintf("%d", stepNumber)).
-		WithData(event.DataKey.AttemptNumber, fmt.Sprintf("%d", attemptNumber)).
-		WithData(event.DataKey.EntityID, ctx.AppID)
+		WithData(event.DataKey.AttemptNumber, fmt.Sprintf("%d", attemptNumber))
+	addFlowEventContext(ctx, evt, ctx.AuthUser)
 
 	obsSvc.PublishEvent(ctx.Context, evt)
 }
@@ -1513,19 +1594,19 @@ func publishNodeExecutionCompletedEvent(ctx *EngineContext, node core.NodeInterf
 		WithData(event.DataKey.NodeStatus, nodeStatus).
 		WithData(event.DataKey.StepNumber, fmt.Sprintf("%d", stepNumber)).
 		WithData(event.DataKey.AttemptNumber, fmt.Sprintf("%d", attemptNumber)).
-		WithData(event.DataKey.DurationMs, fmt.Sprintf("%d", durationMs)).
-		WithData(event.DataKey.EntityID, ctx.AppID)
+		WithData(event.DataKey.DurationMs, fmt.Sprintf("%d", durationMs))
+
+	// The node that authenticates the subject reports it on its own response, and the engine merges
+	// that into the context only after this event is published. Prefer the response so the
+	// authenticating node's own event carries the subject it just resolved, rather than first
+	// reporting it one node later.
+	addFlowEventContext(ctx, evt, subjectAuthUser(ctx, nodeResp))
 
 	// Add error or failure details
 	if nodeErr != nil {
 		evt.WithData(event.DataKey.Error, processServiceErrorForEventPublish(nodeErr))
 	} else if nodeResp != nil && nodeResp.Error != nil {
 		evt.WithData(event.DataKey.Error, processNodeResponseErrorForEventPublish(nodeResp))
-	}
-
-	// Add user ID if authenticated
-	if ctx.AuthenticatedUser.IsAuthenticated && ctx.AuthenticatedUser.UserID != "" {
-		evt.WithData(event.DataKey.UserID, ctx.AuthenticatedUser.UserID)
 	}
 
 	obsSvc.PublishEvent(ctx.Context, evt)
@@ -1538,19 +1619,14 @@ func publishFlowStartedEvent(ctx *EngineContext, obsSvc providers.ObservabilityP
 	}
 
 	evt := event.NewEvent(
-		ctx.TraceID, // Use TraceID from context
+		ctx.ExecutionID, // Use ExecutionID as TraceID, so the whole flow shares one trace
 		string(event.EventTypeFlowStarted),
 		event.ComponentFlowEngine,
 	).
 		WithStatus(providers.StatusInProgress).
 		WithData(event.DataKey.ExecutionID, ctx.ExecutionID).
-		WithData(event.DataKey.FlowType, string(ctx.FlowType)).
-		WithData(event.DataKey.EntityID, ctx.AppID)
-
-	// Add user ID if already authenticated
-	if ctx.AuthenticatedUser.IsAuthenticated && ctx.AuthenticatedUser.UserID != "" {
-		evt.WithData(event.DataKey.UserID, ctx.AuthenticatedUser.UserID)
-	}
+		WithData(event.DataKey.FlowType, string(ctx.FlowType))
+	addFlowEventContext(ctx, evt, ctx.AuthUser)
 
 	obsSvc.PublishEvent(ctx.Context, evt)
 }
@@ -1577,13 +1653,8 @@ func publishFlowCompletedEvent(
 		WithStatus(providers.StatusSuccess).
 		WithData(event.DataKey.ExecutionID, ctx.ExecutionID).
 		WithData(event.DataKey.FlowType, string(ctx.FlowType)).
-		WithData(event.DataKey.EntityID, ctx.AppID).
 		WithData(event.DataKey.DurationMs, fmt.Sprintf("%d", durationMs))
-
-	// Add user ID if authenticated
-	if ctx.AuthenticatedUser.IsAuthenticated && ctx.AuthenticatedUser.UserID != "" {
-		evt.WithData(event.DataKey.UserID, ctx.AuthenticatedUser.UserID)
-	}
+	addFlowEventContext(ctx, evt, ctx.AuthUser)
 
 	obsSvc.PublishEvent(ctx.Context, evt)
 }
@@ -1599,27 +1670,79 @@ func publishFlowFailedEvent(ctx *EngineContext, svcErr *tidcommon.ServiceError,
 	durationMs := flowEndTime - flowStartTime
 
 	evt := event.NewEvent(
-		ctx.TraceID, // Use TraceID from context
+		ctx.ExecutionID, // Use ExecutionID as TraceID, so the whole flow shares one trace
 		string(event.EventTypeFlowFailed),
 		event.ComponentFlowEngine,
 	).
 		WithStatus(providers.StatusFailure).
 		WithData(event.DataKey.ExecutionID, ctx.ExecutionID).
 		WithData(event.DataKey.FlowType, string(ctx.FlowType)).
-		WithData(event.DataKey.EntityID, ctx.AppID).
 		WithData(event.DataKey.DurationMs, fmt.Sprintf("%d", durationMs))
+	addFlowEventContext(ctx, evt, ctx.AuthUser)
 
 	// Add error details if available
 	if svcErr != nil {
 		evt.WithData(event.DataKey.Error, processServiceErrorForEventPublish(svcErr))
 	}
 
-	// Add user ID if authenticated
-	if ctx.AuthenticatedUser.IsAuthenticated && ctx.AuthenticatedUser.UserID != "" {
-		evt.WithData(event.DataKey.UserID, ctx.AuthenticatedUser.UserID)
+	obsSvc.PublishEvent(ctx.Context, evt)
+}
+
+// addFlowEventContext stamps the shared context of a flow execution onto an observability event: the
+// execution id as the correlation identifier, the entity the flow runs for (its resource ID, its
+// OAuth client_id, and its principal type, so an agent-driven flow is distinguishable from an
+// application one without a registry lookup), and the authenticated subject once one is resolved.
+// The subject is reported as its entity resource ID rather than the subject the token will carry:
+// the latter is configurable per application through SubjectAttribute and may be a directly
+// identifying attribute, while the resource ID is opaque and joins with the token events.
+// authUser carries that subject: callers pass the engine context's copy, except the node-completed
+// publisher, which prefers the node response (see publishNodeExecutionCompletedEvent).
+func addFlowEventContext(ctx *EngineContext, evt *providers.Event, authUser providers.AuthUser) {
+	evt.WithData(event.DataKey.EntityID, ctx.AppID)
+	evt.WithData(event.DataKey.CorrelationID, ctx.ExecutionID)
+
+	if clientID := ctx.Application.OAuthClientID(); clientID != "" {
+		evt.WithData(event.DataKey.ClientID, clientID)
+	}
+	if actorType := event.PrincipalType(string(ctx.Application.EntityCategory)); actorType != "" {
+		evt.WithData(event.DataKey.ActorType, actorType)
 	}
 
-	obsSvc.PublishEvent(ctx.Context, evt)
+	subject, subjectCategory := authenticatedSubject(authUser)
+	if subject == "" {
+		return
+	}
+	evt.WithData(event.DataKey.Subject, subject)
+	if subjectType := event.PrincipalType(subjectCategory); subjectType != "" {
+		evt.WithData(event.DataKey.SubjectType, subjectType)
+	}
+}
+
+// subjectAuthUser picks the authentication state that describes the subject at the time a node
+// completes: the node response's when it has resolved one, otherwise the engine context's.
+func subjectAuthUser(ctx *EngineContext, nodeResp *common.NodeResponse) providers.AuthUser {
+	if nodeResp != nil {
+		if subject, _ := authenticatedSubject(nodeResp.AuthUser); subject != "" {
+			return nodeResp.AuthUser
+		}
+	}
+	return ctx.AuthUser
+}
+
+// authenticatedSubject returns the entity id and category of the subject an authentication resolved,
+// or empty strings when it has resolved none. Both are read from the entity reference the
+// authentication executors record on AuthUser, so an agent that authenticates through a flow is
+// reported as an agent subject rather than assumed to be a user. Providers are visited in the stable
+// order AuthUser.ProviderNames guarantees; the first resolved reference wins.
+func authenticatedSubject(authUser providers.AuthUser) (subject, category string) {
+	for _, provider := range authUser.ProviderNames() {
+		state, ok := authUser.StateFor(provider)
+		if !ok || state.EntityReference == nil || state.EntityReference.EntityID == "" {
+			continue
+		}
+		return state.EntityReference.EntityID, state.EntityReference.EntityCategory
+	}
+	return "", ""
 }
 
 // processServiceErrorForEventPublish processes a service error to extract relevant information

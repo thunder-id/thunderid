@@ -160,7 +160,7 @@ func (ts *ExportAPITestSuite) TestApplicationExportYAML() {
 	// Verify the exported YAML content
 	ts.Assert().Contains(yamlContent, "name: Export Test App")
 	ts.Assert().Contains(yamlContent, "description: Test application for export functionality")
-	ts.Assert().Contains(yamlContent, "clientId: {{.EXPORT_TEST_APP_CLIENT_ID}}")
+	ts.Assert().Contains(yamlContent, "clientId: {{.APPLICATION_EXPORT_TEST_APP_CLIENT_ID}}")
 	ts.Assert().NotContains(yamlContent, "export_test_secret") // Client secret should not be exported
 	ts.Assert().Contains(yamlContent, "# File: Export_Test_App.yaml")
 
@@ -257,7 +257,7 @@ func (ts *ExportAPITestSuite) TestIdentityProviderExportYAML() {
 	ts.Assert().Contains(yamlContent, "description: Test identity provider for export functionality")
 	ts.Assert().Contains(yamlContent, "type: oauth")
 	ts.Assert().Contains(yamlContent, "clientId: export_test_oauth_client")
-	ts.Assert().Contains(yamlContent, "clientSecret: {{.EXPORT_TEST_IDP_CLIENT_SECRET}}")
+	ts.Assert().Contains(yamlContent, "clientSecret: {{.CONNECTION_EXPORT_TEST_IDP_CLIENT_SECRET}}")
 	ts.Assert().Contains(yamlContent, "# File: Export_Test_IDP.yaml")
 }
 
@@ -565,7 +565,7 @@ func (ts *ExportAPITestSuite) TestIdentityProviderExportWithProperties() {
 
 	// Verify typed fields: only the secret field (clientSecret) is parameterized.
 	ts.Assert().Contains(yamlContent, "clientId: props_test_client")
-	ts.Assert().Contains(yamlContent, "clientSecret: {{.PROPERTIES_TEST_IDP_CLIENT_SECRET}}")
+	ts.Assert().Contains(yamlContent, "clientSecret: {{.CONNECTION_PROPERTIES_TEST_IDP_CLIENT_SECRET}}")
 	ts.Assert().Contains(yamlContent, "redirectUri: https://localhost:3000/callback")
 	ts.Assert().Contains(yamlContent, "- openid")
 	ts.Assert().Contains(yamlContent, "- email")
@@ -676,6 +676,44 @@ func (ts *ExportAPITestSuite) TestExportWithInvalidPresentationDefinitionID() {
 		PresentationDefinitions: []string{"11111111-2222-3333-4444-555555555555"},
 	})
 	ts.Require().Error(err)
+}
+
+// The same organization units export in the same order every time, each parent before its
+// children, so an export of unchanged configuration is the same text and a version named by its
+// content stays the same version.
+func (ts *ExportAPITestSuite) TestOrganizationUnitsExportInAStableOrder() {
+	parentID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "export-order-parent", Name: "Export Order Parent",
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(parentID) }()
+	childIDs := []string{}
+	for _, handle := range []string{"export-order-a", "export-order-b", "export-order-c", "export-order-d"} {
+		id, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+			Handle: handle, Name: handle, Parent: &parentID,
+		})
+		ts.Require().NoError(err)
+		childIDs = append(childIDs, id)
+	}
+	defer func() {
+		for _, id := range childIDs {
+			_ = testutils.DeleteOrganizationUnit(id)
+		}
+	}()
+
+	first, err := ts.exportResourcesYAML(ExportRequest{OrganizationUnits: []string{"*"}})
+	ts.Require().NoError(err)
+	for i := 0; i < 5; i++ {
+		again, err := ts.exportResourcesYAML(ExportRequest{OrganizationUnits: []string{"*"}})
+		ts.Require().NoError(err)
+		ts.Require().Equal(first, again, "the same organization units exported in another order")
+	}
+	parentAt := strings.Index(first, "id: "+parentID)
+	ts.Require().GreaterOrEqual(parentAt, 0, "the parent was not exported")
+	for _, id := range childIDs {
+		childAt := strings.Index(first, "id: "+id)
+		ts.Require().Greater(childAt, parentAt, "a child was exported before its parent")
+	}
 }
 
 // Helper functions
@@ -914,7 +952,13 @@ func (ts *ExportAPITestSuite) createIDP(idp IDP) (string, error) {
 		return "", err
 	}
 
-	idpJSON, err := json.Marshal(idpToConnectionBody(idp))
+	ouID, err := testutils.DefaultConnectionOUID()
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve the connection organization unit: %w", err)
+	}
+	body := idpToConnectionBody(idp)
+	body["ouId"] = ouID
+	idpJSON, err := json.Marshal(body)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal IDP: %w", err)
 	}
@@ -1048,7 +1092,7 @@ func (ts *ExportAPITestSuite) findExportedConnection(bundle, id string) map[stri
 // connection on re-import. The whole structure is compared after parsing, because substring checks would
 // pass on a document whose values had been reordered, truncated or emptied.
 func (ts *ExportAPITestSuite) TestIdentityProviderExportPreservesAttributeConfiguration() {
-	// Targets resolve against the bootstrapped Person user type, so no fixture is needed here.
+	// Targets resolve against the bootstrapped person user type, so no fixture is needed here.
 	idpID, err := testutils.CreateIDP(testutils.IDP{
 		Name:        "Export Attr Config IDP",
 		Description: "Identity provider carrying an attribute configuration",
@@ -1059,9 +1103,9 @@ func (ts *ExportAPITestSuite) TestIdentityProviderExportPreservesAttributeConfig
 			{Name: "redirect_uri", Value: "https://localhost:8095/callback"},
 		},
 		AttributeConfiguration: &testutils.AttributeConfiguration{
-			UserTypeResolution: &testutils.UserTypeResolution{Default: "Person"},
+			UserTypeResolution: &testutils.UserTypeResolution{Default: "person"},
 			UserTypeAttributeMappings: []testutils.UserTypeAttributeMapping{{
-				UserType: "Person",
+				UserType: "person",
 				Attributes: []testutils.AttributeMapping{
 					{ExternalAttribute: "given_name", LocalAttribute: "given_name"},
 					{ExternalAttribute: "family_name", LocalAttribute: "family_name"},
@@ -1085,7 +1129,7 @@ func (ts *ExportAPITestSuite) TestIdentityProviderExportPreservesAttributeConfig
 
 	resolution, ok := yamlMapping(config, "user_type_resolution", "userTypeResolution")
 	ts.Require().True(ok, "exported configuration should carry a resolution section: %v", config)
-	ts.Equal("Person", resolution["default"])
+	ts.Equal("person", resolution["default"])
 
 	linking, ok := yamlMapping(config, "accountLinking", "account_linking")
 	ts.Require().True(ok, "exported configuration should carry an account-linking section: %v", config)
@@ -1102,7 +1146,7 @@ func (ts *ExportAPITestSuite) TestIdentityProviderExportPreservesAttributeConfig
 	ts.Require().True(ok)
 	entryUserType, ok := yamlValue(entry, "user_type", "userType")
 	ts.Require().True(ok, "mapping entry should name its user type: %v", entry)
-	ts.Equal("Person", entryUserType)
+	ts.Equal("person", entryUserType)
 
 	rawAttributes, ok := entry["attributes"]
 	ts.Require().True(ok, "mapping entry should carry its attributes: %v", entry)

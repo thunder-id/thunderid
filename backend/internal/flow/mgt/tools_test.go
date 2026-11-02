@@ -343,6 +343,7 @@ func (suite *FlowToolsTestSuite) TestUpdateFlow_Success() {
 		Handle:   "existing-flow",
 		Name:     "Old Name",
 		FlowType: providers.FlowTypeAuthentication,
+		OUID:     "ou-1",
 		Nodes: []providers.NodeDefinition{
 			{
 				ID:   "start",
@@ -371,6 +372,7 @@ func (suite *FlowToolsTestSuite) TestUpdateFlow_Success() {
 		Handle:   "existing-flow",
 		Name:     "Updated Name",
 		FlowType: providers.FlowTypeAuthentication,
+		OUID:     "ou-1",
 		Nodes:    inputUpdate.Nodes,
 	}
 
@@ -378,6 +380,7 @@ func (suite *FlowToolsTestSuite) TestUpdateFlow_Success() {
 	mockService.On("UpdateFlow", mock.Anything, "flow123", &FlowDefinition{
 		Handle:   "existing-flow",
 		FlowType: providers.FlowTypeAuthentication,
+		OUID:     "ou-1",
 		Name:     "Updated Name",
 		Nodes:    inputUpdate.Nodes,
 	}).Return(updatedFlow, nil)
@@ -509,6 +512,7 @@ func (suite *FlowToolsTestSuite) TestGetCreateFlowSchema() {
 	schema := getCreateFlowSchema()
 
 	assert.NotNil(suite.T(), schema)
+	assert.Contains(suite.T(), schema.Required, "ouId")
 }
 
 func (suite *FlowToolsTestSuite) TestGetUpdateFlowSchema() {

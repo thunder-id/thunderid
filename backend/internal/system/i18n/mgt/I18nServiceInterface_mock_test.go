@@ -18,10 +18,19 @@ func NewI18nServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *I18nServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &I18nServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -68,7 +77,7 @@ type I18nServiceInterfaceMock_ClearTranslationOverrideForKey_Call struct {
 //   - language string
 //   - namespace string
 //   - key string
-func (_e *I18nServiceInterfaceMock_Expecter) ClearTranslationOverrideForKey(ctx interface{}, language interface{}, namespace interface{}, key interface{}) *I18nServiceInterfaceMock_ClearTranslationOverrideForKey_Call {
+func (_e *I18nServiceInterfaceMock_Expecter) ClearTranslationOverrideForKey(ctx any, language any, namespace any, key any) *I18nServiceInterfaceMock_ClearTranslationOverrideForKey_Call {
 	return &I18nServiceInterfaceMock_ClearTranslationOverrideForKey_Call{Call: _e.mock.On("ClearTranslationOverrideForKey", ctx, language, namespace, key)}
 }
 
@@ -137,7 +146,7 @@ type I18nServiceInterfaceMock_ClearTranslationOverrides_Call struct {
 // ClearTranslationOverrides is a helper method to define mock.On call
 //   - ctx context.Context
 //   - language string
-func (_e *I18nServiceInterfaceMock_Expecter) ClearTranslationOverrides(ctx interface{}, language interface{}) *I18nServiceInterfaceMock_ClearTranslationOverrides_Call {
+func (_e *I18nServiceInterfaceMock_Expecter) ClearTranslationOverrides(ctx any, language any) *I18nServiceInterfaceMock_ClearTranslationOverrides_Call {
 	return &I18nServiceInterfaceMock_ClearTranslationOverrides_Call{Call: _e.mock.On("ClearTranslationOverrides", ctx, language)}
 }
 
@@ -197,7 +206,7 @@ type I18nServiceInterfaceMock_DeleteTranslationsByKey_Call struct {
 //   - ctx context.Context
 //   - namespace string
 //   - key string
-func (_e *I18nServiceInterfaceMock_Expecter) DeleteTranslationsByKey(ctx interface{}, namespace interface{}, key interface{}) *I18nServiceInterfaceMock_DeleteTranslationsByKey_Call {
+func (_e *I18nServiceInterfaceMock_Expecter) DeleteTranslationsByKey(ctx any, namespace any, key any) *I18nServiceInterfaceMock_DeleteTranslationsByKey_Call {
 	return &I18nServiceInterfaceMock_DeleteTranslationsByKey_Call{Call: _e.mock.On("DeleteTranslationsByKey", ctx, namespace, key)}
 }
 
@@ -261,7 +270,7 @@ type I18nServiceInterfaceMock_DeleteTranslationsByNamespace_Call struct {
 // DeleteTranslationsByNamespace is a helper method to define mock.On call
 //   - ctx context.Context
 //   - namespace string
-func (_e *I18nServiceInterfaceMock_Expecter) DeleteTranslationsByNamespace(ctx interface{}, namespace interface{}) *I18nServiceInterfaceMock_DeleteTranslationsByNamespace_Call {
+func (_e *I18nServiceInterfaceMock_Expecter) DeleteTranslationsByNamespace(ctx any, namespace any) *I18nServiceInterfaceMock_DeleteTranslationsByNamespace_Call {
 	return &I18nServiceInterfaceMock_DeleteTranslationsByNamespace_Call{Call: _e.mock.On("DeleteTranslationsByNamespace", ctx, namespace)}
 }
 
@@ -289,6 +298,82 @@ func (_c *I18nServiceInterfaceMock_DeleteTranslationsByNamespace_Call) Return(se
 }
 
 func (_c *I18nServiceInterfaceMock_DeleteTranslationsByNamespace_Call) RunAndReturn(run func(ctx context.Context, namespace string) *common.ServiceError) *I18nServiceInterfaceMock_DeleteTranslationsByNamespace_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetTranslationsByKeys provides a mock function for the type I18nServiceInterfaceMock
+func (_mock *I18nServiceInterfaceMock) GetTranslationsByKeys(ctx context.Context, namespace string, keys []string) (map[string]map[string]string, *common.ServiceError) {
+	ret := _mock.Called(ctx, namespace, keys)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTranslationsByKeys")
+	}
+
+	var r0 map[string]map[string]string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) (map[string]map[string]string, *common.ServiceError)); ok {
+		return returnFunc(ctx, namespace, keys)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) map[string]map[string]string); ok {
+		r0 = returnFunc(ctx, namespace, keys)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]map[string]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, namespace, keys)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// I18nServiceInterfaceMock_GetTranslationsByKeys_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTranslationsByKeys'
+type I18nServiceInterfaceMock_GetTranslationsByKeys_Call struct {
+	*mock.Call
+}
+
+// GetTranslationsByKeys is a helper method to define mock.On call
+//   - ctx context.Context
+//   - namespace string
+//   - keys []string
+func (_e *I18nServiceInterfaceMock_Expecter) GetTranslationsByKeys(ctx any, namespace any, keys any) *I18nServiceInterfaceMock_GetTranslationsByKeys_Call {
+	return &I18nServiceInterfaceMock_GetTranslationsByKeys_Call{Call: _e.mock.On("GetTranslationsByKeys", ctx, namespace, keys)}
+}
+
+func (_c *I18nServiceInterfaceMock_GetTranslationsByKeys_Call) Run(run func(ctx context.Context, namespace string, keys []string)) *I18nServiceInterfaceMock_GetTranslationsByKeys_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *I18nServiceInterfaceMock_GetTranslationsByKeys_Call) Return(stringToStringToString map[string]map[string]string, serviceError *common.ServiceError) *I18nServiceInterfaceMock_GetTranslationsByKeys_Call {
+	_c.Call.Return(stringToStringToString, serviceError)
+	return _c
+}
+
+func (_c *I18nServiceInterfaceMock_GetTranslationsByKeys_Call) RunAndReturn(run func(ctx context.Context, namespace string, keys []string) (map[string]map[string]string, *common.ServiceError)) *I18nServiceInterfaceMock_GetTranslationsByKeys_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -331,7 +416,7 @@ type I18nServiceInterfaceMock_GetTranslationsByNamespace_Call struct {
 // GetTranslationsByNamespace is a helper method to define mock.On call
 //   - ctx context.Context
 //   - namespace string
-func (_e *I18nServiceInterfaceMock_Expecter) GetTranslationsByNamespace(ctx interface{}, namespace interface{}) *I18nServiceInterfaceMock_GetTranslationsByNamespace_Call {
+func (_e *I18nServiceInterfaceMock_Expecter) GetTranslationsByNamespace(ctx any, namespace any) *I18nServiceInterfaceMock_GetTranslationsByNamespace_Call {
 	return &I18nServiceInterfaceMock_GetTranslationsByNamespace_Call{Call: _e.mock.On("GetTranslationsByNamespace", ctx, namespace)}
 }
 
@@ -400,7 +485,7 @@ type I18nServiceInterfaceMock_ListLanguages_Call struct {
 
 // ListLanguages is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *I18nServiceInterfaceMock_Expecter) ListLanguages(ctx interface{}) *I18nServiceInterfaceMock_ListLanguages_Call {
+func (_e *I18nServiceInterfaceMock_Expecter) ListLanguages(ctx any) *I18nServiceInterfaceMock_ListLanguages_Call {
 	return &I18nServiceInterfaceMock_ListLanguages_Call{Call: _e.mock.On("ListLanguages", ctx)}
 }
 
@@ -466,7 +551,7 @@ type I18nServiceInterfaceMock_ResolveTranslations_Call struct {
 //   - ctx context.Context
 //   - language string
 //   - namespace string
-func (_e *I18nServiceInterfaceMock_Expecter) ResolveTranslations(ctx interface{}, language interface{}, namespace interface{}) *I18nServiceInterfaceMock_ResolveTranslations_Call {
+func (_e *I18nServiceInterfaceMock_Expecter) ResolveTranslations(ctx any, language any, namespace any) *I18nServiceInterfaceMock_ResolveTranslations_Call {
 	return &I18nServiceInterfaceMock_ResolveTranslations_Call{Call: _e.mock.On("ResolveTranslations", ctx, language, namespace)}
 }
 
@@ -543,7 +628,7 @@ type I18nServiceInterfaceMock_ResolveTranslationsForKey_Call struct {
 //   - language string
 //   - namespace string
 //   - key string
-func (_e *I18nServiceInterfaceMock_Expecter) ResolveTranslationsForKey(ctx interface{}, language interface{}, namespace interface{}, key interface{}) *I18nServiceInterfaceMock_ResolveTranslationsForKey_Call {
+func (_e *I18nServiceInterfaceMock_Expecter) ResolveTranslationsForKey(ctx any, language any, namespace any, key any) *I18nServiceInterfaceMock_ResolveTranslationsForKey_Call {
 	return &I18nServiceInterfaceMock_ResolveTranslationsForKey_Call{Call: _e.mock.On("ResolveTranslationsForKey", ctx, language, namespace, key)}
 }
 
@@ -626,7 +711,7 @@ type I18nServiceInterfaceMock_SetTranslationOverrideForKey_Call struct {
 //   - namespace string
 //   - key string
 //   - value string
-func (_e *I18nServiceInterfaceMock_Expecter) SetTranslationOverrideForKey(ctx interface{}, language interface{}, namespace interface{}, key interface{}, value interface{}) *I18nServiceInterfaceMock_SetTranslationOverrideForKey_Call {
+func (_e *I18nServiceInterfaceMock_Expecter) SetTranslationOverrideForKey(ctx any, language any, namespace any, key any, value any) *I18nServiceInterfaceMock_SetTranslationOverrideForKey_Call {
 	return &I18nServiceInterfaceMock_SetTranslationOverrideForKey_Call{Call: _e.mock.On("SetTranslationOverrideForKey", ctx, language, namespace, key, value)}
 }
 
@@ -712,7 +797,7 @@ type I18nServiceInterfaceMock_SetTranslationOverrides_Call struct {
 //   - ctx context.Context
 //   - language string
 //   - translations map[string]map[string]string
-func (_e *I18nServiceInterfaceMock_Expecter) SetTranslationOverrides(ctx interface{}, language interface{}, translations interface{}) *I18nServiceInterfaceMock_SetTranslationOverrides_Call {
+func (_e *I18nServiceInterfaceMock_Expecter) SetTranslationOverrides(ctx any, language any, translations any) *I18nServiceInterfaceMock_SetTranslationOverrides_Call {
 	return &I18nServiceInterfaceMock_SetTranslationOverrides_Call{Call: _e.mock.On("SetTranslationOverrides", ctx, language, translations)}
 }
 
@@ -777,7 +862,7 @@ type I18nServiceInterfaceMock_SetTranslationOverridesForNamespace_Call struct {
 //   - ctx context.Context
 //   - namespace string
 //   - entries map[string]map[string]string
-func (_e *I18nServiceInterfaceMock_Expecter) SetTranslationOverridesForNamespace(ctx interface{}, namespace interface{}, entries interface{}) *I18nServiceInterfaceMock_SetTranslationOverridesForNamespace_Call {
+func (_e *I18nServiceInterfaceMock_Expecter) SetTranslationOverridesForNamespace(ctx any, namespace any, entries any) *I18nServiceInterfaceMock_SetTranslationOverridesForNamespace_Call {
 	return &I18nServiceInterfaceMock_SetTranslationOverridesForNamespace_Call{Call: _e.mock.On("SetTranslationOverridesForNamespace", ctx, namespace, entries)}
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package utils
@@ -9,13 +9,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"net/http"
 	"net/url"
 	"path"
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -90,12 +90,30 @@ func DecodeJSONBody[T any](r *http.Request) (*T, error) {
 	return &data, nil
 }
 
+// DecodeJSONBodyStrict is DecodeJSONBody that refuses a field the target does not declare.
+//
+// Use it where a dropped field changes what the request means rather than merely losing a value: a
+// misspelled key in a body that grants access reads as the narrower request nobody wrote, and the
+// caller is told it succeeded.
+func DecodeJSONBodyStrict[T any](r *http.Request) (*T, error) {
+	var data T
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&data); err != nil {
+		return nil, errors.New("failed to decode JSON: " + err.Error())
+	}
+	if fieldErrors := validateStructNatively(data); fieldErrors != nil {
+		return nil, &ValidationError{Errors: fieldErrors}
+	}
+	return &data, nil
+}
+
 func validateStructNatively(s interface{}) map[string]string {
 	fieldErrors := make(map[string]string)
 	val := reflect.ValueOf(s)
 
 	// Handle pointers automatically
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 	if val.Kind() != reflect.Struct {
@@ -388,6 +406,12 @@ func IsValidURI(uri string) bool {
 	return true
 }
 
+// IsLoopbackRedirectHost reports whether a redirect URI host is one of the loopback hosts an http
+// redirect URI may name: localhost, 127.0.0.1 or ::1.
+func IsLoopbackRedirectHost(host string) bool {
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
 // IsValidLogoURI checks if the provided URI is valid for use as a logo URL.
 // It enforces a scheme allowlist: http/https require a non-empty host, data/blob/emoji/avatar
 // schemes are always accepted, and relative paths (no scheme, non-empty path) are accepted.
@@ -450,7 +474,9 @@ func DecodeJSONResponse[T any](resp *http.Response) (*T, error) {
 	return &data, nil
 }
 
-// SanitizeString trims whitespace, removes control characters, and escapes HTML.
+// SanitizeString trims whitespace and removes control characters (except newline and tab).
+// It does NOT HTML-escape: escaping is an output-context concern and is applied at the
+// rendering sinks, so applying it here would corrupt the stored value.
 func SanitizeString(input string) string {
 	if input == "" {
 		return input
@@ -460,21 +486,16 @@ func SanitizeString(input string) string {
 	trimmed := strings.TrimSpace(input)
 
 	// Remove non-printable/control characters (except newline and tab)
-	cleaned := strings.Map(func(r rune) rune {
+	return strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) && r != '\n' && r != '\t' {
 			return -1
 		}
 		return r
 	}, trimmed)
-
-	// Escape HTML to prevent XSS
-	safe := html.EscapeString(cleaned)
-
-	return safe
 }
 
 // SanitizeStringMap sanitizes a map of strings.
-// This function trim whitespace, removes control characters, and escapes HTML in each map entry.
+// This function trims whitespace and removes control characters in each map entry.
 func SanitizeStringMap(inputs map[string]string) map[string]string {
 	if len(inputs) == 0 {
 		return inputs
@@ -532,6 +553,22 @@ var sensitiveHeaders = map[string]bool{
 	strings.ToLower(constants.CookieHeaderName):             true,
 	strings.ToLower(constants.SetCookieHeaderName):          true,
 	strings.ToLower(constants.ProxyAuthorizationHeaderName): true,
+	strings.ToLower(constants.FlowSecretHeaderName):         true,
+	strings.ToLower(constants.AttestationTokenHeaderName):   true,
+}
+
+// HeadersWithHost returns a clone of the request headers with the inbound host folded in under the
+// Host key. Go carries the inbound host on r.Host rather than r.Header, so surface it here so
+// {{request(header.Host)}} resolves. The clone keeps the original request untouched.
+func HeadersWithHost(r *http.Request) http.Header {
+	headers := r.Header.Clone()
+	if headers == nil {
+		headers = make(http.Header)
+	}
+	if r.Host != "" {
+		headers.Set(constants.HostHeaderName, r.Host)
+	}
+	return headers
 }
 
 // FilterSensitiveHeaders returns a copy of the header map with credential-bearing headers removed.
@@ -547,6 +584,38 @@ func FilterSensitiveHeaders(h map[string][]string) map[string][]string {
 		}
 	}
 
+	return filtered
+}
+
+// sensitiveQueryParams is the deny-list of client-credential query parameters stripped at capture,
+// so they never reach the flow-context store or a {{request(query.*)}} placeholder. The query-param
+// counterpart of sensitiveHeaders.
+var sensitiveQueryParams = map[string]bool{
+	constants.ClientSecretParamName:         true,
+	constants.ClientAssertionParamName:      true,
+	constants.ClientAssertionTypeParamName:  true,
+	constants.AuthorizationDetailsParamName: true,
+}
+
+// IsSensitiveQueryParam reports whether a request query parameter carries client credentials or
+// raw authorization details and must not be exposed through a captured InitiatorRequest.QueryParams.
+func IsSensitiveQueryParam(name string) bool {
+	return sensitiveQueryParams[name]
+}
+
+// FilterSensitiveQueryParams returns a copy of params with sensitive query parameters removed. It is
+// the query-parameter analog of FilterSensitiveHeaders. A nil or empty map is returned unchanged.
+func FilterSensitiveQueryParams(params map[string][]string) map[string][]string {
+	if len(params) == 0 {
+		return params
+	}
+	filtered := make(map[string][]string, len(params))
+	for name, values := range params {
+		if IsSensitiveQueryParam(name) {
+			continue
+		}
+		filtered[name] = values
+	}
 	return filtered
 }
 
@@ -626,4 +695,14 @@ func WriteErrorResponse(ctx context.Context, w http.ResponseWriter, statusCode i
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write(b)
 	}
+}
+
+// ExtendWriteDeadline gives a request d from now to write its response, in place of the server's
+// write timeout, for a route known to run longer than the rest. A zero d leaves the server's timeout
+// in place. It fails when no writer between the handler and the connection lets the deadline through.
+func ExtendWriteDeadline(w http.ResponseWriter, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	return http.NewResponseController(w).SetWriteDeadline(time.Now().Add(d))
 }

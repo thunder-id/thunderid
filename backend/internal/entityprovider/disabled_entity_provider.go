@@ -34,13 +34,19 @@ func (p *disabledEntityProvider) SearchEntities(
 	return nil, errNotImplemented
 }
 
+func (p *disabledEntityProvider) GetLinkedEntities(
+	_, _ string) ([]*providers.Entity, *EntityProviderError) {
+	return nil, errNotImplemented
+}
+
 func (p *disabledEntityProvider) GetEntity(
 	_ string) (*providers.Entity, *EntityProviderError) {
 	return nil, errNotImplemented
 }
 
-func (p *disabledEntityProvider) CreateEntity(_ *providers.Entity,
-	_ json.RawMessage) (*providers.Entity, *EntityProviderError) {
+// GetEntityProfile is not available without an entity provider.
+func (p *disabledEntityProvider) GetEntityProfile(
+	_ string) (*providers.Entity, *EntityProviderError) {
 	return nil, errNotImplemented
 }
 
@@ -75,6 +81,11 @@ func (p *disabledEntityProvider) UpdateSystemCredentials(_ string,
 
 func (p *disabledEntityProvider) GetTransitiveEntityGroups(
 	_ string) ([]providers.EntityGroup, *EntityProviderError) {
+	return nil, errNotImplemented
+}
+
+func (p *disabledEntityProvider) GetTransitiveGroupAncestors(
+	_ string) ([]string, *EntityProviderError) {
 	return nil, errNotImplemented
 }
 

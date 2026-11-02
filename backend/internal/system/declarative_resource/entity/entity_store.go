@@ -5,10 +5,14 @@
 package entity
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
 )
+
+// ErrEntityNotFound identifies a missing file-based entity.
+var ErrEntityNotFound = errors.New("entity not found")
 
 // KeyType represents the allowed types for entities in the store.
 type KeyType string
@@ -19,6 +23,8 @@ const (
 	KeyTypeNotification            KeyType = "notification"
 	KeyTypeIDP                     KeyType = "idp"
 	KeyTypeNotificationSender      KeyType = "notification-sender"
+	KeyTypeAuthZENPDP              KeyType = "authzen-pdp"
+	KeyTypeHTTPConnection          KeyType = "http-connection"
 	KeyTypeEntityType              KeyType = "user-type"
 	KeyTypeOU                      KeyType = "ou"
 	KeyTypeFlow                    KeyType = "flow"
@@ -37,6 +43,9 @@ const (
 	KeyTypePresentationDefinition  KeyType = "presentation-definition"
 	KeyTypeCredentialConfiguration KeyType = "credential-configuration" //nolint:gosec
 	KeyTypeServerConfig            KeyType = "server-config"
+	KeyTypeGateway                 KeyType = "gateway"
+	KeyTypeNotificationTemplate    KeyType = "notification-template"
+	KeyTypeAuthorizationDetailType KeyType = "authorization-detail-type"
 )
 
 // String returns the string representation of KeyType
@@ -47,11 +56,12 @@ func (kt KeyType) String() string {
 // IsValid checks if the KeyType is one of the predefined types
 func (kt KeyType) IsValid() bool {
 	switch kt {
-	case KeyTypeApplication, KeyTypeNotification, KeyTypeIDP, KeyTypeNotificationSender,
+	case KeyTypeApplication, KeyTypeNotification, KeyTypeIDP, KeyTypeNotificationSender, KeyTypeAuthZENPDP,
+		KeyTypeHTTPConnection,
 		KeyTypeEntityType, KeyTypeOU, KeyTypeFlow, KeyTypeTranslation, KeyTypeTheme, KeyTypeLayout,
 		KeyTypeResourceServer, KeyTypeResource, KeyTypeAction, KeyTypeRole, KeyTypeUser, KeyTypeTemplate,
 		KeyTypeInboundAuth, KeyTypeGroup, KeyTypePresentationDefinition, KeyTypeCredentialConfiguration,
-		KeyTypeServerConfig,
+		KeyTypeServerConfig, KeyTypeGateway, KeyTypeNotificationTemplate, KeyTypeAuthorizationDetailType,
 		KeyTypeEntity:
 		return true
 	default:
@@ -155,7 +165,7 @@ func (s *Store) Get(key CompositeKey) (*Entity, error) {
 
 	entity, exists := s.entities[key]
 	if !exists {
-		return nil, fmt.Errorf("entity with key '%s' not found", key.String())
+		return nil, fmt.Errorf("entity with key '%s' not found: %w", key.String(), ErrEntityNotFound)
 	}
 
 	return entity, nil

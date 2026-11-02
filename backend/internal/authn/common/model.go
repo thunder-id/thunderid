@@ -81,18 +81,9 @@ type OpenID4VPCredential struct {
 	Claims  map[string]interface{}
 }
 
-// FederatedAuthResult is the result of a federated authentication attempt.
-// InternalEntity is nil when no local user was found or when the user is ambiguous.
-type FederatedAuthResult struct {
-	Sub             string
-	Claims          map[string]interface{}
-	InternalEntity  *providers.Entity
-	IsAmbiguousUser bool
-}
-
 // FederatedAuthenticator defines the interface for federated authentication services.
-// Authenticate performs the full flow (code exchange, claims extraction, internal user lookup).
-// It returns an error only for actual failures; a missing internal user is NOT an error.
+// Authenticate exchanges the code, extracts the claims and builds the federated token; the entity
+// is resolved later through recorded links.
 type FederatedAuthenticator interface {
 	Authenticate(ctx context.Context, idpID string, authzData AuthorizationData) (*AuthnResult, *tidcommon.ServiceError)
 }

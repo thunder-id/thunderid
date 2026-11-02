@@ -6,13 +6,17 @@ package thunderidengine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/agentmgtprovider"
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/authn/assert"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
@@ -25,9 +29,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/runtimestore"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	systemconfig "github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/jose"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
@@ -35,7 +41,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/internal/usermgtprovider"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -58,6 +65,23 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	err := validateEngineContext(&engineCtx)
 	if err != nil {
 		logger.Fatal(ctx, "Engine context is missing required fields", log.Error(err))
+	}
+
+	// Apply the logging configuration before any service is initialized, so the engine's
+	// own boot logging is emitted at the configured level and format.
+	if engineCtx.logConfig.Level != "" {
+		if err := logger.SetLevel(engineCtx.logConfig.Level); err != nil {
+			logger.Fatal(ctx, "invalid log level in LogConfig", log.Error(err))
+		}
+	}
+	if engineCtx.logConfig.Format != "" {
+		// SetFormat rather than Configure: the engine owns the format but not where the
+		// records go. A host application may have configured console and file output
+		// already, and Configure would replace it with a console-only sink and close the
+		// host's file writer.
+		if err := logger.SetFormat(engineCtx.logConfig.Format); err != nil {
+			logger.Fatal(ctx, "failed to configure logger", log.Error(err))
+		}
 	}
 
 	// Initialize the cache manager.
@@ -121,28 +145,74 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 
 	// Initialize flow core services.
 	flowConfig := flowconfig.Config{
-		Flow: engineCtx.flowConfig,
+		Flow:        engineCtx.flowConfig,
+		TokenLeeway: time.Duration(engineCtx.jwtConfig.Leeway) * time.Second,
 	}
 	flowFactory, graphCache := core.Initialize(engineCtx.cacheManager)
 	engineCtx.flowFactory = flowFactory
+	if engineCtx.userMgtProvider == nil {
+		engineCtx.userMgtProvider = usermgtprovider.NewDisabledUserMgtProvider()
+	}
+	if engineCtx.agentMgtProvider == nil {
+		engineCtx.agentMgtProvider = agentmgtprovider.NewDisabledAgentMgtProvider()
+	}
+	if engineCtx.identityGovernance == nil {
+		logger.Debug(ctx, "No identity governance provider is set, so account suspensions and locks are not enforced")
+	}
+	oauthConfig := oauthconfig.Config{
+		DeploymentID:               engineCtx.serverConfig.Identifier,
+		RuntimeTransientDBType:     engineCtx.runtimeTransientDBType,
+		BaseURL:                    engineconfig.GetServerURL(&engineCtx.serverConfig),
+		JWT:                        engineCtx.jwtConfig,
+		OAuth:                      engineCtx.oauthConfig,
+		GateClient:                 engineCtx.gateClientConfig,
+		EnableOUQualifiedEndpoints: engineCtx.serverConfig.EnableOUQualifiedEndpoints,
+	}
+	// With no SSO session store there is no session termination to deliver, so back-channel logout is
+	// off: no dispatcher is built and discovery does not advertise it.
+	backchannelOff := false
+	oauthConfig.OAuth.Logout.Backchannel.Enabled = &backchannelOff
+
+	if engineCtx.authorizationDetailTypes == nil {
+		logger.Debug(ctx,
+			"No authorization details type provider is set, so every requested authorization detail is refused")
+	}
+	if engineCtx.authzDetailProvider == nil {
+		engineCtx.authzDetailProvider = authzdetailexec.Initialize(engineCtx.authorizationDetailTypes,
+			engineCtx.oauthConfig.AuthorizationDetails.ProcessorTimeoutOrDefault())
+	}
 	execDeps := executor.ExecutorDependencies{
-		FlowFactory:       engineCtx.flowFactory,
-		AttributeCacheSvc: engineCtx.attributeCacheService,
-		AuthZService:      engineCtx.authzProvider,
-		ConsentEnforcer:   engineCtx.consentProvider,
-		AuthnProvider:     authnProviderManager,
-		JWTService:        engineCtx.jwtService,
-		AuthAssertGen:     engineCtx.authAssertGen,
-		ResourceService:   engineCtx.resourceProvider,
+		FlowFactory:        engineCtx.flowFactory,
+		AttributeCacheSvc:  engineCtx.attributeCacheService,
+		AuthZService:       engineCtx.authzProvider,
+		ConsentEnforcer:    engineCtx.consentProvider,
+		AuthnProvider:      authnProviderManager,
+		OUService:          engineCtx.ouProvider,
+		IDPService:         engineCtx.idpProvider,
+		JWTService:         engineCtx.jwtService,
+		AuthAssertGen:      engineCtx.authAssertGen,
+		ResourceService:    engineCtx.resourceProvider,
+		UserMgtProvider:    engineCtx.userMgtProvider,
+		AgentMgtProvider:   engineCtx.agentMgtProvider,
+		ObservabilitySvc:   engineCtx.observabilitySvc,
+		IdentityGovernance: engineCtx.identityGovernance,
+		ArtifactLifetime: func(client *providers.OAuthClient) time.Duration {
+			return tokenservice.ArtifactLifetime(oauthConfig, client)
+		},
+		AuthzDetailProvider: engineCtx.authzDetailProvider,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory:    engineCtx.flowFactory,
 		CaptchaService: engineCtx.captchaValidationProvider,
 	}
 
-	engineCtx.execRegistry, err = executor.Initialize(execDeps, flowConfig.Flow)
+	engineCtx.execRegistry, err = executor.Initialize(execDeps, flowConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to register flow executors", log.Error(err))
+	}
+	err = executor.SetActorProvider(engineCtx.execRegistry, engineCtx.actorProvider)
+	if err != nil {
+		logger.Fatal(ctx, "Failed to inject the actor provider into the flow executors", log.Error(err))
 	}
 	err = engineCtx.applyCustomExecutors()
 	if err != nil {
@@ -160,52 +230,46 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	engineCtx.flowExecService, err = flowexec.Initialize(mux, engineCtx.flowProvider, engineCtx.actorProvider,
 		engineCtx.execRegistry, engineCtx.interceptorRegistry, engineCtx.observabilitySvc,
 		engineCtx.runtimeCryptoSvc, engineCtx.attestationProvider, engineCtx.graphBuilder,
-		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, flowConfig)
+		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, nil,
+		engineCtx.identityGovernance, nil, flowConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
 	}
 
-	oauthConfig := oauthconfig.Config{
-		DeploymentID:           engineCtx.serverConfig.Identifier,
-		RuntimeTransientDBType: engineCtx.runtimeTransientDBType,
-		BaseURL:                config.GetServerURL(&engineCtx.serverConfig),
-		JWT:                    engineCtx.jwtConfig,
-		OAuth:                  engineCtx.oauthConfig,
-		GateClient:             engineCtx.gateClientConfig,
-	}
-
 	engineCtx.dpopVerifier = dpop.Initialize(oauthConfig, jti.Initialize(engineCtx.runtimeStoreProvider),
 		engineCtx.runtimeCryptoSvc)
-	tokenFamilyRevocationTTL := time.Duration(engineCtx.oauthConfig.RefreshToken.ValidityPeriod) * time.Second
-	revocationEnforcer, revocationService := revocation.Initialize(engineCtx.jwtService,
-		engineCtx.observabilitySvc, tokenFamilyRevocationTTL,
-		engineCtx.oauthConfig.Revocation.TokenFamily.OnExplicitRevokeEnabled())
+	revocationEnforcer, revocationService, err := revocation.Initialize(oauthConfig, engineCtx.jwtService,
+		engineCtx.observabilitySvc)
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize revocation service", log.Error(err))
+	}
+
+	// CORS origins come from the engine's static OriginConfig; unlike the full server there is no
+	// server-config store to back a dynamic matcher. An empty config leaves CORS disabled (matcher
+	// reset to nil, so every cross-origin request to the routes registered below is denied). The
+	// matcher is global, so it must be reset explicitly rather than left as whatever a previous
+	// engine installed.
+	originReader, err := buildOriginReader(engineCtx.originConfig)
+	if err != nil {
+		logger.Fatal(ctx, "Invalid origin configuration", log.Error(err))
+	}
+	cors.InitializeDynamicMatcher(originReader)
 
 	// The embedded engine has no server-config store, so no default resource server is available: the
 	// resource provider is passed undecorated. Implicit no-resource requests that carry permission
 	// scopes are rejected (the provider resolves no server for an empty identifier); OIDC-only or
 	// scopeless requests do not need resource-server binding.
-	_, err = oauth.Initialize(mux, engineCtx.actorProvider, authnProviderManager, engineCtx.jwtService,
+	_, _, err = oauth.Initialize(mux, engineCtx.actorProvider, authnProviderManager, engineCtx.jwtService,
 		engineCtx.jweService, engineCtx.flowExecService, engineCtx.observabilitySvc, engineCtx.runtimeCryptoSvc,
 		engineCtx.ouProvider, engineCtx.attributeCacheService, engineCtx.authzProvider, engineCtx.resourceProvider,
 		engineCtx.i18nProvider, engineCtx.idpProvider, engineCtx.dpopVerifier, engineCtx.runtimeStoreProvider,
-		engineCtx.transactioner, revocationEnforcer, revocationService, oauthConfig)
+		engineCtx.transactioner, revocationEnforcer, revocationService,
+		// The embedded engine has no SSO session store or SSO handle transport, so prompt=none keeps
+		// answering login_required rather than consulting a session.
+		nil, nil, engineCtx.flowProvider, engineCtx.identityGovernance, engineCtx.authzDetailProvider,
+		engineCtx.authorizationDetailTypes, oauthConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
-	}
-
-	if engineCtx.logConfig.Level != "" {
-		if err := logger.SetLevel(engineCtx.logConfig.Level); err != nil {
-			logger.Fatal(ctx, "invalid log level in LogConfig", log.Error(err))
-		}
-	}
-	if engineCtx.logConfig.Format != "" {
-		if err := logger.Configure(log.OutputOptions{
-			ConsoleEnabled: true,
-			Format:         engineCtx.logConfig.Format,
-		}); err != nil {
-			logger.Fatal(ctx, "failed to configure logger", log.Error(err))
-		}
 	}
 
 	return &Engine{
@@ -284,6 +348,45 @@ func (e *engineContext) applyCustomExecutors() error {
 	return nil
 }
 
+// buildOriginReader validates cfg and, if it carries any allowed origins, returns a
+// cors.ServerConfigReader that serves them as a static read-only layer with no writable layer.
+// An empty cfg returns a nil reader and no error: the caller then leaves the CORS dynamic matcher
+// uninstalled, which denies every cross-origin request.
+func buildOriginReader(cfg engineconfig.OriginConfig) (cors.ServerConfigReader, error) {
+	if len(cfg.AllowedOrigins) == 0 {
+		return nil, nil
+	}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("thunderidengine: failed to encode origin configuration: %w", err)
+	}
+	decoded, err := cors.OriginHandler{}.Decode(raw)
+	if err != nil {
+		return nil, fmt.Errorf("thunderidengine: invalid origin configuration: %w", err)
+	}
+	if err := (cors.OriginHandler{}).Validate(decoded, nil, nil); err != nil {
+		return nil, fmt.Errorf("thunderidengine: invalid origin configuration: %w", err)
+	}
+	return staticOriginReader{config: decoded.(cors.OriginConfig)}, nil
+}
+
+// staticOriginReader implements cors.ServerConfigReader over a fixed origin list supplied via
+// WithOriginConfig. It has no writable layer: origins can only change by restarting the engine
+// with a new OriginConfig.
+type staticOriginReader struct {
+	config cors.OriginConfig
+}
+
+// GetReadOnlyConfig returns the engine's static origin configuration.
+func (r staticOriginReader) GetReadOnlyConfig(_ context.Context, _ string) (any, *common.ServiceError) {
+	return r.config, nil
+}
+
+// GetWritableConfig returns an empty configuration: staticOriginReader has no writable layer.
+func (r staticOriginReader) GetWritableConfig(_ context.Context, _ string) (any, *common.ServiceError) {
+	return cors.OriginConfig{}, nil
+}
+
 type engineContext struct {
 	cacheManager          cache.CacheManagerInterface
 	jwtService            jwt.JWTServiceInterface
@@ -310,8 +413,11 @@ type engineContext struct {
 	encryptionConfig       engineconfig.EncryptionConfig
 	logConfig              engineconfig.LogConfig
 	attributeCacheConfig   engineconfig.AttributeCacheConfig
+	originConfig           engineconfig.OriginConfig
 
 	actorProvider             providers.ActorProvider
+	userMgtProvider           providers.UserMgtProvider
+	agentMgtProvider          providers.AgentMgtProvider
 	defaultAuthnProvider      providers.AuthnProviderInterface
 	customAuthnProviders      map[string]providers.CustomAuthnProvider
 	resourceProvider          providers.ResourceServerProvider
@@ -321,11 +427,14 @@ type engineContext struct {
 	i18nProvider              providers.I18nProvider
 	idpProvider               providers.IDPProvider
 	consentProvider           providers.ConsentProvider
+	authorizationDetailTypes  providers.AuthorizationDetailTypeProvider
+	authzDetailProvider       providers.AuthorizationDetailProvider
 	customExecutors           map[string]providers.Executor
 	observabilitySvc          providers.ObservabilityProvider
 	authzProvider             providers.AuthorizationProvider
 	attestationProvider       providers.AttestationProvider
 	captchaValidationProvider providers.CaptchaValidationProvider
+	identityGovernance        providers.IdentityGovernanceProvider
 
 	transactioner        providers.Transactioner
 	runtimeStoreProvider providers.RuntimeStoreProvider
@@ -359,6 +468,14 @@ func WithEncryptionConfig(encryptionConfig engineconfig.EncryptionConfig) Option
 // WithAttributeCacheConfig supplies the attribute cache configuration.
 func WithAttributeCacheConfig(config engineconfig.AttributeCacheConfig) Option {
 	return func(c *engineContext) { c.attributeCacheConfig = config }
+}
+
+// WithOriginConfig supplies the allowed cross-origin origins for the engine's CORS-enabled
+// endpoints (well-known discovery, JWKS, token, userinfo, and the rest of the OAuth surface).
+// Omitting this option leaves CORS disabled: no cross-origin request is allowed to read a
+// response from those endpoints.
+func WithOriginConfig(config engineconfig.OriginConfig) Option {
+	return func(c *engineContext) { c.originConfig = config }
 }
 
 // WithServerConfig supplies the server configuration.
@@ -401,6 +518,20 @@ func WithActorProvider(provider providers.ActorProvider) Option {
 	return func(c *engineContext) { c.actorProvider = provider }
 }
 
+// WithUserMgtProvider supplies the user management provider. Omitting it leaves user provisioning
+// disabled: runtime capabilities that provision users then fail with ErrorUserProvisioningDisabled
+// rather than the engine refusing to start.
+func WithUserMgtProvider(provider providers.UserMgtProvider) Option {
+	return func(c *engineContext) { c.userMgtProvider = provider }
+}
+
+// WithAgentMgtProvider supplies the agent management provider. Omitting it leaves agent provisioning
+// disabled: runtime capabilities that provision agents then fail with ErrorAgentProvisioningDisabled
+// rather than the engine refusing to start.
+func WithAgentMgtProvider(provider providers.AgentMgtProvider) Option {
+	return func(c *engineContext) { c.agentMgtProvider = provider }
+}
+
 // WithDefaultAuthnProvider supplies the default authentication provider.
 func WithDefaultAuthnProvider(provider providers.AuthnProviderInterface) Option {
 	return func(c *engineContext) { c.defaultAuthnProvider = provider }
@@ -439,6 +570,19 @@ func WithFlowProvider(provider providers.FlowProvider) Option {
 // WithI18nProvider supplies the i18n provider.
 func WithI18nProvider(provider providers.I18nProvider) Option {
 	return func(c *engineContext) { c.i18nProvider = provider }
+}
+
+// WithAuthorizationDetailTypeProvider supplies the authorization details type registry. Without it,
+// requests carrying authorization_details are refused.
+func WithAuthorizationDetailTypeProvider(provider providers.AuthorizationDetailTypeProvider) Option {
+	return func(c *engineContext) { c.authorizationDetailTypes = provider }
+}
+
+// WithAuthorizationDetailProvider replaces the authorization details runtime: validation, preparation, processing,
+// refresh filtering and token-endpoint narrowing. A replacement must refuse types without a processor on
+// client_credentials (RAR-1024), return only requested, admitted details, and narrow only within field policies.
+func WithAuthorizationDetailProvider(provider providers.AuthorizationDetailProvider) Option {
+	return func(c *engineContext) { c.authzDetailProvider = provider }
 }
 
 // WithIDPProvider supplies the IDP provider.
@@ -483,6 +627,12 @@ func WithLogConfig(config engineconfig.LogConfig) Option {
 	return func(ctx *engineContext) {
 		ctx.logConfig = config
 	}
+}
+
+// WithIdentityGovernanceProvider supplies optional identity governance.
+// Omitting this option or passing nil disables governance checks and lifecycle operations.
+func WithIdentityGovernanceProvider(provider providers.IdentityGovernanceProvider) Option {
+	return func(c *engineContext) { c.identityGovernance = provider }
 }
 
 // WithAttestationProvider supplies the Attestation provider.

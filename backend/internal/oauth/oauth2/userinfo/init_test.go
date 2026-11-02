@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package userinfo
@@ -52,7 +52,7 @@ func (suite *InitTestSuite) SetupTest() {
 	_ = config.InitializeServerRuntime(
 		"test-home",
 		&config.Config{
-			OAuth: engineconfig.OAuthConfig{
+			OAuth: config.OAuthConfig{
 				DPoP: engineconfig.DPoPConfig{
 					AllowedAlgs: []string{"ES256", "PS256"},
 				},
@@ -66,8 +66,9 @@ func (suite *InitTestSuite) TestInitialize() {
 
 	service := Initialize(mux, suite.mockJWTService, nil, nil,
 		suite.mockTokenValidator,
-		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil),
-		suite.mockAttributeCacheService, suite.mockDiscoveryService, suite.mockDPoPVerifier, testhelpers.OAuthConfig())
+		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil),
+		suite.mockAttributeCacheService, suite.mockDiscoveryService, suite.mockDPoPVerifier, nil,
+		testhelpers.OAuthConfig())
 
 	assert.NotNil(suite.T(), service)
 }
@@ -77,8 +78,9 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 
 	Initialize(mux, suite.mockJWTService, nil, nil,
 		suite.mockTokenValidator,
-		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil),
-		suite.mockAttributeCacheService, suite.mockDiscoveryService, suite.mockDPoPVerifier, testhelpers.OAuthConfig())
+		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil),
+		suite.mockAttributeCacheService, suite.mockDiscoveryService, suite.mockDPoPVerifier, nil,
+		testhelpers.OAuthConfig())
 
 	// Verify that the routes are registered by attempting to get a handler for them.
 	// The pattern includes the method because of CORS middleware wrapping.

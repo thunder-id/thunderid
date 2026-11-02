@@ -41,6 +41,11 @@ describe('ImportExportPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('sets the document title', async () => {
+    render(<ImportExportPage />);
+    await waitFor(() => expect(document.title).toBe('Import / Export | ThunderID'));
+  });
+
   it('renders both import and export options', () => {
     render(<ImportExportPage />);
 

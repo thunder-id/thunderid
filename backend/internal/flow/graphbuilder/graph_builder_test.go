@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package graphbuilder
@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
@@ -2011,13 +2012,13 @@ func (s *GraphBuilderTestSuite) TestSSOFlowDefinitionBuilds() {
 	// whereas some others dereference dependencies at construction time.
 	registry, err := executor.Initialize(
 		executor.ExecutorDependencies{FlowFactory: flowFactory},
-		engineconfig.FlowConfig{Executors: []string{
+		flowconfig.Config{Flow: engineconfig.FlowConfig{Executors: []string{
 			executor.ExecutorNameSSOCheck,
 			executor.ExecutorNameSession,
 			executor.ExecutorNameCredentialsAuth,
 			executor.ExecutorNameAuthorization,
 			executor.ExecutorNameAuthAssert,
-		}})
+		}}})
 	s.Require().NoError(err)
 
 	interceptorRegistry, err := interceptor.Initialize(

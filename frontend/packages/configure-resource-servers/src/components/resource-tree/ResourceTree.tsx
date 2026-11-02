@@ -105,7 +105,7 @@ function GenericResourceTree({resourceServer, onRefresh}: ResourceTreeProps): JS
             color="text.secondary"
             sx={{textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600}}
           >
-            {t('resourceServers:tree.title', 'Resource Hierarchy')}
+            {t('resourceServers:tree.title', 'Resource hierarchy')}
           </Typography>
           {!readOnly && (
             <>

@@ -57,9 +57,9 @@ func registerMCPTools(server *mcp.Server, themeMgtService ThemeMgtServiceInterfa
 	tools := &themeTools{themeMgtService: themeMgtService}
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "thunderid_list_themes",
+		Name: "list_themes",
 		Description: `List all themes with summary information (ID, handle, display name). ` +
-			`Use thunderid_get_theme_by_id to retrieve full color and typography configuration for a specific theme.`,
+			`Use get_theme_by_id to retrieve full color and typography configuration for a specific theme.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "List Themes",
 			ReadOnlyHint: true,
@@ -67,7 +67,7 @@ func registerMCPTools(server *mcp.Server, themeMgtService ThemeMgtServiceInterfa
 	}, tools.listThemes)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "thunderid_get_theme_by_id",
+		Name:        "get_theme_by_id",
 		Description: `Retrieve full details of a theme by ID including color schemes and typography configuration.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Get Theme by ID",

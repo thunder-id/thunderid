@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package granthandlers
@@ -9,6 +9,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"testing"
@@ -18,16 +19,20 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
+	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
-	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
 
@@ -35,6 +40,9 @@ import (
 const testJWTToken = "test-jwt-token-123"
 const testResourceURL = "https://mcp.example.com/mcp"
 const testEntityID = "agent-entity-123"
+
+// testAppOUID is the organization unit owning the suite's application.
+const testAppOUID = "ou-app-owner"
 
 // Default target resource server resolved for requests without a resource parameter.
 const defaultRSID = "rs-1"
@@ -44,7 +52,7 @@ type ClientCredentialsGrantHandlerTestSuite struct {
 	suite.Suite
 	mockJWTService      *jwtmock.JWTServiceInterfaceMock
 	mockTokenBuilder    *tokenservicemock.TokenBuilderInterfaceMock
-	mockOUService       *oumock.OrganizationUnitServiceInterfaceMock
+	mockOUService       *ouprovidermock.OrganizationUnitProviderMock
 	mockAuthzService    *authzmock.AuthorizationProviderMock
 	mockEntityProvider  *actorprovidermock.ActorProviderMock
 	mockResourceService *resourcemock.ResourceServiceInterfaceMock
@@ -69,7 +77,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	suite.mockTokenBuilder = tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
-	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	suite.mockOUService = ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 	suite.mockAuthzService = authzmock.NewAuthorizationProviderMock(suite.T())
 	suite.mockEntityProvider = actorprovidermock.NewActorProviderMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
@@ -89,6 +97,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 		Return([]string{}, nil).Maybe()
 
 	suite.handler = &clientCredentialsGrantHandler{
+		authzDetails:    noAuthzDetails(),
 		tokenBuilder:    suite.mockTokenBuilder,
 		ouService:       suite.mockOUService,
 		authzService:    suite.mockAuthzService,
@@ -100,6 +109,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 
 	suite.oauthApp = &providers.OAuthClient{
 		ID:                      testEntityID,
+		OUID:                    testAppOUID,
 		ClientID:                testClientID,
 		RedirectURIs:            []string{"https://example.com/callback"},
 		GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
@@ -109,10 +119,12 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 }
 
 // mockEvaluateAccessBatch stubs EvaluateAccessBatch, asserting each evaluation targets the given
-// resource server ID and returning the given authorized scopes as allowed.
+// resource server ID and counts only the role assignments made in assignmentOUID (any organization
+// unit when it is empty), and returning the given authorized scopes as allowed.
 func mockEvaluateAccessBatch(
 	authzService *authzmock.AuthorizationProviderMock,
 	entityID string,
+	assignmentOUID string,
 	resourceServerID string,
 	requestedScopes []string,
 	authorizedScopes []string,
@@ -137,6 +149,7 @@ func mockEvaluateAccessBatch(
 			for i, scope := range requestedScopes {
 				evaluation := req.Evaluations[i]
 				if evaluation.Subject.ID != entityID ||
+					evaluation.OUID != assignmentOUID ||
 					len(evaluation.Subject.GroupIDs) != 0 ||
 					evaluation.ResourceServer.ID != resourceServerID ||
 					evaluation.Permission.Name != scope {
@@ -148,12 +161,32 @@ func mockEvaluateAccessBatch(
 		Return(&providers.AccessEvaluationsResponse{Evaluations: evaluations}, nil)
 }
 
+func TestBuildAccessEvaluationsRequestUsesEntityCategory(t *testing.T) {
+	for _, test := range []struct {
+		category providers.EntityCategory
+		typeName string
+	}{
+		{category: providers.EntityCategoryApp, typeName: providers.EntityCategoryApp.String()},
+		{category: providers.EntityCategoryAgent, typeName: providers.EntityCategoryAgent.String()},
+		{category: providers.EntityCategoryUser, typeName: providers.EntityCategoryUser.String()},
+	} {
+		request := tokenservice.BuildAccessEvaluationsRequest(
+			"entity-1", test.category.String(), nil, nil, []string{"bookings:view"}, "rs-1", nil,
+		)
+
+		assert.Len(t, request.Evaluations, 1)
+		assert.Equal(t, test.typeName, request.Evaluations[0].Subject.Category)
+	}
+}
+
 func (suite *ClientCredentialsGrantHandlerTestSuite) TestNewClientCredentialsGrantHandler() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
 	handler := newClientCredentialsGrantHandler(
 		suite.mockTokenBuilder, suite.mockOUService, suite.mockAuthzService,
-		suite.mockEntityProvider, suite.mockResourceService)
+		suite.mockEntityProvider, suite.mockResourceService, governance, noAuthzDetails())
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
+	assert.Equal(suite.T(), governance, handler.(*clientCredentialsGrantHandler).governance)
 }
 
 func (suite *ClientCredentialsGrantHandlerTestSuite) TestValidateGrant_Success() {
@@ -228,7 +261,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_Success() {
 
 			// Mock authz service for non-OIDC scopes. No resource param -> default RS.
 			if len(tc.expectedScopes) > 0 {
-				mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID,
+				mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testAppOUID, defaultRSID,
 					tc.expectedScopes, tc.expectedScopes)
 			}
 
@@ -325,7 +358,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_JWTGenerati
 		Scope:        "read",
 	}
 
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID, []string{"read"}, []string{"read"})
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testAppOUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
 
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
 		Return(nil, errors.New("JWT generation failed"))
@@ -348,7 +382,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NilTokenAtt
 		Scope:        "read",
 	}
 
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID, []string{"read"}, []string{"read"})
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testAppOUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
 
 	expectedToken := testJWTToken
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
@@ -388,7 +423,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_TokenTiming
 		Scope:        "read",
 	}
 
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID, []string{"read"}, []string{"read"})
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testAppOUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
 
 	expectedToken := testJWTToken
 	now := time.Now().Unix()
@@ -437,7 +473,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ClientAttri
 		},
 	}
 
-	mockEvaluateAccessBatch(suite.mockAuthzService, oauthAppWithOU.ID, defaultRSID, []string{"read"}, []string{"read"})
+	mockEvaluateAccessBatch(suite.mockAuthzService, oauthAppWithOU.ID, oauthAppWithOU.OUID,
+		defaultRSID, []string{"read"}, []string{"read"})
 
 	suite.mockOUService.On("GetOrganizationUnit", context.Background(), "ou-456").Return(
 		providers.OrganizationUnit{},
@@ -468,7 +505,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_WithResourc
 
 	// The explicit resource resolves to an RS whose ID and Identifier equal the resource URL;
 	// authz must be evaluated against that RS ID.
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testResourceURL,
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testAppOUID, testResourceURL,
 		[]string{"read"}, []string{"read"})
 
 	var capturedAudiences []string
@@ -507,7 +544,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_WithoutReso
 	}
 
 	// No resource param -> default RS resolved via server-config; authz targets the default RS ID.
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID, []string{"read"}, []string{"read"})
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testAppOUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
 
 	var capturedAudiences []string
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
@@ -547,7 +585,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_PartialScop
 	}
 
 	// App is only authorized for "read" and "write" via its role assignments.
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID,
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testAppOUID, defaultRSID,
 		[]string{"read", "write", "delete"}, []string{"read", "write"})
 
 	suite.mockTokenBuilder.On("BuildAccessToken",
@@ -579,7 +617,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NoAuthorize
 	}
 
 	// App has no role granting "admin:full".
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID,
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testAppOUID, defaultRSID,
 		[]string{"admin:full"}, []string{})
 
 	suite.mockTokenBuilder.On("BuildAccessToken",
@@ -724,7 +762,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AgentSystem
 	suite.mockEntityProvider.On("GetActor", agentApp.ID).Return(&providers.Entity{
 		ID:               agentApp.ID,
 		Category:         providers.EntityCategoryAgent,
-		SystemAttributes: []byte(`{"name":"Ledger Agent","owner":"user-123","clientId":"cid"}`),
+		Attributes:       []byte(`{"name":"Ledger Agent"}`),
+		SystemAttributes: []byte(`{"owner":"user-123","clientId":"cid"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
 	suite.mockTokenBuilder.On("BuildAccessToken",
@@ -811,7 +850,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ExplicitRes
 	}
 
 	// The evaluation carries the resolved RS ID (equal to the identifier per the default stub).
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, rsIdentifier,
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testAppOUID, rsIdentifier,
 		[]string{"r1:s1"}, []string{"r1:s1"})
 
 	var capturedAudiences []string
@@ -855,7 +894,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_CollidingPe
 
 	// "shared:read" is a valid permission on RS-B (ValidatePermissions returns no invalid),
 	// but the app is not granted it there — the evaluation scoped to RS-B returns Decision:false.
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, rsBIdentifier,
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testAppOUID, rsBIdentifier,
 		[]string{"shared:read"}, []string{})
 
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
@@ -891,6 +930,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NoResourceN
 	mockEntityProvider := actorprovidermock.NewActorProviderMock(suite.T())
 
 	handler := &clientCredentialsGrantHandler{
+		authzDetails:    noAuthzDetails(),
 		tokenBuilder:    mockTokenBuilder,
 		ouService:       suite.mockOUService,
 		authzService:    mockAuthzService,
@@ -925,7 +965,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_DPoPProof_P
 		Scope:        "read",
 	}
 
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID, []string{"read"}, []string{"read"})
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testAppOUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
 
 	suite.mockTokenBuilder.On("BuildAccessToken",
 		mock.Anything,
@@ -956,7 +997,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NoDPoPProof
 		Scope:        "read",
 	}
 
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID, []string{"read"}, []string{"read"})
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testAppOUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
 
 	suite.mockTokenBuilder.On("BuildAccessToken",
 		mock.Anything,
@@ -976,4 +1018,295 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NoDPoPProof
 	assert.Nil(suite.T(), errResp)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), constants.TokenTypeBearer, result.AccessToken.TokenType)
+}
+
+// scopelessTokenRequest is a client_credentials request with no scope, so no authorization call is made.
+func scopelessTokenRequest() *model.TokenRequest {
+	return &model.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     testClientID,
+		ClientSecret: "secret123",
+	}
+}
+
+// An issued token stamps the client's last login with the client's entity ID.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_RecordsLoginOnSuccess() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.On("RecordLogin", mock.Anything, testEntityID).Return((*tidcommon.ServiceError)(nil)).Once()
+	suite.handler.governance = governance
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: testJWTToken, TokenType: constants.TokenTypeBearer}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), scopelessTokenRequest(), suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	governance.AssertExpectations(suite.T())
+}
+
+// A failed stamp does not fail the token response.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_RecordLoginFailureStillIssues() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.On("RecordLogin", mock.Anything, testEntityID).Return(&tidcommon.InternalServerError).Once()
+	suite.handler.governance = governance
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: testJWTToken, TokenType: constants.TokenTypeBearer}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), scopelessTokenRequest(), suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	suite.Require().NotNil(result)
+	assert.Equal(suite.T(), testJWTToken, result.AccessToken.Token)
+	governance.AssertExpectations(suite.T())
+}
+
+// A grant that issues no token records nothing.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_FailedGrantRecordsNoLogin() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	suite.handler.governance = governance
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+		Return(nil, errors.New("JWT generation failed"))
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), scopelessTokenRequest(), suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	suite.Require().NotNil(errResp)
+	assert.Equal(suite.T(), constants.ErrorServerError, errResp.Error)
+	governance.AssertNotCalled(suite.T(), "RecordLogin", mock.Anything, mock.Anything)
+}
+
+// Without governance the grant issues and records nothing.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NilGovernanceSkipsRecording() {
+	suite.handler.governance = nil
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: testJWTToken, TokenType: constants.TokenTypeBearer}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), scopelessTokenRequest(), suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+}
+
+const testAuthorizationDetails = `[{"type":"payment_initiation","amount":"10"}]`
+
+// testPreparedDetails is the validated test detail as the provider prepares it.
+var testPreparedDetails = []providers.AuthorizationDetail{{ID: "d1", Type: "payment_initiation", TypeID: "t1",
+	TypeVersion: 1, Requested: json.RawMessage(`{"type":"payment_initiation","amount":"10"}`),
+	Value: json.RawMessage(`{"type":"payment_initiation","amount":"10"}`)}}
+
+// withDetailProvider has the provider prepare the requested details, and expects it to decide them with the
+// client itself as the subject.
+func (suite *ClientCredentialsGrantHandlerTestSuite) withDetailProvider(
+	authzDetails *authzdetailprovidermock.AuthorizationDetailProviderMock,
+) *authzdetailprovidermock.AuthorizationDetailProviderMock_ProcessAuthorizationDetails_Call {
+	authzDetails.EXPECT().PrepareAuthorizationDetails(mock.Anything, json.RawMessage(testAuthorizationDetails)).
+		Return(testPreparedDetails, nil)
+	return authzDetails.EXPECT().ProcessAuthorizationDetails(mock.Anything,
+		mock.MatchedBy(func(details []providers.AuthorizationDetail) bool {
+			return len(details) == 1 && details[0].ID == "d1"
+		}),
+		suite.clientReference(), suite.oauthApp.ClientID, suite.clientReference(),
+		mock.Anything)
+}
+
+// clientReference identifies the test client, which is also the subject of a client_credentials request.
+func (suite *ClientCredentialsGrantHandlerTestSuite) clientReference() providers.EntityReference {
+	return providers.EntityReference{EntityID: suite.oauthApp.ID, EntityCategory: string(suite.oauthApp.EntityCategory),
+		OUID: suite.oauthApp.OUID}
+}
+
+// admitted returns the test detail as the provider admits it, with the given value.
+func admitted(value string) []providers.AuthorizationDetail {
+	return []providers.AuthorizationDetail{{ID: "d1", Type: "payment_initiation", Value: json.RawMessage(value),
+		Admitted: true}}
+}
+
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AuthorizationDetails_Success() {
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	suite.handler.authzDetails = authzDetails
+	tokenRequest := &model.TokenRequest{
+		GrantType:            "client_credentials",
+		ClientID:             testClientID,
+		ClientSecret:         "secret123",
+		AuthorizationDetails: testAuthorizationDetails,
+	}
+	value := `{"type":"payment_initiation","amount":"10","debtor":"DE12"}`
+	processed := json.RawMessage(`[` + value + `]`)
+
+	suite.withDetailProvider(authzDetails).Return(admitted(value), nil)
+
+	var captured *tokenservice.AccessTokenBuildContext
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			captured = ctx
+			return true
+		})).Return(&model.TokenDTO{
+		Token:                testJWTToken,
+		TokenType:            constants.TokenTypeBearer,
+		ClientID:             testClientID,
+		AuthorizationDetails: processed,
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.JSONEq(suite.T(), string(processed), string(captured.AuthorizationDetails),
+		"the token carries the details the provider admitted, as it changed them")
+	assert.Equal(suite.T(), testEntityID, captured.Subject)
+	// Details without a resource bind the token to the default resource server, as permissions do.
+	assert.Equal(suite.T(), []string{defaultRSIdentifier}, captured.Audiences)
+	assert.Nil(suite.T(), tokenRequest.Resources)
+	assert.Equal(suite.T(), processed, result.AccessToken.AuthorizationDetails)
+}
+
+// The approved authorization details reach the policy engine as context only.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AuthorizationDetails_InEvaluationContext() {
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	suite.handler.authzDetails = authzDetails
+	tokenRequest := &model.TokenRequest{
+		GrantType:            "client_credentials",
+		ClientID:             testClientID,
+		ClientSecret:         "secret123",
+		Scope:                "read write",
+		AuthorizationDetails: testAuthorizationDetails,
+	}
+	suite.withDetailProvider(authzDetails).
+		Return(admitted(`{"type":"payment_initiation","amount":"10","debtor":"DE12"}`), nil)
+
+	var captured providers.AccessEvaluationsRequest
+	suite.mockAuthzService.On("EvaluateAccessBatch", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			captured = args.Get(1).(providers.AccessEvaluationsRequest)
+		}).
+		Return(&providers.AccessEvaluationsResponse{
+			Evaluations: []providers.AccessEvaluationResponse{{Decision: true}, {Decision: false}},
+		}, nil)
+	var builtScopes []string
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			builtScopes = ctx.Scopes
+			return true
+		})).Return(&model.TokenDTO{Token: testJWTToken, TokenType: constants.TokenTypeBearer}, nil)
+
+	_, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.Len(suite.T(), captured.Evaluations, 2)
+	for _, evaluation := range captured.Evaluations {
+		contextDetails, ok := evaluation.Context[providers.AccessEvaluationContextAuthorizationDetails]
+		assert.True(suite.T(), ok)
+		encoded, err := json.Marshal(contextDetails)
+		assert.NoError(suite.T(), err)
+		assert.JSONEq(suite.T(), `[{"type":"payment_initiation","amount":"10","debtor":"DE12"}]`, string(encoded),
+			"the details are sent as the processors approved them")
+	}
+	assert.Equal(suite.T(), []string{"read"}, builtScopes)
+}
+
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AuthorizationDetails_ExplicitResource() {
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	suite.handler.authzDetails = authzDetails
+	tokenRequest := &model.TokenRequest{
+		GrantType:            "client_credentials",
+		ClientID:             testClientID,
+		Resources:            []string{testResourceURL},
+		AuthorizationDetails: testAuthorizationDetails,
+	}
+	suite.withDetailProvider(authzDetails).
+		Return(admitted(`{"type":"payment_initiation","amount":"10"}`), nil)
+	var captured *tokenservice.AccessTokenBuildContext
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			captured = ctx
+			return true
+		})).Return(&model.TokenDTO{Token: testJWTToken, TokenType: constants.TokenTypeBearer}, nil)
+
+	_, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.Equal(suite.T(), []string{testResourceURL}, captured.Audiences)
+}
+
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AuthorizationDetails_NoDefaultResourceServer() {
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	suite.handler.authzDetails = authzDetails
+	resourceService := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	resourceService.On("GetResourceServerByIdentifier", mock.Anything, "").
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RSE-4041"})
+	suite.handler.resourceService = resourceService
+	tokenRequest := &model.TokenRequest{
+		GrantType:            "client_credentials",
+		ClientID:             testClientID,
+		AuthorizationDetails: testAuthorizationDetails,
+	}
+	authzDetails.EXPECT().PrepareAuthorizationDetails(mock.Anything, json.RawMessage(testAuthorizationDetails)).
+		Return(testPreparedDetails, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	suite.Require().NotNil(errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidTarget, errResp.Error)
+	authzDetails.AssertNotCalled(suite.T(), "ProcessAuthorizationDetails", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+}
+
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AuthorizationDetails_ServiceUnavailable() {
+	tokenRequest := &model.TokenRequest{
+		GrantType:            "client_credentials",
+		ClientID:             testClientID,
+		AuthorizationDetails: testAuthorizationDetails,
+	}
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidAuthorizationDetails, errResp.Error)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+}
+
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AuthorizationDetails_ValidationError() {
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	suite.handler.authzDetails = authzDetails
+	tokenRequest := &model.TokenRequest{
+		GrantType:            "client_credentials",
+		ClientID:             testClientID,
+		Resources:            []string{testResourceURL},
+		AuthorizationDetails: testAuthorizationDetails,
+	}
+	authzDetails.EXPECT().PrepareAuthorizationDetails(mock.Anything, json.RawMessage(testAuthorizationDetails)).
+		Return(nil, authzdetailexec.ErrorUnknownAuthorizationDetailType.WithParams(
+			map[string]string{"index": "0", "type": "payment_initiation"}))
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), &model.ErrorResponse{
+		Error:            constants.ErrorInvalidAuthorizationDetails,
+		ErrorDescription: "authorization_details entry 0 names the unknown type payment_initiation",
+	}, errResp)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+}
+
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AuthorizationDetails_ProcessingError() {
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	suite.handler.authzDetails = authzDetails
+	tokenRequest := &model.TokenRequest{
+		GrantType:            "client_credentials",
+		ClientID:             testClientID,
+		AuthorizationDetails: testAuthorizationDetails,
+	}
+	suite.withDetailProvider(authzDetails).Return(nil, &authzdetailcommon.ErrorProcessorUnavailable)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), &model.ErrorResponse{
+		Error:            constants.ErrorServerError,
+		ErrorDescription: "Failed to process authorization details",
+	}, errResp)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
 }

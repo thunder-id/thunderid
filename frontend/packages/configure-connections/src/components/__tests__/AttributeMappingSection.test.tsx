@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {fireEvent, render, screen, within} from '@testing-library/react';
@@ -16,11 +16,10 @@ function Harness({initialConfig = undefined}: {initialConfig?: AttributeConfigur
 
 // The package's test setup renders real translations, so assert on the resolved English strings.
 const RESOLUTION_TITLE = 'User type resolution';
-const MAPPINGS_TITLE = 'Attribute Mappings';
-const LINKING_TITLE = 'Account Linking';
-const EXTERNAL_ATTRIBUTE = 'External Attribute';
-const EXTERNAL_VALUE = 'External Value';
-const LOCAL_ATTRIBUTE = 'Local Attribute';
+const MAPPINGS_TITLE = 'Attribute mappings';
+const EXTERNAL_ATTRIBUTE = 'External attribute';
+const EXTERNAL_VALUE = 'External value';
+const LOCAL_ATTRIBUTE = 'Local attribute';
 
 // The SettingsCard is mocked to a labelled <section> so each card can be located and scoped by title.
 vi.mock('@thunderid/components', () => ({
@@ -29,7 +28,9 @@ vi.mock('@thunderid/components', () => ({
   ),
 }));
 
-let userTypes: {id: string; name: string}[] = [{id: 'u1', name: 'Person'}];
+let userTypes: {id: string; handle: string; displayName: string}[] = [
+  {id: 'u1', handle: 'person', displayName: 'Person'},
+];
 
 vi.mock('@thunderid/configure-user-types', () => ({
   useGetUserTypes: () => ({data: {types: userTypes}}),
@@ -40,26 +41,24 @@ describe('AttributeMappingSection', () => {
   const onChange = vi.fn();
   beforeEach(() => {
     vi.clearAllMocks();
-    userTypes = [{id: 'u1', name: 'Person'}];
+    userTypes = [{id: 'u1', handle: 'person', displayName: 'Person'}];
   });
 
-  it('renders the three sections when more than one user type exists', () => {
+  it('renders both sections when more than one user type exists', () => {
     userTypes = [
-      {id: 'u1', name: 'Person'},
-      {id: 'u2', name: 'Employee'},
+      {id: 'u1', handle: 'person', displayName: 'Person'},
+      {id: 'u2', handle: 'employee', displayName: 'Employee'},
     ];
     render(<AttributeMappingSection onChange={onChange} />);
     expect(screen.getByTestId('attribute-mapping-section')).toBeInTheDocument();
     expect(screen.getByLabelText(RESOLUTION_TITLE)).toBeInTheDocument();
     expect(screen.getByLabelText(MAPPINGS_TITLE)).toBeInTheDocument();
-    expect(screen.getByLabelText(LINKING_TITLE)).toBeInTheDocument();
   });
 
   it('hides the whole user type resolution section when only one user type exists', () => {
     render(<AttributeMappingSection onChange={onChange} />);
     expect(screen.queryByLabelText(RESOLUTION_TITLE)).not.toBeInTheDocument();
     expect(screen.getByLabelText(MAPPINGS_TITLE)).toBeInTheDocument();
-    expect(screen.getByLabelText(LINKING_TITLE)).toBeInTheDocument();
   });
 
   it('hides the per-group user type dropdown when only one user type exists', () => {
@@ -86,7 +85,6 @@ describe('AttributeMappingSection', () => {
       userTypeAttributeMappings: [
         {userType: 'Person', attributes: [{externalAttribute: 'given_name', localAttribute: 'firstName'}]},
       ],
-      accountLinking: {attributes: ['email']},
     };
     render(<AttributeMappingSection initialConfig={initial} onChange={onChange} />);
     expect(onChange).toHaveBeenLastCalledWith(initial, true);
@@ -105,8 +103,8 @@ describe('AttributeMappingSection', () => {
 
   it('pre-enables the value mapping toggle and shows existing entries on edit prefill', () => {
     userTypes = [
-      {id: 'u1', name: 'Person'},
-      {id: 'u2', name: 'Employee'},
+      {id: 'u1', handle: 'person', displayName: 'Person'},
+      {id: 'u2', handle: 'employee', displayName: 'Employee'},
     ];
     const initial: AttributeConfiguration = {
       userTypeResolution: {default: 'Person', externalAttribute: 'user_type', valueMapping: {staff: 'Employee'}},
@@ -119,8 +117,8 @@ describe('AttributeMappingSection', () => {
 
   it('reports invalid when a mapping group has content but no user type', () => {
     userTypes = [
-      {id: 'u1', name: 'Person'},
-      {id: 'u2', name: 'Employee'},
+      {id: 'u1', handle: 'person', displayName: 'Person'},
+      {id: 'u2', handle: 'employee', displayName: 'Employee'},
     ];
     render(<AttributeMappingSection onChange={onChange} />);
     // A second, unused user type exists, so "Add user type" is offered.
@@ -134,8 +132,8 @@ describe('AttributeMappingSection', () => {
 
   it('excludes a user type already picked by another mapping group from the options', () => {
     userTypes = [
-      {id: 'u1', name: 'Person'},
-      {id: 'u2', name: 'Employee'},
+      {id: 'u1', handle: 'person', displayName: 'Person'},
+      {id: 'u2', handle: 'employee', displayName: 'Employee'},
     ];
     render(<AttributeMappingSection onChange={onChange} />);
     fireEvent.click(screen.getByTestId('attribute-mapping-add-user-type'));
@@ -165,8 +163,8 @@ describe('AttributeMappingSection', () => {
 
   it('reveals the external attribute field when the toggle is turned on, seeding a value-mapping row only once its own toggle is enabled', () => {
     userTypes = [
-      {id: 'u1', name: 'Person'},
-      {id: 'u2', name: 'Employee'},
+      {id: 'u1', handle: 'person', displayName: 'Person'},
+      {id: 'u2', handle: 'employee', displayName: 'Employee'},
     ];
     const {container} = render(<AttributeMappingSection onChange={onChange} />);
     const resolution = within(screen.getByLabelText(RESOLUTION_TITLE));
@@ -188,8 +186,8 @@ describe('AttributeMappingSection', () => {
 
   it('is valid with an external attribute and default set but no value mappings configured', () => {
     userTypes = [
-      {id: 'u1', name: 'Person'},
-      {id: 'u2', name: 'Employee'},
+      {id: 'u1', handle: 'person', displayName: 'Person'},
+      {id: 'u2', handle: 'employee', displayName: 'Employee'},
     ];
     const {container} = render(<AttributeMappingSection onChange={onChange} />);
     const resolution = within(screen.getByLabelText(RESOLUTION_TITLE));
@@ -202,7 +200,7 @@ describe('AttributeMappingSection', () => {
 
     // Value Mapping toggle stays off — every identity resolves to Person until mappings are added.
     expect(onChange).toHaveBeenLastCalledWith(
-      {userTypeResolution: {default: 'Person', externalAttribute: 'user_type'}},
+      {userTypeResolution: {default: 'person', externalAttribute: 'user_type'}},
       true,
     );
   });
@@ -210,24 +208,6 @@ describe('AttributeMappingSection', () => {
   it('hides dynamic resolution when only one user type exists', () => {
     const {container} = render(<AttributeMappingSection onChange={onChange} />);
     expect(container.querySelector('.MuiSwitch-input')).toBeNull();
-  });
-
-  it('renders a starter attribute input for account linking without needing to add one first', () => {
-    render(<AttributeMappingSection onChange={onChange} />);
-    const linking = within(screen.getByLabelText(LINKING_TITLE));
-    expect(linking.getAllByLabelText(EXTERNAL_ATTRIBUTE)).toHaveLength(1);
-  });
-
-  it('adds account-linking attributes', () => {
-    render(<AttributeMappingSection onChange={onChange} />);
-    fireEvent.click(screen.getByTestId('attribute-mapping-link-add'));
-    const linking = within(screen.getByLabelText(LINKING_TITLE));
-    const linkInputs = linking.getAllByLabelText(EXTERNAL_ATTRIBUTE);
-    fireEvent.change(linkInputs[linkInputs.length - 1], {target: {value: 'email'}});
-    expect(onChange).toHaveBeenLastCalledWith(
-      {accountLinking: {attributes: ['email']}, userTypeResolution: {default: 'Person'}},
-      true,
-    );
   });
 
   it('hides delete for the default empty attribute-mapping row until it has content', () => {
@@ -262,28 +242,10 @@ describe('AttributeMappingSection', () => {
     expect(addButton).not.toBeDisabled();
   });
 
-  it('hides delete for the default empty account-linking row until it has content', () => {
-    render(<AttributeMappingSection onChange={onChange} />);
-    const linking = within(screen.getByLabelText(LINKING_TITLE));
-    expect(linking.queryByRole('button', {name: /remove account linking attribute/i})).not.toBeInTheDocument();
-
-    fireEvent.change(linking.getByLabelText(EXTERNAL_ATTRIBUTE), {target: {value: 'email'}});
-    expect(linking.getByRole('button', {name: /remove account linking attribute/i})).toBeInTheDocument();
-  });
-
-  it('shows delete for every account-linking row once an extra blank row is added', () => {
-    render(<AttributeMappingSection onChange={onChange} />);
-    const linking = within(screen.getByLabelText(LINKING_TITLE));
-    // "Add attribute" is disabled while the last row is empty, so fill the first row before adding.
-    fireEvent.change(linking.getByLabelText(EXTERNAL_ATTRIBUTE), {target: {value: 'email'}});
-    fireEvent.click(screen.getByTestId('attribute-mapping-link-add'));
-    expect(linking.getAllByRole('button', {name: /remove account linking attribute/i})).toHaveLength(2);
-  });
-
   it('hides delete for an empty value-mapping row until it has content', () => {
     userTypes = [
-      {id: 'u1', name: 'Person'},
-      {id: 'u2', name: 'Employee'},
+      {id: 'u1', handle: 'person', displayName: 'Person'},
+      {id: 'u2', handle: 'employee', displayName: 'Employee'},
     ];
     const {container} = render(<AttributeMappingSection onChange={onChange} />);
     const resolution = within(screen.getByLabelText(RESOLUTION_TITLE));

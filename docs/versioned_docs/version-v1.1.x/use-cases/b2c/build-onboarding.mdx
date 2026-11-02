@@ -1,0 +1,391 @@
+---
+title: Onboard Internal Staff
+docType: use-case
+sidebar_position: 6
+description: Give staff their own roles and an invitation flow so an admin can bring the rest of the team on board.
+---
+
+# Onboard Internal Staff
+
+Customers arrive through self-service, but the internal team needs a different path: an existing admin invites each new member, who joins with a role scoped to their job. You created the `Staff` user type earlier; here you add the staff roles and the onboarding flow that uses them.
+
+## Staff Roles and Onboarding
+
+Staff roles are narrow, not broad. Where the `Traveler` role gives a customer everything they need for their own bookings, each staff role is scoped to a single job: `Support` for consumer support, `DestinationsAdmin` for curating featured destinations, `OpsAdmin` for inviting and managing other staff. Keeping them separate is least privilege in practice, a support agent can't invite staff, and no staff role ever grants a customer's booking access.
+
+Onboarding is by invitation, not self-service. Customers register themselves; staff don't. An admin holding the `OpsAdmin` role invites a new member by email, and the invitee joins only by accepting that invitation, landing with the role the admin picked. The onboarding flow encodes exactly that: it checks the admin's permission, collects the invitee's email, sends the invite, and provisions the account with its role once the invitation is accepted.
+
+These resources drive [Onboard Internal Users](../try-it-out/onboard-internal-users). Set up the staff roles and the invitation flow:
+
+<Stepper stepNode="h3" as="h3">
+
+### Create the staff roles
+
+Navigate to **Roles** → **Add Role**. Add the three staff roles:
+
+| Role                | Purpose                          |
+| ------------------- | -------------------------------- |
+| `Support`           | Consumer support workflows       |
+| `DestinationsAdmin` | Curate featured destinations     |
+| `OpsAdmin`          | Invite and manage other staff    |
+
+See [Authorization](../../../key-concepts/authorization).
+
+### Create the user onboarding flow
+
+Save the JSON below as `wayfinder-onboarding-flow.json` and POST it to the flows API. The flow validates admin permission, resolves the user type, prompts for the staff role (Support or DestinationsAdmin), collects the invitee's email, sends the invitation, and on accept provisions the new user with the matching role attached via `properties.assignRole`.
+
+```bash
+curl -k -X POST https://localhost:8090/flows \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @wayfinder-onboarding-flow.json
+```
+
+<details>
+<summary>wayfinder-onboarding-flow.json</summary>
+
+```json
+{
+  "handle": "wayfinder-onboarding-flow",
+  "name": "Wayfinder Staff Onboarding Flow",
+  "flowType": "USER_ONBOARDING",
+  "nodes": [
+    { "id": "start", "type": "START", "onSuccess": "permission_validator" },
+    {
+      "id": "permission_validator",
+      "type": "TASK_EXECUTION",
+      "properties": { "requiredScopes": ["system"] },
+      "executor": { "name": "PermissionValidator" },
+      "onSuccess": "user_type_resolver"
+    },
+    {
+      "id": "user_type_resolver",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "UserTypeResolver" },
+      "onSuccess": "prompt_staff_role",
+      "onIncomplete": "prompt_usertype"
+    },
+    {
+      "id": "prompt_usertype",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "heading_usertype", "label": "Who are you inviting?", "variant": "HEADING_1" },
+          {
+            "type": "BLOCK",
+            "id": "block_usertype",
+            "components": [
+              { "type": "SELECT", "id": "usertype_input", "ref": "userType", "label": "User type", "placeholder": "Select a user type", "required": true, "options": [] },
+              { "type": "ACTION", "id": "action_usertype", "label": "Continue", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        {
+          "inputs": [ { "ref": "usertype_input", "identifier": "userType", "type": "SELECT", "required": true } ],
+          "action": { "ref": "action_usertype", "nextNode": "user_type_resolver" }
+        }
+      ]
+    },
+    {
+      "id": "prompt_staff_role",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "heading_staff_role", "label": "Which staff role?", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "subtitle_staff_role", "label": "Pick the role to attach when the invitee accepts.", "variant": "HEADING_6" },
+          {
+            "type": "BLOCK",
+            "id": "block_staff_role_actions",
+            "components": [
+              {
+                "type": "STACK",
+                "id": "stack_staff_role_actions",
+                "direction": "row",
+                "justify": "center",
+                "components": [
+                  { "type": "ACTION", "id": "action_role_support", "label": "Support", "variant": "PRIMARY", "eventType": "SUBMIT" },
+                  { "type": "ACTION", "id": "action_role_destinations", "label": "DestinationsAdmin", "variant": "OUTLINED", "eventType": "SUBMIT" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        { "action": { "ref": "action_role_support", "nextNode": "prompt_email_support" } },
+        { "action": { "ref": "action_role_destinations", "nextNode": "prompt_email_destinations" } }
+      ]
+    },
+    {
+      "id": "prompt_email_support",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "text_header_email_s", "label": "Invitee email", "variant": "HEADING_1" },
+          {
+            "type": "BLOCK",
+            "id": "block_email_s",
+            "components": [
+              { "id": "input_prompt_email_s", "ref": "email", "type": "EMAIL_INPUT", "label": "Email", "required": true, "placeholder": "name@example.com" },
+              { "type": "ACTION", "id": "action_submit_email_s", "label": "Send invitation", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        {
+          "inputs": [ { "ref": "input_prompt_email_s", "identifier": "email", "type": "EMAIL_INPUT", "required": true } ],
+          "action": { "ref": "action_submit_email_s", "nextNode": "check_email_uniqueness_support" }
+        }
+      ]
+    },
+    {
+      "id": "check_email_uniqueness_support",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "AttributeUniquenessValidator" },
+      "onSuccess": "invite_generate_support",
+      "onIncomplete": "prompt_email_support"
+    },
+    {
+      "id": "invite_generate_support",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "InviteExecutor", "mode": "generate" },
+      "onSuccess": "send_invite_email_support"
+    },
+    {
+      "id": "send_invite_email_support",
+      "type": "TASK_EXECUTION",
+      "properties": { "emailTemplate": "USER_INVITE" },
+      "executor": { "name": "EmailExecutor", "mode": "send" },
+      "onSuccess": "email_invite_status_support",
+      "onFailure": "email_invite_error_support"
+    },
+    {
+      "id": "email_invite_status_support",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "email_status_icon_s", "label": "✅", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "email_status_heading_s", "label": "Invitation sent", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "email_status_message_s", "label": "The invitee can now accept from email and become a Support staff member.", "variant": "HEADING_6" }
+        ]
+      },
+      "message": "Invitation sent",
+      "next": "invite_verify_support"
+    },
+    {
+      "id": "email_invite_error_support",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "email_error_icon_s", "label": "⚠️", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "email_error_heading_s", "label": "Invitation not sent", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "email_error_message_s", "label": "The invitation email could not be sent. Try again.", "variant": "HEADING_6" },
+          {
+            "type": "BLOCK",
+            "id": "block_email_error_s",
+            "components": [
+              { "type": "ACTION", "id": "action_retry_email_s", "label": "Try again", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        { "inputs": [], "action": { "ref": "action_retry_email_s", "nextNode": "send_invite_email_support" } }
+      ]
+    },
+    {
+      "id": "invite_verify_support",
+      "type": "TASK_EXECUTION",
+      "inputs": [ { "ref": "input_invite_token_s", "identifier": "inviteToken", "type": "HIDDEN", "required": true } ],
+      "executor": { "name": "InviteExecutor", "mode": "verify" },
+      "onSuccess": "provisioning_support"
+    },
+    {
+      "id": "provisioning_support",
+      "type": "TASK_EXECUTION",
+      "properties": { "includeOptional": true, "includeOptionalCredentials": true, "assignRole": "wayfinder-support-role-id" },
+      "executor": { "name": "ProvisioningExecutor" },
+      "onSuccess": "registration_complete",
+      "onIncomplete": "prompt_user_details_support"
+    },
+    {
+      "id": "prompt_user_details_support",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "text_header_user_details_s", "label": "Complete your profile", "variant": "HEADING_1" },
+          {
+            "type": "BLOCK",
+            "id": "block_user_details_s",
+            "components": [
+              { "type": "DYNAMIC_INPUT_PLACEHOLDER", "id": "dynamic_inputs_user_details_s" },
+              { "type": "ACTION", "id": "action_user_details_s", "label": "Finish", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        { "inputs": [], "action": { "ref": "action_user_details_s", "nextNode": "provisioning_support" } }
+      ]
+    },
+    {
+      "id": "prompt_email_destinations",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "text_header_email_d", "label": "Invitee email", "variant": "HEADING_1" },
+          {
+            "type": "BLOCK",
+            "id": "block_email_d",
+            "components": [
+              { "id": "input_prompt_email_d", "ref": "email", "type": "EMAIL_INPUT", "label": "Email", "required": true, "placeholder": "name@example.com" },
+              { "type": "ACTION", "id": "action_submit_email_d", "label": "Send invitation", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        {
+          "inputs": [ { "ref": "input_prompt_email_d", "identifier": "email", "type": "EMAIL_INPUT", "required": true } ],
+          "action": { "ref": "action_submit_email_d", "nextNode": "check_email_uniqueness_destinations" }
+        }
+      ]
+    },
+    {
+      "id": "check_email_uniqueness_destinations",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "AttributeUniquenessValidator" },
+      "onSuccess": "invite_generate_destinations",
+      "onIncomplete": "prompt_email_destinations"
+    },
+    {
+      "id": "invite_generate_destinations",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "InviteExecutor", "mode": "generate" },
+      "onSuccess": "send_invite_email_destinations"
+    },
+    {
+      "id": "send_invite_email_destinations",
+      "type": "TASK_EXECUTION",
+      "properties": { "emailTemplate": "USER_INVITE" },
+      "executor": { "name": "EmailExecutor", "mode": "send" },
+      "onSuccess": "email_invite_status_destinations",
+      "onFailure": "email_invite_error_destinations"
+    },
+    {
+      "id": "email_invite_status_destinations",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "email_status_icon_d", "label": "✅", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "email_status_heading_d", "label": "Invitation sent", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "email_status_message_d", "label": "The invitee can now accept from email and become a DestinationsAdmin staff member.", "variant": "HEADING_6" }
+        ]
+      },
+      "message": "Invitation sent",
+      "next": "invite_verify_destinations"
+    },
+    {
+      "id": "email_invite_error_destinations",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "email_error_icon_d", "label": "⚠️", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "email_error_heading_d", "label": "Invitation not sent", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "email_error_message_d", "label": "The invitation email could not be sent. Try again.", "variant": "HEADING_6" },
+          {
+            "type": "BLOCK",
+            "id": "block_email_error_d",
+            "components": [
+              { "type": "ACTION", "id": "action_retry_email_d", "label": "Try again", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        { "inputs": [], "action": { "ref": "action_retry_email_d", "nextNode": "send_invite_email_destinations" } }
+      ]
+    },
+    {
+      "id": "invite_verify_destinations",
+      "type": "TASK_EXECUTION",
+      "inputs": [ { "ref": "input_invite_token_d", "identifier": "inviteToken", "type": "HIDDEN", "required": true } ],
+      "executor": { "name": "InviteExecutor", "mode": "verify" },
+      "onSuccess": "provisioning_destinations"
+    },
+    {
+      "id": "provisioning_destinations",
+      "type": "TASK_EXECUTION",
+      "properties": { "includeOptional": true, "includeOptionalCredentials": true, "assignRole": "wayfinder-destinations-admin-role-id" },
+      "executor": { "name": "ProvisioningExecutor" },
+      "onSuccess": "registration_complete",
+      "onIncomplete": "prompt_user_details_destinations"
+    },
+    {
+      "id": "prompt_user_details_destinations",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "text_header_user_details_d", "label": "Complete your profile", "variant": "HEADING_1" },
+          {
+            "type": "BLOCK",
+            "id": "block_user_details_d",
+            "components": [
+              { "type": "DYNAMIC_INPUT_PLACEHOLDER", "id": "dynamic_inputs_user_details_d" },
+              { "type": "ACTION", "id": "action_user_details_d", "label": "Finish", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        { "inputs": [], "action": { "ref": "action_user_details_d", "nextNode": "provisioning_destinations" } }
+      ]
+    },
+    {
+      "id": "registration_complete",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "registration_complete_icon", "label": "✅", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "registration_complete_heading", "label": "Welcome to Wayfinder", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "registration_complete_message", "label": "Your staff account is ready.", "variant": "HEADING_6" }
+        ]
+      },
+      "message": "Registration complete",
+      "next": "end"
+    },
+    { "id": "end", "type": "END" }
+  ]
+}
+```
+
+</details>
+
+Replace `wayfinder-support-role-id` and `wayfinder-destinations-admin-role-id` with the IDs of the `Support` and `DestinationsAdmin` roles you created in step 2.
+
+See [Build a Flow](../../../guides/flows/build-a-flow).
+
+### Activate the onboarding flow
+
+The user onboarding flow is a server-wide default: <ProductName /> runs it whenever an admin creates a user, in the Console or through the API. Point the server default at your flow by setting `userOnboardingFlow.defaultHandle` in the server-config `flow` section:
+
+```bash
+curl -k -X PUT https://localhost:8090/server-config/flow \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "userOnboardingFlow": { "defaultHandle": "wayfinder-onboarding-flow" } }'
+```
+
+The change applies immediately. See [Flow Defaults](../../../deployment/configuration#flow-defaults) for the declarative alternative and the full resolution order.
+
+### Create Alex Carter as a `Staff` user
+
+Assign him the `OpsAdmin` role so he can issue invitations. Navigate to **Users** → **Add User**.
+
+See [Manage Users](../../../guides/users/manage-users).
+
+</Stepper>

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -43,6 +43,8 @@ type revocationStoreInterface interface {
 	// insertCriterion records a criteria-based revocation. The write is idempotent per
 	// (deployment, type, value).
 	insertCriterion(ctx context.Context, criterion revocationCriterion) error
+	// insertCriteria records a set of criteria-based revocations, idempotent like insertCriterion.
+	insertCriteria(ctx context.Context, criteria []revocationCriterion) error
 	// areCriteriaRevoked reports whether a non-expired criteria entry exists for any of the supplied
 	// (type, value) pairs, in a single round trip. An empty slice is not revoked.
 	areCriteriaRevoked(ctx context.Context, criteria []Criterion, establishedAt time.Time) (bool, error)
@@ -50,8 +52,14 @@ type revocationStoreInterface interface {
 
 // revocationStore implements revocationStoreInterface against the runtime persistent database.
 type revocationStore struct {
-	dbProvider   provider.DBProviderInterface
-	deploymentID string
+	dbProvider provider.DBProviderInterface
+}
+
+// scope returns the deployment id this request acts for. The id is put on the context at the
+// edge, so a request scopes by what it names; a context that never passed through the edge,
+// such as a start-up task or a background job, falls back to the configured identifier.
+func (s *revocationStore) scope(ctx context.Context) string {
+	return deployment.Resolve(ctx)
 }
 
 // newRevocationStore creates a new revocationStore. It is intentionally unexported so the deny-list
@@ -59,8 +67,7 @@ type revocationStore struct {
 // family revoker's validation and ownership checks.
 func newRevocationStore() revocationStoreInterface {
 	return &revocationStore{
-		dbProvider:   provider.GetDBProvider(),
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		dbProvider: provider.GetDBProvider(),
 	}
 }
 
@@ -81,7 +88,7 @@ func (s *revocationStore) InsertRevokedToken(ctx context.Context, token RevokedT
 	}
 
 	_, err = dbClient.ExecuteContext(ctx, queryInsertRevokedToken, id, token.JTI,
-		string(token.RevocationReason), token.RevokedAt, token.ExpiryTime, s.deploymentID)
+		string(token.RevocationReason), token.RevokedAt, token.ExpiryTime, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("error inserting revoked token: %w", err)
 	}
@@ -96,7 +103,7 @@ func (s *revocationStore) IsTokenRevoked(ctx context.Context, jti string) (bool,
 		return false, fmt.Errorf("failed to get runtime persistent database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryIsTokenRevoked, jti, time.Now().UTC(), s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryIsTokenRevoked, jti, time.Now().UTC(), s.scope(ctx))
 	if err != nil {
 		return false, fmt.Errorf("error checking token revocation: %w", err)
 	}
@@ -121,12 +128,56 @@ func (s *revocationStore) insertCriterion(ctx context.Context, criterion revocat
 	}
 
 	_, err = dbClient.ExecuteContext(ctx, queryInsertRevocationCriterion, id, string(criterion.Type),
-		criterion.Value, string(criterion.Reason), criterion.RevokedAt, criterion.ExpiryTime, s.deploymentID)
+		criterion.Value, string(criterion.Reason), criterion.RevokedAt, criterion.ExpiryTime, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("error inserting revocation criterion: %w", err)
 	}
 
 	return nil
+}
+
+// insertCriteria records a set of criteria-based revocations in one runtime persistent transaction.
+func (s *revocationStore) insertCriteria(ctx context.Context, criteria []revocationCriterion) error {
+	if len(criteria) == 0 {
+		return nil
+	}
+	dbClient, err := s.dbProvider.GetRuntimePersistentDBClient()
+	if err != nil {
+		return fmt.Errorf("failed to get runtime persistent database client: %w", err)
+	}
+	transactioner, err := s.dbProvider.GetRuntimePersistentDBTransactioner()
+	if err != nil {
+		return fmt.Errorf("failed to get runtime persistent database transactioner: %w", err)
+	}
+
+	rows := make([]revocationCriterion, 0, len(criteria))
+	seen := make(map[string]struct{}, len(criteria))
+	for _, criterion := range criteria {
+		key := string(criterion.Type) + "\x00" + criterion.Value
+		if _, ok := seen[key]; ok {
+			return fmt.Errorf("revocation criteria batch repeats criterion %s", criterion.Type)
+		}
+		seen[key] = struct{}{}
+		if criterion.ID == "" {
+			id, err := utils.GenerateUUIDv7()
+			if err != nil {
+				return fmt.Errorf("failed to generate revocation criterion id: %w", err)
+			}
+			criterion.ID = id
+		}
+		rows = append(rows, criterion)
+	}
+
+	return transactioner.Transact(ctx, func(txCtx context.Context) error {
+		for start := 0; start < len(rows); start += maxCriteriaRowsPerStatement {
+			end := min(start+maxCriteriaRowsPerStatement, len(rows))
+			query, args := buildInsertRevocationCriteriaQuery(rows[start:end], s.scope(txCtx))
+			if _, err := dbClient.ExecuteContext(txCtx, query, args...); err != nil {
+				return fmt.Errorf("error inserting revocation criteria: %w", err)
+			}
+		}
+		return nil
+	})
 }
 
 // areCriteriaRevoked reports whether a non-expired criteria entry exists for any supplied
@@ -143,7 +194,7 @@ func (s *revocationStore) areCriteriaRevoked(ctx context.Context, criteria []Cri
 		return false, fmt.Errorf("failed to get runtime persistent database client: %w", err)
 	}
 
-	query, args := buildCriteriaRevokedQuery(criteria, establishedAt, time.Now().UTC(), s.deploymentID)
+	query, args := buildCriteriaRevokedQuery(criteria, establishedAt, time.Now().UTC(), s.scope(ctx))
 	results, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {
 		return false, fmt.Errorf("error checking revocation criteria: %w", err)

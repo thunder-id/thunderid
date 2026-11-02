@@ -14,3 +14,15 @@ func TestDefaultResourceServerConfigNameSupported(t *testing.T) {
 	assert.True(t, ConfigNameDefaultResourceServer.IsValid())
 	assert.Contains(t, supportedConfigNames, ConfigNameDefaultResourceServer)
 }
+
+func TestAccountAccessConfigNameSupported(t *testing.T) {
+	assert.Equal(t, ConfigName("accountAccess"), ConfigNameAccountAccess)
+	assert.True(t, ConfigNameAccountAccess.IsValid())
+	assert.Contains(t, supportedConfigNames, ConfigNameAccountAccess)
+}
+
+func TestNotificationConfigNameSupported(t *testing.T) {
+	assert.Equal(t, ConfigName("notification"), ConfigNameNotification)
+	assert.True(t, ConfigNameNotification.IsValid())
+	assert.Contains(t, supportedConfigNames, ConfigNameNotification)
+}

@@ -1,0 +1,114 @@
+---
+displayed_sidebar: null
+title: useThunderID()
+docType: reference
+description: Access authentication state and trigger sign-in, sign-out, and token refresh flows from any component.
+---
+
+# `useThunderID()`
+
+The `use<ProductName />` composable provides access to the <ProductName /> authentication context in Nuxt applications. It exposes reactive auth state and SSR-safe methods for signing in, signing out, and signing up.
+
+This composable is auto-imported and available in every component, page, and composable without an explicit import.
+
+## Usage
+
+```vue title="pages/index.vue" showLineNumbers
+<script setup lang="ts">
+const { isSignedIn, user, signIn, signOut } = useThunderID()
+</script>
+
+<template>
+  <div>
+    <p v-if="isSignedIn">Welcome, {{ user?.displayName }}!</p>
+    <button v-if="isSignedIn" @click="signOut()">Sign Out</button>
+    <button v-else @click="signIn()">Sign In</button>
+  </div>
+</template>
+```
+
+:::note
+This composable must be used inside a component or page rendered within `<ThunderIDRoot>`. If `<ThunderIDRoot>` is not mounted, the composable will return empty reactive state.
+:::
+
+## Return Values
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `isSignedIn` | `ComputedRef<boolean>` | Whether the user is currently authenticated |
+| `isLoading` | `ComputedRef<boolean>` | Whether an auth operation is in progress |
+| `isInitialized` | `ComputedRef<boolean>` | Whether the SDK has finished initializing |
+| `user` | `ComputedRef<User \| null>` | The authenticated user object, or `null` if not signed in |
+| `organization` | `ComputedRef<Organization \| null>` | The current organization context, or `null` |
+| `signIn` | `(...args) => Promise<void>` | Initiate the sign-in flow |
+| `signOut` | `() => Promise<void>` | Sign out the current user |
+| `signUp` | `(...args) => Promise<void>` | Initiate the sign-up flow |
+| `getAccessToken` | `() => Promise<string>` | Get a client-safe access token via `/api/auth/token` |
+
+## Methods
+
+### `signIn()`
+
+Initiates the sign-in flow. In redirect mode, navigates the user to the <ProductName /> sign-in page. In embedded mode, opens the embedded sign-in UI.
+
+```vue title="pages/login.vue" showLineNumbers
+<script setup lang="ts">
+const { signIn } = useThunderID()
+</script>
+
+<template>
+  <button @click="signIn()">Sign In</button>
+</template>
+```
+
+### `signOut()`
+
+Signs out the current user and navigates to `afterSignOutUrl` (configured in `nuxt.config.ts`).
+
+```vue title="components/NavBar.vue" showLineNumbers
+<script setup lang="ts">
+const { signOut } = useThunderID()
+</script>
+
+<template>
+  <button @click="signOut()">Sign Out</button>
+</template>
+```
+
+### `signUp()`
+
+Initiates the sign-up flow. In redirect mode, navigates the user to the <ProductName /> registration page.
+
+```vue title="pages/register.vue" showLineNumbers
+<script setup lang="ts">
+const { signUp } = useThunderID()
+</script>
+
+<template>
+  <button @click="signUp()">Create Account</button>
+</template>
+```
+
+### `getAccessToken()`
+
+Returns a valid access token for the current session. The token is fetched from `/api/auth/token` on the Nuxt server to avoid exposing it in the browser bundle.
+
+```vue title="composables/useApi.ts" showLineNumbers
+<script setup lang="ts">
+const { getAccessToken } = useThunderID()
+
+async function fetchProtectedResource() {
+  const token = await getAccessToken()
+  const data = await $fetch('/api/resource', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return data
+}
+</script>
+```
+
+## SSR Behavior
+
+The composable is SSR-aware. On the server, it reads state from the hydrated `useState` keys populated by the server plugin. On the client, those values are immediately available without additional network requests.
+
+Navigation calls (`signIn`, `signOut`, `signUp`) use Nuxt's `navigateTo` internally, which works correctly in both server and client contexts.

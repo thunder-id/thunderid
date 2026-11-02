@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -33,13 +34,17 @@ type connectionInstance struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
+	OUID        string   `json:"ouId,omitempty"`
 	Type        string   `json:"type"`
 	Categories  []string `json:"categories"`
 }
 
 // errorResponse mirrors the standard API error envelope.
 type errorResponse struct {
-	Code string `json:"code"`
+	Code        string `json:"code"`
+	Description struct {
+		Key string `json:"key"`
+	} `json:"description"`
 }
 
 // httpResult captures a decoded response body alongside its status code.
@@ -52,6 +57,15 @@ func (r httpResult) errorCode() string {
 	var e errorResponse
 	_ = json.Unmarshal(r.body, &e)
 	return e.Code
+}
+
+// errorMessageKey returns the response's i18n description key, which (unlike errorCode, shared by
+// every attribute-configuration validation class) identifies which specific validation rejected the
+// request.
+func (r httpResult) errorMessageKey() string {
+	var e errorResponse
+	_ = json.Unmarshal(r.body, &e)
+	return e.Description.Key
 }
 
 func (r httpResult) decode(v interface{}) error {
@@ -87,10 +101,27 @@ func doRequest(method, path string, body interface{}) (httpResult, error) {
 	return httpResult{status: resp.StatusCode, body: respBody}, nil
 }
 
+// ownedBy returns body as a JSON object that names ouID as the owning organization unit, unless it already
+// names one. Every connection needs an owner, so the requests that are not about ownership go through it, which
+// keeps them from failing on the missing ouId instead of what they check. A body that is not a JSON object fails
+// the test.
+func ownedBy(t *testing.T, ouID string, body interface{}) interface{} {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	require.NoError(t, err, "the request body cannot be marshaled")
+	var object map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &object), "the request body is not a JSON object")
+	if existing, ok := object["ouId"].(string); !ok || existing == "" {
+		object["ouId"] = ouID
+	}
+	return object
+}
+
 // --- Vendor request/response shapes (mirror backend/internal/connection/*.go wire format) ---
 
 type googleConnectionRequest struct {
 	Name                   string                            `json:"name"`
+	OUID                   string                            `json:"ouId,omitempty"`
 	ClientID               string                            `json:"clientId"`
 	ClientSecret           string                            `json:"clientSecret,omitempty"`
 	RedirectURI            string                            `json:"redirectUri"`
@@ -100,6 +131,7 @@ type googleConnectionRequest struct {
 
 type githubConnectionRequest struct {
 	Name                   string                            `json:"name"`
+	OUID                   string                            `json:"ouId,omitempty"`
 	ClientID               string                            `json:"clientId"`
 	ClientSecret           string                            `json:"clientSecret,omitempty"`
 	RedirectURI            string                            `json:"redirectUri"`
@@ -108,6 +140,7 @@ type githubConnectionRequest struct {
 
 type oidcConnectionRequest struct {
 	Name                   string                            `json:"name"`
+	OUID                   string                            `json:"ouId,omitempty"`
 	ClientID               string                            `json:"clientId"`
 	ClientSecret           string                            `json:"clientSecret,omitempty"`
 	RedirectURI            string                            `json:"redirectUri"`
@@ -119,6 +152,7 @@ type oidcConnectionRequest struct {
 
 type oauthConnectionRequest struct {
 	Name                   string                            `json:"name"`
+	OUID                   string                            `json:"ouId,omitempty"`
 	ClientID               string                            `json:"clientId"`
 	ClientSecret           string                            `json:"clientSecret,omitempty"`
 	RedirectURI            string                            `json:"redirectUri"`
@@ -131,6 +165,7 @@ type oauthConnectionRequest struct {
 
 type twilioConnectionRequest struct {
 	Name       string `json:"name"`
+	OUID       string `json:"ouId,omitempty"`
 	AccountSID string `json:"accountSid"`
 	AuthToken  string `json:"authToken,omitempty"`
 	SenderID   string `json:"senderId"`
@@ -138,15 +173,47 @@ type twilioConnectionRequest struct {
 
 type vonageConnectionRequest struct {
 	Name      string `json:"name"`
+	OUID      string `json:"ouId,omitempty"`
 	APIKey    string `json:"apiKey"`
 	APISecret string `json:"apiSecret,omitempty"`
 	SenderID  string `json:"senderId"`
 }
 
 type smsGatewayConnectionRequest struct {
-	Name       string `json:"name"`
-	URL        string `json:"url"`
-	HTTPMethod string `json:"httpMethod,omitempty"`
+	Name           string                  `json:"name"`
+	OUID           string                  `json:"ouId,omitempty"`
+	URL            string                  `json:"url"`
+	HTTPMethod     string                  `json:"httpMethod,omitempty"`
+	HTTPHeaders    string                  `json:"httpHeaders,omitempty"`
+	Authentication *outboundAuthentication `json:"authentication,omitempty"`
+}
+
+type smtpConnectionRequest struct {
+	Name           string                  `json:"name"`
+	OUID           string                  `json:"ouId,omitempty"`
+	Host           string                  `json:"host"`
+	Port           int                     `json:"port"`
+	FromAddress    string                  `json:"fromAddress"`
+	FromName       string                  `json:"fromName,omitempty"`
+	TLS            string                  `json:"tls,omitempty"`
+	Authentication *outboundAuthentication `json:"authentication,omitempty"`
+}
+
+// outboundAuthentication is the discriminated authentication block shared by every connection
+// vendor that dials out with credentials.
+type outboundAuthentication struct {
+	Type       string            `json:"type"`
+	Properties map[string]string `json:"properties,omitempty"`
+}
+
+// basicAuth builds the authentication block for the basic method. An empty password omits the
+// field, which is how an update asks to keep the stored secret.
+func basicAuth(username, password string) *outboundAuthentication {
+	properties := map[string]string{"username": username}
+	if password != "" {
+		properties["password"] = password
+	}
+	return &outboundAuthentication{Type: "basic", Properties: properties}
 }
 
 // connectionResponse is a superset response shape covering all vendors' fields, used to
@@ -154,6 +221,7 @@ type smsGatewayConnectionRequest struct {
 type connectionResponse struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
+	OUID         string `json:"ouId,omitempty"`
 	Type         string `json:"type"`
 	ClientID     string `json:"clientId,omitempty"`
 	ClientSecret string `json:"clientSecret,omitempty"`
@@ -163,6 +231,15 @@ type connectionResponse struct {
 	APISecret    string `json:"apiSecret,omitempty"`
 	SenderID     string `json:"senderId,omitempty"`
 	URL          string `json:"url,omitempty"`
+	HTTPHeaders  string `json:"httpHeaders,omitempty"`
+
+	Host        string `json:"host,omitempty"`
+	Port        int    `json:"port,omitempty"`
+	FromAddress string `json:"fromAddress,omitempty"`
+	FromName    string `json:"fromName,omitempty"`
+	TLS         string `json:"tls,omitempty"`
+
+	Authentication *outboundAuthentication `json:"authentication,omitempty"`
 
 	Scopes                 []string                          `json:"scopes,omitempty"`
 	AttributeConfiguration *testutils.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
@@ -172,9 +249,12 @@ const maskedSecretValue = "******"
 
 type ConnectionAPITestSuite struct {
 	suite.Suite
-	ouID         string
-	userTypeID   string
-	userTypeName string
+	ouID                  string
+	userTypeID            string
+	userTypeName          string
+	authzResourceServerID string
+	authzRoleID           string
+	authzGroupID          string
 }
 
 func TestConnectionAPISuite(t *testing.T) {
@@ -193,7 +273,8 @@ var attributeConfigOU = testutils.OrganizationUnit{
 }
 
 var attributeConfigUserType = testutils.UserType{
-	Name: "connection_attr_person",
+	Handle:      "connection_attr_person",
+	DisplayName: "Connection Attr Person",
 	Schema: map[string]interface{}{
 		"username":  map[string]interface{}{"type": "string", "required": true, "unique": true},
 		"email":     map[string]interface{}{"type": "string", "required": true, "unique": true},
@@ -213,10 +294,41 @@ func (s *ConnectionAPITestSuite) SetupSuite() {
 	userTypeID, err := testutils.CreateUserType(userType)
 	s.Require().NoError(err, "failed to create user type")
 	s.userTypeID = userTypeID
-	s.userTypeName = userType.Name
+	s.userTypeName = userType.Handle
+
+	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:       "Connection Attribute Config API",
+		Identifier: "connection-attr-config-api",
+		OUID:       ouID,
+	}, []testutils.Action{{Name: "Read", Handle: "read", Description: "Read access"}})
+	s.Require().NoError(err, "failed to create resource server")
+	s.authzResourceServerID = rsID
+
+	roleID, err := testutils.CreateRole(testutils.Role{Name: "Connection Attr Config Role", OUID: ouID})
+	s.Require().NoError(err, "failed to create role")
+	s.authzRoleID = roleID
+
+	groupID, err := testutils.CreateGroup(testutils.Group{Name: "Connection Attr Config Group", OUID: ouID})
+	s.Require().NoError(err, "failed to create group")
+	s.authzGroupID = groupID
 }
 
 func (s *ConnectionAPITestSuite) TearDownSuite() {
+	if s.authzGroupID != "" {
+		if err := testutils.DeleteGroup(s.authzGroupID); err != nil {
+			s.T().Logf("failed to delete group: %v", err)
+		}
+	}
+	if s.authzRoleID != "" {
+		if err := testutils.DeleteRole(s.authzRoleID); err != nil {
+			s.T().Logf("failed to delete role: %v", err)
+		}
+	}
+	if s.authzResourceServerID != "" {
+		if err := testutils.DeleteResourceServer(s.authzResourceServerID); err != nil {
+			s.T().Logf("failed to delete resource server: %v", err)
+		}
+	}
 	if s.userTypeID != "" {
 		if err := testutils.DeleteUserType(s.userTypeID); err != nil {
 			s.T().Logf("failed to delete user type: %v", err)
@@ -232,7 +344,7 @@ func (s *ConnectionAPITestSuite) TearDownSuite() {
 // createConnection posts to /connections/{vendor} and returns the decoded response.
 func (s *ConnectionAPITestSuite) createConnection(vendor string, body interface{}) connectionResponse {
 	s.T().Helper()
-	res, err := doRequest(http.MethodPost, "/connections/"+vendor, body)
+	res, err := doRequest(http.MethodPost, "/connections/"+vendor, ownedBy(s.T(), s.ouID, body))
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusCreated, res.status, "create %s: %s", vendor, string(res.body))
 	var resp connectionResponse
@@ -351,12 +463,18 @@ func (s *ConnectionAPITestSuite) TestVonageCreateAndGet() {
 func (s *ConnectionAPITestSuite) TestSMSGatewayCRUDRoundTrip() {
 	created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
 		Name: "Test SMS Gateway", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+		Authentication: &outboundAuthentication{Type: "api_key", Properties: map[string]string{
+			"X-First-Key": "first-secret", "X-Second-Key": "second-secret",
+		}},
 	})
 	defer s.deleteConnection("sms-gateway", created.ID)
 
 	s.Equal("sms-gateway", created.Type)
-	// SMS gateway fields are non-secret and round-trip in plaintext.
 	s.Equal("https://sms.example.com/send", created.URL)
+	s.Require().NotNil(created.Authentication)
+	s.Equal(map[string]string{
+		"X-First-Key": maskedSecretValue, "X-Second-Key": maskedSecretValue,
+	}, created.Authentication.Properties)
 
 	res, err := doRequest(http.MethodGet, "/connections/sms-gateway/"+created.ID, nil)
 	s.Require().NoError(err)
@@ -364,6 +482,327 @@ func (s *ConnectionAPITestSuite) TestSMSGatewayCRUDRoundTrip() {
 	var fetched connectionResponse
 	s.Require().NoError(res.decode(&fetched))
 	s.Equal("https://sms.example.com/send", fetched.URL)
+	s.Equal(created.Authentication.Properties, fetched.Authentication.Properties)
+
+	updateRes, err := doRequest(http.MethodPut, "/connections/sms-gateway/"+created.ID,
+		smsGatewayConnectionRequest{
+			Name: "Test SMS Gateway", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+			Authentication: &outboundAuthentication{Type: "api_key", Properties: map[string]string{
+				"X-Second-Key": maskedSecretValue, "X-Third-Key": "third-secret",
+			}},
+		})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, updateRes.status, string(updateRes.body))
+	var updated connectionResponse
+	s.Require().NoError(updateRes.decode(&updated))
+	s.Require().NotNil(updated.Authentication)
+	s.Equal(map[string]string{
+		"X-Second-Key": maskedSecretValue, "X-Third-Key": maskedSecretValue,
+	}, updated.Authentication.Properties)
+
+	deleteHeadersRes, err := doRequest(http.MethodPut, "/connections/sms-gateway/"+created.ID,
+		map[string]interface{}{
+			"name":           "Test SMS Gateway",
+			"url":            "https://sms.example.com/send",
+			"httpMethod":     "POST",
+			"authentication": outboundAuthentication{Type: "none"},
+		})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, deleteHeadersRes.status, string(deleteHeadersRes.body))
+	var withoutHeaders connectionResponse
+	s.Require().NoError(deleteHeadersRes.decode(&withoutHeaders))
+	s.Require().NotNil(withoutHeaders.Authentication)
+	s.Equal("none", withoutHeaders.Authentication.Type)
+}
+
+func (s *ConnectionAPITestSuite) TestSMSGatewayAuthenticationUpdateRequiresFreshHeadersForNewURL() {
+	created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
+		Name: "SMS Gateway Credential Update", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+		Authentication: &outboundAuthentication{Type: "api_key", Properties: map[string]string{
+			"X-API-Key": "original-key",
+		}},
+	})
+	defer s.deleteConnection("sms-gateway", created.ID)
+	path := "/connections/sms-gateway/" + created.ID
+
+	unchanged, err := doRequest(http.MethodPut, path, smsGatewayConnectionRequest{
+		Name: "SMS Gateway Credential Update", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, unchanged.status, string(unchanged.body))
+	var retained connectionResponse
+	s.Require().NoError(unchanged.decode(&retained))
+	s.Equal(maskedSecretValue, retained.Authentication.Properties["X-Api-Key"])
+
+	for _, authentication := range []*outboundAuthentication{
+		nil,
+		{Type: "api_key", Properties: map[string]string{"X-API-Key": maskedSecretValue}},
+	} {
+		rejected, requestErr := doRequest(http.MethodPut, path, smsGatewayConnectionRequest{
+			Name: "SMS Gateway Credential Update", URL: "https://other.example.com/send", HTTPMethod: "POST",
+			Authentication: authentication,
+		})
+		s.Require().NoError(requestErr)
+		s.Equal(http.StatusBadRequest, rejected.status, string(rejected.body))
+	}
+
+	updated, err := doRequest(http.MethodPut, path, smsGatewayConnectionRequest{
+		Name: "SMS Gateway Credential Update", URL: "https://other.example.com/send", HTTPMethod: "POST",
+		Authentication: &outboundAuthentication{Type: "api_key", Properties: map[string]string{
+			"X-API-Key": "replacement-key",
+		}},
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, updated.status, string(updated.body))
+	var result connectionResponse
+	s.Require().NoError(updated.decode(&result))
+	s.Equal("https://other.example.com/send", result.URL)
+	s.Equal(maskedSecretValue, result.Authentication.Properties["X-Api-Key"])
+}
+
+func (s *ConnectionAPITestSuite) TestSMSGatewayRejectsInvalidAPIKeyHeaders() {
+	tests := []struct {
+		name    string
+		headers map[string]string
+	}{
+		{"invalid name", map[string]string{"X Key": "secret"}},
+		{"invalid value", map[string]string{"X-Key": "line1\r\nline2"}},
+		{"reserved header", map[string]string{"Connection": "keep-alive"}},
+		{"masked value", map[string]string{"X-Key": maskedSecretValue}},
+		{"duplicate canonical names", map[string]string{"x-key": "one", "X-Key": "two"}},
+	}
+	for _, test := range tests {
+		s.Run(test.name, func() {
+			response, err := doRequest(http.MethodPost, "/connections/sms-gateway",
+				ownedBy(s.T(), s.ouID, smsGatewayConnectionRequest{
+					Name: "Invalid SMS Gateway Headers", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+					Authentication: &outboundAuthentication{Type: "api_key", Properties: test.headers},
+				}))
+			s.Require().NoError(err)
+			s.Equal(http.StatusBadRequest, response.status, string(response.body))
+		})
+	}
+}
+
+func (s *ConnectionAPITestSuite) TestSMSGatewayGeneralHeadersRemainSeparateFromAuthentication() {
+	created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
+		Name: "SMS Gateway Separate Headers", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+		HTTPHeaders: "X-Campaign-ID: campaign-1",
+		Authentication: &outboundAuthentication{Type: "api_key", Properties: map[string]string{
+			"X-API-Key": "secret",
+		}},
+	})
+	defer s.deleteConnection("sms-gateway", created.ID)
+	s.Equal("X-Campaign-ID: campaign-1", created.HTTPHeaders)
+	s.Equal(maskedSecretValue, created.Authentication.Properties["X-Api-Key"])
+
+	response, err := doRequest(http.MethodPut, "/connections/sms-gateway/"+created.ID,
+		smsGatewayConnectionRequest{
+			Name: "SMS Gateway Separate Headers", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+			HTTPHeaders: "X-Campaign-ID: campaign-2",
+		})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, response.status, string(response.body))
+	var updated connectionResponse
+	s.Require().NoError(response.decode(&updated))
+	s.Equal("X-Campaign-ID: campaign-2", updated.HTTPHeaders)
+	s.Equal(maskedSecretValue, updated.Authentication.Properties["X-Api-Key"])
+}
+
+func (s *ConnectionAPITestSuite) TestSMSGatewayURLChangeRetainsGeneralHeaders() {
+	created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
+		Name: "SMS Gateway URL Change", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+		HTTPHeaders: "X-Campaign-ID: campaign-1",
+	})
+	defer s.deleteConnection("sms-gateway", created.ID)
+
+	response, err := doRequest(http.MethodPut, "/connections/sms-gateway/"+created.ID,
+		smsGatewayConnectionRequest{
+			Name: "SMS Gateway URL Change", URL: "https://other.example.com/send", HTTPMethod: "POST",
+		})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, response.status, string(response.body))
+	var updated connectionResponse
+	s.Require().NoError(response.decode(&updated))
+	s.Equal("https://other.example.com/send", updated.URL)
+	s.Equal("X-Campaign-ID: campaign-1", updated.HTTPHeaders)
+}
+
+func (s *ConnectionAPITestSuite) TestSMTPCRUDRoundTripWithSecretMasking() {
+	created := s.createConnection("email-smtp", smtpConnectionRequest{
+		Name: "Test SMTP", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com", FromName: "Acme Support", TLS: "starttls",
+		Authentication: basicAuth("mailer", "s3cret"),
+	})
+	defer s.deleteConnection("email-smtp", created.ID)
+
+	s.Equal("email-smtp", created.Type)
+	// Port is an integer in the contract, not a string.
+	s.Equal(587, created.Port)
+	s.Require().NotNil(created.Authentication)
+	s.Equal("basic", created.Authentication.Type)
+	s.Equal("mailer", created.Authentication.Properties["username"])
+	s.Equal(maskedSecretValue, created.Authentication.Properties["password"])
+
+	res, err := doRequest(http.MethodGet, "/connections/email-smtp/"+created.ID, nil)
+	s.Require().NoError(err)
+	s.Equal(http.StatusOK, res.status)
+	var fetched connectionResponse
+	s.Require().NoError(res.decode(&fetched))
+	s.Equal("smtp.example.com", fetched.Host)
+	s.Equal(587, fetched.Port)
+	s.Equal("noreply@example.com", fetched.FromAddress)
+	s.Equal("Acme Support", fetched.FromName)
+	s.Require().NotNil(fetched.Authentication)
+	s.Equal(maskedSecretValue, fetched.Authentication.Properties["password"])
+
+	// Omitting the password on update keeps the stored one while the host and port are unchanged.
+	res, err = doRequest(http.MethodPut, "/connections/email-smtp/"+created.ID, smtpConnectionRequest{
+		Name: "Test SMTP", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com", FromName: "Acme Mailer", TLS: "implicit",
+		Authentication: basicAuth("mailer", ""),
+	})
+	s.Require().NoError(err)
+	s.Equal(http.StatusOK, res.status)
+	var updated connectionResponse
+	s.Require().NoError(res.decode(&updated))
+	s.Equal("smtp.example.com", updated.Host)
+	s.Equal(587, updated.Port)
+	s.Equal("Acme Mailer", updated.FromName)
+	s.Equal("implicit", updated.TLS)
+	s.Require().NotNil(updated.Authentication)
+	s.Equal(maskedSecretValue, updated.Authentication.Properties["password"])
+}
+
+func (s *ConnectionAPITestSuite) TestSMTPAuthenticationUpdateRequiresFreshPasswordForNewHost() {
+	created := s.createConnection("email-smtp", smtpConnectionRequest{
+		Name: "SMTP Credential Update", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com", TLS: "starttls", Authentication: basicAuth("mailer", "original"),
+	})
+	defer s.deleteConnection("email-smtp", created.ID)
+	path := "/connections/email-smtp/" + created.ID
+
+	for _, authentication := range []*outboundAuthentication{
+		nil,
+		basicAuth("mailer", maskedSecretValue),
+	} {
+		rejected, err := doRequest(http.MethodPut, path, smtpConnectionRequest{
+			Name: "SMTP Credential Update", Host: "other.example.com", Port: 587,
+			FromAddress: "noreply@example.com", TLS: "starttls", Authentication: authentication,
+		})
+		s.Require().NoError(err)
+		s.Equal(http.StatusBadRequest, rejected.status, string(rejected.body))
+	}
+
+	updated, err := doRequest(http.MethodPut, path, smtpConnectionRequest{
+		Name: "SMTP Credential Update", Host: "other.example.com", Port: 587,
+		FromAddress: "noreply@example.com", TLS: "starttls", Authentication: basicAuth("mailer", "replacement"),
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, updated.status, string(updated.body))
+	var result connectionResponse
+	s.Require().NoError(updated.decode(&result))
+	s.Equal("other.example.com", result.Host)
+	s.Equal(maskedSecretValue, result.Authentication.Properties["password"])
+}
+
+// Switching the method off must discard the stored credential, so switching back requires the
+// administrator to re-enter it rather than silently reusing a password they never confirmed.
+func (s *ConnectionAPITestSuite) TestSMTPSwitchingAuthenticationOffDiscardsTheStoredSecret() {
+	created := s.createConnection("email-smtp", smtpConnectionRequest{
+		Name: "Test SMTP Switch", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com", TLS: "starttls",
+		Authentication: basicAuth("mailer", "s3cret"),
+	})
+	defer s.deleteConnection("email-smtp", created.ID)
+
+	res, err := doRequest(http.MethodPut, "/connections/email-smtp/"+created.ID, smtpConnectionRequest{
+		Name: "Test SMTP Switch", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com", TLS: "starttls",
+		Authentication: &outboundAuthentication{Type: "none"},
+	})
+	s.Require().NoError(err)
+	s.Equal(http.StatusOK, res.status)
+
+	// Switching back without a password must now be rejected: nothing is stored to fall back on.
+	res, err = doRequest(http.MethodPut, "/connections/email-smtp/"+created.ID, smtpConnectionRequest{
+		Name: "Test SMTP Switch", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com", TLS: "starttls",
+		Authentication: basicAuth("mailer", ""),
+	})
+	s.Require().NoError(err)
+	s.Equal(http.StatusBadRequest, res.status)
+}
+
+// An omitted tls value must resolve to the secure default rather than to plaintext.
+func (s *ConnectionAPITestSuite) TestSMTPDefaultsToSTARTTLS() {
+	created := s.createConnection("email-smtp", smtpConnectionRequest{
+		Name: "Test SMTP Defaults", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com",
+	})
+	defer s.deleteConnection("email-smtp", created.ID)
+
+	s.Equal("starttls", created.TLS)
+	// An omitted block reads back as authenticating with nothing, so a console always has a
+	// concrete selection to bind to.
+	s.Require().NotNil(created.Authentication)
+	s.Equal("none", created.Authentication.Type)
+}
+
+// A sender that cannot deliver must be rejected when it is configured, not at first send.
+func (s *ConnectionAPITestSuite) TestSMTPInvalidConfigurationReturnsBadRequest() {
+	cases := []struct {
+		name string
+		body smtpConnectionRequest
+	}{
+		{"missing host", smtpConnectionRequest{
+			Name: "Bad SMTP", Port: 587, FromAddress: "noreply@example.com"}},
+		{"missing port", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", FromAddress: "noreply@example.com"}},
+		{"port out of range", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", Port: 70000,
+			FromAddress: "noreply@example.com"}},
+		{"invalid from address", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", Port: 587, FromAddress: "not-an-address"}},
+		{"invalid tls mode", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", Port: 587,
+			FromAddress: "noreply@example.com", TLS: "true"}},
+		{"auth without tls", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", Port: 587,
+			FromAddress: "noreply@example.com", TLS: "none",
+			Authentication: basicAuth("u", "p")}},
+		{"auth without credentials", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", Port: 587,
+			FromAddress: "noreply@example.com", TLS: "starttls",
+			Authentication: &outboundAuthentication{Type: "basic"}}},
+		{"auth without password", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", Port: 587,
+			FromAddress: "noreply@example.com", TLS: "starttls",
+			Authentication: basicAuth("u", "")}},
+		{"unsupported auth type", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", Port: 587,
+			FromAddress: "noreply@example.com", TLS: "starttls",
+			Authentication: &outboundAuthentication{Type: "bearer"}}},
+	}
+
+	for _, tc := range cases {
+		res, err := doRequest(http.MethodPost, "/connections/email-smtp", ownedBy(s.T(), s.ouID, tc.body))
+		s.Require().NoError(err, tc.name)
+		s.Equal(http.StatusBadRequest, res.status, tc.name)
+	}
+}
+
+// An email endpoint must not reach a message sender, even by ID.
+func (s *ConnectionAPITestSuite) TestSMTPCannotReadMessageSender() {
+	sender := s.createConnection("twilio", twilioConnectionRequest{
+		Name: "SMTP Isolation Sender", AccountSID: "AC00000000000000000000000000000009",
+		AuthToken: "tok", SenderID: "+15005550009",
+	})
+	defer s.deleteConnection("twilio", sender.ID)
+
+	res, err := doRequest(http.MethodGet, "/connections/email-smtp/"+sender.ID, nil)
+	s.Require().NoError(err)
+	s.Equal(http.StatusNotFound, res.status)
 }
 
 // --- Cross-cutting behaviors ---
@@ -389,7 +828,7 @@ func (s *ConnectionAPITestSuite) TestDuplicateNameReturnsConflict() {
 	defer s.deleteConnection("google", created.ID)
 
 	res, err := doRequest(http.MethodPost, "/connections/google", googleConnectionRequest{
-		Name: "Duplicate Name Test", ClientID: "dup-client-2", ClientSecret: "dup-secret-2",
+		Name: "Duplicate Name Test", OUID: s.ouID, ClientID: "dup-client-2", ClientSecret: "dup-secret-2",
 		RedirectURI: "https://localhost:3000/google/callback",
 	})
 	s.Require().NoError(err)
@@ -404,10 +843,10 @@ func (s *ConnectionAPITestSuite) TestDuplicateSenderNameReturnsConflict() {
 	})
 	defer s.deleteConnection("twilio", created.ID)
 
-	res, err := doRequest(http.MethodPost, "/connections/twilio", twilioConnectionRequest{
+	res, err := doRequest(http.MethodPost, "/connections/twilio", ownedBy(s.T(), s.ouID, twilioConnectionRequest{
 		Name: "Duplicate Sender Test", AccountSID: "AC00000000000000000000000000000001",
 		AuthToken: "tok2", SenderID: "+15005550007",
-	})
+	}))
 	s.Require().NoError(err)
 	s.Equal(http.StatusConflict, res.status)
 	s.Equal("MNS-1005", res.errorCode())
@@ -415,7 +854,8 @@ func (s *ConnectionAPITestSuite) TestDuplicateSenderNameReturnsConflict() {
 
 func (s *ConnectionAPITestSuite) TestInvalidBodyReturnsBadRequest() {
 	// Missing required clientId/redirectUri.
-	res, err := doRequest(http.MethodPost, "/connections/google", map[string]string{"name": "Incomplete"})
+	res, err := doRequest(http.MethodPost, "/connections/google",
+		map[string]string{"name": "Incomplete", "ouId": s.ouID})
 	s.Require().NoError(err)
 	s.Equal(http.StatusBadRequest, res.status)
 }
@@ -449,6 +889,134 @@ func (s *ConnectionAPITestSuite) TestUsagesOnSMSInstance() {
 	s.Equal(http.StatusOK, res.status, string(res.body))
 }
 
+// connectionUsagesResponse is the payload of GET /connections/{vendor}/{id}/usages.
+type connectionUsagesResponse struct {
+	Count  int `json:"count"`
+	Usages []struct {
+		ResourceType     string `json:"resourceType"`
+		ID               string `json:"id"`
+		BehaviorOnDelete string `json:"behaviorOnDelete"`
+	} `json:"usages"`
+}
+
+func (s *ConnectionAPITestSuite) emailSMTPUsages(id string) connectionUsagesResponse {
+	s.T().Helper()
+	res, err := doRequest(http.MethodGet, "/connections/email-smtp/"+id+"/usages", nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, res.status, string(res.body))
+	var usages connectionUsagesResponse
+	s.Require().NoError(res.decode(&usages))
+	return usages
+}
+
+func (s *ConnectionAPITestSuite) TestUsagesOnEmailSMTPInstance() {
+	created := s.createConnection("email-smtp", smtpConnectionRequest{
+		Name: "Usages SMTP", Host: "smtp.example.com", Port: 587, FromAddress: "noreply@example.com",
+	})
+	defer s.deleteConnection("email-smtp", created.ID)
+
+	usages := s.emailSMTPUsages(created.ID)
+	s.Zero(usages.Count)
+	s.Empty(usages.Usages)
+}
+
+// A flow whose email step selects the provider is reported as a usage, and it blocks deletion:
+// removing the provider would leave the flow unable to send.
+func (s *ConnectionAPITestSuite) TestEmailSMTPInUseByFlow() {
+	created := s.createConnection("email-smtp", smtpConnectionRequest{
+		Name: "In Use SMTP", Host: "smtp.example.com", Port: 587, FromAddress: "noreply@example.com",
+	})
+	defer s.deleteConnection("email-smtp", created.ID)
+
+	flowID, err := testutils.CreateFlow(emailOTPFlowUsingSender("connection-smtp-in-use-flow", created.ID))
+	s.Require().NoError(err)
+	defer func() {
+		if err := testutils.DeleteFlow(flowID); err != nil {
+			s.T().Logf("failed to delete flow: %v", err)
+		}
+	}()
+
+	usages := s.emailSMTPUsages(created.ID)
+	s.Require().Equal(1, usages.Count)
+	s.Require().Len(usages.Usages, 1)
+	s.Equal("flow", usages.Usages[0].ResourceType)
+	s.Equal(flowID, usages.Usages[0].ID)
+	s.Equal("restrict", usages.Usages[0].BehaviorOnDelete)
+
+	res, err := doRequest(http.MethodDelete, "/connections/email-smtp/"+created.ID, nil)
+	s.Require().NoError(err)
+	s.Equal(http.StatusConflict, res.status, string(res.body))
+	s.Contains(string(res.body), "MNS-1016")
+
+	// The refused delete left the provider in place.
+	res, err = doRequest(http.MethodGet, "/connections/email-smtp/"+created.ID, nil)
+	s.Require().NoError(err)
+	s.Equal(http.StatusOK, res.status, string(res.body))
+}
+
+// emailOTPFlowUsingSender is an email OTP authentication flow whose email step selects senderID.
+func emailOTPFlowUsingSender(handle, senderID string) testutils.Flow {
+	emailInput := []map[string]interface{}{
+		{"ref": "input_email", "identifier": "email", "type": "EMAIL_INPUT", "required": true},
+	}
+	return testutils.Flow{
+		Name:     "Connection SMTP In Use Flow",
+		FlowType: "AUTHENTICATION",
+		Handle:   handle,
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "prompt_email"},
+			{
+				"id":   "prompt_email",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": emailInput,
+						"action": map[string]interface{}{"ref": "action_email", "nextNode": "generate_otp"},
+					},
+				},
+			},
+			{
+				"id":        "generate_otp",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "OTPExecutor", "mode": "generate", "inputs": emailInput},
+				"onSuccess": "email_send",
+			},
+			{
+				"id":         "email_send",
+				"type":       "TASK_EXECUTION",
+				"properties": map[string]interface{}{"emailTemplate": "OTP", "senderId": senderID},
+				"executor":   map[string]interface{}{"name": "EmailExecutor", "mode": "send", "inputs": emailInput},
+				"onSuccess":  "prompt_otp",
+			},
+			{
+				"id":   "prompt_otp",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": []map[string]interface{}{
+							{"ref": "input_otp", "identifier": "otp", "type": "OTP_INPUT", "required": true},
+						},
+						"action": map[string]interface{}{"ref": "action_otp", "nextNode": "verify_otp"},
+					},
+				},
+			},
+			{
+				"id":        "verify_otp",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "OTPExecutor", "mode": "verify"},
+				"onSuccess": "auth_assert",
+			},
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
+}
+
 // --- Listing: pagination, category filtering, and negatives ---
 
 func (s *ConnectionAPITestSuite) TestListConnectionsFiltersByCategory() {
@@ -476,6 +1044,20 @@ func (s *ConnectionAPITestSuite) TestListConnectionsFiltersByCategory() {
 	s.Equal(http.StatusOK, res.status)
 	s.Require().NoError(res.decode(&list))
 	s.True(containsID(list.Connections, sender.ID))
+	s.False(containsID(list.Connections, idp.ID))
+
+	emailSender := s.createConnection("email-smtp", smtpConnectionRequest{
+		Name: "List Category Email Sender", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com",
+	})
+	defer s.deleteConnection("email-smtp", emailSender.ID)
+
+	res, err = doRequest(http.MethodGet, "/connections?category=email-provider&limit=100", nil)
+	s.Require().NoError(err)
+	s.Equal(http.StatusOK, res.status)
+	s.Require().NoError(res.decode(&list))
+	s.True(containsID(list.Connections, emailSender.ID))
+	s.False(containsID(list.Connections, sender.ID))
 	s.False(containsID(list.Connections, idp.ID))
 }
 
@@ -591,10 +1173,14 @@ func (s *ConnectionAPITestSuite) oauthRequestWithConfig(
 type invalidAttributeConfig struct {
 	name   string
 	config *testutils.AttributeConfiguration
+	// wantErrorKey, when set, is the i18n message key the rejection must carry. errorCode alone is not
+	// enough to prove a class was rejected for its own reason: every authorization mapping validation
+	// class shares the same code, differing only in this key.
+	wantErrorKey string
 }
 
 // invalidAttributeConfigs enumerates one configuration per validation class the IdP service enforces.
-// Shared by the create cases (A3-A9) and the update table (A16): create and update reach validation by
+// Shared by the create cases (A3-A9, A20-A22) and the update table (A16): create and update reach validation by
 // separate paths, so a class proven on one says nothing about the other.
 func (s *ConnectionAPITestSuite) invalidAttributeConfigs() []invalidAttributeConfig {
 	mapping := func(attrs ...testutils.AttributeMapping) []testutils.UserTypeAttributeMapping {
@@ -674,6 +1260,345 @@ func (s *ConnectionAPITestSuite) invalidAttributeConfigs() []invalidAttributeCon
 				},
 			},
 		},
+		{
+			name:         "A20_authorization_mapping_role_not_found",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_role_not_found_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets: []testutils.AuthorizationTarget{
+							{Type: testutils.AuthorizationTargetRole, ID: "00000000-0000-0000-0000-000000000001"},
+						},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "A21_authorization_mapping_group_not_found",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_group_not_found_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "editors",
+						Targets: []testutils.AuthorizationTarget{
+							{Type: testutils.AuthorizationTargetGroup, ID: "00000000-0000-0000-0000-000000000002"},
+						},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "A22_authorization_mapping_permission_not_found",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_permission_not_found_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "writers",
+						Targets: []testutils.AuthorizationTarget{{
+							Type:             testutils.AuthorizationTargetPermission,
+							ResourceServerID: "00000000-0000-0000-0000-000000000003",
+							Permission:       "write",
+						}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "A24_authorization_mapping_includes_requires_multi_valued",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_membership_requires_multi_valued_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "department",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorIncludes,
+						Value:    "platform",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_claim_required",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_claim_required_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_value_type_invalid",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_value_type_invalid_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim:     "groups",
+					ValueType: "not_a_real_type",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_delimiter_requires_string",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_delimiter_requires_string_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim:     "level",
+					ValueType: testutils.AuthorizationValueTypeNumber,
+					Delimiter: ",",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "5",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_values_required",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_values_required_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim:  "groups",
+					Values: []testutils.AuthorizationRule{},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_operator_invalid",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_operator_invalid_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: "not_a_real_operator",
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_multi_valued_requires_membership",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_multi_valued_requires_membership_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim:     "groups",
+					ValueType: testutils.AuthorizationValueTypeArray,
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_operator_requires_number",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_operator_requires_number_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "level",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorGreaterThan,
+						Value:    "5",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_empty_value",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_empty_value_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_value_not_number",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_value_not_number_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim:     "level",
+					ValueType: testutils.AuthorizationValueTypeNumber,
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "not-a-number",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_value_not_boolean",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_value_not_boolean_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim:     "isAdmin",
+					ValueType: testutils.AuthorizationValueTypeBoolean,
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "not-a-bool",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_no_targets",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_no_targets_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_target_id_required",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_target_id_required_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_permission_target_incomplete",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_permission_target_incomplete_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets: []testutils.AuthorizationTarget{
+							{Type: testutils.AuthorizationTargetPermission, ResourceServerID: s.authzResourceServerID},
+						},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_target_type_invalid",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_target_type_invalid_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{{Type: "not_a_real_type"}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_direct_mapping_claim_required",
+			wantErrorKey: "error.idpservice.authorization_direct_mapping_claim_required_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Direct: []testutils.AuthorizationDirectMapping{{
+					Claim:      "",
+					TargetType: testutils.AuthorizationTargetRole,
+				}}},
+			},
+		},
+		{
+			name:         "authorization_direct_mapping_resource_server_not_allowed",
+			wantErrorKey: "error.idpservice.authorization_direct_mapping_resource_server_not_allowed_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Direct: []testutils.AuthorizationDirectMapping{{
+					Claim:            "groups",
+					TargetType:       testutils.AuthorizationTargetRole,
+					ResourceServerID: s.authzResourceServerID,
+				}}},
+			},
+		},
+		{
+			name:         "authorization_direct_mapping_resource_server_required",
+			wantErrorKey: "error.idpservice.authorization_direct_mapping_resource_server_required_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Direct: []testutils.AuthorizationDirectMapping{{
+					Claim:      "perms",
+					TargetType: testutils.AuthorizationTargetPermission,
+				}}},
+			},
+		},
+		{
+			name:         "authorization_direct_mapping_resource_server_not_found",
+			wantErrorKey: "error.idpservice.authorization_direct_mapping_resource_server_not_found_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Direct: []testutils.AuthorizationDirectMapping{{
+					Claim:            "perms",
+					TargetType:       testutils.AuthorizationTargetPermission,
+					ResourceServerID: "00000000-0000-0000-0000-000000000099",
+				}}},
+			},
+		},
+		{
+			name:         "authorization_direct_mapping_target_type_invalid",
+			wantErrorKey: "error.idpservice.authorization_direct_mapping_target_type_invalid_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Direct: []testutils.AuthorizationDirectMapping{{
+					Claim:      "groups",
+					TargetType: "not_a_real_type",
+				}}},
+			},
+		},
 	}
 }
 
@@ -702,7 +1627,7 @@ func (s *ConnectionAPITestSuite) userTypeAllowingDuplicateEmails() string {
 	s.Require().NotEmpty(userTypes, "expected at least the bootstrapped user type")
 	for _, userType := range userTypes {
 		if !userType.IsAttributeUnique("email") {
-			return userType.Name
+			return userType.Handle
 		}
 	}
 	return ""
@@ -809,23 +1734,27 @@ func (s *ConnectionAPITestSuite) TestOIDCAttributeConfigurationRoundTrip() {
 	s.Equal(updated, afterUpdate.AttributeConfiguration)
 }
 
-// A3-A9: every validation class is rejected on create. The unit tests for these call the service's
+// A3-A9, A20-A22: every validation class is rejected on create. The unit tests for these call the service's
 // private validator directly, so nothing previously proved the create path rejects them.
 func (s *ConnectionAPITestSuite) TestAttributeConfigurationValidationOnCreate() {
 	for _, invalid := range s.invalidAttributeConfigs() {
 		s.Run(invalid.name, func() {
 			res, err := doRequest(http.MethodPost, "/connections/oauth",
-				s.oauthRequestWithConfig("OAuth Invalid "+invalid.name, invalid.config))
+				ownedBy(s.T(), s.ouID, s.oauthRequestWithConfig("OAuth Invalid "+invalid.name, invalid.config)))
 			s.Require().NoError(err)
 			s.Equal(http.StatusBadRequest, res.status,
 				"expected 400 for %s, got %d: %s", invalid.name, res.status, string(res.body))
 			s.NotEmpty(res.errorCode(), "error response should carry a code")
+			if invalid.wantErrorKey != "" {
+				s.Equal(invalid.wantErrorKey, res.errorMessageKey(),
+					"%s should be rejected for its own validation reason, not a substituted one", invalid.name)
+			}
 		})
 	}
 }
 
 // A16: the same classes rejected on update. Create and update validate through separate call sites, so
-// A3-A9 passing says nothing about this path.
+// A3-A9, A20-A22 passing says nothing about this path.
 func (s *ConnectionAPITestSuite) TestAttributeConfigurationValidationOnUpdate() {
 	created := s.createConnection("oauth",
 		s.oauthRequestWithConfig("OAuth Invalid Update Base", s.validAttributeConfig()))
@@ -838,6 +1767,10 @@ func (s *ConnectionAPITestSuite) TestAttributeConfigurationValidationOnUpdate() 
 			s.Require().NoError(err)
 			s.Equal(http.StatusBadRequest, res.status,
 				"expected 400 for %s, got %d: %s", invalid.name, res.status, string(res.body))
+			if invalid.wantErrorKey != "" {
+				s.Equal(invalid.wantErrorKey, res.errorMessageKey(),
+					"%s should be rejected for its own validation reason, not a substituted one", invalid.name)
+			}
 		})
 	}
 }
@@ -1118,4 +2051,199 @@ func (s *ConnectionAPITestSuite) TestNilVersusEmptyConfigurationSections() {
 			s.deleteConnection("google", created.ID)
 		}
 	})
+}
+
+// A23: authorization mapping targets that name a real role, group, and resource-server permission are
+// accepted on both create and update. A20-A22 prove the rejection side of the existence check; this is
+// the accepting side, so the check is proven to gate on existence rather than reject everything.
+func (s *ConnectionAPITestSuite) TestAttributeConfigurationWithExistingAuthorizationRuleMappingTargetsAccepted() {
+	config := &testutils.AttributeConfiguration{
+		UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+		AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+			Claim: "groups",
+			Values: []testutils.AuthorizationRule{{
+				Operator: testutils.AuthorizationOperatorEquals,
+				Value:    "admins",
+				Targets: []testutils.AuthorizationTarget{
+					{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID},
+					{Type: testutils.AuthorizationTargetGroup, ID: s.authzGroupID},
+					{
+						Type:             testutils.AuthorizationTargetPermission,
+						ResourceServerID: s.authzResourceServerID,
+						Permission:       "read",
+					},
+				},
+			}},
+		}}},
+	}
+
+	created := s.createConnection("oauth", s.oauthRequestWithConfig("OAuth Authz Mapping Accepted", config))
+	defer s.deleteConnection("oauth", created.ID)
+	s.Require().NotNil(created.AttributeConfiguration, "create response should echo the configuration")
+	s.Equal(config.AuthorizationMapping, created.AttributeConfiguration.AuthorizationMapping)
+
+	updateRes, err := doRequest(http.MethodPut, "/connections/oauth/"+created.ID,
+		s.oauthRequestWithConfig("OAuth Authz Mapping Accepted", config))
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, updateRes.status, string(updateRes.body))
+}
+
+// General headers remain separate from the outbound authentication block.
+func (s *ConnectionAPITestSuite) TestSMSGatewayAuthorizationHeaderAllowed() {
+	created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
+		Name: "Gateway Header Auth", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+		HTTPHeaders: "Authorization: Bearer token",
+	})
+	s.Equal("Authorization: Bearer token", created.HTTPHeaders)
+	s.deleteConnection("sms-gateway", created.ID)
+}
+
+func (s *ConnectionAPITestSuite) TestSMSGatewayBearerAndBasicAuthentication() {
+	for _, test := range []struct {
+		name           string
+		authentication *outboundAuthentication
+		visible        map[string]string
+	}{
+		{"bearer", &outboundAuthentication{Type: "bearer",
+			Properties: map[string]string{"token": "secret-token"}},
+			map[string]string{"token": maskedSecretValue}},
+		{"basic", basicAuth("sms-user", "secret-password"),
+			map[string]string{"username": "sms-user", "password": maskedSecretValue}},
+	} {
+		s.Run(test.name, func() {
+			created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
+				Name: "SMS Gateway " + test.name, URL: "https://sms.example.com/send", HTTPMethod: "POST",
+				Authentication: test.authentication,
+			})
+			defer s.deleteConnection("sms-gateway", created.ID)
+			s.Require().NotNil(created.Authentication)
+			s.Equal(test.name, created.Authentication.Type)
+			s.Equal(test.visible, created.Authentication.Properties)
+		})
+	}
+}
+
+func (s *ConnectionAPITestSuite) TestSMSGatewayRejectsInsecureAuthenticatedURLAndAuthorizationOverlap() {
+	for _, authentication := range []*outboundAuthentication{
+		{Type: "bearer", Properties: map[string]string{"token": "secret-token"}},
+		basicAuth("sms-user", "secret-password"),
+		{Type: "api_key", Properties: map[string]string{"X-API-Key": "secret-key"}},
+	} {
+		response, err := doRequest(http.MethodPost, "/connections/sms-gateway",
+			ownedBy(s.T(), s.ouID, smsGatewayConnectionRequest{
+				Name: "Insecure SMS Gateway", URL: "http://sms.example.com/send", HTTPMethod: "POST",
+				Authentication: authentication,
+			}))
+		s.Require().NoError(err)
+		s.Equal(http.StatusBadRequest, response.status, string(response.body))
+	}
+	for _, authentication := range []*outboundAuthentication{
+		{Type: "bearer", Properties: map[string]string{"token": "secret-token"}},
+		basicAuth("sms-user", "secret-password"),
+	} {
+		response, err := doRequest(http.MethodPost, "/connections/sms-gateway",
+			ownedBy(s.T(), s.ouID, smsGatewayConnectionRequest{
+				Name: "Overlapping SMS Gateway", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+				HTTPHeaders: "authorization: legacy-value", Authentication: authentication,
+			}))
+		s.Require().NoError(err)
+		s.Equal(http.StatusBadRequest, response.status, string(response.body))
+	}
+}
+
+// connectionMetaResponse is the payload of GET /connections/meta.
+type connectionMetaResponse struct {
+	Vendors []connectionVendorMeta `json:"vendors"`
+}
+
+// connectionVendorMeta is one vendor's entry in the metadata response.
+type connectionVendorMeta struct {
+	Vendor         string `json:"vendor"`
+	Authentication struct {
+		Methods []struct {
+			Type        string `json:"type"`
+			DisplayName string `json:"displayName"`
+			Fields      []struct {
+				Key        string `json:"key"`
+				Type       string `json:"type"`
+				Required   bool   `json:"required"`
+				Credential bool   `json:"credential"`
+			} `json:"fields"`
+		} `json:"methods"`
+	} `json:"authentication"`
+}
+
+// getConnectionMeta requests the metadata with the given query string and decodes it.
+func (s *ConnectionAPITestSuite) getConnectionMeta(query string) connectionMetaResponse {
+	s.T().Helper()
+	res, err := doRequest(http.MethodGet, "/connections/meta"+query, nil)
+	s.Require().NoError(err, query)
+	s.Require().Equal(http.StatusOK, res.status, "%s: %s", query, string(res.body))
+	var meta connectionMetaResponse
+	s.Require().NoError(res.decode(&meta), query)
+	return meta
+}
+
+// describeVendor requests one vendor's metadata. Filtering narrows the list rather than changing
+// its shape, so the result is a one-element list naming that vendor.
+func (s *ConnectionAPITestSuite) describeVendor(vendor string) connectionVendorMeta {
+	s.T().Helper()
+	meta := s.getConnectionMeta("?vendor=" + vendor)
+	s.Require().Len(meta.Vendors, 1, vendor)
+	s.Require().Equal(vendor, meta.Vendors[0].Vendor)
+	return meta.Vendors[0]
+}
+
+// The console renders the authentication section from this endpoint rather than from a
+// hardcoded list, so a method added server-side reaches it without a console release.
+func (s *ConnectionAPITestSuite) TestConnectionMetaDescribesAuthenticationMethods() {
+	for _, vendor := range []string{"email-smtp"} {
+		meta := s.describeVendor(vendor)
+		s.Require().Len(meta.Authentication.Methods, 2, vendor)
+		s.Equal("none", meta.Authentication.Methods[0].Type, vendor)
+
+		basic := meta.Authentication.Methods[1]
+		s.Equal("basic", basic.Type, vendor)
+		s.Require().Len(basic.Fields, 2, vendor)
+		// Field order is part of the contract: a credential form shows the username first.
+		s.Equal("username", basic.Fields[0].Key, vendor)
+		s.Equal("password", basic.Fields[1].Key, vendor)
+		s.False(basic.Fields[0].Credential, vendor)
+		s.True(basic.Fields[1].Credential, vendor)
+		s.NotEmpty(basic.DisplayName, vendor)
+	}
+}
+
+// Fixed-credential vendors advertise no methods; SMS gateway supports every HTTP method.
+func (s *ConnectionAPITestSuite) TestConnectionMetaVendorsWithoutConfigurableAuthentication() {
+	for _, vendor := range []string{"twilio", "vonage", "google"} {
+		s.Empty(s.describeVendor(vendor).Authentication.Methods, vendor)
+	}
+	methods := s.describeVendor("sms-gateway").Authentication.Methods
+	s.Require().Len(methods, 4)
+	s.Equal("none", methods[0].Type)
+	s.Equal("bearer", methods[1].Type)
+	s.Equal("basic", methods[2].Type)
+	s.Equal("api_key", methods[3].Type)
+}
+
+// Without a vendor filter, every registered vendor is described in a stable order.
+func (s *ConnectionAPITestSuite) TestConnectionMetaWithoutVendorDescribesEveryVendor() {
+	meta := s.getConnectionMeta("")
+
+	names := make([]string, 0, len(meta.Vendors))
+	for _, vendor := range meta.Vendors {
+		names = append(names, vendor.Vendor)
+		if vendor.Vendor == "email-smtp" {
+			s.Len(vendor.Authentication.Methods, 2)
+		}
+	}
+	s.Equal([]string{"google", "github", "oidc", "oauth", "twilio", "vonage", "sms-gateway",
+		"email-smtp", "authzen-pdp", "http"}, names)
+}
+
+func (s *ConnectionAPITestSuite) TestConnectionMetaRejectsUnknownVendor() {
+	res, err := doRequest(http.MethodGet, "/connections/meta?vendor=nope", nil)
+	s.Require().NoError(err)
+	s.Equal(http.StatusBadRequest, res.status)
 }

@@ -25,8 +25,19 @@ var (
 	// ErrAmbiguousEntity is returned when multiple entities match the provided filters.
 	ErrAmbiguousEntity = errors.New("ambiguous entity")
 
+	// ErrIndexedValueLimitExceeded is returned when an indexed attribute has more values than an
+	// entity may index under one name.
+	ErrIndexedValueLimitExceeded = errors.New("indexed value limit exceeded")
+
 	// ErrBadAttributesInRequest is returned when the attributes in the request are invalid.
 	ErrBadAttributesInRequest = errors.New("failed to marshal attributes")
+
+	// errInvalidAuthenticationMethod is returned when a lock write names a method outside the registry.
+	errInvalidAuthenticationMethod = errors.New("invalid authentication method")
+
+	// errSharedEntityFilterUnsupported is returned when filters are given for a page that lists
+	// entities shared into an organization unit, which filters cannot narrow yet.
+	errSharedEntityFilterUnsupported = errors.New("filters cannot narrow shared entities")
 
 	// errResultLimitExceededInCompositeMode is returned when the result limit is exceeded in composite mode.
 	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")

@@ -10,17 +10,21 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/system/varname"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
 
 const (
@@ -30,13 +34,29 @@ const (
 
 // userExporter implements declarativeresource.ResourceExporter for users.
 type userExporter struct {
-	service       UserServiceInterface
-	entityService entity.EntityServiceInterface
+	service           UserServiceInterface
+	entityService     entity.EntityServiceInterface
+	entityTypeService entitytype.EntityTypeServiceInterface
+	sharingService    sharing.SharingServiceInterface
+	// references writes a credential as a secret reference rather than a template placeholder, as a
+	// control plane's export does for every other credential.
+	references bool
+}
+
+// WriteValueReferences sets whether credentials are written as references or as placeholders.
+func (e *userExporter) WriteValueReferences(references bool) {
+	e.references = references
 }
 
 // newUserExporter creates a new user exporter.
-func newUserExporter(service UserServiceInterface, entityService entity.EntityServiceInterface) *userExporter {
-	return &userExporter{service: service, entityService: entityService}
+func newUserExporter(
+	service UserServiceInterface,
+	entityService entity.EntityServiceInterface,
+	entityTypeService entitytype.EntityTypeServiceInterface,
+	sharingService sharing.SharingServiceInterface,
+) *userExporter {
+	return &userExporter{service: service, entityService: entityService, entityTypeService: entityTypeService,
+		sharingService: sharingService}
 }
 
 // GetResourceType returns the resource type for users.
@@ -116,17 +136,83 @@ func (e *userExporter) GetResourceByID(
 		attributesMap = make(map[string]interface{})
 	}
 
-	// Create export structure with credentials as placeholders
-	// The parameterizer will replace actual credential values with template variables
+	credentials, svcErr := e.exportableCredentials(ctx, user.ID, user.Type, username)
+	if svcErr != nil {
+		return nil, "", svcErr
+	}
+
+	// A document that silently lost its sharing would re-import as a user shared nowhere, so this
+	// fails the export rather than thinning it.
+	replayable, sharingErr := e.sharingService.ExportPolicies(ctx, UserSharingType, user.ID)
+	if sharingErr != nil {
+		return nil, "", translateSharingError(sharingErr)
+	}
+	var policies []sharing.PolicyRequest
+	for _, r := range replayable {
+		policies = append(policies, r.Request)
+	}
+
 	exportUser := &userDeclarativeResource{
-		ID:          user.ID,
-		Type:        user.Type,
-		OUID:        user.OUID,
-		Attributes:  attributesMap,
-		Credentials: make(map[string]interface{}), // Empty credentials - will be filled with placeholders
+		ID:              user.ID,
+		Type:            user.Type,
+		OUID:            user.OUID,
+		Attributes:      attributesMap,
+		Credentials:     credentials,
+		SharingPolicies: policies,
 	}
 
 	return exportUser, username, nil
+}
+
+// exportableCredentials describes the credentials an exported user carries: one placeholder for each
+// credential the user's type declares and the user has set, a secret reference where the export
+// writes references and a template placeholder where it writes templates.
+//
+// A stored credential is a one-way hash, so its value never leaves. The placeholder names it
+// instead, and the importing server fills it from its own secret provider or environment before
+// hashing it, which leaves the imported user able to sign in with it. A credential the user has not
+// set is left out rather than exported empty, since it would otherwise demand a value on import for
+// something the user never had. The user itself is exported either way.
+//
+// Only credentials the type declares are considered, which leaves out device-bound ones such as a
+// passkey: those mean nothing on another deployment. The placeholder is written here because the
+// parameterizer only walks a slice of properties and credentials are a map, so it would export any
+// value here verbatim.
+func (e *userExporter) exportableCredentials(
+	ctx context.Context, userID, userType, username string,
+) (map[string]interface{}, *tidcommon.ServiceError) {
+	credentials := map[string]interface{}{}
+	if username == "" {
+		// The placeholder is named after the username, so there is nothing to name it after.
+		return credentials, nil
+	}
+
+	declared, svcErr := e.entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryUser, userType,
+		entitytype.AttributeFilter{AllowCredential: true})
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	for _, attribute := range declared {
+		stored, err := e.entityService.GetCredentialsByType(ctx, userID, attribute.Attribute)
+		if err != nil {
+			log.GetLogger().Error(ctx, "Failed to read a user's credentials for export",
+				log.MaskedString(log.LoggerKeyUserID, userID), log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		if len(stored) == 0 {
+			continue
+		}
+		name := varname.DeriveVariableName(resourceTypeUser, username, attribute.Attribute)
+		if e.references {
+			// A control plane holds no values, so the credential names the secret the gateway holds,
+			// which the gateway's import fills in before hashing.
+			credentials[attribute.Attribute] = valueref.SecretReference(name)
+			continue
+		}
+		credentials[attribute.Attribute] = fmt.Sprintf("{{.%s}}", name)
+	}
+	return credentials, nil
 }
 
 // ValidateResource validates a user resource.
@@ -158,6 +244,27 @@ func (e *userExporter) ValidateResource(ctx context.Context,
 	return username, nil
 }
 
+// ViewResource shows an exported user as a read of it returns it. A read never returns a user's
+// credentials, so the view leaves out the ones the export carries.
+func (e *userExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(exported *userDeclarativeResource) (
+		interface{}, error) {
+		attributes, err := json.Marshal(exported.Attributes)
+		return &providers.User{
+			ID:         exported.ID,
+			OUID:       exported.OUID,
+			Type:       exported.Type,
+			Attributes: attributes,
+		}, err
+	})
+}
+
+// SecretFields names where an exported user holds its credentials: every key of the credentials
+// map, since which credentials a user has is its type's to say.
+func (e *userExporter) SecretFields() []string {
+	return []string{"credentials.*"}
+}
+
 // GetResourceRules returns the parameterization rules for users.
 func (e *userExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return &declarativeresource.ResourceRules{
@@ -176,6 +283,50 @@ func makeUserDeclarativeConfig(userService UserServiceInterface) entity.Declarat
 		Category:  providers.EntityCategoryUser,
 		Parser:    makeUserParser(userService),
 		Validator: makeUserValidator(),
+	}
+}
+
+// makeUserSharingConfig creates the loader config the sharing framework reads a user's declared
+// policies with. It names the users directory, because a policy is carried inside the user that
+// declares it rather than in a document of its own.
+func makeUserSharingConfig(userService UserServiceInterface) sharing.DeclarativeLoaderConfig {
+	return sharing.DeclarativeLoaderConfig{
+		ResourceType:  UserSharingType,
+		DirectoryName: "users",
+		Parser:        makeUserSharingParser(userService),
+	}
+}
+
+// makeUserSharingParser returns a parser that reads the sharing half of one user document. A
+// document may name its organization unit by handle, and only the service resolves that to the id a
+// policy is declared against.
+func makeUserSharingParser(
+	userService UserServiceInterface,
+) func([]byte) (*sharing.DeclaredResourcePolicies, error) {
+	return func(data []byte) (*sharing.DeclaredResourcePolicies, error) {
+		var userRes userDeclarativeResource
+		if err := yaml.Unmarshal(data, &userRes); err != nil {
+			return nil, fmt.Errorf("failed to parse user YAML: %w", err)
+		}
+		if len(userRes.SharingPolicies) == 0 {
+			return &sharing.DeclaredResourcePolicies{ResourceID: userRes.ID}, nil
+		}
+
+		user := providers.User{ID: userRes.ID, OUID: userRes.OUID, OUHandle: userRes.OUHandle}
+		if svcErr := userService.ResolveUserOUHandle(context.Background(), &user); svcErr != nil {
+			return nil, fmt.Errorf(
+				"organization unit with handle %q not found for user '%s'", user.OUHandle, user.ID)
+		}
+		name, _ := userRes.Attributes["username"].(string)
+		if name == "" {
+			name = user.ID
+		}
+		return &sharing.DeclaredResourcePolicies{
+			ResourceID:   user.ID,
+			ResourceName: name,
+			OwningOUID:   user.OUID,
+			Policies:     userRes.SharingPolicies,
+		}, nil
 	}
 }
 
@@ -234,7 +385,7 @@ func makeUserValidator() func(e *providers.Entity, svc entity.EntityServiceInter
 		}
 
 		// Check for duplicates in the store (covers both DB and already-loaded file resources)
-		_, err := svc.GetEntity(context.Background(), e.ID)
+		_, err := svc.GetEntityProfile(context.Background(), e.ID)
 		if err == nil {
 			return fmt.Errorf("duplicate user ID '%s': user already exists", e.ID)
 		}
@@ -246,30 +397,33 @@ func makeUserValidator() func(e *providers.Entity, svc entity.EntityServiceInter
 	}
 }
 
+// userDeclarativeResource is a user as a resource file states it, with the sharing policies that
+// govern it carried alongside.
 type userDeclarativeResource struct {
-	ID          string                 `yaml:"id"`
-	Type        string                 `yaml:"type"`
-	OUID        string                 `yaml:"ouId,omitempty"`
-	OUHandle    string                 `yaml:"ouHandle,omitempty"`
-	Attributes  map[string]interface{} `yaml:"attributes"`
-	Credentials map[string]interface{} `yaml:"credentials,omitempty"` // Flexible format for YAML
+	ID              string                  `yaml:"id"`
+	Type            string                  `yaml:"type"`
+	OUID            string                  `yaml:"ouId,omitempty"`
+	OUHandle        string                  `yaml:"ouHandle,omitempty"`
+	Attributes      map[string]interface{}  `yaml:"attributes"`
+	Credentials     map[string]interface{}  `yaml:"credentials,omitempty"` // Flexible format for YAML
+	SharingPolicies []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty"`
 }
 
 // parseToUser parses YAML data into a User and its Credentials. The ou_handle from YAML is
 // populated onto User.OUHandle so callers can resolve it to an ou_id via the user service.
-func parseToUser(data []byte) (User, Credentials, error) {
+func parseToUser(data []byte) (providers.User, Credentials, error) {
 	var userRes userDeclarativeResource
 	if err := yaml.Unmarshal(data, &userRes); err != nil {
-		return User{}, nil, err
+		return providers.User{}, nil, err
 	}
 
 	// Convert attributes map to JSON
 	attributesJSON, err := json.Marshal(userRes.Attributes)
 	if err != nil {
-		return User{}, nil, fmt.Errorf("failed to marshal attributes: %w", err)
+		return providers.User{}, nil, fmt.Errorf("failed to marshal attributes: %w", err)
 	}
 
-	user := User{
+	user := providers.User{
 		ID:         userRes.ID,
 		Type:       userRes.Type,
 		OUID:       userRes.OUID,
@@ -280,7 +434,7 @@ func parseToUser(data []byte) (User, Credentials, error) {
 	// Parse and hash credentials
 	credentials, err := parseCredentials(userRes.Credentials)
 	if err != nil {
-		return User{}, nil, fmt.Errorf("failed to parse credentials: %w", err)
+		return providers.User{}, nil, fmt.Errorf("failed to parse credentials: %w", err)
 	}
 
 	return user, credentials, nil
@@ -438,6 +592,8 @@ func parseCredentialObject(
 	}
 
 	iterations, _ := paramsMap["iterations"].(int)
+	parallelism, _ := paramsMap["parallelism"].(int)
+	memory, _ := paramsMap["memory"].(int)
 	keySize, _ := paramsMap["keySize"].(int)
 	salt, _ := paramsMap["salt"].(string)
 
@@ -445,9 +601,11 @@ func parseCredentialObject(
 		StorageType: storageType,
 		StorageAlgo: cryptolib.CredAlgorithm(storageAlgo),
 		StorageAlgoParams: cryptolib.CredParameters{
-			Iterations: iterations,
-			KeySize:    keySize,
-			Salt:       salt,
+			Iterations:  iterations,
+			Parallelism: parallelism,
+			Memory:      memory,
+			KeySize:     keySize,
+			Salt:        salt,
 		},
 		Value: value,
 	}, nil

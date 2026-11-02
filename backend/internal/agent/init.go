@@ -8,23 +8,49 @@ import (
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/observability"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize wires the agent service, registers HTTP routes and returns the service and exporter.
+//
+// valueCapturer is optional. Given one, the service hands it every agent it creates or changes, so the
+// values the agent's export refers to are kept where a reference finds them.
+//
+// projectResolver is nil on a deployment that serves no projects, where a project is never found.
 func Initialize(
 	mux *http.ServeMux,
 	entityService entity.EntityServiceInterface,
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	roleService role.RoleServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
+	valueCapturer declarativeresource.ValueCapturer,
+	entityTypeService entitytype.EntityTypeServiceInterface,
+	dbProvider dbprovider.DBProviderInterface,
+	observabilitySvc observability.ObservabilityServiceInterface,
+	projectResolver projectOUResolver,
 ) (AgentServiceInterface, declarativeresource.ResourceExporter, error) {
-	service := newAgentService(entityService, inboundClientService, ouService, roleService)
+	transactioner, err := dbProvider.GetEntityDBTransactioner()
+	if err != nil {
+		return nil, nil, err
+	}
+	service := newAgentService(authzService, entityService, inboundClientService, ouService, roleService,
+		governance, valueCapturer, entityTypeService, transactioner, observabilitySvc, projectResolver)
+
+	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {
+		return nil, nil, err
+	}
 
 	storeMode := getAgentStoreMode()
 	if storeMode == serverconst.StoreModeComposite || storeMode == serverconst.StoreModeDeclarative {

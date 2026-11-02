@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FullScreenCreationWizardLayout} from '@thunderid/components';
+import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
 import {
   OrganizationUnitPickerScreen,
   useGetOrganizationUnit,
@@ -65,7 +65,7 @@ export default function CreateRolePage(): JSX.Element {
   const steps: Partial<Record<RoleCreateFlowStep, {label: string}>> = useMemo(() => {
     const map: Partial<Record<RoleCreateFlowStep, {label: string}>> = {};
     if (hasMultipleOUs) {
-      map.ORGANIZATION_UNIT = {label: t('createWizard.steps.organizationUnit', 'Organization Unit')};
+      map.ORGANIZATION_UNIT = {label: t('createWizard.steps.organizationUnit', 'Organization unit')};
     }
     map.BASIC_INFO = {label: t('createWizard.steps.basicInfo', 'Details')};
     map.PERMISSIONS = {label: t('createWizard.steps.permissions', 'Permissions')};
@@ -190,30 +190,36 @@ export default function CreateRolePage(): JSX.Element {
     return activeSteps.slice(0, currentIndex + 1);
   };
 
+  const pageTitle = t('create.title', 'Create role');
+
   if (currentStep === RoleCreateFlowStep.ORGANIZATION_UNIT) {
     if (isOuLoading || !hasMultipleOUs) {
       return (
         <Box sx={{minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+          <DocumentTitle title={pageTitle} />
           <CircularProgress />
         </Box>
       );
     }
 
     return (
-      <OrganizationUnitPickerScreen
-        icon={<Home size={26} />}
-        title={t('createWizard.organizationUnit.title', 'Where should this role belong?')}
-        subtitle={t(
-          'createWizard.organizationUnit.subtitle',
-          "Choose the organization unit that will own this role. You can't change this once created.",
-        )}
-        value={ouId}
-        onChange={setOuId}
-        onBack={handleClose}
-        onContinue={handleNextStep}
-        backLabel={t('common:actions.back', 'Back')}
-        continueLabel={t('common:actions.continue', 'Continue')}
-      />
+      <>
+        <DocumentTitle title={pageTitle} />
+        <OrganizationUnitPickerScreen
+          icon={<Home size={26} />}
+          title={t('createWizard.organizationUnit.title', 'Where should this role belong?')}
+          subtitle={t(
+            'createWizard.organizationUnit.subtitle',
+            "Choose the organization unit that will own this role. You can't change this once created.",
+          )}
+          value={ouId}
+          onChange={setOuId}
+          onBack={handleClose}
+          onContinue={handleNextStep}
+          backLabel={t('common:actions.back', 'Back')}
+          continueLabel={t('common:actions.continue', 'Continue')}
+        />
+      </>
     );
   }
 
@@ -251,6 +257,7 @@ export default function CreateRolePage(): JSX.Element {
         </Box>
       }
     >
+      <DocumentTitle title={pageTitle} />
       {error && (
         <Alert severity="error" sx={{mb: 3}} onClose={() => setError(null)}>
           {error}

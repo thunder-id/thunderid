@@ -76,11 +76,22 @@ export function SequenceDiagram({ actors, gaps = [], rows, ariaLabel }: Sequence
   const firstMsgY = ACTOR_Y + ACTOR_H + maxBlockH + LABEL_LINE_GAP + TOP_GAP;
 
   // Compute Y positions.
+  //
+  // A message's label block is drawn above its arrow line, so whatever precedes it has to
+  // leave room for that block. A fixed note height clears a single-line label but not a
+  // taller one, which then rides up over the note.
   let y = firstMsgY;
   const positions: number[] = [];
-  for (const row of rows) {
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
     positions.push(y);
-    y += isNote(row) ? NOTE_ROW_H : rowPitch;
+    if (!isNote(row)) {
+      y += rowPitch;
+      continue;
+    }
+    const next = rows[i + 1];
+    const nextBlockH = next && !isNote(next) ? blockHeight(next) : 0;
+    y += Math.max(NOTE_ROW_H, nextBlockH + LABEL_LINE_GAP + INTER_ROW_GAP);
   }
   const totalH = y + 16;
 

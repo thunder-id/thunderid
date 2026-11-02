@@ -10,6 +10,19 @@ description: Reference for user type schema settings, attribute types, and const
 
 This page is a reference for all settings, attribute types, and constraint modifiers available when defining a user type schema. For step-by-step instructions on creating and managing user types, see [User Types](../user-types).
 
+## User Type Settings
+
+| Setting | Description |
+|---------|-------------|
+| `handle` | Required. The unique, immutable identifier of the user type. 1 to 100 characters of lowercase letters, numbers, hyphens, and underscores, starting and ending with a letter or a number. Unique among user types. |
+| `displayName` | Required. Human-readable name. |
+| `ouId` | Required. The organization unit the user type belongs to. |
+| `allowSelfRegistration` | Whether users of this type can self-register. Defaults to `false`. |
+| `systemAttributes.display` | The attribute used as the display name of users of this type. |
+| `systemAttributes.primaryEmail` | The primary `email` attribute. Defaults to the only email attribute defined directly in the schema. Stays unset when the schema defines more than one and none is selected. |
+| `systemAttributes.primaryMobile` | The primary `mobile` attribute. Defaults to the only mobile attribute defined directly in the schema. Stays unset when the schema defines more than one and none is selected. |
+| `schema` | The attribute definitions of the user type. |
+
 ## Attribute Types
 
 Each attribute in a user type schema has a **type**. <ProductName /> supports the following attribute types:
@@ -17,10 +30,12 @@ Each attribute in a user type schema has a **type**. <ProductName /> supports th
 | Type | Description |
 |------|-------------|
 | `string` | Text value. Supports `required`, `unique`, `credential`, `enum`, and `regex` constraints. |
+| `email` | Email address, such as `alex@example.com`. Includes a default email regex. Supports `required`, `unique`, and `regex` constraints. |
+| `mobile` | Phone number, such as `+94771234567`. The default regex accepts `+` followed by 2 to 15 digits, starting with a nonzero digit. Supports `required`, `unique`, and `regex` constraints. |
 | `number` | Numeric value. Supports `required`, `unique`, and `enum` constraints. |
 | `boolean` | True or false value. Supports `required`. |
 | `object` | Nested object with its own `properties` map. Supports `required`. Nested properties follow the same type rules. |
-| `array` | List of values. Requires an `items` definition specifying the item type (`string`, `number`, or `object`). |
+| `array` | List of values. Requires an `items` definition specifying the item type (`string`, `email`, `mobile`, `number`, `boolean`, or `object`). |
 
 ## Attribute Constraint Modifiers
 
@@ -29,10 +44,18 @@ Modifiers add validation and behavior rules to an attribute. You can combine mul
 | Modifier | Applies To | What It Does | When to Use |
 |----------|------------|--------------|-------------|
 | `required` | All types | The attribute must be provided on creation. <ProductName /> rejects the request if the value is missing. | Fields essential to the user's identity, such as `email` or `username`. |
-| `unique` | `string`, `number` | The value must be unique across all users. <ProductName /> rejects creation or update if a duplicate exists. | Natural identifiers like `username`, `email`, or `employeeId`. |
+| `unique` | `string`, `email`, `mobile`, `number` | The value must be unique across all users. <ProductName /> rejects creation or update if a duplicate exists. Provisioning flows also match on these attributes to detect an existing account, except on a federated sign-in, where the connection's account linking configuration decides instead. | Natural identifiers like `username`, `email`, or `employeeId`. |
 | `credential` | `string`, `number` | <ProductName /> hashes and stores the value securely. Never returned in any API response, even to administrators. | Passwords or other sensitive secrets. |
 | `enum` | `string`, `number` | Restricts the value to a fixed set of allowed options. <ProductName /> rejects any value not in the list. | Controlled vocabularies like a `department` field limited to specific team names. |
-| `regex` | `string` | Validates the value against a regular expression on creation and update. <ProductName /> rejects values that do not match. | Format rules such as email patterns or password complexity requirements. |
+| `regex` | `string`, `email`, `mobile` | Validates the value against a regular expression on creation and update. <ProductName /> rejects values that do not match. | Format rules such as email patterns or password complexity requirements. |
+
+## Primary Contact Attributes
+
+Select **Primary** beside an email or mobile attribute in the schema editor. The Console requires one primary attribute for each contact type. When only one attribute of a contact type exists, <ProductName /> selects it automatically. Attributes inside objects and arrays cannot be selected as primary contacts.
+
+:::note
+Email and mobile attributes use a default regex when the regex is omitted or empty. A custom regex replaces the default. Omit optional contact attributes when they have no value. Supplied values, including empty strings and array items, must match the regex.
+:::
 
 ## Default Schema
 
@@ -40,15 +63,15 @@ Modifiers add validation and behavior rules to an attribute. You can combine mul
 
 ### Person
 
-The general-purpose user type. Self-registration is enabled, so users of this type can sign up through the registration flow of any application that lists it under [Allowed User Types](../../applications/application-settings#control-who-can-register). Administrators can also create users of this type.
+The general-purpose user type, with the handle `person` and the display name `Person`. Self-registration is enabled, so users of this type can sign up through the registration flow of any application that lists it under [Allowed User Types](../../applications/application-settings#control-who-can-register). Administrators can also create users of this type.
 
 | Attribute | Type | Constraints | Notes |
 |-----------|------|-------------|-------|
 | `username` | `string` | required, unique | Display attribute |
-| `email` | `string` | required, unique, regex | Validated against email format |
+| `email` | `email` | required, unique, regex | Primary email |
 | `given_name` | `string` | - | |
 | `family_name` | `string` | - | |
-| `mobile_number` | `string` | - | |
+| `mobile_number` | `mobile` | regex | Primary mobile. Validated against E.164 format, for example `+14155552671` |
 | `sub` | `string` | - | |
 | `name` | `string` | - | |
 | `picture` | `string` | - | |

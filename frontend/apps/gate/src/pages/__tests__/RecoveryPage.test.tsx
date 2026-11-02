@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen} from '@thunderid/test-utils';
+import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi} from 'vitest';
 import RecoveryPage from '../RecoveryPage';
 
@@ -19,5 +19,10 @@ describe('RecoveryPage', () => {
   it('renders Recovery component', () => {
     render(<RecoveryPage />);
     expect(screen.getByTestId('recovery-component')).toBeInTheDocument();
+  });
+
+  it('sets the document title', async () => {
+    render(<RecoveryPage />);
+    await waitFor(() => expect(document.title).toBe('Reset password | ThunderID'));
   });
 });

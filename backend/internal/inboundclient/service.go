@@ -17,6 +17,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/internal/cimd"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
@@ -26,6 +27,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
@@ -33,6 +35,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
 
 // InboundClientServiceInterface is the public API of the inbound client subsystem.
@@ -54,7 +57,7 @@ type InboundClientServiceInterface interface {
 	DeleteInboundClient(ctx context.Context, entityID string) error
 	// Validate resolves flow defaults and validates FK constraints and OAuth profile without persisting.
 	Validate(ctx context.Context, client *inboundmodel.InboundClient,
-		oauthProfile *providers.OAuthProfile, hasClientSecret bool) error
+		oauthProfile *providers.OAuthProfile, hasClientSecret bool, oauthClientID string) error
 	// RevalidateFKs re-runs FK validation for the inbound client identified by entityID. Used after
 	// a referenced resource (e.g. a flow) is updated to detect newly-inconsistent references.
 	RevalidateFKs(ctx context.Context, entityID string) error
@@ -66,6 +69,13 @@ type InboundClientServiceInterface interface {
 	GetOAuthProfileByEntityID(ctx context.Context, entityID string) (*providers.OAuthProfile, error)
 	// GetOAuthClientByClientID resolves a full OAuthClient by its public client_id.
 	GetOAuthClientByClientID(ctx context.Context, clientID string) (*providers.OAuthClient, error)
+	// IsClientAccessibleFromOU refuses a client that may not act for the given organization unit.
+	IsClientAccessibleFromOU(
+		ctx context.Context, client *providers.OAuthClient, ouID string,
+	) (bool, *tidcommon.ServiceError)
+	// GetOAuthClientByEntityID returns the runtime OAuth client of the entity, or (nil, nil) when the
+	// entity does not exist or has no OAuth client registered.
+	GetOAuthClientByEntityID(ctx context.Context, entityID string) (*providers.OAuthClient, error)
 
 	// GetInboundClientAttributes returns the configured user attributes for a single inbound client.
 	// A missing inbound client is treated as one with no configured attributes.
@@ -84,6 +94,12 @@ type InboundClientServiceInterface interface {
 		*inboundmodel.Certificate, *CertOperationError)
 }
 
+// SharedTypeResolver names the sharing resource type an entity category is shareable under. The entity
+// service implements it from the categories the owning packages register.
+type SharedTypeResolver interface {
+	GetSharedResourceType(category providers.EntityCategory) (sharing.ResourceType, bool)
+}
+
 type inboundClientService struct {
 	store          inboundClientStoreInterface
 	transactioner  providers.Transactioner
@@ -95,7 +111,12 @@ type inboundClientService struct {
 	entityType     entitytype.EntityTypeServiceInterface
 	cryptoProvider providers.RuntimeCryptoProvider
 	jweService     jwe.JWEServiceInterface
+	cimdService    cimd.CIMDServiceInterface
+	sharingService sharing.SharingServiceInterface
+	sharedTypes    SharedTypeResolver
 	logger         *log.Logger
+	// keepsReferences is set on a control plane, which keeps a value reference where a value belongs.
+	keepsReferences bool
 }
 
 // newInboundClientService creates and returns an inboundClientService with all dependencies wired.
@@ -108,7 +129,10 @@ func newInboundClientService(store inboundClientStoreInterface, transactioner pr
 	entityType entitytype.EntityTypeServiceInterface,
 	cryptoProvider providers.RuntimeCryptoProvider,
 	jweService jwe.JWEServiceInterface,
-) InboundClientServiceInterface {
+	cimdService cimd.CIMDServiceInterface,
+	sharingService sharing.SharingServiceInterface,
+	sharedTypes SharedTypeResolver,
+) *inboundClientService {
 	return &inboundClientService{
 		store:          store,
 		transactioner:  transactioner,
@@ -120,6 +144,9 @@ func newInboundClientService(store inboundClientStoreInterface, transactioner pr
 		entityType:     entityType,
 		cryptoProvider: cryptoProvider,
 		jweService:     jweService,
+		cimdService:    cimdService,
+		sharingService: sharingService,
+		sharedTypes:    sharedTypes,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "InboundClientService")),
 	}
 }
@@ -149,8 +176,13 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 	if err := validateUserAttributes(validAttrs, client.Assertion, oauthProfile); err != nil {
 		return err
 	}
+	oauthClientID := s.resolveClientID(ctx, client.ID)
 	if oauthProfile != nil {
-		if vErr := validateOAuthProfile(oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
+		if err := s.validateCIMD(oauthClientID, oauthProfile, hasClientSecret, "", nil); err != nil {
+			return err
+		}
+		if vErr := validateOAuthProfile(
+			ctx, s.profileToValidate(oauthProfile), hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
 		}
 	}
@@ -163,7 +195,6 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 	pruneScopeClaims(oauthProfile, scopeClaimPruneSet(seeded, client.AllowedUserTypes, validAttrs))
 	seedIDTokenUserAttributes(oauthProfile, validAttrs)
 	applyInboundDefaults(client, oauthProfile)
-	oauthClientID := s.resolveClientID(ctx, client.ID)
 	if err := validateOAuthCertificateClientID(oauthProfile, oauthClientID); err != nil {
 		return err
 	}
@@ -173,7 +204,7 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 		}
 		if oauthProfile != nil {
 			if oauthProfile.Certificate != nil && oauthClientID != "" {
-				if _, vErr, opErr := s.createCertificate(
+				if _, opErr, vErr := s.createCertificate(
 					txCtx, oauthClientID, oauthProfile.Certificate,
 				); vErr != nil {
 					return vErr
@@ -237,8 +268,19 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 		ctx, client.AllowedUserTypes, client.Assertion, oauthProfile); err != nil {
 		return err
 	}
+	// Capture existing OAuth client_id before the caller updates entity system attributes.
+	oldOAuthClientID := s.resolveClientID(ctx, client.ID)
 	if oauthProfile != nil {
-		if vErr := validateOAuthProfile(oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
+		existing, err := s.store.GetOAuthProfileByEntityID(ctx, client.ID)
+		if err != nil && !errors.Is(err, ErrInboundClientNotFound) {
+			return err
+		}
+		if err := s.validateCIMD(oauthClientID, oauthProfile, hasClientSecret, oldOAuthClientID,
+			existing); err != nil {
+			return err
+		}
+		if vErr := validateOAuthProfile(
+			ctx, s.profileToValidate(oauthProfile), hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
 		}
 	}
@@ -247,8 +289,6 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 		return err
 	}
 	applyInboundDefaults(client, oauthProfile)
-	// Capture existing OAuth client_id before the caller updates entity system attributes.
-	oldOAuthClientID := s.resolveClientID(ctx, client.ID)
 	if err := validateOAuthCertificateClientID(oauthProfile, oauthClientID); err != nil {
 		return err
 	}
@@ -269,7 +309,7 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 			if oauthProfile != nil {
 				oauthCert = oauthProfile.Certificate
 			}
-			if _, vErr, opErr := s.syncCertificate(
+			if _, opErr, vErr := s.syncCertificate(
 				txCtx, oauthClientID, oauthCert,
 			); vErr != nil {
 				return vErr
@@ -283,7 +323,7 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 
 // Validate resolves flow defaults and validates FK constraints and OAuth profile without persisting.
 func (s *inboundClientService) Validate(ctx context.Context, client *inboundmodel.InboundClient,
-	oauthProfile *providers.OAuthProfile, hasClientSecret bool) error {
+	oauthProfile *providers.OAuthProfile, hasClientSecret bool, oauthClientID string) error {
 	if client == nil {
 		return nil
 	}
@@ -298,13 +338,28 @@ func (s *inboundClientService) Validate(ctx context.Context, client *inboundmode
 		return err
 	}
 	if oauthProfile != nil {
-		if vErr := validateOAuthProfile(oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
+		if err := s.validateCIMD(oauthClientID, oauthProfile, hasClientSecret, "", nil); err != nil {
+			return err
+		}
+		if vErr := validateOAuthProfile(
+			ctx, s.profileToValidate(oauthProfile), hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
 		}
 	}
 	if err := s.validateSubjectAttributeMapping(
 		ctx, client.SubjectAttribute, client.AllowedUserTypes); err != nil {
 		return err
+	}
+	return nil
+}
+
+// validateCIMD applies the Client ID Metadata Document rules to the OAuth profile. existing is the
+// stored profile on an update, and nil on a create.
+func (s *inboundClientService) validateCIMD(oauthClientID string, oauthProfile *providers.OAuthProfile,
+	hasClientSecret bool, existingClientID string, existing *providers.OAuthProfile) error {
+	if svcErr := s.cimdService.ValidateOAuthProfile(
+		oauthClientID, oauthProfile, hasClientSecret, existingClientID, existing); svcErr != nil {
+		return &CIMDValidationError{Underlying: svcErr}
 	}
 	return nil
 }
@@ -376,21 +431,13 @@ func (s *inboundClientService) resolveClientID(ctx context.Context, entityID str
 	if s.entityProvider == nil {
 		return ""
 	}
-	e, epErr := s.entityProvider.GetEntity(entityID)
+	e, epErr := s.entityProvider.GetEntityProfile(entityID)
 	if epErr != nil {
 		s.logger.Warn(ctx, "Failed to resolve OAuth client_id from entity provider",
 			log.String("entityID", entityID), log.Error(epErr))
 		return ""
 	}
-	if e == nil {
-		return ""
-	}
-	var attrs map[string]interface{}
-	if err := json.Unmarshal(e.SystemAttributes, &attrs); err != nil || attrs == nil {
-		return ""
-	}
-	clientID, _ := attrs["clientId"].(string)
-	return clientID
+	return clientIDFromEntity(e)
 }
 
 // DeleteInboundClient removes the inbound client, OAuth profile, and certificates for the given entity.
@@ -537,16 +584,41 @@ func (s *inboundClientService) GetOAuthClientByClientID(ctx context.Context, cli
 	if entityIDPtr == nil {
 		return nil, nil
 	}
-	entityID := *entityIDPtr
-	e, epErr := s.entityProvider.GetEntity(entityID)
+	return s.oauthClientForEntity(ctx, *entityIDPtr, clientID)
+}
+
+// GetOAuthClientByEntityID returns the runtime OAuth client of the entity with the given id. The
+// client id comes from the entity's system attributes; an entity without one has no OAuth client.
+func (s *inboundClientService) GetOAuthClientByEntityID(ctx context.Context, entityID string) (
+	*providers.OAuthClient, error) {
+	if s.entityProvider == nil {
+		return nil, fmt.Errorf("entity provider not configured")
+	}
+	if entityID == "" {
+		return nil, nil
+	}
+	return s.oauthClientForEntity(ctx, entityID, "")
+}
+
+// oauthClientForEntity assembles the runtime OAuth client of an entity from the entity, its stored
+// OAuth profile, and its certificate. clientID may be empty, in which case it is read from the
+// entity's system attributes. It returns (nil, nil) when the entity, its client id, or its profile
+// is missing.
+func (s *inboundClientService) oauthClientForEntity(ctx context.Context, entityID, clientID string) (
+	*providers.OAuthClient, error) {
+	e, epErr := s.entityProvider.GetEntityProfile(entityID)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to load entity for client_id: %w", epErr)
+		return nil, fmt.Errorf("failed to load entity for OAuth client: %w", epErr)
 	}
-	ouID := e.OUID
-
+	if clientID == "" {
+		clientID = clientIDFromEntity(e)
+		if clientID == "" {
+			return nil, nil
+		}
+	}
 	oauthProfile, err := s.store.GetOAuthProfileByEntityID(ctx, entityID)
 	if err != nil && !errors.Is(err, ErrInboundClientNotFound) {
 		return nil, err
@@ -554,16 +626,57 @@ func (s *inboundClientService) GetOAuthClientByClientID(ctx context.Context, cli
 	if oauthProfile == nil {
 		return nil, nil
 	}
-
-	client := BuildOAuthClient(entityID, clientID, ouID, e.Category, oauthProfile)
-
+	client := BuildOAuthClient(entityID, clientID, e.OUID, e.Category, oauthProfile)
 	certificate, opErr := s.GetCertificate(ctx, cert.CertificateReferenceTypeOAuthApp, clientID)
 	if opErr != nil {
 		return nil, opErr
 	}
 	client.Certificate = certificate
-
 	return client, nil
+}
+
+// clientIDFromEntity returns the OAuth client_id recorded in the entity's system attributes, or "".
+func clientIDFromEntity(e *providers.Entity) string {
+	if e == nil {
+		return ""
+	}
+	var attrs map[string]interface{}
+	if err := json.Unmarshal(e.SystemAttributes, &attrs); err != nil || attrs == nil {
+		return ""
+	}
+	clientID, _ := attrs["clientId"].(string)
+	return clientID
+}
+
+// IsClientAccessibleFromOU reports whether a client may act for the given organization unit.
+func (s *inboundClientService) IsClientAccessibleFromOU(
+	ctx context.Context, client *providers.OAuthClient, accessingOUID string,
+) (bool, *tidcommon.ServiceError) {
+	if accessingOUID == "" || client == nil {
+		return true, nil
+	}
+	// A client's own organization unit needs no policy. The framework would answer the same, but
+	// only after resolving ownership, and this is the common case on the token path.
+	if client.OUID == accessingOUID {
+		return true, nil
+	}
+
+	// A kind of client no resource type is registered for cannot be shared, so it is usable in its
+	// own organization unit alone.
+	if s.sharedTypes == nil || s.sharingService == nil {
+		return false, nil
+	}
+	rt, shareable := s.sharedTypes.GetSharedResourceType(client.EntityCategory)
+	if !shareable {
+		return false, nil
+	}
+	accessible, svcErr := s.sharingService.IsVisible(ctx, rt, client.ID, accessingOUID)
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to resolve client access for an organization unit",
+			log.String("clientID", client.ID), log.Any("error", svcErr))
+		return false, svcErr
+	}
+	return accessible, nil
 }
 
 // BuildOAuthClient assembles an OAuthClient from a stored OAuthProfile and entity context.
@@ -577,12 +690,14 @@ func BuildOAuthClient(
 		EntityCategory:                     entityCategory,
 		RedirectURIs:                       p.RedirectURIs,
 		PostLogoutRedirectURIs:             p.PostLogoutRedirectURIs,
+		BackchannelLogoutURI:               p.BackchannelLogoutURI,
 		TokenEndpointAuthMethod:            providers.TokenEndpointAuthMethod(p.TokenEndpointAuthMethod),
 		PKCERequired:                       p.PKCERequired,
 		PublicClient:                       p.PublicClient,
 		RequirePushedAuthorizationRequests: p.RequirePushedAuthorizationRequests,
 		DPoPBoundAccessTokens:              p.DPoPBoundAccessTokens,
 		IncludeActClaim:                    p.IncludeActClaim,
+		ClientIDMetadataDocument:           p.ClientIDMetadataDocument,
 		Scopes:                             p.Scopes,
 		ScopeClaims:                        p.ScopeClaims,
 		Token:                              p.Token,
@@ -624,7 +739,7 @@ func (s *inboundClientService) resolveFlowDefaults(ctx context.Context, c *inbou
 
 	ouID := ""
 	if s.entityProvider != nil && c.ID != "" {
-		if e, epErr := s.entityProvider.GetEntity(c.ID); epErr == nil && e != nil {
+		if e, epErr := s.entityProvider.GetEntityProfile(c.ID); epErr == nil && e != nil {
 			ouID = e.OUID
 		}
 	}
@@ -715,27 +830,27 @@ func (s *inboundClientService) GetCertificate(ctx context.Context, refType cert.
 
 // createCertificate validates and creates a new OAuth-app certificate record.
 func (s *inboundClientService) createCertificate(ctx context.Context, refID string,
-	in *inboundmodel.Certificate) (*inboundmodel.Certificate, error, *CertOperationError) {
+	in *inboundmodel.Certificate) (*inboundmodel.Certificate, *CertOperationError, error) {
 	c, vErr := validateCertificateInput(refID, "", in)
 	if vErr != nil {
-		return nil, vErr, nil
+		return nil, nil, vErr
 	}
 	if c == nil {
 		return nil, nil, nil
 	}
 	if _, svcErr := s.certService.CreateCertificate(ctx, c); svcErr != nil {
-		return nil, nil, &CertOperationError{Operation: CertOpCreate, RefType: c.RefType, Underlying: svcErr}
+		return nil, &CertOperationError{Operation: CertOpCreate, RefType: c.RefType, Underlying: svcErr}, nil
 	}
 	return &inboundmodel.Certificate{Type: c.Type, Value: c.Value}, nil, nil
 }
 
 // syncCertificate creates, updates, or deletes the OAuth-app certificate to match the desired state.
 func (s *inboundClientService) syncCertificate(ctx context.Context, refID string,
-	in *inboundmodel.Certificate) (*inboundmodel.Certificate, error, *CertOperationError) {
+	in *inboundmodel.Certificate) (*inboundmodel.Certificate, *CertOperationError, error) {
 	refType := cert.CertificateReferenceTypeOAuthApp
 	existing, svcErr := s.certService.GetCertificateByReference(ctx, refType, refID)
 	if svcErr != nil && svcErr.Code != cert.ErrorCertificateNotFound.Code {
-		return nil, nil, &CertOperationError{Operation: CertOpRetrieve, RefType: refType, Underlying: svcErr}
+		return nil, &CertOperationError{Operation: CertOpRetrieve, RefType: refType, Underlying: svcErr}, nil
 	}
 
 	existingID := ""
@@ -744,17 +859,17 @@ func (s *inboundClientService) syncCertificate(ctx context.Context, refID string
 	}
 	desired, vErr := validateCertificateInput(refID, existingID, in)
 	if vErr != nil {
-		return nil, vErr, nil
+		return nil, nil, vErr
 	}
 
 	if desired != nil {
 		if existing != nil {
 			if _, opErr := s.certService.UpdateCertificateByID(ctx, existing.ID, desired); opErr != nil {
-				return nil, nil, &CertOperationError{Operation: CertOpUpdate, RefType: refType, Underlying: opErr}
+				return nil, &CertOperationError{Operation: CertOpUpdate, RefType: refType, Underlying: opErr}, nil
 			}
 		} else {
 			if _, opErr := s.certService.CreateCertificate(ctx, desired); opErr != nil {
-				return nil, nil, &CertOperationError{Operation: CertOpCreate, RefType: refType, Underlying: opErr}
+				return nil, &CertOperationError{Operation: CertOpCreate, RefType: refType, Underlying: opErr}, nil
 			}
 		}
 		return &inboundmodel.Certificate{Type: desired.Type, Value: desired.Value}, nil, nil
@@ -762,7 +877,7 @@ func (s *inboundClientService) syncCertificate(ctx context.Context, refID string
 
 	if existing != nil {
 		if opErr := s.certService.DeleteCertificateByReference(ctx, refType, refID); opErr != nil {
-			return nil, nil, &CertOperationError{Operation: CertOpDelete, RefType: refType, Underlying: opErr}
+			return nil, &CertOperationError{Operation: CertOpDelete, RefType: refType, Underlying: opErr}, nil
 		}
 	}
 	return nil, nil, nil
@@ -808,13 +923,38 @@ func validateCertificateInput(refID, existingCertID string, in *inboundmodel.Cer
 	}
 }
 
+// referenceStandIn is checked in place of a redirect URI that is wholly a variable reference.
+const referenceStandIn = "https://reference.invalid/callback"
+
+// profileToValidate returns the profile as it is checked. A control plane keeps a reference to the
+// redirect URIs a deployment holds rather than the URIs, and those are checked where they are put in,
+// on import into that deployment; so each such reference is checked as a valid address would be, and
+// every other check still applies. Anywhere else the profile is checked as it is.
+func (s *inboundClientService) profileToValidate(p *providers.OAuthProfile) *providers.OAuthProfile {
+	if !s.keepsReferences || p == nil {
+		return p
+	}
+	checked := *p
+	checked.RedirectURIs = make([]string, len(p.RedirectURIs))
+	for i, uri := range p.RedirectURIs {
+		if valueref.IsWellFormedReference(uri) && !valueref.IsSecretReference(uri) {
+			uri = referenceStandIn
+		}
+		checked.RedirectURIs[i] = uri
+	}
+	return &checked
+}
+
 // validateOAuthProfile validates all fields of an OAuth profile data object.
-func validateOAuthProfile(p *providers.OAuthProfile, hasClientSecret bool,
+func validateOAuthProfile(ctx context.Context, p *providers.OAuthProfile, hasClientSecret bool,
 	cryptoProvider providers.RuntimeCryptoProvider, jweService jwe.JWEServiceInterface) error {
 	if p == nil {
 		return nil
 	}
 	if err := validateRedirectURIs(p); err != nil {
+		return err
+	}
+	if err := validateBackchannelLogoutURI(p); err != nil {
 		return err
 	}
 	if err := validateGrantAndResponseTypes(p); err != nil {
@@ -823,19 +963,73 @@ func validateOAuthProfile(p *providers.OAuthProfile, hasClientSecret bool,
 	if err := validateTokenEndpointAuthMethod(p, hasClientSecret); err != nil {
 		return err
 	}
+	if err := validateIDJAGConfig(p); err != nil {
+		return err
+	}
 	if p.PublicClient {
 		if err := validatePublicClient(p); err != nil {
 			return err
 		}
 	}
-	if err := validateUserInfoConfig(p, cryptoProvider, jweService); err != nil {
+	if err := validateUserInfoConfig(ctx, p, cryptoProvider, jweService); err != nil {
 		return err
 	}
-	if err := validateIDTokenConfig(p, jweService); err != nil {
+	if err := validateIDTokenConfig(ctx, p, cryptoProvider, jweService); err != nil {
 		return err
 	}
 	if err := validateAccessTokenConfig(p); err != nil {
 		return err
+	}
+	return nil
+}
+
+// validateBackchannelLogoutURI checks the back-channel logout URI: an absolute http or https URL
+// with a host, no userinfo, fragment or wildcard, https for a public client, and no private host when
+// configuration rejects them.
+func validateBackchannelLogoutURI(p *providers.OAuthProfile) error {
+	uri := p.BackchannelLogoutURI
+	if uri == "" {
+		return nil
+	}
+	// A bare "#" parses to an empty fragment, so the delimiter is rejected rather than the parsed value.
+	if strings.ContainsAny(uri, "*#") {
+		return ErrOAuthInvalidBackchannelLogoutURI
+	}
+	parsed, err := sysutils.ParseURL(uri)
+	if err != nil || parsed.Hostname() == "" || parsed.User != nil {
+		return ErrOAuthInvalidBackchannelLogoutURI
+	}
+	if config.GetServerRuntime().Config.OAuth.Logout.Backchannel.RejectsPrivateAddresses() &&
+		syshttp.IsPrivateHost(parsed.Hostname()) {
+		return ErrOAuthBackchannelLogoutURIPrivateHost
+	}
+	switch parsed.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if p.PublicClient {
+			return ErrOAuthBackchannelLogoutURIRequiresHTTPS
+		}
+		return nil
+	default:
+		return ErrOAuthInvalidBackchannelLogoutURI
+	}
+}
+
+// validateIDJAGConfig checks that a profile enabling ID-JAG issuance has the token-exchange grant,
+// through which ID-JAGs are issued, and at least one allowed audience to issue them for, none blank.
+func validateIDJAGConfig(p *providers.OAuthProfile) error {
+	if p.Token == nil || p.Token.IDJAG == nil || !p.Token.IDJAG.Enabled {
+		return nil
+	}
+	if !slices.Contains(p.GrantTypes, string(providers.GrantTypeTokenExchange)) {
+		return ErrOAuthClientIDJAGRequiresTokenExchange
+	}
+	audiences := p.Token.IDJAG.AllowedAudiences
+	if len(audiences) == 0 || slices.ContainsFunc(audiences, func(a string) bool {
+		return strings.TrimSpace(a) == ""
+	}) {
+		return ErrOAuthClientIDJAGRequiresAllowedAudience
 	}
 	return nil
 }
@@ -855,16 +1049,44 @@ func validateAccessTokenConfig(p *providers.OAuthProfile) error {
 	return nil
 }
 
+// configuredSigningAlgorithms returns the JWS algorithms the deployment's configured signing keys
+// support. This is narrower than the algorithms the crypto provider can compute, and matches what
+// discovery advertises, so a client cannot register an algorithm that has no key to sign with.
+func configuredSigningAlgorithms(
+	ctx context.Context, cryptoProvider providers.RuntimeCryptoProvider,
+) ([]string, error) {
+	keys, err := cryptoProvider.GetPublicKeys(ctx, providers.PublicKeyFilter{})
+	if err != nil {
+		log.GetLogger().Error(ctx, "Failed to retrieve public keys for signing algorithm validation",
+			log.Error(err))
+		return nil, fmt.Errorf("failed to retrieve signing keys: %w", err)
+	}
+
+	algs := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if key.Algorithm != "" && !slices.Contains(algs, key.Algorithm) {
+			algs = append(algs, key.Algorithm)
+		}
+	}
+	return algs, nil
+}
+
 // validateUserInfoConfig validates the UserInfo signing and encryption configuration.
-func validateUserInfoConfig(p *providers.OAuthProfile, cryptoProvider providers.RuntimeCryptoProvider,
-	jweService jwe.JWEServiceInterface) error {
+func validateUserInfoConfig(ctx context.Context, p *providers.OAuthProfile,
+	cryptoProvider providers.RuntimeCryptoProvider, jweService jwe.JWEServiceInterface) error {
 	if p.UserInfo == nil {
 		return nil
 	}
 	cfg := p.UserInfo
 
-	if cfg.SigningAlg != "" && !slices.Contains(cryptoProvider.GetSupportedSigningAlgorithms(), cfg.SigningAlg) {
-		return ErrOAuthUserInfoUnsupportedSigningAlg
+	if cfg.SigningAlg != "" {
+		algs, err := configuredSigningAlgorithms(ctx, cryptoProvider)
+		if err != nil {
+			return err
+		}
+		if !slices.Contains(algs, cfg.SigningAlg) {
+			return ErrOAuthUserInfoUnsupportedSigningAlg
+		}
 	}
 
 	if cfg.EncryptionEnc != "" && cfg.EncryptionAlg == "" {
@@ -919,11 +1141,22 @@ func validateUserInfoConfig(p *providers.OAuthProfile, cryptoProvider providers.
 
 // validateIDTokenConfig validates the ID token configuration.
 // responseType is the authoritative field; empty defaults to JWT.
-func validateIDTokenConfig(p *providers.OAuthProfile, jweService jwe.JWEServiceInterface) error {
+func validateIDTokenConfig(ctx context.Context, p *providers.OAuthProfile,
+	cryptoProvider providers.RuntimeCryptoProvider, jweService jwe.JWEServiceInterface) error {
 	if p.Token == nil || p.Token.IDToken == nil {
 		return nil
 	}
 	cfg := p.Token.IDToken
+
+	if cfg.SigningAlg != "" {
+		algs, err := configuredSigningAlgorithms(ctx, cryptoProvider)
+		if err != nil {
+			return err
+		}
+		if !slices.Contains(algs, cfg.SigningAlg) {
+			return ErrOAuthIDTokenUnsupportedSigningAlg
+		}
+	}
 
 	if cfg.ResponseType == "" {
 		cfg.ResponseType = providers.IDTokenResponseTypeJWT
@@ -1203,6 +1436,9 @@ func (s *inboundClientService) validateFKs(ctx context.Context, c *inboundmodel.
 	if err := s.validateAllowedUserTypes(ctx, c.AllowedUserTypes); err != nil {
 		return err
 	}
+	if err := s.validateAllowedAgentTypes(ctx, c.AllowedAgentTypes); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1294,23 +1530,44 @@ func (s *inboundClientService) validateLayoutID(ctx context.Context, layoutID st
 func (s *inboundClientService) validateAllowedUserTypes(
 	ctx context.Context, allowedUserTypes []string,
 ) error {
-	if len(allowedUserTypes) == 0 || s.entityType == nil {
+	return s.validateAllowedEntityTypes(ctx, entitytype.TypeCategoryUser, allowedUserTypes,
+		ErrFKInvalidUserType, ErrUserSchemaLookupFailed)
+}
+
+// validateAllowedAgentTypes validates that each allowed agent type corresponds to an existing agent type.
+func (s *inboundClientService) validateAllowedAgentTypes(
+	ctx context.Context, allowedAgentTypes []string,
+) error {
+	return s.validateAllowedEntityTypes(ctx, entitytype.TypeCategoryAgent, allowedAgentTypes,
+		ErrFKInvalidAgentType, ErrAgentSchemaLookupFailed)
+}
+
+// validateAllowedEntityTypes validates that each handle in allowedTypes corresponds to an existing
+// entity type in the given category. invalidErr is returned for an unknown handle; lookupErr is
+// returned when the entity type service itself fails, so the caller can tell a client validation
+// failure from a server fault.
+func (s *inboundClientService) validateAllowedEntityTypes(
+	ctx context.Context, category entitytype.TypeCategory, allowedTypes []string,
+	invalidErr, lookupErr error,
+) error {
+	if len(allowedTypes) == 0 || s.entityType == nil {
 		return nil
 	}
-	existingUserTypes := make(map[string]bool)
+	existingTypes := make(map[string]bool)
 	limit := serverconst.MaxPageSize
 	offset := 0
 	for {
 		// Runtime context: skip authorization checks when fetching entity types.
 		entityTypeList, svcErr := s.entityType.GetEntityTypeList(
-			security.WithRuntimeContext(ctx), entitytype.TypeCategoryUser, limit, offset, false)
+			security.WithRuntimeContext(ctx), category, limit, offset, false)
 		if svcErr != nil {
-			s.logger.Error(ctx, "Failed to retrieve user type list for validation",
+			s.logger.Error(ctx, "Failed to retrieve entity type list for validation",
+				log.String("category", string(category)),
 				log.String("error", svcErr.Error.DefaultValue), log.String("code", svcErr.Code))
-			return ErrUserSchemaLookupFailed
+			return lookupErr
 		}
 		for _, schema := range entityTypeList.Types {
-			existingUserTypes[schema.Name] = true
+			existingTypes[schema.Handle] = true
 		}
 		if len(entityTypeList.Types) == 0 ||
 			offset+len(entityTypeList.Types) >= entityTypeList.TotalResults {
@@ -1318,9 +1575,9 @@ func (s *inboundClientService) validateAllowedUserTypes(
 		}
 		offset += limit
 	}
-	for _, userType := range allowedUserTypes {
-		if userType == "" || !existingUserTypes[userType] {
-			return ErrFKInvalidUserType
+	for _, entityTypeName := range allowedTypes {
+		if entityTypeName == "" || !existingTypes[entityTypeName] {
+			return invalidErr
 		}
 	}
 	return nil
@@ -1341,16 +1598,15 @@ func (s *inboundClientService) validateSubjectAttributeMapping(
 		if !slices.Contains(allowedUserTypes, entityType) {
 			return ErrFKInvalidSubjectAttributeMapping
 		}
-		// A subject attribute must be unique, required, non-credential, and string-typed: unique so it
+		// A subject attribute must be unique, required, non-credential, and string-backed: unique so it
 		// identifies a single user, required so every user of the type has it (a stable sub), and
-		// string so it can be emitted as the string sub claim.
+		// string-backed so it can be emitted as the string sub claim.
 		attrs, svcErr := s.entityType.GetAttributes(
 			security.WithRuntimeContext(ctx), entitytype.TypeCategoryUser, entityType,
 			entitytype.AttributeFilter{
 				AllowNonCredential: true,
 				RequiredOnly:       true,
 				UniqueOnly:         true,
-				Type:               entitytypemodel.TypeString,
 			})
 		if svcErr != nil {
 			s.logger.Error(ctx, "Failed to retrieve attributes for subject mapping validation",
@@ -1358,7 +1614,7 @@ func (s *inboundClientService) validateSubjectAttributeMapping(
 			return ErrUniqueAttributeLookupFailed
 		}
 		if !slices.ContainsFunc(attrs, func(a entitytype.AttributeInfo) bool {
-			return a.Attribute == subjectAttribute
+			return a.Attribute == subjectAttribute && entitytypemodel.IsStringBackedType(a.Type)
 		}) {
 			return ErrFKInvalidSubjectAttributeMapping
 		}
@@ -1559,7 +1815,9 @@ func isComputedAttribute(attr string) bool {
 		oauth2const.ClaimOUID,
 		oauth2const.ClaimOUName,
 		oauth2const.ClaimOUHandle,
-		oauth2const.ClaimUserType:
+		oauth2const.ClaimUserType,
+		oauth2const.ClaimUserTypeHandle,
+		oauth2const.ClaimUserTypeName:
 		return true
 	}
 	return false
@@ -1696,6 +1954,7 @@ func resolveOAuthTokens(in *providers.OAuthTokenConfig,
 			ValidityPeriod: in.IDToken.ValidityPeriod,
 			UserAttributes: in.IDToken.UserAttributes,
 			ResponseType:   in.IDToken.ResponseType,
+			SigningAlg:     in.IDToken.SigningAlg,
 			EncryptionAlg:  in.IDToken.EncryptionAlg,
 			EncryptionEnc:  in.IDToken.EncryptionEnc,
 		}

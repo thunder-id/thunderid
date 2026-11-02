@@ -11,6 +11,8 @@ export {default as useGetOrganizationUnit} from './api/useGetOrganizationUnit';
 export {default as useGetOrganizationUnitGroups} from './api/useGetOrganizationUnitGroups';
 export {default as useGetOrganizationUnits} from './api/useGetOrganizationUnits';
 export {default as useGetOrganizationUnitUsers} from './api/useGetOrganizationUnitUsers';
+export {default as useGetOrganizationUnitsByIds} from './api/useGetOrganizationUnitsByIds';
+export {default as usePagedOrganizationUnits} from './api/usePagedOrganizationUnits';
 export {default as useHasMultipleOUs} from './api/useHasMultipleOUs';
 export {default as useUpdateOrganizationUnit} from './api/useUpdateOrganizationUnit';
 

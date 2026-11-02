@@ -1,6 +1,0 @@
-id: "sms-otp"
-displayName: "SMS OTP Verification"
-scenario: "OTP"
-type: "sms"
-contentType: "text/plain"
-body: "Your verification code is: {{ctx(otpCode)}}. It expires in {{ctx(expiryTime)}}."

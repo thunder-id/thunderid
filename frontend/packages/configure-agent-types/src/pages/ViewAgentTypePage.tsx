@@ -1,10 +1,16 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
+import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
 import {getBreakingSchemaChanges} from '@thunderid/configure-user-types';
 import {useLogger} from '@thunderid/logger/react';
-import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
+import {
+  getContactTypesMissingRegex,
+  getErrorMessage,
+  isContactAttributeType,
+  isEqualIgnoringEmpty,
+  resolveAttributeRegex,
+} from '@thunderid/utils';
 import {
   Stack,
   Typography,
@@ -49,7 +55,7 @@ function convertSchemaToProperties(schema: AgentTypeDefinition): SchemaPropertyI
     unique: 'unique' in value ? (value.unique ?? false) : false,
     credential: 'credential' in value ? (value.credential ?? false) : false,
     enum: 'enum' in value ? (value.enum ?? []) : [],
-    regex: 'regex' in value ? (value.regex ?? '') : '',
+    regex: resolveAttributeRegex(value.type, 'regex' in value ? value.regex : undefined),
     ...('items' in value ? {items: value.items} : {}),
     ...('properties' in value ? {properties: value.properties} : {}),
   }));
@@ -80,11 +86,11 @@ function convertPropertiesToSchema(properties: SchemaPropertyInput[]): AgentType
         (propDef as {credential?: boolean}).credential = true;
       }
 
-      if (prop.type === 'string' || prop.type === 'enum') {
+      if (prop.type === 'string' || isContactAttributeType(prop.type) || prop.type === 'enum') {
         if (prop.enum.length > 0) {
           (propDef as {enum?: string[]}).enum = prop.enum;
         }
-        if (prop.regex.trim()) {
+        if (prop.regex.trim() || isContactAttributeType(prop.type)) {
           (propDef as {regex?: string}).regex = prop.regex;
         }
       }
@@ -139,8 +145,8 @@ export default function ViewAgentTypePage(): JSX.Element {
   // Effective properties (edited or from server)
   const effectiveProperties = editedProperties ?? baseProperties;
 
-  // Effective name (locked to the server-side value)
-  const effectiveName = agentType?.name ?? '';
+  // Handle used as the i18n key prefix (immutable on the server)
+  const agentTypeHandle = agentType?.handle ?? '';
 
   // Whether there are unsaved changes (deep compare edited vs base)
   const hasChanges = useMemo(
@@ -175,7 +181,7 @@ export default function ViewAgentTypePage(): JSX.Element {
   const performSave = useCallback(async (): Promise<void> => {
     if (!id || !agentType) return;
 
-    const name = agentType.name.trim();
+    const {displayName} = agentType;
     const ouId = agentType.ouId.trim();
     const schema = convertPropertiesToSchema(effectiveProperties);
 
@@ -189,7 +195,7 @@ export default function ViewAgentTypePage(): JSX.Element {
       await updateAgentTypeMutation.mutateAsync({
         agentTypeId: id,
         data: {
-          name,
+          displayName,
           ouId,
           ...preservedSystemAttributes,
           schema,
@@ -219,6 +225,23 @@ export default function ViewAgentTypePage(): JSX.Element {
       return;
     }
 
+    const missingRegexTypes = getContactTypesMissingRegex(effectiveProperties);
+    if (missingRegexTypes.length > 0) {
+      setValidationError(
+        missingRegexTypes
+          .map((type) =>
+            type === 'email'
+              ? t('agentTypes:validationErrors.emailRegexRequired', 'Enter a regular expression for email attributes.')
+              : t(
+                  'agentTypes:validationErrors.mobileRegexRequired',
+                  'Enter a regular expression for mobile attributes.',
+                ),
+          )
+          .join(' '),
+      );
+      return;
+    }
+
     // Warn only when a schema change could strand existing agents (removed/newly-required/tightened attribute).
     const breaking = getBreakingSchemaChanges(
       convertPropertiesToSchema(baseProperties),
@@ -239,15 +262,23 @@ export default function ViewAgentTypePage(): JSX.Element {
     void performSave();
   }, [performSave]);
 
+  const pageTitle = t('agentTypes:edit.title', 'Agent schema');
+
   // Loading state
   if (isLoading) {
-    return <PageLoadingAnimation />;
+    return (
+      <>
+        <DocumentTitle title={pageTitle} />
+        <PageLoadingAnimation />
+      </>
+    );
   }
 
   // Error state
   if (fetchError) {
     return (
       <PageContent>
+        <DocumentTitle title={pageTitle} />
         <QueryErrorNotice
           error={fetchError}
           t={tForErrors}
@@ -263,7 +294,7 @@ export default function ViewAgentTypePage(): JSX.Element {
               }}
               startIcon={<ArrowLeft size={16} />}
             >
-              {t('agentTypes:edit.back', 'Back to Agents')}
+              {t('agentTypes:edit.back', 'Back to agents')}
             </Button>
           }
         />
@@ -275,6 +306,7 @@ export default function ViewAgentTypePage(): JSX.Element {
   if (!agentType) {
     return (
       <PageContent>
+        <DocumentTitle title={pageTitle} />
         <Alert severity="warning" sx={{mb: 2}}>
           {t('agentTypes:edit.notFound', 'Agent type not found')}
         </Alert>
@@ -284,7 +316,7 @@ export default function ViewAgentTypePage(): JSX.Element {
           }}
           startIcon={<ArrowLeft size={16} />}
         >
-          {t('agentTypes:edit.back', 'Back to Agents')}
+          {t('agentTypes:edit.back', 'Back to agents')}
         </Button>
       </PageContent>
     );
@@ -292,14 +324,15 @@ export default function ViewAgentTypePage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={pageTitle} />
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to={listUrl} />}>
-          {t('agentTypes:edit.back', 'Back to Agents')}
+          {t('agentTypes:edit.back', 'Back to agents')}
         </PageTitle.BackButton>
         <PageTitle.Header>
           <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-            <Typography variant="h3">{t('agentTypes:edit.title', 'Agent Schema')}</Typography>
+            <Typography variant="h3">{t('agentTypes:edit.title', 'Agent schema')}</Typography>
           </Stack>
         </PageTitle.Header>
       </PageTitle>
@@ -308,7 +341,7 @@ export default function ViewAgentTypePage(): JSX.Element {
         <EditSchemaSettings
           properties={effectiveProperties}
           onPropertiesChange={handlePropertiesChange}
-          agentTypeName={effectiveName}
+          agentTypeHandle={agentTypeHandle}
         />
       </Stack>
 

@@ -6,6 +6,7 @@ package idp
 import (
 	"context"
 	"errors"
+	"maps"
 	"net/url"
 	"slices"
 	"strconv"
@@ -13,10 +14,12 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/system/valuecompare"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -70,7 +73,7 @@ func GetMappedUserType(idp *providers.IDPDTO, claims map[string]interface{}) str
 	resolution := idp.AttributeConfiguration.UserTypeResolution
 	externalAttribute := strings.TrimSpace(resolution.ExternalAttribute)
 	if externalAttribute != "" {
-		if value, ok := getNestedValue(claims, externalAttribute); ok {
+		if value, ok := sysutils.GetNestedValue(claims, externalAttribute); ok {
 			key := sysutils.ConvertInterfaceValueToString(value)
 			if len(resolution.ValueMapping) > 0 {
 				if userType, ok := resolution.ValueMapping[key]; ok {
@@ -102,6 +105,171 @@ func GetAttributeMappings(idp *providers.IDPDTO, claims map[string]interface{}) 
 	return nil
 }
 
+// appendToken trims raw and appends it to tokens, unless it is empty or whitespace-only.
+func appendToken(tokens []string, raw string) []string {
+	if token := strings.TrimSpace(raw); token != "" {
+		return append(tokens, token)
+	}
+	return tokens
+}
+
+// normalizeClaimValueTokens splits a claim value into the tokens a condition is evaluated against.
+// A scalar string with no delimiter is used whole and untrimmed, since it may carry meaningful whitespace.
+func normalizeClaimValueTokens(value interface{}, delimiter string) []string {
+	switch v := value.(type) {
+	case []interface{}:
+		var tokens []string
+		for _, item := range v {
+			tokens = appendToken(tokens, sysutils.ConvertInterfaceValueToString(item))
+		}
+		return tokens
+	case []string:
+		var tokens []string
+		for _, item := range v {
+			tokens = appendToken(tokens, item)
+		}
+		return tokens
+	case string:
+		if delimiter == "" {
+			if strings.TrimSpace(v) == "" {
+				return nil
+			}
+			return []string{v}
+		}
+		var tokens []string
+		for _, part := range strings.Split(v, delimiter) {
+			tokens = appendToken(tokens, part)
+		}
+		return tokens
+	default:
+		return appendToken(nil, sysutils.ConvertInterfaceValueToString(v))
+	}
+}
+
+// conditionMatches reports whether operator/value is satisfied by tokens. includes/not_includes test
+// whole-set membership; every other operator matches if any one token satisfies it.
+func conditionMatches(
+	valueType providers.AuthorizationValueType, operator providers.AuthorizationOperator, value string, tokens []string,
+) bool {
+	if operator.IsMembership() {
+		return valuecompare.EvaluateSet(operator, tokens, value)
+	}
+	for _, token := range tokens {
+		if evaluateScalarCondition(valueType, operator, value, token) {
+			return true
+		}
+	}
+	return false
+}
+
+// evaluateScalarCondition reports whether token satisfies operator against value, both parsed per
+// valueType. A token that fails to parse as the declared type never matches (fail-closed).
+func evaluateScalarCondition(
+	valueType providers.AuthorizationValueType, operator providers.AuthorizationOperator, value, token string,
+) bool {
+	t := compareType(valueType)
+	if t != valuecompare.TypeString {
+		// Whitespace around a number or boolean is never significant, so both sides are trimmed.
+		value, token = strings.TrimSpace(value), strings.TrimSpace(token)
+	}
+	return valuecompare.Evaluate(operator, token, value, t)
+}
+
+// compareType returns the rule type a mapping's values are compared as.
+func compareType(valueType providers.AuthorizationValueType) valuecompare.Type {
+	switch valueType {
+	case providers.AuthorizationValueTypeNumber:
+		return valuecompare.TypeNumber
+	case providers.AuthorizationValueTypeBoolean:
+		return valuecompare.TypeBoolean
+	default:
+		return valuecompare.TypeString
+	}
+}
+
+// GetRuleAuthorizationTargets resolves the local roles, groups, and permissions the IDP's
+// AuthorizationRuleMapping grants for claims, deduplicated across every matching rule.
+func GetRuleAuthorizationTargets(
+	idp *providers.IDPDTO, claims map[string]interface{},
+) []providers.AuthorizationTarget {
+	if idp == nil || idp.AttributeConfiguration == nil || idp.AttributeConfiguration.AuthorizationMapping == nil {
+		return nil
+	}
+
+	var targets []providers.AuthorizationTarget
+	for _, mapping := range idp.AttributeConfiguration.AuthorizationMapping.Rules {
+		value, ok := sysutils.GetNestedValue(claims, mapping.Claim)
+		if !ok {
+			continue
+		}
+		tokens := normalizeClaimValueTokens(value, mapping.Delimiter)
+		valueType := mapping.EffectiveValueType()
+		for _, rule := range mapping.Values {
+			if conditionMatches(valueType, rule.Operator, rule.Value, tokens) {
+				targets = append(targets, rule.Targets...)
+			}
+		}
+	}
+	return dedupeAuthorizationTargets(targets)
+}
+
+// SplitAuthorizationTargets separates mapped targets by kind: roles/groups go to the RBAC engine as
+// subject state, permissions are direct grants with no role or group to resolve.
+func SplitAuthorizationTargets(
+	targets []providers.AuthorizationTarget,
+) (roleIDs, groupIDs []string, permissions []providers.AuthorizationTarget) {
+	for _, target := range targets {
+		switch target.Type {
+		case providers.AuthorizationTargetRole:
+			roleIDs = append(roleIDs, target.ID)
+		case providers.AuthorizationTargetGroup:
+			groupIDs = append(groupIDs, target.ID)
+		case providers.AuthorizationTargetPermission:
+			permissions = append(permissions, target)
+		}
+	}
+	return roleIDs, groupIDs, permissions
+}
+
+// UnionMappedPermissionTargets adds any mapped permission target for the given resource server and a
+// requested permission, granting it directly without the RBAC engine.
+func UnionMappedPermissionTargets(
+	authorizedPermissions, requestedPermissions []string,
+	mappedPermissions []providers.AuthorizationTarget,
+	resourceServerID string,
+) []string {
+	for _, target := range mappedPermissions {
+		if target.ResourceServerID != resourceServerID {
+			continue
+		}
+		if !slices.Contains(requestedPermissions, target.Permission) {
+			continue
+		}
+		if slices.Contains(authorizedPermissions, target.Permission) {
+			continue
+		}
+		authorizedPermissions = append(authorizedPermissions, target.Permission)
+	}
+	return authorizedPermissions
+}
+
+// dedupeAuthorizationTargets removes duplicate targets while preserving first-seen order.
+func dedupeAuthorizationTargets(targets []providers.AuthorizationTarget) []providers.AuthorizationTarget {
+	if len(targets) == 0 {
+		return targets
+	}
+	seen := make(map[providers.AuthorizationTarget]bool, len(targets))
+	result := make([]providers.AuthorizationTarget, 0, len(targets))
+	for _, target := range targets {
+		if seen[target] {
+			continue
+		}
+		seen[target] = true
+		result = append(result, target)
+	}
+	return result
+}
+
 // ApplyAttributeMappings applies external→local attribute mappings. Mappings copy rather than rename:
 // every incoming attribute is preserved and the mapped value is published under the local name as
 // well. Mapped values take precedence on collision. Returns attrs unchanged when no mappings are
@@ -123,7 +291,7 @@ func ApplyAttributeMappings(
 		result[key] = value
 	}
 	for _, m := range mappings {
-		if value, ok := getNestedValue(attrs, m.ExternalAttribute); ok {
+		if value, ok := sysutils.GetNestedValue(attrs, m.ExternalAttribute); ok {
 			result[m.LocalAttribute] = value
 		}
 	}
@@ -131,28 +299,104 @@ func ApplyAttributeMappings(
 	return result
 }
 
-// getNestedValue resolves a value by exact key first, then by dot-notation path through nested maps.
-func getNestedValue(data map[string]interface{}, path string) (interface{}, bool) {
-	if value, ok := data[path]; ok {
-		return value, true
-	}
-	if !strings.Contains(path, ".") {
-		return nil, false
+// BuildAccountLinkingFilters returns one filter per combination of the local attributes each linking
+// attribute matches on, or nil when there is nothing to match on. claims are the mapped claims. An
+// attribute with a value and no local attribute yields nil, since dropping it would widen the match.
+func BuildAccountLinkingFilters(linking *providers.AccountLinking, claims map[string]interface{},
+	mappings []providers.AttributeMapping) []map[string]interface{} {
+	if linking == nil {
+		return nil
 	}
 
-	current := interface{}(data)
-	for _, segment := range strings.Split(path, ".") {
-		obj, ok := current.(map[string]interface{})
-		if !ok {
-			return nil, false
+	filters := []map[string]interface{}{{}}
+	for _, attr := range linking.Attributes {
+		targets := accountLinkingTargets(attr, claims, mappings)
+		if len(targets) == 0 {
+			if value, _ := sysutils.GetNestedValue(claims, attr); sysutils.ConvertInterfaceValueToString(value) != "" {
+				return nil
+			}
+			continue
 		}
-		value, exists := obj[segment]
-		if !exists {
-			return nil, false
+
+		// Every value is read from the one claims map, so two linking attributes that land on the
+		// same local attribute always agree on it, and a filter that already holds it is kept as is.
+		combined := make([]map[string]interface{}, 0, len(filters)*len(targets))
+		for _, filter := range filters {
+			kept := false
+			for _, target := range targets {
+				if _, ok := filter[target]; ok {
+					if !kept {
+						combined = append(combined, filter)
+						kept = true
+					}
+					continue
+				}
+				next := maps.Clone(filter)
+				next[target] = sysutils.ConvertInterfaceValueToString(claims[target])
+				combined = append(combined, next)
+			}
 		}
-		current = value
+		filters = combined
 	}
-	return current, true
+
+	if len(filters[0]) == 0 {
+		return nil
+	}
+	return filters
+}
+
+// GetAccountLinkingLocalAttributes returns the local attributes with a value that the linking
+// attributes match on, in linking order and without duplicates. claims are the mapped claims.
+func GetAccountLinkingLocalAttributes(linking *providers.AccountLinking, claims map[string]interface{},
+	mappings []providers.AttributeMapping) []string {
+	if linking == nil {
+		return nil
+	}
+
+	var attributes []string
+	for _, attr := range linking.Attributes {
+		for _, target := range accountLinkingTargets(attr, claims, mappings) {
+			if !slices.Contains(attributes, target) {
+				attributes = append(attributes, target)
+			}
+		}
+	}
+	return attributes
+}
+
+// accountLinkingTargets returns the valued local attributes a linking attribute may match on: its
+// mapped targets in order, then the same-named attribute when queryable and not fed by another claim.
+func accountLinkingTargets(attr string, claims map[string]interface{},
+	mappings []providers.AttributeMapping) []string {
+	targets := make([]string, 0, len(mappings)+1)
+	mapped, shadowed := false, false
+	for _, m := range mappings {
+		switch {
+		case m.ExternalAttribute == attr:
+			mapped = true
+			if !authnprovidercm.IsReservedLookupAttribute(m.LocalAttribute) &&
+				!slices.Contains(targets, m.LocalAttribute) &&
+				sysutils.ConvertInterfaceValueToString(claims[m.LocalAttribute]) != "" {
+				targets = append(targets, m.LocalAttribute)
+			}
+		case m.LocalAttribute == attr:
+			shadowed = true
+		}
+	}
+
+	if (!mapped || !shadowed) && isPlainAttributeName(attr) && !authnprovidercm.IsReservedLookupAttribute(attr) &&
+		!slices.Contains(targets, attr) && sysutils.ConvertInterfaceValueToString(claims[attr]) != "" {
+		targets = append(targets, attr)
+	}
+	return targets
+}
+
+// isPlainAttributeName reports whether name is a top-level attribute name the entity store accepts
+// as a lookup key: letters, digits and underscores only.
+func isPlainAttributeName(name string) bool {
+	return name != "" && strings.IndexFunc(name, func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_'
+	}) == -1
 }
 
 // validateAttributeMappingShape validates the external→local mappings independently of any user type
@@ -181,6 +425,95 @@ func validateAttributeMappingShape(mappings []providers.AttributeMapping) *tidco
 		seenTargets[local] = true
 	}
 	return nil
+}
+
+// validateAccountLinking rejects linking attributes that are empty, resolve to a reserved name, or
+// cannot match by name and are not mapped for every user type.
+func validateAccountLinking(profile *providers.AttributeConfiguration) *tidcommon.ServiceError {
+	if profile.AccountLinking == nil {
+		return nil
+	}
+	for _, attr := range profile.AccountLinking.Attributes {
+		if strings.TrimSpace(attr) == "" {
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+				Key:          "error.idpservice.attribute_configuration_linking_empty_description",
+				DefaultValue: "account linking attributes must not be empty",
+			})
+		}
+		if authnprovidercm.IsReservedLookupAttribute(attr) {
+			return newReservedLinkingAttributeError(attr)
+		}
+		for i := range profile.UserTypeAttributeMappings {
+			for _, m := range profile.UserTypeAttributeMappings[i].Attributes {
+				if m.ExternalAttribute == attr && authnprovidercm.IsReservedLookupAttribute(m.LocalAttribute) {
+					return newReservedLinkingAttributeError(m.LocalAttribute)
+				}
+			}
+		}
+		if !isPlainAttributeName(attr) && !isMappedForEveryUserType(attr, profile.UserTypeAttributeMappings) {
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+				Key: "error.idpservice.attribute_configuration_linking_unmatchable_description",
+				DefaultValue: "'{{param(attribute)}}' must be mapped to a local attribute for every user " +
+					"type, since only names made of letters, digits and underscores match by name",
+				Params: map[string]string{"attribute": attr},
+			})
+		}
+	}
+	for i := range profile.UserTypeAttributeMappings {
+		entry := profile.UserTypeAttributeMappings[i]
+		if count := maxAccountLinkingFilterCount(profile.AccountLinking, entry.Attributes); count >
+			authnprovidercm.MaxAccountLinkingFilters {
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+				Key: "error.idpservice.attribute_configuration_linking_too_many_lookups_description",
+				DefaultValue: "account linking attributes combine into {{param(count)}} lookups for user type " +
+					"'{{param(userType)}}', more than the {{param(max)}} allowed",
+				Params: map[string]string{
+					"count":    strconv.Itoa(count),
+					"userType": entry.UserType,
+					"max":      strconv.Itoa(authnprovidercm.MaxAccountLinkingFilters),
+				},
+			})
+		}
+	}
+	return nil
+}
+
+// maxAccountLinkingFilterCount returns how many filters BuildAccountLinkingFilters builds under
+// mappings when every attribute it could match on has a value, which is the most it can build.
+func maxAccountLinkingFilterCount(linking *providers.AccountLinking, mappings []providers.AttributeMapping) int {
+	claims := make(map[string]interface{}, len(mappings)+len(linking.Attributes))
+	for _, m := range mappings {
+		claims[m.LocalAttribute] = "x"
+	}
+	for _, attr := range linking.Attributes {
+		claims[attr] = "x"
+	}
+	return len(BuildAccountLinkingFilters(linking, claims, mappings))
+}
+
+// isMappedForEveryUserType reports whether attr is mapped to a local attribute in every user type's
+// mappings, and there is at least one.
+func isMappedForEveryUserType(attr string, userTypeMappings []providers.UserTypeAttributeMapping) bool {
+	if len(userTypeMappings) == 0 {
+		return false
+	}
+	for i := range userTypeMappings {
+		if !slices.ContainsFunc(userTypeMappings[i].Attributes, func(m providers.AttributeMapping) bool {
+			return m.ExternalAttribute == attr
+		}) {
+			return false
+		}
+	}
+	return true
+}
+
+// newReservedLinkingAttributeError reports an account-linking attribute that resolves to a reserved name.
+func newReservedLinkingAttributeError(attr string) *tidcommon.ServiceError {
+	return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+		Key:          "error.idpservice.attribute_configuration_linking_reserved_description",
+		DefaultValue: "'{{param(attribute)}}' is reserved and cannot be used for account linking",
+		Params:       map[string]string{"attribute": attr},
+	})
 }
 
 // validateIDP validates the identity provider details.

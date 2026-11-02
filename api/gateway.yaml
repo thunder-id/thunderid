@@ -1,0 +1,1183 @@
+openapi: 3.0.3
+info:
+  title: Gateway API
+  version: "1.0"
+  description: |
+    Registers the gateways this control plane administers.
+
+    A registration records two things: where the gateway answers, and the management token it is
+    configured with. Registering records where a gateway is and how to authenticate to it; it does
+    not contact the gateway.
+
+    A gateway can also be declared in a file rather than registered here. A declared gateway is read
+    from its file on every start and held in memory, so it appears in these listings but cannot be
+    changed or removed through this API: change the file and restart instead. Editing or deleting
+    one is refused with `GTW-1012`.
+
+    The management token is **write-only**. It is held encrypted and is never returned by any
+    response, because a read that returned it would hand every operator of this control plane the
+    credentials to every gateway it administers.
+
+    The versions applied to a gateway are captured through the Configuration Version API
+    (`/configuration-versions`). This API applies one to a gateway, compares one with what a gateway
+    holds, and reverts a gateway to the version it held before.
+
+    ## Authorization
+
+    Every route here requires the **root system permission**, the one named by
+    `server.security.system_permission_prefix` plus `system` (so `system` by default, or for example
+    `tenant_instance:system` where a prefix is configured). A narrower permission is not enough for
+    any of them, including the reads.
+
+    A registration holds the credential to a gateway, and even the list of names and addresses is
+    worth protecting: it describes the fleet. Reading it is therefore as privileged as changing it.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: Gateways
+    description: The gateways this control plane administers.
+  - name: Gateway values
+    description: |
+      A gateway's variables and secrets, held in the gateway's own store and managed through this
+      control plane with the gateway's key.
+
+security:
+  - OAuth2: [system]
+
+paths:
+  /gateways:
+    get:
+      tags: [Gateways]
+      summary: List the registered gateways
+      description: Returns every gateway this deployment administers, oldest first. No management token is included.
+      responses:
+        "200":
+          description: The registered gateways
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Gateway'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Gateways]
+      summary: Register a gateway
+      description: |
+        Records a gateway this control plane administers.
+
+        The control plane issues the key it will present to that gateway and returns it once, in
+        this response. Configure the gateway with it: nothing reads it back.
+
+        The gateway is not contacted. An unreachable `baseUrl` is found when something first
+        calls that gateway, not here. A `baseUrl` must be an absolute `https` URL without
+        credentials in it (`400`, `GTW-1009`), and may not name a loopback, link-local or private
+        address unless the deployment sets `gateway.allow_private_addresses` (`400`, `GTW-1027`).
+        A `name` is at most 64 letters, digits, spaces, hyphens, underscores and dots (`400`,
+        `GTW-1028`).
+
+        How many gateways a deployment may hold is bounded by `gateway.max_gateways`, which is one
+        unless a deployment changes it. Setting it to zero refuses every registration, for a
+        deployment that administers none.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              name: "production"
+              baseUrl: "https://dp.example.com:8090"
+      responses:
+        "201":
+          description: |
+            The registered gateway, and the key it issued. This is the only response that carries
+            the key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Registration'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+
+  /gateways/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The gateway's id.
+    get:
+      tags: [Gateways]
+      summary: Get a gateway
+      responses:
+        "200":
+          description: The gateway. The management token is not returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Gateway'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Gateways]
+      summary: Change a gateway
+      description: |
+        Changes a registration. A field the body omits keeps the value it already has, so an
+        address can be moved without restating the certificate.
+
+        `baseUrl` is what says which gateway this is, so moving it is how a gateway that moved
+        is followed, and it is refused if another gateway already answers at that address. A new
+        `baseUrl` is held to the rules of a registration: an absolute `https` URL without
+        credentials (`400`, `GTW-1009`), not a loopback, link-local or private address unless the
+        deployment sets `gateway.allow_private_addresses` (`400`, `GTW-1027`). A new `name` is at
+        most 64 letters, digits, spaces, hyphens, underscores and dots (`400`, `GTW-1028`).
+
+        A key the body carries replaces the stored one, which is how a gateway's credential is
+        rotated: send the new value here and give the same value to the gateway.
+
+        A body that omits it keeps what is held. Nothing is generated on an edit, because a change
+        nobody asked for would leave the gateway unreachable until the new value reached it, and
+        because a generated value would have to be returned by a response an edit has nowhere to put
+        one in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRequest'
+            example:
+              baseUrl: "https://dp.example.com:9443"
+      responses:
+        "200":
+          description: The updated gateway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Gateway'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [Gateways]
+      summary: Remove a gateway
+      description: |
+        Removes the registration. The gateway itself is untouched and keeps running with whatever
+        configuration it already holds.
+      responses:
+        "204":
+          description: The gateway was removed
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /gateways/{id}/applied-version:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+    get:
+      tags: [Gateways]
+      summary: Get the version a gateway holds
+      description: Reports the version last applied to the gateway, and the one a revert would return it to. A gateway nothing was applied to holds neither.
+      responses:
+        "200":
+          description: What the gateway holds
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppliedVersion'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+  /gateways/{id}/applied-configuration:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+    get:
+      tags: [Gateways]
+      summary: Get the configuration a gateway runs
+      description: |
+        Returns every resource of the version last applied to the gateway, each in the shape the
+        resource's own read returns, for example what `GET /applications/{id}` returns for an
+        application. A console shows the configuration as the gateway runs it from this, rather than
+        as this deployment holds it now, which may have moved on since the apply.
+
+        A value the version refers to, such as `var:APPLICATION_ORDERS_CLIENT_ID`, is returned as the
+        reference: the version does not hold the value. A secret the resource's own read masks is
+        masked the same way, and user credentials are never returned. A gateway nothing was applied to
+        runs nothing: `resources` is empty and there is no `version`.
+
+        This is the version recorded as applied, whole. An apply is recorded even when the gateway
+        refused to write some of its resources, since every later apply sends the version whole and
+        tries them again (see `ApplyResult.recorded`), so a resource the gateway refused on the last
+        apply is listed here all the same. The apply's own result names what the gateway refused.
+      responses:
+        "200":
+          description: The version recorded as applied to the gateway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppliedConfiguration'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+  /gateways/{id}/diff:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+      - name: version
+        in: query
+        required: false
+        schema:
+          type: string
+        description: The version to compare, its hash, a prefix of at least seven of its characters, or `latest`. Defaults to `latest`.
+    get:
+      tags: [Gateways]
+      summary: Compare a version with what a gateway holds
+      description: Reports what applying the version would add, change and remove, without calling the gateway.
+      responses:
+        "200":
+          description: The differences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Diff'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+  /gateways/{id}/apply:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+    post:
+      tags: [Gateways]
+      summary: Apply a configuration version to a gateway
+      description: |
+        Writes a version to the gateway through its import API, presenting the gateway's key. The
+        version is sent whole, and what the gateway holds that the version no longer has is removed:
+        the difference is worked out from the version last applied to that gateway.
+
+        The gateway then holds the version, and the one it held before becomes what a revert returns
+        it to. A dry run sends the import as a dry run and records nothing. The gateway's own account
+        of the import is returned, including any resource it refused.
+
+        A version refers to variables and secrets by name rather than carrying their values, and the
+        gateway holds the values. Before anything is sent, the gateway's store is asked for every
+        name the version refers to. A dry run lists any it lacks in `missing`; an apply is refused
+        with `409` until the gateway holds them all.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyRequest'
+      responses:
+        "200":
+          description: The result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplyResult'
+        "202":
+          description: |
+            Another apply to the gateway is running, and this one asked for `latest` with nothing
+            selected and nothing confirmed, so it was queued rather than done: the latest version at
+            that time is applied once the running apply finishes, for the user who asked. A version
+            named by its hash, or a confirmed apply, waits instead. A burst of applies queues at most
+            one. An apply the queued run would refuse for its removals is refused now with `409`. The
+            queued run is best effort: it is not kept across a restart of the node running it, and
+            its failure is logged rather than answered, so read the gateway's applied version to see
+            what it holds.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplyResult'
+        "400":
+          description: The request was malformed, or the selection names a resource the diff does not report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidBody:
+                  summary: The body is not one JSON object
+                  value:
+                    code: "GTW-1007"
+                    message:
+                      key: "error.gatewayservice.invalid_request_body"
+                      defaultValue: "The request body is not valid JSON"
+                invalidSelection:
+                  summary: The selection names a resource the diff does not report
+                  value:
+                    code: "GTW-1025"
+                    message:
+                      key: "error.gatewayservice.invalid_selection"
+                      defaultValue: "The selection names a resource this apply does not report"
+                    description:
+                      key: "error.gatewayservice.invalid_selection.description"
+                      defaultValue: "Select changes by the keys a diff of this version reports for this gateway. A resource whose key is longer than 512 characters, or whose id or name is longer than 255, cannot be left out."
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: |
+            The gateway does not hold every value the version refers to (`GTW-1017`); the apply would
+            remove more resources than `gateway.removal_confirmation_threshold` and was not confirmed
+            (`GTW-1030`); another apply or revert to the gateway was still running after this one had
+            waited as long as an import may take (`GTW-1029`); a capture removed the version before
+            the apply could record it (`GTW-1018`); or another apply finished first (`GTW-1019`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "502":
+          description: The gateway could not be reached, or refused the request.
+        "503":
+          description: |
+            The apply took longer to prepare than its lease allows for an import, and sent nothing to
+            the gateway (`GTW-5003`). Apply again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /gateways/{id}/revert:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+    post:
+      tags: [Gateways]
+      summary: Revert a gateway to the version it held before
+      description: |
+        Applies the version the gateway held before the one it holds now, removing what that version
+        does not have. It goes back one step only: afterwards the gateway has no earlier version to
+        revert to, and another revert is refused (`GTW-1016`) until a later apply. Like an apply, it is
+        refused while the gateway lacks a value that version refers to.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevertRequest'
+      responses:
+        "200":
+          description: The result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplyResult'
+        "400":
+          description: The gateway holds no earlier version to revert to.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: |
+            The gateway does not hold every value the version refers to (`GTW-1017`); the revert
+            would remove more resources than `gateway.removal_confirmation_threshold` and was not
+            confirmed (`GTW-1030`); or another apply or revert to the gateway was still running
+            after this one had waited as long as an import may take (`GTW-1029`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "502":
+          description: The gateway could not be reached, or refused the request.
+        "503":
+          description: |
+            The apply took longer to prepare than its lease allows for an import, and sent nothing to
+            the gateway (`GTW-5003`). Apply again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /gateways/{id}/variables:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+    get:
+      tags: [Gateway values]
+      summary: List a gateway's variables
+      description: |
+        Passed to the gateway's own `GET /variables`, presenting the gateway's key, with the query
+        as given (`limit`, `offset`, `names`, `filter`). What the gateway returns is answered in the
+        variable store API's shapes, and a call the gateway refuses is answered with the gateway's own
+        status and error, unchanged. The same holds for every call to a gateway's values.
+      responses:
+        "200":
+          description: The gateway's answer.
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "502":
+          description: The gateway could not be reached.
+    post:
+      tags: [Gateway values]
+      summary: Create a variable on a gateway
+      description: Passed to the gateway's own `POST /variables`, and answered as the gateway answered.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: The gateway's answer.
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "502":
+          description: The gateway could not be reached.
+  /gateways/{id}/variables/{name}:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+      - $ref: '#/components/parameters/ValueName'
+    get:
+      tags: [Gateway values]
+      summary: Read a gateway's variable
+      responses:
+        "200":
+          description: The gateway's answer.
+        "502":
+          description: The gateway could not be reached.
+    put:
+      tags: [Gateway values]
+      summary: Update a gateway's variable
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: The gateway's answer.
+        "201":
+          description: The variable did not exist on the gateway, and was created.
+        "502":
+          description: The gateway could not be reached.
+    delete:
+      tags: [Gateway values]
+      summary: Delete a gateway's variable
+      responses:
+        "204":
+          description: Deleted on the gateway.
+        "502":
+          description: The gateway could not be reached.
+  /gateways/{id}/secrets:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+    get:
+      tags: [Gateway values]
+      summary: List a gateway's secrets
+      description: |
+        Passed to the gateway's own `GET /secrets`. As on the gateway, a secret's value is never
+        returned: only its name and whether it is set.
+      responses:
+        "200":
+          description: The gateway's answer.
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "502":
+          description: The gateway could not be reached.
+    post:
+      tags: [Gateway values]
+      summary: Create a secret on a gateway
+      description: |
+        Passed to the gateway's own `POST /secrets`. The value is held only by the gateway; this
+        plane does not store it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: The gateway's answer.
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "502":
+          description: The gateway could not be reached.
+  /gateways/{id}/secrets/{name}:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+      - $ref: '#/components/parameters/ValueName'
+    get:
+      tags: [Gateway values]
+      summary: Read whether a gateway holds a secret
+      responses:
+        "200":
+          description: The gateway's answer, without the value.
+        "502":
+          description: The gateway could not be reached.
+    put:
+      tags: [Gateway values]
+      summary: Replace a secret's value on a gateway
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: The gateway's answer.
+        "201":
+          description: The secret did not exist on the gateway, and was created.
+        "502":
+          description: The gateway could not be reached.
+    delete:
+      tags: [Gateway values]
+      summary: Delete a gateway's secret
+      responses:
+        "204":
+          description: Deleted on the gateway.
+        "502":
+          description: The gateway could not be reached.
+components:
+  parameters:
+    GatewayID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The gateway's id.
+    ValueName:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The variable's or secret's name on the gateway.
+  responses:
+    BadRequest:
+      description: The request was malformed, or a required field was missing
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidBody:
+              summary: The body is not one JSON object
+              value:
+                code: "GTW-1007"
+                message:
+                  key: "error.gatewayservice.invalid_request_body"
+                  defaultValue: "The request body is not valid JSON"
+            connectionRequired:
+              summary: A field needed to reach the gateway is missing
+              value:
+                code: "GTW-1005"
+                message:
+                  key: "error.gatewayservice.connection_required"
+                  defaultValue: "A base URL is required to reach the gateway"
+            isDeclarative:
+              summary: The gateway is declared in a file and cannot be changed here
+              value:
+                code: "GTW-1012"
+                message:
+                  key: "error.gateway.is_declarative"
+                  defaultValue: "This gateway is declared in a file"
+    Unauthorized:
+      description: No valid credentials were presented
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The caller is authenticated but not permitted
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No gateway of that id is registered
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "GTW-1002"
+            message:
+              key: "error.gatewayservice.gateway_not_found"
+              defaultValue: "Gateway not found"
+    Conflict:
+      description: The registration conflicts with one that already exists, or with the configured bound
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            nameTaken:
+              summary: The name is already registered
+              value:
+                code: "GTW-1004"
+                message:
+                  key: "error.gatewayservice.name_taken"
+                  defaultValue: "A gateway with this name is already registered"
+            gatewayAlreadyRegistered:
+              summary: One gateway registers once
+              value:
+                code: "GTW-1008"
+                message:
+                  key: "error.gateway.already_registered"
+                  defaultValue: "Gateway already registered"
+            limitReached:
+              summary: The deployment already holds as many gateways as it allows
+              value:
+                code: "GTW-1006"
+                message:
+                  key: "error.gatewayservice.limit_reached"
+                  defaultValue: "This deployment already administers as many gateways as it is configured to allow"
+    MissingValues:
+      description: |
+        The gateway does not hold every variable and secret the version refers to, a capture removed
+        the version before the apply could record it, or another apply to the gateway finished first.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missingValues:
+              summary: The gateway lacks a value the version refers to
+              value:
+                code: "GTW-1017"
+                message:
+                  key: "error.gatewayservice.missing_values"
+                  defaultValue: "The gateway does not hold every value this version refers to"
+            versionRemoved:
+              summary: The version was removed while it was applied
+              value:
+                code: "GTW-1018"
+                message:
+                  key: "error.gatewayservice.version_removed"
+                  defaultValue: "The version was removed while it was applied"
+            appliedChanged:
+              summary: Another apply to the gateway finished first
+              value:
+                code: "GTW-1019"
+                message:
+                  key: "error.gatewayservice.applied_changed"
+                  defaultValue: "Another apply to this gateway finished first"
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [name, baseUrl]
+      properties:
+        name:
+          type: string
+          description: A label for this gateway, unique within the deployment.
+          example: "production"
+        baseUrl:
+          type: string
+          description: |
+            Where the gateway answers, and what identifies it.
+
+            **One gateway registers once**, so this is unique within the deployment. A gateway
+            reached by more than one name can therefore be registered more than once, under each of
+            them; nothing here can tell they are the same deployment. Register the name the control
+            plane should call it by.
+          example: "https://dp.example.com:8090"
+        key:
+          type: string
+          format: password
+          description: |
+            The token this control plane will present to that gateway.
+
+            Optional. Supply it when the gateway was configured with a key first and this
+            registration has to match; leave it out and one is generated, which is the usual way and
+            means a key is not typed, mailed or committed on the way in. Either way the response
+            returns it, and that is the only time it is readable.
+
+            A gateway declared in a file may name one the same way. Write it as an environment
+            reference there, `key: "{{.GATEWAY_TOKEN}}"`, so the file carries the name and not the
+            credential.
+          example: "a-key-the-gateway-already-holds"
+        caCertificate:
+          type: string
+          description: |
+            A PEM certificate to trust when calling this gateway, in addition to the system roots.
+
+            For a gateway serving a certificate no public authority signed, which is what a local
+            or on-premise deployment usually has. Leave empty for a gateway behind an ingress with
+            a publicly-issued certificate: it verifies against the system roots with nothing here.
+        isDefault:
+          type: boolean
+          default: false
+          description: |
+            Makes this the default gateway. Its `baseUrl` is the one the console shows for an
+            application's runtime endpoints.
+
+            At most one gateway is the default. If another already is, it gives that up to this
+            one. The first gateway registered is the default whether or not this is set.
+    UpdateRequest:
+      type: object
+      minProperties: 1
+      description: |
+        What to change. Every property is optional and what is omitted keeps the value it already
+        has, so a caller changing one field need not restate the others.
+      properties:
+        name:
+          type: string
+          description: A label for this gateway, unique within the deployment.
+        baseUrl:
+          type: string
+          description: Where the gateway answers.
+        caCertificate:
+          type: string
+          description: A PEM certificate to trust when calling this gateway.
+        key:
+          type: string
+          format: password
+          description: |
+            The token this control plane presents to that gateway.
+
+            Omit it to keep the one already held. Sending a new value is how a credential is
+            rotated, and the same value has to reach the gateway, which holds it as its
+            management API key.
+    Registration:
+      type: object
+      description: |
+        A registration, and the key it issued.
+
+        The key appears here and nowhere else. It is generated when the gateway is registered, held
+        encrypted, and never read back, so this response is the only chance to configure it on the
+        gateway. Lose it and the way forward is to rotate, not to look it up.
+      allOf:
+        - $ref: '#/components/schemas/Gateway'
+        - type: object
+          required: [key]
+          properties:
+            key:
+              type: string
+              format: password
+              description: The token this control plane will present to that gateway.
+    Gateway:
+      type: object
+      description: A registered gateway. Carries no `key` property, so no read can disclose one.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        baseUrl:
+          type: string
+        caCertificate:
+          type: string
+        isDefault:
+          type: boolean
+          description: |
+            Whether this is the default gateway. At most one gateway is, and the first one registered
+            becomes it. Omitted when false.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AppliedConfiguration:
+      type: object
+      required: [gatewayId, resources]
+      properties:
+        gatewayId:
+          type: string
+        version:
+          type: string
+          description: The hash of the version the gateway applied. Absent when nothing was applied.
+        appliedAt:
+          type: string
+          format: date-time
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppliedResource'
+        skipped:
+          type: array
+          description: The version's documents that cannot be shown as their resource.
+          items:
+            $ref: '#/components/schemas/SkippedResource'
+    AppliedResource:
+      type: object
+      required: [resourceType, id, resource]
+      properties:
+        resourceType:
+          type: string
+          description: The resource type, as a version's document names it in `resource_type`.
+          example: group
+        id:
+          type: string
+          description: The resource's id, or its name for a resource exported without one.
+        resource:
+          type: object
+          additionalProperties: true
+          description: What the resource's own read returns.
+        parts:
+          type: object
+          additionalProperties: true
+          description: |
+            The collections the resource's own API serves apart from it, keyed by the path below the
+            resource they are served at, each in the shape that path returns, as one page holding
+            every item:
+
+            | Resource type | Parts |
+            |---|---|
+            | `group` | `members` |
+            | `role` | `assignments` |
+            | `resource_server` | `resources` (top level), `actions`, and for each resource `resources/{resourceId}`, `resources/{resourceId}/resources` (its children) and `resources/{resourceId}/actions` |
+            | `translation` | `ns/{namespace}` for each namespace |
+
+            A version names a resource server's resources `{resourceServerId}{delimiter}{path}`, the
+            actions of a resource `{resourceServerId}{delimiter}{path}{delimiter}{handle}`, and the
+            actions of the resource server itself `{resourceServerId}{delimiter}{handle}`, since an
+            export does not carry the ids this deployment gave them.
+    SkippedResource:
+      type: object
+      required: [resourceType, code, reason]
+      properties:
+        resourceType:
+          type: string
+        id:
+          type: string
+        code:
+          type: string
+          description: |
+            `GTW-1021` the resource type cannot be shown from a version; `GTW-1022` the document does
+            not read as its resource: it is not YAML as it stands, as a document captured with a
+            template range is not until its values are filled in, or it does not read as the resource
+            its type names.
+        reason:
+          type: string
+    AppliedVersion:
+      type: object
+      properties:
+        gatewayId:
+          type: string
+        appliedVersion:
+          type: string
+          description: The hash of the version the gateway holds. Omitted when nothing was applied.
+        previousVersion:
+          type: string
+          description: |
+            The hash of the version a revert returns it to. Omitted when there is none: before a second
+            apply, and after a revert.
+        appliedAt:
+          type: string
+          format: date-time
+        appliedBy:
+          description: The user who applied the version, or reverted the gateway to it. Left out when the user's name cannot be read.
+          allOf:
+            - $ref: '#/components/schemas/Actor'
+    Actor:
+      type: object
+      description: |
+        A user, by id and name. Given out only when the control plane is configured to look names up at
+        its trusted issuer (`server.security.trusted_issuer.user_lookup`) and the issuer knows the user;
+        otherwise the field holding the user is left out, since the id alone is an identifier of the
+        issuer's that says nothing to a viewer. The id is recorded either way.
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          description: The token's `sub` claim, or the claim `server.security.trusted_issuer.user_id_claim` names.
+        name:
+          type: string
+          description: The user's name as the trusted issuer's user API reports it, read when the record is read and never stored.
+    ApplyRequest:
+      type: object
+      properties:
+        version:
+          type: string
+          description: The version to apply, its hash, a prefix of at least seven of its characters, or `latest`. Defaults to `latest`.
+        dryRun:
+          type: boolean
+          description: Send the import as a dry run and record nothing.
+        confirmRemovals:
+          type: boolean
+          description: |
+            Lets the apply remove more resources from the gateway than `gateway.removal_confirmation_threshold`
+            allows unconfirmed. Without it such an apply is refused with `409` (`GTW-1030`); a dry run
+            shows the removals first.
+        selection:
+          type: array
+          items:
+            type: string
+          description: |
+            The keys (`Change.key`) of the changes to apply. Every other change the diff offers is
+            left alone: neither written nor removed. The gateway goes on leaving those resources alone
+            in later applies and reverts, until a selection includes them again. A dry run applies the
+            selection to what it checks without keeping it. Omitted, the gateway's standing choices
+            apply; empty, every change on offer is left alone. A key that names no resource in the
+            diff is refused with `400` (`GTW-1025`), as is leaving out a resource whose key is longer
+            than 512 characters or whose id or name is longer than 255.
+        skip:
+          type: array
+          items:
+            type: string
+          description: |
+            The keys of changes to leave alone in this apply only: neither written nor removed, and
+            the gateway's standing choice for them kept as it is. A skipped change stays owed to the
+            gateway: the next diff offers it again, marked `skipped`, as `updated` or `deleted`, until an
+            apply writes or removes it or a selection leaves it alone for good. A selection decides the
+            other changes. A key that names no change in the diff, or one the selection also names, is
+            refused with `400` (`GTW-1025`); one naming a change that changes nothing skips nothing.
+    RevertRequest:
+      type: object
+      properties:
+        confirmRemovals:
+          type: boolean
+          description: As on an apply. A revert to a much smaller version is the usual case.
+        dryRun:
+          type: boolean
+    Change:
+      type: object
+      properties:
+        key:
+          type: string
+          description: Names the resource in a selection, as its type and its id, or its name when it has none.
+        excluded:
+          type: boolean
+          description: |
+            The gateway is set to leave this resource alone. Such a change stays on offer, whatever the
+            versions say of it, until a selection includes it again: one whose removal was held back is
+            offered as `deleted` once no version names it.
+        skipped:
+          type: boolean
+          description: |
+            An earlier apply skipped this change, so it is offered again whatever the versions say of
+            it: as `updated` while the version carries the resource, since what the gateway holds of it
+            is not known, and as `deleted` once no version names it. Cleared by the apply that takes it.
+        resourceType:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        change:
+          type: string
+          enum: [added, updated, deleted, unchanged]
+        lines:
+          type: array
+          description: |
+            The resource's document diffed line by line, from what the gateway holds to what is applied.
+            Omitted for an unchanged resource. Values appear as the references the version holds, never
+            as the values themselves.
+          items:
+            type: object
+            properties:
+              kind:
+                type: string
+                enum: [' ', '+', '-']
+                description: A line both sides have, one only the applied side has, or one only the held side has.
+              text:
+                type: string
+    Diff:
+      type: object
+      properties:
+        fromVersion:
+          type: string
+          description: The hash of the version the gateway holds. Omitted when it holds none.
+        toVersion:
+          type: string
+          description: The hash of the version applied.
+        summary:
+          type: object
+          description: Counts the changes by kind, leaving out those the gateway is set to leave alone.
+          properties:
+            added:
+              type: integer
+            updated:
+              type: integer
+            deleted:
+              type: integer
+            unchanged:
+              type: integer
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Change'
+        misplacedSecrets:
+          type: array
+          description: |
+            Where the version refers to a secret from a field that holds no credential. A gateway
+            refuses such a resource on import, so put the field right and capture again. A capture
+            refuses the configuration outright; this names what an earlier version still holds.
+          items:
+            $ref: '#/components/schemas/ValueReference'
+    ApplyResult:
+      type: object
+      properties:
+        gatewayId:
+          type: string
+        dryRun:
+          type: boolean
+        diff:
+          $ref: '#/components/schemas/Diff'
+        import:
+          type: object
+          description: The gateway's own account of the import, as it answered.
+        recorded:
+          type: boolean
+          description: |
+            Whether the gateway is now recorded as holding the version. A dry run never records. A
+            resource the gateway refused to write, which `import` names, does not stop it, since every
+            later apply sends the version whole. A removal it refused, or did not confirm, does: the
+            version is left unrecorded, so the next apply works from the version held before and sends
+            the removal again.
+        missing:
+          type: object
+          description: |
+            Only on a dry run: the variables and secrets the version refers to that the gateway does
+            not hold. An apply in that state is refused instead.
+          properties:
+            variables:
+              type: array
+              items:
+                type: string
+            secrets:
+              type: array
+              items:
+                type: string
+            references:
+              type: array
+              description: Where the version refers to each missing value.
+              items:
+                $ref: '#/components/schemas/ValueReference'
+        changed:
+          type: object
+          description: |
+            The variables and secrets the version refers to whose values were set on the gateway
+            again since the version it holds was applied, so a value changed outside any version is
+            seen as it takes effect. It compares the time the gateway's store gives for each value
+            with the time it gave at that apply, never with the control plane's clock. A value the
+            control plane sent itself, such as one captured from a resource, is reported too. Names
+            only, never values. Omitted when none changed or the gateway holds no version yet.
+          properties:
+            variables:
+              type: array
+              items:
+                type: string
+            secrets:
+              type: array
+              items:
+                type: string
+            references:
+              type: array
+              description: Where the version refers to each changed value.
+              items:
+                $ref: '#/components/schemas/ValueReference'
+        queued:
+          type: boolean
+          description: |
+            Only with `202`: another apply to the gateway was running, so the latest version was not
+            applied now and will be applied once it finishes, by whichever node finishes it.
+        queuedVersion:
+          type: string
+          description: With `queued`, the version that will be applied.
+    ValueReference:
+      type: object
+      description: |
+        One place a version refers to a variable or a secret: the resource that holds the reference and
+        the field it stands in, so the value can be told apart by what it is for.
+      properties:
+        name:
+          type: string
+          description: The name the gateway holds the value under.
+        kind:
+          type: string
+          enum: [variable, secret]
+        resourceType:
+          type: string
+        resourceId:
+          type: string
+        resourceName:
+          type: string
+          description: How the resource is known, its name or a user's username.
+        field:
+          type: string
+          description: The key the reference is the value of, or the list's key for a list item.
+        list:
+          type: boolean
+          description: |
+            Set when the reference is a list's item. The value it names holds the list's items, as a JSON
+            list of strings such as `["https://a.example/cb"]`, or a single string for one item.
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          $ref: '#/components/schemas/I18nMessage'
+        description:
+          $ref: '#/components/schemas/I18nMessage'
+    I18nMessage:
+      type: object
+      properties:
+        key:
+          type: string
+        defaultValue:
+          type: string
+
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes:
+            system: Manage this deployment

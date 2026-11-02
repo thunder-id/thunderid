@@ -8,27 +8,41 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
-
-	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"strings"
+
 	"github.com/thunder-id/thunderid/internal/agent/model"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/project"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernancemock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
+	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 const (
@@ -38,6 +52,19 @@ const (
 	testOUID      = "ou-id-abc"
 	testAgentLogo = "avatar:shape=circle,variant=anonymous_entity,content=bot_head,colors=0"
 )
+
+// newAllowAllAuthz returns a mock SystemAuthorizationServiceInterface that allows all actions.
+func newAllowAllAuthz(t interface {
+	mock.TestingT
+	Cleanup(func())
+}) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil).Maybe()
+	authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	return authzMock
+}
 
 // AgentServiceTestSuite groups all agent service unit tests.
 type AgentServiceTestSuite struct {
@@ -65,7 +92,9 @@ func (suite *AgentServiceTestSuite) setupService() (
 	// Permissive defaults — tests narrow these as needed.
 	mockEntity.On("GetEntity", mock.Anything, mock.Anything).
 		Maybe().Return((*providers.Entity)(nil), entity.ErrEntityNotFound)
-	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+	mockEntity.On("GetEntityProfile", mock.Anything, mock.Anything).
+		Maybe().Return((*providers.Entity)(nil), entity.ErrEntityNotFound)
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(&providers.Entity{ID: testAgentID}, nil)
 	mockEntity.On("DeleteEntity", mock.Anything, mock.Anything).
 		Maybe().Return(nil)
@@ -97,7 +126,7 @@ func (suite *AgentServiceTestSuite) setupService() (
 		Maybe().Return((*inboundmodel.Certificate)(nil), (*inboundclient.CertOperationError)(nil))
 	mockInbound.On("ResolveInboundAuthProfileHandles", mock.Anything, mock.Anything).
 		Maybe().Return(nil)
-	mockInbound.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	mockInbound.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(nil)
 	mockInbound.On("CreateInboundClient",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -111,19 +140,38 @@ func (suite *AgentServiceTestSuite) setupService() (
 	mockOU.On("IsOrganizationUnitExists", mock.Anything, mock.Anything).
 		Maybe().Return(true, (*tidcommon.ServiceError)(nil))
 	mockOU.On("GetOrganizationUnitByPath", mock.Anything, mock.Anything).
-		Maybe().Return(providers.OrganizationUnit{ID: testOUID}, (*tidcommon.ServiceError)(nil))
+		Maybe().Return(oupkg.OrganizationUnit{ID: testOUID}, (*tidcommon.ServiceError)(nil))
 	mockOU.On("GetOrganizationUnitHandlesByIDs", mock.Anything, mock.Anything).
 		Maybe().Return(map[string]string{}, (*tidcommon.ServiceError)(nil))
 
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	governance.EXPECT().ReadAccess(mock.Anything, mock.Anything).RunAndReturn(activeReads).Maybe()
+	governance.EXPECT().ReadEntityAccess(mock.Anything, mock.Anything).
+		Return(identitygovernance.AccessRead{
+			Status: providers.AccessStatusReport{Value: providers.AccessStatusActive},
+		}).Maybe()
+
 	svc := &agentService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
+		authzService:         newAllowAllAuthz(suite.T()),
 		entityService:        mockEntity,
 		inboundClientService: mockInbound,
 		ouService:            mockOU,
 		dependencyRegistry:   noopDepRegistry{},
 		roleService:          mockRole,
+		governance:           governance,
+		transactioner:        transaction.NewNoOpTransactioner(),
 	}
 	return svc, mockEntity, mockInbound, mockOU, mockRole
+}
+
+// activeReads answers a governance read with ACTIVE for every entity.
+func activeReads(_ context.Context, entities []providers.Entity) []identitygovernance.AccessRead {
+	reads := make([]identitygovernance.AccessRead, len(entities))
+	for i := range reads {
+		reads[i].Status.Value = providers.AccessStatusActive
+	}
+	return reads
 }
 
 // noopDepRegistry is a no-op resourcedependency.Registry for tests that don't exercise cascade.
@@ -145,12 +193,10 @@ func (noopDepRegistry) ValidateReferenceUpdate(
 	return nil
 }
 
-// buildAgentEntityFixture returns an providers.Entity with system attributes for the given fields.
+// buildAgentEntityFixture returns an providers.Entity carrying the name as a public attribute and
+// the remaining fields as system attributes.
 func buildAgentEntityFixture(name, description, owner, clientID string) *providers.Entity {
 	attrs := map[string]interface{}{}
-	if name != "" {
-		attrs[fieldName] = name
-	}
 	if description != "" {
 		attrs[fieldDescription] = description
 	}
@@ -161,12 +207,17 @@ func buildAgentEntityFixture(name, description, owner, clientID string) *provide
 		attrs[fieldClientID] = clientID
 	}
 	sysAttrs, _ := json.Marshal(attrs)
+	var publicAttrs json.RawMessage
+	if name != "" {
+		publicAttrs, _ = json.Marshal(map[string]interface{}{"name": name})
+	}
 	return &providers.Entity{
 		ID:               testAgentID,
 		Category:         providers.EntityCategoryAgent,
 		Type:             testAgentType,
 		State:            providers.EntityStateActive,
 		OUID:             testOUID,
+		Attributes:       publicAttrs,
 		SystemAttributes: sysAttrs,
 	}
 }
@@ -178,16 +229,16 @@ func (suite *AgentServiceTestSuite) TestNeedsInboundClient_NilRequest() {
 }
 
 func (suite *AgentServiceTestSuite) TestNeedsInboundClient_EmptyRequest() {
-	assert.False(suite.T(), needsInboundClient(&model.Agent{}))
+	assert.False(suite.T(), needsInboundClient(&providers.Agent{}))
 }
 
 func (suite *AgentServiceTestSuite) TestNeedsInboundClient_WithAuthFlowID() {
-	req := &model.Agent{InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "flow-1"}}
+	req := &providers.Agent{InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "flow-1"}}
 	assert.True(suite.T(), needsInboundClient(req))
 }
 
 func (suite *AgentServiceTestSuite) TestNeedsInboundClient_WithInboundAuthConfig() {
-	req := &model.Agent{
+	req := &providers.Agent{
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{Type: providers.OAuthInboundAuthType, OAuthConfig: &providers.OAuthConfigWithSecret{}},
 		},
@@ -196,7 +247,7 @@ func (suite *AgentServiceTestSuite) TestNeedsInboundClient_WithInboundAuthConfig
 }
 
 func (suite *AgentServiceTestSuite) TestNeedsInboundClient_WithAllowedUserTypes() {
-	req := &model.Agent{
+	req := &providers.Agent{
 		InboundAuthProfile: providers.InboundAuthProfile{AllowedUserTypes: []string{"employee"}},
 	}
 	assert.True(suite.T(), needsInboundClient(req))
@@ -246,8 +297,7 @@ func (suite *AgentServiceTestSuite) TestRequiresClientSecret_DefaultIsTrue() {
 // --- readSystemAttributes / buildSystemAttributesJSON ---
 
 func (suite *AgentServiceTestSuite) TestReadSystemAttributes_Empty() {
-	name, desc, owner, clientID := readSystemAttributes(nil)
-	assert.Empty(suite.T(), name)
+	desc, owner, clientID := readSystemAttributes(nil)
 	assert.Empty(suite.T(), desc)
 	assert.Empty(suite.T(), owner)
 	assert.Empty(suite.T(), clientID)
@@ -255,51 +305,40 @@ func (suite *AgentServiceTestSuite) TestReadSystemAttributes_Empty() {
 
 func (suite *AgentServiceTestSuite) TestReadSystemAttributes_AllFields() {
 	raw, _ := json.Marshal(map[string]interface{}{
-		"name":        "my-agent",
 		"description": "desc",
 		"owner":       "alice",
 		"clientId":    "cid-123",
 	})
-	name, desc, owner, clientID := readSystemAttributes(raw)
-	assert.Equal(suite.T(), "my-agent", name)
+	desc, owner, clientID := readSystemAttributes(raw)
 	assert.Equal(suite.T(), "desc", desc)
 	assert.Equal(suite.T(), "alice", owner)
 	assert.Equal(suite.T(), "cid-123", clientID)
 }
 
 func (suite *AgentServiceTestSuite) TestBuildSystemAttributesJSON_AllFields() {
-	raw, err := buildSystemAttributesJSON("n", "d", "o", "c")
-	suite.Require().NoError(err)
+	raw := buildSystemAttributesJSON("d", "o", "c", "")
 	suite.Require().NotNil(raw)
-	name, desc, owner, clientID := readSystemAttributes(raw)
-	assert.Equal(suite.T(), "n", name)
+	desc, owner, clientID := readSystemAttributes(raw)
 	assert.Equal(suite.T(), "d", desc)
 	assert.Equal(suite.T(), "o", owner)
 	assert.Equal(suite.T(), "c", clientID)
 }
 
 func (suite *AgentServiceTestSuite) TestBuildSystemAttributesJSON_EmptyFields() {
-	raw, err := buildSystemAttributesJSON("", "", "", "")
-	suite.Require().NoError(err)
+	raw := buildSystemAttributesJSON("", "", "", "")
 	assert.Nil(suite.T(), raw)
 }
 
 // --- validateBaseFields ---
 
-func (suite *AgentServiceTestSuite) TestValidateBaseFields_MissingName() {
-	svcErr := validateBaseFields("", "type")
-	suite.Require().NotNil(svcErr)
-	assert.Equal(suite.T(), ErrorInvalidAgentName.Code, svcErr.Code)
-}
-
 func (suite *AgentServiceTestSuite) TestValidateBaseFields_MissingType() {
-	svcErr := validateBaseFields("name", "")
+	svcErr := validateBaseFields("")
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), ErrorInvalidAgentType.Code, svcErr.Code)
 }
 
 func (suite *AgentServiceTestSuite) TestValidateBaseFields_Valid() {
-	svcErr := validateBaseFields("name", "type")
+	svcErr := validateBaseFields("type")
 	assert.Nil(suite.T(), svcErr)
 }
 
@@ -338,18 +377,9 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_NilRequest() {
 	assert.Equal(suite.T(), ErrorInvalidRequestFormat.Code, svcErr.Code)
 }
 
-func (suite *AgentServiceTestSuite) TestCreateAgent_MissingName() {
-	svc, _, _, _, _ := suite.setupService()
-	req := &model.Agent{Type: testAgentType, OUID: testOUID}
-	resp, svcErr := svc.CreateAgent(context.Background(), req)
-	assert.Nil(suite.T(), resp)
-	suite.Require().NotNil(svcErr)
-	assert.Equal(suite.T(), ErrorInvalidAgentName.Code, svcErr.Code)
-}
-
 func (suite *AgentServiceTestSuite) TestCreateAgent_MissingType() {
 	svc, _, _, _, _ := suite.setupService()
-	req := &model.Agent{Name: testAgentName, OUID: testOUID}
+	req := &providers.Agent{OUID: testOUID}
 	resp, svcErr := svc.CreateAgent(context.Background(), req)
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -361,7 +391,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_OUNotFound() {
 	clearMockCalls(mockOU, "IsOrganizationUnitExists")
 	mockOU.On("IsOrganizationUnitExists", mock.Anything, testOUID).Return(false, (*tidcommon.ServiceError)(nil))
 
-	req := &model.Agent{Name: testAgentName, Type: testAgentType, OUID: testOUID}
+	req := &providers.Agent{Type: testAgentType, OUID: testOUID}
 	resp, svcErr := svc.CreateAgent(context.Background(), req)
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -370,18 +400,17 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_OUNotFound() {
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_NameAlreadyExists() {
 	svc, mockEntity, _, _, _ := suite.setupService()
-	existingID := "existing-agent-id"
-	clearMockCalls(mockEntity, "IdentifyEntity")
-	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).Return(&existingID, nil)
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, existingID).Return(
-		&providers.Entity{ID: existingID, Category: providers.EntityCategoryAgent}, nil)
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return((*providers.Entity)(nil), entity.ErrAttributeConflict)
 
-	req := &model.Agent{Name: testAgentName, Type: testAgentType, OUID: testOUID}
+	req := &providers.Agent{
+		Type: testAgentType, OUID: testOUID, Attributes: json.RawMessage(`{"name":"test-agent"}`),
+	}
 	resp, svcErr := svc.CreateAgent(context.Background(), req)
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
-	assert.Equal(suite.T(), ErrorAgentAlreadyExistsWithName.Code, svcErr.Code)
+	assert.Equal(suite.T(), ErrorAttributeConflict.Code, svcErr.Code)
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_EntityOnly_Success() {
@@ -389,18 +418,17 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_EntityOnly_Success() {
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "CreateEntity")
-	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(createdEntity, nil)
 
-	req := &model.Agent{
-		Name: testAgentName,
+	req := &providers.Agent{
 		Type: testAgentType,
 		OUID: testOUID,
 	}
 	resp, svcErr := svc.CreateAgent(context.Background(), req)
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp)
-	assert.Equal(suite.T(), testAgentName, resp.Name)
+	assert.JSONEq(suite.T(), `{"name":"test-agent"}`, string(resp.Attributes))
 	assert.Equal(suite.T(), testAgentType, resp.Type)
 
 	// No inbound client should be created for entity-only agents.
@@ -414,9 +442,9 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_GeneratesUUIDWhenNoID() {
 	clearMockCalls(mockEntity, "CreateEntity")
 	mockEntity.On("CreateEntity", mock.Anything, mock.MatchedBy(func(e *providers.Entity) bool {
 		return e.ID != ""
-	}), mock.Anything).Return(createdEntity, nil)
+	}), mock.Anything, mock.Anything).Return(createdEntity, nil)
 
-	req := &model.Agent{Name: testAgentName, Type: testAgentType, OUID: testOUID}
+	req := &providers.Agent{Type: testAgentType, OUID: testOUID}
 	resp, svcErr := svc.CreateAgent(context.Background(), req)
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp)
@@ -434,9 +462,9 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_PresetIDSkipsGeneration() {
 	clearMockCalls(mockEntity, "CreateEntity")
 	mockEntity.On("CreateEntity", mock.Anything, mock.MatchedBy(func(e *providers.Entity) bool {
 		return e.ID == presetID
-	}), mock.Anything).Return(createdEntity, nil)
+	}), mock.Anything, mock.Anything).Return(createdEntity, nil)
 
-	req := &model.Agent{ID: presetID, Name: testAgentName, Type: testAgentType, OUID: testOUID}
+	req := &providers.Agent{ID: presetID, Type: testAgentType, OUID: testOUID}
 	resp, svcErr := svc.CreateAgent(context.Background(), req)
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp)
@@ -449,15 +477,14 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_WithInboundAuth_Success() {
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "CreateEntity")
-	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(createdEntity, nil)
 
 	clearMockCalls(mockInbound, "CreateInboundClient")
 	mockInbound.On("CreateInboundClient",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-	req := &model.Agent{
-		Name:               testAgentName,
+	req := &providers.Agent{
 		Type:               testAgentType,
 		OUID:               testOUID,
 		InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "flow-1"},
@@ -475,7 +502,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_WithLogo_PersistsLogoPropert
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "CreateEntity")
-	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(createdEntity, nil)
 
 	var capturedClient *inboundmodel.InboundClient
@@ -486,8 +513,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_WithLogo_PersistsLogoPropert
 			capturedClient = args.Get(1).(*inboundmodel.InboundClient)
 		}).Return(nil)
 
-	req := &model.Agent{
-		Name:               testAgentName,
+	req := &providers.Agent{
 		Type:               testAgentType,
 		OUID:               testOUID,
 		LogoURL:            testAgentLogo,
@@ -504,8 +530,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_WithLogo_PersistsLogoPropert
 func (suite *AgentServiceTestSuite) TestCreateAgent_InvalidLogoURL() {
 	svc, _, _, _, _ := suite.setupService()
 
-	req := &model.Agent{
-		Name:    testAgentName,
+	req := &providers.Agent{
 		Type:    testAgentType,
 		OUID:    testOUID,
 		LogoURL: "javascript:alert(1)",
@@ -521,7 +546,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_FlowIDResolvedToDefault() {
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "CreateEntity")
-	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(createdEntity, nil)
 
 	clearMockCalls(mockInbound, "CreateInboundClient")
@@ -533,8 +558,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_FlowIDResolvedToDefault() {
 			client.RegistrationFlowID = "default-reg-flow-id"
 		}).Return(nil)
 
-	req := &model.Agent{
-		Name: testAgentName,
+	req := &providers.Agent{
 		Type: testAgentType,
 		OUID: testOUID,
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
@@ -559,15 +583,14 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_WithOAuth_Success() {
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "cid-xxx")
 	clearMockCalls(mockEntity, "CreateEntity")
-	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(createdEntity, nil)
 
 	clearMockCalls(mockInbound, "CreateInboundClient")
 	mockInbound.On("CreateInboundClient",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-	req := &model.Agent{
-		Name:               testAgentName,
+	req := &providers.Agent{
 		Type:               testAgentType,
 		OUID:               testOUID,
 		InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "flow-1"},
@@ -590,14 +613,108 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_WithOAuth_Success() {
 	assert.NotEmpty(suite.T(), resp.InboundAuthConfig[0].OAuthConfig.ClientSecret)
 }
 
+// captureCreatedOAuthProfile stubs inbound client creation and returns a pointer to the OAuth profile
+// the service hands it.
+func (suite *AgentServiceTestSuite) captureCreatedOAuthProfile(
+	mockEntity *entitymock.EntityServiceInterfaceMock,
+	mockInbound *inboundclientmock.InboundClientServiceInterfaceMock,
+) **providers.OAuthProfile {
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(buildAgentEntityFixture(testAgentName, "", "", "cid-xxx"), nil)
+
+	captured := new(*providers.OAuthProfile)
+	clearMockCalls(mockInbound, "CreateInboundClient")
+	mockInbound.On("CreateInboundClient", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { *captured = args.Get(2).(*providers.OAuthProfile) }).
+		Return(nil)
+	return captured
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_DelegatedGetsTheDefaultGrants() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	profile := suite.captureCreatedOAuthProfile(mockEntity, mockInbound)
+
+	req := &providers.Agent{
+		Type:      testAgentType,
+		OUID:      testOUID,
+		Delegated: true,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type:        providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{RedirectURIs: []string{"https://app.example.com/cb"}},
+			},
+		},
+	}
+	resp, svcErr := svc.CreateAgent(context.Background(), req)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	suite.Require().NotNil(*profile)
+	assert.Equal(suite.T(), []string{"client_credentials", "authorization_code", "refresh_token"},
+		(*profile).GrantTypes)
+	assert.Equal(suite.T(), []string{"code"}, (*profile).ResponseTypes)
+	assert.True(suite.T(), (*profile).PKCERequired)
+	assert.Equal(suite.T(), []string{"https://app.example.com/cb"}, (*profile).RedirectURIs)
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_NotDelegatedAlwaysHoldsClientCredentials() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	profile := suite.captureCreatedOAuthProfile(mockEntity, mockInbound)
+
+	req := &providers.Agent{
+		Type: testAgentType,
+		OUID: testOUID,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
+					GrantTypes: []providers.GrantType{providers.GrantTypeRefreshToken},
+				},
+			},
+		},
+	}
+	_, svcErr := svc.CreateAgent(context.Background(), req)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(*profile)
+	assert.Equal(suite.T(), []string{"client_credentials", "refresh_token"}, (*profile).GrantTypes)
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_DelegatedWithoutADelegationGrantIsRejected() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+
+	req := &providers.Agent{
+		Type:      testAgentType,
+		OUID:      testOUID,
+		Delegated: true,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
+					GrantTypes: []providers.GrantType{providers.GrantTypeRefreshToken},
+				},
+			},
+		},
+	}
+	resp, svcErr := svc.CreateAgent(context.Background(), req)
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorMissingDelegationGrantType.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	mockInbound.AssertNotCalled(suite.T(), "Validate", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
 func (suite *AgentServiceTestSuite) TestCreateAgent_EntityCreationFails() {
 	svc, mockEntity, _, _, _ := suite.setupService()
 
 	clearMockCalls(mockEntity, "CreateEntity")
-	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return((*providers.Entity)(nil), entity.ErrSchemaValidationFailed)
 
-	req := &model.Agent{Name: testAgentName, Type: testAgentType, OUID: testOUID}
+	req := &providers.Agent{Type: testAgentType, OUID: testOUID}
 	resp, svcErr := svc.CreateAgent(context.Background(), req)
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -609,7 +726,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_InboundCreationFails_Compens
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "CreateEntity")
-	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(createdEntity, nil)
 
 	clearMockCalls(mockInbound, "CreateInboundClient")
@@ -620,8 +737,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_InboundCreationFails_Compens
 	clearMockCalls(mockEntity, "DeleteEntity")
 	mockEntity.On("DeleteEntity", mock.Anything, mock.Anything).Return(nil)
 
-	req := &model.Agent{
-		Name:               testAgentName,
+	req := &providers.Agent{
 		Type:               testAgentType,
 		OUID:               testOUID,
 		InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "flow-1"},
@@ -679,7 +795,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_Success_NoInbound() {
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp)
 	assert.Equal(suite.T(), testAgentID, resp.ID)
-	assert.Equal(suite.T(), testAgentName, resp.Name)
+	assert.JSONEq(suite.T(), `{"name":"test-agent"}`, string(resp.Attributes))
 	assert.Equal(suite.T(), "desc", resp.Description)
 	assert.Equal(suite.T(), "alice", resp.Owner)
 	assert.Nil(suite.T(), resp.InboundAuthConfig)
@@ -753,8 +869,8 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_Success_NoInboundClient() {
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockInbound, "DeleteInboundClient")
 	mockInbound.On("DeleteInboundClient", mock.Anything, testAgentID).
@@ -772,8 +888,8 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_Success_WithInboundClient() 
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "cid-abc")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockInbound, "DeleteInboundClient")
 	mockInbound.On("DeleteInboundClient", mock.Anything, testAgentID).Return(nil)
@@ -813,7 +929,8 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_Success() {
 	suite.Require().NotNil(resp)
 	assert.Equal(suite.T(), 1, resp.TotalResults)
 	suite.Require().Len(resp.Agents, 1)
-	assert.Equal(suite.T(), testAgentName, resp.Agents[0].Name)
+	assert.JSONEq(suite.T(), `{"name":"test-agent"}`, string(resp.Agents[0].Attributes))
+	assert.Equal(suite.T(), new(true), resp.Agents[0].IsOwnedByOU)
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentList_ReturnsLogoFromInboundClients() {
@@ -885,8 +1002,8 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_Success() {
 	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "GetGroupCountForEntity")
 	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(2, nil)
@@ -927,8 +1044,8 @@ func (suite *AgentServiceTestSuite) TestGetAgentRoles_DirectAndGroupInherited() 
 	svc, mockEntity, _, _, mockRole := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "GetGroupCountForEntity")
 	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(1, nil)
@@ -937,7 +1054,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentRoles_DirectAndGroupInherited() 
 	mockEntity.On("GetEntityGroups", mock.Anything, testAgentID, 1, 0).
 		Return([]providers.EntityGroup{{ID: "g1", Name: "group-one", OUID: testOUID}}, nil)
 
-	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{"g1"}).
+	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{"g1"}, "").
 		Return([]string{"order-service-reader", "platform-agent"}, nil)
 
 	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
@@ -951,13 +1068,13 @@ func (suite *AgentServiceTestSuite) TestGetAgentRoles_NoGroups() {
 	svc, mockEntity, _, _, mockRole := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "GetGroupCountForEntity")
 	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(0, nil)
 
-	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}).
+	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}, "").
 		Return([]string{"order-service-reader"}, nil)
 
 	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
@@ -971,13 +1088,13 @@ func (suite *AgentServiceTestSuite) TestGetAgentRoles_Pagination() {
 	svc, mockEntity, _, _, mockRole := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "GetGroupCountForEntity")
 	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(0, nil)
 
-	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}).
+	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}, "").
 		Return([]string{"role-a", "role-b", "role-c"}, nil)
 
 	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 1, 1)
@@ -999,13 +1116,13 @@ func (suite *AgentServiceTestSuite) TestGetAgentRoles_DefaultLimit() {
 	svc, mockEntity, _, _, mockRole := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "GetGroupCountForEntity")
 	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(0, nil)
 
-	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}).
+	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}, "").
 		Return([]string{}, nil)
 
 	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 0, 0)
@@ -1015,8 +1132,8 @@ func (suite *AgentServiceTestSuite) TestGetAgentRoles_DefaultLimit() {
 
 func (suite *AgentServiceTestSuite) TestGetAgentRoles_EntityStoreError() {
 	svc, mockEntity, _, _, _ := suite.setupService()
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
 		Return((*providers.Entity)(nil), errors.New("db error"))
 
 	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
@@ -1030,8 +1147,8 @@ func (suite *AgentServiceTestSuite) TestGetAgentRoles_WrongCategory() {
 
 	wrongCatEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	wrongCatEntity.Category = providers.EntityCategoryUser
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(wrongCatEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(wrongCatEntity, nil)
 
 	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
 	assert.Nil(suite.T(), resp)
@@ -1043,8 +1160,8 @@ func (suite *AgentServiceTestSuite) TestGetAgentRoles_CountError() {
 	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "GetGroupCountForEntity")
 	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).
@@ -1060,8 +1177,8 @@ func (suite *AgentServiceTestSuite) TestGetAgentRoles_GroupListError() {
 	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "GetGroupCountForEntity")
 	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(1, nil)
@@ -1080,13 +1197,13 @@ func (suite *AgentServiceTestSuite) TestGetAgentRoles_RoleServiceError() {
 	svc, mockEntity, _, _, mockRole := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "GetGroupCountForEntity")
 	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(0, nil)
 
-	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}).
+	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}, "").
 		Return(nil, &tidcommon.InternalServerError)
 
 	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
@@ -1099,13 +1216,13 @@ func (suite *AgentServiceTestSuite) TestGetAgentRoles_OffsetBeyondTotal() {
 	svc, mockEntity, _, _, mockRole := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "GetGroupCountForEntity")
 	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(0, nil)
 
-	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}).
+	mockRole.On("GetUserRoles", mock.Anything, testAgentID, []string{}, "").
 		Return([]string{"role-a"}, nil)
 
 	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 50)
@@ -1120,7 +1237,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentRoles_OffsetBeyondTotal() {
 func (suite *AgentServiceTestSuite) TestUpdateAgent_EmptyID() {
 	svc, _, _, _, _ := suite.setupService()
 	resp, svcErr := svc.UpdateAgent(context.Background(), "", &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType,
+		Type: testAgentType,
 	})
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -1138,7 +1255,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_NilRequest() {
 func (suite *AgentServiceTestSuite) TestUpdateAgent_AgentNotFound() {
 	svc, _, _, _, _ := suite.setupService()
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType,
+		Type: testAgentType,
 	})
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -1149,27 +1266,27 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_Success_EntityOnly() {
 	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "UpdateEntity")
 	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
 		Return(&providers.Entity{}, nil)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType,
+		Type: testAgentType, Attributes: json.RawMessage(`{"name":"test-agent"}`),
 	})
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp)
-	assert.Equal(suite.T(), testAgentName, resp.Name)
+	assert.JSONEq(suite.T(), `{"name":"test-agent"}`, string(resp.Attributes))
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_FlowIDResolvedToDefault() {
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "UpdateEntity")
 	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
@@ -1189,7 +1306,6 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_FlowIDResolvedToDefault() {
 		}).Return(nil)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName,
 		Type: testAgentType,
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
@@ -1207,6 +1323,86 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_FlowIDResolvedToDefault() {
 	assert.Equal(suite.T(), "default-reg-flow-id", resp.RegistrationFlowID)
 }
 
+func (suite *AgentServiceTestSuite) TestUpdateAgent_ResolvesAuthFlowHandle() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockEntity, "UpdateEntity")
+	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
+		Return(&providers.Entity{}, nil)
+
+	clearMockCalls(mockInbound, "GetInboundClientByEntityID")
+	mockInbound.On("GetInboundClientByEntityID", mock.Anything, mock.Anything).
+		Return(&inboundmodel.InboundClient{}, nil)
+
+	clearMockCalls(mockInbound, "ResolveInboundAuthProfileHandles")
+	mockInbound.On("ResolveInboundAuthProfileHandles", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			profile := args.Get(1).(*providers.InboundAuthProfile)
+			assert.Equal(suite.T(), "wayfinder-agent-auth-flow", profile.AuthFlowHandle)
+			profile.AuthFlowID = "resolved-auth-flow-id"
+		}).Return(nil)
+
+	var capturedAuthFlowID string
+	clearMockCalls(mockInbound, "UpdateInboundClient")
+	mockInbound.On("UpdateInboundClient",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			client := args.Get(1).(*inboundmodel.InboundClient)
+			capturedAuthFlowID = client.AuthFlowID
+		}).Return(nil)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType,
+		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{
+			AuthFlowHandle: "wayfinder-agent-auth-flow",
+		},
+	})
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	assert.Equal(suite.T(), "resolved-auth-flow-id", capturedAuthFlowID)
+	assert.Equal(suite.T(), "resolved-auth-flow-id", resp.AuthFlowID)
+	mockInbound.AssertNotCalled(suite.T(), "DeleteInboundClient", mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_ResolveHandlesFails_NonFKError() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockInbound, "GetInboundClientByEntityID")
+	mockInbound.On("GetInboundClientByEntityID", mock.Anything, mock.Anything).
+		Return(&inboundmodel.InboundClient{}, nil)
+
+	clearMockCalls(mockInbound, "ResolveInboundAuthProfileHandles")
+	mockInbound.On("ResolveInboundAuthProfileHandles", mock.Anything, mock.Anything).
+		Return(errors.New("resolve boom"))
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType,
+		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{
+			AuthFlowHandle: "wayfinder-agent-auth-flow",
+		},
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
+					GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
+					TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
+				},
+			},
+		},
+	})
+	suite.Require().Nil(resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
 // --- owner validation ---
 
 func (suite *AgentServiceTestSuite) TestValidateOwnerExists_Empty() {
@@ -1216,8 +1412,8 @@ func (suite *AgentServiceTestSuite) TestValidateOwnerExists_Empty() {
 
 func (suite *AgentServiceTestSuite) TestValidateOwnerExists_NotFound() {
 	svc, mockEntity, _, _, _ := suite.setupService()
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, "missing-owner").
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, "missing-owner").
 		Return((*providers.Entity)(nil), entity.ErrEntityNotFound)
 
 	svcErr := svc.validateOwnerExists(context.Background(), "missing-owner")
@@ -1227,8 +1423,8 @@ func (suite *AgentServiceTestSuite) TestValidateOwnerExists_NotFound() {
 
 func (suite *AgentServiceTestSuite) TestValidateOwnerExists_StoreError() {
 	svc, mockEntity, _, _, _ := suite.setupService()
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, "owner-x").
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, "owner-x").
 		Return((*providers.Entity)(nil), errors.New("db error"))
 
 	svcErr := svc.validateOwnerExists(context.Background(), "owner-x")
@@ -1238,8 +1434,8 @@ func (suite *AgentServiceTestSuite) TestValidateOwnerExists_StoreError() {
 
 func (suite *AgentServiceTestSuite) TestValidateOwnerExists_Success() {
 	svc, mockEntity, _, _, _ := suite.setupService()
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, "owner-y").
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, "owner-y").
 		Return(&providers.Entity{ID: "owner-y"}, nil)
 
 	assert.Nil(suite.T(), svc.validateOwnerExists(context.Background(), "owner-y"))
@@ -1247,12 +1443,12 @@ func (suite *AgentServiceTestSuite) TestValidateOwnerExists_Success() {
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_OwnerNotFound() {
 	svc, mockEntity, _, _, _ := suite.setupService()
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, "ghost").
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, "ghost").
 		Return((*providers.Entity)(nil), entity.ErrEntityNotFound)
 
-	resp, svcErr := svc.CreateAgent(context.Background(), &model.Agent{
-		Name: testAgentName, Type: testAgentType, OUID: testOUID, Owner: "ghost",
+	resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{
+		Type: testAgentType, OUID: testOUID, Owner: "ghost",
 	})
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -1263,13 +1459,13 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_OwnerChanged_OwnerNotFound()
 	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "current-owner", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
-	mockEntity.On("GetEntity", mock.Anything, "new-owner").
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
+	mockEntity.On("GetEntityProfile", mock.Anything, "new-owner").
 		Return((*providers.Entity)(nil), entity.ErrEntityNotFound)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType, Owner: "new-owner",
+		Type: testAgentType, Owner: "new-owner",
 	})
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -1280,9 +1476,9 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_OwnerChanged_Success() {
 	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "current-owner", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
-	mockEntity.On("GetEntity", mock.Anything, "new-owner").
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
+	mockEntity.On("GetEntityProfile", mock.Anything, "new-owner").
 		Return(&providers.Entity{ID: "new-owner"}, nil)
 
 	clearMockCalls(mockEntity, "UpdateEntity")
@@ -1290,7 +1486,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_OwnerChanged_Success() {
 		Return(&providers.Entity{}, nil)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType, Owner: "new-owner",
+		Type: testAgentType, Owner: "new-owner",
 	})
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp)
@@ -1371,6 +1567,12 @@ func (suite *AgentServiceTestSuite) TestTranslateOAuthValidationError() {
 		{"ResponseTypesRequireAuthCode", inboundclient.ErrOAuthResponseTypesRequireAuthCode,
 			ErrorInvalidOAuthConfiguration.Code,
 			"error.agentservice.response_types_require_authorization_code_description"},
+		{"IDJAGRequiresTokenExchange", inboundclient.ErrOAuthClientIDJAGRequiresTokenExchange,
+			ErrorInvalidOAuthConfiguration.Code,
+			"error.agentservice.idjag_requires_token_exchange_description"},
+		{"IDJAGRequiresAllowedAudience", inboundclient.ErrOAuthClientIDJAGRequiresAllowedAudience,
+			ErrorInvalidOAuthConfiguration.Code,
+			"error.agentservice.idjag_requires_allowed_audience_description"},
 		{"InvalidTokenEndpointAuthMethod", inboundclient.ErrOAuthInvalidTokenEndpointAuthMethod,
 			ErrorInvalidTokenEndpointAuthMethod.Code, ""},
 		{"PrivateKeyJWTRequiresCertificate", inboundclient.ErrOAuthPrivateKeyJWTRequiresCertificate,
@@ -1391,12 +1593,27 @@ func (suite *AgentServiceTestSuite) TestTranslateOAuthValidationError() {
 		{"ClientCredentialsCannotUseNoneAuth", inboundclient.ErrOAuthClientCredentialsCannotUseNoneAuth,
 			ErrorInvalidOAuthConfiguration.Code,
 			"error.agentservice.client_credentials_cannot_use_none_auth_description"},
+		{"JWTBearerCannotUseNoneAuth", inboundclient.ErrOAuthClientJWTBearerCannotUseNoneAuth,
+			ErrorInvalidOAuthConfiguration.Code,
+			"error.agentservice.jwt_bearer_cannot_use_none_auth_description"},
+		{"IDJAGCannotUseNoneAuth", inboundclient.ErrOAuthClientIDJAGCannotUseNoneAuth,
+			ErrorInvalidOAuthConfiguration.Code,
+			"error.agentservice.idjag_cannot_use_none_auth_description"},
 		{"PublicClientMustUseNoneAuth", inboundclient.ErrOAuthPublicClientMustUseNoneAuth,
 			ErrorInvalidPublicClientConfiguration.Code,
 			"error.agentservice.public_client_must_use_none_auth_description"},
 		{"PublicClientMustHavePKCE", inboundclient.ErrOAuthPublicClientMustHavePKCE,
 			ErrorInvalidPublicClientConfiguration.Code,
 			"error.agentservice.public_client_must_have_pkce_description"},
+		{"InvalidBackchannelLogoutURI", inboundclient.ErrOAuthInvalidBackchannelLogoutURI,
+			ErrorInvalidOAuthConfiguration.Code,
+			"error.agentservice.invalid_backchannel_logout_uri_description"},
+		{"BackchannelLogoutURIRequiresHTTPS", inboundclient.ErrOAuthBackchannelLogoutURIRequiresHTTPS,
+			ErrorInvalidOAuthConfiguration.Code,
+			"error.agentservice.backchannel_logout_uri_requires_https_description"},
+		{"BackchannelLogoutURIPrivateHost", inboundclient.ErrOAuthBackchannelLogoutURIPrivateHost,
+			ErrorInvalidOAuthConfiguration.Code,
+			"error.agentservice.backchannel_logout_uri_private_host_description"},
 	}
 	for _, tc := range cases {
 		suite.Run(tc.name, func() {
@@ -1461,6 +1678,8 @@ func (suite *AgentServiceTestSuite) TestTranslateIDTokenValidationError() {
 		err         error
 		wantDescKey string
 	}{
+		{"UnsupportedSigningAlg", inboundclient.ErrOAuthIDTokenUnsupportedSigningAlg,
+			"error.agentservice.idtoken_unsupported_signing_alg_description"},
 		{"EncryptionFieldsNotAllowed", inboundclient.ErrOAuthIDTokenEncryptionFieldsNotAllowed,
 			"error.agentservice.idtoken_encryption_fields_not_allowed_description"},
 		{"UnsupportedResponseType", inboundclient.ErrOAuthIDTokenUnsupportedResponseType,
@@ -1611,8 +1830,8 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_NoInboundWanted_DeleteNotFou
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "cid-abc")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "UpdateEntity")
 	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
@@ -1628,7 +1847,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_NoInboundWanted_DeleteNotFou
 		Return(inboundclient.ErrInboundClientNotFound)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType,
+		Type: testAgentType,
 	})
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp)
@@ -1844,24 +2063,14 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_IncludeDisplay() {
 
 // --- UpdateAgent additional paths ---
 
-func (suite *AgentServiceTestSuite) TestUpdateAgent_MissingName() {
-	svc, _, _, _, _ := suite.setupService()
-	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Type: testAgentType,
-	})
-	assert.Nil(suite.T(), resp)
-	suite.Require().NotNil(svcErr)
-	assert.Equal(suite.T(), ErrorInvalidAgentName.Code, svcErr.Code)
-}
-
 func (suite *AgentServiceTestSuite) TestUpdateAgent_EntityStoreError() {
 	svc, mockEntity, _, _, _ := suite.setupService()
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
 		Return((*providers.Entity)(nil), errors.New("db error"))
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType,
+		Type: testAgentType,
 	})
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -1873,11 +2082,11 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_WrongCategory() {
 
 	wrongCatEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	wrongCatEntity.Category = providers.EntityCategoryUser
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(wrongCatEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(wrongCatEntity, nil)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType,
+		Type: testAgentType,
 	})
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -1889,11 +2098,11 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_IsReadOnly() {
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	agentEntity.IsReadOnly = true
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType,
+		Type: testAgentType,
 	})
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -1904,8 +2113,8 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_OUHandleResolution() {
 	svc, mockEntity, _, mockOU, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "UpdateEntity")
 	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
@@ -1914,10 +2123,10 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_OUHandleResolution() {
 	newOUID := "new-ou-id"
 	clearMockCalls(mockOU, "GetOrganizationUnitByPath")
 	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "new-handle").
-		Return(providers.OrganizationUnit{ID: newOUID}, (*tidcommon.ServiceError)(nil))
+		Return(oupkg.OrganizationUnit{ID: newOUID}, (*tidcommon.ServiceError)(nil))
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType, OUHandle: "new-handle",
+		Type: testAgentType, OUHandle: "new-handle",
 	})
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp)
@@ -1928,8 +2137,8 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ExplicitOUIDChanged() {
 	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "UpdateEntity")
 	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
@@ -1939,7 +2148,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ExplicitOUIDChanged() {
 	// Default IsOrganizationUnitExists mock returns true for any ID.
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType, OUID: newOUID,
+		Type: testAgentType, OUID: newOUID,
 	})
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp)
@@ -1950,8 +2159,8 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_WantsInbound_NoExisting_Crea
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "UpdateEntity")
 	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
@@ -1966,7 +2175,6 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_WantsInbound_NoExisting_Crea
 		}).Return(nil)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name:                  testAgentName,
 		Type:                  testAgentType,
 		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{AuthFlowID: "new-flow-id"},
 	})
@@ -1977,12 +2185,107 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_WantsInbound_NoExisting_Crea
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
+// captureUpdatedOAuthProfile stubs the entity read and update and the inbound client creation, and
+// returns a pointer to the OAuth profile the service hands the inbound client service.
+func (suite *AgentServiceTestSuite) captureUpdatedOAuthProfile(
+	mockEntity *entitymock.EntityServiceInterfaceMock,
+	mockInbound *inboundclientmock.InboundClientServiceInterfaceMock,
+) **providers.OAuthProfile {
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture("old-name", "", "", ""), nil)
+	clearMockCalls(mockEntity, "UpdateEntity")
+	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
+		Return(&providers.Entity{}, nil)
+
+	captured := new(*providers.OAuthProfile)
+	clearMockCalls(mockInbound, "CreateInboundClient")
+	mockInbound.On("CreateInboundClient", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { *captured = args.Get(2).(*providers.OAuthProfile) }).
+		Return(nil)
+	return captured
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_DelegatedGetsTheDefaultGrants() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	profile := suite.captureUpdatedOAuthProfile(mockEntity, mockInbound)
+
+	_, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type:      testAgentType,
+		Delegated: true,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type:        providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{RedirectURIs: []string{"https://app.example.com/cb"}},
+			},
+		},
+	})
+
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(*profile)
+	assert.Equal(suite.T(), []string{"client_credentials", "authorization_code", "refresh_token"},
+		(*profile).GrantTypes)
+	assert.Equal(suite.T(), []string{"code"}, (*profile).ResponseTypes)
+	assert.True(suite.T(), (*profile).PKCERequired)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_NotDelegatedAlwaysHoldsClientCredentials() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	profile := suite.captureUpdatedOAuthProfile(mockEntity, mockInbound)
+
+	_, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
+					GrantTypes: []providers.GrantType{providers.GrantTypeRefreshToken},
+				},
+			},
+		},
+	})
+
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(*profile)
+	assert.Equal(suite.T(), []string{"client_credentials", "refresh_token"}, (*profile).GrantTypes)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_DelegatedWithoutADelegationGrantIsRejectedBeforeAnyWrite() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture("old-name", "", "", ""), nil)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type:      testAgentType,
+		Delegated: true,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
+					GrantTypes: []providers.GrantType{providers.GrantTypeRefreshToken},
+				},
+			},
+		},
+	})
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorMissingDelegationGrantType.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+	mockInbound.AssertNotCalled(suite.T(), "CreateInboundClient",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	mockInbound.AssertNotCalled(suite.T(), "UpdateInboundClient",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (suite *AgentServiceTestSuite) TestUpdateAgent_SetsLogoProperty() {
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "UpdateEntity")
 	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
@@ -1997,7 +2300,6 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_SetsLogoProperty() {
 		}).Return(nil)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name:                  testAgentName,
 		Type:                  testAgentType,
 		LogoURL:               testAgentLogo,
 		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{AuthFlowID: "new-flow-id"},
@@ -2014,15 +2316,15 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_PopulatesOUHandle_SkipsWhenO
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	agentEntity.OUID = ""
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "UpdateEntity")
 	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
 		Return(&providers.Entity{}, nil)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType,
+		Type: testAgentType,
 	})
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp)
@@ -2034,8 +2336,8 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_PopulatesOUHandle_SkipsWhenO
 
 func (suite *AgentServiceTestSuite) TestDeleteAgent_EntityStoreError() {
 	svc, mockEntity, _, _, _ := suite.setupService()
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
 		Return((*providers.Entity)(nil), errors.New("db error"))
 
 	svcErr := svc.DeleteAgent(context.Background(), testAgentID)
@@ -2048,8 +2350,8 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_WrongCategory() {
 
 	wrongCatEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	wrongCatEntity.Category = providers.EntityCategoryUser
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(wrongCatEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(wrongCatEntity, nil)
 
 	svcErr := svc.DeleteAgent(context.Background(), testAgentID)
 	suite.Require().NotNil(svcErr)
@@ -2061,8 +2363,8 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_IsReadOnly() {
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	agentEntity.IsReadOnly = true
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	svcErr := svc.DeleteAgent(context.Background(), testAgentID)
 	suite.Require().NotNil(svcErr)
@@ -2083,8 +2385,8 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_DefaultLimit() {
 	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "GetGroupCountForEntity")
 	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(0, nil)
@@ -2100,8 +2402,8 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_DefaultLimit() {
 
 func (suite *AgentServiceTestSuite) TestGetAgentGroups_EntityStoreError() {
 	svc, mockEntity, _, _, _ := suite.setupService()
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
 		Return((*providers.Entity)(nil), errors.New("db error"))
 
 	resp, svcErr := svc.GetAgentGroups(context.Background(), testAgentID, 10, 0)
@@ -2115,8 +2417,8 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_WrongCategory() {
 
 	wrongCatEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	wrongCatEntity.Category = providers.EntityCategoryUser
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(wrongCatEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(wrongCatEntity, nil)
 
 	resp, svcErr := svc.GetAgentGroups(context.Background(), testAgentID, 10, 0)
 	assert.Nil(suite.T(), resp)
@@ -2128,8 +2430,8 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_CountError() {
 	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "GetGroupCountForEntity")
 	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).
@@ -2145,8 +2447,8 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_ListError() {
 	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "GetGroupCountForEntity")
 	mockEntity.On("GetGroupCountForEntity", mock.Anything, testAgentID).Return(2, nil)
@@ -2159,66 +2461,6 @@ func (suite *AgentServiceTestSuite) TestGetAgentGroups_ListError() {
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
-}
-
-// --- validateNameUnique direct tests ---
-
-func (suite *AgentServiceTestSuite) TestValidateNameUnique_AmbiguousEntity() {
-	svc, mockEntity, _, _, _ := suite.setupService()
-	clearMockCalls(mockEntity, "IdentifyEntity")
-	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).
-		Return((*string)(nil), entity.ErrAmbiguousEntity)
-
-	svcErr := svc.validateNameUnique(context.Background(), testAgentName, "")
-	suite.Require().NotNil(svcErr)
-	assert.Equal(suite.T(), ErrorAgentAlreadyExistsWithName.Code, svcErr.Code)
-}
-
-func (suite *AgentServiceTestSuite) TestValidateNameUnique_StoreError() {
-	svc, mockEntity, _, _, _ := suite.setupService()
-	clearMockCalls(mockEntity, "IdentifyEntity")
-	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).
-		Return((*string)(nil), errors.New("db error"))
-
-	svcErr := svc.validateNameUnique(context.Background(), testAgentName, "")
-	suite.Require().NotNil(svcErr)
-	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
-}
-
-func (suite *AgentServiceTestSuite) TestValidateNameUnique_NilID() {
-	svc, mockEntity, _, _, _ := suite.setupService()
-	clearMockCalls(mockEntity, "IdentifyEntity")
-	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).
-		Return((*string)(nil), nil)
-
-	svcErr := svc.validateNameUnique(context.Background(), testAgentName, "")
-	assert.Nil(suite.T(), svcErr)
-}
-
-func (suite *AgentServiceTestSuite) TestValidateNameUnique_ExcludeIDMatch() {
-	svc, mockEntity, _, _, _ := suite.setupService()
-
-	foundID := testAgentID
-	clearMockCalls(mockEntity, "IdentifyEntity")
-	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).Return(&foundID, nil)
-
-	svcErr := svc.validateNameUnique(context.Background(), testAgentName, testAgentID)
-	assert.Nil(suite.T(), svcErr)
-}
-
-func (suite *AgentServiceTestSuite) TestValidateNameUnique_NonAgentEntity() {
-	svc, mockEntity, _, _, _ := suite.setupService()
-
-	foundID := "some-app-id"
-	clearMockCalls(mockEntity, "IdentifyEntity")
-	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).Return(&foundID, nil)
-
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, foundID).
-		Return(&providers.Entity{ID: foundID, Category: providers.EntityCategoryUser}, nil)
-
-	svcErr := svc.validateNameUnique(context.Background(), testAgentName, "")
-	assert.Nil(suite.T(), svcErr)
 }
 
 // --- isClientIDTaken direct tests ---
@@ -2355,10 +2597,10 @@ func (suite *AgentServiceTestSuite) TestValidateAgent_OUHandleNotFound() {
 	notFound := &oupkg.ErrorOrganizationUnitNotFound
 	clearMockCalls(mockOU, "GetOrganizationUnitByPath")
 	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "missing-handle").
-		Return(providers.OrganizationUnit{}, notFound)
+		Return(oupkg.OrganizationUnit{}, notFound)
 
-	req := &model.Agent{
-		Name: testAgentName, Type: testAgentType, OUHandle: "missing-handle",
+	req := &providers.Agent{
+		Type: testAgentType, OUHandle: "missing-handle",
 	}
 	_, _, _, svcErr := svc.ValidateAgent(context.Background(), req, "")
 	suite.Require().NotNil(svcErr)
@@ -2371,10 +2613,10 @@ func (suite *AgentServiceTestSuite) TestValidateAgent_OUHandleInternalError() {
 	internalErr := &tidcommon.ServiceError{Code: "SOME_OTHER_ERROR"}
 	clearMockCalls(mockOU, "GetOrganizationUnitByPath")
 	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "bad-handle").
-		Return(providers.OrganizationUnit{}, internalErr)
+		Return(oupkg.OrganizationUnit{}, internalErr)
 
-	req := &model.Agent{
-		Name: testAgentName, Type: testAgentType, OUHandle: "bad-handle",
+	req := &providers.Agent{
+		Type: testAgentType, OUHandle: "bad-handle",
 	}
 	_, _, _, svcErr := svc.ValidateAgent(context.Background(), req, "")
 	suite.Require().NotNil(svcErr)
@@ -2387,16 +2629,16 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_OUHandleResolution_OUNotFoun
 	svc, mockEntity, _, mockOU, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	notFound := &oupkg.ErrorOrganizationUnitNotFound
 	clearMockCalls(mockOU, "GetOrganizationUnitByPath")
 	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "missing-handle").
-		Return(providers.OrganizationUnit{}, notFound)
+		Return(oupkg.OrganizationUnit{}, notFound)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType, OUHandle: "missing-handle",
+		Type: testAgentType, OUHandle: "missing-handle",
 	})
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), ErrorOrganizationUnitNotFound.Code, svcErr.Code)
@@ -2407,16 +2649,16 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_OUHandleResolution_InternalE
 	svc, mockEntity, _, mockOU, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	internalErr := &tidcommon.ServiceError{Code: "SOME_OTHER_ERROR"}
 	clearMockCalls(mockOU, "GetOrganizationUnitByPath")
 	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "bad-handle").
-		Return(providers.OrganizationUnit{}, internalErr)
+		Return(oupkg.OrganizationUnit{}, internalErr)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType, OUHandle: "bad-handle",
+		Type: testAgentType, OUHandle: "bad-handle",
 	})
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
@@ -2427,8 +2669,8 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ExplicitOUIDChanged_Validate
 	svc, mockEntity, _, mockOU, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	ouNotFound := &oupkg.ErrorOrganizationUnitNotFound
 	clearMockCalls(mockOU, "IsOrganizationUnitExists")
@@ -2436,7 +2678,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ExplicitOUIDChanged_Validate
 		Return(false, ouNotFound)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType, OUID: "nonexistent-ou",
+		Type: testAgentType, OUID: "nonexistent-ou",
 	})
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), ErrorOrganizationUnitNotFound.Code, svcErr.Code)
@@ -2479,13 +2721,14 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_EmptyIDs() {
 
 func (suite *AgentServiceTestSuite) TestGetResourceDependencies_Success() {
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	suite.withDisplayPaths(svc, "name")
 	mockInbound.On("GetEntityIDsByReference", mock.Anything, resourcedependency.ResourceTypeTheme, "theme-1",
 		serverconst.MaxCompositeStoreRecords, 0).
 		Return([]string{"agent-1"}, 1, nil)
 
-	sysAttrs, _ := json.Marshal(map[string]interface{}{"name": "Agent One"})
+	attrs, _ := json.Marshal(map[string]interface{}{"name": "Agent One"})
 	mockEntity.On("GetEntitiesByIDs", mock.Anything, []string{"agent-1"}).Return([]providers.Entity{
-		{ID: "agent-1", Category: providers.EntityCategoryAgent, SystemAttributes: sysAttrs},
+		{ID: "agent-1", Category: providers.EntityCategoryAgent, Type: testAgentType, Attributes: attrs},
 	}, nil)
 
 	result, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeTheme, "theme-1")
@@ -2516,19 +2759,23 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_FiltersOutNonAge
 	assert.Equal(suite.T(), "agent-1", result[0].ID)
 }
 
-// Owner dependencies are resolved by listing agents and matching the owner system attribute in
-// memory, because the entity list filter only searches the public attributes column.
+// ownerQuery is the system attribute query that finds the agents a user owns.
+func ownerQuery(ownerID string) entity.SystemAttributeQuery {
+	return entity.SystemAttributeQuery{SystemAttributes: map[string]interface{}{"owner": ownerID}}
+}
+
+// Owner dependencies are resolved through the owner in the agents' system attributes.
 func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOwner_Success() {
 	svc, mockEntity, _, _, _ := suite.setupService()
-	clearMockCalls(mockEntity, "GetEntityList")
+	suite.withDisplayPaths(svc, "name")
 
-	ownedAttrs, _ := json.Marshal(map[string]interface{}{"name": "Agent One", "owner": "user-1"})
-	otherAttrs, _ := json.Marshal(map[string]interface{}{"name": "Agent Two", "owner": "user-2"})
-	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent,
-		serverconst.MaxCompositeStoreRecords, 0, mock.Anything).
+	ownedSysAttrs, _ := json.Marshal(map[string]interface{}{"owner": "user-1"})
+	ownedAttrs, _ := json.Marshal(map[string]interface{}{"name": "Agent One"})
+	mockEntity.On("GetEntityListBySystemAttributes", mock.Anything, providers.EntityCategoryAgent,
+		ownerQuery("user-1"), serverconst.MaxCompositeStoreRecords, 0).
 		Return([]providers.Entity{
-			{ID: "agent-1", Category: providers.EntityCategoryAgent, SystemAttributes: ownedAttrs},
-			{ID: "agent-2", Category: providers.EntityCategoryAgent, SystemAttributes: otherAttrs},
+			{ID: "agent-1", Category: providers.EntityCategoryAgent, Type: testAgentType,
+				Attributes: ownedAttrs, SystemAttributes: ownedSysAttrs},
 		}, nil)
 
 	result, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeUser, "user-1")
@@ -2542,14 +2789,9 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOwner_Success(
 
 func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOwner_Empty() {
 	svc, mockEntity, _, _, _ := suite.setupService()
-	clearMockCalls(mockEntity, "GetEntityList")
-
-	otherAttrs, _ := json.Marshal(map[string]interface{}{"name": "Agent Two", "owner": "user-2"})
-	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent,
-		serverconst.MaxCompositeStoreRecords, 0, mock.Anything).
-		Return([]providers.Entity{
-			{ID: "agent-2", Category: providers.EntityCategoryAgent, SystemAttributes: otherAttrs},
-		}, nil)
+	mockEntity.On("GetEntityListBySystemAttributes", mock.Anything, providers.EntityCategoryAgent,
+		ownerQuery("user-1"), serverconst.MaxCompositeStoreRecords, 0).
+		Return([]providers.Entity{}, nil)
 
 	result, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeUser, "user-1")
 	assert.NoError(suite.T(), err)
@@ -2558,9 +2800,8 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOwner_Empty() 
 
 func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOwner_Error() {
 	svc, mockEntity, _, _, _ := suite.setupService()
-	clearMockCalls(mockEntity, "GetEntityList")
-	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent,
-		serverconst.MaxCompositeStoreRecords, 0, mock.Anything).
+	mockEntity.On("GetEntityListBySystemAttributes", mock.Anything, providers.EntityCategoryAgent,
+		ownerQuery("user-1"), serverconst.MaxCompositeStoreRecords, 0).
 		Return(nil, errors.New("store error"))
 
 	result, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeUser, "user-1")
@@ -2574,10 +2815,10 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_EntityCreationFails_NonMappa
 	svc, mockEntity, _, _, _ := suite.setupService()
 
 	clearMockCalls(mockEntity, "CreateEntity")
-	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return((*providers.Entity)(nil), errors.New("db error"))
 
-	req := &model.Agent{Name: testAgentName, Type: testAgentType, OUID: testOUID}
+	req := &providers.Agent{Type: testAgentType, OUID: testOUID}
 	resp, svcErr := svc.CreateAgent(context.Background(), req)
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -2589,7 +2830,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_InboundCreationFails_NonTran
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "CreateEntity")
-	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(createdEntity, nil)
 
 	clearMockCalls(mockInbound, "CreateInboundClient")
@@ -2600,8 +2841,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_InboundCreationFails_NonTran
 	clearMockCalls(mockEntity, "DeleteEntity")
 	mockEntity.On("DeleteEntity", mock.Anything, mock.Anything).Return(nil)
 
-	req := &model.Agent{
-		Name:               testAgentName,
+	req := &providers.Agent{
 		Type:               testAgentType,
 		OUID:               testOUID,
 		InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "flow-1"},
@@ -2618,7 +2858,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_InboundFails_CompensationDel
 
 	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "CreateEntity")
-	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(createdEntity, nil)
 
 	clearMockCalls(mockInbound, "CreateInboundClient")
@@ -2630,8 +2870,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_InboundFails_CompensationDel
 	mockEntity.On("DeleteEntity", mock.Anything, mock.Anything).
 		Return(errors.New("compensation delete failed"))
 
-	req := &model.Agent{
-		Name:               testAgentName,
+	req := &providers.Agent{
 		Type:               testAgentType,
 		OUID:               testOUID,
 		InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "flow-1"},
@@ -2647,15 +2886,15 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ExistingOAuthProfileLoadErro
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockInbound, "GetOAuthProfileByEntityID")
 	mockInbound.On("GetOAuthProfileByEntityID", mock.Anything, testAgentID).
 		Return((*providers.OAuthProfile)(nil), errors.New("db error"))
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType,
+		Type: testAgentType,
 	})
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -2666,27 +2905,72 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_UpdateEntityFails_NonMappabl
 	svc, mockEntity, _, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "UpdateEntity")
 	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
 		Return((*providers.Entity)(nil), errors.New("db error"))
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType,
+		Type: testAgentType,
 	})
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
+// An entity-layer error that names a client fault, such as attributes the agent type's schema
+// rejects, is reported as that fault rather than as a server error.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_UpdateEntityFails_MappedError() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockEntity, "UpdateEntity")
+	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
+		Return((*providers.Entity)(nil), entity.ErrSchemaValidationFailed)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType,
+	})
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorSchemaValidationFailed.Code, svcErr.Code)
+}
+
+// An update naming two OAuth configs is refused before anything is written.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_MultipleOAuthConfigsRefused() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	oauth := providers.InboundAuthConfigWithSecret{
+		Type: providers.OAuthInboundAuthType,
+		OAuthConfig: &providers.OAuthConfigWithSecret{
+			GrantTypes: []providers.GrantType{providers.GrantTypeClientCredentials},
+		},
+	}
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type:              testAgentType,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{oauth, oauth},
+	})
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorMultipleOAuthConfigs.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (suite *AgentServiceTestSuite) TestUpdateAgent_UpdateSystemCredentialsFails() {
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockEntity, "UpdateEntity")
 	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
@@ -2705,7 +2989,6 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_UpdateSystemCredentialsFails
 		Return(&inboundmodel.InboundClient{ID: testAgentID}, nil)
 
 	req := &model.UpdateAgentRequest{
-		Name: testAgentName,
 		Type: testAgentType,
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
@@ -2727,8 +3010,8 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileUpdateInboundFails_
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockInbound, "GetInboundClientByEntityID")
 	mockInbound.On("GetInboundClientByEntityID", mock.Anything, testAgentID).
@@ -2740,7 +3023,6 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileUpdateInboundFails_
 		Return(errors.New("update boom"))
 
 	req := &model.UpdateAgentRequest{
-		Name:                  testAgentName,
 		Type:                  testAgentType,
 		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{AuthFlowID: "flow-1"},
 	}
@@ -2754,8 +3036,8 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileCreateInboundFails_
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockInbound, "GetInboundClientByEntityID")
 	mockInbound.On("GetInboundClientByEntityID", mock.Anything, testAgentID).
@@ -2767,7 +3049,6 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileCreateInboundFails_
 		Return(errors.New("create boom"))
 
 	req := &model.UpdateAgentRequest{
-		Name:                  testAgentName,
 		Type:                  testAgentType,
 		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{AuthFlowID: "flow-1"},
 	}
@@ -2781,8 +3062,8 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileDeleteInboundFails_
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockInbound, "GetInboundClientByEntityID")
 	mockInbound.On("GetInboundClientByEntityID", mock.Anything, testAgentID).
@@ -2792,7 +3073,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileDeleteInboundFails_
 	mockInbound.On("DeleteInboundClient", mock.Anything, testAgentID).
 		Return(errors.New("delete boom"))
 
-	req := &model.UpdateAgentRequest{Name: testAgentName, Type: testAgentType}
+	req := &model.UpdateAgentRequest{Type: testAgentType}
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, req)
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
@@ -2803,8 +3084,8 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_DeleteInboundClientFails_Non
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockInbound, "DeleteInboundClient")
 	mockInbound.On("DeleteInboundClient", mock.Anything, testAgentID).
@@ -2819,8 +3100,8 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_DeleteEntityFails() {
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	clearMockCalls(mockInbound, "DeleteInboundClient")
 	mockInbound.On("DeleteInboundClient", mock.Anything, testAgentID).
@@ -2842,7 +3123,7 @@ func (suite *AgentServiceTestSuite) TestValidateAgent_ResolveHandlesFails_NonFKE
 	mockInbound.On("ResolveInboundAuthProfileHandles", mock.Anything, mock.Anything).
 		Return(errors.New("resolve boom"))
 
-	req := &model.Agent{Name: testAgentName, Type: testAgentType, OUID: testOUID}
+	req := &providers.Agent{Type: testAgentType, OUID: testOUID}
 	_, _, _, svcErr := svc.ValidateAgent(context.Background(), req, "")
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
@@ -2852,11 +3133,10 @@ func (suite *AgentServiceTestSuite) TestValidateAgent_InboundValidateFails_NonTr
 	svc, _, mockInbound, _, _ := suite.setupService()
 
 	clearMockCalls(mockInbound, "Validate")
-	mockInbound.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	mockInbound.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("validate boom"))
 
-	req := &model.Agent{
-		Name:               testAgentName,
+	req := &providers.Agent{
 		Type:               testAgentType,
 		OUID:               testOUID,
 		InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "flow-1"},
@@ -2884,12 +3164,1448 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_AbortedWhenCascadeFails() {
 	svc.SetDependencyRegistry(noopDepRegistry{cascadeErr: errors.New("cascade failed")})
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agentEntity, nil)
 
 	svcErr := svc.DeleteAgent(context.Background(), testAgentID)
 
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 	mockInbound.AssertNotCalled(suite.T(), "DeleteInboundClient", mock.Anything, mock.Anything)
+}
+
+// configsWithGrants builds a one-entry inbound auth config carrying the given grant types.
+func configsWithGrants(grantTypes []providers.GrantType) []providers.InboundAuthConfigWithSecret {
+	return []providers.InboundAuthConfigWithSecret{
+		{
+			Type:        providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{GrantTypes: grantTypes},
+		},
+	}
+}
+
+// clientAttributesOf reads back the client-token attribute selection, or nil when unset.
+func clientAttributesOf(configs []providers.InboundAuthConfigWithSecret) []string {
+	token := configs[0].OAuthConfig.Token
+	if token == nil || token.AccessToken == nil || token.AccessToken.ClientConfig == nil {
+		return nil
+	}
+	return token.AccessToken.ClientConfig.Attributes
+}
+
+func (suite *AgentServiceTestSuite) TestSeedClientSubTypeAttribute_ClientCredentials() {
+	configs := configsWithGrants([]providers.GrantType{providers.GrantTypeClientCredentials})
+
+	seedClientSubTypeAttribute(configs)
+
+	assert.Equal(suite.T(), []string{"sub_type"}, clientAttributesOf(configs))
+}
+
+// An agent with no grant types receives client_credentials by default, so it is seeded too.
+func (suite *AgentServiceTestSuite) TestSeedClientSubTypeAttribute_EmptyGrantTypes() {
+	configs := configsWithGrants(nil)
+
+	seedClientSubTypeAttribute(configs)
+
+	assert.Equal(suite.T(), []string{"sub_type"}, clientAttributesOf(configs))
+}
+
+// An agent that never receives a token for itself gets no selection.
+func (suite *AgentServiceTestSuite) TestSeedClientSubTypeAttribute_SkipsNonClientGrants() {
+	configs := configsWithGrants([]providers.GrantType{providers.GrantTypeAuthorizationCode})
+
+	seedClientSubTypeAttribute(configs)
+
+	assert.Nil(suite.T(), clientAttributesOf(configs))
+}
+
+// Seeding adds to the caller's selection rather than replacing it.
+func (suite *AgentServiceTestSuite) TestSeedClientSubTypeAttribute_AppendsToCallerSelection() {
+	configs := configsWithGrants([]providers.GrantType{providers.GrantTypeClientCredentials})
+	configs[0].OAuthConfig.Token = &providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
+			ClientConfig: &providers.AccessTokenSubConfig{Attributes: []string{"modelProvider"}},
+		},
+	}
+
+	seedClientSubTypeAttribute(configs)
+
+	assert.Equal(suite.T(), []string{"modelProvider", "sub_type"}, clientAttributesOf(configs))
+}
+
+// An agent with no OAuth inbound config has no client token to carry the claim.
+func (suite *AgentServiceTestSuite) TestSeedClientSubTypeAttribute_NoOAuthConfig() {
+	configs := []providers.InboundAuthConfigWithSecret{}
+
+	seedClientSubTypeAttribute(configs)
+
+	assert.Empty(suite.T(), configs)
+}
+
+// --- Authorization ---
+
+// setupServiceWithAuthz wires a service with permissive entity/inbound/OU mocks and the given
+// authorization mock, so authz-specific tests control only the authorization decision.
+func (suite *AgentServiceTestSuite) setupServiceWithAuthz(
+	authzMock *sysauthzmock.SystemAuthorizationServiceInterfaceMock,
+) (*agentService, *entitymock.EntityServiceInterfaceMock) {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	svc.authzService = authzMock
+	return svc, mockEntity
+}
+
+// newDenyAuthz returns a mock that denies the given action and allows everything else, so a test
+// can pin the denial to one specific check.
+func (suite *AgentServiceTestSuite) newDenyAuthz(
+	action security.Action, ouID string,
+) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, action,
+		&sysauthz.ActionContext{
+			ResourceType: security.ResourceTypeAgent,
+			OUID:         ouID,
+			ResourceID:   testAgentID,
+		}).Return(false, nil).Maybe()
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil).Maybe()
+	return authzMock
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_AuthzDenied() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, security.ActionCreateAgent,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeAgent, OUID: testOUID}).
+		Return(false, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+
+	resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{
+		Type: testAgentType, OUID: testOUID,
+	})
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgent_AuthzDenied() {
+	svc, mockEntity := suite.setupServiceWithAuthz(
+		suite.newDenyAuthz(security.ActionReadAgent, testOUID))
+
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.GetAgent(context.Background(), testAgentID, false)
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_AuthzDeniedOnExistingOU() {
+	svc, mockEntity := suite.setupServiceWithAuthz(
+		suite.newDenyAuthz(security.ActionUpdateAgent, testOUID))
+
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType,
+	})
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A caller authorized on the agent's current OU must still be refused when moving the agent into an
+// OU it does not control, and the agent must not be written.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_AuthzDeniedOnDestinationOU() {
+	const destinationOUID = "ou-id-destination"
+
+	svc, mockEntity := suite.setupServiceWithAuthz(
+		suite.newDenyAuthz(security.ActionUpdateAgent, destinationOUID))
+
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType, OUID: destinationOUID,
+	})
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestDeleteAgent_AuthzDenied() {
+	svc, mockEntity := suite.setupServiceWithAuthz(
+		suite.newDenyAuthz(security.ActionDeleteAgent, testOUID))
+
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	svcErr := svc.DeleteAgent(context.Background(), testAgentID)
+
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentGroups_AuthzDenied() {
+	svc, mockEntity := suite.setupServiceWithAuthz(
+		suite.newDenyAuthz(security.ActionReadAgent, testOUID))
+
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.GetAgentGroups(context.Background(), testAgentID, 10, 0)
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_AuthzDenied() {
+	svc, mockEntity := suite.setupServiceWithAuthz(
+		suite.newDenyAuthz(security.ActionReadAgent, testOUID))
+
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+// A restricted caller lists through the OU-filtered store query, not the unfiltered one.
+func (suite *AgentServiceTestSuite) TestGetAgentList_FiltersByAccessibleOUs() {
+	accessibleOUIDs := []string{testOUID}
+
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListAgents,
+		security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: accessibleOUIDs}, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+
+	clearMockCalls(mockEntity, "GetEntityListCountByOUIDs")
+	mockEntity.On("GetEntityListCountByOUIDs", mock.Anything,
+		providers.EntityCategoryAgent, accessibleOUIDs, mock.Anything).Return(1, nil)
+
+	clearMockCalls(mockEntity, "GetEntityListByOUIDs")
+	mockEntity.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryAgent,
+		accessibleOUIDs, mock.Anything, mock.Anything, mock.Anything).
+		Return([]providers.Entity{*buildAgentEntityFixture(testAgentName, "", "", "")}, nil)
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0, nil, false)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	assert.Equal(suite.T(), 1, resp.TotalResults)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityList", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A caller with no accessible OUs gets an empty page without querying the store.
+func (suite *AgentServiceTestSuite) TestGetAgentList_NoAccessibleOUs() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListAgents,
+		security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: []string{}}, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0, nil, false)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	assert.Equal(suite.T(), 0, resp.TotalResults)
+	assert.Empty(suite.T(), resp.Agents)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityListByOUIDs", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// An organization unit filter lists the agents it owns, then the ones shared into it, each shared
+// agent under the listed organization unit.
+func (suite *AgentServiceTestSuite) TestGetAgentList_InOrganizationUnit() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+
+	mockEntity.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryAgent, testOUID,
+		entity.OUEntityScopeAll, 1, 0, map[string]interface{}(nil)).
+		Return(&entity.OUEntityPage{
+			Owned: []providers.Entity{{ID: "owned-agent", Category: providers.EntityCategoryAgent,
+				OUID: testOUID}},
+			Shared: []providers.Entity{{ID: "shared-agent", Category: providers.EntityCategoryAgent,
+				OUID: "owner-ou", OUHandle: "owner"}},
+			TotalResults: 3,
+		}, nil)
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 1, 0,
+		map[string]interface{}{"ouId": testOUID}, false)
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), 3, resp.TotalResults)
+	assert.Equal(suite.T(), 2, resp.Count)
+	suite.Require().Len(resp.Agents, 2)
+	assert.Equal(suite.T(), "owned-agent", resp.Agents[0].ID)
+	assert.Equal(suite.T(), new(true), resp.Agents[0].IsOwnedByOU)
+	assert.False(suite.T(), resp.Agents[0].IsReadOnly)
+	assert.Equal(suite.T(), "shared-agent", resp.Agents[1].ID)
+	assert.Equal(suite.T(), new(false), resp.Agents[1].IsOwnedByOU)
+	assert.True(suite.T(), resp.Agents[1].IsReadOnly)
+	assert.Equal(suite.T(), testOUID, resp.Agents[1].OUID)
+	assert.Empty(suite.T(), resp.Agents[1].OUHandle)
+	suite.Require().NotEmpty(resp.Links)
+	assert.Contains(suite.T(), resp.Links[0].Href, "&filter=ouId+eq+%22"+testOUID+"%22")
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityList", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A caller who cannot list agents from the filtered organization unit gets an empty page.
+func (suite *AgentServiceTestSuite) TestGetAgentList_InOrganizationUnitWithoutAccess() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListAgents,
+		security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: []string{"other-ou"}}, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0,
+		map[string]interface{}{"ouId": testOUID}, false)
+
+	suite.Require().Nil(svcErr)
+	assert.Zero(suite.T(), resp.TotalResults)
+	assert.Empty(suite.T(), resp.Agents)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityPageInOU", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A restricted caller lists an organization unit it has access to.
+func (suite *AgentServiceTestSuite) TestGetAgentList_InAccessibleOrganizationUnit() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListAgents,
+		security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: []string{testOUID}}, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+
+	mockEntity.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryAgent, testOUID,
+		entity.OUEntityScopeAll, 10, 0, map[string]interface{}(nil)).
+		Return(&entity.OUEntityPage{
+			Owned:        []providers.Entity{*buildAgentEntityFixture(testAgentName, "", "", "")},
+			TotalResults: 1,
+		}, nil)
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0,
+		map[string]interface{}{"ouId": testOUID}, false)
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), 1, resp.TotalResults)
+	suite.Require().Len(resp.Agents, 1)
+	assert.Equal(suite.T(), new(true), resp.Agents[0].IsOwnedByOU)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentList_InOrganizationUnitError() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+
+	mockEntity.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryAgent, testOUID,
+		entity.OUEntityScopeAll, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, errors.New("db error"))
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0,
+		map[string]interface{}{"ouId": testOUID}, false)
+
+	assert.Nil(suite.T(), resp)
+	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentList_InvalidOrganizationUnitFilter() {
+	for name, filters := range map[string]map[string]interface{}{
+		"a number":               {"ouId": int64(5)},
+		"an empty ID":            {"ouId": ""},
+		"with another attribute": {"ouId": testOUID, "name": testAgentName},
+	} {
+		suite.Run(name, func() {
+			svc, _, _, _, _ := suite.setupService()
+
+			resp, svcErr := svc.GetAgentList(context.Background(), 10, 0, filters, false)
+
+			assert.Nil(suite.T(), resp)
+			assert.Equal(suite.T(), &ErrorInvalidFilter, svcErr)
+		})
+	}
+}
+
+// A failed authorization check is a refusal, not a pass.
+func (suite *AgentServiceTestSuite) TestGetAgent_AuthzCheckError() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(false, &tidcommon.InternalServerError).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.GetAgent(context.Background(), testAgentID, false)
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// withDisplayPaths gives the service an entity type service reporting the given display attribute for
+// the test agent type; an empty path models a schema that has no display attribute.
+func (suite *AgentServiceTestSuite) withDisplayPaths(svc *agentService, path string) {
+	mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent,
+		mock.Anything).Return(map[string]string{testAgentType: path}, (*tidcommon.ServiceError)(nil)).Maybe()
+	svc.entityTypeService = mockType
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgent_IncludeDisplay_ResolvesDisplayAttribute() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	suite.withDisplayPaths(svc, "name")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.GetAgent(context.Background(), testAgentID, true)
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), testAgentName, resp.Display)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgent_IncludeDisplay_FallsBackToIDWithoutDisplayAttribute() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	suite.withDisplayPaths(svc, "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.GetAgent(context.Background(), testAgentID, true)
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), testAgentID, resp.Display)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgent_WithoutIncludeDisplay_LeavesDisplayEmpty() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	suite.withDisplayPaths(svc, "name")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.GetAgent(context.Background(), testAgentID, false)
+
+	suite.Require().Nil(svcErr)
+	assert.Empty(suite.T(), resp.Display)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentList_IncludeDisplay_ResolvesDisplayAttribute() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	suite.withDisplayPaths(svc, "name")
+	named := *buildAgentEntityFixture(testAgentName, "", "", "")
+	unnamed := *buildAgentEntityFixture("", "", "", "")
+	unnamed.ID = "agent-without-name"
+	clearMockCalls(mockEntity, "GetEntityList")
+	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent, mock.Anything, mock.Anything,
+		mock.Anything).Return([]providers.Entity{named, unnamed}, nil)
+	clearMockCalls(mockEntity, "GetEntityListCount")
+	mockEntity.On("GetEntityListCount", mock.Anything, providers.EntityCategoryAgent, mock.Anything).
+		Return(2, nil)
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0, nil, true)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().Len(resp.Agents, 2)
+	assert.Equal(suite.T(), testAgentName, resp.Agents[0].Display)
+	assert.Equal(suite.T(), "agent-without-name", resp.Agents[1].Display, "falls back to the ID")
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgent_ReportsTheGovernedStatus() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	governance.EXPECT().ReadEntityAccess(mock.Anything, *agentEntity).
+		Return(identitygovernance.AccessRead{
+			Status:      providers.AccessStatusReport{Value: providers.AccessStatusLocked},
+			LastLoginAt: "2026-09-09T18:22:04Z",
+		}).Once()
+	svc.governance = governance
+
+	resp, svcErr := svc.GetAgent(context.Background(), testAgentID, false)
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp.Status)
+	suite.Equal(providers.AccessStatusLocked, resp.Status.Value)
+	suite.Equal("2026-09-09T18:22:04Z", resp.LastLoginAt)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentList_ReportsTheGovernedStatus() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	first := buildAgentEntityFixture(testAgentName, "", "", "")
+	second := buildAgentEntityFixture("second-agent", "", "", "")
+	second.ID = "agent-2"
+	listed := []providers.Entity{*first, *second}
+	clearMockCalls(mockEntity, "GetEntityList")
+	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent, 30, 0, mock.Anything).
+		Return(listed, nil)
+	clearMockCalls(mockEntity, "GetEntityListCount")
+	mockEntity.On("GetEntityListCount", mock.Anything, providers.EntityCategoryAgent, mock.Anything).
+		Return(2, nil)
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	governance.EXPECT().ReadAccess(mock.Anything, listed).Return([]identitygovernance.AccessRead{
+		{
+			Status:      providers.AccessStatusReport{Value: providers.AccessStatusLocked},
+			LastLoginAt: "2026-09-09T18:22:04Z",
+		},
+		{Status: providers.AccessStatusReport{Value: providers.AccessStatusSuspended}},
+	}).Once()
+	svc.governance = governance
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 0, 0, nil, false)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().Len(resp.Agents, 2)
+	suite.Equal(testAgentID, resp.Agents[0].ID)
+	suite.Equal(providers.AccessStatusLocked, resp.Agents[0].Status.Value)
+	suite.Equal("2026-09-09T18:22:04Z", resp.Agents[0].LastLoginAt)
+	suite.Equal("agent-2", resp.Agents[1].ID)
+	suite.Equal(providers.AccessStatusSuspended, resp.Agents[1].Status.Value)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_ReportsTheGovernedStatus() {
+	cases := []struct {
+		name string
+		read identitygovernance.AccessRead
+	}{
+		{name: "a held agent", read: identitygovernance.AccessRead{
+			Status: providers.AccessStatusReport{Value: providers.AccessStatusLocked,
+				Details: &providers.AccessStatusDetails{Reason: providers.AccessHoldReasonFailedAttempts,
+					LockedMethods: []providers.AccessLockedMethod{
+						{Method: "credential", ExpiresAt: "2026-10-21T09:00:00Z"}}}},
+			LastLoginAt: "2026-10-20T08:00:00Z",
+		}},
+		{name: "an active agent", read: identitygovernance.AccessRead{
+			Status: providers.AccessStatusReport{Value: providers.AccessStatusActive}}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, mockEntity, _, _, _ := suite.setupService()
+			clearMockCalls(mockEntity, "GetEntityProfile")
+			mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+				Return(buildAgentEntityFixture("old-name", "", "", ""), nil)
+			updated := buildAgentEntityFixture(testAgentName, "", "", "")
+			clearMockCalls(mockEntity, "UpdateEntity")
+			mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).Return(updated, nil)
+			governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+			governance.EXPECT().ReadEntityAccess(mock.Anything, *updated).
+				Return(tc.read).Once()
+			svc.governance = governance
+
+			resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+				Type: testAgentType, Attributes: json.RawMessage(`{"name":"test-agent"}`),
+			})
+
+			suite.Require().Nil(svcErr)
+			suite.Require().NotNil(resp.Status)
+			suite.Equal(tc.read.Status, *resp.Status)
+			suite.Equal(tc.read.LastLoginAt, resp.LastLoginAt)
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_ReportsNoStatus() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+	svc.governance = identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+
+	resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{Type: testAgentType, OUID: testOUID})
+
+	suite.Require().Nil(svcErr)
+	suite.Nil(resp.Status)
+	suite.Empty(resp.LastLoginAt)
+}
+
+const (
+	testFutureValidUntil = "2099-01-01T00:00:00Z"
+	testPastValidUntil   = "2020-01-01T00:00:00Z"
+)
+
+// withLifespanEvents attaches an enabled observability mock to svc and returns the event types it
+// receives, in order.
+func (suite *AgentServiceTestSuite) withLifespanEvents(svc *agentService) *[]string {
+	obs := observabilitymock.NewObservabilityServiceInterfaceMock(suite.T())
+	obs.On("IsEnabled").Return(true).Maybe()
+	published := []string{}
+	obs.On("PublishEvent", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		published = append(published, args.Get(1).(*providers.Event).Type)
+	}).Maybe()
+	svc.observabilitySvc = obs
+	return &published
+}
+
+// agentEntityWithValidUntil returns the agent fixture with the given stored lifespan end.
+func agentEntityWithValidUntil(validUntil string) *providers.Entity {
+	e := buildAgentEntityFixture("old-name", "", "", "")
+	e.SystemAttributes, _ = json.Marshal(map[string]interface{}{
+		authnprovidercm.SystemAttrValidUntil: validUntil,
+	})
+	return e
+}
+
+// stubAgentEntity serves e as the stored agent. Any other entity, such as the caller whose category a
+// lifespan event reports, is not found.
+func stubAgentEntity(mockEntity *entitymock.EntityServiceInterfaceMock, e *providers.Entity) {
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(e, nil)
+	mockEntity.On("GetEntityProfile", mock.Anything, mock.Anything).
+		Maybe().Return((*providers.Entity)(nil), entity.ErrEntityNotFound)
+}
+
+// expectReread answers the read writeAgentUpdate makes after the lifespan setter with the agent as
+// written, carrying the new lifespan end.
+func expectReread(mockEntity *entitymock.EntityServiceInterfaceMock, validUntil string) {
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntityWithValidUntil(validUntil), nil).Once()
+}
+
+// callerContext returns a context whose token names an administrator.
+func callerContext() context.Context {
+	return security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin-1", "", "", nil, nil))
+}
+
+func (suite *AgentServiceTestSuite) TestResolveRequestedValidUntil() {
+	now := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+	str := func(s string) *string { return &s }
+	cases := []struct {
+		name    string
+		value   *string
+		want    string
+		wantErr string
+	}{
+		{name: "absent is unbounded", value: nil, want: authnprovidercm.UnboundedValidUntil},
+		{name: "future instant", value: str("2027-03-31T00:00:00Z"), want: "2027-03-31T00:00:00Z"},
+		{name: "offset normalized to UTC", value: str("2027-03-31T05:30:00+05:30"), want: "2027-03-31T00:00:00Z"},
+		{name: "sub-second truncated", value: str("2027-03-31T00:00:00.9Z"), want: "2027-03-31T00:00:00Z"},
+		{name: "sentinel is unbounded", value: str(authnprovidercm.UnboundedValidUntil),
+			want: authnprovidercm.UnboundedValidUntil},
+		{name: "past the sentinel in UTC is unbounded", value: str("9999-12-31T23:00:00-05:00"),
+			want: authnprovidercm.UnboundedValidUntil},
+		{name: "date only", value: str("2027-03-31"), wantErr: ErrorInvalidLifespan.Code},
+		{name: "malformed", value: str("tomorrow"), wantErr: ErrorInvalidLifespan.Code},
+		{name: "now", value: str("2026-10-14T00:00:00Z"), wantErr: ErrorLifespanNotInFuture.Code},
+		{name: "past", value: str(testPastValidUntil), wantErr: ErrorLifespanNotInFuture.Code},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			got, svcErr := resolveRequestedValidUntil(tc.value, now, false)
+			if tc.wantErr != "" {
+				suite.Require().NotNil(svcErr)
+				suite.Equal(tc.wantErr, svcErr.Code)
+				return
+			}
+			suite.Require().Nil(svcErr)
+			suite.Equal(tc.want, got.String())
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestParseUpdateValidUntil() {
+	cases := []struct {
+		name          string
+		raw           json.RawMessage
+		want          string
+		wantRequested bool
+		wantErr       bool
+	}{
+		{name: "absent", raw: nil},
+		{name: "null", raw: json.RawMessage(`null`), want: authnprovidercm.UnboundedValidUntil, wantRequested: true},
+		{name: "timestamp", raw: json.RawMessage(`"2027-03-31T00:00:00Z"`), want: "2027-03-31T00:00:00Z",
+			wantRequested: true},
+		{name: "past is parsed, not refused", raw: json.RawMessage(`"` + testPastValidUntil + `"`),
+			want: testPastValidUntil, wantRequested: true},
+		{name: "number", raw: json.RawMessage(`12`), wantRequested: true, wantErr: true},
+		{name: "malformed", raw: json.RawMessage(`"not-a-date"`), wantRequested: true, wantErr: true},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			got, requested, svcErr := parseUpdateValidUntil(tc.raw)
+			suite.Equal(tc.wantRequested, requested)
+			if tc.wantErr {
+				suite.Require().NotNil(svcErr)
+				suite.Equal(ErrorInvalidLifespan.Code, svcErr.Code)
+				return
+			}
+			suite.Require().Nil(svcErr)
+			if tc.wantRequested {
+				suite.Equal(tc.want, got.String())
+			}
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestResolveDeclarativeValidUntil() {
+	got, err := resolveDeclarativeValidUntil("")
+	suite.NoError(err)
+	suite.Empty(got)
+
+	got, err = resolveDeclarativeValidUntil(testPastValidUntil)
+	suite.NoError(err)
+	suite.Equal(testPastValidUntil, got)
+
+	_, err = resolveDeclarativeValidUntil("2027-03-31")
+	suite.ErrorIs(err, errInvalidDeclarativeLifespan)
+
+	_, err = resolveDeclarativeValidUntil("0000-01-01T00:00:00+01:00")
+	suite.ErrorIs(err, errInvalidDeclarativeLifespan, "an instant before year 0 in UTC cannot be stored")
+}
+
+func (suite *AgentServiceTestSuite) TestLifespanView() {
+	now := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+	end := func(stored string) *lifespanEnd {
+		e, svcErr := parseLifespanEnd(stored)
+		suite.Require().Nil(svcErr)
+		return &e
+	}
+
+	validUntil, lifespan := lifespanView(&lifespanEnd{}, now)
+	suite.Empty(validUntil)
+	suite.Equal(model.LifespanPhaseUnbounded, lifespan.Phase)
+
+	validUntil, lifespan = lifespanView(end(testFutureValidUntil), now)
+	suite.Equal(testFutureValidUntil, validUntil)
+	suite.Equal(model.LifespanPhaseActive, lifespan.Phase)
+
+	validUntil, lifespan = lifespanView(end("2026-10-14T00:00:00Z"), now)
+	suite.Equal("2026-10-14T00:00:00Z", validUntil)
+	suite.Equal(model.LifespanPhaseExpired, lifespan.Phase, "the agent is expired from its validUntil instant")
+
+	validUntil, lifespan = lifespanView(nil, now)
+	suite.Empty(validUntil)
+	suite.Nil(lifespan, "an unreadable stored value reports no lifespan")
+}
+
+func (suite *AgentServiceTestSuite) TestLifespanEnd_EndsAfter() {
+	earlier, _ := parseLifespanEnd("2098-01-01T00:00:00Z")
+	later, _ := parseLifespanEnd(testFutureValidUntil)
+	unbounded := lifespanEnd{}
+
+	suite.True(later.endsAfter(earlier))
+	suite.False(earlier.endsAfter(later))
+	suite.False(later.endsAfter(later))
+	suite.True(unbounded.endsAfter(later), "a lifespan that never ends ends after any other")
+	suite.False(later.endsAfter(unbounded))
+	suite.False(unbounded.endsAfter(unbounded))
+}
+
+func (suite *AgentServiceTestSuite) TestStoredLifespanEnd() {
+	suite.Equal(authnprovidercm.UnboundedValidUntil, storedLifespanEnd(nil).String())
+	suite.Equal(authnprovidercm.UnboundedValidUntil, storedLifespanEnd(json.RawMessage(`{"owner":"o"}`)).String(),
+		"an agent registered before lifespans existed is unbounded")
+	suite.Equal(testPastValidUntil,
+		storedLifespanEnd(agentEntityWithValidUntil(testPastValidUntil).SystemAttributes).String())
+	suite.Nil(storedLifespanEnd(agentEntityWithValidUntil("corrupt").SystemAttributes))
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_StoresLifespanAndPublishesSet() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	published := suite.withLifespanEvents(svc)
+
+	var stored json.RawMessage
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			stored = args.Get(1).(*providers.Entity).SystemAttributes
+		}).Return(&providers.Entity{ID: testAgentID}, nil)
+
+	validUntil := testFutureValidUntil
+	resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{
+		OUID: testOUID, Type: testAgentType, ValidUntil: &validUntil,
+	})
+	suite.Require().Nil(svcErr)
+	suite.Equal(testFutureValidUntil, resp.ValidUntil)
+	suite.Equal(model.LifespanPhaseActive, resp.Lifespan.Phase)
+	suite.Equal(testFutureValidUntil, storedLifespanEnd(stored).String())
+	suite.Equal([]string{string(event.EventTypeAgentLifespanSet)}, *published)
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_WithoutLifespanStoresSentinel() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+
+	var stored json.RawMessage
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			stored = args.Get(1).(*providers.Entity).SystemAttributes
+		}).Return(&providers.Entity{ID: testAgentID}, nil)
+
+	resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{OUID: testOUID, Type: testAgentType})
+	suite.Require().Nil(svcErr)
+	suite.Empty(resp.ValidUntil)
+	suite.Equal(model.LifespanPhaseUnbounded, resp.Lifespan.Phase)
+	var attrs map[string]interface{}
+	suite.Require().NoError(json.Unmarshal(stored, &attrs))
+	suite.Equal(authnprovidercm.UnboundedValidUntil, attrs[authnprovidercm.SystemAttrValidUntil])
+}
+
+// An import restores an exported expired agent as it was, rather than refusing its past validUntil.
+func (suite *AgentServiceTestSuite) TestCreateAgent_RestoreAcceptsPastLifespan() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	var stored json.RawMessage
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			stored = args.Get(1).(*providers.Entity).SystemAttributes
+		}).Return(&providers.Entity{ID: testAgentID}, nil)
+
+	validUntil := testPastValidUntil
+	resp, svcErr := svc.CreateAgent(WithLifespanRestore(context.Background()), &providers.Agent{
+		OUID: testOUID, Type: testAgentType, ValidUntil: &validUntil,
+	})
+	suite.Require().Nil(svcErr)
+	suite.Equal(model.LifespanPhaseExpired, resp.Lifespan.Phase)
+	suite.Equal(testPastValidUntil, storedLifespanEnd(stored).String())
+}
+
+// An import upserting an exported expired agent restores its past validUntil.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_RestoreAcceptsPastLifespan() {
+	svc, mockEntity, _ := suite.setupLifespanUpdate(testFutureValidUntil)
+	mockEntity.On("SetValidUntil", mock.Anything, testAgentID, testPastValidUntil).Return(nil).Once()
+	expectReread(mockEntity, testPastValidUntil)
+
+	resp, svcErr := svc.UpdateAgent(WithLifespanRestore(callerContext()), testAgentID,
+		&model.UpdateAgentRequest{Type: testAgentType, ValidUntil: json.RawMessage(`"` + testPastValidUntil + `"`)})
+	suite.Require().Nil(svcErr)
+	suite.Equal(model.LifespanPhaseExpired, resp.Lifespan.Phase)
+}
+
+// An import that restores an expired agent with a later but still past lifespan end extends it without
+// reactivating it.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_RestoreToALaterPastEndDoesNotReactivate() {
+	const laterPast = "2021-01-01T00:00:00Z"
+	svc, mockEntity, published := suite.setupLifespanUpdate(testPastValidUntil)
+	mockEntity.On("SetValidUntil", mock.Anything, testAgentID, laterPast).Return(nil).Once()
+	expectReread(mockEntity, laterPast)
+
+	resp, svcErr := svc.UpdateAgent(WithLifespanRestore(callerContext()), testAgentID,
+		&model.UpdateAgentRequest{Type: testAgentType, ValidUntil: json.RawMessage(`"` + laterPast + `"`)})
+	suite.Require().Nil(svcErr)
+	suite.Equal(model.LifespanPhaseExpired, resp.Lifespan.Phase)
+	suite.Equal([]string{string(event.EventTypeAgentLifespanExtended)}, *published)
+}
+
+func (suite *AgentServiceTestSuite) TestValidateLifespanFormat() {
+	suite.Nil(ValidateLifespanFormat(testPastValidUntil), "a past value is well formed")
+	suite.Nil(ValidateLifespanFormat(authnprovidercm.UnboundedValidUntil))
+	suite.Require().NotNil(ValidateLifespanFormat("2027-03-31"))
+	suite.Equal(ErrorInvalidLifespan.Code, ValidateLifespanFormat("2027-03-31").Code)
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_PastLifespanRefused() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+
+	validUntil := testPastValidUntil
+	resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{
+		OUID: testOUID, Type: testAgentType, ValidUntil: &validUntil,
+	})
+	suite.Nil(resp)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorLifespanNotInFuture.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// setupLifespanUpdate returns a service whose stored agent has the given lifespan end.
+func (suite *AgentServiceTestSuite) setupLifespanUpdate(stored string) (
+	*agentService, *entitymock.EntityServiceInterfaceMock, *[]string) {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	stubAgentEntity(mockEntity, agentEntityWithValidUntil(stored))
+	return svc, mockEntity, suite.withLifespanEvents(svc)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_LifespanAbsentLeavesItUnchanged() {
+	svc, mockEntity, published := suite.setupLifespanUpdate(testFutureValidUntil)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{Type: testAgentType})
+	suite.Require().Nil(svcErr)
+	suite.Equal(testFutureValidUntil, resp.ValidUntil)
+	mockEntity.AssertNotCalled(suite.T(), "SetValidUntil", mock.Anything, mock.Anything, mock.Anything)
+	suite.Empty(*published)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_LifespanEqualIsNoChange() {
+	// Resending an expired agent's lifespan unchanged is not refused as a past value.
+	svc, mockEntity, published := suite.setupLifespanUpdate(testPastValidUntil)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType, ValidUntil: json.RawMessage(`"` + testPastValidUntil + `"`),
+	})
+	suite.Require().Nil(svcErr)
+	suite.Equal(model.LifespanPhaseExpired, resp.Lifespan.Phase)
+	mockEntity.AssertNotCalled(suite.T(), "SetValidUntil", mock.Anything, mock.Anything, mock.Anything)
+	suite.Empty(*published)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_LifespanChanges() {
+	cases := []struct {
+		name       string
+		stored     string
+		requested  string
+		wantStored string
+		wantEvents []string
+	}{
+		{name: "extension", stored: "2098-01-01T00:00:00Z", requested: `"2099-01-01T00:00:00Z"`,
+			wantStored: "2099-01-01T00:00:00Z",
+			wantEvents: []string{string(event.EventTypeAgentLifespanExtended)}},
+		{name: "reduction", stored: "2099-01-01T00:00:00Z", requested: `"2098-01-01T00:00:00Z"`,
+			wantStored: "2098-01-01T00:00:00Z",
+			wantEvents: []string{string(event.EventTypeAgentLifespanReduced)}},
+		{name: "bounded to unbounded", stored: testFutureValidUntil, requested: `null`,
+			wantStored: authnprovidercm.UnboundedValidUntil,
+			wantEvents: []string{string(event.EventTypeAgentLifespanExtended)}},
+		{name: "unbounded to bounded", stored: authnprovidercm.UnboundedValidUntil,
+			requested: `"` + testFutureValidUntil + `"`, wantStored: testFutureValidUntil,
+			wantEvents: []string{string(event.EventTypeAgentLifespanReduced)}},
+		{name: "reactivation", stored: testPastValidUntil, requested: `"` + testFutureValidUntil + `"`,
+			wantStored: testFutureValidUntil,
+			wantEvents: []string{
+				string(event.EventTypeAgentLifespanExtended), string(event.EventTypeAgentReactivated),
+			}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, mockEntity, _, _, _ := suite.setupService()
+			stubAgentEntity(mockEntity, agentEntityWithValidUntil(tc.stored))
+			mockEntity.On("SetValidUntil", mock.Anything, testAgentID, tc.wantStored).Return(nil).Once()
+			expectReread(mockEntity, tc.wantStored)
+			published := suite.withLifespanEvents(svc)
+
+			resp, svcErr := svc.UpdateAgent(callerContext(), testAgentID, &model.UpdateAgentRequest{
+				Type: testAgentType, ValidUntil: json.RawMessage(tc.requested),
+			})
+			suite.Require().Nil(svcErr)
+			suite.NotNil(resp.Lifespan)
+			suite.Equal(tc.wantEvents, *published)
+		})
+	}
+}
+
+// A stored value that cannot be read is replaced by any requested value, null included, and the change
+// is published as the lifespan being set, since it is neither an extension nor a reduction.
+// Reactivating an expired agent reports the status of the agent as written, not the expired one the
+// generic update returned before the new lifespan end was set.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_ReactivationReportsTheNewStatus() {
+	svc, mockEntity, _ := suite.setupLifespanUpdate(testPastValidUntil)
+	mockEntity.On("SetValidUntil", mock.Anything, testAgentID, testFutureValidUntil).Return(nil).Once()
+	expectReread(mockEntity, testFutureValidUntil)
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	governance.EXPECT().ReadEntityAccess(mock.Anything, mock.MatchedBy(func(e providers.Entity) bool {
+		return strings.Contains(string(e.SystemAttributes), testFutureValidUntil)
+	})).Return(identitygovernance.AccessRead{
+		Status: providers.AccessStatusReport{Value: providers.AccessStatusActive},
+	}).Once()
+	svc.governance = governance
+
+	resp, svcErr := svc.UpdateAgent(callerContext(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType, ValidUntil: json.RawMessage(`"` + testFutureValidUntil + `"`),
+	})
+	suite.Require().Nil(svcErr)
+	suite.Equal(providers.AccessStatusActive, resp.Status.Value)
+	suite.Equal(model.LifespanPhaseActive, resp.Lifespan.Phase)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_UnreadableStoredLifespanIsReplaced() {
+	svc, mockEntity, published := suite.setupLifespanUpdate("corrupt")
+	mockEntity.On("SetValidUntil", mock.Anything, testAgentID, authnprovidercm.UnboundedValidUntil).
+		Return(nil).Once()
+	expectReread(mockEntity, authnprovidercm.UnboundedValidUntil)
+
+	resp, svcErr := svc.UpdateAgent(callerContext(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType, ValidUntil: json.RawMessage(`null`),
+	})
+	suite.Require().Nil(svcErr)
+	suite.Equal(model.LifespanPhaseUnbounded, resp.Lifespan.Phase)
+	suite.Equal([]string{string(event.EventTypeAgentLifespanSet)}, *published)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_LifespanRefused() {
+	cases := []struct {
+		name      string
+		ctx       context.Context
+		requested string
+		wantErr   string
+	}{
+		{name: "past value", ctx: callerContext(),
+			requested: `"` + testPastValidUntil + `"`, wantErr: ErrorLifespanNotInFuture.Code},
+		{name: "malformed value", ctx: callerContext(),
+			requested: `"2099-01-01"`, wantErr: ErrorInvalidLifespan.Code},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, mockEntity, mockInbound, _, _ := suite.setupService()
+			stubAgentEntity(mockEntity, agentEntityWithValidUntil("2098-01-01T00:00:00Z"))
+			published := suite.withLifespanEvents(svc)
+
+			resp, svcErr := svc.UpdateAgent(tc.ctx, testAgentID, &model.UpdateAgentRequest{
+				Type: testAgentType, ValidUntil: json.RawMessage(tc.requested),
+			})
+			suite.Nil(resp)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.wantErr, svcErr.Code)
+			suite.Equal([]string{string(event.EventTypeAgentLifespanUpdateFailed)}, *published)
+			mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+			mockEntity.AssertNotCalled(suite.T(), "SetValidUntil", mock.Anything, mock.Anything, mock.Anything)
+			mockInbound.AssertNotCalled(suite.T(), "UpdateInboundClient",
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_LifespanOnDeclarativeAgentRefused() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	readOnly := agentEntityWithValidUntil(testFutureValidUntil)
+	readOnly.IsReadOnly = true
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(readOnly, nil)
+	published := suite.withLifespanEvents(svc)
+
+	_, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType, ValidUntil: json.RawMessage(`null`),
+	})
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorCannotModifyDeclarativeResource.Code, svcErr.Code)
+	suite.Equal([]string{string(event.EventTypeAgentLifespanUpdateFailed)}, *published)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_LifespanWriteFailure() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(agentEntityWithValidUntil(testFutureValidUntil), nil)
+	mockEntity.On("SetValidUntil", mock.Anything, testAgentID, authnprovidercm.UnboundedValidUntil).
+		Return(errors.New("db error")).Once()
+	published := suite.withLifespanEvents(svc)
+
+	_, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType, ValidUntil: json.RawMessage(`null`),
+	})
+	suite.Require().NotNil(svcErr)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntity", mock.Anything, testAgentID)
+	suite.Equal([]string{string(event.EventTypeAgentLifespanUpdateFailed)}, *published)
+}
+
+// withLifespanFailureClasses attaches an enabled observability mock to svc and returns the failure
+// classes of the AGENT_LIFESPAN_UPDATE_FAILED events it receives, in order.
+func (suite *AgentServiceTestSuite) withLifespanFailureClasses(svc *agentService) *[]string {
+	obs := observabilitymock.NewObservabilityServiceInterfaceMock(suite.T())
+	obs.On("IsEnabled").Return(true).Maybe()
+	classes := []string{}
+	obs.On("PublishEvent", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		if evt := args.Get(1).(*providers.Event); evt.Type == string(event.EventTypeAgentLifespanUpdateFailed) {
+			classes = append(classes, evt.Data[event.DataKey.Error].(string))
+		}
+	}).Maybe()
+	svc.observabilitySvc = obs
+	return &classes
+}
+
+// A lifespan change in an update refused for the destination OU is published as not authorized.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_LifespanRefusedOnDestinationOU() {
+	const destinationOUID = "ou-id-destination"
+	svc, mockEntity := suite.setupServiceWithAuthz(
+		suite.newDenyAuthz(security.ActionUpdateAgent, destinationOUID))
+	stubAgentEntity(mockEntity, agentEntityWithValidUntil(testFutureValidUntil))
+	classes := suite.withLifespanFailureClasses(svc)
+
+	_, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType, OUID: destinationOUID, ValidUntil: json.RawMessage(`null`),
+	})
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	suite.Equal([]string{string(lifespanFailureNotAuthorized)}, *classes)
+}
+
+// A lifespan change in an update that fails after the lifespan check is published as failed.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_LifespanFailsWithTheUpdate() {
+	cases := []struct {
+		name    string
+		req     model.UpdateAgentRequest
+		setup   func(*inboundclientmock.InboundClientServiceInterfaceMock, *oumock.OrganizationUnitServiceInterfaceMock)
+		wantErr string
+	}{
+		{
+			name: "destination OU not found",
+			req:  model.UpdateAgentRequest{OUID: "nonexistent-ou"},
+			setup: func(_ *inboundclientmock.InboundClientServiceInterfaceMock,
+				mockOU *oumock.OrganizationUnitServiceInterfaceMock) {
+				clearMockCalls(mockOU, "IsOrganizationUnitExists")
+				mockOU.On("IsOrganizationUnitExists", mock.Anything, "nonexistent-ou").
+					Return(false, &oupkg.ErrorOrganizationUnitNotFound)
+			},
+			wantErr: ErrorOrganizationUnitNotFound.Code,
+		},
+		{
+			name: "inbound client reconcile fails",
+			req: model.UpdateAgentRequest{
+				InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{AuthFlowID: "flow-1"},
+			},
+			setup: func(mockInbound *inboundclientmock.InboundClientServiceInterfaceMock,
+				_ *oumock.OrganizationUnitServiceInterfaceMock) {
+				clearMockCalls(mockInbound, "GetInboundClientByEntityID")
+				mockInbound.On("GetInboundClientByEntityID", mock.Anything, testAgentID).
+					Return(&inboundmodel.InboundClient{ID: testAgentID}, nil)
+				clearMockCalls(mockInbound, "UpdateInboundClient")
+				mockInbound.On("UpdateInboundClient",
+					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(errors.New("update boom"))
+			},
+			wantErr: tidcommon.InternalServerError.Code,
+		},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, mockEntity, mockInbound, mockOU, _ := suite.setupService()
+			stubAgentEntity(mockEntity, agentEntityWithValidUntil(testFutureValidUntil))
+			tc.setup(mockInbound, mockOU)
+			classes := suite.withLifespanFailureClasses(svc)
+			req := tc.req
+			req.Type = testAgentType
+			req.ValidUntil = json.RawMessage(`null`)
+
+			_, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &req)
+
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.wantErr, svcErr.Code)
+			suite.Equal([]string{string(lifespanFailureOperationFailed)}, *classes)
+			mockEntity.AssertNotCalled(suite.T(), "SetValidUntil", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgent_ReportsLifespan() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntityWithValidUntil(testPastValidUntil), nil)
+
+	resp, svcErr := svc.GetAgent(context.Background(), testAgentID, false)
+	suite.Require().Nil(svcErr)
+	suite.Equal(testPastValidUntil, resp.ValidUntil)
+	assert.Equal(suite.T(), model.LifespanPhaseExpired, resp.Lifespan.Phase)
+}
+
+func (suite *AgentServiceTestSuite) TestPublishLifespanEvent_CarriesValues() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, "admin-1").
+		Return(&providers.Entity{ID: "admin-1", Category: providers.EntityCategoryUser}, nil)
+	obs := observabilitymock.NewObservabilityServiceInterfaceMock(suite.T())
+	obs.On("IsEnabled").Return(true)
+	var evt *providers.Event
+	obs.On("PublishEvent", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		evt = args.Get(1).(*providers.Event)
+	}).Once()
+	svc.observabilitySvc = obs
+
+	svc.publishLifespanUpdateFailed(callerContext(), testAgentID,
+		lifespanChange{previous: storedLifespanEnd(agentEntityWithValidUntil(testFutureValidUntil).SystemAttributes)},
+		lifespanFailureNotAuthorized)
+
+	suite.Require().NotNil(evt)
+	suite.Equal(providers.StatusFailure, evt.Status)
+	suite.Equal(testAgentID, evt.Data[event.DataKey.Subject])
+	suite.Equal(event.PrincipalTypeAgent, evt.Data[event.DataKey.SubjectType])
+	suite.Equal("admin-1", evt.Data[event.DataKey.ActorSub])
+	suite.Equal(event.PrincipalTypeUser, evt.Data[event.DataKey.ActorType])
+	suite.Equal(testFutureValidUntil, evt.Data[event.DataKey.PreviousValidUntil])
+	suite.Equal(authnprovidercm.UnboundedValidUntil, evt.Data[event.DataKey.ValidUntil])
+	suite.Equal(string(lifespanFailureNotAuthorized), evt.Data[event.DataKey.Error])
+}
+
+func (suite *AgentServiceTestSuite) TestPublishLifespanEvent_ObservabilityDisabled() {
+	svc, _, _, _, _ := suite.setupService()
+	obs := observabilitymock.NewObservabilityServiceInterfaceMock(suite.T())
+	obs.On("IsEnabled").Return(false)
+	svc.observabilitySvc = obs
+
+	svc.publishLifespanSet(context.Background(), testAgentID, lifespanEnd{})
+	obs.AssertNotCalled(suite.T(), "PublishEvent", mock.Anything, mock.Anything)
+}
+
+// projectResolverStub resolves the organization unit of a project with the given function.
+type projectResolverStub func(ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError)
+
+func (f projectResolverStub) ResolveProjectOU(
+	ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError) {
+	return f(ctx, projectID, ouID)
+}
+
+// resolvingTo builds a project resolver that expects project-1 and the given organization unit, and
+// returns the given result.
+func (suite *AgentServiceTestSuite) resolvingTo(
+	wantOUID, ouID string, svcErr *tidcommon.ServiceError) projectResolverStub {
+	return func(_ context.Context, projectID, gotOUID string) (string, *tidcommon.ServiceError) {
+		suite.Equal("project-1", projectID)
+		suite.Equal(wantOUID, gotOUID)
+		return ouID, svcErr
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestProjectErrorCodesMatchTheProjectService() {
+	assert.Equal(suite.T(), project.ErrorProjectNotFound.Code, projectNotFoundErrorCode)
+	assert.Equal(suite.T(), project.ErrorOUNotInProject.Code, ouNotInProjectErrorCode)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentListByProject() {
+	for name, tc := range map[string]struct {
+		filters map[string]interface{}
+		filter  string
+	}{
+		"the project's root organization unit": {},
+		"an organization unit filter": {
+			filters: map[string]interface{}{"ouId": "child-ou"}, filter: "child-ou",
+		},
+	} {
+		suite.Run(name, func() {
+			svc, mockEntity, _, _, _ := suite.setupService()
+			svc.projectResolver = suite.resolvingTo(tc.filter, testOUID, nil)
+			mockEntity.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryAgent, testOUID,
+				entity.OUEntityScopeAll, 1, 0, map[string]interface{}(nil)).
+				Return(&entity.OUEntityPage{
+					Owned: []providers.Entity{{ID: "owned-agent", Category: providers.EntityCategoryAgent,
+						OUID: testOUID}},
+					TotalResults: 2,
+				}, nil)
+
+			resp, svcErr := svc.GetAgentListByProject(context.Background(), "project-1", 1, 0, tc.filters, false)
+
+			suite.Require().Nil(svcErr)
+			assert.Equal(suite.T(), 2, resp.TotalResults)
+			suite.Require().Len(resp.Agents, 1)
+			assert.Equal(suite.T(), "owned-agent", resp.Agents[0].ID)
+			suite.Require().NotEmpty(resp.Links)
+			assert.Contains(suite.T(), resp.Links[0].Href, "&projectId=project-1")
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentListByProject_NothingInScope() {
+	for name, tc := range map[string]struct {
+		projectID string
+		resolver  projectOUResolver
+	}{
+		"an unknown project": {
+			projectID: "project-1",
+			resolver:  suite.resolvingTo("", "", &project.ErrorProjectNotFound),
+		},
+		"an organization unit outside the project": {
+			projectID: "project-1",
+			resolver:  suite.resolvingTo("", "", &project.ErrorOUNotInProject),
+		},
+		"an unknown organization unit": {
+			projectID: "project-1",
+			resolver: suite.resolvingTo("", "",
+				&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1003"}),
+		},
+		"an empty project ID": {},
+		"a deployment without projects": {
+			projectID: "project-1",
+		},
+	} {
+		suite.Run(name, func() {
+			svc, mockEntity, _, _, _ := suite.setupService()
+			svc.projectResolver = tc.resolver
+
+			resp, svcErr := svc.GetAgentListByProject(context.Background(), tc.projectID, 10, 0, nil, false)
+
+			suite.Require().Nil(svcErr)
+			assert.Zero(suite.T(), resp.TotalResults)
+			assert.Empty(suite.T(), resp.Agents)
+			mockEntity.AssertNotCalled(suite.T(), "GetEntityPageInOU", mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// A caller who cannot list agents from the project's organization unit gets an empty page.
+func (suite *AgentServiceTestSuite) TestGetAgentListByProject_WithoutAccess() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListAgents,
+		security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: []string{"other-ou"}}, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+	svc.projectResolver = suite.resolvingTo("", testOUID, nil)
+
+	resp, svcErr := svc.GetAgentListByProject(context.Background(), "project-1", 10, 0, nil, false)
+
+	suite.Require().Nil(svcErr)
+	assert.Zero(suite.T(), resp.TotalResults)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityPageInOU", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentListByProject_Fails() {
+	for name, tc := range map[string]struct {
+		limit    int
+		filters  map[string]interface{}
+		resolver projectOUResolver
+		expected *tidcommon.ServiceError
+	}{
+		"another filter attribute": {
+			filters:  map[string]interface{}{"name": "agent"},
+			expected: &ErrorInvalidFilter,
+		},
+		"an invalid limit": {limit: -1, expected: &ErrorInvalidLimit},
+		"a resolver failure": {
+			resolver: suite.resolvingTo("", "", &tidcommon.InternalServerError),
+			expected: &tidcommon.InternalServerError,
+		},
+	} {
+		suite.Run(name, func() {
+			svc, _, _, _, _ := suite.setupService()
+			svc.projectResolver = tc.resolver
+
+			resp, svcErr := svc.GetAgentListByProject(context.Background(), "project-1", tc.limit, 0,
+				tc.filters, false)
+
+			assert.Nil(suite.T(), resp)
+			assert.Equal(suite.T(), tc.expected, svcErr)
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_InProject() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	svc.projectResolver = suite.resolvingTo("", testOUID, nil)
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.MatchedBy(func(e *providers.Entity) bool {
+		return e.OUID == testOUID
+	}), mock.Anything, mock.Anything).Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.CreateAgent(context.Background(),
+		&providers.Agent{Type: testAgentType, ProjectID: "project-1"})
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), testOUID, resp.OUID)
+}
+
+func (suite *AgentServiceTestSuite) TestValidateAgent_Project() {
+	for name, tc := range map[string]struct {
+		agent    *providers.Agent
+		resolver projectOUResolver
+		ouID     string
+		expected *tidcommon.ServiceError
+	}{
+		"no organization unit": {
+			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1"},
+			resolver: suite.resolvingTo("", testOUID, nil),
+			ouID:     testOUID,
+		},
+		"an organization unit handle in the project": {
+			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1", OUHandle: "child"},
+			resolver: suite.resolvingTo(testOUID, testOUID, nil),
+			ouID:     testOUID,
+		},
+		"an unknown project": {
+			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1"},
+			resolver: suite.resolvingTo("", "", &project.ErrorProjectNotFound),
+			expected: &ErrorInvalidProject,
+		},
+		"an organization unit outside the project": {
+			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1", OUID: "other-ou"},
+			resolver: suite.resolvingTo("other-ou", "", &project.ErrorOUNotInProject),
+			ouID:     "other-ou",
+			expected: &ErrorOUNotInProject,
+		},
+		"an unknown organization unit": {
+			agent: &providers.Agent{Type: testAgentType, ProjectID: "project-1", OUID: "missing-ou"},
+			resolver: suite.resolvingTo("missing-ou", "",
+				&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1003"}),
+			ouID:     "missing-ou",
+			expected: &ErrorOrganizationUnitNotFound,
+		},
+		"a deployment without projects": {
+			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1"},
+			expected: &ErrorInvalidProject,
+		},
+		"a resolver failure": {
+			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1"},
+			resolver: suite.resolvingTo("", "", &tidcommon.InternalServerError),
+			expected: &tidcommon.InternalServerError,
+		},
+	} {
+		suite.Run(name, func() {
+			svc, _, _, _, _ := suite.setupService()
+			svc.projectResolver = tc.resolver
+
+			_, _, _, svcErr := svc.ValidateAgent(context.Background(), tc.agent, "")
+
+			assert.Equal(suite.T(), tc.expected, svcErr)
+			assert.Equal(suite.T(), tc.ouID, tc.agent.OUID)
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_Project() {
+	for name, tc := range map[string]struct {
+		req      *model.UpdateAgentRequest
+		resolver projectOUResolver
+		ouID     string
+		expected *tidcommon.ServiceError
+	}{
+		"the agent stays in its organization unit": {
+			req:      &model.UpdateAgentRequest{Type: testAgentType, ProjectID: "project-1"},
+			resolver: suite.resolvingTo(testOUID, testOUID, nil),
+			ouID:     testOUID,
+		},
+		"the agent moves within the project": {
+			req:      &model.UpdateAgentRequest{Type: testAgentType, ProjectID: "project-1", OUID: "child-ou"},
+			resolver: suite.resolvingTo("child-ou", "child-ou", nil),
+			ouID:     "child-ou",
+		},
+		"the agent is outside the project": {
+			req:      &model.UpdateAgentRequest{Type: testAgentType, ProjectID: "project-1"},
+			resolver: suite.resolvingTo(testOUID, "", &project.ErrorOUNotInProject),
+			expected: &ErrorOUNotInProject,
+		},
+		"an unknown project": {
+			req:      &model.UpdateAgentRequest{Type: testAgentType, ProjectID: "project-1"},
+			resolver: suite.resolvingTo(testOUID, "", &project.ErrorProjectNotFound),
+			expected: &ErrorInvalidProject,
+		},
+	} {
+		suite.Run(name, func() {
+			svc, mockEntity, _, _, _ := suite.setupService()
+			svc.projectResolver = tc.resolver
+			clearMockCalls(mockEntity, "GetEntityProfile")
+			mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+				Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+			clearMockCalls(mockEntity, "UpdateEntity")
+			mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
+				Return(&providers.Entity{}, nil).Maybe()
+
+			resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, tc.req)
+
+			assert.Equal(suite.T(), tc.expected, svcErr)
+			if tc.expected == nil {
+				suite.Require().NotNil(resp)
+				assert.Equal(suite.T(), tc.ouID, resp.OUID)
+			} else {
+				mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+			}
+		})
+	}
 }

@@ -40,7 +40,7 @@ describe('EnvVariablesViewer', () => {
     it('renders component with title', () => {
       render(<EnvVariablesViewer content={mockContent} fileName={mockFileName} />);
 
-      expect(screen.getByText('Environment Variables')).toBeInTheDocument();
+      expect(screen.getByText('Environment variables')).toBeInTheDocument();
     });
 
     it('displays variable count', () => {

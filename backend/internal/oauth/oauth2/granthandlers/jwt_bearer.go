@@ -24,6 +24,8 @@ type jwtBearerGrantHandler struct {
 	tokenBuilder    tokenservice.TokenBuilderInterface
 	tokenValidator  tokenservice.TokenValidatorInterface
 	resourceService providers.ResourceServerProvider
+	authzService    providers.AuthorizationProvider
+	actorProvider   providers.ActorProvider
 }
 
 // newJWTBearerGrantHandler creates a new instance of jwtBearerGrantHandler.
@@ -31,11 +33,15 @@ func newJWTBearerGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	tokenValidator tokenservice.TokenValidatorInterface,
 	resourceService providers.ResourceServerProvider,
+	authzService providers.AuthorizationProvider,
+	actorProvider providers.ActorProvider,
 ) GrantHandlerInterface {
 	return &jwtBearerGrantHandler{
 		tokenBuilder:    tokenBuilder,
 		tokenValidator:  tokenValidator,
 		resourceService: resourceService,
+		authzService:    authzService,
+		actorProvider:   actorProvider,
 	}
 }
 
@@ -83,6 +89,11 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 	if err != nil {
 		logger.Debug(ctx, "Failed to validate ID-JAG assertion", log.Error(err))
 		switch {
+		case errors.Is(err, tokenservice.ErrAuthorizationMappingUnavailable):
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Authorization mapping could not be resolved",
+			}
 		case errors.Is(err, tokenservice.ErrTokenExpired):
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorInvalidGrant,
@@ -106,9 +117,10 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 		}
 	}
 
-	// Granted scopes start from the assertion's scope claim, narrowed by the request scope parameter
-	// when present. OIDC scopes are narrowed to the app's scope-to-claims mapping below; permission
-	// scopes are bounded by resource-server narrowing when a resource claim is present.
+	// The granted scopes are always bounded by the ID-JAG's own scope claim (RFC-JAG 4.4.1: "granted
+	// scopes MAY be a subset of the scopes in the ID-JAG"), narrowed by the request when one is given.
+	// An omitted request keeps every assertion scope as the candidate (RFC 6749 3.3 default-scope
+	// convention); RS definition and, when configured, ApplyMappedAuthorization narrow it further below.
 	grantedScopes := assertionClaims.Scopes
 	if tokenRequest.Scope != "" {
 		grantedScopes = intersectScopes(grantedScopes, tokenservice.ParseScopes(tokenRequest.Scope))
@@ -140,7 +152,7 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 	oidcScopes, permissionScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
 		tokenservice.JoinScopes(grantedScopes), oauthApp.ScopeClaims)
 	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
-		ctx, h.resourceService, resources, permissionScopes)
+		ctx, h.resourceService, resources, permissionScopes, false)
 	if errResp != nil {
 		return nil, errResp
 	}
@@ -158,6 +170,14 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 		if errResp != nil {
 			return nil, errResp
 		}
+
+		permissionScopes, errResp = tokenservice.ApplyMappedAuthorization(
+			ctx, h.authzService, h.actorProvider, assertionClaims.Authorization.Targets, targetRS.ID,
+			permissionScopes, assertionClaims.Authorization.Configured, logger)
+		if errResp != nil {
+			return nil, errResp
+		}
+
 		grantedScopes = make([]string, 0, len(oidcScopes)+len(permissionScopes))
 		grantedScopes = append(grantedScopes, oidcScopes...)
 		grantedScopes = append(grantedScopes, permissionScopes...)
@@ -165,9 +185,11 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 	}
 
 	// The subject is the external IdP's identifier carried in the assertion; no local user resolution
-	// or attribute mapping is performed in v1. The access token carries the source IdP as the `idp`
-	// claim so that this external `sub` is not mistaken for a local user id by downstream consumers.
-	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, &tokenservice.AccessTokenBuildContext{
+	// is performed. The access token carries the source IdP as the `idp` claim so that this external
+	// `sub` is not mistaken for a local user id by downstream consumers. The subject is a user, so the
+	// client's user access token settings apply. An agent, or an application that opts in with
+	// includeActClaim, is recorded as acting for that user.
+	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
 		Subject:           assertionClaims.Sub,
 		Audiences:         audiences,
 		ClientID:          tokenRequest.ClientID,
@@ -176,14 +198,15 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 		GrantType:         string(providers.GrantTypeJWTBearer),
 		OAuthApp:          oauthApp,
 		SourceIDP:         assertionClaims.Iss,
+		ValidityPeriod:    oauthApp.UserAccessTokenConfig().ValidityPeriodOrZero(),
 		DPoPJkt:           dpop.GetJkt(ctx),
-	})
+	}
+	if oauthApp.ShouldAppendActorClaim() {
+		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
+	}
+	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, accessTokenCtx)
 	if err != nil {
-		logger.Error(ctx, "Failed to generate token", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate token",
-		}
+		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")
 	}
 
 	return &model.TokenResponseDTO{

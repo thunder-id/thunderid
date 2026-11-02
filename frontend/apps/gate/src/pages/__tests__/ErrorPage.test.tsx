@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen} from '@thunderid/test-utils';
+import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi} from 'vitest';
 import ErrorPage from '../ErrorPage';
 
@@ -19,5 +19,10 @@ describe('ErrorPage', () => {
   it('renders Error component', () => {
     render(<ErrorPage />);
     expect(screen.getByTestId('error-component')).toBeInTheDocument();
+  });
+
+  it('sets the document title', async () => {
+    render(<ErrorPage />);
+    await waitFor(() => expect(document.title).toBe('Error | ThunderID'));
   });
 });

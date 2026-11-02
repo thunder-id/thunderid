@@ -15,6 +15,7 @@ export const CONNECTION_CATEGORIES: ConnectionCategory[] = [
   'identity-verification',
   'crm',
   'data-store',
+  'authorization',
   'trusted-idp',
   'custom',
 ];

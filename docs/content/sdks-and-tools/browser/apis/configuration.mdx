@@ -1,0 +1,133 @@
+---
+title: Configuration
+docType: reference
+displayed_sidebar: browserSdkSidebar
+description: Configuration options for the Browser SDK, including client ID, base URL, scopes, and token persistence.
+---
+
+# Configuration
+
+The `initialize()` method accepts a configuration object that controls how the SDK connects to your <ProductName /> instance and manages authentication.
+
+## Basic Configuration
+
+```js
+import { ThunderIDBrowserClient } from '@thunderid/browser'
+
+const auth = new ThunderIDBrowserClient()
+
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+})
+```
+
+## Configuration Reference
+
+### Required Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `clientId` | `string` | The Client ID from your <ProductName /> application |
+| `baseUrl` | `string` | Your <ProductName /> instance URL (e.g., `https://localhost:8090`) |
+
+### Authentication Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `afterSignInUrl` | `string` | `window.location.origin` | URL to redirect to after sign-in |
+| `afterSignOutUrl` | `string` | `window.location.origin` | URL to redirect to after sign-out |
+| `scopes` | `string[]` | `['openid', 'profile']` | OAuth 2.0 scopes to request |
+| `enablePKCE` | `boolean` | `true` | Enable PKCE for the authorization request |
+| `prompt` | `string` | - | Controls the authentication UI behavior (e.g., `"login"`, `"none"`, `"consent"`) |
+| `responseMode` | `string` | `'query'` | OAuth 2.0 response mode for the authorization request |
+| `sendCookiesInRequests` | `boolean` | `true` | Include cookies in token requests |
+| `sendIdTokenInLogoutRequest` | `boolean` | - | Include the ID token hint in the logout request |
+
+### Storage Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `storage` | `string` | `'sessionStorage'` | Storage backend: `'sessionStorage'`, `'localStorage'`, or `'browserMemory'` |
+
+### Session Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `session.silentSignIn.beforeRedirect` | `boolean` | `false` | Before `signIn()` redirects, try a silent `prompt=none` sign-in from the existing <ProductName /> session. When the session exists, the user is signed in without leaving the app. Otherwise the redirect continues. Skipped when the sign-in options set their own `prompt` |
+| `session.silentSignIn.timeout` | `number` | `10000` | How long, in milliseconds, a silent sign-in waits for a response before treating the user as signed out. Also applies to `signInSilently()` |
+| `periodicTokenRefresh` | `boolean` | `false` | Automatically refresh tokens before expiry |
+| `autoLogoutOnTokenRefreshError` | `boolean` | `false` | Sign the user out when a token refresh fails |
+
+Silent sign-in loads the authorization endpoint in a hidden iframe, so it can only find the session when the browser sends the <ProductName /> session cookie into that iframe. That requires the app to run on the same site as <ProductName />, and the application's authentication flow to maintain an SSO session. See [Single Sign-On](../../../../guides/flows/single-sign-on).
+
+### Advanced Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `applicationId` | `string` | - | UUID of the <ProductName /> application. Used for Application Branding and sign-up flow access URLs |
+| `allowedExternalUrls` | `string[]` | - | URL prefixes that the SDK may attach access tokens to when making HTTP requests |
+| `authParams` | `Record<string, string>` | - | Additional query parameters to append to every authorize request |
+
+## Storage Backends
+
+The SDK supports three storage backends for persisting session data. Choose one based on your security and UX requirements.
+
+### Session Storage (Default)
+
+Data persists for the browser tab lifetime. Each tab maintains an independent session.
+
+```js
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  storage: 'sessionStorage',
+})
+```
+
+### Local Storage
+
+Data persists across tabs and browser restarts. Use when you want sessions to survive page reloads and new tabs.
+
+```js
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  storage: 'localStorage',
+})
+```
+
+### Browser Memory
+
+Data exists only in memory and is lost on page reload. Use for the highest security requirements where no data should persist to disk.
+
+```js
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  storage: 'browserMemory',
+})
+```
+
+## Full Example
+
+```js title="src/auth.js" showLineNumbers
+import { ThunderIDBrowserClient } from '@thunderid/browser'
+
+const auth = new ThunderIDBrowserClient()
+
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  afterSignInUrl: 'http://localhost:5173',
+  afterSignOutUrl: 'http://localhost:5173',
+  scopes: ['openid', 'profile', 'email'],
+  storage: 'sessionStorage',
+  periodicTokenRefresh: true,
+  session: {
+    silentSignIn: {beforeRedirect: true},
+  },
+})
+
+export default auth
+```

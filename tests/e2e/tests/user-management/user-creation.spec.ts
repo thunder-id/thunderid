@@ -4,8 +4,9 @@
 /**
  * User Management E2E Tests
  *
- * Covers the two Console onboarding wizards: Create User and Invite User.
- * Both users are created through the UI and removed via the Users API afterwards.
+ * Covers the Admin Console's Add people dialog, which runs the user onboarding flow, down both of
+ * its paths: Create User and Invite User. Both users are created through the UI and removed via the
+ * Users API afterwards.
  *
  * Required environment variables:
  * - BASE_URL: Console base URL
@@ -44,7 +45,7 @@ test.describe("User Management - Create and Invite User", () => {
 
   /** TC001: Verify user can be created with all required fields */
   test("TC001: Create new user with all required fields", async ({ usersPage, usersApi }) => {
-    await test.step("Open the Create User wizard", async () => {
+    await test.step("Open Add people and choose Create User", async () => {
       await usersPage.openAddUserWizard("create");
     });
 
@@ -52,7 +53,7 @@ test.describe("User Management - Create and Invite User", () => {
       await usersPage.fillUserForm(createdUser);
     });
 
-    await test.step("Submit and close the completion screen", async () => {
+    await test.step("Submit and close the dialog", async () => {
       await usersPage.submitForm();
       await expect(
         usersPage.page
@@ -74,7 +75,7 @@ test.describe("User Management - Create and Invite User", () => {
   test("TC002: Invite new user with an invite link", async ({ usersPage, usersApi, isolatedPage }) => {
     let inviteLink = "";
 
-    await test.step("Open the Invite User wizard", async () => {
+    await test.step("Open Add people and choose Invite User", async () => {
       await usersPage.openAddUserWizard("invite");
     });
 
@@ -90,7 +91,7 @@ test.describe("User Management - Create and Invite User", () => {
       expect(inviteLink).toMatch(/^https?:\/\//);
     });
 
-    await test.step("Close the invite wizard", async () => {
+    await test.step("Close the dialog", async () => {
       await usersPage.closeWizard();
       await usersPage.page.waitForURL(`**${ConsoleRoutes.users}`, { timeout: Timeouts.PAGE_LOAD });
     });

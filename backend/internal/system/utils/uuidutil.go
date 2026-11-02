@@ -5,6 +5,7 @@ package utils
 
 import (
 	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"regexp"
 	"time"
@@ -49,12 +50,9 @@ func GenerateUUIDv7() (string, error) {
 	unixMillis := uint64(unixMilli)
 
 	// Set timestamp in first 48 bits (6 bytes)
-	uuid[0] = byte(unixMillis >> 40)
-	uuid[1] = byte(unixMillis >> 32)
-	uuid[2] = byte(unixMillis >> 24)
-	uuid[3] = byte(unixMillis >> 16)
-	uuid[4] = byte(unixMillis >> 8)
-	uuid[5] = byte(unixMillis)
+	var ts [8]byte
+	binary.BigEndian.PutUint64(ts[:], unixMillis)
+	copy(uuid[:6], ts[2:])
 
 	// Fill remaining bytes with random data
 	_, err := rand.Read(uuid[6:])

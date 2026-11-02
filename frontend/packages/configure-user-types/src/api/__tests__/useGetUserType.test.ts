@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {waitFor, renderHook} from '@thunderid/test-utils';
@@ -28,7 +28,8 @@ describe('useGetUserType', () => {
 
   const mockUserType: ApiUserType = {
     id: '123',
-    name: 'Person',
+    handle: 'person',
+    displayName: 'Person',
     ouId: 'ou-1',
     allowSelfRegistration: true,
     schema: {
@@ -89,7 +90,7 @@ describe('useGetUserType', () => {
 
     expect(result.current.data).toEqual(mockUserType);
     expect(result.current.data?.id).toBe('123');
-    expect(result.current.data?.name).toBe('Person');
+    expect(result.current.data?.displayName).toBe('Person');
   });
 
   it('should handle API error', async () => {
@@ -153,11 +154,11 @@ describe('useGetUserType', () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    expect(result.current.data?.name).toBe('Person');
+    expect(result.current.data?.displayName).toBe('Person');
 
     const updatedUserType: ApiUserType = {
       ...mockUserType,
-      name: 'Updated Person',
+      displayName: 'Updated Person',
     };
 
     mockHttpRequest.mockResolvedValueOnce({data: updatedUserType});
@@ -165,7 +166,7 @@ describe('useGetUserType', () => {
     await result.current.refetch();
 
     await waitFor(() => {
-      expect(result.current.data?.name).toBe('Updated Person');
+      expect(result.current.data?.displayName).toBe('Updated Person');
     });
 
     expect(mockHttpRequest).toHaveBeenCalledTimes(2);

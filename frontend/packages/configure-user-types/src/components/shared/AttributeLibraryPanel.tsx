@@ -52,7 +52,7 @@ export default function AttributeLibraryPanel({
     );
   }, [availableAttributes, search]);
 
-  const title = t('userTypes:attributes.libraryTitle', 'Available Properties');
+  const title = t('userTypes:attributes.libraryTitle', 'Available properties');
 
   return (
     <Paper

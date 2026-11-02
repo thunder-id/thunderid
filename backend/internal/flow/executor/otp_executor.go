@@ -28,6 +28,7 @@ type otpExecutor struct {
 	entityProvider entityprovider.EntityProviderInterface
 	otpService     otp.OTPAuthnServiceInterface
 	authnProvider  providers.AuthnProviderManager
+	accessGuard    *accessGuard
 	logger         *log.Logger
 }
 
@@ -37,6 +38,7 @@ func newOTPExecutor(
 	otpService otp.OTPAuthnServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 	entityProvider entityprovider.EntityProviderInterface,
+	accessGuard *accessGuard,
 ) *otpExecutor {
 	defaultInputs := []providers.Input{
 		{
@@ -66,7 +68,7 @@ func newOTPExecutor(
 				ExecutorModeVerify,
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
-				{Property: propertyKeyMaxOTPAttempts},
+				{Property: common.NodePropertyMaxAttempts},
 				{Property: propertyKeyOTPLength},
 				{Property: propertyKeyOTPUseNumericOnly},
 				{Property: propertyKeyOTPValidityPeriodSeconds},
@@ -78,6 +80,7 @@ func newOTPExecutor(
 		entityProvider: entityProvider,
 		otpService:     otpService,
 		authnProvider:  authnProvider,
+		accessGuard:    accessGuard,
 		logger:         logger,
 	}
 }
@@ -131,7 +134,7 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 	recipientAttr := authnprovidercm.UserAttributeUserID
 
 	if recipient == "" && execResp.Status == providers.ExecFailure {
-		if ctx.FlowType != providers.FlowTypeRegistration {
+		if !isRegistrationFlow(ctx) {
 			logger.Debug(ctx.Context, "OTP generate: user not found, non-registration flow — aborting")
 			return execResp, nil
 		}
@@ -155,6 +158,23 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 		return execResp, nil
 	}
 
+	// A refusal that names no hold generates a code but skips delivery, so the step answers as a sent
+	// code does.
+	skipDelivery := false
+	if recipientAttr == authnprovidercm.UserAttributeUserID {
+		withheld, stated, fault := e.accessGuard.heldAtDispatch(ctx.Context, recipient,
+			providers.AuthenticationMethodOTP, ctx.FlowType, logger)
+		if fault != nil {
+			return nil, fault
+		}
+		if withheld && stated != nil {
+			execResp.Status = providers.ExecFailure
+			execResp.Error = stated
+			return execResp, nil
+		}
+		skipDelivery = withheld
+	}
+
 	otpCfg := e.resolveOTPProperties(ctx)
 	sessionToken, otpValue, expirySeconds, svcErr :=
 		e.otpService.GenerateOTP(ctx.Context, recipient, recipientAttr, otpCfg)
@@ -164,6 +184,12 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 
 	execResp.RuntimeData[common.RuntimeKeyOTPSessionToken] = sessionToken
 	execResp.RuntimeData[common.RuntimeKeyOTPAttemptCount] = strconv.Itoa(attemptCount + 1)
+	if skipDelivery {
+		execResp.RuntimeData[common.RuntimeKeySkipDelivery] = dataValueTrue
+	} else if ctx.RuntimeData[common.RuntimeKeySkipDelivery] == dataValueTrue {
+		// A resend after the hold lifted is delivered.
+		execResp.RuntimeData[common.RuntimeKeySkipDelivery] = ""
+	}
 	// Published from the generated value rather than the configured otpLength property, since the
 	// property is clamped and may fall back to the server default.
 	execResp.AdditionalData[common.DataOTPLength] = strconv.Itoa(len(otpValue))
@@ -204,7 +230,7 @@ func (e *otpExecutor) resolveUserID(ctx *providers.NodeContext,
 	if e.authnProvider != nil && ctx.AuthUser.IsAuthenticated() {
 		authUser, entityRef, err := e.authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
 		execResp.AuthUser = authUser
-		if err == nil && entityRef.EntityID != "" {
+		if err == nil && entityRef != nil && entityRef.EntityID != "" {
 			execResp.RuntimeData[userAttributeUserID] = entityRef.EntityID
 			return entityRef.EntityID, nil
 		}
@@ -221,14 +247,14 @@ func (e *otpExecutor) resolveUserID(ctx *providers.NodeContext,
 	if providerErr != nil {
 		if providerErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			execResp.Status = providers.ExecFailure
-			execResp.Error = &ErrUserNotFound
+			execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
 			return "", nil
 		}
 		return "", fmt.Errorf("failed to identify user: %s", providerErr.Error())
 	}
 	if identifiedUserID == nil || *identifiedUserID == "" {
 		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrUserNotFound
+		execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
 		return "", nil
 	}
 
@@ -246,6 +272,7 @@ func (e *otpExecutor) buildSearchAttributes(ctx *providers.NodeContext) map[stri
 		inputs = e.getGenerateInputs(ctx)
 	}
 
+	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 	for _, input := range inputs {
 		if input.Identifier == userInputOTP || !isSearchableIdentifier(input.Identifier) {
 			continue
@@ -255,6 +282,11 @@ func (e *otpExecutor) buildSearchAttributes(ctx *providers.NodeContext) map[stri
 			continue
 		}
 		if v, ok := ctx.RuntimeData[input.Identifier]; ok && v != "" {
+			attrs[input.Identifier] = v
+			continue
+		}
+		// External claims are only a fallback and must never take priority over runtime data.
+		if v, ok := extIdentity.Claim(input.Identifier); ok && v != "" {
 			attrs[input.Identifier] = v
 			continue
 		}
@@ -296,6 +328,15 @@ func (e *otpExecutor) getAuthenticatedUser(ctx *providers.NodeContext,
 	authUser, authenticatedClaims, svcErr := e.authnProvider.AuthenticateUser(
 		ctx.Context, nil, credentials, nil, nil, execResp.AuthUser)
 	if svcErr != nil {
+		// A stated hold re-prompts with its own message.
+		if stated := statedHold(svcErr); stated != nil {
+			logger.Debug(ctx.Context, "OTP verification refused by a stated hold",
+				log.String("errorCode", stated.Code))
+			execResp.Status = providers.ExecUserInputRequired
+			execResp.Inputs = e.GetRequiredInputs(ctx)
+			execResp.Error = stated
+			return nil
+		}
 		if svcErr.Code == authnprovidermgr.ErrorAuthenticationFailed.Code ||
 			svcErr.Code == authnprovidermgr.ErrorInvalidRequest.Code {
 			logger.Debug(ctx.Context, "OTP verification failed")
@@ -320,6 +361,7 @@ func (e *otpExecutor) getAuthenticatedUser(ctx *providers.NodeContext,
 // Channel is determined by input type or, as a fallback, by the well-known identifier names
 // (mobile_number, email), so flows that use TEXT_INPUT for these attributes work correctly.
 func (e *otpExecutor) resolveOTPDestination(ctx *providers.NodeContext) (attrName, attrValue string) {
+	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 	for _, input := range ctx.NodeInputs {
 		isPhone := input.Type == providers.InputTypePhone || input.Identifier == common.AttributeMobileNumber
 		isEmail := input.Type == providers.InputTypeEmail || input.Identifier == common.AttributeEmail
@@ -330,6 +372,10 @@ func (e *otpExecutor) resolveOTPDestination(ctx *providers.NodeContext) (attrNam
 			return input.Identifier, val
 		}
 		if val, ok := ctx.RuntimeData[input.Identifier]; ok && val != "" {
+			return input.Identifier, val
+		}
+		// External claims are only a fallback and must never take priority over runtime data.
+		if val, ok := extIdentity.Claim(input.Identifier); ok && val != "" {
 			return input.Identifier, val
 		}
 		if val, ok := ctx.ForwardedData[input.Identifier]; ok {
@@ -427,7 +473,7 @@ func isNumericOTP(otpValue string) bool {
 // falling back to 3 if not set or invalid.
 func (e *otpExecutor) getMaxOTPAttempts(ctx *providers.NodeContext) int {
 	const defaultMaxAttempts = 3
-	switch v := ctx.NodeProperties[propertyKeyMaxOTPAttempts].(type) {
+	switch v := ctx.NodeProperties[common.NodePropertyMaxAttempts].(type) {
 	case string:
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			return n

@@ -18,10 +18,19 @@ func NewRefreshTokenGrantHandlerInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *RefreshTokenGrantHandlerInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &RefreshTokenGrantHandlerInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type RefreshTokenGrantHandlerInterfaceMock_HandleGrant_Call struct {
 //   - ctx context.Context
 //   - tokenRequest *model.TokenRequest
 //   - oauthApp *providers.OAuthClient
-func (_e *RefreshTokenGrantHandlerInterfaceMock_Expecter) HandleGrant(ctx interface{}, tokenRequest interface{}, oauthApp interface{}) *RefreshTokenGrantHandlerInterfaceMock_HandleGrant_Call {
+func (_e *RefreshTokenGrantHandlerInterfaceMock_Expecter) HandleGrant(ctx any, tokenRequest any, oauthApp any) *RefreshTokenGrantHandlerInterfaceMock_HandleGrant_Call {
 	return &RefreshTokenGrantHandlerInterfaceMock_HandleGrant_Call{Call: _e.mock.On("HandleGrant", ctx, tokenRequest, oauthApp)}
 }
 
@@ -152,7 +161,7 @@ type RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call struct {
 //   - attributeCacheID string
 //   - tokenFamilyID string
 //   - expiresAt int64
-func (_e *RefreshTokenGrantHandlerInterfaceMock_Expecter) IssueRefreshToken(ctx interface{}, tokenResponse interface{}, oauthApp interface{}, subject interface{}, audiences interface{}, grantType interface{}, scopes interface{}, claimsRequest interface{}, claimsLocales interface{}, attributeCacheID interface{}, tokenFamilyID interface{}, expiresAt interface{}) *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call {
+func (_e *RefreshTokenGrantHandlerInterfaceMock_Expecter) IssueRefreshToken(ctx any, tokenResponse any, oauthApp any, subject any, audiences any, grantType any, scopes any, claimsRequest any, claimsLocales any, attributeCacheID any, tokenFamilyID any, expiresAt any) *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call {
 	return &RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call{Call: _e.mock.On("IssueRefreshToken", ctx, tokenResponse, oauthApp, subject, audiences, grantType, scopes, claimsRequest, claimsLocales, attributeCacheID, tokenFamilyID, expiresAt)}
 }
 
@@ -262,7 +271,7 @@ type RefreshTokenGrantHandlerInterfaceMock_ValidateGrant_Call struct {
 //   - ctx context.Context
 //   - tokenRequest *model.TokenRequest
 //   - oauthApp *providers.OAuthClient
-func (_e *RefreshTokenGrantHandlerInterfaceMock_Expecter) ValidateGrant(ctx interface{}, tokenRequest interface{}, oauthApp interface{}) *RefreshTokenGrantHandlerInterfaceMock_ValidateGrant_Call {
+func (_e *RefreshTokenGrantHandlerInterfaceMock_Expecter) ValidateGrant(ctx any, tokenRequest any, oauthApp any) *RefreshTokenGrantHandlerInterfaceMock_ValidateGrant_Call {
 	return &RefreshTokenGrantHandlerInterfaceMock_ValidateGrant_Call{Call: _e.mock.On("ValidateGrant", ctx, tokenRequest, oauthApp)}
 }
 

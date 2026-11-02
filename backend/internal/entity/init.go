@@ -6,6 +6,7 @@ package entity
 import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -20,13 +21,15 @@ func Initialize(
 	hashService cryptolib.HashServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	ouService ou.OrganizationUnitServiceInterface,
+	sharingService sharing.SharingServiceInterface,
 ) (EntityServiceInterface, error) {
 	store, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
 		return nil, err
 	}
 
-	svc := newEntityService(store, hashService, entityTypeService, ouService, transactioner)
+	svc := newEntityService(store, newEntityRuntimeDBStore(), hashService, entityTypeService, ouService,
+		transactioner, sharingService)
 	return svc, nil
 }
 

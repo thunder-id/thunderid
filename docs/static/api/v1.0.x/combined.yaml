@@ -134,7 +134,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/limitQueryParam"
         - $ref: "#/components/parameters/offsetQueryParam"
-        - $ref: "#/components/parameters/filterParam"
+        - $ref: "#/components/parameters/agentFilterParam"
         - $ref: "#/components/parameters/includeQueryParam"
       responses:
         "200":
@@ -9125,7 +9125,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/limitQueryParam"
         - $ref: "#/components/parameters/offsetQueryParam"
-        - $ref: "#/components/parameters/filterParam"
+        - $ref: "#/components/parameters/ouFilterParam"
       responses:
         "200":
           description: List of root organization units
@@ -9536,7 +9536,7 @@ paths:
             format: uuid
         - $ref: "#/components/parameters/limitQueryParam"
         - $ref: "#/components/parameters/offsetQueryParam"
-        - $ref: "#/components/parameters/filterParam"
+        - $ref: "#/components/parameters/ouFilterParam"
       responses:
         "200":
           description: List of child organization units
@@ -10139,7 +10139,7 @@ paths:
           example: engineering/frontend
         - $ref: "#/components/parameters/limitQueryParam"
         - $ref: "#/components/parameters/offsetQueryParam"
-        - $ref: "#/components/parameters/filterParam"
+        - $ref: "#/components/parameters/ouFilterParam"
       responses:
         "200":
           description: List of child organization units
@@ -24421,6 +24421,23 @@ components:
         Optional parameter to include additional display information in the
         response. The exact fields included depend on the endpoint. See each
         endpoint's response schema for details on which fields are enriched.
+    agentFilterParam:
+      in: query
+      name: filter
+      required: false
+      description: |
+        Filter agents by a custom attribute value. Only keys inside the
+        `attributes` JSON object are filterable; system fields (`name`,
+        `description`, `type`, `ouId`, `owner`, `clientId`) are not supported.
+
+        Supported operators: `eq`.
+
+        Format: `attribute operator "value"`. The value must be wrapped in
+        double quotes.
+
+        Example: `region eq "us-east-1"`.
+      schema:
+        type: string
     filterParam:
       in: query
       name: filter
@@ -24452,6 +24469,51 @@ components:
         complex:
           summary: Complex filtering
           value: address.city eq "Mountain View"
+    ouFilterParam:
+      in: query
+      name: filter
+      required: false
+      description: |
+        Filter organization units by attribute values.
+
+        Format: `attribute operator "value"`. Join multiple conditions with
+        `AND` or `OR`; `AND` takes precedence over `OR`.
+
+        Filterable attributes: `name`, `handle`, `description`, `createdAt`,
+        `updatedAt`.
+
+        Supported operators:
+
+        - `eq` - Equals. Case-insensitive for `name`, `handle`, and
+        `description`.
+
+        - `gt` - Greater than. Use with `createdAt` or `updatedAt` in ISO 8601
+        format.
+
+        - `lt` - Less than. Use with `createdAt` or `updatedAt` in ISO 8601
+        format.
+
+        Examples:
+
+        - `name eq "Engineering"` - Organization units named "Engineering"
+
+        - `createdAt gt "2026-01-01T00:00:00Z"` - Organization units created
+        after 1 January 2026
+
+        - `name eq "Engineering" OR name eq "Sales"` - Organization units named
+        "Engineering" or "Sales"
+      schema:
+        type: string
+      examples:
+        name-filter:
+          summary: Filter by name
+          value: name eq "Engineering"
+        created-at-filter:
+          summary: Filter by creation timestamp
+          value: createdAt gt "2026-01-01T00:00:00Z"
+        combined-filter:
+          summary: Combine conditions with OR
+          value: name eq "Engineering" OR name eq "Sales"
     ConnectionID:
       in: path
       name: id

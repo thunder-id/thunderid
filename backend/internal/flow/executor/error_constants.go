@@ -7,48 +7,53 @@ import (
 	"fmt"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
+	"github.com/thunder-id/thunderid/internal/entitytype"
 )
 
 var (
-	// ErrUserNotFound is returned when the user is not found in the system.
-	ErrUserNotFound = tidcommon.ServiceError{
+	// ErrEntityNotFound is returned when the entity is not found in the system.
+	// Raise through errForEntityCategory.
+	ErrEntityNotFound = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1001",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_not_found",
-			DefaultValue: "User not found",
+			Key:          "flows.executor.errors.entity_not_found",
+			DefaultValue: "The {{param(entity)}} could not be found",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_not_found_desc",
-			DefaultValue: "The user could not be found in the system",
+			Key:          "flows.executor.errors.entity_not_found_desc",
+			DefaultValue: "The {{param(entity)}} could not be found in the system",
 		},
 	}
 
-	// ErrFailedToIdentifyUser is returned when the user cannot be identified.
-	ErrFailedToIdentifyUser = tidcommon.ServiceError{
+	// ErrFailedToIdentifyEntity is returned when the entity cannot be identified.
+	// Raise through errForEntityCategory.
+	ErrFailedToIdentifyEntity = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1002",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.failed_to_identify_user",
-			DefaultValue: "Failed to identify user",
+			Key:          "flows.executor.errors.failed_to_identify_entity",
+			DefaultValue: "Failed to identify {{param(entity)}}",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.failed_to_identify_user_desc",
-			DefaultValue: "Unable to identify the user with the provided information",
+			Key:          "flows.executor.errors.failed_to_identify_entity_desc",
+			DefaultValue: "Unable to identify the {{param(entity)}} with the provided information",
 		},
 	}
 
-	// ErrAmbiguousUserIdentity is returned when the user identity is ambiguous.
-	ErrAmbiguousUserIdentity = tidcommon.ServiceError{
+	// ErrAmbiguousEntityIdentity is returned when the entity identity is ambiguous.
+	// Raise through errForEntityCategory.
+	ErrAmbiguousEntityIdentity = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1003",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.ambiguous_user_identity",
-			DefaultValue: "Ambiguous user identity",
+			Key:          "flows.executor.errors.ambiguous_entity_identity",
+			DefaultValue: "Ambiguous {{param(entity)}} identity",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.ambiguous_user_identity_desc",
-			DefaultValue: "User identity is ambiguous and cannot be determined",
+			Key:          "flows.executor.errors.ambiguous_entity_identity_desc",
+			DefaultValue: "The {{param(entity)}} identity is ambiguous and cannot be determined",
 		},
 	}
 
@@ -80,31 +85,33 @@ var (
 		},
 	}
 
-	// ErrUserAuthFailed is returned when user authentication fails.
-	ErrUserAuthFailed = tidcommon.ServiceError{
+	// ErrEntityAuthFailed is returned when authenticating the entity fails.
+	// Raise through errForEntityCategory.
+	ErrEntityAuthFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1006",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_auth_failed",
-			DefaultValue: "User authentication failed",
+			Key:          "flows.executor.errors.entity_auth_failed",
+			DefaultValue: "Failed to authenticate the {{param(entity)}}",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_auth_failed_desc",
-			DefaultValue: "An error occurred while authenticating the user",
+			Key:          "flows.executor.errors.entity_auth_failed_desc",
+			DefaultValue: "An error occurred while authenticating the {{param(entity)}}",
 		},
 	}
 
-	// ErrUserAlreadyExists is returned when the user already exists in the system.
-	ErrUserAlreadyExists = tidcommon.ServiceError{
+	// ErrEntityAlreadyExists is returned when an entity already exists in the system.
+	// Raise through errForEntityCategory.
+	ErrEntityAlreadyExists = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1007",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_already_exists",
-			DefaultValue: "User already exists",
+			Key:          "flows.executor.errors.entity_already_exists",
+			DefaultValue: "The {{param(entity)}} already exists",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_already_exists_desc",
-			DefaultValue: "A user already exists with the provided attributes",
+			Key:          "flows.executor.errors.entity_already_exists_desc",
+			DefaultValue: "The provided attributes already belong to an existing {{param(entity)}}",
 		},
 	}
 
@@ -276,31 +283,33 @@ var (
 		},
 	}
 
-	// ErrProvisioningUserAttrsMissing is returned when no user attributes are provided for provisioning.
-	ErrProvisioningUserAttrsMissing = tidcommon.ServiceError{
+	// ErrProvisioningAttrsMissing is returned when no attributes are provided for provisioning.
+	// Raise through errForEntityCategory.
+	ErrProvisioningAttrsMissing = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1020",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.provisioning_user_attrs_missing",
-			DefaultValue: "No user attributes provided for provisioning",
+			Key:          "flows.executor.errors.provisioning_attrs_missing",
+			DefaultValue: "No {{param(entity)}} attributes provided for provisioning",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.provisioning_user_attrs_missing_desc",
-			DefaultValue: "User attributes are required to provision a new user",
+			Key:          "flows.executor.errors.provisioning_attrs_missing_desc",
+			DefaultValue: "Attributes are required to provision a new {{param(entity)}}",
 		},
 	}
 
-	// ErrProvisioningFailed is returned when user provisioning fails.
+	// ErrProvisioningFailed is returned when provisioning the entity fails.
+	// Raise through errForEntityCategory.
 	ErrProvisioningFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1021",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.provisioning_failed",
-			DefaultValue: "User provisioning failed",
+			DefaultValue: "Failed to provision the {{param(entity)}}",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.provisioning_failed_desc",
-			DefaultValue: "An error occurred while provisioning the user",
+			DefaultValue: "An error occurred while provisioning the {{param(entity)}}",
 		},
 	}
 
@@ -313,12 +322,14 @@ var (
 			DefaultValue: "Failed to assign groups and roles",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.provisioning_assignment_failed_desc",
-			DefaultValue: "An error occurred while assigning groups and roles to the provisioned user",
+			Key: "flows.executor.errors.provisioning_assignment_failed_desc",
+			DefaultValue: "An error occurred while assigning groups and roles to the provisioned " +
+				"{{param(entity)}}",
 		},
 	}
 
 	// ErrCrossOUProvisioningTargetMissing is returned when target OU is missing for cross-OU provisioning.
+	// Raise through errForEntityCategory.
 	ErrCrossOUProvisioningTargetMissing = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1023",
@@ -328,21 +339,23 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.cross_ou_provisioning_target_missing_desc",
-			DefaultValue: "A target organization unit must be specified for cross-OU user provisioning",
+			DefaultValue: "A target organization unit must be specified for cross-OU {{param(entity)}} provisioning",
 		},
 	}
 
-	// ErrUserAlreadyExistsInTargetOU is returned when the user already exists in the target organization.
-	ErrUserAlreadyExistsInTargetOU = tidcommon.ServiceError{
+	// ErrEntityAlreadyExistsInTargetOU is returned when the entity already exists in the target
+	// organization. Raise through errForEntityCategory.
+	ErrEntityAlreadyExistsInTargetOU = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1024",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_already_exists_in_target_ou",
-			DefaultValue: "User already exists in the target organization",
+			Key:          "flows.executor.errors.entity_already_exists_in_target_ou",
+			DefaultValue: "The {{param(entity)}} already exists in the target organization",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_already_exists_in_target_ou_desc",
-			DefaultValue: "A user with the same identity already exists in the target organization unit",
+			Key: "flows.executor.errors.entity_already_exists_in_target_ou_desc",
+			DefaultValue: "An existing {{param(entity)}} with the same identity is already in the " +
+				"target organization unit",
 		},
 	}
 
@@ -500,20 +513,6 @@ var (
 		},
 	}
 
-	// ErrEmailSendFailed is returned when the email fails to send.
-	ErrEmailSendFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1036",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.email_send_failed",
-			DefaultValue: "Failed to send email",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.email_send_failed_desc",
-			DefaultValue: "An error occurred while sending the email",
-		},
-	}
-
 	// ErrEmailRecipientMissing is returned when the email recipient is not provided.
 	ErrEmailRecipientMissing = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -528,17 +527,17 @@ var (
 		},
 	}
 
-	// ErrEmailServiceNotConfigured is returned when the email service is not configured.
-	ErrEmailServiceNotConfigured = tidcommon.ServiceError{
+	// ErrEmailProviderNotConfigured is returned when no email provider is configured.
+	ErrEmailProviderNotConfigured = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1038",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.email_service_not_configured",
-			DefaultValue: "Email service is not configured",
+			Key:          "flows.executor.errors.email_provider_not_configured",
+			DefaultValue: "Email provider is not configured",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.email_service_not_configured_desc",
-			DefaultValue: "The email notification service has not been configured",
+			Key:          "flows.executor.errors.email_provider_not_configured_desc",
+			DefaultValue: "The email notification provider has not been configured",
 		},
 	}
 
@@ -744,11 +743,11 @@ var (
 		Code: "FET-1053",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.no_valid_user_types",
-			DefaultValue: "No valid user types available",
+			DefaultValue: "No valid {{param(entity)}} types available",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.no_valid_user_types_desc",
-			DefaultValue: "There are no valid user types configured for this flow",
+			DefaultValue: "There are no valid {{param(entity)}} types configured for this flow",
 		},
 	}
 
@@ -758,11 +757,11 @@ var (
 		Code: "FET-1054",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_not_allowed",
-			DefaultValue: "User type not allowed for this flow",
+			DefaultValue: "The {{param(entity)}} type is not allowed for this flow",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_not_allowed_desc",
-			DefaultValue: "The selected user type is not allowed for this flow",
+			DefaultValue: "The selected {{param(entity)}} type is not allowed for this flow",
 		},
 	}
 
@@ -772,11 +771,11 @@ var (
 		Code: "FET-1055",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.invalid_user_type",
-			DefaultValue: "Invalid user type",
+			DefaultValue: "Invalid {{param(entity)}} type",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.invalid_user_type_desc",
-			DefaultValue: "The provided user type is not valid",
+			DefaultValue: "The provided {{param(entity)}} type is not valid",
 		},
 	}
 
@@ -786,11 +785,11 @@ var (
 		Code: "FET-1056",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.no_user_types_available",
-			DefaultValue: "No user types available",
+			DefaultValue: "No {{param(entity)}} types available",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.no_user_types_available_desc",
-			DefaultValue: "No user types are currently available",
+			DefaultValue: "No {{param(entity)}} types are currently available",
 		},
 	}
 
@@ -800,11 +799,11 @@ var (
 		Code: "FET-1057",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_retrieval_failed",
-			DefaultValue: "Failed to retrieve user types",
+			DefaultValue: "Failed to retrieve {{param(entity)}} types",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_retrieval_failed_desc",
-			DefaultValue: "An error occurred while retrieving available user types",
+			DefaultValue: "An error occurred while retrieving available {{param(entity)}} types",
 		},
 	}
 
@@ -814,11 +813,11 @@ var (
 		Code: "FET-1058",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_not_valid_for_ou",
-			DefaultValue: "User type is not valid",
+			DefaultValue: "The {{param(entity)}} type is not valid",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_not_valid_for_ou_desc",
-			DefaultValue: "The selected user type is not valid for the chosen organization unit",
+			DefaultValue: "The selected {{param(entity)}} type is not valid for the chosen organization unit",
 		},
 	}
 
@@ -851,17 +850,18 @@ var (
 	}
 
 	// ErrAttributeNotUnique is returned when an attribute value already exists.
+	// Raise through errAttributeNotUniqueFor.
 	ErrAttributeNotUnique = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1061",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.attribute_not_unique",
-			DefaultValue: "User already exists with the provided {{param(attribute)}}",
+			DefaultValue: "Another {{param(entity)}} already exists with the provided {{param(attribute)}}",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "flows.executor.errors.attribute_not_unique_desc",
-			DefaultValue: "The provided {{param(attribute)}} is already associated with another user" +
-				" and expects a unique value",
+			DefaultValue: "The provided {{param(attribute)}} is already associated with another" +
+				" {{param(entity)}} and expects a unique value",
 		},
 	}
 
@@ -1123,11 +1123,12 @@ var (
 		Code: "FET-1080",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.provisioning_attribute_conflict",
-			DefaultValue: "A user with the provided attributes already exists",
+			DefaultValue: "An existing {{param(entity)}} already uses the provided attributes",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.provisioning_attribute_conflict_desc",
-			DefaultValue: "User provisioning failed because one or more unique attribute values are already taken",
+			Key: "flows.executor.errors.provisioning_attribute_conflict_desc",
+			DefaultValue: "Provisioning the {{param(entity)}} failed because one or more unique " +
+				"attribute values are already taken",
 		},
 	}
 
@@ -1208,12 +1209,593 @@ var (
 			DefaultValue: "The user could not be deleted",
 		},
 	}
+	// ErrApplicationDeletionNotAllowed is returned when the target application cannot be deleted.
+	ErrApplicationDeletionNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1086",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.application_deletion_not_allowed",
+			DefaultValue: "Application deletion not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.application_deletion_not_allowed_desc",
+			DefaultValue: "The application cannot be deleted in the current state",
+		},
+	}
+
+	// ErrApplicationDeletionFailed is returned when a permitted application deletion cannot be completed.
+	ErrApplicationDeletionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1087",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.application_deletion_failed",
+			DefaultValue: "Application deletion failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.application_deletion_failed_desc",
+			DefaultValue: "The application could not be deleted",
+		},
+	}
+
+	// ErrSecretRegenerationNotAllowed is returned when the target application has no rotatable secret.
+	ErrSecretRegenerationNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1088",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.secret_regeneration_not_allowed",
+			DefaultValue: "Client secret regeneration not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.secret_regeneration_not_allowed_desc",
+			DefaultValue: "The application has no client secret that can be regenerated",
+		},
+	}
+
+	// ErrSecretRegenerationFailed is returned when a permitted secret regeneration cannot be completed.
+	ErrSecretRegenerationFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1089",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.secret_regeneration_failed",
+			DefaultValue: "Client secret regeneration failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.secret_regeneration_failed_desc",
+			DefaultValue: "The client secret could not be regenerated",
+		},
+	}
+
+	// ErrOwnerNotFound is returned when the selected owner does not resolve to a known user.
+	ErrOwnerNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1090",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.owner_not_found",
+			DefaultValue: "Owner not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.owner_not_found_desc",
+			DefaultValue: "The selected owner does not exist",
+		},
+	}
+
+	// ErrInvalidFlagValue is returned when a collected boolean carries a value that cannot be
+	// read as one.
+	ErrInvalidFlagValue = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1092",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.invalid_flag_value",
+			DefaultValue: "Invalid value for {{param(attribute)}}",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.invalid_flag_value_desc",
+			DefaultValue: "{{param(attribute)}} accepts only true or false",
+		},
+	}
+
+	// ErrSelfRegNotSupportedForAgents is returned when a registration flow reaches the agent type
+	// resolver. An agent is provisioned on an administrator's behalf, never by itself.
+	ErrSelfRegNotSupportedForAgents = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1091",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.self_reg_not_supported_for_agents",
+			DefaultValue: "Self-registration is not supported for agents",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.self_reg_not_supported_for_agents_desc",
+			DefaultValue: "An agent is created by an administrator and cannot register itself",
+		},
+	}
+
+	// ErrNonCandidateVerified is returned when the entity that completed a verification step is not
+	// one of the candidates the linking executor sent to it.
+	ErrNonCandidateVerified = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1093",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.non_candidate_verified",
+			DefaultValue: "Verification completed by a different account",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.non_candidate_verified_desc",
+			DefaultValue: "The account that verified is not the account being linked",
+		},
+	}
+
+	// ErrVerificationNotCompleted is returned when the linking executor is reached a second time
+	// with nobody authenticated.
+	ErrVerificationNotCompleted = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1094",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.verification_not_completed",
+			DefaultValue: "Account verification was not completed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.verification_not_completed_desc",
+			DefaultValue: "The account being linked was not verified, so nothing was linked",
+		},
+	}
+
+	// ErrUnverifiedLinkingCandidate is returned when provisioning is reached with a linking
+	// candidate resolved and nobody authenticated.
+	ErrUnverifiedLinkingCandidate = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1095",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.unverified_linking_candidate",
+			DefaultValue: "Account verification is required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.unverified_linking_candidate_desc",
+			DefaultValue: "An existing account matched this identity but was not verified",
+		},
+	}
+
+	// ErrLinkingWriteFailed is returned when recording the federated identity against the account
+	// the linking executor settled on fails.
+	ErrLinkingWriteFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1096",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.linking_write_failed",
+			DefaultValue: "Failed to link the account",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.linking_write_failed_desc",
+			DefaultValue: "The federated identity could not be recorded against the account",
+		},
+	}
+
+	// ErrRoleAssignmentRemovalNotAllowed is returned when the role assignment cannot be removed.
+	ErrRoleAssignmentRemovalNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1098",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_assignment_removal_not_allowed",
+			DefaultValue: "Role assignment removal not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_assignment_removal_not_allowed_desc",
+			DefaultValue: "The role or the assignee may not exist, or the caller may not change who holds the role",
+		},
+	}
+
+	// ErrRoleAssignmentRemovalFailed is returned when removing the role assignment was refused.
+	ErrRoleAssignmentRemovalFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1099",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_assignment_removal_failed",
+			DefaultValue: "Role assignment removal failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_assignment_removal_failed_desc",
+			DefaultValue: "The assignment may already be gone, or the caller may no longer change who holds the role",
+		},
+	}
+
+	// ErrRoleDeletionNotAllowed is returned when the role cannot be deleted.
+	ErrRoleDeletionNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1100",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_deletion_not_allowed",
+			DefaultValue: "Role deletion not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_deletion_not_allowed_desc",
+			DefaultValue: "The role is declarative, immutable, or no longer exists",
+		},
+	}
+
+	// ErrRoleDeletionFailed is returned when a validated role deletion was refused.
+	ErrRoleDeletionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1101",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_deletion_failed",
+			DefaultValue: "Role deletion failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_deletion_failed_desc",
+			DefaultValue: "The role may already be deleted, or it changed after the request was validated",
+		},
+	}
+
+	// ErrRolePermissionRemovalNotAllowed is returned when the role's permissions cannot be changed.
+	ErrRolePermissionRemovalNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1102",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_permission_removal_not_allowed",
+			DefaultValue: "Role permission change not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "flows.executor.errors.role_permission_removal_not_allowed_desc",
+			DefaultValue: "The role is declarative or no longer exists, or the caller may not grant the new " +
+				"permissions",
+		},
+	}
+
+	// ErrRolePermissionRemovalFailed is returned when a validated role permission change was refused.
+	ErrRolePermissionRemovalFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1103",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_permission_removal_failed",
+			DefaultValue: "Role permission change failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "flows.executor.errors.role_permission_removal_failed_desc",
+			DefaultValue: "The role changed after the request was validated, or the caller may no longer grant the " +
+				"new permissions",
+		},
+	}
+
+	// ErrGroupDeletionNotAllowed is returned when the group cannot be deleted.
+	ErrGroupDeletionNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1104",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_deletion_not_allowed",
+			DefaultValue: "Group deletion not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_deletion_not_allowed_desc",
+			DefaultValue: "The group is read-only or no longer exists, or the caller may not delete it",
+		},
+	}
+
+	// ErrGroupDeletionFailed is returned when a validated group deletion was refused.
+	ErrGroupDeletionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1105",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_deletion_failed",
+			DefaultValue: "Group deletion failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_deletion_failed_desc",
+			DefaultValue: "The group may already be deleted, or it changed after the request was validated",
+		},
+	}
+
+	// ErrGroupMembershipRemovalNotAllowed is returned when the member cannot be removed from the group.
+	ErrGroupMembershipRemovalNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1106",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_membership_removal_not_allowed",
+			DefaultValue: "Group membership removal not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "flows.executor.errors.group_membership_removal_not_allowed_desc",
+			DefaultValue: "The principal is not a direct member, the group is read-only, or the caller may not " +
+				"change its members",
+		},
+	}
+
+	// ErrGroupMembershipRemovalFailed is returned when a validated group membership removal was refused.
+	ErrGroupMembershipRemovalFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1107",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_membership_removal_failed",
+			DefaultValue: "Group membership removal failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_membership_removal_failed_desc",
+			DefaultValue: "The member may already be removed, or the caller may no longer change the group's members",
+		},
+	}
+
+	// ErrActionDeletionNotAllowed is returned when the action cannot be deleted.
+	ErrActionDeletionNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1108",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.action_deletion_not_allowed",
+			DefaultValue: "Action deletion not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "flows.executor.errors.action_deletion_not_allowed_desc",
+			DefaultValue: "The resource server is declarative, or the resource server, resource or action no " +
+				"longer exists",
+		},
+	}
+
+	// ErrActionDeletionFailed is returned when a validated action deletion was refused.
+	ErrActionDeletionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1109",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.action_deletion_failed",
+			DefaultValue: "Action deletion failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.action_deletion_failed_desc",
+			DefaultValue: "The action may already be deleted, or it changed after the request was validated",
+		},
+	}
+
+	// ErrInvalidRolePermissions is returned when the permission set for a role permission change is malformed.
+	ErrInvalidRolePermissions = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1110",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.invalid_role_permissions",
+			DefaultValue: "Invalid role permissions",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.invalid_role_permissions_desc",
+			DefaultValue: "The permissions supplied for the role could not be read",
+		},
+	}
+
+	// ErrRequiredInputEmpty is returned when a required input is supplied with an empty value.
+	ErrRequiredInputEmpty = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1111",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.required_input_empty",
+			DefaultValue: "Required input is empty",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.required_input_empty_desc",
+			DefaultValue: "The {{param(input)}} input is required and must not be empty",
+		},
+	}
+
+	// ErrIdentityGovernanceFailed is returned when a lifecycle operation is refused. It names no cause.
+	ErrIdentityGovernanceFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1112",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.identity_governance_failed",
+			DefaultValue: "Operation failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.identity_governance_failed_description",
+			DefaultValue: "Check that the account exists and that the operation applies to its current state",
+		},
+	}
+
+	// ErrAccountLocked is returned when a lock refuses a step.
+	ErrAccountLocked = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1113",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.account_locked",
+			DefaultValue: "Account locked",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.account_locked_description",
+			DefaultValue: "Sign-in is locked. Try again later or contact an administrator.",
+		},
+	}
+
+	// ErrAccountSuspended is returned when a suspension refuses a step.
+	ErrAccountSuspended = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1114",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.account_suspended",
+			DefaultValue: "Account suspended",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.account_suspended_description",
+			DefaultValue: "This account is suspended. Contact an administrator",
+		},
+	}
+
+	// ErrExtensionCallFailed is returned when an extension's service does not give a usable answer:
+	// it times out, cannot be reached, answers with a non-2xx status, a body outside the contract or
+	// ERROR. It carries nothing from the service's answer.
+	ErrExtensionCallFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1115",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_call_failed",
+			DefaultValue: "Extension call failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_call_failed_desc",
+			DefaultValue: "The step could not get a valid answer from the external service",
+		},
+	}
+
+	// ErrExtensionActionFailed is returned when an extension answers FAILED with a reason other than a
+	// credential failure.
+	ErrExtensionActionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1116",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_action_failed",
+			DefaultValue: "Request rejected",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_action_failed_desc",
+			DefaultValue: "The external service rejected the request",
+		},
+	}
+
+	// ErrExtensionInputRequired is returned when an extension answers INCOMPLETE with a message for
+	// the user.
+	ErrExtensionInputRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1117",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_input_required",
+			DefaultValue: "Additional input required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_input_required_desc",
+			DefaultValue: "The external service needs more information to continue",
+		},
+	}
+
+	// ErrExtensionAttemptsExceeded is returned when an extension step has had maxAttempts FAILED and
+	// INCOMPLETE answers in this flow execution. No call is made.
+	ErrExtensionAttemptsExceeded = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1118",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_attempts_exceeded",
+			DefaultValue: "Too many attempts",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_attempts_exceeded_desc",
+			DefaultValue: "The maximum number of attempts for this step has been reached",
+		},
+	}
+
+	// ErrFederatedUserSyncFailed is returned when a federated user cannot be updated with
+	// the attributes received from the identity provider.
+	ErrFederatedUserSyncFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1120",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.federated_user_sync_failed",
+			DefaultValue: "Failed to sync user",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.federated_user_sync_failed_desc",
+			DefaultValue: "The account could not be updated with the details from the identity provider",
+		},
+	}
+
+	// ErrOUNotDirectChild is returned when the selected OU is not a direct child of the OU being selected from.
+	ErrOUNotDirectChild = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1121",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.ou_not_direct_child",
+			DefaultValue: "The selected organization unit is not a direct child of the parent organization unit.",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "flows.executor.errors.ou_not_direct_child_desc",
+			DefaultValue: "Only organization units directly under the parent organization unit can be " +
+				"selected. Choose one of those.",
+		},
+	}
+
+	// ErrAuthorizationDetailsRefused is returned when the processor of an authorization details type
+	// refuses the requested details.
+	ErrAuthorizationDetailsRefused = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1127",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_refused",
+			DefaultValue: "Authorization details refused",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_refused_desc",
+			DefaultValue: "The requested authorization details were refused",
+		},
+	}
+
+	// errAuthorizationDetailsRefusedReason is the description of a refusal the processor gave a reason for.
+	errAuthorizationDetailsRefusedReason = tidcommon.I18nMessage{
+		Key:          "flows.executor.errors.authorization_details_refused_reason_desc",
+		DefaultValue: "The requested authorization details were refused: {{param(reason)}}",
+	}
+
+	// ErrAuthorizationDetailsUnavailable is returned when the processor of an authorization details type
+	// cannot be reached or answers with a change it may not make.
+	ErrAuthorizationDetailsUnavailable = tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
+		Code: "FET-1128",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_unavailable",
+			DefaultValue: "Authorization details could not be checked",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_unavailable_desc",
+			DefaultValue: "The requested authorization details could not be checked. Try again later",
+		},
+	}
+
+	// ErrAuthorizationDetailsChangeRefused is returned when the user changes an authorization detail in a
+	// way its type does not allow.
+	ErrAuthorizationDetailsChangeRefused = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1129",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_change_refused",
+			DefaultValue: "Authorization details change refused",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_change_refused_desc",
+			DefaultValue: "The change made to the authorization details is not allowed",
+		},
+	}
+
+	// ErrAuthorizationDetailsNotChecked is returned when authorization details reach consent without the
+	// processor their type declares, because the flow does not run the authorization detail executor.
+	ErrAuthorizationDetailsNotChecked = tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
+		Code: "FET-1130",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_not_checked",
+			DefaultValue: "Authorization details were not checked",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_not_checked_desc",
+			DefaultValue: "The sign-in flow does not run the checks the requested authorization details need",
+		},
+	}
 )
 
-// errAttributeNotUniqueFor returns a ServiceError for a specific attribute that is not unique.
-func errAttributeNotUniqueFor(attrName string) *tidcommon.ServiceError {
-	params := map[string]string{"attribute": attrName}
+// errForEntityCategory returns a copy of err whose messages name the entity category they are
+// raised for. Errors whose DefaultValue carries an "{{param(entity)}}" placeholder must be raised
+// through this, otherwise the placeholder reaches the caller unsubstituted.
+func errForEntityCategory(err tidcommon.ServiceError,
+	category entitytype.TypeCategory) *tidcommon.ServiceError {
+	params := map[string]string{"entity": string(category)}
+	e := err
+	e.Error.Params = params
+	e.ErrorDescription.Params = params
+	return &e
+}
+
+// errAttributeNotUniqueFor returns a ServiceError naming the attribute that is not unique and the
+// entity category it is raised for.
+func errAttributeNotUniqueFor(attrName string,
+	category entitytype.TypeCategory) *tidcommon.ServiceError {
+	params := map[string]string{"attribute": attrName, "entity": string(category)}
 	e := ErrAttributeNotUnique
+	e.Error.Params = params
+	e.ErrorDescription.Params = params
+	return &e
+}
+
+// errInvalidFlagValueFor returns a ServiceError naming the flag whose value could not be read.
+func errInvalidFlagValueFor(attrName string) *tidcommon.ServiceError {
+	params := map[string]string{"attribute": attrName}
+	e := ErrInvalidFlagValue
 	e.Error.Params = params
 	e.ErrorDescription.Params = params
 	return &e

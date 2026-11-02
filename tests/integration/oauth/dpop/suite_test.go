@@ -51,7 +51,8 @@ const (
 
 var (
 	dpopTestUserSchema = testutils.UserType{
-		Name: "dpop-test-person",
+		Handle:      "dpop-test-person",
+		DisplayName: "Dpop Test Person",
 		Schema: map[string]any{
 			"username": map[string]any{"type": "string"},
 			"password": map[string]any{"type": "string", "credential": true},

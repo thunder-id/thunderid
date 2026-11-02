@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package constants defines global constants used across the system module.
@@ -25,17 +25,46 @@ const AcceptHeaderName = "Accept"
 // ContentTypeHeaderName is the name of the content type header used in HTTP requests.
 const ContentTypeHeaderName = "Content-Type"
 
+// RetryAfterHeaderName is the name of the header a server uses to say how long to wait before
+// retrying a request (RFC 9110 section 10.2.3).
+const RetryAfterHeaderName = "Retry-After"
+
 // CorrelationIDHeaderName is the name of the correlation ID (trace ID) header used to propagate
 // the request's trace ID across service boundaries.
 const CorrelationIDHeaderName = "X-Correlation-ID"
+
+// HostHeaderName is the name of the Host header. Go carries the inbound host on http.Request.Host
+// rather than in http.Request.Header, so it is surfaced under this key when capturing request data.
+const HostHeaderName = "Host"
 
 // FlowSecretHeaderName is the name of the header used to present a Flow Secret when initiating
 // a flow directly over HTTP.
 const FlowSecretHeaderName = "Flow-Secret"
 
+// APIKeyHeaderName is the header a management API key is presented in, rather than Authorization,
+// so it never competes with an OAuth bearer token a request may legitimately carry as well.
+const APIKeyHeaderName = "API-Key"
+
 // AttestationTokenHeaderName is the name of the header used to present a platform attestation token
 // (e.g. a Google Play Integrity token) when a mobile application initiates a flow directly over HTTP.
 const AttestationTokenHeaderName = "Attestation-Token"
+
+// ClientSecretParamName is the OAuth client_secret request parameter. Defined here (not in oauth2
+// constants) because system/utils needs it for the sensitive-param filter and cannot import oauth2.
+const ClientSecretParamName = "client_secret"
+
+// ClientAssertionParamName is the OAuth client_assertion request parameter.
+const ClientAssertionParamName = "client_assertion"
+
+// ClientAssertionTypeParamName is the OAuth client_assertion_type request parameter.
+const ClientAssertionTypeParamName = "client_assertion_type"
+
+// AuthorizationDetailsParamName is the RFC 9396 authorization_details request parameter.
+const AuthorizationDetailsParamName = "authorization_details"
+
+// CRLF is the carriage return and line feed sequence that ends a line in text-based wire protocols
+// such as SMTP and HTTP.
+const CRLF = "\r\n"
 
 // TokenTypeBearer is the token type used in bearer authentication.
 const TokenTypeBearer = "Bearer"
@@ -57,6 +86,9 @@ const ContentTypeFormURLEncoded = "application/x-www-form-urlencoded"
 
 // WWWAuthenticateHeaderName is the name of the WWW-Authenticate header used in HTTP responses.
 const WWWAuthenticateHeaderName = "WWW-Authenticate"
+
+// LocationHeaderName is the name of the Location header used in HTTP responses.
+const LocationHeaderName = "Location"
 
 // XFrameOptionsHeaderName is the name of the X-Frame-Options header used in HTTP responses.
 const XFrameOptionsHeaderName = "X-Frame-Options"
@@ -130,3 +162,6 @@ const (
 	// StoreModeComposite indicates resources are merged from both database and declarative files (hybrid mode).
 	StoreModeComposite StoreMode = "composite"
 )
+
+// SCIMContentType is the SCIM-specific content type required by RFC 7644.
+const SCIMContentType = "application/scim+json"

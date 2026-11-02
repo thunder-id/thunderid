@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -31,7 +29,7 @@ func (suite *OUToolsTestSuite) TestListOrganizationUnits_Success() {
 	tools := &ouTools{ouService: mockService}
 
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	expectedOUs := []providers.OrganizationUnitBasic{
+	expectedOUs := []OrganizationUnitBasic{
 		{
 			ID:          "ou1",
 			Handle:      "engineering",
@@ -53,7 +51,7 @@ func (suite *OUToolsTestSuite) TestListOrganizationUnits_Success() {
 	}
 
 	mockService.On("GetOrganizationUnitList", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(&providers.OrganizationUnitListResponse{
+		Return(&OrganizationUnitListResponse{
 			TotalResults:      2,
 			OrganizationUnits: expectedOUs,
 		}, nil)

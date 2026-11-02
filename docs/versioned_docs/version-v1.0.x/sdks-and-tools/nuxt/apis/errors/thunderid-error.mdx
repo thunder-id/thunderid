@@ -1,0 +1,122 @@
+---
+title: ThunderIDError
+docType: reference
+description: Structured error class thrown by the Nuxt SDK, carrying an error code, message, and optional HTTP status.
+---
+
+# `ThunderIDError`
+
+`ThunderIDError` is the structured error class thrown by the <ProductName /> Nuxt SDK. It extends `Error` and carries a typed `ErrorCode`, an optional HTTP status code, an optional cause, and optional context metadata.
+
+## Import
+
+```ts
+import { ThunderIDError, ErrorCode } from '@thunderid/nuxt/errors'
+```
+
+## Class Definition
+
+```ts
+class ThunderIDError extends Error {
+  readonly code: ErrorCode
+  readonly statusCode?: number
+  readonly cause?: unknown
+  readonly context?: Record<string, unknown>
+
+  constructor(
+    message: string,
+    code: ErrorCode,
+    opts?: {
+      cause?: unknown
+      context?: Record<string, unknown>
+      statusCode?: number
+    }
+  )
+}
+```
+
+## Usage
+
+### Catching SDK Errors
+
+```ts title="server/api/data.get.ts" showLineNumbers
+import { ThunderIDError, ErrorCode } from '@thunderid/nuxt/errors'
+import { getValidAccessToken } from '@thunderid/nuxt/server'
+
+export default defineEventHandler(async (event) => {
+  try {
+    const token = await getValidAccessToken(event)
+    return await $fetch('/api/resource', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+  } catch (err) {
+    if (err instanceof ThunderIDError) {
+      if (err.code === ErrorCode.SessionExpired) {
+        throw createError({ statusCode: 401, statusMessage: 'Session expired' })
+      }
+      if (err.code === ErrorCode.TokenRefreshFailed) {
+        throw createError({ statusCode: 401, statusMessage: 'Could not refresh token' })
+      }
+    }
+    throw err
+  }
+})
+```
+
+## Properties
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `code` | `ErrorCode` | A typed error code identifying the failure |
+| `statusCode` | `number \| undefined` | HTTP status code associated with the error, if applicable |
+| `cause` | `unknown` | The underlying error that caused this error, if any |
+| `context` | `Record<string, unknown> \| undefined` | Additional key-value metadata about the error |
+| `message` | `string` | Human-readable error description |
+
+## `ErrorCode` Values
+
+### Configuration
+
+| Code | Description |
+| :--- | :--- |
+| `ConfigMissingBaseUrl` | `baseUrl` was not provided in module configuration |
+| `ConfigMissingClientId` | `clientId` was not provided in module configuration |
+| `ConfigMissingSecret` | `clientSecret` was not provided in module configuration |
+
+### OAuth / Token
+
+| Code | Description |
+| :--- | :--- |
+| `OAuthCallbackError` | The OAuth provider returned an error during the callback |
+| `OAuthStateInvalid` | The OAuth state parameter did not match the expected value |
+| `TokenExchangeFailed` | Exchanging the authorization code for tokens failed |
+| `TokenRefreshFailed` | Refreshing the access token using the refresh token failed |
+
+### Session
+
+| Code | Description |
+| :--- | :--- |
+| `SessionExpired` | The session has passed its expiry time |
+| `SessionInvalid` | The session cookie exists but cannot be verified |
+| `SessionMissing` | No session cookie was found on the request |
+| `TempSessionInvalid` | The temporary session used during the OAuth flow is invalid |
+
+### Security
+
+| Code | Description |
+| :--- | :--- |
+| `OpenRedirectBlocked` | A redirect URL was rejected because it points to an external origin |
+
+### Organization
+
+| Code | Description |
+| :--- | :--- |
+| `OrganizationCreateFailed` | Creating a sub-organization failed |
+| `OrganizationSwitchFailed` | Switching the active organization failed |
+
+### User Profile
+
+| Code | Description |
+| :--- | :--- |
+| `UserProfileFetchFailed` | Fetching the user's profile failed |
+| `UserProfileUpdateFailed` | Updating the user's profile failed |

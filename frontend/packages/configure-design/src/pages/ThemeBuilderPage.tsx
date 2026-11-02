@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {BuilderLayout, BuilderStaticPanel} from '@thunderid/components';
+import {BuilderLayout, BuilderStaticPanel, DocumentTitle} from '@thunderid/components';
 import {Box, Button, useColorScheme} from '@wso2/oxygen-ui';
 import {ArrowLeft, Save, Trash, Undo2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useRef, useState, type JSX} from 'react';
@@ -70,6 +70,7 @@ export default function ThemeBuilderPage(): JSX.Element {
 
   return (
     <>
+      <DocumentTitle title={displayName ?? t('themes.section.title', 'Themes')} />
       <Box
         sx={{
           width: '100%',
@@ -91,7 +92,7 @@ export default function ThemeBuilderPage(): JSX.Element {
             onClick={handleBack}
             sx={{textTransform: 'none', fontSize: '0.8rem', color: 'text.secondary', whiteSpace: 'nowrap'}}
           >
-            {t('themes.builder.actions.back_to_design.label', 'Back to Design')}
+            {t('themes.builder.actions.back_to_design.label', 'Back to design')}
           </Button>
           {/* Portal target — the PreviewToolbar from GatePreview renders here */}
           <Box ref={setToolbarPortal} sx={{flex: 1, display: 'flex', justifyContent: 'center'}} />

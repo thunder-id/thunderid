@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package model
@@ -16,6 +16,10 @@ import (
 const (
 	// TypeString represents the string type in JSON Schema.
 	TypeString = "string"
+	// TypeEmail represents an email contact.
+	TypeEmail = "email"
+	// TypeMobile represents a mobile contact.
+	TypeMobile = "mobile"
 	// TypeNumber represents the number type in JSON Schema.
 	TypeNumber = "number"
 	// TypeBoolean represents the boolean type in JSON Schema.
@@ -33,6 +37,7 @@ type property interface {
 	isUnique() bool
 	getType() string
 	getDisplayName() string
+	getEnum() []string
 	validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error)
 	validateUniqueness(ctx context.Context, value interface{}, path string,
 		exists func(map[string]interface{}) (bool, error), logger *log.Logger) (bool, error)
@@ -100,6 +105,35 @@ func (cs *Schema) ValidateAsDisplayAttribute(name string) DisplayAttributeStatus
 	return DisplayAttributeValid
 }
 
+// PrimaryContactStatus represents the result of validating an attribute as a primary contact.
+type PrimaryContactStatus int
+
+const (
+	// PrimaryContactValid indicates the attribute is valid for use as a primary contact.
+	PrimaryContactValid PrimaryContactStatus = iota
+	// PrimaryContactNotFound indicates the attribute is not a top-level attribute in the schema.
+	PrimaryContactNotFound
+	// PrimaryContactTypeMismatch indicates the attribute is not of the expected contact type.
+	PrimaryContactTypeMismatch
+)
+
+// ValidateAsPrimaryContact checks that the name references a top-level attribute of the contact type.
+func (cs *Schema) ValidateAsPrimaryContact(name, contactType string) PrimaryContactStatus {
+	prop, exists := cs.properties[name]
+	if !exists {
+		return PrimaryContactNotFound
+	}
+	if prop.getType() != contactType {
+		return PrimaryContactTypeMismatch
+	}
+	return PrimaryContactValid
+}
+
+// IsStringBackedType reports whether values of the attribute type are JSON strings.
+func IsStringBackedType(attrType string) bool {
+	return attrType == TypeString || attrType == TypeEmail || attrType == TypeMobile
+}
+
 // AttributeInfo holds an attribute name, its required and credential status, and its human-readable
 // display label. DisplayName may be empty when the schema definition omits the `displayName` field;
 // callers should fall back to Attribute when rendering a label.
@@ -110,6 +144,9 @@ type AttributeInfo struct {
 	Required    bool
 	Credential  bool
 	Unique      bool
+	// Enum holds the permitted values in schema order when the property constrains them, and is
+	// empty otherwise.
+	Enum []string
 }
 
 // AttributeFilter selects top-level schema properties by their characteristics. Credential and
@@ -151,6 +188,7 @@ func (cs *Schema) GetAttributes(filter AttributeFilter) []AttributeInfo {
 			Required:    prop.isRequired(),
 			Credential:  isCredential,
 			Unique:      prop.isUnique(),
+			Enum:        prop.getEnum(),
 		})
 	}
 	return result
@@ -191,7 +229,7 @@ func (cs *Schema) Validate(
 	for propName, prop := range cs.properties {
 		value, exists := userAttrs[propName]
 		if !exists {
-			if prop.isRequired() && !(skipCredentialRequired && prop.isCredential()) {
+			if prop.isRequired() && (!skipCredentialRequired || !prop.isCredential()) {
 				return false, nil
 			}
 			continue
@@ -306,8 +344,8 @@ func compileProperty(propName string, propRaw json.RawMessage) (property, error)
 	}
 
 	switch typeStr {
-	case TypeString:
-		return compileStringProperty(propMap)
+	case TypeString, TypeEmail, TypeMobile:
+		return compileStringProperty(propMap, typeStr)
 	case TypeNumber:
 		return compileNumberProperty(propMap)
 	case TypeBoolean:
@@ -317,6 +355,7 @@ func compileProperty(propName string, propRaw json.RawMessage) (property, error)
 	case TypeArray:
 		return compileArrayProperty(propName, propMap)
 	default:
-		return nil, fmt.Errorf("invalid type '%s', must be one of: string, number, boolean, object, array", typeStr)
+		return nil, fmt.Errorf(
+			"invalid type '%s', must be one of: string, email, mobile, number, boolean, object, array", typeStr)
 	}
 }

@@ -15,11 +15,15 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
+
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
 // GroupExporterTestSuite contains tests for the groupExporter.
@@ -72,8 +76,10 @@ func (suite *GroupExporterTestSuite) TestGetAllResourceIDs_SinglePage() {
 		TotalResults: 2,
 	}
 
-	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 0, false).Return(groupList, nil)
-	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 2, false).Return(emptyPage, nil)
+	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 0, map[string]interface{}(nil), false).
+		Return(groupList, nil)
+	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 2, map[string]interface{}(nil), false).
+		Return(emptyPage, nil)
 
 	ids, err := suite.exporter.GetAllResourceIDs(suite.ctx)
 
@@ -99,9 +105,12 @@ func (suite *GroupExporterTestSuite) TestGetAllResourceIDs_MultiplePages() {
 		TotalResults: 2,
 	}
 
-	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 0, false).Return(page1, nil)
-	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 1, false).Return(page2, nil)
-	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 2, false).Return(emptyPage, nil)
+	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 0, map[string]interface{}(nil), false).
+		Return(page1, nil)
+	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 1, map[string]interface{}(nil), false).
+		Return(page2, nil)
+	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 2, map[string]interface{}(nil), false).
+		Return(emptyPage, nil)
 
 	ids, err := suite.exporter.GetAllResourceIDs(suite.ctx)
 
@@ -115,7 +124,8 @@ func (suite *GroupExporterTestSuite) TestGetAllResourceIDs_MultiplePages() {
 // Test GetAllResourceIDs - empty store
 func (suite *GroupExporterTestSuite) TestGetAllResourceIDs_Empty() {
 	emptyPage := &GroupListResponse{Groups: []GroupBasic{}, TotalResults: 0}
-	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 0, false).Return(emptyPage, nil)
+	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 0, map[string]interface{}(nil), false).
+		Return(emptyPage, nil)
 
 	ids, err := suite.exporter.GetAllResourceIDs(suite.ctx)
 
@@ -127,7 +137,8 @@ func (suite *GroupExporterTestSuite) TestGetAllResourceIDs_Empty() {
 // Test GetAllResourceIDs - service error
 func (suite *GroupExporterTestSuite) TestGetAllResourceIDs_ServiceError() {
 	serviceErr := &tidcommon.ServiceError{Code: "500"}
-	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 0, false).Return(nil, serviceErr)
+	suite.mockService.On("GetGroupList", suite.ctx, serverconst.MaxPageSize, 0, map[string]interface{}(nil), false).
+		Return(nil, serviceErr)
 
 	ids, err := suite.exporter.GetAllResourceIDs(suite.ctx)
 
@@ -516,6 +527,29 @@ func (suite *GroupExporterTestSuite) TestValidateGroupWrapper_MissingOUID() {
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "ouId or ouHandle is required")
+}
+
+// TestValidateGroupWrapper_OUHandleUsesRuntimeContext verifies the ouHandle lookup carries a
+// runtime context. Declarative resources load at server boot with no authenticated caller, and
+// GetOrganizationUnitByPath's authorization check denies unauthenticated, non-runtime callers;
+// a plain context here would make every ouHandle-based group fail to load with a misleading
+// "organization unit ... not found" error even though the OU exists. Regression test for that.
+func (suite *GroupExporterTestSuite) TestValidateGroupWrapper_OUHandleUsesRuntimeContext() {
+	ouSvc := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvc.EXPECT().
+		GetOrganizationUnitByPath(mock.MatchedBy(security.IsRuntimeContext), "root/eng").
+		Return(ou.OrganizationUnit{ID: "ou-123"}, nil).Once()
+
+	grp := &groupDeclarativeResource{
+		ID:       "group1",
+		Name:     "Admins",
+		OUHandle: "root/eng",
+	}
+
+	err := validateGroupWrapper(grp, nil, nil, ouSvc)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "ou-123", grp.OUID)
 }
 
 // Test validateGroupWrapper - duplicate ID in DB store

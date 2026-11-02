@@ -9,7 +9,7 @@ describe('StackblitzQuickstartCard', () => {
   it('renders the title and links to the given StackBlitz URL in a new tab', () => {
     render(
       <StackblitzQuickstartCard
-        url="https://stackblitz.com/fork/github/thunder-id/javascript-sdks/tree/main/samples/react/quickstart"
+        url="https://stackblitz.com/fork/github/thunder-id/samples/tree/main/quickstarts/react"
         heading="Try the live quickstart"
         subheading="Run react-quickstart in StackBlitz"
         ctaLabel="Open on StackBlitz"
@@ -19,7 +19,7 @@ describe('StackblitzQuickstartCard', () => {
     const link = screen.getByRole('link');
     expect(link).toHaveAttribute(
       'href',
-      'https://stackblitz.com/fork/github/thunder-id/javascript-sdks/tree/main/samples/react/quickstart',
+      'https://stackblitz.com/fork/github/thunder-id/samples/tree/main/quickstarts/react',
     );
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');

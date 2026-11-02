@@ -104,69 +104,6 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 		return authUser, nil, &ErrorAuthenticationFailed
 	}
 
-	if sub, ok := credentials[authnprovidercm.UserAttributeSub]; ok {
-		// Temporary handling of disambiguation after a federated authentication step.
-		// Only works with Thunder's default authn provider.
-		if subStr, ok := sub.(string); !ok || subStr == "" {
-			m.logger.Debug(ctx, "disambiguation requested but sub is missing or invalid in credentials")
-			return authUser, nil, &ErrorAuthenticationFailed
-		}
-
-		if !authUser.IsAuthenticated() {
-			m.logger.Debug(ctx, "disambiguation requested but current user is not authenticated")
-			return authUser, nil, &ErrorAuthenticationFailed
-		}
-
-		authUserState, ok := authUser.StateFor(defaultProviderName)
-		if !ok {
-			m.logger.Debug(ctx, "disambiguation requested but current user has no state for the default provider")
-			return authUser, nil, &ErrorAuthenticationFailed
-		}
-
-		if authUserState.EntityReferenceToken == nil {
-			m.logger.Debug(ctx, "disambiguation requested but current user's entity reference token is missing")
-			return authUser, nil, &ErrorAuthenticationFailed
-		}
-
-		entityRefToken, ok := authUserState.EntityReferenceToken.(map[string]interface{})
-		if !ok || entityRefToken == nil {
-			m.logger.Debug(ctx,
-				"disambiguation requested but current user's entity reference token is missing or invalid")
-			return authUser, nil, &ErrorAuthenticationFailed
-		}
-
-		subClaim, ok := entityRefToken[authnprovidercm.UserAttributeSub]
-		if !ok {
-			m.logger.Debug(ctx,
-				"disambiguation requested but current user's entity reference token is missing sub claim")
-			return authUser, nil, &ErrorAuthenticationFailed
-		}
-
-		if systemutils.ConvertInterfaceValueToString(subClaim) !=
-			systemutils.ConvertInterfaceValueToString(sub) {
-			m.logger.Debug(ctx, "disambiguation requested but sub claim in credentials "+
-				"does not match current user's sub claim")
-			return authUser, nil, &ErrorAuthenticationFailed
-		}
-
-		val, ok := identifiers[authnprovidercm.UserAttributeUserID]
-		if !ok {
-			m.logger.Debug(ctx, "disambiguation requested but userID is missing or invalid in identifiers")
-			return authUser, nil, &ErrorAuthenticationFailed
-		}
-		valStr, ok := val.(string)
-		if !ok || valStr == "" {
-			m.logger.Debug(ctx, "disambiguation requested but userID is missing or invalid in identifiers")
-			return authUser, nil, &ErrorAuthenticationFailed
-		}
-		userIDToken := map[string]interface{}{authnprovidercm.UserAttributeUserID: valStr}
-		authUser.SetStateFor(defaultProviderName, providers.AuthState{
-			EntityReferenceToken: userIDToken,
-			AttributeToken:       userIDToken,
-		})
-		return authUser, nil, nil
-	}
-
 	selectedProviderName, selectedProvider, svcErr := m.selectProvider(ctx, slices.Sorted(maps.Keys(credentials)))
 	if svcErr != nil {
 		return authUser, nil, svcErr
@@ -188,12 +125,29 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 			m.logger.Debug(ctx, "authentication failed with invalid request error from provider",
 				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 			return authUser, nil, &ErrorInvalidRequest
-		default:
-			m.logger.Debug(ctx, "authentication failed with client error from provider",
-				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
-			return authUser, nil, &ErrorAuthenticationFailed
+		case authnprovidercm.ErrorCodeAmbiguousUser:
+			if _, federated := credentials[authnprovidercm.CredentialTypeFederated]; federated {
+				// Two entities hold the recorded link. Reported as such so the caller does not read it as
+				// a failed exchange with the connection.
+				m.logger.Debug(ctx, "federated authentication resolved an ambiguous link",
+					log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+				return authUser, nil, &ErrorAmbiguousUser
+			}
+		case authnprovidercm.ErrorCodeAccountLocked:
+			m.logger.Debug(ctx, "authentication refused a locked account")
+			return authUser, nil, &ErrorAccountLocked
+		case authnprovidercm.ErrorCodeAccountSuspended:
+			m.logger.Debug(ctx, "authentication refused a suspended account")
+			return authUser, nil, &ErrorAccountSuspended
 		}
+		m.logger.Debug(ctx, "authentication failed with client error from provider",
+			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+		return authUser, nil, &ErrorAuthenticationFailed
 	}
+	if svcErr := m.checkSubjectAllowed(ctx, authResult.EntityReference); svcErr != nil {
+		return authUser, nil, svcErr
+	}
+
 	authUser, svcErr = m.updateAuthUser(ctx, authResult, authUser, selectedProviderName)
 	if svcErr != nil {
 		return authUser, nil, svcErr
@@ -266,7 +220,55 @@ func (m *authnProviderManager) GetEntityReference(ctx context.Context, authUser 
 		seen = true
 	}
 
+	if svcErr := m.checkSubjectAllowed(ctx, entityRef); svcErr != nil {
+		return authUser, nil, svcErr
+	}
+
 	return authUser, entityRef, nil
+}
+
+// checkSubjectAllowed rejects a resolved subject whose category and type the application/ agent driving the
+// current authentication does not accept. A nil reference means the subject is not resolved yet (the provider
+// returned an entity reference token for an entity it has not provisioned), and the check applies once
+// GetEntityReference resolves it.
+func (m *authnProviderManager) checkSubjectAllowed(
+	ctx context.Context, entityRef *providers.EntityReference) *tidcommon.ServiceError {
+	if entityRef == nil {
+		return nil
+	}
+	constraints, ok := authnprovidercm.SubjectTypeConstraintsFrom(ctx)
+	if !ok || constraints.PermitsSubject(
+		providers.EntityCategory(entityRef.EntityCategory), entityRef.EntityType) {
+		return nil
+	}
+	m.logger.Debug(ctx, "resolved subject is not allowed for the application",
+		log.String("entityId", entityRef.EntityID),
+		log.String("entityCategory", entityRef.EntityCategory),
+		log.String("entityType", entityRef.EntityType))
+	return &ErrorSubjectNotAllowed
+}
+
+// ResolveLinkCandidates returns the entities the pending identity's
+// account-linking attributes name, with the values they matched on, or nil when the AuthUser
+// carries no pending identity or nothing matches it. A match is not a proof of
+// ownership, so the AuthUser is left unchanged.
+func (m *authnProviderManager) ResolveLinkCandidates(ctx context.Context,
+	authUser providers.AuthUser) (*providers.LinkCandidates, *tidcommon.ServiceError) {
+	for _, name := range authUser.ProviderNames() {
+		state, _ := authUser.StateFor(name)
+		filters := accountLinkingFilters(state.EntityReferenceToken)
+		if len(filters) == 0 {
+			continue
+		}
+		p, ok := m.authnProviders[name]
+		if !ok || p == nil {
+			m.logger.Error(ctx, "no provider registered for authUser state entry",
+				log.String("providerName", name))
+			return nil, &tidcommon.InternalServerError
+		}
+		return m.matchAccountLinkingFilters(ctx, p, filters)
+	}
+	return nil, nil
 }
 
 // GetUserAvailableAttributes returns the merged attributes available across
@@ -338,7 +340,12 @@ func (m *authnProviderManager) InitiateEnrollment(ctx context.Context, credentia
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	return selectedProvider.InitiateEnrollment(ctx, credentialType, initData, metadata)
+	result, svcErr := selectedProvider.InitiateEnrollment(ctx, credentialType, initData, metadata)
+	if stated := statedHold(svcErr); stated != nil {
+		m.logger.Debug(ctx, "enrollment initiation refused by a suspension", log.String("errorCode", stated.Code))
+		return nil, stated
+	}
+	return result, svcErr
 }
 
 // Enroll routes a credential to the matching provider to complete enrollment and merges
@@ -359,6 +366,10 @@ func (m *authnProviderManager) Enroll(ctx context.Context, identifiers, credenti
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
 			return authUser, nil, &tidcommon.InternalServerError
 		}
+		if stated := statedHold(svcErr); stated != nil {
+			m.logger.Debug(ctx, "enrollment refused by a suspension", log.String("errorCode", stated.Code))
+			return authUser, nil, stated
+		}
 		switch svcErr.Code {
 		case authnprovidercm.ErrorCodeUserNotFound:
 			m.logger.Debug(ctx, "enrollment failed with user not found error from provider",
@@ -374,12 +385,231 @@ func (m *authnProviderManager) Enroll(ctx context.Context, identifiers, credenti
 			return authUser, nil, &ErrorEnrollmentFailed
 		}
 	}
+	if svcErr := m.checkSubjectAllowed(ctx, authResult.EntityReference); svcErr != nil {
+		return authUser, nil, svcErr
+	}
+
 	authUser, svcErr = m.updateAuthUser(ctx, authResult, authUser, selectedProviderName)
 	if svcErr != nil {
 		return authUser, nil, svcErr
 	}
 
 	return authUser, authResult.AuthenticatedClaims, nil
+}
+
+// LinkAccount records a linked account against the user this AuthUser names, on the provider
+// that authenticated them.
+func (m *authnProviderManager) LinkAccount(ctx context.Context, authUser providers.AuthUser,
+	idpID, sub string) *tidcommon.ServiceError {
+	if idpID == "" || sub == "" {
+		m.logger.Debug(ctx, "link requested without a connection id or subject")
+		return &ErrorInvalidRequest
+	}
+
+	providerName, ok := m.linkTargetProvider(authUser)
+	if !ok {
+		m.logger.Debug(ctx, "link requested but the authUser carries no provider state")
+		return &ErrorAuthenticationFailed
+	}
+
+	selectedProvider, ok := m.authnProviders[providerName]
+	if !ok || selectedProvider == nil {
+		m.logger.Error(ctx, "authUser state names a provider that is not registered",
+			log.String("providerName", providerName))
+		return &tidcommon.InternalServerError
+	}
+
+	state, _ := authUser.StateFor(providerName)
+	token := state.EntityReferenceToken
+	if token == nil {
+		// GetEntityReference replaces a resolved token with the reference itself.
+		if state.EntityReference == nil || state.EntityReference.EntityID == "" {
+			m.logger.Debug(ctx, "link requested but the provider state names no entity")
+			return &ErrorInvalidRequest
+		}
+		token = map[string]interface{}{authnprovidercm.UserAttributeUserID: state.EntityReference.EntityID}
+	}
+
+	svcErr := selectedProvider.StoreAccountLink(ctx, token, idpID, sub)
+	if svcErr == nil {
+		return nil
+	}
+	if svcErr.Type == tidcommon.ServerErrorType {
+		m.logger.Error(ctx, "provider returned server error while linking an account",
+			log.String("error", svcErr.ErrorDescription.DefaultValue))
+		return &tidcommon.InternalServerError
+	}
+	if svcErr.Code == authnprovidercm.ErrorCodeNotImplemented {
+		// The provider does not store account links. There is nothing to record, and failing the
+		// sign-in over it would break every sign-in through that provider that needs a link.
+		m.logger.Debug(ctx, "provider does not store account links",
+			log.String("providerName", providerName))
+		return nil
+	}
+	m.logger.Debug(ctx, "provider rejected the account link",
+		log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+	return &ErrorLinkAccountFailed
+}
+
+// linkTargetProvider picks the provider that should store an account link. With one provider in
+// the AuthUser it is that one. With several, which happens once a password authentication follows
+// the first, it is whichever provider claimed the credential the linked identity signed in with.
+func (m *authnProviderManager) linkTargetProvider(authUser providers.AuthUser) (string, bool) {
+	names := authUser.ProviderNames()
+	switch len(names) {
+	case 0:
+		return "", false
+	case 1:
+		return names[0], true
+	}
+
+	linkOwner, ok := m.credToProviderMapping[authnprovidercm.CredentialTypeFederated]
+	if !ok {
+		linkOwner = defaultProviderName
+	}
+	if _, present := authUser.StateFor(linkOwner); present {
+		return linkOwner, true
+	}
+	return names[0], true
+}
+
+// matchAccountLinkingFilters resolves each account-linking filter through the provider and returns
+// the entities they name, with the attribute values that matched.
+func (m *authnProviderManager) matchAccountLinkingFilters(ctx context.Context,
+	p providers.AuthnProviderInterface, filters []map[string]interface{},
+) (*providers.LinkCandidates, *tidcommon.ServiceError) {
+	// Saving a connection rejects a configuration this large, so only one that skipped that
+	// validation reaches here.
+	if len(filters) > authnprovidercm.MaxAccountLinkingFilters {
+		m.logger.Error(ctx, "account linking attributes combine into more lookups than allowed",
+			log.Int("filterCount", len(filters)))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	var candidates *providers.LinkCandidates
+	for _, filter := range filters {
+		// A filter carries no link keys, so the provider resolves it the way it resolves any
+		// other attribute token: as a lookup on indexed attributes.
+		refs, svcErr := m.matchAccountLinkingFilter(ctx, p, filter)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		if len(refs) == 0 {
+			continue
+		}
+
+		if candidates == nil {
+			candidates = &providers.LinkCandidates{MatchedAttributes: map[string]string{}}
+		}
+		for _, ref := range refs {
+			if !slices.Contains(candidates.EntityIDs, ref.EntityID) {
+				candidates.EntityIDs = append(candidates.EntityIDs, ref.EntityID)
+			}
+			if ref.EntityType != "" && !slices.Contains(candidates.EntityTypes, ref.EntityType) {
+				candidates.EntityTypes = append(candidates.EntityTypes, ref.EntityType)
+			}
+		}
+		// Later filters only add candidates, so the remaining lookups cannot bring the count back.
+		if len(candidates.EntityIDs) > maxLinkingCandidates {
+			m.logger.Debug(ctx, "account linking attributes match too many users",
+				log.Int("candidateCount", len(candidates.EntityIDs)))
+			return nil, &ErrorAmbiguousUser
+		}
+		for attr, value := range filter {
+			candidates.MatchedAttributes[attr] = systemutils.ConvertInterfaceValueToString(value)
+		}
+	}
+	if candidates == nil {
+		m.logger.Debug(ctx, "no user matches the account linking attributes")
+		return nil, nil
+	}
+	slices.Sort(candidates.EntityIDs)
+	return candidates, nil
+}
+
+// matchAccountLinkingFilter returns the entities one account-linking filter names. The provider
+// resolves the filter as it resolves any lookup, and only an ambiguous answer is listed through
+// the provider's search, which leaves a lookup that names one entity or none exactly as it was.
+func (m *authnProviderManager) matchAccountLinkingFilter(ctx context.Context,
+	p providers.AuthnProviderInterface, filter map[string]interface{},
+) ([]providers.EntityReference, *tidcommon.ServiceError) {
+	ref, svcErr := p.GetEntityReference(ctx, filter)
+	if svcErr == nil {
+		if ref == nil || ref.EntityID == "" {
+			return nil, nil
+		}
+		return []providers.EntityReference{*ref}, nil
+	}
+	if svcErr.Type == tidcommon.ServerErrorType {
+		m.logger.Error(ctx, "provider returned server error while matching account linking attributes",
+			log.String("error", svcErr.ErrorDescription.DefaultValue))
+		return nil, &tidcommon.InternalServerError
+	}
+	switch svcErr.Code {
+	case authnprovidercm.ErrorCodeUserNotFound:
+		return nil, nil
+	case authnprovidercm.ErrorCodeAmbiguousUser:
+		return m.listAmbiguousMatch(ctx, p, filter)
+	default:
+		m.logger.Error(ctx, "provider rejected the account linking attribute lookup",
+			log.String("errorCode", svcErr.Code),
+			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+		return nil, &tidcommon.InternalServerError
+	}
+}
+
+// listAmbiguousMatch lists the entities a lookup the provider found ambiguous matches. A provider
+// that cannot list them, or a search that does not find several, leaves nothing to verify against,
+// and the lookup fails closed.
+func (m *authnProviderManager) listAmbiguousMatch(ctx context.Context,
+	p providers.AuthnProviderInterface, filter map[string]interface{},
+) ([]providers.EntityReference, *tidcommon.ServiceError) {
+	refs, svcErr := p.SearchEntityReferences(ctx, filter)
+	if svcErr != nil && svcErr.Code == authnprovidercm.ErrorCodeNotImplemented {
+		m.logger.Debug(ctx, "an account linking attribute matches more than one user")
+		return nil, &ErrorAmbiguousUser
+	}
+	if svcErr != nil {
+		m.logger.Error(ctx, "provider failed to list the users an account linking attribute matches",
+			log.String("errorCode", svcErr.Code))
+		return nil, &tidcommon.InternalServerError
+	}
+	listed := make([]providers.EntityReference, 0, len(refs))
+	for _, ref := range refs {
+		if ref.EntityID != "" {
+			listed = append(listed, ref)
+		}
+	}
+	if len(listed) < 2 {
+		m.logger.Debug(ctx, "an ambiguous account linking attribute did not list several users",
+			log.Int("candidateCount", len(listed)))
+		return nil, &ErrorAmbiguousUser
+	}
+	return listed, nil
+}
+
+// accountLinkingFilters returns the account-linking filters carried by an unresolved
+// token, or nil when it carries none. A token decoded from JSON holds them as []interface{}.
+func accountLinkingFilters(entityReferenceToken any) []map[string]interface{} {
+	if !authnprovidercm.IsFederatedToken(entityReferenceToken) {
+		return nil
+	}
+	token, _ := entityReferenceToken.(map[string]interface{})
+
+	switch raw := token[authnprovidercm.AccountLinkingFiltersKey].(type) {
+	case []map[string]interface{}:
+		return raw
+	case []interface{}:
+		filters := make([]map[string]interface{}, 0, len(raw))
+		for _, entry := range raw {
+			if filter, ok := entry.(map[string]interface{}); ok && len(filter) > 0 {
+				filters = append(filters, filter)
+			}
+		}
+		return filters
+	default:
+		return nil
+	}
 }
 
 // updateAuthUser records a provider's authentication or enrollment result in the AuthUser
@@ -479,4 +709,14 @@ func isEntityRefsEqual(ref1, ref2 *providers.EntityReference) bool {
 	}
 	// EntityCategory is intentionally excluded — it's optional and may be missing.
 	return true
+}
+
+// statedHold maps a provider's suspension code to this package's error, or returns nil for any other
+// error. Only a suspension is stated on enrolment.
+func statedHold(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	if svcErr == nil || svcErr.Type != tidcommon.ClientErrorType ||
+		svcErr.Code != authnprovidercm.ErrorCodeAccountSuspended {
+		return nil
+	}
+	return &ErrorAccountSuspended
 }

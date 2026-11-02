@@ -20,10 +20,19 @@ func NewPKIServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *PKIServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &PKIServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type PKIServiceInterfaceMock_GetAllX509Certificates_Call struct {
 
 // GetAllX509Certificates is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *PKIServiceInterfaceMock_Expecter) GetAllX509Certificates(ctx interface{}) *PKIServiceInterfaceMock_GetAllX509Certificates_Call {
+func (_e *PKIServiceInterfaceMock_Expecter) GetAllX509Certificates(ctx any) *PKIServiceInterfaceMock_GetAllX509Certificates_Call {
 	return &PKIServiceInterfaceMock_GetAllX509Certificates_Call{Call: _e.mock.On("GetAllX509Certificates", ctx)}
 }
 
@@ -129,7 +138,7 @@ type PKIServiceInterfaceMock_GetCertThumbprint_Call struct {
 
 // GetCertThumbprint is a helper method to define mock.On call
 //   - id string
-func (_e *PKIServiceInterfaceMock_Expecter) GetCertThumbprint(id interface{}) *PKIServiceInterfaceMock_GetCertThumbprint_Call {
+func (_e *PKIServiceInterfaceMock_Expecter) GetCertThumbprint(id any) *PKIServiceInterfaceMock_GetCertThumbprint_Call {
 	return &PKIServiceInterfaceMock_GetCertThumbprint_Call{Call: _e.mock.On("GetCertThumbprint", id)}
 }
 
@@ -182,7 +191,7 @@ type PKIServiceInterfaceMock_GetCertificateChain_Call struct {
 
 // GetCertificateChain is a helper method to define mock.On call
 //   - id string
-func (_e *PKIServiceInterfaceMock_Expecter) GetCertificateChain(id interface{}) *PKIServiceInterfaceMock_GetCertificateChain_Call {
+func (_e *PKIServiceInterfaceMock_Expecter) GetCertificateChain(id any) *PKIServiceInterfaceMock_GetCertificateChain_Call {
 	return &PKIServiceInterfaceMock_GetCertificateChain_Call{Call: _e.mock.On("GetCertificateChain", id)}
 }
 
@@ -247,7 +256,7 @@ type PKIServiceInterfaceMock_GetPrivateKey_Call struct {
 // GetPrivateKey is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *PKIServiceInterfaceMock_Expecter) GetPrivateKey(ctx interface{}, id interface{}) *PKIServiceInterfaceMock_GetPrivateKey_Call {
+func (_e *PKIServiceInterfaceMock_Expecter) GetPrivateKey(ctx any, id any) *PKIServiceInterfaceMock_GetPrivateKey_Call {
 	return &PKIServiceInterfaceMock_GetPrivateKey_Call{Call: _e.mock.On("GetPrivateKey", ctx, id)}
 }
 
@@ -418,7 +427,7 @@ type PKIServiceInterfaceMock_GetX509Certificate_Call struct {
 // GetX509Certificate is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *PKIServiceInterfaceMock_Expecter) GetX509Certificate(ctx interface{}, id interface{}) *PKIServiceInterfaceMock_GetX509Certificate_Call {
+func (_e *PKIServiceInterfaceMock_Expecter) GetX509Certificate(ctx any, id any) *PKIServiceInterfaceMock_GetX509Certificate_Call {
 	return &PKIServiceInterfaceMock_GetX509Certificate_Call{Call: _e.mock.On("GetX509Certificate", ctx, id)}
 }
 

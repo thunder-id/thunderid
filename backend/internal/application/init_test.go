@@ -6,6 +6,7 @@ package application
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -21,12 +22,23 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowmgtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
+
+// newSharingServiceStub is the sharing framework Initialize now requires. Both calls it may make
+// are optional, so a test that never reaches the declarative branch sets no expectation it has to
+// meet.
+func newSharingServiceStub(t *testing.T) *sharingmock.SharingServiceInterfaceMock {
+	m := sharingmock.NewSharingServiceInterfaceMock(t)
+	m.EXPECT().RegisterResourceType(mock.Anything).Return().Maybe()
+	m.EXPECT().LoadDeclarativeResources(mock.Anything, mock.Anything).Return(nil).Maybe()
+	return m
+}
 
 // newInMemoryDataSource returns a SQLite DataSource that uses a shared in-memory
 // database with a single open connection, ensuring all test operations within a
@@ -132,19 +144,24 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesDisabled() {
 	mux := http.NewServeMux()
 
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 
 	// Execute
 	service, _, err := Initialize(
 		mux,
 		nil,
-		nil, // entityProvider - not needed for this test
 		mockEntityService,
 		inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T()),
 		nil, // ouService - not needed for this test
 		nil, // i18nService - not needed for this test
 		nil, // cryptoSvc - not needed for this test
 		nil, // serverConfigSvc - not needed for this test
+		nil, // artifactLifetime - not needed for this test
+		newSharingServiceStub(suite.T()),
+		nil, // valueCapturer - not needed for this test
+		nil, // governance - not needed for this test
+		nil, // projectResolver - not needed for this test
 	)
 
 	// Assert
@@ -176,19 +193,24 @@ func (suite *InitTestSuite) TestInitialize_WithMCPServer() {
 	}, nil)
 
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 
 	// Execute
 	service, _, err := Initialize(
 		mux,
 		mcpServer,
-		nil, // entityProvider - not needed for this test
 		mockEntityService,
 		inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T()),
 		nil, // ouService - not needed for this test
 		nil, // i18nService - not needed for this test
 		nil, // cryptoSvc - not needed for this test
 		nil, // serverConfigSvc - not needed for this test
+		nil, // artifactLifetime - not needed for this test
+		newSharingServiceStub(suite.T()),
+		nil, // valueCapturer - not needed for this test
+		nil, // governance - not needed for this test
+		nil, // projectResolver - not needed for this test
 	)
 
 	// Assert
@@ -548,6 +570,42 @@ func TestRegisterRoutes_Standalone(t *testing.T) {
 	})
 }
 
+// TestRegisterRoutes_SharingPreflight checks that each sharing path's preflight is served by a
+// route whose allowed methods cover what that path accepts. The subtree route under /applications/
+// allows GET, PUT and DELETE, so a collection taking POST needs a route of its own.
+func TestRegisterRoutes_SharingPreflight(t *testing.T) {
+	mux := http.NewServeMux()
+	registerRoutes(mux, &applicationHandler{})
+
+	tests := []struct {
+		path    string
+		pattern string
+	}{
+		{
+			path:    "/applications/app-1/sharing-policies",
+			pattern: "OPTIONS /applications/{id}/sharing-policies",
+		},
+		{
+			path:    "/applications/app-1/sharing-policies/policy-1",
+			pattern: "OPTIONS /applications/",
+		},
+		{
+			path:    "/applications/app-1/overlay-rules",
+			pattern: "OPTIONS /applications/",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodOptions, tt.path, nil)
+			req.Header.Set("Origin", "http://localhost:3000")
+			req.Header.Set("Access-Control-Request-Method", http.MethodPost)
+
+			_, pattern := mux.Handler(req)
+			assert.Equal(t, tt.pattern, pattern)
+		})
+	}
+}
+
 // TestInitialize_Standalone tests Initialize function without suite dependencies
 func TestInitialize_Standalone(t *testing.T) {
 	// Setup minimal config for testing
@@ -568,19 +626,24 @@ func TestInitialize_Standalone(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(t)
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 
 	// Execute
 	service, _, err := Initialize(
 		mux,
 		nil,
-		nil, // entityProvider - not needed for this test
 		mockEntityService,
 		inboundclientmock.NewInboundClientServiceInterfaceMock(t),
 		nil, // ouService - not needed for this test
 		nil, // i18nService - not needed for this test
 		nil, // cryptoSvc - not needed for this test
 		nil, // serverConfigSvc - not needed for this test
+		nil, // artifactLifetime - not needed for this test
+		newSharingServiceStub(t),
+		nil, // valueCapturer - not needed for this test
+		nil, // governance - not needed for this test
+		nil, // projectResolver - not needed for this test
 	)
 
 	// Assert
@@ -617,6 +680,7 @@ func TestInitialize_WithDeclarativeResources_Standalone(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(t)
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 	mockEntityService.On("LoadDeclarativeResources", mock.Anything).Return(nil)
 	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
@@ -626,13 +690,17 @@ func TestInitialize_WithDeclarativeResources_Standalone(t *testing.T) {
 	service, _, err := Initialize(
 		mux,
 		nil,
-		nil, // entityProvider - not needed for this test
 		mockEntityService,
 		mockInboundClient,
 		nil, // ouService - not needed for this test
 		nil, // i18nService - not needed for this test
 		nil, // cryptoSvc - not needed for this test
 		nil, // serverConfigSvc - not needed for this test
+		nil, // artifactLifetime - not needed for this test
+		newSharingServiceStub(t),
+		nil, // valueCapturer - not needed for this test
+		nil, // governance - not needed for this test
+		nil, // projectResolver - not needed for this test
 	)
 
 	// Assert
@@ -842,4 +910,58 @@ inboundAuthConfig:
 	assert.Contains(suite.T(), oauth.ScopeClaims["profile"], "name", "profile scope should contain 'name'")
 	assert.Contains(suite.T(), oauth.ScopeClaims["profile"], "customClaim",
 		"profile scope should contain 'customClaim'")
+}
+
+// A document directory the loaders cannot read stops startup rather than leaving the deployment
+// running with an application, or a sharing policy, that silently failed to load. One test per
+// loader, because each returns through its own branch.
+
+// declarativeConfig is the runtime a deployment that loads declarative resources runs with.
+func (suite *InitTestSuite) declarativeConfig() {
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime("", &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: true},
+		Database:             newTestDBConfig(),
+	}))
+	createTestApplicationTables(suite.T())
+}
+
+func (suite *InitTestSuite) TestInitializeReportsAFailureLoadingApplications() {
+	suite.declarativeConfig()
+	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
+	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
+	mockEntityService.On("LoadDeclarativeResources", mock.Anything).Return(assert.AnError)
+
+	service, _, err := Initialize(
+		http.NewServeMux(), nil, mockEntityService,
+		inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T()),
+		nil, nil, nil, nil, nil, newSharingServiceStub(suite.T()), nil, nil, nil,
+	)
+
+	assert.ErrorIs(suite.T(), err, assert.AnError)
+	assert.Nil(suite.T(), service)
+}
+
+func (suite *InitTestSuite) TestInitializeReportsAFailureLoadingSharingPolicies() {
+	suite.declarativeConfig()
+	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
+	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
+	mockEntityService.On("LoadDeclarativeResources", mock.Anything).Return(nil)
+	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
+	mockInboundClient.On("LoadDeclarativeResources", mock.Anything, mock.Anything).Return(nil)
+
+	sharingService := sharingmock.NewSharingServiceInterfaceMock(suite.T())
+	sharingService.EXPECT().RegisterResourceType(mock.Anything).Return().Maybe()
+	sharingService.EXPECT().LoadDeclarativeResources(mock.Anything, mock.Anything).
+		Return(assert.AnError).Once()
+
+	service, _, err := Initialize(
+		http.NewServeMux(), nil, mockEntityService, mockInboundClient,
+		nil, nil, nil, nil, nil, sharingService, nil, nil, nil,
+	)
+
+	assert.ErrorIs(suite.T(), err, assert.AnError)
+	assert.Nil(suite.T(), service)
 }

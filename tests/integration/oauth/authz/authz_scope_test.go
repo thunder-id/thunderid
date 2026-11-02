@@ -4,6 +4,7 @@
 package authz
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -40,7 +41,8 @@ var (
 	scopeMultiRSRoleID       string
 	scopeSplitRSRoleID       string
 	scopeTestEntityType      = testutils.UserType{
-		Name: "authz-test-person",
+		Handle:      "authz-test-person",
+		DisplayName: "Authz Test Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -404,15 +406,15 @@ func (ts *OAuthAuthzScopeTestSuite) TearDownSuite() {
 		}
 	}
 
-	if scopeTestOUID != "" {
-		if err := testutils.DeleteOrganizationUnit(scopeTestOUID); err != nil {
-			ts.T().Logf("Failed to delete organization unit: %v", err)
-		}
-	}
-
 	if scopeEntityTypeID != "" {
 		if err := testutils.DeleteUserType(scopeEntityTypeID); err != nil {
 			ts.T().Logf("Failed to delete user type: %v", err)
+		}
+	}
+
+	if scopeTestOUID != "" {
+		if err := testutils.DeleteOrganizationUnit(scopeTestOUID); err != nil {
+			ts.T().Logf("Failed to delete organization unit: %v", err)
 		}
 	}
 }
@@ -511,6 +513,66 @@ func (ts *OAuthAuthzScopeTestSuite) testOAuthAuthzFlow_WithAuthorizedScopes(user
 	ts.Require().Contains(scopes, "openid", "Token should contain openid scope")
 	ts.Require().Contains(scopes, "read", "Token should contain read scope")
 	ts.Require().Contains(scopes, "write", "Token should contain write scope")
+}
+
+// TestOAuthAuthzFlow_SharedRoleAssignedInChildOU covers a role the suite's organization unit owns and
+// shares with a child unit. Assigned there to a user of the child, it gives that user its permissions
+// when the user logs in.
+func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_SharedRoleAssignedInChildOU() {
+	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "oauth-scope-authz-child-ou", Name: "OAuth Scope Authorization Child OU", Parent: &scopeTestOUID,
+	})
+	ts.Require().NoError(err)
+	defer func() { ts.NoError(testutils.DeleteOrganizationUnit(childOUID)) }()
+
+	userID, err := testutils.CreateUser(testutils.User{
+		OUID: childOUID,
+		Type: "authz-test-person",
+		Attributes: json.RawMessage(`{
+			"username": "oauth_shared_role_user",
+			"password": "SecurePass123!",
+			"email": "oauth_shared_role@test.com"
+		}`),
+	})
+	ts.Require().NoError(err)
+	defer func() { ts.NoError(testutils.DeleteUser(userID)) }()
+
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: "OAuth_SharedDocumentEditor", OUID: scopeTestOUID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: scopeTestResourceServer, Permissions: []string{"read", "write"}},
+		},
+	})
+	ts.Require().NoError(err)
+	defer func() { ts.NoError(testutils.DeleteRole(roleID)) }()
+
+	ts.Equal(http.StatusCreated, ts.postJSON("/roles/"+roleID+"/sharing-policies", map[string]interface{}{
+		"childUnits": map[string]interface{}{
+			"mode": "selected", "units": []map[string]string{{"ouId": childOUID, "reach": "unit"}},
+		},
+	}))
+
+	scopes, _ := ts.obtainScopesAndAudience("oauth_shared_role_user", scopeTestResourceServerIdentifier)
+	ts.NotContains(scopes, "read", "the role is shared with the child but not yet assigned there")
+
+	ts.Equal(http.StatusNoContent, ts.postJSON("/roles/"+roleID+"/assignments/add", map[string]interface{}{
+		"ouId":        childOUID,
+		"assignments": []map[string]string{{"id": userID, "type": "user"}},
+	}))
+
+	scopes, _ = ts.obtainScopesAndAudience("oauth_shared_role_user", scopeTestResourceServerIdentifier)
+	ts.Contains(scopes, "read")
+	ts.Contains(scopes, "write")
+}
+
+// postJSON posts body to a management path and returns the status.
+func (ts *OAuthAuthzScopeTestSuite) postJSON(path string, body interface{}) int {
+	raw, err := json.Marshal(body)
+	ts.Require().NoError(err)
+	resp, err := ts.client.Post(testutils.TestServerURL+path, "application/json", bytes.NewReader(raw))
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	return resp.StatusCode
 }
 
 // TestOAuthAuthzFlow_WithNoAuthorizedScopes tests OAuth flow when user has no custom scopes
@@ -734,6 +796,76 @@ func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_FiltersOIDCScopesByScopeC
 	ts.Require().NoError(err, "Failed to decode ID token")
 	ts.Require().NotContains(idTokenClaims.Additional, "email",
 		"email claims must not be issued for a scope the mapping does not define")
+}
+
+// TestOAuthAuthzFlow_LegacyUserTypeClaim tests that an app configured with the legacy userType attribute
+// keeps receiving the user type's display name in the access token and the ID token.
+func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_LegacyUserTypeClaim() {
+	const (
+		clientID     = "legacy_user_type_test_client"
+		clientSecret = "legacy_user_type_test_secret"
+	)
+
+	appConfig := map[string]interface{}{
+		"name":                      "LegacyUserTypeTestApp",
+		"description":               "OAuth application for legacy userType claim integration test",
+		"ouId":                      scopeTestOUID,
+		"authFlowId":                ts.flowID,
+		"isRegistrationFlowEnabled": false,
+		"allowedUserTypes":          []string{scopeTestEntityType.Handle},
+		"inboundAuthConfig": []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                clientID,
+					"clientSecret":            clientSecret,
+					"redirectUris":            []string{scopeTestRedirectURI},
+					"grantTypes":              []string{"authorization_code"},
+					"responseTypes":           []string{"code"},
+					"tokenEndpointAuthMethod": "client_secret_post",
+					"token": map[string]interface{}{
+						"idToken": map[string]interface{}{
+							"userAttributes": []string{"userType"},
+						},
+						"accessToken": map[string]interface{}{
+							"userConfig": map[string]interface{}{
+								"attributes": []string{"userType"},
+							},
+						},
+					},
+					"scopeClaims": map[string][]string{
+						"profile": {"userType"},
+					},
+				},
+			},
+		},
+	}
+
+	appID, err := ts.createApplicationRaw(appConfig)
+	ts.Require().NoError(err, "Failed to create OAuth application")
+	defer func() {
+		_ = testutils.DeleteApplication(appID)
+	}()
+
+	tokenResp, err := ts.obtainTokenWithResource(clientID, clientSecret, "openid profile",
+		"oauth_authorized_user", scopeTestResourceServerIdentifier)
+	ts.Require().NoError(err, "Failed to obtain tokens")
+	ts.Require().NotNil(tokenResp, "Token response should not be nil")
+
+	accessTokenClaims, err := testutils.DecodeJWT(tokenResp.AccessToken)
+	ts.Require().NoError(err, "Failed to decode access token")
+	ts.Require().Equal(scopeTestEntityType.DisplayName, accessTokenClaims.UserType,
+		"Access token userType should carry the user type's display name")
+	ts.Require().Empty(accessTokenClaims.UserTypeHandle, "userTypeHandle should NOT be in the access token")
+	ts.Require().Empty(accessTokenClaims.UserTypeName, "userTypeName should NOT be in the access token")
+
+	ts.Require().NotEmpty(tokenResp.IDToken, "ID token should be issued for the openid scope")
+	idTokenClaims, err := testutils.DecodeJWT(tokenResp.IDToken)
+	ts.Require().NoError(err, "Failed to decode ID token")
+	ts.Require().Equal(scopeTestEntityType.DisplayName, idTokenClaims.UserType,
+		"ID token userType should carry the user type's display name")
+	ts.Require().Empty(idTokenClaims.UserTypeHandle, "userTypeHandle should NOT be in the ID token")
+	ts.Require().Empty(idTokenClaims.UserTypeName, "userTypeName should NOT be in the ID token")
 }
 
 // getApplicationMappedScopes returns the scopes the application's scope-to-claims mapping defines.

@@ -180,3 +180,16 @@ func (s *OIDCTestSuite) TestUpdateAndDelete() {
 	s.handler.deleteInstance(providers.IDPTypeOIDC)(delRR, delReq)
 	s.Equal(http.StatusNoContent, delRR.Code)
 }
+
+func (s *OIDCTestSuite) TestOUCarriedThroughMapping() {
+	dto, err := oidcToIDPDTO(oidcConnectionRequest{
+		Name: "n", OUID: "ou-1", ClientID: "c", RedirectURI: "https://app/cb",
+		AuthorizationEndpoint: "https://idp/auth", TokenEndpoint: "https://idp/token",
+	})
+	s.Require().NoError(err)
+	s.Equal("ou-1", dto.OUID)
+
+	resp, err := oidcFromIDPDTO(*dto)
+	s.Require().NoError(err)
+	s.Equal("ou-1", resp.OUID)
+}

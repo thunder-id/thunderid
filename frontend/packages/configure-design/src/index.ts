@@ -5,6 +5,13 @@
 export {default as GatePreview} from './GatePreview/GatePreview';
 export {default as PreviewThemeProvider} from './GatePreview/PreviewThemeProvider';
 
+// NotificationTemplatePreview (shared email/SMS template preview)
+export {
+  default as NotificationTemplatePreview,
+  type NotificationTemplatePreviewProps,
+  type NotificationChannel,
+} from './NotificationTemplatePreview/NotificationTemplatePreview';
+
 // Components
 export {default as LayoutPresetThumbnail, type LayoutPresetVariant} from './components/layouts/LayoutPresetThumbnail';
 export {default as LayoutThumbnail} from './components/layouts/LayoutThumbnail';

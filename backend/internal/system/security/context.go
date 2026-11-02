@@ -20,15 +20,17 @@ const (
 
 // SecurityContext holds immutable authenticated subject information.
 type SecurityContext struct {
-	subject           string
-	ouID              string
-	token             string
-	revocationID      string
-	tokenFamilyID     string
-	revocationSubject string
-	establishedAt     time.Time
-	permissions       []string
-	attributes        map[string]interface{}
+	subject             string
+	ouID                string
+	token               string
+	revocationID        string
+	tokenFamilyID       string
+	revocationSubject   string
+	revocationAppKey    string
+	revocationAudiences []string
+	establishedAt       time.Time
+	permissions         []string
+	attributes          map[string]interface{}
 }
 
 // newSecurityContext creates a new immutable SecurityContext.
@@ -40,6 +42,19 @@ func newSecurityContext(subject, ouID, token string,
 		token:       token,
 		permissions: permissions,
 		attributes:  attributes,
+	}
+}
+
+// revocationIdentity returns the token attributes the revocation enforcer checks.
+func (c *SecurityContext) revocationIdentity() RevocationIdentity {
+	return RevocationIdentity{
+		JTI:           c.revocationID,
+		TokenFamilyID: c.tokenFamilyID,
+		Subject:       c.revocationSubject,
+		AppKey:        c.revocationAppKey,
+		Audiences:     c.revocationAudiences,
+		Scopes:        c.permissions,
+		EstablishedAt: c.establishedAt,
 	}
 }
 
@@ -117,6 +132,14 @@ func GetAttribute(ctx context.Context, key string) interface{} {
 		// Immutable types (string, int, bool, etc.) are safe to return directly
 		return value
 	}
+}
+
+// WithSecurityContext attaches sc to ctx, so GetSubject, GetOUID, GetPermissions, and GetAttribute
+// resolve for it. Exported for authenticated surfaces outside the REST gate (e.g. the MCP server)
+// that build their own request context after calling BearerAuthenticator.Authenticate directly,
+// rather than going through the securityService middleware that attaches it for REST requests.
+func WithSecurityContext(ctx context.Context, sc *SecurityContext) context.Context {
+	return withSecurityContext(ctx, sc)
 }
 
 // WithRuntimeContext marks the context as an internal runtime caller.

@@ -18,11 +18,13 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/glamour/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/thunder-id/thunderid/tools/cli/internal/commands/integrate"
 	"github.com/thunder-id/thunderid/tools/cli/internal/commands/sample"
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
+	"github.com/thunder-id/thunderid/tools/cli/internal/services/docs"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/health"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/setup"
 	"github.com/thunder-id/thunderid/tools/cli/internal/utils"
@@ -90,9 +92,23 @@ var defaultCommands = []SlashCommand{
 	},
 }
 
+// defaultInputWidth is the fallback textinput width used before the first
+// tea.WindowSizeMsg arrives. Without an explicit width, bubbles' textinput
+// truncates its placeholder to a single character.
+const defaultInputWidth = 76
+
 // --- bubbletea messages ---
 
 type healthCheckMsg struct{ ready bool }
+
+// logsTailMsg carries newly appended log lines discovered by a follow-mode tick.
+// ok is false on an I/O error reading the log; the offset is left unchanged in
+// that case so the next tick retries the same read.
+type logsTailMsg struct {
+	lines  []string
+	offset int64
+	ok     bool
+}
 type upgradeMsg struct{}
 type switchVersionMsg struct{}
 type thunderExitedMsg struct {
@@ -129,8 +145,14 @@ type sampleDoneMsg struct {
 // sampleErrMsg signals that the try-* operation failed.
 type sampleErrMsg struct{ err error }
 
-// integrateFrameworkMsg triggers the step-by-step integration guide for a framework.
+// integrateFrameworkMsg triggers fetching and displaying a platform's integration guide.
 type integrateFrameworkMsg struct{ framework string }
+
+// guideLoadedMsg carries the result of fetching an integration guide's markdown.
+type guideLoadedMsg struct {
+	markdown string
+	err      error
+}
 
 // usecaseConfigRequestMsg is sent when a use case requires additional config before starting.
 type usecaseConfigRequestMsg struct {
@@ -155,103 +177,171 @@ type walkthroughPane struct {
 	URL   string   // opened with 'o'
 }
 
-func b2cWalkthroughPanes(sampleURL string) []walkthroughPane {
+// mailInboxURL is the SMTP test-inbox UI shipped with the Wayfinder sample.
+const mailInboxURL = "http://localhost:8788"
+
+// b2cWalkthroughPanes mirrors the Console's Secured Web Application tryout
+// scenarios (welcome.applicationTryout.scenarios.* in the frontend i18n
+// locale) so the CLI and Console walk users through the same journeys.
+func b2cWalkthroughPanes(sampleURL, consoleURL string) []walkthroughPane {
 	return []walkthroughPane{
 		{
-			Title: "Log In",
+			Title: "Sign-In",
 			URL:   sampleURL,
 			Lines: []string{
-				"Sign in with the demo consumer account.",
+				"Sign in with the test user account to explore " + product.Name + " Sign in experience.",
 				"",
-				"  1  Open the Wayfinder app at " + Cyan(sampleURL),
-				"  2  Click Sign in and enter:",
+				"  1  Open the Wayfinder app at " + Cyan(sampleURL) + ".",
+				"  2  Click Sign in and use the credentials below.",
 				"",
-				"     username  " + Bold("john.doe"),
-				"     password  " + Bold("john.doe"),
+				"     " + Dim("username") + "  " + Highlight("john.doe"),
+				"     " + Dim("password") + "  " + Highlight("john.doe"),
+				"",
+				"  " + Bold("View Profile"),
+				"  " + Dim("Explore the self-service profile page - view account details, edit attributes, and change your password."),
+				"",
+				"  3  Click the username in the top-right corner and select Profile.",
+				"  4  View account details, edit profile attributes, or change your password. The page calls " + product.Name +
+					" directly with your session token.",
 			},
 		},
 		{
 			Title: "Self Sign-Up",
 			URL:   sampleURL,
 			Lines: []string{
-				"Create a new account via self-registration.",
+				"Register a new customer account and see " + product.Name + " assign the Traveler role automatically on completion.",
 				"",
-				"  1  Open " + Cyan(sampleURL),
-				"  2  Click Sign in → Register.",
-				"  3  Fill in your details and submit.",
-			},
-		},
-		{
-			Title: "View Profile",
-			URL:   sampleURL,
-			Lines: []string{
-				"Explore the user profile page.",
+				"  1  Open " + Cyan(sampleURL) + " and click Sign in.",
+				"  2  On the " + product.Name + " page, click Sign up.",
+				"  3  Fill in below sample details and click Continue.",
 				"",
-				"  1  Sign in as " + Bold("john.doe") + " / " + Bold("john.doe"),
-				"  2  Click your name in the top-right corner.",
-				"  3  Select Profile.",
+				"     " + Dim("username") + "  " + Highlight("emma.wilson"),
+				"     " + Dim("password") + "  " + Highlight("emma.wilson"),
+				"",
+				"  4  Fill in the registration form using these sample details and click Continue.",
+				"",
+				"     " + Dim("email         ") + "  " + Highlight("emma.wilson@example.com"),
+				"     " + Dim("first name    ") + "  " + Highlight("Emma"),
+				"     " + Dim("last name     ") + "  " + Highlight("Wilson"),
+				"     " + Dim("mobile number ") + "  " + Highlight("+15550148812"),
+				"",
+				"  5  " + product.Name +
+					" will create a Customer user and assign the Traveler role. The browser returns to the Wayfinder app signed in as " +
+					"the new user.",
 			},
 		},
 		{
 			Title: "Account Recovery",
 			URL:   sampleURL,
 			Lines: []string{
-				"Trigger the forgot-password flow.",
+				"Walk through the password recovery flow - John forgets his password and resets it via email.",
 				"",
 				"  1  Open " + Cyan(sampleURL) + " and click Sign in.",
-				"  2  Click Forgot password?",
-				"  3  Enter your email and follow the instructions.",
-				"",
-				Dim("  Requires SMTP configured in deployment.yaml."),
+				"  2  On the " + product.Name + " sign-in page, click Forgot password?",
+				"  3  Enter " + Bold("john.doe") + " as the username and submit.",
+				"  4  " + product.Name + " sends a recovery email to John's registered address. Open it from the inbox at " +
+					Cyan(mailInboxURL) + ".",
+				"  5  Click the reset link in the email and set a new password.",
+				"  6  Sign in again with the new credentials.",
 			},
 		},
 		{
-			Title: "Onboard Staff",
-			URL:   sampleURL,
+			Title: "Staff Sign-Up",
+			URL:   consoleURL,
 			Lines: []string{
-				"Admin-invite a new internal user.",
+				"Invite and onboard two new staff members entirely from the " + product.Name +
+					" Console: Sam Rivera (Support) and Maya Patel (DestinationsAdmin). The admin picks the staff role and sends the " +
+					"invitation, and the matching role is attached automatically when the invitee completes their profile.",
 				"",
-				"  1  Sign in as " + Bold("alex.carter") + " / " + Bold("alex.carter") + Dim("  (Admin)"),
-				"  2  Open the Admin panel.",
-				"  3  Invite a new user by email.",
+				"  1  Sign in to the " + product.Name + " Console at " + Cyan(consoleURL) + " as your admin user.",
+				"  2  Navigate to Users and select Add User.",
+				"  3  Select Staff as the user type.",
+				"  4  Pick Support as the role, enter Sam Rivera's email (" + Bold("sam.rivera@example.com") +
+					"), and click Send invitation. An invite link is emailed to Sam.",
+				"  5  Open Sam's invitation email from the inbox at " + Cyan(mailInboxURL) +
+					" and open the link. The browser opens a Complete Your Profile page.",
+				"  6  Fill in the additional attributes and submit. Sam's account is now active with the Support role attached.",
+				"  7  Repeat the flow for Maya Patel (email " + Bold("maya.patel@example.com") +
+					"), picking DestinationsAdmin as the role.",
 			},
 		},
 	}
 }
 
+// agentWalkthroughPanes mirrors the Console's Secured AI Agent tryout
+// scenarios (welcome.aiAgentsTryout.scenarios.* in the frontend i18n
+// locale) so the CLI and Console walk users through the same journeys.
 func agentWalkthroughPanes(sampleURL string) []walkthroughPane {
 	return []walkthroughPane{
 		{
-			Title: "AI Concierge",
+			Title: "Protect the Agent",
 			URL:   sampleURL,
 			Lines: []string{
-				"Chat with the AI travel concierge.",
+				"See scope-based access control in action - John can use the AI concierge, but Jane cannot.",
 				"",
-				"  1  Open the Wayfinder app at " + Cyan(sampleURL),
-				"  2  Click the chat bubble in the bottom-right corner.",
-				"  3  Ask about available flights.",
+				"  1  Open " + Cyan(sampleURL) + " and sign in as John Doe.",
+				"",
+				"     " + Green("✓") + " John has access to chat with the Wayfinder chat agent",
+				"",
+				"     " + Dim("username") + "  " + Highlight("john.doe"),
+				"     " + Dim("password") + "  " + Highlight("john.doe"),
+				"",
+				"  2  Open the chat widget (bottom-right corner) and send any message. The concierge responds — John's token carries the " +
+					Bold("agent:access") + " scope.",
+				"  3  Sign out and sign in as Jane Smith.",
+				"",
+				"     " + Red("✗") + " Jane does not have access to chat with the Wayfinder chat agent",
+				"",
+				"     " + Dim("username") + "  " + Highlight("jane.smith"),
+				"     " + Dim("password") + "  " + Highlight("jane.smith"),
+				"",
+				"  4  Open the chat. Since Jane does not have the Wayfinder Chat User role, the chat agent will not be accessible and " +
+					"the widget will show an error message instead.",
 			},
 		},
 		{
-			Title: "Book via Agent",
+			Title: "Browse with Agent",
 			URL:   sampleURL,
 			Lines: []string{
-				"Let the agent book a flight on your behalf.",
+				"Watch the agent use its own Machine-to-Machine (M2M) token to call read-only tools - no user consent popup required.",
 				"",
-				"  1  Open the chat and ask the concierge to book a flight.",
-				"  2  The agent requests user consent — approve the prompt.",
-				"  3  The booking is created in your name.",
+				"  1  Sign in as John at " + Cyan(sampleURL) + " and open the chat widget.",
+				"",
+				"     " + Dim("username") + "  " + Highlight("john.doe"),
+				"     " + Dim("password") + "  " + Highlight("john.doe"),
+				"",
+				"  2  Ask a browsing question in the chat:",
+				"",
+				"     " + Dim(`"What flights are there from Colombo to Singapore?"`),
+				"",
+				"  3  The agent calls the Wayfinder MCP server with its own M2M token (client_credentials grant). No popup appears.",
+				"  4  You can also try asking for flight deals — the agent calls the recommend_bookings tool, which requires the " +
+					Bold("booking:recommend") + " scope, granted to the Wayfinder Concierge via its Recommender role.",
+				"",
+				"     " + Dim(`"Suggest a few flight deals."`),
 			},
 		},
 		{
-			Title: "Agent Identity",
-			URL:   sampleURL + "/signin-as-agent",
+			Title: "Book on Behalf",
+			URL:   sampleURL,
 			Lines: []string{
-				"Sign in as the AI agent directly.",
+				"Trigger the on-behalf-of consent flow - the agent pauses, asks for your permission, and only proceeds after you approve.",
 				"",
-				"  1  Open " + Cyan(sampleURL+"/signin-as-agent"),
-				"  2  The gate shows the Agent ID / Secret form.",
-				"  3  Enter the agent credentials to authenticate.",
+				"  1  Sign in as John at " + Cyan(sampleURL) + " and open the chat widget.",
+				"",
+				"     " + Dim("username") + "  " + Highlight("john.doe"),
+				"     " + Dim("password") + "  " + Highlight("john.doe"),
+				"",
+				"  2  Ask the agent to book something, for example:",
+				"",
+				"     " + Dim(`"Book flight 2"`),
+				"",
+				"  3  The agent returns a consent request. A popup opens - sign in as John and select which booking permissions to " +
+					"grant (" + Bold("booking:read") + ", " + Bold("booking:create") + ", " + Bold("booking:cancel") + ").",
+				"  4  Click Authorize. The agent retries the action using John's context token, and the booking confirmation appears in " +
+					"the chat shortly after.",
+				"  5  To see the rejection path, repeat the flow but deny " + Bold("booking:create") +
+					" in the consent screen. The agent returns a 403.",
 			},
 		},
 	}
@@ -328,12 +418,18 @@ type ReplModel struct {
 
 	showOnboarding    bool
 	onboardingList    list.Model
-	onboardingCmdMode bool // true while the slash-command input overlay is active
-	checkPort         int  // non-zero overrides health.DefaultPort for health checks
-	upgradeRequested  bool // set when the /upgrade command is executed
-	switchRequested   bool // set when the /use command is executed
-	newVersion        string
-	nodeWarning       string // non-empty shows a persistent Node.js version notice below the banner
+	onboardingCmdMode bool   // true while the slash-command input overlay is active
+	checkPort         int    // non-zero overrides health.DefaultPort for health checks
+	upgradeRequested  bool   // set when the /upgrade command is executed
+	switchRequested   bool   // set when the /use command is executed
+	newVersion        string // non-empty shows a persistent upgrade-available notice below the banner
+
+	nodeWarning string // non-empty shows a persistent Node.js version notice below the banner
+
+	// showAllOnEmpty shows the full command list on an empty prompt for
+	// returning users (who skip the first-run onboarding picker). It clears
+	// the first time the user types anything.
+	showAllOnEmpty bool
 
 	showWalkthrough  bool
 	walkthroughPanes []walkthroughPane
@@ -347,6 +443,12 @@ type ReplModel struct {
 	pcOpts           sample.Options
 	pcStop           bool // highlighted answer: true stops the holders, false cancels
 
+	// showNotice displays noticeMessage as a standalone dismissible page — used
+	// to surface why a /switch or /upgrade attempt didn't go through, since it
+	// would otherwise be a plain print lost the instant the REPL redraws.
+	showNotice    bool
+	noticeMessage string
+
 	// Generic use-case config collection — active when showUsecaseConfig is true.
 	showUsecaseConfig bool
 	ucInputs          []ConfigInput
@@ -359,22 +461,48 @@ type ReplModel struct {
 	ucFeatures        []string
 	ucLaunch          func(values map[string]string) (string, sample.Options)
 
-	// Step-by-step integration guide — active when showIntegrate is true.
-	showIntegrate       bool
-	integrateFramework  string // display label, e.g. "React", "Vue"
-	integrateSteps      []integrate.Step
-	integrateStepIdx    int
-	integrateValues     map[string]string
-	integrateInput      textinput.Model
-	integrateCollecting bool
+	// Integration guide viewer — active when showGuide is true. Content is the
+	// platform's thunderid.dev quickstart, fetched on demand and glamour-rendered.
+	showGuide     bool
+	guideLoading  bool
+	guideLabel    string // display label, e.g. "React"
+	guideDocURL   string // human-facing page, opened with 'o'
+	guideViewport viewport.Model
+
+	// Log follow mode — active while tailingLogs is true. tailLogOffset is the
+	// byte offset up to which the file has already been read and appended.
+	// tailLogLines holds the followed output separately from m.messages, capped
+	// at maxTailLogLines so a long-running or noisy log stream can't grow the
+	// REPL's rendered history — and the memory behind it — without bound.
+	tailingLogs   bool
+	tailLogPath   string
+	tailLogOffset int64
+	tailLogLines  []string
+}
+
+// maxTailLogLines bounds how many followed log lines are retained for
+// rendering at once. Older lines are dropped as new ones arrive.
+const maxTailLogLines = 500
+
+// appendTailLogLine records a followed log line, dropping the oldest once the
+// buffer exceeds maxTailLogLines.
+func (m *ReplModel) appendTailLogLine(line string) {
+	m.tailLogLines = append(m.tailLogLines, line)
+	if len(m.tailLogLines) > maxTailLogLines {
+		m.tailLogLines = m.tailLogLines[len(m.tailLogLines)-maxTailLogLines:]
+	}
 }
 
 // NewReplModel initializes the REPL model.
-func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bool, isFirstRun bool, creds *setup.AdminCredentials) ReplModel {
+func NewReplModel(
+	version string, proc *exec.Cmd, installPath string,
+	verbose bool, isFirstRun bool, creds *setup.AdminCredentials,
+) ReplModel {
 	ti := textinput.New()
 	ti.Placeholder = "Starting " + product.Name + "..."
 	ti.Prompt = "> "
 	ti.CharLimit = 256
+	ti.SetWidth(defaultInputWidth)
 
 	s := spinner.New()
 	s.Spinner = spinner.Dot
@@ -425,52 +553,26 @@ func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bo
 			})
 		}
 	}
-	for _, it := range []struct {
-		name      string
-		framework string
-		label     string
-	}{
-		{"/integrate-react", "react", "React"},
-		{"/integrate-vue", "vue", "Vue"},
-		{"/integrate-nextjs", "nextjs", "Next.js"},
-		{"/integrate-nuxt", "nuxt", "Nuxt"},
-	} {
-		it := it
+	for _, p := range integrate.Platforms {
+		p := p
 		commands = append(commands, SlashCommand{
-			Name:        it.name,
-			Description: "Add ThunderID auth to your " + it.label + " app",
+			Name:        "/integrate-" + p.Key,
+			Description: "Add " + product.Name + " auth to your " + p.Label + " app",
 			Section:     "Integrate",
 			AsyncAction: func(_ string) tea.Cmd {
-				return func() tea.Msg { return integrateFrameworkMsg{framework: it.framework} }
+				return func() tea.Msg { return integrateFrameworkMsg{framework: p.Key} }
 			},
 		})
 	}
 
 	logCmd := SlashCommand{
 		Name:        "/logs",
-		Description: "Show recent server logs",
+		Description: "Follow recent server logs (Esc to stop)",
 		Section:     "Server",
-		Action: func(_ string) ([]string, error) {
-			const maxLines = 30
-			logPath := setup.LogFile(installPath)
-			lines := setup.TailFile(logPath, maxLines)
-			if len(lines) == 0 {
-				return nil, fmt.Errorf("could not read logs at %s", logPath)
-			}
-			out := make([]string, 0, len(lines)+1)
-			out = append(out, Dim(fmt.Sprintf("── last %d lines of %s ──", len(lines), logPath)))
-			for _, l := range lines {
-				out = append(out, Dim(l))
-			}
-			return out, nil
-		},
+		Action:      nil, // handled specially in runCommand, like /stop
 	}
 	commands = append(commands, logCmd)
 	commands = append(commands, defaultCommands...)
-
-	ii := textinput.New()
-	ii.Prompt = "> "
-	ii.CharLimit = 256
 
 	return ReplModel{
 		input:          ti,
@@ -483,10 +585,11 @@ func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bo
 		status:         statusStarting,
 		proc:           proc,
 		width:          80,
+		height:         24,
 		showOnboarding: isFirstRun,
 		onboardingList: newOnboardingList(80),
-		integrateInput: ii,
 		body:           newOutputViewport(),
+		guideViewport:  viewport.New(),
 	}
 }
 
@@ -615,13 +718,22 @@ func (m ReplModel) Init() tea.Cmd {
 		textinput.Blink,
 		m.spinner.Tick,
 		func() tea.Msg { return doHealthCheckOn(p) },
-		pollHealthCmdOn(p),
+		pollHealthCmdOn(p, healthPollFastInterval),
 		watchProcessCmd(m.proc),
 	)
 }
 
-func pollHealthCmdOn(port int) tea.Cmd {
-	return tea.Tick(time.Second, func(_ time.Time) tea.Msg {
+// healthPollFastInterval is used while waiting for the product to become
+// ready (or to recover), where sub-second responsiveness matters.
+const healthPollFastInterval = time.Second
+
+// healthPollSteadyInterval is used once the product is known to be ready.
+// Its only remaining purpose is crash detection, which doesn't need
+// sub-second granularity and shouldn't spam the access log with checks.
+const healthPollSteadyInterval = 5 * time.Second
+
+func pollHealthCmdOn(port int, interval time.Duration) tea.Cmd {
+	return tea.Tick(interval, func(_ time.Time) tea.Msg {
 		return doHealthCheckOn(port)
 	})
 }
@@ -676,6 +788,7 @@ func (m *ReplModel) initUCStep() {
 		ti.Placeholder = "enter value…"
 		ti.Prompt = "  > "
 		ti.CharLimit = 512
+		ti.SetWidth(defaultInputWidth)
 		if inp.Secret {
 			ti.EchoMode = textinput.EchoPassword
 		}
@@ -717,11 +830,14 @@ func (m ReplModel) update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 		m.width = msg.Width
 		m.height = msg.Height
 		m.onboardingList.SetSize(msg.Width, onboardingListHeight)
-
-	case tea.MouseWheelMsg:
-		var vpCmd tea.Cmd
-		m.body, vpCmd = m.body.Update(msg)
-		cmds = append(cmds, vpCmd)
+		inputWidth := clamp(msg.Width-4, 20, 200)
+		m.input.SetWidth(inputWidth)
+		m.ucText.SetWidth(inputWidth)
+		// Reserve 3 rows for the header/separator/hint chrome renderGuide draws around
+		// the viewport. render() gives the guide the whole terminal (no shared body/footer
+		// split), so this is the only reservation needed to fit within msg.Height.
+		m.guideViewport.SetWidth(msg.Width)
+		m.guideViewport.SetHeight(clamp(msg.Height-3, 5, 1000))
 
 	// Bracketed paste arrives as its own message rather than as key presses, so the
 	// overlay inputs need it routed explicitly — the command input already receives
@@ -729,11 +845,8 @@ func (m ReplModel) update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 	// key prompt does nothing, and the value is too long to retype comfortably.
 	case tea.PasteMsg:
 		var tiCmd tea.Cmd
-		switch {
-		case m.showUsecaseConfig && m.ucStep < len(m.ucInputs) && len(m.ucInputs[m.ucStep].Choices) == 0:
+		if m.showUsecaseConfig && m.ucStep < len(m.ucInputs) && len(m.ucInputs[m.ucStep].Choices) == 0 {
 			m.ucText, tiCmd = m.ucText.Update(msg)
-		case m.integrateCollecting:
-			m.integrateInput, tiCmd = m.integrateInput.Update(msg)
 		}
 		cmds = append(cmds, tiCmd)
 
@@ -777,7 +890,23 @@ func (m ReplModel) update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 			return m, tea.Batch(cmds...)
 		}
 
-		if m.showOnboarding && m.status == statusReady {
+		if m.showNotice {
+			// ── Standalone notice page ──────────────────────────────────────────
+			switch msg.String() {
+			case "esc":
+				m.showNotice = false
+				m.noticeMessage = ""
+				m.input.Focus()
+			case "/":
+				m.showNotice = false
+				m.noticeMessage = ""
+				m.input.Focus()
+				m.input.SetValue("/")
+				m.input.CursorEnd()
+				m.updateCompletions()
+				return m, tea.Batch(cmds...)
+			}
+		} else if m.showOnboarding && m.status == statusReady {
 			if m.onboardingCmdMode {
 				// ── Slash-command overlay ──────────────────────────────────────
 				switch msg.String() {
@@ -898,54 +1027,34 @@ func (m ReplModel) update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 				m.updateCompletions()
 				return m, tea.Batch(cmds...)
 			}
-		} else if m.showIntegrate {
-			// ── Integration guide navigation ───────────────────────────────────
-			if m.integrateCollecting {
-				switch msg.String() {
-				case "enter":
-					val := strings.TrimSpace(m.integrateInput.Value())
-					m.integrateValues[m.integrateSteps[m.integrateStepIdx].CollectKey] = val
-					m.integrateCollecting = false
-					m.integrateInput.Blur()
-					if len(m.integrateSteps[m.integrateStepIdx].Code) == 0 && m.integrateStepIdx < len(m.integrateSteps)-1 {
-						m.integrateStepIdx++
-					}
-				case "esc":
-					m.integrateCollecting = false
-					m.integrateInput.Blur()
-					if len(m.integrateSteps[m.integrateStepIdx].Code) == 0 && m.integrateStepIdx < len(m.integrateSteps)-1 {
-						m.integrateStepIdx++
-					}
-				default:
-					var tiCmd tea.Cmd
-					m.integrateInput, tiCmd = m.integrateInput.Update(msg)
-					cmds = append(cmds, tiCmd)
+		} else if m.showGuide {
+			// ── Integration guide viewer ────────────────────────────────────────
+			switch msg.String() {
+			case "o":
+				if m.guideDocURL != "" {
+					utils.OpenBrowser(m.guideDocURL) //nolint:errcheck
 				}
-			} else {
-				switch msg.String() {
-				case "enter":
-					step := m.integrateSteps[m.integrateStepIdx]
-					if step.CollectKey != "" && m.integrateValues[step.CollectKey] == "" {
-						m.integrateCollecting = true
-						m.integrateInput.SetValue("")
-						m.integrateInput.Placeholder = step.CollectHint
-						m.integrateInput.Focus()
-					} else if m.integrateStepIdx < len(m.integrateSteps)-1 {
-						m.integrateStepIdx++
-					} else {
-						m.showIntegrate = false
-						m.walkthroughPanes = integrateWalkthroughPanes(m.integrateFramework, m.baseURL)
-						m.walkthroughTab = 0
-						m.showWalkthrough = true
-					}
-				case "left":
-					if m.integrateStepIdx > 0 {
-						m.integrateStepIdx--
-					}
-				case "esc":
-					m.showIntegrate = false
-					m.input.Focus()
-				}
+			case "esc":
+				m.showGuide = false
+				m.input.Focus()
+			case "/":
+				m.showGuide = false
+				m.input.Focus()
+				m.input.SetValue("/")
+				m.input.CursorEnd()
+				m.updateCompletions()
+				return m, tea.Batch(cmds...)
+			default:
+				var vpCmd tea.Cmd
+				m.guideViewport, vpCmd = m.guideViewport.Update(msg)
+				cmds = append(cmds, vpCmd)
+			}
+		} else if m.tailingLogs {
+			// ── Log follow mode ──────────────────────────────────────────────────
+			if msg.String() == "esc" {
+				m.tailingLogs = false
+				m.input.Focus()
+				m.input.Placeholder = "Type / for commands, Ctrl+C to exit"
 			}
 		} else {
 			// ── Regular REPL ───────────────────────────────────────────────────
@@ -955,12 +1064,13 @@ func (m ReplModel) update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 					break
 				}
 				val := strings.TrimSpace(m.input.Value())
-				if val == "" {
-					break
-				}
 				if m.showCompletions && len(m.completions) > 0 {
 					val = m.completions[m.selectedComp].Name
 				}
+				if val == "" {
+					break
+				}
+				m.showAllOnEmpty = false
 				m.messages = append(m.messages, "> "+val)
 				m.input.SetValue("")
 				m.showCompletions = false
@@ -1028,35 +1138,47 @@ func (m ReplModel) update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 		}
 
 	case integrateFrameworkMsg:
-		stepsFns := map[string]func(string) []integrate.Step{
-			"react":  integrate.ReactSteps,
-			"vue":    integrate.VueSteps,
-			"nextjs": integrate.NextJSSteps,
-			"nuxt":   integrate.NuxtSteps,
-		}
-		labels := map[string]string{
-			"react":  "React",
-			"vue":    "Vue",
-			"nextjs": "Next.js",
-			"nuxt":   "Nuxt",
-		}
-		if fn, ok := stepsFns[msg.framework]; ok {
-			m.integrateSteps = fn(m.baseURL)
-			m.integrateFramework = labels[msg.framework]
-			m.integrateStepIdx = 0
-			m.integrateValues = map[string]string{}
-			m.showIntegrate = true
+		for _, p := range integrate.Platforms {
+			if p.Key != msg.framework {
+				continue
+			}
+			// runCommand latches tryingOut for every AsyncAction, but that flag
+			// exists to block input during a sample launch, not a guide fetch.
+			m.tryingOut = false
+			m.guideLoading = true
+			m.guideLabel = p.Label
+			m.guideDocURL = docs.SiteURL(p.Slug)
 			m.input.Blur()
-			first := m.integrateSteps[0]
-			if first.CollectKey != "" && len(first.Code) == 0 {
-				m.integrateCollecting = true
-				m.integrateInput.SetValue("")
-				m.integrateInput.Placeholder = first.CollectHint
-				m.integrateInput.Focus()
-			} else {
-				m.integrateCollecting = false
+			slug := p.Slug
+			cmds = append(cmds, func() tea.Msg {
+				markdown, err := docs.FetchGuide(slug)
+				return guideLoadedMsg{markdown: markdown, err: err}
+			})
+			break
+		}
+
+	case guideLoadedMsg:
+		m.guideLoading = false
+		if msg.err != nil {
+			m.messages = append(m.messages,
+				Red("✗")+" Could not load the "+m.guideLabel+" guide: "+msg.err.Error(),
+				Dim("  Open it directly: ")+Cyan(m.guideDocURL),
+			)
+			m.input.Focus()
+			break
+		}
+		rendered := msg.markdown
+		if r, err := glamour.NewTermRenderer(
+			glamour.WithStandardStyle("dark"),
+			glamour.WithWordWrap(clamp(m.width-4, 20, 100)),
+		); err == nil {
+			if out, err := r.Render(msg.markdown); err == nil {
+				rendered = out
 			}
 		}
+		m.guideViewport.SetContent(rendered)
+		m.guideViewport.GotoTop()
+		m.showGuide = true
 
 	case healthCheckMsg:
 		if msg.ready {
@@ -1073,20 +1195,18 @@ func (m ReplModel) update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 					m.baseURL = fmt.Sprintf("http://localhost:%d", port)
 				}
 				m.status = statusReady
-				if m.showOnboarding {
-					// Input stays blurred; user enters command mode explicitly with / or ?
-				} else {
+				m.input.Placeholder = "Type / for commands, Ctrl+C to exit"
+				m.showAllOnEmpty = true
+				if !m.showOnboarding && !m.showNotice {
+					// Onboarding and the notice page own input focus until dismissed.
 					m.input.Focus()
-					m.input.Placeholder = "Type / for commands, Ctrl+C to exit"
-				}
-				if m.newVersion != "" {
-					m.messages = append(m.messages,
-						Yellow("✦")+" "+Bold(product.Name+" v"+m.newVersion+" is available")+" — type "+Cyan("/upgrade")+" to upgrade",
-					)
 				}
 			}
-			// Always keep polling so we can detect crashes via health check.
-			cmds = append(cmds, pollHealthCmdOn(m.effectivePort()))
+			// Ready is confirmed — back off to a slower cadence. Sub-second polling
+			// is only needed while waiting for the product to come up; once it has,
+			// polling every second forever just floods the access log with health
+			// checks for no added benefit to crash detection.
+			cmds = append(cmds, pollHealthCmdOn(m.effectivePort(), healthPollSteadyInterval))
 		} else {
 			// Only report "stopped responding" when the product was healthy and we
 			// are not deliberately restarting it for a try-* operation.
@@ -1097,8 +1217,19 @@ func (m ReplModel) update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 				m.messages = append(m.messages, Red("✗")+" "+product.Name+" stopped responding.")
 			}
 			if m.status != statusStopped || m.tryingOut {
-				cmds = append(cmds, pollHealthCmdOn(m.effectivePort()))
+				cmds = append(cmds, pollHealthCmdOn(m.effectivePort(), healthPollFastInterval))
 			}
+		}
+
+	case logsTailMsg:
+		if m.tailingLogs {
+			if msg.ok {
+				for _, l := range msg.lines {
+					m.appendTailLogLine(l)
+				}
+				m.tailLogOffset = msg.offset
+			}
+			cmds = append(cmds, tailLogsTickCmd(m.tailLogPath, m.tailLogOffset))
 		}
 
 	case thunderExitedMsg:
@@ -1160,7 +1291,11 @@ func (m ReplModel) update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 			m.status = statusStarting
 			m.input.Placeholder = "Starting " + product.Name + "..."
 		}
-		cmds = append(cmds, pollHealthCmdOn(m.effectivePort()))
+		pollInterval := healthPollFastInterval
+		if m.status == statusReady {
+			pollInterval = healthPollSteadyInterval
+		}
+		cmds = append(cmds, pollHealthCmdOn(m.effectivePort(), pollInterval))
 		m.messages = append(m.messages, Green("✓")+" "+msg.sampleName+" is live at "+Cyan(msg.sampleURL))
 		if msg.sampleName == "wayfinder" {
 			hasAI := false
@@ -1173,7 +1308,7 @@ func (m ReplModel) update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 			if hasAI {
 				m.walkthroughPanes = agentWalkthroughPanes(msg.sampleURL)
 			} else {
-				m.walkthroughPanes = b2cWalkthroughPanes(msg.sampleURL)
+				m.walkthroughPanes = b2cWalkthroughPanes(msg.sampleURL, m.baseURL)
 			}
 			m.walkthroughTab = 0
 			m.showWalkthrough = true
@@ -1220,6 +1355,19 @@ func (m ReplModel) update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 
 func (m *ReplModel) updateCompletions() {
 	val := m.input.Value()
+	if val == "" {
+		m.completions = nil
+		m.showCompletions = false
+		if m.showAllOnEmpty {
+			m.completions = m.commands
+			m.showCompletions = true
+			if m.selectedComp >= len(m.completions) {
+				m.selectedComp = 0
+			}
+		}
+		return
+	}
+	m.showAllOnEmpty = false
 	if val == "/" {
 		m.completions = m.commands
 		m.showCompletions = true
@@ -1247,7 +1395,45 @@ func (m *ReplModel) updateCompletions() {
 	}
 }
 
+// tailLogsTickCmd schedules the next follow-mode read. It reads whatever was
+// appended to path since offset and reports back via logsTailMsg.
+func tailLogsTickCmd(path string, offset int64) tea.Cmd {
+	return tea.Tick(500*time.Millisecond, func(_ time.Time) tea.Msg {
+		lines, newOffset, ok := setup.TailFileFollow(path, offset)
+		return logsTailMsg{lines: lines, offset: newOffset, ok: ok}
+	})
+}
+
+// startLogTail prints the last 30 lines of the current log file and switches
+// the REPL into follow mode, appending new lines as they are written until
+// the user presses Esc.
+func (m *ReplModel) startLogTail() tea.Cmd {
+	logPath := setup.LatestLogFile(m.installPath)
+	lines, offset, ok := setup.TailFileFollow(logPath, 0)
+	if !ok {
+		m.messages = append(m.messages, Red("✗")+" could not read logs at "+logPath)
+		return nil
+	}
+	const maxLines = 30
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+	}
+	m.messages = append(m.messages, Dim(fmt.Sprintf("── following %s (Esc to stop) ──", logPath)))
+	for _, l := range lines {
+		m.appendTailLogLine(l)
+	}
+	m.tailingLogs = true
+	m.tailLogPath = logPath
+	m.tailLogOffset = offset
+	m.input.Blur()
+	m.input.Placeholder = "Following logs — press Esc to stop"
+	return tailLogsTickCmd(logPath, offset)
+}
+
 func (m *ReplModel) runCommand(val string) tea.Cmd {
+	if val == "/logs" {
+		return m.startLogTail()
+	}
 	if val == "/stop" {
 		if err := m.stopThunderID(true); err != nil {
 			m.messages = append(m.messages, Red("✗")+" Could not stop "+product.Name+": "+err.Error())
@@ -1311,11 +1497,12 @@ func (m *ReplModel) stopThunderID(explicit bool) error {
 			time.Sleep(time.Second)
 			return nil
 		}
-		// The launcher is already gone, so no trap ran for this stop and the server it
+		// The signal was undeliverable (SIGTERM is unsupported on Windows, or the
+		// launcher is already gone), so no trap ran for this stop and the server it
 		// backgrounded can still be listening. Reporting success here would quit the
-		// session leaving that server up, so fall through to the port stop.
-	}
-	if !explicit {
+		// session leaving that server up, so fall through to the port stop regardless
+		// of explicit: we own this process, an implicit exit still has to clean it up.
+	} else if !explicit {
 		return nil
 	}
 	port := m.effectivePort()
@@ -1335,22 +1522,59 @@ var (
 	stopPort      = func(port int) error { return setup.FreePort(port, stopTimeout) }
 )
 
-func renderCompletions(m ReplModel) string {
+// minCompletionRows is the floor for the scrollable completion window, even
+// on a very short terminal.
+const minCompletionRows = 6
+
+// completionRow is one rendered line of the completion list. itemIndex is the
+// index into m.completions for a command row, or -1 for headers/spacers —
+// only command rows count toward keeping the selection in view.
+type completionRow struct {
+	text      string
+	itemIndex int
+}
+
+// renderCompletions draws the / command list, scrolling the window so the
+// selected item stays visible when the list is taller than the terminal.
+// available is the number of terminal rows left for this block (including
+// its own separators and scroll indicators), as computed by the caller from
+// what has already been rendered above it.
+func renderCompletions(m ReplModel, available int) string {
 	if !m.showCompletions || len(m.completions) == 0 {
 		return ""
 	}
-	var b strings.Builder
-	separator := Dim(strings.Repeat("─", clamp(m.width-2, 20, 80)))
-	b.WriteString(separator + "\n")
 	const nameW = 24
+	rows, selectedRow := buildCompletionRows(m, nameW)
+	window, start := completionWindow(rows, selectedRow, available)
+
+	var b strings.Builder
+	separator := Dim(strings.Repeat("─", BannerWidth()))
+	b.WriteString(separator + "\n")
+	if start > 0 {
+		b.WriteString("  " + Dim("↑ more above") + "\n")
+	}
+	for _, r := range window {
+		b.WriteString(r.text + "\n")
+	}
+	if start+len(window) < len(rows) {
+		b.WriteString("  " + Dim("↓ more below") + "\n")
+	}
+	b.WriteString(separator + "\n")
+	return b.String()
+}
+
+// buildCompletionRows expands m.completions into display rows, inserting section
+// headers and spacer rows between sections. Returns the rows and the index within
+// them of the currently selected command, for completionWindow to scroll around.
+func buildCompletionRows(m ReplModel, nameW int) (rows []completionRow, selectedRow int) {
 	lastSection := ""
 	for i, c := range m.completions {
 		if c.Section != lastSection {
 			if i > 0 {
-				b.WriteString("\n")
+				rows = append(rows, completionRow{itemIndex: -1})
 			}
 			if c.Section != "" {
-				b.WriteString("  " + Dim(c.Section) + "\n")
+				rows = append(rows, completionRow{text: "  " + Dim(c.Section), itemIndex: -1})
 			}
 			lastSection = c.Section
 		}
@@ -1367,9 +1591,66 @@ func renderCompletions(m ReplModel) string {
 			namePart = Dim(fmt.Sprintf("%-*s", nameW, c.Name))
 			descPart = Dim(c.Description)
 		}
-		b.WriteString("  " + indicator + namePart + "  " + descPart + "\n")
+		rows = append(rows, completionRow{text: "  " + indicator + namePart + "  " + descPart, itemIndex: i})
 	}
-	b.WriteString(separator + "\n")
+
+	for idx, r := range rows {
+		if r.itemIndex == m.selectedComp {
+			selectedRow = idx
+			break
+		}
+	}
+	return rows, selectedRow
+}
+
+// completionWindow returns the slice of rows that fits within available terminal
+// rows, scrolled so selectedRow stays visible, plus that slice's start index in
+// rows — the same start index renderCompletions needs to decide whether to draw
+// the "more above" indicator, and a click handler needs to map a clicked row back
+// to a command.
+func completionWindow(rows []completionRow, selectedRow, available int) (window []completionRow, start int) {
+	maxRows := clamp(available-2, minCompletionRows, len(rows))
+	if len(rows) > maxRows {
+		// Reserve room for the "more above"/"more below" indicator lines.
+		maxRows = clamp(maxRows-2, minCompletionRows, len(rows))
+	}
+	if len(rows) > maxRows {
+		start = selectedRow - maxRows/2
+		if start < 0 {
+			start = 0
+		}
+		if start+maxRows > len(rows) {
+			start = len(rows) - maxRows
+		}
+	}
+	end := start + maxRows
+	if end > len(rows) {
+		end = len(rows)
+	}
+	return rows[start:end], start
+}
+
+// completionsAvailable returns the terminal rows left for the / command dropdown
+// in whichever footer context is currently showing it. Both footer() (to render
+// it) and the mouse-click handler (to map a click back to a row) need this same
+// value, so it lives here once rather than as inline arithmetic in two places.
+func (m ReplModel) completionsAvailable() int {
+	if m.onboardingCmdMode {
+		// Reserve 3 rows below for the input line and the trailing hint.
+		return m.height - 3
+	}
+	// Reserve 2 rows below for the input/spinner line.
+	return m.height - 2
+}
+
+// renderNotice draws a standalone page for m.noticeMessage — used instead of
+// dropping it into the scrolling message log so it can't be missed or pushed
+// off-screen, with its own dismiss hint.
+func renderNotice(m ReplModel) string {
+	var b strings.Builder
+	b.WriteString(Dim(strings.Repeat("─", clamp(m.width-4, 20, 76))) + "\n\n")
+	b.WriteString("  " + m.noticeMessage + "\n\n")
+	b.WriteString(Dim("  esc dismiss  •  / for commands") + "\n")
 	return b.String()
 }
 
@@ -1410,155 +1691,16 @@ func renderWalkthrough(m ReplModel) string {
 	return b.String()
 }
 
-func integrateWalkthroughPanes(framework, baseURL string) []walkthroughPane {
-	return []walkthroughPane{
-		{
-			Title: "What's Next",
-			Lines: []string{
-				Green("✓") + " Your " + framework + " app is wired to ThunderID.",
-				"",
-				"  " + Cyan("Flow Designer") + "  " + Dim("— add MFA, passkeys, or social login"),
-				"  " + Cyan(framework+" SDK Docs") + "  " + Dim("— full API reference"),
-				"",
-				Dim("  Open the console to get started  →"),
-			},
-			URL: baseURL + "/console",
-		},
-		{
-			Title: "Find Your Client ID",
-			Lines: []string{
-				"  Open the ThunderID Console and navigate to:",
-				"",
-				"  " + Bold("Applications") + "  →  " + Bold("your app") + "  →  " + Bold("Client ID"),
-			},
-			URL: baseURL + "/console",
-		},
-	}
-}
-
-// substituteCodeLine replaces {{.KEY}} tokens in a code line with styled values.
-// If a key has a collected value it is rendered in brand blue; otherwise a dim
-// placeholder is shown so the code block still makes sense before collection.
-func substituteCodeLine(line string, values map[string]string) string {
-	codeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#AAAAAA"))
-	blueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colorBrandBlue))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colorGrey))
-
-	var result strings.Builder
-	remaining := line
-	for {
-		start := strings.Index(remaining, "{{.")
-		if start == -1 {
-			result.WriteString(codeStyle.Render(remaining))
-			break
-		}
-		if start > 0 {
-			result.WriteString(codeStyle.Render(remaining[:start]))
-		}
-		rest := remaining[start+3:]
-		end := strings.Index(rest, "}}")
-		if end == -1 {
-			result.WriteString(codeStyle.Render(remaining[start:]))
-			break
-		}
-		key := rest[:end]
-		if val, ok := values[key]; ok && val != "" {
-			result.WriteString(blueStyle.Render(val))
-		} else {
-			result.WriteString(dimStyle.Render("<your-" + strings.ToLower(key) + ">"))
-		}
-		remaining = rest[end+2:]
-	}
-	return result.String()
-}
-
-// renderCodeBlock draws a bordered box containing syntax-highlighted code lines.
-// Lines with {{.KEY}} tokens are substituted from values.
-func renderCodeBlock(codeFile string, lines []string, values map[string]string, boxWidth int) string {
-	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colorGrey))
-	codeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#AAAAAA"))
-
-	innerWidth := boxWidth - 4 // subtract "│ " and " │"
-
-	// Top border with filename label.
-	labelPart := "─ " + codeFile + " "
-	dashCount := clamp(innerWidth-len(labelPart), 0, innerWidth)
-	top := "┌" + labelPart + strings.Repeat("─", dashCount) + "─┐"
-
+// renderGuide draws the fetched integration guide (glamour-rendered markdown)
+// inside a scrollable viewport, with a header naming the platform and doc URL.
+// It replaces the REPL's entire screen (see render()), so its chrome is exactly
+// the 3 rows guideViewport's height is sized against: header, separator, hint.
+func renderGuide(m ReplModel) string {
 	var b strings.Builder
-	b.WriteString("  " + borderStyle.Render(top) + "\n")
-
-	for _, line := range lines {
-		var rendered string
-		if strings.Contains(line, "{{.") {
-			rendered = substituteCodeLine(line, values)
-		} else {
-			rendered = codeStyle.Render(line)
-		}
-		visWidth := lipgloss.Width(rendered)
-		padding := clamp(innerWidth-visWidth, 0, innerWidth)
-		b.WriteString("  " + borderStyle.Render("│") + " " + rendered + strings.Repeat(" ", padding) + " " + borderStyle.Render("│") + "\n")
-	}
-
-	bottom := "└" + strings.Repeat("─", innerWidth+2) + "┘"
-	b.WriteString("  " + borderStyle.Render(bottom) + "\n")
-	return b.String()
-}
-
-func renderIntegrate(m ReplModel) string {
-	if len(m.integrateSteps) == 0 {
-		return ""
-	}
-	var b strings.Builder
-
-	total := len(m.integrateSteps)
-	idx := m.integrateStepIdx
-	step := m.integrateSteps[idx]
-
-	// Progress header.
-	progress := fmt.Sprintf("Step %d of %d", idx+1, total)
-	b.WriteString("  " + Dim(m.integrateFramework+" Integration") + "  " + Dim("·") + "  " + Bold(progress) + "\n")
-	b.WriteString("  " + Dim(strings.Repeat("─", clamp(m.width-4, 20, 76))) + "\n\n")
-
-	// Step title and body.
-	b.WriteString("  " + Bold(step.Title) + "\n\n")
-	for _, line := range step.Body {
-		b.WriteString("  " + Dim(line) + "\n")
-	}
-	if len(step.Body) > 0 {
-		b.WriteString("\n")
-	}
-
-	if m.integrateCollecting {
-		// Collect prompt — mirrors showUsecaseConfig style.
-		b.WriteString("  " + Bold(step.CollectLabel) + "\n\n")
-		if step.CollectURL != "" {
-			b.WriteString("  " + Cyan(step.CollectURL) + "\n\n")
-		}
-		b.WriteString("  " + Dim(step.CollectHint) + "\n")
-		b.WriteString("  " + Dim("(press Esc to skip — you can set it in src/main.jsx later)") + "\n\n")
-		b.WriteString(m.integrateInput.View() + "\n")
-		b.WriteString("\n" + Dim("  Enter to continue"))
-	} else {
-		// Code block.
-		boxWidth := clamp(m.width-6, 50, 78)
-		b.WriteString(renderCodeBlock(step.CodeFile, step.Code, m.integrateValues, boxWidth))
-		b.WriteString("\n")
-
-		// Key hints.
-		hint := ""
-		if step.CollectKey != "" && m.integrateValues[step.CollectKey] == "" {
-			hint = Dim("  Enter to set Client ID  •  ")
-		} else {
-			hint = Dim("  Enter to continue  •  ")
-		}
-		if idx > 0 {
-			hint += Dim("← back  •  ")
-		}
-		hint += Dim("esc dismiss")
-		b.WriteString(hint + "\n")
-	}
-
+	b.WriteString("  " + Dim(m.guideLabel+" Integration Guide") + "  " + Dim("·") + "  " + Cyan(m.guideDocURL) + "\n")
+	b.WriteString("  " + Dim(strings.Repeat("─", clamp(m.width-4, 20, 76))) + "\n")
+	b.WriteString(m.guideViewport.View() + "\n")
+	b.WriteString(Dim("  ↑/↓ scroll  •  o open in browser  •  esc back  •  / for commands"))
 	return b.String()
 }
 
@@ -1628,9 +1770,13 @@ func (m ReplModel) credentialsBox() string {
 func (m ReplModel) View() tea.View {
 	v := tea.NewView(m.render())
 	v.AltScreen = true
-	// The output region scrolls, so the wheel has to reach it: the alternate screen
-	// has no scrollback of its own.
-	v.MouseMode = tea.MouseModeCellMotion
+	// Mouse reporting is deliberately left off (MouseModeNone, the zero value):
+	// enabling it captures every click and drag for the app, which blocks the
+	// terminal's own click-drag text selection unless the user holds a
+	// modifier key. Losing mouse-wheel scroll and click-to-select is the
+	// tradeoff for letting text (admin credentials, integration guides, etc.)
+	// be selected and copied normally. Scrolling remains available via
+	// PgUp/PgDn and shift+up/down (see scrollHint).
 	return v
 }
 
@@ -1643,6 +1789,12 @@ func (m ReplModel) render() string {
 	if m.quitting {
 		return Dim("Stopping " + product.Name + "...\n")
 	}
+	// The guide viewer takes the whole terminal instead of sharing it with the
+	// scrollable body: splitting the height between the two would force the body
+	// below its minimum on short terminals, overflowing the screen.
+	if m.showGuide {
+		return renderGuide(m)
+	}
 	footer := m.footer()
 	if !m.bodySized {
 		// No window size yet (first frame): render flat rather than guessing a height.
@@ -1651,18 +1803,26 @@ func (m ReplModel) render() string {
 	return m.body.View() + "\n" + footer
 }
 
-// bodyContent builds the scrollable region: the banner, server status and everything
-// the session has printed so far.
-func (m ReplModel) bodyContent() string {
+// bodyPreamble builds the banner, server status and credentials box shown at
+// the top of the scrollable region, before whatever mode-specific content
+// bodyContent appends after it. It is factored out so a click handler can
+// count exactly how many rows precede body content it needs to hit-test
+// (e.g. the onboarding list) without duplicating this logic and drifting out
+// of sync with what's actually rendered.
+func (m ReplModel) bodyPreamble() string {
 	var b strings.Builder
 
-	b.WriteString(BannerString() + "\n")
+	b.WriteString(BannerString(m.version) + "\n\n")
 
 	if m.nodeWarning != "" {
 		b.WriteString(fitBox(noteBoxStyle, noteChrome, Yellow("⚠ "+m.nodeWarning)) + "\n\n")
 	}
 
-	b.WriteString(Bold("⚡ "+product.Name+" v"+m.version) + "\n")
+	if m.newVersion != "" && m.status == statusReady {
+		b.WriteString(Yellow("✦") + " " + Bold(product.Name+" v"+m.newVersion+" is available") + " — type " + Cyan("/upgrade") +
+			" to upgrade\n\n")
+	}
+
 	switch m.status {
 	case statusStarting:
 		b.WriteString(m.spinner.View() + " Starting...\n")
@@ -1674,7 +1834,20 @@ func (m ReplModel) bodyContent() string {
 	if box := m.credentialsBox(); box != "" {
 		b.WriteString(box + "\n")
 	}
-	b.WriteString(Dim(strings.Repeat("─", clamp(m.width-2, 20, 80))) + "\n\n")
+	b.WriteString(Dim(strings.Repeat("─", BannerWidth())) + "\n\n")
+	return b.String()
+}
+
+// bodyContent builds the scrollable region: the banner, server status and everything
+// the session has printed so far.
+func (m ReplModel) bodyContent() string {
+	var b strings.Builder
+	b.WriteString(m.bodyPreamble())
+
+	if m.showNotice {
+		b.WriteString(renderNotice(m))
+		return b.String()
+	}
 
 	if m.showOnboarding && m.status == statusReady {
 		if !m.onboardingCmdMode {
@@ -1707,10 +1880,16 @@ func (m ReplModel) bodyContent() string {
 		b.WriteString("\n")
 	}
 
-	// The guides carry their own navigation hints, so they scroll with the output.
-	if m.showIntegrate {
-		b.WriteString(renderIntegrate(m))
-	} else if m.showWalkthrough {
+	for _, l := range m.tailLogLines {
+		b.WriteString("  " + Dim(l) + "\n")
+	}
+	if len(m.tailLogLines) > 0 {
+		b.WriteString("\n")
+	}
+
+	// The walkthrough carries its own navigation hints, so it scrolls with the output.
+	// The guide is rendered in the footer instead, since it scrolls in its own viewport.
+	if m.showWalkthrough {
 		b.WriteString(renderWalkthrough(m))
 	}
 	return b.String()
@@ -1721,9 +1900,13 @@ func (m ReplModel) bodyContent() string {
 func (m ReplModel) footer() string {
 	var b strings.Builder
 
+	if m.showNotice {
+		return ""
+	}
+
 	if m.showOnboarding && m.status == statusReady {
 		if m.onboardingCmdMode {
-			b.WriteString(renderCompletions(m))
+			b.WriteString(renderCompletions(m, m.completionsAvailable()))
 			b.WriteString(m.input.View())
 			b.WriteString("\n\n" + Dim("  esc back to use-case picker"))
 		} else {
@@ -1752,20 +1935,31 @@ func (m ReplModel) footer() string {
 		return b.String()
 	}
 
-	if m.showIntegrate || m.showWalkthrough {
+	if m.guideLoading {
+		b.WriteString(m.spinner.View() + Dim(" Fetching "+m.guideLabel+" guide…"))
+		return b.String()
+	}
+
+	if m.showWalkthrough {
 		return Dim("  " + scrollHint)
 	}
 
-	b.WriteString(renderCompletions(m))
+	// While a try-* sample is downloading/starting, its progress replaces the command
+	// menu and input line entirely rather than being appended below them.
+	if m.tryingOut {
+		if m.trySampleStatus != "" {
+			b.WriteString(m.spinner.View() + " " + m.trySampleStatus)
+		} else {
+			b.WriteString(m.spinner.View() + Dim(" Please wait… (Ctrl+C to abort)"))
+		}
+		return b.String()
+	}
 
-	switch {
-	case m.tryingOut && m.trySampleStatus != "":
-		b.WriteString(m.spinner.View() + " " + m.trySampleStatus)
-	case m.tryingOut:
-		b.WriteString(m.spinner.View() + Dim(" Please wait… (Ctrl+C to abort)"))
-	case m.status == statusStarting:
+	b.WriteString(renderCompletions(m, m.completionsAvailable()))
+
+	if m.status == statusStarting {
 		b.WriteString(m.spinner.View() + Dim(" Starting "+product.Name+"…"))
-	default:
+	} else {
 		b.WriteString(m.input.View())
 		b.WriteString("\n" + Dim("  "+scrollHint))
 	}
@@ -1789,14 +1983,23 @@ func clamp(v, min, max int) int {
 // newVersion, if non-empty, causes a banner to appear prompting the user to /upgrade.
 // nodeWarning, if non-empty, is shown below the banner for the life of the session.
 // port overrides the default health-check port when non-zero.
+// notice, if non-empty, is shown as the first message — used to surface why a prior
+// /switch or /upgrade attempt in this same process didn't go through, since printing
+// it directly would be hidden the instant this REPL's alternate screen takes over.
 // Returns upgradeRequested=true when the user ran /upgrade, switchRequested=true when /use.
 func RunREPL(
 	version string, proc *exec.Cmd, installPath string,
 	verbose, isFirstRun bool, newVersion, nodeWarning string, port int, creds *setup.AdminCredentials,
+	notice string,
 ) (upgradeRequested, switchRequested bool, err error) {
 	m := NewReplModel(version, proc, installPath, verbose, isFirstRun, creds)
 	m.newVersion = newVersion
 	m.nodeWarning = nodeWarning
+	if notice != "" {
+		m.showNotice = true
+		m.noticeMessage = notice
+		m.input.Blur()
+	}
 	if port > 0 {
 		m.checkPort = port
 	}

@@ -9,9 +9,9 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 // acrOptionsFlow is a flow that contains a login_options PROMPT node followed by two
@@ -252,7 +252,8 @@ var acrOptionsTestOU = testutils.OrganizationUnit{
 }
 
 var acrOptionsUserType = testutils.UserType{
-	Name: "acr_options_test_person",
+	Handle:      "acr_options_test_person",
+	DisplayName: "Acr Options Test Person",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string"},
 		"password": map[string]interface{}{"type": "string", "credential": true},
@@ -261,7 +262,7 @@ var acrOptionsUserType = testutils.UserType{
 }
 
 var acrOptionsTestUser = testutils.User{
-	Type: acrOptionsUserType.Name,
+	Type: acrOptionsUserType.Handle,
 	Attributes: json.RawMessage(`{
 		"username": "acroptionsuser",
 		"password": "testpassword",
@@ -270,11 +271,11 @@ var acrOptionsTestUser = testutils.User{
 }
 
 var (
-	acrOptionsTestAppID        string
-	acrOptionsNativeTestAppID  string
-	acrOptionsTestOUID         string
-	acrOptionsFlowID           string
-	acrOptionsUserTypeID       string
+	acrOptionsTestAppID       string
+	acrOptionsNativeTestAppID string
+	acrOptionsTestOUID        string
+	acrOptionsFlowID          string
+	acrOptionsUserTypeID      string
 )
 
 // AcrOptionsFlowTestSuite tests the login_options PROMPT node filtering, ordering,

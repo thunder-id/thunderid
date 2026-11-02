@@ -78,17 +78,18 @@ func ResolveTargetResourceServer(
 }
 
 // ResolveAudienceBinding decides the single resource server an access token binds to. It returns
-// (nil, nil) when the request carries neither a resource nor any permission scope, for example an
-// OIDC-only or scopeless request: such a token is not bound to a resource server, and the caller
-// sets its audience to the client_id. Otherwise it resolves the single target resource server via
-// ResolveTargetResourceServer (rejecting with invalid_target when none can be determined).
+// (nil, nil) when the request carries no resource, permission scope or authorization details, for
+// example an OIDC-only or scopeless request: such a token is not bound to a resource server, and the
+// caller sets its audience to the client_id. Otherwise it resolves the single target resource server
+// via ResolveTargetResourceServer (rejecting with invalid_target when none can be determined).
 func ResolveAudienceBinding(
 	ctx context.Context,
 	resourceService providers.ResourceServerProvider,
 	resources []string,
 	permissionScopes []string,
+	hasAuthorizationDetails bool,
 ) (*providers.ResourceServer, *model.ErrorResponse) {
-	if len(resources) == 0 && len(permissionScopes) == 0 {
+	if len(resources) == 0 && len(permissionScopes) == 0 && !hasAuthorizationDetails {
 		return nil, nil
 	}
 	return ResolveTargetResourceServer(ctx, resourceService, resources)

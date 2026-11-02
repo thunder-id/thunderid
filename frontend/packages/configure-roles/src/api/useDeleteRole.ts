@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
-import {useConfig, useToast} from '@thunderid/contexts';
+import {AdministrationModes, useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import RoleQueryKeys from '../constants/role-query-keys';
+import {deleteRoleNatively, deleteRoleViaFlow, type HttpLike} from '../utils/roleAdministrationFlow';
 
 /**
  * Custom React hook to delete a role.
@@ -18,14 +19,21 @@ export default function useDeleteRole(): UseMutationResult<void, Error, string> 
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
   const {t} = useTranslation('roles');
   const {showToast} = useToast();
+  const mode = useAdministrationOperation<[string], void>('roles', 'delete');
 
   return useMutation<void, Error, string>({
     mutationFn: async (roleId: string): Promise<void> => {
-      const serverUrl: string = getServerUrl();
-      await http.request({
-        url: `${serverUrl}/roles/${roleId}`,
-        method: 'DELETE',
-      } as unknown as Parameters<typeof http.request>[0]);
+      const client = http as unknown as HttpLike;
+
+      if (typeof mode === 'function') {
+        await mode(roleId);
+        return;
+      }
+      if (mode === AdministrationModes.NATIVE) {
+        await deleteRoleNatively(client, getServerUrl(), roleId);
+        return;
+      }
+      await deleteRoleViaFlow(client, getServerUrl(), roleId);
     },
     onSuccess: (_data, roleId) => {
       queryClient.removeQueries({queryKey: [RoleQueryKeys.ROLE, roleId]});

@@ -71,19 +71,26 @@ func PaginateUsages(resp *DependenciesResponse, limit, offset int) *Dependencies
 
 // Resource type identifiers shared across dependency providers and consumers.
 const (
-	ResourceTypeTheme              = "theme"
-	ResourceTypeLayout             = "layout"
-	ResourceTypeFlow               = "flow"
-	ResourceTypeUser               = "user"
-	ResourceTypeApplication        = "application"
-	ResourceTypeAgent              = "agent"
-	ResourceTypeGroup              = "group"
-	ResourceTypeIDP                = "idp"
-	ResourceTypeNotificationSender = "notificationSender"
-	ResourceTypeOU                 = "organizationUnit"
-	ResourceTypeResourceServer     = "resourceServer"
-	ResourceTypeResource           = "resource"
-	ResourceTypeAction             = "action"
+	ResourceTypeTheme                = "theme"
+	ResourceTypeLayout               = "layout"
+	ResourceTypeFlow                 = "flow"
+	ResourceTypeUser                 = "user"
+	ResourceTypeUserType             = "userType"
+	ResourceTypeAgentType            = "agentType"
+	ResourceTypeApplication          = "application"
+	ResourceTypeAgent                = "agent"
+	ResourceTypeGroup                = "group"
+	ResourceTypeIDP                  = "idp"
+	ResourceTypeNotificationSender   = "notificationSender"
+	ResourceTypeAuthZENPDPConnection = "authzenPdpConnection"
+	ResourceTypeHTTPConnection       = "httpConnection"
+	ResourceTypeNotificationTemplate = "notificationTemplate"
+	ResourceTypeOU                   = "organizationUnit"
+	ResourceTypeProject              = "project"
+	ResourceTypeResourceServer       = "resourceServer"
+	ResourceTypeResource             = "resource"
+	ResourceTypeAction               = "action"
+	ResourceTypeSharingPolicy        = "sharingPolicy"
 )
 
 // SummarizeBlockingUsages renders a deterministic, human-readable summary of blocking dependencies
@@ -100,9 +107,24 @@ func SummarizeBlockingUsages(usages []ResourceDependency) string {
 	sort.Strings(types)
 	parts := make([]string, 0, len(types))
 	for _, rt := range types {
-		parts = append(parts, fmt.Sprintf("%d %s(s)", counts[rt], rt))
+		parts = append(parts, fmt.Sprintf("%d %s(s)", counts[rt], humanizeResourceType(rt)))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// humanizeResourceType renders a camelCase resource type as a lowercase noun for user-facing
+// summaries, e.g. "notificationSender" -> "notification sender".
+func humanizeResourceType(rt string) string {
+	var b strings.Builder
+	for i, r := range rt {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			b.WriteByte(' ')
+			b.WriteRune(r - 'A' + 'a')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // ResourceDependency describes one resource that references another resource.

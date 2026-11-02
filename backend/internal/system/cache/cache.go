@@ -7,6 +7,7 @@ package cache
 import (
 	"context"
 
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -34,13 +35,20 @@ func (c *Cache[T]) GetName() string {
 	return c.cacheName
 }
 
+// scoped returns the key an entry is held under: the key within the deployment the context acts for.
+// A server can act for more than one deployment, each with its own rows under the same ids and
+// handles, so a key on its own would hand one deployment's entry to another.
+func scoped(ctx context.Context, key CacheKey) CacheKey {
+	return CacheKey{Key: deployment.Resolve(ctx) + ":" + key.Key}
+}
+
 // Set stores a value in the cache.
 func (c *Cache[T]) Set(ctx context.Context, key CacheKey, value T) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "Cache"),
 		log.String("cacheName", c.cacheName))
 
 	if c.IsEnabled() && c.cacheImpl.IsEnabled() {
-		if err := c.cacheImpl.Set(ctx, key, value); err != nil {
+		if err := c.cacheImpl.Set(ctx, scoped(ctx, key), value); err != nil {
 			logger.Warn(ctx, "Failed to set value in the cache",
 				log.String("key", key.ToString()), log.Error(err))
 		}
@@ -52,7 +60,7 @@ func (c *Cache[T]) Set(ctx context.Context, key CacheKey, value T) error {
 // Get retrieves a value from the cache.
 func (c *Cache[T]) Get(ctx context.Context, key CacheKey) (T, bool) {
 	if c.IsEnabled() && c.cacheImpl.IsEnabled() {
-		if value, found := c.cacheImpl.Get(ctx, key); found {
+		if value, found := c.cacheImpl.Get(ctx, scoped(ctx, key)); found {
 			return value, true
 		}
 	}
@@ -67,7 +75,7 @@ func (c *Cache[T]) Delete(ctx context.Context, key CacheKey) error {
 		log.String("cacheName", c.cacheName))
 
 	if c.IsEnabled() && c.cacheImpl.IsEnabled() {
-		if err := c.cacheImpl.Delete(ctx, key); err != nil {
+		if err := c.cacheImpl.Delete(ctx, scoped(ctx, key)); err != nil {
 			logger.Warn(ctx, "Failed to delete value from the cache",
 				log.String("key", key.ToString()), log.Error(err))
 		}

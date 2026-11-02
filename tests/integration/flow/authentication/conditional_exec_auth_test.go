@@ -9,9 +9,9 @@ import (
 
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 const (
@@ -96,7 +96,7 @@ var (
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{"conditional_exec_flow_user"},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
@@ -107,7 +107,8 @@ var (
 	}
 
 	conditionalExecEntityType = testutils.UserType{
-		Name:                  "conditional_exec_flow_user",
+		Handle:                "conditional_exec_flow_user",
+		DisplayName:           "Conditional Exec Flow User",
 		AllowSelfRegistration: true,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
@@ -227,7 +228,7 @@ func (ts *ConditionalExecAuthFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(err)
 
 	existingUser := testutils.User{
-		Type:       conditionalExecEntityType.Name,
+		Type:       conditionalExecEntityType.Handle,
 		OUID:       conditionalExecPreCreatedOUID,
 		Attributes: json.RawMessage(attributesJSON),
 	}
@@ -262,11 +263,30 @@ func (ts *ConditionalExecAuthFlowTestSuite) SetupSuite() {
 				IsSecret: false,
 			},
 		},
+		// Link on email so SetupSuite can record the link below.
+		AttributeConfiguration: &testutils.AttributeConfiguration{
+			AccountLinking: &testutils.AccountLinking{Attributes: []string{"email"}},
+		},
 	}
 
 	idpID, err := testutils.CreateIDP(googleIDP)
 	ts.Require().NoError(err, "Failed to create Google IDP")
 	ts.config.CreatedIdpIDs = append(ts.config.CreatedIdpIDs, idpID)
+
+	// Record the link the federated sign-ins below resolve through.
+	ts.mockGoogleServer.SetAuthorizeFunc(func(email string) (string, error) {
+		return conditionalExecExistingUserEmail, nil
+	})
+	err = common.LinkAccount(common.LinkRequest{
+		Handle:       "conditional-exec-link",
+		ExecutorName: "GoogleOIDCAuthExecutor",
+		IDPID:        idpID,
+		OUID:         conditionalExecPreCreatedOUID,
+		UserType:     conditionalExecEntityType.Handle,
+		Username:     "existingconditionalexecuser",
+		Password:     "Test@1234",
+	})
+	ts.Require().NoError(err, "Failed to record the federated link for the existing user")
 
 	// Update flow definition with created IDP ID
 	nodes := conditionalExecFlow.Nodes.([]map[string]interface{})
@@ -370,7 +390,7 @@ func (ts *ConditionalExecAuthFlowTestSuite) TestSkipConditionalNodes() {
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		flowStep.Assertion,
 		conditionalExecTestAppID,
-		conditionalExecEntityType.Name,
+		conditionalExecEntityType.Handle,
 		conditionalExecPreCreatedOUID,
 		conditionalExecTestOU.Name,
 		conditionalExecTestOU.Handle,
@@ -422,7 +442,7 @@ func (ts *ConditionalExecAuthFlowTestSuite) TestExecuteConditionalNodes() {
 	ts.Require().NotEmpty(flowStep.Assertion, "Assertion token should be present")
 
 	// Find the created user to get their details
-	user, err := testutils.FindUserByAttribute("sub", conditionalExecNewUserSub)
+	user, err := testutils.GetUserFromAssertion(flowStep.Assertion)
 	ts.Require().NoError(err, "Failed to find created user")
 	ts.Require().NotNil(user, "User should be found after provisioning")
 
@@ -431,7 +451,7 @@ func (ts *ConditionalExecAuthFlowTestSuite) TestExecuteConditionalNodes() {
 	ts.Require().NoError(err, "Failed to decode JWT assertion")
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
 	ts.Require().Equal(conditionalExecTestAppID, jwtClaims.Aud, "JWT aud should match app ID")
-	ts.Require().Equal(conditionalExecEntityType.Name, jwtClaims.UserType, "JWT userType should match schema")
+	ts.Require().Equal(conditionalExecEntityType.Handle, jwtClaims.UserTypeHandle, "JWT userTypeHandle should match schema")
 	ts.Require().NotEmpty(jwtClaims.OUID, "JWT ouId should not be empty")
 
 	// Verify the created OU

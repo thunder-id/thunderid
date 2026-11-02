@@ -4,25 +4,37 @@
 package thunderidengine
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/authzdetailtypeprovidermock"
+
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/flow/executor"
 	systemconfig "github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/cors"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
@@ -37,12 +49,15 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
 	"github.com/thunder-id/thunderid/tests/mocks/i18nprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/idpprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourceserverprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/runtimestoreprovidermock"
 )
+
+const testKeyID = "test-key"
 
 type EngineTestSuite struct {
 	suite.Suite
@@ -108,12 +123,19 @@ func validEngineContext(t *testing.T) *engineContext {
 		idpProvider:           idpprovidermock.NewIDPProviderMock(t),
 		consentProvider:       consentprovidermock.NewConsentProviderMock(t),
 		defaultAuthnProvider:  newTestDefaultAuthnProvider(t),
+		identityGovernance:    identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(t),
 	}
 }
 
 func (suite *EngineTestSuite) TestValidateEngineContext() {
 	suite.T().Run("valid context passes", func(t *testing.T) {
 		assert.NoError(t, validateEngineContext(validEngineContext(t)))
+	})
+
+	suite.T().Run("missing identity governance provider is optional", func(t *testing.T) {
+		ctx := validEngineContext(t)
+		ctx.identityGovernance = nil
+		assert.NoError(t, validateEngineContext(ctx))
 	})
 
 	suite.T().Run("missing server home", func(t *testing.T) {
@@ -380,7 +402,7 @@ func (suite *EngineTestSuite) TestNew_HappyPath() {
 	t := suite.T()
 	tempDir := t.TempDir()
 
-	keyID := "test-key"
+	keyID := testKeyID
 	certPEM := generateSelfSignedCertFiles(t, tempDir, "cert.pem", "key.pem")
 	keyConfigs := []engineconfig.KeyConfig{{ID: keyID, CertFile: "cert.pem", KeyFile: "key.pem"}}
 
@@ -430,6 +452,7 @@ func (suite *EngineTestSuite) TestNew_HappyPath() {
 
 	require.NotNil(t, eng)
 	require.NotNil(t, eng.engineCtx)
+	assert.Nil(t, eng.engineCtx.identityGovernance)
 	assert.NotNil(t, eng.engineCtx.runtimeCryptoSvc)
 	assert.NotNil(t, eng.engineCtx.jwtService)
 	assert.NotNil(t, eng.engineCtx.jweService)
@@ -442,6 +465,27 @@ func (suite *EngineTestSuite) TestNew_HappyPath() {
 	assert.NotNil(t, eng.engineCtx.attributeCacheService)
 	assert.NotNil(t, eng.engineCtx.authAssertGen)
 	assert.Equal(t, runtimeStoreProvider, eng.engineCtx.runtimeStoreProvider)
+	assert.Nil(t, eng.engineCtx.authorizationDetailTypes,
+		"without a registry, no authorization details types are registered")
+	assert.NotNil(t, eng.engineCtx.authzDetailProvider, "without a provider, the built-in processing is used")
+}
+
+func (suite *EngineTestSuite) TestWithAuthorizationDetailTypeProvider() {
+	types := authzdetailtypeprovidermock.NewAuthorizationDetailTypeProviderMock(suite.T())
+	ctx := &engineContext{}
+
+	WithAuthorizationDetailTypeProvider(types)(ctx)
+
+	suite.Equal(types, ctx.authorizationDetailTypes)
+}
+
+func (suite *EngineTestSuite) TestWithAuthorizationDetailProvider() {
+	provider := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	ctx := &engineContext{}
+
+	WithAuthorizationDetailProvider(provider)(ctx)
+
+	suite.Equal(provider, ctx.authzDetailProvider)
 }
 
 // TestNew_InitializesRuntimeStoreWhenNotInjected drives New() without WithRuntimeStoreProvider,
@@ -452,7 +496,7 @@ func (suite *EngineTestSuite) TestNew_InitializesRuntimeStoreWhenNotInjected() {
 	t := suite.T()
 	tempDir := t.TempDir()
 
-	keyID := "test-key"
+	keyID := testKeyID
 	certPEM := generateSelfSignedCertFiles(t, tempDir, "cert.pem", "key.pem")
 	keyConfigs := []engineconfig.KeyConfig{{ID: keyID, CertFile: "cert.pem", KeyFile: "key.pem"}}
 
@@ -523,4 +567,253 @@ func (suite *EngineTestSuite) TestWithCustomAuthnProvider_AccumulatesByName() {
 	assert.Equal(suite.T(), []string{"password"}, ctx.customAuthnProviders["acme"].Creds)
 	assert.Equal(suite.T(), []string{"otp"}, ctx.customAuthnProviders["beta"].Creds)
 	assert.NotNil(suite.T(), ctx.customAuthnProviders["acme"].Instance)
+}
+
+// mustMatch parses origin and reports whether matcher allows it.
+func mustMatch(t *testing.T, matcher *cors.Matcher, origin string) bool {
+	t.Helper()
+	parsed, err := cors.ParseOrigin(origin)
+	require.NoError(t, err)
+	allow, _ := matcher.Match(parsed)
+	return allow
+}
+
+func (suite *EngineTestSuite) TestBuildOriginReader() {
+	suite.T().Run("empty config returns nil reader", func(t *testing.T) {
+		reader, err := buildOriginReader(engineconfig.OriginConfig{})
+		require.NoError(t, err)
+		assert.Nil(t, reader)
+	})
+
+	suite.T().Run("valid config installs matching reader", func(t *testing.T) {
+		t.Cleanup(func() { cors.InitializeDynamicMatcher(nil) })
+
+		reader, err := buildOriginReader(engineconfig.OriginConfig{
+			AllowedOrigins: []engineconfig.OriginEntry{
+				{Origin: "https://app.example.com"},
+				{Regex: `^https://[a-z0-9-]+\.staging\.example\.com$`},
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, reader)
+
+		cors.InitializeDynamicMatcher(reader)
+		matcher := cors.GetDynamicMatcher(context.Background())
+		require.NotNil(t, matcher)
+
+		assert.True(t, mustMatch(t, matcher, "https://app.example.com"))
+		assert.True(t, mustMatch(t, matcher, "https://foo.staging.example.com"))
+		assert.False(t, mustMatch(t, matcher, "https://other.example.com"))
+	})
+
+	suite.T().Run("wildcard literal is rejected", func(t *testing.T) {
+		reader, err := buildOriginReader(engineconfig.OriginConfig{
+			AllowedOrigins: []engineconfig.OriginEntry{{Origin: "*"}},
+		})
+		assert.Error(t, err)
+		assert.Nil(t, reader)
+	})
+
+	suite.T().Run("invalid regex is rejected", func(t *testing.T) {
+		reader, err := buildOriginReader(engineconfig.OriginConfig{
+			AllowedOrigins: []engineconfig.OriginEntry{{Regex: "["}},
+		})
+		assert.Error(t, err)
+		assert.Nil(t, reader)
+	})
+
+	suite.T().Run("origin and regex both set is rejected", func(t *testing.T) {
+		reader, err := buildOriginReader(engineconfig.OriginConfig{
+			AllowedOrigins: []engineconfig.OriginEntry{
+				{Origin: "https://app.example.com", Regex: "^https://.*$"},
+			},
+		})
+		assert.Error(t, err)
+		assert.Nil(t, reader)
+	})
+}
+
+// TestNew_AppliesLogFormatToServicesBuiltInsideNew guards the reported defect from the
+// engine's side: the format is applied before any service is constructed, and it is
+// applied with SetFormat so a host application's own output configuration (here a file
+// sink) survives instead of being replaced by a console-only one.
+func (suite *EngineTestSuite) TestNew_AppliesLogFormatToServicesBuiltInsideNew() {
+	t := suite.T()
+	tempDir := t.TempDir()
+	logPath := filepath.Join(tempDir, "host.log")
+
+	// The host application configures where records go, before the engine starts.
+	logger := log.GetLogger()
+	require.NoError(t, logger.Configure(log.OutputOptions{
+		FileEnabled: true,
+		Format:      "text",
+		File:        rollingfile.Config{Path: logPath},
+	}))
+	t.Cleanup(func() {
+		_ = logger.Close()
+		_ = logger.Configure(log.OutputOptions{ConsoleEnabled: true, Format: "text"})
+	})
+
+	// Derived before the engine applies the format, the way a component of the host
+	// application (or of the engine itself) captures its logger at construction time.
+	componentLogger := logger.With(log.String(log.LoggerKeyComponentName, "FlowEngine"))
+
+	keyID := testKeyID
+	certPEM := generateSelfSignedCertFiles(t, tempDir, "log-cert.pem", "log-key.pem")
+	keyConfigs := []engineconfig.KeyConfig{{ID: keyID, CertFile: "log-cert.pem", KeyFile: "log-key.pem"}}
+
+	systemconfig.ResetServerRuntime()
+	t.Cleanup(systemconfig.ResetServerRuntime)
+	require.NoError(t, systemconfig.InitializeServerRuntime(tempDir, &systemconfig.Config{
+		GateClient: engineconfig.GateClientConfig{Hostname: "localhost", Port: 8080, Scheme: "https"},
+		Crypto: systemconfig.CryptoConfig{
+			Keys:       keyConfigs,
+			Encryption: engineconfig.EncryptionConfig{Key: "000102030405060708090a0b0c0d0e0f"},
+		},
+		Attestation: systemconfig.AttestationConfig{
+			Apple: systemconfig.AppleAttestationConfig{RootCertificate: string(certPEM)},
+		},
+	}))
+
+	eng := New(http.NewServeMux(),
+		WithServerHome(tempDir),
+		WithServerConfig(engineconfig.ServerConfig{Identifier: "test-engine"}),
+		WithObservabilityProvider(newTestObservabilityProvider(t)),
+		WithAuthorizationProvider(newTestAuthzProvider(t)),
+		WithKeyConfigs(keyConfigs),
+		WithJWTConfig(engineconfig.JWTConfig{Issuer: "test-issuer", PreferredKeyID: keyID, ValidityPeriod: 3600}),
+		WithRuntimeStoreProvider(newTestRuntimeStoreProvider(t)),
+		WithRuntimeTransientDBType("memory"),
+		WithEncryptionConfig(engineconfig.EncryptionConfig{Key: "test-encryption-key"}),
+		WithGateClientConfig(engineconfig.GateClientConfig{Hostname: "localhost", Port: 8080, Scheme: "https"}),
+		WithCacheConfig(engineconfig.CacheConfig{Disabled: true}),
+		WithLogConfig(engineconfig.LogConfig{Level: "debug", Format: "json"}),
+		WithIDPProvider(newTestIDPProvider(t)),
+		WithActorProvider(actorprovidermock.NewActorProviderMock(t)),
+		WithDefaultAuthnProvider(newTestDefaultAuthnProvider(t)),
+		WithResourceProvider(resourceserverprovidermock.NewResourceServerProviderMock(t)),
+		WithOUProvider(ouprovidermock.NewOrganizationUnitProviderMock(t)),
+		WithDesignResolveProvider(designprovidermock.NewDesignProviderMock(t)),
+		WithFlowProvider(flowexecmock.NewFlowProviderMock(t)),
+		WithI18nProvider(i18nprovidermock.NewI18nProviderMock(t)),
+		WithConsentProvider(consentprovidermock.NewConsentProviderMock(t)),
+		WithFlowConfig(engineconfig.FlowConfig{Executors: []string{"InviteExecutor", "PermissionValidator"}}),
+	)
+	require.NotNil(t, eng)
+
+	// A logger that already existed when the engine applied the format must follow it.
+	componentLogger.Info(context.Background(), "Executing node")
+
+	content, err := os.ReadFile(logPath) // #nosec G304 -- test reads a file under t.TempDir().
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	for _, line := range lines {
+		var record map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &record), "every record must be JSON: %s", line)
+	}
+	assert.Contains(t, string(content), `"msg":"Executing node"`)
+}
+
+// TestNew_ResetsDynamicMatcherWhenOriginConfigEmpty guards against a stale matcher from a
+// previous engine leaking into one that never called WithOriginConfig: without an explicit
+// reset, that engine would inherit the previous matcher's allowed origins instead of denying
+// all cross-origin requests.
+func (suite *EngineTestSuite) TestNew_ResetsDynamicMatcherWhenOriginConfigEmpty() {
+	t := suite.T()
+	t.Cleanup(func() { cors.InitializeDynamicMatcher(nil) })
+
+	eng := newTestEngine(t, WithOriginConfig(engineconfig.OriginConfig{
+		AllowedOrigins: []engineconfig.OriginEntry{{Origin: "https://app.example.com"}},
+	}))
+	require.NotNil(t, eng)
+	matcher := cors.GetDynamicMatcher(context.Background())
+	require.NotNil(t, matcher)
+	assert.True(t, mustMatch(t, matcher, "https://app.example.com"))
+
+	eng = newTestEngine(t)
+	require.NotNil(t, eng)
+	matcher = cors.GetDynamicMatcher(context.Background())
+	assert.Nil(t, matcher)
+}
+
+// newTestEngine starts an engine with every required provider and a governance provider; opts are
+// applied last, so they override those.
+func newTestEngine(t *testing.T, opts ...Option) *Engine {
+	t.Helper()
+	tempDir := t.TempDir()
+	keyID := testKeyID
+	certPEM := generateSelfSignedCertFiles(t, tempDir, "cert.pem", "key.pem")
+	keyConfigs := []engineconfig.KeyConfig{{ID: keyID, CertFile: "cert.pem", KeyFile: "key.pem"}}
+
+	systemconfig.ResetServerRuntime()
+	t.Cleanup(systemconfig.ResetServerRuntime)
+	require.NoError(t, systemconfig.InitializeServerRuntime(tempDir, &systemconfig.Config{
+		GateClient: engineconfig.GateClientConfig{Hostname: "localhost", Port: 8080, Scheme: "https"},
+		Crypto: systemconfig.CryptoConfig{
+			Keys:       keyConfigs,
+			Encryption: engineconfig.EncryptionConfig{Key: "000102030405060708090a0b0c0d0e0f"},
+		},
+		Attestation: systemconfig.AttestationConfig{
+			Apple: systemconfig.AppleAttestationConfig{RootCertificate: string(certPEM)},
+		},
+	}))
+
+	baseOpts := []Option{
+		WithServerHome(tempDir),
+		WithServerConfig(engineconfig.ServerConfig{Identifier: "test-engine"}),
+		WithObservabilityProvider(newTestObservabilityProvider(t)),
+		WithAuthorizationProvider(newTestAuthzProvider(t)),
+		WithKeyConfigs(keyConfigs),
+		WithJWTConfig(engineconfig.JWTConfig{Issuer: "test-issuer", PreferredKeyID: keyID, ValidityPeriod: 3600}),
+		WithRuntimeStoreProvider(newTestRuntimeStoreProvider(t)),
+		WithRuntimeTransientDBType("memory"),
+		WithEncryptionConfig(engineconfig.EncryptionConfig{Key: "test-encryption-key"}),
+		WithGateClientConfig(engineconfig.GateClientConfig{Hostname: "localhost", Port: 8080, Scheme: "https"}),
+		WithCacheConfig(engineconfig.CacheConfig{Disabled: true}),
+		WithLogConfig(engineconfig.LogConfig{Level: "info", Format: "json"}),
+		WithIDPProvider(newTestIDPProvider(t)),
+		WithActorProvider(actorprovidermock.NewActorProviderMock(t)),
+		WithDefaultAuthnProvider(newTestDefaultAuthnProvider(t)),
+		WithResourceProvider(resourceserverprovidermock.NewResourceServerProviderMock(t)),
+		WithOUProvider(ouprovidermock.NewOrganizationUnitProviderMock(t)),
+		WithDesignResolveProvider(designprovidermock.NewDesignProviderMock(t)),
+		WithFlowProvider(flowexecmock.NewFlowProviderMock(t)),
+		WithI18nProvider(i18nprovidermock.NewI18nProviderMock(t)),
+		WithConsentProvider(consentprovidermock.NewConsentProviderMock(t)),
+		WithIdentityGovernanceProvider(
+			identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(t)),
+		WithFlowConfig(engineconfig.FlowConfig{Executors: []string{"InviteExecutor", "PermissionValidator"}}),
+	}
+	return New(http.NewServeMux(), slices.Concat(baseOpts, opts)...)
+}
+
+func (suite *EngineTestSuite) TestNew_PassesIdentityGovernanceToTheExecutors() {
+	t := suite.T()
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(t)
+	governance.EXPECT().Unlock(mock.Anything, "u1").Return(nil).Once()
+
+	eng := newTestEngine(t, WithIdentityGovernanceProvider(governance),
+		WithFlowConfig(engineconfig.FlowConfig{Executors: []string{executor.ExecutorNameIdentityGovernance}}))
+	require.NotNil(t, eng)
+	governanceExecutor, err := eng.engineCtx.execRegistry.GetExecutor(executor.ExecutorNameIdentityGovernance)
+	require.NoError(t, err)
+
+	execResp, err := governanceExecutor.Execute(&providers.NodeContext{
+		Context:      context.Background(),
+		FlowType:     providers.FlowTypeAdministration,
+		ExecutorMode: executor.ExecutorModeUnlock,
+		UserInputs:   map[string]string{"subject": "u1"},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, providers.ExecComplete, execResp.Status)
+}
+
+func (suite *EngineTestSuite) TestIdentityGovernanceOption() {
+	provider := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	var ctx engineContext
+	WithIdentityGovernanceProvider(provider)(&ctx)
+	suite.Same(provider, ctx.identityGovernance)
+	WithIdentityGovernanceProvider(nil)(&ctx)
+	suite.Nil(ctx.identityGovernance)
 }

@@ -5,6 +5,12 @@
 export {default as useCreateUserType} from './api/useCreateUserType';
 export {default as useDeleteUserType} from './api/useDeleteUserType';
 export {default as useGetUserType} from './api/useGetUserType';
+export {default as useGetUserTypeAttributes} from './api/useGetUserTypeAttributes';
+export type {
+  AggregatedUserTypeAttribute,
+  UseGetUserTypeAttributesOptions,
+  UseGetUserTypeAttributesResult,
+} from './api/useGetUserTypeAttributes';
 export {default as useGetUserTypes} from './api/useGetUserTypes';
 export {default as useUpdateUserType} from './api/useUpdateUserType';
 export type {UpdateUserTypeVariables} from './api/useUpdateUserType';
@@ -72,3 +78,5 @@ export {defaultUserTypeRoutePaths, default as useUserTypeRoutes} from './hooks/u
 
 // Utils
 export {default as getBreakingSchemaChanges} from './utils/getBreakingSchemaChanges';
+export {default as flattenSchemaAttributes} from './utils/flattenSchemaAttributes';
+export type {FlattenedAttribute} from './utils/flattenSchemaAttributes';

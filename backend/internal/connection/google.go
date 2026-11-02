@@ -16,6 +16,7 @@ import (
 type googleConnectionRequest struct {
 	Name         string   `json:"name"`
 	Description  string   `json:"description,omitempty"`
+	OUID         string   `json:"ouId,omitempty"`
 	ClientID     string   `json:"clientId"`
 	ClientSecret string   `json:"clientSecret"`
 	RedirectURI  string   `json:"redirectUri"`
@@ -34,6 +35,7 @@ type googleConnectionResponse struct {
 	ID           string   `json:"id"`
 	Name         string   `json:"name"`
 	Description  string   `json:"description,omitempty"`
+	OUID         string   `json:"ouId,omitempty"`
 	Type         string   `json:"type"`
 	ClientID     string   `json:"clientId,omitempty"`
 	ClientSecret string   `json:"clientSecret,omitempty"`
@@ -81,6 +83,7 @@ func googleToIDPDTO(req googleConnectionRequest) (*providers.IDPDTO, error) {
 	return &providers.IDPDTO{
 		Name:                   req.Name,
 		Description:            req.Description,
+		OUID:                   req.OUID,
 		Type:                   providers.IDPTypeGoogle,
 		Properties:             props,
 		AttributeConfiguration: req.AttributeConfiguration,
@@ -96,6 +99,7 @@ func googleFromIDPDTO(dto providers.IDPDTO) (googleConnectionResponse, error) {
 		ID:                     dto.ID,
 		Name:                   dto.Name,
 		Description:            dto.Description,
+		OUID:                   dto.OUID,
 		Type:                   connectionTypeName(dto.Type),
 		ClientID:               values[idp.PropClientID],
 		ClientSecret:           values[idp.PropClientSecret],

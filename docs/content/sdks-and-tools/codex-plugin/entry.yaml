@@ -1,0 +1,136 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: codex-plugin
+name: Codex Plugin
+icon: CodexLogo
+category: agent
+type: plugin
+origin: official
+status: ga
+package:
+  name: thunderid-skills
+  manager: plugin
+description: Bring {{ProductName}} sign-in and token management to OpenAI Codex and the Codex CLI.
+docs:
+  overview: /docs/next/working-with-ai/skills
+  quickstart: /docs/next/working-with-ai/skills
+links:
+  github: https://github.com/thunder-id/skills
+hero:
+  description: Install the {{ProductName}} skills bundle into OpenAI Codex, so Codex can set up the server and wire
+    {{ProductName}} into your app from a plain request.
+  meta:
+  - icon: package
+    label: thunderid-skills
+    mono: true
+  - icon: licence
+    label: Apache 2.0 licence
+  ctas:
+  - label: Install
+    href: '#install'
+    variant: primary
+  - label: Source
+    href: https://github.com/thunder-id/skills
+    variant: secondary
+    external: true
+sections:
+- type: steps
+  id: install
+  title: Install
+  intro: The bundle is one marketplace entry. Adding it makes every skill available.
+  steps:
+  - title: Add the marketplace
+    description: Registers the {{ProductName}} catalogue with Codex.
+    code:
+      file: your shell
+      lang: bash
+      content: codex plugin marketplace add thunder-id/skills
+  - title: Enable the plugin
+    description: Restart Codex, then install and enable the bundle.
+    uiPath:
+    - Restart Codex
+    - Open /plugins
+    - Select ThunderID Skills
+    - Install and enable thunder-id-skills
+    - Start a new thread
+- type: table
+  id: skills
+  title: Skills in the bundle
+  intro: The same 13 skills ship to every agent that installs the bundle.
+  showHeader: true
+  columns:
+  - label: Skill
+    style: code
+  - label: Purpose
+    style: text
+  - label: When to use
+    style: muted
+  rows:
+  - cells:
+    - thunderid-install
+    - Install and start the ThunderID server
+    - New projects, initial setup
+  - cells:
+    - thunderid-try-consumer
+    - Launch the Wayfinder B2C consumer login demo
+    - Try ThunderID, see a sample app
+  - cells:
+    - thunderid-try-agentid
+    - Launch the AgentID AI agent authentication demo
+    - Try AgentID, demo AI agent auth
+  - cells:
+    - thunderid-integrate-react
+    - '@thunderid/react'
+    - React apps
+  - cells:
+    - thunderid-integrate-nextjs
+    - '@thunderid/nextjs'
+    - Next.js apps
+  - cells:
+    - thunderid-integrate-vue
+    - '@thunderid/vue'
+    - Vue apps
+  - cells:
+    - thunderid-integrate-nuxt
+    - '@thunderid/nuxt'
+    - Nuxt apps
+  - cells:
+    - thunderid-integrate-express
+    - '@thunderid/express'
+    - Express apps
+  - cells:
+    - thunderid-integrate-nodejs
+    - '@thunderid/node'
+    - Node.js servers
+  - cells:
+    - thunderid-integrate-browser
+    - '@thunderid/browser'
+    - Vanilla JavaScript apps
+  - cells:
+    - thunderid-integrate-ios
+    - ThunderID iOS SDK
+    - iOS (SwiftUI) apps
+  - cells:
+    - thunderid-integrate-android
+    - ThunderID Android SDK
+    - Android (Compose) apps
+  - cells:
+    - thunderid-integrate-flutter
+    - thunderid_flutter
+    - Flutter apps
+rail:
+  statsTitle: Bundle
+  stats:
+  - label: Marketplace
+    value: thunderid-skills
+  - label: Plugin
+    value: thunderid-skills
+  - label: Skills
+    value: '13'
+  - label: Licence
+    value: Apache 2.0
+  relatedTitle: Related agent tooling
+  related:
+  - claude-plugin
+  - agent-skills

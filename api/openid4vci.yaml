@@ -1,0 +1,248 @@
+openapi: 3.0.3
+info:
+  title: OpenID4VCI Credential Configuration Management API
+  version: "1.0"
+  description: Manage credential configurations used by the OpenID4VCI issuer.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host: {default: localhost}
+      port: {default: "8090"}
+security:
+  - OAuth2: [system]
+tags:
+  - name: Credential Configurations
+    description: Create and manage OpenID4VCI credential configurations.
+paths:
+  /openid4vci/credential-configurations:
+    get:
+      tags: [Credential Configurations]
+      summary: List credential configurations
+      description: Returns credential configuration summaries with resolved organization-unit handles.
+      operationId: listCredentialConfigurations
+      responses:
+        "200":
+          description: Credential configuration summaries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VCICredentialConfigurationList'
+        "400": {$ref: '#/components/responses/VCIInvalidRequest'}
+        "401": {$ref: '#/components/responses/VCIUnauthorized'}
+        "403": {$ref: '#/components/responses/VCIForbidden'}
+        "500": {$ref: '#/components/responses/VCIInternalServerError'}
+    post:
+      tags: [Credential Configurations]
+      summary: Create credential configuration
+      description: Creates a credential configuration for the supplied organization unit.
+      operationId: createCredentialConfiguration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/VCICredentialConfigurationRequest'}
+            example:
+              handle: example-pid
+              ouId: 01900000-0000-7000-8000-000000000001
+              vct: urn:example:pid:1
+              claims:
+                - name: given_name
+                  displayName: Given name
+      responses:
+        "201":
+          description: Credential configuration created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VCICredentialConfiguration'}
+        "400": {$ref: '#/components/responses/VCIInvalidRequest'}
+        "401": {$ref: '#/components/responses/VCIUnauthorized'}
+        "403": {$ref: '#/components/responses/VCIForbidden'}
+        "409": {$ref: '#/components/responses/VCIAlreadyExists'}
+        "500": {$ref: '#/components/responses/VCIInternalServerError'}
+  /openid4vci/credential-configurations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/VCIConfigurationID'
+    get:
+      tags: [Credential Configurations]
+      summary: Get credential configuration
+      description: Returns a credential configuration by ID with its resolved organization-unit handle.
+      operationId: getCredentialConfiguration
+      responses:
+        "200":
+          description: Credential configuration
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VCICredentialConfiguration'}
+        "400": {$ref: '#/components/responses/VCIInvalidRequest'}
+        "401": {$ref: '#/components/responses/VCIUnauthorized'}
+        "403": {$ref: '#/components/responses/VCIForbidden'}
+        "404": {$ref: '#/components/responses/VCINotFound'}
+        "500": {$ref: '#/components/responses/VCIInternalServerError'}
+    put:
+      tags: [Credential Configurations]
+      summary: Update credential configuration
+      description: Replaces a credential configuration by ID.
+      operationId: updateCredentialConfiguration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/VCICredentialConfigurationRequest'}
+      responses:
+        "200":
+          description: Credential configuration updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VCICredentialConfiguration'}
+        "400": {$ref: '#/components/responses/VCIInvalidRequest'}
+        "401": {$ref: '#/components/responses/VCIUnauthorized'}
+        "403": {$ref: '#/components/responses/VCIForbidden'}
+        "404": {$ref: '#/components/responses/VCINotFound'}
+        "409": {$ref: '#/components/responses/VCIUpdateConflict'}
+        "500": {$ref: '#/components/responses/VCIInternalServerError'}
+    delete:
+      tags: [Credential Configurations]
+      summary: Delete credential configuration
+      description: Deletes a credential configuration by ID. Deleting an absent configuration succeeds.
+      operationId: deleteCredentialConfiguration
+      responses:
+        "204": {description: Credential configuration deleted}
+        "400": {$ref: '#/components/responses/VCIInvalidRequest'}
+        "401": {$ref: '#/components/responses/VCIUnauthorized'}
+        "403": {$ref: '#/components/responses/VCIForbidden'}
+        "409": {$ref: '#/components/responses/VCIImmutable'}
+        "500": {$ref: '#/components/responses/VCIInternalServerError'}
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://localhost:8090/oauth2/authorize
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+        clientCredentials:
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+  parameters:
+    VCIConfigurationID:
+      name: id
+      in: path
+      required: true
+      description: Credential configuration ID.
+      schema: {type: string}
+  responses:
+    VCIUnauthorized:
+      description: Authentication is required.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VCIError'}
+    VCIForbidden:
+      description: The authenticated principal lacks permission to access this management API.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VCIError'}
+    VCIInvalidRequest:
+      description: The request is malformed, omits a required field, uses an unsupported format, references an invalid organization unit, or contains invalid claims.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VCIError'}
+          example:
+            code: VCI-2001
+            message: {key: error.vci.configuration_invalid_request, defaultValue: Invalid request}
+            description: {key: error.vci.configuration_invalid_request_description, defaultValue: The credential configuration request is missing required fields or is malformed}
+    VCINotFound:
+      description: No credential configuration exists for the supplied ID.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VCIError'}
+          example:
+            code: VCI-2002
+            message: {key: error.vci.configuration_not_found, defaultValue: Credential configuration not found}
+            description: {key: error.vci.configuration_not_found_description, defaultValue: No credential configuration exists for the supplied identifier}
+    VCIAlreadyExists:
+      description: A credential configuration with the supplied handle already exists.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VCIError'}
+    VCIUpdateConflict:
+      description: The supplied handle already exists, or the configuration is declarative and cannot be changed.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VCIError'}
+    VCIImmutable:
+      description: The credential configuration is declarative and cannot be deleted through the management API.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VCIError'}
+    VCIInternalServerError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VCIError'}
+  schemas:
+    VCICredentialConfigurationRequest:
+      type: object
+      required: [handle, ouId, vct]
+      properties:
+        handle: {type: string, description: Unique credential configuration handle.}
+        ouId: {type: string, description: ID of the organization unit that owns this configuration.}
+        name: {type: string}
+        description: {type: string}
+        format: {type: string, enum: [dc+sd-jwt], default: dc+sd-jwt, description: Credential format.}
+        vct: {type: string, description: Verifiable credential type URI.}
+        claims:
+          type: array
+          items: {$ref: '#/components/schemas/VCIClaimMapping'}
+        display: {$ref: '#/components/schemas/VCICredentialDisplay'}
+        validitySeconds: {type: integer, minimum: 1}
+    VCICredentialConfiguration:
+      allOf:
+        - $ref: '#/components/schemas/VCICredentialConfigurationRequest'
+        - type: object
+          required: [id, format]
+          properties:
+            id: {type: string, description: Credential configuration ID.}
+            ouHandle: {type: string, readOnly: true, description: Resolved organization-unit handle returned for display.}
+    VCICredentialConfigurationList:
+      type: array
+      items:
+        type: object
+        required: [id, handle, ouId, format, vct]
+        properties:
+          id: {type: string}
+          handle: {type: string}
+          ouId: {type: string}
+          ouHandle: {type: string, readOnly: true}
+          format: {type: string}
+          vct: {type: string}
+          name: {type: string}
+    VCIClaimMapping:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string}
+        displayName: {type: string}
+    VCICredentialDisplay:
+      type: object
+      properties:
+        locale: {type: string}
+        logoUri: {type: string}
+    VCIError:
+      type: object
+      required: [code, message, description]
+      properties:
+        code: {type: string}
+        message: {$ref: '#/components/schemas/VCII18nMessage'}
+        description: {$ref: '#/components/schemas/VCII18nMessage'}
+    VCII18nMessage:
+      type: object
+      required: [key, defaultValue]
+      properties:
+        key: {type: string}
+        defaultValue: {type: string}

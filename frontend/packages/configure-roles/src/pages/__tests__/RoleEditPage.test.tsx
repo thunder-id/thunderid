@@ -223,7 +223,7 @@ describe('RoleEditPage', () => {
       render(<RoleEditPage />);
 
       expect(screen.getByText('Failed to load role')).toBeInTheDocument();
-      expect(screen.getByRole('button', {name: 'Back to Roles'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Back to roles'})).toBeInTheDocument();
     });
   });
 
@@ -357,7 +357,7 @@ describe('RoleEditPage', () => {
     });
   });
 
-  describe('Delete Flow', () => {
+  describe('Delete flow', () => {
     it('should open delete dialog when delete is triggered', async () => {
       const user = userEvent.setup();
       render(<RoleEditPage />);
@@ -386,7 +386,7 @@ describe('RoleEditPage', () => {
       await user.type(nameInput, 'New Name');
       await user.tab();
 
-      const saveButton = screen.getByRole('button', {name: 'Save Changes'});
+      const saveButton = screen.getByRole('button', {name: 'Save changes'});
       expect(saveButton).toBeDisabled();
     });
   });
@@ -402,7 +402,7 @@ describe('RoleEditPage', () => {
       await user.type(nameInput, 'Renamed Role');
       await user.tab();
 
-      expect(screen.getByRole('button', {name: 'Save Changes'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Save changes'})).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', {name: 'Edit role name'}));
       nameInput = screen.getByRole('textbox');
@@ -410,7 +410,7 @@ describe('RoleEditPage', () => {
       await user.type(nameInput, 'Admin Role');
       await user.tab();
 
-      expect(screen.queryByRole('button', {name: 'Save Changes'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Save changes'})).not.toBeInTheDocument();
     });
 
     it('discards a rename that exceeds the maximum length', async () => {
@@ -425,7 +425,7 @@ describe('RoleEditPage', () => {
       };
 
       await editName('a'.repeat(101));
-      expect(screen.queryByRole('button', {name: 'Save Changes'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Save changes'})).not.toBeInTheDocument();
 
       expect(screen.getByText('Admin Role')).toBeInTheDocument();
     });
@@ -471,7 +471,7 @@ describe('RoleEditPage', () => {
       await user.click(screen.getByTestId('permissions-change'));
 
       // Save bar should be visible
-      const saveButton = screen.getByRole('button', {name: 'Save Changes'});
+      const saveButton = screen.getByRole('button', {name: 'Save changes'});
       expect(saveButton).toBeInTheDocument();
 
       // Click Save
@@ -485,6 +485,7 @@ describe('RoleEditPage', () => {
           ouId: 'ou-1',
           permissions: [{resourceServerId: 'rs-1', permissions: ['a', 'b']}],
         }) as UpdateRoleRequest,
+        current: mockRole,
       });
     });
 
@@ -498,11 +499,11 @@ describe('RoleEditPage', () => {
 
       // Change permissions → save bar appears
       await user.click(screen.getByTestId('permissions-change'));
-      expect(screen.getByRole('button', {name: 'Save Changes'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Save changes'})).toBeInTheDocument();
 
       // Restore to original (order-insensitively equal) → save bar hides
       await user.click(screen.getByTestId('permissions-restore'));
-      expect(screen.queryByRole('button', {name: 'Save Changes'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Save changes'})).not.toBeInTheDocument();
     });
 
     it('reset discards staged permission changes', async () => {

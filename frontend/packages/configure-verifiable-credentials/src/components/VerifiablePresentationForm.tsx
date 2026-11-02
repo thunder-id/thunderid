@@ -40,7 +40,12 @@ import {
 import {useTranslation} from 'react-i18next';
 import ClaimsEditor from './PresentationClaimsEditor';
 import useGetTrustAnchors from '../api/useGetTrustAnchors';
-import {claimRowsToRequest, definitionToClaimRows, type ClaimRow} from '../models/presentation-claims';
+import {
+  claimRowsToRequest,
+  definitionToClaimRows,
+  findDuplicateClaimNames,
+  type ClaimRow,
+} from '../models/presentation-claims';
 import type {CreateVerifiablePresentationRequest} from '../models/presentation-requests';
 import type {TrustAnchor, VerifiablePresentation} from '../models/vp';
 
@@ -144,7 +149,10 @@ export default function VerifiablePresentationForm({
   // In a single-OU deployment the sole OU is used implicitly; otherwise the picker drives ouId.
   const effectiveOuId = ouId !== '' ? ouId : !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
 
-  const valid = handle.trim() !== '' && vct.trim() !== '' && effectiveOuId !== '';
+  const duplicateClaimNames = findDuplicateClaimNames(claims);
+
+  const valid =
+    handle.trim() !== '' && vct.trim() !== '' && effectiveOuId !== '' && Object.keys(duplicateClaimNames).length === 0;
 
   const snapshot = (
     h: string,
@@ -434,6 +442,7 @@ export default function VerifiablePresentationForm({
 
       <TabPanel value={tab} index={2}>
         <ClaimsEditor
+          duplicateNames={duplicateClaimNames}
           claims={claims}
           onChange={(rows: ClaimRow[]): void => {
             onErrorClear?.();

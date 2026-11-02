@@ -31,10 +31,10 @@ func (suite *CompositeThemeStoreTestSuite) SetupTest() {
 
 // Test GetThemeListCount - Adds counts from both stores
 func (suite *CompositeThemeStoreTestSuite) TestGetThemeListCount_AddsCounts() {
-	suite.mockDBStore.On("GetThemeListCount").Return(2, nil)
-	suite.mockFileStore.On("GetThemeListCount").Return(3, nil)
+	suite.mockDBStore.On("GetThemeListCount", testCtx()).Return(2, nil)
+	suite.mockFileStore.On("GetThemeListCount", testCtx()).Return(3, nil)
 
-	count, err := suite.store.GetThemeListCount()
+	count, err := suite.store.GetThemeListCount(testCtx())
 
 	suite.NoError(err)
 	suite.Equal(5, count) // 2 + 3 = 5 (no deduplication in count)
@@ -43,9 +43,9 @@ func (suite *CompositeThemeStoreTestSuite) TestGetThemeListCount_AddsCounts() {
 // Test GetThemeListCount - DB store error
 func (suite *CompositeThemeStoreTestSuite) TestGetThemeListCount_DBStoreError() {
 	testErr := errors.New("db error")
-	suite.mockDBStore.On("GetThemeListCount").Return(0, testErr)
+	suite.mockDBStore.On("GetThemeListCount", testCtx()).Return(0, testErr)
 
-	_, err := suite.store.GetThemeListCount()
+	_, err := suite.store.GetThemeListCount(testCtx())
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -54,10 +54,10 @@ func (suite *CompositeThemeStoreTestSuite) TestGetThemeListCount_DBStoreError() 
 // Test GetThemeListCount - File store count error
 func (suite *CompositeThemeStoreTestSuite) TestGetThemeListCount_FileStoreCountError() {
 	testErr := errors.New("file store error")
-	suite.mockDBStore.On("GetThemeListCount").Return(2, nil)
-	suite.mockFileStore.On("GetThemeListCount").Return(0, testErr)
+	suite.mockDBStore.On("GetThemeListCount", testCtx()).Return(2, nil)
+	suite.mockFileStore.On("GetThemeListCount", testCtx()).Return(0, testErr)
 
-	_, err := suite.store.GetThemeListCount()
+	_, err := suite.store.GetThemeListCount(testCtx())
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -65,10 +65,10 @@ func (suite *CompositeThemeStoreTestSuite) TestGetThemeListCount_FileStoreCountE
 
 // Test GetThemeListCount - Empty stores
 func (suite *CompositeThemeStoreTestSuite) TestGetThemeListCount_EmptyStores() {
-	suite.mockDBStore.On("GetThemeListCount").Return(0, nil)
-	suite.mockFileStore.On("GetThemeListCount").Return(0, nil)
+	suite.mockDBStore.On("GetThemeListCount", testCtx()).Return(0, nil)
+	suite.mockFileStore.On("GetThemeListCount", testCtx()).Return(0, nil)
 
-	count, err := suite.store.GetThemeListCount()
+	count, err := suite.store.GetThemeListCount(testCtx())
 
 	suite.NoError(err)
 	suite.Equal(0, count)
@@ -79,12 +79,12 @@ func (suite *CompositeThemeStoreTestSuite) TestGetThemeList_Pagination() {
 	dbThemes := []Theme{{ID: "theme1"}, {ID: "theme2"}}
 	fileThemes := []Theme{{ID: "theme2"}, {ID: "theme3"}}
 
-	suite.mockDBStore.On("GetThemeListCount").Return(2, nil)
-	suite.mockFileStore.On("GetThemeListCount").Return(2, nil)
-	suite.mockDBStore.On("GetThemeList", 2, 0).Return(dbThemes, nil)
-	suite.mockFileStore.On("GetThemeList", 2, 0).Return(fileThemes, nil)
+	suite.mockDBStore.On("GetThemeListCount", testCtx()).Return(2, nil)
+	suite.mockFileStore.On("GetThemeListCount", testCtx()).Return(2, nil)
+	suite.mockDBStore.On("GetThemeList", testCtx(), 2, 0).Return(dbThemes, nil)
+	suite.mockFileStore.On("GetThemeList", testCtx(), 2, 0).Return(fileThemes, nil)
 
-	themes, err := suite.store.GetThemeList(2, 1)
+	themes, err := suite.store.GetThemeList(testCtx(), 2, 1)
 
 	suite.NoError(err)
 	suite.Len(themes, 2) // Should get 2 themes from offset 1
@@ -93,10 +93,10 @@ func (suite *CompositeThemeStoreTestSuite) TestGetThemeList_Pagination() {
 // Test GetThemeList - Returns limit exceeded error
 func (suite *CompositeThemeStoreTestSuite) TestGetThemeList_LimitExceeded() {
 	// Create more themes than the max composite store limit (1000)
-	suite.mockDBStore.On("GetThemeListCount").Return(1001, nil)
-	suite.mockFileStore.On("GetThemeListCount").Return(0, nil)
+	suite.mockDBStore.On("GetThemeListCount", testCtx()).Return(1001, nil)
+	suite.mockFileStore.On("GetThemeListCount", testCtx()).Return(0, nil)
 
-	_, err := suite.store.GetThemeList(100, 0)
+	_, err := suite.store.GetThemeList(testCtx(), 100, 0)
 
 	suite.Error(err)
 	suite.Equal(errResultLimitExceededInCompositeMode, err)
@@ -105,9 +105,9 @@ func (suite *CompositeThemeStoreTestSuite) TestGetThemeList_LimitExceeded() {
 // Test GetThemeList - DB store error
 func (suite *CompositeThemeStoreTestSuite) TestGetThemeList_DBStoreError() {
 	testErr := errors.New("db error")
-	suite.mockDBStore.On("GetThemeListCount").Return(0, testErr)
+	suite.mockDBStore.On("GetThemeListCount", testCtx()).Return(0, testErr)
 
-	_, err := suite.store.GetThemeList(10, 0)
+	_, err := suite.store.GetThemeList(testCtx(), 10, 0)
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -116,10 +116,10 @@ func (suite *CompositeThemeStoreTestSuite) TestGetThemeList_DBStoreError() {
 // Test GetThemeList - File store count error
 func (suite *CompositeThemeStoreTestSuite) TestGetThemeList_FileStoreCountError() {
 	testErr := errors.New("file store error")
-	suite.mockDBStore.On("GetThemeListCount").Return(2, nil)
-	suite.mockFileStore.On("GetThemeListCount").Return(0, testErr)
+	suite.mockDBStore.On("GetThemeListCount", testCtx()).Return(2, nil)
+	suite.mockFileStore.On("GetThemeListCount", testCtx()).Return(0, testErr)
 
-	_, err := suite.store.GetThemeList(10, 0)
+	_, err := suite.store.GetThemeList(testCtx(), 10, 0)
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -128,11 +128,11 @@ func (suite *CompositeThemeStoreTestSuite) TestGetThemeList_FileStoreCountError(
 // Test GetThemeList - DB themes list error
 func (suite *CompositeThemeStoreTestSuite) TestGetThemeList_DBThemesListError() {
 	testErr := errors.New("db list error")
-	suite.mockDBStore.On("GetThemeListCount").Return(2, nil)
-	suite.mockFileStore.On("GetThemeListCount").Return(2, nil)
-	suite.mockDBStore.On("GetThemeList", 2, 0).Return(nil, testErr)
+	suite.mockDBStore.On("GetThemeListCount", testCtx()).Return(2, nil)
+	suite.mockFileStore.On("GetThemeListCount", testCtx()).Return(2, nil)
+	suite.mockDBStore.On("GetThemeList", testCtx(), 2, 0).Return(nil, testErr)
 
-	_, err := suite.store.GetThemeList(10, 0)
+	_, err := suite.store.GetThemeList(testCtx(), 10, 0)
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -142,12 +142,12 @@ func (suite *CompositeThemeStoreTestSuite) TestGetThemeList_DBThemesListError() 
 func (suite *CompositeThemeStoreTestSuite) TestGetThemeList_FileThemesListError() {
 	testErr := errors.New("file list error")
 	dbThemes := []Theme{{ID: "theme1"}}
-	suite.mockDBStore.On("GetThemeListCount").Return(1, nil)
-	suite.mockFileStore.On("GetThemeListCount").Return(2, nil)
-	suite.mockDBStore.On("GetThemeList", 1, 0).Return(dbThemes, nil)
-	suite.mockFileStore.On("GetThemeList", 2, 0).Return(nil, testErr)
+	suite.mockDBStore.On("GetThemeListCount", testCtx()).Return(1, nil)
+	suite.mockFileStore.On("GetThemeListCount", testCtx()).Return(2, nil)
+	suite.mockDBStore.On("GetThemeList", testCtx(), 1, 0).Return(dbThemes, nil)
+	suite.mockFileStore.On("GetThemeList", testCtx(), 2, 0).Return(nil, testErr)
 
-	_, err := suite.store.GetThemeList(10, 0)
+	_, err := suite.store.GetThemeList(testCtx(), 10, 0)
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -160,9 +160,9 @@ func (suite *CompositeThemeStoreTestSuite) TestCreateTheme_Success() {
 		Description: "Test Description",
 		Theme:       json.RawMessage(`{"colors": {}}`),
 	}
-	suite.mockDBStore.On("CreateTheme", "theme1", createReq).Return(nil)
+	suite.mockDBStore.On("CreateTheme", testCtx(), "theme1", createReq).Return(nil)
 
-	err := suite.store.CreateTheme("theme1", createReq)
+	err := suite.store.CreateTheme(testCtx(), "theme1", createReq)
 
 	suite.NoError(err)
 	suite.mockDBStore.AssertExpectations(suite.T())
@@ -174,9 +174,9 @@ func (suite *CompositeThemeStoreTestSuite) TestCreateTheme_DBStoreError() {
 	createReq := CreateThemeRequest{
 		DisplayName: "Test Theme",
 	}
-	suite.mockDBStore.On("CreateTheme", "theme1", createReq).Return(testErr)
+	suite.mockDBStore.On("CreateTheme", testCtx(), "theme1", createReq).Return(testErr)
 
-	err := suite.store.CreateTheme("theme1", createReq)
+	err := suite.store.CreateTheme(testCtx(), "theme1", createReq)
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -185,9 +185,9 @@ func (suite *CompositeThemeStoreTestSuite) TestCreateTheme_DBStoreError() {
 // Test GetTheme - From DB store (DB takes precedence)
 func (suite *CompositeThemeStoreTestSuite) TestGetTheme_FromDBStore() {
 	expectedTheme := Theme{ID: "theme1", DisplayName: "DB Theme"}
-	suite.mockDBStore.On("GetTheme", "theme1").Return(expectedTheme, nil)
+	suite.mockDBStore.On("GetTheme", testCtx(), "theme1").Return(expectedTheme, nil)
 
-	theme, err := suite.store.GetTheme("theme1")
+	theme, err := suite.store.GetTheme(testCtx(), "theme1")
 
 	suite.NoError(err)
 	suite.Equal(expectedTheme.ID, theme.ID)
@@ -198,10 +198,10 @@ func (suite *CompositeThemeStoreTestSuite) TestGetTheme_FromDBStore() {
 // Test GetTheme - From file store (fallback when not in DB store)
 func (suite *CompositeThemeStoreTestSuite) TestGetTheme_FromFileStore() {
 	expectedTheme := Theme{ID: "theme1", DisplayName: "File Theme"}
-	suite.mockDBStore.On("GetTheme", "theme1").Return(Theme{}, errThemeNotFound)
-	suite.mockFileStore.On("GetTheme", "theme1").Return(expectedTheme, nil)
+	suite.mockDBStore.On("GetTheme", testCtx(), "theme1").Return(Theme{}, errThemeNotFound)
+	suite.mockFileStore.On("GetTheme", testCtx(), "theme1").Return(expectedTheme, nil)
 
-	theme, err := suite.store.GetTheme("theme1")
+	theme, err := suite.store.GetTheme(testCtx(), "theme1")
 
 	suite.NoError(err)
 	suite.Equal(expectedTheme.ID, theme.ID)
@@ -211,10 +211,10 @@ func (suite *CompositeThemeStoreTestSuite) TestGetTheme_FromFileStore() {
 
 // Test GetTheme - Not found in either store
 func (suite *CompositeThemeStoreTestSuite) TestGetTheme_NotFound() {
-	suite.mockFileStore.On("GetTheme", "theme1").Return(Theme{}, errThemeNotFound)
-	suite.mockDBStore.On("GetTheme", "theme1").Return(Theme{}, errThemeNotFound)
+	suite.mockFileStore.On("GetTheme", testCtx(), "theme1").Return(Theme{}, errThemeNotFound)
+	suite.mockDBStore.On("GetTheme", testCtx(), "theme1").Return(Theme{}, errThemeNotFound)
 
-	_, err := suite.store.GetTheme("theme1")
+	_, err := suite.store.GetTheme(testCtx(), "theme1")
 
 	suite.Error(err)
 	suite.Equal(errThemeNotFound, err)
@@ -222,9 +222,9 @@ func (suite *CompositeThemeStoreTestSuite) TestGetTheme_NotFound() {
 
 // Test IsThemeExist - Exists in DB store
 func (suite *CompositeThemeStoreTestSuite) TestIsThemeExist_InDBStore() {
-	suite.mockDBStore.On("IsThemeExist", "theme1").Return(true, nil)
+	suite.mockDBStore.On("IsThemeExist", testCtx(), "theme1").Return(true, nil)
 
-	exists, err := suite.store.IsThemeExist("theme1")
+	exists, err := suite.store.IsThemeExist(testCtx(), "theme1")
 
 	suite.NoError(err)
 	suite.True(exists)
@@ -232,10 +232,10 @@ func (suite *CompositeThemeStoreTestSuite) TestIsThemeExist_InDBStore() {
 
 // Test IsThemeExist - Exists in file store
 func (suite *CompositeThemeStoreTestSuite) TestIsThemeExist_InFileStore() {
-	suite.mockDBStore.On("IsThemeExist", "theme1").Return(false, nil)
-	suite.mockFileStore.On("IsThemeExist", "theme1").Return(true, nil)
+	suite.mockDBStore.On("IsThemeExist", testCtx(), "theme1").Return(false, nil)
+	suite.mockFileStore.On("IsThemeExist", testCtx(), "theme1").Return(true, nil)
 
-	exists, err := suite.store.IsThemeExist("theme1")
+	exists, err := suite.store.IsThemeExist(testCtx(), "theme1")
 
 	suite.NoError(err)
 	suite.True(exists)
@@ -243,10 +243,10 @@ func (suite *CompositeThemeStoreTestSuite) TestIsThemeExist_InFileStore() {
 
 // Test IsThemeExist - Not found
 func (suite *CompositeThemeStoreTestSuite) TestIsThemeExist_NotFound() {
-	suite.mockDBStore.On("IsThemeExist", "theme1").Return(false, nil)
-	suite.mockFileStore.On("IsThemeExist", "theme1").Return(false, nil)
+	suite.mockDBStore.On("IsThemeExist", testCtx(), "theme1").Return(false, nil)
+	suite.mockFileStore.On("IsThemeExist", testCtx(), "theme1").Return(false, nil)
 
-	exists, err := suite.store.IsThemeExist("theme1")
+	exists, err := suite.store.IsThemeExist(testCtx(), "theme1")
 
 	suite.NoError(err)
 	suite.False(exists)
@@ -255,9 +255,9 @@ func (suite *CompositeThemeStoreTestSuite) TestIsThemeExist_NotFound() {
 // Test IsThemeExist - DB store error
 func (suite *CompositeThemeStoreTestSuite) TestIsThemeExist_DBStoreError() {
 	testErr := errors.New("db error")
-	suite.mockDBStore.On("IsThemeExist", "theme1").Return(false, testErr)
+	suite.mockDBStore.On("IsThemeExist", testCtx(), "theme1").Return(false, testErr)
 
-	_, err := suite.store.IsThemeExist("theme1")
+	_, err := suite.store.IsThemeExist(testCtx(), "theme1")
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -268,10 +268,10 @@ func (suite *CompositeThemeStoreTestSuite) TestUpdateTheme_Success() {
 	updateReq := UpdateThemeRequest{
 		DisplayName: "Updated Theme",
 	}
-	suite.mockFileStore.On("IsThemeExist", "theme1").Return(false, nil)
-	suite.mockDBStore.On("UpdateTheme", "theme1", updateReq).Return(nil)
+	suite.mockFileStore.On("IsThemeExist", testCtx(), "theme1").Return(false, nil)
+	suite.mockDBStore.On("UpdateTheme", testCtx(), "theme1", updateReq).Return(nil)
 
-	err := suite.store.UpdateTheme("theme1", updateReq)
+	err := suite.store.UpdateTheme(testCtx(), "theme1", updateReq)
 
 	suite.NoError(err)
 }
@@ -281,9 +281,9 @@ func (suite *CompositeThemeStoreTestSuite) TestUpdateTheme_RejectsDeclarative() 
 	updateReq := UpdateThemeRequest{
 		DisplayName: "Updated Theme",
 	}
-	suite.mockFileStore.On("IsThemeExist", "theme1").Return(true, nil)
+	suite.mockFileStore.On("IsThemeExist", testCtx(), "theme1").Return(true, nil)
 
-	err := suite.store.UpdateTheme("theme1", updateReq)
+	err := suite.store.UpdateTheme(testCtx(), "theme1", updateReq)
 
 	suite.Error(err)
 	suite.Equal(errCannotUpdateDeclarativeTheme, err)
@@ -295,9 +295,9 @@ func (suite *CompositeThemeStoreTestSuite) TestUpdateTheme_FileStoreCheckError()
 	updateReq := UpdateThemeRequest{
 		DisplayName: "Updated Theme",
 	}
-	suite.mockFileStore.On("IsThemeExist", "theme1").Return(false, testErr)
+	suite.mockFileStore.On("IsThemeExist", testCtx(), "theme1").Return(false, testErr)
 
-	err := suite.store.UpdateTheme("theme1", updateReq)
+	err := suite.store.UpdateTheme(testCtx(), "theme1", updateReq)
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -305,19 +305,19 @@ func (suite *CompositeThemeStoreTestSuite) TestUpdateTheme_FileStoreCheckError()
 
 // Test DeleteTheme - Success (DB theme)
 func (suite *CompositeThemeStoreTestSuite) TestDeleteTheme_Success() {
-	suite.mockFileStore.On("IsThemeExist", "theme1").Return(false, nil)
-	suite.mockDBStore.On("DeleteTheme", "theme1").Return(nil)
+	suite.mockFileStore.On("IsThemeExist", testCtx(), "theme1").Return(false, nil)
+	suite.mockDBStore.On("DeleteTheme", testCtx(), "theme1").Return(nil)
 
-	err := suite.store.DeleteTheme("theme1")
+	err := suite.store.DeleteTheme(testCtx(), "theme1")
 
 	suite.NoError(err)
 }
 
 // Test DeleteTheme - Rejects declarative theme
 func (suite *CompositeThemeStoreTestSuite) TestDeleteTheme_RejectsDeclarative() {
-	suite.mockFileStore.On("IsThemeExist", "theme1").Return(true, nil)
+	suite.mockFileStore.On("IsThemeExist", testCtx(), "theme1").Return(true, nil)
 
-	err := suite.store.DeleteTheme("theme1")
+	err := suite.store.DeleteTheme(testCtx(), "theme1")
 
 	suite.Error(err)
 	suite.Equal(errCannotDeleteDeclarativeTheme, err)
@@ -326,9 +326,9 @@ func (suite *CompositeThemeStoreTestSuite) TestDeleteTheme_RejectsDeclarative() 
 // Test DeleteTheme - File store check error
 func (suite *CompositeThemeStoreTestSuite) TestDeleteTheme_FileStoreCheckError() {
 	testErr := errors.New("file store error")
-	suite.mockFileStore.On("IsThemeExist", "theme1").Return(false, testErr)
+	suite.mockFileStore.On("IsThemeExist", testCtx(), "theme1").Return(false, testErr)
 
-	err := suite.store.DeleteTheme("theme1")
+	err := suite.store.DeleteTheme(testCtx(), "theme1")
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -336,27 +336,27 @@ func (suite *CompositeThemeStoreTestSuite) TestDeleteTheme_FileStoreCheckError()
 
 // Test IsThemeDeclarative - True for file-based theme
 func (suite *CompositeThemeStoreTestSuite) TestIsThemeDeclarative_True() {
-	suite.mockFileStore.On("IsThemeExist", "theme1").Return(true, nil)
+	suite.mockFileStore.On("IsThemeExist", testCtx(), "theme1").Return(true, nil)
 
-	isDeclarative := suite.store.IsThemeDeclarative("theme1")
+	isDeclarative := suite.store.IsThemeDeclarative(testCtx(), "theme1")
 
 	suite.True(isDeclarative)
 }
 
 // Test IsThemeDeclarative - False for DB theme
 func (suite *CompositeThemeStoreTestSuite) TestIsThemeDeclarative_False() {
-	suite.mockFileStore.On("IsThemeExist", "theme1").Return(false, nil)
+	suite.mockFileStore.On("IsThemeExist", testCtx(), "theme1").Return(false, nil)
 
-	isDeclarative := suite.store.IsThemeDeclarative("theme1")
+	isDeclarative := suite.store.IsThemeDeclarative(testCtx(), "theme1")
 
 	suite.False(isDeclarative)
 }
 
 // Test IsThemeDeclarative - False on error
 func (suite *CompositeThemeStoreTestSuite) TestIsThemeDeclarative_Error() {
-	suite.mockFileStore.On("IsThemeExist", "theme1").Return(false, errors.New("error"))
+	suite.mockFileStore.On("IsThemeExist", testCtx(), "theme1").Return(false, errors.New("error"))
 
-	isDeclarative := suite.store.IsThemeDeclarative("theme1")
+	isDeclarative := suite.store.IsThemeDeclarative(testCtx(), "theme1")
 
 	suite.False(isDeclarative)
 }
@@ -390,9 +390,9 @@ func (suite *CompositeThemeStoreTestSuite) TestMergeAndDeduplicateThemes_EmptySt
 
 // Test IsThemeHandleConflict - Conflict in file store (returns early)
 func (suite *CompositeThemeStoreTestSuite) TestIsThemeHandleConflict_ConflictInFileStore() {
-	suite.mockFileStore.On("IsThemeHandleConflict", "classic", "").Return(true, nil)
+	suite.mockFileStore.On("IsThemeHandleConflict", testCtx(), "classic", "").Return(true, nil)
 
-	conflict, err := suite.store.IsThemeHandleConflict("classic", "")
+	conflict, err := suite.store.IsThemeHandleConflict(testCtx(), "classic", "")
 
 	suite.NoError(err)
 	suite.True(conflict)
@@ -400,10 +400,10 @@ func (suite *CompositeThemeStoreTestSuite) TestIsThemeHandleConflict_ConflictInF
 
 // Test IsThemeHandleConflict - No conflict in file, conflict in DB store
 func (suite *CompositeThemeStoreTestSuite) TestIsThemeHandleConflict_ConflictInDBStore() {
-	suite.mockFileStore.On("IsThemeHandleConflict", "classic", "theme1").Return(false, nil)
-	suite.mockDBStore.On("IsThemeHandleConflict", "classic", "theme1").Return(true, nil)
+	suite.mockFileStore.On("IsThemeHandleConflict", testCtx(), "classic", "theme1").Return(false, nil)
+	suite.mockDBStore.On("IsThemeHandleConflict", testCtx(), "classic", "theme1").Return(true, nil)
 
-	conflict, err := suite.store.IsThemeHandleConflict("classic", "theme1")
+	conflict, err := suite.store.IsThemeHandleConflict(testCtx(), "classic", "theme1")
 
 	suite.NoError(err)
 	suite.True(conflict)
@@ -411,10 +411,10 @@ func (suite *CompositeThemeStoreTestSuite) TestIsThemeHandleConflict_ConflictInD
 
 // Test IsThemeHandleConflict - No conflict in either store
 func (suite *CompositeThemeStoreTestSuite) TestIsThemeHandleConflict_NoConflict() {
-	suite.mockFileStore.On("IsThemeHandleConflict", "unique-handle", "theme1").Return(false, nil)
-	suite.mockDBStore.On("IsThemeHandleConflict", "unique-handle", "theme1").Return(false, nil)
+	suite.mockFileStore.On("IsThemeHandleConflict", testCtx(), "unique-handle", "theme1").Return(false, nil)
+	suite.mockDBStore.On("IsThemeHandleConflict", testCtx(), "unique-handle", "theme1").Return(false, nil)
 
-	conflict, err := suite.store.IsThemeHandleConflict("unique-handle", "theme1")
+	conflict, err := suite.store.IsThemeHandleConflict(testCtx(), "unique-handle", "theme1")
 
 	suite.NoError(err)
 	suite.False(conflict)
@@ -423,9 +423,9 @@ func (suite *CompositeThemeStoreTestSuite) TestIsThemeHandleConflict_NoConflict(
 // Test IsThemeHandleConflict - File store error
 func (suite *CompositeThemeStoreTestSuite) TestIsThemeHandleConflict_FileStoreError() {
 	testErr := errors.New("file store error")
-	suite.mockFileStore.On("IsThemeHandleConflict", "classic", "").Return(false, testErr)
+	suite.mockFileStore.On("IsThemeHandleConflict", testCtx(), "classic", "").Return(false, testErr)
 
-	conflict, err := suite.store.IsThemeHandleConflict("classic", "")
+	conflict, err := suite.store.IsThemeHandleConflict(testCtx(), "classic", "")
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -435,10 +435,10 @@ func (suite *CompositeThemeStoreTestSuite) TestIsThemeHandleConflict_FileStoreEr
 // Test IsThemeHandleConflict - DB store error
 func (suite *CompositeThemeStoreTestSuite) TestIsThemeHandleConflict_DBStoreError() {
 	testErr := errors.New("db store error")
-	suite.mockFileStore.On("IsThemeHandleConflict", "classic", "theme1").Return(false, nil)
-	suite.mockDBStore.On("IsThemeHandleConflict", "classic", "theme1").Return(false, testErr)
+	suite.mockFileStore.On("IsThemeHandleConflict", testCtx(), "classic", "theme1").Return(false, nil)
+	suite.mockDBStore.On("IsThemeHandleConflict", testCtx(), "classic", "theme1").Return(false, testErr)
 
-	conflict, err := suite.store.IsThemeHandleConflict("classic", "theme1")
+	conflict, err := suite.store.IsThemeHandleConflict(testCtx(), "classic", "theme1")
 
 	suite.Error(err)
 	suite.Equal(testErr, err)

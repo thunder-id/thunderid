@@ -26,19 +26,7 @@ Key differences from the redirect config:
 
 ### SMTP (for Password Recovery)
 
-Update `deployment.yaml` to deliver recovery emails to the sample inbox:
-
-```yaml
-email:
-  smtp:
-    host: "127.0.0.1"
-    port: 2525
-    username: "dev"
-    password: "dev"
-    from_address: "noreply@thunderid.dev"
-    enable_start_tls: false
-    enable_authentication: true
-```
+The bundle imports a `Wayfinder Mock SMTP` email provider connection pointed at the sample inbox (`127.0.0.1:2525`) and selects it on every email step, so no SMTP configuration is needed.
 
 ## Configure the Frontend
 

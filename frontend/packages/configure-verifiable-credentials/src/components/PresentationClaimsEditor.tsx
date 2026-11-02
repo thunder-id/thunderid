@@ -25,6 +25,8 @@ import {emptyClaimRow, type ClaimRequirement, type ClaimRow} from '../models/pre
 export interface ClaimsEditorProps {
   claims: ClaimRow[];
   onChange: (claims: ClaimRow[]) => void;
+  /** Rows whose claim name repeats an earlier row, keyed by row id. */
+  duplicateNames?: Record<string, true>;
 }
 
 /**
@@ -32,7 +34,7 @@ export interface ClaimsEditorProps {
  * (mandatory/optional), an optional value constraint, and a subject-derivation
  * toggle — instead of separate comma lists for each.
  */
-export default function ClaimsEditor({claims, onChange}: ClaimsEditorProps): JSX.Element {
+export default function ClaimsEditor({claims, onChange, duplicateNames = {}}: ClaimsEditorProps): JSX.Element {
   const {t} = useTranslation('verifiable-presentations');
   const [valueInput, setValueInput] = useState<Record<string, string>>({});
 
@@ -93,6 +95,8 @@ export default function ClaimsEditor({claims, onChange}: ClaimsEditorProps): JSX
                 size="small"
                 value={claim.name}
                 placeholder="given_name"
+                error={duplicateNames[claim.id] === true}
+                helperText={duplicateNames[claim.id] ? t('claims.errors.duplicate') : undefined}
                 onChange={(e): void => update(claim.id, {name: e.target.value})}
               />
             </FormControl>

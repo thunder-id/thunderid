@@ -72,7 +72,7 @@ function SignUpPage() {
         },
         body: JSON.stringify({
           ouId: organizationUnitId,
-          type: "Customer",
+          type: "customer",
           attributes: {
             username: formData.username,
             given_name: formData.given_name,

@@ -90,7 +90,7 @@ function makeBuilderState(overrides: Partial<BuilderState> = {}): BuilderState {
   return {
     layoutId: 'layout-1',
     handle: 'split-screen',
-    displayName: 'Split Screen',
+    displayName: 'Split screen',
     draftLayout: {screens: {auth: {}}},
     updateDraftLayout: vi.fn(),
     selectedScreen: null,
@@ -114,11 +114,11 @@ describe('LayoutBuilderPage', () => {
     mockUseGetTheme.mockReturnValue({data: undefined});
   });
 
-  it('navigates back to the design list when "Back to Design" is clicked', async () => {
+  it('navigates back to the design list when "Back to design" is clicked', async () => {
     const user = userEvent.setup();
     render(<LayoutBuilderPage />);
 
-    await user.click(screen.getByRole('button', {name: 'Back to Design'}));
+    await user.click(screen.getByRole('button', {name: 'Back to design'}));
 
     expect(mockNavigate).toHaveBeenCalledWith('/design');
   });

@@ -8,8 +8,7 @@
  * Basic single-factor login/logout tests for the sample app (no MFA).
  *
  * Test Cases:
- * - TC001: Complete login flow with valid username/password
- * - TC002: Logout after a successful login
+ * - TC001: Complete login flow with valid username/password, then logout
  *
  * Prerequisites (automatically handled):
  * - Sample app running at SAMPLE_APP_URL
@@ -59,59 +58,44 @@ describeOrSkip("Sample App - Login and Logout", { tag: [TestTags.AUTHENTICATION]
     console.log("===============================\n");
   });
 
-  test("TC001: Complete login flow with valid username/password", async ({ sampleAppLoginPage }) => {
-    console.log("\n--- TC001: Basic Login ---");
+  test("TC001: Complete login flow with valid username/password, then logout", async ({ sampleAppLoginPage }) => {
+    console.log("\n--- TC001: Login and Logout ---");
 
-    console.log("Step 1: Navigating to sample app...");
-    await sampleAppLoginPage.goto(sampleAppUrl!);
-    await sampleAppLoginPage.verifyHomePageLoaded();
-    console.log("✓ Sample app home page loaded");
+    await test.step("Log in with valid username/password", async () => {
+      console.log("Step 1: Navigating to sample app...");
+      await sampleAppLoginPage.goto(sampleAppUrl!);
+      await sampleAppLoginPage.verifyHomePageLoaded();
+      console.log("✓ Sample app home page loaded");
 
-    console.log("Step 2: Clicking Sign In button...");
-    await sampleAppLoginPage.clickSignInButton();
-    await sampleAppLoginPage.verifyLoginPageLoaded();
-    console.log("✓ Login page displayed");
+      console.log("Step 2: Clicking Sign In button...");
+      await sampleAppLoginPage.clickSignInButton();
+      await sampleAppLoginPage.verifyLoginPageLoaded();
+      console.log("✓ Login page displayed");
 
-    console.log("Step 3: Entering credentials...");
-    await sampleAppLoginPage.fillLoginForm(testUser.username, testUser.password);
-    console.log(`  Username: ${testUser.username}`);
-    console.log("  Password: ********");
+      console.log("Step 3: Entering credentials...");
+      await sampleAppLoginPage.fillLoginForm(testUser.username, testUser.password);
+      console.log(`  Username: ${testUser.username}`);
+      console.log("  Password: ********");
 
-    console.log("Step 4: Submitting login form...");
-    await sampleAppLoginPage.clickLogin();
-    console.log("✓ Login form submitted");
+      console.log("Step 4: Submitting login form...");
+      await sampleAppLoginPage.clickLogin();
+      console.log("✓ Login form submitted");
 
-    console.log("Step 5: Verifying successful login...");
-    await sampleAppLoginPage.verifyLoggedIn();
-    console.log("✓ Login successful");
+      console.log("Step 5: Verifying successful login...");
+      await sampleAppLoginPage.verifyLoggedIn();
+      console.log("✓ Login successful");
+    });
+
+    await test.step("Log out", async () => {
+      console.log("Step 6: Logging out...");
+      await sampleAppLoginPage.logout();
+      console.log("✓ Logout submitted");
+
+      console.log("Step 7: Verifying logout...");
+      await sampleAppLoginPage.verifyLoggedOut();
+      console.log("✓ Logged out - login page displayed again");
+    });
 
     console.log("\n--- TC001 Completed Successfully ---\n");
-  });
-
-  test("TC002: Logout after a successful login", async ({ sampleAppLoginPage }) => {
-    console.log("\n--- TC002: Logout ---");
-
-    console.log("Step 1: Navigating to sample app...");
-    await sampleAppLoginPage.goto(sampleAppUrl!);
-    await sampleAppLoginPage.verifyHomePageLoaded();
-    console.log("✓ Sample app home page loaded");
-
-    console.log("Step 2: Logging in...");
-    await sampleAppLoginPage.clickSignInButton();
-    await sampleAppLoginPage.verifyLoginPageLoaded();
-    await sampleAppLoginPage.fillLoginForm(testUser.username, testUser.password);
-    await sampleAppLoginPage.clickLogin();
-    await sampleAppLoginPage.verifyLoggedIn();
-    console.log("✓ Logged in");
-
-    console.log("Step 3: Logging out...");
-    await sampleAppLoginPage.logout();
-    console.log("✓ Logout submitted");
-
-    console.log("Step 4: Verifying logout...");
-    await sampleAppLoginPage.verifyLoggedOut();
-    console.log("✓ Logged out - login page displayed again");
-
-    console.log("\n--- TC002 Completed Successfully ---\n");
   });
 });

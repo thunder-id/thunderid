@@ -17,10 +17,19 @@ func NewServerConfigReaderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ServerConfigReaderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ServerConfigReaderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type ServerConfigReaderMock_GetReadOnlyConfig_Call struct {
 // GetReadOnlyConfig is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *ServerConfigReaderMock_Expecter) GetReadOnlyConfig(ctx interface{}, name interface{}) *ServerConfigReaderMock_GetReadOnlyConfig_Call {
+func (_e *ServerConfigReaderMock_Expecter) GetReadOnlyConfig(ctx any, name any) *ServerConfigReaderMock_GetReadOnlyConfig_Call {
 	return &ServerConfigReaderMock_GetReadOnlyConfig_Call{Call: _e.mock.On("GetReadOnlyConfig", ctx, name)}
 }
 
@@ -98,8 +107,8 @@ func (_c *ServerConfigReaderMock_GetReadOnlyConfig_Call) Run(run func(ctx contex
 	return _c
 }
 
-func (_c *ServerConfigReaderMock_GetReadOnlyConfig_Call) Return(v any, serviceError *common.ServiceError) *ServerConfigReaderMock_GetReadOnlyConfig_Call {
-	_c.Call.Return(v, serviceError)
+func (_c *ServerConfigReaderMock_GetReadOnlyConfig_Call) Return(anyMoqParam any, serviceError *common.ServiceError) *ServerConfigReaderMock_GetReadOnlyConfig_Call {
+	_c.Call.Return(anyMoqParam, serviceError)
 	return _c
 }
 
@@ -146,7 +155,7 @@ type ServerConfigReaderMock_GetWritableConfig_Call struct {
 // GetWritableConfig is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *ServerConfigReaderMock_Expecter) GetWritableConfig(ctx interface{}, name interface{}) *ServerConfigReaderMock_GetWritableConfig_Call {
+func (_e *ServerConfigReaderMock_Expecter) GetWritableConfig(ctx any, name any) *ServerConfigReaderMock_GetWritableConfig_Call {
 	return &ServerConfigReaderMock_GetWritableConfig_Call{Call: _e.mock.On("GetWritableConfig", ctx, name)}
 }
 
@@ -168,8 +177,8 @@ func (_c *ServerConfigReaderMock_GetWritableConfig_Call) Run(run func(ctx contex
 	return _c
 }
 
-func (_c *ServerConfigReaderMock_GetWritableConfig_Call) Return(v any, serviceError *common.ServiceError) *ServerConfigReaderMock_GetWritableConfig_Call {
-	_c.Call.Return(v, serviceError)
+func (_c *ServerConfigReaderMock_GetWritableConfig_Call) Return(anyMoqParam any, serviceError *common.ServiceError) *ServerConfigReaderMock_GetWritableConfig_Call {
+	_c.Call.Return(anyMoqParam, serviceError)
 	return _c
 }
 

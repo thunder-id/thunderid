@@ -1,0 +1,100 @@
+---
+title: Enable Dynamic Client Registration
+docType: guide
+persona: iam
+sidebar_position: 3
+description: Enable Dynamic Client Registration so MCP clients register themselves with {{ProductName}} instead of you pre-registering them in the Console.
+---
+
+# Enable Dynamic Client Registration
+
+Enable Dynamic Client Registration (DCR) so an MCP client registers its own OAuth 2.1 client at connection time, instead of you creating an application for it in the Console first.
+
+:::note
+The MCP specification's current revision [deprecates Dynamic Client Registration](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/client-registration) in favor of Client ID Metadata Documents, keeping DCR only for backward compatibility with authorization servers that do not support them. <ProductName /> supports Dynamic Client Registration today.
+:::
+
+## When DCR Is the Right Choice
+
+Pre-registering a client in the Console, covered in [Register an MCP Client in the Console](../register-a-client), works when you know the client and its redirect URI ahead of time. DCR is the better fit when:
+
+- You cannot enumerate the clients ahead of time, such as a self-hosted MCP client your users install individually.
+- The client picks a random callback port each time it starts, so there is no fixed redirect URI to register.
+- The client expects DCR as part of connecting, with no manual setup step. Claude Code is the canonical example: it registers itself automatically the first time it connects to an MCP server, with no application created for it beforehand.
+
+<Stepper stepNode="h2" as="h2">
+
+## Add the DCR Configuration
+
+Add the following to `deployment.yaml` in your <ProductName /> distribution:
+
+```yaml
+oauth:
+  dcr:
+    enabled: true
+    insecure: true
+```
+
+:::warning
+`insecure: true` lets anyone who can reach the server register OAuth clients without authentication. Use it for local development only.
+
+Without `insecure: true`, <ProductName /> requires the registration request to carry a valid access token whose permissions include the root `system` permission, the same requirement other <ProductName /> management APIs enforce. A request without one gets a `401`.
+:::
+
+## Restart <ProductName />
+
+Restart <ProductName /> for the configuration change to take effect.
+
+</Stepper>
+
+## Verifying DCR Is Live
+
+Confirm DCR accepts registrations by registering a throwaway public client directly:
+
+```bash
+curl -sk -i -X POST https://localhost:8090/oauth2/dcr/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "client_name": "dcr-probe",
+    "redirect_uris": ["http://localhost:52344/callback"],
+    "grant_types": ["authorization_code"],
+    "response_types": ["code"],
+    "token_endpoint_auth_method": "none"
+  }'
+```
+
+```text
+HTTP/1.1 201 Created
+
+{
+  "app_id": "019fa36e-6b16-7908-9bc9-d848c00db406",
+  "client_id": "ZjWMmW04V6ZCl1xKR70FuQ",
+  "client_name": "dcr-probe",
+  "client_secret_expires_at": 0,
+  "grant_types": ["authorization_code"],
+  "redirect_uris": ["http://localhost:52344/callback"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}
+```
+
+A `201` response with a `client_id` and no `client_secret` confirms DCR accepted the registration, since `token_endpoint_auth_method: none` registers a public client. Before you set `insecure: true`, the same request returns `401 unauthorized_client` instead.
+
+## Where DCR-Registered Clients Show Up
+
+A client registered through DCR appears in the Console under **Applications**, alongside applications you registered manually. <ProductName /> has no concept of an MCP client in the DCR request itself, so it registers every DCR client as a **Custom App**, regardless of what kind of client sent the request.
+
+## Gotchas and Lifecycle
+
+**Duplicate names return a 400.** Registering a client whose `client_name` matches an existing application returns a `400` error. Delete the existing application in the Console before repeating the same registration, such as when you are testing a client's DCR flow repeatedly.
+
+**Redirect URIs still match exactly.** DCR removes the need to pre-register a client, not the redirect URI rule itself. If your client is user-delegated, its registered redirect URI must still exactly match, port included, the one it presents when it starts the Authorization Code flow. See [Redirect URI Rules](../register-a-client#redirect-uri-rules) for the accepted formats.
+
+**DCR-created clients accumulate.** Every successful registration creates a new application that <ProductName /> never removes on its own. A client that re-registers on each run under a different name, or a client tested repeatedly during development, leaves behind applications you no longer need. Review them periodically under **Applications** and delete the ones you no longer use, the same way you would delete any other application.
+
+## Next Steps
+
+- [Dynamic Client Registration](../../../protocols/oauth-oidc/dynamic-client-registration): The protocol-level reference for the DCR endpoint, request fields, and response shape.
+- [Register an MCP Client in the Console](../register-a-client): Pre-register a client instead, when you know its redirect URI ahead of time.
+- [Secure Your MCP Server](../../mcp-server/secure-your-mcp-server): Protect the MCP server these clients connect to.
+- [Connect a Python MCP Server](../../../../getting-started/connect-your-mcp/python): A runnable quickstart that connects Claude Code through DCR, end to end.

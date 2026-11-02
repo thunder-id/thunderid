@@ -65,7 +65,7 @@ func (s *GenericFileBasedStore) GetByField(
 		}
 	}
 
-	return nil, errors.New("entity not found")
+	return nil, entity.ErrEntityNotFound
 }
 
 // List retrieves all entities of this type.

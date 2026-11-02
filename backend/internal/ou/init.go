@@ -26,10 +26,11 @@ func Initialize(
 	mcpServer *mcp.Server,
 	cacheManager cache.CacheManagerInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
-) (ConfigurableOUService, sysauthz.OUHierarchyResolver, declarativeresource.ResourceExporter, error) {
+) (ConfigurableOUService, sysauthz.OUHierarchyResolver, HierarchyEnumeratorInterface,
+	declarativeresource.ResourceExporter, error) {
 	ouStore, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	ouService := newOrganizationUnitService(authzService, ouStore, transactioner)
@@ -45,9 +46,13 @@ func Initialize(
 	// the authz service can traverse the OU tree without recursive authorization calls.
 	hierarchyResolver := newOUHierarchyAdapter(ouStore)
 
+	// Downward traversal is a separate capability: it answers which units a change reaches, which
+	// is not an access decision and so does not belong on the resolver above.
+	hierarchyEnumerator := newOUHierarchyEnumerator(ouStore)
+
 	// Create and return exporter
 	exporter := newOUExporter(ouService)
-	return ouService, hierarchyResolver, exporter, nil
+	return ouService, hierarchyResolver, hierarchyEnumerator, exporter, nil
 }
 
 // Store Selection (based on organization_unit.store configuration):
@@ -119,8 +124,8 @@ func wrapWithCache(
 	if cacheManager == nil {
 		return store
 	}
-	ouByIDCache := cache.GetCache[*providers.OrganizationUnit](cacheManager, "OUByIDCache")
-	ouByHandleParentCache := cache.GetCache[*providers.OrganizationUnit](cacheManager, "OUByHandleParentCache")
+	ouByIDCache := cache.GetCache[*OrganizationUnit](cacheManager, "OUByIDCache")
+	ouByHandleParentCache := cache.GetCache[*OrganizationUnit](cacheManager, "OUByHandleParentCache")
 	return newCacheBackedOUStore(store, ouByIDCache, ouByHandleParentCache)
 }
 

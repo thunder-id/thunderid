@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package config provides structures and functions for loading and managing server configurations.
@@ -7,6 +7,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
@@ -94,7 +96,18 @@ type DatabaseConfig struct {
 
 // NotificationConfig holds the notification configuration details.
 type NotificationConfig struct {
-	OTP OTPConfig `yaml:"otp" json:"otp"`
+	OTP      OTPConfig                  `yaml:"otp"      json:"otp"`
+	Template NotificationTemplateConfig `yaml:"template" json:"template"`
+}
+
+// NotificationTemplateConfig holds the storage mode for notification templates.
+type NotificationTemplateConfig struct {
+	// Store defines the storage mode for notification templates.
+	// Valid values: "mutable", "declarative", "composite" (hybrid mode).
+	// If not specified, falls back to the global declarative_resources.enabled setting:
+	//   - enabled = true: behaves as "declarative"
+	//   - enabled = false: behaves as "mutable"
+	Store string `yaml:"store" json:"store"`
 }
 
 // Validate checks the notification configuration for correctness.
@@ -179,6 +192,16 @@ type UserConfig struct {
 // PasskeyConfig holds the passkey configuration details.
 type PasskeyConfig struct {
 	AllowedOrigins []string `yaml:"allowed_origins" json:"allowed_origins"`
+}
+
+// DirectAPIConfig holds the configuration for the Direct API endpoints.
+type DirectAPIConfig struct {
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+}
+
+// IsEnabled reports whether the Direct API endpoints are enabled, defaulting to false when unset.
+func (c DirectAPIConfig) IsEnabled() bool {
+	return derefBool(c.Enabled)
 }
 
 // AttestationConfig holds engine-level platform attestation configuration shared across
@@ -266,13 +289,23 @@ type AuthnProviderConfig struct {
 	Rest RestConfig `yaml:"rest" json:"rest"`
 }
 
-// UserProviderConfig holds the user provider configuration details.
-type UserProviderConfig struct {
+// UserMgtProviderConfig holds the user management provider configuration details.
+type UserMgtProviderConfig struct {
 	Type string `yaml:"type" json:"type"`
 }
 
 // EntityProviderConfig holds the entity provider configuration details.
 type EntityProviderConfig struct {
+	Type string `yaml:"type" json:"type"`
+}
+
+// AgentMgtProviderConfig holds the agent provider configuration details.
+type AgentMgtProviderConfig struct {
+	Type string `yaml:"type" json:"type"`
+}
+
+// IdentityGovernanceProviderConfig holds the identity governance provider configuration details.
+type IdentityGovernanceProviderConfig struct {
 	Type string `yaml:"type" json:"type"`
 }
 
@@ -292,20 +325,107 @@ type RestSecurityConfig struct {
 	APIKey string `yaml:"api_key" json:"api_key"`
 }
 
-// EmailConfig holds the email configuration details.
-type EmailConfig struct {
-	SMTP SMTPEmailConfig `yaml:"smtp" json:"smtp"`
+// GatewayConfig holds how many gateways this deployment administers.
+//
+// It is here rather than in the engine's server configuration because only a deployment that
+// administers gateways reads it, and the engine serves deployments that administer none.
+type GatewayConfig struct {
+	// MaxGateways bounds how many gateways a deployment may register.
+	//
+	// It is a guard against a deployment accumulating gateways it was not configured for, not an
+	// invariant. Two registrations arriving at the same moment can each be admitted against the
+	// same count on PostgreSQL and leave one more than configured. Nothing is corrupted when that
+	// happens: a gateway's name and its address are unique by table constraint, and those are
+	// exact. Raise or lower it freely; do not rely on it as a licensing or security boundary.
+	//
+	// It is a pointer so that an explicit zero is honored. The config merge only takes a
+	// user-supplied primitive when it is non-zero, so a plain int could not tell `max_gateways: 0`,
+	// meaning administer none, from an omitted field, and the default of one would win either way.
+	MaxGateways *int `yaml:"max_gateways" json:"max_gateways"`
+	// MaxVersions bounds how many captured configuration versions a deployment keeps. Capturing one
+	// beyond it removes the oldest, except a version some gateway holds or could be reverted to.
+	MaxVersions *int `yaml:"max_versions" json:"max_versions"`
+	// AllowPrivateAddresses lets a gateway be registered at, and reached on, a loopback, link-local
+	// or private address. Off, which is the default, a base URL naming one is refused at registration
+	// and a hostname that resolves to one is refused when the gateway is called, so an administrator
+	// cannot point this plane's calls, which carry the gateway's key, at something inside its own
+	// network. Turn it on for a local or single-host setup whose gateways sit on such addresses.
+	AllowPrivateAddresses bool `yaml:"allow_private_addresses" json:"allow_private_addresses"`
+	// RemovalConfirmationThreshold is how many resources an apply may remove from a gateway before it
+	// has to be confirmed; an apply that would remove more is refused unless the request confirms it.
+	// A pointer so that an explicit zero, which turns the check off, is told from an omitted field.
+	RemovalConfirmationThreshold *int `yaml:"removal_confirmation_threshold" json:"removal_confirmation_threshold"`
+	// Store defines the storage mode for gateways.
+	// Valid values: "mutable", "declarative", "composite" (hybrid mode)
+	// If not specified, falls back to global DeclarativeResources.Enabled setting:
+	//   - If DeclarativeResources.Enabled = true: behaves as "declarative"
+	//   - If DeclarativeResources.Enabled = false: behaves as "mutable"
+	Store string `yaml:"store" json:"store"`
+	// AutoApply controls whether a write on this control plane automatically captures and applies
+	// the resulting configuration to the default gateway. Off by default: Capture and Apply are
+	// otherwise a deliberate, operator-driven action, and a control plane administering several
+	// gateways generally wants to keep reviewing and applying a version itself rather than having
+	// every write push one out immediately.
+	AutoApply *bool `yaml:"auto_apply" json:"auto_apply"`
+	// ApplyTimeoutSeconds is how long a request to apply a version to a gateway, or to revert one,
+	// may take to answer, in place of the server's write timeout. It covers waiting for an apply
+	// already running on that gateway and the gateway's own import.
+	ApplyTimeoutSeconds int `yaml:"apply_timeout_seconds" json:"apply_timeout_seconds"`
 }
 
-// SMTPEmailConfig holds the SMTP email configuration details.
-type SMTPEmailConfig struct {
-	Host                 string `yaml:"host"                  json:"host"`
-	Port                 int    `yaml:"port"                  json:"port"`
-	Username             string `yaml:"username"              json:"username"`
-	Password             string `yaml:"password"              json:"password"`
-	FromAddress          string `yaml:"from_address"          json:"from_address"`
-	EnableStartTLS       *bool  `yaml:"enable_start_tls"      json:"enable_start_tls"`
-	EnableAuthentication *bool  `yaml:"enable_authentication" json:"enable_authentication"`
+// ApplyTimeout reports how long an apply or revert request may take to answer; zero leaves the
+// server's write timeout in place.
+func (c GatewayConfig) ApplyTimeout() time.Duration {
+	return secondsWithin(c.ApplyTimeoutSeconds)
+}
+
+// secondsWithin is seconds as a duration, or zero when it is not positive or too large for a duration,
+// which would otherwise wrap around to an arbitrary value. Zero leaves the server's write timeout in
+// place.
+func secondsWithin(seconds int) time.Duration {
+	if seconds <= 0 || int64(seconds) > int64(math.MaxInt64/time.Second) {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+// ImportConfig holds the configuration of the import API.
+type ImportConfig struct {
+	// TimeoutSeconds is how long an import request may take to answer, in place of the server's
+	// write timeout. An import writes every resource it carries, and the import a control plane
+	// sends to apply a version carries the whole configuration.
+	TimeoutSeconds int `yaml:"timeout_seconds" json:"timeout_seconds"`
+}
+
+// Timeout reports how long an import request may take to answer; zero leaves the server's write
+// timeout in place.
+func (c ImportConfig) Timeout() time.Duration {
+	return secondsWithin(c.TimeoutSeconds)
+}
+
+// MaxGatewayCount reports how many gateways a deployment may register, defaulting to none when
+// unset (an explicit default lives in default.json). An explicit zero is honored and means the
+// deployment administers none.
+func (c GatewayConfig) MaxGatewayCount() int {
+	return derefInt(c.MaxGateways, 0)
+}
+
+// RemovalConfirmationLimit reports how many resources an apply may remove without being confirmed,
+// zero for no check. Unset, it is five (an explicit default lives in default.json).
+func (c GatewayConfig) RemovalConfirmationLimit() int {
+	return derefInt(c.RemovalConfirmationThreshold, 5)
+}
+
+// MaxVersionCount reports how many captured configuration versions a deployment keeps. It is never
+// below one, because a capture that kept nothing could not be applied.
+func (c GatewayConfig) MaxVersionCount() int {
+	return max(derefInt(c.MaxVersions, 1), 1)
+}
+
+// IsAutoApplyEnabled reports whether a written resource should be automatically captured and
+// applied to the default gateway, defaulting to off when unset.
+func (c GatewayConfig) IsAutoApplyEnabled() bool {
+	return derefBool(c.AutoApply)
 }
 
 // DeclarativeResources holds the configuration details for the declarative resources.
@@ -393,9 +513,34 @@ type GroupConfig struct {
 	Store string `yaml:"store" json:"store"`
 }
 
+// SCIMConfig holds the SCIM service configuration.
+type SCIMConfig struct {
+	// CoreUserTypeID designates the ThunderID user type whose schema backs the SCIM
+	// core User schema (RFC 7643 §4.1): its attribute characteristics are reflected in
+	// /scim/v2/Schemas, and it is the default target for payloads carrying only the core
+	// schema URN. If empty, falls back to the sole configured user type when exactly
+	// one exists; with zero or 2+ user types, the core schema is unavailable.
+	CoreUserTypeID string `yaml:"core_user_type_id" json:"core_user_type_id"`
+
+	// SchemaURNPrefix is the URN prefix of the custom per-user-type SCIM schemas, for example
+	// "urn:example:params:scim:schemas:". A trailing colon is added if missing. If empty, the
+	// built-in default prefix is used.
+	SchemaURNPrefix string `yaml:"urn_prefix" json:"urn_prefix"`
+}
+
 // RoleConfig holds the role service configuration.
 type RoleConfig struct {
 	// Store defines the storage mode for roles.
+	// Valid values: "mutable", "declarative", "composite" (hybrid mode)
+	// If not specified, falls back to global DeclarativeResources.Enabled setting:
+	//   - If DeclarativeResources.Enabled = true: behaves as "declarative"
+	//   - If DeclarativeResources.Enabled = false: behaves as "mutable"
+	Store string `yaml:"store" json:"store"`
+}
+
+// AuthorizationDetailTypeConfig holds the authorization details type registry configuration.
+type AuthorizationDetailTypeConfig struct {
+	// Store defines the storage mode for authorization details types.
 	// Valid values: "mutable", "declarative", "composite" (hybrid mode)
 	// If not specified, falls back to global DeclarativeResources.Enabled setting:
 	//   - If DeclarativeResources.Enabled = true: behaves as "declarative"
@@ -571,43 +716,185 @@ type LogTimeRotationConfig struct {
 	IntervalDays *int  `yaml:"interval_days" json:"interval_days"`
 }
 
+// OAuthConfig is the yaml/json-loaded OAuth section for the server. It mirrors every field
+// of engineconfig.OAuthConfig except the configs which are settable only through thunderidengine.
+type OAuthConfig struct {
+	RefreshToken             engineconfig.RefreshTokenConfig         `yaml:"refresh_token" json:"refresh_token"`
+	AuthorizationCode        engineconfig.AuthorizationCodeConfig    `yaml:"authorization_code" json:"authorization_code"`       //nolint:lll
+	AuthorizationRequest     engineconfig.AuthorizationRequestConfig `yaml:"authorization_request" json:"authorization_request"` //nolint:lll
+	DCR                      engineconfig.DCRConfig                  `yaml:"dcr" json:"dcr"`
+	CIMD                     engineconfig.CIMDConfig                 `yaml:"cimd" json:"cimd"`
+	IDJAG                    engineconfig.IDJAGConfig                `yaml:"id_jag" json:"id_jag"`
+	PAR                      engineconfig.PARConfig                  `yaml:"par" json:"par"`
+	DPoP                     engineconfig.DPoPConfig                 `yaml:"dpop" json:"dpop"`
+	AuthClass                engineconfig.AuthClassConfig            `yaml:"auth_class" json:"auth_class"`
+	CIBA                     engineconfig.CIBAConfig                 `yaml:"ciba" json:"ciba"`
+	ClientAssertion          engineconfig.ClientAssertionConfig      `yaml:"client_assertion" json:"client_assertion"`
+	Revocation               engineconfig.RevocationConfig           `yaml:"revocation" json:"revocation"`
+	TokenExchange            engineconfig.TokenExchangeConfig        `yaml:"token_exchange" json:"token_exchange"`
+	AllowWildcardRedirectURI bool                                    `yaml:"allow_wildcard_redirect_uri" json:"allow_wildcard_redirect_uri"`   //nolint:lll
+	AllowedGrantTypes        []string                                `yaml:"allowed_grant_types" json:"allowed_grant_types"`                   //nolint:lll
+	AllowedResponseTypes     []string                                `yaml:"allowed_response_types" json:"allowed_response_types"`             //nolint:lll
+	AllowedAuthMethods       []string                                `yaml:"allowed_auth_methods" json:"allowed_auth_methods"`                 //nolint:lll
+	SendServerErrorsToClient *bool                                   `yaml:"send_server_errors_to_client" json:"send_server_errors_to_client"` //nolint:lll
+	TokenRevocation          engineconfig.OAuthTokenRevocationConfig `yaml:"token_revocation" json:"token_revocation"`
+	Logout                   engineconfig.LogoutConfig               `yaml:"logout" json:"logout"`
+	AuthorizationDetails     engineconfig.AuthorizationDetailsConfig `yaml:"authorization_details" json:"authorization_details"` //nolint:lll
+}
+
+// ToEngineConfig copies the yaml-loaded fields into an engineconfig.OAuthConfig value.
+// The engine-only fields on the output are left zero. Callers that need these fields seed them separately.
+func (c OAuthConfig) ToEngineConfig() engineconfig.OAuthConfig {
+	return engineconfig.OAuthConfig{
+		RefreshToken:             c.RefreshToken,
+		AuthorizationCode:        c.AuthorizationCode,
+		AuthorizationRequest:     c.AuthorizationRequest,
+		DCR:                      c.DCR,
+		CIMD:                     c.CIMD,
+		IDJAG:                    c.IDJAG,
+		PAR:                      c.PAR,
+		DPoP:                     c.DPoP,
+		AuthClass:                c.AuthClass,
+		CIBA:                     c.CIBA,
+		ClientAssertion:          c.ClientAssertion,
+		Revocation:               c.Revocation,
+		TokenExchange:            c.TokenExchange,
+		AllowWildcardRedirectURI: c.AllowWildcardRedirectURI,
+		AllowedGrantTypes:        c.AllowedGrantTypes,
+		AllowedResponseTypes:     c.AllowedResponseTypes,
+		AllowedAuthMethods:       c.AllowedAuthMethods,
+		SendServerErrorsToClient: c.SendServerErrorsToClient,
+		TokenRevocation:          c.TokenRevocation,
+		Logout:                   c.Logout,
+		AuthorizationDetails:     c.AuthorizationDetails,
+	}
+}
+
+// AuthZENPDPConfig holds server defaults for AuthZEN PDP connections.
+type AuthZENPDPConfig struct {
+	TimeoutMS  int    `yaml:"timeout_ms" json:"timeout_ms"`
+	RetryCount *int   `yaml:"retry_count" json:"retry_count"`
+	Store      string `yaml:"store" json:"store"`
+}
+
+// Validate checks the default timeout and retry count.
+func (c AuthZENPDPConfig) Validate() error {
+	if c.TimeoutMS < 0 || (c.RetryCount != nil && *c.RetryCount < 0) {
+		return fmt.Errorf("AuthZEN PDP timeout and retry defaults must not be negative")
+	}
+	return nil
+}
+
+// HTTPConnectionConfig holds the configuration of HTTP endpoint connections.
+type HTTPConnectionConfig struct {
+	// Store defines the storage mode for HTTP connections.
+	// Valid values: "mutable", "declarative", "composite" (hybrid mode)
+	// If not specified, falls back to global DeclarativeResources.Enabled setting:
+	//   - If DeclarativeResources.Enabled = true: behaves as "declarative"
+	//   - If DeclarativeResources.Enabled = false: behaves as "mutable"
+	Store string `yaml:"store" json:"store"`
+}
+
 // Config holds the complete configuration details of the server.
 type Config struct {
-	Server               engineconfig.ServerConfig         `yaml:"server"                json:"server"`
-	Log                  LogConfig                         `yaml:"log"                   json:"log"`
-	GateClient           engineconfig.GateClientConfig     `yaml:"gate_client"           json:"gate_client"`
-	TLS                  TLSConfig                         `yaml:"tls"                   json:"tls"`
-	Database             DatabaseConfig                    `yaml:"database"              json:"database"`
-	Cache                engineconfig.CacheConfig          `yaml:"cache"                 json:"cache"`
-	JWT                  engineconfig.JWTConfig            `yaml:"jwt"                   json:"jwt"`
-	OAuth                engineconfig.OAuthConfig          `yaml:"oauth"                 json:"oauth"`
-	Flow                 engineconfig.FlowConfig           `yaml:"flow"                  json:"flow"`
-	Crypto               CryptoConfig                      `yaml:"crypto"                json:"crypto"`
-	User                 UserConfig                        `yaml:"user"                  json:"user"`
-	DeclarativeResources DeclarativeResources              `yaml:"declarative_resources" json:"declarative_resources"`
-	Resource             engineconfig.ResourceConfig       `yaml:"resource"              json:"resource"`
-	OrganizationUnit     OrganizationUnitConfig            `yaml:"organization_unit"     json:"organization_unit"`
-	IdentityProvider     IdentityProviderConfig            `yaml:"identity_provider"     json:"identity_provider"`
-	Application          ApplicationConfig                 `yaml:"application"           json:"application"`
-	ServerConfig         ServerConfigConfig                `yaml:"server_config" json:"server_config"`
-	Agent                AgentConfig                       `yaml:"agent"                 json:"agent"`
-	EntityType           EntityTypeConfig                  `yaml:"user_type"             json:"user_type"`
-	Observability        engineconfig.ObservabilityConfig  `yaml:"observability"         json:"observability"`
-	Passkey              PasskeyConfig                     `yaml:"passkey"               json:"passkey"`
-	Attestation          AttestationConfig                 `yaml:"attestation"           json:"attestation"`
-	OpenID4VP            OpenID4VPConfig                   `yaml:"openid4vp"             json:"openid4vp"`
-	OpenID4VCI           OpenID4VCIConfig                  `yaml:"openid4vci"            json:"openid4vci"`
-	AuthnProvider        AuthnProviderConfig               `yaml:"authn_provider"        json:"authn_provider"`
-	UserProvider         UserProviderConfig                `yaml:"user_provider"         json:"user_provider"`
-	EntityProvider       EntityProviderConfig              `yaml:"entity_provider"       json:"entity_provider"`
-	Group                GroupConfig                       `yaml:"group"                 json:"group"`
-	Role                 RoleConfig                        `yaml:"role"                  json:"role"`
-	Theme                ThemeConfig                       `yaml:"theme"                 json:"theme"`
-	Layout               LayoutConfig                      `yaml:"layout"                json:"layout"`
-	Translation          TranslationConfig                 `yaml:"translation"           json:"translation"`
-	Email                EmailConfig                       `yaml:"email"                 json:"email"`
-	Notification         NotificationConfig                `yaml:"notification"          json:"notification"`
-	AttributeCache       engineconfig.AttributeCacheConfig `yaml:"attribute_cache" json:"attribute_cache"`
+	Server                     engineconfig.ServerConfig         `yaml:"server"                json:"server"`
+	Gateway                    GatewayConfig                     `yaml:"gateway"               json:"gateway"`
+	Import                     ImportConfig                      `yaml:"import"                json:"import"`
+	AuthZENPDP                 AuthZENPDPConfig                  `yaml:"authzen_pdp"           json:"authzen_pdp"`
+	HTTPConnection             HTTPConnectionConfig              `yaml:"http_connection"       json:"http_connection"`
+	Log                        LogConfig                         `yaml:"log"                   json:"log"`
+	GateClient                 engineconfig.GateClientConfig     `yaml:"gate_client"           json:"gate_client"`
+	TLS                        TLSConfig                         `yaml:"tls"                   json:"tls"`
+	Database                   DatabaseConfig                    `yaml:"database"              json:"database"`
+	Cache                      engineconfig.CacheConfig          `yaml:"cache"                 json:"cache"`
+	JWT                        engineconfig.JWTConfig            `yaml:"jwt"                   json:"jwt"`
+	OAuth                      OAuthConfig                       `yaml:"oauth"                 json:"oauth"`
+	Flow                       engineconfig.FlowConfig           `yaml:"flow"                  json:"flow"`
+	Crypto                     CryptoConfig                      `yaml:"crypto"                json:"crypto"`
+	User                       UserConfig                        `yaml:"user"                  json:"user"`
+	DeclarativeResources       DeclarativeResources              `yaml:"declarative_resources" json:"declarative_resources"` //nolint:lll
+	Resource                   engineconfig.ResourceConfig       `yaml:"resource"              json:"resource"`
+	AuthorizationDetailType    AuthorizationDetailTypeConfig     `yaml:"authorization_detail_type" json:"authorization_detail_type"` //nolint:lll
+	OrganizationUnit           OrganizationUnitConfig            `yaml:"organization_unit"     json:"organization_unit"`
+	IdentityProvider           IdentityProviderConfig            `yaml:"identity_provider"     json:"identity_provider"`
+	Application                ApplicationConfig                 `yaml:"application"           json:"application"`
+	ServerConfig               ServerConfigConfig                `yaml:"server_config" json:"server_config"`
+	Agent                      AgentConfig                       `yaml:"agent"                 json:"agent"`
+	EntityType                 EntityTypeConfig                  `yaml:"user_type"             json:"user_type"`
+	Observability              engineconfig.ObservabilityConfig  `yaml:"observability"         json:"observability"`
+	Passkey                    PasskeyConfig                     `yaml:"passkey"               json:"passkey"`
+	DirectAPI                  DirectAPIConfig                   `yaml:"direct_api"            json:"direct_api"`
+	Attestation                AttestationConfig                 `yaml:"attestation"           json:"attestation"`
+	OpenID4VP                  OpenID4VPConfig                   `yaml:"openid4vp"             json:"openid4vp"`
+	OpenID4VCI                 OpenID4VCIConfig                  `yaml:"openid4vci"            json:"openid4vci"`
+	AuthnProvider              AuthnProviderConfig               `yaml:"authn_provider"        json:"authn_provider"`
+	UserMgtProvider            UserMgtProviderConfig             `yaml:"user_mgt_provider"     json:"user_mgt_provider"`
+	EntityProvider             EntityProviderConfig              `yaml:"entity_provider"       json:"entity_provider"`
+	AgentMgtProvider           AgentMgtProviderConfig            `yaml:"agent_mgt_provider"        json:"agent_mgt_provider"` //nolint:lll
+	Group                      GroupConfig                       `yaml:"group"                 json:"group"`
+	SCIM                       SCIMConfig                        `yaml:"scim"                  json:"scim"`
+	Role                       RoleConfig                        `yaml:"role"                  json:"role"`
+	Theme                      ThemeConfig                       `yaml:"theme"                 json:"theme"`
+	Layout                     LayoutConfig                      `yaml:"layout"                json:"layout"`
+	Translation                TranslationConfig                 `yaml:"translation"           json:"translation"`
+	Notification               NotificationConfig                `yaml:"notification"          json:"notification"`
+	AttributeCache             engineconfig.AttributeCacheConfig `yaml:"attribute_cache" json:"attribute_cache"`
+	ResourceSharing            ResourceSharingConfig             `yaml:"resource_sharing"      json:"resource_sharing"`
+	AccountAccess              AccountAccessConfig               `yaml:"account_access"        json:"account_access"`
+	IdentityGovernanceProvider IdentityGovernanceProviderConfig  `yaml:"identity_governance_provider" json:"identity_governance_provider"` //nolint:lll
+}
+
+// ResourceSharingConfig configures how resources may be shared across organization units.
+type ResourceSharingConfig struct {
+	AllowChildOUCrossTreeSharing bool `yaml:"allow_child_ou_cross_tree_sharing" json:"allow_child_ou_cross_tree_sharing"` //nolint:lll
+}
+
+// AccountAccessConfig holds the default automatic-lockout policy, keyed by entity category. It is the
+// base of the accountAccess server-config section. An absent category block means disabled.
+type AccountAccessConfig struct {
+	User  CategoryAccessConfig `yaml:"user"  json:"user"`
+	Agent CategoryAccessConfig `yaml:"agent" json:"agent"`
+}
+
+// CategoryAccessConfig is the lockout policy for one entity category.
+type CategoryAccessConfig struct {
+	// LockGranularity is "authentication_method" (the default) or "account".
+	LockGranularity string `yaml:"lock_granularity" json:"lock_granularity"`
+	// RecordLastLogin turns on the lastLoginAt write when access is granted. Unset resolves to false.
+	RecordLastLogin *bool `yaml:"record_last_login" json:"record_last_login"`
+	// LastLoginResolutionSeconds skips the write when the stored value is newer than this. 0 writes
+	// every time; unset is an hour.
+	LastLoginResolutionSeconds *int `yaml:"last_login_resolution_seconds" json:"last_login_resolution_seconds"`
+	// Default is the policy for every authentication method in this category.
+	Default LockPolicyConfig `yaml:"default" json:"default"`
+	// Notifications configures the notices sent to the account holder.
+	Notifications AccessNotificationsConfig `yaml:"notifications" json:"notifications"`
+}
+
+// AccessNotificationsConfig is the notices one category sends, keyed by event.
+type AccessNotificationsConfig struct {
+	OnLock LockNotificationConfig `yaml:"on_lock" json:"on_lock"`
+}
+
+// LockNotificationConfig is what is sent when an automatic lock forms, keyed by channel.
+type LockNotificationConfig struct {
+	Email LockEmailConfig `yaml:"email" json:"email"`
+}
+
+// LockEmailConfig holds the lock email settings.
+type LockEmailConfig struct {
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+}
+
+// LockPolicyConfig is a category's lockout policy, applied to every authentication method. Fields
+// are pointers or slices so unset is distinguishable from zero.
+type LockPolicyConfig struct {
+	Enabled                *bool `yaml:"enabled" json:"enabled"`
+	Threshold              *int  `yaml:"threshold" json:"threshold"`
+	FailureWindowSeconds   *int  `yaml:"failure_window_seconds" json:"failure_window_seconds"`
+	LockDurationsSeconds   []int `yaml:"lock_durations_seconds" json:"lock_durations_seconds"`
+	LockDecaySeconds       *int  `yaml:"lock_decay_seconds" json:"lock_decay_seconds"`
+	MaxConsecutiveFailures *int  `yaml:"max_consecutive_failures" json:"max_consecutive_failures"`
 }
 
 // LoadConfig loads the configurations from the specified YAML file and applies defaults.
@@ -632,6 +919,7 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 
 	// Merge user configuration with defaults
 	mergeConfigs(&cfg, &userCfg)
+	cfg.Server.EnableOUQualifiedEndpoints = true
 
 	// Default gate_client to the server's own URL when not explicitly configured, so the gate only
 	// needs configuring when it is hosted separately from the server.
@@ -701,10 +989,22 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 	if err := cfg.OAuth.DPoP.Validate(); err != nil {
 		return nil, err
 	}
+	if err := cfg.OAuth.ClientAssertion.Validate(); err != nil {
+		return nil, err
+	}
 	if err := cfg.OAuth.TokenExchange.Validate(); err != nil {
 		return nil, err
 	}
+	if err := cfg.OAuth.Logout.Backchannel.Validate(); err != nil {
+		return nil, err
+	}
+	if err := cfg.OAuth.AuthorizationDetails.Validate(); err != nil {
+		return nil, err
+	}
 	if err := cfg.Notification.Validate(); err != nil {
+		return nil, err
+	}
+	if err := cfg.AuthZENPDP.Validate(); err != nil {
 		return nil, err
 	}
 
@@ -730,6 +1030,7 @@ func loadDefaultConfig(path string, serverHome string) (*Config, error) {
 	return &cfg, nil
 }
 
+// loadUserConfig loads and parses the user-provided configuration file with environment and path substitution.
 func loadUserConfig(path string, serverHome string) (Config, error) {
 	var cfg Config
 	configPath := filepath.Clean(path)
@@ -840,7 +1141,7 @@ func isZeroValue(v reflect.Value) bool {
 		return v.String() == ""
 	case reflect.Slice, reflect.Map, reflect.Chan:
 		return v.IsNil() || v.Len() == 0
-	case reflect.Ptr, reflect.Interface:
+	case reflect.Pointer, reflect.Interface:
 		return v.IsNil()
 	default:
 		return false

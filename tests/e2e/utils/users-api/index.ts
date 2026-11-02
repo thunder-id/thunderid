@@ -13,7 +13,7 @@
  */
 
 import type { APIRequestContext } from "@playwright/test";
-import { send, sendOk } from "../api-request";
+import { send, sendOk, type ApiAccessStatus } from "../api-request";
 import { UserTypesApi } from "../user-types-api";
 
 export type ApiUser = {
@@ -21,6 +21,19 @@ export type ApiUser = {
   ouId: string;
   type: string;
   attributes: Record<string, unknown> & { username?: string; email?: string };
+  status?: ApiAccessStatus;
+};
+
+/** A user sharing policy, as `/users/{id}/sharing-policies` returns it. */
+export type ApiSharingPolicy = {
+  id: string;
+  initiatingOuId: string;
+  stage: "share" | "reshare";
+  version: number;
+  childUnits?:
+    | { mode: "all"; excludedOuIds?: string[] }
+    | { mode: "selected"; units: { ouId: string; reach: string }[] };
+  otherTreeRoots?: { mode: "all"; excludedOuIds?: string[] } | { mode: "selected"; units: { ouId: string }[] };
 };
 
 export class UsersApi {
@@ -31,15 +44,15 @@ export class UsersApi {
   }
 
   /** Create a user directly via the API, bypassing the Console's Create User wizard. */
-  async createUser(attributes: Record<string, unknown>, type: string = "Person"): Promise<ApiUser> {
-    const userType = await this.userTypes.findByName(type);
+  async createUser(attributes: Record<string, unknown>, type: string = "person"): Promise<ApiUser> {
+    const userType = await this.userTypes.findByHandle(type);
     if (!userType) {
       throw new Error(`GET /user-types returned no "${type}" user type`);
     }
     const response = await sendOk(this.request, "POST", "/users", {
       ouId: userType.ouId,
-      // CreateUser resolves `type` by entity-type name (e.g. "Person"), not by id.
-      type: userType.name,
+      // CreateUser resolves `type` by entity-type handle (e.g. "person"), not by id.
+      type: userType.handle,
       attributes,
     });
     return (await response.json()) as ApiUser;
@@ -61,14 +74,42 @@ export class UsersApi {
     return body.users ?? [];
   }
 
+  /** Read a single user by id, including its access status. */
+  async get(id: string): Promise<ApiUser> {
+    return (await sendOk(this.request, "GET", `/users/${id}`)).json() as Promise<ApiUser>;
+  }
+
   async findByUsername(username: string): Promise<ApiUser | undefined> {
     return (await this.findBy("username", username))[0];
   }
 
-  /** Delete by id. A 404 counts as success so retries and double-teardown stay idempotent. */
+  /** Record a sharing policy for the user, issued by its own unit unless the body names `initiatingOuId`. */
+  async share(userId: string, policy: Record<string, unknown>): Promise<ApiSharingPolicy> {
+    const response = await sendOk(this.request, "POST", `/users/${userId}/sharing-policies`, policy);
+    return (await response.json()) as ApiSharingPolicy;
+  }
+
+  /** Every sharing policy of the user, re-shares included. */
+  async listSharingPolicies(userId: string): Promise<ApiSharingPolicy[]> {
+    const response = await sendOk(this.request, "GET", `/users/${userId}/sharing-policies?limit=100`);
+    const body = (await response.json()) as { policies?: ApiSharingPolicy[] };
+    return body.policies ?? [];
+  }
+
+  /**
+   * Delete by id. A 404 counts as success so retries and double-teardown stay idempotent.
+   *
+   * Never throws: this is only ever called from test teardown, and a flaky network error there
+   * must not mask the failure (or success) a test already reported.
+   */
   async deleteById(id: string): Promise<boolean> {
-    const response = await send(this.request, "DELETE", `/users/${id}`);
-    return response.ok() || response.status() === 404;
+    try {
+      const response = await send(this.request, "DELETE", `/users/${id}`);
+      return response.ok() || response.status() === 404;
+    } catch (error) {
+      console.warn(`Cleanup skipped for user ${id}: ${String(error)}`);
+      return false;
+    }
   }
 
   /**

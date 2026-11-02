@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package resource implements the resource management service.
@@ -8,18 +8,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
 
 const (
@@ -90,6 +95,9 @@ type ResourceServiceInterface interface {
 	) (*providers.Action, *tidcommon.ServiceError)
 	DeleteAction(ctx context.Context, resourceServerID string, resourceID *string,
 		id string) *tidcommon.ServiceError
+	// ValidateDeleteAction reports whether the action may be deleted and returns the scope it retires.
+	ValidateDeleteAction(ctx context.Context, resourceServerID string, resourceID *string,
+		id string) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	ValidatePermissions(
 		ctx context.Context, resourceServerID string, permissions []string,
 	) ([]string, *tidcommon.ServiceError)
@@ -111,9 +119,18 @@ type resourceService struct {
 	logger             log.Logger
 	resourceStore      resourceStoreInterface
 	ouService          oupkg.OrganizationUnitServiceInterface
+	authZENPDPService  authZENPDPConnectionLookup
 	defaultDelimiter   string
 	transactioner      providers.Transactioner
 	dependencyRegistry resourcedependency.Registry
+	valueCapturer      declarativeresource.ValueCapturer
+	// keepsReferences is set on a control plane, which keeps a value reference where a value belongs.
+	keepsReferences bool
+}
+
+// authZENPDPConnectionLookup retrieves AuthZEN PDP connections for resource-server validation.
+type authZENPDPConnectionLookup interface {
+	GetAuthZENPDP(ctx context.Context, id string) (*authzenpdp.AuthZENPDPConnection, *tidcommon.ServiceError)
 }
 
 // SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
@@ -210,6 +227,9 @@ func newResourceService(
 	ouService oupkg.OrganizationUnitServiceInterface,
 	resourceStore resourceStoreInterface,
 	transactionerInstance providers.Transactioner,
+	authZENPDPService authZENPDPConnectionLookup,
+	valueCapturer declarativeresource.ValueCapturer,
+	options ...Option,
 ) (ResourceServiceInterface, error) {
 	// Load default delimiter from config
 	defaultDelimiter := getDefaultDelimiter()
@@ -217,13 +237,19 @@ func newResourceService(
 		return nil, fmt.Errorf("configured permission delimiter is invalid")
 	}
 
-	return &resourceService{
-		logger:           *log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
-		resourceStore:    resourceStore,
-		ouService:        ouService,
-		defaultDelimiter: defaultDelimiter,
-		transactioner:    transactionerInstance,
-	}, nil
+	service := &resourceService{
+		logger:            *log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
+		resourceStore:     resourceStore,
+		ouService:         ouService,
+		authZENPDPService: authZENPDPService,
+		defaultDelimiter:  defaultDelimiter,
+		transactioner:     transactionerInstance,
+		valueCapturer:     valueCapturer,
+	}
+	for _, option := range options {
+		option(service)
+	}
+	return service, nil
 }
 
 // Resource Server Methods
@@ -235,6 +261,12 @@ func (rs *resourceService) CreateResourceServer(
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
 	rs.logger.Debug(ctx, "Creating resource server", log.String("name", resourceServer.Name))
 
+	if resourceServer.AuthorizationEngine.Type == "" {
+		resourceServer.AuthorizationEngine.Type = providers.AuthorizationEngineTypeRBAC
+	}
+	if svcErr := rs.validateAuthorizationEngine(ctx, &resourceServer.AuthorizationEngine); svcErr != nil {
+		return nil, svcErr
+	}
 	if err := rs.validateResourceServerCreate(resourceServer); err != nil {
 		return nil, err
 	}
@@ -274,7 +306,6 @@ func (rs *resourceService) CreateResourceServer(
 		return nil, &ErrorIdentifierConflict
 	}
 
-	// Set default type if not provided
 	if resourceServer.Type == "" {
 		resourceServer.Type = providers.ResourceServerTypeCustom
 	}
@@ -312,13 +343,14 @@ func (rs *resourceService) CreateResourceServer(
 		}
 
 		createdRS = &providers.ResourceServer{
-			ID:          id,
-			Name:        resourceServer.Name,
-			Description: resourceServer.Description,
-			Identifier:  resourceServer.Identifier,
-			Type:        resourceServer.Type,
-			OUID:        resourceServer.OUID,
-			Delimiter:   resourceServer.Delimiter,
+			ID:                  id,
+			Name:                resourceServer.Name,
+			Description:         resourceServer.Description,
+			Identifier:          resourceServer.Identifier,
+			Type:                resourceServer.Type,
+			OUID:                resourceServer.OUID,
+			Delimiter:           resourceServer.Delimiter,
+			AuthorizationEngine: resourceServer.AuthorizationEngine,
 		}
 		return nil
 	}); err != nil {
@@ -326,6 +358,7 @@ func (rs *resourceService) CreateResourceServer(
 	}
 
 	rs.logger.Debug(ctx, "Successfully created resource server", log.String("id", id))
+	rs.captureValues(ctx, createdRS)
 	return createdRS, nil
 }
 
@@ -444,10 +477,23 @@ func (rs *resourceService) UpdateResourceServer(
 	// Type is immutable and always preserved from the existing record
 	resourceServer.Type = existingResServer.Type
 
+	if resourceServer.AuthorizationEngine.Type == "" {
+		resourceServer.AuthorizationEngine = existingResServer.AuthorizationEngine
+	}
+	if resourceServer.AuthorizationEngine.Type == "" {
+		resourceServer.AuthorizationEngine.Type = providers.AuthorizationEngineTypeRBAC
+	}
+	if svcErr := rs.validateAuthorizationEngine(ctx, &resourceServer.AuthorizationEngine); svcErr != nil {
+		return nil, svcErr
+	}
+
 	// Identifier: preserve existing if not provided; check uniqueness if changed
 	if resourceServer.Identifier == "" {
 		resourceServer.Identifier = existingResServer.Identifier
 	} else if resourceServer.Identifier != existingResServer.Identifier {
+		if hasInvalidMCPIdentifier(resourceServer.Type, resourceServer.Identifier, rs.keepsReferences) {
+			return nil, &ErrorInvalidMCPIdentifier
+		}
 		identifierExists, err := rs.resourceStore.CheckResourceServerIdentifierExists(ctx, resourceServer.Identifier)
 		if err != nil {
 			rs.logger.Error(ctx, "Failed to check resource server identifier", log.Error(err))
@@ -489,19 +535,21 @@ func (rs *resourceService) UpdateResourceServer(
 		}
 
 		updatedRS = &providers.ResourceServer{
-			ID:          id,
-			Name:        resourceServer.Name,
-			Description: resourceServer.Description,
-			Identifier:  resourceServer.Identifier,
-			Type:        resourceServer.Type,
-			OUID:        resourceServer.OUID,
-			Delimiter:   resourceServer.Delimiter,
+			ID:                  id,
+			Name:                resourceServer.Name,
+			Description:         resourceServer.Description,
+			Identifier:          resourceServer.Identifier,
+			Type:                resourceServer.Type,
+			OUID:                resourceServer.OUID,
+			Delimiter:           resourceServer.Delimiter,
+			AuthorizationEngine: resourceServer.AuthorizationEngine,
 		}
 		return nil
 	}); err != nil {
 		return nil, &tidcommon.InternalServerError
 	}
 
+	rs.captureValues(ctx, updatedRS)
 	return updatedRS, nil
 }
 
@@ -1183,21 +1231,8 @@ func (rs *resourceService) DeleteAction(
 	ctx context.Context,
 	resourceServerID string, resourceID *string, id string,
 ) *tidcommon.ServiceError {
-	if id == "" || resourceServerID == "" {
-		return &ErrorMissingID
-	}
-
-	if resourceID != nil && *resourceID == "" {
-		return &ErrorMissingID
-	}
-
-	// Check if resource server is declarative (immutable)
-	if rs.IsResourceServerDeclarative(resourceServerID) {
-		rs.logger.Debug(ctx,
-			"Cannot delete action in declarative resource server",
-			log.String("resource_server_id", resourceServerID),
-		)
-		return ErrorImmutableAction.WithParams(map[string]string{"id": id})
+	if svcErr := rs.validateActionDelete(ctx, resourceServerID, resourceID, id); svcErr != nil {
+		return svcErr
 	}
 
 	// Validate resource server exists
@@ -1244,6 +1279,33 @@ func (rs *resourceService) DeleteAction(
 	}
 
 	return nil
+}
+
+// ValidateDeleteAction runs DeleteAction's checks and returns the action's scope, revoked deployment-wide.
+func (rs *resourceService) ValidateDeleteAction(
+	ctx context.Context,
+	resourceServerID string, resourceID *string, id string,
+) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	if svcErr := rs.validateActionDelete(ctx, resourceServerID, resourceID, id); svcErr != nil {
+		return nil, svcErr
+	}
+
+	resourceServer, svcErr := rs.GetResourceServer(ctx, resourceServerID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	action, svcErr := rs.GetAction(ctx, resourceServerID, resourceID, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	// Without an audience no token can carry the scope, so there is nothing to revoke.
+	if resourceServer == nil || resourceServer.Identifier == "" || action == nil || action.Permission == "" {
+		return &revocation.AccessRevocationTarget{}, nil
+	}
+	return &revocation.AccessRevocationTarget{
+		Scopes: []revocation.AudienceScope{{Audience: resourceServer.Identifier, Scope: action.Permission}},
+	}, nil
 }
 
 // ValidatePermissions checks if permissions exist for a given resource server.
@@ -1364,6 +1426,14 @@ func (rs *resourceService) validateResourceServerCreate(
 	if resourceServer.Type != "" && !resourceServer.Type.IsValid() {
 		return &ErrorInvalidRequestFormat
 	}
+	if hasInvalidMCPIdentifier(resourceServer.Type, resourceServer.Identifier, rs.keepsReferences) {
+		return &ErrorInvalidMCPIdentifier
+	}
+	if resourceServer.AuthorizationEngine.Type != "" &&
+		resourceServer.AuthorizationEngine.Type != providers.AuthorizationEngineTypeRBAC &&
+		resourceServer.AuthorizationEngine.Type != providers.AuthorizationEngineTypeAuthZENPDP {
+		return &ErrorInvalidRequestFormat
+	}
 	if resourceServer.Delimiter != "" {
 		if err := validateDelimiter(resourceServer.Delimiter); err != nil {
 			return err
@@ -1381,6 +1451,52 @@ func (rs *resourceService) validateResourceServerUpdate(
 	}
 	if resourceServer.OUID == "" {
 		return &ErrorInvalidRequestFormat
+	}
+	if resourceServer.AuthorizationEngine.Type != "" &&
+		resourceServer.AuthorizationEngine.Type != providers.AuthorizationEngineTypeRBAC &&
+		resourceServer.AuthorizationEngine.Type != providers.AuthorizationEngineTypeAuthZENPDP {
+		return &ErrorInvalidRequestFormat
+	}
+	return nil
+}
+
+// validateAuthorizationEngine normalizes and verifies resource-server authorization-engine settings.
+func (rs *resourceService) validateAuthorizationEngine(
+	ctx context.Context,
+	authorizationEngine *providers.AuthorizationEngineConfig,
+) *tidcommon.ServiceError {
+	switch authorizationEngine.Type {
+	case providers.AuthorizationEngineTypeRBAC:
+		authorizationEngine.Properties = providers.AuthorizationEngineProperties{}
+		return nil
+	case providers.AuthorizationEngineTypeAuthZENPDP:
+		if err := validateAuthZENPDPConnectionID(authorizationEngine); err != nil {
+			return &ErrorInvalidRequestFormat
+		}
+		if rs.authZENPDPService == nil {
+			rs.logger.Error(ctx, "AuthZEN PDP service is not configured")
+			return &tidcommon.InternalServerError
+		}
+		connection, svcErr := rs.authZENPDPService.GetAuthZENPDP(
+			ctx, authorizationEngine.Properties.PDPConnectionID)
+		if svcErr != nil {
+			return svcErr
+		}
+		if connection == nil {
+			return &ErrorInvalidRequestFormat
+		}
+		return nil
+	default:
+		return &ErrorInvalidRequestFormat
+	}
+}
+
+// validateAuthZENPDPConnectionID trims and requires the AuthZEN PDP connection ID.
+func validateAuthZENPDPConnectionID(authorizationEngine *providers.AuthorizationEngineConfig) error {
+	authorizationEngine.Properties.PDPConnectionID = strings.TrimSpace(
+		authorizationEngine.Properties.PDPConnectionID)
+	if authorizationEngine.Properties.PDPConnectionID == "" {
+		return errors.New("AuthZEN PDP connection ID is required")
 	}
 	return nil
 }
@@ -1423,6 +1539,29 @@ func (rs *resourceService) validateActionCreate(action providers.Action, delimit
 func (rs *resourceService) validateActionKind(kind providers.ActionKind) *tidcommon.ServiceError {
 	if kind != "" && !kind.IsValid() {
 		return &ErrorInvalidRequestFormat
+	}
+	return nil
+}
+
+// validateActionDelete runs the request checks DeleteAction and ValidateDeleteAction share.
+func (rs *resourceService) validateActionDelete(
+	ctx context.Context, resourceServerID string, resourceID *string, id string,
+) *tidcommon.ServiceError {
+	if id == "" || resourceServerID == "" {
+		return &ErrorMissingID
+	}
+
+	if resourceID != nil && *resourceID == "" {
+		return &ErrorMissingID
+	}
+
+	// Check if resource server is declarative (immutable)
+	if rs.IsResourceServerDeclarative(resourceServerID) {
+		rs.logger.Debug(ctx,
+			"Cannot delete action in declarative resource server",
+			log.String("resource_server_id", resourceServerID),
+		)
+		return ErrorImmutableAction.WithParams(map[string]string{"id": id})
 	}
 	return nil
 }
@@ -1511,8 +1650,31 @@ func validateHandle(handle string, delimiter string) *tidcommon.ServiceError {
 	return nil
 }
 
+// hasInvalidMCPIdentifier reports whether an MCP resource server identifier is not an http or https
+// URL with a host and no fragment. MCP clients send the server's canonical URL as the RFC 8707
+// resource parameter, so any other value can never match their token requests. A control plane keeps
+// a variable reference where a deployment's identifier belongs; the value it names is checked where it
+// is put in, on import into that deployment.
+func hasInvalidMCPIdentifier(resourceType providers.ResourceServerType, identifier string,
+	keepsReferences bool) bool {
+	if resourceType != providers.ResourceServerTypeMCP {
+		return false
+	}
+	if keepsReferences && valueref.IsWellFormedReference(identifier) && !valueref.IsSecretReference(identifier) {
+		return false
+	}
+	// url.Parse reports an empty fragment for a trailing "#" and keeps a "\" in the path, which clients
+	// rewrite to "/", so the raw value is checked for both.
+	parsed, err := url.Parse(identifier)
+	return err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+		parsed.Hostname() == "" || strings.ContainsAny(identifier, "#\\")
+}
+
 // getDefaultDelimiter returns the default delimiter from configuration.
 func getDefaultDelimiter() string {
+	if !config.IsServerRuntimeInitialized() {
+		return ":"
+	}
 	delimiter := config.GetServerRuntime().Config.Resource.DefaultDelimiter
 	if delimiter == "" {
 		return ":" // Fallback default if not configured

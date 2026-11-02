@@ -817,3 +817,36 @@ func (s *InputValidationTestSuite) TestApplyValidationFailureRePrompt_PopulatesM
 	s.True(handled)
 	s.NotNil(nodeResp.Meta, "verbose mode must populate Meta on the re-prompt response")
 }
+
+// A claim satisfies a re-prompted input but never a credential.
+func (s *InputValidationTestSuite) TestApplyValidationFailureRePrompt_ClaimNeverSatisfiesPassword() {
+	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+	node.(PromptNodeInterface).SetPrompts([]common.Prompt{
+		{
+			Inputs: []providers.Input{
+				{Identifier: "nickname", Required: true},
+				{Identifier: "password", Type: providers.InputTypePassword, Required: true,
+					Validation: []providers.ValidationRule{
+						{Type: providers.ValidationTypeMinLength, Value: float64(8),
+							Message: "validation.password.minLength"},
+					}},
+			},
+			Action: &common.Action{Ref: "submit", NextNode: "next"},
+		},
+	})
+	nodeResp := &common.NodeResponse{Inputs: make([]providers.Input, 0), Actions: make([]common.Action, 0)}
+	ctx := &providers.NodeContext{
+		ExecutionID:   "test-flow",
+		CurrentAction: "submit",
+		UserInputs:    map[string]string{"password": "short"},
+		RuntimeData: externalIdentityData(map[string]interface{}{
+			"nickname": "claimed", "password": "chosen-by-idp",
+		}),
+	}
+
+	handled := node.(*promptNode).applyValidationFailureRePrompt(ctx, nodeResp)
+
+	s.True(handled)
+	s.Len(nodeResp.Inputs, 1)
+	s.Equal("password", nodeResp.Inputs[0].Identifier, "a claim must not satisfy a credential input")
+}

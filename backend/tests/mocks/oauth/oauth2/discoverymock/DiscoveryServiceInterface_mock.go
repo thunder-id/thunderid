@@ -17,10 +17,19 @@ func NewDiscoveryServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *DiscoveryServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &DiscoveryServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -36,6 +45,74 @@ type DiscoveryServiceInterfaceMock_Expecter struct {
 
 func (_m *DiscoveryServiceInterfaceMock) EXPECT() *DiscoveryServiceInterfaceMock_Expecter {
 	return &DiscoveryServiceInterfaceMock_Expecter{mock: &_m.Mock}
+}
+
+// GetAuthorizationDetailsTypeMetadata provides a mock function for the type DiscoveryServiceInterfaceMock
+func (_mock *DiscoveryServiceInterfaceMock) GetAuthorizationDetailsTypeMetadata(ctx context.Context, value string) (*discovery.AuthorizationDetailsTypeMetadata, error) {
+	ret := _mock.Called(ctx, value)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetAuthorizationDetailsTypeMetadata")
+	}
+
+	var r0 *discovery.AuthorizationDetailsTypeMetadata
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*discovery.AuthorizationDetailsTypeMetadata, error)); ok {
+		return returnFunc(ctx, value)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *discovery.AuthorizationDetailsTypeMetadata); ok {
+		r0 = returnFunc(ctx, value)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*discovery.AuthorizationDetailsTypeMetadata)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, value)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// DiscoveryServiceInterfaceMock_GetAuthorizationDetailsTypeMetadata_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetAuthorizationDetailsTypeMetadata'
+type DiscoveryServiceInterfaceMock_GetAuthorizationDetailsTypeMetadata_Call struct {
+	*mock.Call
+}
+
+// GetAuthorizationDetailsTypeMetadata is a helper method to define mock.On call
+//   - ctx context.Context
+//   - value string
+func (_e *DiscoveryServiceInterfaceMock_Expecter) GetAuthorizationDetailsTypeMetadata(ctx any, value any) *DiscoveryServiceInterfaceMock_GetAuthorizationDetailsTypeMetadata_Call {
+	return &DiscoveryServiceInterfaceMock_GetAuthorizationDetailsTypeMetadata_Call{Call: _e.mock.On("GetAuthorizationDetailsTypeMetadata", ctx, value)}
+}
+
+func (_c *DiscoveryServiceInterfaceMock_GetAuthorizationDetailsTypeMetadata_Call) Run(run func(ctx context.Context, value string)) *DiscoveryServiceInterfaceMock_GetAuthorizationDetailsTypeMetadata_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *DiscoveryServiceInterfaceMock_GetAuthorizationDetailsTypeMetadata_Call) Return(authorizationDetailsTypeMetadata *discovery.AuthorizationDetailsTypeMetadata, err error) *DiscoveryServiceInterfaceMock_GetAuthorizationDetailsTypeMetadata_Call {
+	_c.Call.Return(authorizationDetailsTypeMetadata, err)
+	return _c
+}
+
+func (_c *DiscoveryServiceInterfaceMock_GetAuthorizationDetailsTypeMetadata_Call) RunAndReturn(run func(ctx context.Context, value string) (*discovery.AuthorizationDetailsTypeMetadata, error)) *DiscoveryServiceInterfaceMock_GetAuthorizationDetailsTypeMetadata_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // GetOAuth2AuthorizationServerMetadata provides a mock function for the type DiscoveryServiceInterfaceMock
@@ -64,7 +141,7 @@ type DiscoveryServiceInterfaceMock_GetOAuth2AuthorizationServerMetadata_Call str
 
 // GetOAuth2AuthorizationServerMetadata is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *DiscoveryServiceInterfaceMock_Expecter) GetOAuth2AuthorizationServerMetadata(ctx interface{}) *DiscoveryServiceInterfaceMock_GetOAuth2AuthorizationServerMetadata_Call {
+func (_e *DiscoveryServiceInterfaceMock_Expecter) GetOAuth2AuthorizationServerMetadata(ctx any) *DiscoveryServiceInterfaceMock_GetOAuth2AuthorizationServerMetadata_Call {
 	return &DiscoveryServiceInterfaceMock_GetOAuth2AuthorizationServerMetadata_Call{Call: _e.mock.On("GetOAuth2AuthorizationServerMetadata", ctx)}
 }
 
@@ -126,7 +203,7 @@ type DiscoveryServiceInterfaceMock_GetOIDCMetadata_Call struct {
 
 // GetOIDCMetadata is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *DiscoveryServiceInterfaceMock_Expecter) GetOIDCMetadata(ctx interface{}) *DiscoveryServiceInterfaceMock_GetOIDCMetadata_Call {
+func (_e *DiscoveryServiceInterfaceMock_Expecter) GetOIDCMetadata(ctx any) *DiscoveryServiceInterfaceMock_GetOIDCMetadata_Call {
 	return &DiscoveryServiceInterfaceMock_GetOIDCMetadata_Call{Call: _e.mock.On("GetOIDCMetadata", ctx)}
 }
 
@@ -149,6 +226,68 @@ func (_c *DiscoveryServiceInterfaceMock_GetOIDCMetadata_Call) Return(oIDCProvide
 }
 
 func (_c *DiscoveryServiceInterfaceMock_GetOIDCMetadata_Call) RunAndReturn(run func(ctx context.Context) (*discovery.OIDCProviderMetadata, error)) *DiscoveryServiceInterfaceMock_GetOIDCMetadata_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListAuthorizationDetailsTypeMetadata provides a mock function for the type DiscoveryServiceInterfaceMock
+func (_mock *DiscoveryServiceInterfaceMock) ListAuthorizationDetailsTypeMetadata(ctx context.Context) ([]discovery.AuthorizationDetailsTypeMetadata, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListAuthorizationDetailsTypeMetadata")
+	}
+
+	var r0 []discovery.AuthorizationDetailsTypeMetadata
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ([]discovery.AuthorizationDetailsTypeMetadata, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) []discovery.AuthorizationDetailsTypeMetadata); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]discovery.AuthorizationDetailsTypeMetadata)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// DiscoveryServiceInterfaceMock_ListAuthorizationDetailsTypeMetadata_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListAuthorizationDetailsTypeMetadata'
+type DiscoveryServiceInterfaceMock_ListAuthorizationDetailsTypeMetadata_Call struct {
+	*mock.Call
+}
+
+// ListAuthorizationDetailsTypeMetadata is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *DiscoveryServiceInterfaceMock_Expecter) ListAuthorizationDetailsTypeMetadata(ctx any) *DiscoveryServiceInterfaceMock_ListAuthorizationDetailsTypeMetadata_Call {
+	return &DiscoveryServiceInterfaceMock_ListAuthorizationDetailsTypeMetadata_Call{Call: _e.mock.On("ListAuthorizationDetailsTypeMetadata", ctx)}
+}
+
+func (_c *DiscoveryServiceInterfaceMock_ListAuthorizationDetailsTypeMetadata_Call) Run(run func(ctx context.Context)) *DiscoveryServiceInterfaceMock_ListAuthorizationDetailsTypeMetadata_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *DiscoveryServiceInterfaceMock_ListAuthorizationDetailsTypeMetadata_Call) Return(authorizationDetailsTypeMetadatas []discovery.AuthorizationDetailsTypeMetadata, err error) *DiscoveryServiceInterfaceMock_ListAuthorizationDetailsTypeMetadata_Call {
+	_c.Call.Return(authorizationDetailsTypeMetadatas, err)
+	return _c
+}
+
+func (_c *DiscoveryServiceInterfaceMock_ListAuthorizationDetailsTypeMetadata_Call) RunAndReturn(run func(ctx context.Context) ([]discovery.AuthorizationDetailsTypeMetadata, error)) *DiscoveryServiceInterfaceMock_ListAuthorizationDetailsTypeMetadata_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -57,6 +57,8 @@ func (f *flowFactory) CreateNode(id, _type string, properties map[string]interfa
 		return newRepresentationNode(id, nodeType, properties, isStartNode, isFinalNode), nil
 	case common.NodeTypeCall:
 		return newCallNode(id, properties, isStartNode, isFinalNode), nil
+	case common.NodeTypeVariables:
+		return newVariablesNode(id, properties, isStartNode, isFinalNode), nil
 	default:
 		return nil, errors.New("unsupported node type: " + _type)
 	}

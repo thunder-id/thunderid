@@ -20,12 +20,14 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
 // ApplicationExporterTestSuite tests the applicationExporter.
 type ApplicationExporterTestSuite struct {
 	suite.Suite
 	mockService *applicationmock.ApplicationServiceInterfaceMock
+	sharingMock *sharingmock.SharingServiceInterfaceMock
 	exporter    declarativeresource.ResourceExporter
 	logger      *log.Logger
 }
@@ -36,7 +38,8 @@ func TestApplicationExporterTestSuite(t *testing.T) {
 
 func (s *ApplicationExporterTestSuite) SetupTest() {
 	s.mockService = applicationmock.NewApplicationServiceInterfaceMock(s.T())
-	s.exporter = application.NewApplicationExporterForTest(s.mockService)
+	s.sharingMock = sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.exporter = application.NewApplicationExporterForTest(s.mockService, s.sharingMock)
 	s.logger = log.GetLogger()
 }
 
@@ -60,7 +63,7 @@ func (s *ApplicationExporterTestSuite) TestGetAllResourceIDs_Success() {
 		},
 	}
 
-	s.mockService.EXPECT().GetApplicationList(mock.Anything).Return(expectedApps, nil)
+	s.mockService.EXPECT().GetApplicationList(mock.Anything, mock.Anything).Return(expectedApps, nil)
 
 	ids, err := s.exporter.GetAllResourceIDs(context.Background())
 
@@ -76,7 +79,7 @@ func (s *ApplicationExporterTestSuite) TestGetAllResourceIDs_Error() {
 		Error: tidcommon.I18nMessage{DefaultValue: "test error"},
 	}
 
-	s.mockService.EXPECT().GetApplicationList(mock.Anything).Return(nil, serviceError)
+	s.mockService.EXPECT().GetApplicationList(mock.Anything, mock.Anything).Return(nil, serviceError)
 
 	ids, err := s.exporter.GetAllResourceIDs(context.Background())
 
@@ -89,7 +92,7 @@ func (s *ApplicationExporterTestSuite) TestGetAllResourceIDs_EmptyList() {
 		Applications: []model.BasicApplicationResponse{},
 	}
 
-	s.mockService.EXPECT().GetApplicationList(mock.Anything).Return(expectedApps, nil)
+	s.mockService.EXPECT().GetApplicationList(mock.Anything, mock.Anything).Return(expectedApps, nil)
 
 	ids, err := s.exporter.GetAllResourceIDs(context.Background())
 
@@ -104,12 +107,32 @@ func (s *ApplicationExporterTestSuite) TestGetResourceByID_Success() {
 	}
 
 	s.mockService.EXPECT().GetApplication(mock.Anything, "app1").Return(expectedApp, nil)
+	s.sharingMock.EXPECT().ExportPolicies(mock.Anything, application.ApplicationSharingType, "app1").
+		Return(nil, nil)
 
 	resource, name, err := s.exporter.GetResourceByID(context.Background(), "app1")
 
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "Test App", name)
-	assert.Equal(s.T(), expectedApp, resource)
+	assert.NotNil(s.T(), resource)
+}
+
+// A failure to read the policies fails the export rather than writing a document that silently
+// shares with nobody. The failure is answered in this package's own codes, not the framework's.
+func (s *ApplicationExporterTestSuite) TestGetResourceByID_SharingFailureFailsTheExport() {
+	serviceError := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "SHR-5000"}
+
+	s.mockService.EXPECT().GetApplication(mock.Anything, "app1").
+		Return(&providers.Application{ID: "app1", Name: "Test App"}, nil)
+	s.sharingMock.EXPECT().ExportPolicies(mock.Anything, application.ApplicationSharingType, "app1").
+		Return(nil, serviceError)
+
+	resource, name, err := s.exporter.GetResourceByID(context.Background(), "app1")
+
+	assert.Nil(s.T(), resource)
+	assert.Empty(s.T(), name)
+	s.Require().NotNil(err)
+	assert.Equal(s.T(), tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (s *ApplicationExporterTestSuite) TestGetResourceByID_Error() {
@@ -188,7 +211,7 @@ func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_PublicCli
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
-	assert.NotContains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+	assert.NotContains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
 }
 
@@ -213,7 +236,7 @@ func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_Confident
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
-	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
 }
 
@@ -225,5 +248,5 @@ func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_NonApplic
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
-	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 }

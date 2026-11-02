@@ -6,7 +6,7 @@ import {Box, Card, CircularProgress, Divider, InputAdornment, Tab, Tabs, TextFie
 import {Search} from '@wso2/oxygen-ui-icons-react';
 import {type JSX, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
-import TranslationFieldsView from '@/components/edit-translation/TranslationFieldsView';
+import TranslationFieldsView, {type AddKeyDraft} from '@/components/edit-translation/TranslationFieldsView';
 import TranslationJsonEditor from '@/components/edit-translation/TranslationJsonEditor';
 
 /**
@@ -27,8 +27,8 @@ export interface TranslationEditorCardProps {
   currentValues: Record<string, string>;
   /** Server-saved values for the selected namespace. */
   serverValues: Record<string, string>;
-  /** Whether the active namespace is "custom", which allows adding new keys. */
-  isCustomNamespace: boolean;
+  /** Whether the active namespace permits admins to add brand-new keys (e.g. the custom and notification namespaces). */
+  allowNewKeys: boolean;
   /** Color mode passed to the JSON editor. */
   colorMode: 'light' | 'dark';
   /** Called when the user switches between the Fields and JSON tabs. */
@@ -39,6 +39,10 @@ export interface TranslationEditorCardProps {
   onFieldChange: (key: string, value: string) => void;
   /** Called when a field is reset to its server value. */
   onResetField: (key: string) => void;
+  /** The in-progress add-key draft for the fields view, owned by the page. */
+  draft: AddKeyDraft;
+  /** Called when the add-key draft changes. */
+  onDraftChange: (draft: AddKeyDraft) => void;
   /** Called when the JSON editor emits a full set of changes. */
   onJsonChange: (changes: Record<string, string>) => void;
 }
@@ -61,12 +65,14 @@ export default function TranslationEditorCard({
   search,
   currentValues,
   serverValues,
-  isCustomNamespace,
+  allowNewKeys,
   colorMode,
   onTabChange,
   onSearchChange,
   onFieldChange,
   onResetField,
+  draft,
+  onDraftChange,
   onJsonChange,
 }: TranslationEditorCardProps): JSX.Element {
   const {t} = useTranslation('translations');
@@ -123,9 +129,11 @@ export default function TranslationEditorCard({
                 localValues={currentValues}
                 serverValues={serverValues}
                 search={search}
-                isCustomNamespace={isCustomNamespace}
+                allowNewKeys={allowNewKeys}
                 onChange={onFieldChange}
                 onResetField={onResetField}
+                draft={draft}
+                onDraftChange={onDraftChange}
               />
             </Box>
           </>
@@ -136,7 +144,7 @@ export default function TranslationEditorCard({
             <TranslationJsonEditor
               values={currentValues}
               serverKeys={Object.keys(serverValues)}
-              isCustomNamespace={isCustomNamespace}
+              allowNewKeys={allowNewKeys}
               colorMode={colorMode}
               onChange={onJsonChange}
             />

@@ -143,6 +143,13 @@ configuration:
     # The URL where users reach ThunderID in their browser.
     # ThunderID uses it to build the login and error redirect links.
     publicUrl: "https://thunderid.local"
+    # HTTP server timeouts for every route, in seconds. writeSeconds bounds a request from the end of
+    # its headers until its response is written; a slow API has its own timeout instead (see
+    # import.timeoutSeconds), so this one can stay short.
+    timeouts:
+      readHeaderSeconds: 10
+      writeSeconds: 10
+      idleSeconds: 120
     # Security configuration.
     # jwksCacheTtl controls how long fetched JWKS responses are cached in-process for
     # every JWKS consumer in the server (trusted issuer validation, federated OIDC
@@ -161,6 +168,16 @@ configuration:
     # security:
     #   jwksCacheTtl: 300
     #   directAuthSecret: "<strong-random-secret>"
+    #   # Audience (RFC 8707 resource indicator) each surface requires of a token. Both default to
+    #   # consoleClient.resourceIdentifier, so a deployment need not repeat its public URL.
+    #   # rest: bind REST API tokens to that identifier. Omit the block entirely to leave the
+    #   # audience unchecked (the default) — REST authorizes by scope.
+    #   rest:
+    #     audience: ""
+    #   # mcp: override the MCP resource identifier. Omit the block to let the server derive it from
+    #   # public_url; the check itself is mandatory and cannot be disabled.
+    #   mcp:
+    #     audience: ""
     #   trustedIssuer:
     #     issuer: "https://cp.example.com"
     #     jwksUrl: "https://cp.example.com/oauth2/jwks"
@@ -168,6 +185,24 @@ configuration:
     #     requiredClaims:
     #       - claim: "ouId"
     #         value: "<tenant-ou-id>"
+    #     # The claim a caller's id is recorded from where a control plane records who captured or
+    #     # applied a configuration version. Defaults to sub.
+    #     userIdClaim: "sub"
+    #     # Names for the users a control plane records, read from the issuer's user endpoint with a
+    #     # client credentials token and never stored. Omit to leave recorded users out of responses.
+    #     # The client secret comes from an existing Kubernetes Secret, named by clientSecretRef, which
+    #     # is mounted into the pods and read by the server at load time; it is never a chart value.
+    #     #   kubectl create secret generic thunderid-user-lookup --from-literal=client-secret=<secret>
+    #     userLookup:
+    #       url: "https://cp.example.com/users/{id}"
+    #       tokenUrl: "https://cp.example.com/oauth2/token"
+    #       clientId: "<lookup-client-id>"
+    #       clientSecretRef:
+    #         name: "thunderid-user-lookup"
+    #         key: "client-secret"
+    #       scopes: ["internal_user_mgt_view"]
+    #       nameAttribute: "username"
+    #       cacheTtl: 300
 
   # Gate client configuration.
   # hostname/port/scheme default to server.publicUrl. Required only when Gate is hosted separately.
@@ -252,6 +287,12 @@ configuration:
   attributeCache:
     encryption:
       enabled: false
+
+  # Resource sharing configuration
+  resourceSharing:
+    # If true, an organization unit that has a parent may share a resource with a root
+    # organization unit in another tree. If false, only a root OU can share outside its own tree.
+    allowChildOuCrossTreeSharing: false
 
   # Database configuration
   database:
@@ -415,6 +456,40 @@ configuration:
     dcr:
       enabled: true
       insecure: false
+    # OIDC Back-Channel Logout: notify relying parties that registered a back-channel logout URI when
+    # a session they took part in ends.
+    logout:
+      backchannel:
+        enabled: true
+        # Reject back-channel logout URIs naming localhost or a private IP address, and refuse a
+        # hostname that resolves to one. Set to false when relying parties run on internal networks.
+        rejectPrivateAddresses: true
+    # Validation policy for private_key_jwt client assertions, in seconds.
+    clientAssertion:
+      maxLifetime: 300
+      maxIatAge: 60
+    # Advertise Client ID Metadata Document support in the authorization server metadata. Turn it off when
+    # MCP clients should register through Dynamic Client Registration instead.
+    cimd:
+      enabled: true
+    # Deployment-wide switches for issuing and accepting Identity Assertion JWT Authorization Grants (ID-JAG),
+    # applied on top of each application's and trusted issuer's own setting. Issuance also needs the token
+    # exchange grant, and acceptance the jwt-bearer grant, in allowedGrantTypes.
+    idJag:
+      issuance:
+        enabled: true
+      acceptance:
+        enabled: true
+    # RFC 9396 rich authorization requests. processorTimeout bounds one call to an authorization details
+    # type's processor, in seconds (at most 30). typeMetadataEnabled serves the type metadata endpoint and
+    # advertises it in the authorization server metadata.
+    authorizationDetails:
+      processorTimeout: 5
+      typeMetadataEnabled: true
+    # Maximum revocation entries one role, group or scope change may record; a larger change is refused.
+    revocation:
+      criteria:
+        maxEntriesPerChange: 10000
     # Report an authentication flow failure that maps to the OAuth server_error code to the client.
     sendServerErrorsToClient: false
     # Client token endpoint auth methods allowed during registration.
@@ -435,6 +510,19 @@ configuration:
       - "urn:openid:params:grant-type:ciba"
       - "urn:ietf:params:oauth:grant-type:jwt-bearer"
 
+  # Import API configuration.
+  # timeoutSeconds bounds an import request, in place of server.timeouts.writeSeconds. A control plane
+  # applies a configuration version through this API, so raise it when large applies time out.
+  import:
+    timeoutSeconds: 120
+
+  # Gateway configuration.
+  # applyTimeoutSeconds bounds a request to apply a configuration version to a gateway, or to revert
+  # one, in place of server.timeouts.writeSeconds. It covers waiting for an apply already running on
+  # that gateway and the gateway's import, so keep it above the gateway's import.timeoutSeconds.
+  gateway:
+    applyTimeoutSeconds: 300
+
   # Flow configuration
   flow:
     maxVersionHistory: 3
@@ -448,6 +536,11 @@ configuration:
     # Storage mode for flows: "mutable", "declarative", or "composite".
     # Leave empty to inherit the global declarativeResources.enabled setting.
     store: ""
+
+  # Direct API authentication endpoints (/auth/**, /register/passkey/**). Set enabled to false to
+  # remove them from the server. AuthZEN access endpoints are not affected.
+  directApi:
+    enabled: true
 
   # Passkey configuration
   passkey:
@@ -501,26 +594,51 @@ configuration:
     # Leave empty to inherit the global declarativeResources.enabled setting.
     store: ""
 
-  # SMTP server used to deliver emails (email OTP, magic link, verification).
-  # Leave host empty to omit the section, in which case no email can be sent.
-  # port and fromAddress are required once host is set. enableStartTls and
-  # enableAuthentication both default to true when omitted.
-  email:
-    smtp:
-      host: ""
-      port: 587
-      fromAddress: ""
-      username: ""
-      enableStartTls: true
-      enableAuthentication: true
-      # Inline SMTP password. Stored in the "<release>-db-credentials" Secret and
-      # injected as the SMTP_PASSWORD environment variable.
-      password: ""
-      # Source the SMTP password from an existing Kubernetes Secret. When both
-      # name and key are set, it takes precedence over the inline password above.
-      passwordRef:
-        name: ""
-        key: ""
+  # Account access (automatic lock) policy for the user and agent categories, the deployment base of
+  # the accountAccess server-config section. The values are the product defaults; a key removed here
+  # is not rendered, so the product default applies.
+  accountAccess:
+    user:
+      # "authentication_method" locks only the sign-in method that failed; "account" locks every method.
+      lockGranularity: "authentication_method"
+      # Record when the user last signed in, at most once per lastLoginResolutionSeconds.
+      recordLastLogin: false
+      lastLoginResolutionSeconds: 3600
+      default:
+        enabled: true
+        # Failed attempts that form a lock. A failure more than failureWindowSeconds after the previous
+        # one restarts the count.
+        threshold: 5
+        failureWindowSeconds: 3600
+        # Durations of consecutive locks; the last one repeats.
+        lockDurationsSeconds: [300, 900, 1800, 3600]
+        # Time after a lock ends before the escalation resets.
+        lockDecaySeconds: 86400
+        # Counted failures since the last clear that form a lock that does not expire. 0 sets no limit.
+        maxConsecutiveFailures: 50
+      notifications:
+        onLock:
+          email:
+            enabled: true
+    agent:
+      lockGranularity: "authentication_method"
+      recordLastLogin: false
+      lastLoginResolutionSeconds: 3600
+      default:
+        enabled: true
+        threshold: 5
+        failureWindowSeconds: 900
+        lockDurationsSeconds: [60, 300, 900]
+        lockDecaySeconds: 3600
+        maxConsecutiveFailures: 50
+
+  # Identity governance provider. "disabled" turns off the governance checks of the flow engine and
+  # OAuth, and the suspend, unsuspend and unlock flows. With "disabled", also set
+  # accountAccess.<category>.default.enabled to false for user and agent; otherwise locks still form
+  # and cannot be released early. Keep recordLastLogin off too: only the Direct API authentication
+  # endpoints record the last sign-in then. Leave empty to keep the default provider.
+  identityGovernanceProvider:
+    type: ""
 
   # Logging configuration. Logs go to the console (stdout) so a log collector can pick
   # them up from the pod, which is the expected setup on Kubernetes. Everything below
@@ -566,7 +684,8 @@ configuration:
   #   application: composite
   #   identity_provider: declarative
   # Supported keys: user, group, role, theme, layout, translation, agent, user_type,
-  # organization_unit, identity_provider, application, server_config, resource.
+  # organization_unit, identity_provider, application, server_config, resource,
+  # authorization_detail_type, http_connection, notification_template.
   stores: {}
 
 
@@ -778,7 +897,7 @@ bootstrap:
     # Example - Creating a custom user (filename must end in .yaml/.yml/.json):
     # 70-custom-users.yaml: |
     #   # resource_type: user
-    #   type: Person
+    #   type: person
     #   ouHandle: default
     #   attributes:
     #     username: alice

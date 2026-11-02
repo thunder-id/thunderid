@@ -56,6 +56,13 @@ type EnrollRequest struct {
 	Metadata    *providers.AuthnMetadata `json:"metadata"`
 }
 
+// storeAccountLinkRequest is the body posted to the provider's link endpoint.
+type storeAccountLinkRequest struct {
+	EntityReferenceToken any    `json:"entityReferenceToken"`
+	IDPID                string `json:"idpId"`
+	Sub                  string `json:"sub"`
+}
+
 type apiErrorResponse struct {
 	Code        string `json:"code"`
 	Message     string `json:"message"`
@@ -148,9 +155,63 @@ func (p *restAuthnProvider) Enroll(ctx context.Context, identifiers, credentials
 	return postAndDecode[providers.AuthnResult](p, ctx, p.baseURL+"/enroll", reqBody)
 }
 
+// StoreAccountLink asks the external service to record the link against its own user. The
+// call is idempotent by contract, so recording a subject it already holds returns 200.
+func (p *restAuthnProvider) StoreAccountLink(ctx context.Context, entityReferenceToken any,
+	idpID, sub string) *tidcommon.ServiceError {
+	reqBody := storeAccountLinkRequest{
+		EntityReferenceToken: entityReferenceToken,
+		IDPID:                idpID,
+		Sub:                  sub,
+	}
+	resp, svcErr := post(p, ctx, p.baseURL+"/link-account", reqBody)
+	if svcErr != nil {
+		return svcErr
+	}
+	_ = resp.Body.Close()
+	return nil
+}
+
+// SearchEntityReferences is not part of the REST contract, so an ambiguous lookup at an external
+// provider fails closed.
+func (p *restAuthnProvider) SearchEntityReferences(ctx context.Context,
+	filters map[string]interface{}) ([]providers.EntityReference, *tidcommon.ServiceError) {
+	return nil, &tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: authnprovidercm.ErrorCodeNotImplemented,
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authnproviderservice." + authnprovidercm.ErrorCodeNotImplemented,
+			DefaultValue: "Not implemented",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authnproviderservice." + authnprovidercm.ErrorCodeNotImplemented + "_description",
+			DefaultValue: "The provider cannot list the users an attribute lookup matches",
+		},
+	}
+}
+
 // postAndDecode marshals reqBody as JSON, posts it to url, and decodes the response into T.
 func postAndDecode[T any](p *restAuthnProvider, ctx context.Context, url string,
 	reqBody interface{}) (*T, *tidcommon.ServiceError) {
+	resp, svcErr := post(p, ctx, url, reqBody)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	var result T
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, p.logAndReturnServerError(ctx, "Failed to decode response", log.String("error", err.Error()))
+	}
+	return &result, nil
+}
+
+// post marshals reqBody as JSON and posts it to url. It returns the response only for a 200, and the
+// caller closes its body.
+func post(p *restAuthnProvider, ctx context.Context, url string,
+	reqBody interface{}) (*http.Response, *tidcommon.ServiceError) {
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, p.logAndReturnServerError(ctx, "Failed to marshal request", log.String("error", err.Error()))
@@ -160,18 +221,12 @@ func postAndDecode[T any](p *restAuthnProvider, ctx context.Context, url string,
 	if err != nil {
 		return nil, p.logAndReturnServerError(ctx, "Failed to send request", log.String("error", err.Error()))
 	}
+	if resp.StatusCode == http.StatusOK {
+		return resp, nil
+	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
-
-	if resp.StatusCode == http.StatusOK {
-		var result T
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return nil, p.logAndReturnServerError(ctx, "Failed to decode response", log.String("error", err.Error()))
-		}
-		return &result, nil
-	}
-
 	return nil, p.decodeError(ctx, resp.Body, resp.StatusCode)
 }
 

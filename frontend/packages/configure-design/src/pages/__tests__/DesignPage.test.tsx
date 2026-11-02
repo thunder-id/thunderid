@@ -72,6 +72,11 @@ describe('DesignPage', () => {
     expect(screen.getByText('Layouts')).toBeInTheDocument();
   });
 
+  it('sets the document title', async () => {
+    render(<DesignPage />);
+    await waitFor(() => expect(document.title).toBe('Design | ThunderID'));
+  });
+
   it('renders an inline read error for themes without affecting the layouts section', () => {
     themesError = new Error('Network error');
 
@@ -140,7 +145,7 @@ describe('DesignPage', () => {
   it('navigates to the themes create page when Add Theme is clicked', async () => {
     render(<DesignPage />);
 
-    fireEvent.click(screen.getByRole('button', {name: 'Add Theme'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Add theme'}));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/design/themes/create');
@@ -184,7 +189,7 @@ describe('DesignPage', () => {
 
     fireEvent.click(screen.getByRole('button', {name: 'Delete'}));
 
-    expect(screen.getByText('Delete Theme')).toBeInTheDocument();
+    expect(screen.getByText('Delete theme')).toBeInTheDocument();
   });
 
   it('does not render a delete action for a read-only theme', () => {
@@ -201,12 +206,12 @@ describe('DesignPage', () => {
     render(<DesignPage />);
 
     fireEvent.click(screen.getByRole('button', {name: 'Delete'}));
-    expect(screen.getByText('Delete Theme')).toBeInTheDocument();
+    expect(screen.getByText('Delete theme')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
 
     await waitFor(() => {
-      expect(screen.queryByText('Delete Theme')).not.toBeInTheDocument();
+      expect(screen.queryByText('Delete theme')).not.toBeInTheDocument();
     });
   });
 

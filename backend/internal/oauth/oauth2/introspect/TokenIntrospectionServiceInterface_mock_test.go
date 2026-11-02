@@ -16,10 +16,19 @@ func NewTokenIntrospectionServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *TokenIntrospectionServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &TokenIntrospectionServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call struct {
 //   - ctx context.Context
 //   - token string
 //   - tokenTypeHint string
-func (_e *TokenIntrospectionServiceInterfaceMock_Expecter) IntrospectToken(ctx interface{}, token interface{}, tokenTypeHint interface{}) *TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call {
+func (_e *TokenIntrospectionServiceInterfaceMock_Expecter) IntrospectToken(ctx any, token any, tokenTypeHint any) *TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call {
 	return &TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call{Call: _e.mock.On("IntrospectToken", ctx, token, tokenTypeHint)}
 }
 

@@ -467,7 +467,7 @@ func (s *IDPUtilsTestSuite) TestPropertyMapToSlice() {
 	s.NotNil(result)
 	s.Len(result, 2)
 
-	names := make([]string, 0)
+	names := make([]string, 0, len(result))
 	for _, prop := range result {
 		names = append(names, prop.GetName())
 	}
@@ -1388,4 +1388,781 @@ func (s *IDPUtilsTestSuite) TestIDJagEnabledFromProperties_InvalidValue() {
 	s.NoError(err)
 
 	s.Nil(idJagEnabledFromProperties([]cmodels.Property{*prop}))
+}
+
+// ----- AuthorizationRuleMapping resolution -----
+
+type AuthorizationRuleMappingResolveTestSuite struct {
+	suite.Suite
+}
+
+func TestAuthorizationRuleMappingResolveTestSuite(t *testing.T) {
+	suite.Run(t, new(AuthorizationRuleMappingResolveTestSuite))
+}
+
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestNilIDPReturnsNil() {
+	suite.Nil(GetRuleAuthorizationTargets(nil, map[string]interface{}{"groups": []interface{}{"engineering"}}))
+}
+
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestNoAttributeConfigurationReturnsNil() {
+	idp := &providers.IDPDTO{}
+	suite.Nil(GetRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{"engineering"}}))
+}
+
+// A list-valued claim must resolve every element, not the joined string. This is the array-parsing
+// bug the shared string-conversion helper would otherwise reintroduce: joining ["engineering",
+// "platform-admins"] into "engineering,platform-admins" before lookup would match nothing.
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestListValuedClaimResolvesEachElement() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim: "groups",
+					Values: []providers.AuthorizationRule{
+						equalsRule("engineering", roleTarget("role-eng")),
+						equalsRule("platform-admins", roleTarget("role-platform-admin")),
+					},
+				},
+			}},
+		},
+	}
+	claims := map[string]interface{}{"groups": []interface{}{"engineering", "platform-admins"}}
+
+	targets := GetRuleAuthorizationTargets(idp, claims)
+
+	suite.ElementsMatch(
+		[]providers.AuthorizationTarget{roleTarget("role-eng"), roleTarget("role-platform-admin")}, targets)
+}
+
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestSpaceDelimitedStringClaimSplitsOnConfiguredDelimiter() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:     "scope",
+					Delimiter: " ",
+					Values: []providers.AuthorizationRule{
+						equalsRule("orders.write", roleTarget("role-orders-write")),
+					},
+				},
+			}},
+		},
+	}
+	claims := map[string]interface{}{"scope": "orders.read orders.write"}
+
+	targets := GetRuleAuthorizationTargets(idp, claims)
+
+	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-orders-write")}, targets)
+}
+
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestScalarStringClaimWithNoDelimiterIsOneToken() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:  "department",
+					Values: []providers.AuthorizationRule{equalsRule("platform", groupTarget("group-platform"))},
+				},
+			}},
+		},
+	}
+	claims := map[string]interface{}{"department": "platform"}
+
+	targets := GetRuleAuthorizationTargets(idp, claims)
+
+	suite.Equal([]providers.AuthorizationTarget{groupTarget("group-platform")}, targets)
+}
+
+// An unmapped value confers nothing, even where it matches the name of a local role or group.
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestUnmappedValueConfersNothing() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:  "groups",
+					Values: []providers.AuthorizationRule{equalsRule("engineering", roleTarget("role-eng"))},
+				},
+			}},
+		},
+	}
+	claims := map[string]interface{}{"groups": []interface{}{"marketing"}}
+
+	suite.Empty(GetRuleAuthorizationTargets(idp, claims))
+}
+
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestMissingClaimConfersNothing() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:  "groups",
+					Values: []providers.AuthorizationRule{equalsRule("engineering", roleTarget("role-eng"))},
+				},
+			}},
+		},
+	}
+
+	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{}))
+}
+
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestDuplicateTargetsAcrossMappingsAreDeduped() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:  "groups",
+					Values: []providers.AuthorizationRule{equalsRule("engineering", roleTarget("role-eng"))},
+				},
+				{
+					Claim:  "department",
+					Values: []providers.AuthorizationRule{equalsRule("engineering", roleTarget("role-eng"))},
+				},
+			}},
+		},
+	}
+	claims := map[string]interface{}{"groups": []interface{}{"engineering"}, "department": "engineering"}
+
+	targets := GetRuleAuthorizationTargets(idp, claims)
+
+	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-eng")}, targets)
+}
+
+// not_equals matches element-wise: a rule contributes if any one of the claim's values satisfies it,
+// so a list carrying an unrelated value alongside the excluded one still grants.
+// This declares "groups" as a single value (the default string type, no delimiter), even though the
+// claim actually resolves to two elements at runtime — a declared/actual shape mismatch the resolver
+// tolerates rather than rejects (see AuthorizationRuleMapping.IsMultiValued). not_equals is a per-token,
+// any-match comparison, so it matches here because "engineering" differs from "guest", even though
+// "guest" itself is also present. That is exactly the ambiguous reading includes/not_includes exist
+// to avoid for a claim genuinely declared multi-valued: see
+// TestNotIncludesRequiresWholeSetAbsenceUnlikeNotEquals below for the contrast.
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestNotEqualsOperatorMatchesWhenAnyTokenDiffers() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim: "groups",
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorNotEquals,
+							Value:    "guest",
+							Targets:  []providers.AuthorizationTarget{roleTarget("role-non-guest")},
+						},
+					},
+				},
+			}},
+		},
+	}
+	claims := map[string]interface{}{"groups": []interface{}{"guest", "engineering"}}
+
+	targets := GetRuleAuthorizationTargets(idp, claims)
+
+	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-non-guest")}, targets)
+}
+
+// The motivating case for includes/not_includes: on the identical claim data as the test above,
+// not_includes correctly withholds the grant, because "guest" is present in the set. not_equals
+// (element-wise, any-match) granted access to a user who unambiguously is still a guest; not_includes
+// (whole-set) does not, since it tests absence from the entire set rather than difference from any
+// one element.
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestNotIncludesRequiresWholeSetAbsenceUnlikeNotEquals() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:     "groups",
+					ValueType: providers.AuthorizationValueTypeArray,
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorNotIncludes,
+							Value:    "guest",
+							Targets:  []providers.AuthorizationTarget{roleTarget("role-non-guest")},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	suite.Empty(
+		GetRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{"guest", "engineering"}}),
+		"not_includes must not grant when the excluded value is present in the set, even alongside others")
+	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-non-guest")},
+		GetRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{"engineering"}}),
+		"not_includes must grant when the excluded value is absent from the set")
+}
+
+// includes is a straightforward membership test: it matches when the named value is one of the set's
+// elements, and does not match when it is absent.
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestIncludesOperatorTestsSetMembershipForArrayType() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:     "groups",
+					ValueType: providers.AuthorizationValueTypeArray,
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorIncludes,
+							Value:    "platform-admins",
+							Targets:  []providers.AuthorizationTarget{roleTarget("role-platform-admin")},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	claims := map[string]interface{}{"groups": []interface{}{"engineering", "platform-admins"}}
+	suite.Equal(
+		[]providers.AuthorizationTarget{roleTarget("role-platform-admin")}, GetRuleAuthorizationTargets(idp, claims))
+	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{"engineering"}}))
+}
+
+// includes/not_includes apply identically to a delimited string, the other declared shape
+// IsMultiValued recognizes: the string is split on the delimiter, and membership is tested across
+// the resulting tokens exactly as it would be for a native array.
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestIncludesOperatorTestsSetMembershipForDelimitedString() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:     "scope",
+					ValueType: providers.AuthorizationValueTypeString,
+					Delimiter: " ",
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorIncludes,
+							Value:    "orders.write",
+							Targets:  []providers.AuthorizationTarget{roleTarget("role-orders-write")},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-orders-write")},
+		GetRuleAuthorizationTargets(idp, map[string]interface{}{"scope": "orders.read orders.write"}))
+	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{"scope": "orders.read"}))
+}
+
+// A claim that is present but resolves to no tokens at all (an empty array, or an all-empty delimited
+// string) still unambiguously does not include anything.
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestNotIncludesGrantsWhenClaimResolvesToNoTokens() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:     "groups",
+					ValueType: providers.AuthorizationValueTypeArray,
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorNotIncludes,
+							Value:    "guest",
+							Targets:  []providers.AuthorizationTarget{roleTarget("role-non-guest")},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-non-guest")},
+		GetRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{}}))
+}
+
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestGreaterThanOperatorGrantsForNumericClaim() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:     "level",
+					ValueType: providers.AuthorizationValueTypeNumber,
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorGreaterThan,
+							Value:    "5",
+							Targets:  []providers.AuthorizationTarget{roleTarget("role-senior")},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-senior")},
+		GetRuleAuthorizationTargets(idp, map[string]interface{}{"level": "10"}))
+	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{"level": "3"}))
+}
+
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestBooleanValueTypeEquals() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:     "is_admin",
+					ValueType: providers.AuthorizationValueTypeBoolean,
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorEquals,
+							Value:    "true",
+							Targets:  []providers.AuthorizationTarget{roleTarget("role-admin")},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-admin")},
+		GetRuleAuthorizationTargets(idp, map[string]interface{}{"is_admin": "true"}))
+	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{"is_admin": "false"}))
+}
+
+// A JSON-decoded claim carries a genuine float64, not a quoted string (encoding/json unmarshals every
+// JSON number into float64 when the target is interface{}). The number comparison must work on that
+// native type just as it does on a claim an IdP happens to stringify.
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestNumberValueTypeMatchesNativeJSONNumberClaim() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:     "level",
+					ValueType: providers.AuthorizationValueTypeNumber,
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorGreaterThan,
+							Value:    "5",
+							Targets:  []providers.AuthorizationTarget{roleTarget("role-senior")},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-senior")},
+		GetRuleAuthorizationTargets(idp, map[string]interface{}{"level": float64(10)}))
+	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{"level": float64(3)}))
+}
+
+// A JSON-decoded claim carries a genuine bool, not a quoted "true"/"false" string. The equals
+// comparison must work on that native type just as it does on a claim an IdP happens to stringify.
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestBooleanValueTypeMatchesNativeJSONBooleanClaim() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:     "is_admin",
+					ValueType: providers.AuthorizationValueTypeBoolean,
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorEquals,
+							Value:    "true",
+							Targets:  []providers.AuthorizationTarget{roleTarget("role-admin")},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-admin")},
+		GetRuleAuthorizationTargets(idp, map[string]interface{}{"is_admin": true}))
+	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{"is_admin": false}))
+}
+
+// Whitespace around a number or boolean token is never significant, unlike a string comparison where
+// it may be part of the value being matched, so it must not prevent an otherwise-valid match. This
+// covers the one case where such whitespace can reach evaluation: a scalar string claim with no
+// delimiter is deliberately left untrimmed for the string-equality case (a value there may carry
+// meaningful whitespace), so a number/boolean-typed mapping inherits that untrimmed token and must
+// trim it itself before parsing.
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestNumberBooleanComparisonTrimsWhitespaceAroundToken() {
+	numberIDP := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:     "level",
+					ValueType: providers.AuthorizationValueTypeNumber,
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorGreaterThan,
+							Value:    "5",
+							Targets:  []providers.AuthorizationTarget{roleTarget("role-senior")},
+						},
+					},
+				},
+			}},
+		},
+	}
+	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-senior")},
+		GetRuleAuthorizationTargets(numberIDP, map[string]interface{}{"level": " 10 "}))
+
+	booleanIDP := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:     "is_admin",
+					ValueType: providers.AuthorizationValueTypeBoolean,
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorEquals,
+							Value:    "true",
+							Targets:  []providers.AuthorizationTarget{roleTarget("role-admin")},
+						},
+					},
+				},
+			}},
+		},
+	}
+	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-admin")},
+		GetRuleAuthorizationTargets(booleanIDP, map[string]interface{}{"is_admin": " true "}))
+}
+
+// A list carrying a mix of parseable and unparseable elements still matches on the elements that do
+// parse; one malformed element must not poison the whole rule.
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestNumberComparisonSkipsUnparseableElementsInList() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:     "levels",
+					ValueType: providers.AuthorizationValueTypeNumber,
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorGreaterThan,
+							Value:    "5",
+							Targets:  []providers.AuthorizationTarget{roleTarget("role-senior")},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	targets := GetRuleAuthorizationTargets(
+		idp, map[string]interface{}{"levels": []interface{}{"not-a-number", "10"}})
+	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-senior")}, targets)
+}
+
+// A claim token that does not parse as the mapping's declared value type never matches, the same
+// fail-closed behavior as an unmapped value.
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestNonParseableNumericTokenConfersNothing() {
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Rules: []providers.AuthorizationRuleMapping{
+				{
+					Claim:     "level",
+					ValueType: providers.AuthorizationValueTypeNumber,
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorGreaterThan,
+							Value:    "5",
+							Targets:  []providers.AuthorizationTarget{roleTarget("role-senior")},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{"level": "not-a-number"}))
+}
+
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestSplitAuthorizationTargets() {
+	roleIDs, groupIDs, permissions := SplitAuthorizationTargets([]providers.AuthorizationTarget{
+		{Type: providers.AuthorizationTargetRole, ID: "role-1"},
+		{Type: providers.AuthorizationTargetGroup, ID: "group-1"},
+		{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read"},
+		{Type: providers.AuthorizationTargetRole, ID: "role-2"},
+	})
+	suite.Equal([]string{"role-1", "role-2"}, roleIDs)
+	suite.Equal([]string{"group-1"}, groupIDs)
+	suite.Equal([]providers.AuthorizationTarget{
+		{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read"},
+	}, permissions)
+}
+
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestUnionMappedPermissionTargets() {
+	targets := []providers.AuthorizationTarget{
+		{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read"},
+		{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "write"},
+		{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-2", Permission: "read"},
+	}
+	result := UnionMappedPermissionTargets([]string{"write"}, []string{"read", "write"}, targets, "rs-1")
+	suite.Equal([]string{"write", "read"}, result)
+}
+
+func linkingOn(attrs ...string) *providers.AccountLinking {
+	return &providers.AccountLinking{Attributes: attrs}
+}
+
+// linkingFilters runs the resolver the way BuildFederatedAuthResult does, on the mapped claims.
+func linkingFilters(linking *providers.AccountLinking, claims map[string]interface{},
+	mappings []providers.AttributeMapping) []map[string]interface{} {
+	return BuildAccountLinkingFilters(linking, ApplyAttributeMappings(claims, mappings), mappings)
+}
+
+func (s *IDPUtilsTestSuite) TestGetAccountLinkingLocalAttributes() {
+	mappings := []providers.AttributeMapping{
+		{ExternalAttribute: "email", LocalAttribute: "username"},
+		{ExternalAttribute: "phone_number", LocalAttribute: "mobileNumber"},
+	}
+	claims := ApplyAttributeMappings(map[string]interface{}{
+		"email": "a@example.com", "phone_number": "+15550001", "userID": "u1",
+	}, mappings)
+
+	s.Nil(GetAccountLinkingLocalAttributes(nil, claims, mappings))
+	s.Equal([]string{"username", "email", "mobileNumber", "phone_number"},
+		GetAccountLinkingLocalAttributes(linkingOn("email", "phone_number", "email"), claims, mappings))
+	s.Empty(GetAccountLinkingLocalAttributes(linkingOn("userID", "nickname"), claims, mappings))
+}
+
+// The seeded Google and OIDC shape: email feeds the required username, and mappings copy, so the
+// email claim still lands in the local email attribute and must be matched there too.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_MatchesMappedTargetAndSameNamedAttribute() {
+	filters := linkingFilters(linkingOn("email"),
+		map[string]interface{}{"email": "a@example.com"},
+		[]providers.AttributeMapping{{ExternalAttribute: "email", LocalAttribute: "username"}})
+
+	s.Equal([]map[string]interface{}{
+		{"username": "a@example.com"},
+		{"email": "a@example.com"},
+	}, filters)
+}
+
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_ExplicitSameNameMappingIsNotDuplicated() {
+	filters := linkingFilters(linkingOn("email"),
+		map[string]interface{}{"email": "a@example.com"},
+		[]providers.AttributeMapping{
+			{ExternalAttribute: "email", LocalAttribute: "email"},
+			{ExternalAttribute: "email", LocalAttribute: "username"},
+		})
+
+	s.Equal([]map[string]interface{}{
+		{"email": "a@example.com"},
+		{"username": "a@example.com"},
+	}, filters)
+}
+
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_UnmappedAttributeMatchesItsOwnName() {
+	filters := linkingFilters(linkingOn("email"), map[string]interface{}{"email": "a@example.com"}, nil)
+
+	s.Equal([]map[string]interface{}{{"email": "a@example.com"}}, filters)
+}
+
+// A dotted path is read through nested claims, but a local attribute never carries that name, so only
+// the explicit target can match. Unmapped, the value has nowhere to match and linking is off.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_NestedClaimMatchesOnlyItsMappedTarget() {
+	claims := map[string]interface{}{"profile": map[string]interface{}{"mail": "a@example.com"}}
+
+	s.Equal([]map[string]interface{}{{"email": "a@example.com"}},
+		linkingFilters(linkingOn("profile.mail"), claims,
+			[]providers.AttributeMapping{{ExternalAttribute: "profile.mail", LocalAttribute: "email"}}))
+	s.Nil(linkingFilters(linkingOn("profile.mail"), claims, nil))
+}
+
+// A claim name the entity store cannot query is never searched under its own name.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_UnqueryableClaimNameMatchesOnlyItsMappedTarget() {
+	claims := map[string]interface{}{"custom:email": "a@example.com"}
+
+	s.Equal([]map[string]interface{}{{"email": "a@example.com"}},
+		linkingFilters(linkingOn("custom:email"), claims,
+			[]providers.AttributeMapping{{ExternalAttribute: "custom:email", LocalAttribute: "email"}}))
+	s.Nil(linkingFilters(linkingOn("custom:email"), claims, nil))
+}
+
+// A mapped claim is not matched against a same-named local attribute another claim feeds, because
+// that claim's value is what gets stored there.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_MappedClaimSkipsSameNamedAttributeFedByAnotherClaim() {
+	s.Equal([]map[string]interface{}{{"username": "a@example.com"}},
+		linkingFilters(linkingOn("email"),
+			map[string]interface{}{"email": "a@example.com", "mail": "b@example.com"},
+			[]providers.AttributeMapping{
+				{ExternalAttribute: "email", LocalAttribute: "username"},
+				{ExternalAttribute: "mail", LocalAttribute: "email"},
+			}))
+}
+
+// An unmapped linking attribute matches its local attribute on whatever is stored there, which is how
+// a connection links on a local attribute another claim is mapped to.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_UnmappedAttributeMatchesTheValueAnotherClaimFeeds() {
+	s.Equal([]map[string]interface{}{{"costCenter": "CC-1"}},
+		linkingFilters(linkingOn("costCenter"), map[string]interface{}{"cost_code": "CC-1"},
+			[]providers.AttributeMapping{{ExternalAttribute: "cost_code", LocalAttribute: "costCenter"}}))
+}
+
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_CombinesEveryAlternativeOfEachAttribute() {
+	filters := linkingFilters(linkingOn("email", "phone"),
+		map[string]interface{}{"email": "a@example.com", "phone": "123"},
+		[]providers.AttributeMapping{{ExternalAttribute: "email", LocalAttribute: "username"}})
+
+	s.Equal([]map[string]interface{}{
+		{"username": "a@example.com", "phone": "123"},
+		{"email": "a@example.com", "phone": "123"},
+	}, filters)
+}
+
+// Two linking attributes landing on one local attribute read the same stored value, so they merge.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_MergesAttributesLandingOnOneLocalAttribute() {
+	filters := linkingFilters(linkingOn("costCenter", "cost_code"),
+		map[string]interface{}{"cost_code": "CC-1"},
+		[]providers.AttributeMapping{{ExternalAttribute: "cost_code", LocalAttribute: "costCenter"}})
+
+	s.Equal([]map[string]interface{}{
+		{"costCenter": "CC-1"},
+		{"costCenter": "CC-1", "cost_code": "CC-1"},
+	}, filters)
+}
+
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_LeavesOutAttributesWithoutValues() {
+	filters := linkingFilters(linkingOn("email", "phone"),
+		map[string]interface{}{"email": "a@example.com", "phone": ""}, nil)
+
+	s.Equal([]map[string]interface{}{{"email": "a@example.com"}}, filters)
+	s.Nil(linkingFilters(linkingOn("email"), map[string]interface{}{}, nil))
+	s.Nil(linkingFilters(nil, map[string]interface{}{"email": "a@example.com"}, nil))
+}
+
+// An attribute with a value but nowhere to match on disables linking rather than being dropped, which
+// would widen the match to the attributes that remain.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_AttributeWithNoTargetDisablesLinking() {
+	s.Nil(linkingFilters(linkingOn("email", "custom:tenant"),
+		map[string]interface{}{"email": "a@example.com", "custom:tenant": "acme"}, nil))
+}
+
+// A reserved name would let the identity provider pick the account, so it never reaches a filter.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_NeverMatchesOnReservedNames() {
+	for _, reserved := range []string{"userID", "federatedIdpId", "credentialUpdatedAt", "linkedIds"} {
+		s.Nil(linkingFilters(linkingOn(reserved), map[string]interface{}{reserved: "x"}, nil), reserved)
+		s.Equal([]map[string]interface{}{{"email": "x"}},
+			linkingFilters(linkingOn("email"), map[string]interface{}{"email": "x"},
+				[]providers.AttributeMapping{{ExternalAttribute: "email", LocalAttribute: reserved}}), reserved)
+	}
+	s.Nil(linkingFilters(linkingOn("custom:email"), map[string]interface{}{"custom:email": "x"},
+		[]providers.AttributeMapping{{ExternalAttribute: "custom:email", LocalAttribute: "linkedIds.idp-1"}}))
+}
+
+func (s *IDPUtilsTestSuite) TestValidateAccountLinking() {
+	cases := []struct {
+		name    string
+		profile providers.AttributeConfiguration
+		errKey  string
+	}{
+		{name: "no linking", profile: providers.AttributeConfiguration{}},
+		{
+			name: "mapped attribute",
+			profile: providers.AttributeConfiguration{
+				AccountLinking: linkingOn("email"),
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{UserType: "person",
+					Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "email", LocalAttribute: "username"}}}},
+			},
+		},
+		{
+			name: "local attribute another claim feeds",
+			profile: providers.AttributeConfiguration{
+				AccountLinking: linkingOn("costCenter"),
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{UserType: "person",
+					Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "cost_code", LocalAttribute: "costCenter"}}}},
+			},
+		},
+		{
+			name:    "empty attribute",
+			profile: providers.AttributeConfiguration{AccountLinking: linkingOn(" ")},
+			errKey:  "error.idpservice.attribute_configuration_linking_empty_description",
+		},
+		{
+			name:    "reserved attribute",
+			profile: providers.AttributeConfiguration{AccountLinking: linkingOn("userID")},
+			errKey:  "error.idpservice.attribute_configuration_linking_reserved_description",
+		},
+		{
+			name: "unqueryable name mapped for every user type",
+			profile: providers.AttributeConfiguration{
+				AccountLinking: linkingOn("custom:email"),
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{
+					{UserType: "person", Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "custom:email", LocalAttribute: "email"}}},
+					{UserType: "staff", Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "custom:email", LocalAttribute: "workEmail"}}},
+				},
+			},
+		},
+		{
+			name:    "unqueryable name with no mappings",
+			profile: providers.AttributeConfiguration{AccountLinking: linkingOn("email.work")},
+			errKey:  "error.idpservice.attribute_configuration_linking_unmatchable_description",
+		},
+		{
+			name: "unqueryable name unmapped for one user type",
+			profile: providers.AttributeConfiguration{
+				AccountLinking: linkingOn("cost-center"),
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{
+					{UserType: "person", Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "cost-center", LocalAttribute: "costCenter"}}},
+					{UserType: "staff", Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "email", LocalAttribute: "email"}}},
+				},
+			},
+			errKey: "error.idpservice.attribute_configuration_linking_unmatchable_description",
+		},
+		{
+			name: "mapped onto a reserved attribute",
+			profile: providers.AttributeConfiguration{
+				AccountLinking: linkingOn("email"),
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{UserType: "person",
+					Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "email", LocalAttribute: "linkedIds.x"}}}},
+			},
+			errKey: "error.idpservice.attribute_configuration_linking_reserved_description",
+		},
+		{
+			// email and phone match on three local attributes each: 3 x 3 = 9 lookups.
+			name: "lookups within the bound",
+			profile: providers.AttributeConfiguration{
+				AccountLinking: linkingOn("email", "phone"),
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{UserType: "person",
+					Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "email", LocalAttribute: "username"},
+						{ExternalAttribute: "email", LocalAttribute: "workEmail"},
+						{ExternalAttribute: "phone", LocalAttribute: "mobile"},
+						{ExternalAttribute: "phone", LocalAttribute: "workPhone"}}}},
+			},
+		},
+		{
+			// Adding a third such attribute makes it 27 lookups for staff.
+			name: "lookups past the bound for one user type",
+			profile: providers.AttributeConfiguration{
+				AccountLinking: linkingOn("email", "phone", "employeeId"),
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{
+					{UserType: "person", Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "email", LocalAttribute: "username"}}},
+					{UserType: "staff", Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "email", LocalAttribute: "username"},
+						{ExternalAttribute: "email", LocalAttribute: "workEmail"},
+						{ExternalAttribute: "phone", LocalAttribute: "mobile"},
+						{ExternalAttribute: "phone", LocalAttribute: "workPhone"},
+						{ExternalAttribute: "employeeId", LocalAttribute: "staffId"},
+						{ExternalAttribute: "employeeId", LocalAttribute: "badgeId"}}},
+				},
+			},
+			errKey: "error.idpservice.attribute_configuration_linking_too_many_lookups_description",
+		},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			svcErr := validateAccountLinking(&tc.profile)
+			if tc.errKey == "" {
+				s.Nil(svcErr)
+				return
+			}
+			s.Require().NotNil(svcErr)
+			s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
+			s.Equal(tc.errKey, svcErr.ErrorDescription.Key)
+		})
+	}
 }

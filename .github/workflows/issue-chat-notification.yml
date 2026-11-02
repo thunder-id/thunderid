@@ -7,7 +7,7 @@ on:
 jobs:
   notify-google-chat:
     if: |
-      !contains(format(',{0},', vars.PROJECT_MAINTAINERS), format(',{0},', github.actor))
+      !contains(format(',{0},', vars.PROJECT_MEMBERS), format(',{0},', github.actor))
     runs-on: ubuntu-latest
     steps:
       - name: Send Notification to Google Chat

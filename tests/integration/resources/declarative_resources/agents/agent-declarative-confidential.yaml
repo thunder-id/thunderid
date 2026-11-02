@@ -2,7 +2,6 @@ resource_type: agent
 id: decl-agent-confidential-1
 ouId: decl-ou-1
 type: default
-name: Declarative Confidential Test Agent
 description: A declarative confidential test agent for integration testing
 authFlowId: decl-flow-1
 registrationFlowId: decl-reg-flow-1
@@ -16,3 +15,5 @@ inboundAuthConfig:
         - "client_credentials"
       tokenEndpointAuthMethod: "client_secret_basic"
       publicClient: false
+attributes:
+  name: Declarative Confidential Test Agent

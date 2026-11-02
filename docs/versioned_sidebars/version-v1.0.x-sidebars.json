@@ -24,6 +24,11 @@
           "label": "Get ThunderID"
         },
         {
+          "type": "html",
+          "value": "What are you building?",
+          "className": "sidebar-connect-label"
+        },
+        {
           "type": "category",
           "label": "Application",
           "className": "connect-section connect-section--app",
@@ -371,50 +376,79 @@
               "collapsed": true,
               "link": {
                 "type": "doc",
-                "id": "use-cases/ai-agents/overview"
+                "id": "use-cases/ai-agents/index"
               },
               "items": [
                 {
                   "type": "doc",
-                  "id": "use-cases/ai-agents/managed-agent-identity",
-                  "label": "Managed Identity"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/invoking-the-agent",
-                  "label": "Invoking the Agent"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/agent-as-subject",
-                  "label": "Agent as Subject"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/model-interaction",
-                  "label": "Model Interaction Controls"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/internal-services",
-                  "label": "Internal Business Services"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/external-integration",
-                  "label": "External Integration"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/multi-agent",
-                  "label": "Multi-Agent Interactions"
+                  "id": "use-cases/ai-agents/overview",
+                  "label": "Understand It",
+                  "key": "ai-agents-understand-it"
                 },
                 {
                   "type": "category",
-                  "label": "Try It Out",
+                  "label": "Solve It",
                   "collapsible": true,
                   "collapsed": true,
-                  "key": "ai-agents-try-it-out",
+                  "link": {
+                    "type": "doc",
+                    "id": "use-cases/ai-agents/solve-index"
+                  },
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-playground",
+                      "label": "Set Up the Playground"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-identity",
+                      "label": "Give the Agent an Identity"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-sign-in",
+                      "label": "Authenticate the Agent"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-credentials",
+                      "label": "Protect Its Credential"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-access",
+                      "label": "What the Agent May Do"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-acts-for-user",
+                      "label": "Act for a User"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-agent-as-resource",
+                      "label": "Who May Call the Agent"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-ambient",
+                      "label": "Approve Without a Browser"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-run",
+                      "label": "How It All Runs",
+                      "key": "ai-agents-how-it-all-runs"
+                    }
+                  ]
+                },
+                {
+                  "type": "category",
+                  "label": "See It in a Sample App",
+                  "collapsible": true,
+                  "collapsed": true,
+                  "key": "ai-agents-see-it-in-a-sample-app",
                   "link": {
                     "type": "doc",
                     "id": "use-cases/ai-agents/try-it-out/index"
@@ -457,6 +491,12 @@
                       ]
                     }
                   ]
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/ai-agents/architecture-decisions",
+                  "label": "Design Decisions & Alternatives",
+                  "key": "ai-agents-architecture-decisions"
                 }
               ]
             },
@@ -721,6 +761,11 @@
                 },
                 {
                   "type": "doc",
+                  "id": "guides/agents/authentication/agent-sign-in",
+                  "label": "Agent Sign-In"
+                },
+                {
+                  "type": "doc",
                   "id": "guides/agents/authentication/on-behalf-of-user",
                   "label": "On Behalf of a User"
                 },
@@ -855,6 +900,11 @@
               "items": [
                 {
                   "type": "doc",
+                  "id": "guides/notifications/templates",
+                  "label": "Notification Templates"
+                },
+                {
+                  "type": "doc",
                   "id": "guides/smtp-server/smtp-server-configuration",
                   "label": "SMTP Server"
                 },
@@ -900,6 +950,30 @@
                   "type": "doc",
                   "id": "guides/integrations/apim-gateways/krakend",
                   "label": "KrakenD"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Workload Identity Federation",
+              "collapsed": true,
+              "collapsible": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/workload-identity-federation/overview",
+                  "label": "Overview",
+                  "key": "wif-overview"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/workload-identity-federation/openai",
+                  "label": "OpenAI"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/workload-identity-federation/claude",
+                  "label": "Claude"
                 }
               ]
             }
@@ -1404,7 +1478,7 @@
   "springSecurityIntegrationSidebar": [
     {
       "type": "doc",
-      "id": "sdks/spring-security/overview"
+      "id": "sdks-and-tools/spring-security/overview"
     },
     {
       "type": "category",
@@ -1413,7 +1487,7 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/spring-security/guides/handling-authentication",
+          "id": "sdks-and-tools/spring-security/guides/handling-authentication",
           "label": "Handling Authentication"
         }
       ]
@@ -1422,7 +1496,7 @@
   "expressSdkSidebar": [
     {
       "type": "doc",
-      "id": "sdks/express/overview"
+      "id": "sdks-and-tools/express/overview"
     },
     {
       "type": "category",
@@ -1437,27 +1511,27 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/express/apis/middleware/thunderid",
+              "id": "sdks-and-tools/express/apis/middleware/thunderid",
               "label": "thunderID()"
             },
             {
               "type": "doc",
-              "id": "sdks/express/apis/middleware/handle-sign-in",
+              "id": "sdks-and-tools/express/apis/middleware/handle-sign-in",
               "label": "handleSignIn()"
             },
             {
               "type": "doc",
-              "id": "sdks/express/apis/middleware/handle-sign-out",
+              "id": "sdks-and-tools/express/apis/middleware/handle-sign-out",
               "label": "handleSignOut()"
             },
             {
               "type": "doc",
-              "id": "sdks/express/apis/middleware/protect",
+              "id": "sdks-and-tools/express/apis/middleware/protect",
               "label": "protect()"
             },
             {
               "type": "doc",
-              "id": "sdks/express/apis/middleware/handle-flow",
+              "id": "sdks-and-tools/express/apis/middleware/handle-flow",
               "label": "handleFlow()"
             }
           ]
@@ -1469,7 +1543,7 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/express/apis/client/thunderid-express-client",
+              "id": "sdks-and-tools/express/apis/client/thunderid-express-client",
               "label": "ThunderIDExpressClient"
             }
           ]
@@ -1481,7 +1555,7 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/express/apis/configuration/express-client-config",
+              "id": "sdks-and-tools/express/apis/configuration/express-client-config",
               "label": "ExpressClientConfig"
             }
           ]
@@ -1493,7 +1567,7 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/express/apis/constants/cookie-config",
+              "id": "sdks-and-tools/express/apis/constants/cookie-config",
               "label": "CookieConfig"
             }
           ]
@@ -1508,12 +1582,12 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/express/guides/redirect-flow",
+          "id": "sdks-and-tools/express/guides/redirect-flow",
           "label": "Redirect Flow"
         },
         {
           "type": "doc",
-          "id": "sdks/express/guides/embedded-sign-in",
+          "id": "sdks-and-tools/express/guides/embedded-sign-in",
           "label": "Embedded Sign-In"
         }
       ]
@@ -1522,7 +1596,7 @@
   "nuxtSdkSidebar": [
     {
       "type": "doc",
-      "id": "sdks/nuxt/overview"
+      "id": "sdks-and-tools/nuxt/overview"
     },
     {
       "type": "category",
@@ -1536,7 +1610,7 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/nuxt/apis/configuration/module-configuration",
+              "id": "sdks-and-tools/nuxt/apis/configuration/module-configuration",
               "label": "Module Configuration"
             }
           ]
@@ -1548,12 +1622,12 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/nuxt/apis/composables/use-thunderid",
+              "id": "sdks-and-tools/nuxt/apis/composables/use-thunderid",
               "label": "useThunderID()"
             },
             {
               "type": "doc",
-              "id": "sdks/nuxt/apis/composables/use-user",
+              "id": "sdks-and-tools/nuxt/apis/composables/use-user",
               "label": "useUser()"
             }
           ]
@@ -1565,7 +1639,7 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/nuxt/apis/components/thunderid-root",
+              "id": "sdks-and-tools/nuxt/apis/components/thunderid-root",
               "label": "<ThunderIDRoot />"
             },
             {
@@ -1575,18 +1649,18 @@
               "items": [
                 {
                   "type": "doc",
-                  "id": "sdks/nuxt/apis/components/signed-in",
-                  "label": "<ThunderIDSignedIn />"
+                  "id": "sdks-and-tools/nuxt/apis/components/signed-in",
+                  "label": "<SignedIn />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/nuxt/apis/components/signed-out",
-                  "label": "<ThunderIDSignedOut />"
+                  "id": "sdks-and-tools/nuxt/apis/components/signed-out",
+                  "label": "<SignedOut />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/nuxt/apis/components/loading",
-                  "label": "<ThunderIDLoading />"
+                  "id": "sdks-and-tools/nuxt/apis/components/loading",
+                  "label": "<Loading />"
                 }
               ]
             },
@@ -1597,18 +1671,18 @@
               "items": [
                 {
                   "type": "doc",
-                  "id": "sdks/nuxt/apis/components/sign-in-button",
-                  "label": "<ThunderIDSignInButton />"
+                  "id": "sdks-and-tools/nuxt/apis/components/sign-in-button",
+                  "label": "<SignInButton />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/nuxt/apis/components/sign-out-button",
-                  "label": "<ThunderIDSignOutButton />"
+                  "id": "sdks-and-tools/nuxt/apis/components/sign-out-button",
+                  "label": "<SignOutButton />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/nuxt/apis/components/sign-up-button",
-                  "label": "<ThunderIDSignUpButton />"
+                  "id": "sdks-and-tools/nuxt/apis/components/sign-up-button",
+                  "label": "<SignUpButton />"
                 }
               ]
             },
@@ -1619,18 +1693,23 @@
               "items": [
                 {
                   "type": "doc",
-                  "id": "sdks/nuxt/apis/components/user",
-                  "label": "<ThunderIDUser />"
+                  "id": "sdks-and-tools/nuxt/apis/components/user",
+                  "label": "<User />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/nuxt/apis/components/user-profile",
-                  "label": "<ThunderIDUserProfile />"
+                  "id": "sdks-and-tools/nuxt/apis/components/user-profile",
+                  "label": "<UserProfile />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/nuxt/apis/components/user-dropdown",
-                  "label": "<ThunderIDUserDropdown />"
+                  "id": "sdks-and-tools/nuxt/apis/components/user-dropdown",
+                  "label": "<UserDropdown />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/nuxt/apis/components/change-credential",
+                  "label": "<ChangeCredential />"
                 }
               ]
             }
@@ -1643,7 +1722,7 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/nuxt/apis/middleware/define-thunderid-middleware",
+              "id": "sdks-and-tools/nuxt/apis/middleware/define-thunderid-middleware",
               "label": "defineThunderIDMiddleware()"
             }
           ]
@@ -1655,22 +1734,22 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/nuxt/apis/server/use-server-session",
+              "id": "sdks-and-tools/nuxt/apis/server/use-server-session",
               "label": "useServerSession()"
             },
             {
               "type": "doc",
-              "id": "sdks/nuxt/apis/server/require-server-session",
+              "id": "sdks-and-tools/nuxt/apis/server/require-server-session",
               "label": "requireServerSession()"
             },
             {
               "type": "doc",
-              "id": "sdks/nuxt/apis/server/get-valid-access-token",
+              "id": "sdks-and-tools/nuxt/apis/server/get-valid-access-token",
               "label": "getValidAccessToken()"
             },
             {
               "type": "doc",
-              "id": "sdks/nuxt/apis/server/get-thunderid-context",
+              "id": "sdks-and-tools/nuxt/apis/server/get-thunderid-context",
               "label": "getThunderIDContext()"
             }
           ]
@@ -1682,7 +1761,7 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/nuxt/apis/utils/create-route-matcher",
+              "id": "sdks-and-tools/nuxt/apis/utils/create-route-matcher",
               "label": "createRouteMatcher()"
             }
           ]
@@ -1694,7 +1773,7 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/nuxt/apis/errors/thunderid-error",
+              "id": "sdks-and-tools/nuxt/apis/errors/thunderid-error",
               "label": "ThunderIDError"
             }
           ]
@@ -1705,7 +1784,7 @@
   "reactSdkSidebar": [
     {
       "type": "doc",
-      "id": "sdks/react/overview"
+      "id": "sdks-and-tools/react/overview"
     },
     {
       "type": "category",
@@ -1720,7 +1799,7 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/react/apis/contexts/thunderid-provider",
+              "id": "sdks-and-tools/react/apis/contexts/thunderid-provider",
               "label": "<ThunderIDProvider />"
             }
           ]
@@ -1737,17 +1816,17 @@
               "items": [
                 {
                   "type": "doc",
-                  "id": "sdks/react/apis/components/sign-in-button",
+                  "id": "sdks-and-tools/react/apis/components/sign-in-button",
                   "label": "<SignInButton />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/react/apis/components/sign-out-button",
+                  "id": "sdks-and-tools/react/apis/components/sign-out-button",
                   "label": "<SignOutButton />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/react/apis/components/sign-up-button",
+                  "id": "sdks-and-tools/react/apis/components/sign-up-button",
                   "label": "<SignUpButton />"
                 }
               ]
@@ -1759,17 +1838,17 @@
               "items": [
                 {
                   "type": "doc",
-                  "id": "sdks/react/apis/components/signed-in",
+                  "id": "sdks-and-tools/react/apis/components/signed-in",
                   "label": "<SignedIn />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/react/apis/components/signed-out",
+                  "id": "sdks-and-tools/react/apis/components/signed-out",
                   "label": "<SignedOut />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/react/apis/components/loading",
+                  "id": "sdks-and-tools/react/apis/components/loading",
                   "label": "<Loading />"
                 }
               ]
@@ -1781,18 +1860,23 @@
               "items": [
                 {
                   "type": "doc",
-                  "id": "sdks/react/apis/components/user-dropdown",
+                  "id": "sdks-and-tools/react/apis/components/user-dropdown",
                   "label": "<UserDropdown />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/react/apis/components/user-profile",
+                  "id": "sdks-and-tools/react/apis/components/user-profile",
                   "label": "<UserProfile />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/react/apis/components/user",
+                  "id": "sdks-and-tools/react/apis/components/user",
                   "label": "<User />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/react/apis/components/change-credential",
+                  "label": "<ChangeCredential />"
                 }
               ]
             }
@@ -1805,7 +1889,7 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/react/apis/hooks/use-thunderid",
+              "id": "sdks-and-tools/react/apis/hooks/use-thunderid",
               "label": "useThunderID()"
             }
           ]
@@ -1825,28 +1909,28 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/react/guides/protecting-routes/overview"
+              "id": "sdks-and-tools/react/guides/protecting-routes/overview"
             },
             {
               "type": "doc",
-              "id": "sdks/react/guides/protecting-routes/react-router",
+              "id": "sdks-and-tools/react/guides/protecting-routes/react-router",
               "label": "React Router"
             },
             {
               "type": "doc",
-              "id": "sdks/react/guides/protecting-routes/tanstack-router",
+              "id": "sdks-and-tools/react/guides/protecting-routes/tanstack-router",
               "label": "TanStack Router"
             },
             {
               "type": "doc",
-              "id": "sdks/react/guides/protecting-routes/custom",
+              "id": "sdks-and-tools/react/guides/protecting-routes/custom",
               "label": "Custom Implementation"
             }
           ]
         },
         {
           "type": "doc",
-          "id": "sdks/react/guides/accessing-protected-apis",
+          "id": "sdks-and-tools/react/guides/accessing-protected-apis",
           "label": "Accessing Protected APIs"
         }
       ]
@@ -1855,7 +1939,7 @@
   "reactRouterSdkSidebar": [
     {
       "type": "doc",
-      "id": "sdks/react-router/overview"
+      "id": "sdks-and-tools/react-router/overview"
     },
     {
       "type": "category",
@@ -1864,12 +1948,12 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/react-router/apis/protected-route",
+          "id": "sdks-and-tools/react-router/apis/protected-route",
           "label": "<ProtectedRoute />"
         },
         {
           "type": "doc",
-          "id": "sdks/react-router/apis/callback-route",
+          "id": "sdks-and-tools/react-router/apis/callback-route",
           "label": "<CallbackRoute />"
         }
       ]
@@ -1878,7 +1962,7 @@
   "tanstackRouterSdkSidebar": [
     {
       "type": "doc",
-      "id": "sdks/tanstack-router/overview"
+      "id": "sdks-and-tools/tanstack-router/overview"
     },
     {
       "type": "category",
@@ -1887,12 +1971,12 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/tanstack-router/apis/protected-route",
+          "id": "sdks-and-tools/tanstack-router/apis/protected-route",
           "label": "<ProtectedRoute />"
         },
         {
           "type": "doc",
-          "id": "sdks/tanstack-router/apis/callback-route",
+          "id": "sdks-and-tools/tanstack-router/apis/callback-route",
           "label": "<CallbackRoute />"
         }
       ]
@@ -1901,7 +1985,7 @@
   "nodeSdkSidebar": [
     {
       "type": "doc",
-      "id": "sdks/node/overview"
+      "id": "sdks-and-tools/node/overview"
     },
     {
       "type": "category",
@@ -1915,7 +1999,7 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/node/apis/clients/thunderid-node-client"
+              "id": "sdks-and-tools/node/apis/clients/thunderid-node-client"
             }
           ]
         },
@@ -1926,7 +2010,7 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/node/apis/config/thunderid-node-config"
+              "id": "sdks-and-tools/node/apis/config/thunderid-node-config"
             }
           ]
         },
@@ -1937,22 +2021,22 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/node/apis/utilities/cookie-config",
+              "id": "sdks-and-tools/node/apis/utilities/cookie-config",
               "label": "CookieConfig"
             },
             {
               "type": "doc",
-              "id": "sdks/node/apis/utilities/cookie-options",
+              "id": "sdks-and-tools/node/apis/utilities/cookie-options",
               "label": "CookieOptions"
             },
             {
               "type": "doc",
-              "id": "sdks/node/apis/utilities/generate-session-id",
+              "id": "sdks-and-tools/node/apis/utilities/generate-session-id",
               "label": "generateSessionId()"
             },
             {
               "type": "doc",
-              "id": "sdks/node/apis/utilities/get-session-cookie-options",
+              "id": "sdks-and-tools/node/apis/utilities/get-session-cookie-options",
               "label": "getSessionCookieOptions()"
             }
           ]
@@ -1966,17 +2050,17 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/node/guides/handling-authentication",
+          "id": "sdks-and-tools/node/guides/handling-authentication",
           "label": "Handling Authentication"
         },
         {
           "type": "doc",
-          "id": "sdks/node/guides/protecting-routes",
+          "id": "sdks-and-tools/node/guides/protecting-routes",
           "label": "Protecting Routes"
         },
         {
           "type": "doc",
-          "id": "sdks/node/guides/accessing-protected-apis",
+          "id": "sdks-and-tools/node/guides/accessing-protected-apis",
           "label": "Accessing Protected APIs"
         }
       ]
@@ -1985,7 +2069,7 @@
   "vueSdkSidebar": [
     {
       "type": "doc",
-      "id": "sdks/vue/overview"
+      "id": "sdks-and-tools/vue/overview"
     },
     {
       "type": "category",
@@ -2000,7 +2084,7 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/vue/apis/providers/thunderid-provider",
+              "id": "sdks-and-tools/vue/apis/providers/thunderid-provider",
               "label": "<ThunderIDProvider />"
             }
           ]
@@ -2017,17 +2101,17 @@
               "items": [
                 {
                   "type": "doc",
-                  "id": "sdks/vue/apis/components/sign-in-button",
+                  "id": "sdks-and-tools/vue/apis/components/sign-in-button",
                   "label": "<SignInButton />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/vue/apis/components/sign-out-button",
+                  "id": "sdks-and-tools/vue/apis/components/sign-out-button",
                   "label": "<SignOutButton />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/vue/apis/components/sign-up-button",
+                  "id": "sdks-and-tools/vue/apis/components/sign-up-button",
                   "label": "<SignUpButton />"
                 }
               ]
@@ -2039,17 +2123,17 @@
               "items": [
                 {
                   "type": "doc",
-                  "id": "sdks/vue/apis/components/signed-in",
+                  "id": "sdks-and-tools/vue/apis/components/signed-in",
                   "label": "<SignedIn />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/vue/apis/components/signed-out",
+                  "id": "sdks-and-tools/vue/apis/components/signed-out",
                   "label": "<SignedOut />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/vue/apis/components/loading",
+                  "id": "sdks-and-tools/vue/apis/components/loading",
                   "label": "<Loading />"
                 }
               ]
@@ -2061,18 +2145,23 @@
               "items": [
                 {
                   "type": "doc",
-                  "id": "sdks/vue/apis/components/user-dropdown",
+                  "id": "sdks-and-tools/vue/apis/components/user-dropdown",
                   "label": "<UserDropdown />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/vue/apis/components/user-profile",
+                  "id": "sdks-and-tools/vue/apis/components/user-profile",
                   "label": "<UserProfile />"
                 },
                 {
                   "type": "doc",
-                  "id": "sdks/vue/apis/components/user",
+                  "id": "sdks-and-tools/vue/apis/components/user",
                   "label": "<User />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks-and-tools/vue/apis/components/change-credential",
+                  "label": "<ChangeCredential />"
                 }
               ]
             }
@@ -2085,7 +2174,7 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/vue/apis/composables/use-thunderid",
+              "id": "sdks-and-tools/vue/apis/composables/use-thunderid",
               "label": "useThunderID()"
             }
           ]
@@ -2105,23 +2194,23 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/vue/guides/protecting-routes/overview"
+              "id": "sdks-and-tools/vue/guides/protecting-routes/overview"
             },
             {
               "type": "doc",
-              "id": "sdks/vue/guides/protecting-routes/vue-router",
+              "id": "sdks-and-tools/vue/guides/protecting-routes/vue-router",
               "label": "Vue Router"
             },
             {
               "type": "doc",
-              "id": "sdks/vue/guides/protecting-routes/custom",
+              "id": "sdks-and-tools/vue/guides/protecting-routes/custom",
               "label": "Custom Implementation"
             }
           ]
         },
         {
           "type": "doc",
-          "id": "sdks/vue/guides/accessing-protected-apis",
+          "id": "sdks-and-tools/vue/guides/accessing-protected-apis",
           "label": "Accessing Protected APIs"
         }
       ]
@@ -2130,7 +2219,7 @@
   "browserSdkSidebar": [
     {
       "type": "doc",
-      "id": "sdks/browser/overview"
+      "id": "sdks-and-tools/browser/overview"
     },
     {
       "type": "category",
@@ -2140,18 +2229,65 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/browser/apis/thunderid-browser-client",
+          "id": "sdks-and-tools/browser/apis/thunderid-browser-client",
           "label": "ThunderIDBrowserClient"
         },
         {
           "type": "doc",
-          "id": "sdks/browser/apis/configuration",
+          "id": "sdks-and-tools/browser/apis/configuration",
           "label": "Configuration"
         },
         {
           "type": "doc",
-          "id": "sdks/browser/apis/hooks",
+          "id": "sdks-and-tools/browser/apis/hooks",
           "label": "Event Hooks"
+        },
+        {
+          "type": "category",
+          "label": "Utilities",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/update-me-credentials",
+              "label": "updateMeCredentials()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/evaluate-password-policy",
+              "label": "evaluatePasswordPolicy()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/evaluate-change-password-form",
+              "label": "evaluateChangePasswordForm()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/resolve-change-credential-policy",
+              "label": "resolveChangeCredentialPolicy()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/supports-credential",
+              "label": "supportsCredential()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/map-credential-update-error",
+              "label": "mapCredentialUpdateError()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/credential-constants",
+              "label": "CredentialConstants"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/browser/apis/utilities/create-http-client-fetcher",
+              "label": "createHttpClientFetcher()"
+            }
+          ]
         }
       ]
     },
@@ -2163,7 +2299,7 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/browser/guides/accessing-protected-apis",
+          "id": "sdks-and-tools/browser/guides/accessing-protected-apis",
           "label": "Accessing Protected APIs"
         }
       ]
@@ -2172,7 +2308,7 @@
   "nextjsSdkSidebar": [
     {
       "type": "doc",
-      "id": "sdks/nextjs/overview"
+      "id": "sdks-and-tools/nextjs/overview"
     },
     {
       "type": "category",
@@ -2181,23 +2317,42 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/nextjs/apis/thunderid-provider",
+          "id": "sdks-and-tools/nextjs/apis/thunderid-provider",
           "label": "<ThunderIDProvider />"
         },
         {
           "type": "doc",
-          "id": "sdks/nextjs/apis/middleware",
+          "id": "sdks-and-tools/nextjs/apis/middleware",
           "label": "Middleware"
         },
         {
           "type": "doc",
-          "id": "sdks/nextjs/apis/server-actions",
+          "id": "sdks-and-tools/nextjs/apis/server-actions",
           "label": "Server Actions"
         },
         {
           "type": "doc",
-          "id": "sdks/nextjs/apis/configuration",
+          "id": "sdks-and-tools/nextjs/apis/configuration",
           "label": "Configuration"
+        },
+        {
+              "type": "category",
+              "label": "Components",
+              "collapsed": true,
+              "items": [
+                {
+                  "type": "category",
+                  "label": "User Self-care Components",
+                  "collapsed": false,
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "sdks-and-tools/nextjs/apis/components/change-credential",
+                      "label": "<ChangeCredential />"
+                    }
+                  ]
+                }
+              ]
         }
       ]
     }
@@ -2205,7 +2360,7 @@
   "javascriptSdkSidebar": [
     {
       "type": "doc",
-      "id": "sdks/javascript/overview"
+      "id": "sdks-and-tools/javascript/overview"
     },
     {
       "type": "category",
@@ -2214,22 +2369,22 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/javascript/apis/thunderid-javascript-client",
+          "id": "sdks-and-tools/javascript/apis/thunderid-javascript-client",
           "label": "ThunderIDJavaScriptClient"
         },
         {
           "type": "doc",
-          "id": "sdks/javascript/apis/configuration",
+          "id": "sdks-and-tools/javascript/apis/configuration",
           "label": "Configuration"
         },
         {
           "type": "doc",
-          "id": "sdks/javascript/apis/http-client",
+          "id": "sdks-and-tools/javascript/apis/http-client",
           "label": "HttpClient"
         },
         {
           "type": "doc",
-          "id": "sdks/javascript/apis/storage-manager",
+          "id": "sdks-and-tools/javascript/apis/storage-manager",
           "label": "StorageManager"
         }
       ]
@@ -2246,12 +2401,12 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/javascript/apis/flows/embedded-sign-in-flow",
+              "id": "sdks-and-tools/javascript/apis/flows/embedded-sign-in-flow",
               "label": "Embedded Sign-In Flow"
             },
             {
               "type": "doc",
-              "id": "sdks/javascript/apis/flows/embedded-sign-up-flow",
+              "id": "sdks-and-tools/javascript/apis/flows/embedded-sign-up-flow",
               "label": "Embedded Sign-Up Flow"
             }
           ]
@@ -2263,27 +2418,27 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/javascript/apis/flows/embedded-sign-in-flow-v2",
+              "id": "sdks-and-tools/javascript/apis/flows/embedded-sign-in-flow-v2",
               "label": "Sign-In Flow"
             },
             {
               "type": "doc",
-              "id": "sdks/javascript/apis/flows/embedded-sign-up-flow-v2",
+              "id": "sdks-and-tools/javascript/apis/flows/embedded-sign-up-flow-v2",
               "label": "Sign-Up Flow"
             },
             {
               "type": "doc",
-              "id": "sdks/javascript/apis/flows/embedded-recovery-flow-v2",
+              "id": "sdks-and-tools/javascript/apis/flows/embedded-recovery-flow-v2",
               "label": "Recovery Flow"
             },
             {
               "type": "doc",
-              "id": "sdks/javascript/apis/flows/embedded-onboarding-flow-v2",
+              "id": "sdks-and-tools/javascript/apis/flows/embedded-onboarding-flow-v2",
               "label": "User Onboarding Flow"
             },
             {
               "type": "doc",
-              "id": "sdks/javascript/apis/flows/flow-meta-v2",
+              "id": "sdks-and-tools/javascript/apis/flows/flow-meta-v2",
               "label": "Flow Meta"
             }
           ]
@@ -2297,12 +2452,12 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/javascript/apis/user/user-profile",
+          "id": "sdks-and-tools/javascript/apis/user/user-profile",
           "label": "User Profile"
         },
         {
           "type": "doc",
-          "id": "sdks/javascript/apis/user/schemas",
+          "id": "sdks-and-tools/javascript/apis/user/schemas",
           "label": "SCIM2 Schemas"
         }
       ]
@@ -2314,36 +2469,36 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/javascript/apis/branding",
+          "id": "sdks-and-tools/javascript/apis/branding",
           "label": "Branding"
         },
         {
           "type": "doc",
-          "id": "sdks/javascript/apis/theme",
+          "id": "sdks-and-tools/javascript/apis/theme",
           "label": "Theme"
         }
       ]
     },
     {
       "type": "doc",
-      "id": "sdks/javascript/apis/i18n",
+      "id": "sdks-and-tools/javascript/apis/i18n",
       "label": "Internationalization"
     },
     {
       "type": "doc",
-      "id": "sdks/javascript/apis/errors",
+      "id": "sdks-and-tools/javascript/apis/errors",
       "label": "Errors"
     },
     {
       "type": "doc",
-      "id": "sdks/javascript/apis/utilities",
+      "id": "sdks-and-tools/javascript/apis/utilities",
       "label": "Utilities"
     }
   ],
   "iosSdkSidebar": [
     {
       "type": "doc",
-      "id": "sdks/ios/overview"
+      "id": "sdks-and-tools/ios/overview"
     },
     {
       "type": "category",
@@ -2353,17 +2508,17 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/ios/apis/thunderid-client",
+          "id": "sdks-and-tools/ios/apis/thunderid-client",
           "label": "ThunderIDClient"
         },
         {
           "type": "doc",
-          "id": "sdks/ios/apis/configuration",
+          "id": "sdks-and-tools/ios/apis/configuration",
           "label": "Configuration"
         },
         {
           "type": "doc",
-          "id": "sdks/ios/apis/thunderid-state",
+          "id": "sdks-and-tools/ios/apis/thunderid-state",
           "label": "ThunderIDState"
         },
         {
@@ -2373,38 +2528,43 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/ios/apis/components/sign-in",
+              "id": "sdks-and-tools/ios/apis/components/sign-in",
               "label": "SignIn"
             },
             {
               "type": "doc",
-              "id": "sdks/ios/apis/components/sign-up",
+              "id": "sdks-and-tools/ios/apis/components/sign-up",
               "label": "SignUp"
             },
             {
               "type": "doc",
-              "id": "sdks/ios/apis/components/sign-in-button",
+              "id": "sdks-and-tools/ios/apis/components/sign-in-button",
               "label": "SignInButton"
             },
             {
               "type": "doc",
-              "id": "sdks/ios/apis/components/sign-out-button",
+              "id": "sdks-and-tools/ios/apis/components/sign-out-button",
               "label": "SignOutButton"
             },
             {
               "type": "doc",
-              "id": "sdks/ios/apis/components/signed-in",
+              "id": "sdks-and-tools/ios/apis/components/signed-in",
               "label": "SignedIn"
             },
             {
               "type": "doc",
-              "id": "sdks/ios/apis/components/signed-out",
+              "id": "sdks-and-tools/ios/apis/components/signed-out",
               "label": "SignedOut"
             },
             {
               "type": "doc",
-              "id": "sdks/ios/apis/components/user-profile",
+              "id": "sdks-and-tools/ios/apis/components/user-profile",
               "label": "UserProfile"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/ios/apis/components/change-credential",
+              "label": "ChangeCredential"
             }
           ]
         }
@@ -2418,7 +2578,12 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/ios/guides/accessing-protected-apis",
+          "id": "sdks-and-tools/ios/guides/try-the-sample-app",
+          "label": "Try the Sample App"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/ios/guides/accessing-protected-apis",
           "label": "Accessing Protected APIs"
         }
       ]
@@ -2427,7 +2592,7 @@
   "androidSdkSidebar": [
     {
       "type": "doc",
-      "id": "sdks/android/overview"
+      "id": "sdks-and-tools/android/overview"
     },
     {
       "type": "category",
@@ -2437,17 +2602,17 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/android/apis/thunderid-client",
+          "id": "sdks-and-tools/android/apis/thunderid-client",
           "label": "ThunderIDClient"
         },
         {
           "type": "doc",
-          "id": "sdks/android/apis/configuration",
+          "id": "sdks-and-tools/android/apis/configuration",
           "label": "Configuration"
         },
         {
           "type": "doc",
-          "id": "sdks/android/apis/thunderid-state",
+          "id": "sdks-and-tools/android/apis/thunderid-state",
           "label": "ThunderIDState"
         },
         {
@@ -2457,38 +2622,43 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/android/apis/components/sign-in",
+              "id": "sdks-and-tools/android/apis/components/sign-in",
               "label": "SignIn"
             },
             {
               "type": "doc",
-              "id": "sdks/android/apis/components/sign-up",
+              "id": "sdks-and-tools/android/apis/components/sign-up",
               "label": "SignUp"
             },
             {
               "type": "doc",
-              "id": "sdks/android/apis/components/sign-in-button",
+              "id": "sdks-and-tools/android/apis/components/sign-in-button",
               "label": "SignInButton"
             },
             {
               "type": "doc",
-              "id": "sdks/android/apis/components/sign-out-button",
+              "id": "sdks-and-tools/android/apis/components/sign-out-button",
               "label": "SignOutButton"
             },
             {
               "type": "doc",
-              "id": "sdks/android/apis/components/signed-in",
+              "id": "sdks-and-tools/android/apis/components/signed-in",
               "label": "SignedIn"
             },
             {
               "type": "doc",
-              "id": "sdks/android/apis/components/signed-out",
+              "id": "sdks-and-tools/android/apis/components/signed-out",
               "label": "SignedOut"
             },
             {
               "type": "doc",
-              "id": "sdks/android/apis/components/user-profile",
+              "id": "sdks-and-tools/android/apis/components/user-profile",
               "label": "UserProfile"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/android/apis/components/change-credential",
+              "label": "ChangeCredential"
             }
           ]
         }
@@ -2502,7 +2672,12 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/android/guides/accessing-protected-apis",
+          "id": "sdks-and-tools/android/guides/try-the-sample-app",
+          "label": "Try the Sample App"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/android/guides/accessing-protected-apis",
           "label": "Accessing Protected APIs"
         }
       ]
@@ -2511,7 +2686,7 @@
   "flutterSdkSidebar": [
     {
       "type": "doc",
-      "id": "sdks/flutter/overview"
+      "id": "sdks-and-tools/flutter/overview"
     },
     {
       "type": "category",
@@ -2521,17 +2696,17 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/flutter/apis/thunder-client",
+          "id": "sdks-and-tools/flutter/apis/thunder-client",
           "label": "ThunderIDClient"
         },
         {
           "type": "doc",
-          "id": "sdks/flutter/apis/configuration",
+          "id": "sdks-and-tools/flutter/apis/configuration",
           "label": "Configuration"
         },
         {
           "type": "doc",
-          "id": "sdks/flutter/apis/thunder-state",
+          "id": "sdks-and-tools/flutter/apis/thunder-state",
           "label": "ThunderIDState"
         },
         {
@@ -2541,38 +2716,43 @@
           "items": [
             {
               "type": "doc",
-              "id": "sdks/flutter/apis/components/sign-in",
+              "id": "sdks-and-tools/flutter/apis/components/sign-in",
               "label": "SignIn"
             },
             {
               "type": "doc",
-              "id": "sdks/flutter/apis/components/sign-up",
+              "id": "sdks-and-tools/flutter/apis/components/sign-up",
               "label": "SignUp"
             },
             {
               "type": "doc",
-              "id": "sdks/flutter/apis/components/sign-in-button",
+              "id": "sdks-and-tools/flutter/apis/components/sign-in-button",
               "label": "SignInButton"
             },
             {
               "type": "doc",
-              "id": "sdks/flutter/apis/components/sign-out-button",
+              "id": "sdks-and-tools/flutter/apis/components/sign-out-button",
               "label": "SignOutButton"
             },
             {
               "type": "doc",
-              "id": "sdks/flutter/apis/components/signed-in",
-              "label": "ThunderIDSignedIn"
+              "id": "sdks-and-tools/flutter/apis/components/signed-in",
+              "label": "SignedIn"
             },
             {
               "type": "doc",
-              "id": "sdks/flutter/apis/components/signed-out",
-              "label": "ThunderIDSignedOut"
+              "id": "sdks-and-tools/flutter/apis/components/signed-out",
+              "label": "SignedOut"
             },
             {
               "type": "doc",
-              "id": "sdks/flutter/apis/components/user-profile",
-              "label": "ThunderIDUserProfile"
+              "id": "sdks-and-tools/flutter/apis/components/user-profile",
+              "label": "UserProfile"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/flutter/apis/components/change-credential",
+              "label": "ChangeCredential"
             }
           ]
         }
@@ -2586,258 +2766,13 @@
       "items": [
         {
           "type": "doc",
-          "id": "sdks/flutter/guides/accessing-protected-apis",
+          "id": "sdks-and-tools/flutter/guides/try-the-sample-app",
+          "label": "Try the Sample App"
+        },
+        {
+          "type": "doc",
+          "id": "sdks-and-tools/flutter/guides/accessing-protected-apis",
           "label": "Accessing Protected APIs"
-        }
-      ]
-    }
-  ],
-  "communitySidebar": [
-    {
-      "type": "html",
-      "value": "<div class=\"sidebar-section-label\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2\"/><circle cx=\"9\" cy=\"7\" r=\"4\"/><path d=\"M23 21v-2a4 4 0 0 0-3-3.87\"/><path d=\"M16 3.13a4 4 0 0 1 0 7.75\"/></svg><span>Community</span></div>",
-      "className": "sidebar-html-section-header"
-    },
-    {
-      "type": "category",
-      "label": "Community",
-      "className": "sidebar-section",
-      "collapsed": false,
-      "collapsible": false,
-      "items": [
-        {
-          "type": "doc",
-          "id": "community/overview",
-          "label": "Join the Community",
-          "key": "community-overview"
-        },
-        {
-          "type": "doc",
-          "id": "community/contributors",
-          "label": "Contributors"
-        },
-        {
-          "type": "doc",
-          "id": "community/code-of-conduct",
-          "label": "Code of Conduct"
-        }
-      ]
-    },
-    {
-      "type": "html",
-      "value": "<div class=\"sidebar-section-label\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polyline points=\"16 18 22 12 16 6\"/><polyline points=\"8 6 2 12 8 18\"/></svg><span>Contribute</span></div>",
-      "className": "sidebar-html-section-header"
-    },
-    {
-      "type": "category",
-      "label": "Contribute",
-      "className": "sidebar-section",
-      "collapsed": false,
-      "collapsible": false,
-      "items": [
-        {
-          "type": "doc",
-          "id": "community/contributing/report-a-bug",
-          "label": "Report a Bug"
-        },
-        {
-          "type": "doc",
-          "id": "community/contributing/contribute-ideas",
-          "label": "Contribute Ideas"
-        },
-        {
-          "type": "category",
-          "label": "Contribute Code",
-          "collapsed": false,
-          "collapsible": true,
-          "items": [
-            {
-              "type": "doc",
-              "id": "community/contributing/contributing-code/prerequisites",
-              "label": "Prerequisites"
-            },
-            {
-              "type": "doc",
-              "id": "community/contributing/contributing-code/configure-and-run",
-              "label": "Configure and Run"
-            },
-            {
-              "type": "category",
-              "label": "Optional Setup",
-              "key": "code-optional-setup",
-              "collapsed": true,
-              "collapsible": true,
-              "items": [
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/optional-setup/build-the-project",
-                  "label": "Build the Project"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/optional-setup/useful-commands",
-                  "label": "Useful Commands"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/optional-setup/setup-and-data-seeding",
-                  "label": "Setup and Data Seeding"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/optional-setup/advanced-setup",
-                  "label": "Advanced Setup (Manual Mode)"
-                }
-              ]
-            },
-            {
-              "type": "doc",
-              "id": "community/contributing/contributing-code/debugging",
-              "label": "Debugging"
-            },
-            {
-              "type": "category",
-              "label": "Backend Development",
-              "collapsed": true,
-              "collapsible": true,
-              "items": [
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/backend-development/overview",
-                  "label": "Overview",
-                  "key": "backend-overview"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/backend-development/observability",
-                  "label": "Observability"
-                }
-              ]
-            },
-            {
-              "type": "category",
-              "label": "Frontend Development",
-              "collapsed": true,
-              "collapsible": true,
-              "items": [
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/frontend-development/overview",
-                  "label": "Overview",
-                  "key": "frontend-overview"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/frontend-development/conventions",
-                  "label": "Conventions",
-                  "key": "frontend-conventions"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/frontend-development/best-practices",
-                  "label": "Best Practices",
-                  "key": "frontend-best-practices"
-                }
-              ]
-            },
-            {
-              "type": "category",
-              "label": "SDK Development",
-              "collapsed": true,
-              "collapsible": true,
-              "items": [
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/sdk-development/overview",
-                  "label": "Overview",
-                  "key": "sdk-overview"
-                }
-              ]
-            },
-            {
-              "type": "category",
-              "label": "Documentation Development",
-              "collapsed": true,
-              "collapsible": true,
-              "items": [
-                {
-                  "type": "doc",
-                  "id": "community/contributing/documentation-guide/overview",
-                  "label": "Overview"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/documentation-guide/configure-and-run",
-                  "label": "Configure & Run"
-                },
-                {
-                  "type": "category",
-                  "label": "Optional Setup",
-                  "key": "docs-optional-setup",
-                  "collapsed": true,
-                  "collapsible": true,
-                  "items": [
-                    {
-                      "type": "doc",
-                      "id": "community/contributing/documentation-guide/build-the-documentation",
-                      "label": "Build the Documentation"
-                    },
-                    {
-                      "type": "doc",
-                      "id": "community/contributing/documentation-guide/useful-commands",
-                      "label": "Useful Commands",
-                      "key": "docs-useful-commands"
-                    }
-                  ]
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/documentation-guide/style-guide",
-                  "label": "Style Guide"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/documentation-guide/writing-guide",
-                  "label": "Writing Guide"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/documentation-guide/advanced-topics",
-                  "label": "Advanced Topics"
-                }
-              ]
-            },
-            {
-              "type": "doc",
-              "id": "community/contributing/contributing-code/pull-request-workflow",
-              "label": "Pull Request Workflow",
-              "key": "code-development-pipeline"
-            }
-          ]
-        },
-        {
-          "type": "doc",
-          "id": "community/contributing/documentation-guide/glossary",
-          "label": "Glossary"
-        }
-      ]
-    },
-    {
-      "type": "html",
-      "value": "<div class=\"sidebar-section-label\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14\"/></svg><span>Maintenance</span></div>",
-      "className": "sidebar-html-section-header"
-    },
-    {
-      "type": "category",
-      "label": "Maintenance",
-      "className": "sidebar-section",
-      "collapsed": false,
-      "collapsible": false,
-      "items": [
-        {
-          "type": "doc",
-          "id": "community/release-operations",
-          "label": "Release Operations"
         }
       ]
     }

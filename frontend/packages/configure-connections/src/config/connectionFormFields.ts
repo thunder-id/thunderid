@@ -1,10 +1,13 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {EMAIL_REGEX} from '@thunderid/utils';
 import {type ConnectionType, ConnectionTypes} from '../models/connection';
+import type {KeyValueFormat} from '../utils/keyValuePairs';
 
 export type ConnectionFieldKind =
   | 'text'
+  | 'number'
   | 'url'
   | 'secret'
   | 'scopes'
@@ -25,6 +28,8 @@ export interface ConnectionFieldOption {
 export interface ConnectionFieldDef {
   /** Request payload property this field maps to. */
   name: string;
+  /** Dot-separated response property path when it differs from {@link name}. */
+  responsePath?: string;
   /** i18n key under the connections namespace. */
   labelKey: string;
   hintKey?: string;
@@ -36,6 +41,12 @@ export interface ConnectionFieldDef {
   options?: ConnectionFieldOption[];
   /** i18n key for the add-row button of a 'key-value' field. */
   addLabelKey?: string;
+  /** Wire format of a 'key-value' field: "Key: value, ..." text (default), or an array of {name, value}. */
+  keyValueFormat?: KeyValueFormat;
+  /** Names a 'key-value' field rejects, compared ignoring case. */
+  reservedNames?: readonly string[];
+  /** Rejects a 'key-value' field holding the same name twice, compared ignoring case. */
+  uniqueNames?: boolean;
   /** Value prefilled on create (and used when the API returns none). */
   defaultValue?: string;
   /** Format the value must match (checked only when non-empty). Mirrors backend validation. */
@@ -46,8 +57,18 @@ export interface ConnectionFieldDef {
   section?: string;
   /** Renders only when the named switch field's value is truthy. */
   revealedBy?: string;
-  /** Becomes required when the named switch field's value is truthy. */
+  /** Becomes required when the named switch field is truthy. */
   requiredWhen?: string;
+  /** Becomes required when another field has the specified value. */
+  requiredWhenValue?: {field: string; value: string};
+  /** Requires HTTPS, except for loopback HTTP, when outbound authentication is configured. */
+  requiresHttpsWhenAuthenticated?: boolean;
+  /** With {@link requiresHttpsWhenAuthenticated}, rejects loopback HTTP too. */
+  rejectsLoopbackHttp?: boolean;
+  /** Rejects a 'url' field carrying a user name or password. */
+  rejectsUserInfo?: boolean;
+  /** Shows validation errors before the user interacts with the field. */
+  showErrorImmediately?: boolean;
   /** Which form mode renders this field (default 'both'). Optional fields are edit-only to keep create simple. */
   visibility?: ConnectionFieldVisibility;
 }
@@ -60,6 +81,30 @@ const NAME_FIELD = (placeholder: string): ConnectionFieldDef => ({
   required: true,
   placeholder,
 });
+
+/**
+ * Headers an HTTP endpoint connection cannot set as plain headers: names that commonly carry
+ * credentials, which belong under authentication, and names the HTTP client owns.
+ */
+const HTTP_ENDPOINT_RESERVED_HEADERS: readonly string[] = [
+  'Authorization',
+  'Proxy-Authorization',
+  'Cookie',
+  'X-Api-Key',
+  'Api-Key',
+  'X-Auth-Token',
+  'X-Access-Token',
+  'Host',
+  'Content-Length',
+  'Content-Type',
+  'Transfer-Encoding',
+  'Connection',
+  'TE',
+  'Trailer',
+  'Upgrade',
+  'Keep-Alive',
+  'Expect',
+];
 
 const PROMPT_FIELD: ConnectionFieldDef = {
   name: 'prompt',
@@ -132,6 +177,54 @@ const TRUSTED_TOKEN_AUDIENCE_FIELD: ConnectionFieldDef = {
  * Ordered field definitions per connection type, driving the shared {@link ConnectionForm}
  * and its dynamically-built validation schema.
  */
+const HTTP_AUTHENTICATION_FIELDS: ConnectionFieldDef[] = [
+  {
+    name: 'authenticationScheme',
+    responsePath: 'authentication.type',
+    labelKey: 'connections:form.fields.authScheme.label',
+    kind: 'select',
+    visibility: 'edit',
+    defaultValue: 'NONE',
+    options: [
+      {value: 'NONE', label: 'None'},
+      {value: 'BEARER', label: 'Bearer token'},
+      {value: 'BASIC', label: 'Basic authentication'},
+      {value: 'API_KEY', label: 'API key'},
+    ],
+  },
+  {
+    name: 'bearerToken',
+    labelKey: 'connections:form.fields.bearerToken.label',
+    kind: 'secret',
+    visibility: 'edit',
+    requiredWhenValue: {field: 'authenticationScheme', value: 'BEARER'},
+  },
+  {
+    name: 'httpHeaders',
+    labelKey: 'connections:form.fields.httpHeaders.label',
+    hintKey: 'connections:form.fields.httpHeaders.hint',
+    kind: 'key-value',
+    visibility: 'edit',
+    placeholder: 'X-Tenant-ID',
+    addLabelKey: 'connections:form.fields.httpHeaders.add',
+  },
+  {
+    name: 'basicUsername',
+    responsePath: 'authentication.properties.username',
+    labelKey: 'connections:form.fields.basicUsername.label',
+    kind: 'text',
+    visibility: 'edit',
+    requiredWhenValue: {field: 'authenticationScheme', value: 'BASIC'},
+  },
+  {
+    name: 'basicPassword',
+    labelKey: 'connections:form.fields.basicPassword.label',
+    kind: 'secret',
+    visibility: 'edit',
+    requiredWhenValue: {field: 'authenticationScheme', value: 'BASIC'},
+  },
+];
+
 export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]> = {
   [ConnectionTypes.GOOGLE]: oauthFields('Google Workspace', '1234567890-abc.apps.googleusercontent.com'),
   [ConnectionTypes.GITHUB]: oauthFields(
@@ -336,6 +429,7 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
       kind: 'url',
       required: true,
       placeholder: 'https://sms.example.com/send',
+      requiresHttpsWhenAuthenticated: true,
     },
     {
       name: 'httpMethod',
@@ -360,12 +454,158 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
       ],
     },
     {
-      name: 'httpHeaders',
-      labelKey: 'connections:form.fields.httpHeaders.label',
-      hintKey: 'connections:form.fields.httpHeaders.hint',
+      name: 'smsHttpHeaders',
+      labelKey: 'connections:form.fields.smsHttpHeaders.label',
+      hintKey: 'connections:form.fields.smsHttpHeaders.hint',
       kind: 'key-value',
-      placeholder: 'X-API-Key',
-      addLabelKey: 'connections:form.fields.httpHeaders.add',
+      placeholder: 'X-Campaign-ID',
+      addLabelKey: 'connections:form.fields.smsHttpHeaders.add',
+    },
+    ...HTTP_AUTHENTICATION_FIELDS,
+  ],
+  [ConnectionTypes.AUTHZEN_PDP]: [
+    NAME_FIELD('Production AuthZEN PDP'),
+    {
+      name: 'endpoint',
+      labelKey: 'connections:form.fields.authzenEndpoint.label',
+      kind: 'url',
+      required: true,
+      placeholder: 'https://pdp.example.com/access/v1/evaluation',
+      requiresHttpsWhenAuthenticated: true,
+      showErrorImmediately: true,
+    },
+    {
+      name: 'batchEndpoint',
+      labelKey: 'connections:form.fields.authzenBatchEndpoint.label',
+      kind: 'url',
+      placeholder: 'https://pdp.example.com/access/v1/evaluations',
+      requiresHttpsWhenAuthenticated: true,
+      showErrorImmediately: true,
+    },
+    {
+      name: 'timeoutMs',
+      labelKey: 'connections:form.fields.timeoutMs.label',
+      hintKey: 'connections:form.fields.timeoutMs.hint',
+      kind: 'number',
+      visibility: 'edit',
+      defaultValue: '1000',
+      placeholder: '1000',
+      pattern: /^[1-9]\d*$/,
+      patternErrorKey: 'connections:validation.positiveInteger',
+    },
+    {
+      name: 'retryCount',
+      labelKey: 'connections:form.fields.retryCount.label',
+      hintKey: 'connections:form.fields.retryCount.hint',
+      kind: 'number',
+      visibility: 'edit',
+      defaultValue: '1',
+      placeholder: '1',
+      pattern: /^(0|[1-9]\d*)$/,
+      patternErrorKey: 'connections:validation.nonNegativeInteger',
+    },
+    ...HTTP_AUTHENTICATION_FIELDS,
+  ],
+  [ConnectionTypes.HTTP]: [
+    {
+      ...NAME_FIELD('Risk Engine'),
+      pattern: /^[\s\S]{1,255}$/u,
+      patternErrorKey: 'connections:validation.httpEndpointNameLength',
+    },
+    {
+      name: 'description',
+      labelKey: 'connections:form.fields.httpEndpointDescription.label',
+      hintKey: 'connections:form.fields.httpEndpointDescription.hint',
+      kind: 'text',
+      visibility: 'edit',
+      pattern: /^[\s\S]{0,500}$/u,
+      patternErrorKey: 'connections:validation.httpEndpointDescriptionLength',
+    },
+    {
+      name: 'url',
+      labelKey: 'connections:form.fields.httpEndpointUrl.label',
+      hintKey: 'connections:form.fields.httpEndpointUrl.hint',
+      kind: 'url',
+      required: true,
+      placeholder: 'https://risk.example.com/evaluate',
+      requiresHttpsWhenAuthenticated: true,
+      rejectsLoopbackHttp: true,
+      rejectsUserInfo: true,
+      showErrorImmediately: true,
+    },
+    {
+      name: 'timeoutMs',
+      labelKey: 'connections:form.fields.httpEndpointTimeoutMs.label',
+      hintKey: 'connections:form.fields.httpEndpointTimeoutMs.hint',
+      kind: 'number',
+      visibility: 'edit',
+      defaultValue: '10000',
+      placeholder: '10000',
+      pattern: /^([1-9]\d{0,3}|1\d{4}|20000)$/,
+      patternErrorKey: 'connections:validation.httpEndpointTimeoutRange',
+    },
+    {
+      name: 'headers',
+      labelKey: 'connections:form.fields.httpEndpointHeaders.label',
+      hintKey: 'connections:form.fields.httpEndpointHeaders.hint',
+      kind: 'key-value',
+      keyValueFormat: 'pairs',
+      reservedNames: HTTP_ENDPOINT_RESERVED_HEADERS,
+      uniqueNames: true,
+      visibility: 'edit',
+      placeholder: 'X-Tenant',
+      addLabelKey: 'connections:form.fields.httpEndpointHeaders.add',
+      showErrorImmediately: true,
+    },
+  ],
+  [ConnectionTypes.SMTP]: [
+    NAME_FIELD('Corp SMTP'),
+    {
+      name: 'host',
+      labelKey: 'connections:form.fields.smtpHost.label',
+      hintKey: 'connections:form.fields.smtpHost.hint',
+      kind: 'text',
+      required: true,
+      placeholder: 'smtp.example.com',
+    },
+    {
+      name: 'port',
+      labelKey: 'connections:form.fields.smtpPort.label',
+      hintKey: 'connections:form.fields.smtpPort.hint',
+      kind: 'number',
+      required: true,
+      defaultValue: '587',
+      placeholder: '587',
+    },
+    {
+      name: 'fromAddress',
+      labelKey: 'connections:form.fields.smtpFromAddress.label',
+      hintKey: 'connections:form.fields.smtpFromAddress.hint',
+      kind: 'text',
+      required: true,
+      placeholder: 'noreply@example.com',
+      pattern: EMAIL_REGEX,
+      patternErrorKey: 'connections:validation.emailAddress',
+    },
+    {
+      name: 'fromName',
+      labelKey: 'connections:form.fields.smtpFromName.label',
+      hintKey: 'connections:form.fields.smtpFromName.hint',
+      kind: 'text',
+      placeholder: 'Acme Support',
+    },
+    {
+      name: 'tls',
+      labelKey: 'connections:form.fields.smtpTls.label',
+      hintKey: 'connections:form.fields.smtpTls.hint',
+      kind: 'select',
+      required: true,
+      defaultValue: 'starttls',
+      options: [
+        {value: 'starttls', label: 'STARTTLS'},
+        {value: 'implicit', label: 'Implicit TLS (SMTPS)'},
+        {value: 'none', label: 'None'},
+      ],
     },
   ],
 };

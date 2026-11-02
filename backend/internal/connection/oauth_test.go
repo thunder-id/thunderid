@@ -126,3 +126,17 @@ func (s *OAuthTestSuite) TestUpdateAndDelete() {
 	s.handler.deleteInstance(providers.IDPTypeOAuth)(delRR, delReq)
 	s.Equal(http.StatusNoContent, delRR.Code)
 }
+
+func (s *OAuthTestSuite) TestOUCarriedThroughMapping() {
+	dto, err := oauthToIDPDTO(oauthConnectionRequest{
+		Name: "n", OUID: "ou-1", ClientID: "c", RedirectURI: "https://app/cb",
+		AuthorizationEndpoint: "https://idp/auth", TokenEndpoint: "https://idp/token",
+		UserInfoEndpoint: "https://idp/userinfo",
+	})
+	s.Require().NoError(err)
+	s.Equal("ou-1", dto.OUID)
+
+	resp, err := oauthFromIDPDTO(*dto)
+	s.Require().NoError(err)
+	s.Equal("ou-1", resp.OUID)
+}

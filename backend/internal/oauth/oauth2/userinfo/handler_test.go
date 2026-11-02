@@ -118,6 +118,14 @@ func (s *UserInfoHandlerTestSuite) TestHandleUserInfo_InsufficientScope() {
 		http.StatusForbidden, "insufficient_scope")
 }
 
+// TestHandleUserInfo_UnsupportedSigningAlg tests that a client whose registered signing algorithm
+// has no matching key gets 400 with a usable reason, rather than an opaque 500 or a 401 implying
+// the access token is at fault.
+func (s *UserInfoHandlerTestSuite) TestHandleUserInfo_UnsupportedSigningAlg() {
+	s.assertServiceErrorResponse("token123", &errorUnsupportedSigningAlg,
+		http.StatusBadRequest, "invalid_request")
+}
+
 // TestHandleUserInfo_Success tests successful response
 func (s *UserInfoHandlerTestSuite) TestHandleUserInfo_Success() {
 	req := httptest.NewRequest(http.MethodGet, "/oauth2/userinfo", nil)

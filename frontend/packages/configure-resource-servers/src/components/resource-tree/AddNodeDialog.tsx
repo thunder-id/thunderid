@@ -3,7 +3,7 @@
 
 import {useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
-import {getErrorMessage} from '@thunderid/utils';
+import {generateHandle, getErrorMessage} from '@thunderid/utils';
 import {
   Alert,
   Box,
@@ -23,7 +23,6 @@ import {useTranslation} from 'react-i18next';
 import useCreateAction from '../../api/useCreateAction';
 import useCreateResource from '../../api/useCreateResource';
 import type {ActionKind} from '../../models/resource-server';
-import {deriveHandle} from '../../utils/deriveHandle';
 
 export type AddNodeMode =
   | 'resource'
@@ -221,10 +220,10 @@ export default function AddNodeDialog({
   };
 
   const titleMap: Record<AddNodeMode, string> = {
-    resource: t('resourceServers:tree.addResource.title', 'Add Resource'),
-    'sub-resource': t('resourceServers:tree.addSubResource.title', 'Add Sub-resource'),
-    'server-action': t('resourceServers:tree.addAction.title', 'Add Action'),
-    'resource-action': t('resourceServers:tree.addAction.title', 'Add Action'),
+    resource: t('resourceServers:tree.addResource.title', 'Add resource'),
+    'sub-resource': t('resourceServers:tree.addSubResource.title', 'Add sub-resource'),
+    'server-action': t('resourceServers:tree.addAction.title', 'Add action'),
+    'resource-action': t('resourceServers:tree.addAction.title', 'Add action'),
     'mcp-server-tool': t('resourceServers:mcp.addTool.title', 'Add tool permission'),
     'mcp-server-resource': t('resourceServers:mcp.addResource.title', 'Add resource permission'),
   };
@@ -247,7 +246,7 @@ export default function AddNodeDialog({
                 const newName = e.target.value;
                 setName(newName);
                 if (!handleEdited) {
-                  setHandle(deriveHandle(newName, delimiter));
+                  setHandle(generateHandle(newName, delimiter === '-' ? '_' : '-'));
                 }
               }}
               fullWidth

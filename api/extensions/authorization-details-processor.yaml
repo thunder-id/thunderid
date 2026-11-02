@@ -1,0 +1,171 @@
+openapi: 3.0.0
+info:
+  title: Authorization Details Processor API
+  version: 1.0.0
+  description: |
+    The call ThunderID makes to the processor of an RFC 9396 authorization details type. A processor is the resource owner's system: it approves or refuses each requested detail and may fill in the fields the type's schema says it supplies, or make the changes the fields' `policy` lets it make.
+
+    The processor is the endpoint configured as `processor.endpoint` on the type, so the path below stands for that URL. ThunderID batches every detail of one request that the same endpoint and credential serve into one call. A call times out after `oauth.authorization_details.processor_timeout` seconds (5 by default, at most 30), its response may be at most 1 MiB, and redirects are not followed.
+
+    A processor that cannot be reached or gives no usable answer fails the request; only a `false` decision refuses a detail.
+
+    When a user consents, the call runs after authentication and before the consent prompt, with the user as the subject and the requesting application or agent as the client. For a `client_credentials` token request the client itself, an application or an agent, is the subject, and there is no prompt.
+
+    Field names follow the OpenID AuthZEN Authorization API where it has one: `subject` with `type` and `id`, a boolean `decision`, and reasons in `context`.
+
+    ThunderID authenticates to the processor with the credential configured on the type's processor: none, a bearer token, an API key or Basic. A processor configured without a credential is called unauthenticated, so it should accept calls only from ThunderID's network.
+
+paths:
+  /process:
+    post:
+      summary: Decide on and enrich authorization details
+      operationId: processAuthorizationDetails
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessRequest'
+            example:
+              subject:
+                type: "user"
+                id: "01900000-0000-7000-8000-000000000030"
+              client:
+                type: "agent"
+                id: "acme-agent"
+              resource: "https://bank.example.com"
+              details:
+                - detailId: "d-7c20"
+                  type: "payment_initiation"
+                  typeVersion: 3
+                  detail:
+                    type: "payment_initiation"
+                    instructedAmount:
+                      amount: 45000.00
+                      currency: "EUR"
+                    creditorName: "Steelworks GmbH"
+      responses:
+        "200":
+          description: |
+            One result for each detail sent. Only `decision: false` refuses a detail: answer 200 with it to say a detail is invalid or not allowed, never an error status. Any other status (a redirect included), a body that cannot be decoded, or a result that is missing, repeated or has no `decision`, means the processor could not decide, and the request fails. Details are never let through unchecked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessResponse'
+              examples:
+                approved:
+                  summary: Approved, with the debtor account filled in and the amount lowered
+                  value:
+                    results:
+                      - detailId: "d-7c20"
+                        decision: true
+                        patch:
+                          /debtorAccount/iban: "DE12500105170648489890"
+                          /instructedAmount/amount: 40000.00
+                refused:
+                  summary: Refused
+                  value:
+                    results:
+                      - detailId: "d-7c20"
+                        decision: false
+                        context:
+                          reason_user: "The amount exceeds your daily payment limit."
+                          reason_admin: "Limit rule DL-7 for account 0648489890"
+
+components:
+  schemas:
+    ProcessRequest:
+      type: object
+      required: [subject, client, resource, details]
+      properties:
+        subject:
+          $ref: '#/components/schemas/Subject'
+        client:
+          $ref: '#/components/schemas/Client'
+        resource:
+          type: string
+          description: |
+            The identifier of the resource server the token carrying the details is issued for, its audience: the request's `resource`, or the default resource server. A type is not tied to a resource server, so a processor can refuse a detail it does not decide for this one.
+        details:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Detail'
+    Subject:
+      type: object
+      required: [type, id]
+      properties:
+        type:
+          type: string
+          enum: [user, application, agent]
+          description: |
+            The signed-in subject, `user` or `agent`, when the details are requested in a login. With client credentials the client requests them for itself, so the subject is the client: `application` or `agent`, as the access token's `sub_type` says.
+        id:
+          type: string
+          description: The user's, application's or agent's ID in ThunderID.
+    Client:
+      type: object
+      required: [type, id]
+      description: |
+        The OAuth client that requested the details. When an agent acts for a user, the subject is the user and the client is the agent, so a processor can set different limits for agents.
+      properties:
+        type:
+          type: string
+          enum: [application, agent]
+        id:
+          type: string
+          description: The client's `client_id`.
+    Detail:
+      type: object
+      required: [detailId, type, typeVersion, detail]
+      properties:
+        detailId:
+          type: string
+          description: |
+            ThunderID's identifier of the detail. Results refer to details by it. It is minted when ThunderID stores the authorization request, so every call for that request sends the same value and a processor that reserves or allocates something can recognize a repeated call; a new authorization request, and each `client_credentials` token request, gets new values. ThunderID does not retry a failed call. It is internal: clients never see it.
+        type:
+          type: string
+          description: The detail's authorization details type.
+        typeVersion:
+          type: integer
+          description: |
+            The version of the type the detail was checked against. A processor that does not support the version should answer with an error status, which fails the request.
+        detail:
+          type: object
+          additionalProperties: true
+          description: The detail exactly as the client requested it and ThunderID validated it.
+    ProcessResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Result'
+    Result:
+      type: object
+      required: [detailId, decision]
+      properties:
+        detailId:
+          type: string
+        decision:
+          type: boolean
+          description: |
+            `true` approves the detail, with the patch applied. `false` refuses it: the detail is left out and the other details go on, and the request fails only when every detail is refused.
+        patch:
+          type: object
+          additionalProperties: true
+          description: |
+            Values to set, keyed by JSON Pointer (RFC 6901) to the field. A patch may set the fields whose `policy` says the processor supplies them, and change the fields whose `policy` lets the processor change them, in the direction it allows. Any other change makes the answer unusable. The patched detail must still match the type's schema and limits.
+        context:
+          $ref: '#/components/schemas/DecisionContext'
+    DecisionContext:
+      type: object
+      properties:
+        reason_user:
+          type: string
+          description: |
+            Why the detail was refused, written for the person asking. When every detail is refused, it is shown to the user, or returned to a `client_credentials` client in `error_description`, cut to 200 characters. `error_description` carries only printable ASCII other than `"` and `\` (RFC 6749 section 5.2), so other characters are left out there. A reason with control or bidirectional formatting characters is not shown. Without it a generic message is shown.
+        reason_admin:
+          type: string
+          description: Why the detail was refused, for administrators. It is only logged.

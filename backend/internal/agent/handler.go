@@ -49,7 +49,13 @@ func (h *agentHandler) HandleAgentListRequest(w http.ResponseWriter, r *http.Req
 
 	includeDisplay := r.URL.Query().Get(sysutils.QueryParamInclude) == sysutils.IncludeValueDisplay
 
-	resp, svcErr := h.service.GetAgentList(ctx, limit, offset, filters, includeDisplay)
+	var resp *model.AgentListResponse
+	if query := r.URL.Query(); query.Has(projectIDQueryParam) {
+		resp, svcErr = h.service.GetAgentListByProject(ctx, query.Get(projectIDQueryParam), limit, offset,
+			filters, includeDisplay)
+	} else {
+		resp, svcErr = h.service.GetAgentList(ctx, limit, offset, filters, includeDisplay)
+	}
 	if svcErr != nil {
 		writeServiceError(ctx, w, svcErr)
 		return
@@ -76,15 +82,17 @@ func (h *agentHandler) HandleAgentPostRequest(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	agent := &model.Agent{
+	agent := &providers.Agent{
 		OUID:        req.OUID,
 		OUHandle:    req.OUHandle,
 		Type:        req.Type,
-		Name:        req.Name,
 		Description: req.Description,
 		LogoURL:     req.LogoURL,
 		Owner:       req.Owner,
+		Delegated:   req.Delegated,
 		Attributes:  req.Attributes,
+		ValidUntil:  req.ValidUntil,
+		ProjectID:   req.ProjectID,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                req.AuthFlowID,
 			RegistrationFlowID:        req.RegistrationFlowID,
@@ -97,6 +105,7 @@ func (h *agentHandler) HandleAgentPostRequest(w http.ResponseWriter, r *http.Req
 			Assertion:                 req.Assertion,
 			LoginConsent:              req.LoginConsent,
 			AllowedUserTypes:          req.AllowedUserTypes,
+			AllowedAgentTypes:         req.AllowedAgentTypes,
 			PasskeyAllowedOrigins:     req.PasskeyAllowedOrigins,
 			Attestation:               req.Attestation,
 		},
@@ -270,11 +279,11 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 		switch svcErr.Code {
 		case ErrorAgentNotFound.Code:
 			statusCode = http.StatusNotFound
-		case ErrorAgentAlreadyExistsWithName.Code,
-			ErrorAttributeConflict.Code,
+		case ErrorAttributeConflict.Code,
 			ErrorAgentAlreadyExistsWithClientID.Code:
 			statusCode = http.StatusConflict
-		case ErrorCannotModifyDeclarativeResource.Code:
+		case ErrorCannotModifyDeclarativeResource.Code,
+			tidcommon.ErrorUnauthorized.Code:
 			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest

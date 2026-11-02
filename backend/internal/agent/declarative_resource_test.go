@@ -122,8 +122,8 @@ func (s *AgentExporterTestSuite) TestGetAllResourceIDs_EmptyList() {
 }
 
 func (s *AgentExporterTestSuite) TestGetResourceByID_Success() {
-	expected := &model.AgentGetResponse{ID: "agent1", Name: "My Agent"}
-	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", false).Return(expected, nil)
+	expected := &model.AgentGetResponse{ID: "agent1", Display: "My Agent"}
+	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).Return(expected, nil)
 
 	resource, name, err := s.exporter.GetResourceByID(context.Background(), "agent1")
 
@@ -132,12 +132,25 @@ func (s *AgentExporterTestSuite) TestGetResourceByID_Success() {
 	assert.Equal(s.T(), expected, resource)
 }
 
+// An unbounded lifespan is exported as its sentinel, so importing it onto an agent with a bound
+// removes the bound instead of leaving it in place.
+func (s *AgentExporterTestSuite) TestGetResourceByID_ExportsUnboundedLifespan() {
+	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).Return(&model.AgentGetResponse{
+		ID: "agent1", Lifespan: &model.Lifespan{Phase: model.LifespanPhaseUnbounded},
+	}, nil)
+
+	resource, _, err := s.exporter.GetResourceByID(context.Background(), "agent1")
+
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), "9999-12-31T23:59:59Z", resource.(*model.AgentGetResponse).ValidUntil)
+}
+
 func (s *AgentExporterTestSuite) TestGetResourceByID_Error() {
 	svcErr := &tidcommon.ServiceError{
 		Code:  "ERR_CODE",
 		Error: tidcommon.I18nMessage{DefaultValue: "not found"},
 	}
-	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", false).Return(nil, svcErr)
+	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).Return(nil, svcErr)
 
 	resource, name, err := s.exporter.GetResourceByID(context.Background(), "agent1")
 
@@ -147,7 +160,7 @@ func (s *AgentExporterTestSuite) TestGetResourceByID_Error() {
 }
 
 func (s *AgentExporterTestSuite) TestValidateResource_Success() {
-	a := &model.AgentGetResponse{ID: "agent1", Name: "Valid Agent"}
+	a := &model.AgentGetResponse{ID: "agent1", Display: "Valid Agent"}
 
 	name, err := s.exporter.ValidateResource(context.Background(), a, "agent1", s.logger)
 
@@ -166,7 +179,7 @@ func (s *AgentExporterTestSuite) TestValidateResource_InvalidType() {
 }
 
 func (s *AgentExporterTestSuite) TestValidateResource_EmptyName() {
-	a := &model.AgentGetResponse{ID: "agent1", Name: ""}
+	a := &model.AgentGetResponse{ID: "agent1"}
 
 	name, err := s.exporter.ValidateResource(context.Background(), a, "agent1", s.logger)
 
@@ -181,8 +194,8 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_PublicClientNoR
 	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")
 
 	a := &model.AgentGetResponse{
-		ID:   "agent1",
-		Name: "Public Agent",
+		ID:      "agent1",
+		Display: "Public Agent",
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
 				OAuthConfig: &providers.OAuthConfigWithSecret{
@@ -197,7 +210,7 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_PublicClientNoR
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
-	assert.NotContains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+	assert.NotContains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Empty(s.T(), rules.ArrayVariables, "no redirect URIs means no array variables")
 }
 
@@ -206,8 +219,8 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_PublicClientWit
 	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")
 
 	a := &model.AgentGetResponse{
-		ID:   "agent1",
-		Name: "Public Agent",
+		ID:      "agent1",
+		Display: "Public Agent",
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
 				OAuthConfig: &providers.OAuthConfigWithSecret{
@@ -223,7 +236,7 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_PublicClientWit
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
-	assert.NotContains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+	assert.NotContains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
 }
 
@@ -232,8 +245,8 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_ConfidentialCli
 	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")
 
 	a := &model.AgentGetResponse{
-		ID:   "agent2",
-		Name: "Confidential Agent",
+		ID:      "agent2",
+		Display: "Confidential Agent",
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
 				OAuthConfig: &providers.OAuthConfigWithSecret{
@@ -248,7 +261,7 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_ConfidentialCli
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
-	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Empty(s.T(), rules.ArrayVariables, "M2M agents have no redirect URIs")
 }
 
@@ -257,8 +270,8 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_ConfidentialCli
 	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")
 
 	a := &model.AgentGetResponse{
-		ID:   "agent2",
-		Name: "Confidential Agent",
+		ID:      "agent2",
+		Display: "Confidential Agent",
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{
 				OAuthConfig: &providers.OAuthConfigWithSecret{
@@ -274,7 +287,7 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_ConfidentialCli
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
-	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
 }
 
@@ -282,13 +295,13 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_NoInboundAuthCo
 	pr, ok := s.exporter.(declarativeresource.PerResourceRuler)
 	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")
 
-	a := &model.AgentGetResponse{ID: "agent3", Name: "Entity-only Agent"}
+	a := &model.AgentGetResponse{ID: "agent3", Display: "Entity-only Agent"}
 
 	rules := pr.GetResourceRulesForResource(a)
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
-	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Empty(s.T(), rules.ArrayVariables)
 }
 
@@ -297,8 +310,8 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_NilOAuthConfig(
 	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")
 
 	a := &model.AgentGetResponse{
-		ID:   "agent4",
-		Name: "Agent With Nil OAuth",
+		ID:      "agent4",
+		Display: "Agent With Nil OAuth",
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{OAuthConfig: nil},
 		},
@@ -308,7 +321,7 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_NilOAuthConfig(
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
-	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Empty(s.T(), rules.ArrayVariables)
 }
 
@@ -320,6 +333,6 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_NonAgentType() 
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
-	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
 }

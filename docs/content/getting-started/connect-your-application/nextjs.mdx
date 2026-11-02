@@ -22,6 +22,8 @@ import {
 
 Use this guide to add <ProductName /> authentication to a Next.js application using the `@thunderid/nextjs` SDK with full App Router support.
 
+<SdkQuickstartDownload packageId="nextjs" sample="quickstarts/nextjs" icon={<NextLogo size={22} />} promptFlow="embedded" />
+
 <TutorialHero>
 
 ## What You Will Learn
@@ -59,16 +61,16 @@ Once it's running, the console is available at [https://localhost:8090/console](
     :::
 
 2. Navigate to **Applications**.
-3. Click **Add Application**.
+3. Click **Add application**.
 4. From the **Choose a type** page, select **Next.js**.
 5. Enter a name (e.g. `My Next.js App`).
 6. Select how you want to sign in users (e.g., email/password, social login, etc.).
 7. Select Theme settings.
-8. Leave **Sign-In Approach** set to **Bring Your Own UI** (the default for Next.js applications).
+8. Leave **Sign-in approach** set to **Bring your own UI** (the default for Next.js applications).
 9. Click **Create**.
 
 :::note Note
-Copy the **Application ID** from the **General** tab, under **Quick Copy**. Also copy the **Flow Secret** from the window that pops up when the application is created; it's shown only once (if lost, regenerate it from the application's **Credentials** tab).
+Copy the **Application ID** from the **General** tab, under **Quick copy**. Also copy the **Flow secret** from the window that pops up when the application is created; it's shown only once (if lost, regenerate it from the application's **Credentials** tab).
 :::
 
 ## Create a Next.js App
@@ -90,6 +92,16 @@ Create your new Next.js app:
     pnpm create next-app my-nextjs-app
     cd my-nextjs-app
   </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bunx create-next-app@latest my-nextjs-app
+    cd my-nextjs-app
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno run -A npm:create-next-app@latest my-nextjs-app
+    cd my-nextjs-app
+  </CodeBlock>
 </CodeGroup>
 
 When prompted, select the **App Router** option (the default).
@@ -109,6 +121,14 @@ Install the <ProductName /> Next.js SDK in your project:
 
   <CodeBlock lang="bash" label="pnpm">
     pnpm add @thunderid/nextjs
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun add @thunderid/nextjs
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno add npm:@thunderid/nextjs
   </CodeBlock>
 </CodeGroup>
 
@@ -279,6 +299,14 @@ Start the development server:
   <CodeBlock lang="bash" label="pnpm">
     pnpm dev
   </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno task dev
+  </CodeBlock>
 </CodeGroup>
 
 Visit your app at [http://localhost:3000](http://localhost:3000)
@@ -291,19 +319,7 @@ You should see the sign-in button. Click it, you'll land on your application's o
 
 ## What's Next
 
-<div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '1.5rem'}}>
-  <a href="../../../guides/flows/what-are-flows" style={{textDecoration: 'none', color: 'inherit'}}>
-    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
-      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Upgrade the Sign-In Flow</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Add MFA, passkeys, or social login to your flow. No app code changes required.</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>Flow Designer →</div>
-    </div>
-  </a>
-  <a href="../../../../sdks/nextjs/overview" style={{textDecoration: 'none', color: 'inherit'}}>
-    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
-      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Next.js SDK Reference</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Explore the full API reference for the <ProductName /> Next.js SDK.</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>API Reference →</div>
-    </div>
-  </a>
-</div>
+<NextSteps>
+  <NextStepsCard title="Upgrade the Sign-In Flow" href="../../../guides/flows/what-are-flows" description="Add MFA, passkeys, or social login to your flow. No app code changes required." cta="Flow Designer" />
+  <NextStepsCard title="Next.js SDK Reference" href="../../../sdks-and-tools/nextjs/overview" description="Explore the full API reference for the Next.js SDK." cta="API Reference" />
+</NextSteps>

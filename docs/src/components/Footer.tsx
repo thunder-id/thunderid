@@ -100,7 +100,7 @@ export default function Footer(): JSX.Element {
             links={[
               {label: 'Docs', href: '/docs/next/getting-started/get-thunderid'},
               {label: 'APIs', href: '/docs/next/apis'},
-              {label: 'SDKs', href: '/sdks'},
+              {label: 'SDKs', href: '/sdks-and-tools'},
             ]}
           />
 
@@ -108,7 +108,7 @@ export default function Footer(): JSX.Element {
           <FooterColumn
             title="Community"
             links={[
-              {label: 'Contributing', href: '/docs/next/community/contributing/contribute-ideas'},
+              {label: 'Contributing', href: '/community/contributing/propose-a-feature'},
               {label: 'Events', href: '/events'},
               {label: 'Discussions', href: productConfig.project.source.github.discussionsUrl},
               {label: 'Report an Issue', href: productConfig.project.source.github.issuesUrl},

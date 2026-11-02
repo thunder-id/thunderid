@@ -1,0 +1,14 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: nextauth-provider
+name: Auth.js (NextAuth)
+icon: AuthJsLogo
+category: fullstack
+type: integration
+origin: community
+status: soon
+package:
+  name: next-auth (built-in)
+description: Community-maintained {{ProductName}} provider built into Auth.js, configure and go, no extra package.
+author: nextauthjs

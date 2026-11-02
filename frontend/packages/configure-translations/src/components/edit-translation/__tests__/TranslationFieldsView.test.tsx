@@ -3,9 +3,13 @@
 
 import userEvent from '@testing-library/user-event';
 import {render, renderHook, screen, fireEvent} from '@thunderid/test-utils';
+import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {describe, expect, it, vi, beforeAll, beforeEach} from 'vitest';
-import TranslationFieldsView from '@/components/edit-translation/TranslationFieldsView';
+import TranslationFieldsView, {
+  type AddKeyDraft,
+  type TranslationFieldsViewProps,
+} from '@/components/edit-translation/TranslationFieldsView';
 
 const sampleValues = {
   'actions.save': 'Save',
@@ -13,14 +17,41 @@ const sampleValues = {
   'page.title': 'My Page',
 };
 
+const emptyDraft: AddKeyDraft = {adding: false, key: '', value: ''};
+
 const defaultProps = {
   localValues: sampleValues,
   serverValues: sampleValues,
   search: '',
-  isCustomNamespace: false,
+  allowNewKeys: false,
   onChange: vi.fn(),
   onResetField: vi.fn(),
+  draft: emptyDraft,
+  onDraftChange: vi.fn(),
 };
+
+/**
+ * The add-key draft is lifted to the parent, so the view is a controlled component.
+ * This harness owns the draft state locally so the add-key flow can be exercised end
+ * to end, while still forwarding an optional spy to assert the callback payloads.
+ */
+function ControlledView({
+  onDraftChangeSpy = undefined,
+  ...props
+}: Partial<TranslationFieldsViewProps> & {onDraftChangeSpy?: (draft: AddKeyDraft) => void}): JSX.Element {
+  const [draft, setDraft] = useState<AddKeyDraft>(emptyDraft);
+  return (
+    <TranslationFieldsView
+      {...defaultProps}
+      {...props}
+      draft={draft}
+      onDraftChange={(next) => {
+        onDraftChangeSpy?.(next);
+        setDraft(next);
+      }}
+    />
+  );
+}
 
 describe('TranslationFieldsView', () => {
   let t: (key: string) => string;
@@ -153,21 +184,21 @@ describe('TranslationFieldsView', () => {
   });
 
   describe('Add Key (custom namespace)', () => {
-    it('shows the Add Key button when isCustomNamespace is true', () => {
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace />);
+    it('shows the Add Key button when allowNewKeys is true', () => {
+      render(<TranslationFieldsView {...defaultProps} allowNewKeys />);
 
       expect(screen.getByText(t('editor.addKey'))).toBeInTheDocument();
     });
 
-    it('does not show the Add Key button when isCustomNamespace is false', () => {
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace={false} />);
+    it('does not show the Add Key button when allowNewKeys is false', () => {
+      render(<TranslationFieldsView {...defaultProps} allowNewKeys={false} />);
 
       expect(screen.queryByText(t('editor.addKey'))).not.toBeInTheDocument();
     });
 
     it('shows the add key form when the Add Key button is clicked', async () => {
       const user = userEvent.setup();
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace />);
+      render(<ControlledView allowNewKeys />);
 
       await user.click(screen.getByText(t('editor.addKey')));
 
@@ -178,7 +209,7 @@ describe('TranslationFieldsView', () => {
     it('calls onChange and closes the form when a new key is submitted', async () => {
       const onChange = vi.fn();
       const user = userEvent.setup();
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace onChange={onChange} />);
+      render(<ControlledView allowNewKeys onChange={onChange} />);
 
       await user.click(screen.getByText(t('editor.addKey')));
 
@@ -198,7 +229,7 @@ describe('TranslationFieldsView', () => {
 
     it('closes the form and clears inputs when Cancel is clicked', async () => {
       const user = userEvent.setup();
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace />);
+      render(<ControlledView allowNewKeys />);
 
       await user.click(screen.getByText(t('editor.addKey')));
 
@@ -214,7 +245,7 @@ describe('TranslationFieldsView', () => {
 
     it('shows a duplicate key error when the entered key already exists', async () => {
       const user = userEvent.setup();
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace />);
+      render(<ControlledView allowNewKeys />);
 
       await user.click(screen.getByText(t('editor.addKey')));
 
@@ -227,7 +258,7 @@ describe('TranslationFieldsView', () => {
 
     it('disables the submit button when the key is empty', async () => {
       const user = userEvent.setup();
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace />);
+      render(<ControlledView allowNewKeys />);
 
       await user.click(screen.getByText(t('editor.addKey')));
 
@@ -237,7 +268,7 @@ describe('TranslationFieldsView', () => {
 
     it('disables the submit button when the key is a duplicate', async () => {
       const user = userEvent.setup();
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace />);
+      render(<ControlledView allowNewKeys />);
 
       await user.click(screen.getByText(t('editor.addKey')));
 

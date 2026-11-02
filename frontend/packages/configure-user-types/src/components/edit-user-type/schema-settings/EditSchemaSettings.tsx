@@ -8,7 +8,7 @@ import SchemaPropertyEditor from '../../shared/SchemaPropertyEditor';
 export interface EditSchemaSettingsProps {
   properties: SchemaPropertyInput[];
   onPropertiesChange: (properties: SchemaPropertyInput[]) => void;
-  userTypeName: string;
+  userTypeHandle: string;
   disabled?: boolean;
 }
 
@@ -19,7 +19,7 @@ export interface EditSchemaSettingsProps {
 export default function EditSchemaSettings({
   properties,
   onPropertiesChange,
-  userTypeName,
+  userTypeHandle,
   disabled = false,
 }: EditSchemaSettingsProps): JSX.Element {
   const [enumInput, setEnumInput] = useState<Record<string, string>>({});
@@ -30,7 +30,7 @@ export default function EditSchemaSettings({
       onPropertiesChange={onPropertiesChange}
       enumInput={enumInput}
       onEnumInputChange={setEnumInput}
-      userTypeName={userTypeName}
+      userTypeHandle={userTypeHandle}
       disabled={disabled}
       isEditMode
     />

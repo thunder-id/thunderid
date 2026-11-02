@@ -52,7 +52,9 @@ To assemble the consent step manually, add and connect the individual nodes inst
 
 ### Configure optional timeout for the user input
 
-By default, the consent flow will wait indefinitely for the user to provide input. However, you can configure an optional timeout to automatically deny consent if the user does not respond within a specified time frame.
+By default, the consent flow will wait indefinitely for the user to provide input. However, you can configure an optional timeout to end the prompt if the user does not respond within a specified time frame.
+
+When the timeout expires, the prompt is submitted automatically as a denial. No consent decision is recorded, and the login completes without granting any of the requested attributes or permissions. This is not the same as denying an essential attribute, which terminates the login.
 
 To set a timeout for user input in the consent flow:
 
@@ -61,6 +63,24 @@ To set a timeout for user input in the consent flow:
 3. Enter the desired timeout duration in seconds (e.g., `60` for a 1-minute timeout).
 4. Expand the **Components** section, and drag and drop the **Timer** component into the **Consent View** step.
 5. Save the flow configuration.
+
+### Fail the flow when the user denies consent
+
+:::note Available from 1.0.1
+This setting is available from the 1.0.1 patch release. If you are using an earlier version, please upgrade to 1.0.1 or later to access this feature.
+:::
+
+By default, the login flow still completes when the user clicks **Deny** on the consent prompt, as long as every requested attribute is optional. Only a denial of an essential attribute terminates the login on the default setting.
+
+Enable **Fail flow when user denies consent** on the **User Consent** node when the flow must fail instead.
+
+When enabled, the flow also fails if the consent prompt times out without a response.
+
+To enable this setting:
+
+1. In the flow builder, select the **User Consent** node.
+2. In the node configuration panel, enable **Fail flow when user denies consent**.
+3. Save the flow configuration.
 
 ### Configure validity period for granted consent
 

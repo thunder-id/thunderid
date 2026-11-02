@@ -28,7 +28,7 @@ CREATE TABLE "REVOCATION_CRITERIA" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     ID VARCHAR(36) NOT NULL PRIMARY KEY,
     CRITERION_TYPE VARCHAR(30) NOT NULL,
-    CRITERION_VALUE VARCHAR(255) NOT NULL,
+    CRITERION_VALUE VARCHAR(2048) NOT NULL,
     REASON VARCHAR(30) NOT NULL,
     REVOKED_AT TIMESTAMP NOT NULL,
     EXPIRY_TIME TIMESTAMP NOT NULL
@@ -95,6 +95,10 @@ CREATE TABLE "SSO_SESSION_PARTICIPANT" (
     PRIMARY KEY (SESSION_ID, DEPLOYMENT_ID, APP_ID)
 );
 
+-- Index for participation lookups by application, used when an application is deleted and its
+-- participation must be detached from every session it joined.
+CREATE INDEX idx_sso_session_participant_app ON "SSO_SESSION_PARTICIPANT" (DEPLOYMENT_ID, APP_ID);
+
 -- Table to store consent records.
 CREATE TABLE "CONSENT" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
@@ -128,3 +132,18 @@ CREATE INDEX idx_consent_authz_user ON "CONSENT_AUTHORIZATION" (DEPLOYMENT_ID, U
 
 -- Index for loading a consent's authorization records.
 CREATE INDEX idx_consent_authz_consent ON "CONSENT_AUTHORIZATION" (CONSENT_ID, DEPLOYMENT_ID);
+
+-- Table to store ThunderID-owned runtime data per entity: state, runtime attributes and revision.
+-- Part of the database.runtime_persistent classification: authoritative account-access state that
+-- must survive a runtime database flush.
+CREATE TABLE "ENTITY_RUNTIME_DATA" (
+    DEPLOYMENT_ID       VARCHAR(255) NOT NULL,
+    ENTITY_ID           VARCHAR(36) NOT NULL,
+    STATE               VARCHAR(50) NOT NULL,
+    RUNTIME_ATTRIBUTES  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    REVISION            BIGINT NOT NULL DEFAULT 0,
+    CREATED_AT          TIMESTAMPTZ NOT NULL,
+    UPDATED_AT          TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (DEPLOYMENT_ID, ENTITY_ID),
+    CHECK (jsonb_typeof(RUNTIME_ATTRIBUTES) = 'object')
+);

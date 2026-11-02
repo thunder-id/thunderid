@@ -74,19 +74,6 @@ var (
 			DefaultValue: "A client error occurred while retrieving the identity provider configuration",
 		},
 	}
-	// ErrorEmptySubClaim is the error when the sub claim is empty.
-	ErrorEmptySubClaim = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "AUTH-OAUTH-1006",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.authoauthservice.empty_sub_claim",
-			DefaultValue: "Empty sub claim",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.authoauthservice.empty_sub_claim_description",
-			DefaultValue: "The sub claim cannot be empty",
-		},
-	}
 	// ErrorClientErrorWhileRetrievingUser is the error when there is a client error while retrieving the user.
 	ErrorClientErrorWhileRetrievingUser = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

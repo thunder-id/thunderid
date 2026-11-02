@@ -26,7 +26,8 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
 describe('useGetAgentType', () => {
   const mockAgentType: ApiAgentType = {
     id: 'aaa-bbb-ccc',
-    name: 'default',
+    handle: 'default',
+    displayName: 'Default',
     ouId: '111e8400-e29b-41d4-a716-446655440000',
     schema: {
       modelProvider: {

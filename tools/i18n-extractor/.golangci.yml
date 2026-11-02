@@ -1,0 +1,12 @@
+# Copyright 2026 The ThunderID Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Keeps golangci-lint v1's default exclusions, which v2 no longer applies implicitly.
+version: "2"
+linters:
+  exclusions:
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling

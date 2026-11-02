@@ -12,6 +12,10 @@ const mockLogger = {
   debug: vi.fn(),
 };
 
+const {mockUseGetAgentTypes} = vi.hoisted(() => ({mockUseGetAgentTypes: vi.fn(() => ({data: undefined}))}));
+
+vi.mock('@thunderid/configure-agent-types', () => ({useGetAgentTypes: mockUseGetAgentTypes}));
+
 vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => mockLogger,
 }));
@@ -98,6 +102,7 @@ import ConfigureExport from '../ConfigureExport';
 
 afterEach(() => {
   vi.clearAllMocks();
+  mockUseGetAgentTypes.mockReturnValue({data: undefined});
 });
 
 describe('ConfigureExport', () => {
@@ -217,11 +222,85 @@ name: Valid Flow
 ---
 resource_type: agent
 id: agent-1
-name: Test Agent
 description: A test agent
+attributes:
+  name: Test Agent
 `;
       render(<ConfigureExport resources={agentYaml} />);
       expect(screen.getByTestId('icon-bot')).toBeInTheDocument();
+    });
+
+    const expandAgentsRow = async (): Promise<void> => {
+      await userEvent.click(screen.getByText('Agents').closest('tr')!);
+    };
+
+    it('labels an agent with the display attribute of the agent type in the same bundle', async () => {
+      const yamlContent = `
+---
+resource_type: agent
+id: agent-1
+type: default
+attributes:
+  name: Calendar Agent
+---
+resource_type: agent_type
+handle: default
+displayName: Default
+systemAttributes:
+  display: name
+`;
+      render(<ConfigureExport resources={yamlContent} />);
+      await expandAgentsRow();
+
+      expect(screen.getByText('Calendar Agent')).toBeInTheDocument();
+      expect(mockUseGetAgentTypes).toHaveBeenCalledWith(undefined, {enabled: false});
+    });
+
+    it('labels an agent from a server type when the bundle has no agent types', async () => {
+      mockUseGetAgentTypes.mockReturnValue({
+        data: {types: [{handle: 'default', systemAttributes: {display: 'name'}}]},
+      } as never);
+      const yamlContent = `
+---
+resource_type: agent
+id: agent-1
+type: default
+attributes:
+  name: Server Resolved
+`;
+      render(<ConfigureExport resources={yamlContent} />);
+      await expandAgentsRow();
+
+      expect(screen.getByText('Server Resolved')).toBeInTheDocument();
+      expect(mockUseGetAgentTypes).toHaveBeenCalledWith(undefined, {enabled: true});
+    });
+
+    it('falls back to the agent id when no type resolves a label', async () => {
+      const yamlContent = `
+---
+resource_type: agent
+id: agent-1
+type: default
+attributes:
+  name: Hidden
+`;
+      render(<ConfigureExport resources={yamlContent} />);
+      await expandAgentsRow();
+
+      expect(screen.getByText('agent-1')).toBeInTheDocument();
+      expect(screen.queryByText('Hidden')).not.toBeInTheDocument();
+    });
+
+    it('falls back to the unnamed label when an agent has neither a label nor an id', async () => {
+      const yamlContent = `
+---
+resource_type: agent
+type: default
+`;
+      render(<ConfigureExport resources={yamlContent} />);
+      await expandAgentsRow();
+
+      expect(screen.getByText('Unnamed agent')).toBeInTheDocument();
     });
 
     it('parses connection resources and renders a connections section', () => {
@@ -316,21 +395,27 @@ type: google
         `resource_type: user\ntype: person\nattributes:\n  name: User Name ${idx}\n  username: user${idx}\n  email: user${idx}@example.com`,
     },
     {
+      resourceType: 'project',
+      label: 'Projects',
+      body: (idx) =>
+        `resource_type: project\nid: project-${idx}\nrootOuId: ou-${idx}\nhandle: project-${idx}\ndisplayName: Project ${idx}\ndescription: Project description ${idx}`,
+    },
+    {
       resourceType: 'organization_unit',
-      label: 'Organization Units',
+      label: 'Organization units',
       body: (idx) =>
         `resource_type: organization_unit\nname: Org ${idx}\nhandle: org-${idx}\ndescription: Org description ${idx}`,
     },
     {
       resourceType: 'user_type',
-      label: 'User Types',
+      label: 'User types',
       body: (idx) =>
-        `resource_type: user_type\nname: Schema ${idx}\nhandle: schema-${idx}\nallow_self_registration: true`,
+        `resource_type: user_type\ndisplayName: Schema ${idx}\nhandle: schema-${idx}\nallow_self_registration: true`,
     },
     {
       resourceType: 'agent_type',
-      label: 'Agent Types',
-      body: (idx) => `resource_type: agent_type\nname: Agent Type ${idx}\nhandle: agent-type-${idx}`,
+      label: 'Agent types',
+      body: (idx) => `resource_type: agent_type\ndisplayName: Agent Type ${idx}\nhandle: agent-type-${idx}`,
     },
     {
       resourceType: 'translation',
@@ -345,7 +430,7 @@ type: google
     },
     {
       resourceType: 'resource_server',
-      label: 'Resource Servers',
+      label: 'Resource servers',
       body: (idx) =>
         `resource_type: resource_server\nname: Resource Server ${idx}\nhandle: rs-${idx}\ndescription: Resource server description ${idx}`,
     },
@@ -365,12 +450,24 @@ type: google
       resourceType: 'agent',
       label: 'Agents',
       body: (idx) =>
-        `resource_type: agent\nid: agent-${idx}\nname: Agent ${idx}\ndescription: Agent description ${idx}\ninbound_auth_config:\n  - type: oauth2\n    config:\n      client_id: client-agent-${idx}`,
+        `resource_type: agent\nid: agent-${idx}\ndescription: Agent description ${idx}\nattributes:\n  name: Agent ${idx}\ninbound_auth_config:\n  - type: oauth2\n    config:\n      client_id: client-agent-${idx}`,
     },
     {
       resourceType: 'server_config',
-      label: 'Server Configurations',
+      label: 'Server configurations',
       body: (idx) => `resource_type: server_config\nname: Server Config ${idx}`,
+    },
+    {
+      resourceType: 'credential_configuration',
+      label: 'Credential configurations',
+      body: (idx) =>
+        `resource_type: credential_configuration\nname: Credential Config ${idx}\nhandle: credential-config-${idx}\nvct: VerifiableId`,
+    },
+    {
+      resourceType: 'presentation_definition',
+      label: 'Presentation definitions',
+      body: (idx) =>
+        `resource_type: presentation_definition\nname: Presentation Definition ${idx}\nhandle: presentation-definition-${idx}\nvct: VerifiableId`,
     },
   ];
 
@@ -428,7 +525,7 @@ type: google
 
       render(<ConfigureExport resources={'---\nresource_type: application\nname: Test App'} />);
 
-      const exportButton = screen.getByText('Export Configuration');
+      const exportButton = screen.getByText('Export configuration');
       await userEvent.click(exportButton);
 
       await waitFor(() => {
@@ -446,13 +543,13 @@ type: google
 
       render(<ConfigureExport resources={'---\nresource_type: application\nname: Test App'} />);
 
-      const exportButton = screen.getByText('Export Configuration');
+      const exportButton = screen.getByText('Export configuration');
       await userEvent.click(exportButton);
 
       await waitFor(() => {
         expect(showSaveFilePicker).toHaveBeenCalled();
       });
-      expect(screen.getByText('Export Configuration')).toBeInTheDocument();
+      expect(screen.getByText('Export configuration')).toBeInTheDocument();
     });
 
     it('falls back to a blob download when the File System Access API is unsupported', async () => {
@@ -461,7 +558,7 @@ type: google
 
       render(<ConfigureExport resources={'---\nresource_type: application\nname: Test App'} />);
 
-      const exportButton = screen.getByText('Export Configuration');
+      const exportButton = screen.getByText('Export configuration');
       await userEvent.click(exportButton);
 
       await waitFor(() => {

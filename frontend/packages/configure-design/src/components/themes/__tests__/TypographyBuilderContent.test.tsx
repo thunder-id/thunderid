@@ -44,9 +44,13 @@ function makeFullTypography(): Record<string, unknown> {
 }
 
 // useFontStylesheetLink needs a ConfigProvider, which this test tree doesn't otherwise set up.
-vi.mock('@thunderid/contexts', () => ({
-  useConfig: () => ({config: {brand: {product_name: 'ThunderID'}}}),
-}));
+vi.mock('@thunderid/contexts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@thunderid/contexts')>();
+  return {
+    ...actual,
+    useConfig: () => ({config: {brand: {product_name: 'ThunderID'}}}),
+  };
+});
 
 afterEach(() => {
   cleanup();
@@ -108,7 +112,7 @@ describe('TypographyBuilderContent font modes', () => {
   it('defaults to the web-safe font picker when no import URL is set', () => {
     renderEditor(makeDraft());
     expect(screen.getByRole('combobox')).toBeTruthy();
-    expect(screen.queryByLabelText('Font Import URL')).toBeNull();
+    expect(screen.queryByLabelText('Font import URL')).toBeNull();
   });
 
   it('shows the bare name selected when the theme stores the default font stack', () => {
@@ -122,30 +126,30 @@ describe('TypographyBuilderContent font modes', () => {
       font: {importURL: 'https://fonts.googleapis.com/css2?family=Poppins'},
     });
     renderEditor(draft);
-    const urlField = screen.getByLabelText<HTMLInputElement>('Font Import URL');
+    const urlField = screen.getByLabelText<HTMLInputElement>('Font import URL');
     expect(urlField.value).toBe('https://fonts.googleapis.com/css2?family=Poppins');
   });
 
   it('reveals the import fields when switching to import mode', () => {
     renderEditor(makeDraft());
-    fireEvent.click(screen.getByRole('button', {name: 'Use a Custom Font'}));
-    expect(screen.getByLabelText('Font Import URL')).toBeTruthy();
-    expect(screen.getAllByLabelText('Font Family').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', {name: 'Use a custom font'}));
+    expect(screen.getByLabelText('Font import URL')).toBeTruthy();
+    expect(screen.getAllByLabelText('Font family').length).toBeGreaterThan(0);
   });
 
   it('clears the inherited family when switching to import so the field shows its placeholder', () => {
     const draft = makeDraft({fontFamily: "'Inter Variable', sans-serif"});
     renderEditor(draft);
-    fireEvent.click(screen.getByRole('button', {name: 'Use a Custom Font'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Use a custom font'}));
     expect(typographyOf(draft).fontFamily).toBe('');
-    expect(screen.getByLabelText<HTMLInputElement>('Font Family').value).toBe('');
+    expect(screen.getByLabelText<HTMLInputElement>('Font family').value).toBe('');
   });
 
   it('typing an import URL writes typography.font.importURL', () => {
     const draft = makeDraft();
     renderEditor(draft);
-    fireEvent.click(screen.getByRole('button', {name: 'Use a Custom Font'}));
-    fireEvent.change(screen.getByLabelText('Font Import URL'), {
+    fireEvent.click(screen.getByRole('button', {name: 'Use a custom font'}));
+    fireEvent.change(screen.getByLabelText('Font import URL'), {
       target: {value: 'https://fonts.bunny.net/css?family=inter'},
     });
     expect(typographyOf(draft).font?.importURL).toBe('https://fonts.bunny.net/css?family=inter');
@@ -169,7 +173,7 @@ describe('TypographyBuilderContent font modes', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Use a web-safe font'}));
     expect(typographyOf(getDraft()).font).toBeUndefined();
     // Toggling back to import restores the remembered URL and family.
-    fireEvent.click(screen.getByRole('button', {name: 'Use a Custom Font'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Use a custom font'}));
     expect(typographyOf(getDraft()).font?.importURL).toBe('https://fonts.googleapis.com/css2?family=Poppins');
     expect(typographyOf(getDraft()).fontFamily).toBe('Poppins');
   });
@@ -181,7 +185,7 @@ describe('TypographyBuilderContent font modes', () => {
         <TypographyBuilderContent draft={webSafeDraft} onUpdate={vi.fn()} />
       </OxygenUIThemeProvider>,
     );
-    expect(screen.queryByLabelText('Font Import URL')).toBeNull();
+    expect(screen.queryByLabelText('Font import URL')).toBeNull();
 
     // A Revert replaces the draft in place with one that carries an import URL again.
     const revertedDraft = makeDraft({
@@ -193,7 +197,7 @@ describe('TypographyBuilderContent font modes', () => {
         <TypographyBuilderContent draft={revertedDraft} onUpdate={vi.fn()} />
       </OxygenUIThemeProvider>,
     );
-    const urlField = screen.getByLabelText<HTMLInputElement>('Font Import URL');
+    const urlField = screen.getByLabelText<HTMLInputElement>('Font import URL');
     expect(urlField.value).toBe('https://fonts.googleapis.com/css2?family=Poppins');
   });
 
@@ -207,7 +211,7 @@ describe('TypographyBuilderContent font modes', () => {
         <TypographyBuilderContent draft={importDraft} onUpdate={vi.fn()} />
       </OxygenUIThemeProvider>,
     );
-    expect(screen.getByLabelText('Font Import URL')).toBeTruthy();
+    expect(screen.getByLabelText('Font import URL')).toBeTruthy();
 
     // A Revert replaces the draft in place with the original web-safe theme (no import URL).
     const revertedDraft = makeDraft({fontFamily: 'Arial'});
@@ -216,7 +220,7 @@ describe('TypographyBuilderContent font modes', () => {
         <TypographyBuilderContent draft={revertedDraft} onUpdate={vi.fn()} />
       </OxygenUIThemeProvider>,
     );
-    expect(screen.queryByLabelText('Font Import URL')).toBeNull();
+    expect(screen.queryByLabelText('Font import URL')).toBeNull();
     expect(screen.getByRole('combobox')).toBeTruthy();
   });
 
@@ -230,7 +234,7 @@ describe('TypographyBuilderContent font modes', () => {
         <TypographyBuilderContent draft={importDraft} onUpdate={vi.fn()} />
       </OxygenUIThemeProvider>,
     );
-    expect(screen.getByLabelText('Font Import URL')).toBeTruthy();
+    expect(screen.getByLabelText('Font import URL')).toBeTruthy();
 
     // A Revert can restore a draft with neither a family nor an import URL set.
     const revertedDraft = makeDraft();
@@ -239,14 +243,14 @@ describe('TypographyBuilderContent font modes', () => {
         <TypographyBuilderContent draft={revertedDraft} onUpdate={vi.fn()} />
       </OxygenUIThemeProvider>,
     );
-    expect(screen.queryByLabelText('Font Import URL')).toBeNull();
+    expect(screen.queryByLabelText('Font import URL')).toBeNull();
     expect(screen.getByRole('combobox')).toBeTruthy();
   });
 
   it('falls the live preview back to the product default (not a generic serif) for a partial font name', () => {
     renderStatefulEditor(makeDraft());
-    fireEvent.click(screen.getByRole('button', {name: 'Use a Custom Font'}));
-    fireEvent.change(screen.getByLabelText('Font Family'), {target: {value: 'P'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Use a custom font'}));
+    fireEvent.change(screen.getByLabelText('Font family'), {target: {value: 'P'}});
 
     // sx compiles to a generated CSS class via emotion, so assert against the injected stylesheet.
     screen.getByText('The quick brown fox jumps over the lazy dog.');
@@ -273,7 +277,7 @@ describe('TypographyBuilderContent font modes', () => {
       font: {importURL: 'https://fonts.googleapis.com/css2?family=Poppins'},
     });
     renderEditor(draft);
-    fireEvent.change(screen.getByLabelText('Font Import URL'), {target: {value: ''}});
+    fireEvent.change(screen.getByLabelText('Font import URL'), {target: {value: ''}});
     expect(typographyOf(draft).fontFamily).toBe('');
     expect(typographyOf(draft).font).toBeUndefined();
   });
@@ -325,7 +329,7 @@ describe('TypographyBuilderContent font weights', () => {
     const user = userEvent.setup();
     const {draft} = renderWithFullTypography();
 
-    await user.click(screen.getByText('Font Weights'));
+    await user.click(screen.getByText('Font weights'));
     // Font Weights is the first of the three ConfigCards that render a "Reset" action.
     await user.click(screen.getAllByText('Reset')[0]);
 
@@ -344,7 +348,7 @@ describe('TypographyBuilderContent font weights', () => {
     const user = userEvent.setup();
     const {draft} = renderWithFullTypography();
 
-    await user.click(screen.getByText('Font Weights'));
+    await user.click(screen.getByText('Font weights'));
     // Index 0 is the Font Family autocomplete's own combobox; the weight Selects follow it.
     const comboboxes = screen.getAllByRole('combobox');
     await user.click(comboboxes[1]);
@@ -360,7 +364,7 @@ describe('TypographyBuilderContent font weights', () => {
     const user = userEvent.setup();
     const {draft} = renderWithFullTypography();
 
-    await user.click(screen.getByText('Font Weights'));
+    await user.click(screen.getByText('Font weights'));
     const comboboxes = screen.getAllByRole('combobox');
     await user.click(comboboxes[2]);
     await user.click(screen.getByRole('option', {name: '200 — Extra Light'}));
@@ -374,7 +378,7 @@ describe('TypographyBuilderContent font weights', () => {
     const user = userEvent.setup();
     const {draft} = renderWithFullTypography();
 
-    await user.click(screen.getByText('Font Weights'));
+    await user.click(screen.getByText('Font weights'));
     const comboboxes = screen.getAllByRole('combobox');
     await user.click(comboboxes[3]);
     await user.click(screen.getByRole('option', {name: '600 — Semi Bold'}));
@@ -388,7 +392,7 @@ describe('TypographyBuilderContent font weights', () => {
     const user = userEvent.setup();
     const {draft} = renderWithFullTypography();
 
-    await user.click(screen.getByText('Font Weights'));
+    await user.click(screen.getByText('Font weights'));
     const comboboxes = screen.getAllByRole('combobox');
     await user.click(comboboxes[4]);
     // There is no variant mapped to fontWeightBold by default, so only the base value changes.
@@ -419,7 +423,7 @@ describe('TypographyBuilderContent base sizes', () => {
     const user = userEvent.setup();
     const {draft} = renderWithFullTypography();
 
-    await user.click(screen.getByText('Base Sizes'));
+    await user.click(screen.getByText('Base sizes'));
     // Base Sizes is the second of the three ConfigCards that render a "Reset" action.
     await user.click(screen.getAllByText('Reset')[1]);
 
@@ -433,7 +437,7 @@ describe('TypographyBuilderContent base sizes', () => {
 
   it('changes the base font size slider and clears computed variant sizes', () => {
     const {draft} = renderWithFullTypography();
-    fireEvent.click(screen.getByText('Base Sizes'));
+    fireEvent.click(screen.getByText('Base sizes'));
 
     const sliders = screen.getAllByRole('slider');
     fireEvent.change(sliders[0], {target: {value: 18}});
@@ -445,7 +449,7 @@ describe('TypographyBuilderContent base sizes', () => {
 
   it('changes the html font size slider and clears computed variant sizes', () => {
     const {draft} = renderWithFullTypography();
-    fireEvent.click(screen.getByText('Base Sizes'));
+    fireEvent.click(screen.getByText('Base sizes'));
 
     const sliders = screen.getAllByRole('slider');
     fireEvent.change(sliders[1], {target: {value: 20}});
@@ -476,7 +480,7 @@ describe('TypographyBuilderContent type scale', () => {
     const user = userEvent.setup();
     const {draft} = renderWithFullTypography();
 
-    await user.click(screen.getByText('Type Scale'));
+    await user.click(screen.getByText('Type scale'));
     // Type Scale is the third of the three ConfigCards that render a "Reset" action.
     await user.click(screen.getAllByText('Reset')[2]);
 
@@ -488,7 +492,7 @@ describe('TypographyBuilderContent type scale', () => {
 
   it('edits a variant font size directly via its text field', () => {
     const {draft} = renderWithFullTypography();
-    fireEvent.click(screen.getByText('Type Scale'));
+    fireEvent.click(screen.getByText('Type scale'));
 
     // h1 is the first entry in TYPE_SCALE_VARIANTS, so its text field is the first textbox.
     const input = screen.getAllByRole('textbox')[0];
@@ -515,7 +519,7 @@ describe('TypographyBuilderContent defensive guards', () => {
     const user = userEvent.setup();
     const {draft} = renderWithoutTypography();
 
-    await user.click(screen.getByRole('button', {name: 'Use a Custom Font'}));
+    await user.click(screen.getByRole('button', {name: 'Use a custom font'}));
 
     expect(draft.typography).toBeUndefined();
   });
@@ -524,7 +528,7 @@ describe('TypographyBuilderContent defensive guards', () => {
     const user = userEvent.setup();
     const {draft} = renderWithoutTypography();
 
-    await user.click(screen.getByText('Font Weights'));
+    await user.click(screen.getByText('Font weights'));
     await user.click(screen.getAllByText('Reset')[0]);
 
     expect(draft.typography).toBeUndefined();
@@ -534,7 +538,7 @@ describe('TypographyBuilderContent defensive guards', () => {
     const user = userEvent.setup();
     const {draft} = renderWithoutTypography();
 
-    await user.click(screen.getByText('Font Weights'));
+    await user.click(screen.getByText('Font weights'));
     await user.click(screen.getAllByRole('combobox')[1]);
     await user.click(screen.getByRole('option', {name: '100 — Thin'}));
 
@@ -545,7 +549,7 @@ describe('TypographyBuilderContent defensive guards', () => {
     const user = userEvent.setup();
     const {draft} = renderWithoutTypography();
 
-    await user.click(screen.getByText('Font Weights'));
+    await user.click(screen.getByText('Font weights'));
     await user.click(screen.getAllByRole('combobox')[2]);
     await user.click(screen.getByRole('option', {name: '200 — Extra Light'}));
 
@@ -556,7 +560,7 @@ describe('TypographyBuilderContent defensive guards', () => {
     const user = userEvent.setup();
     const {draft} = renderWithoutTypography();
 
-    await user.click(screen.getByText('Font Weights'));
+    await user.click(screen.getByText('Font weights'));
     await user.click(screen.getAllByRole('combobox')[3]);
     await user.click(screen.getByRole('option', {name: '600 — Semi Bold'}));
 
@@ -567,7 +571,7 @@ describe('TypographyBuilderContent defensive guards', () => {
     const user = userEvent.setup();
     const {draft} = renderWithoutTypography();
 
-    await user.click(screen.getByText('Font Weights'));
+    await user.click(screen.getByText('Font weights'));
     await user.click(screen.getAllByRole('combobox')[4]);
     await user.click(screen.getByRole('option', {name: '900 — Black'}));
 
@@ -578,7 +582,7 @@ describe('TypographyBuilderContent defensive guards', () => {
     const user = userEvent.setup();
     const {draft} = renderWithoutTypography();
 
-    await user.click(screen.getByText('Base Sizes'));
+    await user.click(screen.getByText('Base sizes'));
     await user.click(screen.getAllByText('Reset')[1]);
 
     expect(draft.typography).toBeUndefined();
@@ -587,7 +591,7 @@ describe('TypographyBuilderContent defensive guards', () => {
   it('the base font size slider no-ops when there is no typography object', () => {
     const {draft} = renderWithoutTypography();
 
-    fireEvent.click(screen.getByText('Base Sizes'));
+    fireEvent.click(screen.getByText('Base sizes'));
     fireEvent.change(screen.getAllByRole('slider')[0], {target: {value: 18}});
 
     expect(draft.typography).toBeUndefined();
@@ -596,7 +600,7 @@ describe('TypographyBuilderContent defensive guards', () => {
   it('the HTML font size slider no-ops when there is no typography object', () => {
     const {draft} = renderWithoutTypography();
 
-    fireEvent.click(screen.getByText('Base Sizes'));
+    fireEvent.click(screen.getByText('Base sizes'));
     fireEvent.change(screen.getAllByRole('slider')[1], {target: {value: 20}});
 
     expect(draft.typography).toBeUndefined();
@@ -606,7 +610,7 @@ describe('TypographyBuilderContent defensive guards', () => {
     const user = userEvent.setup();
     const {draft} = renderWithoutTypography();
 
-    await user.click(screen.getByText('Type Scale'));
+    await user.click(screen.getByText('Type scale'));
     await user.click(screen.getAllByText('Reset')[2]);
 
     expect(draft.typography).toBeUndefined();
@@ -623,7 +627,7 @@ describe('TypographyBuilderContent defensive guards', () => {
       </OxygenUIThemeProvider>,
     );
 
-    await user.click(screen.getByText('Base Sizes'));
+    await user.click(screen.getByText('Base sizes'));
     await user.click(screen.getAllByText('Reset')[1]);
 
     const typo = draft.typography as unknown as Record<string, unknown>;

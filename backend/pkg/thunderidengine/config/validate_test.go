@@ -5,6 +5,7 @@ package config
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -14,6 +15,8 @@ import (
 )
 
 func boolPtr(b bool) *bool { return &b }
+
+func strPtr(s string) *string { return &s }
 
 type ValidateTestSuite struct {
 	suite.Suite
@@ -109,6 +112,15 @@ func (suite *ValidateTestSuite) TestTrustedIssuerConfig_Validate() {
 		}
 		assert.ErrorContains(t, c.Validate(), "https scheme")
 	})
+
+	suite.T().Run("malformed JWKS URL fails", func(t *testing.T) {
+		c := &TrustedIssuerConfig{
+			Issuer:   "https://issuer.example.com",
+			JWKSURL:  "https://issuer.example.com/%zz",
+			Audience: "https://api.example.com",
+		}
+		assert.ErrorContains(t, c.Validate(), "not a valid URL")
+	})
 }
 
 // ----- SecurityConfig -----
@@ -138,6 +150,76 @@ func (suite *ValidateTestSuite) TestSecurityConfig_Validate() {
 			TokenRevocation: TokenRevocationConfig{Enabled: boolPtr(true), SyncIntervalSeconds: -1},
 		}
 		assert.ErrorContains(t, c.Validate(), "sync_interval_seconds")
+	})
+
+	suite.T().Run("propagates REST error", func(t *testing.T) {
+		c := &SecurityConfig{REST: RESTConfig{Audience: strPtr("")}}
+		assert.ErrorContains(t, c.Validate(), "rest.audience")
+	})
+
+	suite.T().Run("propagates MCP error", func(t *testing.T) {
+		c := &SecurityConfig{MCP: MCPConfig{Audience: strPtr("")}}
+		assert.ErrorContains(t, c.Validate(), "mcp.audience")
+	})
+}
+
+// ----- MCPConfig -----
+
+func (suite *ValidateTestSuite) TestMCPConfig_Validate() {
+	suite.T().Run("absent audience passes", func(t *testing.T) {
+		assert.NoError(t, (&MCPConfig{}).Validate())
+	})
+
+	suite.T().Run("configured audience passes", func(t *testing.T) {
+		assert.NoError(t, (&MCPConfig{Audience: strPtr("https://id.example.com/mcp")}).Validate())
+	})
+
+	// Unlike REST, omitting the MCP audience does not disable the check — it falls back to the
+	// derived resource identifier. An explicitly empty value is still a misconfiguration.
+	suite.T().Run("explicitly empty audience fails", func(t *testing.T) {
+		assert.ErrorContains(t, (&MCPConfig{Audience: strPtr("")}).Validate(), "mcp.audience")
+	})
+
+	// http is accepted: the identifier the server derives for itself is http when
+	// server.http_only is set, so configuring that same value explicitly must not be rejected.
+	suite.T().Run("http audience passes", func(t *testing.T) {
+		assert.NoError(t, (&MCPConfig{Audience: strPtr("http://localhost:8090/mcp")}).Validate())
+	})
+}
+
+// ----- audience normalisation -----
+
+// Surrounding whitespace is never meaningful in an identifier, and an audience carrying it would
+// silently match nothing. Trim it instead of failing startup over a formatting slip.
+func (suite *ValidateTestSuite) TestOptionalAudience_TrimsSurroundingWhitespace() {
+	cfg := &RESTConfig{Audience: strPtr("  https://localhost:8090/mcp\t")}
+
+	assert.NoError(suite.T(), cfg.Validate())
+	assert.Equal(suite.T(), "https://localhost:8090/mcp", *cfg.Audience)
+}
+
+// Whitespace-only is empty once trimmed, and empty is the one value that fails open: it would leave
+// the gate unenforced rather than merely unmatched.
+func (suite *ValidateTestSuite) TestOptionalAudience_WhitespaceOnlyIsEmpty() {
+	assert.ErrorContains(suite.T(),
+		(&RESTConfig{Audience: strPtr("   ")}).Validate(), "rest.audience")
+}
+
+// ----- RESTConfig -----
+
+func (suite *ValidateTestSuite) TestRESTConfig_Validate() {
+	suite.T().Run("absent audience passes", func(t *testing.T) {
+		assert.NoError(t, (&RESTConfig{}).Validate())
+	})
+
+	suite.T().Run("configured audience passes", func(t *testing.T) {
+		assert.NoError(t, (&RESTConfig{Audience: strPtr("https://localhost:8090/mcp")}).Validate())
+	})
+
+	// An explicitly empty audience must fail startup rather than silently leaving the REST gate
+	// unenforced — omitting the key is the way to opt out.
+	suite.T().Run("explicitly empty audience fails", func(t *testing.T) {
+		assert.ErrorContains(t, (&RESTConfig{Audience: strPtr("")}).Validate(), "rest.audience")
 	})
 }
 
@@ -218,9 +300,51 @@ func (suite *ValidateTestSuite) TestDPoPConfig_Validate() {
 		assert.NoError(t, c.Validate())
 	})
 
+	suite.T().Run("ML-DSA algorithms pass", func(t *testing.T) {
+		c := &DPoPConfig{IatWindow: 60, Leeway: 5, MaxJTILength: 128,
+			AllowedAlgs: []string{"ML-DSA-44", "ML-DSA-65", "ML-DSA-87"}}
+		assert.NoError(t, c.Validate())
+	})
+
 	suite.T().Run("all supported algorithms pass", func(t *testing.T) {
-		algs := []string{"ES256", "ES384", "ES512", "PS256", "PS384", "PS512", "RS256", "RS384", "RS512", "EdDSA"}
+		algs := []string{"ES256", "ES384", "ES512", "PS256", "RS256", "RS512", "EdDSA"}
 		c := &DPoPConfig{IatWindow: 60, MaxJTILength: 128, AllowedAlgs: algs}
+		assert.NoError(t, c.Validate())
+	})
+
+	suite.T().Run("algorithms unsupported by the runtime verifier fail", func(t *testing.T) {
+		for _, alg := range []string{"RS384", "PS384", "PS512"} {
+			c := &DPoPConfig{IatWindow: 60, Leeway: 5, MaxJTILength: 128, AllowedAlgs: []string{alg}}
+			assert.ErrorContains(t, c.Validate(), alg)
+		}
+	})
+}
+
+// ----- ClientAssertionConfig -----
+
+func (suite *ValidateTestSuite) TestClientAssertionConfig_IsConfigured() {
+	assert.False(suite.T(), (&ClientAssertionConfig{}).IsConfigured())
+	assert.True(suite.T(), (&ClientAssertionConfig{MaxLifetime: 300}).IsConfigured())
+	assert.True(suite.T(), (&ClientAssertionConfig{MaxIatAge: 300}).IsConfigured())
+}
+
+func (suite *ValidateTestSuite) TestClientAssertionConfig_Validate() {
+	suite.T().Run("unconfigured passes", func(t *testing.T) {
+		assert.NoError(t, (&ClientAssertionConfig{}).Validate())
+	})
+
+	suite.T().Run("zero MaxLifetime fails", func(t *testing.T) {
+		c := &ClientAssertionConfig{MaxIatAge: 300}
+		assert.ErrorContains(t, c.Validate(), "max_lifetime")
+	})
+
+	suite.T().Run("zero MaxIatAge fails", func(t *testing.T) {
+		c := &ClientAssertionConfig{MaxLifetime: 300}
+		assert.ErrorContains(t, c.Validate(), "max_iat_age")
+	})
+
+	suite.T().Run("valid config passes", func(t *testing.T) {
+		c := &ClientAssertionConfig{MaxLifetime: 300, MaxIatAge: 300}
 		assert.NoError(t, c.Validate())
 	})
 }
@@ -278,6 +402,20 @@ func (suite *ValidateTestSuite) TestAuthClassConfig_Validate() {
 	})
 }
 
+// ----- TokenExchangeConfig -----
+
+func (suite *ValidateTestSuite) TestTokenExchangeConfig_Validate() {
+	for _, family := range []string{"", "none", "inherit"} {
+		suite.T().Run("accepts "+family, func(t *testing.T) {
+			assert.NoError(t, (&TokenExchangeConfig{TokenFamily: family}).Validate())
+		})
+	}
+
+	suite.T().Run("unsupported value fails", func(t *testing.T) {
+		assert.ErrorContains(t, (&TokenExchangeConfig{TokenFamily: "foo"}).Validate(), "token_family")
+	})
+}
+
 // ----- cors.Validate -----
 
 func (suite *ValidateTestSuite) TestCORSConfig_Validate() {
@@ -324,4 +462,123 @@ func (suite *ValidateTestSuite) TestOAuthConfig_SendServerErrorsToClientEnabled(
 			assert.Equal(t, tt.expected, c.SendServerErrorsToClientEnabled())
 		})
 	}
+}
+
+func (suite *ValidateTestSuite) TestBackchannelLogoutConfig_Validate() {
+	valid := func() BackchannelLogoutConfig {
+		return BackchannelLogoutConfig{Enabled: boolPtr(true), TokenValidityPeriod: 120, RequestTimeout: 5,
+			MaxAttempts: 3, RetryDelay: 2, MaxInFlight: 16, QueueSize: 1024}
+	}
+	suite.T().Run("disabled skips validation", func(t *testing.T) {
+		assert.NoError(t, (&BackchannelLogoutConfig{Enabled: boolPtr(false)}).Validate())
+	})
+	suite.T().Run("defaults pass when enabled", func(t *testing.T) {
+		c := valid()
+		assert.NoError(t, c.Validate())
+	})
+	suite.T().Run("each tuning value must be positive", func(t *testing.T) {
+		zero := []struct {
+			name string
+			set  func(*BackchannelLogoutConfig)
+		}{
+			{"token_validity_period", func(c *BackchannelLogoutConfig) { c.TokenValidityPeriod = 0 }},
+			{"request_timeout", func(c *BackchannelLogoutConfig) { c.RequestTimeout = 0 }},
+			{"max_attempts", func(c *BackchannelLogoutConfig) { c.MaxAttempts = 0 }},
+			{"retry_delay", func(c *BackchannelLogoutConfig) { c.RetryDelay = -1 }},
+			{"max_in_flight", func(c *BackchannelLogoutConfig) { c.MaxInFlight = 0 }},
+			{"queue_size", func(c *BackchannelLogoutConfig) { c.QueueSize = 0 }},
+		}
+		for _, tc := range zero {
+			c := valid()
+			tc.set(&c)
+			assert.ErrorContains(t, c.Validate(), tc.name)
+		}
+	})
+	suite.T().Run("retry settings are accepted up to their bounds", func(t *testing.T) {
+		c := valid()
+		c.RequestTimeout, c.MaxAttempts, c.RetryDelay = 30, 10, 60
+		assert.NoError(t, c.Validate())
+	})
+	suite.T().Run("retry settings above their bounds are rejected", func(t *testing.T) {
+		over := []struct {
+			name string
+			set  func(*BackchannelLogoutConfig)
+		}{
+			{"request_timeout", func(c *BackchannelLogoutConfig) { c.RequestTimeout = 31 }},
+			{"max_attempts", func(c *BackchannelLogoutConfig) { c.MaxAttempts = 11 }},
+			{"retry_delay", func(c *BackchannelLogoutConfig) { c.RetryDelay = 61 }},
+		}
+		for _, tc := range over {
+			c := valid()
+			tc.set(&c)
+			assert.ErrorContains(t, c.Validate(), "oauth.logout.backchannel."+tc.name+" must be at most")
+		}
+	})
+}
+
+func (suite *ValidateTestSuite) TestUserLookupConfig_Validate() {
+	issuer := TrustedIssuerConfig{Issuer: "https://issuer.example.com", JWKSURL: "https://issuer.example.com/jwks",
+		Audience: "aud"}
+	lookup := UserLookupConfig{URL: "https://issuer.example.com/users/{id}",
+		TokenURL: "https://issuer.example.com/oauth2/token", ClientID: "lookup", ClientSecret: "s3cret"}
+
+	suite.T().Run("unset passes and leaves users by id", func(t *testing.T) {
+		assert.NoError(t, (&UserLookupConfig{}).Validate())
+		assert.False(t, (&UserLookupConfig{}).Enabled())
+	})
+
+	suite.T().Run("a complete lookup passes, through the trusted issuer", func(t *testing.T) {
+		c := issuer
+		c.UserLookup = lookup
+		assert.NoError(t, c.Validate())
+		assert.Equal(t, "https://issuer.example.com/users/u%2F1", c.UserLookup.UserURL("u/1"))
+		assert.Equal(t, "username", c.UserLookup.NameAttributeOrDefault())
+		assert.Equal(t, 5*time.Minute, c.UserLookup.CacheTTLOrDefault())
+	})
+
+	suite.T().Run("the lookup is checked without an issuer too", func(t *testing.T) {
+		c := TrustedIssuerConfig{UserLookup: UserLookupConfig{URL: "https://issuer.example.com/users/{id}"}}
+		assert.ErrorContains(t, c.Validate(), "token_url is not an http(s) URL")
+	})
+
+	suite.T().Run("the URL must carry the id", func(t *testing.T) {
+		c := lookup
+		c.URL = "https://issuer.example.com/users"
+		assert.ErrorContains(t, c.Validate(), "must carry {id}")
+	})
+
+	suite.T().Run("the endpoints must be http(s) URLs", func(t *testing.T) {
+		c := lookup
+		c.TokenURL = "issuer.example.com/token"
+		assert.ErrorContains(t, c.Validate(), "token_url is not an http(s) URL")
+	})
+
+	suite.T().Run("the client must be set", func(t *testing.T) {
+		c := lookup
+		c.ClientSecret = ""
+		assert.ErrorContains(t, c.Validate(), "client_id and client_secret must be set")
+	})
+
+	suite.T().Run("the cache time must not be negative", func(t *testing.T) {
+		c := lookup
+		c.CacheTTL = -1
+		assert.ErrorContains(t, c.Validate(), "cache_ttl must not be negative")
+	})
+}
+
+func (suite *ValidateTestSuite) TestAuthorizationDetailsConfig_Validate() {
+	for _, timeout := range []int64{0, 1, 5, 30} {
+		assert.NoError(suite.T(), (&AuthorizationDetailsConfig{ProcessorTimeout: timeout}).Validate(), timeout)
+	}
+	for _, timeout := range []int64{-1, 31} {
+		assert.ErrorContains(suite.T(), (&AuthorizationDetailsConfig{ProcessorTimeout: timeout}).Validate(),
+			"oauth.authorization_details.processor_timeout", timeout)
+	}
+}
+
+func (suite *ValidateTestSuite) TestAuthorizationDetailsConfig_IsTypeMetadataEnabled() {
+	enabled, disabled := true, false
+	assert.True(suite.T(), AuthorizationDetailsConfig{TypeMetadataEnabled: &enabled}.IsTypeMetadataEnabled())
+	assert.False(suite.T(), AuthorizationDetailsConfig{TypeMetadataEnabled: &disabled}.IsTypeMetadataEnabled())
+	assert.True(suite.T(), AuthorizationDetailsConfig{}.IsTypeMetadataEnabled(), "the endpoint is served by default")
 }

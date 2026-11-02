@@ -18,10 +18,19 @@ func NewAuthnProviderInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AuthnProviderInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AuthnProviderInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -79,7 +88,7 @@ type AuthnProviderInterfaceMock_Authenticate_Call struct {
 //   - identifiers map[string]interface{}
 //   - credentials map[string]interface{}
 //   - metadata *providers.AuthnMetadata
-func (_e *AuthnProviderInterfaceMock_Expecter) Authenticate(ctx interface{}, identifiers interface{}, credentials interface{}, metadata interface{}) *AuthnProviderInterfaceMock_Authenticate_Call {
+func (_e *AuthnProviderInterfaceMock_Expecter) Authenticate(ctx any, identifiers any, credentials any, metadata any) *AuthnProviderInterfaceMock_Authenticate_Call {
 	return &AuthnProviderInterfaceMock_Authenticate_Call{Call: _e.mock.On("Authenticate", ctx, identifiers, credentials, metadata)}
 }
 
@@ -161,7 +170,7 @@ type AuthnProviderInterfaceMock_Enroll_Call struct {
 //   - identifiers map[string]interface{}
 //   - credentials map[string]interface{}
 //   - metadata *providers.AuthnMetadata
-func (_e *AuthnProviderInterfaceMock_Expecter) Enroll(ctx interface{}, identifiers interface{}, credentials interface{}, metadata interface{}) *AuthnProviderInterfaceMock_Enroll_Call {
+func (_e *AuthnProviderInterfaceMock_Expecter) Enroll(ctx any, identifiers any, credentials any, metadata any) *AuthnProviderInterfaceMock_Enroll_Call {
 	return &AuthnProviderInterfaceMock_Enroll_Call{Call: _e.mock.On("Enroll", ctx, identifiers, credentials, metadata)}
 }
 
@@ -243,7 +252,7 @@ type AuthnProviderInterfaceMock_GetAttributes_Call struct {
 //   - attributeToken any
 //   - consentedAttributes *providers.RequestedAttributes
 //   - metadata *providers.GetAttributesMetadata
-func (_e *AuthnProviderInterfaceMock_Expecter) GetAttributes(ctx interface{}, attributeToken interface{}, consentedAttributes interface{}, metadata interface{}) *AuthnProviderInterfaceMock_GetAttributes_Call {
+func (_e *AuthnProviderInterfaceMock_Expecter) GetAttributes(ctx any, attributeToken any, consentedAttributes any, metadata any) *AuthnProviderInterfaceMock_GetAttributes_Call {
 	return &AuthnProviderInterfaceMock_GetAttributes_Call{Call: _e.mock.On("GetAttributes", ctx, attributeToken, consentedAttributes, metadata)}
 }
 
@@ -323,7 +332,7 @@ type AuthnProviderInterfaceMock_GetEntityReference_Call struct {
 // GetEntityReference is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityReferenceToken any
-func (_e *AuthnProviderInterfaceMock_Expecter) GetEntityReference(ctx interface{}, entityReferenceToken interface{}) *AuthnProviderInterfaceMock_GetEntityReference_Call {
+func (_e *AuthnProviderInterfaceMock_Expecter) GetEntityReference(ctx any, entityReferenceToken any) *AuthnProviderInterfaceMock_GetEntityReference_Call {
 	return &AuthnProviderInterfaceMock_GetEntityReference_Call{Call: _e.mock.On("GetEntityReference", ctx, entityReferenceToken)}
 }
 
@@ -395,7 +404,7 @@ type AuthnProviderInterfaceMock_InitiateAuthentication_Call struct {
 //   - credentialType string
 //   - initData any
 //   - metadata *providers.AuthnMetadata
-func (_e *AuthnProviderInterfaceMock_Expecter) InitiateAuthentication(ctx interface{}, credentialType interface{}, initData interface{}, metadata interface{}) *AuthnProviderInterfaceMock_InitiateAuthentication_Call {
+func (_e *AuthnProviderInterfaceMock_Expecter) InitiateAuthentication(ctx any, credentialType any, initData any, metadata any) *AuthnProviderInterfaceMock_InitiateAuthentication_Call {
 	return &AuthnProviderInterfaceMock_InitiateAuthentication_Call{Call: _e.mock.On("InitiateAuthentication", ctx, credentialType, initData, metadata)}
 }
 
@@ -427,8 +436,8 @@ func (_c *AuthnProviderInterfaceMock_InitiateAuthentication_Call) Run(run func(c
 	return _c
 }
 
-func (_c *AuthnProviderInterfaceMock_InitiateAuthentication_Call) Return(v any, serviceError *common.ServiceError) *AuthnProviderInterfaceMock_InitiateAuthentication_Call {
-	_c.Call.Return(v, serviceError)
+func (_c *AuthnProviderInterfaceMock_InitiateAuthentication_Call) Return(anyMoqParam any, serviceError *common.ServiceError) *AuthnProviderInterfaceMock_InitiateAuthentication_Call {
+	_c.Call.Return(anyMoqParam, serviceError)
 	return _c
 }
 
@@ -477,7 +486,7 @@ type AuthnProviderInterfaceMock_InitiateEnrollment_Call struct {
 //   - credentialType string
 //   - initData any
 //   - metadata *providers.AuthnMetadata
-func (_e *AuthnProviderInterfaceMock_Expecter) InitiateEnrollment(ctx interface{}, credentialType interface{}, initData interface{}, metadata interface{}) *AuthnProviderInterfaceMock_InitiateEnrollment_Call {
+func (_e *AuthnProviderInterfaceMock_Expecter) InitiateEnrollment(ctx any, credentialType any, initData any, metadata any) *AuthnProviderInterfaceMock_InitiateEnrollment_Call {
 	return &AuthnProviderInterfaceMock_InitiateEnrollment_Call{Call: _e.mock.On("InitiateEnrollment", ctx, credentialType, initData, metadata)}
 }
 
@@ -509,12 +518,153 @@ func (_c *AuthnProviderInterfaceMock_InitiateEnrollment_Call) Run(run func(ctx c
 	return _c
 }
 
-func (_c *AuthnProviderInterfaceMock_InitiateEnrollment_Call) Return(v any, serviceError *common.ServiceError) *AuthnProviderInterfaceMock_InitiateEnrollment_Call {
-	_c.Call.Return(v, serviceError)
+func (_c *AuthnProviderInterfaceMock_InitiateEnrollment_Call) Return(anyMoqParam any, serviceError *common.ServiceError) *AuthnProviderInterfaceMock_InitiateEnrollment_Call {
+	_c.Call.Return(anyMoqParam, serviceError)
 	return _c
 }
 
 func (_c *AuthnProviderInterfaceMock_InitiateEnrollment_Call) RunAndReturn(run func(ctx context.Context, credentialType string, initData any, metadata *providers.AuthnMetadata) (any, *common.ServiceError)) *AuthnProviderInterfaceMock_InitiateEnrollment_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SearchEntityReferences provides a mock function for the type AuthnProviderInterfaceMock
+func (_mock *AuthnProviderInterfaceMock) SearchEntityReferences(ctx context.Context, filters map[string]interface{}) ([]providers.EntityReference, *common.ServiceError) {
+	ret := _mock.Called(ctx, filters)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SearchEntityReferences")
+	}
+
+	var r0 []providers.EntityReference
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}) ([]providers.EntityReference, *common.ServiceError)); ok {
+		return returnFunc(ctx, filters)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}) []providers.EntityReference); ok {
+		r0 = returnFunc(ctx, filters)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.EntityReference)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, map[string]interface{}) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, filters)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AuthnProviderInterfaceMock_SearchEntityReferences_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SearchEntityReferences'
+type AuthnProviderInterfaceMock_SearchEntityReferences_Call struct {
+	*mock.Call
+}
+
+// SearchEntityReferences is a helper method to define mock.On call
+//   - ctx context.Context
+//   - filters map[string]interface{}
+func (_e *AuthnProviderInterfaceMock_Expecter) SearchEntityReferences(ctx any, filters any) *AuthnProviderInterfaceMock_SearchEntityReferences_Call {
+	return &AuthnProviderInterfaceMock_SearchEntityReferences_Call{Call: _e.mock.On("SearchEntityReferences", ctx, filters)}
+}
+
+func (_c *AuthnProviderInterfaceMock_SearchEntityReferences_Call) Run(run func(ctx context.Context, filters map[string]interface{})) *AuthnProviderInterfaceMock_SearchEntityReferences_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 map[string]interface{}
+		if args[1] != nil {
+			arg1 = args[1].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthnProviderInterfaceMock_SearchEntityReferences_Call) Return(entityReferences []providers.EntityReference, serviceError *common.ServiceError) *AuthnProviderInterfaceMock_SearchEntityReferences_Call {
+	_c.Call.Return(entityReferences, serviceError)
+	return _c
+}
+
+func (_c *AuthnProviderInterfaceMock_SearchEntityReferences_Call) RunAndReturn(run func(ctx context.Context, filters map[string]interface{}) ([]providers.EntityReference, *common.ServiceError)) *AuthnProviderInterfaceMock_SearchEntityReferences_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// StoreAccountLink provides a mock function for the type AuthnProviderInterfaceMock
+func (_mock *AuthnProviderInterfaceMock) StoreAccountLink(ctx context.Context, entityReferenceToken any, idpID string, sub string) *common.ServiceError {
+	ret := _mock.Called(ctx, entityReferenceToken, idpID, sub)
+
+	if len(ret) == 0 {
+		panic("no return value specified for StoreAccountLink")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, any, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, entityReferenceToken, idpID, sub)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// AuthnProviderInterfaceMock_StoreAccountLink_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'StoreAccountLink'
+type AuthnProviderInterfaceMock_StoreAccountLink_Call struct {
+	*mock.Call
+}
+
+// StoreAccountLink is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityReferenceToken any
+//   - idpID string
+//   - sub string
+func (_e *AuthnProviderInterfaceMock_Expecter) StoreAccountLink(ctx any, entityReferenceToken any, idpID any, sub any) *AuthnProviderInterfaceMock_StoreAccountLink_Call {
+	return &AuthnProviderInterfaceMock_StoreAccountLink_Call{Call: _e.mock.On("StoreAccountLink", ctx, entityReferenceToken, idpID, sub)}
+}
+
+func (_c *AuthnProviderInterfaceMock_StoreAccountLink_Call) Run(run func(ctx context.Context, entityReferenceToken any, idpID string, sub string)) *AuthnProviderInterfaceMock_StoreAccountLink_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 any
+		if args[1] != nil {
+			arg1 = args[1].(any)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthnProviderInterfaceMock_StoreAccountLink_Call) Return(serviceError *common.ServiceError) *AuthnProviderInterfaceMock_StoreAccountLink_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *AuthnProviderInterfaceMock_StoreAccountLink_Call) RunAndReturn(run func(ctx context.Context, entityReferenceToken any, idpID string, sub string) *common.ServiceError) *AuthnProviderInterfaceMock_StoreAccountLink_Call {
 	_c.Call.Return(run)
 	return _c
 }

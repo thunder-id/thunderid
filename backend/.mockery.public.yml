@@ -63,6 +63,14 @@ packages:
       pkgname: certmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/cimd:
+    config:
+      all: true
+      dir: tests/mocks/cimdmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: cimdmock
+      filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/system/jose/jwt:
     config:
       all: true
@@ -275,6 +283,15 @@ packages:
       pkgname: magiclinkmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/authn/openid4vp:
+    config:
+      dir: tests/mocks/authn/openid4vpmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: openid4vpmock
+      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      OpenID4VPServiceInterface:
+
   github.com/thunder-id/thunderid/internal/authn/passkey:
     interfaces:
       PasskeyServiceInterface:
@@ -300,6 +317,24 @@ packages:
       pkgname: idpmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/connection/authzenpdp:
+    interfaces:
+      AuthZENPDPServiceInterface:
+        config:
+          dir: tests/mocks/connection/authzenpdpmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: authzenpdpmock
+          filename: "{{.InterfaceName}}_mock.go"
+
+  github.com/thunder-id/thunderid/internal/connection/httpconnection:
+    interfaces:
+      HTTPConnectionServiceInterface:
+        config:
+          dir: tests/mocks/connection/httpconnectionmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: httpconnectionmock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/notification:
     config:
       all: true
@@ -323,6 +358,15 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: httpmock
       filename: "{{.InterfaceName}}_mock.go"
+
+  github.com/thunder-id/thunderid/internal/system/outboundauth/smtpauth:
+    interfaces:
+      Session:
+        config:
+          dir: tests/mocks/outboundauth/smtpauthmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: smtpauthmock
+          filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/agent:
     config:
@@ -362,6 +406,7 @@ packages:
     # method takes the unexported ouFlowResolver interface, which cannot be referenced
     # from this external mock package.
     interfaces:
+      HierarchyEnumeratorInterface:
       OUUserResolver:
       OUGroupResolver:
       OURoleResolver:
@@ -394,7 +439,7 @@ packages:
     interfaces:
       Service:
       Resolver:
-      HandleTransport:
+      HandleTransportInterface:
 
   github.com/thunder-id/thunderid/internal/flow/mgt:
     config:
@@ -404,13 +449,16 @@ packages:
       pkgname: flowmgtmock
       filename: "{{.InterfaceName}}_mock.go"
   
+  # Only the registry is mocked outside this package. The rest of the executor interfaces are internal
+  # seams, and one of them names an unexported type, which a mock in another package cannot reference.
   github.com/thunder-id/thunderid/internal/flow/executor:
     config:
-      all: true
       dir: tests/mocks/flow/executormock
       structname: '{{.InterfaceName}}Mock'
       pkgname: executormock
       filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      ExecutorRegistryInterface:
 
   github.com/thunder-id/thunderid/internal/flow/interceptor:
     config:
@@ -532,6 +580,15 @@ packages:
       pkgname: resourcemock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/authzdetail/mgt:
+    interfaces:
+      AuthorizationDetailMgtServiceInterface:
+        config:
+          dir: tests/mocks/authzdetailmgtmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: authzdetailmgtmock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/serverconfig:
     interfaces:
       ServerConfigService:
@@ -549,6 +606,15 @@ packages:
       pkgname: entityprovidermock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/identitygovernance:
+    interfaces:
+      IdentityGovernanceServiceInterface:
+        config:
+          dir: tests/mocks/identitygovernancemock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernancemock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/pkg/thunderidengine/providers:
     interfaces:
       AuthnProviderManager:
@@ -556,6 +622,12 @@ packages:
           dir: tests/mocks/authnprovider/managermock
           structname: '{{.InterfaceName}}Mock'
           pkgname: managermock
+          filename: "{{.InterfaceName}}_mock.go"
+      IdentityGovernanceProvider:
+        config:
+          dir: tests/mocks/identitygovernanceprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernanceprovidermock
           filename: "{{.InterfaceName}}_mock.go"
       AuthnProviderInterface:
         config:
@@ -569,6 +641,18 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: actorprovidermock
           filename: "{{.InterfaceName}}_mock.go"
+      AgentMgtProvider:
+        config:
+          dir: tests/mocks/agentmgtprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: agentmgtprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      UserMgtProvider:
+        config:
+          dir: tests/mocks/usermgtprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: usermgtprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
       FlowProvider:
         config:
           dir: tests/mocks/flow/flowexecmock
@@ -580,6 +664,18 @@ packages:
           dir: tests/mocks/consentprovidermock
           structname: '{{.InterfaceName}}Mock'
           pkgname: consentprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      AuthorizationDetailProvider:
+        config:
+          dir: tests/mocks/authzdetailprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: authzdetailprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      AuthorizationDetailTypeProvider:
+        config:
+          dir: tests/mocks/authzdetailtypeprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: authzdetailtypeprovidermock
           filename: "{{.InterfaceName}}_mock.go"
       ResourceServerProvider:
         config:
@@ -648,14 +744,24 @@ packages:
           pkgname: runtimestoreprovidermock
           filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/sharing:
+    config:
+      dir: tests/mocks/sharingmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: sharingmock
+      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      SharingServiceInterface:
+
   github.com/thunder-id/thunderid/internal/system/sysauthz:
+    config:
+      dir: tests/mocks/sysauthzmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: sysauthzmock
+      filename: "{{.InterfaceName}}_mock.go"
     interfaces:
       SystemAuthorizationServiceInterface:
-        config:
-          dir: tests/mocks/sysauthzmock
-          structname: '{{.InterfaceName}}Mock'
-          pkgname: sysauthzmock
-          filename: "{{.InterfaceName}}_mock.go"
+      OUHierarchyResolver:
 
   github.com/thunder-id/thunderid/internal/consent:
     interfaces:
@@ -674,21 +780,14 @@ packages:
       pkgname: attributecachemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/thunder-id/thunderid/internal/system/email:
-    config:
-      all: true
-      dir: tests/mocks/emailmock
-      structname: '{{.InterfaceName}}Mock'
-      pkgname: emailmock
-      filename: "{{.InterfaceName}}_mock.go"
-
-  github.com/thunder-id/thunderid/internal/system/template:
-    config:
-      all: true
-      dir: tests/mocks/templatemock
-      structname: '{{.InterfaceName}}Mock'
-      pkgname: templatemock
-      filename: "{{.InterfaceName}}_mock.go"
+  github.com/thunder-id/thunderid/internal/system/resourcedependency:
+    interfaces:
+      Registry:
+        config:
+          dir: tests/mocks/resourcedependencymock
+          structname: 'RegistryMock'
+          pkgname: resourcedependencymock
+          filename: "Registry_mock.go"
 
   github.com/thunder-id/thunderid/internal/system/transaction:
     config:
@@ -712,4 +811,25 @@ packages:
       dir: tests/mocks/vc/presentationmock
       structname: '{{.InterfaceName}}Mock'
       pkgname: presentationmock
+      filename: "{{.InterfaceName}}_mock.go"
+  github.com/thunder-id/thunderid/internal/scim/discovery:
+    config:
+      all: true
+      dir: tests/mocks/scim/discoverymock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: discoverymock
+      filename: "{{.InterfaceName}}_mock.go"
+  github.com/thunder-id/thunderid/internal/scim/groups:
+    config:
+      all: true
+      dir: tests/mocks/scim/groupsmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: groupsmock
+      filename: "{{.InterfaceName}}_mock.go"
+  github.com/thunder-id/thunderid/internal/scim/users:
+    config:
+      all: true
+      dir: tests/mocks/scim/usersmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: usersmock
       filename: "{{.InterfaceName}}_mock.go"

@@ -3,20 +3,24 @@
 
 import {render, screen, fireEvent} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {POLICY_DECISION_POINT_TYPE} from '../../../constants/connection-wizard';
 import SelectConnectionType from '../SelectConnectionType';
 
 describe('SelectConnectionType', () => {
   const onSelect = vi.fn();
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders the OIDC, OAuth2, trusted-idp, and SMS gateway options', () => {
+  it('renders the OIDC, OAuth2, trusted-idp, SMS gateway, and SMTP options', () => {
     render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
     expect(screen.getByText('What kind of connection do you want to add?')).toBeInTheDocument();
     expect(screen.queryByText('Connection type')).not.toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-oidc')).toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-oauth')).toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-trusted-idp')).toBeInTheDocument();
+    expect(screen.getByTestId('connection-type-option-policy-decision-point')).toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-sms-gateway')).toBeInTheDocument();
+    expect(screen.getByTestId('connection-type-option-email-smtp')).toBeInTheDocument();
+    expect(screen.getByText('Email provider (SMTP)')).toBeInTheDocument();
   });
 
   it('selects the OIDC type when clicked', () => {
@@ -37,10 +41,29 @@ describe('SelectConnectionType', () => {
     expect(onSelect).toHaveBeenCalledWith('sms-gateway');
   });
 
+  it('selects the SMTP type when clicked', () => {
+    render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
+    fireEvent.click(screen.getByTestId('connection-type-option-email-smtp'));
+    expect(onSelect).toHaveBeenCalledWith('email-smtp');
+  });
+
+  it('selects the Service endpoint type when clicked', () => {
+    render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
+    expect(screen.getByText('Service endpoint')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('connection-type-option-http'));
+    expect(onSelect).toHaveBeenCalledWith('http');
+  });
+
   it('selects the Trusted Token Issuer type when clicked', () => {
     render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
     fireEvent.click(screen.getByTestId('connection-type-option-trusted-idp'));
     expect(onSelect).toHaveBeenCalledWith('trusted-idp');
+  });
+
+  it('selects the Policy Decision Point type when clicked', () => {
+    render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
+    fireEvent.click(screen.getByTestId('connection-type-option-policy-decision-point'));
+    expect(onSelect).toHaveBeenCalledWith(POLICY_DECISION_POINT_TYPE);
   });
 
   it('selects a type when Enter is pressed', () => {

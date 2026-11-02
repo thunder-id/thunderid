@@ -17,10 +17,19 @@ func NewCredentialConfigurationServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *CredentialConfigurationServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &CredentialConfigurationServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type CredentialConfigurationServiceInterfaceMock_CreateCredentialConfiguration_C
 // CreateCredentialConfiguration is a helper method to define mock.On call
 //   - ctx context.Context
 //   - dto *CredentialConfigurationDTO
-func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) CreateCredentialConfiguration(ctx interface{}, dto interface{}) *CredentialConfigurationServiceInterfaceMock_CreateCredentialConfiguration_Call {
+func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) CreateCredentialConfiguration(ctx any, dto any) *CredentialConfigurationServiceInterfaceMock_CreateCredentialConfiguration_Call {
 	return &CredentialConfigurationServiceInterfaceMock_CreateCredentialConfiguration_Call{Call: _e.mock.On("CreateCredentialConfiguration", ctx, dto)}
 }
 
@@ -135,7 +144,7 @@ type CredentialConfigurationServiceInterfaceMock_DeleteCredentialConfiguration_C
 // DeleteCredentialConfiguration is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) DeleteCredentialConfiguration(ctx interface{}, id interface{}) *CredentialConfigurationServiceInterfaceMock_DeleteCredentialConfiguration_Call {
+func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) DeleteCredentialConfiguration(ctx any, id any) *CredentialConfigurationServiceInterfaceMock_DeleteCredentialConfiguration_Call {
 	return &CredentialConfigurationServiceInterfaceMock_DeleteCredentialConfiguration_Call{Call: _e.mock.On("DeleteCredentialConfiguration", ctx, id)}
 }
 
@@ -205,7 +214,7 @@ type CredentialConfigurationServiceInterfaceMock_GetCredentialConfiguration_Call
 // GetCredentialConfiguration is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) GetCredentialConfiguration(ctx interface{}, id interface{}) *CredentialConfigurationServiceInterfaceMock_GetCredentialConfiguration_Call {
+func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) GetCredentialConfiguration(ctx any, id any) *CredentialConfigurationServiceInterfaceMock_GetCredentialConfiguration_Call {
 	return &CredentialConfigurationServiceInterfaceMock_GetCredentialConfiguration_Call{Call: _e.mock.On("GetCredentialConfiguration", ctx, id)}
 }
 
@@ -275,7 +284,7 @@ type CredentialConfigurationServiceInterfaceMock_GetCredentialConfigurationByHan
 // GetCredentialConfigurationByHandle is a helper method to define mock.On call
 //   - ctx context.Context
 //   - handle string
-func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) GetCredentialConfigurationByHandle(ctx interface{}, handle interface{}) *CredentialConfigurationServiceInterfaceMock_GetCredentialConfigurationByHandle_Call {
+func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) GetCredentialConfigurationByHandle(ctx any, handle any) *CredentialConfigurationServiceInterfaceMock_GetCredentialConfigurationByHandle_Call {
 	return &CredentialConfigurationServiceInterfaceMock_GetCredentialConfigurationByHandle_Call{Call: _e.mock.On("GetCredentialConfigurationByHandle", ctx, handle)}
 }
 
@@ -343,7 +352,7 @@ type CredentialConfigurationServiceInterfaceMock_IsCredentialConfigurationDeclar
 // IsCredentialConfigurationDeclarative is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) IsCredentialConfigurationDeclarative(ctx interface{}, id interface{}) *CredentialConfigurationServiceInterfaceMock_IsCredentialConfigurationDeclarative_Call {
+func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) IsCredentialConfigurationDeclarative(ctx any, id any) *CredentialConfigurationServiceInterfaceMock_IsCredentialConfigurationDeclarative_Call {
 	return &CredentialConfigurationServiceInterfaceMock_IsCredentialConfigurationDeclarative_Call{Call: _e.mock.On("IsCredentialConfigurationDeclarative", ctx, id)}
 }
 
@@ -412,7 +421,7 @@ type CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSumm
 
 // ListCredentialConfigurationSummaries is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) ListCredentialConfigurationSummaries(ctx interface{}) *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummaries_Call {
+func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) ListCredentialConfigurationSummaries(ctx any) *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummaries_Call {
 	return &CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummaries_Call{Call: _e.mock.On("ListCredentialConfigurationSummaries", ctx)}
 }
 
@@ -476,7 +485,7 @@ type CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurations_Ca
 
 // ListCredentialConfigurations is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) ListCredentialConfigurations(ctx interface{}) *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurations_Call {
+func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) ListCredentialConfigurations(ctx any) *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurations_Call {
 	return &CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurations_Call{Call: _e.mock.On("ListCredentialConfigurations", ctx)}
 }
 
@@ -542,7 +551,7 @@ type CredentialConfigurationServiceInterfaceMock_UpdateCredentialConfiguration_C
 //   - ctx context.Context
 //   - id string
 //   - dto *CredentialConfigurationDTO
-func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) UpdateCredentialConfiguration(ctx interface{}, id interface{}, dto interface{}) *CredentialConfigurationServiceInterfaceMock_UpdateCredentialConfiguration_Call {
+func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) UpdateCredentialConfiguration(ctx any, id any, dto any) *CredentialConfigurationServiceInterfaceMock_UpdateCredentialConfiguration_Call {
 	return &CredentialConfigurationServiceInterfaceMock_UpdateCredentialConfiguration_Call{Call: _e.mock.On("UpdateCredentialConfiguration", ctx, id, dto)}
 }
 

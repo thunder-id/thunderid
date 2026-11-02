@@ -222,7 +222,232 @@ components:
     ServerConfigValue:
       description: >
         The value of a configuration section. Its concrete shape is section-specific and may be any
-        valid JSON value (object, array, or scalar).
+        valid JSON value (object, array, or scalar). See `AccountAccessConfig` for the shape of the
+        `accountAccess` section and `NotificationConfig` for the `notification` section.
+
+    AccountAccessConfig:
+      type: object
+      description: |
+        The value of the `accountAccess` section: automatic account lock and sign-in recording
+        settings for each identity category.
+
+        Every field is optional. A `PUT` replaces the entire runtime layer; include all runtime
+        overrides that must be kept. An omitted field falls back to the deployment base, not the
+        previous runtime value. Omitting a field is not the same as setting it
+        to `0`: a lock duration of `0` never expires, and a decay of `0` never resets the lock count.
+
+        A category that is not included uses the deployment defaults. To turn off locking for a
+        category, set its `default.enabled` to `false`.
+
+        The defaults come from the `account_access` block of the deployment configuration, which
+        must be valid on its own: an enabled policy there needs its threshold, failure window and lock
+        durations, or the server does not start. A declarative `accountAccess` resource, when present,
+        overrides the defaults and makes the section read-only, so a `PUT` is rejected with
+        `SCF-1003`. Otherwise the stored value overrides the defaults.
+
+        Only `user` and `agent` can be configured. Applications are never locked, so an
+        `application` key is rejected as an unknown field. An enabled policy that cannot form a lock
+        is rejected with `SCF-1003`.
+
+        `notifications` configures the account lock email for each category and takes effect without
+        a restart. Its templates are set only through this section, not the deployment configuration;
+        the bootstrap stores the defaults. A `PUT` replaces the stored value, so it must carry the
+        templates to keep them. The email is sent through the default email sender of the
+        `notification` section.
+      properties:
+        user:
+          $ref: '#/components/schemas/AccountAccessCategory'
+        agent:
+          $ref: '#/components/schemas/AccountAccessCategory'
+      additionalProperties: false
+
+    AccountAccessCategory:
+      type: object
+      description: Account lock and sign-in recording settings for one identity category.
+      properties:
+        lockGranularity:
+          type: string
+          enum: [authentication_method, account]
+          description: |
+            What a lock applies to. `authentication_method` (the default) locks only the method that
+            failed, so wrong passwords do not block a one-time code. `account` counts failures from
+            every method together and locks them all.
+        recordLastLogin:
+          type: boolean
+          description: |
+            Whether to record `lastLoginAt` when an identity in this category signs in. For agents,
+            issuing a `client_credentials` token also records it. Defaults to `false`.
+
+            Recording adds a write to the sign-in path, so it is off unless enabled. The server does
+            not use the value itself; it helps find inactive identities.
+        lastLoginResolutionSeconds:
+          type: integer
+          minimum: 0
+          maximum: 9223372036
+          description: |
+            Minimum time between two `lastLoginAt` updates for the same identity, which limits the
+            write cost of recording. `0` records every sign-in. Defaults to `3600`.
+        default:
+          description: The lock policy applied to every authentication method in this category.
+          allOf:
+            - $ref: '#/components/schemas/AccountAccessPolicy'
+        notifications:
+          description: |
+            Notices sent to the account holder. Kept separate from the lock policy, so turning the
+            email off does not change the policy and turning locking off does not change the email
+            setting.
+
+            Only the `user` category sends notices today.
+          allOf:
+            - $ref: '#/components/schemas/AccountAccessNotifications'
+      additionalProperties: false
+
+    AccountAccessNotifications:
+      type: object
+      description: The notices a category sends, keyed by event.
+      properties:
+        onLock:
+          type: object
+          properties:
+            email:
+              $ref: '#/components/schemas/AccountAccessLockEmail'
+          additionalProperties: false
+      additionalProperties: false
+
+    AccountAccessLockEmail:
+      type: object
+      description: |
+        The email sent when an account is locked automatically. It goes to the user type's primary
+        email; a user whose type has no primary email, or who has no value for it, gets no email. The
+        sender is not set here: the email goes through the `notification` section's
+        `defaultEmailSenderId`.
+      properties:
+        enabled:
+          type: boolean
+          description: Whether to send the email when a lock forms. Enabled for users by default.
+        templates:
+          $ref: '#/components/schemas/AccountAccessLockTemplates'
+      additionalProperties: false
+
+    AccountAccessLockTemplates:
+      type: object
+      description: |
+        The email notification templates the lock email uses, set only through this section; the
+        bootstrap stores the defaults. `temporary` and `permanent` serve every lock, `account`
+        overrides them for a lock on every sign-in method, and `methods`
+        overrides them for a lock on one sign-in method. An override field that is not set uses the
+        default. With no template for a lock, no email is sent.
+
+        A template can use `{{ctx(lockedAuthenticationMethod)}}`, the sign-in method that locked
+        (`credential` or `otp`, empty for a lock on every sign-in method), `{{ctx(lockDuration)}}`
+        and `{{ctx(unlockTime)}}`, the time a temporary lock lifts in UTC. The method is not
+        translated; to word each method in its own language, set a template for each in `methods`.
+      properties:
+        temporary:
+          type: string
+          description: Handle of the template for a lock that expires. The bootstrap sets `authentication-method-locked`.
+          example: authentication-method-locked
+        permanent:
+          type: string
+          description: |
+            Handle of the template for a lock that does not expire. The bootstrap sets
+            `authentication-method-locked-permanent`.
+          example: authentication-method-locked-permanent
+        account:
+          description: |
+            Templates for a lock on every sign-in method. The bootstrap sets `account-locked`
+            and `account-locked-permanent`.
+          allOf:
+            - $ref: '#/components/schemas/AccountAccessTemplatePair'
+        methods:
+          type: object
+          description: Templates for a lock on one sign-in method. The bootstrap sets none.
+          properties:
+            credential:
+              $ref: '#/components/schemas/AccountAccessTemplatePair'
+            otp:
+              $ref: '#/components/schemas/AccountAccessTemplatePair'
+          additionalProperties: false
+      additionalProperties: false
+
+    AccountAccessTemplatePair:
+      type: object
+      description: The templates for a lock that expires and for one that does not.
+      properties:
+        temporary:
+          type: string
+          description: Handle of the template for a lock that expires.
+        permanent:
+          type: string
+          description: Handle of the template for a lock that does not expire.
+      additionalProperties: false
+
+    AccountAccessPolicy:
+      type: object
+      description: The lock policy for a category, applied to every authentication method.
+      properties:
+        enabled:
+          type: boolean
+          description: Whether automatic locking applies. Defaults to `true` when the rest of the policy is set.
+        threshold:
+          type: integer
+          minimum: 0
+          description: Number of failures that forms a lock. The count restarts after `failureWindowSeconds` without a failure. At least 1 when enabled.
+          example: 5
+        failureWindowSeconds:
+          type: integer
+          minimum: 0
+          maximum: 9223372036
+          description: >-
+            Time without a failure after which the failure count resets. `0` means it never resets
+            on time; a successful sign-in or a lock still resets it. Required for a lock to form.
+          example: 3600
+        lockDurationsSeconds:
+          type: array
+          description: |
+            Lock duration for each consecutive lock, in order. The last entry applies to every later
+            lock. An entry of `0` never expires; the lock stays until it is cleared.
+          items:
+            type: integer
+            minimum: 0
+            maximum: 9223372036
+          example: [300, 900, 1800, 3600]
+        lockDecaySeconds:
+          type: integer
+          minimum: 0
+          maximum: 9223372036
+          description: |
+            Time after a lock ends before the consecutive lock count resets to zero. `0` means it
+            never resets.
+          example: 86400
+        maxConsecutiveFailures:
+          type: integer
+          minimum: 0
+          description: |
+            Failures with no success in between, counted per authentication method (or for the whole
+            account under `account` granularity), that leave the lock in place until a recovery or an
+            unlock, whatever the window and lock durations say. Neither time nor a lock ending resets
+            this count; a success with that method (under `account` granularity, a completed sign-in),
+            a completed recovery, or an unlock does. `0` sets no limit; otherwise it must be at least
+            `threshold`.
+          example: 50
+      additionalProperties: false
+
+    NotificationConfig:
+      type: object
+      description: |
+        The value of the `notification` section. A declarative `notification` resource that names a
+        sender locks the section: a `PUT` is then rejected with `SCF-1003`. An unknown field is
+        rejected with `SCF-1003`.
+      properties:
+        defaultEmailSenderId:
+          type: string
+          description: |
+            The email sender (`/connections/email-smtp`) used by email the server sends outside a
+            flow, such as the account-lock notice. The sender is resolved when sending; an unknown
+            sender or one that cannot send email causes delivery to fail. Empty means no default
+            sender, and such email is not sent. Flow email nodes name their own sender.
+      additionalProperties: false
 
     ServerConfigLayers:
       type: object

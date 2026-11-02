@@ -1,8 +1,10 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {DocumentTitle} from '@thunderid/components';
 import {AuthPageLayout} from '@thunderid/design';
 import type {JSX} from 'react';
+import {useTranslation} from 'react-i18next';
 import AcceptInviteBox from '../components/AcceptInvite/AcceptInviteBox';
 
 /**
@@ -12,8 +14,11 @@ import AcceptInviteBox from '../components/AcceptInvite/AcceptInviteBox';
  * Example: /invite?executionId=xxx&inviteToken=yyy
  */
 export default function AcceptInvitePage(): JSX.Element {
+  const {t} = useTranslation();
+
   return (
     <AuthPageLayout isLoading={false}>
+      <DocumentTitle title={t('auth:acceptInvite', 'Accept invite')} />
       <AcceptInviteBox />
     </AuthPageLayout>
   );

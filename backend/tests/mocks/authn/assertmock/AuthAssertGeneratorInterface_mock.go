@@ -19,10 +19,19 @@ func NewAuthAssertGeneratorInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AuthAssertGeneratorInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AuthAssertGeneratorInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type AuthAssertGeneratorInterfaceMock_GenerateAssertion_Call struct {
 // GenerateAssertion is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authenticators []common.AuthenticatorReference
-func (_e *AuthAssertGeneratorInterfaceMock_Expecter) GenerateAssertion(ctx interface{}, authenticators interface{}) *AuthAssertGeneratorInterfaceMock_GenerateAssertion_Call {
+func (_e *AuthAssertGeneratorInterfaceMock_Expecter) GenerateAssertion(ctx any, authenticators any) *AuthAssertGeneratorInterfaceMock_GenerateAssertion_Call {
 	return &AuthAssertGeneratorInterfaceMock_GenerateAssertion_Call{Call: _e.mock.On("GenerateAssertion", ctx, authenticators)}
 }
 
@@ -149,7 +158,7 @@ type AuthAssertGeneratorInterfaceMock_UpdateAssertion_Call struct {
 //   - ctx context.Context
 //   - context1 *assert.AssuranceContext
 //   - authenticator common.AuthenticatorReference
-func (_e *AuthAssertGeneratorInterfaceMock_Expecter) UpdateAssertion(ctx interface{}, context1 interface{}, authenticator interface{}) *AuthAssertGeneratorInterfaceMock_UpdateAssertion_Call {
+func (_e *AuthAssertGeneratorInterfaceMock_Expecter) UpdateAssertion(ctx any, context1 any, authenticator any) *AuthAssertGeneratorInterfaceMock_UpdateAssertion_Call {
 	return &AuthAssertGeneratorInterfaceMock_UpdateAssertion_Call{Call: _e.mock.On("UpdateAssertion", ctx, context1, authenticator)}
 }
 
@@ -224,7 +233,7 @@ type AuthAssertGeneratorInterfaceMock_VerifyAssurance_Call struct {
 //   - context1 *assert.AssuranceContext
 //   - requiredAAL assert.AssuranceLevel
 //   - requiredIAL assert.AssuranceLevel
-func (_e *AuthAssertGeneratorInterfaceMock_Expecter) VerifyAssurance(ctx interface{}, context1 interface{}, requiredAAL interface{}, requiredIAL interface{}) *AuthAssertGeneratorInterfaceMock_VerifyAssurance_Call {
+func (_e *AuthAssertGeneratorInterfaceMock_Expecter) VerifyAssurance(ctx any, context1 any, requiredAAL any, requiredIAL any) *AuthAssertGeneratorInterfaceMock_VerifyAssurance_Call {
 	return &AuthAssertGeneratorInterfaceMock_VerifyAssurance_Call{Call: _e.mock.On("VerifyAssurance", ctx, context1, requiredAAL, requiredIAL)}
 }
 

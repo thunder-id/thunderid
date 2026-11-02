@@ -256,3 +256,116 @@ func (s *ModelTestSuite) TestAction_TypeFieldOmitEmpty() {
 	s.Contains(string(json1), "\"type\":")
 	s.NotContains(string(json2), "\"type\"")
 }
+
+func (s *ModelTestSuite) TestParseExtensionProperties_ReadsEveryProperty() {
+	props, invalid := ParseExtensionProperties(map[string]interface{}{
+		NodePropertyConnectionID:    "  conn-1 ",
+		NodePropertyInputKeys:       []interface{}{"username", " password "},
+		NodePropertyRuntimeDataKeys: []interface{}{"extension.risk_check.riskScore", "extension."},
+		NodePropertyResponseKeys:    []interface{}{"riskScore"},
+		NodePropertyMaxAttempts:     float64(3),
+	})
+
+	s.Empty(invalid)
+	s.Equal(ExtensionProperties{
+		ConnectionID:    "conn-1",
+		InputKeys:       []string{"username", "password"},
+		RuntimeDataKeys: []string{"extension.risk_check.riskScore", "extension."},
+		ResponseKeys:    []string{"riskScore"},
+		MaxAttempts:     3,
+	}, props)
+}
+
+func (s *ModelTestSuite) TestParseExtensionProperties_UnsetListsAndDefaults() {
+	for name, properties := range map[string]map[string]interface{}{
+		"absent": {NodePropertyConnectionID: "conn-1"},
+		"null": {NodePropertyConnectionID: "conn-1", NodePropertyInputKeys: nil, NodePropertyRuntimeDataKeys: nil,
+			NodePropertyResponseKeys: nil, NodePropertyMaxAttempts: nil},
+	} {
+		s.Run(name, func() {
+			props, invalid := ParseExtensionProperties(properties)
+
+			s.Empty(invalid)
+			s.Nil(props.InputKeys)
+			s.Equal([]string{"userID"}, props.RuntimeDataKeys)
+			s.Nil(props.ResponseKeys)
+			s.Equal(5, props.MaxAttempts)
+		})
+	}
+}
+
+func (s *ModelTestSuite) TestParseExtensionProperties_RuntimeDataKeysAllowsTheUserIDAndExtensionData() {
+	props, invalid := ParseExtensionProperties(map[string]interface{}{
+		NodePropertyConnectionID:    "conn-1",
+		NodePropertyRuntimeDataKeys: []interface{}{" userID", "extension.risk_check.riskScore "},
+	})
+
+	s.Empty(invalid)
+	s.Equal([]string{"userID", "extension.risk_check.riskScore"}, props.RuntimeDataKeys)
+}
+
+func (s *ModelTestSuite) TestParseExtensionProperties_ResponseKeysAcceptsACommaSeparatedString() {
+	props, invalid := ParseExtensionProperties(map[string]interface{}{
+		NodePropertyConnectionID: "conn-1", NodePropertyResponseKeys: " riskScore, challengeId ",
+	})
+
+	s.Empty(invalid)
+	s.Equal([]string{"riskScore", "challengeId"}, props.ResponseKeys)
+}
+
+func (s *ModelTestSuite) TestParseExtensionProperties_RefusesUnusableValues() {
+	cases := []struct {
+		name     string
+		property string
+		value    interface{}
+	}{
+		{"connection absent", NodePropertyConnectionID, nil},
+		{"connection blank", NodePropertyConnectionID, "  "},
+		{"connection not a string", NodePropertyConnectionID, 42},
+		{"input keys empty", NodePropertyInputKeys, []interface{}{}},
+		{"input keys blank name", NodePropertyInputKeys, []interface{}{"username", " "}},
+		{"input keys non-string", NodePropertyInputKeys, []interface{}{"username", 7}},
+		{"input keys a string", NodePropertyInputKeys, "username,password"},
+		{"runtime data keys empty", NodePropertyRuntimeDataKeys, []interface{}{}},
+		{"runtime data keys blank name", NodePropertyRuntimeDataKeys, []interface{}{""}},
+		{"runtime data keys non-string", NodePropertyRuntimeDataKeys, []interface{}{true}},
+		{"runtime data keys a string", NodePropertyRuntimeDataKeys, "userID"},
+		{"runtime data key outside the allow list", NodePropertyRuntimeDataKeys, []interface{}{"userID", "clientId"}},
+		{"runtime data key a credential", NodePropertyRuntimeDataKeys, []interface{}{"password"}},
+		{"runtime data key an attempt count", NodePropertyRuntimeDataKeys,
+			[]interface{}{ExtensionAttemptCountKey("risk_check")}},
+		{"runtime data key in another case", NodePropertyRuntimeDataKeys, []interface{}{"userId"}},
+		{"response keys empty", NodePropertyResponseKeys, []interface{}{}},
+		{"response keys blank name", NodePropertyResponseKeys, []interface{}{"riskScore", "\t"}},
+		{"response keys non-string", NodePropertyResponseKeys, []interface{}{map[string]interface{}{}}},
+		{"response keys empty string", NodePropertyResponseKeys, ""},
+		{"response keys blank in string", NodePropertyResponseKeys, "riskScore,,challengeId"},
+		{"response keys a number", NodePropertyResponseKeys, 3},
+		{"max attempts zero", NodePropertyMaxAttempts, 0},
+		{"max attempts over the bound", NodePropertyMaxAttempts, float64(21)},
+		{"max attempts negative", NodePropertyMaxAttempts, -1},
+		{"max attempts fractional", NodePropertyMaxAttempts, 2.5},
+		{"max attempts a string", NodePropertyMaxAttempts, "5"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			properties := map[string]interface{}{NodePropertyConnectionID: "conn-1"}
+			properties[tc.property] = tc.value
+
+			_, invalid := ParseExtensionProperties(properties)
+
+			s.Equal(tc.property, invalid)
+		})
+	}
+}
+
+func (s *ModelTestSuite) TestParseExtensionProperties_MaxAttemptsBounds() {
+	for _, value := range []interface{}{1, 20, float64(20), int64(7)} {
+		props, invalid := ParseExtensionProperties(map[string]interface{}{
+			NodePropertyConnectionID: "conn-1", NodePropertyMaxAttempts: value,
+		})
+
+		s.Empty(invalid, "%v", value)
+		s.NotZero(props.MaxAttempts)
+	}
+}

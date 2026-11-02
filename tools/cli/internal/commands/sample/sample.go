@@ -781,15 +781,14 @@ func printSummary(sampleName, baseURL, sampleURL string, features []string) {
 		fmt.Println("  Try these walkthroughs:")
 		fmt.Println()
 		if hasFeature(Options{Features: features}, "ai") {
-			fmt.Println("    AI Concierge        → click the chat bubble and ask about flights")
-			fmt.Println("    Book via Agent      → ask the concierge to book a flight — approve the consent prompt")
-			fmt.Println("    Agent Identity      → open " + sampleURL + "/signin-as-agent")
+			fmt.Println("    Protect the Agent   → sign in as john.doe, then jane.smith, and compare chat access")
+			fmt.Println("    Browse with Agent   → ask the concierge about flights (M2M, no consent prompt)")
+			fmt.Println("    Book on Behalf      → ask the concierge to book a flight — approve the consent prompt")
 		} else {
-			fmt.Println("    Login               → sign in as john.doe / john.doe")
+			fmt.Println("    Sign-In             → sign in as john.doe / john.doe, then open the Profile tab")
 			fmt.Println("    Self Sign-Up        → create a new account at the frontend")
-			fmt.Println("    View Profile        → sign in, open the Profile tab")
 			fmt.Println("    Account Recovery    → click \"Forgot password?\" (requires SMTP in deployment.yaml)")
-			fmt.Println("    Onboard Users       → sign in as alex.carter / alex.carter (Admin)")
+			fmt.Println("    Staff Sign-Up       → invite a staff member from the ThunderID Console")
 		}
 	}
 	fmt.Println()

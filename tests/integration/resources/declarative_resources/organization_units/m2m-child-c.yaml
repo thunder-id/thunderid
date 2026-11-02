@@ -1,0 +1,6 @@
+resource_type: organization_unit
+id: decl-m2m-child-c
+handle: decl-m2m-child-c
+name: M2M Declarative Child C
+description: Child organization unit left out of the selective grant
+parent: decl-m2m-root

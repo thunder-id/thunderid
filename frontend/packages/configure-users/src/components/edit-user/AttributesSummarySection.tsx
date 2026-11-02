@@ -31,7 +31,7 @@ export default function AttributesSummarySection({user}: AttributesSummarySectio
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
 
   const {data: userTypeList} = useGetUserTypes();
-  const matchedSchema = userTypeList?.types?.find((s) => s.name === user.type);
+  const matchedSchema = userTypeList?.types?.find((s) => s.handle === user.type);
   const {data: userTypeDetails, isLoading} = useGetUserType(matchedSchema?.id);
 
   const attributes = user.attributes ?? {};
@@ -46,7 +46,7 @@ export default function AttributesSummarySection({user}: AttributesSummarySectio
 
   return (
     <SettingsCard
-      title={t('users:manageUser.sections.attributes.title', 'User Attributes')}
+      title={t('users:manageUser.sections.attributes.title', 'User attributes')}
       description={t(
         'users:manageUser.sections.attributes.summaryDescription',
         "A preview of this user's attribute values. Manage them from the Attributes tab.",

@@ -5,7 +5,7 @@ description: AI agents should use this file when creating and reviewing document
 
 # ThunderID Documentation — Agent Instructions
 
-Documentation content under `docs/content/` is handled by one skill, `docs` (`.agent/skills/docs/SKILL.md`), covering every stage: scaffolding, writing, and review. **Invoke it instead of creating, editing, or reviewing a doc page by hand** — it enforces the project's writing standards directly, so the rules live in one executable place, not duplicated in prose here. This applies even when the request doesn't name it: "write documentation for X," "document this feature," "add a section on Y," "review this page," and "does this doc meet standards" should all route to it, not to a manual edit or review.
+Documentation content under `docs/content/` and `docs/community/` is handled by one skill, `docs` (`.agent/skills/docs/SKILL.md`), covering every stage: scaffolding, writing, and review. **Invoke it instead of creating, editing, or reviewing a doc page by hand** — it enforces the project's writing standards directly, so the rules live in one executable place, not duplicated in prose here. This applies even when the request doesn't name it: "write documentation for X," "document this feature," "add a section on Y," "review this page," and "does this doc meet standards" should all route to it, not to a manual edit or review.
 
 The skill's `SKILL.md` is a dispatch table over its reference files, each covering one stage:
 
@@ -20,3 +20,9 @@ The skill's `SKILL.md` is a dispatch table over its reference files, each coveri
 - `use-case.md`, for structuring or auditing a use-case section (`docs/content/use-cases/<pattern>/`): page order, diagram design, jargon literacy for readers unfamiliar with IAM or ThunderID, and a scoring rubric. Use for creating, restructuring, or reviewing B2C, B2B, AI Agents, or a new use-case pattern.
 
 See [docs/README.md](README.md) for the full contributor workflow with a worked example, and `.agent/skills/docs/` for each reference file's complete rules.
+
+## Versioned Fetches in `docs/src/` Components
+
+A component rendered inside actual doc content (an `.mdx` page under `docs/content/` or `docs/versioned_docs/`) that builds a URL to `fetch()` a versioned static asset (anything mirrored per-version under `static/docs/<versionPath>/...` or `static/api/<versionPath>/...`) must derive `versionPath` from `useDocsVersion()` (`@docusaurus/plugin-content-docs/client`), mapping `version === 'current' ? 'next' : version`. This is the same pattern already used in `docs/src/components/ApiVersionReference.tsx`.
+
+Do not hardcode a `/docs/next/...` literal and rewrite it with `useDocsUrl()` (`@site/src/hooks/useDocsUrl`). That hook exists for version-*less* contexts (footer links, homepage, custom pages) that fall back through the site's global active/preferred/latest version state; a component embedded in a specific doc page already has its own authoritative version and should read it directly instead. `useDocsUrl()` remains the correct tool for rewriting `<Link>`/`href` navigation targets, since this rule only applies to runtime `fetch()` URLs. Enforced in `.coderabbit.yaml` under the `docs/**` path instructions.

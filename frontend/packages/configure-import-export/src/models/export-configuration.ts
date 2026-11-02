@@ -28,6 +28,10 @@ export interface ExportRequest {
    */
   organizationUnits?: string[];
   /**
+   * List of project IDs to export. Use `["*"]` to export all. Only a Control Plane serves projects.
+   */
+  projects?: string[];
+  /**
    * List of user IDs to export. Use `["*"]` to export all.
    */
   users?: string[];
@@ -67,6 +71,14 @@ export interface ExportRequest {
    * List of server config names to export. Use `["*"]` to export all.
    */
   serverConfigs?: string[];
+  /**
+   * List of credential configuration (OID4VCI template) IDs to export. Use `["*"]` to export all.
+   */
+  credentialConfigurations?: string[];
+  /**
+   * List of presentation definition (OID4VP) IDs to export. Use `["*"]` to export all.
+   */
+  presentationDefinitions?: string[];
   /**
    * Optional configuration for export behavior
    */

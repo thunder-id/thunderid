@@ -4,14 +4,17 @@
 package executor
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -480,6 +483,9 @@ func (s *UtilsTestSuite) TestIsCrossOUProvisioningAllowed() {
 func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 	tests := []struct {
 		name                 string
+		idpID                string
+		attributeConfig      *providers.AttributeConfiguration
+		noAttributeConfig    bool
 		federatedIdentifiers map[string]interface{}
 		existingIdentifiers  map[string]interface{}
 		ctx                  *providers.NodeContext
@@ -580,32 +586,23 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 			expectedValid: false,
 		},
 		{
-			name: "Sub matches RuntimeData returns true",
+			name: "Sub under its own name in RuntimeData, UserInputs or user attributes is not compared",
 			federatedIdentifiers: map[string]interface{}{
 				"email": "user@example.com",
 				"sub":   "sub123",
 			},
-			existingIdentifiers: map[string]interface{}{},
-			ctx: &providers.NodeContext{
-				RuntimeData: map[string]string{
-					"sub": "sub123",
-				},
+			existingIdentifiers: map[string]interface{}{
+				"sub": "sub789",
 			},
-			expectedValid: true,
-		},
-		{
-			name: "Sub mismatch with RuntimeData returns false",
-			federatedIdentifiers: map[string]interface{}{
-				"email": "user@example.com",
-				"sub":   "sub123",
-			},
-			existingIdentifiers: map[string]interface{}{},
 			ctx: &providers.NodeContext{
 				RuntimeData: map[string]string{
 					"sub": "sub456",
 				},
+				UserInputs: map[string]string{
+					"sub": "sub456",
+				},
 			},
-			expectedValid: false,
+			expectedValid: true,
 		},
 		{
 			name: "Empty UserInputs email is skipped",
@@ -646,19 +643,228 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 			expectedValid:       true,
 		},
 		{
-			name: "Multiple attributes with one mismatch returns false",
+			name:  "Same connection and sub as an earlier external identity returns true",
+			idpID: "idp-first",
+			federatedIdentifiers: map[string]interface{}{
+				"sub": "sub-first",
+			},
+			ctx: &providers.NodeContext{
+				RuntimeData: map[string]string{
+					common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-first", "sub-first",
+						map[string]interface{}{"sub": "sub-first"}),
+				},
+			},
+			expectedValid: true,
+		},
+		{
+			name:  "Same connection with a different sub than an earlier external identity returns false",
+			idpID: "idp-first",
+			federatedIdentifiers: map[string]interface{}{
+				"sub": "sub-second",
+			},
+			ctx: &providers.NodeContext{
+				RuntimeData: map[string]string{
+					common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-first", "sub-first",
+						map[string]interface{}{"sub": "sub-first"}),
+				},
+			},
+			expectedValid: false,
+		},
+		{
+			name:  "Different connection with the same sub as an earlier external identity returns false",
+			idpID: "idp-second",
+			federatedIdentifiers: map[string]interface{}{
+				"sub": "sub-first",
+			},
+			ctx: &providers.NodeContext{
+				RuntimeData: map[string]string{
+					common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-first", "sub-first",
+						map[string]interface{}{"sub": "sub-first"}),
+				},
+			},
+			expectedValid: false,
+		},
+		{
+			name:  "Different connection and sub than an earlier external identity returns false",
+			idpID: "idp-second",
+			federatedIdentifiers: map[string]interface{}{
+				"sub": "sub-second",
+			},
+			ctx: &providers.NodeContext{
+				RuntimeData: map[string]string{
+					common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-first", "sub-first",
+						map[string]interface{}{"sub": "sub-first"}),
+				},
+			},
+			expectedValid: false,
+		},
+		{
+			name:  "Earlier external identity without a subject, as OpenID4VP sets it, is not compared by sub",
+			idpID: "idp-first",
+			federatedIdentifiers: map[string]interface{}{
+				"sub": "sub-first",
+			},
+			ctx: &providers.NodeContext{
+				RuntimeData: map[string]string{
+					common.RuntimeKeyExternalIdentity: externalIdentityEntry("", "",
+						map[string]interface{}{"sub": "did:example:wallet"}),
+				},
+			},
+			expectedValid: true,
+		},
+		{
+			name:  "Email mismatch with an earlier external identity's claims returns false",
+			idpID: "idp-first",
+			federatedIdentifiers: map[string]interface{}{
+				"email": "second@example.com",
+				"sub":   "sub-first",
+			},
+			ctx: &providers.NodeContext{
+				RuntimeData: map[string]string{
+					common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-first", "sub-first",
+						map[string]interface{}{"email": "first@example.com"}),
+				},
+			},
+			expectedValid: false,
+		},
+		{
+			name: "Mismatch on the local attribute a custom linking attribute maps to returns false",
+			attributeConfig: &providers.AttributeConfiguration{
+				AccountLinking:     &providers.AccountLinking{Attributes: []string{"phone_number"}},
+				UserTypeResolution: &providers.UserTypeResolution{Default: "customer"},
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{
+					UserType: "customer",
+					Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "phone_number", LocalAttribute: "mobileNumber"},
+					},
+				}},
+			},
+			federatedIdentifiers: map[string]interface{}{
+				"phone_number": "+15550001",
+				"mobileNumber": "+15550001",
+				"sub":          "sub123",
+			},
+			existingIdentifiers: map[string]interface{}{
+				"mobileNumber": "+15550002",
+			},
+			ctx:           &providers.NodeContext{},
+			expectedValid: false,
+		},
+		{
+			name: "Match on the local attribute a custom linking attribute maps to returns true",
+			attributeConfig: &providers.AttributeConfiguration{
+				AccountLinking:     &providers.AccountLinking{Attributes: []string{"phone_number"}},
+				UserTypeResolution: &providers.UserTypeResolution{Default: "customer"},
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{
+					UserType: "customer",
+					Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "phone_number", LocalAttribute: "mobileNumber"},
+					},
+				}},
+			},
+			federatedIdentifiers: map[string]interface{}{
+				"phone_number": "+15550001",
+				"mobileNumber": "+15550001",
+				"sub":          "sub123",
+			},
+			ctx: &providers.NodeContext{
+				UserInputs: map[string]string{"mobileNumber": "+15550001"},
+			},
+			expectedValid: true,
+		},
+		{
+			name: "Email mismatch is ignored when email is not a linking attribute",
+			attributeConfig: &providers.AttributeConfiguration{
+				AccountLinking: &providers.AccountLinking{Attributes: []string{"username"}},
+			},
+			federatedIdentifiers: map[string]interface{}{
+				"email":    "user1@example.com",
+				"username": "user1",
+				"sub":      "sub123",
+			},
+			existingIdentifiers: map[string]interface{}{
+				"email":    "user2@example.com",
+				"username": "user1",
+			},
+			ctx:           &providers.NodeContext{},
+			expectedValid: true,
+		},
+		{
+			name:            "Email mismatch fails when the connection has no account linking",
+			attributeConfig: &providers.AttributeConfiguration{},
 			federatedIdentifiers: map[string]interface{}{
 				"email": "user1@example.com",
 				"sub":   "sub123",
 			},
-			existingIdentifiers: map[string]interface{}{},
+			existingIdentifiers: map[string]interface{}{
+				"email": "user2@example.com",
+			},
+			ctx:           &providers.NodeContext{},
+			expectedValid: false,
+		},
+		{
+			name: "Email mismatch fails when the connection has no account-linking attributes",
+			attributeConfig: &providers.AttributeConfiguration{
+				AccountLinking: &providers.AccountLinking{},
+			},
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user1@example.com",
+				"sub":   "sub123",
+			},
+			existingIdentifiers: map[string]interface{}{
+				"email": "user2@example.com",
+			},
+			ctx:           &providers.NodeContext{},
+			expectedValid: false,
+		},
+		{
+			name:              "Missing federated email passes when the connection has no attribute configuration",
+			noAttributeConfig: true,
+			federatedIdentifiers: map[string]interface{}{
+				"sub": "sub123",
+			},
+			existingIdentifiers: map[string]interface{}{
+				"email": "user2@example.com",
+			},
+			ctx:           &providers.NodeContext{},
+			expectedValid: true,
+		},
+		{
+			name:              "Email mismatch fails when the connection has no attribute configuration",
+			noAttributeConfig: true,
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user1@example.com",
+				"sub":   "sub123",
+			},
+			existingIdentifiers: map[string]interface{}{
+				"email": "user2@example.com",
+			},
+			ctx:           &providers.NodeContext{},
+			expectedValid: false,
+		},
+		{
+			name:              "Matching email passes when the connection has no attribute configuration",
+			noAttributeConfig: true,
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user1@example.com",
+				"sub":   "sub123",
+			},
+			existingIdentifiers: map[string]interface{}{
+				"email": "user1@example.com",
+			},
+			ctx:           &providers.NodeContext{},
+			expectedValid: true,
+		},
+		{
+			name:            "Sub mismatch still fails when the connection has no account linking",
+			idpID:           "idp-first",
+			attributeConfig: &providers.AttributeConfiguration{},
+			federatedIdentifiers: map[string]interface{}{
+				"sub": "sub-second",
+			},
 			ctx: &providers.NodeContext{
-				UserInputs: map[string]string{
-					"email": "user1@example.com",
-					"sub":   "sub456",
-				},
 				RuntimeData: map[string]string{
-					"sub": "sub123",
+					common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-first", "sub-first", nil),
 				},
 			},
 			expectedValid: false,
@@ -667,8 +873,148 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			valid := validateFederatedIdentifierConsistency(tt.ctx, tt.federatedIdentifiers, tt.existingIdentifiers)
+			// Unless a case says otherwise, the connection links on email, as seeded connections do.
+			attributeConfig := tt.attributeConfig
+			if attributeConfig == nil && !tt.noAttributeConfig {
+				attributeConfig = &providers.AttributeConfiguration{
+					AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
+				}
+			}
+			idpDTO := &providers.IDPDTO{ID: tt.idpID, AttributeConfiguration: attributeConfig}
+			valid := validateFederatedIdentifierConsistency(tt.ctx, idpDTO, tt.federatedIdentifiers,
+				tt.existingIdentifiers)
 			s.Equal(tt.expectedValid, valid)
 		})
 	}
+}
+
+// externalIdentityEntry encodes an external identity the way the federated executors set it.
+func externalIdentityEntry(idpID, sub string, claims map[string]interface{}) string {
+	encoded, err := json.Marshal(core.ExternalIdentity{IdpID: idpID, Sub: sub, Claims: claims})
+	if err != nil {
+		panic(err)
+	}
+	return string(encoded)
+}
+
+// externalSub reads the subject back from the external identity entry.
+func externalSub(runtimeData map[string]string) string {
+	if identity := core.GetExternalIdentity(runtimeData); identity != nil {
+		return identity.Sub
+	}
+	return ""
+}
+
+// externalClaim reads one claim back from the external identity entry.
+func externalClaim(runtimeData map[string]string, name string) string {
+	value, _ := core.GetExternalClaim(runtimeData, name)
+	return value
+}
+
+// Claims are stored only inside the external identity entry, so a claim sharing a name with flow
+// control state never lands under that name.
+func (s *UtilsTestSuite) TestSetExternalIdentity_KeepsClaimsOutOfFlowState() {
+	execResp := &providers.ExecutorResponse{RuntimeData: map[string]string{}}
+
+	err := setExternalIdentity(execResp, "idp-1", "sub-123", map[string]interface{}{
+		"sub":                             "sub-123",
+		"email":                           "user@example.com",
+		"groups":                          []interface{}{"eng", "ops"},
+		userAttributeUserID:               "victim-id",
+		ouIDKey:                           "other-ou",
+		categoryTypeKey:                   "admin",
+		common.RuntimeKeyEntityState:      "exists",
+		common.RuntimeKeyExternalIdentity: "forged",
+	})
+
+	s.NoError(err)
+	s.Len(execResp.RuntimeData, 1)
+	identity := core.GetExternalIdentity(execResp.RuntimeData)
+	s.NotNil(identity)
+	s.Equal("idp-1", identity.IdpID)
+	s.Equal("sub-123", identity.Sub)
+	s.Equal([]interface{}{"eng", "ops"}, identity.Claims["groups"])
+	s.Equal("victim-id", identity.Claims[userAttributeUserID])
+}
+
+// Token metadata describes the token, not the user, so it is never kept as a claim. The sub claim
+// is dropped only when it is set as the subject, and the caller's map is left untouched.
+func (s *UtilsTestSuite) TestSetExternalIdentity_DropsTokenMetadata() {
+	claims := map[string]interface{}{
+		"sub": "sub-123", "aud": "client", "exp": float64(1), "iat": float64(1), "nbf": float64(1),
+		"iss": "https://idp", "jti": "j", "at_hash": "a", "c_hash": "c", "azp": "client", "nonce": "n",
+		"email": "user@example.com",
+	}
+	execResp := &providers.ExecutorResponse{}
+
+	s.NoError(setExternalIdentity(execResp, "idp-1", "sub-123", claims))
+
+	identity := core.GetExternalIdentity(execResp.RuntimeData)
+	s.Equal("sub-123", identity.Sub)
+	s.Equal(map[string]interface{}{"email": "user@example.com"}, identity.Claims)
+	s.Len(claims, 12)
+
+	s.NoError(setExternalIdentity(execResp, "", "", map[string]interface{}{"sub": "holder"}))
+	s.Equal("holder", core.GetExternalIdentity(execResp.RuntimeData).Claims["sub"])
+}
+
+// A later sign-in replaces the earlier entry whole, so claims from two providers never mix.
+func (s *UtilsTestSuite) TestSetExternalIdentity_ReplacesEarlierEntry() {
+	execResp := &providers.ExecutorResponse{RuntimeData: map[string]string{
+		common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-first", "sub-first",
+			map[string]interface{}{"given_name": "First"}),
+	}}
+
+	err := setExternalIdentity(execResp, "idp-second", "sub-second",
+		map[string]interface{}{"email": "second@example.com"})
+
+	s.NoError(err)
+	identity := core.GetExternalIdentity(execResp.RuntimeData)
+	s.Equal("idp-second", identity.IdpID)
+	s.Equal(map[string]interface{}{"email": "second@example.com"}, identity.Claims)
+}
+
+// setFederatedEntityState records whether the federated identity resolved to one user, several or
+// none.
+func (s *UtilsTestSuite) TestSetFederatedEntityState() {
+	tests := []struct {
+		name      string
+		ref       *providers.EntityReference
+		svcErr    *tidcommon.ServiceError
+		wantState string
+	}{
+		{name: "one user", ref: &providers.EntityReference{EntityID: "user-1"}, wantState: entityStateExists},
+		{name: "no user", svcErr: &authnprovidermgr.ErrorUserNotFound, wantState: entityStateNotExists},
+		{name: "several users", svcErr: &authnprovidermgr.ErrorAmbiguousUser, wantState: entityStateAmbiguous},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			authnProvider := managermock.NewAuthnProviderManagerMock(s.T())
+			authnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+				Return(newAuthenticatedAuthUser(), tc.ref, tc.svcErr)
+			execResp := &providers.ExecutorResponse{
+				AuthUser:    newAuthenticatedAuthUser(),
+				RuntimeData: map[string]string{},
+			}
+
+			setFederatedEntityState(s.T().Context(), execResp, authnProvider)
+
+			s.Equal(tc.wantState, execResp.RuntimeData[common.RuntimeKeyEntityState])
+		})
+	}
+}
+
+func (s *UtilsTestSuite) TestStatedHold_StatesOnlyTheManagerHoldCodes() {
+	s.Nil(statedHold(nil))
+	s.Nil(statedHold(&tidcommon.ErrorUnauthorized))
+	s.Equal(&ErrAccountLocked, statedHold(&authnprovidermgr.ErrorAccountLocked))
+	s.Equal(&ErrAccountSuspended, statedHold(&authnprovidermgr.ErrorAccountSuspended))
+}
+
+func (s *UtilsTestSuite) TestStatedDecision_StatesOnlyANamedHold() {
+	s.Nil(statedDecision(providers.AccessDecision{}))
+	s.Nil(statedDecision(providers.AccessDecision{Admitted: true}))
+	s.Equal(&ErrAccountLocked, statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonLocked}))
+	s.Equal(&ErrAccountSuspended,
+		statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}))
 }

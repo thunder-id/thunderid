@@ -1,0 +1,82 @@
+---
+title: Development Process
+docType: community
+description: "How an SDK change goes from idea to merged pull request: the specification it has to satisfy, the workflow that gets it there, and the skill that automates both."
+sidebar_position: 2
+hide_table_of_contents: false
+---
+
+# Development Process
+
+Every <ProductName /> SDK implements one contract, recorded in the SDK development
+specification. A change is not finished when it compiles and its tests pass. It is finished
+when it is implemented in every SDK where it applies, validated against the specification and
+the threat model, covered by tests, and raised as linked pull requests across the repositories
+it touches.
+
+This page covers where that contract lives and the workflow that gets a change through it. For
+the rule that decides which sibling SDKs a change has to reach, see
+[Cross-SDK Feature Parity](feature-parity.mdx).
+
+## The Specification and Threat Model
+
+Two documents govern every SDK repository. Both live in this repository, not in the SDKs
+themselves, so there is one place to change the contract rather than four copies to keep in
+sync.
+
+- <RepoLink path="/blob/main/docs-internals/sdk-development/spec.md">SDK development specification</RepoLink> &mdash;
+  the layer model, operational modes, configuration keys, client surface, error model, security
+  floor, platform packaging, testing, and the cross-SDK parity rules. This is the authority: an
+  SDK's source code is an implementation of it, never the reference for what is correct.
+- <RepoLink path="/blob/main/docs-internals/sdk-development/threat-model.md">SDK threat model</RepoLink> &mdash;
+  the security posture the specification's floor comes from: the interactions it models, the
+  mitigations each one relies on, and the residual risks it accepts.
+
+Read both before writing or reviewing SDK code, not from memory and not from another SDK's
+source. A change that alters a trust boundary, an actor's entitlements, or an interaction
+updates the threat model. A change that adds or alters a capability the specification defines
+updates the specification and adds a row to its change log. Both are reviewed as their own pull
+request in this repository, in the same change set as the SDK work that needed them.
+
+## The Workflow
+
+1. **Locate the SDK repositories.** A cross-SDK change needs a local checkout of each one.
+   Verify the remote (`git remote -v`) resolves to the matching `*-sdks` repository before
+   editing anything in it, and check for uncommitted work before branching.
+2. **Pick the path.** Writing a new SDK, changing an existing one, or porting a capability from
+   one SDK to another are each a different sequence of steps, but all of them start from the
+   specification, not from the closest existing implementation.
+3. **Update the contract first.** If the specification does not cover the capability yet, update
+   it in the same change set as the code. An SDK must never be the only record of what it does.
+4. **Validate.** Run the review checklist (naming, behaviour, errors, UI, packaging) against the
+   change, and the security checklist whenever it touches authentication, tokens, storage,
+   credentials, logging, or configuration that affects any of them. Then run each repository's
+   own lint, build, and test commands, matching what its pull request builder runs.
+5. **Raise linked pull requests.** A capability counts as delivered once it exists in every SDK
+   where it applies, or its absence is recorded with a reason. Each pull request carries a
+   parity section, either linking the sibling pull request, linking a tracked issue for a
+   deferred port, or stating why that SDK does not need it. See
+   [Cross-SDK Feature Parity](feature-parity.mdx) for exactly what the required check expects.
+
+## The `sdk-development` Skill
+
+The workflow above is encoded as an AI agent skill,
+<RepoLink path="/blob/main/.agent/skills/sdk-development/SKILL.md">
+  <code>.agent/skills/sdk-development/SKILL.md</code>
+</RepoLink>
+, maintained in this repository alongside the specification it drives.
+
+It exists so that an AI coding assistant working on an SDK change, in this repository or in one
+of the four SDK repositories, follows the same process a maintainer would: load the
+specification and threat model before touching code, verify the local SDK checkouts rather than
+guessing a path, work the review and security checklists, run the validation commands that
+match the repository it is in, and raise the cross-SDK pull requests with a filled-in parity
+section rather than a single unlinked change.
+
+Each SDK repository's own `AGENTS.md` links to the skill instead of copying it, so an agent
+working there picks it up automatically. A copy of the skill file inside an SDK repository is a
+bug: the specification and the workflow that enforces it are maintained in one place.
+
+You do not need an AI agent to use it. The skill file is a literal, step-by-step account of the
+process above, including the exact validation commands and test-coverage expectations per
+repository, and is worth reading directly if you are working through a change by hand.

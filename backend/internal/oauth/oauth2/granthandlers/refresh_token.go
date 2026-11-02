@@ -16,6 +16,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -40,6 +41,7 @@ type refreshTokenGrantHandler struct {
 	actorProvider    providers.ActorProvider
 	refreshRevoker   revocation.RefreshTokenRevokerInterface
 	criteriaRevoker  revocation.CriteriaRevokerInterface
+	authzDetails     providers.AuthorizationDetailProvider
 }
 
 // newRefreshTokenGrantHandler creates a new instance of RefreshTokenGrantHandler.
@@ -53,6 +55,7 @@ func newRefreshTokenGrantHandler(
 	actorProvider providers.ActorProvider,
 	refreshRevoker revocation.RefreshTokenRevokerInterface,
 	criteriaRevoker revocation.CriteriaRevokerInterface,
+	authzDetails providers.AuthorizationDetailProvider,
 	cfg oauthconfig.Config,
 ) RefreshTokenGrantHandlerInterface {
 	return &refreshTokenGrantHandler{
@@ -66,6 +69,7 @@ func newRefreshTokenGrantHandler(
 		actorProvider:    actorProvider,
 		refreshRevoker:   refreshRevoker,
 		criteriaRevoker:  criteriaRevoker,
+		authzDetails:     authzDetails,
 	}
 }
 
@@ -98,18 +102,14 @@ func (h *refreshTokenGrantHandler) ValidateGrant(ctx context.Context, tokenReque
 	return nil
 }
 
-// HandleGrant processes the refresh token grant request and generates a new token response.
-func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest *model.TokenRequest,
-	oauthApp *providers.OAuthClient) (
-	*model.TokenResponseDTO, *model.ErrorResponse) {
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RefreshTokenGrantHandler"))
-
-	// Validate refresh token using token validator
-	// ValidateRefreshToken verifies the token and enforces the RFC 7009 deny list. A revoked token is
-	// rejected as invalid_grant like any other invalid token; an unavailable deny list fails closed
-	// with a server_error.
-	refreshTokenClaims, err := h.tokenValidator.ValidateRefreshToken(
-		ctx, tokenRequest.RefreshToken, tokenRequest.ClientID)
+// resolveRefreshToken validates the presented refresh token and confirms it was issued to the
+// requesting client. ValidateRefreshToken enforces the RFC 7009 deny list, so a revoked token is
+// rejected as invalid_grant like any other invalid token and an unavailable deny list fails closed
+// with a server_error.
+func (h *refreshTokenGrantHandler) resolveRefreshToken(ctx context.Context,
+	tokenRequest *model.TokenRequest, logger *log.Logger) (
+	*tokenservice.RefreshTokenClaims, *model.ErrorResponse) {
+	refreshTokenClaims, err := h.tokenValidator.ValidateRefreshToken(ctx, tokenRequest.RefreshToken)
 	if err != nil {
 		logger.Debug(ctx, "Failed to validate refresh token", log.Error(err))
 		if errors.Is(err, revocation.ErrEnforcementUnavailable) {
@@ -118,15 +118,65 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 				ErrorDescription: "Token revocation status could not be verified",
 			}
 		}
-		// A revoked (already-rotated) refresh token presented again is a replay signal: revoke
-		// the whole token family so the attacker's freshly rotated tokens die too (RFC 9700 §4.14.2).
-		if errors.Is(err, revocation.ErrTokenRevoked) {
+		// Only the token's own jti on the deny list (an already-rotated token presented again) is a
+		// replay signal: revoke the whole token family so the attacker's freshly rotated tokens die too
+		// (RFC 9700 §4.14.2). A criteria hit, such as a lost scope, is not reuse and only rejects.
+		if errors.Is(err, revocation.ErrTokenIDRevoked) {
 			h.revokeTokenFamilyOnReplay(ctx, tokenRequest.RefreshToken, logger)
 		}
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidGrant,
 			ErrorDescription: "Invalid refresh token",
 		}
+	}
+
+	// A client may only redeem refresh tokens issued to it.
+	if refreshTokenClaims.ClientID != tokenRequest.ClientID {
+		logger.Debug(ctx, "Refresh token does not belong to the requesting client")
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidGrant,
+			ErrorDescription: "Invalid refresh token",
+		}
+	}
+
+	return refreshTokenClaims, nil
+}
+
+// getCachedAttributes returns the user attributes held in the attribute cache entry with the given ID, and the
+// entry itself. An empty ID yields no attributes and no entry.
+func (h *refreshTokenGrantHandler) getCachedAttributes(ctx context.Context, cacheID string, logger *log.Logger) (
+	map[string]interface{}, *attributecache.AttributeCache, *model.ErrorResponse) {
+	if cacheID == "" {
+		return make(map[string]interface{}), nil, nil
+	}
+	cacheEntry, fetchErr := h.attrCacheService.GetAttributeCache(ctx, cacheID)
+	if fetchErr != nil {
+		logger.Error(ctx, "Failed to get user attributes from attribute cache",
+			log.String("error", fetchErr.ErrorDescription.DefaultValue))
+		return nil, nil, &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to get user attributes from attribute cache",
+		}
+	}
+	if cacheEntry == nil {
+		logger.Error(ctx, "Attribute cache entry not found for cache ID", log.String("cache_id", cacheID))
+		return nil, nil, &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to get user attributes from attribute cache",
+		}
+	}
+	return cacheEntry.Attributes, cacheEntry, nil
+}
+
+// HandleGrant processes the refresh token grant request and generates a new token response.
+func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest *model.TokenRequest,
+	oauthApp *providers.OAuthClient) (
+	*model.TokenResponseDTO, *model.ErrorResponse) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RefreshTokenGrantHandler"))
+
+	refreshTokenClaims, errResp := h.resolveRefreshToken(ctx, tokenRequest, logger)
+	if errResp != nil {
+		return nil, errResp
 	}
 
 	if errResp := dpop.VerifyProofBinding(ctx, refreshTokenClaims.DPoPJkt, "refresh token"); errResp != nil {
@@ -141,6 +191,13 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	newTokenScopes, scopeErr := h.validateAndApplyScopes(ctx, tokenRequest.Scope, refreshTokenClaims.Scopes, logger)
 	if scopeErr != nil {
 		return nil, scopeErr
+	}
+
+	// Only details whose type is unchanged and still allows reuse are issued again.
+	grantedDetails, errResp := refreshableAuthorizationDetails(ctx, h.authzDetails,
+		refreshTokenClaims.AuthorizationDetails)
+	if errResp != nil {
+		return nil, errResp
 	}
 
 	// The refresh token is bound to exactly one resource server audience. When the request supplies
@@ -193,7 +250,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 			return nil, scopeErr
 		}
 		authorizedNonOidc, authzErr := h.reauthorizeScopes(
-			ctx, subjectEntity, targetRS.ID, downscopedNonOidc, logger)
+			ctx, subjectEntity, targetRS.ID, downscopedNonOidc, grantedDetails, logger)
 		if authzErr != nil {
 			return nil, authzErr
 		}
@@ -204,46 +261,35 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 
 	// Get user attributes from attribute cache.
 	// cacheEntry is kept so its current TTLSeconds can be compared later.
-	attrs := make(map[string]interface{})
-	var cacheEntry *attributecache.AttributeCache
-	var fetchErr *tidcommon.ServiceError
-	if refreshTokenClaims.AttributeCacheID != "" {
-		cacheEntry, fetchErr = h.attrCacheService.GetAttributeCache(ctx, refreshTokenClaims.AttributeCacheID)
-		if fetchErr != nil {
-			logger.Error(ctx, "Failed to get user attributes from attribute cache",
-				log.String("error", fetchErr.ErrorDescription.DefaultValue))
-			return nil, &model.ErrorResponse{
-				Error:            constants.ErrorServerError,
-				ErrorDescription: "Failed to get user attributes from attribute cache",
-			}
-		}
-		if cacheEntry == nil {
-			logger.Error(ctx, "Attribute cache entry not found for cache ID",
-				log.String("cache_id", refreshTokenClaims.AttributeCacheID))
-			return nil, &model.ErrorResponse{
-				Error:            constants.ErrorServerError,
-				ErrorDescription: "Failed to get user attributes from attribute cache",
-			}
-		}
-		attrs = cacheEntry.Attributes
+	attrs, cacheEntry, errResp := h.getCachedAttributes(ctx, refreshTokenClaims.AttributeCacheID, logger)
+	if errResp != nil {
+		return nil, errResp
+	}
+
+	authorizationDetails, detailsErr := modifyGrantedAuthorizationDetails(ctx, h.authzDetails,
+		grantedDetails, tokenRequest.AuthorizationDetails)
+	if detailsErr != nil {
+		return nil, detailsErr
 	}
 
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
-		Subject:           refreshTokenClaims.Sub,
-		Audiences:         audiences,
-		ClientID:          tokenRequest.ClientID,
-		Scopes:            newTokenScopes,
-		SubjectAttributes: tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
-		AttributeCacheID:  refreshTokenClaims.AttributeCacheID,
-		GrantType:         refreshTokenClaims.GrantType,
-		OAuthApp:          oauthApp,
-		ClaimsRequest:     refreshTokenClaims.ClaimsRequest,
-		ClaimsLocales:     refreshTokenClaims.ClaimsLocales,
-		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
-		DPoPJkt:           dpop.GetJkt(ctx),
-		TokenFamilyID:     refreshTokenClaims.TokenFamilyID,
+		Subject:              refreshTokenClaims.Sub,
+		Audiences:            audiences,
+		ClientID:             tokenRequest.ClientID,
+		Scopes:               newTokenScopes,
+		SubjectAttributes:    tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
+		AttributeCacheID:     refreshTokenClaims.AttributeCacheID,
+		GrantType:            refreshTokenClaims.GrantType,
+		OAuthApp:             oauthApp,
+		ClaimsRequest:        refreshTokenClaims.ClaimsRequest,
+		ClaimsLocales:        refreshTokenClaims.ClaimsLocales,
+		ValidityPeriod:       userSubConfig.ValidityPeriodOrZero(),
+		DPoPJkt:              dpop.GetJkt(ctx),
+		TokenFamilyID:        refreshTokenClaims.TokenFamilyID,
+		AuthorizationDetails: authorizationDetails,
 	}
+	setRefreshSubjectIdentity(accessTokenCtx, subjectEntity, cacheEntry)
 	// Replay the on-behalf-of decision frozen at issuance, sourced from the stored marker
 	// rather than the client's current setting.
 	if refreshTokenClaims.ActorSub != "" {
@@ -251,34 +297,30 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	}
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, accessTokenCtx)
 	if err != nil {
-		logger.Error(ctx, "Failed to generate access token", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate access token",
-		}
+		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate access token")
 	}
 
 	// Prepare the token response
 	tokenResponse := &model.TokenResponseDTO{
-		AccessToken: *accessToken,
+		AccessToken:                     *accessToken,
+		SessionID:                       refreshTokenClaims.SessionID,
+		RefreshableAuthorizationDetails: grantedDetails,
 	}
 
 	// Generate ID token if 'openid' scope is present
 	if slices.Contains(newTokenScopes, constants.ScopeOpenID) {
 		idToken, idErr := h.tokenBuilder.BuildIDToken(ctx, &tokenservice.IDTokenBuildContext{
-			Subject:        refreshTokenClaims.Sub,
-			Audience:       tokenRequest.ClientID,
-			Scopes:         newTokenScopes,
-			UserAttributes: attrs,
-			OAuthApp:       oauthApp,
-			ClaimsRequest:  refreshTokenClaims.ClaimsRequest,
+			Subject:         refreshTokenClaims.Sub,
+			Audience:        tokenRequest.ClientID,
+			Scopes:          newTokenScopes,
+			UserAttributes:  attrs,
+			OAuthApp:        oauthApp,
+			ClaimsRequest:   refreshTokenClaims.ClaimsRequest,
+			SessionID:       refreshTokenClaims.SessionID,
+			SubjectEntityID: accessToken.SubjectID,
 		})
 		if idErr != nil {
-			logger.Error(ctx, "Failed to generate ID token", log.Error(idErr))
-			return nil, &model.ErrorResponse{
-				Error:            constants.ErrorServerError,
-				ErrorDescription: "Failed to generate token",
-			}
+			return nil, tokenBuildErrorResponse(ctx, logger, idErr, "Failed to generate token")
 		}
 		tokenResponse.IDToken = *idToken
 	}
@@ -370,6 +412,9 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 	tokenFamilyID string,
 	expiresAt int64,
 ) *model.ErrorResponse {
+	if tokenResponse == nil {
+		tokenResponse = &model.TokenResponseDTO{}
+	}
 	tokenCtx := &tokenservice.RefreshTokenBuildContext{
 		ExpiresAt:            expiresAt,
 		ClientID:             oauthApp.ClientID,
@@ -383,6 +428,9 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 		ClaimsLocales:        claimsLocales,
 		DPoPJkt:              dpopJktForRefresh(ctx, oauthApp),
 		TokenFamilyID:        tokenFamilyID,
+		SessionID:            tokenResponse.SessionID,
+		AuthorizationDetails: tokenResponse.RefreshableAuthorizationDetails,
+		SubjectEntityID:      tokenResponse.AccessToken.SubjectID,
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		tokenCtx.ActorSub = oauthApp.ID
@@ -391,15 +439,10 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 	// Build refresh token using token builder
 	refreshToken, err := h.tokenBuilder.BuildRefreshToken(ctx, tokenCtx)
 	if err != nil {
-		return &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate refresh token",
-		}
+		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RefreshTokenGrantHandler"))
+		return tokenBuildErrorResponse(ctx, logger, err, "Failed to generate refresh token")
 	}
 
-	if tokenResponse == nil {
-		tokenResponse = &model.TokenResponseDTO{}
-	}
 	tokenResponse.RefreshToken = *refreshToken
 	return nil
 }
@@ -491,6 +534,28 @@ func (h *refreshTokenGrantHandler) verifyCredentialsUnchanged(ctx context.Contex
 		}
 	}
 	return subjectEntity, nil
+}
+
+// setRefreshSubjectIdentity records which entity the refreshed token is for, so issuance reports the
+// subject without resolving it again.
+//
+// Two sources, in order. The entity resolved while verifying this refresh token is preferred: it is
+// already in hand, so this costs nothing. It is nil when sub named no entity, which is what a sub
+// mapped to an attribute such as an email address looks like — there the attribute cache entry
+// created during login is the only server-side record of the resource ID, since the refresh token
+// carries none. Neither source leaves both fields empty, and the builder then falls back to resolving
+// sub itself.
+func setRefreshSubjectIdentity(accessTokenCtx *tokenservice.AccessTokenBuildContext,
+	subjectEntity *providers.Entity, cacheEntry *attributecache.AttributeCache) {
+	if subjectEntity != nil {
+		accessTokenCtx.SubjectEntityID = subjectEntity.ID
+		accessTokenCtx.SubjectCategory = string(subjectEntity.Category)
+		return
+	}
+	if cacheEntry != nil && cacheEntry.SubjectID != "" {
+		accessTokenCtx.SubjectEntityID = cacheEntry.SubjectID
+		accessTokenCtx.SubjectCategory = cacheEntry.SubjectCategory
+	}
 }
 
 // resolveSubjectEntity resolves the token's subject to its entity, or nil when it does not name one.
@@ -591,7 +656,8 @@ func credentialChangedSince(ctx context.Context, entity *providers.Entity, iat i
 // reauthorizeScopes re-evaluates the subject's permission scopes against their current role and group
 // assignments, dropping the ones they no longer hold.
 func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjectEntity *providers.Entity,
-	resourceServerID string, scopes []string, logger *log.Logger) ([]string, *model.ErrorResponse) {
+	resourceServerID string, scopes []string, authorizationDetails []providers.AuthorizationDetail,
+	logger *log.Logger) ([]string, *model.ErrorResponse) {
 	// An unresolved subject (a mapped sub) would authorize nothing and strip every scope.
 	if len(scopes) == 0 || h.authzService == nil || subjectEntity == nil || subjectEntity.ID == "" {
 		return scopes, nil
@@ -616,8 +682,22 @@ func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjec
 		}
 	}
 
+	// The policy engine decides only the scopes; the granted authorization details are context.
+	var evaluationContext map[string]interface{}
+	if len(authorizationDetails) > 0 {
+		values, err := authzdetailcommon.EncodeDetailValues(authorizationDetails)
+		if err != nil {
+			logger.Error(ctx, "Failed to encode the granted authorization details", log.Error(err))
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Failed to generate token",
+			}
+		}
+		evaluationContext = map[string]interface{}{providers.AccessEvaluationContextAuthorizationDetails: values}
+	}
 	authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx,
-		buildAccessEvaluationsRequest(subject, groupIDs, scopes, resourceServerID))
+		tokenservice.BuildAccessEvaluationsRequest(
+			subject, subjectEntity.Category.String(), groupIDs, nil, scopes, resourceServerID, evaluationContext))
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to evaluate authorized permissions for refresh token subject",
 			log.MaskedString(log.LoggerKeyUserID, subject),
@@ -628,7 +708,7 @@ func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjec
 		}
 	}
 
-	authorizedScopes := filterAuthorizedScopes(scopes, authzResp.Evaluations)
+	authorizedScopes := tokenservice.FilterAuthorizedScopes(scopes, authzResp.Evaluations)
 	if len(authorizedScopes) != len(scopes) {
 		logger.Debug(ctx, "Dropped permission scopes the subject is no longer authorized for",
 			log.MaskedString(log.LoggerKeyUserID, subject),

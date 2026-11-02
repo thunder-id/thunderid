@@ -193,8 +193,8 @@ func (s *oidcAuthnService) FetchUserInfo(ctx context.Context, idpID, accessToken
 }
 
 // Authenticate performs the full OIDC authentication flow: exchanges the code for a token,
-// extracts ID token claims, validates the nonce, and resolves the internal user.
-// A missing internal user is NOT an error — the caller decides how to handle it.
+// extracts ID token claims, validates the nonce, and builds the federated token. The entity is
+// resolved later through recorded links.
 func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID string,
 	authzData authncm.AuthorizationData) (*authncm.AuthnResult, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("idpId", idpID))
@@ -250,7 +250,7 @@ func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID string,
 }
 
 // BuildFederatedAuthResult delegates to the underlying OAuth service, which applies attribute mapping
-// and account-linking resolution uniformly for all federated authenticators.
+// uniformly for all federated authenticators.
 func (s *oidcAuthnService) BuildFederatedAuthResult(ctx context.Context, idpID, sub string,
 	claims map[string]interface{}) (*authncm.AuthnResult, *tidcommon.ServiceError) {
 	return s.internal.BuildFederatedAuthResult(ctx, idpID, sub, claims)

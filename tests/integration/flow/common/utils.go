@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package common
@@ -145,8 +145,17 @@ func ResumeFlow(flowID string) (*FlowStep, error) {
 // CompleteFlow completes the flow with given inputs, action and challenge token
 func CompleteFlow(executionId string, inputs map[string]string, action string, challengeToken string) (
 	*FlowStep, error) {
+	flowStep, _, err := CompleteFlowWithRawResponse(executionId, inputs, action, challengeToken)
+	return flowStep, err
+}
+
+// CompleteFlowWithRawResponse completes a flow step like CompleteFlow and also returns the raw response
+// body, for tests that must check everything the client received and not only the fields FlowStep
+// models.
+func CompleteFlowWithRawResponse(executionID string, inputs map[string]string, action string,
+	challengeToken string) (*FlowStep, string, error) {
 	flowReqBody := map[string]interface{}{
-		"executionId":    executionId,
+		"executionId":    executionID,
 		"challengeToken": challengeToken,
 	}
 	if len(inputs) > 0 {
@@ -158,12 +167,12 @@ func CompleteFlow(executionId string, inputs map[string]string, action string, c
 
 	reqBody, err := json.Marshal(flowReqBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+		return nil, "", fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
 	req, err := http.NewRequest("POST", testServerURL+"/flow/execute", bytes.NewReader(reqBody))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create flow request: %w", err)
+		return nil, "", fmt.Errorf("failed to create flow request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -173,22 +182,77 @@ func CompleteFlow(executionId string, inputs map[string]string, action string, c
 
 	resp, err := client.Do(req)
 	if err != nil {
+		return nil, "", fmt.Errorf("failed to send flow request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read response body: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, string(bodyBytes), fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var flowStep FlowStep
+	if err := json.Unmarshal(bodyBytes, &flowStep); err != nil {
+		return nil, string(bodyBytes), fmt.Errorf("failed to parse response body: %w", err)
+	}
+
+	return &flowStep, string(bodyBytes), nil
+}
+
+// ExecuteAdministrationFlow starts an administration flow, optionally as the admin.
+func ExecuteAdministrationFlow(flowID string, inputs map[string]string, authenticated bool) (
+	*AdministrationFlowResult, error) {
+	reqBody, err := json.Marshal(map[string]interface{}{"flowId": flowID, "inputs": inputs})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", testServerURL+"/flow/execute", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create flow request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	if authenticated {
+		token, err := testutils.GetAccessToken()
+		if err != nil {
+			return nil, fmt.Errorf("failed to obtain admin access token: %w", err)
+		}
+		// The shared clients treat /flow/execute as public and skip token injection.
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	if err != nil {
 		return nil, fmt.Errorf("failed to send flow request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	var flowStep FlowStep
-	err = json.NewDecoder(resp.Body).Decode(&flowStep)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse response body: %w", err)
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	return &flowStep, nil
+	result := &AdministrationFlowResult{StatusCode: resp.StatusCode}
+	if resp.StatusCode == http.StatusOK {
+		var flowStep FlowStep
+		if err := json.Unmarshal(body, &flowStep); err != nil {
+			return nil, fmt.Errorf("failed to parse response body %s: %w", string(body), err)
+		}
+		result.Step = &flowStep
+		return result, nil
+	}
+
+	var errorResponse ErrorResponse
+	if err := json.Unmarshal(body, &errorResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse error response body %s: %w", string(body), err)
+	}
+	result.Error = &errorResponse
+	return result, nil
 }
 
 // CompleteAuthFlowWithError completes the authentication flow and expects an error response
@@ -320,7 +384,12 @@ func UpdateAppConfig(appID, authFlowID, registrationFlowID string) error {
 // CreateNotificationSender creates a custom SMS sender with a specified URL and name via
 // /connections/sms-gateway.
 func CreateNotificationSender(senderURL, senderName string) (string, error) {
+	ouID, err := testutils.DefaultConnectionOUID()
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve the connection organization unit: %w", err)
+	}
 	senderRequest := map[string]interface{}{
+		"ouId":        ouID,
 		"name":        senderName,
 		"description": "Custom SMS sender for integration tests",
 		"url":         senderURL,

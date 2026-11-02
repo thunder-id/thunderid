@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 // UserUniquenessTestSuite contains tests for user uniqueness validation
@@ -147,8 +147,9 @@ func (ts *UserUniquenessTestSuite) TestCreateUserWithUniqueConstraintViolation()
 
 func (ts *UserUniquenessTestSuite) createSchemaWithUniqueFields() string {
 	schema := CreateUserTypeRequest{
-		Name: "unique-employee",
-		OUID: ts.oUID,
+		Handle:      "unique-employee",
+		DisplayName: "Unique Employee",
+		OUID:        ts.oUID,
 		Schema: json.RawMessage(`{
 			"username": {"type": "string", "unique": true},
 			"email": {"type": "string", "unique": true},

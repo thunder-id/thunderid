@@ -15,7 +15,7 @@ export const Timeouts = {
   FORM_LOAD: 10000,
 
   /** Timeout for full page loads */
-  PAGE_LOAD: 30000,
+  PAGE_LOAD: 15000,
 
   /** Global test timeout */
   GLOBAL_TEST: 60000,
@@ -26,11 +26,11 @@ export const Timeouts = {
   /** Search debounce wait */
   SEARCH_DEBOUNCE: 500,
 
+  /** Wizard step transition animation wait */
+  STEP_TRANSITION: 300,
+
   /** Auth initialization wait */
   AUTH_INITIALIZATION: 500,
-
-  /** Post auth wait */
-  POST_AUTH: 2000,
 
   /** Timeout for login redirects */
   REDIRECT: 20000,

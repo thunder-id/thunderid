@@ -11,12 +11,13 @@ import OrganizationUnitEditPage from '../OrganizationUnitEditPage';
 // Mock navigate, useParams, and useLocation
 const mockNavigate = vi.fn();
 const mockUseLocation = vi.fn<() => {state: unknown; pathname: string; search: string; hash: string; key: string}>();
+let mockOrganizationUnitId = 'ou-123';
 vi.mock('react-router', async () => {
   const actual = await vi.importActual('react-router');
   return {
     ...actual,
     useNavigate: () => mockNavigate,
-    useParams: () => ({id: 'ou-123'}),
+    useParams: () => ({id: mockOrganizationUnitId}),
     useLocation: () => mockUseLocation(),
     Link: ({to, children = undefined, ...props}: {to: string; children?: ReactNode; [key: string]: unknown}) => (
       <a
@@ -228,6 +229,7 @@ describe('OrganizationUnitEditPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockOrganizationUnitId = 'ou-123';
     mockNavigate.mockReset();
     mockMutateAsync.mockReset();
     mockRefetch.mockReset();
@@ -787,6 +789,37 @@ describe('OrganizationUnitEditPage', () => {
     await waitFor(() => {
       expect(
         screen.getByRole('tab', {name: t('organizationUnits:edit.page.tabs.childOUs'), selected: true}),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('should return to the General tab after each organization unit navigation', async () => {
+    const {rerender} = renderWithProviders(<OrganizationUnitEditPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('tab', {name: t('organizationUnits:edit.page.tabs.childOUs')}));
+    expect(
+      screen.getByRole('tab', {name: t('organizationUnits:edit.page.tabs.childOUs'), selected: true}),
+    ).toBeInTheDocument();
+
+    mockOrganizationUnitId = 'ou-456';
+    rerender(<OrganizationUnitEditPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('tab', {name: t('organizationUnits:edit.page.tabs.general'), selected: true}),
+      ).toBeInTheDocument();
+    });
+
+    mockOrganizationUnitId = 'ou-123';
+    rerender(<OrganizationUnitEditPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('tab', {name: t('organizationUnits:edit.page.tabs.general'), selected: true}),
       ).toBeInTheDocument();
     });
   });

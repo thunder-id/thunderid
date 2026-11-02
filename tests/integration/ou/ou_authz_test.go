@@ -117,7 +117,8 @@ func (ts *OUAuthzTestSuite) SetupSuite() {
 
 	// ---- 2. Create a minimal user type in OU1 ----
 	schema := testutils.UserType{
-		Name:                  "ou-authz-admin-schema",
+		Handle:                "ou-authz-admin-schema",
+		DisplayName:           "Ou Authz Admin Schema",
 		OUID:                  ts.ou1ID,
 		AllowSelfRegistration: false,
 		Schema: map[string]interface{}{
@@ -131,7 +132,7 @@ func (ts *OUAuthzTestSuite) SetupSuite() {
 
 	// ---- 3. Create the OU-admin user in OU1 ----
 	userID, err := testutils.CreateUser(testutils.User{
-		Type: schema.Name,
+		Type: schema.Handle,
 		OUID: ts.ou1ID,
 		Attributes: json.RawMessage(fmt.Sprintf(
 			`{"username": %q, "password": %q}`,
@@ -202,8 +203,8 @@ func (ts *OUAuthzTestSuite) TearDownSuite() {
 		}
 	}
 	if ts.scopedRSID != "" {
-		if err := testutils.DeleteResourceServer(ts.scopedRSID); err != nil {
-			ts.T().Logf("teardown: delete scoped resource server: %v", err)
+		if err := testutils.DeleteResourceServerWithChildren(ts.scopedRSID); err != nil {
+			ts.T().Errorf("teardown: delete scoped resource server: %v", err)
 		}
 	}
 	if authzEntityTypeID != "" {
@@ -440,4 +441,22 @@ func (ts *OUAuthzTestSuite) doWithFilter(path, filterExpr string) *http.Response
 	resp, err := ts.ouViewClient.Do(req)
 	ts.Require().NoError(err)
 	return resp
+}
+
+// TestListOUsOffsetBeyondAuthorizedSet verifies that paging past the end of the caller's authorized
+// organization units returns an empty page while still reporting the true total.
+func (ts *OUAuthzTestSuite) TestListOUsOffsetBeyondAuthorizedSet() {
+	resp := ts.do(http.MethodGet, "/organization-units?limit=10&offset=1000", nil)
+	defer closeBody(resp)
+
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var listResp OrganizationUnitListResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+
+	ts.Empty(listResp.OrganizationUnits,
+		"an offset past the authorized set must return no organization units")
+	ts.Equal(0, listResp.Count, "count must be zero for an empty page")
+	ts.GreaterOrEqual(listResp.TotalResults, 1,
+		"total results must still report the authorized set size")
 }

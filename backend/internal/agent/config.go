@@ -29,3 +29,9 @@ func getAgentStoreMode() serverconst.StoreMode {
 	}
 	return serverconst.StoreModeMutable
 }
+
+// getAgentIndexedAttributes returns the entity attribute names that agents need indexed for fast
+// lookups and schema uniqueness checks.
+func getAgentIndexedAttributes() []string {
+	return []string{"name"}
+}

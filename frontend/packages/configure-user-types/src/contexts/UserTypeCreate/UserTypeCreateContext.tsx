@@ -20,6 +20,12 @@ export interface UserTypeCreateContextType {
   name: string;
   setName: (name: string) => void;
 
+  handle: string;
+  setHandle: (handle: string) => void;
+
+  handleEdited: boolean;
+  setHandleEdited: (edited: boolean) => void;
+
   ouId: string;
   setOuId: (ouId: string) => void;
 

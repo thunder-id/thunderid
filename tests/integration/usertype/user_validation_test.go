@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 type UserValidationTestSuite struct {
@@ -49,6 +49,7 @@ func (ts *UserValidationTestSuite) SetupSuite() {
 	ts.createSchemaWithEnum()
 	ts.createSchemaWithNestedObject()
 	ts.createSchemaWithArray()
+	ts.createSchemaWithContacts()
 }
 
 func (ts *UserValidationTestSuite) TearDownSuite() {
@@ -299,11 +300,65 @@ func (ts *UserValidationTestSuite) TestCreateUserWithoutSchema() {
 	ts.createUserAndExpectError(createUserReq, "USR-1021")
 }
 
+// TestCreateUserWithValidContacts tests user creation with valid email and mobile values
+func (ts *UserValidationTestSuite) TestCreateUserWithValidContacts() {
+	userID := ts.createUserAndExpectSuccess(CreateUserRequest{
+		OUID: ts.oUID,
+		Type: "contact-person",
+		Attributes: json.RawMessage(
+			`{"workEmail": "valid.contact+tag@example.com", "phone": "+94771234567", "localPhone": "0771234567"}`),
+	})
+	ts.createdUsers = append(ts.createdUsers, userID)
+}
+
+// TestCreateUserWithInvalidContacts tests that contact values must match their regex
+func (ts *UserValidationTestSuite) TestCreateUserWithInvalidContacts() {
+	for _, attributes := range []string{
+		`{"workEmail": "Name <invalid.contact@example.com>"}`,
+		`{"workEmail": "person\u00a0@example.com"}`,
+		`{"workEmail": "person\u2028@example.com"}`,
+		`{"workEmail": "person\ufeff@example.com"}`,
+		`{"workEmail": ""}`,
+		`{"workEmail": "invalid.mobile@example.com", "phone": "0771234567"}`,
+		`{"workEmail": "invalid.local@example.com", "localPhone": "+94771234567"}`,
+		`{"workEmail": "invalid.host@example.com", "hostEmail": "not-an-email"}`,
+	} {
+		ts.createUserAndExpectError(CreateUserRequest{
+			OUID:       ts.oUID,
+			Type:       "contact-person",
+			Attributes: json.RawMessage(attributes),
+		}, "USR-1019")
+	}
+}
+
+// TestUpdateUserWithEmptyOptionalContact tests that an optional contact is cleared by omitting it,
+// while an empty value is still validated
+func (ts *UserValidationTestSuite) TestUpdateUserWithEmptyOptionalContact() {
+	userID := ts.createUserAndExpectSuccess(CreateUserRequest{
+		OUID:       ts.oUID,
+		Type:       "contact-person",
+		Attributes: json.RawMessage(`{"workEmail": "clear.contact@example.com", "phone": "+94771234567"}`),
+	})
+	ts.createdUsers = append(ts.createdUsers, userID)
+
+	ts.updateUserAndExpectError(userID, UpdateUserRequest{
+		OUID:       ts.oUID,
+		Type:       "contact-person",
+		Attributes: json.RawMessage(`{"workEmail": "clear.contact@example.com", "phone": ""}`),
+	}, "USR-1019")
+	ts.updateUserAndExpectSuccess(userID, UpdateUserRequest{
+		OUID:       ts.oUID,
+		Type:       "contact-person",
+		Attributes: json.RawMessage(`{"workEmail": "clear.contact@example.com"}`),
+	})
+}
+
 // Helper methods
 
 func (ts *UserValidationTestSuite) createEmployeeSchema() string {
 	schema := CreateUserTypeRequest{
-		Name: "employee",
+		Handle:      "employee",
+		DisplayName: "Employee",
 		Schema: json.RawMessage(`{
 			"given_name": {"type": "string"},
 			"family_name": {"type": "string"},
@@ -318,7 +373,8 @@ func (ts *UserValidationTestSuite) createEmployeeSchema() string {
 
 func (ts *UserValidationTestSuite) createSchemaWithEnum() string {
 	schema := CreateUserTypeRequest{
-		Name: "student",
+		Handle:      "student",
+		DisplayName: "Student",
 		Schema: json.RawMessage(`{
 			"name": {"type": "string"},
 			"grade": {"type": "string", "enum": ["A", "B", "C", "D", "F"]},
@@ -331,7 +387,8 @@ func (ts *UserValidationTestSuite) createSchemaWithEnum() string {
 
 func (ts *UserValidationTestSuite) createSchemaWithNestedObject() string {
 	schema := CreateUserTypeRequest{
-		Name: "customer",
+		Handle:      "customer",
+		DisplayName: "Customer",
 		Schema: json.RawMessage(`{
 			"name": {"type": "string"},
 			"address": {
@@ -350,13 +407,29 @@ func (ts *UserValidationTestSuite) createSchemaWithNestedObject() string {
 
 func (ts *UserValidationTestSuite) createSchemaWithArray() string {
 	schema := CreateUserTypeRequest{
-		Name: "teacher",
+		Handle:      "teacher",
+		DisplayName: "Teacher",
 		Schema: json.RawMessage(`{
 			"name": {"type": "string"},
 			"subjects": {
 				"type": "array",
 				"items": {"type": "string"}
 			}
+		}`),
+	}
+
+	return ts.createSchema(schema)
+}
+
+func (ts *UserValidationTestSuite) createSchemaWithContacts() string {
+	schema := CreateUserTypeRequest{
+		Handle:      "contact-person",
+		DisplayName: "Contact Person",
+		Schema: json.RawMessage(`{
+			"workEmail": {"type": "email", "required": true, "unique": true},
+			"phone": {"type": "mobile"},
+			"localPhone": {"type": "mobile", "regex": "^0[0-9]{9}$"},
+			"hostEmail": {"type": "email", "regex": ""}
 		}`),
 	}
 

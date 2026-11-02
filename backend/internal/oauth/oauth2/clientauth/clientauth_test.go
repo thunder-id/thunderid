@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package clientauth
@@ -10,13 +10,16 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/assert"
@@ -30,17 +33,24 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/jtimock"
 )
 
 const (
-	testClientID           = "test-client-id"
-	testClientSecret       = "test-secret"
-	testIssuer             = "https://localhost:9443"
-	testLeeway       int64 = 60
+	testClientID     = "test-client-id"
+	testClientSecret = "test-secret"
+	testIssuer       = "https://localhost:9443"
 )
+
+var testAssertionCfg = engineconfig.ClientAssertionConfig{
+	MaxLifetime: 300,
+	MaxIatAge:   300,
+}
+
+var testJWTLeeway int64 = 30
 
 type ClientAuthTestSuite struct {
 	suite.Suite
@@ -56,7 +66,7 @@ func TestClientAuthTestSuite(t *testing.T) {
 }
 
 func (suite *ClientAuthTestSuite) actorProvider() providers.ActorProvider {
-	return actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil)
+	return actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil)
 }
 
 func (suite *ClientAuthTestSuite) SetupTest() {
@@ -101,8 +111,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_Success_ClientSecretPost() {
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.Nil(suite.T(), authErr)
 	assert.NotNil(suite.T(), clientInfo)
@@ -130,8 +140,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_Success_ClientSecretBasic() {
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.Nil(suite.T(), authErr)
 	assert.NotNil(suite.T(), clientInfo)
@@ -162,8 +172,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_Success_ClientSecretBasic_URL
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.Nil(suite.T(), authErr)
 	assert.NotNil(suite.T(), clientInfo)
@@ -181,8 +191,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_InvalidBasicAuth_BadPercentEn
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -197,8 +207,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_InvalidBasicAuth_BadPercentEn
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -225,8 +235,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_Success_PublicClient() {
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.Nil(suite.T(), authErr)
 	assert.NotNil(suite.T(), clientInfo)
@@ -242,8 +252,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_MissingClientID() {
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -259,8 +269,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_EmptyClientIDInBasicAuth() {
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -275,8 +285,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_EmptyClientIDAndSecretInBasic
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -299,8 +309,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_MissingClientSecret() {
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -313,8 +323,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_InvalidBasicAuth() {
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -327,8 +337,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_InvalidAuthorizationHeader() 
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -347,8 +357,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_BothHeaderAndBody() {
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -370,8 +380,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_ClientNotFound() {
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -411,12 +421,89 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_InvalidClientSecret() {
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), failAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), failAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
 	assert.Equal(suite.T(), errInvalidClientCredentials, authErr)
+}
+
+// A client that governance holds, or whose state cannot be read, is refused as an unregistered
+// client is.
+func (suite *ClientAuthTestSuite) TestAuthenticate_HeldClient() {
+	cases := []struct {
+		name     string
+		decision providers.AccessDecision
+		svcErr   *tidcommon.ServiceError
+		refused  bool
+	}{
+		{name: "Admitted", decision: providers.AccessDecision{Admitted: true}},
+		{name: "Held", decision: providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended},
+			refused: true},
+		{name: "GovernanceFault", svcErr: &tidcommon.InternalServerError, refused: true},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockInboundClient.On("GetOAuthClientByClientID", mock.Anything, testClientID).
+				Return(&providers.OAuthClient{
+					ID:                      "app-1",
+					ClientID:                testClientID,
+					TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
+				}, nil).Once()
+			governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+			governance.EXPECT().EvaluateAccess(mock.Anything, "app-1", providers.AccessPlaneApplication,
+				providers.AuthenticationMethod("")).Return(tc.decision, tc.svcErr).Once()
+			req := suite.secretPostRequest(testClientSecret)
+
+			clientInfo, authErr := authenticate(req.Context(), req, suite.actorProvider(), suite.mockAuthnProvider,
+				governance, suite.mockJwtService, suite.mockJtiStore, testIssuer, testAssertionCfg, testJWTLeeway)
+
+			if tc.refused {
+				suite.Nil(clientInfo)
+				suite.Equal(errInvalidClientCredentials, authErr)
+			} else {
+				suite.Nil(authErr)
+				suite.NotNil(clientInfo)
+			}
+		})
+	}
+}
+
+// A wrong secret fails before the hold is read, so it does not reveal the hold.
+func (suite *ClientAuthTestSuite) TestAuthenticate_WrongSecretOnAHeldClientDoesNotReadTheHold() {
+	suite.mockInboundClient.On("GetOAuthClientByClientID", mock.Anything, testClientID).
+		Return(&providers.OAuthClient{
+			ID:                      "app-1",
+			ClientID:                testClientID,
+			TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
+		}, nil).Once()
+	failAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
+	failAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, (providers.AuthenticatedClaims)(nil),
+			&tidcommon.ServiceError{Type: tidcommon.ClientErrorType,
+				Code: authnprovidermgr.ErrorAuthenticationFailed.Code}).Once()
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	req := suite.secretPostRequest("wrong-secret")
+
+	clientInfo, authErr := authenticate(req.Context(), req, suite.actorProvider(), failAuthnProvider,
+		governance, suite.mockJwtService, suite.mockJtiStore, testIssuer, testAssertionCfg, testJWTLeeway)
+
+	suite.Nil(clientInfo)
+	suite.Equal(errInvalidClientCredentials, authErr)
+}
+
+// secretPostRequest builds a client_secret_post request for testClientID.
+func (suite *ClientAuthTestSuite) secretPostRequest(secret string) *http.Request {
+	formData := url.Values{}
+	formData.Set("client_id", testClientID)
+	formData.Set("client_secret", secret)
+	req, _ := http.NewRequest("POST", "/test", strings.NewReader(formData.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	_ = req.ParseForm()
+	return req
 }
 
 func (suite *ClientAuthTestSuite) TestAuthenticate_WrongAuthMethod() {
@@ -436,8 +523,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_WrongAuthMethod() {
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -467,8 +554,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PublicClientWithSecret() {
 	// Try to use client_secret_post with public client
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -496,8 +583,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PublicClientMissingSecret() {
 	// Public client with authMethod = none should succeed
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.Nil(suite.T(), authErr)
 	assert.NotNil(suite.T(), clientInfo)
@@ -524,8 +611,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_ClientIDMismatch_HeaderVsBody
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -546,8 +633,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_ServiceError() {
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -586,7 +673,11 @@ func buildTestRSAJWKS(kid string) string {
 func buildFakeJWTWithSub(subject string) string {
 	return buildTestJWT(
 		map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": subject, "aud": testIssuer, "jti": "test-jti", "exp": 9999999999},
+		map[string]any{
+			"sub": subject, "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Unix(),
+			"exp": time.Now().Add(time.Minute).Unix(),
+		},
 	)
 }
 
@@ -629,8 +720,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_Success_PrivateKeyJWT() {
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.Nil(suite.T(), authErr)
 	assert.NotNil(suite.T(), clientInfo)
@@ -673,8 +764,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_Success_PrivateKeyJWT_WithCli
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.Nil(suite.T(), authErr)
 	assert.NotNil(suite.T(), clientInfo)
@@ -694,8 +785,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_UnsupportedAsse
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -714,8 +805,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_OnlyAssertionTy
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -739,8 +830,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_OnlyAssertionPr
 	// Then it checks assertion_type != SupportedClientAssertionType, which fails.
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -771,8 +862,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_InvalidAssertio
 
 			clientInfo, authErr := authenticate(
 				req.Context(), req,
-				suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-				testIssuer, testLeeway)
+				suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+				testIssuer, testAssertionCfg, testJWTLeeway)
 
 			assert.NotNil(suite.T(), authErr)
 			assert.Nil(suite.T(), clientInfo)
@@ -799,8 +890,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_ClientNotFound(
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -829,8 +920,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_AuthMethodNotAl
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -860,8 +951,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_AssertionValida
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -884,8 +975,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_ClientIDMismatc
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -907,8 +998,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_WithBasicAuth_M
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -931,8 +1022,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_WithClientSecre
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -956,8 +1047,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_ServiceError() 
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -980,8 +1071,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_InvalidBase64Pa
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -1007,8 +1098,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_InvalidJSONPayl
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -1036,8 +1127,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_MissingClientAu
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
@@ -1055,7 +1146,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_NilCertificate() {
 
 	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client",
-		"some.jwt.token", testLeeway)
+		"some.jwt.token", testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "no certificate configured")
 }
@@ -1077,7 +1168,8 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_JWKSURI_Success() 
 		Return(nil)
 
 	err := validateClientAssertion(context.Background(),
-		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", assertion, testLeeway)
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", assertion,
+		testAssertionCfg, testJWTLeeway)
 	assert.Nil(suite.T(), err)
 }
 
@@ -1098,7 +1190,8 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_JWKSURI_Verificati
 		Return(&tidcommon.ServiceError{Error: tidcommon.I18nMessage{DefaultValue: "verification failed"}})
 
 	err := validateClientAssertion(context.Background(),
-		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", assertion, testLeeway)
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", assertion,
+		testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "client assertion verification with JWKS URI failed")
 }
@@ -1113,10 +1206,11 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_InvalidJWKSJSON() 
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti", "exp": 9999999999})
+		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix()})
 
 	err := validateClientAssertion(context.Background(), oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer,
-		"test-client", fakeJWT, testLeeway)
+		"test-client", fakeJWT, testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "invalid JWKS certificate format")
 }
@@ -1131,14 +1225,15 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_InvalidJWTFormat()
 		},
 	}
 
-	// Valid, decodable payload (so the 'aud' check passes) but an undecodable header segment,
-	// so the failure surfaces at header decoding.
-	payloadB64 := base64.RawURLEncoding.EncodeToString(
-		[]byte(`{"sub":"test-client","aud":"` + testIssuer + `"}`))
+	// Valid, decodable payload (so the 'aud' and timestamp checks pass) but an undecodable
+	// header segment, so the failure surfaces at header decoding inside signature verification.
+	payload := fmt.Sprintf(`{"sub":"test-client","aud":%q,"iat":%d,"exp":%d}`,
+		testIssuer, time.Now().Unix(), time.Now().Add(time.Minute).Unix())
+	payloadB64 := base64.RawURLEncoding.EncodeToString([]byte(payload))
 	fakeJWT := "!!!." + payloadB64 + ".fake-signature"
 
 	err := validateClientAssertion(context.Background(), oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer,
-		"test-client", fakeJWT, testLeeway)
+		"test-client", fakeJWT, testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "failed to decode header")
 }
@@ -1153,7 +1248,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_UndecodablePayload
 	}
 
 	err := validateClientAssertion(context.Background(), oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer,
-		"test-client", "not-a-decodable-jwt", testLeeway)
+		"test-client", "not-a-decodable-jwt", testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "failed to decode client assertion payload")
 }
@@ -1169,10 +1264,12 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_MissingKidInHeader
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "typ": "JWT"},
-		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti", "exp": 9999999999})
+		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix()})
 
 	err := validateClientAssertion(context.Background(),
-		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT, testLeeway)
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "JWT header missing 'kid' claim")
 }
@@ -1188,10 +1285,12 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_EmptyKidInHeader()
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "", "typ": "JWT"},
-		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti", "exp": 9999999999})
+		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix()})
 
 	err := validateClientAssertion(context.Background(),
-		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT, testLeeway)
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "JWT header missing 'kid' claim")
 }
@@ -1207,10 +1306,12 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_KidNotAString() {
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": 12345, "typ": "JWT"},
-		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti", "exp": 9999999999})
+		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix()})
 
 	err := validateClientAssertion(context.Background(),
-		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT, testLeeway)
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "JWT header missing 'kid' claim")
 }
@@ -1226,10 +1327,12 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_NoMatchingKidInJWK
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti", "exp": 9999999999})
+		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix()})
 
 	err := validateClientAssertion(context.Background(),
-		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT, testLeeway)
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "no matching key found in JWKS")
 }
@@ -1251,7 +1354,8 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_InvalidJWKCannotCo
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti", "exp": 9999999999})
+		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix()})
 
 	// JWK-to-public-key conversion now happens inside the JWT service's crypto provider
 	// rather than locally, so the invalid JWK surfaces as a verification failure.
@@ -1269,7 +1373,8 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_InvalidJWKCannotCo
 		})
 
 	err := validateClientAssertion(context.Background(),
-		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT, testLeeway)
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "client assertion verification failed")
 }
@@ -1285,7 +1390,8 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_VerificationFails(
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti", "exp": 9999999999})
+		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix()})
 
 	suite.mockJwtService.EXPECT().
 		VerifyJWTWithPublicKey(
@@ -1301,7 +1407,8 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_VerificationFails(
 		})
 
 	err := validateClientAssertion(context.Background(),
-		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT, testLeeway)
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "client assertion verification failed")
 }
@@ -1317,7 +1424,8 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_Success() {
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti", "exp": 9999999999})
+		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix()})
 
 	suite.mockJwtService.EXPECT().
 		VerifyJWTWithPublicKey(
@@ -1329,7 +1437,110 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_Success() {
 		Return(nil)
 
 	err := validateClientAssertion(context.Background(),
-		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT, testLeeway)
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
+	assert.Nil(suite.T(), err)
+}
+
+func (suite *ClientAuthTestSuite) TestValidateClientAssertion_IatFarInFuture_Rejected() {
+	oauthApp := &providers.OAuthClient{
+		ClientID:    "test-client",
+		Certificate: &providers.Certificate{Type: "jwks", Value: buildTestRSAJWKS("test-kid")},
+	}
+
+	// iat is 1 hour in the future, beyond the configured Leeway (10s).
+	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
+		map[string]any{
+			"sub": "test-client", "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Add(time.Hour).Unix(),
+			"exp": time.Now().Add(2 * time.Hour).Unix(),
+		})
+
+	err := validateClientAssertion(context.Background(),
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
+	assert.NotNil(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "'iat' claim is too far in the future")
+}
+
+func (suite *ClientAuthTestSuite) TestValidateClientAssertion_ExpExceedsMaxLifetime_Rejected() {
+	oauthApp := &providers.OAuthClient{
+		ClientID:    "test-client",
+		Certificate: &providers.Certificate{Type: "jwks", Value: buildTestRSAJWKS("test-kid")},
+	}
+
+	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
+		map[string]any{
+			"sub": "test-client", "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Unix(),
+			"exp": time.Now().Add(24 * time.Hour).Unix(),
+		})
+
+	err := validateClientAssertion(context.Background(),
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
+	assert.NotNil(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "lifetime exceeds the maximum allowed duration")
+}
+
+func (suite *ClientAuthTestSuite) TestValidateClientAssertion_IatFarInPast_Rejected() {
+	oauthApp := &providers.OAuthClient{
+		ClientID:    "test-client",
+		Certificate: &providers.Certificate{Type: "jwks", Value: buildTestRSAJWKS("test-kid")},
+	}
+
+	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
+		map[string]any{
+			"sub": "test-client", "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Add(-time.Hour).Unix(),
+			"exp": time.Now().Add(time.Minute).Unix(),
+		})
+
+	err := validateClientAssertion(context.Background(),
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
+	assert.NotNil(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "unreasonably far in the past")
+}
+
+func (suite *ClientAuthTestSuite) TestValidateClientAssertion_InvalidIatType_Rejected() {
+	oauthApp := &providers.OAuthClient{
+		ClientID:    "test-client",
+		Certificate: &providers.Certificate{Type: "jwks", Value: buildTestRSAJWKS("test-kid")},
+	}
+
+	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
+		map[string]any{
+			"sub": "test-client", "aud": testIssuer, "jti": "test-jti",
+			"iat": "not-a-number",
+			"exp": time.Now().Add(time.Minute).Unix(),
+		})
+
+	err := validateClientAssertion(context.Background(),
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
+	assert.NotNil(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "'iat' claim is not a number")
+}
+
+func (suite *ClientAuthTestSuite) TestValidateClientAssertion_IatWithinBounds_Success() {
+	now := time.Unix(1700000000, 0)
+	payload := map[string]any{
+		"iat": float64(now.Unix()),
+		"exp": float64(now.Add(time.Minute).Unix()),
+	}
+	err := validateAssertionTimestamps(payload, testAssertionCfg, now, testJWTLeeway)
+	assert.Nil(suite.T(), err)
+}
+
+func (suite *ClientAuthTestSuite) TestValidateClientAssertion_IatWithinLeeway_Success() {
+	now := time.Unix(1700000000, 0)
+	// iat is exactly at the Leeway boundary (10s in the future); the check is exclusive so it passes.
+	payload := map[string]any{
+		"iat": float64(now.Add(10 * time.Second).Unix()),
+		"exp": float64(now.Add(time.Minute).Unix()),
+	}
+	err := validateAssertionTimestamps(payload, testAssertionCfg, now, testJWTLeeway)
 	assert.Nil(suite.T(), err)
 }
 
@@ -1346,10 +1557,12 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_EmptyJWKSKeys() {
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti", "exp": 9999999999})
+		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix()})
 
 	err := validateClientAssertion(context.Background(),
-		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT, testLeeway)
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "no matching key found in JWKS")
 }
@@ -1378,7 +1591,8 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_MultipleKeysMatche
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "kid-2", "typ": "JWT"},
-		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti", "exp": 9999999999})
+		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix()})
 
 	suite.mockJwtService.EXPECT().
 		VerifyJWTWithPublicKey(
@@ -1390,12 +1604,12 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_MultipleKeysMatche
 		Return(nil)
 
 	err := validateClientAssertion(context.Background(),
-		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT, testLeeway)
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
 	assert.Nil(suite.T(), err)
 }
 
-// Per FAPI 2.0 Security Profile Section 5.3.2.1 the client assertion's 'aud' must be the issuer as a
-// single string. A single-element array containing the issuer must be rejected.
+// The assertion's 'aud' must be the issuer as a single string; a single-element array must be rejected.
 func (suite *ClientAuthTestSuite) TestValidateClientAssertion_ArrayAudSingleElement_Rejected() {
 	oauthApp := &providers.OAuthClient{
 		ClientID: "test-client",
@@ -1409,7 +1623,8 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_ArrayAudSingleElem
 		map[string]any{"sub": "test-client", "aud": []string{testIssuer}})
 
 	err := validateClientAssertion(context.Background(),
-		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT, testLeeway)
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "'aud' claim must be a single string")
 }
@@ -1428,7 +1643,8 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_ArrayAudMultiEleme
 		map[string]any{"sub": "test-client", "aud": []string{testIssuer, "https://other"}})
 
 	err := validateClientAssertion(context.Background(),
-		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT, testLeeway)
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "'aud' claim must be a single string")
 }
@@ -1447,18 +1663,19 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_StringAudMismatch_
 		map[string]any{"sub": "test-client", "aud": "https://wrong-issuer"})
 
 	err := validateClientAssertion(context.Background(),
-		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT, testLeeway)
+		oauthApp, suite.mockJwtService, suite.mockJtiStore, testIssuer, "test-client", fakeJWT,
+		testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "does not match the issuer")
 }
 
-// A private_key_jwt client authenticating with the issuer identifier as its assertion audience
-// succeeds; the JWT service verifies 'aud' against the issuer (FAPI 2.0 Security Profile Section 5.3.2.1).
+// A private_key_jwt client authenticating with the issuer identifier as its assertion audience succeeds.
 func (suite *ClientAuthTestSuite) TestAuthenticate_Success_PrivateKeyJWT_IssuerAudience() {
 	jwksJSON := buildTestRSAJWKS("test-kid")
 	assertion := buildTestJWT(
 		map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": testClientID, "aud": testIssuer, "jti": "test-jti", "exp": 9999999999})
+		map[string]any{"sub": testClientID, "aud": testIssuer, "jti": "test-jti",
+			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix()})
 	mockApp := &providers.OAuthClient{
 		ClientID:                testClientID,
 		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodPrivateKeyJWT,
@@ -1482,8 +1699,8 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_Success_PrivateKeyJWT_IssuerA
 
 	clientInfo, authErr := authenticate(
 		req.Context(), req,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, suite.mockJtiStore,
+		testIssuer, testAssertionCfg, testJWTLeeway)
 
 	assert.Nil(suite.T(), authErr)
 	assert.NotNil(suite.T(), clientInfo)
@@ -1533,14 +1750,16 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_PrivateKeyJWT_ReplayRejected(
 	// First use of the assertion succeeds.
 	req1 := buildReq()
 	clientInfo, authErr := authenticate(req1.Context(), req1,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, replayStore, testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, replayStore, testIssuer,
+		testAssertionCfg, testJWTLeeway)
 	assert.Nil(suite.T(), authErr)
 	assert.NotNil(suite.T(), clientInfo)
 
 	// Replaying the identical assertion is rejected.
 	req2 := buildReq()
 	clientInfo, authErr = authenticate(req2.Context(), req2,
-		suite.actorProvider(), suite.mockAuthnProvider, suite.mockJwtService, replayStore, testIssuer, testLeeway)
+		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, replayStore, testIssuer,
+		testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
 	assert.Equal(suite.T(), errInvalidClientAssertion, authErr)
@@ -1557,7 +1776,8 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_ReplayRejected() {
 		},
 	}
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "replayed-jti", "exp": 9999999999})
+		map[string]any{"sub": "test-client", "aud": testIssuer, "jti": "replayed-jti",
+			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix()})
 
 	suite.mockJwtService.EXPECT().
 		VerifyJWTWithPublicKey(mock.Anything, fakeJWT, mock.Anything, testIssuer, "test-client").
@@ -1569,13 +1789,13 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_ReplayRejected() {
 		Return(false, nil).Once()
 
 	err := validateClientAssertion(context.Background(), oauthApp, suite.mockJwtService, replayStore,
-		testIssuer, "test-client", fakeJWT, testLeeway)
+		testIssuer, "test-client", fakeJWT, testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "replay detected")
 }
 
-// TestValidateClientAssertion_MissingJTI rejects an otherwise valid assertion that carries no jti,
-// since one-time-use cannot be enforced without it (RFC 7523 requires jti for this profile).
+// TestValidateClientAssertion_MissingJTI rejects an assertion that carries no jti,
+// since one-time-use cannot be enforced without it.
 func (suite *ClientAuthTestSuite) TestValidateClientAssertion_MissingJTI() {
 	oauthApp := &providers.OAuthClient{
 		ClientID: "test-client",
@@ -1585,14 +1805,15 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_MissingJTI() {
 		},
 	}
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": "test-client", "aud": testIssuer, "exp": 9999999999})
+		map[string]any{"sub": "test-client", "aud": testIssuer,
+			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix()})
 
 	suite.mockJwtService.EXPECT().
 		VerifyJWTWithPublicKey(mock.Anything, fakeJWT, mock.Anything, testIssuer, "test-client").
 		Return(nil)
 
 	err := validateClientAssertion(context.Background(), oauthApp, suite.mockJwtService, suite.mockJtiStore,
-		testIssuer, "test-client", fakeJWT, testLeeway)
+		testIssuer, "test-client", fakeJWT, testAssertionCfg, testJWTLeeway)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "missing 'jti'")
 }
@@ -1601,4 +1822,30 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_MissingJTI() {
 // build a real actor provider but never exercise actor authentication.
 func noopAuthnMgr() *managermock.AuthnProviderManagerMock {
 	return &managermock.AuthnProviderManagerMock{}
+}
+
+// A client that may not act for an organization unit and an organization unit that does not exist
+// answer identically, which is what stops the token endpoint being used to enumerate organization
+// units. Both are reached only after the client has authenticated, so an unauthenticated caller
+// cannot probe either.
+//
+// The two refusals are produced by different packages: this one by the admission step, the other
+// by the accessing-organization-unit middleware. This pins the half of the pair that lives here.
+func TestTheTwoOURefusalsAreIndistinguishable(t *testing.T) {
+	refusal := errClientNotAuthorizedForOU
+
+	assert.Equal(t, constants.ErrorUnauthorizedClient, refusal.ErrorCode)
+	assert.Equal(t, http.StatusBadRequest, refusal.StatusCode)
+	assert.Equal(t, constants.OUAccessRefusal, refusal.ErrorDescription,
+		"the wording is shared with the middleware's refusal, so the two cannot drift apart")
+}
+
+// A wrong secret stays a different answer. Collapsing that one too would leave a caller unable to
+// tell a bad credential from a missing policy, which is a refusal it can actually act on.
+func TestABadCredentialIsStillItsOwnAnswer(t *testing.T) {
+	refusal := errClientNotAuthorizedForOU
+
+	assert.NotEqual(t, errInvalidClientCredentials.ErrorCode, refusal.ErrorCode)
+	assert.Equal(t, constants.ErrorInvalidClient, errInvalidClientCredentials.ErrorCode,
+		"a bad credential remains invalid_client")
 }

@@ -12,9 +12,25 @@ Complete the setup once. Every walkthrough below builds on the same starting poi
 
 Before you begin, make sure you have:
 
-- <ProductName /> running locally, with `http://localhost:5173` added to the server-config `cors` section so the web app can call <ProductName /> from the browser. Add it to `backend/cmd/server/config/resources/server_configs/cors.yaml`, or use `PUT /server-config/cors` after startup. See [Get <ProductName />](../../../../getting-started/get-thunderid).
+- <ProductName /> running locally, with `http://localhost:5173` allowed to call it from the browser. After startup, send `PUT /server-config/cors` with the origin. If you run with declarative resources enabled, you can instead ship the same value as `config/resources/server_configs/cors.yaml` in the distribution. See [Get <ProductName />](../../../../getting-started/get-thunderid).
+
+  The call needs an access token with the `system` scope. Obtain one for an administrator, export it, then send
+  the origin:
+
+  ```bash
+  export TOKEN="<access-token>"
+
+  curl -kL -X PUT https://localhost:8090/server-config/cors \
+    -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $TOKEN" \
+    -d '{ "allowedOrigins": ["http://localhost:5173"] }'
+  ```
+
+  The declarative equivalent, for instances that run with declarative resources enabled, is
+  `config/resources/server_configs/cors.yaml`:
 
   ```yaml
+  resource_type: server_config
   name: cors
   value:
     allowedOrigins:
@@ -37,16 +53,16 @@ Import the Wayfinder configuration bundle.
    - Select your `thunderid-config/redirect/thunderid.env` file to provide the environment variables referenced in the YAML.
    - The Console imports the files and reports the resources it created when the import completes.
 
-   The import creates:
+   The bundle creates everything the sample needs. What these walkthroughs use:
 
    - **Resource servers:** `wayfinder-agent` (identifier `http://localhost:8790/chat`, with `agent:access`) and `wayfinder` (identifier `http://localhost:8787/mcp`, with `booking:read`, `booking:create`, `booking:cancel`, `booking:recommend`).
    - **Default resource server:** set to `wayfinder`, so web sign-in tokens that omit `resource` are bound to the booking API. The chat widget sends `resource=http://localhost:8790/chat`, and the agent sends `resource=http://localhost:8787/mcp` for MCP calls.
    - **Roles:** `Chat User`, `Booking User`, and `Recommender`, with users and the agent pre-assigned:
-     - `Chat User` → `john.doe`.
-     - `Booking User` → `john.doe` and `jane.smith`.
-     - `Recommender` → `WAYFINDER-CONCIERGE`.
-   - **Application:** `WAYFINDER` (public, PKCE, redirect to `http://localhost:5173`).
-   - **Agent:** `WAYFINDER-CONCIERGE` (confidential client with `client_credentials` + `authorization_code` grants).
+       - `Chat User` → `john.doe`.
+       - `Booking User` → `john.doe` and `jane.smith`.
+       - `Recommender` → `WAYFINDER-CONCIERGE`.
+   - **Application:** `WAYFINDER` (public, PKCE, redirects to `http://localhost:5173` and `/chat-token-callback`).
+   - **Agent:** `WAYFINDER-CONCIERGE` (confidential client with the `client_credentials` and `authorization_code` grants).
    - **Flow:** `Wayfinder Agent Authentication Flow` (assigned to the agent).
    - **Users:** `john.doe` / `john.doe` and `jane.smith` / `jane.smith` (typed as `Customer`).
 
@@ -54,7 +70,7 @@ Import the Wayfinder configuration bundle.
 
 ## Walkthrough Structure
 
-Each walkthrough below starts from the setup above. The walkthroughs map onto the patterns from [Identity for AI Agents](../../overview), so you can read about a pattern and then run it.
+Each walkthrough below starts from the setup above. The walkthroughs map onto the patterns from [Understand It](../../overview), so you can read about a pattern and then run it.
 
 Select a walkthrough to begin:
 

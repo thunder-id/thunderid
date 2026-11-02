@@ -35,10 +35,10 @@ Your MCP server becomes an OAuth 2.1 resource server. When a client connects wit
 
 In the Console:
 
-1. Navigate to **Resource Servers** and click **Add resource server**.
+1. Navigate to **Resource servers** and click **Add resource server**.
 2. On the **Type** step, select **MCP**.
-3. On the **Name** step, enter an **MCP Server Name** and an **Identifier**. Set the identifier to the MCP server's own URL, for example `https://mcp.example.com`: it becomes the access token audience for [Resource Indicators](../../../protocols/oauth-oidc/resource-indicators) (RFC 8707).
-4. On the **Permission Delimiter** step, choose the character that separates parts of a permission string, for example the default colon (`:`). If your deployment has multiple organization units, select one first, then click **Create MCP server**.
+3. On the **Name** step, enter an **MCP server name** and an **Identifier**. Set the identifier to the MCP server's own URL, for example `https://mcp.example.com/mcp`. It must be an `http` or `https` URL, and it becomes the access token audience for [Resource Indicators](../../../protocols/oauth-oidc/resource-indicators) (RFC 8707).
+4. On the **Permission delimiter** step, choose the character that separates parts of a permission string, for example the default colon (`:`). If your deployment has multiple organization units, select one first, then click **Create MCP server**.
 
 :::note
 The delimiter cannot be changed after creation, so plan it before you click **Create MCP server**.
@@ -61,12 +61,12 @@ The same panel also lets you add resource permissions, for MCP resources rather 
 
 Registering a tool permission in the previous step only defines it. <ProductName /> puts a scope into an access token only when the signing-in user or client actually holds the matching permission through a role, and a scope they do not hold is not rejected, it is silently dropped from the issued token. A missing scope does not make its tool error: the tool simply does not appear, which looks identical to the tool never having existed. This is the most common reason a freshly registered tool does not show up for a test user, so create and assign the role before you try to connect a client.
 
-1. Navigate to **Roles** and click **Add Role**.
+1. Navigate to **Roles** and click **Add role**.
 2. Enter a name and, if prompted, select an organization unit.
 3. On the **Permissions** step, expand your MCP server's entry and, under **Tools**, select the permissions this role should grant.
 4. Create the role.
 5. Open the role, select the **Assignments** tab, and click **Add**.
-6. On the **Users**, **Groups**, **Applications**, or **Agents** tab, depending on who should hold this role, select the principals and click **Add Selected**.
+6. On the **Users**, **Groups**, **Applications**, or **Agents** tab, depending on who should hold this role, select the principals and click **Add selected**.
 
 :::warning
 A user or client that authenticates without this role gets a token missing every tool-scoped permission, even though the resource server correctly lists them as capabilities. If a tool disappears for one caller but not another, check role assignments before you check your server's scope-checking code.
@@ -92,7 +92,7 @@ Fetching that URL returns the metadata document:
 }
 ```
 
-The client resolves the `authorization_servers` entry against <ProductName />'s own [Server Metadata](../../../protocols/oauth-oidc/server-metadata) document to discover the authorization, token, and JWKS endpoints, then runs an OAuth flow to get a token. How the client itself gets OAuth credentials, as a pre-registered application or through Dynamic Client Registration, is covered in [MCP Client Identity](../../mcp-clients).
+The client resolves the `authorization_servers` entry against <ProductName />'s own [Server Metadata](../../../protocols/oauth-oidc/server-metadata) document to discover the authorization, token, and JWKS endpoints, then runs an OAuth flow to get a token. How the client itself gets OAuth credentials, from its metadata document, as a pre-registered application, or through Dynamic Client Registration, is covered in [MCP Client Identity](../../mcp-clients).
 
 ## Step 5: Validate Tokens at the Tool Boundary
 
@@ -133,5 +133,5 @@ For those cases, have your MCP server call <ProductName /> as an AuthZEN policy 
 ## Next Steps
 
 - [Secure Your MCP Server (Python)](../../../../getting-started/connect-your-mcp/python): a complete, runnable version of this guide using FastMCP.
-- [MCP Client Identity](../../mcp-clients): register the clients that connect to your MCP server, or let them self-register through Dynamic Client Registration.
+- [MCP Client Identity](../../mcp-clients): register the clients that connect to your MCP server from their metadata documents or by configuring them manually, or let them self-register through Dynamic Client Registration.
 - [Securing MCP](../../../../use-cases/ai-agents/mcp-authorization/overview): the broader pattern for securing MCP servers and governing MCP clients.

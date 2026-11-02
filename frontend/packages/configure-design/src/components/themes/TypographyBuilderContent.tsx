@@ -204,7 +204,7 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
 
   return (
     <Stack gap={1}>
-      <ConfigCard title={t('themes.forms.typography_builder.font_family.title', 'Font Family')}>
+      <ConfigCard title={t('themes.forms.typography_builder.font_family.title', 'Font family')}>
         <ToggleButtonGroup
           value={fontMode}
           exclusive
@@ -217,7 +217,7 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
             {t('themes.forms.typography_builder.font_family.modes.web_safe', 'Use a web-safe font')}
           </ToggleButton>
           <ToggleButton value="import" sx={{textTransform: 'none', fontSize: '0.75rem'}}>
-            {t('themes.forms.typography_builder.font_family.modes.import', 'Use a Custom Font')}
+            {t('themes.forms.typography_builder.font_family.modes.import', 'Use a custom font')}
           </ToggleButton>
         </ToggleButtonGroup>
 
@@ -250,7 +250,7 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
           <Stack gap={1.5} sx={{mb: 1.5}}>
             <FormControl fullWidth>
               <FormLabel htmlFor="font-import-url-input">
-                {t('themes.forms.typography_builder.fields.font_import_url.label', 'Font Import URL')}
+                {t('themes.forms.typography_builder.fields.font_import_url.label', 'Font import URL')}
               </FormLabel>
               <TextField
                 fullWidth
@@ -278,7 +278,7 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
             <CspOriginHint value={importURL} resourceType="font" />
             <FormControl fullWidth>
               <FormLabel htmlFor="font-family-input">
-                {t('themes.forms.typography_builder.fields.font_family_input.label', 'Font Family')}
+                {t('themes.forms.typography_builder.fields.font_family_input.label', 'Font family')}
               </FormLabel>
               <TextField
                 fullWidth
@@ -334,7 +334,7 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
       </ConfigCard>
 
       <ConfigCard
-        title={t('themes.forms.typography_builder.font_weights.title', 'Font Weights')}
+        title={t('themes.forms.typography_builder.font_weights.title', 'Font weights')}
         defaultOpen={false}
         action={
           <Link
@@ -410,7 +410,7 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
       </ConfigCard>
 
       <ConfigCard
-        title={t('themes.forms.typography_builder.base_sizes.title', 'Base Sizes')}
+        title={t('themes.forms.typography_builder.base_sizes.title', 'Base sizes')}
         defaultOpen={false}
         action={
           <Link
@@ -430,7 +430,7 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
         }
       >
         <SliderRow
-          label={t('themes.forms.typography_builder.fields.base_font_size.label', 'Base Font Size')}
+          label={t('themes.forms.typography_builder.fields.base_font_size.label', 'Base font size')}
           value={(typo?.fontSize as number | undefined) ?? 14}
           min={10}
           max={24}
@@ -444,7 +444,7 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
           }
         />
         <SliderRow
-          label={t('themes.forms.typography_builder.fields.html_font_size.label', 'HTML Font Size')}
+          label={t('themes.forms.typography_builder.fields.html_font_size.label', 'HTML font size')}
           value={(typo?.htmlFontSize as number | undefined) ?? 16}
           min={10}
           max={24}
@@ -460,7 +460,7 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
       </ConfigCard>
 
       <ConfigCard
-        title={t('themes.forms.typography_builder.type_scale.title', 'Type Scale')}
+        title={t('themes.forms.typography_builder.type_scale.title', 'Type scale')}
         defaultOpen={false}
         action={
           <Link

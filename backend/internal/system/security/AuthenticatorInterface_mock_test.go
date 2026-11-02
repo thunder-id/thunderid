@@ -16,10 +16,19 @@ func NewAuthenticatorInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AuthenticatorInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AuthenticatorInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type AuthenticatorInterfaceMock_Authenticate_Call struct {
 
 // Authenticate is a helper method to define mock.On call
 //   - r *http.Request
-func (_e *AuthenticatorInterfaceMock_Expecter) Authenticate(r interface{}) *AuthenticatorInterfaceMock_Authenticate_Call {
+func (_e *AuthenticatorInterfaceMock_Expecter) Authenticate(r any) *AuthenticatorInterfaceMock_Authenticate_Call {
 	return &AuthenticatorInterfaceMock_Authenticate_Call{Call: _e.mock.On("Authenticate", r)}
 }
 
@@ -123,7 +132,7 @@ type AuthenticatorInterfaceMock_CanHandle_Call struct {
 
 // CanHandle is a helper method to define mock.On call
 //   - r *http.Request
-func (_e *AuthenticatorInterfaceMock_Expecter) CanHandle(r interface{}) *AuthenticatorInterfaceMock_CanHandle_Call {
+func (_e *AuthenticatorInterfaceMock_Expecter) CanHandle(r any) *AuthenticatorInterfaceMock_CanHandle_Call {
 	return &AuthenticatorInterfaceMock_CanHandle_Call{Call: _e.mock.On("CanHandle", r)}
 }
 

@@ -16,10 +16,19 @@ func NewGrantHandlerProviderInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *GrantHandlerProviderInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &GrantHandlerProviderInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type GrantHandlerProviderInterfaceMock_GetGrantHandler_Call struct {
 
 // GetGrantHandler is a helper method to define mock.On call
 //   - grantType providers.GrantType
-func (_e *GrantHandlerProviderInterfaceMock_Expecter) GetGrantHandler(grantType interface{}) *GrantHandlerProviderInterfaceMock_GetGrantHandler_Call {
+func (_e *GrantHandlerProviderInterfaceMock_Expecter) GetGrantHandler(grantType any) *GrantHandlerProviderInterfaceMock_GetGrantHandler_Call {
 	return &GrantHandlerProviderInterfaceMock_GetGrantHandler_Call{Call: _e.mock.On("GetGrantHandler", grantType)}
 }
 

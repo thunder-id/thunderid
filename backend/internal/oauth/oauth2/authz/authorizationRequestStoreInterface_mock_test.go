@@ -16,10 +16,19 @@ func newAuthorizationRequestStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *authorizationRequestStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &authorizationRequestStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -71,7 +80,7 @@ type authorizationRequestStoreInterfaceMock_AddRequest_Call struct {
 // AddRequest is a helper method to define mock.On call
 //   - ctx context.Context
 //   - value authRequestContext
-func (_e *authorizationRequestStoreInterfaceMock_Expecter) AddRequest(ctx interface{}, value interface{}) *authorizationRequestStoreInterfaceMock_AddRequest_Call {
+func (_e *authorizationRequestStoreInterfaceMock_Expecter) AddRequest(ctx any, value any) *authorizationRequestStoreInterfaceMock_AddRequest_Call {
 	return &authorizationRequestStoreInterfaceMock_AddRequest_Call{Call: _e.mock.On("AddRequest", ctx, value)}
 }
 
@@ -128,7 +137,7 @@ type authorizationRequestStoreInterfaceMock_ClearRequest_Call struct {
 // ClearRequest is a helper method to define mock.On call
 //   - ctx context.Context
 //   - key string
-func (_e *authorizationRequestStoreInterfaceMock_Expecter) ClearRequest(ctx interface{}, key interface{}) *authorizationRequestStoreInterfaceMock_ClearRequest_Call {
+func (_e *authorizationRequestStoreInterfaceMock_Expecter) ClearRequest(ctx any, key any) *authorizationRequestStoreInterfaceMock_ClearRequest_Call {
 	return &authorizationRequestStoreInterfaceMock_ClearRequest_Call{Call: _e.mock.On("ClearRequest", ctx, key)}
 }
 
@@ -200,7 +209,7 @@ type authorizationRequestStoreInterfaceMock_GetRequest_Call struct {
 // GetRequest is a helper method to define mock.On call
 //   - ctx context.Context
 //   - key string
-func (_e *authorizationRequestStoreInterfaceMock_Expecter) GetRequest(ctx interface{}, key interface{}) *authorizationRequestStoreInterfaceMock_GetRequest_Call {
+func (_e *authorizationRequestStoreInterfaceMock_Expecter) GetRequest(ctx any, key any) *authorizationRequestStoreInterfaceMock_GetRequest_Call {
 	return &authorizationRequestStoreInterfaceMock_GetRequest_Call{Call: _e.mock.On("GetRequest", ctx, key)}
 }
 

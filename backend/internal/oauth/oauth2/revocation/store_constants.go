@@ -44,19 +44,24 @@ var queryIsTokenRevoked = dbmodel.DBQuery{
 // rather than inserting a duplicate, enforced by the unique index backing the conflict target.
 var queryInsertRevocationCriterion = dbmodel.DBQuery{
 	ID: "RVQ-RCS-01",
-	Query: fmt.Sprintf(`INSERT INTO "REVOCATION_CRITERIA" (ID, CRITERION_TYPE, CRITERION_VALUE, REASON, `+
-		`REVOKED_AT, EXPIRY_TIME, DEPLOYMENT_ID) VALUES ($1, $2, $3, $4, $5, $6, $7) `+
-		`ON CONFLICT (DEPLOYMENT_ID, CRITERION_TYPE, CRITERION_VALUE) DO UPDATE SET `+
+	Query: `INSERT INTO "REVOCATION_CRITERIA" (ID, CRITERION_TYPE, CRITERION_VALUE, REASON, ` +
+		`REVOKED_AT, EXPIRY_TIME, DEPLOYMENT_ID) VALUES ($1, $2, $3, $4, $5, $6, $7) ` +
+		revocationCriteriaUpsertClause,
+}
+
+// revocationCriteriaUpsertClause never weakens a terminal reason, moves a cutoff back, or shortens an expiry.
+var revocationCriteriaUpsertClause = fmt.Sprintf(
+	`ON CONFLICT (DEPLOYMENT_ID, CRITERION_TYPE, CRITERION_VALUE) DO UPDATE SET `+
 		`REASON = CASE WHEN "REVOCATION_CRITERIA".REASON NOT IN (%s) `+
 		`THEN "REVOCATION_CRITERIA".REASON `+
 		`ELSE excluded.REASON END, `+
 		`REVOKED_AT = CASE WHEN "REVOCATION_CRITERIA".REASON NOT IN (%s) `+
+		`OR "REVOCATION_CRITERIA".REVOKED_AT > excluded.REVOKED_AT `+
 		`THEN "REVOCATION_CRITERIA".REVOKED_AT `+
 		`ELSE excluded.REVOKED_AT END, `+
 		`EXPIRY_TIME = CASE WHEN "REVOCATION_CRITERIA".EXPIRY_TIME > excluded.EXPIRY_TIME `+
 		`THEN "REVOCATION_CRITERIA".EXPIRY_TIME ELSE excluded.EXPIRY_TIME END`,
-		boundaryReasonSQLList(), boundaryReasonSQLList()),
-}
+	boundaryReasonSQLList(), boundaryReasonSQLList())
 
 // criteriaRevokedQueryID identifies the criteria deny-list existence check. The query text varies
 // with the number of criteria supplied, so it is built per call rather than declared as a constant.
@@ -90,4 +95,35 @@ func buildCriteriaRevokedQuery(criteria []Criterion, establishedAt, now time.Tim
 		`AND (%s) LIMIT 1`, boundaryReasonSQLList(), strings.Join(pairs, " OR "))
 
 	return dbmodel.DBQuery{ID: criteriaRevokedQueryID, Query: query}, args
+}
+
+// criteriaInsertColumns is the number of bound parameters per row of the bulk criteria insert.
+const criteriaInsertColumns = 7
+
+// maxCriteriaRowsPerStatement bounds the rows in one statement, well under the Postgres parameter limit.
+const maxCriteriaRowsPerStatement = 500
+
+// insertRevocationCriteriaQueryID identifies the bulk criteria insert, whose text varies with batch size.
+const insertRevocationCriteriaQueryID = "RVQ-RCS-03"
+
+// buildInsertRevocationCriteriaQuery builds the batched form of queryInsertRevocationCriterion for deduplicated rows.
+func buildInsertRevocationCriteriaQuery(rows []revocationCriterion, deploymentID string) (
+	dbmodel.DBQuery, []interface{}) {
+	args := make([]interface{}, 0, len(rows)*criteriaInsertColumns)
+	valueGroups := make([]string, 0, len(rows))
+	paramIndex := 1
+	for _, row := range rows {
+		valueGroups = append(valueGroups, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+			paramIndex, paramIndex+1, paramIndex+2, paramIndex+3,
+			paramIndex+4, paramIndex+5, paramIndex+6))
+		args = append(args, row.ID, string(row.Type), row.Value, string(row.Reason),
+			row.RevokedAt, row.ExpiryTime, deploymentID)
+		paramIndex += criteriaInsertColumns
+	}
+
+	query := `INSERT INTO "REVOCATION_CRITERIA" (ID, CRITERION_TYPE, CRITERION_VALUE, REASON, ` +
+		`REVOKED_AT, EXPIRY_TIME, DEPLOYMENT_ID) VALUES ` + strings.Join(valueGroups, ", ") + ` ` +
+		revocationCriteriaUpsertClause
+
+	return dbmodel.DBQuery{ID: insertRevocationCriteriaQueryID, Query: query}, args
 }

@@ -1,0 +1,85 @@
+---
+displayed_sidebar: null
+title: getThunderIDContext()
+docType: reference
+description: Read the typed ThunderID context, including user and token data, attached to an H3 event.
+---
+
+# `getThunderIDContext()`
+
+`get<ProductName />Context` returns the <ProductName /> context object that the SDK's server plugin attaches to each H3 event during SSR. This gives synchronous access to the session and pre-fetched SSR data without an additional async call.
+
+## Signature
+
+```ts
+getThunderIDContext(event: H3Event): ThunderIDEventContext | null
+```
+
+## Import
+
+```ts
+import { getThunderIDContext } from '@thunderid/nuxt/server'
+```
+
+## Usage
+
+### Reading Auth State Synchronously
+
+```ts title="server/api/status.get.ts" showLineNumbers
+import { getThunderIDContext } from '@thunderid/nuxt/server'
+
+export default defineEventHandler((event) => {
+  const ctx = getThunderIDContext(event)
+
+  return {
+    isSignedIn: ctx?.isSignedIn ?? false,
+    sub: ctx?.session?.sub ?? null,
+  }
+})
+```
+
+### Accessing SSR Data
+
+```ts title="server/api/init.get.ts" showLineNumbers
+import { getThunderIDContext } from '@thunderid/nuxt/server'
+
+export default defineEventHandler((event) => {
+  const ctx = getThunderIDContext(event)
+
+  return {
+    user: ctx?.ssr?.user ?? null,
+    organizations: ctx?.ssr?.myOrganizations ?? [],
+  }
+})
+```
+
+## Return Value
+
+Returns `ThunderIDEventContext | null`. Returns `null` when the server plugin has not run (e.g., in routes that execute before the plugin).
+
+### `ThunderIDEventContext`
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `isSignedIn` | `boolean` | Whether the request is authenticated |
+| `session` | `ThunderIDSessionPayload \| null` | The decoded session payload, or `null` |
+| `ssr` | `ThunderIDSSRData \| undefined` | Pre-fetched SSR data (user, orgs, branding), if populated |
+
+### `ThunderIDSSRData`
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `isSignedIn` | `boolean` | Whether the user is signed in |
+| `session` | `ThunderIDSessionPayload \| null` | The session payload |
+| `user` | `User \| null` | The authenticated user object |
+| `userProfile` | `UserProfile \| null` | The user's profile |
+| `currentOrganization` | `Organization \| null` | The active organization from the session |
+| `myOrganizations` | `Organization[]` | All organizations the user belongs to |
+| `brandingPreference` | `BrandingPreference \| null` | The tenant's branding preference |
+| `resolvedBaseUrl` | `string \| null` | The resolved <ProductName /> base URL |
+
+## Notes
+
+- `getThunderIDContext` is synchronous: it reads data that was attached to the event by the server plugin earlier in the request lifecycle.
+- For routes where the plugin may not have run, fall back to [`useServerSession()`](../use-server-session).
+- The `ssr` field is only populated when SSR data-fetching is enabled in `preferences` (it is enabled by default).

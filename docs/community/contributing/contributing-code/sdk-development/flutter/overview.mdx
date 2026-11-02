@@ -1,0 +1,67 @@
+---
+title: Flutter SDKs
+docType: community
+description: "Repository layout, build commands, and code style for contributing to the {{ProductName}} Flutter SDK."
+sidebar_position: 1
+hide_table_of_contents: false
+---
+
+# Flutter SDKs
+
+The Flutter SDK lives in [flutter-sdks](https://github.com/thunder-id/flutter-sdks), a plugin that bridges to the native iOS and Android SDKs rather than reimplementing authentication in Dart.
+
+```text
+lib/
+  thunderid_flutter.dart        Public API barrel export
+  src/
+    thunderid_client.dart       Core client
+    channel/                    MethodChannel bridge (dev.thunderid/sdk)
+    models/                     Config, errors, user, tokens, flow models
+    widgets/                    Buttons, guards, forms, user components
+    i18n/                       Locale resolution
+android/                        Kotlin method channel handler
+ios/                            Swift method channel handler (SPM package + CocoaPods podspec)
+test/                           Unit tests
+tests/e2e/                      End-to-end suite
+playground/                     App for exercising the plugin from source
+```
+
+The layering runs client → channel → widgets. The Dart client performs no networking of its own: it delegates across a `MethodChannel` to the native SDK, which means a change in behaviour may originate in the native SDK rather than here.
+
+Every widget ships in two variants: a **styled** one with Material 3 defaults, such as `SignInButton`, and a **base** slot-based one for full customization, such as `BaseSignInButton`.
+
+## Commands
+
+```bash
+flutter pub get
+flutter analyze
+flutter test
+```
+
+The quickstart sample lives in [`quickstarts/flutter`](https://github.com/thunder-id/samples/tree/main/quickstarts/flutter) in the samples repository and depends on the published package. `tests/e2e/scripts/prepare-sample.sh` fetches it into `tests/e2e/.samples` and points it at your checkout with a `pubspec_overrides.yaml`. Build it from `tests/e2e/.samples/quickstarts/flutter`, for example `flutter build apk --debug` or `flutter build ios --debug --simulator`.
+
+## Playground
+
+`playground/` is a Flutter app that depends on the plugin through `path: ..`, so it always runs your changes. It has four tabs: capability checks for each SDK feature with a pass or fail reason, a component explorer with live controls and generated Flutter code, a session inspector for tokens and claims, and an SDK event log. Copy `.env.example` to `.env`, fill in your server URL and application, then run `flutter run` from `playground/`. The pull request builder analyzes and builds it, so keep its checks and stories in step when you change a capability or a widget.
+
+## Code Style
+
+- Dart 3.3 or later and Flutter 3.19 or later, with full null safety. `Semantics.identifier`, which the SDK uses to expose flow fields, requires 3.19.
+- No external state management framework. State reaches widgets through `InheritedWidget` (`ThunderIDProvider.of(context)`).
+- All async methods return a `Future`. No `Stream`s in the public API.
+- Errors use the typed `ThunderIDErrorCode` enum and `IAMException`.
+- `ThunderIDConfig.allowInsecureConnections` lets a debug build reach a development server over
+  its self-signed certificate. It is forwarded to the native Android SDK, which relaxes
+  validation for loopback hosts only (`localhost`, `127.0.0.1`, `::1`, `10.0.2.2`) and rejects
+  the configuration outright for anything else. iOS achieves the same through an
+  `NSAppTransportSecurity` exemption at the app level, so the flag is a no-op there.
+- Minimum tap targets of 44 by 44 logical pixels, and a `Semantics` label on every widget.
+- Native code: Swift 5.9 with `@MainActor` for UI-thread safety on iOS, Kotlin on JVM 17 with coroutines on Android.
+
+`flutter analyze` gates CI and must report zero issues. The rules that catch people most often are trailing commas on multi-line argument lists, `const` constructors wherever possible, single-quoted strings, explicit return types, and imports sorted `dart:` then `package:` then relative.
+
+## Vendor Naming
+
+The SDK is white-labelable through `ThunderIDConfig.vendor`. Do not hardcode `thunderid` in a runtime name that override should control, such as a platform-channel storage key or a log tag. Because this package delegates to the native SDKs, a vendor-scoped value may need bridging across the method channel rather than resolving in Dart.
+
+Entry point names such as `thunderid_client.dart` and `ThunderIDClient` are a fixed identity and keep the name.

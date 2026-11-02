@@ -38,6 +38,8 @@ Refresh tokens allow a client to get a new access token without requiring the us
 
 When refreshing, the client can include the `resource` parameter only for the resource server already bound to the refresh token. See [Resource Indicators: Resource on Refresh](../../guides/protocols/oauth-oidc/resource-indicators#resource-on-refresh).
 
+A refresh does not replay the authorization decision made when the refresh token was issued. Permission scopes are re-evaluated against the subject's current roles and groups, so a refreshed access token can carry fewer scopes than the previous one. A password reset or a client secret rotation rejects the refresh with `invalid_grant`. See [Refresh Token: Authorization on Refresh](../../guides/protocols/oauth-oidc/refresh-token#authorization-on-refresh).
+
 ## ID Tokens
 
 ID tokens are JWTs issued alongside access tokens in OpenID Connect flows. The `aud` claim of an ID token always contains the requesting application's client ID, regardless of resource indicators. ID tokens identify the authenticated user to the client application and are not intended for resource server authorization.

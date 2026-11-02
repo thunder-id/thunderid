@@ -4,29 +4,39 @@
 #
 # run-e2e.sh - Local E2E test runner for ThunderID.
 #
-# Extracts the built distribution to tests/e2e/distribution/, runs setup.sh
-# once to bootstrap default resources, then starts the server, imports sample-app
-# resources via the import API (authenticated with OAuth2), and runs the Playwright test suite.
+# Extracts the built quickstart pack (make build_quickstart) to tests/e2e/distribution/, runs its
+# setup.sh once, then starts its three deployments (auth-dp, the managed Data Plane and the Control
+# Plane). The suite exercises the Data Plane (https://localhost:8090): its Admin Console and the
+# applications it authenticates. The Data Plane's resources are imported directly through its
+# import API (authenticated with OAuth2 as the Service Desk Admin), and the Playwright test suite
+# runs against it.
 #
-# Runs in two phases against two independently provisioned servers:
-#   1. Everything tagged @wayfinder excluded, against a server with the sample apps imported.
-#   2. Only @wayfinder specs, against a fresh server with just the E2E admin app imported. The
-#      Wayfinder bundle those specs import replaces the server-wide CORS allowlist and default
+# Runs in two phases against two independently provisioned packs:
+#   1. Everything tagged @wayfinder excluded, against a pack with the sample apps imported.
+#   2. Only @wayfinder specs, against a fresh pack with the E2E admin app and the Wayfinder bundle
+#      imported. The Wayfinder bundle replaces the server-wide CORS allowlist and default
 #      resource server (full-replace import semantics, see server_config_import.go), so it must
-#      not share a server with anything that depends on either setting; a fresh server also avoids
+#      not share a server with anything that depends on either setting; a fresh pack also avoids
 #      a `Customer` user-type name collision with the sample apps' own `Customer` type. This phase
 #      also starts the standalone Wayfinder sample app (port 5173) that the tryout specs
 #      (tests/wayfinder/**) drive a real browser against.
 # Any extra arguments are passed to BOTH phases, with each phase's own --grep/--grep-invert applied
 # last so it always wins - phase 1 never runs a @wayfinder spec and phase 2 never runs anything else.
+# Pass --phase=1 or --phase=2 to run only that phase; omit it to run both, as above.
+#
+# When both phases run, their blob reports are merged into one HTML report at the default
+# playwright-report/ location afterward, so `playwright show-report` shows every test. A
+# --phase=1|2 run leaves that phase's own report untouched (playwright-report/ or
+# playwright-report-wayfinder/ respectively) and does not merge.
 #
 # Usage:
-#   ./run-e2e.sh [playwright-args...]
+#   ./run-e2e.sh [--phase=1|2] [playwright-args...]
 #
 # Examples:
 #   ./run-e2e.sh
 #   ./run-e2e.sh --project=chromium
 #   ./run-e2e.sh --grep @accessibility
+#   ./run-e2e.sh --phase=2
 #
 # Requirements: curl, jq, python3, pnpm, lsof, unzip
 
@@ -36,23 +46,63 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SAMPLE_APP_DIR="$PROJECT_ROOT/samples/apps/react-sdk-sample"
 WAYFINDER_APP_DIR="$PROJECT_ROOT/samples/apps/wayfinder-sample/frontend"
+SMTP_SERVER_DIR="$PROJECT_ROOT/samples/apps/wayfinder-sample/smtp-server"
 SERVER_URL="${BASE_URL:-https://localhost:8090}"
 SAMPLE_URL="${SAMPLE_APP_URL:-https://localhost:3000}"
 WAYFINDER_URL="${WAYFINDER_APP_URL:-http://localhost:5173}"
-_p="${SERVER_URL##*:}"; SERVER_PORT="${_p%%/*}"
-_p="${SAMPLE_URL##*:}"; SAMPLE_PORT="${_p%%/*}"
-_p="${WAYFINDER_URL##*:}"; WAYFINDER_PORT="${_p%%/*}"
-unset _p
+MOCK_SMTP_INBOX_URL="${MOCK_SMTP_INBOX_URL:-http://localhost:8788}"
+# Extracts the port from a URL, falling back to the scheme's default port (443/80) when the URL
+# has none (e.g. a portless override like https://myserver.example.com).
+url_port() {
+    local rest="${1#*://}"
+    rest="${rest%%/*}"
+    if [[ "$rest" == *:* ]]; then
+        echo "${rest##*:}"
+    elif [[ "$1" == https://* ]]; then
+        echo 443
+    else
+        echo 80
+    fi
+}
+SERVER_PORT=$(url_port "$SERVER_URL")
+SAMPLE_PORT=$(url_port "$SAMPLE_URL")
+WAYFINDER_PORT=$(url_port "$WAYFINDER_URL")
+MOCK_SMTP_INBOX_PORT=$(url_port "$MOCK_SMTP_INBOX_URL")
+
+# Pull --phase=1|2 out of the arguments, leaving the rest to pass through to Playwright unchanged.
+PHASE=""
+PLAYWRIGHT_ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --phase=1|--phase=2)
+            PHASE="${arg#--phase=}"
+            ;;
+        --phase=*)
+            echo "ERROR: --phase must be 1 or 2 (got '${arg#--phase=}')." >&2
+            exit 1
+            ;;
+        *)
+            PLAYWRIGHT_ARGS+=("$arg")
+            ;;
+    esac
+done
+if [ ${#PLAYWRIGHT_ARGS[@]} -gt 0 ]; then
+    set -- "${PLAYWRIGHT_ARGS[@]}"
+else
+    set --
+fi
 
 # Resolve the distribution zip for the current platform.
 GO_OS=$(go env GOOS)
 GO_ARCH=$(go env GOARCH)
 [ "$GO_OS" = "darwin" ] && PKG_OS="macos" || PKG_OS="$GO_OS"
+[ "$GO_ARCH" = "amd64" ] && GO_ARCH="x64"
 VERSION=$(sed 's/^v//' "$PROJECT_ROOT/version.txt")
-DIST_FOLDER="thunderid-${VERSION}-${PKG_OS}-${GO_ARCH}"
+DIST_FOLDER="thunderid-quickstart-${VERSION}-${PKG_OS}-${GO_ARCH}"
 DIST_HOME="$SCRIPT_DIR/distribution"
 DIST_ZIP="$PROJECT_ROOT/target/dist/${DIST_FOLDER}.zip"
 
+# The Service Desk Admin: the account that signs into the Data Plane's Admin Console.
 ADMIN_USER="${ADMIN_USERNAME:-admin}"
 ADMIN_PASS="${ADMIN_PASSWORD:-admin}"
 ADMIN_TOKEN=""
@@ -76,11 +126,19 @@ wait_for_url() {
     return 1
 }
 
+# The pack's three deployments: the managed Data Plane under test, auth-dp and the Control Plane.
+kill_pack_ports() {
+    kill_port "$SERVER_PORT"
+    kill_port 8091
+    kill_port 8095
+}
+
 cleanup() {
     echo "Cleaning up..."
     kill_port "$SAMPLE_PORT"
     kill_port "$WAYFINDER_PORT"
-    kill_port "$SERVER_PORT"
+    kill_port "$MOCK_SMTP_INBOX_PORT"
+    kill_pack_ports
     rm -rf "$DIST_HOME"
 }
 trap cleanup EXIT
@@ -91,28 +149,53 @@ trap cleanup EXIT
 start_fresh_server() {
     rm -rf "$DIST_HOME"
     if [ ! -f "$DIST_ZIP" ]; then
-        echo "ERROR: Distribution zip not found at $DIST_ZIP. Run 'make build' first."
+        echo "ERROR: Quickstart pack not found at $DIST_ZIP. Run 'make build' first."
         exit 1
     fi
-    echo "Extracting distribution to $DIST_HOME..."
+    echo "Extracting the quickstart pack to $DIST_HOME..."
     mkdir -p "$DIST_HOME"
     unzip -q "$DIST_ZIP" -d "$SCRIPT_DIR/distribution-tmp"
     mv "$SCRIPT_DIR/distribution-tmp/$DIST_FOLDER/"* "$DIST_HOME/"
     rm -rf "$SCRIPT_DIR/distribution-tmp"
 
-    echo "Running setup..."
-    (cd "$DIST_HOME" && ./setup.sh --admin-username "$ADMIN_USER" --admin-password "$ADMIN_PASS")
+    if [ "${1:-}" = "--with-mock-social" ]; then
+        # Redirect the backend's Google and GitHub endpoints to the local mock servers used by the social
+        # login E2E tests (see utils/mock-google-oidc-server.ts and utils/mock-github-oauth-server.ts),
+        # without touching the checked-in deployment.yaml. Production leaves these unset, so the real
+        # providers are used unchanged. Ports must match MOCK_GOOGLE_BASE_URL/MOCK_GITHUB_BASE_URL in
+        # defaults.env.
+        MOCK_GOOGLE_BASE_URL="${MOCK_GOOGLE_BASE_URL:-http://localhost:8093}"
+        MOCK_GITHUB_BASE_URL="${MOCK_GITHUB_BASE_URL:-http://localhost:8092}"
+        if grep -q "identity_provider:" "$DIST_HOME/dp/deployment.yaml"; then
+            echo "dp/deployment.yaml already has an identity_provider: block; leaving it as-is (mock URLs not appended)."
+        else
+            cat >> "$DIST_HOME/dp/deployment.yaml" <<EOF
 
-    echo "Starting ThunderID server..."
+identity_provider:
+  google_base_url: "$MOCK_GOOGLE_BASE_URL"
+  github_base_url: "$MOCK_GITHUB_BASE_URL"
+EOF
+        fi
+    fi
+
+    # Run setup.sh to bootstrap the three deployments. The Service Desk Admin is the account the
+    # suite signs in with; the auth-dp admin only signs into the Control Plane, which the suite does
+    # not drive.
+    echo "Running setup..."
+    (cd "$DIST_HOME" && ADMIN_USERNAME=admin ADMIN_PASSWORD=admin \
+        SERVICE_DESK_USERNAME="$ADMIN_USER" SERVICE_DESK_PASSWORD="$ADMIN_PASS" ./setup.sh)
+
+    echo "Starting the quickstart pack..."
     (cd "$DIST_HOME" && ./start.sh) &
-    wait_for_url "$SERVER_URL/health/liveness" "ThunderID server"
+    wait_for_url "$SERVER_URL/health/liveness" "Data Plane"
+    wait_for_url "https://localhost:8095/health/liveness" "Control Plane"
 }
 
 # Stops the server started by start_fresh_server and removes its distribution, so the next
 # start_fresh_server call is not racing an orphaned process still holding the sqlite files.
 stop_server() {
-    echo "Stopping ThunderID server..."
-    kill_port "$SERVER_PORT"
+    echo "Stopping the quickstart pack..."
+    kill_pack_ports
     local i=0
     while curl -skf "$SERVER_URL/health/liveness" > /dev/null 2>&1 && [ $i -lt 30 ]; do
         sleep 1
@@ -125,13 +208,13 @@ stop_server() {
     rm -rf "$DIST_HOME"
 }
 
-# Obtains an admin token via OAuth2 auth code + PKCE (CONSOLE app, admin credentials) and sets the
+# Obtains an admin token via OAuth2 auth code + PKCE (ADMIN_CONSOLE app, Service Desk Admin credentials) and sets the
 # global ADMIN_TOKEN. Must be called plainly (never `ADMIN_TOKEN=$(mint_admin_token)` and never
 # inside an `if`/`||`) - its `exit 1` calls only abort the right way when the function's own exit
 # status is what `set -e` sees.
 mint_admin_token() {
     echo "Obtaining admin token..."
-    local CONSOLE_REDIRECT_URI="https://localhost:8090/console"
+    local CONSOLE_REDIRECT_URI="$SERVER_URL/console"
     local CODE_VERIFIER CODE_CHALLENGE
     CODE_VERIFIER=$(openssl rand -hex 32 | cut -c1-43)
     CODE_CHALLENGE=$(printf '%s' "$CODE_VERIFIER" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
@@ -140,7 +223,7 @@ mint_admin_token() {
     headers_file=$(mktemp)
     curl -sk -o /dev/null -D "$headers_file" \
         -G "$SERVER_URL/oauth2/authorize" \
-        --data-urlencode "client_id=CONSOLE" \
+        --data-urlencode "client_id=ADMIN_CONSOLE" \
         --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
         --data-urlencode "scope=system" \
         --data-urlencode "resource=$SERVER_URL/mcp" \
@@ -149,7 +232,7 @@ mint_admin_token() {
         --data-urlencode "code_challenge_method=S256"
 
     local LOCATION AUTH_ID EXEC_ID
-    LOCATION=$(grep -i "^location:" "$headers_file" | tr -d '\r' | sed 's/^[Ll]ocation: //')
+    LOCATION=$(grep -i "^location:" "$headers_file" | tr -d '\r' | sed 's/^[Ll]ocation: //' || echo "")
     rm -f "$headers_file"
     AUTH_ID=$(echo "$LOCATION" | sed -n 's/.*[?&]authId=\([^&]*\).*/\1/p')
     EXEC_ID=$(echo "$LOCATION" | sed -n 's/.*[?&]executionId=\([^&]*\).*/\1/p')
@@ -198,7 +281,7 @@ mint_admin_token() {
     CALLBACK_RESP=$(curl -sk -X POST "$SERVER_URL/oauth2/auth/callback" \
         -H "Content-Type: application/json" \
         -d "{\"authId\": \"$AUTH_ID\", \"assertion\": \"$ASSERTION\"}")
-    AUTH_CODE=$(echo "$CALLBACK_RESP" | jq -r '.redirect_uri // empty' | sed 's/.*[?&]code=\([^&]*\).*/\1/' || echo "")
+    AUTH_CODE=$(echo "$CALLBACK_RESP" | jq -r '.redirect_uri // empty' | sed -n 's/.*[?&]code=\([^&]*\).*/\1/p' || echo "")
 
     if [ -z "$AUTH_CODE" ]; then
         echo "ERROR: OAuth2 callback did not return an authorization code."
@@ -212,7 +295,7 @@ mint_admin_token() {
         --data-urlencode "grant_type=authorization_code" \
         --data-urlencode "code=$AUTH_CODE" \
         --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
-        --data-urlencode "client_id=CONSOLE" \
+        --data-urlencode "client_id=ADMIN_CONSOLE" \
         --data-urlencode "resource=$SERVER_URL/mcp" \
         --data-urlencode "code_verifier=$CODE_VERIFIER")
     ADMIN_TOKEN=$(echo "$TOKEN_RESP" | jq -r '.access_token // empty' || echo "")
@@ -305,6 +388,20 @@ start_wayfinder_app() {
     cd "$SCRIPT_DIR"
 }
 
+# Starts the mock SMTP server + web inbox that TC006 reads the password-reset email from (see
+# mock-email.page.ts). Defaults (127.0.0.1:2525 SMTP, 127.0.0.1:8788 inbox) match the email
+# provider connection the Wayfinder bundle imports, so no config changes are needed. Mirrors the
+# "Start Wayfinder Mock SMTP Server" step in .github/workflows/pr-builder.yml.
+start_mock_smtp_server() {
+    echo "Setting up Wayfinder mock SMTP server..."
+    cd "$SMTP_SERVER_DIR"
+    [ -d node_modules ] || npm install
+    npm run build
+    node src/index.js &
+    wait_for_url "$MOCK_SMTP_INBOX_URL/health" "Wayfinder mock SMTP inbox"
+    cd "$SCRIPT_DIR"
+}
+
 # Creates a default .env if missing and exports the values resolved for this run, which always
 # take precedence over .env: dotenv.config() in playwright.config.ts does not override
 # already-set process.env values.
@@ -340,54 +437,79 @@ if curl -sk "$SERVER_URL/health/liveness" > /dev/null 2>&1; then
     exit 1
 fi
 
-# Phase 1: everything except @wayfinder, against a server with the sample apps imported.
-start_fresh_server
-mint_admin_token
-
-echo "Importing declarative resources..."
-for sample in vanilla-sample react-sdk-sample; do
-    config="$PROJECT_ROOT/samples/apps/$sample/thunderid-config/thunderid-config.yaml"
-    vars_file="$PROJECT_ROOT/samples/apps/$sample/thunderid-config/thunderid.env"
-
-    # vanilla-sample keeps its default config under a 'basic/' subdirectory.
-    if [ ! -f "$config" ]; then
-        config="$PROJECT_ROOT/samples/apps/$sample/thunderid-config/basic/thunderid-config.yaml"
-        vars_file="$PROJECT_ROOT/samples/apps/$sample/thunderid-config/basic/thunderid.env"
-    fi
-
-    [ -f "$config" ] || { echo "  No config for $sample, skipping."; continue; }
-    import_config "$config" "$vars_file" "$sample"
-done
-import_config "$SCRIPT_DIR/thunderid-config.yaml" "" "E2E admin app"
-import_config "$SCRIPT_DIR/thunderid-config-sample-apps.yaml" "" "E2E sample-app infrastructure"
-
-start_sample_app
 setup_env
 cd "$SCRIPT_DIR"
 pnpm install --frozen-lockfile
 
-echo "Running Playwright E2E tests (core)..."
 rc1=0
-run_phase npx playwright test "$@" --grep-invert @wayfinder --pass-with-no-tests || rc1=$?
-
-# Phase 2: only @wayfinder, against a fresh server with just the E2E admin app imported. Run
-# regardless of phase 1's result - this is a different server, so phase 1 tells us nothing about
-# it, and re-running phase 1 to see phase 2 would cost the whole run again.
-kill_port "$SAMPLE_PORT"
-stop_server
-start_fresh_server
-mint_admin_token
-import_config "$SCRIPT_DIR/thunderid-config.yaml" "" "E2E admin app"
-start_wayfinder_app
-
-# Own report paths, or this phase's run would delete phase 1's reports and traces outright.
-echo "Running Playwright E2E tests (wayfinder)..."
 rc2=0
-PLAYWRIGHT_BLOB_OUTPUT_DIR=blob-report-wayfinder \
-PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report-wayfinder \
-PLAYWRIGHT_JSON_OUTPUT_FILE=test-results-wayfinder/test-results.json \
-PLAYWRIGHT_JUNIT_OUTPUT_FILE=test-results-wayfinder/junit.xml \
-run_phase npx playwright test "$@" --output=test-results-wayfinder --grep @wayfinder --pass-with-no-tests || rc2=$?
+
+if [ -z "$PHASE" ] || [ "$PHASE" = "1" ]; then
+    # Phase 1: everything except @wayfinder, against a server with the sample apps imported.
+    start_fresh_server --with-mock-social
+    mint_admin_token
+
+    echo "Importing declarative resources..."
+    for sample in vanilla-sample react-sdk-sample; do
+        config="$PROJECT_ROOT/samples/apps/$sample/thunderid-config/thunderid-config.yaml"
+        vars_file="$PROJECT_ROOT/samples/apps/$sample/thunderid-config/thunderid.env"
+
+        # vanilla-sample keeps its default config under a 'basic/' subdirectory.
+        if [ ! -f "$config" ]; then
+            config="$PROJECT_ROOT/samples/apps/$sample/thunderid-config/basic/thunderid-config.yaml"
+            vars_file="$PROJECT_ROOT/samples/apps/$sample/thunderid-config/basic/thunderid.env"
+        fi
+
+        [ -f "$config" ] || { echo "  No config for $sample, skipping."; continue; }
+        import_config "$config" "$vars_file" "$sample"
+    done
+    import_config "$SCRIPT_DIR/thunderid-config.yaml" "" "E2E admin app"
+    import_config "$SCRIPT_DIR/thunderid-config-sample-apps.yaml" "" "E2E sample-app infrastructure"
+
+    start_sample_app
+
+    echo "Running Playwright E2E tests (core)..."
+    run_phase npx playwright test "$@" --grep-invert @wayfinder --pass-with-no-tests || rc1=$?
+fi
+
+if [ -z "$PHASE" ] || [ "$PHASE" = "2" ]; then
+    # Phase 2: only @wayfinder, against a fresh server with just the E2E admin app imported. Run
+    # regardless of phase 1's result - this is a different server, so phase 1 tells us nothing about
+    # it, and re-running phase 1 to see phase 2 would cost the whole run again.
+    if [ -z "$PHASE" ]; then
+        # Only phase 1's server/sample-app need tearing down when phase 1 just ran in this
+        # invocation - a --phase=2 run never started them.
+        kill_port "$SAMPLE_PORT"
+        stop_server
+    fi
+    start_fresh_server
+    mint_admin_token
+    import_config "$SCRIPT_DIR/thunderid-config.yaml" "" "E2E admin app"
+    wayfinder_config="$PROJECT_ROOT/samples/apps/wayfinder-sample/thunderid-config/redirect"
+    import_config "$wayfinder_config/thunderid-config.yaml" "$wayfinder_config/thunderid.env" "Wayfinder bundle"
+    start_wayfinder_app
+    start_mock_smtp_server
+
+    # Own report paths, or this phase's run would delete phase 1's reports and traces outright.
+    echo "Running Playwright E2E tests (wayfinder)..."
+    PLAYWRIGHT_BLOB_OUTPUT_DIR=blob-report-wayfinder \
+    PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report-wayfinder \
+    PLAYWRIGHT_JSON_OUTPUT_FILE=test-results-wayfinder/test-results.json \
+    PLAYWRIGHT_JUNIT_OUTPUT_FILE=test-results-wayfinder/junit.xml \
+    run_phase npx playwright test "$@" --output=test-results-wayfinder --grep @wayfinder --pass-with-no-tests || rc2=$?
+fi
+
+if [ -z "$PHASE" ]; then
+    # Both phases just ran in this invocation, each into its own blob dir (see the comment above
+    # phase 2's run). Merge them into one HTML report at the default playwright-report/ location,
+    # so `playwright show-report` (no args) shows every test, not just phase 1's.
+    echo "Merging core and wayfinder reports..."
+    rm -rf blob-report-combined
+    mkdir -p blob-report-combined
+    cp blob-report/*.zip blob-report-wayfinder/*.zip blob-report-combined/
+    npx playwright merge-reports --reporter html blob-report-combined
+    rm -rf blob-report-combined
+fi
 
 if [ $rc1 -ne 0 ] || [ $rc2 -ne 0 ]; then
     [ $rc1 -ne 0 ] && echo "ERROR: core phase failed (exit $rc1)."

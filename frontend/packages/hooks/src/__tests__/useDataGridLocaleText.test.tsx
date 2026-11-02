@@ -101,7 +101,7 @@ describe('useDataGridLocaleText', () => {
 
     expect(result.current.columnsManagementSearchTitle).toBe('Search');
     expect(result.current.columnsManagementNoColumns).toBe('No columns');
-    expect(result.current.columnsManagementShowHideAllText).toBe('Show/Hide All');
+    expect(result.current.columnsManagementShowHideAllText).toBe('Show/hide all');
     expect(result.current.columnsManagementReset).toBe('Reset');
   });
 
@@ -175,7 +175,7 @@ describe('useDataGridLocaleText', () => {
     const {result} = renderHook(() => useDataGridLocaleText());
 
     expect(typeof result.current.footerRowSelected).toBe('function');
-    expect(result.current.footerTotalRows).toBe('Total Rows:');
+    expect(result.current.footerTotalRows).toBe('Total rows:');
     expect(typeof result.current.footerTotalVisibleRows).toBe('function');
     expect(result.current.footerRowSelected!(10)).toBe('10 rows selected');
     expect(result.current.footerRowSelected!(1)).toBe('1 row selected');

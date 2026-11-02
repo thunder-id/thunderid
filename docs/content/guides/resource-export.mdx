@@ -18,37 +18,175 @@ Use the export API to retrieve <ProductName /> resources:
 ```json
 {
   "resources": "# File: My_App.yaml\napiVersion: thunder/v1\n...",
-  "environment_variables": "MY_APP_CLIENT_ID=\nMY_APP_CLIENT_SECRET=\n"
+  "environment_variables": "APPLICATION_MY_APP_CLIENT_ID=\nAPPLICATION_MY_APP_CLIENT_SECRET=\n"
 }
 ```
 
 Field behavior:
 
 - `resources`: Combined YAML output for all exported resources, with `# File:` headers and `---` separators.
-- `environment_variables`: environment file content with one empty assignment per detected template variable.
+- `environment_variables`: environment file content with one assignment per detected template variable. A
+  variable is left empty, except one for a list the resource does not have, such as an application's
+  `redirectUris` when it has none, which is written as `[]` so the file imports as it is.
 
 If the export has no template variables, `environment_variables` is an empty string.
 
+Organization units come out in the same order every time: each unit before the units under it, units
+under the same parent by name, and each unit once however it is reached. Exporting units that have not
+changed therefore gives the same text.
+
 ## Template Variable Names
 
-Each parameterized field becomes a template variable named after its resource and the field, in uppercase. The `clientId` field of an application named `My App` becomes `MY_APP_CLIENT_ID`.
+Each parameterized field becomes a template variable named after the resource type, the resource name
+and the field, in uppercase. The `clientId` field of an application named `My App` becomes
+`APPLICATION_MY_APP_CLIENT_ID`.
 
-<ProductName /> normalizes the resource name so that the generated name is valid in a template placeholder:
+The resource type leads the name because a name is only unique within its own type. An application
+and an agent may both be called `Dummy`, and without the type both would claim `DUMMY_CLIENT_ID`. One
+value would win and the other resource would import with the wrong credential.
 
-- Every character that is not a letter or a digit becomes an underscore, and consecutive underscores collapse into one.
-- A trailing underscore is removed, so a name ending in a separator produces the same variable name as the name without it.
-- A name that starts with a digit gets a leading underscore.
+<ProductName /> normalizes the resource name so that the generated name is valid in a template
+placeholder:
 
-Normalization applies to generated variable names only. Exported file names and the `name` field inside the exported YAML keep the original resource name.
+- Every character that is not a letter or a digit becomes an underscore, and consecutive underscores
+  collapse into one.
+- Leading and trailing underscores are removed, so a name ending in a separator produces the same
+  variable name as the name without it.
+- A name that would start with a digit gets a leading underscore. The resource type leads every
+  generated name, so this applies only where a name is derived without one.
 
-| Resource name | Variable name for `clientId` |
-| --- | --- |
-| `My App` | `MY_APP_CLIENT_ID` |
-| `My-App` | `MY_APP_CLIENT_ID` |
-| `My App-` | `MY_APP_CLIENT_ID` |
-| `2FA App` | `_2FA_APP_CLIENT_ID` |
+Normalization applies to generated variable names only. Exported file names and the `name` field
+inside the exported YAML keep the original resource name.
 
-Because normalization maps several names onto the same prefix, two resources in one export can compete for the same variable name. In that case, the second resource gets a numeric suffix. Exporting both `Wayfinder-Concierge` and `Wayfinder_Concierge` produces `WAYFINDER_CONCIERGE_CLIENT_ID` and `WAYFINDER_CONCIERGE_2_CLIENT_ID`, so each resource keeps its own value in the environment file. Resource types share one namespace, so an application and a connection with the same name also get distinct variable names.
+| Resource type | Resource name | Variable name for `clientId` |
+| --- | --- | --- |
+| `application` | `My App` | `APPLICATION_MY_APP_CLIENT_ID` |
+| `application` | `My-App` | `APPLICATION_MY_APP_CLIENT_ID` |
+| `application` | `My App-` | `APPLICATION_MY_APP_CLIENT_ID` |
+| `application` | `2FA App` | `APPLICATION_2FA_APP_CLIENT_ID` |
+| `agent` | `My App` | `AGENT_MY_APP_CLIENT_ID` |
+
+Because normalization maps several names onto the same prefix, two resources of one type in a single
+export can compete for the same variable name. In that case, the second resource gets a numeric
+suffix. Exporting both `Wayfinder-Concierge` and `Wayfinder_Concierge` produces
+`APPLICATION_WAYFINDER_CONCIERGE_CLIENT_ID` and `APPLICATION_WAYFINDER_CONCIERGE_2_CLIENT_ID`, so each
+resource keeps its own value in the environment file.
+
+### Updating an Existing Environment File
+
+Variable names generated before the resource type was added carry no type prefix. An environment file
+kept from an earlier export sets names such as `MY_APP_CLIENT_ID`, which a current export no longer
+asks for. Rename each entry to include its resource type, or export again and fill in the new file.
+
+## User Credentials
+
+Every user is exported, whether or not it has a password. A user who has one carries it as a
+template variable rather than a value:
+
+```yaml
+credentials:
+  password: "{{.USER_ALICE_EXAMPLE_COM_PASSWORD}}"
+```
+
+A stored password is a one-way hash, so the original cannot be exported. Naming it here means the
+importing server supplies the password from its own environment or secret provider and hashes it on
+the way in, which leaves the imported user able to sign in. Without the placeholder the user would
+import with no credential at all.
+
+Which credentials a user carries depends on its user type. The export includes each credential the
+user type declares, such as `password`, when the user has set it. A credential the user has not set
+is left out, so a user created without a password exports with no `credentials` block, and the
+import asks for nothing it would never use. A credential outside the user type, such as a passkey,
+is never exported: it is bound to a device and means nothing on another deployment.
+
+A user with no username exports no credentials, because the variable is named after the username and
+there is nothing to name it after.
+
+The password placeholder is named directly from the username, so it does not take the numeric suffix
+that resolves competing names for other fields. Two users whose usernames normalize to the same name,
+such as `alice@example.com` and `alice.example.com`, would therefore claim one password variable and
+both import with the same password.
+
+<ProductName /> refuses the whole export in that case, with the error `EXP-1003` naming the two
+resources. The bundle is not returned at all, because one that dropped a resource silently would look
+complete. Rename one of the users, or export them separately.
+
+## Resource Server Identifiers
+
+A resource server's `identifier` is the audience it is served under, such as an API's base URL or
+an MCP server's URL, and each deployment usually serves it under its own. The identifier is exported
+as a template variable named like any other field, so a resource server named `Orders API` exports:
+
+```yaml
+identifier: {{.RESOURCE_SERVER_ORDERS_API_IDENTIFIER}}
+```
+
+Its resources, actions, and delimiter are exported as they are.
+
+## Exports From a Control Plane
+
+What an export contains depends on the plane you export from. A data plane holds its own values, so
+each parameterized field carries a template placeholder, and `environment_variables` lists the
+placeholders for you to fill in. A control plane authors configuration but does not hold the values
+it refers to. Each parameterized field carries a reference instead, naming where a data plane holds
+the value, and there is nothing to fill in.
+
+The same application exported from each plane:
+
+```yaml
+# From a data plane
+oauth:
+  clientId: {{.APPLICATION_MY_APP_CLIENT_ID}}
+  clientSecret: {{.APPLICATION_MY_APP_CLIENT_SECRET}}
+
+# From a control plane
+oauth:
+  clientId: var:APPLICATION_MY_APP_CLIENT_ID
+  clientSecret: sec:APPLICATION_MY_APP_CLIENT_SECRET
+```
+
+A reference names one of two collections:
+
+| Prefix | Refers to | Example |
+| --- | --- | --- |
+| `var:` | An ordinary value, such as a client ID | `var:APPLICATION_MY_APP_CLIENT_ID` |
+| `sec:` | A credential, such as a client secret | `sec:APPLICATION_MY_APP_CLIENT_SECRET` |
+
+A list, such as an application's redirect URIs, exports as a list holding one `var:` reference. The
+variable it names holds the items, as described in [Value References](./declarative-configurations/value-references.mdx#a-list-of-values).
+An empty list exports as it is, with no reference.
+
+The prefix is what keeps a credential out of a read. A data plane returns a variable's value when
+asked for it, and never returns a secret's. A client secret, a connection's secret or token, and any
+property marked `isSecret` always export with `sec:`.
+
+### Stored References Keep Their Names
+
+A field that already holds a reference exports as it stands. The name in a reference records where
+the value went, so renaming the resource does not change it. An application renamed from `Old Name`
+to `New Name` still exports `sec:APPLICATION_OLD_NAME_CLIENT_SECRET`, because that is the name the
+data plane holds the secret under.
+
+Each entry in a list gets the same treatment on its own. In an application with two inbound
+configurations, a reference already placed in one is kept, and a value in the other is replaced
+with a new reference.
+
+### What a Control Plane Does Not Parameterize
+
+A user's credentials are written as template placeholders on either plane, as described in
+[User Credentials](#user-credentials). A control-plane export that includes users who have set a
+password therefore still lists a password variable for each of them in `environment_variables`.
+Every other control-plane export leaves `environment_variables` empty.
+
+### A Credential That Refers to a Variable
+
+<ProductName /> refuses to export a credential that refers to an ordinary variable, such as a client
+secret holding `var:APPLICATION_MY_APP_CLIENT_SECRET`. Exporting it as it stands would point the
+credential at a value a read returns. Changing the prefix to `sec:` would name a secret that was
+never stored.
+
+The export leaves that resource out and logs a warning naming it. The other resources export as
+usual. Update the field to a `sec:` reference that names the stored secret, then export again.
 
 ## Internal API Model Reference
 
@@ -65,12 +203,12 @@ The API reference schema also defines an internal `ExportResponse` model (see `E
   ],
   "envFile": {
     "fileName": ".env",
-    "content": "GOOGLE_CLIENT_ID=\nGOOGLE_CLIENT_SECRET=\n",
-    "size": 40
+    "content": "CONNECTION_GOOGLE_CLIENT_ID=\nCONNECTION_GOOGLE_CLIENT_SECRET=\n",
+    "size": 62
   },
   "summary": {
     "totalFiles": 2,
-    "totalSizeBytes": 168
+    "totalSizeBytes": 190
   }
 }
 ```

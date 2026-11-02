@@ -125,18 +125,7 @@ func (lh *layoutMgtHandler) HandleLayoutGetRequest(w http.ResponseWriter, r *htt
 		return
 	}
 
-	layoutResponse := Layout{
-		ID:          layout.ID,
-		Handle:      layout.Handle,
-		DisplayName: layout.DisplayName,
-		Description: layout.Description,
-		Layout:      layout.Layout,
-		CreatedAt:   layout.CreatedAt,
-		UpdatedAt:   layout.UpdatedAt,
-		IsReadOnly:  layout.IsReadOnly,
-	}
-
-	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, layoutResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, toLayoutGetResponse(layout))
 
 	lh.logger.Debug(ctx, "Successfully retrieved layout configuration", log.String("id", id))
 }
@@ -266,4 +255,18 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 	}
 
 	sysutils.WriteErrorResponse(ctx, w, statusCode, errResp)
+}
+
+// toLayoutGetResponse builds the body a read of a layout returns.
+func toLayoutGetResponse(layout *Layout) Layout {
+	return Layout{
+		ID:          layout.ID,
+		Handle:      layout.Handle,
+		DisplayName: layout.DisplayName,
+		Description: layout.Description,
+		Layout:      layout.Layout,
+		CreatedAt:   layout.CreatedAt,
+		UpdatedAt:   layout.UpdatedAt,
+		IsReadOnly:  layout.IsReadOnly,
+	}
 }

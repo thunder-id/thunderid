@@ -5,7 +5,7 @@ import {QueryErrorNotice} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
-import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Group, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -66,19 +66,17 @@ export default function GroupsList(): JSX.Element {
         flex: 1,
         minWidth: 200,
         renderCell: (params: DataGrid.GridRenderCellParams<GroupBasic>): JSX.Element => (
-          <Typography variant="body2">{params.row.name}</Typography>
+          <ListingTable.CellIcon
+            icon={<Group size={20} />}
+            primary={params.row.name}
+            secondary={params.row.description === '' ? undefined : params.row.description}
+            sx={{width: '100%'}}
+          />
         ),
       },
       {
-        field: 'description',
-        headerName: t('groups:listing.columns.description', 'Description'),
-        flex: 1.5,
-        minWidth: 250,
-        valueGetter: (_value, row): string => row.description ?? '-',
-      },
-      {
         field: 'ouHandle',
-        headerName: t('groups:listing.columns.organizationUnit', 'Organization Unit'),
+        headerName: t('groups:listing.columns.organizationUnit', 'Organization unit'),
         flex: 1,
         minWidth: 200,
         renderCell: (params: DataGrid.GridRenderCellParams<GroupBasic>) => (
@@ -99,16 +97,22 @@ export default function GroupsList(): JSX.Element {
         renderCell: (params: DataGrid.GridRenderCellParams<GroupBasic>): JSX.Element => (
           <ListingTable.RowActions>
             {params.row.isReadOnly ? (
-              <Tooltip title={t('common:status.readOnly', 'Read Only')}>
-                <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
+              <Tooltip title={t('common:status.readOnly', 'Read only')}>
+                <IconButton
+                  size="small"
+                  aria-label={t('common:status.readOnly', 'Read only')}
+                  disableRipple
+                  sx={{cursor: 'default'}}
+                >
                   <Eye size={16} />
                 </IconButton>
               </Tooltip>
             ) : (
               <>
-                <Tooltip title={t('common:actions.edit')}>
+                <Tooltip title={t('common:actions.edit', 'Edit')}>
                   <IconButton
                     size="small"
+                    aria-label={t('common:actions.edit', 'Edit')}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleViewClick(params.row.id);
@@ -117,9 +121,10 @@ export default function GroupsList(): JSX.Element {
                     <Pencil size={16} />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title={t('common:actions.delete')}>
+                <Tooltip title={t('common:actions.delete', 'Delete')}>
                   <IconButton
                     size="small"
+                    aria-label={t('common:actions.delete', 'Delete')}
                     color="error"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -152,8 +157,8 @@ export default function GroupsList(): JSX.Element {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
-        <ListingTable.Container disablePaper>
+      <ListingTable.Provider variant="data-grid" loading={isLoading}>
+        <ListingTable.Container>
           <ListingTable.DataGrid
             rows={data?.groups ?? []}
             columns={columns}
@@ -176,6 +181,7 @@ export default function GroupsList(): JSX.Element {
             disableColumnFilter
             localeText={dataGridLocaleText}
             autoHeight
+            rowHeight={64}
             sx={{
               '& .MuiDataGrid-row': {
                 cursor: 'pointer',

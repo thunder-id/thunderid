@@ -34,7 +34,8 @@ var appleAttestationGuardOU = testutils.OrganizationUnit{
 }
 
 var appleAttestationGuardUserType = testutils.UserType{
-	Name: "apple_attestation_guard_person",
+	Handle:      "apple_attestation_guard_person",
+	DisplayName: "Apple Attestation Guard Person",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string"},
 		"password": map[string]interface{}{"type": "string", "credential": true},

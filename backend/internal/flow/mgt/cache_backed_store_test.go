@@ -683,3 +683,18 @@ func (s *CacheBackedFlowStoreTestSuite) TestInvalidateFlowCacheError() {
 	s.True(found)
 	s.Equal(flow, val)
 }
+
+func (s *CacheBackedFlowStoreTestSuite) TestListFlowsByOUAndByIDsAreNotCached() {
+	flows := []BasicFlowDefinition{{ID: "flow-1", OUID: "ou-1"}}
+	s.mockStore.EXPECT().ListFlowsByOU(mock.Anything, "ou-1", 10, 0, "").Return(flows, 1, nil)
+	s.mockStore.EXPECT().ListFlowsByIDs(mock.Anything, []string{"flow-1"}, "").Return(flows, nil)
+
+	page, total, err := s.cachedStore.ListFlowsByOU(context.Background(), "ou-1", 10, 0, "")
+	s.NoError(err)
+	s.Equal(1, total)
+	s.Equal(flows, page)
+
+	byID, err := s.cachedStore.ListFlowsByIDs(context.Background(), []string{"flow-1"}, "")
+	s.NoError(err)
+	s.Equal(flows, byID)
+}

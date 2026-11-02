@@ -1,0 +1,131 @@
+---
+title: Refresh Token
+docType: reference
+sidebar_position: 3
+description: The OAuth 2.1 Refresh Token grant in {{ProductName}}, to exchange a refresh token for a new access token, with optional rotation and audience preservation.
+---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Refresh Token
+
+The **Refresh Token** grant ([RFC 6749 §6](https://datatracker.ietf.org/doc/html/rfc6749#section-6)) lets a client obtain a new access token without prompting the user to sign in again. The client sends its refresh token to the token endpoint and receives a new access token (and optionally a new refresh token) in return.
+
+Refresh tokens are long-lived credentials and must be treated as such: they replace the user's session. <ProductName /> supports rotation so refresh tokens themselves can be short-lived in practice.
+
+## How It Works
+
+The refresh request goes directly to the token endpoint and returns a new token bundle.
+
+```http
+POST /oauth2/token HTTP/1.1
+Host: {{productSlug}}.example.com
+Authorization: Basic <client_id:client_secret>
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token
+&refresh_token=<refresh_token>
+&scope=openid%20profile             # optional, narrow only
+&resource=https://api.example.com   # optional, must match the existing audience
+```
+
+Response (rotation enabled):
+
+```json
+{
+  "access_token": "eyJhbGciOi...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "eyJhbGciOi...",
+  "scope": "openid profile"
+}
+```
+
+## Authorization on Refresh
+
+Each refresh re-evaluates the subject's authorization rather than replaying the decision made when the refresh token was issued.
+
+| Change since the refresh token was issued | Effect on the refresh |
+|---|---|
+| A role is unassigned from the subject, deleted, or stripped of a permission | The affected permission scopes are dropped from the new access token |
+| The subject loses a group membership that granted a role | The affected permission scopes are dropped from the new access token |
+| A permission is removed from the resource server | The scope is dropped from the new access token |
+| The user's password is reset | The refresh fails with `invalid_grant` |
+| The client secret is rotated | The refresh fails with `invalid_grant` |
+| The user is deleted | The refresh fails with `invalid_grant` |
+
+OIDC scopes such as `openid`, `profile`, and `email` are not permission scopes, so authorization changes never remove them.
+
+Re-evaluation also counts the authorization a federated sign-in granted for the session without storing it on the account: the groups and roles a connection's [Authorization Mapping](../../../identity-providers/add-oidc-provider#authorization-mapping) resolved when its groups and roles sync is **Session only**, the mapped groups when groups use the `declarative` [store mode](../../../../deployment/configuration#store-modes), and the mapped roles when roles do, and the permissions the mapping granted directly. <ProductName /> keeps them with the session's cached user attributes, so the permission scopes they grant last until the refresh token expires. The mapping itself isn't consulted again, so access the provider removes after sign-in still counts until then.
+
+Access tokens issued earlier are unaffected and remain valid until they expire. Clients must handle a refreshed access token that carries fewer scopes than the previous one, and an `invalid_grant` response that requires the user to sign in again.
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| Endpoint | `POST /oauth2/token` with `grant_type=refresh_token` |
+| Client authentication | Same methods as the original grant, see [Client Authentication Methods](../client-authentication-methods) |
+| Rotation | Controlled globally by `oauth.refresh_token.renew_on_grant` in `deployment.yaml`, enabled by default. Every refresh issues a new `refresh_token`; when disabled, the existing one is reused |
+| Old token after rotation | When `oauth.refresh_token.revoke_previous_on_renew` is enabled, the consumed refresh token is revoked after renewal. A revocation failure stops the rotation |
+| Grant lifetime | A rotated refresh token inherits the expiry of the token it replaces, so refreshing extends access but never the grant. Once `oauth.refresh_token.validity_period` has elapsed since the original grant, the user must authenticate again |
+| Audience preservation | The new access token keeps the refresh token's single audience when `resource` is omitted |
+| Resource validation | When supplied, `resource` must match the refresh token's audience. A mismatch returns `invalid_target` |
+| Scope narrowing | The `scope` parameter may request a subset of the originally granted scopes. Asking for a wider scope returns `invalid_scope` |
+| Authorization re-evaluation | Permission scopes are re-evaluated against the subject's current role and group assignments on every refresh. Scopes the subject no longer holds are dropped |
+| Credential changes | Each entity records when its password or client secret last changed. A refresh token established at or before that instant is rejected with `invalid_grant` |
+| DPoP binding | A DPoP-bound refresh token continues to require a DPoP proof on refresh; the new access token inherits the `cnf.jkt` binding |
+
+### What Changes Between the Original and Refreshed Token
+
+| Claim | Behavior on refresh |
+|---|---|
+| `sub` | Unchanged |
+| `iss` | Unchanged |
+| `aud` | Preserved. A supplied `resource` must match this value |
+| `scope` | Preserved by default. Narrowed when `scope` is supplied, and narrowed further to the permissions the subject currently holds |
+| `exp` / `iat` | New values |
+| `cnf.jkt` (DPoP) | Preserved |
+| `auth_time` | Not carried into refreshed tokens |
+
+</details>
+
+## Try It in <ProductName />
+
+<Tabs groupId="client-registration">
+<TabItem value="console" label="Console" default>
+
+1. Open **Applications** or **Agents** in the <ProductName /> Console and select your client.
+2. Open the **Advanced** tab.
+3. Under **Grant Types**, add `refresh_token` alongside a token-issuing grant (`authorization_code` or `urn:openid:params:grant-type:ciba`).
+4. Save.
+
+</TabItem>
+<TabItem value="dcr" label="Dynamic Client Registration">
+
+```http
+POST /oauth2/dcr/register
+Content-Type: application/json
+
+{
+  "client_name": "My App",
+  "redirect_uris": ["https://app.example.com/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"]
+}
+```
+
+</TabItem>
+</Tabs>
+
+Refresh token rotation is a deployment-wide setting, not per client. It is enabled by default; disable it by setting `oauth.refresh_token.renew_on_grant: false` in `deployment.yaml`. By default, `oauth.refresh_token.revoke_previous_on_renew` is `true`, so a successful rotation revokes the consumed refresh token.
+
+Because rotation makes each refresh token single-use, a client must persist the new `refresh_token` from every response and discard the old one. Replaying a consumed token revokes the entire token family, ending the session. Clients that issue concurrent refresh requests should serialise them, since only the first will succeed.
+
+## Related Guides
+
+- [Authorization Code](../authorization-code), the most common source of refresh tokens
+- [Resource Indicators](../resource-indicators), preserve and validate the resource binding during refresh
+- [DPoP](../dpop), refresh tokens issued under DPoP remain sender-constrained
+- [Token Formats](../token-formats), token lifetimes, signing and encryption settings

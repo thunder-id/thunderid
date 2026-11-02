@@ -330,6 +330,18 @@ reviews:
         - Flag any new CSS added to `docs/src/css/custom.css` unless it targets Scalar API reference
           elements or other third-party components where `sx`/`styled()` cannot reach. Ask:
           **"Can this style be applied via `sx` or `styled()` instead?"**
+        - For any component rendered inside actual doc content (an `.mdx` page under `docs/content/`
+          or `docs/versioned_docs/`) that builds a URL to `fetch()` a versioned static asset (e.g. a
+          file mirrored per-version under `static/docs/<versionPath>/...` or `static/api/<versionPath>/...`):
+          flag as a **major issue** if it derives the version by hardcoding a `/docs/next/...` literal
+          and rewriting it with `useDocsUrl()` (from `@site/src/hooks/useDocsUrl`). That hook is for
+          version-*less* contexts (footer links, homepage, custom pages) that fall back through the
+          site's global active/preferred/latest version state — it is the wrong tool for a component
+          embedded in a specific doc page, since that page already has its own authoritative version.
+          Require `useDocsVersion()` (from `@docusaurus/plugin-content-docs/client`) instead, mapping
+          `version === 'current' ? 'next' : version` to get the versionPath, matching the pattern in
+          `docs/src/components/ApiVersionReference.tsx`. `useDocsUrl()` remains correct for rewriting
+          `<Link>`/`href` navigation targets; this only applies to runtime `fetch()` URLs.
 
         Review documentation changes for:
         - Technical accuracy: do code examples and parameter descriptions match the actual implementation in this PR?

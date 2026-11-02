@@ -1,131 +1,138 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Box, ColorSchemeImage, Container, Link, Typography, useTheme} from '@wso2/oxygen-ui';
-import {WSO2} from '@wso2/oxygen-ui-icons-react';
+import {Box, Container, Link, Typography} from '@wso2/oxygen-ui';
 import {JSX} from 'react';
-import useIsDarkMode from '../../hooks/useIsDarkMode';
-import useScrollAnimation from '../../hooks/useScrollAnimation';
+import {BRAND_GRADIENT, DISPLAY_FONT, useHomeTokens, HOME_MAX_WIDTH} from './homeTheme';
+import {MaskLogo, Reveal, Section} from './shared';
 import ProductName from '@site/src/components/ProductName';
 
+const LFDT_URL = 'https://www.lfdecentralizedtrust.org/';
+
 export default function FooterSection(): JSX.Element {
-  const isDark = useIsDarkMode();
-  const theme = useTheme();
-  const {ref, isVisible} = useScrollAnimation({threshold: 0.2});
+  const t = useHomeTokens();
 
   return (
-    <Box
-      sx={{
-        py: {xs: 8, lg: 12},
-        position: 'relative',
-        borderTop: '1px solid',
-        borderColor: 'divider',
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: isDark
-            ? `radial-gradient(ellipse at 50% 50%, rgba(${theme.vars?.palette.primary.main} / 0.07) 0%, transparent 60%)`
-            : `radial-gradient(ellipse at 50% 50%, rgba(${theme.vars?.palette.primary.main} / 0.04) 0%, transparent 60%)`,
-          pointerEvents: 'none',
-        },
-      }}
-    >
-      <Container maxWidth="lg" sx={{px: {xs: 2, sm: 4}, position: 'relative', zIndex: 1}}>
-        <Box
-          ref={ref}
+    <Section id="cta" sx={{pb: {xs: 6, md: 10}}}>
+      <Container maxWidth={false} sx={{maxWidth: HOME_MAX_WIDTH, px: {xs: 2, sm: 4}}}>
+        <Reveal
+          delay={120}
           sx={{
+            position: 'relative',
+            px: {xs: 3, md: 8},
+            py: {xs: 5, md: 9},
+            borderRadius: '20px',
             textAlign: 'center',
-            maxWidth: '720px',
-            mx: 'auto',
-            opacity: isVisible ? 1 : 0,
-            transform: isVisible ? 'translateY(0)' : 'translateY(32px)',
-            transition: 'opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1)',
+            bgcolor: t.isDark ? 'rgba(5,33,63,0.55)' : t.surfaceStrong,
+            border: '1px solid',
+            borderColor: t.lineStrong,
+            boxShadow: t.shadow,
+            backdropFilter: 'blur(16px)',
           }}
         >
           <Typography
-            variant="h4"
             sx={{
-              lineHeight: 1.7,
+              maxWidth: 760,
+              mx: 'auto',
+              fontFamily: DISPLAY_FONT,
+              fontSize: {xs: '1.25rem', md: '1.875rem'},
+              fontWeight: 600,
+              lineHeight: 1.5,
+              letterSpacing: '-0.01em',
               color: 'text.secondary',
-              mb: 3,
             }}
           >
-            <ProductName /> is an{' '}
+            <Box component="strong" sx={{color: 'text.primary', fontWeight: 700}}>
+              <ProductName />
+            </Box>{' '}
+            is an{' '}
             <Link
-              href="https://openwallet.foundation/"
+              href={LFDT_URL}
               target="_blank"
               rel="noopener noreferrer"
               sx={{
-                background: `linear-gradient(90deg, ${theme.vars?.palette.primary.dark} 0%, ${theme.vars?.palette.primary.main} 100%)`,
+                fontWeight: 700,
+                background: BRAND_GRADIENT,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
-                fontWeight: 600,
                 textDecoration: 'none',
-                '&:hover': {
-                  textDecoration: 'underline',
-                },
+                '&:hover': {textDecoration: 'underline', textDecorationColor: '#3688FF'},
               }}
             >
-              Open Wallet Foundation (OWF)
+              LF Decentralized Trust
             </Link>{' '}
-            Growth project
+            project
           </Typography>
 
           <Box
+            component="a"
+            href={LFDT_URL}
+            target="_blank"
+            rel="noopener noreferrer"
             sx={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              mb: 3,
-              minHeight: '60px',
+              display: 'block',
+              width: 'min(520px, 100%)',
+              mx: 'auto',
+              my: {xs: 3, md: 4.5},
+              color: 'text.primary',
+              '& > span': {transition: 'transform 0.3s'},
+              '&:hover > span': {transform: 'scale(1.03)'},
             }}
           >
-            <ColorSchemeImage
-              src={{
-                light: '/assets/images/openwallet-foundation-logo-color.svg',
-                dark: '/assets/images/openwallet-foundation-logo-white.svg',
-              }}
-              height={150}
-              width={'auto'}
-              alt="Open Wallet Foundation Logo"
+            <MaskLogo
+              name="lfdt-full"
+              width="100%"
+              height="auto"
+              label="LF Decentralized Trust"
+              sx={{display: 'block', aspectRatio: '698.7 / 39.1'}}
             />
           </Box>
 
           <Box
+            component="a"
+            href="https://wso2.com/identity-platform/"
+            target="_blank"
+            rel="noopener noreferrer"
             sx={{
-              display: 'flex',
-              justifyContent: 'center',
+              display: 'inline-flex',
               alignItems: 'center',
-              gap: 0.5,
+              gap: 1.25,
+              px: 2.5,
+              py: 1.25,
+              borderRadius: '999px',
+              fontSize: {xs: '0.9375rem', md: '1.0625rem'},
+              fontWeight: 600,
+              color: 'text.primary',
+              textDecoration: 'none',
+              bgcolor: t.isDark ? 'rgba(4,12,26,0.6)' : 'rgba(15,40,80,0.03)',
+              border: '1px solid',
+              borderColor: t.lineStrong,
+              '&:hover': {color: 'text.primary', textDecoration: 'none', borderColor: 'primary.main'},
+              '@keyframes heartBeat': {
+                '0%, 100%': {transform: 'scale(1)'},
+                '15%': {transform: 'scale(1.22)'},
+                '30%': {transform: 'scale(1)'},
+                '45%': {transform: 'scale(1.14)'},
+              },
             }}
           >
-            <Typography
-              variant="body2"
+            Made with{' '}
+            <Box
+              component="span"
+              aria-label="love"
               sx={{
-                fontSize: {xs: '0.85rem', sm: '0.9rem'},
-                color: 'text.secondary',
+                display: 'inline-block',
+                animation: 'heartBeat 1.6s ease-in-out infinite',
+                '@media (prefers-reduced-motion: reduce)': {animation: 'none'},
               }}
             >
-              Made with ❤️ by
-            </Typography>
-            <WSO2 size={16} sx={{verticalAlign: 'middle'}} />
-            <Typography
-              variant="body2"
-              sx={{
-                fontSize: {xs: '0.85rem', sm: '0.9rem'},
-                color: 'text.secondary',
-              }}
-            >
-              WSO2
-            </Typography>
+              ❤️
+            </Box>{' '}
+            by <MaskLogo name="wso2" width={81} height={20} label="WSO2" />
           </Box>
-        </Box>
+        </Reveal>
       </Container>
-    </Box>
+    </Section>
   );
 }

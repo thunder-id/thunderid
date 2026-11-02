@@ -5,6 +5,7 @@ package par
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 	"strings"
 
@@ -17,18 +18,16 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // requestURIPrefix is the URN prefix used for PAR request URIs per RFC 9126.
 const requestURIPrefix = "urn:ietf:params:oauth:request_uri:"
 
-// sensitiveParParams is the deny-list of PAR body parameters that must not be persisted into
-// InitiatorRequest.QueryParams, since they carry client credentials and the PAR store is a
-// plaintext runtime cache.
-var sensitiveParParams = map[string]bool{
-	oauth2const.RequestParamClientSecret:        true,
-	oauth2const.RequestParamClientAssertion:     true,
-	oauth2const.RequestParamClientAssertionType: true,
+// IsPARRequestURI reports whether a request_uri is a PAR handle issued by this server, as
+// opposed to a client-supplied request object by reference (RFC 9101), which is not supported.
+func IsPARRequestURI(requestURI string) bool {
+	return strings.HasPrefix(requestURI, requestURIPrefix)
 }
 
 // PARServiceInterface defines the interface for the PAR service.
@@ -46,6 +45,7 @@ type PARServiceInterface interface {
 type parService struct {
 	store           parStoreInterface
 	resourceService providers.ResourceServerProvider
+	authzDetails    providers.AuthorizationDetailProvider
 	cfg             oauthconfig.Config
 	logger          *log.Logger
 }
@@ -53,11 +53,12 @@ type parService struct {
 // newPARService creates a new PAR service instance.
 func newPARService(
 	store parStoreInterface, resourceService providers.ResourceServerProvider,
-	cfg oauthconfig.Config,
+	authzDetails providers.AuthorizationDetailProvider, cfg oauthconfig.Config,
 ) PARServiceInterface {
 	return &parService{
 		store:           store,
 		resourceService: resourceService,
+		authzDetails:    authzDetails,
 		cfg:             cfg,
 		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "PARService")),
 	}
@@ -110,6 +111,15 @@ func (s *parService) HandlePushedAuthorizationRequest(
 		}
 	}
 
+	var authorizationDetails json.RawMessage
+	if raw := params[oauth2const.RequestParamAuthorizationDetails]; raw != "" {
+		details, errResp := oauth2utils.ValidateAuthorizationDetails(ctx, s.authzDetails, raw)
+		if errResp != nil {
+			return nil, errResp.Error, errResp.ErrorDescription
+		}
+		authorizationDetails = details
+	}
+
 	scope := params[oauth2const.RequestParamScope]
 	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(scope, oauthApp.ScopeClaims)
 
@@ -120,7 +130,7 @@ func (s *parService) HandlePushedAuthorizationRequest(
 	// when the pushed request is redeemed at the authorization endpoint, so both standard and
 	// PAR-based requests bind identically.
 	if _, errResp := resourceindicators.ResolveAudienceBinding(
-		ctx, s.resourceService, resources, nonOidcScopes); errResp != nil {
+		ctx, s.resourceService, resources, nonOidcScopes, len(authorizationDetails) > 0); errResp != nil {
 		return nil, errResp.Error, errResp.ErrorDescription
 	}
 
@@ -130,27 +140,33 @@ func (s *parService) HandlePushedAuthorizationRequest(
 	}
 
 	oauthParams := oauth2model.OAuthParameters{
-		State:               params[oauth2const.RequestParamState],
-		ClientID:            oauthApp.ClientID,
-		RedirectURI:         redirectURI,
-		RedirectURIProvided: redirectURIProvided,
-		ResponseType:        params[oauth2const.RequestParamResponseType],
-		StandardScopes:      oidcScopes,
-		PermissionScopes:    nonOidcScopes,
-		CodeChallenge:       params[oauth2const.RequestParamCodeChallenge],
-		CodeChallengeMethod: params[oauth2const.RequestParamCodeChallengeMethod],
-		Resources:           resources,
-		ClaimsRequest:       claimsRequest,
-		ClaimsLocales:       params[oauth2const.RequestParamClaimsLocales],
-		Nonce:               params[oauth2const.RequestParamNonce],
-		AcrValues:           params[oauth2const.RequestParamAcrValues],
-		DPoPJkt:             resolveDPoPJkt(params[oauth2const.RequestParamDPoPJkt], dpopHeaderJkt),
-		Prompt:              params[oauth2const.RequestParamPrompt],
+		State:                params[oauth2const.RequestParamState],
+		ClientID:             oauthApp.ClientID,
+		RedirectURI:          redirectURI,
+		RedirectURIProvided:  redirectURIProvided,
+		ResponseType:         params[oauth2const.RequestParamResponseType],
+		StandardScopes:       oidcScopes,
+		PermissionScopes:     nonOidcScopes,
+		CodeChallenge:        params[oauth2const.RequestParamCodeChallenge],
+		CodeChallengeMethod:  params[oauth2const.RequestParamCodeChallengeMethod],
+		Resources:            resources,
+		ClaimsRequest:        claimsRequest,
+		ClaimsLocales:        params[oauth2const.RequestParamClaimsLocales],
+		UILocales:            params[oauth2const.RequestParamUILocales],
+		Nonce:                params[oauth2const.RequestParamNonce],
+		AcrValues:            params[oauth2const.RequestParamAcrValues],
+		MaxAge:               params[oauth2const.RequestParamMaxAge],
+		DPoPJkt:              resolveDPoPJkt(params[oauth2const.RequestParamDPoPJkt], dpopHeaderJkt),
+		Prompt:               params[oauth2const.RequestParamPrompt],
+		IDTokenHint:          params[oauth2const.RequestParamIDTokenHint],
+		AuthorizationDetails: authorizationDetails,
 	}
 
+	// Drop client-credential params before persisting: the PAR store is a plaintext cache. Uses the
+	// shared deny-list so it cannot drift from the authorize/CIBA capture paths.
 	initiatorQueryParams := make(map[string][]string, len(params)+1)
 	for k, v := range params {
-		if sensitiveParParams[k] {
+		if sysutils.IsSensitiveQueryParam(k) {
 			continue
 		}
 		initiatorQueryParams[k] = []string{v}
@@ -195,7 +211,7 @@ func resolveDPoPJkt(paramJkt, headerJkt string) string {
 func (s *parService) ResolvePushedAuthorizationRequest(
 	ctx context.Context, requestURI string, clientID string,
 ) (*oauth2model.OAuthParameters, *providers.InitiatorRequest, error) {
-	if !strings.HasPrefix(requestURI, requestURIPrefix) {
+	if !IsPARRequestURI(requestURI) {
 		return nil, nil, errInvalidRequestURI
 	}
 	randomKey := strings.TrimPrefix(requestURI, requestURIPrefix)

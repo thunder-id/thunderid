@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 type ListUserTypesTestSuite struct {
@@ -63,7 +63,8 @@ func (ts *ListUserTypesTestSuite) TestListUserTypes() {
 	// Verify each schema has required fields for list view
 	for _, schema := range listResponse.Types {
 		ts.Assert().NotEmpty(schema.ID, "Schema should have ID")
-		ts.Assert().NotEmpty(schema.Name, "Schema should have name")
+		ts.Assert().NotEmpty(schema.Handle, "Schema should have handle")
+		ts.Assert().NotEmpty(schema.DisplayName, "Schema should have display name")
 	}
 }
 

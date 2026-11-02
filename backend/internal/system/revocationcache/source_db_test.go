@@ -53,12 +53,26 @@ func (suite *DBSourceTestSuite) TestSnapshot_Success() {
 		Return([]map[string]interface{}{
 			{"criterion_value": "tfid-1", "expiry_time": expiry},
 		}, nil)
-	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotRevokedSubjects,
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
 		criterionTypeSubject, mock.Anything, testDeploymentID).
 		Return([]map[string]interface{}{
 			{"criterion_value": "user-1", "reason": "role_assignment_removed",
 				"revoked_at": revokedAt, "expiry_time": expiry},
 		}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeAppKey, mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{
+			{"criterion_value": "client-1", "reason": "application_secret_regenerated",
+				"revoked_at": revokedAt, "expiry_time": expiry},
+			{"criterion_value": "client-2", "reason": "application_deleted",
+				"revoked_at": revokedAt, "expiry_time": expiry},
+		}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeEntityScope, mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeScope, mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{}, nil)
 
 	snapshot, err := suite.source.Snapshot(context.Background())
 
@@ -72,6 +86,15 @@ func (suite *DBSourceTestSuite) TestSnapshot_Success() {
 	assert.Equal(suite.T(), "user-1", snapshot.Subjects[0].Value)
 	assert.Equal(suite.T(), revokedAt, snapshot.Subjects[0].RevokedAt)
 	assert.True(suite.T(), snapshot.Subjects[0].Boundary)
+
+	// Secret regeneration is a boundary reason; application deletion is terminal. The classification
+	// must come through on app-key entries exactly as it does on subjects.
+	suite.Require().Len(snapshot.AppKeys, 2)
+	assert.Equal(suite.T(), "client-1", snapshot.AppKeys[0].Value)
+	assert.Equal(suite.T(), revokedAt, snapshot.AppKeys[0].RevokedAt)
+	assert.True(suite.T(), snapshot.AppKeys[0].Boundary)
+	assert.Equal(suite.T(), "client-2", snapshot.AppKeys[1].Value)
+	assert.False(suite.T(), snapshot.AppKeys[1].Boundary)
 }
 
 func (suite *DBSourceTestSuite) TestSnapshot_Empty() {
@@ -82,8 +105,17 @@ func (suite *DBSourceTestSuite) TestSnapshot_Empty() {
 	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotRevokedTokenFamilies,
 		criterionTypeTokenFamily, mock.Anything, testDeploymentID).
 		Return([]map[string]interface{}{}, nil)
-	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotRevokedSubjects,
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
 		criterionTypeSubject, mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeAppKey, mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeEntityScope, mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeScope, mock.Anything, testDeploymentID).
 		Return([]map[string]interface{}{}, nil)
 
 	snapshot, err := suite.source.Snapshot(context.Background())
@@ -92,6 +124,25 @@ func (suite *DBSourceTestSuite) TestSnapshot_Empty() {
 	assert.Empty(suite.T(), snapshot.Tokens)
 	assert.Empty(suite.T(), snapshot.Families)
 	assert.Empty(suite.T(), snapshot.Subjects)
+	assert.Empty(suite.T(), snapshot.AppKeys)
+}
+
+func (suite *DBSourceTestSuite) TestSnapshot_AppKeyQueryError() {
+	suite.mockDBProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotRevokedTokens,
+		mock.Anything, testDeploymentID).Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotRevokedTokenFamilies,
+		criterionTypeTokenFamily, mock.Anything, testDeploymentID).Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeSubject, mock.Anything, testDeploymentID).Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeAppKey, mock.Anything, testDeploymentID).Return(nil, errors.New("query error"))
+
+	snapshot, err := suite.source.Snapshot(context.Background())
+
+	assert.Error(suite.T(), err)
+	assert.Empty(suite.T(), snapshot.AppKeys)
+	assert.Contains(suite.T(), err.Error(), "error reading revoked application snapshot")
 }
 
 func (suite *DBSourceTestSuite) TestSnapshot_SubjectQueryError() {
@@ -100,7 +151,7 @@ func (suite *DBSourceTestSuite) TestSnapshot_SubjectQueryError() {
 		mock.Anything, testDeploymentID).Return([]map[string]interface{}{}, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotRevokedTokenFamilies,
 		criterionTypeTokenFamily, mock.Anything, testDeploymentID).Return([]map[string]interface{}{}, nil)
-	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotRevokedSubjects,
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
 		criterionTypeSubject, mock.Anything, testDeploymentID).Return(nil, errors.New("query error"))
 
 	snapshot, err := suite.source.Snapshot(context.Background())
@@ -108,6 +159,61 @@ func (suite *DBSourceTestSuite) TestSnapshot_SubjectQueryError() {
 	assert.Error(suite.T(), err)
 	assert.Empty(suite.T(), snapshot.Subjects)
 	assert.Contains(suite.T(), err.Error(), "error reading revoked subject snapshot")
+}
+
+func (suite *DBSourceTestSuite) TestSnapshot_EntityScopeQueryError() {
+	suite.expectSnapshotUpToAppKeys()
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeEntityScope, mock.Anything, testDeploymentID).Return(nil, errors.New("query error"))
+
+	snapshot, err := suite.source.Snapshot(context.Background())
+
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "error reading revoked entity scope snapshot")
+	suite.Empty(snapshot.EntityScopes)
+}
+
+func (suite *DBSourceTestSuite) TestSnapshot_EntityScopeParseError() {
+	suite.expectSnapshotUpToAppKeys()
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeEntityScope, mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{{"criterion_value": "", "expiry_time": time.Now().Add(time.Hour)}}, nil)
+
+	snapshot, err := suite.source.Snapshot(context.Background())
+
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "criterion_value")
+	suite.Empty(snapshot.EntityScopes)
+}
+
+func (suite *DBSourceTestSuite) TestSnapshot_ScopeQueryError() {
+	suite.expectSnapshotUpToAppKeys()
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeEntityScope, mock.Anything, testDeploymentID).Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeScope, mock.Anything, testDeploymentID).Return(nil, errors.New("query error"))
+
+	snapshot, err := suite.source.Snapshot(context.Background())
+
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "error reading revoked scope snapshot")
+	suite.Empty(snapshot.Scopes)
+}
+
+func (suite *DBSourceTestSuite) TestSnapshot_ScopeParseError() {
+	suite.expectSnapshotUpToAppKeys()
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeEntityScope, mock.Anything, testDeploymentID).Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeScope, mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{{"criterion_value": "digest-1",
+			"expiry_time": time.Now().Add(time.Hour), "revoked_at": time.Now()}}, nil)
+
+	snapshot, err := suite.source.Snapshot(context.Background())
+
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "reason")
+	suite.Empty(snapshot.Scopes)
 }
 
 func (suite *DBSourceTestSuite) TestSnapshot_DBClientError() {
@@ -177,4 +283,16 @@ func (suite *DBSourceTestSuite) TestSnapshot_InvalidExpiryTime() {
 	assert.Error(suite.T(), err)
 	assert.Empty(suite.T(), snapshot.Tokens)
 	assert.Contains(suite.T(), err.Error(), "error parsing revocation snapshot")
+}
+
+func (suite *DBSourceTestSuite) expectSnapshotUpToAppKeys() {
+	suite.mockDBProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotRevokedTokens,
+		mock.Anything, testDeploymentID).Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotRevokedTokenFamilies,
+		criterionTypeTokenFamily, mock.Anything, testDeploymentID).Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeSubject, mock.Anything, testDeploymentID).Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeAppKey, mock.Anything, testDeploymentID).Return([]map[string]interface{}{}, nil)
 }

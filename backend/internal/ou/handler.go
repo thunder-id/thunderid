@@ -10,8 +10,6 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -231,17 +229,14 @@ func (
 	switch svcErr.Type {
 	case tidcommon.ClientErrorType:
 		statusCode = http.StatusBadRequest
-		if svcErr.Code == ErrorOrganizationUnitNotFound.Code {
+		switch svcErr.Code {
+		case ErrorOrganizationUnitNotFound.Code:
 			statusCode = http.StatusNotFound
-		} else if svcErr.Code == ErrorOrganizationUnitNameConflict.Code ||
-			svcErr.Code == ErrorOrganizationUnitHandleConflict.Code {
+		case ErrorOrganizationUnitNameConflict.Code, ErrorOrganizationUnitHandleConflict.Code:
 			statusCode = http.StatusConflict
-		} else if svcErr.Code == ErrorInvalidLimit.Code ||
-			svcErr.Code == ErrorInvalidOffset.Code ||
-			svcErr.Code == ErrorInvalidHandlePath.Code ||
-			svcErr.Code == ErrorInvalidFilter.Code {
+		case ErrorInvalidLimit.Code, ErrorInvalidOffset.Code, ErrorInvalidHandlePath.Code, ErrorInvalidFilter.Code:
 			statusCode = http.StatusBadRequest
-		} else if svcErr.Code == tidcommon.ErrorUnauthorized.Code {
+		case tidcommon.ErrorUnauthorized.Code:
 			statusCode = http.StatusForbidden
 		}
 	default:
@@ -258,8 +253,8 @@ func (
 // sanitizeOrganizationUnitRequest sanitizes the create organization unit request input.
 func (ouh *organizationUnitHandler) sanitizeOrganizationUnitRequest(
 	request OrganizationUnitRequest,
-) providers.OrganizationUnitRequestWithID {
-	return providers.OrganizationUnitRequestWithID{
+) OrganizationUnitRequestWithID {
+	return OrganizationUnitRequestWithID{
 		Handle:                    sysutils.SanitizeString(request.Handle),
 		Name:                      sysutils.SanitizeString(request.Name),
 		Description:               sysutils.SanitizeString(request.Description),
@@ -350,7 +345,7 @@ func (ouh *organizationUnitHandler) handleResourceListRequest(
 	// Extract pagination info for logging based on response type
 	var totalResults, count int
 	switch resp := response.(type) {
-	case *providers.OrganizationUnitListResponse:
+	case *OrganizationUnitListResponse:
 		totalResults = resp.TotalResults
 		count = resp.Count
 	case *UserListResponse:
@@ -483,7 +478,7 @@ func (ouh *organizationUnitHandler) handleResourceListByPathRequest(
 	if logger.IsDebugEnabled() {
 		var totalResults, count int
 		switch resp := response.(type) {
-		case *providers.OrganizationUnitListResponse:
+		case *OrganizationUnitListResponse:
 			totalResults = resp.TotalResults
 			count = resp.Count
 		case *UserListResponse:

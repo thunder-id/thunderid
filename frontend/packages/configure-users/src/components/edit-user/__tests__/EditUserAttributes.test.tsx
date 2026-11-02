@@ -50,19 +50,20 @@ describe('EditUserAttributes', () => {
   const baseUser: User = {
     id: 'user-1',
     ouId: 'ou-1',
-    type: 'Employee',
+    type: 'employee',
     attributes: {email: 'a@b.com', count: 5},
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseGetUserTypes.mockReturnValue({
-      data: {types: [{id: 'schema-1', name: 'Employee', ouId: 'ou-1'}]},
+      data: {types: [{id: 'schema-1', handle: 'employee', displayName: 'Employee', ouId: 'ou-1'}]},
     });
     mockUseGetUserType.mockReturnValue({
       data: {
         id: 'schema-1',
-        name: 'Employee',
+        handle: 'employee',
+        displayName: 'Employee',
         schema: {
           email: {type: 'string', required: true},
           count: {type: 'number'},
@@ -98,7 +99,12 @@ describe('EditUserAttributes', () => {
 
   it('shows a message when the schema has no editable fields', () => {
     mockUseGetUserType.mockReturnValue({
-      data: {id: 'schema-1', name: 'Employee', schema: {password: {type: 'string', credential: true}}},
+      data: {
+        id: 'schema-1',
+        handle: 'employee',
+        displayName: 'Employee',
+        schema: {password: {type: 'string', credential: true}},
+      },
       isLoading: false,
     });
     render(<EditUserAttributes user={baseUser} editedUser={{}} onFieldChange={mockOnFieldChange} />);

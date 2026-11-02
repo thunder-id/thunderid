@@ -10,6 +10,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/authn/assert"
 	"github.com/thunder-id/thunderid/internal/authn/common"
+	authnconfig "github.com/thunder-id/thunderid/internal/authn/config"
 	"github.com/thunder-id/thunderid/internal/authn/github"
 	"github.com/thunder-id/thunderid/internal/authn/google"
 	"github.com/thunder-id/thunderid/internal/authn/magiclink"
@@ -18,17 +19,19 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/oidc"
 	"github.com/thunder-id/thunderid/internal/authn/otp"
 	"github.com/thunder-id/thunderid/internal/authn/reactsdk"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
-	"github.com/thunder-id/thunderid/internal/system/template"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// Initialize initializes the authentication service and registers its routes. It also creates the
-// Direct Auth Secret guard used to gate the Direct API endpoints and returns it so callers that own
-// other Direct API endpoints (e.g. authzen) can reuse the same guard.
+// Initialize initializes the authentication service and, when cfg.DirectAPIEnabled is set, registers
+// the Direct API routes. It also creates the Direct Auth Secret guard used to gate the Direct API endpoints
+// and returns it so callers that own other Direct API endpoints (e.g. authzen) can reuse the same guard.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
@@ -38,13 +41,15 @@ func Initialize(
 	authAssertGen assert.AuthAssertGeneratorInterface,
 	otpSvc otp.OTPAuthnServiceInterface,
 	notifSenderSvc notification.NotificationSenderServiceInterface,
-	templateSvc template.TemplateServiceInterface,
+	templateRenderer notificationtemplate.TemplateRendererInterface,
 	magicLinkSvc magiclink.MagicLinkAuthnServiceInterface,
 	oauthSvc oauth.OAuthAuthnServiceInterface,
 	oidcSvc oidc.OIDCAuthnServiceInterface,
 	googleSvc google.GoogleOIDCAuthnServiceInterface,
 	githubSvc github.GithubOAuthAuthnServiceInterface,
-	directAuthSecret string,
+	entityTypeSvc entitytype.EntityTypeServiceInterface,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
+	cfg authnconfig.Config,
 ) (AuthenticationServiceInterface, DirectAuthGuardInterface) {
 	common.RegisterAuthenticator(common.AuthenticatorMeta{
 		Name:    common.AuthenticatorCredentials,
@@ -94,18 +99,22 @@ func Initialize(
 		authnProvider,
 		otpSvc,
 		notifSenderSvc,
-		templateSvc,
+		templateRenderer,
 		magicLinkSvc,
 		oauthSvc,
 		oidcSvc,
 		googleSvc,
 		githubSvc,
+		entityTypeSvc,
+		governance,
 	)
 
-	directAuthGuard := newDirectAuthGuard(directAuthSecret)
+	directAuthGuard := newDirectAuthGuard(cfg.DirectAuthSecret)
 
-	authnHandler := newAuthenticationHandler(authnService)
-	registerRoutes(mux, authnHandler, directAuthGuard)
+	if cfg.DirectAPIEnabled {
+		authnHandler := newAuthenticationHandler(authnService)
+		registerRoutes(mux, authnHandler, directAuthGuard)
+	}
 
 	// Register MCP tools
 	if mcpServer != nil {

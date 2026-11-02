@@ -1,13 +1,13 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
 import {useGetUserType, useGetUserTypes} from '@thunderid/configure-user-types';
+import {getUserTypeLabel} from '@thunderid/utils';
 import {
   Autocomplete,
   Box,
   Button,
-  Divider,
   FormControl,
   FormHelperText,
   FormLabel,
@@ -22,6 +22,7 @@ import {
 import {Plus, Trash2, UserRound} from '@wso2/oxygen-ui-icons-react';
 import {type JSX, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
+import SettingsCardIcon from './SettingsCardIcon';
 import type {AttributeConfiguration} from '../models/connection';
 import {
   flattenUserTypeAttributes,
@@ -48,11 +49,6 @@ interface KeyedValue {
 }
 
 const EMPTY_VALUE_MAPPING: KeyedValue[] = [];
-
-interface KeyedLink {
-  key: number;
-  value: string;
-}
 
 interface AttributeMappingSectionProps {
   initialConfig?: AttributeConfiguration;
@@ -81,9 +77,10 @@ function valueEntryIsIncomplete(entry: {value: string; userType: string}): boole
  */
 function MappingGroupEditor({
   group,
-  userTypeNames,
+  userTypeHandles,
   otherUsedUserTypes,
-  userTypeIdByName,
+  userTypeIdByHandle,
+  userTypeLabelByHandle,
   canRemove,
   showUserTypeError,
   onUserTypeChange,
@@ -93,9 +90,10 @@ function MappingGroupEditor({
   onRemoveGroup,
 }: {
   group: KeyedGroup;
-  userTypeNames: string[];
+  userTypeHandles: string[];
   otherUsedUserTypes: string[];
-  userTypeIdByName: Map<string, string>;
+  userTypeIdByHandle: Map<string, string>;
+  userTypeLabelByHandle: Map<string, string>;
   canRemove: boolean;
   showUserTypeError: boolean;
   onUserTypeChange: (userType: string) => void;
@@ -105,7 +103,7 @@ function MappingGroupEditor({
   onRemoveGroup: () => void;
 }): JSX.Element {
   const {t} = useTranslation('connections');
-  const userTypeDetail = useGetUserType(userTypeIdByName.get(group.userType));
+  const userTypeDetail = useGetUserType(userTypeIdByHandle.get(group.userType));
   const localAttributeOptions: string[] = useMemo(
     () => flattenUserTypeAttributes(userTypeDetail.data?.schema),
     [userTypeDetail.data],
@@ -113,11 +111,11 @@ function MappingGroupEditor({
   const options: string[] = useMemo(() => {
     const usedElsewhere = new Set(otherUsedUserTypes);
     return withStoredOption(
-      userTypeNames.filter((name) => !usedElsewhere.has(name)),
+      userTypeHandles.filter((handle) => !usedElsewhere.has(handle)),
       group.userType,
     );
-  }, [userTypeNames, otherUsedUserTypes, group.userType]);
-  const singleUserType: boolean = userTypeNames.length === 1;
+  }, [userTypeHandles, otherUsedUserTypes, group.userType]);
+  const singleUserType: boolean = userTypeHandles.length === 1;
   const lastRow = group.rows[group.rows.length - 1];
   const lastRowIncomplete: boolean =
     lastRow !== undefined && (lastRow.externalAttribute.trim() === '' || lastRow.localAttribute.trim() === '');
@@ -139,12 +137,14 @@ function MappingGroupEditor({
                 displayEmpty
                 value={group.userType}
                 onChange={(e) => onUserTypeChange(e.target.value)}
-                renderValue={(value) => (value ? value : t('attributeMapping.userType.placeholder'))}
+                renderValue={(value) =>
+                  value ? (userTypeLabelByHandle.get(value) ?? value) : t('attributeMapping.userType.placeholder')
+                }
                 data-testid={`attribute-mapping-group-user-type-select-${group.key}`}
               >
-                {options.map((name) => (
-                  <MenuItem key={name} value={name}>
-                    {name}
+                {options.map((handle) => (
+                  <MenuItem key={handle} value={handle}>
+                    {userTypeLabelByHandle.get(handle) ?? handle}
                   </MenuItem>
                 ))}
               </Select>
@@ -267,8 +267,6 @@ export default function AttributeMappingSection({
             }))
           : [{key: nk(), userType: '', rows: [{key: nk(), externalAttribute: '', localAttribute: ''}]}],
       groupsWasEmpty: state.groups.length === 0,
-      linking: state.linking.length > 0 ? state.linking.map((value) => ({key: nk(), value})) : [{key: nk(), value: ''}],
-      linkingWasEmpty: state.linking.length === 0,
       seq,
     };
   });
@@ -284,13 +282,16 @@ export default function AttributeMappingSection({
   const [valueMappingEnabled, setValueMappingEnabled] = useState<boolean>(initialKeyed.valueMapping.length > 0);
   const [valueMapping, setValueMapping] = useState<KeyedValue[]>(initialKeyed.valueMapping);
   const [groups, setGroups] = useState<KeyedGroup[]>(initialKeyed.groups);
-  const [linking, setLinking] = useState<KeyedLink[]>(initialKeyed.linking);
 
   const userTypesQuery = useGetUserTypes();
   const userTypeList = useMemo(() => userTypesQuery.data?.types ?? [], [userTypesQuery.data]);
-  const userTypeNames: string[] = useMemo(() => userTypeList.map((type) => type.name), [userTypeList]);
-  const userTypeIdByName: Map<string, string> = useMemo(
-    () => new Map(userTypeList.map((type) => [type.name, type.id])),
+  const userTypeHandles: string[] = useMemo(() => userTypeList.map((type) => type.handle), [userTypeList]);
+  const userTypeIdByHandle: Map<string, string> = useMemo(
+    () => new Map(userTypeList.map((type) => [type.handle, type.id])),
+    [userTypeList],
+  );
+  const userTypeLabelByHandle: Map<string, string> = useMemo(
+    () => new Map(userTypeList.map((type) => [type.handle, getUserTypeLabel(userTypeList, type.handle)])),
     [userTypeList],
   );
   const canResolveDynamic: boolean = userTypeList.length > 1;
@@ -303,10 +304,7 @@ export default function AttributeMappingSection({
   // render (React's documented pattern for reacting to a changed value) rather than via an effect, to
   // avoid the extra render pass a setState-in-effect would cost.
   const wasUnconfigured: boolean =
-    initialKeyed.defaultUserType === '' &&
-    initialKeyed.groupsWasEmpty &&
-    initialKeyed.linkingWasEmpty &&
-    !initialKeyed.resolveDynamic;
+    initialKeyed.defaultUserType === '' && initialKeyed.groupsWasEmpty && !initialKeyed.resolveDynamic;
   // Sentinel `null` (rather than the initial userTypeList) so the check below still evaluates on the
   // very first render — e.g. when the list is already available synchronously from a warm query cache.
   const [seenUserTypeList, setSeenUserTypeList] = useState<typeof userTypeList | null>(null);
@@ -315,7 +313,7 @@ export default function AttributeMappingSection({
     setSeenUserTypeList(userTypeList);
     if (userTypeList.length === 1) {
       setAutoFilled(true);
-      const onlyUserType = userTypeList[0].name;
+      const onlyUserType = userTypeList[0].handle;
       setDefaultUserType(onlyUserType);
       setGroups((prev) => prev.map((group, index) => (index === 0 ? {...group, userType: onlyUserType} : group)));
     }
@@ -346,8 +344,7 @@ export default function AttributeMappingSection({
   });
 
   useEffect(() => {
-    const hasContent: boolean =
-      anyGroupHasContent || effectiveResolveDynamic || linking.some((entry) => entry.value.trim() !== '');
+    const hasContent: boolean = anyGroupHasContent || effectiveResolveDynamic;
     // On a fresh connection with a single user type the default is auto-derived and its field hidden,
     // so don't persist a default-only config the admin never configured (which would dirty the form
     // just by opening it). Only suppress for truly unconfigured connections — an existing default-only
@@ -362,7 +359,6 @@ export default function AttributeMappingSection({
         userType: group.userType,
         rows: group.rows.map((row) => ({externalAttribute: row.externalAttribute, localAttribute: row.localAttribute})),
       })),
-      linking: linking.map((entry) => entry.value),
     });
     onChangeRef.current(config, valid);
   }, [
@@ -371,7 +367,6 @@ export default function AttributeMappingSection({
     externalAttribute,
     effectiveValueMapping,
     groups,
-    linking,
     valid,
     anyGroupHasContent,
     userTypeList,
@@ -379,25 +374,24 @@ export default function AttributeMappingSection({
   ]);
 
   const defaultOptions: string[] = useMemo(
-    () => withStoredOption(userTypeNames, defaultUserType),
-    [userTypeNames, defaultUserType],
+    () => withStoredOption(userTypeHandles, defaultUserType),
+    [userTypeHandles, defaultUserType],
   );
 
   const hasUnusedUserType = (usedTypes: string[]): boolean => {
-    const used = new Set(usedTypes.filter((name) => name.trim() !== ''));
-    return userTypeNames.some((name) => !used.has(name));
+    const used = new Set(usedTypes.filter((handle) => handle.trim() !== ''));
+    return userTypeHandles.some((handle) => !used.has(handle));
   };
   const lastValueIsEmpty: boolean =
     valueMapping.length > 0 && valueMapping[valueMapping.length - 1].value.trim() === '';
   const showAddValue: boolean = userTypeList.length > 1;
   const showAddUserType: boolean = hasUnusedUserType(groups.map((group) => group.userType));
-  const lastLinkIsEmpty: boolean = linking.length > 0 && linking[linking.length - 1].value.trim() === '';
 
   // Value-mapping handlers.
   const addValue = (): void =>
     setValueMapping((prev) => [
       ...prev,
-      {key: nextKey(), value: '', userType: userTypeList.length === 1 ? userTypeList[0].name : ''},
+      {key: nextKey(), value: '', userType: userTypeList.length === 1 ? userTypeList[0].handle : ''},
     ]);
   const removeValue = (key: number): void => setValueMapping((prev) => prev.filter((entry) => entry.key !== key));
   const updateValue = (key: number, patch: Partial<KeyedValue>): void =>
@@ -441,29 +435,6 @@ export default function AttributeMappingSection({
       ),
     );
 
-  // Account-linking handlers.
-  const addLink = (): void => setLinking((prev) => [...prev, {key: nextKey(), value: ''}]);
-  const removeLink = (key: number): void => setLinking((prev) => prev.filter((entry) => entry.key !== key));
-  const updateLink = (key: number, value: string): void =>
-    setLinking((prev) => prev.map((entry) => (entry.key === key ? {...entry, value} : entry)));
-
-  const iconBox = (icon: JSX.Element): JSX.Element => (
-    <Box
-      sx={{
-        width: 30,
-        height: 30,
-        borderRadius: 1.5,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        bgcolor: 'action.hover',
-        color: 'primary.main',
-      }}
-    >
-      {icon}
-    </Box>
-  );
-
   return (
     <Stack direction="column" spacing={3} data-testid="attribute-mapping-section">
       {/* Section 1 — user type resolution (hidden when there's only one user type to resolve to) */}
@@ -471,7 +442,11 @@ export default function AttributeMappingSection({
         <SettingsCard
           title={t('attributeMapping.resolution.title')}
           description={t('attributeMapping.resolution.description')}
-          titleIcon={iconBox(<UserRound size={16} />)}
+          titleIcon={
+            <SettingsCardIcon>
+              <UserRound size={16} />
+            </SettingsCardIcon>
+          }
         >
           <Stack direction="column" spacing={3.5}>
             {canResolveDynamic && (
@@ -549,12 +524,16 @@ export default function AttributeMappingSection({
                               error={incomplete && entry.userType.trim() === ''}
                               value={entry.userType}
                               onChange={(e) => updateValue(entry.key, {userType: e.target.value})}
-                              renderValue={(value) => (value ? value : t('attributeMapping.userType.placeholder'))}
+                              renderValue={(value) =>
+                                value
+                                  ? (userTypeLabelByHandle.get(value) ?? value)
+                                  : t('attributeMapping.userType.placeholder')
+                              }
                               inputProps={{'aria-label': t('attributeMapping.resolution.valueMapping.localUserType')}}
                             >
-                              {withStoredOption(userTypeNames, entry.userType).map((name) => (
-                                <MenuItem key={name} value={name}>
-                                  {name}
+                              {withStoredOption(userTypeHandles, entry.userType).map((handle) => (
+                                <MenuItem key={handle} value={handle}>
+                                  {userTypeLabelByHandle.get(handle) ?? handle}
                                 </MenuItem>
                               ))}
                             </Select>
@@ -602,12 +581,14 @@ export default function AttributeMappingSection({
                 displayEmpty
                 value={defaultUserType}
                 onChange={(e) => setDefaultUserType(e.target.value)}
-                renderValue={(value) => (value ? value : t('attributeMapping.userType.placeholder'))}
+                renderValue={(value) =>
+                  value ? (userTypeLabelByHandle.get(value) ?? value) : t('attributeMapping.userType.placeholder')
+                }
                 data-testid="attribute-mapping-default-user-type-select"
               >
-                {defaultOptions.map((name) => (
-                  <MenuItem key={name} value={name}>
-                    {name}
+                {defaultOptions.map((handle) => (
+                  <MenuItem key={handle} value={handle}>
+                    {userTypeLabelByHandle.get(handle) ?? handle}
                   </MenuItem>
                 ))}
               </Select>
@@ -633,12 +614,13 @@ export default function AttributeMappingSection({
             <MappingGroupEditor
               key={group.key}
               group={group}
-              userTypeNames={userTypeNames}
+              userTypeHandles={userTypeHandles}
               otherUsedUserTypes={groups
                 .filter((other) => other.key !== group.key)
                 .map((other) => other.userType)
                 .filter((userType) => userType.trim() !== '')}
-              userTypeIdByName={userTypeIdByName}
+              userTypeIdByHandle={userTypeIdByHandle}
+              userTypeLabelByHandle={userTypeLabelByHandle}
               canRemove={groups.length > 1}
               showUserTypeError={group.userType.trim() === '' && groupHasContent(group)}
               onUserTypeChange={(userType) => updateGroupType(group.key, userType)}
@@ -662,63 +644,6 @@ export default function AttributeMappingSection({
               </Button>
             </Box>
           )}
-        </Stack>
-      </SettingsCard>
-
-      {/* Section 3 — account linking */}
-      <SettingsCard title={t('attributeMapping.linking.title')} description={t('attributeMapping.linking.description')}>
-        <Stack direction="column" spacing={1.5}>
-          <Typography variant="body2" color="text.secondary" fontWeight={600}>
-            {linking.length > 1 ? t('attributeMapping.linking.labelCombo') : t('attributeMapping.linking.label')}
-          </Typography>
-          {linking.map((entry, index) => {
-            const canDeleteLink = entry.value.trim() !== '' || linking.length > 1;
-            return (
-              <Stack key={entry.key} direction="column" spacing={1.5}>
-                {index > 0 && (
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="caption" color="primary.main" fontWeight={700}>
-                      {t('attributeMapping.linking.and')}
-                    </Typography>
-                    <Divider sx={{flex: 1}} />
-                  </Stack>
-                )}
-                <Stack direction="row" spacing={1.5} alignItems="center">
-                  <TextField
-                    fullWidth
-                    placeholder={t('attributeMapping.linking.placeholder')}
-                    value={entry.value}
-                    onChange={(e) => updateLink(entry.key, e.target.value)}
-                    inputProps={{'aria-label': t('attributeMapping.linking.label')}}
-                  />
-                  {canDeleteLink ? (
-                    <IconButton
-                      onClick={() => removeLink(entry.key)}
-                      aria-label="remove account linking attribute"
-                      data-testid={`attribute-mapping-link-remove-${entry.key}`}
-                    >
-                      <Trash2 size={16} />
-                    </IconButton>
-                  ) : (
-                    <Box sx={{width: 40}} />
-                  )}
-                </Stack>
-              </Stack>
-            );
-          })}
-          <Box>
-            <Button
-              variant="text"
-              color="primary"
-              size="small"
-              startIcon={<Plus size={16} />}
-              onClick={addLink}
-              disabled={lastLinkIsEmpty}
-              data-testid="attribute-mapping-link-add"
-            >
-              {t('attributeMapping.linking.addAttribute')}
-            </Button>
-          </Box>
         </Stack>
       </SettingsCard>
     </Stack>

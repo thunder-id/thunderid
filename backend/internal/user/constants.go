@@ -29,3 +29,6 @@ func (ct CredentialType) String() string {
 func (ct CredentialType) IsSystemManaged() bool {
 	return slices.Contains(systemManagedCredentialTypes, ct)
 }
+
+// sharingPoliciesSegment is the path segment the sharing policy routes hang off.
+const sharingPoliciesSegment = "sharing-policies"

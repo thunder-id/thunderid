@@ -9,6 +9,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -144,6 +145,19 @@ func (s *cacheBackedEntityStore) DeleteEntity(ctx context.Context, id string) er
 	return nil
 }
 
+// LockEntity passes through to the wrapped store and does not cache the entity it returns. The
+// caller reads under the lock to modify the entity, so a cached copy, which a concurrent reader can
+// fill with a pre-commit value, would let that write drop another writer's change.
+func (s *cacheBackedEntityStore) LockEntity(ctx context.Context, id string) (providers.Entity, error) {
+	return s.store.LockEntity(ctx, id)
+}
+
+// ResolveLinkedAccounts passes through to the wrapped store without caching.
+func (s *cacheBackedEntityStore) ResolveLinkedAccounts(ctx context.Context,
+	idpID, sub string) ([]string, error) {
+	return s.store.ResolveLinkedAccounts(ctx, idpID, sub)
+}
+
 func (s *cacheBackedEntityStore) IdentifyEntity(ctx context.Context,
 	filters map[string]interface{}) (*string, error) {
 	if len(filters) == 1 {
@@ -200,6 +214,27 @@ func (s *cacheBackedEntityStore) GetEntityListByOUIDs(ctx context.Context,
 	category string, ouIDs []string, limit, offset int,
 	filters map[string]interface{}) ([]providers.Entity, error) {
 	return s.store.GetEntityListByOUIDs(ctx, category, ouIDs, limit, offset, filters)
+}
+
+func (s *cacheBackedEntityStore) GetEntityListCountBySystemAttributes(ctx context.Context,
+	category string, sysQuery SystemAttributeQuery) (int, error) {
+	return s.store.GetEntityListCountBySystemAttributes(ctx, category, sysQuery)
+}
+
+func (s *cacheBackedEntityStore) GetEntityListBySystemAttributes(ctx context.Context,
+	category string, sysQuery SystemAttributeQuery, limit, offset int) ([]providers.Entity, error) {
+	return s.store.GetEntityListBySystemAttributes(ctx, category, sysQuery, limit, offset)
+}
+
+func (s *cacheBackedEntityStore) GetEntityListCountBySystemAttributesAndOUIDs(ctx context.Context,
+	category string, sysQuery SystemAttributeQuery, ouIDs []string) (int, error) {
+	return s.store.GetEntityListCountBySystemAttributesAndOUIDs(ctx, category, sysQuery, ouIDs)
+}
+
+func (s *cacheBackedEntityStore) GetEntityListBySystemAttributesAndOUIDs(ctx context.Context,
+	category string, sysQuery SystemAttributeQuery, ouIDs []string, limit, offset int) (
+	[]providers.Entity, error) {
+	return s.store.GetEntityListBySystemAttributesAndOUIDs(ctx, category, sysQuery, ouIDs, limit, offset)
 }
 
 func (s *cacheBackedEntityStore) ValidateEntityIDs(ctx context.Context,
@@ -345,6 +380,15 @@ func (s *cacheBackedEntityStore) invalidateEntityByID(ctx context.Context, entit
 	if entityID == "" {
 		return
 	}
+	s.deleteEntityByID(ctx, entityID)
+	// A read between the write and its commit can cache the row as it was, and a read inside the
+	// transaction can cache a row that is rolled back, so the entry is dropped again once the
+	// transaction ends.
+	transaction.OnTransactionEnd(ctx, func() { s.deleteEntityByID(context.WithoutCancel(ctx), entityID) })
+}
+
+// deleteEntityByID drops the cached copies of the entity.
+func (s *cacheBackedEntityStore) deleteEntityByID(ctx context.Context, entityID string) {
 	if err := s.entityByIDCache.Delete(ctx, cache.CacheKey{Key: entityID}); err != nil {
 		s.logger.Error(ctx, "Failed to invalidate entity cache by ID",
 			log.String("entityID", entityID), log.Error(err))

@@ -35,6 +35,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/dpopmock"
@@ -72,8 +73,8 @@ func (s *UserInfoServiceTestSuite) SetupTest() {
 	s.mockAttributeCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(s.T())
 	s.userInfoService = newUserInfoService(
 		s.mockJWTService, nil, nil, s.mockTokenValidator,
-		actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr(), nil),
-		s.mockAttributeCacheService, nil,
+		actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr(), nil, nil),
+		s.mockAttributeCacheService, nil, nil,
 		oauthconfig.Config{JWT: engineconfig.JWTConfig{Issuer: testUserInfoIssuer, ValidityPeriod: 600}},
 	)
 
@@ -137,10 +138,10 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_RevocationUnavailable() {
 // path: the request is rejected with a server error before any proof binding checks.
 func (s *UserInfoServiceTestSuite) TestGetUserInfoForDPoP_RevocationUnavailable() {
 	verifier := dpopmock.NewVerifierInterfaceMock(s.T())
-	actorProv := actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr(), nil)
+	actorProv := actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr(), nil, nil)
 	s.userInfoService = newUserInfoService(
 		s.mockJWTService, nil, nil, s.mockTokenValidator,
-		actorProv, s.mockAttributeCacheService, verifier, userInfoTestConfig())
+		actorProv, s.mockAttributeCacheService, verifier, nil, userInfoTestConfig())
 
 	token := "token.revocation.unavailable"
 	s.mockTokenValidator.On("ValidateAccessToken", mock.Anything, token).Return(
@@ -489,9 +490,83 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_NoAppConfig() {
 	s.mockAttributeCacheService.AssertExpectations(s.T())
 }
 
-// TestGetUserInfo_AppNotFound_ReturnsInvalidToken tests that a stale/orphaned token returns an error
-// when the referenced client application no longer exists.
-func (s *UserInfoServiceTestSuite) TestGetUserInfo_AppNotFound_ReturnsInvalidToken() {
+// TestGetUserInfo_Success_RawJWTPassthrough tests that when the authn provider's attributes are
+// an opaque JWT (the `_jwt` pseudo-claim),
+// the userinfo endpoint passes the JWT through as-is instead of running it through the
+// claims/scope/allow-list pipeline.
+func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_RawJWTPassthrough() {
+	claims := map[string]interface{}{
+		"exp":       float64(time.Now().Add(time.Hour).Unix()),
+		"nbf":       float64(time.Now().Add(-time.Minute).Unix()),
+		"sub":       "user123",
+		"scope":     "openid profile email",
+		"client_id": "client123",
+		"aci":       "cache-rawjwt-123",
+	}
+	token := s.createToken(claims)
+
+	rawJWT := "kyc.header.payload.signature"
+	userAttrs := map[string]interface{}{
+		providers.RawJWTAttributeKey: rawJWT,
+	}
+
+	oauthApp := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{},
+		UserInfo: &providers.UserInfoConfig{
+			UserAttributes: []string{"name", "email"},
+		},
+	}
+
+	s.mockTokenValidator.On("ValidateAccessToken", mock.Anything, token).Return(
+		&tokenservice.AccessTokenClaims{Sub: "user123", Claims: claims}, nil)
+	s.mockAttributeCacheService.On("GetAttributeCache", mock.Anything, "cache-rawjwt-123").Return(
+		&attributecache.AttributeCache{ID: "cache-rawjwt-123", Attributes: userAttrs}, nil)
+	s.mockInboundClient.On("GetOAuthClientByClientID", mock.Anything, "client123").Return(oauthApp, nil)
+
+	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
+	assert.Nil(s.T(), svcErr)
+	assert.NotNil(s.T(), response)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJWS, response.Type)
+	assert.Equal(s.T(), rawJWT, response.JWTBody)
+	assert.Nil(s.T(), response.JSONBody)
+	s.mockTokenValidator.AssertExpectations(s.T())
+	s.mockAttributeCacheService.AssertExpectations(s.T())
+	s.mockInboundClient.AssertExpectations(s.T())
+}
+
+// TestGetUserInfo_MalformedClaimsRequest_ReturnsServerError tests that a token carrying a
+// malformed claims_req claim causes buildUserInfoResponse (and therefore buildResponseFromClaims)
+// to return a server error rather than a partial response.
+func (s *UserInfoServiceTestSuite) TestGetUserInfo_MalformedClaimsRequest_ReturnsServerError() {
+	claims := map[string]interface{}{
+		"exp":                        float64(time.Now().Add(time.Hour).Unix()),
+		"nbf":                        float64(time.Now().Add(-time.Minute).Unix()),
+		"sub":                        "user123",
+		"scope":                      "openid profile",
+		"aci":                        "cache-badclaims-123",
+		constants.ClaimClaimsRequest: "not-valid-json",
+	}
+	token := s.createToken(claims)
+
+	userAttrs := map[string]interface{}{
+		"name": "John Doe",
+	}
+
+	s.mockTokenValidator.On("ValidateAccessToken", mock.Anything, token).Return(
+		&tokenservice.AccessTokenClaims{Sub: "user123", Claims: claims}, nil)
+	s.mockAttributeCacheService.On("GetAttributeCache", mock.Anything, "cache-badclaims-123").Return(
+		&attributecache.AttributeCache{ID: "cache-badclaims-123", Attributes: userAttrs}, nil)
+
+	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
+	assert.Nil(s.T(), response)
+	assert.NotNil(s.T(), svcErr)
+	assert.Equal(s.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+	s.mockTokenValidator.AssertExpectations(s.T())
+	s.mockAttributeCacheService.AssertExpectations(s.T())
+}
+
+// A token of a client that no longer exists is answered with only the subject.
+func (s *UserInfoServiceTestSuite) TestGetUserInfo_DeletedClientAnswersWithSubOnly() {
 	claims := map[string]interface{}{
 		"exp":       float64(time.Now().Add(time.Hour).Unix()),
 		"nbf":       float64(time.Now().Add(-time.Minute).Unix()),
@@ -509,7 +584,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_AppNotFound_ReturnsInvalidTok
 	s.mockAttributeCacheService.On("GetAttributeCache", mock.Anything, "cache-anf-123").Return(
 		&attributecache.AttributeCache{ID: "cache-anf-123", Attributes: userAttrs}, nil)
 	s.mockInboundClient.On("GetOAuthClientByClientID", mock.Anything, "client123").
-		Return(nil, errors.New("app not found"))
+		Return(nil, nil)
 
 	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
 	assert.Nil(s.T(), svcErr)
@@ -521,6 +596,82 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_AppNotFound_ReturnsInvalidTok
 	s.mockTokenValidator.AssertExpectations(s.T())
 	s.mockAttributeCacheService.AssertExpectations(s.T())
 	s.mockInboundClient.AssertExpectations(s.T())
+}
+
+// A failed client lookup is a server error, since the client's governance cannot be checked.
+func (s *UserInfoServiceTestSuite) TestGetUserInfo_ClientLookupFailureIsAServerError() {
+	claims := map[string]interface{}{
+		"exp":       float64(time.Now().Add(time.Hour).Unix()),
+		"nbf":       float64(time.Now().Add(-time.Minute).Unix()),
+		"sub":       "user123",
+		"scope":     "openid profile",
+		"client_id": "client123",
+		"aci":       "cache-lookup-123",
+	}
+	token := s.createToken(claims)
+	s.mockTokenValidator.On("ValidateAccessToken", mock.Anything, token).Return(
+		&tokenservice.AccessTokenClaims{Sub: "user123", Claims: claims}, nil)
+	s.mockInboundClient.On("GetOAuthClientByClientID", mock.Anything, "client123").
+		Return(nil, errors.New("lookup failed"))
+
+	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
+
+	s.Nil(response)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	s.mockAttributeCacheService.AssertNotCalled(s.T(), "GetAttributeCache", mock.Anything, mock.Anything)
+}
+
+// A token of a held application is refused as an invalid token, and no claims are read.
+func (s *UserInfoServiceTestSuite) TestGetUserInfo_HeldApplicationIsAnInvalidToken() {
+	token := s.heldAppToken("cache-held-123")
+	s.withGovernance(providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}, nil)
+
+	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
+
+	s.Nil(response)
+	s.Require().NotNil(svcErr)
+	s.Equal(errorInvalidAccessToken.Code, svcErr.Code)
+	s.mockAttributeCacheService.AssertNotCalled(s.T(), "GetAttributeCache", mock.Anything, mock.Anything)
+}
+
+func (s *UserInfoServiceTestSuite) TestGetUserInfo_GovernanceFaultIsAServerError() {
+	token := s.heldAppToken("cache-fault-123")
+	s.withGovernance(providers.AccessDecision{}, &tidcommon.InternalServerError)
+
+	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
+
+	s.Nil(response)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	s.mockAttributeCacheService.AssertNotCalled(s.T(), "GetAttributeCache", mock.Anything, mock.Anything)
+}
+
+// heldAppToken returns a token of client123, which resolves to app-123, for the hold tests.
+func (s *UserInfoServiceTestSuite) heldAppToken(cacheID string) string {
+	claims := map[string]interface{}{
+		"exp":       float64(time.Now().Add(time.Hour).Unix()),
+		"nbf":       float64(time.Now().Add(-time.Minute).Unix()),
+		"sub":       "user123",
+		"scope":     "openid profile",
+		"client_id": "client123",
+		"aci":       cacheID,
+	}
+	token := s.createToken(claims)
+	s.mockTokenValidator.On("ValidateAccessToken", mock.Anything, token).Return(
+		&tokenservice.AccessTokenClaims{Sub: "user123", Claims: claims}, nil)
+	s.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "client123").
+		Return(&providers.OAuthClient{ID: "app-123", ClientID: "client123"}, nil).Once()
+	return token
+}
+
+// withGovernance gives the service a governance port that answers app-123 with the decision.
+func (s *UserInfoServiceTestSuite) withGovernance(decision providers.AccessDecision,
+	svcErr *tidcommon.ServiceError) {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(s.T())
+	governance.EXPECT().EvaluateAccess(mock.Anything, "app-123", providers.AccessPlaneApplication,
+		providers.AuthenticationMethod("")).Return(decision, svcErr)
+	s.userInfoService.(*userInfoService).governance = governance
 }
 
 // TestGetUserInfo_Success_GroupsNotInAllowedAttributes tests that groups are not included if not in allowed attributes
@@ -1194,10 +1345,10 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_BearerScheme_DPoPBoundToken_R
 // presented under the DPoP scheme is rejected.
 func (s *UserInfoServiceTestSuite) TestGetUserInfoForDPoP_NotBoundToken_Rejected() {
 	verifier := dpopmock.NewVerifierInterfaceMock(s.T())
-	actorProv := actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr(), nil)
+	actorProv := actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr(), nil, nil)
 	s.userInfoService = newUserInfoService(
 		s.mockJWTService, nil, nil, s.mockTokenValidator,
-		actorProv, s.mockAttributeCacheService, verifier, userInfoTestConfig())
+		actorProv, s.mockAttributeCacheService, verifier, nil, userInfoTestConfig())
 
 	claims := map[string]any{
 		"sub":   "user123",
@@ -1220,10 +1371,10 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfoForDPoP_NotBoundToken_Rejected
 // token whose proof fails verification is rejected.
 func (s *UserInfoServiceTestSuite) TestGetUserInfoForDPoP_VerifierFails_Rejected() {
 	verifier := dpopmock.NewVerifierInterfaceMock(s.T())
-	actorProv := actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr(), nil)
+	actorProv := actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr(), nil, nil)
 	s.userInfoService = newUserInfoService(
 		s.mockJWTService, nil, nil, s.mockTokenValidator,
-		actorProv, s.mockAttributeCacheService, verifier, userInfoTestConfig())
+		actorProv, s.mockAttributeCacheService, verifier, nil, userInfoTestConfig())
 
 	claims := map[string]any{
 		"sub":   "user123",

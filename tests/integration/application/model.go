@@ -12,6 +12,7 @@ type Application struct {
 	Type                      string              `json:"type,omitempty"`
 	ClientID                  string              `json:"clientId,omitempty"`
 	ClientSecret              string              `json:"clientSecret,omitempty"`
+	FlowSecret                string              `json:"flowSecret,omitempty"`
 	AuthFlowID                string              `json:"authFlowId,omitempty"`
 	RegistrationFlowID        string              `json:"registrationFlowId,omitempty"`
 	IsRegistrationFlowEnabled bool                `json:"isRegistrationFlowEnabled"`
@@ -45,20 +46,21 @@ type InboundAuthConfig struct {
 
 // OAuthAppConfig represents the OAuth application configuration.
 type OAuthAppConfig struct {
-	ClientID                string              `json:"clientId"`
-	ClientSecret            string              `json:"clientSecret,omitempty"`
-	RedirectURIs            []string            `json:"redirectUris"`
-	GrantTypes              []string            `json:"grantTypes"`
-	ResponseTypes           []string            `json:"responseTypes"`
-	TokenEndpointAuthMethod string              `json:"tokenEndpointAuthMethod"`
-	PKCERequired            bool                `json:"pkceRequired"`
-	PublicClient            bool                `json:"publicClient"`
-	Scopes                  []string            `json:"scopes,omitempty"`
-	Token                   *OAuthTokenConfig   `json:"token,omitempty"`
-	ScopeClaims             map[string][]string `json:"scopeClaims,omitempty"`
-	UserInfo                *UserInfoConfig     `json:"userInfo,omitempty"`
-	Certificate             *ApplicationCert    `json:"certificate,omitempty"`
-	AcrValues               []string            `json:"acrValues,omitempty"`
+	ClientID                 string              `json:"clientId"`
+	ClientSecret             string              `json:"clientSecret,omitempty"`
+	RedirectURIs             []string            `json:"redirectUris"`
+	GrantTypes               []string            `json:"grantTypes"`
+	ResponseTypes            []string            `json:"responseTypes"`
+	TokenEndpointAuthMethod  string              `json:"tokenEndpointAuthMethod"`
+	PKCERequired             bool                `json:"pkceRequired"`
+	PublicClient             bool                `json:"publicClient"`
+	Scopes                   []string            `json:"scopes,omitempty"`
+	Token                    *OAuthTokenConfig   `json:"token,omitempty"`
+	ScopeClaims              map[string][]string `json:"scopeClaims,omitempty"`
+	UserInfo                 *UserInfoConfig     `json:"userInfo,omitempty"`
+	Certificate              *ApplicationCert    `json:"certificate,omitempty"`
+	AcrValues                []string            `json:"acrValues,omitempty"`
+	ClientIDMetadataDocument bool                `json:"clientIdMetadataDocument,omitempty"`
 }
 
 // AttestationConfig represents the platform attestation configuration in the OAuth config.
@@ -77,6 +79,13 @@ type AndroidAttestationConfig struct {
 type OAuthTokenConfig struct {
 	AccessToken *AccessTokenConfig `json:"accessToken,omitempty"`
 	IDToken     *IDTokenConfig     `json:"idToken,omitempty"`
+	IDJag       *IDJagConfig       `json:"idJag,omitempty"`
+}
+
+// IDJagConfig represents the identity assertion (ID-JAG) issuance configuration.
+type IDJagConfig struct {
+	Enabled          bool     `json:"enabled"`
+	AllowedAudiences []string `json:"allowedAudiences,omitempty"`
 }
 
 // UserInfoConfig represents the UserInfo endpoint configuration.
@@ -117,6 +126,7 @@ type IDTokenConfig struct {
 	ValidityPeriod int64    `json:"validityPeriod,omitempty"`
 	UserAttributes []string `json:"userAttributes,omitempty"`
 	ResponseType   string   `json:"responseType,omitempty"`
+	SigningAlg     string   `json:"signingAlg,omitempty"`
 	EncryptionAlg  string   `json:"encryptionAlg,omitempty"`
 	EncryptionEnc  string   `json:"encryptionEnc,omitempty"`
 }

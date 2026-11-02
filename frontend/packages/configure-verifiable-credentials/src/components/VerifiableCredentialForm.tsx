@@ -34,7 +34,12 @@ import {
 } from 'react';
 import {useTranslation} from 'react-i18next';
 import ClaimsEditor from './CredentialClaimsEditor';
-import {claimRowsToRequest, credentialToClaimRows, type ClaimRow} from '../models/credential-claims';
+import {
+  claimRowsToRequest,
+  credentialToClaimRows,
+  findClaimNameErrors,
+  type ClaimRow,
+} from '../models/credential-claims';
 import type {CreateVerifiableCredentialRequest} from '../models/credential-requests';
 import type {VerifiableCredential} from '../models/vc';
 
@@ -149,7 +154,10 @@ export default function VerifiableCredentialForm({
   // In a single-OU deployment the sole OU is used implicitly; otherwise the picker drives ouId.
   const effectiveOuId = ouId !== '' ? ouId : !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
 
-  const valid = handle.trim() !== '' && vct.trim() !== '' && effectiveOuId !== '';
+  const claimNameErrors = findClaimNameErrors(claims);
+
+  const valid =
+    handle.trim() !== '' && vct.trim() !== '' && effectiveOuId !== '' && Object.keys(claimNameErrors).length === 0;
 
   const buildRequest = (): CreateVerifiableCredentialRequest => {
     const display =
@@ -418,7 +426,7 @@ export default function VerifiableCredentialForm({
       </TabPanel>
 
       <TabPanel value={tab} index={2}>
-        <ClaimsEditor claims={claims} onChange={handleClaimsChange} />
+        <ClaimsEditor claims={claims} onChange={handleClaimsChange} nameErrors={claimNameErrors} />
       </TabPanel>
 
       {initial?.id && onDelete && (

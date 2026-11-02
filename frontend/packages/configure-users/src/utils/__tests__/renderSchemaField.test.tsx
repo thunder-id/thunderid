@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, waitFor, userEvent} from '@thunderid/test-utils';
@@ -460,5 +460,27 @@ describe('renderSchemaField', () => {
 
       expect(input).toHaveValue('secret123');
     });
+  });
+  it('renders contact inputs without imposing browser email validation', () => {
+    const {unmount} = render(<TestForm fieldName="workEmail" fieldDef={{type: 'email'}} />);
+    expect(screen.getByLabelText('workEmail')).toHaveAttribute('type', 'text');
+    expect(screen.getByLabelText('workEmail')).toHaveAttribute('inputmode', 'email');
+    unmount();
+    render(<TestForm fieldName="phone" fieldDef={{type: 'mobile'}} />);
+    expect(screen.getByLabelText('phone')).toHaveAttribute('type', 'tel');
+  });
+  it('submits custom email values accepted by the saved regex', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(
+      <TestForm
+        fieldName="email"
+        fieldDef={{type: 'email', regex: '^custom contact$'}}
+        defaultValues={{email: 'custom contact'}}
+        onSubmit={onSubmit}
+      />,
+    );
+    await user.click(screen.getByRole('button', {name: 'Submit'}));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({email: 'custom contact'}));
   });
 });

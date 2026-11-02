@@ -98,8 +98,8 @@ var (
 		},
 	}
 
-	// ErrorUnauthorized is the error returned when the request lacks valid authentication
-	// or the authenticated caller does not hold required permissions.
+	// ErrorUnauthorized is the error returned when a registration request lacks valid
+	// authentication or the authenticated caller does not hold required permissions.
 	ErrorUnauthorized = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "unauthorized_client",
@@ -110,6 +110,68 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.dcr.unauthorized_description",
 			DefaultValue: "Authentication with sufficient permissions is required to register a client",
+		},
+	}
+
+	// ErrorUnauthorizedManagement is the error returned when a client configuration request lacks
+	// valid authentication or the authenticated caller does not hold required permissions. It is
+	// distinct from ErrorUnauthorized so that a caller is told which operation it was refused.
+	ErrorUnauthorizedManagement = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "unauthorized_client",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.dcr.unauthorized_management",
+			DefaultValue: "Unauthorized",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.dcr.unauthorized_management_description",
+			DefaultValue: "Authentication with sufficient permissions is required to manage a client " +
+				"registration",
+		},
+	}
+
+	// ErrorClientNotFound is returned when the client referenced by the client configuration
+	// endpoint does not exist.
+	ErrorClientNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "invalid_client_id",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.dcr.client_not_found",
+			DefaultValue: "Client not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.dcr.client_not_found_description",
+			DefaultValue: "The requested client registration could not be found",
+		},
+	}
+
+	// ErrorClientSecretMismatch is returned when a client configuration update request carries a
+	// client_secret that does not match the client's currently issued secret.
+	ErrorClientSecretMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "invalid_client_metadata",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.dcr.client_secret_mismatch",
+			DefaultValue: "Client secret mismatch",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.dcr.client_secret_mismatch_description",
+			DefaultValue: "The client_secret in the request does not match the issued client secret",
+		},
+	}
+
+	// ErrorClientIDMismatch is returned when a client configuration update request carries a
+	// client_id that contradicts the one in the request path.
+	ErrorClientIDMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "invalid_client_metadata",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.dcr.client_id_mismatch",
+			DefaultValue: "Client ID mismatch",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.dcr.client_id_mismatch_description",
+			DefaultValue: "The request body must include a client_id that matches the client being updated",
 		},
 	}
 )

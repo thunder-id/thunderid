@@ -1,0 +1,5 @@
+resource_type: organization_unit
+id: decl-m2m-root
+handle: decl-m2m-root
+name: M2M Declarative Root
+description: Root organization unit owning the declaratively defined M2M service applications

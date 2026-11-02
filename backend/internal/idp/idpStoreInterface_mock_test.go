@@ -17,10 +17,19 @@ func newIdpStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *idpStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &idpStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type idpStoreInterfaceMock_CreateIdentityProvider_Call struct {
 // CreateIdentityProvider is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idp providers.IDPDTO
-func (_e *idpStoreInterfaceMock_Expecter) CreateIdentityProvider(ctx interface{}, idp interface{}) *idpStoreInterfaceMock_CreateIdentityProvider_Call {
+func (_e *idpStoreInterfaceMock_Expecter) CreateIdentityProvider(ctx any, idp any) *idpStoreInterfaceMock_CreateIdentityProvider_Call {
 	return &idpStoreInterfaceMock_CreateIdentityProvider_Call{Call: _e.mock.On("CreateIdentityProvider", ctx, idp)}
 }
 
@@ -120,7 +129,7 @@ type idpStoreInterfaceMock_DeleteIdentityProvider_Call struct {
 // DeleteIdentityProvider is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpID string
-func (_e *idpStoreInterfaceMock_Expecter) DeleteIdentityProvider(ctx interface{}, idpID interface{}) *idpStoreInterfaceMock_DeleteIdentityProvider_Call {
+func (_e *idpStoreInterfaceMock_Expecter) DeleteIdentityProvider(ctx any, idpID any) *idpStoreInterfaceMock_DeleteIdentityProvider_Call {
 	return &idpStoreInterfaceMock_DeleteIdentityProvider_Call{Call: _e.mock.On("DeleteIdentityProvider", ctx, idpID)}
 }
 
@@ -188,7 +197,7 @@ type idpStoreInterfaceMock_GetIdentityProvider_Call struct {
 // GetIdentityProvider is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpID string
-func (_e *idpStoreInterfaceMock_Expecter) GetIdentityProvider(ctx interface{}, idpID interface{}) *idpStoreInterfaceMock_GetIdentityProvider_Call {
+func (_e *idpStoreInterfaceMock_Expecter) GetIdentityProvider(ctx any, idpID any) *idpStoreInterfaceMock_GetIdentityProvider_Call {
 	return &idpStoreInterfaceMock_GetIdentityProvider_Call{Call: _e.mock.On("GetIdentityProvider", ctx, idpID)}
 }
 
@@ -256,7 +265,7 @@ type idpStoreInterfaceMock_GetIdentityProviderByName_Call struct {
 // GetIdentityProviderByName is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpName string
-func (_e *idpStoreInterfaceMock_Expecter) GetIdentityProviderByName(ctx interface{}, idpName interface{}) *idpStoreInterfaceMock_GetIdentityProviderByName_Call {
+func (_e *idpStoreInterfaceMock_Expecter) GetIdentityProviderByName(ctx any, idpName any) *idpStoreInterfaceMock_GetIdentityProviderByName_Call {
 	return &idpStoreInterfaceMock_GetIdentityProviderByName_Call{Call: _e.mock.On("GetIdentityProviderByName", ctx, idpName)}
 }
 
@@ -323,7 +332,7 @@ type idpStoreInterfaceMock_GetIdentityProviderList_Call struct {
 
 // GetIdentityProviderList is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *idpStoreInterfaceMock_Expecter) GetIdentityProviderList(ctx interface{}) *idpStoreInterfaceMock_GetIdentityProviderList_Call {
+func (_e *idpStoreInterfaceMock_Expecter) GetIdentityProviderList(ctx any) *idpStoreInterfaceMock_GetIdentityProviderList_Call {
 	return &idpStoreInterfaceMock_GetIdentityProviderList_Call{Call: _e.mock.On("GetIdentityProviderList", ctx)}
 }
 
@@ -383,7 +392,7 @@ type idpStoreInterfaceMock_GetIdentityProviderListCount_Call struct {
 
 // GetIdentityProviderListCount is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *idpStoreInterfaceMock_Expecter) GetIdentityProviderListCount(ctx interface{}) *idpStoreInterfaceMock_GetIdentityProviderListCount_Call {
+func (_e *idpStoreInterfaceMock_Expecter) GetIdentityProviderListCount(ctx any) *idpStoreInterfaceMock_GetIdentityProviderListCount_Call {
 	return &idpStoreInterfaceMock_GetIdentityProviderListCount_Call{Call: _e.mock.On("GetIdentityProviderListCount", ctx)}
 }
 
@@ -447,7 +456,7 @@ type idpStoreInterfaceMock_GetIdentityProvidersByProperty_Call struct {
 //   - ctx context.Context
 //   - propertyKey string
 //   - propertyValue string
-func (_e *idpStoreInterfaceMock_Expecter) GetIdentityProvidersByProperty(ctx interface{}, propertyKey interface{}, propertyValue interface{}) *idpStoreInterfaceMock_GetIdentityProvidersByProperty_Call {
+func (_e *idpStoreInterfaceMock_Expecter) GetIdentityProvidersByProperty(ctx any, propertyKey any, propertyValue any) *idpStoreInterfaceMock_GetIdentityProvidersByProperty_Call {
 	return &idpStoreInterfaceMock_GetIdentityProvidersByProperty_Call{Call: _e.mock.On("GetIdentityProvidersByProperty", ctx, propertyKey, propertyValue)}
 }
 
@@ -509,7 +518,7 @@ type idpStoreInterfaceMock_UpdateIdentityProvider_Call struct {
 // UpdateIdentityProvider is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idp *providers.IDPDTO
-func (_e *idpStoreInterfaceMock_Expecter) UpdateIdentityProvider(ctx interface{}, idp interface{}) *idpStoreInterfaceMock_UpdateIdentityProvider_Call {
+func (_e *idpStoreInterfaceMock_Expecter) UpdateIdentityProvider(ctx any, idp any) *idpStoreInterfaceMock_UpdateIdentityProvider_Call {
 	return &idpStoreInterfaceMock_UpdateIdentityProvider_Call{Call: _e.mock.On("UpdateIdentityProvider", ctx, idp)}
 }
 

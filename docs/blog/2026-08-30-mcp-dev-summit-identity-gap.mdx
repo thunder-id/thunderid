@@ -1,0 +1,181 @@
+---
+slug: mcp-dev-summit-identity-gap
+title: "MCP Dev Summit, Identity, and the Authorization Gap in MCP"
+description: "Three {{ProductName}} team members presented at MCP Dev Summit events on the same problem viewed from three altitudes: who an agent is acting as when it calls an MCP server, whether it's headless, host-driven, or acting on a user's behalf."
+docType: community
+authors: [ayesha, hasini, sahan]
+tags: [identity, security, community, "2026"]
+category: Community
+heroGradient: "linear-gradient(135deg,#152a5e 0%,#3f6fe0 100%)"
+heroIcon: agent
+thumbnail: /assets/images/blog/mcp-dev-summit-identity-gap/thumbnail.svg
+---
+
+Three <ProductName /> team members presented at recent MCP Dev Summit events organized by the Agentic AI Foundation. Ayesha spoke at both events, and Hasini and Sahan presented together at one of them.
+
+- *Ambient Identity: Just-in-Time Authorization Patterns for the Model Context Protocol*
+- *Who's Calling? Bringing Identity to the MCP Host*
+- *Your AI Chatbot Just Exposed Your CEO's Salary to an Intern*
+
+We picked these topics because they're the same problem viewed from three different altitudes. MCP still doesn't have a clean answer for who an agent is acting as when it makes a call, whether that agent is unattended, orchestrated by a host, or acting inside an enterprise on a user's behalf. That's the thread running through all three talks, and it's why we're covering them together instead of as three separate recaps.
+
+<!-- truncate -->
+
+## Just-in-Time Authorization for Headless MCP Agents
+
+### What is a headless or ambient agent?
+
+Most of the agents we demo have a human sitting right there: an IDE copilot, a chat assistant, an interactive CLI. You click "Continue," a browser pops up, you sign in, and the agent gets to work.
+
+A headless or ambient agent is the opposite. It runs in the background, on a schedule or in reaction to an event, with no human watching and often no screen at all. Think of an overnight coding agent, a 3 AM cron job that files expenses, a server-side voice assistant, or a sub-agent buried several layers deep in a multi-agent system. The intelligence is the same. What changes is that there is nobody at the keyboard when the agent needs to act.
+
+This matters for MCP because MCP is the plumbing these agents run on. An MCP host drives one or more MCP clients, each client talks to an MCP server, and the server fronts the tools, APIs, and data the agent wants to use. Nothing in that picture requires a human to be present. So the moment you move an MCP agent past the demo and let it run ambiently, you inherit a problem the interactive world never had to solve: how does an unattended agent get permission to touch protected resources?
+
+### The problem: OAuth assumes someone is watching a browser
+
+Every standard flow assumes a human at a browser, right now. OAuth 2.1 was built for exactly that. Take the human away and the flow stalls:
+
+It is 2 PM. You are at lunch. Your background agent has stopped working. Its token expired, the refresh needs a browser redirect, and there is no one at the screen to click "Continue."
+
+The only browser-centric fix is for a human to walk to a screen and approve. That does not scale. So teams reach for the long-lived API key: broadest scopes "to be safe," expiry a year or never, pasted into an environment variable. It works, and it is a standing liability, over-privileged with no per-action audit. Short-lived tokens mean constant interruptions; long-lived keys mean weak security. There is no middle ground.
+
+### How this becomes a problem in MCP authorization
+
+The MCP authorization spec does the client-to-server edge well. It is a clean OAuth 2.1 handshake: the MCP client obtains a scoped token from an authorization server using authorization code plus PKCE, presents it to the MCP server, and the server verifies it. For an interactive client with a user present, this is genuinely solved.
+
+The gap is that this handshake assumes the interactive case. The authorization step demands consent through a browser redirect at the moment of authorization. A headless MCP client has no browser to redirect to and no user standing by to consent. The flow does not fail loudly with a helpful error. It simply cannot be completed, because a core assumption, "there is a UI and a user here, now," is false.
+
+The important observation is that the user has not disappeared. The user exists and is reachable. They are just not at the client device. The email is drafted on a server, but the person who should approve reading the Q3 report is holding a phone across town. MCP authorization, as written, has no way to bridge that gap. It binds authorization to the device running the client, when it should bind authorization to the person, wherever they are.
+
+### The fix: separate who does the work from who grants access
+
+The fix is to stop assuming the device doing the work is the device granting permission. Separate them. Let the agent do its work on the server, and let the human approve on a device they already trust, their phone.
+
+Concretely: when the agent needs access it does not yet hold, it does not stall and it does not fall back to a master key. It asks a question, out of band, to the user directly: "I need to read the Q3 report for the next 15 minutes. Approve?" The agent then waits, checking periodically for an answer, while the user glances at their phone and taps approve or deny. On approval, the agent receives a narrow, short-lived permission scoped to exactly that one action, and continues.
+
+Here is that flow in plain terms, using a background agent that needs to open a protected report:
+
+<img
+  src="/assets/images/blog/mcp-dev-summit-identity-gap/ciba-plain-language-flow.png"
+  alt="A background agent is denied access to a protected report, asks the authorization service for permission, which notifies the user's phone; the agent polls until the user approves, then reads the report with a short-lived permission"
+/>
+
+Two things make this work. First, the request is specific: one named resource, for a short time, described in words the human can read, so they approve something real instead of a blank "Allow this app?" Second, the two sides run on their own clocks. The agent polls on its schedule; the user approves on theirs.
+
+### Bringing in CIBA
+
+This is not a pattern we have to invent. It already exists as a standard: CIBA, Client-Initiated Backchannel Authentication, an OpenID Connect extension that mature identity providers already support. The name says what it does. "Client-initiated" means the agent starts the request. "Backchannel" means it runs server to server, with no browser redirect. Its defining property is exactly the decoupling above: the device consuming the resource is not the device approving access.
+
+<img
+  src="/assets/images/blog/mcp-dev-summit-identity-gap/ciba-protocol-sequence.png"
+  alt="A headless MCP client requests a protected resource, gets a 401, calls the CIBA authorization server's backchannel-authorize endpoint, polls the token endpoint while the authorization server pushes a notification to the user's trusted device, and receives a narrow, short-lived access token once the user approves"
+/>
+
+CIBA on its own is a large, flexible spec, and for MCP that flexibility is a risk: if everyone implements it differently, we get neither security nor interoperability. The proposal is to tighten it into one curated profile for MCP: confidential clients only, `id_token_hint` over `login_hint`, poll-only token delivery that respects the server's interval, and graceful degradation when no one approves.
+
+And because a human is now in the loop, the threat model has to be honest. Spam and consent fatigue: batch related requests and cache recent approvals. Binding-message tampering: sign the message with server-side validation. Device compromise: revocation flows plus a second factor on suspicious patterns. Account enumeration: keep `id_token_hint` opt-in. The "sleepy user" who is simply asleep: queue, degrade gracefully, resume. None are dealbreakers; each has a known answer.
+
+Three things to carry home. First, decoupled auth: CIBA bridges headless MCP clients and the humans who actually control them. Second, just-in-time delegation: trade all-or-nothing API keys for granular, session-based permissions. Third, human-in-the-loop: handle the asynchronous, out-of-band callback gracefully inside the MCP lifecycle. Your agent does not have to stall when you are not looking. It should knock on your door and ask.
+
+## Bringing Identity to the MCP Host
+
+### The host is out of the picture
+
+The MCP authorization spec does one edge well. Between an MCP client and an MCP server it is a clean OAuth 2.1 handshake: the client gets a scoped token using authorization code plus PKCE, presents it, and the server verifies it. For that edge, this is genuinely solved, and it is the part everyone demos.
+
+Now notice what is not in that picture. The mental model most people carry is wrong. The host is not a node in the request path. It contains the clients. One host can run many clients, and each client talks to its own server over OAuth. The spec secures every client-to-server edge, but the host that wraps and drives those clients is never addressed.
+
+<img
+  src="/assets/images/blog/mcp-dev-summit-identity-gap/mcp-host-out-of-picture.png"
+  alt="An MCP host containing three MCP clients, each with its own OAuth 2.1 connection to an MCP server; the host itself is marked &quot;out of picture&quot;"
+/>
+
+There is no error thrown for a missing host identity. It works in the runtime and fails the audit. And this is a new problem, because enterprises will not build one kind of agent. They will build many, all on the same MCP plumbing, along two axes: whether a human is in the loop, and whose identity the agent acts under. Delegated copilots run with a human present and act as the user, like an IDE copilot, an IT-helpdesk assistant, or CRM drafting. Async assistants also act as the user but with no human watching, like overnight inbox triage, a 6 AM brief, or auto-filed expenses. Shared service agents run interactively but act as themselves, like a public support assistant, KB Q&A, or a procurement desk. Autonomous workloads act as themselves with no human in the loop, like SRE remediation, security response, or ETL pipelines.
+
+Every one of those cases needs a different identity answer, and the host is the single thing that has to get all four right.
+
+### Why the MCP host needs an identity, and what breaks without one
+
+The host is not plumbing. It is an active principal that makes autonomous decisions, and every edge it touches, users, peer agents, services, and tool servers, is an identity boundary. So the honest test for any agent you shipped last quarter, or are about to ship, is four questions:
+
+- Do you even exist? Is there a managed identity for this agent at all, or just a token someone minted?
+- How do we know it is you? Can the agent authenticate as itself, not borrow a human's credential?
+- What are you allowed to do? Are its permissions scoped to its task, or is it holding broad standing access?
+- Can you prove what you did? Is there a per-action record that names both the user and the agent?
+
+Without a first-class host identity, every answer is "no," and here is what actually breaks. You cannot tell whether a tool call came from the user, from the agent acting on the user's behalf, or from the agent acting on its own, so least privilege and audit both collapse. The usual stopgap is the long-lived API key: broadest scopes, expiry a year or never, pasted into an environment variable. It is over-privileged, it has no per-action audit trail, and if you cannot de-provision that agent's access in a single action, you have a problem. This is how shadow AI takes root: agents in production that no one owns, no one can scope, and no one can switch off.
+
+That is the selling point. Host identity is not a nicety you add later. It is the thing that decides whether you can name, scope, audit, and retire the agents already running in your enterprise.
+
+### The host as a first-class identity, across the Four A's
+
+Treat the MCP host as a real identity and run four disciplines against it. Call them the Four A's.
+
+| Discipline | Question it answers | What it covers |
+| --- | --- | --- |
+| Administer | Do you exist, and who owns you? | Registration, ownership, provisioning, suspension, rotation, de-provisioning, visibility |
+| Authenticate | How do we know it is you? | The agent proves its own identity, not a borrowed human credential |
+| Authorize | What are you allowed to do? | Least privilege by default, scopes derived from the task, OBO delegation for on-behalf-of calls |
+| Audit | Can you prove what you did? | Per-action records that name both the user and the acting agent |
+
+The trap most teams fall into is treating registration as a lifecycle. Dynamic client registration hands an agent an OAuth identity and then stops. There is no owner, no rotation, and no de-provisioning when the agent is retired. Administer is the least glamorous of the four and the foundation for the rest. Once the host has a real identity, the same host and the same edges each carry a genuine identity decision behind them, and the four A's run per interaction rather than once at setup.
+
+The reassuring part is that none of this is science fiction. The building blocks already exist; they are just not yet assembled into a coherent host story:
+
+- OAuth Token Exchange (RFC 8693) with actor claims, for delegation.
+- Workload identity through SPIFFE and SVIDs with attestation, for agents acting as themselves.
+- On-Behalf-Of flows for multi-hop agent chains.
+- Backchannel authentication for ambient, background, and long-running cases.
+- Least privilege by default, with scopes derived from the task.
+- The broader effort to extend the MCP spec upward for the enterprise.
+
+The call to the community is to assemble these deliberately, before ad-hoc workarounds calcify into the way things are done. So, who's calling? Make the MCP host an identity you can name, scope, and hold accountable.
+
+## On-Behalf-Of Delegation in MCP
+
+Picture an internal HR assistant. An employee asks it a question in chat, it reaches into the HR system over MCP, and it answers. Useful, until you look at how it authenticates. The agent holds a single service credential with broad access, and it presents that same credential no matter who is asking. To the MCP server, every request looks identical. A trusted client with the keys to everything.
+
+An intern checking their own leave balance and the intern asking for the CEO's salary arrive as the same caller. So the server answers both.
+
+This is what happens after the identity gaps from the first two talks go unaddressed inside a real deployment. The agent is trusted with everything, so it never checks whether the person behind the request should be. It works in the demo and fails the moment two users have different permissions.
+
+### Why this is MCP's problem, not just the app's
+
+Underneath sits a classic confused deputy. The agent is the deputy that holds powerful credentials and acts on requests from people far less privileged than itself. When it authenticates with its own credential, the user's identity does not travel with the call. The server sees the agent, trusts the agent, and acts. The actual human is invisible at exactly the layer where the access decision gets made.
+
+MCP has to care about this because MCP is the wiring between the agent and the protected resource. The client-to-server handshake authenticates the client beautifully, but "the client" is the agent, not the person.
+
+The OAuth spec secures the edge but it says nothing about whose judgment is being exercised across it. So the enforcement point, the MCP server, is handed a trusted caller and has no idea who it is really acting for. Least privilege and audit both collapse, because both need to know the answer to one question the server was never given: on whose behalf?
+
+### Authorization or a guess?
+
+Two questions decide whether you have security. Who authorized this action, and who executed it? On the single-credential pattern you can answer neither. Every call traces back to one service account, so the log tells you the agent did it and nothing about which user pulled the lever.
+
+Swapping in the user's credentials doesn't fix it either. The user didn't decide the action, the agent did. Tie the call to the user alone and you lose the executor. Tie it to the agent alone and you lose the authorizer. Neither identity is optional, and no single credential can carry both.
+
+If you can't tell who authorized an action and who executed it, you don't have security, you have a guess. And as these agents get wired into more critical systems, the cost of that guess only goes up.
+
+### The fix: one token, two identities, one accountable trail
+
+We proposed on-behalf-of (OBO) delegation. Instead of the agent acting as itself, it exchanges credentials for a single token that carries three things at once: the user's identity, the user's scope, and the agent's identity. The MCP server no longer sees an anonymous trusted client. It sees exactly who authorized the action and who is executing it, and it can enforce the user's permissions instead of the agent's. Access is scoped to the person, and every action is attributable to both parties.
+
+We demoed this with a sample HR assistant built on <ProductName />. The same agent, the same MCP server, two different users, two correctly scoped outcomes, each seeing only what that user was allowed to see. Same code, same wiring; the only thing that changed was the identity riding inside the token.
+
+We presented this at MCP Dev Summit Mumbai as Securing User-Facing Enterprise AI Agents, under the deliberately blunt title "Your AI Chatbot Just Exposed Your CEO's Salary to an Intern." We kept it jargon-light on purpose, aiming at humans, AI agents, and machines equally.
+
+## What we all noticed: authorization is still MCP's unsolved problem
+
+Between sessions, we kept ending up in the same hallway conversations, comparing notes on what we'd each heard in different rooms, and running into people who'd flown in from other parts of the world for the same reason we had.
+
+The pattern was hard to miss: identity and authorization came up in nearly every conversation, regardless of which track or session started it. MCP has a growing ecosystem and a maturing spec, but no consensus yet on who an agent is acting as when it makes a call. That gap is what our three talks, independently, kept circling back to.
+
+## Close the gap in your own stack
+
+Every problem in this post is a gap between what MCP secures and what an enterprise has to be able to prove. None of the three needs a new protocol. They need identity treated as part of the design instead of something you retrofit once the audit fails.
+
+That is what we are building <ProductName /> for. It is an open-source IAM stack, and MCP security is a day-one concern in it rather than an integration you bolt on later. The CIBA flow behind just-in-time authorization, first-class agent identity for the host, and the on-behalf-of token that carries both the user and the agent are all part of the runtime, not samples sitting beside it.
+
+Two places to start, depending on how you like to work:
+
+- [Run the <ProductName /> MCP quickstart](../../docs/next/getting-started/connect-your-mcp/python)
+- [Read the <ProductName /> AgentID documentation](../../docs/next/use-cases/ai-agents)

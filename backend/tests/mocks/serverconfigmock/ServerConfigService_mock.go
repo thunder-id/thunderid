@@ -19,10 +19,19 @@ func NewServerConfigServiceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ServerConfigServiceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ServerConfigServiceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type ServerConfigServiceMock_GetConfig_Call struct {
 // GetConfig is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name serverconfig.ConfigName
-func (_e *ServerConfigServiceMock_Expecter) GetConfig(ctx interface{}, name interface{}) *ServerConfigServiceMock_GetConfig_Call {
+func (_e *ServerConfigServiceMock_Expecter) GetConfig(ctx any, name any) *ServerConfigServiceMock_GetConfig_Call {
 	return &ServerConfigServiceMock_GetConfig_Call{Call: _e.mock.On("GetConfig", ctx, name)}
 }
 
@@ -146,7 +155,7 @@ type ServerConfigServiceMock_GetMergedConfig_Call struct {
 // GetMergedConfig is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *ServerConfigServiceMock_Expecter) GetMergedConfig(ctx interface{}, name interface{}) *ServerConfigServiceMock_GetMergedConfig_Call {
+func (_e *ServerConfigServiceMock_Expecter) GetMergedConfig(ctx any, name any) *ServerConfigServiceMock_GetMergedConfig_Call {
 	return &ServerConfigServiceMock_GetMergedConfig_Call{Call: _e.mock.On("GetMergedConfig", ctx, name)}
 }
 
@@ -168,8 +177,8 @@ func (_c *ServerConfigServiceMock_GetMergedConfig_Call) Run(run func(ctx context
 	return _c
 }
 
-func (_c *ServerConfigServiceMock_GetMergedConfig_Call) Return(v any, serviceError *common.ServiceError) *ServerConfigServiceMock_GetMergedConfig_Call {
-	_c.Call.Return(v, serviceError)
+func (_c *ServerConfigServiceMock_GetMergedConfig_Call) Return(anyMoqParam any, serviceError *common.ServiceError) *ServerConfigServiceMock_GetMergedConfig_Call {
+	_c.Call.Return(anyMoqParam, serviceError)
 	return _c
 }
 
@@ -216,7 +225,7 @@ type ServerConfigServiceMock_GetReadOnlyConfig_Call struct {
 // GetReadOnlyConfig is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *ServerConfigServiceMock_Expecter) GetReadOnlyConfig(ctx interface{}, name interface{}) *ServerConfigServiceMock_GetReadOnlyConfig_Call {
+func (_e *ServerConfigServiceMock_Expecter) GetReadOnlyConfig(ctx any, name any) *ServerConfigServiceMock_GetReadOnlyConfig_Call {
 	return &ServerConfigServiceMock_GetReadOnlyConfig_Call{Call: _e.mock.On("GetReadOnlyConfig", ctx, name)}
 }
 
@@ -238,8 +247,8 @@ func (_c *ServerConfigServiceMock_GetReadOnlyConfig_Call) Run(run func(ctx conte
 	return _c
 }
 
-func (_c *ServerConfigServiceMock_GetReadOnlyConfig_Call) Return(v any, serviceError *common.ServiceError) *ServerConfigServiceMock_GetReadOnlyConfig_Call {
-	_c.Call.Return(v, serviceError)
+func (_c *ServerConfigServiceMock_GetReadOnlyConfig_Call) Return(anyMoqParam any, serviceError *common.ServiceError) *ServerConfigServiceMock_GetReadOnlyConfig_Call {
+	_c.Call.Return(anyMoqParam, serviceError)
 	return _c
 }
 
@@ -286,7 +295,7 @@ type ServerConfigServiceMock_GetWritableConfig_Call struct {
 // GetWritableConfig is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *ServerConfigServiceMock_Expecter) GetWritableConfig(ctx interface{}, name interface{}) *ServerConfigServiceMock_GetWritableConfig_Call {
+func (_e *ServerConfigServiceMock_Expecter) GetWritableConfig(ctx any, name any) *ServerConfigServiceMock_GetWritableConfig_Call {
 	return &ServerConfigServiceMock_GetWritableConfig_Call{Call: _e.mock.On("GetWritableConfig", ctx, name)}
 }
 
@@ -308,8 +317,8 @@ func (_c *ServerConfigServiceMock_GetWritableConfig_Call) Run(run func(ctx conte
 	return _c
 }
 
-func (_c *ServerConfigServiceMock_GetWritableConfig_Call) Return(v any, serviceError *common.ServiceError) *ServerConfigServiceMock_GetWritableConfig_Call {
-	_c.Call.Return(v, serviceError)
+func (_c *ServerConfigServiceMock_GetWritableConfig_Call) Return(anyMoqParam any, serviceError *common.ServiceError) *ServerConfigServiceMock_GetWritableConfig_Call {
+	_c.Call.Return(anyMoqParam, serviceError)
 	return _c
 }
 
@@ -355,7 +364,7 @@ type ServerConfigServiceMock_ListConfigNames_Call struct {
 
 // ListConfigNames is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *ServerConfigServiceMock_Expecter) ListConfigNames(ctx interface{}) *ServerConfigServiceMock_ListConfigNames_Call {
+func (_e *ServerConfigServiceMock_Expecter) ListConfigNames(ctx any) *ServerConfigServiceMock_ListConfigNames_Call {
 	return &ServerConfigServiceMock_ListConfigNames_Call{Call: _e.mock.On("ListConfigNames", ctx)}
 }
 
@@ -410,7 +419,7 @@ type ServerConfigServiceMock_SetConfig_Call struct {
 //   - ctx context.Context
 //   - name serverconfig.ConfigName
 //   - value json.RawMessage
-func (_e *ServerConfigServiceMock_Expecter) SetConfig(ctx interface{}, name interface{}, value interface{}) *ServerConfigServiceMock_SetConfig_Call {
+func (_e *ServerConfigServiceMock_Expecter) SetConfig(ctx any, name any, value any) *ServerConfigServiceMock_SetConfig_Call {
 	return &ServerConfigServiceMock_SetConfig_Call{Call: _e.mock.On("SetConfig", ctx, name, value)}
 }
 

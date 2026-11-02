@@ -1,0 +1,507 @@
+{
+ "uid": "thunderid-agent-analytics",
+ "title": "ThunderID Agent Analytics",
+ "tags": [
+  "thunderid",
+  "agents",
+  "tempo"
+ ],
+ "timezone": "browser",
+ "time": {
+  "from": "now-24h",
+  "to": "now"
+ },
+ "refresh": "1m",
+ "schemaVersion": 39,
+ "panels": [
+  {
+   "id": 6,
+   "type": "barchart",
+   "title": "Agent tokens issued",
+   "description": "Terminal token events split by outcome. in_progress is excluded: TOKEN_ISSUANCE_STARTED pairs one-to-one with each outcome, so counting it doubles every figure.",
+   "datasource": {
+    "type": "tempo",
+    "uid": "thunderid-tempo"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "queryType": "traceql",
+     "datasource": {
+      "type": "tempo",
+      "uid": "thunderid-tempo"
+     },
+     "query": "{span.act_type=\"agent\" && span.component=\"AuthHandler\" && (span.\"event.status\"=\"success\" || span.\"event.status\"=\"failure\")} | count_over_time() by (span.\"event.status\")"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "renameByRegex",
+     "options": {
+      "regex": ".*=\"([^\"]+)\".*",
+      "renamePattern": "$1"
+     }
+    },
+    {
+     "id": "reduce",
+     "options": {
+      "reducers": [
+       "sum"
+      ],
+      "mode": "seriesToRows"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "orientation": "horizontal",
+      "fillOpacity": 80
+     },
+     "unit": "short",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "showLegend": false
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": true
+    }
+   }
+  },
+  {
+   "id": 1,
+   "type": "timeseries",
+   "title": "Agent token issuance over time",
+   "description": "Terminal token events from the OpenTelemetry path, read from Tempo with TraceQL metrics. No log file is involved.",
+   "datasource": {
+    "type": "tempo",
+    "uid": "thunderid-tempo"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 24,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "queryType": "traceql",
+     "datasource": {
+      "type": "tempo",
+      "uid": "thunderid-tempo"
+     },
+     "query": "{span.act_type=\"agent\" && span.component=\"AuthHandler\" && (span.\"event.status\"=\"success\" || span.\"event.status\"=\"failure\")} | count_over_time() by (span.\"event.status\")"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 2,
+   "type": "barchart",
+   "title": "Most active agents",
+   "description": "Keyed on client_id, which is operator chosen and present on every token event. sub, act_sub and app_id are opaque entity resource IDs by design, so a panel keyed on those renders a list of UUIDs.",
+   "datasource": {
+    "type": "tempo",
+    "uid": "thunderid-tempo"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 12,
+    "w": 12,
+    "h": 9
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "queryType": "traceql",
+     "datasource": {
+      "type": "tempo",
+      "uid": "thunderid-tempo"
+     },
+     "query": "{span.act_type=\"agent\" && span.component=\"AuthHandler\" && span.\"event.status\"=\"success\"} | count_over_time() by (span.client_id)"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "orientation": "horizontal",
+      "lineWidth": 1,
+      "fillOpacity": 80
+     },
+     "unit": "short",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "transformations": [
+    {
+     "id": "renameByRegex",
+     "options": {
+      "regex": ".*=\"([^\"]+)\".*",
+      "renamePattern": "$1"
+     }
+    },
+    {
+     "id": "reduce",
+     "options": {
+      "reducers": [
+       "sum"
+      ],
+      "mode": "seriesToRows"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "showLegend": false
+    },
+    "xTickLabelRotation": -30,
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": true
+    }
+   }
+  },
+  {
+   "id": 3,
+   "type": "piechart",
+   "title": "Grant types",
+   "description": "Which mechanism each agent uses to obtain access.",
+   "datasource": {
+    "type": "tempo",
+    "uid": "thunderid-tempo"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 12,
+    "w": 12,
+    "h": 9
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "queryType": "traceql",
+     "datasource": {
+      "type": "tempo",
+      "uid": "thunderid-tempo"
+     },
+     "query": "{span.act_type=\"agent\" && span.component=\"AuthHandler\" && span.\"event.status\"=\"success\"} | count_over_time() by (span.grant_type)"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "transformations": [
+    {
+     "id": "renameByRegex",
+     "options": {
+      "regex": ".*=\"([^\"]+)\".*",
+      "renamePattern": "$1"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "right",
+     "showLegend": true
+    },
+    "pieType": "donut",
+    "reduceOptions": {
+     "calcs": [
+      "sum"
+     ],
+     "fields": "",
+     "values": false
+    }
+   }
+  },
+  {
+   "id": 4,
+   "type": "piechart",
+   "title": "Delegated against direct",
+   "description": "Delegated issuances against the agent acting as itself. Grouped on the string the collector derives from is_delegated, because the raw field is a boolean and renders as true/false.",
+   "datasource": {
+    "type": "tempo",
+    "uid": "thunderid-tempo"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 21,
+    "w": 12,
+    "h": 9
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "queryType": "traceql",
+     "datasource": {
+      "type": "tempo",
+      "uid": "thunderid-tempo"
+     },
+     "query": "{span.act_type=\"agent\" && span.component=\"AuthHandler\" && span.\"event.status\"=\"success\"} | count_over_time() by (span.\"agent.acting_for_user\")"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "transformations": [
+    {
+     "id": "renameByRegex",
+     "options": {
+      "regex": ".*=\"([^\"]+)\".*",
+      "renamePattern": "$1"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "right",
+     "showLegend": true
+    },
+    "pieType": "donut",
+    "reduceOptions": {
+     "calcs": [
+      "sum"
+     ],
+     "fields": "",
+     "values": false
+    }
+   }
+  },
+  {
+   "id": 5,
+   "type": "barchart",
+   "title": "Work performed for a person",
+   "description": "Delegated issuances grouped by the subject acted for. Subjects are opaque entity resource IDs.",
+   "datasource": {
+    "type": "tempo",
+    "uid": "thunderid-tempo"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 21,
+    "w": 12,
+    "h": 9
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "queryType": "traceql",
+     "datasource": {
+      "type": "tempo",
+      "uid": "thunderid-tempo"
+     },
+     "query": "{span.act_type=\"agent\" && span.component=\"AuthHandler\" && span.\"event.status\"=\"success\" && span.is_delegated=true} | count_over_time() by (span.sub)"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "orientation": "horizontal",
+      "lineWidth": 1,
+      "fillOpacity": 80
+     },
+     "unit": "short",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "transformations": [
+    {
+     "id": "renameByRegex",
+     "options": {
+      "regex": ".*=\"([^\"]+)\".*",
+      "renamePattern": "$1"
+     }
+    },
+    {
+     "id": "reduce",
+     "options": {
+      "reducers": [
+       "sum"
+      ],
+      "mode": "seriesToRows"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "showLegend": false
+    },
+    "xTickLabelRotation": -30,
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": true
+    }
+   }
+  },
+  {
+   "id": 8,
+   "type": "timeseries",
+   "title": "Issuance latency",
+   "description": "Percentiles of the published issuance duration over successful agent issuances. Reads duration_ms_int, the integer copy the collector derives from data.duration_ms. The intrinsic span duration is not used: it measures delivery rather than the operation.",
+   "datasource": {
+    "type": "tempo",
+    "uid": "thunderid-tempo"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 30,
+    "w": 24,
+    "h": 9
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "queryType": "traceql",
+     "datasource": {
+      "type": "tempo",
+      "uid": "thunderid-tempo"
+     },
+     "query": "{span.act_type=\"agent\" && span.component=\"AuthHandler\" && span.\"event.status\"=\"success\"} | quantile_over_time(span.duration_ms_int, .5, .95, .99)"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "renameByRegex",
+     "options": {
+      "regex": ".*=\\s*\"?([0-9.]+)\"?.*",
+      "renamePattern": "p$1"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 7,
+   "type": "table",
+   "title": "Failure reasons",
+   "description": "Why agent token requests failed. The cause is a scalar only because the collector splits data.error, which ThunderID publishes as one opaque JSON object.",
+   "datasource": {
+    "type": "tempo",
+    "uid": "thunderid-tempo"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 39,
+    "w": 24,
+    "h": 9
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "queryType": "traceql",
+     "datasource": {
+      "type": "tempo",
+      "uid": "thunderid-tempo"
+     },
+     "query": "{span.act_type=\"agent\" && span.component=\"AuthHandler\" && span.\"event.status\"=\"failure\"} | count_over_time() by (span.error_message)"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "renameByRegex",
+     "options": {
+      "regex": ".*=\"([^\"]+)\".*",
+      "renamePattern": "$1"
+     }
+    },
+    {
+     "id": "reduce",
+     "options": {
+      "reducers": [
+       "sum"
+      ],
+      "mode": "seriesToRows"
+     }
+    },
+    {
+     "id": "organize",
+     "options": {
+      "renameByName": {
+       "Field": "Cause",
+       "Total": "Events"
+      }
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "fields": {},
+      "sort": [
+       {
+        "field": "Events",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   }
+  }
+ ]
+}

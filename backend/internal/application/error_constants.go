@@ -326,6 +326,20 @@ var (
 			DefaultValue: "One or more user types in allowed_user_types do not exist in the system",
 		},
 	}
+	// ErrorInvalidAgentType is the error returned when an invalid agent type is provided in
+	// allowedAgentTypes.
+	ErrorInvalidAgentType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1046",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_agent_type",
+			DefaultValue: "Invalid agent type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_agent_type_description",
+			DefaultValue: "One or more agent types in allowedAgentTypes do not exist in the system",
+		},
+	}
 	// ErrorThemeNotFound is the error returned when theme is not found.
 	ErrorThemeNotFound = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -573,6 +587,281 @@ var (
 			Key: "error.applicationservice.invalid_subject_attribute_mapping_description",
 			DefaultValue: "The subject attribute mapping must reference an attribute that is unique, required, " +
 				"and string-typed in an allowed user type",
+		},
+	}
+	// ErrorInvalidCredential is returned when a supplied credential is invalid.
+	ErrorInvalidCredential = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1046",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_credential",
+			DefaultValue: "Invalid credential",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_credential_description",
+			DefaultValue: "The provided credential is invalid",
+		},
+	}
+	// ErrorApplicationHasNoClientSecret is the error returned when a client secret regeneration targets an
+	// application that authenticates without one: a public client, or one using private_key_jwt.
+	ErrorApplicationHasNoClientSecret = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1047",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.application_has_no_client_secret",
+			DefaultValue: "Application has no client secret",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.application_has_no_client_secret_description",
+			DefaultValue: "A client secret is not applicable to this application: it authenticates without one",
+		},
+	}
+	// ErrorApplicationHasBlockingDependencies is the error returned when the application cannot be deleted
+	// because another resource holds a reference that forbids it.
+	ErrorApplicationHasBlockingDependencies = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1048",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.application_has_blocking_dependencies",
+			DefaultValue: "Application has blocking dependencies",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.applicationservice.application_has_blocking_dependencies_description",
+			DefaultValue: "The application cannot be deleted because other resources depend on it. " +
+				"Remove or reassign them first",
+		},
+	}
+	// ErrorUnsupportedCredentialAction is the error returned when a credential action the service does
+	// not implement is requested.
+	ErrorUnsupportedCredentialAction = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1049",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.unsupported_credential_action",
+			DefaultValue: "Unsupported credential action",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.unsupported_credential_action_description",
+			DefaultValue: "The requested action is not supported for this application's credential",
+		},
+	}
+	// ErrorInvalidCIMDClient is the error returned when a client registered from a Client ID Metadata
+	// Document breaks a document rule. The description names the rule.
+	ErrorInvalidCIMDClient = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1050",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_cimd_client",
+			DefaultValue: "Invalid Client ID Metadata Document client",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_cimd_client_description",
+			DefaultValue: "The client does not satisfy the Client ID Metadata Document rules",
+		},
+	}
+
+	// Sharing policy errors. Each carries the sharing framework's own description through, so a
+	// refusal keeps the half that says what is wrong.
+
+	// ErrorInvalidSharingPolicy is returned when a sharing policy is not one the issuing
+	// organization unit may write.
+	ErrorInvalidSharingPolicy = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1051",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_sharing_policy",
+			DefaultValue: "Invalid sharing policy",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_sharing_policy_description",
+			DefaultValue: "The sharing policy is not one the issuing organization unit may write",
+		},
+	}
+	// ErrorSharingPolicyNotFound is returned when the application holds no policy under the
+	// requested id. A policy belonging to another resource answers the same way.
+	ErrorSharingPolicyNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1052",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.sharing_policy_not_found",
+			DefaultValue: "Sharing policy not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.sharing_policy_not_found_description",
+			DefaultValue: "The application has no sharing policy with the specified id",
+		},
+	}
+	// ErrorSharingPolicyExists is returned when the organization unit already holds a policy for
+	// this application.
+	ErrorSharingPolicyExists = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1053",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.sharing_policy_exists",
+			DefaultValue: "Sharing policy already exists",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.applicationservice.sharing_policy_exists_description",
+			DefaultValue: "This organization unit already has a sharing policy for the " +
+				"application; edit it instead",
+		},
+	}
+	// ErrorSharingPolicyVersionMismatch is returned when an edit names a version the policy has
+	// moved past.
+	ErrorSharingPolicyVersionMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1054",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.sharing_policy_version_mismatch",
+			DefaultValue: "Sharing policy version mismatch",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.applicationservice.sharing_policy_version_mismatch_description",
+			DefaultValue: "The sharing policy changed since it was read; read it again and " +
+				"retry the edit",
+		},
+	}
+	// ErrorSharingPolicyDeclared is returned when an edit or a delete is aimed at a policy a
+	// resource file declares.
+	ErrorSharingPolicyDeclared = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1055",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.sharing_policy_declared",
+			DefaultValue: "Sharing policy is declared",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.applicationservice.sharing_policy_declared_description",
+			DefaultValue: "The sharing policy is declared in a resource file and cannot be " +
+				"changed through the API",
+		},
+	}
+	// ErrorApplicationNotSharedToOU is returned when an organization unit cannot see the
+	// application, so there are no terms to resolve for it.
+	ErrorApplicationNotSharedToOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1056",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.application_not_shared_to_ou",
+			DefaultValue: "Application is not shared to the organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.applicationservice.application_not_shared_to_ou_description",
+			DefaultValue: "No sharing policy reaches the specified organization unit, so the " +
+				"application is not available there",
+		},
+	}
+	// ErrorInvalidLimit is returned when a sharing policy listing asks for a page size that is not
+	// a positive integer within the maximum. A value the handler cannot parse and one the framework
+	// refuses are the same mistake, so they answer alike.
+	ErrorInvalidLimit = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1057",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_limit_parameter",
+			DefaultValue: "Invalid limit parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_limit_parameter_description",
+			DefaultValue: "The limit parameter must be a positive integer within the maximum page size",
+		},
+	}
+	// ErrorInvalidOffset is returned when a sharing policy listing starts before the first result.
+	ErrorInvalidOffset = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1058",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_offset_parameter",
+			DefaultValue: "Invalid offset parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_offset_parameter_description",
+			DefaultValue: "The offset parameter must not be negative",
+		},
+	}
+	// ErrorMissingOUIDParameter is returned when an overlay-rules request does not say which
+	// organization unit to resolve for. It is separate from the malformed-body error, because this
+	// endpoint carries no body for that one to describe.
+	ErrorMissingOUIDParameter = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1059",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.missing_ou_id_parameter",
+			DefaultValue: "Missing required parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.missing_ou_id_parameter_description",
+			DefaultValue: "The 'ouId' query parameter is required",
+		},
+	}
+	// ErrorDeploymentWideSharingNotAllowed is returned when a create through the API states a section
+	// whose reach is not bounded by where the issuing organization unit sits in the tree.
+	ErrorDeploymentWideSharingNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1060",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.deployment_wide_sharing_not_allowed",
+			DefaultValue: "Deployment-wide sharing is not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.applicationservice.deployment_wide_sharing_not_allowed_description",
+			DefaultValue: "A policy reaching all organization units or the roots of all other trees " +
+				"can only be created from a declarative resource file or an import",
+		},
+	}
+	// ErrorSharedApplicationCannotMove is returned when an application that sharing policies govern is
+	// moved to another organization unit.
+	ErrorSharedApplicationCannotMove = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1061",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.shared_application_cannot_move",
+			DefaultValue: "Application with sharing policies cannot be moved",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.applicationservice.shared_application_cannot_move_description",
+			DefaultValue: "The application is shared into other organization units. Delete its sharing " +
+				"policies before moving it to another organization unit",
+		},
+	}
+	// ErrorInvalidFilter is returned when an application listing carries a filter it cannot apply.
+	ErrorInvalidFilter = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1062",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_filter_parameter",
+			DefaultValue: "Invalid filter parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_filter_parameter_description",
+			DefaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID",
+		},
+	}
+	// ErrorInvalidProject is returned when an application names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1063",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+	// ErrorOUNotInProject is returned when an application names an organization unit outside the project
+	// it names.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1064",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.ou_not_in_project_description",
+			DefaultValue: "The organization unit must be the project's root organization unit or one below it",
 		},
 	}
 )

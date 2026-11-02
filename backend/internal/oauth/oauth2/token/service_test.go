@@ -1,11 +1,14 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package token
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,6 +19,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/scope"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/dpopmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/granthandlersmock"
@@ -315,6 +320,86 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_Success() {
 	assert.Equal(suite.T(), "openid profile", tokenResp.Scope)
 }
 
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_AuthorizationDetailsRejectedForTokenExchange() {
+	req := &model.TokenRequest{
+		ClientID:             "test-client-id",
+		GrantType:            string(providers.GrantTypeTokenExchange),
+		SubjectToken:         "subject-token",
+		AuthorizationDetails: `[{"type":"payment_initiation"}]`,
+	}
+	app := suite.defaultApp()
+	app.GrantTypes = []providers.GrantType{providers.GrantTypeTokenExchange}
+	suite.mockGrantProvider.EXPECT().GetGrantHandler(providers.GrantTypeTokenExchange).
+		Return(suite.mockGrantHandler, nil).Maybe()
+
+	svc := suite.newService()
+	tokenResp, errResp := svc.ProcessTokenRequest(context.Background(), req, app)
+
+	assert.Nil(suite.T(), tokenResp)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidAuthorizationDetails, errResp.Error)
+	suite.mockGrantHandler.AssertNotCalled(suite.T(), "ValidateGrant", mock.Anything, mock.Anything, mock.Anything)
+	suite.mockGrantHandler.AssertNotCalled(suite.T(), "HandleGrant", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_AuthorizationDetailsRejectedForJWTBearer() {
+	req := &model.TokenRequest{
+		ClientID:             "test-client-id",
+		GrantType:            string(providers.GrantTypeJWTBearer),
+		Assertion:            "assertion",
+		AuthorizationDetails: `[{"type":"payment_initiation"}]`,
+	}
+	app := suite.defaultApp()
+	app.GrantTypes = []providers.GrantType{providers.GrantTypeJWTBearer}
+	suite.mockGrantProvider.EXPECT().GetGrantHandler(providers.GrantTypeJWTBearer).
+		Return(suite.mockGrantHandler, nil).Maybe()
+
+	svc := suite.newService()
+	tokenResp, errResp := svc.ProcessTokenRequest(context.Background(), req, app)
+
+	assert.Nil(suite.T(), tokenResp)
+	suite.Require().NotNil(errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidAuthorizationDetails, errResp.Error)
+	suite.mockGrantHandler.AssertNotCalled(suite.T(), "ValidateGrant", mock.Anything, mock.Anything, mock.Anything)
+	suite.mockGrantHandler.AssertNotCalled(suite.T(), "HandleGrant", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_ClientCredentials_ReturnsAuthorizationDetails() {
+	req := &model.TokenRequest{
+		ClientID:             "test-client-id",
+		GrantType:            string(providers.GrantTypeClientCredentials),
+		AuthorizationDetails: `[{"type":"payment_initiation"}]`,
+	}
+	app := &providers.OAuthClient{
+		ClientID:   "test-client-id",
+		GrantTypes: []providers.GrantType{providers.GrantTypeClientCredentials},
+	}
+	granted := json.RawMessage(`[{"type":"payment_initiation","amount":10}]`)
+
+	suite.mockGrantProvider.ExpectedCalls = nil
+	suite.mockGrantProvider.
+		On("GetGrantHandler", providers.GrantTypeClientCredentials).
+		Return(suite.mockGrantHandler, nil)
+	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, req, app).Return(nil)
+	suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "", "test-client-id").Return("", nil)
+	suite.mockGrantHandler.On("HandleGrant", mock.Anything, req, app).Return(&model.TokenResponseDTO{
+		AccessToken: model.TokenDTO{
+			Token:                "access-token-123",
+			TokenType:            "Bearer",
+			ExpiresIn:            3600,
+			AuthorizationDetails: granted,
+		},
+	}, nil)
+
+	svc := suite.newService()
+	tokenResp, errResp := svc.ProcessTokenRequest(context.Background(), req, app)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), tokenResp)
+	assert.Equal(suite.T(), "access-token-123", tokenResp.AccessToken)
+	assert.Equal(suite.T(), granted, tokenResp.AuthorizationDetails)
+}
+
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_DPoPProof_Verified_PropagatesJktToHandler() {
 	req := &model.TokenRequest{
 		ClientID:  "test-client-id",
@@ -524,6 +609,59 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_WithRefreshToken() {
 	assert.Nil(suite.T(), errResp)
 	assert.NotNil(suite.T(), tokenResp)
 	assert.Equal(suite.T(), "access-token-123", tokenResp.AccessToken)
+}
+
+// A token exchange issues a refresh token only when its grant path asks for one, as the SSO session
+// exchange does, and the client allows the refresh token grant.
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_TokenExchangeRefreshTokenWhenAsked() {
+	for _, asked := range []bool{true, false} {
+		suite.SetupTest()
+		req := &model.TokenRequest{
+			ClientID:         "test-client-id",
+			GrantType:        string(providers.GrantTypeTokenExchange),
+			SubjectToken:     "subject-token",
+			SubjectTokenType: "urn:ietf:params:oauth:token-type:jwt",
+			Scope:            "openid",
+		}
+		app := &providers.OAuthClient{
+			ClientID: "test-client-id",
+			GrantTypes: []providers.GrantType{
+				providers.GrantTypeTokenExchange,
+				providers.GrantTypeRefreshToken,
+			},
+		}
+
+		suite.mockGrantProvider.ExpectedCalls = nil
+		suite.mockGrantProvider.On("GetGrantHandler", providers.GrantTypeTokenExchange).
+			Return(suite.mockGrantHandler, nil)
+		mockRefreshHandler := granthandlersmock.NewRefreshTokenGrantHandlerInterfaceMock(suite.T())
+		if asked {
+			suite.mockGrantProvider.On("GetGrantHandler", providers.GrantTypeRefreshToken).
+				Return(mockRefreshHandler, nil)
+		}
+		suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
+		suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "openid", "test-client-id").
+			Return("openid", nil)
+		tokenRespDTO := &model.TokenResponseDTO{
+			AccessToken: model.TokenDTO{Token: "access-token-123", TokenType: "Bearer", ExpiresIn: 3600,
+				Scopes: []string{"openid"}, Subject: "user123", Audiences: []string{"test-audience"}},
+			IssuesRefreshToken: asked,
+		}
+		suite.mockGrantHandler.On("HandleGrant", mock.Anything, mock.Anything, app).Return(tokenRespDTO, nil)
+		if asked {
+			mockRefreshHandler.On("IssueRefreshToken", mock.Anything, tokenRespDTO, app, "user123",
+				[]string{"test-audience"}, string(providers.GrantTypeTokenExchange), []string{"openid"},
+				(*model.ClaimsRequest)(nil), "", "", "", int64(0)).Return(nil)
+		}
+
+		svc := suite.newService()
+		_, errResp := svc.ProcessTokenRequest(context.Background(), req, app)
+
+		assert.Nil(suite.T(), errResp)
+		if !asked {
+			mockRefreshHandler.AssertNotCalled(suite.T(), "IssueRefreshToken")
+		}
+	}
 }
 
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_RefreshTokenIssuanceError() {
@@ -860,4 +998,417 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_CIBA_RefreshTokenUse
 	assert.Nil(suite.T(), errResp)
 	assert.NotNil(suite.T(), tokenResp)
 	assert.Equal(suite.T(), "access-token-123", tokenResp.AccessToken)
+}
+
+const (
+	testAgentEntityID = "agent-entity-1"
+	testAppEntityID   = "app-entity-1"
+	testTraceID       = "trace-1"
+)
+
+type TokenEventsTestSuite struct {
+	suite.Suite
+	mockObsSvc *observabilitymock.ObservabilityServiceInterfaceMock
+	published  []*providers.Event
+}
+
+func TestTokenEventsSuite(t *testing.T) {
+	suite.Run(t, new(TokenEventsTestSuite))
+}
+
+func (suite *TokenEventsTestSuite) SetupTest() {
+	suite.published = nil
+	suite.mockObsSvc = observabilitymock.NewObservabilityServiceInterfaceMock(suite.T())
+	suite.mockObsSvc.On("IsEnabled").Return(true).Maybe()
+	suite.mockObsSvc.
+		On("PublishEvent", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			suite.published = append(suite.published, args.Get(1).(*providers.Event))
+		}).
+		Return().Maybe()
+}
+
+func (suite *TokenEventsTestSuite) newService() *tokenService {
+	return &tokenService{observabilitySvc: suite.mockObsSvc}
+}
+
+func (suite *TokenEventsTestSuite) ctx() context.Context {
+	return sysContext.WithTraceID(context.Background(), testTraceID)
+}
+
+// ctxForOU is the context a request to /ou/{ouId}/oauth2/token carries, where the middleware has
+// recorded the organization unit the token is being asked for.
+func (suite *TokenEventsTestSuite) ctxForOU(ouID string) context.Context {
+	return sysContext.WithAccessingOUID(suite.ctx(), ouID)
+}
+
+// lastEvent returns the single event published by the call under test.
+func (suite *TokenEventsTestSuite) lastEvent() *providers.Event {
+	suite.Require().Len(suite.published, 1)
+	return suite.published[0]
+}
+
+func agentClient() *providers.OAuthClient {
+	return &providers.OAuthClient{
+		ID:             testAgentEntityID,
+		ClientID:       "agent-client-id",
+		EntityCategory: providers.EntityCategoryAgent,
+	}
+}
+
+func appClient() *providers.OAuthClient {
+	return &providers.OAuthClient{
+		ID:             testAppEntityID,
+		ClientID:       "app-client-id",
+		EntityCategory: providers.EntityCategoryApp,
+	}
+}
+
+func (suite *TokenEventsTestSuite) TestIssuanceStarted_AgentReportsActorTypeAndEntityID() {
+	suite.newService().publishTokenIssuanceStartedEvent(
+		suite.ctx(), agentClient(), "agent-client-id", "client_credentials", "")
+
+	evt := suite.lastEvent()
+	assert.Equal(suite.T(), event.PrincipalTypeAgent, evt.Data[event.DataKey.ActorType])
+	assert.Equal(suite.T(), testAgentEntityID, evt.Data[event.DataKey.EntityID])
+	assert.Equal(suite.T(), testTraceID, evt.Data[event.DataKey.CorrelationID])
+}
+
+// The entity vocabulary spells an application "app" while the reported principal type spells it
+// "application", matching the token's sub_type claim.
+func (suite *TokenEventsTestSuite) TestIssuanceStarted_ApplicationReportsApplicationActorType() {
+	suite.newService().publishTokenIssuanceStartedEvent(
+		suite.ctx(), appClient(), "app-client-id", "authorization_code", "")
+
+	assert.Equal(suite.T(), event.PrincipalTypeApplication, suite.lastEvent().Data[event.DataKey.ActorType])
+}
+
+func (suite *TokenEventsTestSuite) TestIssuanceStarted_UnresolvedClientOmitsPrincipalFields() {
+	suite.newService().publishTokenIssuanceStartedEvent(suite.ctx(), nil, "", "", "")
+
+	evt := suite.lastEvent()
+	assert.NotContains(suite.T(), evt.Data, event.DataKey.ActorType)
+	assert.NotContains(suite.T(), evt.Data, event.DataKey.EntityID)
+}
+
+func (suite *TokenEventsTestSuite) TestIssued_M2MReportsAgentSubjectAndNoDelegation() {
+	app := agentClient()
+	respDTO := &model.TokenResponseDTO{
+		AccessToken: model.TokenDTO{
+			SubjectID:       testAgentEntityID,
+			SubjectCategory: string(providers.EntityCategoryAgent),
+		},
+	}
+
+	suite.newService().publishTokenIssuedEvent(
+		suite.ctx(), app, respDTO, app.ClientID, "client_credentials", "", 0)
+
+	evt := suite.lastEvent()
+	assert.Equal(suite.T(), event.PrincipalTypeAgent, evt.Data[event.DataKey.ActorType])
+	assert.Equal(suite.T(), testAgentEntityID, evt.Data[event.DataKey.Subject])
+	assert.Equal(suite.T(), event.PrincipalTypeAgent, evt.Data[event.DataKey.SubjectType])
+	assert.Equal(suite.T(), false, evt.Data[event.DataKey.IsDelegated])
+	assert.NotContains(suite.T(), evt.Data, event.DataKey.ActorSub)
+}
+
+func (suite *TokenEventsTestSuite) TestIssued_OBOReportsUserSubjectWithAgentActor() {
+	app := agentClient()
+	respDTO := &model.TokenResponseDTO{
+		AccessToken: model.TokenDTO{
+			SubjectID:       "user-1",
+			SubjectCategory: string(providers.EntityCategoryUser),
+			Delegated:       true,
+			ActorSub:        testAgentEntityID,
+		},
+	}
+
+	suite.newService().publishTokenIssuedEvent(
+		suite.ctx(), app, respDTO, app.ClientID, "authorization_code", "", 0)
+
+	evt := suite.lastEvent()
+	assert.Equal(suite.T(), event.PrincipalTypeAgent, evt.Data[event.DataKey.ActorType])
+	assert.Equal(suite.T(), "user-1", evt.Data[event.DataKey.Subject])
+	assert.Equal(suite.T(), event.PrincipalTypeUser, evt.Data[event.DataKey.SubjectType])
+	assert.Equal(suite.T(), testAgentEntityID, evt.Data[event.DataKey.ActorSub])
+	assert.Equal(suite.T(), true, evt.Data[event.DataKey.IsDelegated])
+}
+
+// An exchange whose actor_token carried a mapped attribute reports no act_sub, but the delegation
+// itself is still reported: is_delegated must not be downgraded to a claim the issuance was direct.
+func (suite *TokenEventsTestSuite) TestIssued_DelegationReportedWhenActorIsWithheld() {
+	app := agentClient()
+	respDTO := &model.TokenResponseDTO{
+		AccessToken: model.TokenDTO{
+			SubjectID:       "user-1",
+			SubjectCategory: string(providers.EntityCategoryUser),
+			Delegated:       true,
+		},
+	}
+
+	suite.newService().publishTokenIssuedEvent(
+		suite.ctx(), app, respDTO, app.ClientID, "urn:ietf:params:oauth:grant-type:token-exchange", "", 0)
+
+	evt := suite.lastEvent()
+	assert.Equal(suite.T(), true, evt.Data[event.DataKey.IsDelegated])
+	assert.NotContains(suite.T(), evt.Data, event.DataKey.ActorSub)
+}
+
+func (suite *TokenEventsTestSuite) TestIssued_GrantCorrelationIDWinsOverTraceID() {
+	app := agentClient()
+	respDTO := &model.TokenResponseDTO{
+		AccessToken:   model.TokenDTO{SubjectID: "user-1"},
+		CorrelationID: "flow-execution-1",
+	}
+
+	suite.newService().publishTokenIssuedEvent(
+		suite.ctx(), app, respDTO, app.ClientID, "authorization_code", "", 0)
+
+	assert.Equal(suite.T(), "flow-execution-1", suite.lastEvent().Data[event.DataKey.CorrelationID])
+}
+
+func (suite *TokenEventsTestSuite) TestIssued_FallsBackToTraceIDWhenGrantHasNoCorrelationID() {
+	app := agentClient()
+	respDTO := &model.TokenResponseDTO{AccessToken: model.TokenDTO{SubjectID: testAgentEntityID}}
+
+	suite.newService().publishTokenIssuedEvent(
+		suite.ctx(), app, respDTO, app.ClientID, "client_credentials", "", 0)
+
+	assert.Equal(suite.T(), testTraceID, suite.lastEvent().Data[event.DataKey.CorrelationID])
+}
+
+func (suite *TokenEventsTestSuite) TestIssuanceFailed_ReportsActorTypeWhenClientIsKnown() {
+	publishTokenIssuanceFailedEvent(suite.mockObsSvc, suite.ctx(), agentClient(),
+		"agent-client-id", "client_credentials", "", 400, "invalid_scope", 0)
+
+	evt := suite.lastEvent()
+	assert.Equal(suite.T(), event.PrincipalTypeAgent, evt.Data[event.DataKey.ActorType])
+	assert.Equal(suite.T(), testAgentEntityID, evt.Data[event.DataKey.EntityID])
+	assert.Equal(suite.T(), testTraceID, evt.Data[event.DataKey.CorrelationID])
+}
+
+// One application acts for many organization units, so an event saying only which client asked is
+// not enough to attribute issuance. Each of the three events carries the organization unit the
+// token was requested for.
+func (suite *TokenEventsTestSuite) TestIssuanceStarted_ReportsTheAccessingOrganizationUnit() {
+	suite.newService().publishTokenIssuanceStartedEvent(
+		suite.ctxForOU("customer-a"), appClient(), "app-client-id", "client_credentials", "")
+
+	assert.Equal(suite.T(), "customer-a", suite.lastEvent().Data[event.DataKey.AccessingOUID])
+}
+
+func (suite *TokenEventsTestSuite) TestIssued_ReportsTheAccessingOrganizationUnit() {
+	app := appClient()
+	respDTO := &model.TokenResponseDTO{AccessToken: model.TokenDTO{SubjectID: testAppEntityID}}
+
+	suite.newService().publishTokenIssuedEvent(
+		suite.ctxForOU("customer-a"), app, respDTO, app.ClientID, "client_credentials", "", 0)
+
+	assert.Equal(suite.T(), "customer-a", suite.lastEvent().Data[event.DataKey.AccessingOUID])
+}
+
+// The refusal a caller receives names no organization unit, so that the endpoint cannot be used to
+// discover which ones exist. This event is where an operator finds out which one was refused, which
+// makes it the one that matters most.
+func (suite *TokenEventsTestSuite) TestIssuanceFailed_ReportsTheAccessingOrganizationUnit() {
+	publishTokenIssuanceFailedEvent(suite.mockObsSvc, suite.ctxForOU("customer-a"), appClient(),
+		"app-client-id", "client_credentials", "", 400, "invalid_request", 0)
+
+	assert.Equal(suite.T(), "customer-a", suite.lastEvent().Data[event.DataKey.AccessingOUID])
+}
+
+// A request to the bare endpoint names no organization unit, so the key is absent rather than
+// empty: its presence is what says the prefixed form was used.
+func (suite *TokenEventsTestSuite) TestTheBareEndpointStampsNoOrganizationUnit() {
+	suite.newService().publishTokenIssuanceStartedEvent(
+		suite.ctx(), appClient(), "app-client-id", "client_credentials", "")
+
+	assert.NotContains(suite.T(), suite.lastEvent().Data, event.DataKey.AccessingOUID)
+}
+
+// The subject's category is resolved while the token is built, so the event reports whatever the
+// token carries rather than inferring it from the client.
+func (suite *TokenEventsTestSuite) TestIssued_SubjectTypeIsReadFromTheToken() {
+	app := agentClient()
+	respDTO := &model.TokenResponseDTO{
+		AccessToken: model.TokenDTO{
+			SubjectID:       "agent-b",
+			SubjectCategory: string(providers.EntityCategoryAgent),
+		},
+	}
+
+	suite.newService().publishTokenIssuedEvent(
+		suite.ctx(), app, respDTO, app.ClientID, "urn:ietf:params:oauth:grant-type:token-exchange", "", 0)
+
+	evt := suite.lastEvent()
+	assert.Equal(suite.T(), "agent-b", evt.Data[event.DataKey.Subject])
+	assert.Equal(suite.T(), event.PrincipalTypeAgent, evt.Data[event.DataKey.SubjectType])
+}
+
+func (suite *TokenEventsTestSuite) TestIssued_SubjectTypeOmittedWhenTokenHasNoCategory() {
+	app := agentClient()
+	respDTO := &model.TokenResponseDTO{AccessToken: model.TokenDTO{SubjectID: "user-1"}}
+
+	suite.newService().publishTokenIssuedEvent(
+		suite.ctx(), app, respDTO, app.ClientID, "authorization_code", "", 0)
+
+	evt := suite.lastEvent()
+	assert.Equal(suite.T(), "user-1", evt.Data[event.DataKey.Subject])
+	assert.NotContains(suite.T(), evt.Data, event.DataKey.SubjectType)
+}
+
+func (suite *TokenEventsTestSuite) TestPublishGrantError() {
+	cases := []struct {
+		name        string
+		code        string
+		wantStatus  string
+		wantMessage string
+	}{
+		{"a server error publishes 500 and hides its description", constants.ErrorServerError, "500",
+			"Failed to process token request"},
+		{"a client error publishes 400 and keeps its description", constants.ErrorInvalidGrant, "400",
+			"grant rejected"},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.published = nil
+			errResp := &model.ErrorResponse{Error: tc.code, ErrorDescription: "grant rejected"}
+
+			suite.newService().publishGrantError(suite.ctx(), appClient(), "app-client-id",
+				"authorization_code", "", errResp, 0)
+
+			errData, ok := suite.lastEvent().Data[event.DataKey.Error].(map[string]interface{})
+			suite.Require().True(ok)
+			suite.Equal(tc.wantStatus, errData["code"])
+			suite.Equal("grant rejected", errData["message"])
+			suite.Equal(tc.wantMessage, errResp.ErrorDescription)
+		})
+	}
+}
+
+func (suite *TokenEventsTestSuite) TestPublishGrantError_NoCodePublishesNothing() {
+	errResp := &model.ErrorResponse{ErrorDescription: "grant rejected"}
+
+	suite.newService().publishGrantError(suite.ctx(), appClient(), "app-client-id",
+		"authorization_code", "", errResp, 0)
+
+	suite.Empty(suite.published)
+	suite.Equal("grant rejected", errResp.ErrorDescription)
+}
+
+// AccessingOUResponsesTestSuite covers the two answers this endpoint hands the accessing-OU
+// middleware. Writing them is the middleware's job and is covered there; what is specific here is
+// which answer this endpoint chooses, and the token endpoint speaks OAuth2.
+type AccessingOUResponsesTestSuite struct {
+	suite.Suite
+}
+
+func TestAccessingOUResponsesTestSuite(t *testing.T) {
+	suite.Run(t, new(AccessingOUResponsesTestSuite))
+}
+
+// The refusal is OAuth2's, so a client that speaks the protocol can read it.
+//
+// Its text is the shared constant rather than one of this endpoint's own, which is what keeps it
+// identical to the refusal a client that was never shared receives from client authentication. The
+// two must stay indistinguishable, or the endpoint can be used to tell which organization units
+// exist: an id that names nothing and an id that names something out of reach would read
+// differently. Inlining the text here would let the two drift apart unnoticed.
+func (s *AccessingOUResponsesTestSuite) TestTheRefusalIsTheSharedOAuthError() {
+	s.Equal(constants.ErrorUnauthorizedClient, ouAccessRefusal.Code)
+	s.Equal(constants.OUAccessRefusal, ouAccessRefusal.Description)
+	s.Equal(http.StatusBadRequest, ouAccessRefusal.StatusCode)
+}
+
+// The refusal carries no organization unit of its own, so every id is answered with the same bytes
+// without the endpoint having to erase anything.
+func (s *AccessingOUResponsesTestSuite) TestTheRefusalNamesNoOrganizationUnit() {
+	for _, ouID := range []string{"ghost-a", "ghost-b"} {
+		s.NotContains(ouAccessRefusal.Description, ouID)
+	}
+}
+
+// A lookup that fails because the deployment is broken is a server error, not a refusal. Answering
+// it as a refusal would blame the caller for an outage and hide it from whoever watches for server
+// errors.
+func (s *AccessingOUResponsesTestSuite) TestAFailedLookupIsAServerError() {
+	s.Equal(constants.ErrorServerError, ouLookupFailure.Code)
+	s.Equal(http.StatusInternalServerError, ouLookupFailure.StatusCode)
+	s.NotEqual(ouAccessRefusal.Code, ouLookupFailure.Code)
+}
+
+// The proof is bound to the URI the request was sent to, and one handler serves both the bare token
+// endpoint and the organization-unit-scoped one. These pin the expected htu that is handed to the
+// verifier, which is the whole of what binds a proof to the path it arrived on.
+
+const testTokenEndpoint = "https://localhost:8090/oauth2/token" // #nosec G101
+
+func TestExpectedHTUUsesTheRequestPath(t *testing.T) {
+	ts := &tokenService{tokenEndpoint: testTokenEndpoint}
+	ctx := dpop.WithRequestPath(context.Background(), "/ou/customer-a/oauth2/token")
+
+	assert.Equal(t, "https://localhost:8090/ou/customer-a/oauth2/token", ts.expectedHTU(ctx),
+		"a proof presented on the scoped path is bound to the scoped URI")
+}
+
+// A proof minted for the bare endpoint must not satisfy a request to the scoped one. The two
+// expected values differ, which is what makes the verifier reject it.
+func TestExpectedHTUDiffersBetweenTheTwoPaths(t *testing.T) {
+	ts := &tokenService{tokenEndpoint: testTokenEndpoint}
+
+	bare := ts.expectedHTU(dpop.WithRequestPath(context.Background(), "/oauth2/token"))
+	scoped := ts.expectedHTU(dpop.WithRequestPath(context.Background(), "/ou/customer-a/oauth2/token"))
+
+	assert.Equal(t, testTokenEndpoint, bare)
+	assert.NotEqual(t, bare, scoped)
+}
+
+// The scheme and host stay the deployment's configured ones. Reading them off the request would
+// mean trusting a header the caller controls, and the caller also writes the proof.
+func TestExpectedHTUKeepsTheConfiguredOrigin(t *testing.T) {
+	ts := &tokenService{tokenEndpoint: testTokenEndpoint}
+	ctx := dpop.WithRequestPath(context.Background(), "/ou/customer-a/oauth2/token")
+
+	parsed, err := url.Parse(ts.expectedHTU(ctx))
+	assert.NoError(t, err)
+	assert.Equal(t, "https", parsed.Scheme)
+	assert.Equal(t, "localhost:8090", parsed.Host)
+}
+
+// An organization unit id that needs escaping keeps its escaping, so the expected value matches the
+// URI the client actually called.
+func TestExpectedHTUPreservesPathEscaping(t *testing.T) {
+	ts := &tokenService{tokenEndpoint: testTokenEndpoint}
+	ctx := dpop.WithRequestPath(context.Background(), "/ou/a%2Fb/oauth2/token")
+
+	assert.Equal(t, "https://localhost:8090/ou/a%2Fb/oauth2/token", ts.expectedHTU(ctx))
+}
+
+// A request that recorded no path falls back to the configured endpoint, so a caller that never
+// reaches the handler's DPoP branch is unaffected.
+func TestExpectedHTUFallsBackToTheConfiguredEndpoint(t *testing.T) {
+	ts := &tokenService{tokenEndpoint: testTokenEndpoint}
+
+	assert.Equal(t, testTokenEndpoint, ts.expectedHTU(context.Background()))
+}
+
+// A deployment published under a path prefix keeps it. The request arrives without the prefix,
+// because a proxy strips it before routing, so dropping it here would compare every proof against a
+// URI the client never called and would break the bare endpoint as well as the scoped one.
+func TestExpectedHTUKeepsAConfiguredPathPrefix(t *testing.T) {
+	ts := &tokenService{tokenEndpoint: "https://localhost:8090/abaa/oauth2/token"}
+
+	bare := ts.expectedHTU(dpop.WithRequestPath(context.Background(), "/oauth2/token"))
+	scoped := ts.expectedHTU(dpop.WithRequestPath(context.Background(), "/ou/customer-a/oauth2/token"))
+
+	assert.Equal(t, "https://localhost:8090/abaa/oauth2/token", bare)
+	assert.Equal(t, "https://localhost:8090/abaa/ou/customer-a/oauth2/token", scoped)
+}
+
+// An endpoint that does not end in the token path is not something this can rebuild, so it is left
+// alone rather than guessed at.
+func TestExpectedHTUFallsBackWhenTheEndpointHasNoTokenPath(t *testing.T) {
+	ts := &tokenService{tokenEndpoint: "https://localhost:8090/something-else"}
+
+	assert.Equal(t, "https://localhost:8090/something-else",
+		ts.expectedHTU(dpop.WithRequestPath(context.Background(), "/ou/customer-a/oauth2/token")))
 }

@@ -6,7 +6,7 @@ import type {BlogPostContextValue} from '@docusaurus/plugin-content-blog/client'
 import {Box, Button, ListItemIcon, ListItemText, Menu, MenuItem, Typography} from '@wso2/oxygen-ui';
 import {Check, Clock, Link2, Share2} from '@wso2/oxygen-ui-icons-react';
 import {JSX, MouseEvent, useState} from 'react';
-import BlogAvatar from './BlogAvatar';
+import BlogAuthorGroup from './BlogAuthorGroup';
 import {formatDate, formatReadingTime, getBannerImage, getCategory} from './helpers';
 import useIsDarkMode from '../../hooks/useIsDarkMode';
 import FacebookIcon from '../icons/FacebookIcon';
@@ -16,7 +16,6 @@ import XIcon from '../icons/XIcon';
 export default function BlogPostHero({content}: {content: BlogPostContextValue}): JSX.Element {
   const isLight = !useIsDarkMode();
   const {metadata} = content;
-  const author = metadata.authors[0];
   const category = getCategory(content);
   const bannerImage = getBannerImage(content);
   const [copied, setCopied] = useState(false);
@@ -151,19 +150,13 @@ export default function BlogPostHero({content}: {content: BlogPostContextValue})
             flexWrap: 'wrap',
           }}
         >
-          {author && (
-            <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5}}>
-              <BlogAvatar name={author.name ?? ''} imageURL={author.imageURL} size={42} />
-              <Box>
-                <Typography sx={{fontSize: '14px', fontWeight: 600, color: 'text.primary'}}>{author.name}</Typography>
-                {author.title && (
-                  <Typography sx={{fontSize: '12.5px', color: isLight ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)'}}>
-                    {author.title}
-                  </Typography>
-                )}
-              </Box>
-            </Box>
-          )}
+          <BlogAuthorGroup
+            authors={metadata.authors}
+            avatarSize={42}
+            isLight={isLight}
+            nameFontSize="14px"
+            subtitleFontSize="12.5px"
+          />
 
           <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
             <Button

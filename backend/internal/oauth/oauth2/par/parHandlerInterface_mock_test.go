@@ -16,10 +16,19 @@ func newParHandlerInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *parHandlerInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &parHandlerInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -51,7 +60,7 @@ type parHandlerInterfaceMock_HandlePARRequest_Call struct {
 // HandlePARRequest is a helper method to define mock.On call
 //   - w http.ResponseWriter
 //   - r *http.Request
-func (_e *parHandlerInterfaceMock_Expecter) HandlePARRequest(w interface{}, r interface{}) *parHandlerInterfaceMock_HandlePARRequest_Call {
+func (_e *parHandlerInterfaceMock_Expecter) HandlePARRequest(w any, r any) *parHandlerInterfaceMock_HandlePARRequest_Call {
 	return &parHandlerInterfaceMock_HandlePARRequest_Call{Call: _e.mock.On("HandlePARRequest", w, r)}
 }
 

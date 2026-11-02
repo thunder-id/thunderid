@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import Link from '@docusaurus/Link';
 import {Collapsible} from '@docusaurus/theme-common';
 import type {Props} from '@theme/DocSidebarItem/Category';
 import DocSidebarItems from '@theme/DocSidebarItems';
@@ -44,9 +45,11 @@ const cardSx = {
   margin: '0.1rem 0 0.5rem var(--ifm-menu-link-padding-horizontal, 0.75rem)',
   padding: '0.65rem 0.75rem',
   textAlign: 'left',
+  textDecoration: 'none',
   transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
   width: 'calc(100% - var(--ifm-menu-link-padding-horizontal, 0.75rem))',
   '&:hover': {
+    textDecoration: 'none',
     borderColor: 'color-mix(in srgb, var(--ifm-color-primary) 55%, transparent)',
     boxShadow: '0 0 0 3px color-mix(in srgb, var(--ifm-color-primary) 10%, transparent)',
   },
@@ -105,7 +108,7 @@ const chevronSx = {
 };
 
 function ConnectSection({item, ...rest}: OriginalProps): React.ReactElement {
-  const {items, label, className} = item;
+  const {items, label, className, href} = item;
   const type = connectTypeFromClassName(className)!;
   const {Icon, comingSoon} = SECTIONS[type];
   const active = useConnectType();
@@ -114,10 +117,14 @@ function ConnectSection({item, ...rest}: OriginalProps): React.ReactElement {
   return (
     <li className={`menu__list-item connect-section connect-section--${type}`}>
       <Box
-        component={comingSoon ? 'div' : 'button'}
-        type={comingSoon ? undefined : 'button'}
+        component={comingSoon ? 'div' : href ? Link : 'button'}
+        to={comingSoon ? undefined : href}
+        type={comingSoon || href ? undefined : 'button'}
         aria-expanded={comingSoon ? undefined : expanded}
-        onClick={comingSoon ? undefined : () => applyConnectType(expanded ? null : type)}
+        onClick={comingSoon ? undefined : () => {
+          applyConnectType(href ? type : expanded ? null : type);
+          if (href) rest.onItemClick?.(item);
+        }}
         sx={{...cardSx, ...(expanded ? cardActiveSx : {}), ...(comingSoon ? cardDisabledSx : {})}}
       >
         <Box className="cts-opt-icon" component="span" sx={iconBoxSx}>

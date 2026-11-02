@@ -71,6 +71,10 @@ var (
 	redStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color(colorRed))
 	boldStyle  = lipgloss.NewStyle().Bold(true)
 
+	// highlightStyle emphasizes copy-pasteable values (credentials, scopes) so they
+	// stand out from the surrounding walkthrough prose.
+	highlightStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorBrandBlue))
+
 	introBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color(colorBrandBlue)).
@@ -126,14 +130,30 @@ var idLines = []string{
 // slogan is shown under the product name in the banner.
 const slogan = "Auth for Modern Apps and Agents"
 
-// BannerString returns the styled ASCII art banner, or a compact variant when the
-// terminal is too narrow for the art and its box: the art is a fixed width, so on a
-// small terminal the border would wrap and every line would break.
-func BannerString() string {
+// BannerWidth returns the outer rendered width of BannerString, so other boxes
+// and dividers in the REPL header can be sized to match it. It mirrors
+// BannerString's own full-art-vs-compact decision, since the two layouts are
+// sized by different styles.
+func BannerWidth() int {
 	logoWidth := 2 + len(thunderLines[0]) + len(idLines[0])
 	if terminalWidth() < logoWidth+introChrome {
-		return fitBox(noteBoxStyle, noteChrome,
-			brandStyle.Render("⚡ "+product.Name)+"\n"+greyStyle.Render(slogan))
+		return boxWidth(noteChrome) + noteChrome
+	}
+	return logoWidth + introBoxStyle.GetHorizontalFrameSize()
+}
+
+// BannerString returns the styled ASCII art banner, or a compact variant when the
+// terminal is too narrow for the art and its box: the art is a fixed width, so on a
+// small terminal the border would wrap and every line would break. When version is
+// non-empty, a "⚡ ThunderID vX.Y.Z" line is rendered inside the box below the slogan.
+func BannerString(version string) string {
+	logoWidth := 2 + len(thunderLines[0]) + len(idLines[0])
+	if terminalWidth() < logoWidth+introChrome {
+		compact := brandStyle.Render("⚡ "+product.Name) + "\n" + greyStyle.Render(slogan)
+		if version != "" {
+			compact += "\n" + boldStyle.Render("v"+version)
+		}
+		return fitBox(noteBoxStyle, noteChrome, compact)
 	}
 
 	var lines []string
@@ -143,18 +163,20 @@ func BannerString() string {
 	}
 	banner := strings.Join(lines, "\n")
 
-	centeredSlogan := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorGrey)).
-		Width(logoWidth).
-		Align(lipgloss.Center).
-		Render(slogan)
+	centered := lipgloss.NewStyle().Width(logoWidth).Align(lipgloss.Center)
+	centeredSlogan := centered.Foreground(lipgloss.Color(colorGrey)).Render(slogan)
 
-	return introBoxStyle.Render(banner + "\n\n" + centeredSlogan)
+	content := banner + "\n\n" + centeredSlogan
+	if version != "" {
+		content += "\n\n" + centered.Render(boldStyle.Render("⚡ "+product.Name+" v"+version))
+	}
+
+	return introBoxStyle.Render(content)
 }
 
 // PrintBanner writes the styled banner to stdout.
 func PrintBanner() {
-	fmt.Println(BannerString())
+	fmt.Println(BannerString(""))
 }
 
 // StatusBoxString returns a bordered box showing the backend and console URLs
@@ -172,6 +194,7 @@ func StatusBoxString(baseURL string) string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(colorGreen)).
 		Padding(0, 1).
+		Width(BannerWidth()).
 		Render(rows)
 }
 
@@ -257,6 +280,11 @@ func Yellow(s string) string {
 // Red returns a red-rendered string.
 func Red(s string) string {
 	return redStyle.Render(s)
+}
+
+// Highlight emphasizes a copy-pasteable value (credential, scope) in bold brand color.
+func Highlight(s string) string {
+	return highlightStyle.Render(s)
 }
 
 // UpgradeChoice represents the user's response to the upgrade prompt.

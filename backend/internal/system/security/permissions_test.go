@@ -343,6 +343,33 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		{name: "GET /groups exact", method: http.MethodGet, path: "/groups", wantPerm: p.GroupView},
 		{name: "POST /groups exact", method: http.MethodPost, path: "/groups", wantPerm: p.Group},
 
+		// ---- Notification template APIs ----
+		{
+			name:   "GET notification-templates list",
+			method: http.MethodGet, path: "/notification-templates/email/templates",
+			wantPerm: p.NotificationTemplateView,
+		},
+		{
+			name:   "POST notification-templates create",
+			method: http.MethodPost, path: "/notification-templates/sms/templates",
+			wantPerm: p.NotificationTemplate,
+		},
+		{
+			name:   "GET notification-template by id",
+			method: http.MethodGet, path: "/notification-templates/email/templates/tmpl-1",
+			wantPerm: p.NotificationTemplateView,
+		},
+		{
+			name:   "PUT notification-template by id",
+			method: http.MethodPut, path: "/notification-templates/email/templates/tmpl-1",
+			wantPerm: p.NotificationTemplate,
+		},
+		{
+			name:   "DELETE notification-template by id",
+			method: http.MethodDelete, path: "/notification-templates/sms/templates/tmpl-2",
+			wantPerm: p.NotificationTemplate,
+		},
+
 		// ---- Self-service paths (empty permission = any authenticated user) ----
 		{name: "GET /users/me self-service", method: http.MethodGet, path: "/users/me", wantPerm: ""},
 		{name: "PUT /users/me self-service", method: http.MethodPut, path: "/users/me", wantPerm: ""},
@@ -422,6 +449,18 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			method: http.MethodGet, path: "/applications", wantPerm: p.Root,
 		},
 		{name: "Root path falls back to system", method: http.MethodGet, path: "/", wantPerm: p.Root},
+		{
+			name:   "Resource servers require system",
+			method: http.MethodPost, path: "/resource-servers", wantPerm: p.Root,
+		},
+		{
+			name:   "Authorization detail types require system, as resource servers do",
+			method: http.MethodGet, path: "/authorization-detail-types", wantPerm: p.Root,
+		},
+		{
+			name:   "Authorization detail type updates require system",
+			method: http.MethodPut, path: "/authorization-detail-types/adt-1", wantPerm: p.Root,
+		},
 		{
 			name:   "Unknown POST falls back to system",
 			method: http.MethodPost, path: "/configs", wantPerm: p.Root,

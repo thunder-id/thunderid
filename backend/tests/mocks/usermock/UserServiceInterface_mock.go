@@ -10,9 +10,11 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewUserServiceInterfaceMock creates a new instance of UserServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -21,10 +23,19 @@ func NewUserServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *UserServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &UserServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -42,28 +53,102 @@ func (_m *UserServiceInterfaceMock) EXPECT() *UserServiceInterfaceMock_Expecter 
 	return &UserServiceInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// CreateSharingPolicy provides a mock function for the type UserServiceInterfaceMock
+func (_mock *UserServiceInterfaceMock) CreateSharingPolicy(ctx context.Context, userID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError) {
+	ret := _mock.Called(ctx, userID, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateSharingPolicy")
+	}
+
+	var r0 sharing.Policy
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)); ok {
+		return returnFunc(ctx, userID, req)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, sharing.PolicyRequest) sharing.Policy); ok {
+		r0 = returnFunc(ctx, userID, req)
+	} else {
+		r0 = ret.Get(0).(sharing.Policy)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, sharing.PolicyRequest) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userID, req)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// UserServiceInterfaceMock_CreateSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateSharingPolicy'
+type UserServiceInterfaceMock_CreateSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// CreateSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - req sharing.PolicyRequest
+func (_e *UserServiceInterfaceMock_Expecter) CreateSharingPolicy(ctx any, userID any, req any) *UserServiceInterfaceMock_CreateSharingPolicy_Call {
+	return &UserServiceInterfaceMock_CreateSharingPolicy_Call{Call: _e.mock.On("CreateSharingPolicy", ctx, userID, req)}
+}
+
+func (_c *UserServiceInterfaceMock_CreateSharingPolicy_Call) Run(run func(ctx context.Context, userID string, req sharing.PolicyRequest)) *UserServiceInterfaceMock_CreateSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 sharing.PolicyRequest
+		if args[2] != nil {
+			arg2 = args[2].(sharing.PolicyRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_CreateSharingPolicy_Call) Return(policy sharing.Policy, serviceError *common.ServiceError) *UserServiceInterfaceMock_CreateSharingPolicy_Call {
+	_c.Call.Return(policy, serviceError)
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_CreateSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, userID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)) *UserServiceInterfaceMock_CreateSharingPolicy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateUser provides a mock function for the type UserServiceInterfaceMock
-func (_mock *UserServiceInterfaceMock) CreateUser(ctx context.Context, user1 *user.User) (*user.User, *common.ServiceError) {
-	ret := _mock.Called(ctx, user1)
+func (_mock *UserServiceInterfaceMock) CreateUser(ctx context.Context, user *providers.User) (*providers.User, *common.ServiceError) {
+	ret := _mock.Called(ctx, user)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateUser")
 	}
 
-	var r0 *user.User
+	var r0 *providers.User
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *user.User) (*user.User, *common.ServiceError)); ok {
-		return returnFunc(ctx, user1)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.User) (*providers.User, *common.ServiceError)); ok {
+		return returnFunc(ctx, user)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *user.User) *user.User); ok {
-		r0 = returnFunc(ctx, user1)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.User) *providers.User); ok {
+		r0 = returnFunc(ctx, user)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*user.User)
+			r0 = ret.Get(0).(*providers.User)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *user.User) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, user1)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *providers.User) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, user)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -79,20 +164,20 @@ type UserServiceInterfaceMock_CreateUser_Call struct {
 
 // CreateUser is a helper method to define mock.On call
 //   - ctx context.Context
-//   - user1 *user.User
-func (_e *UserServiceInterfaceMock_Expecter) CreateUser(ctx interface{}, user1 interface{}) *UserServiceInterfaceMock_CreateUser_Call {
-	return &UserServiceInterfaceMock_CreateUser_Call{Call: _e.mock.On("CreateUser", ctx, user1)}
+//   - user *providers.User
+func (_e *UserServiceInterfaceMock_Expecter) CreateUser(ctx any, user any) *UserServiceInterfaceMock_CreateUser_Call {
+	return &UserServiceInterfaceMock_CreateUser_Call{Call: _e.mock.On("CreateUser", ctx, user)}
 }
 
-func (_c *UserServiceInterfaceMock_CreateUser_Call) Run(run func(ctx context.Context, user1 *user.User)) *UserServiceInterfaceMock_CreateUser_Call {
+func (_c *UserServiceInterfaceMock_CreateUser_Call) Run(run func(ctx context.Context, user *providers.User)) *UserServiceInterfaceMock_CreateUser_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *user.User
+		var arg1 *providers.User
 		if args[1] != nil {
-			arg1 = args[1].(*user.User)
+			arg1 = args[1].(*providers.User)
 		}
 		run(
 			arg0,
@@ -102,34 +187,34 @@ func (_c *UserServiceInterfaceMock_CreateUser_Call) Run(run func(ctx context.Con
 	return _c
 }
 
-func (_c *UserServiceInterfaceMock_CreateUser_Call) Return(user11 *user.User, serviceError *common.ServiceError) *UserServiceInterfaceMock_CreateUser_Call {
-	_c.Call.Return(user11, serviceError)
+func (_c *UserServiceInterfaceMock_CreateUser_Call) Return(user1 *providers.User, serviceError *common.ServiceError) *UserServiceInterfaceMock_CreateUser_Call {
+	_c.Call.Return(user1, serviceError)
 	return _c
 }
 
-func (_c *UserServiceInterfaceMock_CreateUser_Call) RunAndReturn(run func(ctx context.Context, user1 *user.User) (*user.User, *common.ServiceError)) *UserServiceInterfaceMock_CreateUser_Call {
+func (_c *UserServiceInterfaceMock_CreateUser_Call) RunAndReturn(run func(ctx context.Context, user *providers.User) (*providers.User, *common.ServiceError)) *UserServiceInterfaceMock_CreateUser_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // CreateUserByPath provides a mock function for the type UserServiceInterfaceMock
-func (_mock *UserServiceInterfaceMock) CreateUserByPath(ctx context.Context, handlePath string, request user.CreateUserByPathRequest) (*user.User, *common.ServiceError) {
+func (_mock *UserServiceInterfaceMock) CreateUserByPath(ctx context.Context, handlePath string, request user.CreateUserByPathRequest) (*providers.User, *common.ServiceError) {
 	ret := _mock.Called(ctx, handlePath, request)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateUserByPath")
 	}
 
-	var r0 *user.User
+	var r0 *providers.User
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, user.CreateUserByPathRequest) (*user.User, *common.ServiceError)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, user.CreateUserByPathRequest) (*providers.User, *common.ServiceError)); ok {
 		return returnFunc(ctx, handlePath, request)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, user.CreateUserByPathRequest) *user.User); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, user.CreateUserByPathRequest) *providers.User); ok {
 		r0 = returnFunc(ctx, handlePath, request)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*user.User)
+			r0 = ret.Get(0).(*providers.User)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string, user.CreateUserByPathRequest) *common.ServiceError); ok {
@@ -151,7 +236,7 @@ type UserServiceInterfaceMock_CreateUserByPath_Call struct {
 //   - ctx context.Context
 //   - handlePath string
 //   - request user.CreateUserByPathRequest
-func (_e *UserServiceInterfaceMock_Expecter) CreateUserByPath(ctx interface{}, handlePath interface{}, request interface{}) *UserServiceInterfaceMock_CreateUserByPath_Call {
+func (_e *UserServiceInterfaceMock_Expecter) CreateUserByPath(ctx any, handlePath any, request any) *UserServiceInterfaceMock_CreateUserByPath_Call {
 	return &UserServiceInterfaceMock_CreateUserByPath_Call{Call: _e.mock.On("CreateUserByPath", ctx, handlePath, request)}
 }
 
@@ -178,12 +263,77 @@ func (_c *UserServiceInterfaceMock_CreateUserByPath_Call) Run(run func(ctx conte
 	return _c
 }
 
-func (_c *UserServiceInterfaceMock_CreateUserByPath_Call) Return(user1 *user.User, serviceError *common.ServiceError) *UserServiceInterfaceMock_CreateUserByPath_Call {
+func (_c *UserServiceInterfaceMock_CreateUserByPath_Call) Return(user1 *providers.User, serviceError *common.ServiceError) *UserServiceInterfaceMock_CreateUserByPath_Call {
 	_c.Call.Return(user1, serviceError)
 	return _c
 }
 
-func (_c *UserServiceInterfaceMock_CreateUserByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string, request user.CreateUserByPathRequest) (*user.User, *common.ServiceError)) *UserServiceInterfaceMock_CreateUserByPath_Call {
+func (_c *UserServiceInterfaceMock_CreateUserByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string, request user.CreateUserByPathRequest) (*providers.User, *common.ServiceError)) *UserServiceInterfaceMock_CreateUserByPath_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteSharingPolicy provides a mock function for the type UserServiceInterfaceMock
+func (_mock *UserServiceInterfaceMock) DeleteSharingPolicy(ctx context.Context, userID string, policyID string) *common.ServiceError {
+	ret := _mock.Called(ctx, userID, policyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteSharingPolicy")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, userID, policyID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// UserServiceInterfaceMock_DeleteSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteSharingPolicy'
+type UserServiceInterfaceMock_DeleteSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// DeleteSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - policyID string
+func (_e *UserServiceInterfaceMock_Expecter) DeleteSharingPolicy(ctx any, userID any, policyID any) *UserServiceInterfaceMock_DeleteSharingPolicy_Call {
+	return &UserServiceInterfaceMock_DeleteSharingPolicy_Call{Call: _e.mock.On("DeleteSharingPolicy", ctx, userID, policyID)}
+}
+
+func (_c *UserServiceInterfaceMock_DeleteSharingPolicy_Call) Run(run func(ctx context.Context, userID string, policyID string)) *UserServiceInterfaceMock_DeleteSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_DeleteSharingPolicy_Call) Return(serviceError *common.ServiceError) *UserServiceInterfaceMock_DeleteSharingPolicy_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_DeleteSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, userID string, policyID string) *common.ServiceError) *UserServiceInterfaceMock_DeleteSharingPolicy_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -215,7 +365,7 @@ type UserServiceInterfaceMock_DeleteUser_Call struct {
 // DeleteUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userID string
-func (_e *UserServiceInterfaceMock_Expecter) DeleteUser(ctx interface{}, userID interface{}) *UserServiceInterfaceMock_DeleteUser_Call {
+func (_e *UserServiceInterfaceMock_Expecter) DeleteUser(ctx any, userID any) *UserServiceInterfaceMock_DeleteUser_Call {
 	return &UserServiceInterfaceMock_DeleteUser_Call{Call: _e.mock.On("DeleteUser", ctx, userID)}
 }
 
@@ -247,24 +397,180 @@ func (_c *UserServiceInterfaceMock_DeleteUser_Call) RunAndReturn(run func(ctx co
 	return _c
 }
 
+// GetAccessibleOrganizationUnits provides a mock function for the type UserServiceInterfaceMock
+func (_mock *UserServiceInterfaceMock) GetAccessibleOrganizationUnits(ctx context.Context, scope string, limit int, offset int) (*user.AccessibleOrganizationUnitListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, scope, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetAccessibleOrganizationUnits")
+	}
+
+	var r0 *user.AccessibleOrganizationUnitListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*user.AccessibleOrganizationUnitListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, scope, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *user.AccessibleOrganizationUnitListResponse); ok {
+		r0 = returnFunc(ctx, scope, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*user.AccessibleOrganizationUnitListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, scope, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// UserServiceInterfaceMock_GetAccessibleOrganizationUnits_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetAccessibleOrganizationUnits'
+type UserServiceInterfaceMock_GetAccessibleOrganizationUnits_Call struct {
+	*mock.Call
+}
+
+// GetAccessibleOrganizationUnits is a helper method to define mock.On call
+//   - ctx context.Context
+//   - scope string
+//   - limit int
+//   - offset int
+func (_e *UserServiceInterfaceMock_Expecter) GetAccessibleOrganizationUnits(ctx any, scope any, limit any, offset any) *UserServiceInterfaceMock_GetAccessibleOrganizationUnits_Call {
+	return &UserServiceInterfaceMock_GetAccessibleOrganizationUnits_Call{Call: _e.mock.On("GetAccessibleOrganizationUnits", ctx, scope, limit, offset)}
+}
+
+func (_c *UserServiceInterfaceMock_GetAccessibleOrganizationUnits_Call) Run(run func(ctx context.Context, scope string, limit int, offset int)) *UserServiceInterfaceMock_GetAccessibleOrganizationUnits_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_GetAccessibleOrganizationUnits_Call) Return(accessibleOrganizationUnitListResponse *user.AccessibleOrganizationUnitListResponse, serviceError *common.ServiceError) *UserServiceInterfaceMock_GetAccessibleOrganizationUnits_Call {
+	_c.Call.Return(accessibleOrganizationUnitListResponse, serviceError)
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_GetAccessibleOrganizationUnits_Call) RunAndReturn(run func(ctx context.Context, scope string, limit int, offset int) (*user.AccessibleOrganizationUnitListResponse, *common.ServiceError)) *UserServiceInterfaceMock_GetAccessibleOrganizationUnits_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetSharingPolicy provides a mock function for the type UserServiceInterfaceMock
+func (_mock *UserServiceInterfaceMock) GetSharingPolicy(ctx context.Context, userID string, policyID string) (sharing.Policy, *common.ServiceError) {
+	ret := _mock.Called(ctx, userID, policyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetSharingPolicy")
+	}
+
+	var r0 sharing.Policy
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (sharing.Policy, *common.ServiceError)); ok {
+		return returnFunc(ctx, userID, policyID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) sharing.Policy); ok {
+		r0 = returnFunc(ctx, userID, policyID)
+	} else {
+		r0 = ret.Get(0).(sharing.Policy)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userID, policyID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// UserServiceInterfaceMock_GetSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetSharingPolicy'
+type UserServiceInterfaceMock_GetSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// GetSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - policyID string
+func (_e *UserServiceInterfaceMock_Expecter) GetSharingPolicy(ctx any, userID any, policyID any) *UserServiceInterfaceMock_GetSharingPolicy_Call {
+	return &UserServiceInterfaceMock_GetSharingPolicy_Call{Call: _e.mock.On("GetSharingPolicy", ctx, userID, policyID)}
+}
+
+func (_c *UserServiceInterfaceMock_GetSharingPolicy_Call) Run(run func(ctx context.Context, userID string, policyID string)) *UserServiceInterfaceMock_GetSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_GetSharingPolicy_Call) Return(policy sharing.Policy, serviceError *common.ServiceError) *UserServiceInterfaceMock_GetSharingPolicy_Call {
+	_c.Call.Return(policy, serviceError)
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_GetSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, userID string, policyID string) (sharing.Policy, *common.ServiceError)) *UserServiceInterfaceMock_GetSharingPolicy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetUser provides a mock function for the type UserServiceInterfaceMock
-func (_mock *UserServiceInterfaceMock) GetUser(ctx context.Context, userID string, includeDisplay bool) (*user.User, *common.ServiceError) {
+func (_mock *UserServiceInterfaceMock) GetUser(ctx context.Context, userID string, includeDisplay bool) (*providers.User, *common.ServiceError) {
 	ret := _mock.Called(ctx, userID, includeDisplay)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetUser")
 	}
 
-	var r0 *user.User
+	var r0 *providers.User
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, bool) (*user.User, *common.ServiceError)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, bool) (*providers.User, *common.ServiceError)); ok {
 		return returnFunc(ctx, userID, includeDisplay)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, bool) *user.User); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, bool) *providers.User); ok {
 		r0 = returnFunc(ctx, userID, includeDisplay)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*user.User)
+			r0 = ret.Get(0).(*providers.User)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string, bool) *common.ServiceError); ok {
@@ -286,7 +592,7 @@ type UserServiceInterfaceMock_GetUser_Call struct {
 //   - ctx context.Context
 //   - userID string
 //   - includeDisplay bool
-func (_e *UserServiceInterfaceMock_Expecter) GetUser(ctx interface{}, userID interface{}, includeDisplay interface{}) *UserServiceInterfaceMock_GetUser_Call {
+func (_e *UserServiceInterfaceMock_Expecter) GetUser(ctx any, userID any, includeDisplay any) *UserServiceInterfaceMock_GetUser_Call {
 	return &UserServiceInterfaceMock_GetUser_Call{Call: _e.mock.On("GetUser", ctx, userID, includeDisplay)}
 }
 
@@ -313,12 +619,12 @@ func (_c *UserServiceInterfaceMock_GetUser_Call) Run(run func(ctx context.Contex
 	return _c
 }
 
-func (_c *UserServiceInterfaceMock_GetUser_Call) Return(user1 *user.User, serviceError *common.ServiceError) *UserServiceInterfaceMock_GetUser_Call {
+func (_c *UserServiceInterfaceMock_GetUser_Call) Return(user1 *providers.User, serviceError *common.ServiceError) *UserServiceInterfaceMock_GetUser_Call {
 	_c.Call.Return(user1, serviceError)
 	return _c
 }
 
-func (_c *UserServiceInterfaceMock_GetUser_Call) RunAndReturn(run func(ctx context.Context, userID string, includeDisplay bool) (*user.User, *common.ServiceError)) *UserServiceInterfaceMock_GetUser_Call {
+func (_c *UserServiceInterfaceMock_GetUser_Call) RunAndReturn(run func(ctx context.Context, userID string, includeDisplay bool) (*providers.User, *common.ServiceError)) *UserServiceInterfaceMock_GetUser_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -363,7 +669,7 @@ type UserServiceInterfaceMock_GetUserGroups_Call struct {
 //   - userID string
 //   - limit int
 //   - offset int
-func (_e *UserServiceInterfaceMock_Expecter) GetUserGroups(ctx interface{}, userID interface{}, limit interface{}, offset interface{}) *UserServiceInterfaceMock_GetUserGroups_Call {
+func (_e *UserServiceInterfaceMock_Expecter) GetUserGroups(ctx any, userID any, limit any, offset any) *UserServiceInterfaceMock_GetUserGroups_Call {
 	return &UserServiceInterfaceMock_GetUserGroups_Call{Call: _e.mock.On("GetUserGroups", ctx, userID, limit, offset)}
 }
 
@@ -446,7 +752,7 @@ type UserServiceInterfaceMock_GetUserList_Call struct {
 //   - offset int
 //   - filters map[string]interface{}
 //   - includeDisplay bool
-func (_e *UserServiceInterfaceMock_Expecter) GetUserList(ctx interface{}, limit interface{}, offset interface{}, filters interface{}, includeDisplay interface{}) *UserServiceInterfaceMock_GetUserList_Call {
+func (_e *UserServiceInterfaceMock_Expecter) GetUserList(ctx any, limit any, offset any, filters any, includeDisplay any) *UserServiceInterfaceMock_GetUserList_Call {
 	return &UserServiceInterfaceMock_GetUserList_Call{Call: _e.mock.On("GetUserList", ctx, limit, offset, filters, includeDisplay)}
 }
 
@@ -531,7 +837,7 @@ type UserServiceInterfaceMock_GetUserMetadata_Call struct {
 // GetUserMetadata is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userID string
-func (_e *UserServiceInterfaceMock_Expecter) GetUserMetadata(ctx interface{}, userID interface{}) *UserServiceInterfaceMock_GetUserMetadata_Call {
+func (_e *UserServiceInterfaceMock_Expecter) GetUserMetadata(ctx any, userID any) *UserServiceInterfaceMock_GetUserMetadata_Call {
 	return &UserServiceInterfaceMock_GetUserMetadata_Call{Call: _e.mock.On("GetUserMetadata", ctx, userID)}
 }
 
@@ -601,7 +907,7 @@ type UserServiceInterfaceMock_GetUserUsages_Call struct {
 // GetUserUsages is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userID string
-func (_e *UserServiceInterfaceMock_Expecter) GetUserUsages(ctx interface{}, userID interface{}) *UserServiceInterfaceMock_GetUserUsages_Call {
+func (_e *UserServiceInterfaceMock_Expecter) GetUserUsages(ctx any, userID any) *UserServiceInterfaceMock_GetUserUsages_Call {
 	return &UserServiceInterfaceMock_GetUserUsages_Call{Call: _e.mock.On("GetUserUsages", ctx, userID)}
 }
 
@@ -675,7 +981,7 @@ type UserServiceInterfaceMock_GetUsersByPath_Call struct {
 //   - offset int
 //   - filters map[string]interface{}
 //   - includeDisplay bool
-func (_e *UserServiceInterfaceMock_Expecter) GetUsersByPath(ctx interface{}, handlePath interface{}, limit interface{}, offset interface{}, filters interface{}, includeDisplay interface{}) *UserServiceInterfaceMock_GetUsersByPath_Call {
+func (_e *UserServiceInterfaceMock_Expecter) GetUsersByPath(ctx any, handlePath any, limit any, offset any, filters any, includeDisplay any) *UserServiceInterfaceMock_GetUsersByPath_Call {
 	return &UserServiceInterfaceMock_GetUsersByPath_Call{Call: _e.mock.On("GetUsersByPath", ctx, handlePath, limit, offset, filters, includeDisplay)}
 }
 
@@ -727,8 +1033,162 @@ func (_c *UserServiceInterfaceMock_GetUsersByPath_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// ListSharingPolicies provides a mock function for the type UserServiceInterfaceMock
+func (_mock *UserServiceInterfaceMock) ListSharingPolicies(ctx context.Context, userID string, limit int, offset int) (sharing.PolicyList, *common.ServiceError) {
+	ret := _mock.Called(ctx, userID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListSharingPolicies")
+	}
+
+	var r0 sharing.PolicyList
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (sharing.PolicyList, *common.ServiceError)); ok {
+		return returnFunc(ctx, userID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) sharing.PolicyList); ok {
+		r0 = returnFunc(ctx, userID, limit, offset)
+	} else {
+		r0 = ret.Get(0).(sharing.PolicyList)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userID, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// UserServiceInterfaceMock_ListSharingPolicies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListSharingPolicies'
+type UserServiceInterfaceMock_ListSharingPolicies_Call struct {
+	*mock.Call
+}
+
+// ListSharingPolicies is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - limit int
+//   - offset int
+func (_e *UserServiceInterfaceMock_Expecter) ListSharingPolicies(ctx any, userID any, limit any, offset any) *UserServiceInterfaceMock_ListSharingPolicies_Call {
+	return &UserServiceInterfaceMock_ListSharingPolicies_Call{Call: _e.mock.On("ListSharingPolicies", ctx, userID, limit, offset)}
+}
+
+func (_c *UserServiceInterfaceMock_ListSharingPolicies_Call) Run(run func(ctx context.Context, userID string, limit int, offset int)) *UserServiceInterfaceMock_ListSharingPolicies_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_ListSharingPolicies_Call) Return(policyList sharing.PolicyList, serviceError *common.ServiceError) *UserServiceInterfaceMock_ListSharingPolicies_Call {
+	_c.Call.Return(policyList, serviceError)
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_ListSharingPolicies_Call) RunAndReturn(run func(ctx context.Context, userID string, limit int, offset int) (sharing.PolicyList, *common.ServiceError)) *UserServiceInterfaceMock_ListSharingPolicies_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ResolveSharingOverlay provides a mock function for the type UserServiceInterfaceMock
+func (_mock *UserServiceInterfaceMock) ResolveSharingOverlay(ctx context.Context, userID string, ouID string) (sharing.ResolvedOverlay, *common.ServiceError) {
+	ret := _mock.Called(ctx, userID, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveSharingOverlay")
+	}
+
+	var r0 sharing.ResolvedOverlay
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (sharing.ResolvedOverlay, *common.ServiceError)); ok {
+		return returnFunc(ctx, userID, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) sharing.ResolvedOverlay); ok {
+		r0 = returnFunc(ctx, userID, ouID)
+	} else {
+		r0 = ret.Get(0).(sharing.ResolvedOverlay)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userID, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// UserServiceInterfaceMock_ResolveSharingOverlay_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveSharingOverlay'
+type UserServiceInterfaceMock_ResolveSharingOverlay_Call struct {
+	*mock.Call
+}
+
+// ResolveSharingOverlay is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - ouID string
+func (_e *UserServiceInterfaceMock_Expecter) ResolveSharingOverlay(ctx any, userID any, ouID any) *UserServiceInterfaceMock_ResolveSharingOverlay_Call {
+	return &UserServiceInterfaceMock_ResolveSharingOverlay_Call{Call: _e.mock.On("ResolveSharingOverlay", ctx, userID, ouID)}
+}
+
+func (_c *UserServiceInterfaceMock_ResolveSharingOverlay_Call) Run(run func(ctx context.Context, userID string, ouID string)) *UserServiceInterfaceMock_ResolveSharingOverlay_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_ResolveSharingOverlay_Call) Return(resolvedOverlay sharing.ResolvedOverlay, serviceError *common.ServiceError) *UserServiceInterfaceMock_ResolveSharingOverlay_Call {
+	_c.Call.Return(resolvedOverlay, serviceError)
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_ResolveSharingOverlay_Call) RunAndReturn(run func(ctx context.Context, userID string, ouID string) (sharing.ResolvedOverlay, *common.ServiceError)) *UserServiceInterfaceMock_ResolveSharingOverlay_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ResolveUserOUHandle provides a mock function for the type UserServiceInterfaceMock
-func (_mock *UserServiceInterfaceMock) ResolveUserOUHandle(ctx context.Context, user1 *user.User) *common.ServiceError {
+func (_mock *UserServiceInterfaceMock) ResolveUserOUHandle(ctx context.Context, user1 *providers.User) *common.ServiceError {
 	ret := _mock.Called(ctx, user1)
 
 	if len(ret) == 0 {
@@ -736,7 +1196,7 @@ func (_mock *UserServiceInterfaceMock) ResolveUserOUHandle(ctx context.Context, 
 	}
 
 	var r0 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *user.User) *common.ServiceError); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.User) *common.ServiceError); ok {
 		r0 = returnFunc(ctx, user1)
 	} else {
 		if ret.Get(0) != nil {
@@ -753,20 +1213,20 @@ type UserServiceInterfaceMock_ResolveUserOUHandle_Call struct {
 
 // ResolveUserOUHandle is a helper method to define mock.On call
 //   - ctx context.Context
-//   - user1 *user.User
-func (_e *UserServiceInterfaceMock_Expecter) ResolveUserOUHandle(ctx interface{}, user1 interface{}) *UserServiceInterfaceMock_ResolveUserOUHandle_Call {
+//   - user1 *providers.User
+func (_e *UserServiceInterfaceMock_Expecter) ResolveUserOUHandle(ctx any, user1 any) *UserServiceInterfaceMock_ResolveUserOUHandle_Call {
 	return &UserServiceInterfaceMock_ResolveUserOUHandle_Call{Call: _e.mock.On("ResolveUserOUHandle", ctx, user1)}
 }
 
-func (_c *UserServiceInterfaceMock_ResolveUserOUHandle_Call) Run(run func(ctx context.Context, user1 *user.User)) *UserServiceInterfaceMock_ResolveUserOUHandle_Call {
+func (_c *UserServiceInterfaceMock_ResolveUserOUHandle_Call) Run(run func(ctx context.Context, user1 *providers.User)) *UserServiceInterfaceMock_ResolveUserOUHandle_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *user.User
+		var arg1 *providers.User
 		if args[1] != nil {
-			arg1 = args[1].(*user.User)
+			arg1 = args[1].(*providers.User)
 		}
 		run(
 			arg0,
@@ -781,7 +1241,7 @@ func (_c *UserServiceInterfaceMock_ResolveUserOUHandle_Call) Return(serviceError
 	return _c
 }
 
-func (_c *UserServiceInterfaceMock_ResolveUserOUHandle_Call) RunAndReturn(run func(ctx context.Context, user1 *user.User) *common.ServiceError) *UserServiceInterfaceMock_ResolveUserOUHandle_Call {
+func (_c *UserServiceInterfaceMock_ResolveUserOUHandle_Call) RunAndReturn(run func(ctx context.Context, user1 *providers.User) *common.ServiceError) *UserServiceInterfaceMock_ResolveUserOUHandle_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -799,7 +1259,7 @@ type UserServiceInterfaceMock_SetDependencyRegistry_Call struct {
 
 // SetDependencyRegistry is a helper method to define mock.On call
 //   - r resourcedependency.Registry
-func (_e *UserServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *UserServiceInterfaceMock_SetDependencyRegistry_Call {
+func (_e *UserServiceInterfaceMock_Expecter) SetDependencyRegistry(r any) *UserServiceInterfaceMock_SetDependencyRegistry_Call {
 	return &UserServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
 }
 
@@ -826,27 +1286,107 @@ func (_c *UserServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run 
 	return _c
 }
 
+// UpdateSharingPolicy provides a mock function for the type UserServiceInterfaceMock
+func (_mock *UserServiceInterfaceMock) UpdateSharingPolicy(ctx context.Context, userID string, policyID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError) {
+	ret := _mock.Called(ctx, userID, policyID, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateSharingPolicy")
+	}
+
+	var r0 sharing.Policy
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)); ok {
+		return returnFunc(ctx, userID, policyID, req)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, sharing.PolicyRequest) sharing.Policy); ok {
+		r0 = returnFunc(ctx, userID, policyID, req)
+	} else {
+		r0 = ret.Get(0).(sharing.Policy)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, sharing.PolicyRequest) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userID, policyID, req)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// UserServiceInterfaceMock_UpdateSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateSharingPolicy'
+type UserServiceInterfaceMock_UpdateSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// UpdateSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - policyID string
+//   - req sharing.PolicyRequest
+func (_e *UserServiceInterfaceMock_Expecter) UpdateSharingPolicy(ctx any, userID any, policyID any, req any) *UserServiceInterfaceMock_UpdateSharingPolicy_Call {
+	return &UserServiceInterfaceMock_UpdateSharingPolicy_Call{Call: _e.mock.On("UpdateSharingPolicy", ctx, userID, policyID, req)}
+}
+
+func (_c *UserServiceInterfaceMock_UpdateSharingPolicy_Call) Run(run func(ctx context.Context, userID string, policyID string, req sharing.PolicyRequest)) *UserServiceInterfaceMock_UpdateSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 sharing.PolicyRequest
+		if args[3] != nil {
+			arg3 = args[3].(sharing.PolicyRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_UpdateSharingPolicy_Call) Return(policy sharing.Policy, serviceError *common.ServiceError) *UserServiceInterfaceMock_UpdateSharingPolicy_Call {
+	_c.Call.Return(policy, serviceError)
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_UpdateSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, userID string, policyID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)) *UserServiceInterfaceMock_UpdateSharingPolicy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateUser provides a mock function for the type UserServiceInterfaceMock
-func (_mock *UserServiceInterfaceMock) UpdateUser(ctx context.Context, userID string, user1 *user.User) (*user.User, *common.ServiceError) {
+func (_mock *UserServiceInterfaceMock) UpdateUser(ctx context.Context, userID string, user1 *providers.User) (*providers.User, *common.ServiceError) {
 	ret := _mock.Called(ctx, userID, user1)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateUser")
 	}
 
-	var r0 *user.User
+	var r0 *providers.User
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *user.User) (*user.User, *common.ServiceError)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *providers.User) (*providers.User, *common.ServiceError)); ok {
 		return returnFunc(ctx, userID, user1)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *user.User) *user.User); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *providers.User) *providers.User); ok {
 		r0 = returnFunc(ctx, userID, user1)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*user.User)
+			r0 = ret.Get(0).(*providers.User)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *user.User) *common.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *providers.User) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, userID, user1)
 	} else {
 		if ret.Get(1) != nil {
@@ -864,12 +1404,12 @@ type UserServiceInterfaceMock_UpdateUser_Call struct {
 // UpdateUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userID string
-//   - user1 *user.User
-func (_e *UserServiceInterfaceMock_Expecter) UpdateUser(ctx interface{}, userID interface{}, user1 interface{}) *UserServiceInterfaceMock_UpdateUser_Call {
+//   - user1 *providers.User
+func (_e *UserServiceInterfaceMock_Expecter) UpdateUser(ctx any, userID any, user1 any) *UserServiceInterfaceMock_UpdateUser_Call {
 	return &UserServiceInterfaceMock_UpdateUser_Call{Call: _e.mock.On("UpdateUser", ctx, userID, user1)}
 }
 
-func (_c *UserServiceInterfaceMock_UpdateUser_Call) Run(run func(ctx context.Context, userID string, user1 *user.User)) *UserServiceInterfaceMock_UpdateUser_Call {
+func (_c *UserServiceInterfaceMock_UpdateUser_Call) Run(run func(ctx context.Context, userID string, user1 *providers.User)) *UserServiceInterfaceMock_UpdateUser_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -879,9 +1419,9 @@ func (_c *UserServiceInterfaceMock_UpdateUser_Call) Run(run func(ctx context.Con
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 *user.User
+		var arg2 *providers.User
 		if args[2] != nil {
-			arg2 = args[2].(*user.User)
+			arg2 = args[2].(*providers.User)
 		}
 		run(
 			arg0,
@@ -892,34 +1432,34 @@ func (_c *UserServiceInterfaceMock_UpdateUser_Call) Run(run func(ctx context.Con
 	return _c
 }
 
-func (_c *UserServiceInterfaceMock_UpdateUser_Call) Return(user11 *user.User, serviceError *common.ServiceError) *UserServiceInterfaceMock_UpdateUser_Call {
+func (_c *UserServiceInterfaceMock_UpdateUser_Call) Return(user11 *providers.User, serviceError *common.ServiceError) *UserServiceInterfaceMock_UpdateUser_Call {
 	_c.Call.Return(user11, serviceError)
 	return _c
 }
 
-func (_c *UserServiceInterfaceMock_UpdateUser_Call) RunAndReturn(run func(ctx context.Context, userID string, user1 *user.User) (*user.User, *common.ServiceError)) *UserServiceInterfaceMock_UpdateUser_Call {
+func (_c *UserServiceInterfaceMock_UpdateUser_Call) RunAndReturn(run func(ctx context.Context, userID string, user1 *providers.User) (*providers.User, *common.ServiceError)) *UserServiceInterfaceMock_UpdateUser_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpdateUserAttributes provides a mock function for the type UserServiceInterfaceMock
-func (_mock *UserServiceInterfaceMock) UpdateUserAttributes(ctx context.Context, userID string, attributes json.RawMessage) (*user.User, *common.ServiceError) {
+func (_mock *UserServiceInterfaceMock) UpdateUserAttributes(ctx context.Context, userID string, attributes json.RawMessage) (*providers.User, *common.ServiceError) {
 	ret := _mock.Called(ctx, userID, attributes)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateUserAttributes")
 	}
 
-	var r0 *user.User
+	var r0 *providers.User
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, json.RawMessage) (*user.User, *common.ServiceError)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, json.RawMessage) (*providers.User, *common.ServiceError)); ok {
 		return returnFunc(ctx, userID, attributes)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, json.RawMessage) *user.User); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, json.RawMessage) *providers.User); ok {
 		r0 = returnFunc(ctx, userID, attributes)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*user.User)
+			r0 = ret.Get(0).(*providers.User)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string, json.RawMessage) *common.ServiceError); ok {
@@ -941,7 +1481,7 @@ type UserServiceInterfaceMock_UpdateUserAttributes_Call struct {
 //   - ctx context.Context
 //   - userID string
 //   - attributes json.RawMessage
-func (_e *UserServiceInterfaceMock_Expecter) UpdateUserAttributes(ctx interface{}, userID interface{}, attributes interface{}) *UserServiceInterfaceMock_UpdateUserAttributes_Call {
+func (_e *UserServiceInterfaceMock_Expecter) UpdateUserAttributes(ctx any, userID any, attributes any) *UserServiceInterfaceMock_UpdateUserAttributes_Call {
 	return &UserServiceInterfaceMock_UpdateUserAttributes_Call{Call: _e.mock.On("UpdateUserAttributes", ctx, userID, attributes)}
 }
 
@@ -968,12 +1508,12 @@ func (_c *UserServiceInterfaceMock_UpdateUserAttributes_Call) Run(run func(ctx c
 	return _c
 }
 
-func (_c *UserServiceInterfaceMock_UpdateUserAttributes_Call) Return(user1 *user.User, serviceError *common.ServiceError) *UserServiceInterfaceMock_UpdateUserAttributes_Call {
+func (_c *UserServiceInterfaceMock_UpdateUserAttributes_Call) Return(user1 *providers.User, serviceError *common.ServiceError) *UserServiceInterfaceMock_UpdateUserAttributes_Call {
 	_c.Call.Return(user1, serviceError)
 	return _c
 }
 
-func (_c *UserServiceInterfaceMock_UpdateUserAttributes_Call) RunAndReturn(run func(ctx context.Context, userID string, attributes json.RawMessage) (*user.User, *common.ServiceError)) *UserServiceInterfaceMock_UpdateUserAttributes_Call {
+func (_c *UserServiceInterfaceMock_UpdateUserAttributes_Call) RunAndReturn(run func(ctx context.Context, userID string, attributes json.RawMessage) (*providers.User, *common.ServiceError)) *UserServiceInterfaceMock_UpdateUserAttributes_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1006,7 +1546,7 @@ type UserServiceInterfaceMock_UpdateUserCredentials_Call struct {
 //   - ctx context.Context
 //   - userID string
 //   - credentials json.RawMessage
-func (_e *UserServiceInterfaceMock_Expecter) UpdateUserCredentials(ctx interface{}, userID interface{}, credentials interface{}) *UserServiceInterfaceMock_UpdateUserCredentials_Call {
+func (_e *UserServiceInterfaceMock_Expecter) UpdateUserCredentials(ctx any, userID any, credentials any) *UserServiceInterfaceMock_UpdateUserCredentials_Call {
 	return &UserServiceInterfaceMock_UpdateUserCredentials_Call{Call: _e.mock.On("UpdateUserCredentials", ctx, userID, credentials)}
 }
 
@@ -1070,7 +1610,7 @@ type UserServiceInterfaceMock_ValidateDeleteUser_Call struct {
 // ValidateDeleteUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userID string
-func (_e *UserServiceInterfaceMock_Expecter) ValidateDeleteUser(ctx interface{}, userID interface{}) *UserServiceInterfaceMock_ValidateDeleteUser_Call {
+func (_e *UserServiceInterfaceMock_Expecter) ValidateDeleteUser(ctx any, userID any) *UserServiceInterfaceMock_ValidateDeleteUser_Call {
 	return &UserServiceInterfaceMock_ValidateDeleteUser_Call{Call: _e.mock.On("ValidateDeleteUser", ctx, userID)}
 }
 

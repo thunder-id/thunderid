@@ -1,7 +1,9 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package introspect
+
+import "encoding/json"
 
 // IntrospectRequest represents the request to the token introspection endpoint
 type IntrospectRequest struct {
@@ -20,10 +22,13 @@ type IntrospectResponse struct {
 	Iat       int64     `json:"iat,omitempty"`
 	Nbf       int64     `json:"nbf,omitempty"`
 	Sub       string    `json:"sub,omitempty"`
+	SubType   string    `json:"sub_type,omitempty"`
 	Aud       any       `json:"aud,omitempty"`
 	Iss       string    `json:"iss,omitempty"`
 	Jti       string    `json:"jti,omitempty"`
 	Cnf       *CnfClaim `json:"cnf,omitempty"`
+	// AuthorizationDetails carries the RFC 9396 authorization details of the token.
+	AuthorizationDetails json.RawMessage `json:"authorization_details,omitempty"`
 }
 
 // CnfClaim represents the confirmation claim. For DPoP-bound tokens this carries

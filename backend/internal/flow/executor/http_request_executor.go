@@ -21,7 +21,6 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
@@ -67,7 +66,7 @@ type errorHandlingConfig struct {
 // httpRequestExecutor implements the ExecutorInterface for making HTTP requests to external endpoints.
 type httpRequestExecutor struct {
 	providers.Executor
-	ouService     ou.OrganizationUnitServiceInterface
+	ouService     providers.OrganizationUnitProvider
 	authnProvider providers.AuthnProviderManager
 	logger        *log.Logger
 }
@@ -77,7 +76,7 @@ var _ providers.Executor = (*httpRequestExecutor)(nil)
 // newHTTPRequestExecutor creates a new instance of HTTPRequestExecutor.
 func newHTTPRequestExecutor(
 	flowFactory core.FlowFactoryInterface,
-	ouService ou.OrganizationUnitServiceInterface,
+	ouService providers.OrganizationUnitProvider,
 	authnProvider providers.AuthnProviderManager,
 ) *httpRequestExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpRequestLoggerComponentName),
@@ -349,11 +348,11 @@ func (h *httpRequestExecutor) enrichOURuntimeData(ctx *providers.NodeContext, co
 // resolvePlaceholders resolves placeholders in the configuration using context data.
 func (h *httpRequestExecutor) resolvePlaceholders(
 	ctx *providers.NodeContext, config *httpRequestConfig, execResp *providers.ExecutorResponse) {
-	config.URL = core.ResolvePlaceholder(ctx, config.URL, execResp, h.authnProvider, h.logger)
+	config.URL = core.ResolvePlaceholder(ctx, config.URL, execResp, h.authnProvider, true, h.logger)
 
 	// Resolve headers
 	for key, value := range config.Headers {
-		config.Headers[key] = core.ResolvePlaceholder(ctx, value, execResp, h.authnProvider, h.logger)
+		config.Headers[key] = core.ResolvePlaceholder(ctx, value, execResp, h.authnProvider, true, h.logger)
 	}
 
 	// Resolve body
@@ -377,7 +376,7 @@ func (h *httpRequestExecutor) resolveMapPlaceholders(
 		}
 		return result
 	case string:
-		return core.ResolvePlaceholder(ctx, v, execResp, h.authnProvider, h.logger)
+		return core.ResolvePlaceholder(ctx, v, execResp, h.authnProvider, true, h.logger)
 	default:
 		return v
 	}

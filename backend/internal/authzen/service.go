@@ -14,6 +14,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/resource"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -36,6 +37,7 @@ type AuthZENServiceInterface interface {
 type authzenService struct {
 	authzService    providers.AuthorizationProvider
 	entityProvider  entityprovider.EntityProviderInterface
+	governance      identitygovernance.IdentityGovernanceServiceInterface
 	resourceService resource.ResourceServiceInterface
 	logger          *log.Logger
 }
@@ -44,11 +46,13 @@ type authzenService struct {
 func newService(
 	authzService providers.AuthorizationProvider,
 	entityProvider entityprovider.EntityProviderInterface,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
 	resourceService resource.ResourceServiceInterface,
 ) AuthZENServiceInterface {
 	return &authzenService{
 		authzService:    authzService,
 		entityProvider:  entityProvider,
+		governance:      governance,
 		resourceService: resourceService,
 		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthZENService")),
 	}
@@ -61,8 +65,18 @@ func (s *authzenService) EvaluateAccess(ctx context.Context, request AccessEvalu
 		return nil, svcErr
 	}
 
-	if svcErr := s.validateSubject(ctx, request.Subject); svcErr != nil {
+	resolvedSubject, svcErr := s.resolveSubject(ctx, request.Subject)
+	if svcErr != nil {
 		return nil, svcErr
+	}
+	request.Subject = resolvedSubject
+
+	hold, svcErr := s.subjectHold(ctx, request.Subject.ID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if hold != "" {
+		return &AccessEvaluationResponse{Decision: false, Context: buildHeldSubjectContext(hold)}, nil
 	}
 
 	resourceServerID, svcErr := s.resolveResourceServerID(ctx, request.Resource.Type)
@@ -112,13 +126,13 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 	if len(request.Evaluations) == 0 {
 		return nil, &ErrorMissingEvaluations
 	}
-
 	authzEvaluations := make([]providers.AccessEvaluationRequest, 0, len(request.Evaluations))
 	responses := make([]AccessEvaluationResponse, len(request.Evaluations))
 	authzEvaluationIndexes := make([]int, 0, len(request.Evaluations))
 	groupIDsBySubject := make(map[string][]string)
+	holdBySubject := make(map[string]providers.AccessRefusalReason)
 	resourceServerIDsByIdentifier := make(map[string]string)
-	validSubjects := make(map[string]struct{})
+	resolvedSubjects := make(map[string]Subject)
 	validActions := make(map[string]struct{})
 	for i, evaluation := range request.Evaluations {
 		if svcErr := validateEvaluationRequest(evaluation); svcErr != nil {
@@ -147,8 +161,11 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 		}
 
 		subjectKey := evaluation.Subject.Type + ":" + evaluation.Subject.ID
-		if _, ok := validSubjects[subjectKey]; !ok {
-			if svcErr := s.validateSubject(ctx, evaluation.Subject); svcErr != nil {
+		resolvedSubject, ok := resolvedSubjects[subjectKey]
+		if !ok {
+			var svcErr *tidcommon.ServiceError
+			resolvedSubject, svcErr = s.resolveSubject(ctx, evaluation.Subject)
+			if svcErr != nil {
 				if svcErr.Code == ErrorInvalidSubject.Code {
 					responses[i] = AccessEvaluationResponse{
 						Decision: false,
@@ -158,7 +175,22 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 				}
 				return nil, svcErr
 			}
-			validSubjects[subjectKey] = struct{}{}
+			resolvedSubjects[subjectKey] = resolvedSubject
+		}
+		evaluation.Subject = resolvedSubject
+
+		hold, ok := holdBySubject[evaluation.Subject.ID]
+		if !ok {
+			var svcErr *tidcommon.ServiceError
+			hold, svcErr = s.subjectHold(ctx, evaluation.Subject.ID)
+			if svcErr != nil {
+				return nil, svcErr
+			}
+			holdBySubject[evaluation.Subject.ID] = hold
+		}
+		if hold != "" {
+			responses[i] = AccessEvaluationResponse{Decision: false, Context: buildHeldSubjectContext(hold)}
+			continue
 		}
 
 		actionKey := resourceServerID + ":" + evaluation.Action.Name
@@ -233,6 +265,19 @@ func (s *authzenService) SearchActions(ctx context.Context, request AccessAction
 	if strings.TrimSpace(request.Resource.Type) == "" {
 		return nil, &ErrorMissingResource
 	}
+	resolvedSubject, svcErr := s.resolveSubject(ctx, request.Subject)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	request.Subject = resolvedSubject
+
+	hold, svcErr := s.subjectHold(ctx, request.Subject.ID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if hold != "" {
+		return &AccessSearchResponse{Results: []Action{}}, nil
+	}
 
 	resourceServerID, svcErr := s.resolveResourceServerID(ctx, request.Resource.Type)
 	if svcErr != nil {
@@ -267,12 +312,13 @@ func (s *authzenService) SearchActions(ctx context.Context, request AccessAction
 		authzEvaluations = append(authzEvaluations, providers.AccessEvaluationRequest{
 			Subject: providers.Subject{
 				ID:         request.Subject.ID,
-				Type:       request.Subject.Type,
+				Category:   request.Subject.Type,
 				GroupIDs:   groupIDs,
 				Properties: request.Subject.Properties,
 			},
 			ResourceServer: providers.AccessEvaluationResourceServer{
 				ID:         resourceServerID,
+				ResourceID: request.Resource.ID,
 				Properties: request.Resource.Properties,
 			},
 			Permission: providers.Permission{
@@ -423,33 +469,50 @@ func appendUniquePermissionActions(
 	return actions
 }
 
-// validateSubject verifies that the subject exists and matches its type.
-func (s *authzenService) validateSubject(ctx context.Context, subject Subject) *tidcommon.ServiceError {
+// resolveSubject verifies the subject and infers an omitted type from its entity category.
+func (s *authzenService) resolveSubject(ctx context.Context, subject Subject) (Subject, *tidcommon.ServiceError) {
 	if s.entityProvider == nil {
-		return nil
+		return subject, nil
 	}
-	if strings.TrimSpace(subject.Type) == "" {
-		return nil
-	}
-
-	entity, err := s.entityProvider.GetEntity(subject.ID)
+	entity, err := s.entityProvider.GetEntityProfile(subject.ID)
 	if err != nil {
 		if err.Code == entityprovider.ErrorCodeNotImplemented {
-			return nil
+			return subject, nil
 		}
 		if err.Code == entityprovider.ErrorCodeEntityNotFound {
-			return &ErrorInvalidSubject
+			return Subject{}, &ErrorInvalidSubject
 		}
 		s.logger.Error(ctx, "Failed to validate subject",
 			log.MaskedString(log.LoggerKeyUserID, subject.ID),
 			log.String("error", err.Error()))
-		return &tidcommon.InternalServerError
+		return Subject{}, &tidcommon.InternalServerError
 	}
+	if entity == nil {
+		return Subject{}, &ErrorInvalidSubject
+	}
+	if strings.TrimSpace(subject.Type) == "" {
+		subject.Type = entity.Category.String()
+		return subject, nil
+	}
+	if entity.Category.String() != subject.Type {
+		return Subject{}, &ErrorInvalidSubject
+	}
+	return subject, nil
+}
 
-	if entity == nil || entity.Category.String() != subject.Type {
-		return &ErrorInvalidSubject
+// subjectHold reports the hold governance places on the subject, suspended or expired, or empty when
+// it has none. A lock is not a denial.
+func (s *authzenService) subjectHold(ctx context.Context,
+	subjectID string) (providers.AccessRefusalReason, *tidcommon.ServiceError) {
+	hold, svcErr := s.governance.AccessHold(ctx, subjectID)
+	if svcErr != nil {
+		return "", &tidcommon.InternalServerError
 	}
-	return nil
+	if hold != "" {
+		s.logger.Debug(ctx, "Denied access evaluation for a held subject",
+			log.MaskedString(log.LoggerKeyUserID, subjectID), log.String("hold", string(hold)))
+	}
+	return hold, nil
 }
 
 // validateAction verifies that an action is registered on the resource server.
@@ -492,26 +555,32 @@ func validateEvaluationRequest(request AccessEvaluationRequest) *tidcommon.Servi
 // resolveResourceServerID resolves a resource server identifier to its internal ID.
 func (s *authzenService) resolveResourceServerID(ctx context.Context, resourceServerIdentifier string) (
 	string, *tidcommon.ServiceError) {
-	if strings.TrimSpace(resourceServerIdentifier) == "" {
+	resourceServerIdentifier = strings.TrimSpace(resourceServerIdentifier)
+	if resourceServerIdentifier == "" {
 		return "", &ErrorMissingResource
 	}
-
 	if s.resourceService == nil {
 		return resourceServerIdentifier, nil
 	}
 
 	resourceServer, svcErr := s.resourceService.GetResourceServerByIdentifier(ctx, resourceServerIdentifier)
-	if svcErr != nil {
-		if svcErr.Code == resource.ErrorResourceServerNotFound.Code {
-			return "", &ErrorInvalidResource
-		}
+	if svcErr == nil {
+		return resourceServer.ID, nil
+	}
+	if svcErr.Code != resource.ErrorResourceServerNotFound.Code {
 		s.logger.Error(ctx, "Failed to retrieve resource server by identifier",
 			log.String("resourceServerIdentifier", resourceServerIdentifier),
 			log.String("error", svcErr.Error.DefaultValue))
 		return "", &tidcommon.InternalServerError
 	}
 
-	return resourceServer.ID, nil
+	if svcErr.Code == resource.ErrorResourceServerNotFound.Code {
+		return "", &ErrorInvalidResource
+	}
+	s.logger.Error(ctx, "Failed to retrieve resource server by identifier",
+		log.String("resourceServerIdentifier", resourceServerIdentifier),
+		log.String("error", svcErr.Error.DefaultValue))
+	return "", &tidcommon.InternalServerError
 }
 
 // resolveGroupIDs returns the transitive group IDs for an entity.
@@ -548,13 +617,14 @@ func toAuthzAccessEvaluationRequest(
 ) providers.AccessEvaluationRequest {
 	return providers.AccessEvaluationRequest{
 		Subject: providers.Subject{
-			Type:       request.Subject.Type,
+			Category:   request.Subject.Type,
 			ID:         request.Subject.ID,
 			GroupIDs:   groupIDs,
 			Properties: request.Subject.Properties,
 		},
 		ResourceServer: providers.AccessEvaluationResourceServer{
 			ID:         resourceServerID,
+			ResourceID: request.Resource.ID,
 			Properties: request.Resource.Properties,
 		},
 		Permission: providers.Permission{
@@ -575,6 +645,18 @@ func buildDecisionContext(decision bool, context map[string]interface{}) map[str
 	}
 	return map[string]interface{}{
 		"reason": "Subject is not authorized to perform the requested action",
+	}
+}
+
+// buildHeldSubjectContext returns the denial context for a subject governance holds.
+func buildHeldSubjectContext(hold providers.AccessRefusalReason) map[string]interface{} {
+	if hold == providers.AccessRefusalReasonExpired {
+		return map[string]interface{}{
+			"reason": "Subject's lifespan has ended",
+		}
+	}
+	return map[string]interface{}{
+		"reason": "Subject is suspended",
 	}
 }
 

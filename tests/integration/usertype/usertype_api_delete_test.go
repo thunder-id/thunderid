@@ -11,8 +11,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 type DeleteUserTypeTestSuite struct {
@@ -55,7 +55,8 @@ func (ts *DeleteUserTypeTestSuite) SetupSuite() {
 func (ts *DeleteUserTypeTestSuite) TestDeleteUserType() {
 	// Create a schema to delete
 	schema := CreateUserTypeRequest{
-		Name: "schema-to-delete",
+		Handle:      "schema-to-delete",
+		DisplayName: "Schema To Delete",
 		Schema: json.RawMessage(`{
             "tempField": {"type": "string", "required": true},
             "description": {"type": "string"}
@@ -175,7 +176,8 @@ func (ts *DeleteUserTypeTestSuite) TestDeleteUserTypeWithInvalidID() {
 func (ts *DeleteUserTypeTestSuite) TestDeleteUserTypeIdempotency() {
 	// Create a schema to delete
 	schema := CreateUserTypeRequest{
-		Name: "idempotency-test-schema",
+		Handle:      "idempotency-test-schema",
+		DisplayName: "Idempotency Test Schema",
 		Schema: json.RawMessage(`{
 			"field": {"type": "string"}
 		}`),
@@ -217,16 +219,19 @@ func (ts *DeleteUserTypeTestSuite) TestDeleteUserTypeMultiple() {
 	// Create multiple schemas
 	schemas := []CreateUserTypeRequest{
 		{
-			Name:   "multi-delete-schema-1",
-			Schema: json.RawMessage(`{"field1": {"type": "string"}}`),
+			Handle:      "multi-delete-schema-1",
+			DisplayName: "Multi Delete Schema 1",
+			Schema:      json.RawMessage(`{"field1": {"type": "string"}}`),
 		},
 		{
-			Name:   "multi-delete-schema-2",
-			Schema: json.RawMessage(`{"field2": {"type": "number"}}`),
+			Handle:      "multi-delete-schema-2",
+			DisplayName: "Multi Delete Schema 2",
+			Schema:      json.RawMessage(`{"field2": {"type": "number"}}`),
 		},
 		{
-			Name:   "multi-delete-schema-3",
-			Schema: json.RawMessage(`{"field3": {"type": "boolean"}}`),
+			Handle:      "multi-delete-schema-3",
+			DisplayName: "Multi Delete Schema 3",
+			Schema:      json.RawMessage(`{"field3": {"type": "boolean"}}`),
 		},
 	}
 
@@ -272,7 +277,8 @@ func (ts *DeleteUserTypeTestSuite) TestDeleteUserTypeMultiple() {
 func (ts *DeleteUserTypeTestSuite) TestDeleteUserTypeResponseHeaders() {
 	// Create a schema to delete
 	schema := CreateUserTypeRequest{
-		Name: "headers-test-schema",
+		Handle:      "headers-test-schema",
+		DisplayName: "Headers Test Schema",
 		Schema: json.RawMessage(`{
 			"field": {"type": "string"}
 		}`),

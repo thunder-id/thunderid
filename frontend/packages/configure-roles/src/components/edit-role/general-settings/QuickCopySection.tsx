@@ -18,7 +18,7 @@ export default function QuickCopySection({role, copiedField, onCopyToClipboard}:
 
   return (
     <SettingsCard
-      title={t('roles:edit.general.sections.quickCopy.title', 'Quick Copy')}
+      title={t('roles:edit.general.sections.quickCopy.title', 'Quick copy')}
       description={t(
         'roles:edit.general.sections.quickCopy.description',
         'Copy role identifiers for use in your application.',

@@ -1,0 +1,585 @@
+[
+  {
+    "resourceType": "STEP",
+    "category": "INTERFACE",
+    "type": "VIEW",
+    "display": {
+      "label": "Blank View",
+      "description": "Empty screen to compose with your own components",
+      "image": "assets/images/icons/step.svg",
+      "showOnResourcePanel": true
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "INTERFACE",
+    "type": "VIEW",
+    "display": {
+      "label": "SMS OTP View",
+      "description": "Screen for entering a one-time passcode sent via SMS",
+      "image": "assets/images/icons/mobile-message.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "components": [
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "HEADING_3",
+          "label": "Verify OTP"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "BLOCK",
+          "type": "BLOCK",
+          "components": [
+            {
+              "id": "{{ID}}",
+              "category": "FIELD",
+              "type": "OTP_INPUT",
+              "inputType": "text",
+              "hint": "",
+              "ref": "otp",
+              "label": "Enter the code sent to your mobile",
+              "placeholder": ""
+            },
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "ACTION",
+              "variant": "PRIMARY",
+              "eventType": "SUBMIT",
+              "label": "Verify",
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "SMSOTPExecutor"
+                },
+                "onSuccess": ""
+              }
+            },
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "RESEND",
+              "label": "Resend OTP"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "INTERFACE",
+    "type": "VIEW",
+    "display": {
+      "label": "Email OTP View",
+      "description": "Screen for entering a one-time passcode sent via email",
+      "image": "assets/images/icons/email-down.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "components": [
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "HEADING_3",
+          "label": "Verify OTP"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "BLOCK",
+          "type": "BLOCK",
+          "components": [
+            {
+              "id": "{{ID}}",
+              "category": "FIELD",
+              "type": "OTP_INPUT",
+              "inputType": "text",
+              "hint": "",
+              "ref": "otp",
+              "label": "Enter the code sent to your email",
+              "placeholder": ""
+            },
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "ACTION",
+              "variant": "PRIMARY",
+              "eventType": "SUBMIT",
+              "label": "Verify",
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "EmailOTPExecutor"
+                },
+                "onSuccess": ""
+              }
+            },
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "RESEND",
+              "label": "Resend OTP"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "DECISION",
+    "type": "RULE",
+    "display": {
+      "label": "Rule",
+      "description": "Branch the flow based on a condition",
+      "image": "assets/images/icons/decide.svg",
+      "showOnResourcePanel": false
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "WORKFLOW",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "label": "Execution",
+      "description": "Run a backend action such as an authenticator or task",
+      "image": "assets/images/icons/play.svg",
+      "showOnResourcePanel": false
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "WORKFLOW",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "label": "Magic Link View",
+      "description": "Screen prompting the user to check their email for a sign-in link",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": false
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "MagicLinkExecutor"
+        },
+        "onSuccess": ""
+      },
+      "components": [
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "RICH_TEXT",
+          "label": "<h3 class=\"rich-text-heading-h3 rich-text-align-center\"><span class=\"rich-text-pre-wrap\">Check Your Email</span></h3><h5 class=\"rich-text-heading-h5 rich-text-align-center\"><br><span class=\"rich-text-pre-wrap\">An email containing further instructions has been sent to your email address. Please check your inbox to continue.</span></h5>"
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "INTERFACE",
+    "type": "VIEW",
+    "display": {
+      "label": "Passkey View",
+      "description": "Screen prompting the user to sign in with a passkey",
+      "image": "assets/images/icons/passkey.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "components": [
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "HEADING_3",
+          "label": "Sign In"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "BLOCK",
+          "type": "BLOCK",
+          "components": [
+            {
+              "id": "{{ID}}",
+              "category": "FIELD",
+              "type": "TEXT_INPUT",
+              "ref": "username",
+              "inputType": "text",
+              "hint": "",
+              "label": "Username",
+              "required": true,
+              "placeholder": "Enter your username"
+            },
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "ACTION",
+              "variant": "PRIMARY",
+              "eventType": "SUBMIT",
+              "label": "Sign In with Passkey",
+              "action": {
+                "type": "NEXT",
+                "onSuccess": ""
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "INTERFACE",
+    "type": "VIEW",
+    "display": {
+      "label": "Status Screen",
+      "description": "Display a status or progress message to the user",
+      "image": "assets/images/icons/display-rich-text.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "components": [
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "HEADING_3",
+          "label": "You're All Set"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "BODY_1",
+          "label": "You have successfully completed the process."
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "INTERFACE",
+    "type": "END",
+    "version": "0.1.0",
+    "deprecated": false,
+    "deletable": false,
+    "display": {
+      "label": "End Screen",
+      "description": "Final screen shown when the flow completes",
+      "image": "assets/images/icons/check-mark-inside-a-black-box.svg",
+      "showOnResourcePanel": false
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "WORKFLOW",
+    "type": "CALL",
+    "version": "0.1.0",
+    "deprecated": false,
+    "deletable": true,
+    "display": {
+      "label": "Flow",
+      "image": "assets/images/icons/play.svg",
+      "showOnResourcePanel": true,
+      "description": "Invoke another flow and resume when it completes."
+    },
+    "data": {
+      "flow": {
+        "ref": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "INTERFACE",
+    "type": "VIEW",
+    "display": {
+      "label": "Username + Password",
+      "description": "Sign-in screen with username and password fields",
+      "image": "assets/images/icons/password.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {},
+    "data": {
+      "components": [
+        {
+          "category": "BLOCK",
+          "type": "BLOCK",
+          "config": {},
+          "id": "{{ID}}",
+          "components": [
+            {
+              "id": "{{ID}}",
+              "category": "FIELD",
+              "type": "TEXT_INPUT",
+              "inputType": "text",
+              "hint": "",
+              "label": "Username",
+              "required": true,
+              "placeholder": "Enter your username",
+              "ref": "username"
+            },
+            {
+              "id": "{{ID}}",
+              "category": "FIELD",
+              "type": "PASSWORD_INPUT",
+              "ref": "password",
+              "inputType": "password",
+              "hint": "",
+              "label": "Password",
+              "required": true,
+              "placeholder": "Enter your password"
+            },
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "ACTION",
+              "variant": "PRIMARY",
+              "buttonType": "submit",
+              "label": "Continue",
+              "action": {
+                "type": "NEXT"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "INTERFACE",
+    "type": "VIEW",
+    "display": {
+      "label": "Consent View",
+      "description": "Screen asking the user to grant consent",
+      "image": "assets/images/icons/stamp.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {},
+    "data": {
+      "components": [
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "HEADING_3",
+          "label": "{{meta(application.name)}} wants to access your account"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "BODY_1",
+          "label": "Please review the information requested by the application and provide your consent to proceed."
+        },
+        {
+          "id": "{{ID}}",
+          "category": "BLOCK",
+          "type": "BLOCK",
+          "components": [
+            {
+              "id": "{{ID}}",
+              "category": "DISPLAY",
+              "type": "CONSENT"
+            },
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "ACTION",
+              "variant": "PRIMARY",
+              "eventType": "SUBMIT",
+              "label": "Allow",
+              "action": {
+                "type": "NEXT"
+              }
+            },
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "ACTION",
+              "variant": "SECONDARY",
+              "eventType": "SUBMIT",
+              "label": "Deny",
+              "action": {
+                "type": "NEXT"
+              }
+            }
+          ]
+        },
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "RICH_TEXT",
+          "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Go back to </span><a href=\"{{meta(application.url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Application</span></a></p>"
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "INTERFACE",
+    "type": "VIEW",
+    "display": {
+      "label": "Link Prompt View",
+      "description": "Screen asking the user to approve linking to the matched account",
+      "image": "assets/images/icons/checkbox-check.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {},
+    "data": {
+      "components": [
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "HEADING_3",
+          "label": "{{ t(elements:forms.link_prompt.title) }}"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "BODY_1",
+          "label": "{{ t(elements:forms.link_prompt.description) }}"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "KEY_VALUE_LIST",
+          "source": "linkingPromptDetails"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "BLOCK",
+          "type": "BLOCK",
+          "components": [
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "ACTION",
+              "variant": "PRIMARY",
+              "eventType": "SUBMIT",
+              "actionType": "CONFIRM",
+              "label": "{{ t(elements:forms.link_prompt.actions.confirm.label) }}",
+              "action": {
+                "type": "NEXT"
+              }
+            },
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "ACTION",
+              "variant": "SECONDARY",
+              "eventType": "SUBMIT",
+              "actionType": "REJECT",
+              "label": "{{ t(elements:forms.link_prompt.actions.reject.label) }}",
+              "action": {
+                "type": "NEXT"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "INTERFACE",
+    "type": "VIEW",
+    "display": {
+      "label": "Email Input",
+      "description": "Screen for collecting the user's email address",
+      "image": "assets/images/icons/email.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {},
+    "data": {
+      "components": [
+        {
+          "category": "BLOCK",
+          "type": "BLOCK",
+          "config": {},
+          "id": "{{ID}}",
+          "components": [
+            {
+              "id": "{{ID}}",
+              "category": "FIELD",
+              "type": "EMAIL_INPUT",
+              "inputType": "email",
+              "hint": "",
+              "label": "Email",
+              "required": true,
+              "placeholder": "Enter your email address",
+              "ref": "email"
+            },
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "ACTION",
+              "variant": "PRIMARY",
+              "buttonType": "submit",
+              "label": "Continue",
+              "action": {
+                "type": "NEXT"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "INTERFACE",
+    "type": "VIEW",
+    "display": {
+      "label": "Sign Out Confirmation",
+      "description": "Screen asking the user to confirm signing out",
+      "image": "assets/images/icons/arrowhead-right-outline.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {},
+    "data": {
+      "components": [
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "HEADING_1",
+          "label": "{{ t(signout:forms.confirm.title) }}"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "BODY_1",
+          "label": "{{ t(signout:forms.confirm.description) }}"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "BLOCK",
+          "type": "BLOCK",
+          "components": [
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "ACTION",
+              "variant": "PRIMARY",
+              "eventType": "SUBMIT",
+              "label": "{{ t(signout:forms.confirm.actions.submit.label) }}",
+              "action": {
+                "type": "NEXT"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

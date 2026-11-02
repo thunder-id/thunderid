@@ -4,8 +4,13 @@
 package client
 
 import (
+	"errors"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
+
+// errSMTPReadLimitExceeded is returned when an SMTP server sends more than a session may read.
+var errSMTPReadLimitExceeded = errors.New("smtp server sent more data than the session allows")
 
 // ErrorInvalidProvider is the error returned when an invalid provider is specified.
 var ErrorInvalidProvider = tidcommon.ServiceError{

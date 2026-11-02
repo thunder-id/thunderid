@@ -17,10 +17,19 @@ func NewJTIStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *JTIStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &JTIStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type JTIStoreInterfaceMock_RecordJTI_Call struct {
 //   - namespace string
 //   - jti string
 //   - expiry time.Time
-func (_e *JTIStoreInterfaceMock_Expecter) RecordJTI(ctx interface{}, namespace interface{}, jti interface{}, expiry interface{}) *JTIStoreInterfaceMock_RecordJTI_Call {
+func (_e *JTIStoreInterfaceMock_Expecter) RecordJTI(ctx any, namespace any, jti any, expiry any) *JTIStoreInterfaceMock_RecordJTI_Call {
 	return &JTIStoreInterfaceMock_RecordJTI_Call{Call: _e.mock.On("RecordJTI", ctx, namespace, jti, expiry)}
 }
 

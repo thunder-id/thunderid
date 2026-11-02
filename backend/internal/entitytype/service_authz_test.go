@@ -73,8 +73,8 @@ func (s *AuthzTestSuite) TestGetEntityTypeList_AllAllowed() {
 	storeMock := newEntityTypeStoreInterfaceMock(s.T())
 	storeMock.On("GetEntityTypeListCount", mock.Anything, mock.Anything).Return(2, nil)
 	storeMock.On("GetEntityTypeList", mock.Anything, mock.Anything, 10, 0).Return([]EntityTypeListItem{
-		{ID: "s1", Name: "schema1", OUID: testOUID1},
-		{ID: "s2", Name: "schema2", OUID: testOUID2},
+		{ID: "s1", Handle: "schema1", DisplayName: "schema1", OUID: testOUID1},
+		{ID: "s2", Handle: "schema2", DisplayName: "schema2", OUID: testOUID2},
 	}, nil)
 
 	svc := &entityTypeService{
@@ -95,7 +95,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeList_FilteredByOUIDs() {
 	storeMock.On("GetEntityTypeListCountByOUIDs", mock.Anything, mock.Anything, []string{testOUID1}).Return(1, nil)
 	storeMock.On("GetEntityTypeListByOUIDs", mock.Anything, mock.Anything, []string{testOUID1}, 10, 0).
 		Return([]EntityTypeListItem{
-			{ID: "s1", Name: "schema1", OUID: testOUID1},
+			{ID: "s1", Handle: "schema1", DisplayName: "schema1", OUID: testOUID1},
 		}, nil)
 
 	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
@@ -153,7 +153,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeList_NilAuthzService() {
 	storeMock := newEntityTypeStoreInterfaceMock(s.T())
 	storeMock.On("GetEntityTypeListCount", mock.Anything, mock.Anything).Return(1, nil)
 	storeMock.On("GetEntityTypeList", mock.Anything, mock.Anything, 10, 0).Return([]EntityTypeListItem{
-		{ID: "s1", Name: "schema1", OUID: testOUID1},
+		{ID: "s1", Handle: "schema1", DisplayName: "schema1", OUID: testOUID1},
 	}, nil)
 
 	svc := &entityTypeService{
@@ -191,9 +191,10 @@ func (s *AuthzTestSuite) TestCreateEntityType_Denied() {
 	}
 
 	result, svcErr := svc.CreateEntityType(context.Background(), TypeCategoryUser, CreateEntityTypeRequestWithID{
-		Name:   "test-schema",
-		OUID:   testOUID1,
-		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+		Handle:      "test-schema",
+		DisplayName: "test-schema",
+		OUID:        testOUID1,
+		Schema:      json.RawMessage(`{"email":{"type":"string"}}`),
 	})
 	s.Nil(result)
 	s.Require().NotNil(svcErr)
@@ -216,9 +217,10 @@ func (s *AuthzTestSuite) TestCreateEntityType_AuthzError() {
 	}
 
 	result, svcErr := svc.CreateEntityType(context.Background(), TypeCategoryUser, CreateEntityTypeRequestWithID{
-		Name:   "test-schema",
-		OUID:   testOUID1,
-		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+		Handle:      "test-schema",
+		DisplayName: "test-schema",
+		OUID:        testOUID1,
+		Schema:      json.RawMessage(`{"email":{"type":"string"}}`),
 	})
 	s.Nil(result)
 	s.Require().NotNil(svcErr)
@@ -266,12 +268,12 @@ func (s *AuthzTestSuite) TestGetEntityType_AuthzError() {
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
-// ---- GetEntityTypeByName ----
+// ---- GetEntityTypeByHandle ----
 
-func (s *AuthzTestSuite) TestGetEntityTypeByName_Denied() {
+func (s *AuthzTestSuite) TestGetEntityTypeByHandle_Denied() {
 	storeMock := newEntityTypeStoreInterfaceMock(s.T())
-	storeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, "employee").
-		Return(EntityType{ID: "schema-1", Name: "employee", OUID: testOUID2}, nil)
+	storeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, "employee").
+		Return(EntityType{ID: "schema-1", Handle: "employee", DisplayName: "employee", OUID: testOUID2}, nil)
 
 	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	authzMock.On("IsActionAllowed", mock.Anything, security.ActionReadUserType,
@@ -284,16 +286,16 @@ func (s *AuthzTestSuite) TestGetEntityTypeByName_Denied() {
 		authzService:    authzMock,
 	}
 
-	result, svcErr := svc.GetEntityTypeByName(context.Background(), TypeCategoryUser, "employee")
+	result, svcErr := svc.GetEntityTypeByHandle(context.Background(), TypeCategoryUser, "employee")
 	s.Nil(result)
 	s.Require().NotNil(svcErr)
 	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
 }
 
-func (s *AuthzTestSuite) TestGetEntityTypeByName_AuthzError() {
+func (s *AuthzTestSuite) TestGetEntityTypeByHandle_AuthzError() {
 	storeMock := newEntityTypeStoreInterfaceMock(s.T())
-	storeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, "employee").
-		Return(EntityType{ID: "schema-1", Name: "employee", OUID: testOUID2}, nil)
+	storeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, "employee").
+		Return(EntityType{ID: "schema-1", Handle: "employee", DisplayName: "employee", OUID: testOUID2}, nil)
 
 	svc := &entityTypeService{
 		entityTypeStore: storeMock,
@@ -301,7 +303,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeByName_AuthzError() {
 		authzService:    newAuthzError(s.T()),
 	}
 
-	result, svcErr := svc.GetEntityTypeByName(context.Background(), TypeCategoryUser, "employee")
+	result, svcErr := svc.GetEntityTypeByHandle(context.Background(), TypeCategoryUser, "employee")
 	s.Nil(result)
 	s.Require().NotNil(svcErr)
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
@@ -316,10 +318,11 @@ func (s *AuthzTestSuite) TestUpdateEntityType_Denied() {
 	storeMock.On("IsEntityTypeDeclarative", mock.Anything, mock.Anything).Return(false).Maybe()
 	storeMock.On("GetEntityTypeByID", mock.Anything, mock.Anything, "schema-1").
 		Return(EntityType{
-			ID:     "schema-1",
-			Name:   "employee",
-			OUID:   testOUID1,
-			Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+			ID:          "schema-1",
+			Handle:      "employee",
+			DisplayName: "employee",
+			OUID:        testOUID1,
+			Schema:      json.RawMessage(`{"email":{"type":"string"}}`),
 		}, nil)
 
 	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
@@ -339,9 +342,10 @@ func (s *AuthzTestSuite) TestUpdateEntityType_Denied() {
 	}
 
 	result, svcErr := svc.UpdateEntityType(context.Background(), TypeCategoryUser, "schema-1", UpdateEntityTypeRequest{
-		Name:   "employee",
-		OUID:   testOUID1,
-		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+		Handle:      "employee",
+		DisplayName: "employee",
+		OUID:        testOUID1,
+		Schema:      json.RawMessage(`{"email":{"type":"string"}}`),
 	})
 	s.Nil(result)
 	s.Require().NotNil(svcErr)
@@ -355,10 +359,11 @@ func (s *AuthzTestSuite) TestUpdateEntityType_AuthzError() {
 	storeMock.On("IsEntityTypeDeclarative", mock.Anything, mock.Anything).Return(false).Maybe()
 	storeMock.On("GetEntityTypeByID", mock.Anything, mock.Anything, "schema-1").
 		Return(EntityType{
-			ID:     "schema-1",
-			Name:   "employee",
-			OUID:   testOUID1,
-			Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+			ID:          "schema-1",
+			Handle:      "employee",
+			DisplayName: "employee",
+			OUID:        testOUID1,
+			Schema:      json.RawMessage(`{"email":{"type":"string"}}`),
 		}, nil)
 
 	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
@@ -373,9 +378,10 @@ func (s *AuthzTestSuite) TestUpdateEntityType_AuthzError() {
 	}
 
 	result, svcErr := svc.UpdateEntityType(context.Background(), TypeCategoryUser, "schema-1", UpdateEntityTypeRequest{
-		Name:   "employee",
-		OUID:   testOUID1,
-		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+		Handle:      "employee",
+		DisplayName: "employee",
+		OUID:        testOUID1,
+		Schema:      json.RawMessage(`{"email":{"type":"string"}}`),
 	})
 	s.Nil(result)
 	s.Require().NotNil(svcErr)
@@ -487,7 +493,7 @@ func (s *AuthzTestSuite) TestDeleteEntityType_NotFound_Authorized_ReturnsNil() {
 func (s *AuthzTestSuite) TestGetEntityType_NilAuthz_NoError() {
 	storeMock := newEntityTypeStoreInterfaceMock(s.T())
 	storeMock.On("GetEntityTypeByID", mock.Anything, mock.Anything, "schema-1").
-		Return(EntityType{ID: "schema-1", Name: "test", OUID: testOUID1}, nil)
+		Return(EntityType{ID: "schema-1", Handle: "test", DisplayName: "test", OUID: testOUID1}, nil)
 
 	svc := &entityTypeService{
 		entityTypeStore: storeMock,
@@ -505,7 +511,7 @@ func (s *AuthzTestSuite) TestGetEntityType_WithIncludeDisplay() {
 	s.Run("populates OUHandle when includeDisplay is true", func() {
 		storeMock := newEntityTypeStoreInterfaceMock(s.T())
 		storeMock.On("GetEntityTypeByID", mock.Anything, mock.Anything, "schema-1").
-			Return(EntityType{ID: "schema-1", Name: "test", OUID: testOUID1}, nil)
+			Return(EntityType{ID: "schema-1", Handle: "test", DisplayName: "test", OUID: testOUID1}, nil)
 
 		ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 		ouServiceMock.On(
@@ -531,7 +537,7 @@ func (s *AuthzTestSuite) TestGetEntityType_WithIncludeDisplay() {
 	s.Run("does not populate OUHandle when includeDisplay is false", func() {
 		storeMock := newEntityTypeStoreInterfaceMock(s.T())
 		storeMock.On("GetEntityTypeByID", mock.Anything, mock.Anything, "schema-1").
-			Return(EntityType{ID: "schema-1", Name: "test", OUID: testOUID1}, nil)
+			Return(EntityType{ID: "schema-1", Handle: "test", DisplayName: "test", OUID: testOUID1}, nil)
 
 		svc := &entityTypeService{
 			entityTypeStore: storeMock,
@@ -549,7 +555,7 @@ func (s *AuthzTestSuite) TestGetEntityType_WithIncludeDisplay() {
 	s.Run("returns schema with empty ouHandle when OU handle resolution fails", func() {
 		storeMock := newEntityTypeStoreInterfaceMock(s.T())
 		storeMock.On("GetEntityTypeByID", mock.Anything, mock.Anything, "schema-1").
-			Return(EntityType{ID: "schema-1", Name: "test", OUID: testOUID1}, nil)
+			Return(EntityType{ID: "schema-1", Handle: "test", DisplayName: "test", OUID: testOUID1}, nil)
 
 		ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 		ouServiceMock.On(
@@ -581,8 +587,8 @@ func (s *AuthzTestSuite) TestGetEntityTypeList_WithIncludeDisplay() {
 	storeMock.On("GetEntityTypeListCount", mock.Anything, mock.Anything).Return(2, nil)
 	storeMock.On("GetEntityTypeList", mock.Anything, mock.Anything, 10, 0).Return(
 		[]EntityTypeListItem{
-			{ID: "s1", Name: "schema1", OUID: testOUID1},
-			{ID: "s2", Name: "schema2", OUID: testOUID2},
+			{ID: "s1", Handle: "schema1", DisplayName: "schema1", OUID: testOUID1},
+			{ID: "s2", Handle: "schema2", DisplayName: "schema2", OUID: testOUID2},
 		}, nil)
 
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
@@ -618,10 +624,10 @@ func (s *AuthzTestSuite) TestGetEntityTypeList_WithIncludeDisplay() {
 	ouServiceMock.AssertExpectations(s.T())
 }
 
-func (s *AuthzTestSuite) TestGetEntityTypeByName_NilAuthz_NoError() {
+func (s *AuthzTestSuite) TestGetEntityTypeByHandle_NilAuthz_NoError() {
 	storeMock := newEntityTypeStoreInterfaceMock(s.T())
-	storeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, "employee").
-		Return(EntityType{ID: "schema-1", Name: "employee"}, nil)
+	storeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, "employee").
+		Return(EntityType{ID: "schema-1", Handle: "employee", DisplayName: "employee"}, nil)
 
 	svc := &entityTypeService{
 		entityTypeStore: storeMock,
@@ -629,7 +635,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeByName_NilAuthz_NoError() {
 		authzService:    nil,
 	}
 
-	result, svcErr := svc.GetEntityTypeByName(context.Background(), TypeCategoryUser, "employee")
+	result, svcErr := svc.GetEntityTypeByHandle(context.Background(), TypeCategoryUser, "employee")
 	s.Require().Nil(svcErr)
 	s.Require().NotNil(result)
 }

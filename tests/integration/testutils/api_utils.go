@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -113,15 +114,15 @@ func CreateUserType(schema UserType) (string, error) {
 // and returns its ID. The server restricts agent types to one `default` schema and rejects
 // deletion, so suites share the singleton: this helper creates it on first call and updates
 // it (PUT) on subsequent calls so each suite's schema fixture takes effect. The caller's
-// `Name` is ignored — it is always coerced to `default`.
+// `Handle` is ignored. It is always coerced to `default`.
 func CreateAgentType(schema UserType) (string, error) {
-	schema.Name = "default"
+	schema.Handle = "default"
 
 	id, err := postAgentType(schema)
 	if err == nil {
 		return id, nil
 	}
-	if !errors.Is(err, errAgentTypeNameConflict) {
+	if !errors.Is(err, errAgentTypeHandleConflict) {
 		return "", err
 	}
 
@@ -135,13 +136,237 @@ func CreateAgentType(schema UserType) (string, error) {
 	return existingID, nil
 }
 
-// DeleteAgentType is a no-op. The server rejects agent type deletion (USRS-1015) — see
-// CreateAgentType for how suites share the singleton `default` schema.
-func DeleteAgentType(_ string) error {
+// AgentTypeSnapshot captures the singleton `default` agent type so a suite that mutates it can put
+// it back. It holds every mutable field, not just the schema: an entity-type update replaces the
+// whole record, so any field left out of the restore payload is silently reset to its zero value.
+// The schema in particular cannot come from the list endpoint, which omits it.
+type AgentTypeSnapshot struct {
+	ID                    string
+	DisplayName           string
+	OUID                  string
+	AllowSelfRegistration bool
+	SystemAttributes      map[string]interface{}
+	Schema                map[string]interface{}
+}
+
+// SnapshotAgentType reads the current `default` agent type from the detail endpoint. Suites that
+// call CreateAgentType mutate a singleton every other suite shares, so they must snapshot before
+// and RestoreAgentType after, otherwise the schema and OU they installed leak into later packages.
+func SnapshotAgentType() (*AgentTypeSnapshot, error) {
+	id, err := findDefaultAgentTypeID()
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/agent-types/%s", TestServerURL, id), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create agent type request: %w", err)
+	}
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch agent type: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read agent type response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("expected status 200 fetching agent type, got %d: %s",
+			resp.StatusCode, string(body))
+	}
+
+	var detail struct {
+		ID                    string                 `json:"id"`
+		DisplayName           string                 `json:"displayName"`
+		OUID                  string                 `json:"ouId"`
+		AllowSelfRegistration bool                   `json:"allowSelfRegistration"`
+		SystemAttributes      map[string]interface{} `json:"systemAttributes"`
+		Schema                map[string]interface{} `json:"schema"`
+	}
+	if err := json.Unmarshal(body, &detail); err != nil {
+		return nil, fmt.Errorf("failed to parse agent type: %w", err)
+	}
+
+	return &AgentTypeSnapshot{
+		ID:                    detail.ID,
+		DisplayName:           detail.DisplayName,
+		OUID:                  detail.OUID,
+		AllowSelfRegistration: detail.AllowSelfRegistration,
+		SystemAttributes:      detail.SystemAttributes,
+		Schema:                detail.Schema,
+	}, nil
+}
+
+// RestoreAgentType puts a snapshot back, then re-reads the type to confirm its OU resolves. If the
+// snapshot's OU no longer exists, because a suite pointed the singleton at an OU it then deleted,
+// the type is restored against the bootstrap `default` OU instead so the PUT cannot fail on a
+// dangling reference.
+func RestoreAgentType(snapshot *AgentTypeSnapshot) error {
+	if snapshot == nil {
+		return errors.New("agent type snapshot is nil")
+	}
+
+	ouID := snapshot.OUID
+	if _, err := GetOrganizationUnit(ouID); err != nil {
+		bootstrapOUID, lookupErr := FindBootstrapOUID()
+		if lookupErr != nil {
+			return fmt.Errorf("snapshot OU %s is gone and the bootstrap OU is unavailable: %w",
+				ouID, lookupErr)
+		}
+		ouID = bootstrapOUID
+	}
+
+	// Build the payload by hand rather than through UserType: its AllowSelfRegistration carries
+	// `omitempty`, so a snapshotted `false` would be dropped, and it has no SystemAttributes field at
+	// all. Either omission makes the server reset that field instead of restoring it.
+	payload := map[string]interface{}{
+		"handle":                "default",
+		"displayName":           snapshot.DisplayName,
+		"ouId":                  ouID,
+		"allowSelfRegistration": snapshot.AllowSelfRegistration,
+		"schema":                snapshot.Schema,
+	}
+	if snapshot.SystemAttributes != nil {
+		payload["systemAttributes"] = snapshot.SystemAttributes
+	}
+
+	if err := putAgentTypeRaw(snapshot.ID, payload); err != nil {
+		return err
+	}
+
+	// Confirm the PUT actually applied. A 200 alone does not prove it: a partial or ignored update
+	// would leave the calling suite's state installed and still look successful here.
+	restored, err := SnapshotAgentType()
+	if err != nil {
+		return fmt.Errorf("failed to re-read the agent type after restoring it: %w", err)
+	}
+	if restored.ID != snapshot.ID {
+		return fmt.Errorf("restored agent type has id %s, want %s", restored.ID, snapshot.ID)
+	}
+	if restored.DisplayName != snapshot.DisplayName {
+		return fmt.Errorf("restored agent type has displayName %q, want %q",
+			restored.DisplayName, snapshot.DisplayName)
+	}
+	if restored.OUID != ouID {
+		return fmt.Errorf("restored agent type has ouId %s, want %s", restored.OUID, ouID)
+	}
+	if restored.AllowSelfRegistration != snapshot.AllowSelfRegistration {
+		return fmt.Errorf("restored agent type has allowSelfRegistration %t, want %t",
+			restored.AllowSelfRegistration, snapshot.AllowSelfRegistration)
+	}
+	if !reflect.DeepEqual(restored.SystemAttributes, snapshot.SystemAttributes) {
+		return fmt.Errorf("restored agent type systemAttributes do not match the snapshot: got %v, want %v",
+			restored.SystemAttributes, snapshot.SystemAttributes)
+	}
+	if !reflect.DeepEqual(restored.Schema, snapshot.Schema) {
+		return fmt.Errorf("restored agent type schema does not match the snapshot: got %v, want %v",
+			restored.Schema, snapshot.Schema)
+	}
+	if _, err := GetOrganizationUnit(restored.OUID); err != nil {
+		return fmt.Errorf("restored agent type points at unresolvable OU %s: %w", restored.OUID, err)
+	}
 	return nil
 }
 
-var errAgentTypeNameConflict = errors.New("agent type name conflict")
+var (
+	defaultOUIDMu    sync.Mutex
+	defaultOUIDCache string
+)
+
+// DefaultOUID returns the organization unit that owns the flows the shared helpers create when the caller names
+// none. Every flow needs an owning organization unit, so these helpers use the long-lived bootstrap `default` one,
+// which outlives every suite and never blocks a suite's own organization unit clean-up. The id is looked up once
+// per process.
+func DefaultOUID() (string, error) {
+	defaultOUIDMu.Lock()
+	defer defaultOUIDMu.Unlock()
+	if defaultOUIDCache != "" {
+		return defaultOUIDCache, nil
+	}
+	ouID, err := FindBootstrapOUID()
+	if err != nil {
+		return "", err
+	}
+	defaultOUIDCache = ouID
+	return ouID, nil
+}
+
+// WithOU appends the ouId query parameter, which makes a flow read answer for that organization unit, to a path or URL.
+func WithOU(rawURL, ouID string) string {
+	separator := "?"
+	if strings.Contains(rawURL, "?") {
+		separator = "&"
+	}
+	return rawURL + separator + "ouId=" + url.QueryEscape(ouID)
+}
+
+// FindBootstrapOUID resolves the long-lived `default` organization unit seeded at bootstrap.
+func FindBootstrapOUID() (string, error) {
+	req, err := http.NewRequest("GET", TestServerURL+"/organization-units?limit=100", nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create OU list request: %w", err)
+	}
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to list organization units: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read OU list response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("expected status 200 listing organization units, got %d: %s",
+			resp.StatusCode, string(body))
+	}
+
+	var list struct {
+		OrganizationUnits []struct {
+			ID     string `json:"id"`
+			Handle string `json:"handle"`
+		} `json:"organizationUnits"`
+	}
+	if err := json.Unmarshal(body, &list); err != nil {
+		return "", fmt.Errorf("failed to parse OU list: %w", err)
+	}
+
+	for _, ou := range list.OrganizationUnits {
+		if ou.Handle == "default" {
+			return ou.ID, nil
+		}
+	}
+	return "", errors.New("bootstrap organization unit with handle 'default' not found")
+}
+
+var (
+	connectionOUIDMu    sync.Mutex
+	connectionOUIDCache string
+)
+
+// DefaultConnectionOUID returns the organization unit that owns the identity-provider connections the shared
+// create helpers (CreateIDP) make when the caller names none. Every identity-provider connection needs an
+// owning organization unit, so these helpers use the long-lived bootstrap `default` one, which outlives every
+// suite and never blocks a suite's own OU cleanup. The id is looked up once per process.
+func DefaultConnectionOUID() (string, error) {
+	connectionOUIDMu.Lock()
+	defer connectionOUIDMu.Unlock()
+	if connectionOUIDCache != "" {
+		return connectionOUIDCache, nil
+	}
+	ouID, err := FindBootstrapOUID()
+	if err != nil {
+		return "", err
+	}
+	connectionOUIDCache = ouID
+	return ouID, nil
+}
+
+var errAgentTypeHandleConflict = errors.New("agent type handle conflict")
 
 func postAgentType(schema UserType) (string, error) {
 	payload, err := json.Marshal(schema)
@@ -167,7 +392,7 @@ func postAgentType(schema UserType) (string, error) {
 	}
 
 	if resp.StatusCode == http.StatusConflict {
-		return "", errAgentTypeNameConflict
+		return "", errAgentTypeHandleConflict
 	}
 	if resp.StatusCode != http.StatusCreated {
 		return "", fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
@@ -185,7 +410,13 @@ func postAgentType(schema UserType) (string, error) {
 }
 
 func putAgentType(schemaID string, schema UserType) error {
-	payload, err := json.Marshal(schema)
+	return putAgentTypeRaw(schemaID, schema)
+}
+
+// putAgentTypeRaw updates an agent type from an arbitrary payload, so a caller can send fields that
+// the UserType struct drops or does not model.
+func putAgentTypeRaw(schemaID string, body interface{}) error {
+	payload, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("failed to marshal agent type: %w", err)
 	}
@@ -227,15 +458,15 @@ func findDefaultAgentTypeID() (string, error) {
 
 	var list struct {
 		Types []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
+			ID     string `json:"id"`
+			Handle string `json:"handle"`
 		} `json:"types"`
 	}
 	if err := json.Unmarshal(body, &list); err != nil {
 		return "", fmt.Errorf("failed to parse list response: %w. Response: %s", err, string(body))
 	}
 	for _, s := range list.Types {
-		if s.Name == "default" {
+		if s.Handle == "default" {
 			return s.ID, nil
 		}
 	}
@@ -298,8 +529,8 @@ func ListUserTypes() ([]UserType, error) {
 	var listing struct {
 		TotalResults int `json:"totalResults"`
 		Types        []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
+			ID     string `json:"id"`
+			Handle string `json:"handle"`
 		} `json:"types"`
 	}
 	if err := json.Unmarshal(body, &listing); err != nil {
@@ -316,11 +547,11 @@ func ListUserTypes() ([]UserType, error) {
 	for _, item := range listing.Types {
 		detail, err := getJSON(fmt.Sprintf("%s/user-types/%s", TestServerURL, item.ID))
 		if err != nil {
-			return nil, fmt.Errorf("failed to read user type %q: %w", item.Name, err)
+			return nil, fmt.Errorf("failed to read user type %q: %w", item.Handle, err)
 		}
 		var userType UserType
 		if err := json.Unmarshal(detail, &userType); err != nil {
-			return nil, fmt.Errorf("failed to parse user type %q: %w. Response: %s", item.Name, err, string(detail))
+			return nil, fmt.Errorf("failed to parse user type %q: %w. Response: %s", item.Handle, err, string(detail))
 		}
 		userTypes = append(userTypes, userType)
 	}
@@ -493,6 +724,11 @@ func CreateApplication(app Application) (string, error) {
 	// Add allowed_user_types if provided
 	if len(app.AllowedUserTypes) > 0 {
 		appData["allowedUserTypes"] = app.AllowedUserTypes
+	}
+
+	// Add allowed_agent_types if provided
+	if len(app.AllowedAgentTypes) > 0 {
+		appData["allowedAgentTypes"] = app.AllowedAgentTypes
 	}
 
 	// Add subject attribute mapping if provided
@@ -749,6 +985,9 @@ func idpToConnectionBody(idp IDP) map[string]interface{} {
 		"name":        idp.Name,
 		"description": idp.Description,
 	}
+	if idp.OUID != "" {
+		body["ouId"] = idp.OUID
+	}
 	for _, prop := range idp.Properties {
 		switch prop.Name {
 		case "scopes":
@@ -782,6 +1021,9 @@ func connectionBodyToIDP(idpType string, resp map[string]interface{}) *IDP {
 	if desc, ok := resp["description"].(string); ok {
 		idp.Description = desc
 	}
+	if ouID, ok := resp["ouId"].(string); ok {
+		idp.OUID = ouID
+	}
 	for propName, field := range idpPropertyToConnectionField {
 		if value, ok := resp[field].(string); ok && value != "" {
 			idp.Properties = append(idp.Properties, IDPProperty{Name: propName, Value: value})
@@ -814,6 +1056,12 @@ func CreateIDP(idp IDP) (string, error) {
 	vendor, err := idpVendorPath(idp.Type)
 	if err != nil {
 		return "", err
+	}
+
+	if idp.OUID == "" {
+		if idp.OUID, err = DefaultConnectionOUID(); err != nil {
+			return "", fmt.Errorf("failed to resolve the connection organization unit: %w", err)
+		}
 	}
 
 	bodyJSON, err := json.Marshal(idpToConnectionBody(idp))
@@ -1013,6 +1261,38 @@ func FindUserByAttribute(key, value string) (*User, error) {
 		}
 	}
 	return nil, nil
+}
+
+// GetUserFromAssertion returns the user a flow assertion was issued for, looked up by the assertion's
+// subject. A federated flow resolves its identity to exactly one user, and this is that user.
+func GetUserFromAssertion(assertion string) (*User, error) {
+	claims, err := DecodeJWT(assertion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode the assertion: %w", err)
+	}
+
+	req, err := http.NewRequest("GET", TestServerURL+"/users/"+claims.Sub, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create get user request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send get user request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(body))
+	}
+
+	var user User
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, fmt.Errorf("failed to parse get user response: %w", err)
+	}
+	return &user, nil
 }
 
 // CreateGroup creates a group via API and returns the group ID
@@ -1329,9 +1609,9 @@ func CreateResourceServerWithActions(rs ResourceServer, actions []Action) (strin
 	for i, action := range actions {
 		_, err := createAction(rsID, action)
 		if err != nil {
-			// Cleanup: delete the resource server on failure
-			DeleteResourceServer(rsID)
-			return "", fmt.Errorf("failed to create action %d: %w", i, err)
+			// Roll back through the child-aware delete: any action created before this one blocks a
+			// plain resource-server delete, so a partially built server would otherwise survive.
+			return "", rollbackResourceServer(rsID, fmt.Errorf("failed to create action %d: %w", i, err))
 		}
 	}
 
@@ -1455,6 +1735,9 @@ func GetResourceServerByName(name string) (string, error) {
 	return "", fmt.Errorf("resource server with name %q not found", name)
 }
 
+// DeleteResourceServer deletes a resource server that owns no resources or actions. The server
+// refuses the delete with RES-1006 while any dependency remains, so a server built with resources or
+// actions must go through DeleteResourceServerWithChildren instead.
 func DeleteResourceServer(rsID string) error {
 	client := GetHTTPClient()
 
@@ -1479,6 +1762,16 @@ func DeleteResourceServer(rsID string) error {
 // CreateAction creates an action on a resource server and returns the action ID.
 func CreateAction(resourceServerID string, action Action) (string, error) {
 	return createAction(resourceServerID, action)
+}
+
+// CreateResourceAction creates an action nested under a resource and returns the action ID.
+func CreateResourceAction(resourceServerID, resourceID string, action Action) (string, error) {
+	return createActionUnderResource(resourceServerID, resourceID, action)
+}
+
+// DeleteResourceAction deletes an action nested under a resource.
+func DeleteResourceAction(resourceServerID, resourceID, actionID string) error {
+	return deleteActionAtResource(resourceServerID, resourceID, actionID)
 }
 
 // GetActionsByResourceServer returns the IDs of the actions defined on a resource server.
@@ -1568,6 +1861,111 @@ func PutDefaultResourceServer(resourceServerID string) error {
 		return fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
 	}
 	return nil
+}
+
+// GetWritableServerConfig returns the writable layer of the named server-config section, so a
+// caller can restore exactly what was there rather than guessing at a default. An absent layer is
+// reported as an empty object.
+func GetWritableServerConfig(section string) (json.RawMessage, error) {
+	url := fmt.Sprintf("%s/server-config/%s", TestServerURL, section)
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s server config request: %w", section, err)
+	}
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s server config: %w", section, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s server config response: %w", section, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("expected status 200 reading %s server config, got %d. Response: %s",
+			section, resp.StatusCode, string(body))
+	}
+
+	var layers struct {
+		Writable json.RawMessage `json:"writable"`
+	}
+	if err := json.Unmarshal(body, &layers); err != nil {
+		return nil, fmt.Errorf("failed to parse %s server config: %w", section, err)
+	}
+
+	if len(layers.Writable) == 0 {
+		return json.RawMessage("{}"), nil
+	}
+	return layers.Writable, nil
+}
+
+// PutWritableServerConfig replaces the writable layer of the named server-config section.
+func PutWritableServerConfig(section string, body []byte) error {
+	status, respBody, err := PutWritableServerConfigWithStatus(section, body)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("expected status 200 updating %s server config with %s, got %d. Response: %s",
+			section, string(body), status, string(respBody))
+	}
+	return nil
+}
+
+// PutWritableServerConfigWithStatus is PutWritableServerConfig for a write the server may refuse: it
+// returns the status and body whatever they are, and an error only when no answer came back.
+func PutWritableServerConfigWithStatus(section string, body []byte) (int, []byte, error) {
+	url := fmt.Sprintf("%s/server-config/%s", TestServerURL, section)
+
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to create %s server config request: %w", section, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to update %s server config: %w", section, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to read %s server config response: %w", section, err)
+	}
+	return resp.StatusCode, respBody, nil
+}
+
+// MergeWritableServerConfig applies the given top-level keys over the current writable layer of the
+// section and writes the result back, returning the layer as it was beforehand.
+//
+// Merging rather than replacing keeps sibling keys that the caller did not set, which a bare PUT
+// would drop. The returned value is what the caller restores when it is done.
+func MergeWritableServerConfig(section string, patch map[string]interface{}) (json.RawMessage, error) {
+	original, err := GetWritableServerConfig(section)
+	if err != nil {
+		return nil, err
+	}
+
+	merged := make(map[string]interface{})
+	if err := json.Unmarshal(original, &merged); err != nil {
+		return nil, fmt.Errorf("failed to parse writable %s server config: %w", section, err)
+	}
+	for key, value := range patch {
+		merged[key] = value
+	}
+
+	body, err := json.Marshal(merged)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal %s server config: %w", section, err)
+	}
+	if err := PutWritableServerConfig(section, body); err != nil {
+		return nil, err
+	}
+	return original, nil
 }
 
 // createAction creates an action on a resource server via API and returns the action ID
@@ -1690,7 +2088,8 @@ func createActionUnderResource(resourceServerID, resourceID string, action Actio
 // permissions still enforce when configured. It builds a "system" root resource, then one child
 // resource per handle (each with a "view" action), yielding the permissions "system",
 // "system:<handle>" and "system:<handle>:view". Returns the resource server ID; delete it with
-// DeleteResourceServer during teardown.
+// DeleteResourceServerWithChildren during teardown — a plain DeleteResourceServer is refused with
+// RES-1006 while the resources and actions built here still exist.
 func CreateSystemScopedResourceServer(ouID, name, identifier string, childHandles ...string) (string, error) {
 	rsID, err := createResourceServer(ResourceServer{
 		Name:       name,
@@ -1722,14 +2121,196 @@ func CreateSystemScopedResourceServer(ouID, name, identifier string, childHandle
 // rollbackResourceServer deletes a partially built resource server after a setup step failed. It
 // returns the original cause, wrapping any cleanup failure so neither error is silently discarded.
 func rollbackResourceServer(rsID string, cause error) error {
-	if delErr := DeleteResourceServer(rsID); delErr != nil {
+	if delErr := DeleteResourceServerWithChildren(rsID); delErr != nil {
 		return fmt.Errorf("%w (resource server cleanup also failed: %v)", cause, delErr)
 	}
 	return cause
 }
 
+// DeleteResourceServerWithChildren removes a resource server together with its resource tree and
+// every action it owns. A plain DELETE on a resource server that still has dependencies is refused
+// with RES-1006, so any server built by CreateSystemScopedResourceServer or
+// CreateResourceServerWithActions must be torn down through here or it survives in the shared
+// database.
+//
+// Actions live at two levels and both block deletion: CreateSystemScopedResourceServer attaches them
+// to resources, while CreateResourceServerWithActions attaches them directly to the server.
+func DeleteResourceServerWithChildren(rsID string) error {
+	// Collect the tree depth-first so children are always deleted before their parents. The list
+	// endpoint returns only one level: without a parentId it yields the top-level resources, so the
+	// nested ones are invisible unless each level is walked explicitly.
+	ordered, err := collectResourceIDsDeepestFirst(rsID, "")
+	if err != nil {
+		return err
+	}
+
+	for _, resourceID := range ordered {
+		actions, actionErr := ListActionIDsAtResource(rsID, resourceID)
+		if actionErr != nil {
+			return actionErr
+		}
+		for _, actionID := range actions {
+			if delErr := deleteActionAtResource(rsID, resourceID, actionID); delErr != nil {
+				return delErr
+			}
+		}
+		if delErr := deleteResource(rsID, resourceID); delErr != nil {
+			return fmt.Errorf("failed to delete resource %s of resource server %s: %w",
+				resourceID, rsID, delErr)
+		}
+	}
+
+	serverActions, err := ListActionIDsAtResourceServer(rsID)
+	if err != nil {
+		return err
+	}
+	for _, actionID := range serverActions {
+		if delErr := DeleteAction(rsID, actionID); delErr != nil {
+			return fmt.Errorf("failed to delete action %s of resource server %s: %w",
+				actionID, rsID, delErr)
+		}
+	}
+
+	return DeleteResourceServer(rsID)
+}
+
+// ListActionIDsAtResourceServer returns the IDs of actions attached directly to a resource server,
+// as opposed to those attached to one of its resources.
+func ListActionIDsAtResourceServer(rsID string) ([]string, error) {
+	body, err := getJSON(fmt.Sprintf("%s/resource-servers/%s/actions?limit=100", TestServerURL, rsID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list actions of resource server %s: %w", rsID, err)
+	}
+
+	var list struct {
+		Actions []struct {
+			ID string `json:"id"`
+		} `json:"actions"`
+	}
+	if err := json.Unmarshal(body, &list); err != nil {
+		return nil, fmt.Errorf("failed to parse action list: %w", err)
+	}
+
+	ids := make([]string, 0, len(list.Actions))
+	for _, action := range list.Actions {
+		ids = append(ids, action.ID)
+	}
+	return ids, nil
+}
+
+// collectResourceIDsDeepestFirst returns the resource subtree under parentID, children ahead of
+// their parents.
+func collectResourceIDsDeepestFirst(rsID, parentID string) ([]string, error) {
+	children, err := ListResourceIDs(rsID, parentID)
+	if err != nil {
+		return nil, err
+	}
+
+	ordered := make([]string, 0, len(children))
+	for _, child := range children {
+		descendants, descErr := collectResourceIDsDeepestFirst(rsID, child)
+		if descErr != nil {
+			return nil, descErr
+		}
+		ordered = append(ordered, descendants...)
+		ordered = append(ordered, child)
+	}
+	return ordered, nil
+}
+
+// ListResourceIDs returns the IDs of resources directly under parentID. An empty parentID lists the
+// top-level resources, which requires omitting the query parameter entirely: sending `parentId=`
+// makes the server look up a resource whose id is the empty string and answer 404.
+func ListResourceIDs(rsID, parentID string) ([]string, error) {
+	requestURL := fmt.Sprintf("%s/resource-servers/%s/resources?limit=100", TestServerURL, rsID)
+	if parentID != "" {
+		requestURL += "&parentId=" + url.QueryEscape(parentID)
+	}
+
+	body, err := getJSON(requestURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list resources of resource server %s: %w", rsID, err)
+	}
+
+	var list struct {
+		Resources []struct {
+			ID string `json:"id"`
+		} `json:"resources"`
+	}
+	if err := json.Unmarshal(body, &list); err != nil {
+		return nil, fmt.Errorf("failed to parse resource list: %w", err)
+	}
+
+	ids := make([]string, 0, len(list.Resources))
+	for _, resource := range list.Resources {
+		ids = append(ids, resource.ID)
+	}
+	return ids, nil
+}
+
+// ListActionIDsAtResource returns the IDs of actions defined directly on a resource.
+func ListActionIDsAtResource(rsID, resourceID string) ([]string, error) {
+	body, err := getJSON(fmt.Sprintf("%s/resource-servers/%s/resources/%s/actions?limit=100",
+		TestServerURL, rsID, resourceID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list actions of resource %s: %w", resourceID, err)
+	}
+
+	var list struct {
+		Actions []struct {
+			ID string `json:"id"`
+		} `json:"actions"`
+	}
+	if err := json.Unmarshal(body, &list); err != nil {
+		return nil, fmt.Errorf("failed to parse action list: %w", err)
+	}
+
+	ids := make([]string, 0, len(list.Actions))
+	for _, action := range list.Actions {
+		ids = append(ids, action.ID)
+	}
+	return ids, nil
+}
+
+func deleteActionAtResource(rsID, resourceID, actionID string) error {
+	return deleteURL(fmt.Sprintf("%s/resource-servers/%s/resources/%s/actions/%s",
+		TestServerURL, rsID, resourceID, actionID))
+}
+
+func deleteResource(rsID, resourceID string) error {
+	return deleteURL(fmt.Sprintf("%s/resource-servers/%s/resources/%s",
+		TestServerURL, rsID, resourceID))
+}
+
+// deleteURL issues a DELETE and requires a 204.
+func deleteURL(url string) error {
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send delete request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 204, got %d. Response: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
 // CreateFlow creates a flow via API and returns the flow ID
 func CreateFlow(flowDefinition Flow) (string, error) {
+	if flowDefinition.OUID == "" {
+		ouID, err := DefaultOUID()
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve the flow organization unit: %w", err)
+		}
+		flowDefinition.OUID = ouID
+	}
 	flowJSON, err := json.Marshal(flowDefinition)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal flow definition: %w", err)
@@ -1770,6 +2351,48 @@ func CreateFlow(flowDefinition Flow) (string, error) {
 	return flowID, nil
 }
 
+// ModifyFlowNode finds the node with the given ID in a flow and applies modifier to it. It accepts
+// both a flow declared as a literal, whose Nodes are []map[string]interface{}, and one rebuilt from
+// JSON, whose Nodes have decoded to []interface{}.
+func ModifyFlowNode(flow *Flow, nodeID string, modifier func(node map[string]interface{})) error {
+	var nodes []map[string]interface{}
+	switch n := flow.Nodes.(type) {
+	case []map[string]interface{}:
+		nodes = n
+	case []interface{}:
+		for _, item := range n {
+			node, ok := item.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("flow node is not a map[string]interface{}")
+			}
+			nodes = append(nodes, node)
+		}
+	default:
+		return fmt.Errorf("unsupported flow nodes type %T", flow.Nodes)
+	}
+
+	for _, node := range nodes {
+		if node["id"] == nodeID {
+			modifier(node)
+			return nil
+		}
+	}
+	return fmt.Errorf("node with ID %s not found in flow", nodeID)
+}
+
+// SetFlowNodeProperty sets a property on the node with the given ID in a flow, creating the node's
+// properties map when it has none.
+func SetFlowNodeProperty(flow *Flow, nodeID, key string, value interface{}) error {
+	return ModifyFlowNode(flow, nodeID, func(node map[string]interface{}) {
+		props, ok := node["properties"].(map[string]interface{})
+		if !ok {
+			props = make(map[string]interface{})
+			node["properties"] = props
+		}
+		props[key] = value
+	})
+}
+
 // CreateIsolatedAuthFlow creates a minimal AUTHENTICATION flow with no CALL nodes, suitable for
 // tests that attach a custom registration/recovery/signout flow to an application: reusing the
 // default auth flow would trigger cross-type reference validation (APP-1039) because it CALLs the
@@ -1798,6 +2421,61 @@ func CreateIsolatedAuthFlow(handle string) (string, error) {
 			},
 		},
 	})
+}
+
+// ExtensionAuthFlow returns the smallest login flow with one extension step, placed after the user is
+// authenticated and with no onFailure, so any failure of the step ends the flow:
+//
+//	start -> prompt_credentials -> credentials_auth -> ext_step -> auth_assert -> end
+//
+// A nil properties map leaves the extension step without properties.
+func ExtensionAuthFlow(name, handle string, properties map[string]interface{}) Flow {
+	inputs := []map[string]interface{}{
+		{"ref": "input_username", "identifier": "username", "type": "TEXT_INPUT", "required": true},
+		{"ref": "input_password", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
+	}
+	extStep := map[string]interface{}{
+		"id":        "ext_step",
+		"type":      "TASK_EXECUTION",
+		"executor":  map[string]interface{}{"name": "ExtensionExecutor"},
+		"onSuccess": "auth_assert",
+	}
+	if properties != nil {
+		extStep["properties"] = properties
+	}
+	return Flow{
+		Name:     name,
+		FlowType: "AUTHENTICATION",
+		Handle:   handle,
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "prompt_credentials"},
+			{
+				"id":   "prompt_credentials",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": inputs,
+						"action": map[string]interface{}{"ref": "action_credentials", "nextNode": "credentials_auth"},
+					},
+				},
+			},
+			{
+				"id":           "credentials_auth",
+				"type":         "TASK_EXECUTION",
+				"executor":     map[string]interface{}{"name": "CredentialsAuthExecutor", "inputs": inputs},
+				"onSuccess":    "ext_step",
+				"onIncomplete": "prompt_credentials",
+			},
+			extStep,
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
 }
 
 // CreateIsolatedRegistrationFlow creates a minimal REGISTRATION flow suitable for tests that need
@@ -1938,23 +2616,29 @@ var senderPropertyToConnectionField = map[string]string{
 	"sender_id":    "senderId",
 	"url":          "url",
 	"http_method":  "httpMethod",
-	"http_headers": "httpHeaders",
 	"content_type": "contentType",
 }
 
 // senderToConnectionBody converts a legacy NotificationSender{Properties: [...]} fixture into
 // the typed camelCase body /connections/{vendor} expects for sender-backed vendors.
-func senderToConnectionBody(sender NotificationSender) map[string]interface{} {
+func senderToConnectionBody(sender NotificationSender) (map[string]interface{}, error) {
 	body := map[string]interface{}{
 		"name":        sender.Name,
 		"description": sender.Description,
 	}
+	if sender.OUID != "" {
+		body["ouId"] = sender.OUID
+	}
 	for _, prop := range sender.Properties {
+		if prop.Name == "http_headers" {
+			body["httpHeaders"] = prop.Value
+			continue
+		}
 		if field, ok := senderPropertyToConnectionField[prop.Name]; ok {
 			body[field] = prop.Value
 		}
 	}
-	return body
+	return body, nil
 }
 
 // CreateNotificationSender creates a notification sender via /connections/{vendor} and returns
@@ -1965,7 +2649,17 @@ func CreateNotificationSender(sender NotificationSender) (string, error) {
 		return "", err
 	}
 
-	bodyJSON, err := json.Marshal(senderToConnectionBody(sender))
+	if sender.OUID == "" {
+		if sender.OUID, err = DefaultConnectionOUID(); err != nil {
+			return "", fmt.Errorf("failed to resolve the connection organization unit: %w", err)
+		}
+	}
+
+	body, err := senderToConnectionBody(sender)
+	if err != nil {
+		return "", err
+	}
+	bodyJSON, err := json.Marshal(body)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal connection body: %w", err)
 	}
@@ -2009,6 +2703,98 @@ func CreateNotificationSender(sender NotificationSender) (string, error) {
 	return id, nil
 }
 
+// CreateSMTPEmailProvider creates an email provider via /connections/email-smtp pointed at the
+// given host and port, and returns its ID. Suites that deliver mail through the mock SMTP server
+// use it to obtain the sender ID an EmailExecutor node names in its senderId property: providers
+// are configured only through this API, so a flow has no deployment-wide default to fall back to.
+// The returned ID is deletable through DeleteNotificationSender.
+func CreateSMTPEmailProvider(name, host string, port int, fromAddress string) (string, error) {
+	return createSMTPEmailProvider(map[string]interface{}{
+		"name":        name,
+		"description": "Email provider backed by the integration test mock SMTP server",
+		"host":        host,
+		"port":        port,
+		"fromAddress": fromAddress,
+		"tls":         "none",
+		"authentication": map[string]interface{}{
+			"type": "none",
+		},
+	})
+}
+
+// CreateSTARTTLSEmailProvider creates an email provider that requires STARTTLS and authenticates
+// with the given username and password, and returns its ID. The mock SMTP server offers neither
+// STARTTLS nor AUTH, so a send through this provider must be refused rather than fall back to
+// plaintext. The returned ID is deletable through DeleteNotificationSender.
+func CreateSTARTTLSEmailProvider(name, host string, port int, fromAddress, username,
+	password string) (string, error) {
+	return createSMTPEmailProvider(map[string]interface{}{
+		"name":        name,
+		"description": "Email provider that requires STARTTLS, backed by the mock SMTP server",
+		"host":        host,
+		"port":        port,
+		"fromAddress": fromAddress,
+		"tls":         "starttls",
+		"authentication": map[string]interface{}{
+			"type":       "basic",
+			"properties": map[string]string{"username": username, "password": password},
+		},
+	})
+}
+
+// createSMTPEmailProvider posts body to /connections/email-smtp and returns the new provider's ID.
+func createSMTPEmailProvider(body map[string]interface{}) (string, error) {
+	if _, ok := body["ouId"]; !ok {
+		ouID, err := DefaultConnectionOUID()
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve the connection organization unit: %w", err)
+		}
+		body["ouId"] = ouID
+	}
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal SMTP connection body: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", TestServerURL+"/connections/email-smtp", bytes.NewReader(bodyJSON))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var respBody map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &respBody); err != nil {
+		return "", fmt.Errorf("failed to parse response body: %w. Response: %s", err, string(bodyBytes))
+	}
+
+	id, ok := respBody["id"].(string)
+	if !ok {
+		return "", fmt.Errorf("response does not contain id or id is not a string. Response: %s", string(bodyBytes))
+	}
+
+	senderVendorRegistryMu.Lock()
+	senderVendorRegistry[id] = "email-smtp"
+	senderVendorRegistryMu.Unlock()
+
+	return id, nil
+}
+
 // DeleteNotificationSender deletes a notification sender (created via CreateNotificationSender)
 // by ID.
 func DeleteNotificationSender(senderID string) error {
@@ -2043,9 +2829,172 @@ func DeleteNotificationSender(senderID string) error {
 	return nil
 }
 
+// CreateAuthZENPDPConnection creates an AuthZEN PDP connection owned by ouID via /connections/authzen-pdp and
+// returns its ID.
+func CreateAuthZENPDPConnection(name, ouID, endpoint string) (string, error) {
+	bodyJSON, err := json.Marshal(map[string]interface{}{"name": name, "ouId": ouID, "endpoint": endpoint})
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal connection body: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", TestServerURL+"/connections/authzen-pdp", bytes.NewReader(bodyJSON))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(bodyBytes, &created); err != nil || created.ID == "" {
+		return "", fmt.Errorf("response does not contain an id. Response: %s", string(bodyBytes))
+	}
+	return created.ID, nil
+}
+
+// DeleteAuthZENPDPConnection deletes an AuthZEN PDP connection by ID.
+func DeleteAuthZENPDPConnection(id string) error {
+	req, err := http.NewRequest("DELETE", TestServerURL+"/connections/authzen-pdp/"+id, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete AuthZEN PDP connection: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 200 or 204, got %d. Response: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
+}
+
+// CreateHTTPConnection creates an HTTP endpoint connection via /connections/http and returns its ID.
+func CreateHTTPConnection(conn HTTPConnection) (string, error) {
+	bodyJSON, err := json.Marshal(conn)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal HTTP connection: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", TestServerURL+"/connections/http", bytes.NewReader(bodyJSON))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var respBody map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &respBody); err != nil {
+		return "", fmt.Errorf("failed to parse response body: %w. Response: %s", err, string(bodyBytes))
+	}
+
+	id, ok := respBody["id"].(string)
+	if !ok {
+		return "", fmt.Errorf("response does not contain id or id is not a string. Response: %s", string(bodyBytes))
+	}
+	return id, nil
+}
+
+// UpdateHTTPConnection replaces an HTTP endpoint connection via PUT /connections/http/{id}.
+func UpdateHTTPConnection(connectionID string, conn HTTPConnection) error {
+	bodyJSON, err := json.Marshal(conn)
+	if err != nil {
+		return fmt.Errorf("failed to marshal HTTP connection: %w", err)
+	}
+
+	req, err := http.NewRequest("PUT", TestServerURL+"/connections/http/"+connectionID, bytes.NewReader(bodyJSON))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
+}
+
+// DeleteHTTPConnection deletes an HTTP endpoint connection via DELETE /connections/http/{id}.
+func DeleteHTTPConnection(connectionID string) error {
+	req, err := http.NewRequest("DELETE", TestServerURL+"/connections/http/"+connectionID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete HTTP connection: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 204, got %d. Response: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
+}
+
 // AuthenticateWithCredential authenticates a user via the credentials endpoint.
 // Returns (true, nil) on success, (false, nil) on auth failure, (false, err) on request error.
 func AuthenticateWithCredential(identifierKey, identifierValue, credentialKey, credentialValue string) (bool, error) {
+	status, body, err := AuthenticateWithCredentialRaw(identifierKey, identifierValue, credentialKey, credentialValue)
+	if err != nil {
+		return false, err
+	}
+	if status == http.StatusOK {
+		return true, nil
+	}
+	if status == http.StatusUnauthorized || status == http.StatusBadRequest {
+		return false, nil
+	}
+	return false, fmt.Errorf("unexpected auth status %d: %s", status, string(body))
+}
+
+// AuthenticateWithCredentialRaw presents one identifier and one credential to the credentials
+// endpoint and returns the HTTP status and the response body, whatever they are.
+func AuthenticateWithCredentialRaw(identifierKey, identifierValue, credentialKey, credentialValue string) (
+	int, []byte, error) {
 	reqBody := map[string]interface{}{
 		"identifiers": map[string]interface{}{
 			identifierKey: identifierValue,
@@ -2057,30 +3006,50 @@ func AuthenticateWithCredential(identifierKey, identifierValue, credentialKey, c
 
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
-		return false, fmt.Errorf("failed to marshal auth request: %w", err)
+		return 0, nil, fmt.Errorf("failed to marshal auth request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", TestServerURL+"/auth/credentials/authenticate", bytes.NewReader(bodyBytes))
+	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/auth/credentials/authenticate",
+		bytes.NewReader(bodyBytes))
 	if err != nil {
-		return false, fmt.Errorf("failed to create auth request: %w", err)
+		return 0, nil, fmt.Errorf("failed to create auth request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := GetHTTPClient()
-	resp, err := client.Do(req)
+	resp, err := GetHTTPClient().Do(req)
 	if err != nil {
-		return false, fmt.Errorf("auth request failed: %w", err)
+		return 0, nil, fmt.Errorf("auth request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusOK {
-		return true, nil
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to read auth response: %w", err)
 	}
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadRequest {
-		return false, nil
+	return resp.StatusCode, body, nil
+}
+
+// ObtainAuthAssertion authenticates a user with a password and returns the auth assertion from the
+// response. Enrolling a credential requires an assertion proving the target user, so suites that
+// bootstrap a passkey through the direct API need the user to hold another credential first.
+func ObtainAuthAssertion(username, password string) (string, error) {
+	status, responseBody, err := AuthenticateWithCredentialRaw("username", username, "password", password)
+	if err != nil {
+		return "", err
 	}
-	body, _ := io.ReadAll(resp.Body)
-	return false, fmt.Errorf("unexpected auth status %d: %s", resp.StatusCode, string(body))
+	if status != http.StatusOK {
+		return "", fmt.Errorf("unexpected auth status %d: %s", status, responseBody)
+	}
+
+	var authResponse AuthenticationResponse
+	if err := json.Unmarshal(responseBody, &authResponse); err != nil {
+		return "", fmt.Errorf("failed to decode auth response: %w", err)
+	}
+	if authResponse.Assertion == "" {
+		return "", fmt.Errorf("authentication for %s returned no assertion", username)
+	}
+
+	return authResponse.Assertion, nil
 }
 
 // CreateAgent creates an agent via API and returns its ID.
@@ -2261,4 +3230,81 @@ func UpdateApplication(appID string, app Application) error {
 // user's role does. Assignments are a sub-resource of the role, so a role update does not carry them.
 func RemoveRoleAssignments(roleID string, assignments []Assignment) error {
 	return removeRoleAssignments(roleID, assignments, GetHTTPClient())
+}
+
+// DeleteResource deletes a resource from a resource server. A resource server cannot be deleted
+// while it still has resources, so suites that build a resource tree must remove it leaf first.
+func DeleteResource(resourceServerID, resourceID string) error {
+	client := GetHTTPClient()
+
+	url := fmt.Sprintf("%s/resource-servers/%s/resources/%s", TestServerURL, resourceServerID, resourceID)
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete resource: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 204, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
+	}
+	return nil
+}
+
+// ExecuteFlowRaw posts one request to /flow/execute and returns the HTTP status and the raw answer,
+// whatever they are. It goes through client when one is given, such as a browser's carrying its
+// cookies, and otherwise through the raw client, since the shared clients treat /flow/execute as
+// public; it sends the bearer token when one is given.
+func ExecuteFlowRaw(client *http.Client, token string, body map[string]interface{}) (int, []byte, error) {
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return 0, nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/flow/execute", bytes.NewReader(payload))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if client == nil {
+		client = GetRawHTTPClient()
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, err
+	}
+	return resp.StatusCode, raw, nil
+}
+
+// GetAccessStatus returns the effective access status a management read reports for a governed
+// identity; collection is users, agents or applications. A read without a status is an error, since
+// every governed read carries one, ACTIVE included.
+func GetAccessStatus(collection, entityID string) (*AccessStatus, error) {
+	body, err := getJSON(fmt.Sprintf("%s/%s/%s", TestServerURL, collection, entityID))
+	if err != nil {
+		return nil, err
+	}
+	var read struct {
+		Status *AccessStatus `json:"status"`
+	}
+	if err := json.Unmarshal(body, &read); err != nil {
+		return nil, fmt.Errorf("failed to parse the %s read: %w", collection, err)
+	}
+	if read.Status == nil {
+		return nil, fmt.Errorf("the %s read carries no status: %s", collection, string(body))
+	}
+	return read.Status, nil
 }

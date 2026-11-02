@@ -130,7 +130,8 @@ var (
 	}
 
 	googleRegGroupRoleEntityType = testutils.UserType{
-		Name: "google_reg_group_role_user",
+		Handle:      "google_reg_group_role_user",
+		DisplayName: "Google Reg Group Role User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -175,9 +176,9 @@ var (
 		ClientID:                  "google_reg_group_role_test_client",
 		ClientSecret:              "google_reg_group_role_test_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{googleRegGroupRoleEntityType.Name},
+		AllowedUserTypes:          []string{googleRegGroupRoleEntityType.Handle},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	}
 )
@@ -374,13 +375,6 @@ func (ts *GoogleRegistrationGroupRoleTestSuite) TearDownSuite() {
 		}
 	}
 
-	// Delete test organization unit
-	if googleRegGroupRoleTestOUID != "" {
-		if err := testutils.DeleteOrganizationUnit(googleRegGroupRoleTestOUID); err != nil {
-			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
-		}
-	}
-
 	// Clean up any remaining users
 	if len(ts.config.CreatedUserIDs) > 0 {
 		if err := testutils.CleanupUsers(ts.config.CreatedUserIDs); err != nil {
@@ -390,6 +384,13 @@ func (ts *GoogleRegistrationGroupRoleTestSuite) TearDownSuite() {
 
 	if ts.entityTypeID != "" {
 		_ = testutils.DeleteUserType(ts.entityTypeID)
+	}
+
+	// Delete test organization unit
+	if googleRegGroupRoleTestOUID != "" {
+		if err := testutils.DeleteOrganizationUnit(googleRegGroupRoleTestOUID); err != nil {
+			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
+		}
 	}
 
 	// Stop mock server
@@ -431,12 +432,12 @@ func (ts *GoogleRegistrationGroupRoleTestSuite) TestGoogleRegistrationWithGroupA
 	jwtClaims, err := testutils.DecodeJWT(completeFlowStep.Assertion)
 	ts.Require().NoError(err, "Failed to decode JWT assertion")
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
-	ts.Require().Equal(googleRegGroupRoleEntityType.Name, jwtClaims.UserType, "Expected userType to match")
+	ts.Require().Equal(googleRegGroupRoleEntityType.Handle, jwtClaims.UserTypeHandle, "Expected userTypeHandle to match")
 	ts.Require().Equal(googleRegGroupRoleTestAppID, jwtClaims.Aud, "Expected aud to match application ID")
 
 	// Step 4: Verify user was created
-	user, err := testutils.FindUserByAttribute("sub", "google-group-role-user-789")
-	ts.Require().NoError(err, "Failed to retrieve user by sub")
+	user, err := testutils.GetUserFromAssertion(completeFlowStep.Assertion)
+	ts.Require().NoError(err, "Failed to retrieve the user the assertion was issued for")
 	ts.Require().NotNil(user, "User should be found after registration")
 
 	// Store the created user for cleanup

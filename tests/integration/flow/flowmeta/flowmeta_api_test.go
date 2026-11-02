@@ -134,6 +134,17 @@ func (suite *FlowMetaAPITestSuite) TestGetFlowMetadataWithAppType() {
 	suite.Equal(testApp.Description, metadata.Application.Description)
 	suite.True(metadata.IsRegistrationFlowEnabled)
 
+	// Verify the organization unit is the one the application belongs to
+	suite.NotNil(metadata.OU)
+	suite.Equal(suite.ouID, metadata.OU.ID)
+	suite.Equal(testOU.Handle, metadata.OU.Handle)
+	suite.Equal(testOU.Name, metadata.OU.Name)
+	suite.Equal(testOU.Description, metadata.OU.Description)
+	suite.Equal(testOU.LogoURL, metadata.OU.LogoURL)
+	suite.Equal(testOU.TosURI, metadata.OU.TosURI)
+	suite.Equal(testOU.PolicyURI, metadata.OU.PolicyURI)
+	suite.Equal(testOU.CookiePolicyURI, metadata.OU.CookiePolicyURI)
+
 	// Verify design metadata is present (even if empty)
 	suite.NotNil(metadata.Design.Theme)
 	suite.NotNil(metadata.Design.Layout)

@@ -67,4 +67,14 @@ var (
 		"Client authentication is required",
 		http.StatusUnauthorized,
 	)
+	errOUAccessUnresolved = newAuthError(
+		constants.ErrorServerError,
+		"Failed to resolve the organization unit access",
+		http.StatusInternalServerError,
+	)
+	errClientNotAuthorizedForOU = newAuthError(
+		constants.ErrorUnauthorizedClient,
+		constants.OUAccessRefusal,
+		http.StatusBadRequest,
+	)
 )

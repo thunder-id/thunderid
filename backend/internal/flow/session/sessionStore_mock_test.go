@@ -6,6 +6,7 @@ package session
 
 import (
 	"context"
+	"time"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -16,10 +17,19 @@ func newSessionStoreMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *sessionStoreMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &sessionStoreMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +72,7 @@ type sessionStoreMock_Create_Call struct {
 // Create is a helper method to define mock.On call
 //   - ctx context.Context
 //   - s Session
-func (_e *sessionStoreMock_Expecter) Create(ctx interface{}, s interface{}) *sessionStoreMock_Create_Call {
+func (_e *sessionStoreMock_Expecter) Create(ctx any, s any) *sessionStoreMock_Create_Call {
 	return &sessionStoreMock_Create_Call{Call: _e.mock.On("Create", ctx, s)}
 }
 
@@ -119,7 +129,7 @@ type sessionStoreMock_CreateContext_Call struct {
 // CreateContext is a helper method to define mock.On call
 //   - ctx context.Context
 //   - c SessionContext
-func (_e *sessionStoreMock_Expecter) CreateContext(ctx interface{}, c interface{}) *sessionStoreMock_CreateContext_Call {
+func (_e *sessionStoreMock_Expecter) CreateContext(ctx any, c any) *sessionStoreMock_CreateContext_Call {
 	return &sessionStoreMock_CreateContext_Call{Call: _e.mock.On("CreateContext", ctx, c)}
 }
 
@@ -176,7 +186,7 @@ type sessionStoreMock_Delete_Call struct {
 // Delete is a helper method to define mock.On call
 //   - ctx context.Context
 //   - sessionID string
-func (_e *sessionStoreMock_Expecter) Delete(ctx interface{}, sessionID interface{}) *sessionStoreMock_Delete_Call {
+func (_e *sessionStoreMock_Expecter) Delete(ctx any, sessionID any) *sessionStoreMock_Delete_Call {
 	return &sessionStoreMock_Delete_Call{Call: _e.mock.On("Delete", ctx, sessionID)}
 }
 
@@ -233,7 +243,7 @@ type sessionStoreMock_DeleteBySessionID_Call struct {
 // DeleteBySessionID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - sessionID string
-func (_e *sessionStoreMock_Expecter) DeleteBySessionID(ctx interface{}, sessionID interface{}) *sessionStoreMock_DeleteBySessionID_Call {
+func (_e *sessionStoreMock_Expecter) DeleteBySessionID(ctx any, sessionID any) *sessionStoreMock_DeleteBySessionID_Call {
 	return &sessionStoreMock_DeleteBySessionID_Call{Call: _e.mock.On("DeleteBySessionID", ctx, sessionID)}
 }
 
@@ -265,21 +275,93 @@ func (_c *sessionStoreMock_DeleteBySessionID_Call) RunAndReturn(run func(ctx con
 	return _c
 }
 
+// DeleteParticipant provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) DeleteParticipant(ctx context.Context, sessionID string, appID string) error {
+	ret := _mock.Called(ctx, sessionID, appID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteParticipant")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = returnFunc(ctx, sessionID, appID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// sessionStoreMock_DeleteParticipant_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteParticipant'
+type sessionStoreMock_DeleteParticipant_Call struct {
+	*mock.Call
+}
+
+// DeleteParticipant is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sessionID string
+//   - appID string
+func (_e *sessionStoreMock_Expecter) DeleteParticipant(ctx any, sessionID any, appID any) *sessionStoreMock_DeleteParticipant_Call {
+	return &sessionStoreMock_DeleteParticipant_Call{Call: _e.mock.On("DeleteParticipant", ctx, sessionID, appID)}
+}
+
+func (_c *sessionStoreMock_DeleteParticipant_Call) Run(run func(ctx context.Context, sessionID string, appID string)) *sessionStoreMock_DeleteParticipant_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_DeleteParticipant_Call) Return(err error) *sessionStoreMock_DeleteParticipant_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *sessionStoreMock_DeleteParticipant_Call) RunAndReturn(run func(ctx context.Context, sessionID string, appID string) error) *sessionStoreMock_DeleteParticipant_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DeleteSession provides a mock function for the type sessionStoreMock
-func (_mock *sessionStoreMock) DeleteSession(ctx context.Context, sessionID string) error {
+func (_mock *sessionStoreMock) DeleteSession(ctx context.Context, sessionID string) (bool, error) {
 	ret := _mock.Called(ctx, sessionID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteSession")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, error)); ok {
+		return returnFunc(ctx, sessionID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
 		r0 = returnFunc(ctx, sessionID)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(bool)
 	}
-	return r0
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, sessionID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // sessionStoreMock_DeleteSession_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteSession'
@@ -290,7 +372,7 @@ type sessionStoreMock_DeleteSession_Call struct {
 // DeleteSession is a helper method to define mock.On call
 //   - ctx context.Context
 //   - sessionID string
-func (_e *sessionStoreMock_Expecter) DeleteSession(ctx interface{}, sessionID interface{}) *sessionStoreMock_DeleteSession_Call {
+func (_e *sessionStoreMock_Expecter) DeleteSession(ctx any, sessionID any) *sessionStoreMock_DeleteSession_Call {
 	return &sessionStoreMock_DeleteSession_Call{Call: _e.mock.On("DeleteSession", ctx, sessionID)}
 }
 
@@ -312,12 +394,12 @@ func (_c *sessionStoreMock_DeleteSession_Call) Run(run func(ctx context.Context,
 	return _c
 }
 
-func (_c *sessionStoreMock_DeleteSession_Call) Return(err error) *sessionStoreMock_DeleteSession_Call {
-	_c.Call.Return(err)
+func (_c *sessionStoreMock_DeleteSession_Call) Return(b bool, err error) *sessionStoreMock_DeleteSession_Call {
+	_c.Call.Return(b, err)
 	return _c
 }
 
-func (_c *sessionStoreMock_DeleteSession_Call) RunAndReturn(run func(ctx context.Context, sessionID string) error) *sessionStoreMock_DeleteSession_Call {
+func (_c *sessionStoreMock_DeleteSession_Call) RunAndReturn(run func(ctx context.Context, sessionID string) (bool, error)) *sessionStoreMock_DeleteSession_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -359,7 +441,7 @@ type sessionStoreMock_GetByCheckpoint_Call struct {
 //   - ctx context.Context
 //   - sessionID string
 //   - checkpointID string
-func (_e *sessionStoreMock_Expecter) GetByCheckpoint(ctx interface{}, sessionID interface{}, checkpointID interface{}) *sessionStoreMock_GetByCheckpoint_Call {
+func (_e *sessionStoreMock_Expecter) GetByCheckpoint(ctx any, sessionID any, checkpointID any) *sessionStoreMock_GetByCheckpoint_Call {
 	return &sessionStoreMock_GetByCheckpoint_Call{Call: _e.mock.On("GetByCheckpoint", ctx, sessionID, checkpointID)}
 }
 
@@ -432,7 +514,7 @@ type sessionStoreMock_GetByExecutionID_Call struct {
 // GetByExecutionID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowExecutionID string
-func (_e *sessionStoreMock_Expecter) GetByExecutionID(ctx interface{}, flowExecutionID interface{}) *sessionStoreMock_GetByExecutionID_Call {
+func (_e *sessionStoreMock_Expecter) GetByExecutionID(ctx any, flowExecutionID any) *sessionStoreMock_GetByExecutionID_Call {
 	return &sessionStoreMock_GetByExecutionID_Call{Call: _e.mock.On("GetByExecutionID", ctx, flowExecutionID)}
 }
 
@@ -500,7 +582,7 @@ type sessionStoreMock_GetByHandle_Call struct {
 // GetByHandle is a helper method to define mock.On call
 //   - ctx context.Context
 //   - handleID string
-func (_e *sessionStoreMock_Expecter) GetByHandle(ctx interface{}, handleID interface{}) *sessionStoreMock_GetByHandle_Call {
+func (_e *sessionStoreMock_Expecter) GetByHandle(ctx any, handleID any) *sessionStoreMock_GetByHandle_Call {
 	return &sessionStoreMock_GetByHandle_Call{Call: _e.mock.On("GetByHandle", ctx, handleID)}
 }
 
@@ -528,6 +610,74 @@ func (_c *sessionStoreMock_GetByHandle_Call) Return(session *Session, err error)
 }
 
 func (_c *sessionStoreMock_GetByHandle_Call) RunAndReturn(run func(ctx context.Context, handleID string) (*Session, error)) *sessionStoreMock_GetByHandle_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListByAppID provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) ListByAppID(ctx context.Context, appID string) ([]Participant, error) {
+	ret := _mock.Called(ctx, appID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListByAppID")
+	}
+
+	var r0 []Participant
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]Participant, error)); ok {
+		return returnFunc(ctx, appID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []Participant); ok {
+		r0 = returnFunc(ctx, appID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Participant)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, appID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_ListByAppID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListByAppID'
+type sessionStoreMock_ListByAppID_Call struct {
+	*mock.Call
+}
+
+// ListByAppID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+func (_e *sessionStoreMock_Expecter) ListByAppID(ctx any, appID any) *sessionStoreMock_ListByAppID_Call {
+	return &sessionStoreMock_ListByAppID_Call{Call: _e.mock.On("ListByAppID", ctx, appID)}
+}
+
+func (_c *sessionStoreMock_ListByAppID_Call) Run(run func(ctx context.Context, appID string)) *sessionStoreMock_ListByAppID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_ListByAppID_Call) Return(participants []Participant, err error) *sessionStoreMock_ListByAppID_Call {
+	_c.Call.Return(participants, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_ListByAppID_Call) RunAndReturn(run func(ctx context.Context, appID string) ([]Participant, error)) *sessionStoreMock_ListByAppID_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -568,7 +718,7 @@ type sessionStoreMock_ListBySessionID_Call struct {
 // ListBySessionID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - sessionID string
-func (_e *sessionStoreMock_Expecter) ListBySessionID(ctx interface{}, sessionID interface{}) *sessionStoreMock_ListBySessionID_Call {
+func (_e *sessionStoreMock_Expecter) ListBySessionID(ctx any, sessionID any) *sessionStoreMock_ListBySessionID_Call {
 	return &sessionStoreMock_ListBySessionID_Call{Call: _e.mock.On("ListBySessionID", ctx, sessionID)}
 }
 
@@ -596,6 +746,74 @@ func (_c *sessionStoreMock_ListBySessionID_Call) Return(participants []Participa
 }
 
 func (_c *sessionStoreMock_ListBySessionID_Call) RunAndReturn(run func(ctx context.Context, sessionID string) ([]Participant, error)) *sessionStoreMock_ListBySessionID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListBySessionIDs provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) ListBySessionIDs(ctx context.Context, sessionIDs []string) ([]Participant, error) {
+	ret := _mock.Called(ctx, sessionIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListBySessionIDs")
+	}
+
+	var r0 []Participant
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) ([]Participant, error)); ok {
+		return returnFunc(ctx, sessionIDs)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) []Participant); ok {
+		r0 = returnFunc(ctx, sessionIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Participant)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []string) error); ok {
+		r1 = returnFunc(ctx, sessionIDs)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_ListBySessionIDs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListBySessionIDs'
+type sessionStoreMock_ListBySessionIDs_Call struct {
+	*mock.Call
+}
+
+// ListBySessionIDs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sessionIDs []string
+func (_e *sessionStoreMock_Expecter) ListBySessionIDs(ctx any, sessionIDs any) *sessionStoreMock_ListBySessionIDs_Call {
+	return &sessionStoreMock_ListBySessionIDs_Call{Call: _e.mock.On("ListBySessionIDs", ctx, sessionIDs)}
+}
+
+func (_c *sessionStoreMock_ListBySessionIDs_Call) Run(run func(ctx context.Context, sessionIDs []string)) *sessionStoreMock_ListBySessionIDs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []string
+		if args[1] != nil {
+			arg1 = args[1].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_ListBySessionIDs_Call) Return(participants []Participant, err error) *sessionStoreMock_ListBySessionIDs_Call {
+	_c.Call.Return(participants, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_ListBySessionIDs_Call) RunAndReturn(run func(ctx context.Context, sessionIDs []string) ([]Participant, error)) *sessionStoreMock_ListBySessionIDs_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -636,7 +854,7 @@ type sessionStoreMock_ListBySubject_Call struct {
 // ListBySubject is a helper method to define mock.On call
 //   - ctx context.Context
 //   - subjectID string
-func (_e *sessionStoreMock_Expecter) ListBySubject(ctx interface{}, subjectID interface{}) *sessionStoreMock_ListBySubject_Call {
+func (_e *sessionStoreMock_Expecter) ListBySubject(ctx any, subjectID any) *sessionStoreMock_ListBySubject_Call {
 	return &sessionStoreMock_ListBySubject_Call{Call: _e.mock.On("ListBySubject", ctx, subjectID)}
 }
 
@@ -693,7 +911,7 @@ type sessionStoreMock_Record_Call struct {
 // Record is a helper method to define mock.On call
 //   - ctx context.Context
 //   - p Participant
-func (_e *sessionStoreMock_Expecter) Record(ctx interface{}, p interface{}) *sessionStoreMock_Record_Call {
+func (_e *sessionStoreMock_Expecter) Record(ctx any, p any) *sessionStoreMock_Record_Call {
 	return &sessionStoreMock_Record_Call{Call: _e.mock.On("Record", ctx, p)}
 }
 
@@ -725,6 +943,75 @@ func (_c *sessionStoreMock_Record_Call) RunAndReturn(run func(ctx context.Contex
 	return _c
 }
 
+// TouchAuthenticatedAt provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) TouchAuthenticatedAt(ctx context.Context, sessionID string, authenticatedAt time.Time, idleExpiresAt time.Time) error {
+	ret := _mock.Called(ctx, sessionID, authenticatedAt, idleExpiresAt)
+
+	if len(ret) == 0 {
+		panic("no return value specified for TouchAuthenticatedAt")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, time.Time) error); ok {
+		r0 = returnFunc(ctx, sessionID, authenticatedAt, idleExpiresAt)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// sessionStoreMock_TouchAuthenticatedAt_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'TouchAuthenticatedAt'
+type sessionStoreMock_TouchAuthenticatedAt_Call struct {
+	*mock.Call
+}
+
+// TouchAuthenticatedAt is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sessionID string
+//   - authenticatedAt time.Time
+//   - idleExpiresAt time.Time
+func (_e *sessionStoreMock_Expecter) TouchAuthenticatedAt(ctx any, sessionID any, authenticatedAt any, idleExpiresAt any) *sessionStoreMock_TouchAuthenticatedAt_Call {
+	return &sessionStoreMock_TouchAuthenticatedAt_Call{Call: _e.mock.On("TouchAuthenticatedAt", ctx, sessionID, authenticatedAt, idleExpiresAt)}
+}
+
+func (_c *sessionStoreMock_TouchAuthenticatedAt_Call) Run(run func(ctx context.Context, sessionID string, authenticatedAt time.Time, idleExpiresAt time.Time)) *sessionStoreMock_TouchAuthenticatedAt_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		var arg3 time.Time
+		if args[3] != nil {
+			arg3 = args[3].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_TouchAuthenticatedAt_Call) Return(err error) *sessionStoreMock_TouchAuthenticatedAt_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *sessionStoreMock_TouchAuthenticatedAt_Call) RunAndReturn(run func(ctx context.Context, sessionID string, authenticatedAt time.Time, idleExpiresAt time.Time) error) *sessionStoreMock_TouchAuthenticatedAt_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Update provides a mock function for the type sessionStoreMock
 func (_mock *sessionStoreMock) Update(ctx context.Context, s *Session) error {
 	ret := _mock.Called(ctx, s)
@@ -750,7 +1037,7 @@ type sessionStoreMock_Update_Call struct {
 // Update is a helper method to define mock.On call
 //   - ctx context.Context
 //   - s *Session
-func (_e *sessionStoreMock_Expecter) Update(ctx interface{}, s interface{}) *sessionStoreMock_Update_Call {
+func (_e *sessionStoreMock_Expecter) Update(ctx any, s any) *sessionStoreMock_Update_Call {
 	return &sessionStoreMock_Update_Call{Call: _e.mock.On("Update", ctx, s)}
 }
 

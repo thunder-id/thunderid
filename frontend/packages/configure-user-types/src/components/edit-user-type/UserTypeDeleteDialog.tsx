@@ -58,7 +58,7 @@ export default function UserTypeDeleteDialog({
 
   return (
     <Dialog open={open} onClose={handleCancel} maxWidth="sm" fullWidth>
-      <DialogTitle>{t('userTypes:delete.title', 'Delete User Type')}</DialogTitle>
+      <DialogTitle>{t('userTypes:delete.title', 'Delete user type')}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{mb: 2}}>
           {t(

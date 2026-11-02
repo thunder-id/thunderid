@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import type {User, ApiPaginationLink} from '@thunderid/types';
@@ -100,7 +100,7 @@ export interface BasePropertyDefinition {
  * String property definition
  */
 export interface StringPropertyDefinition extends BasePropertyDefinition {
-  type: 'string';
+  type: 'string' | 'email' | 'mobile';
   credential?: boolean;
   unique?: boolean;
   enum?: string[];
@@ -159,7 +159,8 @@ export type UserTypeDefinition = Record<string, PropertyDefinition>;
  */
 export interface ApiUserType {
   id: string;
-  name: string;
+  handle: string;
+  displayName: string;
   schema: UserTypeDefinition;
 }
 
@@ -183,7 +184,8 @@ export interface UserTypeListResponse {
 
 export interface SchemaInterface {
   id: string;
-  name: string;
+  handle: string;
+  displayName: string;
   ouId: string;
 }
 

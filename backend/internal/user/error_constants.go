@@ -300,6 +300,156 @@ var (
 			DefaultValue: "The credential updates through this endpoint are not allowed",
 		},
 	}
+
+	// Sharing policy errors. Each carries the sharing framework's own description through, so a
+	// refusal keeps the half that says what is wrong.
+
+	// ErrorInvalidSharingPolicy is returned when a sharing policy is not one the issuing
+	// organization unit may write.
+	ErrorInvalidSharingPolicy = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1029",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_sharing_policy",
+			DefaultValue: "Invalid sharing policy",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_sharing_policy_description",
+			DefaultValue: "The sharing policy is not one the issuing organization unit may write",
+		},
+	}
+	// ErrorSharingPolicyNotFound is returned when the user holds no policy under the requested id.
+	// A policy belonging to another resource answers the same way.
+	ErrorSharingPolicyNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.sharing_policy_not_found",
+			DefaultValue: "Sharing policy not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.sharing_policy_not_found_description",
+			DefaultValue: "The user has no sharing policy with the specified id",
+		},
+	}
+	// ErrorSharingPolicyExists is returned when the organization unit already holds a policy for
+	// this user.
+	ErrorSharingPolicyExists = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.sharing_policy_exists",
+			DefaultValue: "Sharing policy already exists",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.userservice.sharing_policy_exists_description",
+			DefaultValue: "This organization unit already has a sharing policy for the user; " +
+				"edit it instead",
+		},
+	}
+	// ErrorSharingPolicyVersionMismatch is returned when an edit names a version the policy has
+	// moved past.
+	ErrorSharingPolicyVersionMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1032",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.sharing_policy_version_mismatch",
+			DefaultValue: "Sharing policy version mismatch",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.userservice.sharing_policy_version_mismatch_description",
+			DefaultValue: "The sharing policy changed since it was read; read it again and " +
+				"retry the edit",
+		},
+	}
+	// ErrorSharingPolicyDeclared is returned when an edit or a delete is aimed at a policy a
+	// resource file declares.
+	ErrorSharingPolicyDeclared = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1033",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.sharing_policy_declared",
+			DefaultValue: "Sharing policy is declared",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.userservice.sharing_policy_declared_description",
+			DefaultValue: "The sharing policy is declared in a resource file and cannot be " +
+				"changed through the API",
+		},
+	}
+	// ErrorUserNotSharedToOU is returned when an organization unit cannot see the user, so there
+	// are no terms to resolve for it.
+	ErrorUserNotSharedToOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1034",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.user_not_shared_to_ou",
+			DefaultValue: "User is not shared to the organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.userservice.user_not_shared_to_ou_description",
+			DefaultValue: "No sharing policy reaches the specified organization unit, so the user " +
+				"is not available there",
+		},
+	}
+	// ErrorMissingOUIDParameter is returned when an overlay-rules request does not say which
+	// organization unit to resolve for.
+	ErrorMissingOUIDParameter = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1035",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.missing_ou_id_parameter",
+			DefaultValue: "Missing required parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.missing_ou_id_parameter_description",
+			DefaultValue: "The 'ouId' query parameter is required",
+		},
+	}
+	// ErrorInvalidScope is returned when the accessible organization unit listing names a scope it
+	// does not offer.
+	ErrorInvalidScope = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1036",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_scope_parameter",
+			DefaultValue: "Invalid scope parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_scope_parameter_description",
+			DefaultValue: "The scope parameter, when given, must be siblings",
+		},
+	}
+	// ErrorDeploymentWideSharingNotAllowed is returned when a create through the API states a section
+	// whose reach is not bounded by where the issuing organization unit sits in the tree.
+	ErrorDeploymentWideSharingNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1037",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.deployment_wide_sharing_not_allowed",
+			DefaultValue: "Deployment-wide sharing is not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.userservice.deployment_wide_sharing_not_allowed_description",
+			DefaultValue: "A policy reaching all organization units or the roots of all other trees " +
+				"can only be created from a declarative resource file or an import",
+		},
+	}
+	// ErrorSharedUserCannotMove is returned when a user that sharing policies govern is moved to
+	// another organization unit.
+	ErrorSharedUserCannotMove = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1038",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.shared_user_cannot_move",
+			DefaultValue: "User with sharing policies cannot be moved",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.userservice.shared_user_cannot_move_description",
+			DefaultValue: "The user is shared into other organization units. Delete its sharing policies " +
+				"before moving it to another organization unit",
+		},
+	}
 )
 
 // Error variables

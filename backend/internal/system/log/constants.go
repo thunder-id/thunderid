@@ -16,4 +16,6 @@ const (
 	LoggerKeyTraceID = "trace_id"
 	// LoggerKeyUserID is the key used to identify the user ID in the logger.
 	LoggerKeyUserID = "userID"
+	// LoggerKeyEntityID is the key used to identify the ID of an entity of any category in the logger.
+	LoggerKeyEntityID = "entityID"
 )

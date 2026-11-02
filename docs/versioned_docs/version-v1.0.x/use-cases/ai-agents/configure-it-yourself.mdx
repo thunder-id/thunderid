@@ -7,7 +7,7 @@ sidebar_position: 6
 
 # Configure It Yourself
 
-Use this page to build the Wayfinder AI agent setup manually instead of importing the declarative bundle from [Try It Out](../try-it-out/). Pick this path when you want to see exactly what gets created, adapt the setup to your own project, or learn the moving parts step by step. The end state is identical. Every walkthrough works against either path.
+Use this page to build the Wayfinder AI agent setup manually instead of importing the declarative bundle from [See It in a Sample App](../try-it-out/). Pick this path when you want to see exactly what gets created, adapt the setup to your own project, or learn the moving parts step by step. The end state is identical. Every walkthrough works against either path.
 
 The first section is the shared foundation, required regardless of which walkthroughs you plan to exercise. The remaining sections build on it.
 
@@ -19,6 +19,14 @@ The first section is the shared foundation, required regardless of which walkthr
 
 The foundation creates the two resource servers, three roles, two demo users, and the OAuth application that Wayfinder Web uses to sign users in.
 
+Every API call below needs an access token with the `system` scope. Obtain one for an administrator and export it, so the calls that follow can reuse it:
+
+```bash
+export TOKEN="<access-token>"
+```
+
+Each call then sends `-H "Authorization: Bearer $TOKEN"`.
+
 1. **Create the `wayfinder-agent` resource server.**
 
    Invoke the **Resource Management API** to create the resource server. Set the identifier to `http://localhost:8790/chat`, the chat API audience. Replace `<organization-unit-id>` with the ID of your default organization unit (look it up via `GET /organization-units`):
@@ -26,7 +34,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    ```bash
    curl -kL -X POST https://localhost:8090/resource-servers \
      -H 'Content-Type: application/json' \
-     -H 'Authorization: Bearer <access-token>' \
+     -H "Authorization: Bearer $TOKEN" \
      -d '{
        "name": "Wayfinder Agent",
        "description": "Controls access to the Wayfinder Concierge agent",
@@ -41,7 +49,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    ```bash
    curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-agent-rs-id>/resources \
      -H 'Content-Type: application/json' \
-     -H 'Authorization: Bearer <access-token>' \
+     -H "Authorization: Bearer $TOKEN" \
      -d '{ "name": "Agent", "handle": "agent" }'
    ```
 
@@ -50,7 +58,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    ```bash
    curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-agent-rs-id>/resources/<agent-resource-id>/actions \
      -H 'Content-Type: application/json' \
-     -H 'Authorization: Bearer <access-token>' \
+     -H "Authorization: Bearer $TOKEN" \
      -d '{ "name": "Access", "handle": "access" }'
    ```
 
@@ -67,12 +75,11 @@ The foundation creates the two resource servers, three roles, two demo users, an
    ```bash
    curl -kL -X POST https://localhost:8090/resource-servers \
      -H 'Content-Type: application/json' \
-     -H 'Authorization: Bearer <access-token>' \
+     -H "Authorization: Bearer $TOKEN" \
      -d '{
        "name": "Wayfinder Booking",
        "description": "Protects the Wayfinder booking domain (REST and MCP surfaces)",
        "identifier": "http://localhost:8787/mcp",
-       "handle": "wayfinder",
        "ouId": "<organization-unit-id>",
        "delimiter": ":"
      }'
@@ -83,7 +90,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    ```bash
    curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-rs-id>/resources \
      -H 'Content-Type: application/json' \
-     -H 'Authorization: Bearer <access-token>' \
+     -H "Authorization: Bearer $TOKEN" \
      -d '{ "name": "Booking", "handle": "booking" }'
    ```
 
@@ -92,7 +99,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    ```bash
    curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-rs-id>/resources/<booking-resource-id>/actions \
      -H 'Content-Type: application/json' \
-     -H 'Authorization: Bearer <access-token>' \
+     -H "Authorization: Bearer $TOKEN" \
      -d '{ "name": "Read", "handle": "read" }'
    ```
 
@@ -108,7 +115,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    ```bash
    curl -kL -X PUT https://localhost:8090/server-config/defaultResourceServer \
      -H 'Content-Type: application/json' \
-     -H 'Authorization: Bearer <access-token>' \
+     -H "Authorization: Bearer $TOKEN" \
      -d '{ "resourceServerId": "<wayfinder-rs-id>" }'
    ```
 
@@ -119,7 +126,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    ```bash
    curl -kL -X POST https://localhost:8090/roles \
      -H 'Content-Type: application/json' \
-     -H 'Authorization: Bearer <access-token>' \
+     -H "Authorization: Bearer $TOKEN" \
      -d '{
        "name": "Chat User",
        "description": "Grants access to use the Wayfinder Concierge agent",
@@ -140,7 +147,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    ```bash
    curl -kL -X POST https://localhost:8090/roles \
      -H 'Content-Type: application/json' \
-     -H 'Authorization: Bearer <access-token>' \
+     -H "Authorization: Bearer $TOKEN" \
      -d '{
        "name": "Booking User",
        "description": "Grants booking permissions for the Wayfinder sample",
@@ -161,7 +168,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    ```bash
    curl -kL -X POST https://localhost:8090/roles \
      -H 'Content-Type: application/json' \
-     -H 'Authorization: Bearer <access-token>' \
+     -H "Authorization: Bearer $TOKEN" \
      -d '{
        "name": "Recommender",
        "description": "Grants the booking:recommend permission to the Wayfinder Concierge",
@@ -230,10 +237,10 @@ The Concierge runs as a first-class agent in <ProductName />. It needs its own c
    Navigate to **Agents** → **Add Agent**. Name the agent `WAYFINDER-CONCIERGE`, then:
 
    - **Capture the client secret.** <ProductName /> prints it only once. You will use it in `ai-agent/.env`.
-   - Under **Protocol** settings, enable the **Authorization Code** grant. Client Credentials is on by default for agents.
-   - Add the redirect URI `{{WayFinderSampleUrl}}/agent-callback`.
+   - On the **Advanced** tab, under **Operating Mode**, turn on **Delegated mode**. That adds the `authorization_code` grant the on-behalf-of flow needs. Client credentials stays on either way.
+   - Still on **Advanced**, add the redirect URI `{{WayFinderSampleUrl}}/agent-callback`.
 
-   See [Manage Agents](../../../guides/agents/manage-agents) and [Agent Authentication](../../../guides/agents/authentication).
+   See [Create and Manage Your Agent](../../../guides/agents/manage-agents) and [Act on Behalf of a User](../../../guides/agents/authentication/on-behalf-of-user).
 
 2. **Assign the `Recommender` role to the agent.**
 
@@ -253,7 +260,7 @@ Navigate to **Flows** and create a flow with these steps:
 - A `TASK_EXECUTION` step running the `ConsentExecutor`, with a `PROMPT` step for the consent screen on its `onIncomplete` branch.
 - A `TASK_EXECUTION` step running the `AuthAssertExecutor` on success.
 
-Attach the flow to the `WAYFINDER-CONCIERGE` agent (set `auth_flow_handle` on the agent to the flow's handle).
+Attach the flow to the `WAYFINDER-CONCIERGE` agent: set `authFlowHandle` in a declarative file, or `authFlowId` through the management API.
 
 The complete flow definition is in the Wayfinder sample distribution at `thunderid-config/redirect/thunderid-config.yaml` under the `wayfinder-agent-auth-flow` entry: copy it as a reference.
 

@@ -66,6 +66,21 @@ var (
 		},
 	}
 
+	// errorUnsupportedSigningAlg is returned when the client's configured
+	// userinfo_signed_response_alg has no matching signing key on this server.
+	errorUnsupportedSigningAlg = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "invalid_request",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userinfoservice.unsupported_signing_alg",
+			DefaultValue: "Unsupported signing algorithm",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userinfoservice.unsupported_signing_alg_description",
+			DefaultValue: "The configured userinfo_signed_response_alg is not supported by this server",
+		},
+	}
+
 	// errorBearerDowngrade is returned when a DPoP-bound access token is presented
 	// under the Bearer scheme.
 	errorBearerDowngrade = tidcommon.ServiceError{

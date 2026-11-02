@@ -18,10 +18,19 @@ func NewActorProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ActorProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ActorProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -67,7 +76,7 @@ type ActorProviderMock_AuthenticateActor_Call struct {
 //   - ctx context.Context
 //   - identifiers map[string]interface{}
 //   - credentials map[string]interface{}
-func (_e *ActorProviderMock_Expecter) AuthenticateActor(ctx interface{}, identifiers interface{}, credentials interface{}) *ActorProviderMock_AuthenticateActor_Call {
+func (_e *ActorProviderMock_Expecter) AuthenticateActor(ctx any, identifiers any, credentials any) *ActorProviderMock_AuthenticateActor_Call {
 	return &ActorProviderMock_AuthenticateActor_Call{Call: _e.mock.On("AuthenticateActor", ctx, identifiers, credentials)}
 }
 
@@ -141,7 +150,7 @@ type ActorProviderMock_GetActor_Call struct {
 
 // GetActor is a helper method to define mock.On call
 //   - actorID string
-func (_e *ActorProviderMock_Expecter) GetActor(actorID interface{}) *ActorProviderMock_GetActor_Call {
+func (_e *ActorProviderMock_Expecter) GetActor(actorID any) *ActorProviderMock_GetActor_Call {
 	return &ActorProviderMock_GetActor_Call{Call: _e.mock.On("GetActor", actorID)}
 }
 
@@ -205,7 +214,7 @@ type ActorProviderMock_GetActorGroups_Call struct {
 
 // GetActorGroups is a helper method to define mock.On call
 //   - actorID string
-func (_e *ActorProviderMock_Expecter) GetActorGroups(actorID interface{}) *ActorProviderMock_GetActorGroups_Call {
+func (_e *ActorProviderMock_Expecter) GetActorGroups(actorID any) *ActorProviderMock_GetActorGroups_Call {
 	return &ActorProviderMock_GetActorGroups_Call{Call: _e.mock.On("GetActorGroups", actorID)}
 }
 
@@ -270,7 +279,7 @@ type ActorProviderMock_GetActorRoles_Call struct {
 // GetActorRoles is a helper method to define mock.On call
 //   - actorID string
 //   - groupIDs []string
-func (_e *ActorProviderMock_Expecter) GetActorRoles(actorID interface{}, groupIDs interface{}) *ActorProviderMock_GetActorRoles_Call {
+func (_e *ActorProviderMock_Expecter) GetActorRoles(actorID any, groupIDs any) *ActorProviderMock_GetActorRoles_Call {
 	return &ActorProviderMock_GetActorRoles_Call{Call: _e.mock.On("GetActorRoles", actorID, groupIDs)}
 }
 
@@ -340,7 +349,7 @@ type ActorProviderMock_GetInboundClientByID_Call struct {
 // GetInboundClientByID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *ActorProviderMock_Expecter) GetInboundClientByID(ctx interface{}, id interface{}) *ActorProviderMock_GetInboundClientByID_Call {
+func (_e *ActorProviderMock_Expecter) GetInboundClientByID(ctx any, id any) *ActorProviderMock_GetInboundClientByID_Call {
 	return &ActorProviderMock_GetInboundClientByID_Call{Call: _e.mock.On("GetInboundClientByID", ctx, id)}
 }
 
@@ -410,7 +419,7 @@ type ActorProviderMock_GetOAuthClientByClientID_Call struct {
 // GetOAuthClientByClientID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - clientID string
-func (_e *ActorProviderMock_Expecter) GetOAuthClientByClientID(ctx interface{}, clientID interface{}) *ActorProviderMock_GetOAuthClientByClientID_Call {
+func (_e *ActorProviderMock_Expecter) GetOAuthClientByClientID(ctx any, clientID any) *ActorProviderMock_GetOAuthClientByClientID_Call {
 	return &ActorProviderMock_GetOAuthClientByClientID_Call{Call: _e.mock.On("GetOAuthClientByClientID", ctx, clientID)}
 }
 
@@ -438,6 +447,76 @@ func (_c *ActorProviderMock_GetOAuthClientByClientID_Call) Return(oAuthClient *p
 }
 
 func (_c *ActorProviderMock_GetOAuthClientByClientID_Call) RunAndReturn(run func(ctx context.Context, clientID string) (*providers.OAuthClient, *common.ServiceError)) *ActorProviderMock_GetOAuthClientByClientID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetOAuthClientByID provides a mock function for the type ActorProviderMock
+func (_mock *ActorProviderMock) GetOAuthClientByID(ctx context.Context, id string) (*providers.OAuthClient, *common.ServiceError) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOAuthClientByID")
+	}
+
+	var r0 *providers.OAuthClient
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*providers.OAuthClient, *common.ServiceError)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *providers.OAuthClient); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.OAuthClient)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ActorProviderMock_GetOAuthClientByID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOAuthClientByID'
+type ActorProviderMock_GetOAuthClientByID_Call struct {
+	*mock.Call
+}
+
+// GetOAuthClientByID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+func (_e *ActorProviderMock_Expecter) GetOAuthClientByID(ctx any, id any) *ActorProviderMock_GetOAuthClientByID_Call {
+	return &ActorProviderMock_GetOAuthClientByID_Call{Call: _e.mock.On("GetOAuthClientByID", ctx, id)}
+}
+
+func (_c *ActorProviderMock_GetOAuthClientByID_Call) Run(run func(ctx context.Context, id string)) *ActorProviderMock_GetOAuthClientByID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderMock_GetOAuthClientByID_Call) Return(oAuthClient *providers.OAuthClient, serviceError *common.ServiceError) *ActorProviderMock_GetOAuthClientByID_Call {
+	_c.Call.Return(oAuthClient, serviceError)
+	return _c
+}
+
+func (_c *ActorProviderMock_GetOAuthClientByID_Call) RunAndReturn(run func(ctx context.Context, id string) (*providers.OAuthClient, *common.ServiceError)) *ActorProviderMock_GetOAuthClientByID_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -480,7 +559,7 @@ type ActorProviderMock_GetOAuthProfileByID_Call struct {
 // GetOAuthProfileByID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *ActorProviderMock_Expecter) GetOAuthProfileByID(ctx interface{}, id interface{}) *ActorProviderMock_GetOAuthProfileByID_Call {
+func (_e *ActorProviderMock_Expecter) GetOAuthProfileByID(ctx any, id any) *ActorProviderMock_GetOAuthProfileByID_Call {
 	return &ActorProviderMock_GetOAuthProfileByID_Call{Call: _e.mock.On("GetOAuthProfileByID", ctx, id)}
 }
 
@@ -508,6 +587,144 @@ func (_c *ActorProviderMock_GetOAuthProfileByID_Call) Return(oAuthProfile *provi
 }
 
 func (_c *ActorProviderMock_GetOAuthProfileByID_Call) RunAndReturn(run func(ctx context.Context, id string) (*providers.OAuthProfile, *common.ServiceError)) *ActorProviderMock_GetOAuthProfileByID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetTransitiveGroupAncestors provides a mock function for the type ActorProviderMock
+func (_mock *ActorProviderMock) GetTransitiveGroupAncestors(groupID string) ([]string, *common.ServiceError) {
+	ret := _mock.Called(groupID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTransitiveGroupAncestors")
+	}
+
+	var r0 []string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(string) ([]string, *common.ServiceError)); ok {
+		return returnFunc(groupID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string) []string); ok {
+		r0 = returnFunc(groupID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(string) *common.ServiceError); ok {
+		r1 = returnFunc(groupID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ActorProviderMock_GetTransitiveGroupAncestors_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTransitiveGroupAncestors'
+type ActorProviderMock_GetTransitiveGroupAncestors_Call struct {
+	*mock.Call
+}
+
+// GetTransitiveGroupAncestors is a helper method to define mock.On call
+//   - groupID string
+func (_e *ActorProviderMock_Expecter) GetTransitiveGroupAncestors(groupID any) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
+	return &ActorProviderMock_GetTransitiveGroupAncestors_Call{Call: _e.mock.On("GetTransitiveGroupAncestors", groupID)}
+}
+
+func (_c *ActorProviderMock_GetTransitiveGroupAncestors_Call) Run(run func(groupID string)) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderMock_GetTransitiveGroupAncestors_Call) Return(strings []string, serviceError *common.ServiceError) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
+	_c.Call.Return(strings, serviceError)
+	return _c
+}
+
+func (_c *ActorProviderMock_GetTransitiveGroupAncestors_Call) RunAndReturn(run func(groupID string) ([]string, *common.ServiceError)) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsOAuthClientAccessibleFromOU provides a mock function for the type ActorProviderMock
+func (_mock *ActorProviderMock) IsOAuthClientAccessibleFromOU(ctx context.Context, client *providers.OAuthClient, ouID string) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx, client, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsOAuthClientAccessibleFromOU")
+	}
+
+	var r0 bool
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.OAuthClient, string) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx, client, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.OAuthClient, string) bool); ok {
+		r0 = returnFunc(ctx, client, ouID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *providers.OAuthClient, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, client, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ActorProviderMock_IsOAuthClientAccessibleFromOU_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsOAuthClientAccessibleFromOU'
+type ActorProviderMock_IsOAuthClientAccessibleFromOU_Call struct {
+	*mock.Call
+}
+
+// IsOAuthClientAccessibleFromOU is a helper method to define mock.On call
+//   - ctx context.Context
+//   - client *providers.OAuthClient
+//   - ouID string
+func (_e *ActorProviderMock_Expecter) IsOAuthClientAccessibleFromOU(ctx any, client any, ouID any) *ActorProviderMock_IsOAuthClientAccessibleFromOU_Call {
+	return &ActorProviderMock_IsOAuthClientAccessibleFromOU_Call{Call: _e.mock.On("IsOAuthClientAccessibleFromOU", ctx, client, ouID)}
+}
+
+func (_c *ActorProviderMock_IsOAuthClientAccessibleFromOU_Call) Run(run func(ctx context.Context, client *providers.OAuthClient, ouID string)) *ActorProviderMock_IsOAuthClientAccessibleFromOU_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *providers.OAuthClient
+		if args[1] != nil {
+			arg1 = args[1].(*providers.OAuthClient)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderMock_IsOAuthClientAccessibleFromOU_Call) Return(b bool, serviceError *common.ServiceError) *ActorProviderMock_IsOAuthClientAccessibleFromOU_Call {
+	_c.Call.Return(b, serviceError)
+	return _c
+}
+
+func (_c *ActorProviderMock_IsOAuthClientAccessibleFromOU_Call) RunAndReturn(run func(ctx context.Context, client *providers.OAuthClient, ouID string) (bool, *common.ServiceError)) *ActorProviderMock_IsOAuthClientAccessibleFromOU_Call {
 	_c.Call.Return(run)
 	return _c
 }

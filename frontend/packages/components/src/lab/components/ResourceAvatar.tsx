@@ -302,7 +302,7 @@ export default function ResourceAvatar({
       <Dialog open={isDialogOpen} onClose={handleCancel} maxWidth="sm" fullWidth>
         <DialogTitle>
           <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <Typography variant="h5">{t('resource_logo_dialog.title', 'Choose a Logo')}</Typography>
+            <Typography variant="h5">{t('resource_logo_dialog.title', 'Choose a logo')}</Typography>
             <IconButton
               aria-label={t('resource_logo_dialog.actions.close', 'Close')}
               onClick={handleCancel}

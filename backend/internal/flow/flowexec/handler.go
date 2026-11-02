@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/session"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
@@ -20,12 +22,14 @@ import (
 // FlowExecutionHandler handles flow execution requests.
 type flowExecutionHandler struct {
 	flowExecService FlowExecServiceInterface
-	ssoTransport    session.HandleTransport
-	// ssoHandleTTL bounds the per-flow SSO handle cookie to the session's configured absolute lifetime.
+	// ssoTransport carries the SSO handle to and from the client. It is nil when the deployment has
+	// no SSO session store.
+	ssoTransport session.HandleTransportInterface
+	// ssoHandleTTL bounds the per-flow SSO handle to the session's configured absolute lifetime.
 	ssoHandleTTL time.Duration
 }
 
-func newFlowExecutionHandler(flowExecService FlowExecServiceInterface, ssoTransport session.HandleTransport,
+func newFlowExecutionHandler(flowExecService FlowExecServiceInterface, ssoTransport session.HandleTransportInterface,
 	ssoHandleTTL time.Duration) *flowExecutionHandler {
 	return &flowExecutionHandler{
 		flowExecService: flowExecService,
@@ -55,20 +59,42 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	challengeToken := sysutils.SanitizeString(flowR.ChallengeToken)
 	flowSecret := sysutils.SanitizeString(r.Header.Get(serverconst.FlowSecretHeaderName))
 	attestationToken := sysutils.SanitizeString(r.Header.Get(serverconst.AttestationTokenHeaderName))
+	sessionData := make([]SessionData, 0, len(flowR.SessionData))
+	for _, entry := range flowR.SessionData {
+		flowIdentifier := sysutils.SanitizeString(entry.FlowIdentifier)
+		sessionHandle := sysutils.SanitizeString(entry.SessionHandle)
+		if flowIdentifier == "" || sessionHandle == "" {
+			sysutils.WriteErrorResponse(r.Context(), w, http.StatusBadRequest, APIErrorInvalidSessionData)
+			return
+		}
+		sessionData = append(sessionData, SessionData{FlowIdentifier: flowIdentifier, SessionHandle: sessionHandle})
+	}
 
-	// Read the inbound SSO transport inputs (per-flow handle cookies) and make
-	// them available to the flow service, which selects the handle once the flow is known.
-	ctx := session.WithInbound(r.Context(), h.ssoTransport.Read(r))
+	// Read the inbound SSO transport inputs and make them available to the flow service, which
+	// selects the handle once the flow is known.
+	ctx := r.Context()
+	ssoExchange := &session.Exchange{Request: r, Response: w}
+	if h.ssoTransport != nil {
+		ctx = session.WithInbound(ctx, h.ssoTransport.Read(ssoExchange))
+	}
+
+	// Carry the current step's request headers and query params so flow executors can publish them
+	// via {{request(current.*)}} placeholders. Credential-bearing headers and query params are
+	// stripped at this boundary; the Host is folded in so {{request(current.header.Host)}} resolves.
+	ctx = common.WithCurrentRequest(ctx, &providers.CurrentRequest{
+		Headers:     sysutils.FilterSensitiveHeaders(sysutils.HeadersWithHost(r)),
+		QueryParams: sysutils.FilterSensitiveQueryParams(r.URL.Query()),
+	})
 
 	var flowStep *FlowStep
 	var flowErr *tidcommon.ServiceError
 	if flowID != "" {
 		flowStep, flowErr = h.flowExecService.ExecuteByID(
-			ctx, flowID, executionID, verbose, action, inputs, challengeToken)
+			ctx, flowID, executionID, verbose, action, inputs, challengeToken, sessionData)
 	} else {
 		flowStep, flowErr = h.flowExecService.Execute(
 			ctx, appID, executionID, flowTypeStr, verbose, action, inputs, challengeToken,
-			flowSecret, attestationToken)
+			flowSecret, attestationToken, sessionData)
 	}
 
 	if flowErr != nil {
@@ -87,30 +113,32 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 		stepErrorResp = &resp
 	}
 
-	// Emit the per-flow SSO handle cookie when the flow minted a new session handle. This must
-	// happen before the response body is written.
-	if flowStep.SSOHandleOut != "" && flowStep.SSOFlowID != "" {
-		// The handle has no TTL of its own; bound the cookie to the session's configured absolute
-		// lifetime.
-		h.ssoTransport.Write(w, session.CookieName(flowStep.SSOFlowID), flowStep.SSOHandleOut,
-			h.ssoHandleTTL)
-	}
+	if h.ssoTransport != nil {
+		// Emit the per-flow SSO handle when the flow minted a new session handle. This must happen
+		// before the response body is written.
+		if flowStep.SSOHandleOut != "" && flowStep.SSOFlowID != "" {
+			// The handle has no TTL of its own; bound it to the session's configured absolute lifetime.
+			h.ssoTransport.Write(ssoExchange, flowStep.SSOFlowID, flowStep.SSOHandleOut, h.ssoHandleTTL)
+		}
 
-	// Clear the per-flow SSO cookie when the flow terminated the session (sign-out).
-	if flowStep.SSOClearFlowID != "" {
-		h.ssoTransport.Clear(w, session.CookieName(flowStep.SSOClearFlowID))
+		// Clear the per-flow SSO handle when the flow terminated the session (sign-out).
+		if flowStep.SSOClearFlowID != "" {
+			h.ssoTransport.Clear(ssoExchange, flowStep.SSOClearFlowID)
+		}
 	}
 
 	flowResp := FlowResponse{
-		ExecutionID:    flowStep.ExecutionID,
-		StepID:         flowStep.StepID,
-		FlowStatus:     string(flowStep.Status),
-		Type:           string(flowStep.Type),
-		Data:           flowStep.Data,
-		Assertion:      flowStep.Assertion,
-		ErrorAssertion: flowStep.ErrorAssertion,
-		Error:          stepErrorResp,
-		ChallengeToken: flowStep.ChallengeToken,
+		ExecutionID:     flowStep.ExecutionID,
+		StepID:          flowStep.StepID,
+		FlowStatus:      string(flowStep.Status),
+		Type:            string(flowStep.Type),
+		Data:            flowStep.Data,
+		Assertion:       flowStep.Assertion,
+		ErrorAssertion:  flowStep.ErrorAssertion,
+		Error:           stepErrorResp,
+		ChallengeToken:  flowStep.ChallengeToken,
+		SessionData:     flowStep.SessionData,
+		ClearedSessions: flowStep.ClearedSessions,
 	}
 
 	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusOK, flowResp)
@@ -140,7 +168,7 @@ func handleFlowError(ctx context.Context, w http.ResponseWriter, flowErr *tidcom
 	if flowErr.Type == tidcommon.ClientErrorType {
 		switch flowErr.Code {
 		case ErrorDirectFlowInitiationNotPermitted.Code, ErrorFlowIDExecutionNotPermitted.Code,
-			ErrorAdministrationPermissionRequired.Code:
+			ErrorAdministrationPermissionRequired.Code, ErrorFlowApplicationNotUsable.Code:
 			statusCode = http.StatusForbidden
 		case ErrorFlowSecretRequired.Code, ErrorFlowSecretInvalid.Code,
 			ErrorAttestationRequired.Code, ErrorAttestationInvalid.Code,

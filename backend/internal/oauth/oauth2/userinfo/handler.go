@@ -118,11 +118,11 @@ func (h *userInfoHandler) writeUserInfoResponse(ctx context.Context, w http.Resp
 	case providers.UserInfoResponseTypeJWS:
 		w.Header().Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeJWT)
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(result.JWTBody))
+		_, _ = w.Write([]byte(result.JWTBody)) //nolint:gosec // G705: server-issued JWT, not HTML
 	case providers.UserInfoResponseTypeJWE, providers.UserInfoResponseTypeNESTEDJWT:
 		w.Header().Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeJWT)
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(result.JWTBody))
+		_, _ = w.Write([]byte(result.JWTBody)) //nolint:gosec // G705: server-issued JWT, not HTML
 	default:
 		utils.WriteSuccessResponse(ctx, w, http.StatusOK, result.JSONBody)
 	}
@@ -139,9 +139,13 @@ func (h *userInfoHandler) writeServiceErrorResponse(ctx context.Context,
 
 	switch svcErr.Type {
 	case tidcommon.ClientErrorType:
-		if svcErr.Code == errorInsufficientScope.Code {
+		switch svcErr.Code {
+		case errorInsufficientScope.Code:
 			statusCode = http.StatusForbidden
-		} else {
+		case errorUnsupportedSigningAlg.Code:
+			// The token is valid; the client's registered signing algorithm is not usable.
+			statusCode = http.StatusBadRequest
+		default:
 			statusCode = http.StatusUnauthorized
 		}
 	case tidcommon.ServerErrorType:

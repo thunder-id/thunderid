@@ -9,7 +9,7 @@ packages:
 
 strictPeerDependencies: false
 autoInstallPeers: true
-enablePrePostScripts: true
+enablePrePostScripts: false
 verifyDepsBeforeRun: false
 
 allowBuilds:
@@ -36,8 +36,8 @@ catalog:
   '@testing-library/jest-dom': 6.9.1
   '@testing-library/react': 16.3.0
   '@testing-library/user-event': 14.6.1
-  '@thunderid/react': 1.0.3
-  '@thunderid/react-router': 1.0.3
+  '@thunderid/react': 1.11.3
+  '@thunderid/react-router': 1.10.3
   '@types/lodash-es': 4.17.12
   '@types/node': 24.7.2
   '@types/react': 19.2.14
@@ -47,12 +47,12 @@ catalog:
   '@vitejs/plugin-react': 6.0.2
   '@vitest/browser-playwright': 4.1.10
   '@vitest/coverage-istanbul': 4.1.10
-  '@wso2/oxygen-ui': 0.13.1
-  '@wso2/oxygen-ui-icons-react': 0.13.1
+  '@wso2/oxygen-ui': 0.17.0
+  '@wso2/oxygen-ui-icons-react': 0.17.0
   babel-plugin-react-compiler: 19.1.0-rc.3
   clsx: 2.1.1
   dayjs: 1.11.18
-  dompurify: 3.4.12
+  dompurify: 3.4.17
   eslint: 9.39.5
   framer-motion: 12.39.0
   globals: 16.4.0
@@ -60,7 +60,7 @@ catalog:
   jsdom: 27.0.1
   lodash-es: 4.18.1
   lucide-react: 0.545.0
-  next: 16.2.12
+  next: 16.4.1
   playwright: 1.60.0
   prettier: 3.6.2
   react: 19.2.3
@@ -75,15 +75,17 @@ catalog:
   turbo: 2.10.2
   typescript: 5.9.3
   typescript-eslint: 8.57.2
-  vite: 8.0.16
+  vite: 8.1.6
   vite-plugin-svgr: 5.2.0
   vitest: 4.1.10
-  zod: 4.3.6
+  zod: 4.6.6
 
 overrides:
   # JUSTIFICATION: Fixes GHSA-w7jw-789q-3m8p and GHSA-395f-4hp3-45gv (quadratic-complexity DoS in
-  # shell-quote parse()). Transitive via docusaurus dev server (launch-editor), so overridden globally.
-  shell-quote: '>=1.8.5'
+  # shell-quote parse()), and GHSA-pqg4-j6r4-53mv (command injection in quote() via a line terminator
+  # in a token after a `{ comment }` token, fixed in 1.11.0). Transitive via docusaurus dev server
+  # (launch-editor), so overridden globally.
+  shell-quote: '>=1.11.0'
   # JUSTIFICATION: The `ws` package is a transitive dependency of `docusaurus/core -> webpack-bundle-analyzer` and it requires a major version bump.
   ws: '>=8.21.0'
   # JUSTIFICATION: Fixes GHSA-xv26-6w52-cph6 — websocket-driver message corruption via protocol length headers, transitive via Docusaurus dev server sockjs/faye-websocket.
@@ -98,12 +100,24 @@ overrides:
   vite: 'catalog:'
   # JUSTIFICATION: Fixes GHSA-fx2h-pf6j-xcff — vite `server.fs.deny` bypass on Windows alternate paths.
   vite@>=8.0.0 <=8.0.15: '>=8.0.16'
-  vue: 3.5.34
+  # JUSTIFICATION: Fixes GHSA-g2v6-rqmx-r4w6, XSS via a missing carriage return in
+  # @vue/server-renderer's attribute-name blacklist. Keep Vue and its renderer aligned.
+  vue: 3.5.42
+  # JUSTIFICATION: Fixes GHSA-5gmw-xhrv-c9v3 and GHSA-85c8-ppgw-ccpr, prototype-pollution
+  # gadgets leading to RCE in Tinypool worker and run options. Docusaurus still requires 1.x.
+  # Added 2026-10-06. Remove once Docusaurus ships with tinypool 2.1.2 or later.
+  # Tracking: https://github.com/thunder-id/thunderid/issues/5654
+  '@docusaurus/core>tinypool': 2.1.2
   defu: 6.1.5
   # JUSTIFICATION: i18next 26 breaks compatibility, gives a white screen issue on Console when navigating with "TypeError: n.getResourceBundle"
   i18next: '25.6.0'
-  dompurify: '>=3.4.12'
-  follow-redirects: 1.16.0
+  dompurify: '>=3.4.13'
+  # JUSTIFICATION: Fixes GHSA-q3jh-wrc6-jgq8 and GHSA-8r9p-f939-6h3c: follow-redirects can forward credential
+  # headers on cross-origin redirects. Enters the tree only through http-proxy@1.18.1 (docs dev server, via
+  # @docusaurus/core > webpack-dev-server > http-proxy-middleware). Nothing blocks the real fix: http-proxy accepts
+  # ^1.0.0, so this only keeps affected versions out. Added 2026-05-14, narrowed and raised 2026-10-21.
+  # Remove once http-proxy (or its replacement in webpack-dev-server) requires follow-redirects >=1.16.1.
+  follow-redirects@<1.16.1: '>=1.16.1'
   unhead: 2.1.13
   minimatch@>=5.0.0 <5.1.8: '>=5.1.8'
   minimatch@<3.1.4: '>=3.1.4'
@@ -115,8 +129,9 @@ overrides:
   yaml: 2.8.3
   path-to-regexp: 0.1.13
   # JUSTIFICATION: Fixes GHSA-2p49-hgcm-8545 — SVGO removeScripts plugin leaves some executable
-  # content in place. Transitive via docs and icon tooling.
-  svgo: 3.3.4
+  # content in place, and GHSA-w27v-7q3p-w38r — removeScripts allows executable links through
+  # namespace and control-character bypasses. Transitive via docs and icon tooling.
+  svgo: 3.3.5
   # JUSTIFICATION: Fixes GHSA-v56q-mh7h-f735 (List 32-bit trie overflow DoS) and
   # GHSA-xvcm-6775-5m9r (hash-collision algorithmic complexity DoS). Transitive via sass under
   # the @codecov/vite-plugin chain; bounded to the vulnerable 5.x range.
@@ -127,15 +142,20 @@ overrides:
   # brace-expansion to 5.0.8, and route minimatch@3.1.5 (used by @eslint/config-array,
   # @eslint/eslintrc, and eslint itself, which do CJS `require('brace-expansion')`) through the
   # `patches/minimatch@3.1.5.patch` shim so the switch to the 5.x `{ expand }` API is transparent.
-  # 5.0.9 additionally fixes GHSA-rgw5-rvv9-x895 — DoS via unbounded intermediate arrays.
-  brace-expansion: 5.0.9
+  # 5.0.9 additionally fixes GHSA-rgw5-rvv9-x895 — DoS via unbounded intermediate arrays,
+  # 5.0.10 fixes GHSA-6j4f-fj2g-mc7p — stack exhaustion via uncontrolled recursion in
+  # parseCommaParts, and 5.0.11 fixes GHSA-qhr7-859c-m2p7 — stack exhaustion via uncontrolled
+  # recursion on nested brace groups. Kept on the 5.x line so the minimatch patch above still applies.
+  brace-expansion: 5.0.12
   lodash: 4.18.1
   # JUSTIFICATION: Fixes GHSA-52cp-r559-cp3m — YAML merge-key chains forcing quadratic CPU consumption,
-  # and GHSA-5p4m-2wfm-xmqj (CVE-2026-59870) — quadratic CPU consumption in !!omap resolution.
-  js-yaml@>=4.0.0 <4.3.1: 4.3.1
+  # GHSA-5p4m-2wfm-xmqj (CVE-2026-59870) — quadratic CPU consumption in !!omap resolution, and
+  # GHSA-2883-xcg3-v3hh — maxTotalMergeKeys does not limit CPU use for empty merge sources.
+  js-yaml@>=4.0.0 <4.3.2: 4.3.2
   # JUSTIFICATION: Fixes GHSA-h67p-54hq-rp68 — quadratic-complexity DoS in js-yaml merge key handling,
-  # and GHSA-5p4m-2wfm-xmqj (CVE-2026-59870) — quadratic CPU consumption in !!omap resolution.
-  js-yaml@<3.15.1: 3.15.1
+  # GHSA-5p4m-2wfm-xmqj (CVE-2026-59870) — quadratic CPU consumption in !!omap resolution, and
+  # GHSA-2883-xcg3-v3hh — maxTotalMergeKeys does not limit CPU use for empty merge sources.
+  js-yaml@<3.15.2: 3.15.2
   # JUSTIFICATION: Fixes GHSA-64mm-vxmg-q3vj — http-proxy-middleware router host+path substring match bypass.
   http-proxy-middleware: 2.0.10
   # TODO: Remove once `nuxt` bumps `devalue` to 5.8.1 or later.
@@ -149,22 +169,29 @@ overrides:
   uuid: 11.1.1
   # JUSTIFICATION: Fixes GHSA-r7qp-cfhv-p84w — node-tar applies PAX size override to intermediary GNU long-name/link headers causing tar parser interpretation differential (file smuggling).
   tar: '>=7.5.16'
-  # JUSTIFICATION: Fixes GHSA-9cwx-2883-4wfx — launch-editor NTLMv2 hash disclosure via UNC path handling on Windows (transitive via vite and other tooling).
-  launch-editor: '>=2.14.1'
+  # JUSTIFICATION: Fixes GHSA-v6wh-96g9-6wx3 (NTLMv2 hash disclosure via UNC paths) and GHSA-587h-7wmj-h5pm
+  # (bypassable fs.existsSync() existence check), both Windows-only launch-editor flaws. 2.14.2 also fixes the
+  # medium GHSA-r825-w8mm-5pxw and GHSA-698v-4r3x-3vcv. Enters the tree only through webpack-dev-server@5.2.6
+  # (docs dev server). Nothing blocks the real fix: webpack-dev-server accepts ^2.14.1, so this only keeps
+  # affected versions out. Added 2026-06-16, narrowed and raised 2026-10-21.
+  # Remove once webpack-dev-server requires launch-editor >=2.14.2.
+  launch-editor@<2.14.2: '>=2.14.2'
   # JUSTIFICATION: Fixes GHSA-86vr-4h7v-f9x9 — @babel/core arbitrary file read via sourceMappingURL comment.
   # Bounded to <8 so it stays on the patched 7.x line: @docusaurus/core and @vitest/coverage-istanbul
   # require Babel 7 and break on the 8.x ESM export changes.
   '@babel/core': '>=7.29.6 <8'
-  # JUSTIFICATION: Transitive dep via docusaurus. Fixes CVE-2026-48038 (GHSA-q7cg-457f-vx79) — uncaught RangeError DoS in joi on deeply nested input through recursive link() schemas.
-  joi: '>=18.2.1'
+  # JUSTIFICATION: Transitive dep via docusaurus. Fixes CVE-2026-48038 (GHSA-q7cg-457f-vx79) — uncaught RangeError DoS in joi on deeply nested input through recursive link() schemas,
+  # and GHSA-6h2x-m376-mqjq — quadratic regular-expression backtracking in Joi.string().isoDate().
+  joi: '>=18.2.6'
   # JUSTIFICATION: Fixes GHSA-gv7w-rqvm-qjhr — esbuild Deno module downloads native binaries without integrity verification, enabling RCE via NPM_CONFIG_REGISTRY.
   esbuild: '>=0.28.1'
   # JUSTIFICATION: Fixes GHSA-vxpw-j846-p89q (high DoS), GHSA-p88m-4jfj-68fv (HTTP header injection),
   # GHSA-35p6-xmwp-9g52 and GHSA-g8m3-5g58-fq7m — transitive via @codecov/vite-plugin chain. The only
   # consumers (@actions/http-client 3.x/4.x) declare undici ^6.23.0, so pin to the patched 6.x line:
-  # >=6.27.0 clears the CVEs above and, by staying off the 8.x line, also avoids GHSA-4cwx-7wf7-3272
+  # >=6.28.1 clears the CVEs above plus GHSA-rfgv-xxqx-mfg5 — DoS via unrequested WebSocket
+  # subprotocol — and, by staying off the 8.x line, also avoids GHSA-4cwx-7wf7-3272
   # (8.0.0-8.8.x cross-user info disclosure). 6.x keeps Node 18 support; 8.x requires Node >=22.19.0.
-  undici: '^6.27.0'
+  undici: '^6.28.1'
   # JUSTIFICATION: Fixes entity encoding bypass and RCE vulnerabilities in fast-xml-parser.
   fast-xml-parser: '>=5.3.6'
   # JUSTIFICATION: Fixes arbitrary file read vulnerability in Vitest UI server.
@@ -190,9 +217,12 @@ overrides:
   webpack-dev-server: '5.2.6'
   '@hono/node-server': '>=2.0.5'
   # JUSTIFICATION: Fixes GHSA-f88m-g3jw-g9cj (CVE-2026-33327, CVE-2026-33328, CVE-2026-35590,
-  # CVE-2026-35591) — libvips vulnerabilities inherited by sharp. Transitive via next's optional
-  # image-optimization dependency, which pins sharp to the vulnerable <0.35.0 range.
-  sharp: '>=0.35.3'
+  # CVE-2026-35591) — libvips vulnerabilities inherited by sharp, and GHSA-rgj7-g3m4-5g8c
+  # (GHSA-g89c-p67h-r497, GHSA-2jg2-4ch7-h545) — libheif vulnerabilities inherited by sharp.
+  # Transitive via next's optional image-optimization dependency, which pins sharp to the
+  # vulnerable <0.35.0 range. Raised to 0.35.5 for GHSA-wq5f-xc86-pv6w (CVE-2026-96889) — librsvg
+  # vulnerability inherited by sharp.
+  sharp: '>=0.35.5'
   # JUSTIFICATION: Fixes GHSA-28wg-ghj8-5hjv — nanoid non-secure generators can loop indefinitely
   # with negative size. Transitive via @scalar packages, which use the nanoid 5.x line. Pinned
   # exact (not an open range) so the resolver can't dedupe this edge onto an untested major.
@@ -201,6 +231,39 @@ overrides:
   # size is zero. Transitive via postcss, which requires the nanoid 3.x (CJS) line — an open-ended
   # target here previously let the resolver dedupe postcss onto ESM-only nanoid 5.x and broke it.
   nanoid@<3.3.17: 3.3.18
+  # JUSTIFICATION: Fixes GHSA-w9m9-85wc-3x92 — DoS via uncontrolled AST recursion in
+  # postcss-selector-parser. Transitive via Docusaurus css-loader and postcss-preset-env chains.
+  postcss-selector-parser@>=6.1.0 <6.1.3: '>=6.1.3'
+  postcss-selector-parser@>=7.0.0 <7.1.3: '>=7.1.3'
+  postcss-discard-unused>postcss-selector-parser: '>=7.1.3'
+  # JUSTIFICATION: Fixes GHSA-c83g-rgw3-j3cx (unbounded memory growth / OOM via distinct query
+  # results) and GHSA-73wf-gq98-2v4g (uncaught crash / prototype write via untrusted custom stats).
+  # Transitive via @babel/helper-compilation-targets in the Docusaurus build chain.
+  browserslist: '>=4.28.7'
+  # JUSTIFICATION: Fixes GHSA-6x64-9x62-f9x9 (CSS injection on sibling elements),
+  # GHSA-3rrr-jr9j-h3q3 (prototype pollution in architecture diagrams), and GHSA XY chart
+  # infinite-loop DoS. Transitive via @docusaurus/theme-mermaid.
+  mermaid: '>=11.16.1'
+  # JUSTIFICATION: Fixes GHSA-5jgf-p345-68v8 (host confusion via skipped IDN canonicalization on
+  # scheme-relative references), GHSA-f65p-4m7j-42xc (SSRF via malformed IPv6 normalization),
+  # GHSA-fph4-wmhf-6fwf (SSRF via repeated hostname percent-decoding) and GHSA-jqff-g426-hqxp
+  # (host confusion via percent-encoded scheme normalization); raised to 3.1.8 for GHSA-qw65-cvwx-89v3
+  # (authority injection, fixed in 3.1.7) and GHSA-58mr-gqgx-xq4g (host confusion via an unclosed
+  # bracket in the authority, affects 3.1.6 only). Transitive via the Docusaurus
+  # webpack -> schema-utils -> ajv chain (100+ paths), so overridden globally. Constrained to the
+  # 3.x line: the consumers here (ajv) declare fast-uri ^3.0.1, and an open-ended floor lets the
+  # resolver dedupe this edge onto the 4.x major, which those consumers were never tested against.
+  # 3.1.8 is a patch release on the 3.1.x line already resolved here (3.1.6), so no API change.
+  fast-uri: '>=3.1.8 <4'
+  # JUSTIFICATION: Fixes GHSA-mrhx-c7xc-m3w5, memory exhaustion while validating oversized
+  # constrained collections. Enters through @codecov/vite-plugin@2.0.1 >
+  # @codecov/bundler-plugin-core@2.0.1 > zod@3.25.76 in the Console, Console CP and Gate builds.
+  # The latest Codecov release still requires zod ^3.22.4, and no patched 3.x release exists. The
+  # plugin only validates its options and CI metadata with zod, which works on 4.6.6. Capped below
+  # 5 so a future major release is not forced on it.
+  # Added 2026-10-24. Remove once @codecov/bundler-plugin-core requires zod >=4.6.6.
+  # Tracking: https://github.com/thunder-id/thunderid/issues/6036
+  '@codecov/bundler-plugin-core>zod': '>=4.6.6 <5'
 
 packageExtensions:
   '@hookform/resolvers':
@@ -210,7 +273,7 @@ packageExtensions:
 peerDependencyRules:
   allowedVersions:
     # JUSTIFICATION: @codecov/vite-plugin@2.0.1 declares a vite peer range of
-    # 4.x || 5.x || 6.x, but this workspace pins vite to 8.0.16. Bundle analysis
+    # 4.x || 5.x || 6.x, but this workspace pins vite to 8.1.6. Bundle analysis
     # was verified to run correctly against this build (the plugin collects stats
     # during the build and uploads via OIDC in CI), so Vite 8 is explicitly
     # allowed for this plugin's vite peer.
@@ -226,10 +289,44 @@ auditConfig:
     # mdx-loader. No patched release exists on npm yet (advisory lists "Patched: None"); revisit
     # and add an override once image-size ships a fix.
     - GHSA-5p2g-fcmc-qvqq
+    # JUSTIFICATION: GHSA-qxc2-j82w-r537 — arbitrary code execution via faker's `helpers.fake`.
+    # Transitive via docs -> openapi-to-postmanv2 -> postman-collection, which depends on the
+    # deprecated @faker-js/faker@5.5.3. Not overridable: the fix landed in faker 10.5.0 (the
+    # advisory names 10.4.1, which was never published to npm), and faker 8 renamed the modules
+    # postman-collection binds at require time (`faker.address.*` -> `faker.location.*`). Forcing
+    # any >=8 release makes postman-collection throw on import, breaking
+    # `pnpm --dir docs generate:postman-collections`. Upstream has not migrated — the latest
+    # postman-collection (5.3.1) still pins 5.5.3 — so there is no upgrade path today.
+    # Not exploitable here: the advisory requires attacker-controlled input reaching
+    # `helpers.fake`, and postman-collection never calls it (it only binds individual generators
+    # such as `faker.address.city` for dynamic-variable substitution). The code is also
+    # build-time only, run against this repo's own OpenAPI specs. Revisit once postman-collection
+    # upgrades its faker dependency.
+    - GHSA-qxc2-j82w-r537
+    # JUSTIFICATION: http-cache-semantics max-stale handling can disclose a cached response to
+    # another user of a shared cache. Transitive via docs -> @docusaurus/core -> update-notifier ->
+    # latest-version -> package-json -> got -> cacheable-request. No patched release exists on npm
+    # yet (the advisory lists "Patched: None"; 4.2.0 is the latest), and the latest Docusaurus
+    # (3.10.2) still depends on update-notifier, so neither an upgrade nor an override can fix it.
+    # Not exploitable here: the only use is the Docusaurus CLI's own update check on a developer
+    # machine or CI runner, never a cache shared between users. Revisit once http-cache-semantics
+    # ships a fix.
+    - GHSA-ch52-4w7c-c8xp
+    # JUSTIFICATION: braces stack exhaustion through deeply nested brace patterns. Transitive via
+    # docs -> @docusaurus/core -> chokidar@3 and webpack-dev-server -> http-proxy-middleware ->
+    # micromatch. No patched release exists on npm yet (the advisory lists "Patched: None"; 3.0.3
+    # is the latest), and the latest Docusaurus (3.10.2) still depends on chokidar@3, so neither an
+    # upgrade nor an override can fix it. Not exploitable here: the patterns come from the docs
+    # site's own build and dev-server configuration, never from untrusted input, and the code runs
+    # only while building or serving the docs locally. Revisit once braces ships a fix.
+    - GHSA-vfj7-8cjw-p6xm
 
 minimumReleaseAgeExclude:
   - '@thunderid/*'
   - nanoid@3.3.18
+  # JUSTIFICATION: Install the security patch for GHSA-68fv-2mgg-jv7q without waiting
+  # for the release-age window. Limited to this patched source-map-js version.
+  - source-map-js@1.2.2
 
 patchedDependencies:
   minimatch@3.1.5: patches/minimatch@3.1.5.patch

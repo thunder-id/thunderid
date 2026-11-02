@@ -106,6 +106,8 @@ const (
 	OperatorGt Operator = "gt"
 	// OperatorLt represents the less-than operator.
 	OperatorLt Operator = "lt"
+	// OperatorSw represents the starts-with operator, for narrowing a collection by a name prefix.
+	OperatorSw Operator = "sw"
 )
 
 // FilterExpression holds a parsed filter expression from an API request.

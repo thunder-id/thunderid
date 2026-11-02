@@ -8,21 +8,33 @@ import (
 	"time"
 )
 
-// UserType represents a user type definition
+// UserType represents a user type definition.
 type UserType struct {
-	ID                    string                 `json:"id,omitempty"`
-	Name                  string                 `json:"name"`
-	OUID                  string                 `json:"ouId"`
-	AllowSelfRegistration bool                   `json:"allowSelfRegistration,omitempty"`
-	Schema                map[string]interface{} `json:"schema"`
+	ID                    string                    `json:"id,omitempty"`
+	Handle                string                    `json:"handle"`
+	DisplayName           string                    `json:"displayName"`
+	OUID                  string                    `json:"ouId"`
+	AllowSelfRegistration bool                      `json:"allowSelfRegistration,omitempty"`
+	SystemAttributes      *UserTypeSystemAttributes `json:"systemAttributes,omitempty"`
+	Schema                map[string]interface{}    `json:"schema"`
+}
+
+// UserTypeSystemAttributes carries the system-level settings of a user type, such as the
+// attribute used to render a human-readable display name.
+type UserTypeSystemAttributes struct {
+	Display      string `json:"display,omitempty"`
+	PrimaryEmail string `json:"primaryEmail,omitempty"`
 }
 
 // User represents a user in the system
 type User struct {
 	ID         string          `json:"id"`
 	OUID       string          `json:"ouId"`
+	OUHandle   string          `json:"ouHandle,omitempty"`
 	Type       string          `json:"type"`
+	Display    string          `json:"display,omitempty"`
 	Attributes json.RawMessage `json:"attributes"`
+	IsOwnedByOU    *bool           `json:"isOwnedByOU,omitempty"`
 }
 
 // Application represents an application in the system
@@ -37,12 +49,15 @@ type Application struct {
 	AuthFlowID                string                   `json:"authFlowId,omitempty"`
 	RegistrationFlowID        string                   `json:"registrationFlowId,omitempty"`
 	RecoveryFlowID            string                   `json:"recoveryFlowId,omitempty"`
+	SignOutFlowID             string                   `json:"signOutFlowId,omitempty"`
 	ClientID                  string                   `json:"clientId,omitempty"`
 	ClientSecret              string                   `json:"clientSecret,omitempty"`
 	RedirectURIs              []string                 `json:"redirectUris,omitempty"`
 	AllowedUserTypes          []string                 `json:"allowedUserTypes,omitempty"`
+	AllowedAgentTypes         []string                 `json:"allowedAgentTypes,omitempty"`
 	SubjectAttribute          map[string]string        `json:"subjectAttribute,omitempty"`
 	Certificate               map[string]interface{}   `json:"certificate,omitempty"`
+	PasskeyAllowedOrigins     []string                 `json:"passkeyAllowedOrigins,omitempty"`
 	InboundAuthConfig         []map[string]interface{} `json:"inboundAuthConfig,omitempty"`
 	AssertionConfig           map[string]interface{}   `json:"assertion,omitempty"`
 	// LoginConsent is the login consent configuration (e.g. validityPeriod in seconds).
@@ -102,13 +117,88 @@ type AccountLinking struct {
 	Attributes []string `json:"attributes,omitempty"`
 }
 
-// AttributeConfiguration is the connection's user-type resolution, per-user-type attribute mappings
-// and account-linking configuration. Mirrors the /connections wire format; pointers so a nil section
-// stays distinguishable from an empty one.
+// AuthorizationTarget names one local role, group, or permission an AuthorizationRuleMapping value
+// resolves to. Role and group targets carry ID; a permission target carries ResourceServerID and
+// Permission instead, since a permission is only meaningful on a resource server.
+type AuthorizationTarget struct {
+	Type             string `json:"type"`
+	ID               string `json:"id,omitempty"`
+	ResourceServerID string `json:"resourceServerId,omitempty"`
+	Permission       string `json:"permission,omitempty"`
+}
+
+// AuthorizationRule matches a claim token against Value using Operator, interpreted per the owning
+// mapping's ValueType, and grants Targets when it matches. Mirrors providers.AuthorizationRule.
+type AuthorizationRule struct {
+	Operator string                `json:"operator"`
+	Value    string                `json:"value"`
+	Targets  []AuthorizationTarget `json:"targets"`
+}
+
+// AuthorizationRuleMapping maps values of one external claim to local authorization targets. Delimiter
+// splits a string claim into candidate tokens; a list-valued claim is split into tokens regardless of
+// Delimiter. ValueType governs how a token and a rule's Value are parsed for comparison; it defaults
+// to "string" server-side when omitted.
+type AuthorizationRuleMapping struct {
+	Claim     string              `json:"claim"`
+	ValueType string              `json:"valueType,omitempty"`
+	Delimiter string              `json:"delimiter,omitempty"`
+	Values    []AuthorizationRule `json:"values"`
+}
+
+// AuthorizationDirectMapping feeds every value of one external claim directly onto local roles,
+// groups, or permissions of TargetType, using each value as the name (or permission string) to look
+// up, rather than an explicit per-value rule table. Mirrors providers.AuthorizationDirectMapping.
+type AuthorizationDirectMapping struct {
+	Claim            string `json:"claim"`
+	Delimiter        string `json:"delimiter,omitempty"`
+	TargetType       string `json:"targetType"`
+	ResourceServerID string `json:"resourceServerId,omitempty"`
+}
+
+// Authorization target type constants, mirroring providers.AuthorizationTargetType.
+const (
+	AuthorizationTargetRole       = "role"
+	AuthorizationTargetGroup      = "group"
+	AuthorizationTargetPermission = "permission"
+)
+
+// Authorization operator constants, mirroring providers.AuthorizationOperator.
+const (
+	AuthorizationOperatorEquals             = "equals"
+	AuthorizationOperatorNotEquals          = "not_equals"
+	AuthorizationOperatorGreaterThan        = "greater_than"
+	AuthorizationOperatorLessThan           = "less_than"
+	AuthorizationOperatorGreaterThanOrEqual = "greater_than_or_equal"
+	AuthorizationOperatorLessThanOrEqual    = "less_than_or_equal"
+	AuthorizationOperatorIncludes           = "includes"
+	AuthorizationOperatorNotIncludes        = "not_includes"
+)
+
+// Authorization value type constants, mirroring providers.AuthorizationValueType.
+const (
+	AuthorizationValueTypeString  = "string"
+	AuthorizationValueTypeNumber  = "number"
+	AuthorizationValueTypeBoolean = "boolean"
+	AuthorizationValueTypeArray   = "array"
+)
+
+// AuthorizationMapping holds a connection's authorization mapping configuration: explicit
+// value-to-target rules, direct name-based lookups, or both together, in which case their resolved
+// targets union. Mirrors providers.AuthorizationMapping.
+type AuthorizationMapping struct {
+	Rules  []AuthorizationRuleMapping   `json:"rules,omitempty"`
+	Direct []AuthorizationDirectMapping `json:"direct,omitempty"`
+}
+
+// AttributeConfiguration is the connection's user-type resolution, per-user-type attribute mappings,
+// account-linking configuration, and authorization mapping. Mirrors the /connections wire format;
+// pointers so a nil section stays distinguishable from an empty one.
 type AttributeConfiguration struct {
 	UserTypeResolution        *UserTypeResolution        `json:"userTypeResolution,omitempty"`
 	UserTypeAttributeMappings []UserTypeAttributeMapping `json:"userTypeAttributeMappings,omitempty"`
 	AccountLinking            *AccountLinking            `json:"accountLinking,omitempty"`
+	AuthorizationMapping      *AuthorizationMapping      `json:"authorizationMapping,omitempty"`
 }
 
 // IDP represents an identity provider in the system
@@ -117,6 +207,7 @@ type IDP struct {
 	Name                   string                  `json:"name"`
 	Description            string                  `json:"description"`
 	Type                   string                  `json:"type"`
+	OUID                   string                  `json:"ouId,omitempty"`
 	Properties             []IDPProperty           `json:"properties"`
 	AttributeConfiguration *AttributeConfiguration `json:"attributeConfiguration,omitempty"`
 }
@@ -226,6 +317,8 @@ type TokenResponse struct {
 	RefreshToken string    `json:"refresh_token,omitempty"`
 	IDToken      string    `json:"id_token,omitempty"`
 	ExpiresAt    time.Time `json:"expires_at,omitempty"` // Absolute expiry time
+	// DeviceSecret is the signed token carrying the code's SSO sessions, returned for the device_sso scope.
+	DeviceSecret string `json:"device_secret,omitempty"`
 }
 
 // TokenHTTPResult captures raw HTTP response details from the token endpoint.
@@ -233,6 +326,33 @@ type TokenHTTPResult struct {
 	StatusCode int
 	Body       []byte
 	Token      *TokenResponse
+}
+
+// IntrospectionResult is the part of an introspection answer the tests read.
+type IntrospectionResult struct {
+	Active bool   `json:"active"`
+	Sub    string `json:"sub"`
+}
+
+// AccessStatus is the effective access status a management read of a user, an agent or an
+// application reports.
+type AccessStatus struct {
+	Value   string               `json:"value"`
+	Details *AccessStatusDetails `json:"details"`
+}
+
+// AccessStatusDetails says what produced a hold. An application read carries none.
+type AccessStatusDetails struct {
+	Reason        string         `json:"reason"`
+	Since         string         `json:"since"`
+	OperatorNote  string         `json:"operatorNote"`
+	LockedMethods []LockedMethod `json:"lockedMethods"`
+}
+
+// LockedMethod is one live lock, with its expiry, empty for a lock that does not lapse.
+type LockedMethod struct {
+	Method    string `json:"method"`
+	ExpiresAt string `json:"expiresAt"`
 }
 
 // AuthorizationResponse represents the response from authorization completion
@@ -310,6 +430,22 @@ type FlowStep struct {
 	ErrorAssertion string              `json:"errorAssertion,omitempty"`
 	Error          *FlowExecutionError `json:"error,omitempty"`
 	ChallengeToken string              `json:"challengeToken,omitempty"`
+	// SessionData lists the SSO sessions a step started, returned to an app-native caller.
+	SessionData []FlowIssuedSessionData `json:"sessionData,omitempty"`
+	// ClearedSessions lists the flow identifiers whose SSO session a step ended, for an app-native caller.
+	ClearedSessions []string `json:"clearedSessions,omitempty"`
+}
+
+// FlowSessionData is one SSO session an app-native caller holds, keyed by the identifier of its flow.
+type FlowSessionData struct {
+	FlowIdentifier string `json:"flowIdentifier"`
+	SessionHandle  string `json:"sessionHandle"`
+}
+
+// FlowIssuedSessionData is the SSO session a step started, with how long its handle stays usable.
+type FlowIssuedSessionData struct {
+	FlowSessionData
+	ExpiresIn int64 `json:"expiresIn"`
 }
 
 // FlowErrorResponse is the body returned when flow execution fails at the engine level (4xx/5xx),
@@ -324,10 +460,12 @@ type FlowErrorResponse struct {
 
 // Flow represents a flow definition
 type Flow struct {
-	Name     string      `json:"name"`
-	FlowType string      `json:"flowType"`
-	Handle   string      `json:"handle"`
-	Nodes    interface{} `json:"nodes"`
+	Name         string      `json:"name"`
+	FlowType     string      `json:"flowType"`
+	Handle       string      `json:"handle"`
+	Interceptors interface{} `json:"interceptors,omitempty"`
+	Nodes        interface{} `json:"nodes"`
+	OUID         string      `json:"ouId,omitempty"`
 }
 
 // NotificationSender represents a notification sender in the system
@@ -336,6 +474,7 @@ type NotificationSender struct {
 	Name        string           `json:"name"`
 	Description string           `json:"description"`
 	Provider    string           `json:"provider"`
+	OUID        string           `json:"ouId,omitempty"`
 	Properties  []SenderProperty `json:"properties"`
 }
 
@@ -346,17 +485,41 @@ type SenderProperty struct {
 	IsSecret bool   `json:"isSecret"`
 }
 
+// HTTPConnection is the create and update body of an HTTP endpoint connection (/connections/http).
+type HTTPConnection struct {
+	Name           string                  `json:"name"`
+	OUID           string                  `json:"ouId,omitempty"`
+	Description    string                  `json:"description,omitempty"`
+	URL            string                  `json:"url"`
+	TimeoutMS      int                     `json:"timeoutMs,omitempty"`
+	Headers        []HTTPConnectionHeader  `json:"headers,omitempty"`
+	Authentication *OutboundAuthentication `json:"authentication,omitempty"`
+}
+
+// HTTPConnectionHeader is a plain header an HTTP endpoint connection sends on every call.
+type HTTPConnectionHeader struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// OutboundAuthentication is the shared outbound authentication object of a connection.
+type OutboundAuthentication struct {
+	Type       string            `json:"type"`
+	Properties map[string]string `json:"properties,omitempty"`
+}
+
 // Agent represents an agent resource in the system.
 type Agent struct {
 	ID          string      `json:"id,omitempty"`
 	OUID        string      `json:"ouId,omitempty"`
 	OUHandle    string      `json:"ouHandle,omitempty"`
 	Type        string      `json:"type,omitempty"`
-	Name        string      `json:"name,omitempty"`
 	Description string      `json:"description,omitempty"`
+	LogoURL     string      `json:"logoUrl,omitempty"`
 	Owner       string      `json:"owner,omitempty"`
 	Attributes  interface{} `json:"attributes,omitempty"`
 	IsReadOnly  bool        `json:"isReadOnly"`
+	ValidUntil  string      `json:"validUntil,omitempty"`
 
 	AuthFlowID                string                   `json:"authFlowId,omitempty"`
 	RegistrationFlowID        string                   `json:"registrationFlowId,omitempty"`
@@ -379,6 +542,7 @@ type AgentOAuthConfig struct {
 	ClientSecret            string   `json:"clientSecret,omitempty"`
 	GrantTypes              []string `json:"grantTypes,omitempty"`
 	ResponseTypes           []string `json:"responseTypes,omitempty"`
+	RedirectURIs            []string `json:"redirectUris,omitempty"`
 	TokenEndpointAuthMethod string   `json:"tokenEndpointAuthMethod,omitempty"`
 	PKCERequired            bool     `json:"pkceRequired,omitempty"`
 	PublicClient            bool     `json:"publicClient,omitempty"`
@@ -407,11 +571,10 @@ type CredentialDisplay struct {
 
 // CredentialConfiguration is the request body for the OpenID4VCI credential
 // configuration management API. Handle is both the credential_configuration_id
-// and the OAuth scope; VCT and an OU (OUID or OUHandle) are required.
+// and the OAuth scope; VCT and OUID are required.
 type CredentialConfiguration struct {
 	Handle          string             `json:"handle"`
 	OUID            string             `json:"ouId,omitempty"`
-	OUHandle        string             `json:"ouHandle,omitempty"`
 	Name            string             `json:"name,omitempty"`
 	Description     string             `json:"description,omitempty"`
 	Format          string             `json:"format,omitempty"`
@@ -423,11 +586,10 @@ type CredentialConfiguration struct {
 
 // PresentationDefinition is the request body for the OpenID4VP presentation
 // definition management API. Handle is the definition_id used on initiate and
-// the DCQL credential id; VCT and an OU (OUID or OUHandle) are required.
+// the DCQL credential id; VCT and OUID are required.
 type PresentationDefinition struct {
 	Handle               string              `json:"handle"`
 	OUID                 string              `json:"ouId,omitempty"`
-	OUHandle             string              `json:"ouHandle,omitempty"`
 	Name                 string              `json:"name,omitempty"`
 	Description          string              `json:"description,omitempty"`
 	VCT                  string              `json:"vct"`
@@ -459,4 +621,51 @@ type VPStatusResponse struct {
 type VCHTTPResult struct {
 	StatusCode int
 	Body       []byte
+}
+
+// ImportRequest is the body of POST /import.
+type ImportRequest struct {
+	Content   string                 `json:"content"`
+	DryRun    bool                   `json:"dryRun,omitempty"`
+	Options   ImportOptions          `json:"options"`
+	Vars      map[string]interface{} `json:"variables,omitempty"`
+	Deletions []ResourceDeletion     `json:"deletions,omitempty"`
+}
+
+// ResourceDeletion names a resource an import should remove.
+type ResourceDeletion struct {
+	ResourceType string `json:"resourceType"`
+	ID           string `json:"id"`
+}
+
+// ImportOptions are the options of an import request.
+type ImportOptions struct {
+	Upsert          bool   `json:"upsert"`
+	ContinueOnError bool   `json:"continueOnError"`
+	Target          string `json:"target"`
+}
+
+// ImportResponse is the body POST /import returns.
+type ImportResponse struct {
+	Summary ImportSummary `json:"summary"`
+	Results []ImportItem  `json:"results"`
+}
+
+// ImportSummary counts the outcomes of an import.
+type ImportSummary struct {
+	TotalDocuments int `json:"totalDocuments"`
+	Imported       int `json:"imported"`
+	Deleted        int `json:"deleted,omitempty"`
+	Failed         int `json:"failed"`
+}
+
+// ImportItem is the outcome of one imported document or deletion.
+type ImportItem struct {
+	ResourceType string `json:"resourceType"`
+	ResourceID   string `json:"resourceId,omitempty"`
+	ResourceName string `json:"resourceName,omitempty"`
+	Operation    string `json:"operation,omitempty"`
+	Status       string `json:"status"`
+	Code         string `json:"code,omitempty"`
+	Message      string `json:"message,omitempty"`
 }

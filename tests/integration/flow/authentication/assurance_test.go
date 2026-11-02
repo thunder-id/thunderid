@@ -77,7 +77,7 @@ var (
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
 					"senderId":    "placeholder-sender-id",
-					"smsTemplate": "OTP",
+					"smsTemplate": "otp",
 				},
 				"executor": map[string]interface{}{
 					"name": "SMSExecutor",
@@ -187,7 +187,7 @@ var (
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
 					"senderId":    "placeholder-sender-id",
-					"smsTemplate": "OTP",
+					"smsTemplate": "otp",
 				},
 				"executor": map[string]interface{}{
 					"name": "SMSExecutor",
@@ -309,12 +309,13 @@ var (
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{"assurance_test_user"},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
 	assuranceEntityType = testutils.UserType{
-		Name: "assurance_test_user",
+		Handle:      "assurance_test_user",
+		DisplayName: "Assurance Test User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -333,7 +334,7 @@ var (
 	}
 
 	assuranceTestUser = testutils.User{
-		Type: assuranceEntityType.Name,
+		Type: assuranceEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "assurance_user",
 			"password": "testpassword123",
@@ -474,12 +475,12 @@ func (ts *AssuranceTestSuite) TearDownSuite() {
 		_ = testutils.DeleteNotificationSender(senderID)
 	}
 
-	if assuranceTestOU.ID != "" {
-		_ = testutils.DeleteOrganizationUnit(assuranceTestOU.ID)
-	}
-
 	if assuranceEntityTypeID != "" {
 		_ = testutils.DeleteUserType(assuranceEntityTypeID)
+	}
+
+	if assuranceTestOU.ID != "" {
+		_ = testutils.DeleteOrganizationUnit(assuranceTestOU.ID)
 	}
 }
 

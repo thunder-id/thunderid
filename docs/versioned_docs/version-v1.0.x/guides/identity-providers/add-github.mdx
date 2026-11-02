@@ -39,21 +39,23 @@ This guide walks you through registering a GitHub identity provider (IdP) in <Pr
 
 ## Step 2: Configure the GitHub Connection in the Console
 
+These steps create a GitHub connection. To change an existing connection, see [Manage Identity Providers](../manage-identity-providers#update-an-identity-provider).
+
 1. Sign in to the <ProductName /> Console.
 2. Navigate to **Connections**.
-3. Click the **GitHub** card. If the card shows **Not configured**, this opens a form to create the connection. If it already shows **Configured**, this opens the existing connection instead.
+3. Click the **GitHub Login** card marked **Not configured**.
 4. The form shows a setup hint with the **Redirect URI**. Copy it and add it to your GitHub OAuth app's authorization callback URL if you have not already done so.
 5. Enter your **Client ID** and **Client secret** from the previous step.
-6. Click **Create connection**. If you opened an existing **Configured** connection instead, update the credentials and click **Save changes**.
+6. Click **Create connection**.
 
-<ProductName /> automatically uses the GitHub authorization, token, and userinfo endpoints. You do not need to supply them.
+<ProductName /> automatically uses the GitHub authorization, token, and user profile endpoints. You do not need to supply them.
 
 </Stepper>
 
 To map GitHub's profile fields (for example, `login` or `avatar_url`) to local user attributes, open the connection and go to the **Attribute Configuration** tab. See [Attribute Configuration](../add-oidc-provider#attribute-configuration).
 
 :::note
-By default, the connection uses GitHub's own default scope, which does not include the user's email address. To ensure the email address is accessible, open the connection after creation and set **Scopes** to include `user:email` on its edit page.
+The connection requests the `user:email` scope by default. To request different scopes, open the connection after creation and update **Scopes** on its edit page.
 
 The GitHub connection also accepts a `prompt` field, forwarded as a query parameter on the authorization request. GitHub's OAuth flow supports `select_account` to force the account picker. Set it on the connection's edit page, or through the [Connections API](../../../apis#tag/connections).
 :::

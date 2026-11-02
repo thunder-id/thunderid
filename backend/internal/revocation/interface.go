@@ -6,10 +6,15 @@
 // flow executors and Resource Server cache consume them, without either side importing the other.
 package revocation
 
-import "context"
+import (
+	"context"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+)
 
 // CriteriaRevoker persists criteria-based revocations. It is the seam a producer of revocation intent
 // writes through, so a caller need not depend on the OAuth revocation implementation.
 type CriteriaRevoker interface {
-	RevokeByCriteria(ctx context.Context, revocation CriteriaRevocation) error
+	// RevokeCriteriaBatch records a set of revocations, refusing one over the cap with ErrorEntryLimitExceeded.
+	RevokeCriteriaBatch(ctx context.Context, revocations []CriteriaRevocation) *tidcommon.ServiceError
 }

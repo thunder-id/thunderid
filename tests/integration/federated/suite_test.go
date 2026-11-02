@@ -19,6 +19,7 @@ package federated
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -51,16 +52,25 @@ const (
 // account-linking default for other suites; costCenter is deliberately not unique, since a linking
 // attribute that allows duplicates is what the ambiguity scenarios need in a later phase.
 var fedPersonType = testutils.UserType{
-	Name:                  "fed_person",
+	Handle:                "fed_person",
+	DisplayName:           "Fed Person",
 	AllowSelfRegistration: true,
 	Schema: map[string]interface{}{
-		"username":   map[string]interface{}{"type": "string", "required": true, "unique": true},
-		"email":      map[string]interface{}{"type": "string", "required": true, "unique": true},
+		// The linking prompt labels a matched attribute with its display name.
+		"username": map[string]interface{}{
+			"type": "string", "required": true, "unique": true, "displayName": "Username"},
+		"email": map[string]interface{}{
+			"type": "string", "required": true, "unique": true, "displayName": "Email"},
 		"firstName":  map[string]interface{}{"type": "string"},
 		"lastName":   map[string]interface{}{"type": "string"},
 		"city":       map[string]interface{}{"type": "string"},
-		"costCenter": map[string]interface{}{"type": "string"},
+		"costCenter": map[string]interface{}{"type": "string", "displayName": "Cost center"},
 		"sub":        map[string]interface{}{"type": "string"},
+		// Optional, and only the OTP linking scenario sets it, to prove an account with.
+		"mobile_number": map[string]interface{}{"type": "string"},
+		// Optional; signs a user in before a federated sign-in, and proves an account when a link is
+		// recorded.
+		"password": map[string]interface{}{"type": "string", "credential": true},
 	},
 }
 
@@ -69,7 +79,8 @@ var fedPersonType = testutils.UserType{
 // type is never a provisioning target and deliberately does not allow self registration — that also
 // keeps the flow's user-type resolution unambiguous.
 var fedContractorType = testutils.UserType{
-	Name:                  "fed_contractor",
+	Handle:                "fed_contractor",
+	DisplayName:           "Fed Contractor",
 	AllowSelfRegistration: false,
 	Schema: map[string]interface{}{
 		"username":       map[string]interface{}{"type": "string", "required": true, "unique": true},
@@ -247,15 +258,70 @@ var fedOAuthFlow = testutils.Flow{
 	},
 }
 
+// fedAuthzFlow authenticates a federated identity and then runs an authorization check against
+// whatever roles/groups/permissions its claims mapped to (plus any it holds directly), so mapped
+// access can be observed on the resulting assertion's authorized_permissions claim. Provisioning
+// precedes the check so a just-in-time-created entity's own assignments are visible to it, matching
+// the architecture's Fed -> Prov -> Authz -> Assert ordering.
+var fedAuthzFlow = testutils.Flow{
+	Name:     "Federated Authorization Mapping Auth Flow",
+	FlowType: "AUTHENTICATION",
+	Handle:   "auth_flow_federated_authz_mapping",
+	Nodes: []map[string]interface{}{
+		{"id": "start", "type": "START", "onSuccess": "oidc_auth"},
+		{
+			"id":   "oidc_auth",
+			"type": "TASK_EXECUTION",
+			"properties": map[string]interface{}{
+				"idpId":                               "placeholder-idp-id",
+				"allowAuthenticationWithoutLocalUser": true,
+			},
+			"executor":  map[string]interface{}{"name": "OIDCAuthExecutor"},
+			"onSuccess": "provisioning",
+		},
+		{
+			"id":        "provisioning",
+			"type":      "TASK_EXECUTION",
+			"executor":  map[string]interface{}{"name": "ProvisioningExecutor"},
+			"onSuccess": "authorization_check",
+		},
+		{
+			"id":        "authorization_check",
+			"type":      "TASK_EXECUTION",
+			"executor":  map[string]interface{}{"name": "AuthorizationExecutor"},
+			"onSuccess": "auth_assert",
+		},
+		{
+			"id":        "auth_assert",
+			"type":      "TASK_EXECUTION",
+			"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+			"onSuccess": "end",
+		},
+		{"id": "end", "type": "END"},
+	},
+}
+
+var fedAuthzApp = testutils.Application{
+	Name:             "Federated Authorization Mapping Test Application",
+	Description:      "Application whose authentication flow checks authorization after a federated login",
+	ClientID:         "federated_authz_mapping_test_client",
+	ClientSecret:     "federated_authz_mapping_test_secret",
+	RedirectURIs:     []string{"http://localhost:3000/callback"},
+	AllowedUserTypes: []string{fedPersonType.Handle},
+	AssertionConfig: map[string]interface{}{
+		"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
+	},
+}
+
 var fedOAuthApp = testutils.Application{
 	Name:             "Federated OAuth Authentication Test Application",
 	Description:      "Application whose authentication flow uses the generic OAuth executor",
 	ClientID:         "federated_oauth_auth_test_client",
 	ClientSecret:     "federated_oauth_auth_test_secret",
 	RedirectURIs:     []string{"http://localhost:3000/callback"},
-	AllowedUserTypes: []string{fedPersonType.Name},
+	AllowedUserTypes: []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
-		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+		"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 	},
 }
 
@@ -265,9 +331,9 @@ var fedAuthApp = testutils.Application{
 	ClientID:         "federated_auth_test_client",
 	ClientSecret:     "federated_auth_test_secret",
 	RedirectURIs:     []string{"http://localhost:3000/callback"},
-	AllowedUserTypes: []string{fedPersonType.Name},
+	AllowedUserTypes: []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
-		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+		"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 	},
 }
 
@@ -277,9 +343,9 @@ var fedStrictAuthApp = testutils.Application{
 	ClientID:         "federated_strict_auth_test_client",
 	ClientSecret:     "federated_strict_auth_test_secret",
 	RedirectURIs:     []string{"http://localhost:3000/callback"},
-	AllowedUserTypes: []string{fedPersonType.Name},
+	AllowedUserTypes: []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
-		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+		"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 	},
 }
 
@@ -290,9 +356,9 @@ var fedTestApp = testutils.Application{
 	ClientID:                  "federated_mapping_test_client",
 	ClientSecret:              "federated_mapping_test_secret",
 	RedirectURIs:              []string{"http://localhost:3000/callback"},
-	AllowedUserTypes:          []string{fedPersonType.Name},
+	AllowedUserTypes:          []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
-		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+		"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 	},
 }
 
@@ -316,6 +382,18 @@ type FederatedMappingSuite struct {
 	githubIDPID     string
 	perTestAppIDs   []string
 	perTestFlowIDs  []string
+
+	// Authorization mapping fixtures: an application whose auth flow runs an AuthorizationExecutor
+	// after the federated login, two resource servers (to prove a mapped permission stays scoped to
+	// its own resource server), a role with no DB assignees (to prove the LEFT JOIN fix resolves a
+	// mapped role by identifier alone), and a group whose own role assignment grants access to
+	// whoever a mapping places in the group.
+	authzAppID                 string
+	authzResourceServerID      string
+	authzOtherResourceServerID string
+	authzMappedRoleID          string
+	authzMappedGroupID         string
+	authzGroupRoleID           string
 }
 
 func TestFederatedMappingSuite(t *testing.T) {
@@ -346,7 +424,7 @@ func (s *FederatedMappingSuite) SetupSuite() {
 	for _, userType := range []testutils.UserType{fedPersonType, fedContractorType} {
 		userType.OUID = ouID
 		typeID, err := testutils.CreateUserType(userType)
-		s.Require().NoError(err, "failed to create user type %s", userType.Name)
+		s.Require().NoError(err, "failed to create user type %s", userType.Handle)
 		s.typeIDs = append(s.typeIDs, typeID)
 	}
 
@@ -438,6 +516,67 @@ func (s *FederatedMappingSuite) SetupSuite() {
 		&fedStrictAuthFlow, fedStrictAuthApp, idpID, ouID, "federated-strict-auth-isolated-reg")
 	s.oauthAppID = s.createAuthApp(
 		&fedOAuthFlow, fedOAuthApp, oauthIDPID, ouID, "federated-oauth-auth-isolated-reg")
+
+	s.setupAuthzFixtures(idpID, ouID)
+}
+
+// setupAuthzFixtures creates the resource servers, roles, group, and authorization-checking
+// application shared by the AuthorizationRuleMapping scenarios.
+func (s *FederatedMappingSuite) setupAuthzFixtures(idpID, ouID string) {
+	s.T().Helper()
+
+	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:       "Federated Authorization Mapping API",
+		Identifier: "federated-authz-mapping-api",
+		OUID:       ouID,
+	}, []testutils.Action{
+		{Name: "Read", Handle: "read", Description: "Read access"},
+		{Name: "Write", Handle: "write", Description: "Write access"},
+		{Name: "Delete", Handle: "delete", Description: "Delete access"},
+	})
+	s.Require().NoError(err, "failed to create the authorization mapping resource server")
+	s.authzResourceServerID = rsID
+
+	// A second resource server with the same permission handle, so a mapped permission target scoped
+	// to the first resource server can be proven not to leak into an evaluation against this one.
+	otherRSID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:       "Federated Authorization Mapping Other API",
+		Identifier: "federated-authz-mapping-other-api",
+		OUID:       ouID,
+	}, []testutils.Action{
+		{Name: "Read", Handle: "read", Description: "Read access"},
+	})
+	s.Require().NoError(err, "failed to create the second authorization mapping resource server")
+	s.authzOtherResourceServerID = otherRSID
+
+	// No assignments: this role is reachable only by a mapping naming it directly, exercising the
+	// LEFT JOIN fix that lets a role with zero assignment rows still resolve by identifier.
+	mappedRoleID, err := testutils.CreateRole(testutils.Role{
+		Name: "Federated Mapped Reader",
+		OUID: ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: rsID, Permissions: []string{"read"}},
+		},
+	})
+	s.Require().NoError(err, "failed to create the mapped role with no assignees")
+	s.authzMappedRoleID = mappedRoleID
+
+	groupID, err := testutils.CreateGroup(testutils.Group{Name: "Federated Mapped Editors", OUID: ouID})
+	s.Require().NoError(err, "failed to create the mapped group")
+	s.authzMappedGroupID = groupID
+
+	groupRoleID, err := testutils.CreateRole(testutils.Role{
+		Name: "Federated Group Writer",
+		OUID: ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: rsID, Permissions: []string{"write"}},
+		},
+		Assignments: []testutils.Assignment{{ID: groupID, Type: "group"}},
+	})
+	s.Require().NoError(err, "failed to create the role assigned to the mapped group")
+	s.authzGroupRoleID = groupRoleID
+
+	s.authzAppID = s.createAuthApp(&fedAuthzFlow, fedAuthzApp, idpID, ouID, "federated-authz-isolated-reg")
 }
 
 // createAuthApp creates one authentication flow and the application that runs it. Both applications
@@ -474,9 +613,21 @@ func (s *FederatedMappingSuite) createAuthApp(
 	return appID
 }
 
+// createVerifyFlow creates a verification flow a scenario's linking flow calls, removed with the
+// scenario, and returns its id.
+func (s *FederatedMappingSuite) createVerifyFlow(flow testutils.Flow) string {
+	s.T().Helper()
+	flowID, err := testutils.CreateFlow(flow)
+	s.Require().NoError(err, "failed to create verification flow %s", flow.Handle)
+	s.perTestFlowIDs = append(s.perTestFlowIDs, flowID)
+	return flowID
+}
+
 // createScenarioApp creates a flow and an application that runs it, for scenarios whose whole point is a
-// graph the shared flows cannot express. Both are torn down after the test.
-func (s *FederatedMappingSuite) createScenarioApp(flow testutils.Flow, clientID string) string {
+// graph the shared flows cannot express. Both are torn down after the test. The assertion carries the
+// user type, the OU and any assertionAttributes.
+func (s *FederatedMappingSuite) createScenarioApp(
+	flow testutils.Flow, clientID string, assertionAttributes ...string) string {
 	s.T().Helper()
 	flowID, err := testutils.CreateFlow(flow)
 	s.Require().NoError(err, "failed to create flow %s", flow.Handle)
@@ -491,17 +642,33 @@ func (s *FederatedMappingSuite) createScenarioApp(flow testutils.Flow, clientID 
 		ClientID:           clientID,
 		ClientSecret:       clientID + "-secret",
 		RedirectURIs:       []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:   []string{fedPersonType.Name},
+		AllowedUserTypes:   []string{fedPersonType.Handle},
 		OUID:               s.ouID,
 		AuthFlowID:         flowID,
 		RegistrationFlowID: regFlowID,
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId"},
+			"userAttributes": append([]string{"userTypeHandle", "ouId"}, assertionAttributes...),
 		},
 	})
 	s.Require().NoError(err, "failed to create the scenario application")
 	s.perTestAppIDs = append(s.perTestAppIDs, appID)
 	return appID
+}
+
+// authenticateFlow drives an authentication flow for whichever identity the mocks return for sub, and
+// returns the step the federated callback leads to.
+func (s *FederatedMappingSuite) authenticateFlow(appID, sub string) (*common.FlowStep, error) {
+	s.T().Helper()
+	s.activeSub = sub
+
+	step, err := common.InitiateAuthenticationFlow(appID, false, nil, "")
+	s.Require().NoError(err, "failed to initiate the authentication flow")
+	s.Require().Equal("REDIRECTION", step.Type, "expected a redirection, got %+v", step)
+
+	code, state, err := testutils.SimulateFederatedOAuthFlow(step.Data.RedirectURL)
+	s.Require().NoError(err, "failed to simulate authorization at the identity provider")
+	return common.CompleteFlow(step.ExecutionID, map[string]string{"code": code, "state": state}, "",
+		step.ChallengeToken)
 }
 
 func (s *FederatedMappingSuite) TearDownTest() {
@@ -512,7 +679,8 @@ func (s *FederatedMappingSuite) TearDownTest() {
 		}
 	}
 	s.perTestAppIDs = nil
-	for _, flowID := range s.perTestFlowIDs {
+	// Newest first, so a flow is deleted before the verification flow it calls.
+	for _, flowID := range slices.Backward(s.perTestFlowIDs) {
 		if err := testutils.DeleteFlow(flowID); err != nil {
 			s.T().Logf("failed to delete scenario flow: %v", err)
 		}
@@ -527,7 +695,7 @@ func (s *FederatedMappingSuite) TearDownTest() {
 }
 
 func (s *FederatedMappingSuite) TearDownSuite() {
-	for _, appID := range []string{s.appID, s.authAppID, s.strictAuthAppID, s.oauthAppID} {
+	for _, appID := range []string{s.appID, s.authAppID, s.strictAuthAppID, s.oauthAppID, s.authzAppID} {
 		if appID == "" {
 			continue
 		}
@@ -538,6 +706,27 @@ func (s *FederatedMappingSuite) TearDownSuite() {
 	for _, flowID := range s.config.CreatedFlowIDs {
 		if err := testutils.DeleteFlow(flowID); err != nil {
 			s.T().Logf("failed to delete flow %s: %v", flowID, err)
+		}
+	}
+	for _, roleID := range []string{s.authzMappedRoleID, s.authzGroupRoleID} {
+		if roleID == "" {
+			continue
+		}
+		if err := testutils.DeleteRole(roleID); err != nil {
+			s.T().Logf("failed to delete role %s: %v", roleID, err)
+		}
+	}
+	if s.authzMappedGroupID != "" {
+		if err := testutils.DeleteGroup(s.authzMappedGroupID); err != nil {
+			s.T().Logf("failed to delete group %s: %v", s.authzMappedGroupID, err)
+		}
+	}
+	for _, rsID := range []string{s.authzResourceServerID, s.authzOtherResourceServerID} {
+		if rsID == "" {
+			continue
+		}
+		if err := testutils.DeleteResourceServer(rsID); err != nil {
+			s.T().Logf("failed to delete resource server %s: %v", rsID, err)
 		}
 	}
 	if s.idpID != "" {
@@ -690,6 +879,17 @@ func (s *FederatedMappingSuite) nextSubject() string {
 func (s *FederatedMappingSuite) register(
 	config *testutils.AttributeConfiguration, user *testutils.OIDCUserInfo) map[string]interface{} {
 	s.T().Helper()
+	var attributes map[string]interface{}
+	s.Require().NoError(json.Unmarshal(s.registerEntity(config, user).Attributes, &attributes),
+		"failed to decode the provisioned user's attributes")
+	return attributes
+}
+
+// registerEntity drives the registration flow like register, and returns the user the flow's
+// assertion was issued for.
+func (s *FederatedMappingSuite) registerEntity(
+	config *testutils.AttributeConfiguration, user *testutils.OIDCUserInfo) *testutils.User {
+	s.T().Helper()
 	s.applyConfig(config)
 	s.mockOIDC.AddUser(user)
 	s.activeSub = user.Sub
@@ -708,15 +908,10 @@ func (s *FederatedMappingSuite) register(
 	s.Require().Equal("COMPLETE", completed.FlowStatus,
 		"expected the flow to complete, got %+v", completed)
 
-	provisioned, err := testutils.FindUserByAttribute("sub", user.Sub)
-	s.Require().NoError(err, "failed to look up the provisioned user")
-	s.Require().NotNil(provisioned, "no user was provisioned for subject %s", user.Sub)
+	provisioned, err := testutils.GetUserFromAssertion(completed.Assertion)
+	s.Require().NoError(err, "failed to look up the user provisioned for subject %s", user.Sub)
 	s.config.CreatedUserIDs = append(s.config.CreatedUserIDs, provisioned.ID)
-
-	var attributes map[string]interface{}
-	s.Require().NoError(json.Unmarshal(provisioned.Attributes, &attributes),
-		"failed to decode the provisioned user's attributes")
-	return attributes
+	return provisioned
 }
 
 // registerExpectingPrompt drives the flow for a configuration under which no mapping supplies a

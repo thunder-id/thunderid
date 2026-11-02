@@ -78,18 +78,21 @@ func fetchJSON(url string, dest any) error {
 	return json.NewDecoder(resp.Body).Decode(dest)
 }
 
-func fetchReleasesData() (*releasesData, error) {
-	return fetchReleasesDataFrom(product.ReleasesURL, product.GitHubAPI)
+func (c *Client) fetchReleasesData() (*releasesData, error) {
+	return fetchReleasesDataFrom(c.ManifestURL, c.FallbackURL)
 }
 
 // fetchReleasesDataFrom reads releases metadata from primaryURL and falls back to the
-// GitHub release API at fallbackURL. The URLs are parameters so tests can point both at
-// a local server.
+// GitHub release API at fallbackURL. An empty fallbackURL disables the fallback, which is what a
+// custom source implies. The URLs are parameters so tests can point both at a local server.
 func fetchReleasesDataFrom(primaryURL, fallbackURL string) (*releasesData, error) {
 	var data releasesData
 	primaryErr := fetchJSON(primaryURL, &data)
 	if primaryErr == nil {
 		return &data, nil
+	}
+	if fallbackURL == "" {
+		return nil, primaryErr
 	}
 
 	// Fallback to GitHub API.
@@ -116,9 +119,13 @@ func fetchReleasesDataFrom(primaryURL, fallbackURL string) (*releasesData, error
 	return &releasesData{LatestRelease: r, Releases: []releaseEntry{r}}, nil
 }
 
-// FetchLatestVersion queries releases metadata and returns the latest version string (no "v" prefix).
-func FetchLatestVersion() (string, error) {
-	data, err := fetchReleasesData()
+// FetchLatestVersion returns the latest version from the configured source.
+func FetchLatestVersion() (string, error) { return Default.LatestVersion() }
+
+// LatestVersion returns the newest version the manifest advertises, without a leading "v".
+// It ignores any pinned version: callers use it to tell the operator that an upgrade exists.
+func (c *Client) LatestVersion() (string, error) {
+	data, err := c.fetchReleasesData()
 	if err != nil {
 		return "", err
 	}
@@ -135,19 +142,24 @@ type ProgressFunc func(pct int, msg string)
 
 // Download downloads and extracts the product release for the current platform.
 func Download(version, destDir string, onProgress ProgressFunc) error {
+	return Default.Download(version, destDir, onProgress)
+}
+
+// Download downloads and extracts the product release for the current platform.
+func (c *Client) Download(version, destDir string, onProgress ProgressFunc) error {
 	assetName, err := PlatformAssetName(version)
 	if err != nil {
 		return err
 	}
 
-	data, err := fetchReleasesData()
+	data, err := c.fetchReleasesData()
 	if err != nil {
 		return err
 	}
 
 	found := findAsset(data, version, assetName)
 	if found == nil {
-		return fmt.Errorf("no release asset found for %s", assetName)
+		return fmt.Errorf("no release asset found for %s at %s%s", assetName, c.ManifestURL, availableVersions(data))
 	}
 
 	if onProgress != nil {
@@ -206,19 +218,24 @@ func SampleAssetName(sampleName, version string) (string, error) {
 
 // DownloadSample downloads and extracts the named sample to destDir.
 func DownloadSample(sampleName, version, destDir string, onProgress ProgressFunc) error {
+	return Default.DownloadSample(sampleName, version, destDir, onProgress)
+}
+
+// DownloadSample downloads and extracts the named sample to destDir.
+func (c *Client) DownloadSample(sampleName, version, destDir string, onProgress ProgressFunc) error {
 	assetName, err := SampleAssetName(sampleName, version)
 	if err != nil {
 		return err
 	}
 
-	data, err := fetchReleasesData()
+	data, err := c.fetchReleasesData()
 	if err != nil {
 		return err
 	}
 
 	found := findAsset(data, version, assetName)
 	if found == nil {
-		return fmt.Errorf("no release asset found for %s", assetName)
+		return fmt.Errorf("no release asset found for %s at %s%s", assetName, c.ManifestURL, availableVersions(data))
 	}
 
 	if onProgress != nil {
@@ -242,22 +259,41 @@ func DownloadSample(sampleName, version, destDir string, onProgress ProgressFunc
 	return extractInto(zipPath, destDir)
 }
 
+// findAsset returns the named asset belonging to the requested version, or nil.
+//
+// It matches on the version and never falls back to another release: returning the latest
+// release's asset for a version the manifest does not carry would install something other than
+// what was asked for, under the name that was asked for.
 func findAsset(data *releasesData, version, assetName string) *releaseAsset {
-	for _, r := range data.Releases {
-		if r.TagName == "v"+version {
-			for i := range r.Assets {
-				if r.Assets[i].Name == assetName {
-					return &r.Assets[i]
-				}
+	for _, r := range append([]releaseEntry{data.LatestRelease}, data.Releases...) {
+		if r.TagName != "v"+version {
+			continue
+		}
+		for i := range r.Assets {
+			if r.Assets[i].Name == assetName {
+				return &r.Assets[i]
 			}
 		}
 	}
-	for i := range data.LatestRelease.Assets {
-		if data.LatestRelease.Assets[i].Name == assetName {
-			return &data.LatestRelease.Assets[i]
-		}
-	}
 	return nil
+}
+
+// availableVersions renders the versions a manifest carries, for an error that would otherwise
+// only say the asset was missing.
+func availableVersions(data *releasesData) string {
+	seen := map[string]bool{}
+	var versions []string
+	for _, r := range append([]releaseEntry{data.LatestRelease}, data.Releases...) {
+		if r.TagName == "" || seen[r.TagName] {
+			continue
+		}
+		seen[r.TagName] = true
+		versions = append(versions, r.TagName)
+	}
+	if len(versions) == 0 {
+		return ""
+	}
+	return " (available: " + strings.Join(versions, ", ") + ")"
 }
 
 func downloadFile(url, destPath string, onProgress func(received, total int64)) error {

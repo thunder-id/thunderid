@@ -1,9 +1,15 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
+import {DocumentTitle, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
 import {useToast} from '@thunderid/contexts';
-import {useGetTranslations, useUpdateTranslation, NamespaceConstants, I18nDefaultConstants} from '@thunderid/i18n';
+import {
+  getDisplayNameForCode,
+  useGetTranslations,
+  useUpdateTranslation,
+  NamespaceConstants,
+  I18nDefaultConstants,
+} from '@thunderid/i18n';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, PageContent, useColorScheme} from '@wso2/oxygen-ui';
@@ -13,7 +19,11 @@ import {useNavigate, useParams} from 'react-router';
 import NamespaceSelector from '@/components/edit-translation/NamespaceSelector';
 import TranslationEditorCard from '@/components/edit-translation/TranslationEditorCard';
 import TranslationEditorHeader from '@/components/edit-translation/TranslationEditorHeader';
+import type {AddKeyDraft} from '@/components/edit-translation/TranslationFieldsView';
 import useTranslationRoutes from '@/hooks/useTranslationRoutes';
+
+/** The empty add-key draft, used to initialise the draft and to clear it on save, discard, and switch. */
+const EMPTY_ADD_KEY_DRAFT: AddKeyDraft = {adding: false, key: '', value: ''};
 
 /**
  * Page for editing translation key-value pairs for a specific language.
@@ -57,6 +67,7 @@ export default function TranslationsEditPage(): JSX.Element {
   const [localChanges, setLocalChanges] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<AddKeyDraft>(EMPTY_ADD_KEY_DRAFT);
 
   const {
     data: translationsData,
@@ -93,6 +104,7 @@ export default function TranslationsEditPage(): JSX.Element {
     setLocalChanges({});
     setSearch('');
     setSaveError(null);
+    setDraft(EMPTY_ADD_KEY_DRAFT);
   }
 
   // Initialize namespace once API data arrives
@@ -107,6 +119,7 @@ export default function TranslationsEditPage(): JSX.Element {
     setLocalChanges({});
     setSearch('');
     setSaveError(null);
+    setDraft(EMPTY_ADD_KEY_DRAFT);
   }
 
   const serverValues: Record<string, string> = useMemo(
@@ -169,6 +182,7 @@ export default function TranslationsEditPage(): JSX.Element {
       );
     } else {
       setLocalChanges({});
+      setDraft(EMPTY_ADD_KEY_DRAFT);
       showToast(t('editor.jsonSaveSuccess', 'All translations saved.'), 'success');
     }
   };
@@ -176,6 +190,7 @@ export default function TranslationsEditPage(): JSX.Element {
   const handleDiscard = () => {
     setSaveError(null);
     setLocalChanges({});
+    setDraft(EMPTY_ADD_KEY_DRAFT);
   };
 
   const handleResetToDefault = async () => {
@@ -233,10 +248,17 @@ export default function TranslationsEditPage(): JSX.Element {
   };
 
   const isLoading = !!selectedLanguage && translationsLoading;
-  const isCustomNamespace = selectedNamespace === NamespaceConstants.CUSTOM_NAMESPACE;
+  // Namespaces the admin may add brand-new keys to from the Console. The custom
+  // namespace is fully user-defined; the notification namespace is seeded from the
+  // server bootstrap resources but is likewise open to admin-authored additions.
+  const allowNewKeys =
+    selectedNamespace === NamespaceConstants.CUSTOM_NAMESPACE || selectedNamespace === NamespaceConstants.NOTIFICATION;
 
   return (
     <PageContent sx={{display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0}}>
+      <DocumentTitle
+        title={(selectedLanguage ? getDisplayNameForCode(selectedLanguage) : null) ?? t('page.title', 'Translations')}
+      />
       <TranslationEditorHeader
         selectedLanguage={selectedLanguage}
         isSaving={isSaving}
@@ -284,20 +306,22 @@ export default function TranslationsEditPage(): JSX.Element {
             search={search}
             currentValues={currentValues}
             serverValues={serverValues}
-            isCustomNamespace={isCustomNamespace}
+            allowNewKeys={allowNewKeys}
             colorMode={colorMode}
             onTabChange={handleTabChange}
             onSearchChange={setSearch}
             onFieldChange={handleFieldChange}
             onResetField={handleResetField}
+            draft={draft}
+            onDraftChange={setDraft}
             onJsonChange={handleJsonChange}
           />
 
           {hasDirtyChanges && (
             <UnsavedChangesBar
               message={t('editor.unsavedCount', {count: dirtyKeys.length, defaultValue: '{{count}} unsaved change'})}
-              resetLabel={t('actions.discardChanges', 'Discard Changes')}
-              saveLabel={t('actions.saveChanges', 'Save Changes')}
+              resetLabel={t('actions.discardChanges', 'Discard changes')}
+              saveLabel={t('actions.saveChanges', 'Save changes')}
               savingLabel={t('common:status.saving', {ns: 'common', defaultValue: 'Saving...'})}
               isSaving={isSaving}
               onReset={handleDiscard}

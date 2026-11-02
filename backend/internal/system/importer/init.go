@@ -8,19 +8,26 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/agent"
 	"github.com/thunder-id/thunderid/internal/application"
+	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
+	"github.com/thunder-id/thunderid/internal/connection"
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
+	"github.com/thunder-id/thunderid/internal/gateway"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/secretresolver"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
@@ -47,8 +54,16 @@ func Initialize(
 	presentationDefinitionService presentation.PresentationDefinitionServiceInterface,
 	credentialConfigurationService credential.CredentialConfigurationServiceInterface,
 	serverConfigService serverconfig.ServerConfigService,
+	gatewayService gateway.ServiceInterface,
+	notifTemplateService notificationtemplate.NotificationTemplateServiceInterface,
+	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
+	sharingService sharing.SharingServiceInterface,
+	authorizationDetailService authzdetailmgt.AuthorizationDetailMgtServiceInterface,
+	httpConnectionService connection.HTTPConnectionWriterInterface,
+	projectService ProjectAdapter,
+	references *secretresolver.Resolver,
 ) ImportServiceInterface {
-	importService := newImportService(
+	service := newImportService(
 		applicationService,
 		idpService,
 		senderService,
@@ -67,12 +82,21 @@ func Initialize(
 		presentationDefinitionService,
 		credentialConfigurationService,
 		serverConfigService,
+		gatewayService,
+		notifTemplateService,
+		authZENPDPService,
 	)
-	importHandler := newImportHandler(importService)
+	// Set here rather than passed to newImportService, which every test constructs without one.
+	service.(*importService).references = references
+	service.(*importService).sharingService = sharingService
+	service.(*importService).authorizationDetailTypeService = authorizationDetailService
+	service.(*importService).httpConnectionService = httpConnectionService
+	service.(*importService).projectService = projectService
+	importHandler := newImportHandler(service)
 
 	registerRoutes(mux, importHandler)
 
-	return importService
+	return service
 }
 
 func registerRoutes(mux *http.ServeMux, importHandler *importHandler) {

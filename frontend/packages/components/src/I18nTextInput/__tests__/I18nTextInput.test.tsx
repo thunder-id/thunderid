@@ -17,8 +17,8 @@ const {mockResolve, mockMutate, mockAddResourceBundle, mockOnTranslationCreated,
       value: {
         translations: {
           custom: {
-            display_name: 'Display Name',
-            first_name: 'First Name',
+            display_name: 'Display name',
+            first_name: 'First name',
           },
         },
       },
@@ -71,22 +71,22 @@ describe('I18nTextInput', () => {
     mockTranslations.value = {
       translations: {
         custom: {
-          display_name: 'Display Name',
-          first_name: 'First Name',
+          display_name: 'Display name',
+          first_name: 'First name',
         },
       },
     };
   });
 
   it('renders the label and input', () => {
-    render(<I18nTextInput label="Display Name" value="" onChange={vi.fn()} placeholder="Type a value" />);
+    render(<I18nTextInput label="Display name" value="" onChange={vi.fn()} placeholder="Type a value" />);
 
-    expect(screen.getByText('Display Name')).toBeInTheDocument();
+    expect(screen.getByText('Display name')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Type a value')).toBeInTheDocument();
   });
 
   it('shows the resolved value when input has an i18n template', () => {
-    render(<I18nTextInput label="Display Name" value="{{t(custom:display_name)}}" onChange={vi.fn()} />);
+    render(<I18nTextInput label="Display name" value="{{t(custom:display_name)}}" onChange={vi.fn()} />);
 
     expect(screen.getByText('Resolved value')).toBeInTheDocument();
     expect(screen.getByText('Resolved Display')).toBeInTheDocument();
@@ -95,7 +95,7 @@ describe('I18nTextInput', () => {
   it('uses provided labels when given', () => {
     render(
       <I18nTextInput
-        label="Display Name"
+        label="Display name"
         value="{{t(custom:display_name)}}"
         onChange={vi.fn()}
         labels={{resolvedValueLabel: 'Translated value'}}
@@ -108,14 +108,14 @@ describe('I18nTextInput', () => {
   it('opens popover and switches to create mode', async () => {
     const user = userEvent.setup();
     const {container} = render(
-      <I18nTextInput label="Display Name" value="" onChange={vi.fn()} defaultNewKey="Display Name" />,
+      <I18nTextInput label="Display name" value="" onChange={vi.fn()} defaultNewKey="Display name" />,
     );
 
     const configureButton = container.querySelector('button');
     expect(configureButton).not.toBeNull();
     await user.click(configureButton!);
 
-    await user.click(screen.getByText('Create New Translation'));
+    await user.click(screen.getByText('Create new translation'));
 
     expect(screen.getByDisplayValue('display_name')).toBeInTheDocument();
     expect(screen.getByText('Create')).toBeInTheDocument();
@@ -133,17 +133,17 @@ describe('I18nTextInput', () => {
 
     const {container} = render(
       <I18nTextInput
-        label="Display Name"
+        label="Display name"
         value=""
         onChange={onChange}
-        defaultNewKey="Display Name"
+        defaultNewKey="Display name"
         onTranslationCreated={mockOnTranslationCreated}
       />,
     );
 
     const configureButton = container.querySelector('button');
     await user.click(configureButton!);
-    await user.click(screen.getByText('Create New Translation'));
+    await user.click(screen.getByText('Create new translation'));
 
     await user.type(screen.getByPlaceholderText('e.g., First Name'), 'Shown Display Name');
     await user.click(screen.getByText('Create'));

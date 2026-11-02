@@ -249,12 +249,6 @@ func TestNewTracerProvider_PropagatorSetup(t *testing.T) {
 	if propagator == nil {
 		t.Fatal("Text map propagator should be set")
 	}
-
-	// Verify propagator is not nil (it's a composite propagator internally)
-	// The actual type is an internal implementation detail
-	if propagator == nil {
-		t.Error("Propagator should not be nil")
-	}
 }
 
 func TestNewTracerProvider_ResourceAttributes(t *testing.T) {

@@ -9,19 +9,19 @@ var (
 	// queryCreateIdentityProvider is the query to create a new IdP.
 	queryCreateIdentityProvider = model.DBQuery{
 		ID: "IPQ-IDP_MGT-01",
-		Query: `INSERT INTO "IDP" (ID, NAME, DESCRIPTION, TYPE, PROPERTIES, ATTRIBUTE_CONFIGURATION, DEPLOYMENT_ID) ` +
-			`VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		Query: `INSERT INTO "IDP" (ID, NAME, DESCRIPTION, TYPE, OU_ID, PROPERTIES, ATTRIBUTE_CONFIGURATION, ` +
+			`DEPLOYMENT_ID) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 	}
 	// queryGetIdentityProviderByID is the query to get a IdP by IdP ID.
 	queryGetIdentityProviderByID = model.DBQuery{
 		ID: "IPQ-IDP_MGT-02",
-		Query: `SELECT ID, NAME, DESCRIPTION, TYPE, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
+		Query: `SELECT ID, NAME, DESCRIPTION, TYPE, OU_ID, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
 			`WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 	// queryGetIdentityProviderList is the query to get a list of IdPs.
 	queryGetIdentityProviderList = model.DBQuery{
 		ID: "IPQ-IDP_MGT-03",
-		Query: `SELECT ID, NAME, DESCRIPTION, TYPE, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
+		Query: `SELECT ID, NAME, DESCRIPTION, TYPE, OU_ID, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
 			`WHERE DEPLOYMENT_ID = $1`,
 	}
 	// queryUpdateIdentityProviderByID is the query to update a IdP by IdP ID.
@@ -38,7 +38,7 @@ var (
 	// queryGetIdentityProviderByName is the query to get a IdP by IdP name.
 	queryGetIdentityProviderByName = model.DBQuery{
 		ID: "IPQ-IDP_MGT-06",
-		Query: `SELECT ID, NAME, DESCRIPTION, TYPE, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
+		Query: `SELECT ID, NAME, DESCRIPTION, TYPE, OU_ID, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
 			`WHERE NAME = $1 AND DEPLOYMENT_ID = $2`,
 	}
 	// queryGetIdentityProviderListCount is the query to get a count of IdPs.
@@ -49,9 +49,9 @@ var (
 	// queryGetIdentityProvidersByProperty is the query to get IDPs by a property key and value.
 	queryGetIdentityProvidersByProperty = model.DBQuery{
 		ID: "IPQ-IDP_MGT-08",
-		PostgresQuery: `SELECT ID, NAME, DESCRIPTION, TYPE, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
+		PostgresQuery: `SELECT ID, NAME, DESCRIPTION, TYPE, OU_ID, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
 			`WHERE PROPERTIES->$1->>'value' = $2 AND DEPLOYMENT_ID = $3`,
-		SQLiteQuery: `SELECT ID, NAME, DESCRIPTION, TYPE, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
+		SQLiteQuery: `SELECT ID, NAME, DESCRIPTION, TYPE, OU_ID, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
 			`WHERE json_extract(PROPERTIES, '$.' || $1 || '.value') = $2 AND DEPLOYMENT_ID = $3`,
 	}
 )

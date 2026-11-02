@@ -18,10 +18,19 @@ func NewFlowProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *FlowProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &FlowProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type FlowProviderMock_GetFlow_Call struct {
 // GetFlow is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowID string
-func (_e *FlowProviderMock_Expecter) GetFlow(ctx interface{}, flowID interface{}) *FlowProviderMock_GetFlow_Call {
+func (_e *FlowProviderMock_Expecter) GetFlow(ctx any, flowID any) *FlowProviderMock_GetFlow_Call {
 	return &FlowProviderMock_GetFlow_Call{Call: _e.mock.On("GetFlow", ctx, flowID)}
 }
 
@@ -148,7 +157,7 @@ type FlowProviderMock_GetFlowByHandle_Call struct {
 //   - ctx context.Context
 //   - handle string
 //   - flowType providers.FlowType
-func (_e *FlowProviderMock_Expecter) GetFlowByHandle(ctx interface{}, handle interface{}, flowType interface{}) *FlowProviderMock_GetFlowByHandle_Call {
+func (_e *FlowProviderMock_Expecter) GetFlowByHandle(ctx any, handle any, flowType any) *FlowProviderMock_GetFlowByHandle_Call {
 	return &FlowProviderMock_GetFlowByHandle_Call{Call: _e.mock.On("GetFlowByHandle", ctx, handle, flowType)}
 }
 
@@ -181,6 +190,76 @@ func (_c *FlowProviderMock_GetFlowByHandle_Call) Return(completeFlowDefinition *
 }
 
 func (_c *FlowProviderMock_GetFlowByHandle_Call) RunAndReturn(run func(ctx context.Context, handle string, flowType providers.FlowType) (*providers.CompleteFlowDefinition, *common.ServiceError)) *FlowProviderMock_GetFlowByHandle_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetSystemFlow provides a mock function for the type FlowProviderMock
+func (_mock *FlowProviderMock) GetSystemFlow(ctx context.Context, handle string) (*providers.CompleteFlowDefinition, *common.ServiceError) {
+	ret := _mock.Called(ctx, handle)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetSystemFlow")
+	}
+
+	var r0 *providers.CompleteFlowDefinition
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*providers.CompleteFlowDefinition, *common.ServiceError)); ok {
+		return returnFunc(ctx, handle)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *providers.CompleteFlowDefinition); ok {
+		r0 = returnFunc(ctx, handle)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.CompleteFlowDefinition)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, handle)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowProviderMock_GetSystemFlow_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetSystemFlow'
+type FlowProviderMock_GetSystemFlow_Call struct {
+	*mock.Call
+}
+
+// GetSystemFlow is a helper method to define mock.On call
+//   - ctx context.Context
+//   - handle string
+func (_e *FlowProviderMock_Expecter) GetSystemFlow(ctx any, handle any) *FlowProviderMock_GetSystemFlow_Call {
+	return &FlowProviderMock_GetSystemFlow_Call{Call: _e.mock.On("GetSystemFlow", ctx, handle)}
+}
+
+func (_c *FlowProviderMock_GetSystemFlow_Call) Run(run func(ctx context.Context, handle string)) *FlowProviderMock_GetSystemFlow_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowProviderMock_GetSystemFlow_Call) Return(completeFlowDefinition *providers.CompleteFlowDefinition, serviceError *common.ServiceError) *FlowProviderMock_GetSystemFlow_Call {
+	_c.Call.Return(completeFlowDefinition, serviceError)
+	return _c
+}
+
+func (_c *FlowProviderMock_GetSystemFlow_Call) RunAndReturn(run func(ctx context.Context, handle string) (*providers.CompleteFlowDefinition, *common.ServiceError)) *FlowProviderMock_GetSystemFlow_Call {
 	_c.Call.Return(run)
 	return _c
 }

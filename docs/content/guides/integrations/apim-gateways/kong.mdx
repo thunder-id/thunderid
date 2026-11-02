@@ -35,10 +35,10 @@ JWT authentication is the foundation of API security with Kong Konnect and <Prod
 
 1. Sign in to the <ProductName /> Console at `https://<THUNDER_HOST>:8090/console`.
 2. Navigate to **Applications** → **New Application**.
-3. Enter an **Application Name** (for example, `kong-api-client`).
-4. Select **Backend Service** as the application type.
-5. Click **Create Application**.
-6. Note the application **ID** (`<APP_ID>`), **Client ID**, and **Client Secret** from the application details page.
+3. Enter an **Application name** (for example, `kong-api-client`).
+4. Select **Backend service** as the application type.
+5. Click **Create application**.
+6. Note the application **ID** (`<APP_ID>`), **Client ID**, and **Client secret** from the application details page.
 
 #### Obtain an Access Token
 
@@ -161,19 +161,19 @@ The steps below build on the JWT validation configuration from the previous sect
 
 A Resource Server represents your API in <ProductName />. It groups the resources and actions that model your API, and exposes a permission (scope) for each action.
 
-1. In the Console, navigate to **Resource Servers** → **Add resource server**.
+1. In the Console, navigate to **Resource servers** → **Add resource server**.
 2. For the type, select **API**.
-3. Enter a **Resource Server Name** (for example, `Bookings API`) and an **Identifier** (for example, `https://bookings.example.com`).
-4. For the **Permission Delimiter**, select `:`.
+3. Enter a **Resource server name** (for example, `Bookings API`) and an **Identifier** (for example, `https://bookings.example.com`).
+4. For the **Permission delimiter**, select `:`.
 5. Select the **Organization** the resource server belongs to, then create it.
 
 #### Add Resources and Actions
 
 A Resource represents an entity within the API (such as the `/bookings` route), and Actions define the operations allowed on it. Each action produces a scope in the format `<resource-handle>:<action-handle>`.
 
-1. Open the resource server you just created and go to the **Resources & Actions** tab.
-2. Click **Add Resource** and enter a **Name** (for example, `Bookings`) and a **Handle** (`bookings`).
-3. Under that resource, click **Add Action** and enter a **Name** (for example, `Read Bookings`) and a **Handle** (`read`).
+1. Open the resource server you just created and go to the **Resources & actions** tab.
+2. Click **Add resource** and enter a **Name** (for example, `Bookings`) and a **Handle** (`bookings`).
+3. Under that resource, click **Add action** and enter a **Name** (for example, `Read Bookings`) and a **Handle** (`read`).
 4. Add a second action with a **Name** (for example, `Write Bookings`) and a **Handle** (`write`).
 
 This produces the permissions `bookings:read` and `bookings:write`, which <ProductName /> includes in tokens issued to applications that hold a role granting them.
@@ -182,8 +182,8 @@ This produces the permissions `bookings:read` and `bookings:write`, which <Produ
 
 Roles bundle one or more permissions together. Assigning a role to an application controls which scopes appear in its tokens.
 
-1. Navigate to **Roles** → **Add Role**.
-2. Enter a **Role Name** (for example, `Bookings manager`).
+1. Navigate to **Roles** → **Add role**.
+2. Enter a **Role name** (for example, `Bookings manager`).
 3. Click **Continue**.
 4. Under **Assign permissions**, choose `bookings:read`.
 5. Click **Continue**.

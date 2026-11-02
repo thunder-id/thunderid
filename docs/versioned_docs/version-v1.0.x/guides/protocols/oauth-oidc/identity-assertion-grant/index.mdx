@@ -13,16 +13,20 @@ The **Identity Assertion Authorization Grant (ID-JAG)**, defined by the IETF dra
 
 <ProductName /> plays both roles in the ID-JAG exchange.
 
+**<ProductName /> issues ID-JAGs** for your applications to present to an external authorization server:
+
 ```mermaid
 flowchart LR
-    subgraph issuing [ThunderID issues ID-JAGs]
-        A[Application] -->|Token exchange| T1[ThunderID]
-        T1 -->|ID-JAG| E[External authorization server]
-    end
-    subgraph accepting [ThunderID accepts ID-JAGs]
-        I[External identity provider] -->|ID-JAG| C[Client]
-        C -->|jwt-bearer grant| T2[ThunderID]
-    end
+  A[Application] -->|Token exchange| T1[ThunderID]
+  T1 -->|ID-JAG| E[External authorization server]
+```
+
+**<ProductName /> accepts ID-JAGs** minted by an external identity provider:
+
+```mermaid
+flowchart LR
+  I[External identity provider] -->|ID-JAG| C[Client]
+  C -->|jwt-bearer grant| T2[ThunderID]
 ```
 
 - To issue ID-JAGs from your own applications, see [Issue Identity Assertions](./issue-identity-assertions).

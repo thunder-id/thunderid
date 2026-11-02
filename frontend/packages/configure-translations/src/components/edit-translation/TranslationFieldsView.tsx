@@ -3,8 +3,23 @@
 
 import {Box, Button, FormControl, FormLabel, IconButton, TextField, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {Plus, RotateCcw} from '@wso2/oxygen-ui-icons-react';
-import {useMemo, useState, type JSX} from 'react';
+import {useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+
+/**
+ * The in-progress "add new key" draft. It is owned by the parent page so it can be cleared
+ * centrally on Save, Discard, and namespace change rather than lingering in child state.
+ *
+ * @public
+ */
+export interface AddKeyDraft {
+  /** Whether the add-key form is open. */
+  adding: boolean;
+  /** The draft key being entered. */
+  key: string;
+  /** The draft value being entered. */
+  value: string;
+}
 
 /**
  * Props for the {@link TranslationFieldsView} component.
@@ -18,12 +33,16 @@ export interface TranslationFieldsViewProps {
   serverValues: Record<string, string>;
   /** Current search query used to filter visible translation keys. */
   search: string;
-  /** Whether the active namespace is "custom", which allows adding new keys. */
-  isCustomNamespace: boolean;
+  /** Whether the active namespace permits admins to add brand-new keys (e.g. the custom and notification namespaces). */
+  allowNewKeys: boolean;
   /** Callback invoked when the user edits a translation field value. */
   onChange: (key: string, value: string) => void;
   /** Callback invoked when the user resets a field back to its saved value. */
   onResetField: (key: string) => void;
+  /** The in-progress add-key draft, owned by the parent so it can be cleared centrally. */
+  draft: AddKeyDraft;
+  /** Callback invoked when the add-key draft changes. */
+  onDraftChange: (draft: AddKeyDraft) => void;
 }
 
 /**
@@ -68,15 +87,13 @@ export default function TranslationFieldsView({
   localValues,
   serverValues,
   search,
-  isCustomNamespace,
+  allowNewKeys,
   onChange,
   onResetField,
+  draft,
+  onDraftChange,
 }: TranslationFieldsViewProps): JSX.Element {
   const {t} = useTranslation('translations');
-
-  const [addingKey, setAddingKey] = useState(false);
-  const [newKey, setNewKey] = useState('');
-  const [newValue, setNewValue] = useState('');
 
   const allKeys = Object.keys(localValues);
 
@@ -86,32 +103,28 @@ export default function TranslationFieldsView({
     return allKeys.filter((k) => k.toLowerCase().includes(q) || (localValues[k] ?? '').toLowerCase().includes(q));
   }, [allKeys, localValues, search]);
 
-  const isDuplicateKey = newKey.trim() !== '' && newKey.trim() in localValues;
+  const isDuplicateKey = draft.key.trim() !== '' && draft.key.trim() in localValues;
 
   const handleAddSubmit = () => {
-    const key = newKey.trim();
+    const key = draft.key.trim();
     if (!key || isDuplicateKey) return;
-    onChange(key, newValue);
-    setNewKey('');
-    setNewValue('');
-    setAddingKey(false);
+    onChange(key, draft.value);
+    onDraftChange({adding: false, key: '', value: ''});
   };
 
   const handleAddCancel = () => {
-    setNewKey('');
-    setNewValue('');
-    setAddingKey(false);
+    onDraftChange({adding: false, key: '', value: ''});
   };
 
   return (
     <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
-      {isCustomNamespace && (
+      {allowNewKeys && (
         <Box>
-          {!addingKey ? (
+          {!draft.adding ? (
             <Button
               size="small"
               startIcon={<Plus size={14} />}
-              onClick={() => setAddingKey(true)}
+              onClick={() => onDraftChange({...draft, adding: true})}
               sx={{textTransform: 'none'}}
             >
               {t('editor.addKey')}
@@ -134,8 +147,8 @@ export default function TranslationFieldsView({
                   id="new-translation-key"
                   size="small"
                   placeholder={t('editor.addKey.keyPlaceholder')}
-                  value={newKey}
-                  onChange={(e) => setNewKey(e.target.value)}
+                  value={draft.key}
+                  onChange={(e) => onDraftChange({...draft, key: e.target.value})}
                   error={isDuplicateKey}
                   helperText={isDuplicateKey ? t('editor.addKey.duplicateKey') : undefined}
                   sx={{'& .MuiInputBase-input': {fontFamily: 'monospace', fontSize: '0.8rem'}}}
@@ -147,8 +160,8 @@ export default function TranslationFieldsView({
                   id="new-translation-value"
                   size="small"
                   placeholder={t('editor.addKey.valuePlaceholder')}
-                  value={newValue}
-                  onChange={(e) => setNewValue(e.target.value)}
+                  value={draft.value}
+                  onChange={(e) => onDraftChange({...draft, value: e.target.value})}
                   multiline
                   minRows={1}
                   maxRows={4}
@@ -159,7 +172,7 @@ export default function TranslationFieldsView({
                   size="small"
                   variant="contained"
                   onClick={handleAddSubmit}
-                  disabled={!newKey.trim() || isDuplicateKey}
+                  disabled={!draft.key.trim() || isDuplicateKey}
                   sx={{textTransform: 'none'}}
                 >
                   {t('editor.addKey.submit')}

@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {BuilderLayout, BuilderStaticPanel} from '@thunderid/components';
+import {BuilderLayout, BuilderStaticPanel, DocumentTitle} from '@thunderid/components';
 import {useGetThemes, useGetTheme, type Stylesheet} from '@thunderid/design';
 import {Autocomplete, Box, Button, IconButton, TextField, Tooltip, Typography, useColorScheme} from '@wso2/oxygen-ui';
 import {ArrowLeft, Crosshair, Layers, Save} from '@wso2/oxygen-ui-icons-react';
@@ -241,6 +241,7 @@ export default function LayoutBuilderPage(): JSX.Element {
         },
       }}
     >
+      <DocumentTitle title={displayName ?? t('layouts.section.title', 'Layouts')} />
       {/* ── Top bar: back button | toolbar (portal target) | save button ──── */}
       <Box sx={{display: 'flex', alignItems: 'center', px: 2, py: 1, flexShrink: 0}}>
         <Button
@@ -250,7 +251,7 @@ export default function LayoutBuilderPage(): JSX.Element {
           onClick={handleNavigateBack}
           sx={{textTransform: 'none', fontSize: '0.8rem', color: 'text.secondary', whiteSpace: 'nowrap'}}
         >
-          {t('layouts.builder.actions.back_to_design.label', 'Back to Design')}
+          {t('layouts.builder.actions.back_to_design.label', 'Back to design')}
         </Button>
         {/* Portal target — the PreviewToolbar from GatePreview renders here */}
         <Box ref={setToolbarPortal} sx={{flex: 1, display: 'flex', justifyContent: 'center'}} />

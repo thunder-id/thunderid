@@ -32,9 +32,10 @@ The two paths diverge at the login screen and both end at login success, the pas
 
 1. Sign in to the <ProductName /> Console at [https://localhost:8090/console](https://localhost:8090/console).
 2. Go to **Flows** and click **+ Create New Flow**.
-3. Select **Sign-in** as the flow type and click **Continue**.
-4. Select **+ Start from scratch** and enter a flow name, for example `MFA Sign In`.
-5. Click **Create**.
+3. If your deployment has more than one organization unit, the Console asks which organization unit the flow belongs to. Select the organization unit that owns the flow, then click **Continue**. You cannot change it later. With exactly one organization unit, the Console uses it and skips this step.
+4. Select **Sign-in** as the flow type and click **Continue**.
+5. Select **+ Start from scratch** and enter a flow name, for example `MFA Sign In`.
+6. Click **Create**.
 
 The canvas opens with a **START** node, a blank **View** node, a **Auth Assertion Generator**, and an **END** node.
 
@@ -44,7 +45,7 @@ The canvas opens with a **START** node, a blank **View** node, a **Auth Assertio
 1. Delete **Blank View**.
 2. From **Steps**, click **+** next to **Username + Password**. This replaces the default blank View with the login form View node.
 3. From **Executors**, click **+** next to **Identifier + Password**.
-4. On the **Username + Password** View node, click the **Sign In** button component and set its **Action** property to **Submit Form**.
+4. On the **Username + Password** View node, click the **Sign In** button component and set its **Action** property to **Submit form**.
 5. Connect **START** → **Username + Password View** → **Identifier + Password Executor**.
 
 ## Add the Google Social Login Option
@@ -83,13 +84,13 @@ After a successful username + password check, the flow sends a one-time password
 2. Connect the **Identifier + Password** Executor's **success** output to the **Generate OTP** Executor's input.
 3. From the left panel under **Executors**, click **+** next to **Send SMS**.
 4. Click the <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline",verticalAlign:"middle"}}><path d="M11 10.27 7 3.34"></path><path d="m11 13.73-4 6.93"></path><path d="M12 22v-2"></path><path d="M12 2v2"></path><path d="M14 12h8"></path><path d="m17 20.66-1-1.73"></path><path d="m17 3.34-1 1.73"></path><path d="M2 12h2"></path><path d="m20.66 17-1.73-1"></path><path d="m20.66 7-1.73 1"></path><path d="m3.34 17 1.73-1"></path><path d="m3.34 7 1.73 1"></path><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="12" r="8"></circle></svg> configure icon on the **Send SMS** Executor node.
-5. Set the **Notification Sender** property to the sender name of your configured SMS sender.
-6. Set the **SMS Template** property to the scenario name of the SMS template to use (e.g., `OTP` for the built-in OTP template).
+5. Set the **Notification sender** property to the sender name of your configured SMS sender.
+6. Set the **SMS template** property to the scenario name of the SMS template to use (e.g., `OTP` for the built-in OTP template).
 7. Connect the **Generate OTP** Executor's **success** output to the **Send SMS** Executor's input.
 
 ## Add the OTP View and Verify OTP Executor
 
-1. From **Steps**, click **+** next to **SMS OTP View**. Click the **Verify** button component and set its **Action** property to **Submit Form**.
+1. From **Steps**, click **+** next to **SMS OTP View**. Click the **Verify** button component and set its **Action** property to **Submit form**.
 2. From **Executors**, click **+** next to **Verify OTP**.
 3. Connect **Send SMS** success → **SMS OTP View**.
 4. Connect **SMS OTP View** action output → **Verify OTP** Executor.
@@ -148,10 +149,11 @@ A flow has no effect until it is assigned to an application.
   A registration flow controls how new users sign up for your application. To create one:
 
   1. In the Console, go to **Flows** → **+ Create New Flow**.
-  2. Select **Self Sign-up** as the flow type and click **Continue**.
-  3. Choose a template, for example, **Basic** ("Username, password, and profile info registration"), or **Blank** to start from scratch.
-  4. Give the flow a name and click **Create**.
-  5. The canvas opens with the selected template pre-wired. Customize the steps as needed, then click **Save**.
+  2. If your deployment has more than one organization unit, select the organization unit that owns the flow and click **Continue**. You cannot change it later. With exactly one organization unit, the Console skips this step.
+  3. Select **Self sign-up** as the flow type and click **Continue**.
+  4. Choose a template, for example, **Basic** ("Username, password, and profile info registration"), or **Blank** to start from scratch.
+  5. Give the flow a name and click **Create**.
+  6. The canvas opens with the selected template pre-wired. Customize the steps as needed, then click **Save**.
 
   To assign the registration flow to your application:
 
@@ -171,15 +173,16 @@ A flow has no effect until it is assigned to an application.
   A recovery flow lets users regain access to their account, for example, via email-based password reset. To create one:
 
   1. In the Console, go to **Flows** → **+ Create New Flow**.
-  2. Select **Password Recovery** as the flow type and click **Continue**.
-  3. Choose a template, for example, **Email Link** ("Email-based password recovery with email link") or **SMS OTP**, or **Blank** to start from scratch.
-  4. Give the flow a name and click **Create**.
-  5. Review and customize the canvas, then click **Save**.
+  2. If your deployment has more than one organization unit, select the organization unit that owns the flow and click **Continue**. You cannot change it later. With exactly one organization unit, the Console skips this step.
+  3. Select **Password recovery** as the flow type and click **Continue**.
+  4. Choose a template, for example, **Email Link** ("Email-based password recovery with email link") or **SMS OTP**, or **Blank** to start from scratch.
+  5. Give the flow a name and click **Create**.
+  6. Review and customize the canvas, then click **Save**.
 
   To assign the recovery flow to your application:
 
   1. Go to **Applications** and open the application.
-  2. Open the **Flows** tab and find the **Recovery Flow** section.
+  2. Open the **Flows** tab and find the **Recovery flow** section.
   3. Enable the toggle to activate recovery for the application.
   4. Select the flow you created from the dropdown.
   5. Click **Save**.
@@ -202,7 +205,7 @@ A flow has no effect until it is assigned to an application.
      - **Create now**: the admin fills in the user's profile details immediately and the user is provisioned on the spot.
      - **Invite**: the admin enters the user's email address and selects a delivery method: send an invitation email, or copy a shareable link. The invited user follows the link to complete their own registration (the invite link is valid for 24 hours).
 
-  To customize the user onboarding flow, you can either edit the default flow directly in the Console's Flow Builder, or create a new one via the `/flows` API. See [API Reference](../../../apis).
+  To customize the user onboarding flow, you can either edit the default flow directly in the Console's Flow Builder, or create a new one via the `/flows` API, which requires the `ouId` of the organization unit that owns the flow. See [Organization Unit Ownership](../flow-concepts#organization-unit-ownership) and the [API Reference](../../../apis).
 
   To set the flow as the active system-wide user onboarding flow, call the Server Configuration API:
 
@@ -221,19 +224,20 @@ A flow has no effect until it is assigned to an application.
   A sign-out flow terminates the [Single Sign-On session](../../../key-concepts/authentication/sessions) an authentication flow established, so a user is fully signed out rather than silently signed in again on their next visit. The default flow ends the session without prompting, and a custom flow can confirm the sign-out with the user first. Every application already resolves to a flow, the one it pins, its organization unit's default, or the server-level default, so you only build a sign-out flow when you want to change that behavior. To create one:
 
   1. In the Console, go to **Flows** → **+ Create New Flow**.
-  2. Select **Sign Out** as the flow type and click **Continue**.
-  3. Choose a template, for example, **Silent Sign Out** ("Terminate the user's SSO session immediately, with no confirmation step"), **Confirm & Sign Out** (prompt on every request), **Conditional Confirmation** (prompt only when the request has no `id_token_hint`), or **Blank** to start from scratch.
-  4. Give the flow a name and click **Create**.
-  5. The canvas opens with the template pre-wired. The **End Session** executor is the node that terminates the session. Customize the steps as needed, then click **Save**.
+  2. If your deployment has more than one organization unit, select the organization unit that owns the flow and click **Continue**. You cannot change it later. With exactly one organization unit, the Console skips this step.
+  3. Select **Sign Out** as the flow type and click **Continue**.
+  4. Choose a template, for example, **Silent Sign Out** ("Terminate the user's SSO session immediately, with no confirmation step"), **Confirm & Sign Out** (prompt on every request), **Conditional Confirmation** (prompt only when the request has no `id_token_hint`), or **Blank** to start from scratch.
+  5. Give the flow a name and click **Create**.
+  6. The canvas opens with the template pre-wired. The **End Session** executor is the node that terminates the session. Customize the steps as needed, then click **Save**.
 
   To use your flow instead of the default on an application:
 
   1. Go to **Applications** and open the application.
-  2. Open the **Flows** tab and find the **Sign Out Flow** section.
+  2. Open the **Flows** tab and find the **Sign out flow** section.
   3. Select the flow you created from the dropdown.
   4. Click **Save**.
 
-  To make it the default for every application in an organization unit instead, go to **Organization Units** and open the organization unit. Open the **Flows** tab, select the flow under **Sign Out Flow**, then click **Save**. An application that pins its own flow keeps using that flow.
+  To make it the default for every application in an organization unit instead, go to **Organization units** and open the organization unit. Open the **Flows** tab, select the flow under **Sign out flow**, then click **Save**. An application that pins its own flow keeps using that flow.
 
   The sign-out flow runs when a user signs out of the application. Browser-based applications trigger it over OIDC through the [RP-Initiated Logout](../../protocols/oauth-oidc/rp-initiated-logout) endpoint; app-native applications run it directly through the Flow Execution API by initiating a `SIGNOUT` flow. See [API Reference](../../../apis).
 

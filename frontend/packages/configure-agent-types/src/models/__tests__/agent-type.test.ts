@@ -13,17 +13,20 @@ describe('agent-type types', () => {
   it('accepts ApiAgentType shape', () => {
     const t: ApiAgentType = {
       id: 'a1',
-      name: 'default',
+      handle: 'default',
+      displayName: 'Default',
       ouId: 'ou1',
       schema: {foo: {type: 'string'}},
     };
-    expect(t.name).toBe('default');
+    expect(t.handle).toBe('default');
+    expect(t.displayName).toBe('Default');
   });
 
   it('accepts ApiAgentType with optional ouHandle and systemAttributes', () => {
     const t: ApiAgentType = {
       id: 'a1',
-      name: 'default',
+      handle: 'default',
+      displayName: 'Default',
       ouId: 'ou1',
       ouHandle: 'default',
       systemAttributes: {display: 'username'},
@@ -36,7 +39,8 @@ describe('agent-type types', () => {
   it('accepts AgentTypeListItem shape', () => {
     const item: AgentTypeListItem = {
       id: 'a1',
-      name: 'default',
+      handle: 'default',
+      displayName: 'Default',
       ouId: 'ou1',
     };
     expect(item.id).toBe('a1');

@@ -14,10 +14,19 @@ func NewOutputAdapterInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *OutputAdapterInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &OutputAdapterInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -191,7 +200,7 @@ type OutputAdapterInterfaceMock_Write_Call struct {
 
 // Write is a helper method to define mock.On call
 //   - data []byte
-func (_e *OutputAdapterInterfaceMock_Expecter) Write(data interface{}) *OutputAdapterInterfaceMock_Write_Call {
+func (_e *OutputAdapterInterfaceMock_Expecter) Write(data any) *OutputAdapterInterfaceMock_Write_Call {
 	return &OutputAdapterInterfaceMock_Write_Call{Call: _e.mock.On("Write", data)}
 }
 

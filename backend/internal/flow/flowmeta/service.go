@@ -173,23 +173,11 @@ func (fms *flowMetaService) populateTypeMetadata(
 	response.IsRecoveryFlowEnabled = client.IsRecoveryFlowEnabled
 	response.Application = actorprovider.BuildApplicationMetadata(client.ID, entity, client.Properties)
 
-	ouList, ouErr := fms.ouService.GetOrganizationUnitList(ctx, 1, 0, nil)
-	if ouErr != nil {
-		if ouErr.Code == ou.ErrorOrganizationUnitNotFound.Code {
-			return "", &ErrorOUNotFound
-		}
-
-		fms.logger.Error(ctx, "Failed to get root organization unit",
-			log.String("error", ouErr.Error.DefaultValue),
-			log.String("code", ouErr.Code))
-		return "", &ErrorOUFetchFailed
+	if entity == nil {
+		return "", nil
 	}
 
-	if ouList != nil && ouList.TotalResults == 1 && len(ouList.OrganizationUnits) > 0 {
-		return ouList.OrganizationUnits[0].ID, nil
-	}
-
-	return "", nil
+	return entity.OUID, nil
 }
 
 func (fms *flowMetaService) populateOUMetadata(

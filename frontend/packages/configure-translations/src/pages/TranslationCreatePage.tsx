@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FullScreenCreationWizardLayout} from '@thunderid/components';
+import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
 import {useGetTranslations, useCreateTranslations, I18nDefaultConstants} from '@thunderid/i18n';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
@@ -281,6 +281,7 @@ export default function TranslationCreatePage(): JSX.Element {
       breadcrumbItems={getBreadcrumbItems()}
       footer={footer}
     >
+      <DocumentTitle title={t('listing.addLanguage', 'Add language')} />
       {error && (
         <Alert severity="error" sx={{mb: 3}} onClose={() => setError(null)}>
           {error}

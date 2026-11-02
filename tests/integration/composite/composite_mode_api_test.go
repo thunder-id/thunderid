@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -28,22 +29,40 @@ import (
 
 type CompositeModeSuite struct {
 	suite.Suite
-	createdResources map[string][]string
+	createdResources  map[string][]string
+	agentTypeSnapshot *testutils.AgentTypeSnapshot
 }
 
 func (suite *CompositeModeSuite) SetupSuite() {
 	suite.createdResources = make(map[string][]string)
 
+	// The "default" agent type is a singleton shared with every other suite. Snapshot it before
+	// pointing it at the declarative OU, so teardown can put it back.
+	snapshot, err := testutils.SnapshotAgentType()
+	suite.Require().NoError(err, "Failed to snapshot the default agent type")
+	suite.agentTypeSnapshot = snapshot
+
 	// Ensure the singleton "default" agent type exists so composite agent tests can create runtime agents.
-	_, err := testutils.CreateAgentType(testutils.UserType{
-		Name:   "default",
-		OUID:   "decl-ou-1",
-		Schema: map[string]interface{}{"description": map[string]interface{}{"type": "string"}},
+	_, err = testutils.CreateAgentType(testutils.UserType{
+		Handle:      "default",
+		DisplayName: "Default",
+		OUID:        "decl-ou-1",
+		Schema: map[string]interface{}{
+			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
+			"description": map[string]interface{}{"type": "string"},
+		},
 	})
 	suite.Require().NoError(err, "Failed to ensure default agent type exists")
 }
 
 func (suite *CompositeModeSuite) TearDownSuite() {
+	// Restore the shared agent type before deleting any runtime resources it may reference.
+	if suite.agentTypeSnapshot != nil {
+		if err := testutils.RestoreAgentType(suite.agentTypeSnapshot); err != nil {
+			suite.T().Errorf("teardown: failed to restore the default agent type: %v", err)
+		}
+	}
+
 	// Delete only runtime resources (not declarative)
 	for module, ids := range suite.createdResources {
 		for _, id := range ids {
@@ -193,11 +212,32 @@ func (suite *CompositeModeSuite) TestUserDeclarativeVisibility() {
 	suite.assertMergedCollectionContainsIDs("/users", "users", "decl-user-1", "user")
 }
 
+// decl-user-1's own file shares it into decl-m2m-root, so that unit lists it as shared while decl-ou-1,
+// which owns it, lists it as its own.
+func (suite *CompositeModeSuite) TestDeclaredUserListedInTheUnitsItIsSharedInto() {
+	for _, tc := range []struct {
+		path  string
+		owned bool
+	}{
+		{"/users?limit=100&filter=" + url.QueryEscape(`ouId eq "decl-m2m-root"`), false},
+		{"/organization-units/decl-m2m-root/users?limit=100", false},
+		{"/users?limit=100&filter=" + url.QueryEscape(`ouId eq "decl-ou-1"`), true},
+	} {
+		suite.Run(tc.path, func() {
+			items := suite.getCollectionItems(tc.path, "users")
+
+			item := suite.findCollectionItemByID(items, "decl-user-1")
+			suite.Require().NotNil(item, "decl-user-1 should be listed; got IDs: %v", suite.extractCollectionIDs(items))
+			suite.Equal(tc.owned, item["isOwnedByOU"])
+		})
+	}
+}
+
 func (suite *CompositeModeSuite) TestAgentCreate() {
 	agent := map[string]interface{}{
-		"name": "Test Runtime Agent",
-		"type": "default",
-		"ouId": "decl-ou-1",
+		"type":       "default",
+		"ouId":       "decl-ou-1",
+		"attributes": map[string]interface{}{"name": "Test Runtime Agent"},
 	}
 
 	payload, _ := json.Marshal(agent)
@@ -284,6 +324,46 @@ func (suite *CompositeModeSuite) TestIdentityProviderDeclarativeVisibility() {
 		"/connections?category=identity-provider", "connections", "decl-idp-1", "identity_provider")
 }
 
+// declarativeOUID reads the id the server reports for the declarative organization unit decl-ou-1.
+func (suite *CompositeModeSuite) declarativeOUID() string {
+	client := testutils.GetHTTPClient()
+	resp, err := client.Get(fmt.Sprintf("%s/organization-units/decl-ou-1", testutils.TestServerURL))
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var ou map[string]interface{}
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&ou))
+	id, ok := ou["id"].(string)
+	suite.Require().True(ok, "declarative organization unit should carry an id: %v", ou)
+	return id
+}
+
+// TestDeclarativeConnectionOwnerResolvedFromOUHandle verifies a declarative connection that names its owner by
+// ouHandle (decl-idp-1 and decl-authzen-pdp-1 both give ouHandle: decl-ou-1) is owned by that organization unit.
+func (suite *CompositeModeSuite) TestDeclarativeConnectionOwnerResolvedFromOUHandle() {
+	ouID := suite.declarativeOUID()
+	client := testutils.GetHTTPClient()
+
+	for _, vendorPath := range []string{"google/decl-idp-1", "authzen-pdp/decl-authzen-pdp-1"} {
+		suite.Run(vendorPath, func() {
+			resp, err := client.Get(fmt.Sprintf("%s/connections/%s", testutils.TestServerURL, vendorPath))
+			suite.Require().NoError(err)
+			defer resp.Body.Close()
+			suite.Require().Equal(http.StatusOK, resp.StatusCode)
+
+			var connection map[string]interface{}
+			suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&connection))
+			suite.Equal(ouID, connection["ouId"], "the owner should be the unit the ouHandle names")
+		})
+	}
+
+	items := suite.getCollectionItems("/connections?category=identity-provider", "connections")
+	listed := suite.findCollectionItemByID(items, "decl-idp-1")
+	suite.Require().NotNil(listed, "the merged listing should include the declarative connection")
+	suite.Equal(ouID, listed["ouId"], "the flat listing should report the same owner")
+}
+
 // AD4: a declarative connection's attributeConfiguration survives the file store and is returned by
 // both the vendor GET and the merged listing, and a database-backed connection created at runtime in the
 // same composite deployment returns its own. This is also the first test to execute
@@ -307,7 +387,7 @@ func (suite *CompositeModeSuite) TestConnectionAttributeConfigurationInComposite
 	// driven by the json tags while the file is parsed with the yaml ones. See G13.
 	resolution, ok := config["userTypeResolution"].(map[string]interface{})
 	suite.Require().True(ok, "expected userTypeResolution in %v", config)
-	suite.Equal("Declarative Test Schema", resolution["default"])
+	suite.Equal("declarative-test-schema", resolution["default"])
 
 	linking, ok := config["accountLinking"].(map[string]interface{})
 	suite.Require().True(ok, "expected accountLinking in %v", config)
@@ -318,7 +398,7 @@ func (suite *CompositeModeSuite) TestConnectionAttributeConfigurationInComposite
 	suite.Require().Len(mappings, 1)
 	entry, ok := mappings[0].(map[string]interface{})
 	suite.Require().True(ok)
-	suite.Equal("Declarative Test Schema", entry["userType"])
+	suite.Equal("declarative-test-schema", entry["userType"])
 	suite.Len(entry["attributes"], 2)
 
 	// A runtime, database-backed connection in the same deployment carries its own configuration.
@@ -354,15 +434,16 @@ func (suite *CompositeModeSuite) createRuntimeConnectionWithAttributeConfigurati
 	suite.T().Helper()
 	body := map[string]interface{}{
 		"name":         fmt.Sprintf("Composite Runtime IDP %d", time.Now().UnixNano()),
+		"ouId":         "decl-ou-1",
 		"clientId":     "composite-runtime-client",
 		"clientSecret": "composite-runtime-secret",
 		"redirectUri":  "https://localhost:8095/callback",
 		"scopes":       []string{"openid", "email", "profile"},
 		"attributeConfiguration": map[string]interface{}{
-			"userTypeResolution": map[string]interface{}{"default": "Declarative Test Schema"},
+			"userTypeResolution": map[string]interface{}{"default": "declarative-test-schema"},
 			"userTypeAttributeMappings": []interface{}{
 				map[string]interface{}{
-					"userType": "Declarative Test Schema",
+					"userType": "declarative-test-schema",
 					"attributes": []interface{}{
 						map[string]interface{}{"externalAttribute": "given_name", "localAttribute": "username"},
 					},
@@ -417,7 +498,7 @@ func (suite *CompositeModeSuite) TestDeclarativeConnectionWithAttributeConfigura
 		"clientSecret": "test-client-secret",
 		"redirectUri":  "https://localhost:8095/callback",
 		"attributeConfiguration": map[string]interface{}{
-			"userTypeResolution": map[string]interface{}{"default": "Declarative Test Schema"},
+			"userTypeResolution": map[string]interface{}{"default": "declarative-test-schema"},
 			"accountLinking":     map[string]interface{}{"attributes": []string{"email"}},
 		},
 	}
@@ -458,7 +539,7 @@ func (suite *CompositeModeSuite) TestSecretMaskingLeavesAttributeConfigurationIn
 	// compared against what the fixture declares.
 	resolution, ok := config["userTypeResolution"].(map[string]interface{})
 	suite.Require().True(ok, "expected userTypeResolution in %v", config)
-	suite.Equal("Declarative Test Schema", resolution["default"])
+	suite.Equal("declarative-test-schema", resolution["default"])
 
 	linking, ok := config["accountLinking"].(map[string]interface{})
 	suite.Require().True(ok, "expected accountLinking in %v", config)
@@ -469,7 +550,7 @@ func (suite *CompositeModeSuite) TestSecretMaskingLeavesAttributeConfigurationIn
 	suite.Require().Len(mappings, 1)
 	entry, ok := mappings[0].(map[string]interface{})
 	suite.Require().True(ok)
-	suite.Equal("Declarative Test Schema", entry["userType"])
+	suite.Equal("declarative-test-schema", entry["userType"])
 	attributes, ok := entry["attributes"].([]interface{})
 	suite.Require().True(ok)
 	suite.Require().Len(attributes, 2)
@@ -506,6 +587,26 @@ func (suite *CompositeModeSuite) TestFlowDeclarativeVisibility() {
 	isReadOnly, ok := declFlow["isReadOnly"].(bool)
 	suite.Require().True(ok, "merged flow item should include isReadOnly")
 	suite.True(isReadOnly, "declarative flow should be marked as read-only in merged collection")
+}
+
+// TestDeclarativeFlowOwnerResolvedFromOUHandle verifies a declarative flow that names its owner by ouHandle
+// (decl-flow-1 gives ouHandle: decl-ou-1) is owned by that organization unit.
+func (suite *CompositeModeSuite) TestDeclarativeFlowOwnerResolvedFromOUHandle() {
+	client := testutils.GetHTTPClient()
+	read := func(path string) map[string]interface{} {
+		resp, err := client.Get(testutils.TestServerURL + path)
+		suite.Require().NoError(err)
+		defer resp.Body.Close()
+		suite.Require().Equal(http.StatusOK, resp.StatusCode)
+		var body map[string]interface{}
+		suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&body))
+		return body
+	}
+
+	ouID, ok := read("/organization-units/decl-ou-1")["id"].(string)
+	suite.Require().True(ok, "the declarative organization unit should carry an id")
+
+	suite.Equal(ouID, read("/flows/decl-flow-1")["ouId"], "the flow should be owned by the unit its handle names")
 }
 
 func (suite *CompositeModeSuite) TestEntityTypeDeclarativeVisibility() {
@@ -583,7 +684,7 @@ func (suite *CompositeModeSuite) TestApplicationCreate() {
 
 func (suite *CompositeModeSuite) TestUserCreate() {
 	user := map[string]interface{}{
-		"type": "Declarative Test Schema",
+		"type": "declarative-test-schema",
 		"ouId": "decl-ou-1",
 		"attributes": map[string]interface{}{
 			"username": fmt.Sprintf("runtime-user-%d", time.Now().Unix()),
@@ -713,6 +814,7 @@ func (suite *CompositeModeSuite) TestOrganizationUnitCreate() {
 func (suite *CompositeModeSuite) TestIdentityProviderCreate() {
 	idp := map[string]interface{}{
 		"name":                  "Test Runtime IDP",
+		"ouId":                  "decl-ou-1",
 		"clientId":              "test-client-id",
 		"clientSecret":          "test-client-secret",
 		"redirectUri":           "https://localhost:3000/oidc/callback",
@@ -815,10 +917,13 @@ func (suite *CompositeModeSuite) TestFlowCreate() {
 	timestamp := time.Now().Unix()
 	flowID := fmt.Sprintf("runtime-flow-%d", timestamp)
 
+	defaultOUID, err := testutils.DefaultOUID()
+	suite.Require().NoError(err)
 	flow := map[string]interface{}{
 		"handle":   flowID,
 		"name":     "Test Runtime Flow",
 		"flowType": "AUTHENTICATION",
+		"ouId":     defaultOUID,
 		"nodes": []map[string]interface{}{
 			{"id": "start", "type": "START", "onSuccess": "prompt_credentials"},
 			{
@@ -895,8 +1000,9 @@ func (suite *CompositeModeSuite) TestEntityTypeCreate() {
 	ouResp.Body.Close()
 
 	schema := map[string]interface{}{
-		"name": schemaID,
-		"ouId": "decl-ou-1",
+		"handle":      schemaID,
+		"displayName": "Runtime Schema",
+		"ouId":        "decl-ou-1",
 		"schema": map[string]interface{}{
 			"email":    map[string]interface{}{"type": "string"},
 			"username": map[string]interface{}{"type": "string", "required": true},
@@ -1091,9 +1197,9 @@ func (suite *CompositeModeSuite) TestUserDeclarativeDeleteReject() {
 func (suite *CompositeModeSuite) TestAgentDeclarativeUpdateReject() {
 	client := testutils.GetHTTPClient()
 	payload := map[string]interface{}{
-		"name": "Updated",
-		"type": "default",
-		"ouId": "decl-ou-1",
+		"type":       "default",
+		"ouId":       "decl-ou-1",
+		"attributes": map[string]interface{}{"name": "Updated"},
 	}
 	jsonPayload, _ := json.Marshal(payload)
 
@@ -1106,6 +1212,23 @@ func (suite *CompositeModeSuite) TestAgentDeclarativeUpdateReject() {
 
 	errCode := suite.extractErrorCode(resp)
 	suite.Equal("AGT-1027", errCode, "error code should be AGT-1027 for immutable agent")
+
+	// The rejection must leave nothing behind. The payload above renames the agent and omits
+	// the other attributes, and omitting attributes on a successful update clears them, so a partially
+	// applied write would show up either as the new name or as emptied attributes.
+	getResp, err := client.Get(fmt.Sprintf("%s/agents/decl-agent-1", testutils.TestServerURL))
+	suite.Require().NoError(err)
+	defer getResp.Body.Close()
+	suite.Require().Equal(http.StatusOK, getResp.StatusCode, "declarative agent should still be readable")
+
+	var stored map[string]interface{}
+	suite.Require().NoError(json.NewDecoder(getResp.Body).Decode(&stored))
+
+	attributes, ok := stored["attributes"].(map[string]interface{})
+	suite.Require().True(ok, "declarative agent should still carry its attributes: %v", stored)
+	suite.Equal("Declarative Test Agent", attributes["name"], "rejected update must not rename the agent")
+	suite.Equal("engineering", attributes["department"],
+		"rejected update must not clear attributes the payload omitted")
 }
 
 func (suite *CompositeModeSuite) TestAgentDeclarativeDeleteReject() {
@@ -1297,7 +1420,11 @@ func (suite *CompositeModeSuite) TestFlowDeclarativeDeleteReject() {
 
 func (suite *CompositeModeSuite) TestEntityTypeDeclarativeUpdateReject() {
 	client := testutils.GetHTTPClient()
-	payload := map[string]interface{}{"name": "Updated", "ouId": "decl-ou-1"}
+	payload := map[string]interface{}{
+		"handle":      "declarative-test-schema",
+		"displayName": "Updated",
+		"ouId":        "decl-ou-1",
+	}
 	jsonPayload, _ := json.Marshal(payload)
 
 	req, _ := http.NewRequest("PUT", fmt.Sprintf("%s/user-types/decl-schema-1", testutils.TestServerURL), strings.NewReader(string(jsonPayload)))

@@ -31,6 +31,9 @@ paths:
       description: >
         Imports one or more declarative YAML documents into runtime stores or file storage.
         Supports template variable substitution, dry-run mode, and configurable error handling.
+        A `connection` document for an identity provider, an SMS or email sender, or an AuthZEN PDP
+        has to carry `ouId` or `ouHandle`, because every connection belongs to one organization unit.
+        An item without either fails, a dry run included.
       requestBody:
         required: true
         content:
@@ -53,17 +56,18 @@ paths:
                 summary: Import with template variables
                 value:
                   content: |
-                    apiVersion: v1
-                    kind: Connection
-                    metadata:
-                      name: Google IDP
-                    spec:
-                      type: google
-                      clientId: "{{.GOOGLE_CLIENT_ID}}"
-                      clientSecret: "{{.GOOGLE_CLIENT_SECRET}}"
+                    resource_type: connection
+                    id: 0193b0a1-1004-7000-8000-000000000001
+                    name: Google IDP
+                    ouHandle: default
+                    type: google
+                    clientId: "{{.GOOGLE_CLIENT_ID}}"
+                    clientSecret: "{{.GOOGLE_CLIENT_SECRET}}"
+                    redirectUri: "{{.GOOGLE_REDIRECT_URI}}"
                   variables:
                     GOOGLE_CLIENT_ID: "client-123"
                     GOOGLE_CLIENT_SECRET: "secret-456"
+                    GOOGLE_REDIRECT_URI: "https://localhost:8090/gate/callback"
                   options:
                     upsert: true
               dry-run-import:
@@ -251,10 +255,25 @@ components:
   schemas:
     ImportRequest:
       type: object
-      required: [content]
       description: >
         Request payload for importing declarative resources.
         The content should contain one or more YAML documents separated by `---`.
+
+
+        A request has to carry work to do: either `content` to upsert, or `deletions` to remove, or
+        both. A request carrying neither is rejected.
+      anyOf:
+        # The constraint belongs to the branch, not the property: a deletion-only request still
+        # serializes content as "", and a top-level minLength would reject a request the service
+        # accepts.
+        - required: [content]
+          properties:
+            content:
+              minLength: 1
+        - required: [deletions]
+          properties:
+            deletions:
+              minItems: 1
       properties:
         content:
           type: string
@@ -282,8 +301,40 @@ components:
           description: >
             When true, validates the import content and returns expected outcomes
             without persisting any changes to the system.
+        deletions:
+          type: array
+          description: >
+            Resources to remove. The declarative payload in `content` can create and update but
+            never remove, so a resource dropped from a configuration would otherwise linger on
+            every deployment that configuration was applied to.
+
+
+            Removals run after the upserts, so a resource this same request moved or replaced is in
+            place before its predecessor is pruned, and they are ordered as the reverse of the
+            import dependency order so a dependent goes before what it depends on. Deleting
+            something already absent is reported as success, which is what makes re-applying the
+            same configuration a no-op. A request may carry deletions and no `content`.
+          items:
+            $ref: '#/components/schemas/ResourceDeletion'
         options:
           $ref: '#/components/schemas/ImportOptions'
+
+    ResourceDeletion:
+      type: object
+      description: Identifies a runtime resource to remove during an import.
+      required: [resourceType, id]
+      properties:
+        resourceType:
+          type: string
+          description: >
+            Type of the resource to remove. A type with no runtime delete operation, such as
+            `translation` or `server_config`, is reported as an unsupported outcome rather than
+            silently skipped.
+          example: "application"
+        id:
+          type: string
+          description: Identifier of the resource to remove.
+          example: "550e8400-e29b-41d4-a716-446655440000"
 
     ImportOptions:
       type: object
@@ -332,6 +383,15 @@ components:
           type: integer
           description: Total number of YAML documents processed.
           example: 5
+        deleted:
+          type: integer
+          description: >
+            Number of deletions this request completed. A dry run completes none, and a resource a
+            service reports as not found is not counted, though both are still reported as a
+            success in `results`. Not every service distinguishes an absent id from a removed one,
+            so this is the count of deletions that completed rather than a guarantee that each one
+            had something to remove.
+          example: 1
         imported:
           type: integer
           description: Number of documents successfully imported or validated.
@@ -389,7 +449,8 @@ components:
           type: string
           description: >
             Human-readable message describing the result.
-            Contains error details when status is `failed`.
+            Contains error details when status is `failed`. Successful user, agent and application
+            imports include a warning here when a non-empty top-level `state` was ignored.
           example: "Resource created successfully"
 
     DeleteResourceRequest:

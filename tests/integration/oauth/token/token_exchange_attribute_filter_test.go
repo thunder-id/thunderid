@@ -27,7 +27,8 @@ const (
 )
 
 var teAttrFilterUserType = testutils.UserType{
-	Name: "te-attr-filter-person",
+	Handle:      "te-attr-filter-person",
+	DisplayName: "Te Attr Filter Person",
 	Schema: map[string]interface{}{
 		"username":    map[string]interface{}{"type": "string"},
 		"password":    map[string]interface{}{"type": "string", "credential": true},

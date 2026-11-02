@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 var (
@@ -95,7 +95,8 @@ var (
 	}
 
 	ctTokenEntityType = testutils.UserType{
-		Name: "ct_token_test_user",
+		Handle:      "ct_token_test_user",
+		DisplayName: "Ct Token Test User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -108,7 +109,7 @@ var (
 	}
 
 	ctTokenTestUser = testutils.User{
-		Type: ctTokenEntityType.Name,
+		Type: ctTokenEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "ct_token_testuser",
 			"password": "testpassword"
@@ -154,7 +155,7 @@ func (ts *ChallengeTokenTestSuite) SetupSuite() {
 		ClientID:                  "ct_token_test_client",
 		ClientSecret:              "ct_token_test_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{ctTokenEntityType.Name},
+		AllowedUserTypes:          []string{ctTokenEntityType.Handle},
 		AuthFlowID:                flowID,
 		OUID:                      ts.ouID,
 	}

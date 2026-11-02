@@ -17,10 +17,19 @@ func NewObservabilityProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ObservabilityProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ObservabilityProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -96,7 +105,7 @@ type ObservabilityProviderMock_PublishEvent_Call struct {
 // PublishEvent is a helper method to define mock.On call
 //   - ctx context.Context
 //   - evt *providers.Event
-func (_e *ObservabilityProviderMock_Expecter) PublishEvent(ctx interface{}, evt interface{}) *ObservabilityProviderMock_PublishEvent_Call {
+func (_e *ObservabilityProviderMock_Expecter) PublishEvent(ctx any, evt any) *ObservabilityProviderMock_PublishEvent_Call {
 	return &ObservabilityProviderMock_PublishEvent_Call{Call: _e.mock.On("PublishEvent", ctx, evt)}
 }
 

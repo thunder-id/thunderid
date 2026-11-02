@@ -23,6 +23,11 @@ import (
 const (
 	resourceTypeResourceServer = "resource_server"
 	paramTypeResourceServer    = "ResourceServer"
+
+	// resourceServerPartResources and resourceServerPartActions name the collections a resource
+	// server's API serves under /resource-servers/{id}.
+	resourceServerPartResources = "resources"
+	resourceServerPartActions   = "actions"
 )
 
 // resourceServerExporter implements declarativeresource.ResourceExporter for resource servers.
@@ -91,14 +96,20 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 
 	// Build providers.ResourceServer with nested structure
 	rs := &providers.ResourceServer{
-		ID:          server.ID,
-		Name:        server.Name,
-		Description: server.Description,
-		Identifier:  server.Identifier,
-		Type:        server.Type,
-		OUID:        server.OUID,
-		Delimiter:   server.Delimiter,
-		Resources:   []providers.Resource{},
+		ID:                  server.ID,
+		Name:                server.Name,
+		Description:         server.Description,
+		Identifier:          server.Identifier,
+		Type:                server.Type,
+		OUID:                server.OUID,
+		Delimiter:           server.Delimiter,
+		AuthorizationEngine: server.AuthorizationEngine,
+		Resources:           []providers.Resource{},
+	}
+
+	rs.Actions, err = e.getAllActions(ctx, id, nil)
+	if err != nil {
+		return nil, "", err
 	}
 
 	allResources, err := e.service.GetAllResourceList(ctx, id)
@@ -106,49 +117,29 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 		return nil, "", err
 	}
 
-	// First pass: build ID-to-Handle map so parent handles can be resolved regardless of order
-	idToHandleMap := make(map[string]string)
+	// First pass: build ID-to-path map so parent paths can be resolved regardless of order
+	idToPathMap := make(map[string]string)
 	for _, res := range allResources {
-		idToHandleMap[res.ID] = res.Handle
+		idToPathMap[res.ID] = res.Permission
 	}
 
-	// Second pass: build declarative resources with resolved parent handles and actions
+	// Second pass: build declarative resources with resolved parent paths and actions
 	for _, res := range allResources {
 		resource := providers.Resource{
 			Name:        res.Name,
 			Handle:      res.Handle,
 			Description: res.Description,
-			Actions:     []providers.Action{},
 		}
 
 		if res.Parent != nil && *res.Parent != "" {
-			if parentHandle, ok := idToHandleMap[*res.Parent]; ok {
-				resource.ParentHandle = parentHandle
+			if parentPath, ok := idToPathMap[*res.Parent]; ok {
+				resource.ParentHandle = parentPath
 			}
 		}
 
-		// Get actions for this resource
-		actOffset := 0
-		for {
-			actions, actErr := e.service.GetActionList(ctx, id, &res.ID, "", serverconst.MaxPageSize, actOffset)
-			if actErr != nil {
-				return nil, "", actErr
-			}
-			if len(actions.Actions) == 0 {
-				break
-			}
-			for _, action := range actions.Actions {
-				resource.Actions = append(resource.Actions, providers.Action{
-					Name:        action.Name,
-					Handle:      action.Handle,
-					Description: action.Description,
-					Kind:        action.Kind,
-				})
-			}
-			actOffset += len(actions.Actions)
-			if actOffset >= actions.TotalResults {
-				break
-			}
+		resource.Actions, err = e.getAllActions(ctx, id, &res.ID)
+		if err != nil {
+			return nil, "", err
 		}
 
 		rs.Resources = append(rs.Resources, resource)
@@ -175,11 +166,131 @@ func (e *resourceServerExporter) ValidateResource(ctx context.Context,
 }
 
 // GetResourceRules returns the parameterization rules for resource servers.
-// Resource servers have no fields that need to be parameterized as template variables,
-// so nil is returned to use the standard YAML encoder path which preserves literal values
-// and correctly quotes fields tagged with yamlfmt:"quoted" (e.g. Delimiter).
+// The identifier is the audience each deployment serves under, so it is parameterized and every
+// deployment supplies its own.
 func (e *resourceServerExporter) GetResourceRules() *declarativeresource.ResourceRules {
-	return nil
+	return &declarativeresource.ResourceRules{
+		Variables: []string{
+			"Identifier",
+		},
+	}
+}
+
+// ViewResource shows an exported resource server as a read of it returns it.
+func (e *resourceServerExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(rs *providers.ResourceServer) (interface{}, error) {
+		return toResourceServerResponse(rs), nil
+	})
+}
+
+// ViewResourceParts shows the collections a resource server's API serves under it: "resources" (the
+// top-level resources) and "actions" (the actions of the resource server itself), and for each
+// resource "resources/{id}", its children at "resources/{id}/resources" and its actions at
+// "resources/{id}/actions". A list part shows every item on one page. An export carries no database
+// ids, so a resource and an action are given the ids a declarative resource server serves them by,
+// built from the server id and their handles.
+func (e *resourceServerExporter) ViewResourceParts(_ context.Context, document *yaml.Node) (
+	map[string]interface{}, error) {
+	return declarativeresource.DecodeView(document, func(rs *providers.ResourceServer) (
+		map[string]interface{}, error) {
+		actions, resources, err := viewResources(rs)
+		if err != nil {
+			return nil, err
+		}
+		parts := map[string]interface{}{
+			resourceServerPartActions: toActionListResponse(&ActionList{
+				TotalResults: len(actions), StartIndex: 1, Count: len(actions), Actions: actions,
+			}),
+		}
+		topLevel := make([]providers.Resource, 0, len(resources))
+		for i := range resources {
+			res := &resources[i]
+			if res.Parent == nil {
+				topLevel = append(topLevel, *res)
+			}
+			// A resource's children, which the live API lists with ?parentId=.
+			children := make([]providers.Resource, 0, len(resources))
+			for _, child := range resources {
+				if child.Parent != nil && *child.Parent == res.ID {
+					children = append(children, child)
+				}
+			}
+			base := resourceServerPartResources + "/" + res.ID
+			parts[base] = toResourceResponse(res)
+			parts[base+"/"+resourceServerPartResources] = toResourceListResponse(&ResourceList{
+				TotalResults: len(children), StartIndex: 1, Count: len(children), Resources: children,
+			})
+			parts[base+"/"+resourceServerPartActions] = toActionListResponse(&ActionList{
+				TotalResults: len(res.Actions), StartIndex: 1, Count: len(res.Actions), Actions: res.Actions,
+			})
+		}
+		parts[resourceServerPartResources] = toResourceListResponse(&ResourceList{
+			TotalResults: len(topLevel), StartIndex: 1, Count: len(topLevel), Resources: topLevel,
+		})
+		return parts, nil
+	})
+}
+
+// getAllActions returns every action of a resource, or of the resource server itself when resourceID
+// is nil, in the form an export declares them.
+func (e *resourceServerExporter) getAllActions(
+	ctx context.Context, serverID string, resourceID *string,
+) ([]providers.Action, *tidcommon.ServiceError) {
+	exported := []providers.Action{}
+	offset := 0
+	for {
+		actions, err := e.service.GetActionList(ctx, serverID, resourceID, "", serverconst.MaxPageSize, offset)
+		if err != nil {
+			return nil, err
+		}
+		if len(actions.Actions) == 0 {
+			break
+		}
+		for _, action := range actions.Actions {
+			exported = append(exported, providers.Action{
+				Name:        action.Name,
+				Handle:      action.Handle,
+				Description: action.Description,
+				Kind:        action.Kind,
+			})
+		}
+		offset += len(actions.Actions)
+		if offset >= actions.TotalResults {
+			break
+		}
+	}
+	return exported, nil
+}
+
+// viewResources gives the actions of an exported resource server, its resources and their actions,
+// the ids, parents and permissions a read of them returns.
+func viewResources(rs *providers.ResourceServer) ([]providers.Action, []providers.Resource, error) {
+	view := *rs
+	view.Actions = append([]providers.Action(nil), rs.Actions...)
+	view.Resources = make([]providers.Resource, len(rs.Resources))
+	for i := range rs.Resources {
+		view.Resources[i] = rs.Resources[i]
+		view.Resources[i].Actions = append([]providers.Action(nil), rs.Resources[i].Actions...)
+	}
+	if err := resolveResourcePermissions(&view); err != nil {
+		return nil, nil, err
+	}
+
+	for j := range view.Actions {
+		view.Actions[j].ID = declarativeActionID(&view, "", view.Actions[j].Handle)
+	}
+	for i := range view.Resources {
+		res := &view.Resources[i]
+		res.ID = declarativeResourceID(&view, res.Permission)
+		if res.ParentHandle != "" {
+			parentID := declarativeResourceID(&view, res.ParentHandle)
+			res.Parent = &parentID
+		}
+		for j := range res.Actions {
+			res.Actions[j].ID = declarativeActionID(&view, res.Permission, res.Actions[j].Handle)
+		}
+	}
+	return view.Actions, view.Resources, nil
 }
 
 // loadDeclarativeResources loads resource server resources from declarative files.
@@ -269,63 +380,60 @@ func parseToResourceServer(data []byte) (*providers.ResourceServer, error) {
 		rs.Type = providers.ResourceServerTypeCustom
 	}
 
-	// Apply the action kind discriminator rules (mirrors the REST path). The kind is optional for all
-	// resource server types; MCP actions default to "tool" when omitted, and any provided kind must be
-	// one of the supported values (tool|resource).
+	if err := applyActionKinds(&rs, rs.Actions); err != nil {
+		return nil, err
+	}
 	for i := range rs.Resources {
-		for j := range rs.Resources[i].Actions {
-			action := &rs.Resources[i].Actions[j]
-			if rs.Type == providers.ResourceServerTypeMCP && action.Kind == "" {
-				action.Kind = providers.ActionKindTool
-			}
-			if action.Kind != "" && !action.Kind.IsValid() {
-				return nil, fmt.Errorf(
-					"action %q in resource server '%s' has invalid kind %q (allowed: tool|resource)",
-					action.Handle, rs.Name, action.Kind,
-				)
-			}
+		if err := applyActionKinds(&rs, rs.Resources[i].Actions); err != nil {
+			return nil, err
 		}
 	}
 
 	return &rs, nil
 }
 
-// ProcessResourceServer processes the resource server and computes permissions in-place.
-func ProcessResourceServer(rs *providers.ResourceServer) error {
-	delimiter := rs.Delimiter
-	if delimiter == "" {
-		delimiter = ":" // Default delimiter
-	}
-	rs.Delimiter = delimiter
-
-	// Build a map of handle to resource for parent resolution and detect duplicates
-	resourceHandleMap := make(map[string]*providers.Resource)
-	for i := range rs.Resources {
-		handle := rs.Resources[i].Handle
-		if existing, ok := resourceHandleMap[handle]; ok {
-			// Duplicate handle detected
+// applyActionKinds applies the action kind discriminator rules (mirrors the REST path). The kind is
+// optional for all resource server types; MCP actions default to "tool" when omitted, and any provided
+// kind must be one of the supported values (tool|resource).
+func applyActionKinds(rs *providers.ResourceServer, actions []providers.Action) error {
+	for j := range actions {
+		action := &actions[j]
+		if rs.Type == providers.ResourceServerTypeMCP && action.Kind == "" {
+			action.Kind = providers.ActionKindTool
+		}
+		if action.Kind != "" && !action.Kind.IsValid() {
 			return fmt.Errorf(
-				"duplicate resource handle '%s' found: conflicting resources are '%s' and '%s' in resource server '%s'",
-				handle,
-				existing.Name,
-				rs.Resources[i].Name,
-				rs.ID,
+				"action %q in resource server '%s' has invalid kind %q (allowed: tool|resource)",
+				action.Handle, rs.Name, action.Kind,
 			)
 		}
-		resourceHandleMap[handle] = &rs.Resources[i]
 	}
+	return nil
+}
 
-	// Process resources and compute permissions
-	for i := range rs.Resources {
-		if err := processResource(&rs.Resources[i], resourceHandleMap, delimiter); err != nil {
-			return err
+// ProcessResourceServer processes the resource server and computes permissions in-place.
+func ProcessResourceServer(rs *providers.ResourceServer) error {
+	if rs.AuthorizationEngine.Type == "" {
+		rs.AuthorizationEngine.Type = providers.AuthorizationEngineTypeRBAC
+	}
+	switch rs.AuthorizationEngine.Type {
+	case providers.AuthorizationEngineTypeRBAC:
+		rs.AuthorizationEngine.Properties = providers.AuthorizationEngineProperties{}
+	case providers.AuthorizationEngineTypeAuthZENPDP:
+		if err := validateAuthZENPDPConnectionID(&rs.AuthorizationEngine); err != nil {
+			return fmt.Errorf("resource server %q: %w", rs.ID, err)
 		}
+	default:
+		return fmt.Errorf("unsupported authorization engine type %q", rs.AuthorizationEngine.Type)
+	}
+	if err := resolveResourcePermissions(rs); err != nil {
+		return err
 	}
 
 	// For MCP resource servers, a resource (group) and an action (tool/resource) in the same parent
 	// context can derive an identical permission string under exact-string RBAC, silently collapsing
 	// two distinct primitives. Mirror the REST cross-entity check (Rule 6) on the declarative path by
-	// failing on the first duplicate derived permission across all resources and their nested actions.
+	// failing on the first duplicate derived permission across all resources and actions.
 	if rs.Type == providers.ResourceServerTypeMCP {
 		if err := checkDuplicateMCPPermissions(rs); err != nil {
 			return err
@@ -335,101 +443,242 @@ func ProcessResourceServer(rs *providers.ResourceServer) error {
 	return nil
 }
 
-// checkDuplicateMCPPermissions detects duplicate derived permission strings across all resources
-// (groups) and their nested actions (tools/resources) for an MCP resource server. It returns an
-// error naming the colliding permission and handles on the first duplicate found.
+// checkDuplicateMCPPermissions detects duplicate derived permission strings across the actions
+// (tools/resources) of an MCP resource server, its resources (groups) and their nested actions. It
+// returns an error naming the colliding permission and handles on the first duplicate found.
 func checkDuplicateMCPPermissions(rs *providers.ResourceServer) error {
 	seen := make(map[string]string)
-	for i := range rs.Resources {
-		res := &rs.Resources[i]
-		if existing, ok := seen[res.Permission]; ok {
+	record := func(permission, handle string) error {
+		if existing, ok := seen[permission]; ok {
 			return fmt.Errorf(
 				"duplicate permission '%s' derived for handles '%s' and '%s' in resource server '%s'",
-				res.Permission, existing, res.Handle, rs.ID,
+				permission, existing, handle, rs.ID,
 			)
 		}
-		seen[res.Permission] = res.Handle
+		seen[permission] = handle
+		return nil
+	}
 
+	for j := range rs.Actions {
+		if err := record(rs.Actions[j].Permission, rs.Actions[j].Handle); err != nil {
+			return err
+		}
+	}
+	for i := range rs.Resources {
+		res := &rs.Resources[i]
+		if err := record(res.Permission, res.Handle); err != nil {
+			return err
+		}
 		for j := range res.Actions {
-			action := &res.Actions[j]
-			if existing, ok := seen[action.Permission]; ok {
-				return fmt.Errorf(
-					"duplicate permission '%s' derived for handles '%s' and '%s' in resource server '%s'",
-					action.Permission, existing, action.Handle, rs.ID,
-				)
+			if err := record(res.Actions[j].Permission, res.Actions[j].Handle); err != nil {
+				return err
 			}
-			seen[action.Permission] = action.Handle
 		}
 	}
 
 	return nil
 }
 
-// processResource processes a resource and its actions, computing permissions in-place.
-func processResource(
-	res *providers.Resource,
-	resourceHandleMap map[string]*providers.Resource,
-	delimiter string,
-) error {
-	permission, err := buildPermissionString(res, resourceHandleMap, delimiter)
+// resolveResourcePermissions validates handles, resolves parents and computes permissions in-place.
+// Each parent reference is rewritten to the parent's full path.
+func resolveResourcePermissions(rs *providers.ResourceServer) error {
+	if rs.Delimiter == "" {
+		rs.Delimiter = getDefaultDelimiter()
+	}
+	if svcErr := validateDelimiter(rs.Delimiter); svcErr != nil {
+		return fmt.Errorf("invalid delimiter '%s' in resource server '%s': %s",
+			rs.Delimiter, rs.ID, svcErr.ErrorDescription.DefaultValue)
+	}
+
+	// A handle must not contain the delimiter, so a path splits only one way.
+	if err := validateActionHandles(rs, rs.Actions); err != nil {
+		return err
+	}
+	for i := range rs.Resources {
+		res := &rs.Resources[i]
+		if svcErr := validateHandle(res.Handle, rs.Delimiter); svcErr != nil {
+			return fmt.Errorf("invalid handle '%s' for resource '%s' in resource server '%s': %s",
+				res.Handle, res.Name, rs.ID, svcErr.ErrorDescription.DefaultValue)
+		}
+		if err := validateActionHandles(rs, res.Actions); err != nil {
+			return err
+		}
+	}
+
+	paths, parents, err := resolveResourcePaths(rs)
 	if err != nil {
 		return err
 	}
-	res.Permission = permission
 
-	for i := range res.Actions {
-		actionPermission := permission + delimiter + res.Actions[i].Handle
-		res.Actions[i].Permission = actionPermission
+	for j := range rs.Actions {
+		rs.Actions[j].Permission = derivePermission(*rs, nil, rs.Actions[j].Handle)
+	}
+	for i := range rs.Resources {
+		res := &rs.Resources[i]
+		res.Permission = paths[i]
+		if parents[i] >= 0 {
+			res.ParentHandle = paths[parents[i]]
+		}
+		for j := range res.Actions {
+			res.Actions[j].Permission = paths[i] + rs.Delimiter + res.Actions[j].Handle
+		}
 	}
 
 	return nil
 }
 
-// buildPermissionString constructs the permission string by traversing parent chain.
-func buildPermissionString(
-	res *providers.Resource,
-	resourceHandleMap map[string]*providers.Resource,
-	delimiter string,
-) (string, error) {
-	var parts []string
+// validateActionHandles checks that each action handle is valid and does not contain the delimiter.
+func validateActionHandles(rs *providers.ResourceServer, actions []providers.Action) error {
+	for j := range actions {
+		if svcErr := validateHandle(actions[j].Handle, rs.Delimiter); svcErr != nil {
+			return fmt.Errorf("invalid handle '%s' for action '%s' in resource server '%s': %s",
+				actions[j].Handle, actions[j].Name, rs.ID, svcErr.ErrorDescription.DefaultValue)
+		}
+	}
+	return nil
+}
 
-	parentChain := []string{}
-	visited := make(map[string]bool)
-	current := res
-	for current != nil {
-		if current.Handle != "" {
-			if visited[current.Handle] {
-				return "", fmt.Errorf(
-					"circular parent reference detected at handle '%s' for resource '%s'",
-					current.Handle, res.Handle,
+// resolveResourcePaths returns each resource's path (its permission) and parent index (-1 at the top
+// level). A parent is referenced by a unique bare handle or by its full path.
+func resolveResourcePaths(rs *providers.ResourceServer) ([]string, []int, error) {
+	resources := rs.Resources
+	byHandle := make(map[string][]int, len(resources))
+	for i := range resources {
+		byHandle[resources[i].Handle] = append(byHandle[resources[i].Handle], i)
+	}
+
+	// Map bare handles to their parent. Paths resolve later. An ambiguous bare handle is reported
+	// last, so a duplicate handle is reported first.
+	parents := make([]int, len(resources))
+	for i := range resources {
+		parents[i] = -1
+		ref := resources[i].ParentHandle
+		if ref == "" || strings.Contains(ref, rs.Delimiter) {
+			continue
+		}
+		switch candidates := byHandle[ref]; len(candidates) {
+		case 0:
+			return nil, nil, fmt.Errorf(
+				"parent resource handle '%s' not found for resource '%s' in resource server '%s'",
+				ref, resources[i].Handle, rs.ID,
+			)
+		case 1:
+			parents[i] = candidates[0]
+		default:
+			parents[i] = ambiguousParent
+		}
+	}
+
+	// Resolve each resource after its parent, so declaration order does not matter.
+	paths := make([]string, len(resources))
+	resolved := make([]bool, len(resources))
+	byPath := make(map[string]int, len(resources))
+	for remaining := len(resources); remaining > 0; {
+		progressed := false
+		for i := range resources {
+			if resolved[i] {
+				continue
+			}
+			res := &resources[i]
+			parentPath := ""
+			switch {
+			case res.ParentHandle == "":
+			case parents[i] == ambiguousParent:
+				continue
+			case parents[i] >= 0:
+				if !resolved[parents[i]] {
+					continue
+				}
+				parentPath = paths[parents[i]]
+			default:
+				parent, ok := byPath[res.ParentHandle]
+				if !ok {
+					continue
+				}
+				parents[i] = parent
+				parentPath = res.ParentHandle
+			}
+
+			path := res.Handle
+			if parentPath != "" {
+				path = parentPath + rs.Delimiter + res.Handle
+			}
+			if existing, ok := byPath[path]; ok {
+				scope := "at the top level"
+				if parentPath != "" {
+					scope = fmt.Sprintf("under parent '%s'", parentPath)
+				}
+				return nil, nil, fmt.Errorf(
+					"duplicate resource handle '%s' found %s: conflicting resources are '%s' and '%s' "+
+						"in resource server '%s'",
+					res.Handle, scope, resources[existing].Name, res.Name, rs.ID,
 				)
 			}
-			visited[current.Handle] = true
-			parentChain = append([]string{current.Handle}, parentChain...)
+			byPath[path] = i
+			paths[i] = path
+			resolved[i] = true
+			remaining--
+			progressed = true
 		}
-
-		if current.ParentHandle == "" {
-			break
+		if !progressed {
+			return nil, nil, unresolvedParentError(rs, parents, resolved, byHandle)
 		}
-
-		parent, exists := resourceHandleMap[current.ParentHandle]
-		if !exists {
-			return "", fmt.Errorf(
-				"parent resource handle '%s' not found for resource '%s': cannot resolve permission chain",
-				current.ParentHandle,
-				res.Handle,
-			)
-		}
-		current = parent
 	}
 
-	if len(parentChain) > 1 {
-		parts = append(parts, parentChain[:len(parentChain)-1]...)
+	return paths, parents, nil
+}
+
+// ambiguousParent marks a resource whose bare parent handle is shared by several resources.
+const ambiguousParent = -2
+
+// unresolvedParentError reports a cycle, an ambiguous bare handle, or a missing parent path.
+func unresolvedParentError(
+	rs *providers.ResourceServer, parents []int, resolved []bool, byHandle map[string][]int,
+) error {
+	resources := rs.Resources
+	ambiguous, missing := -1, -1
+	for i := range resources {
+		if resolved[i] {
+			continue
+		}
+		if parents[i] == ambiguousParent && ambiguous < 0 {
+			ambiguous = i
+		}
+		if parents[i] == -1 && missing < 0 {
+			missing = i
+		}
+		seen := make(map[int]bool)
+		for cur := i; parents[cur] >= 0; cur = parents[cur] {
+			if seen[cur] {
+				return fmt.Errorf(
+					"circular parent reference detected at handle '%s' for resource '%s' in resource server '%s'",
+					resources[cur].Handle, resources[i].Handle, rs.ID,
+				)
+			}
+			seen[cur] = true
+		}
 	}
 
-	parts = append(parts, res.Handle)
+	if ambiguous >= 0 {
+		ref := resources[ambiguous].ParentHandle
+		return fmt.Errorf(
+			"parent resource handle '%s' is ambiguous for resource '%s' in resource server '%s': "+
+				"%d resources share this handle, use the full parent path instead",
+			ref, resources[ambiguous].Handle, rs.ID, len(byHandle[ref]),
+		)
+	}
 
-	return strings.Join(parts, delimiter), nil
+	return fmt.Errorf(
+		"parent resource path '%s' not found for resource '%s' in resource server '%s'",
+		resources[missing].ParentHandle, resources[missing].Handle, rs.ID,
+	)
+}
+
+// keepsValueReferences reports whether service runs on a control plane, which keeps a value reference
+// where a value belongs.
+func keepsValueReferences(service ResourceServiceInterface) bool {
+	s, ok := service.(*resourceService)
+	return ok && s.keepsReferences
 }
 
 func validateResourceServerWrapper(
@@ -449,6 +698,11 @@ func validateResourceServerWrapper(
 
 	if rs.Identifier == "" {
 		return fmt.Errorf("resource server identifier cannot be empty")
+	}
+
+	if hasInvalidMCPIdentifier(rs.Type, rs.Identifier, keepsValueReferences(service)) {
+		return fmt.Errorf("identifier %q of MCP resource server '%s' must be an http or https URL with no fragment",
+			rs.Identifier, rs.Name)
 	}
 
 	if service != nil {

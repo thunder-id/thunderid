@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ExternalLink} from '@thunderid/components';
+import {DocumentTitle, ExternalLink} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -49,6 +49,7 @@ export default function TranslationsListPage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={t('page.title', 'Translations')} />
       <PageTitle>
         <PageTitle.Header>{t('page.title')}</PageTitle.Header>
         <PageTitle.SubHeader>

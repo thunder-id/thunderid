@@ -18,10 +18,19 @@ func NewCacheManagerInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *CacheManagerInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &CacheManagerInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -130,7 +139,7 @@ type CacheManagerInterfaceMock_addCache_Call struct {
 // addCache is a helper method to define mock.On call
 //   - cacheKey string
 //   - cacheInstance interface{}
-func (_e *CacheManagerInterfaceMock_Expecter) addCache(cacheKey interface{}, cacheInstance interface{}) *CacheManagerInterfaceMock_addCache_Call {
+func (_e *CacheManagerInterfaceMock_Expecter) addCache(cacheKey any, cacheInstance any) *CacheManagerInterfaceMock_addCache_Call {
 	return &CacheManagerInterfaceMock_addCache_Call{Call: _e.mock.On("addCache", cacheKey, cacheInstance)}
 }
 
@@ -230,7 +239,7 @@ type CacheManagerInterfaceMock_getCache_Call struct {
 
 // getCache is a helper method to define mock.On call
 //   - cacheKey string
-func (_e *CacheManagerInterfaceMock_Expecter) getCache(cacheKey interface{}) *CacheManagerInterfaceMock_getCache_Call {
+func (_e *CacheManagerInterfaceMock_Expecter) getCache(cacheKey any) *CacheManagerInterfaceMock_getCache_Call {
 	return &CacheManagerInterfaceMock_getCache_Call{Call: _e.mock.On("getCache", cacheKey)}
 }
 

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as componentsModule from '@thunderid/components';
-import * as thunderIdReactModule from '@thunderid/react';
 import {renderWithProviders, screen, fireEvent, waitFor} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -34,16 +33,19 @@ vi.mock('react-router', async () => {
   };
 });
 
-vi.mock('@thunderid/react', {spy: true});
-
-// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- vi.mock({spy:true}) type inference doesn't resolve for this package's conditional exports
-vi.mocked(thunderIdReactModule.useThunderID).mockImplementation(() => ({http: {request: vi.fn()}}) as never);
+vi.mock('@thunderid/react', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    useThunderID: () => ({http: {request: vi.fn()}}),
+  };
+});
 
 vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
-    useConfig: () => ({getServerUrl: () => 'http://localhost:8090'}),
+    useConfig: () => ({getServerUrl: () => 'http://localhost:8090', config: {brand: {product_name: 'ThunderID'}}}),
     useToast: () => ({showToast: vi.fn()}),
   };
 });
@@ -68,6 +70,7 @@ vi.mocked(componentsModule.UnsavedChangesBar).mockImplementation(
     message,
     resetLabel,
     saveLabel,
+    saveDisabled = false,
     error = undefined,
     onReset,
     onSave,
@@ -75,6 +78,7 @@ vi.mocked(componentsModule.UnsavedChangesBar).mockImplementation(
     message: string;
     resetLabel: string;
     saveLabel: string;
+    saveDisabled?: boolean;
     error?: string;
     onReset: () => void;
     onSave: () => void;
@@ -85,7 +89,7 @@ vi.mocked(componentsModule.UnsavedChangesBar).mockImplementation(
       <button type="button" onClick={onReset}>
         {resetLabel}
       </button>
-      <button type="button" onClick={onSave}>
+      <button type="button" onClick={onSave} disabled={saveDisabled}>
         {saveLabel}
       </button>
     </div>
@@ -95,13 +99,23 @@ vi.mocked(componentsModule.UnsavedChangesBar).mockImplementation(
 const mockUseGetResourceServer = vi.fn();
 const mockUpdateMutate = vi.fn();
 const mockUpdateReset = vi.fn();
-const mockUseUpdateResourceServer = vi.fn(() => ({
-  mutate: mockUpdateMutate,
-  isPending: false,
-  isError: false,
-  error: null,
-  reset: mockUpdateReset,
-}));
+interface UpdateResourceServerMutationMock {
+  mutate: typeof mockUpdateMutate;
+  isPending: boolean;
+  isError: boolean;
+  error: Error | null;
+  reset: typeof mockUpdateReset;
+}
+
+const mockUseUpdateResourceServer = vi.fn(
+  (): UpdateResourceServerMutationMock => ({
+    mutate: mockUpdateMutate,
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: mockUpdateReset,
+  }),
+);
 
 vi.mock('../../api/useGetResourceServer', () => ({
   default: () =>
@@ -144,9 +158,22 @@ vi.mock('../../components/resource-tree/ResourceTree', () => ({
 }));
 
 vi.mock('../../components/resource-server-detail/AdvancedTab', () => ({
-  default: ({identifier, onIdentifierChange}: {identifier: string; onIdentifierChange: (value: string) => void}) => (
+  default: ({
+    identifier,
+    isIdentifierInvalid = false,
+    onIdentifierChange,
+  }: {
+    identifier: string;
+    isIdentifierInvalid?: boolean;
+    onIdentifierChange: (value: string) => void;
+  }) => (
     <div data-testid="advanced-tab">
-      <input aria-label="Identifier" value={identifier} onChange={(e) => onIdentifierChange(e.target.value)} />
+      <input
+        aria-label="Identifier"
+        aria-invalid={isIdentifierInvalid}
+        value={identifier}
+        onChange={(e) => onIdentifierChange(e.target.value)}
+      />
     </div>
   ),
 }));
@@ -271,6 +298,12 @@ describe('ResourceServerEditPage', () => {
     expect(screen.getByText('Dark Dodos Smash')).toBeInTheDocument();
   });
 
+  it('sets the document title to the resource server name', async () => {
+    renderWithProviders(<ResourceServerEditPage />);
+
+    await waitFor(() => expect(document.title).toBe('Dark Dodos Smash | ThunderID'));
+  });
+
   it('does not render a resource server handle chip', () => {
     renderWithProviders(<ResourceServerEditPage />);
 
@@ -304,7 +337,7 @@ describe('ResourceServerEditPage', () => {
 
     fireEvent.click(screen.getByRole('tab', {name: 'Advanced'}));
 
-    expect(screen.getByText('Danger Zone')).toBeInTheDocument();
+    expect(screen.getByText('Danger zone')).toBeInTheDocument();
   });
 
   it('renders the delete button inside the Danger Zone', () => {
@@ -327,7 +360,7 @@ describe('ResourceServerEditPage', () => {
 
     fireEvent.click(screen.getByRole('tab', {name: 'Advanced'}));
 
-    expect(screen.queryByText('Danger Zone')).not.toBeInTheDocument();
+    expect(screen.queryByText('Danger zone')).not.toBeInTheDocument();
   });
 
   it('renders the read-only info alert for a read-only server', () => {
@@ -384,6 +417,9 @@ describe('ResourceServerEditPage', () => {
           description: null,
           identifier: 'https://new-api.example.com',
           ouId: 'ou-1',
+          authorizationEngine: {
+            type: 'rbac',
+          },
         },
       },
       expect.any(Object),
@@ -649,5 +685,137 @@ describe('ResourceServerEditPage', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Reset'}));
 
     expect(mockUpdateReset).toHaveBeenCalled();
+  });
+
+  describe('MCP server identifier validation', () => {
+    const renderMcpServer = async (identifier = 'https://mcp.example.com/mcp'): Promise<void> => {
+      mockUseGetResourceServer.mockReturnValue({
+        data: {...mockMcpResourceServer, identifier},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      renderWithProviders(<ResourceServerEditPage />);
+
+      fireEvent.click(screen.getByRole('tab', {name: 'Advanced'}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('advanced-tab')).toBeInTheDocument();
+      });
+    };
+
+    it.each([
+      'my-mcp-server',
+      '/mcp',
+      'mcp.example.com',
+      'localhost:8000/mcp',
+      'mcp.example.com:8443/mcp',
+      'urn:example:mcp',
+      'https://mcp.example.com/#x',
+    ])('should flag the edited identifier %s and block the save', async (value) => {
+      await renderMcpServer();
+
+      fireEvent.change(screen.getByLabelText('Identifier'), {target: {value}});
+
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'true');
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      expect(mockUpdateMutate).not.toHaveBeenCalled();
+    });
+
+    it('should save a valid edited identifier, trimmed', async () => {
+      await renderMcpServer();
+
+      fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: '  https://new-mcp.example.com/mcp  '}});
+
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'false');
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      expect(mockUpdateMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({identifier: 'https://new-mcp.example.com/mcp'}) as unknown,
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('should clear the error once the identifier is corrected', async () => {
+      await renderMcpServer();
+
+      fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: 'my-mcp-server'}});
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'true');
+
+      fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: 'http://localhost:8000/mcp'}});
+
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'false');
+      expect(screen.getByRole('button', {name: 'Save'})).toBeEnabled();
+    });
+
+    it('should not flag a cleared identifier, which the required check handles', async () => {
+      await renderMcpServer();
+
+      fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: '   '}});
+
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'false');
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      expect(mockUpdateMutate).not.toHaveBeenCalled();
+    });
+
+    it('should not flag a saved identifier that predates the rule while other fields are edited', async () => {
+      await renderMcpServer('legacy-mcp');
+
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'false');
+
+      const nameEditButton = screen
+        .getAllByRole('button')
+        .find((btn) => btn.querySelector('svg') && btn.closest('div')?.textContent?.includes('Dark Dodos Smash'));
+      fireEvent.click(nameEditButton!);
+      const nameInput = await screen.findByDisplayValue('Dark Dodos Smash');
+      fireEvent.change(nameInput, {target: {value: 'Renamed MCP server'}});
+      fireEvent.keyDown(nameInput, {key: 'Enter'});
+
+      expect(screen.getByRole('button', {name: 'Save'})).toBeEnabled();
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      expect(mockUpdateMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({name: 'Renamed MCP server', identifier: 'legacy-mcp'}) as unknown,
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('should flag a saved identifier that predates the rule once it is changed to another invalid value', async () => {
+      await renderMcpServer('legacy-mcp');
+
+      fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: 'legacy-mcp-2'}});
+
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'true');
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    });
+
+    it('should not flag a non-URI identifier on an API resource server', async () => {
+      renderWithProviders(<ResourceServerEditPage />);
+
+      fireEvent.click(screen.getByRole('tab', {name: 'Advanced'}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('advanced-tab')).toBeInTheDocument();
+      });
+
+      fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: 'my-api'}});
+
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'false');
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      expect(mockUpdateMutate).toHaveBeenCalledWith(
+        expect.objectContaining({data: expect.objectContaining({identifier: 'my-api'}) as unknown}),
+        expect.any(Object),
+      );
+    });
   });
 });

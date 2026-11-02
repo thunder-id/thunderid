@@ -20,7 +20,7 @@ The application registers redirect URIs for MCP Inspector:
 
 `EXTERNAL-MCP-CLIENT` is wired to the same authentication flow as the Wayfinder Concierge, so the OAuth consent screen surfaces each requested `booking:*` permission as an individual toggle at sign-in time.
 
-See [Manage Applications](../../../../guides/applications/manage-applications), or [Register an MCP Client in the Console](../../../../guides/mcp/mcp-clients/register-a-client) for the MCP-specific version of this task.
+See [Manage Applications](../../../../guides/applications/manage-applications), or [Configure an MCP Client Manually](../../../../guides/mcp/mcp-clients/register-a-client) for the MCP-specific version of this task.
 
 ## Consent at Sign-In
 
@@ -32,7 +32,7 @@ See [Authorization](../../../../key-concepts/authorization).
 
 ## Resource Server
 
-This tryout reuses the Wayfinder resource server defined under [Resources and Permissions](../../identity-concepts#resources-and-permissions). The same `booking:*` permissions protect both `/api/*` (REST) and `/mcp` (MCP tools). The Wayfinder Server enforces them per-route on the REST side and per-tool on the MCP side, against the same service layer.
+This tryout reuses the Wayfinder resource server defined under [Resources and Permissions](../../try-it-out#resources-and-permissions). The same `booking:*` permissions protect both `/api/*` (REST) and `/mcp` (MCP tools). The Wayfinder Server enforces them per-route on the REST side and per-tool on the MCP side, against the same service layer.
 
 Each MCP tool checks for the same scope its REST counterpart checks for:
 

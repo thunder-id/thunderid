@@ -16,10 +16,19 @@ func newServerConfigStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *serverConfigStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &serverConfigStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -71,7 +80,7 @@ type serverConfigStoreInterfaceMock_GetServerConfig_Call struct {
 // GetServerConfig is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name ConfigName
-func (_e *serverConfigStoreInterfaceMock_Expecter) GetServerConfig(ctx interface{}, name interface{}) *serverConfigStoreInterfaceMock_GetServerConfig_Call {
+func (_e *serverConfigStoreInterfaceMock_Expecter) GetServerConfig(ctx any, name any) *serverConfigStoreInterfaceMock_GetServerConfig_Call {
 	return &serverConfigStoreInterfaceMock_GetServerConfig_Call{Call: _e.mock.On("GetServerConfig", ctx, name)}
 }
 
@@ -128,7 +137,7 @@ type serverConfigStoreInterfaceMock_UpsertServerConfig_Call struct {
 // UpsertServerConfig is a helper method to define mock.On call
 //   - ctx context.Context
 //   - cfg ServerConfig
-func (_e *serverConfigStoreInterfaceMock_Expecter) UpsertServerConfig(ctx interface{}, cfg interface{}) *serverConfigStoreInterfaceMock_UpsertServerConfig_Call {
+func (_e *serverConfigStoreInterfaceMock_Expecter) UpsertServerConfig(ctx any, cfg any) *serverConfigStoreInterfaceMock_UpsertServerConfig_Call {
 	return &serverConfigStoreInterfaceMock_UpsertServerConfig_Call{Call: _e.mock.On("UpsertServerConfig", ctx, cfg)}
 }
 

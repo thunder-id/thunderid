@@ -5,6 +5,7 @@ package granthandlers
 
 import (
 	"slices"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
@@ -46,34 +47,43 @@ func newGrantHandlerProvider(
 	cibaService ciba.CIBAServiceInterface,
 	refreshTokenRevoker revocation.RefreshTokenRevokerInterface,
 	criteriaRevoker revocation.CriteriaRevokerInterface,
+	enforcementService revocation.EnforcementServiceInterface,
+	governance providers.IdentityGovernanceProvider,
+	authzDetails providers.AuthorizationDetailProvider,
+	deviceSecretValidity time.Duration,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
 	allowedGrantTypes := cfg.OAuth.AllowedGrantTypes
 	grantProvider := &GrantHandlerProvider{}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeClientCredentials) {
 		grantProvider.clientCredentialsGrantHandler = newClientCredentialsGrantHandler(
-			tokenBuilder, ouService, rbacAuthzService, actorProvider, resourceService)
+			tokenBuilder, ouService, rbacAuthzService, actorProvider, resourceService, governance, authzDetails)
 	}
+	var codeGrant *authorizationCodeGrantHandler
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeAuthorizationCode) {
-		grantProvider.authorizationCodeGrantHandler = newAuthorizationCodeGrantHandler(
-			authzService, tokenBuilder, attrCacheService, resourceService)
+		codeGrant = newAuthorizationCodeGrantHandler(
+			authzService, tokenBuilder, attrCacheService, resourceService, enforcementService, deviceSecretValidity,
+			authzDetails)
+		grantProvider.authorizationCodeGrantHandler = codeGrant
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeRefreshToken) {
 		grantProvider.refreshTokenGrantHandler = newRefreshTokenGrantHandler(
 			jwtService, tokenBuilder, tokenValidator, attrCacheService, resourceService,
-			rbacAuthzService, actorProvider, refreshTokenRevoker, criteriaRevoker, cfg)
+			rbacAuthzService, actorProvider, refreshTokenRevoker, criteriaRevoker, authzDetails, cfg)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeTokenExchange) {
 		grantProvider.tokenExchangeGrantHandler = newTokenExchangeGrantHandler(
-			tokenBuilder, tokenValidator, resourceService, cfg)
+			tokenBuilder, tokenValidator, resourceService, rbacAuthzService, actorProvider, authzService, codeGrant,
+			attrCacheService, cfg)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeCIBA) {
 		grantProvider.cibaGrantHandler = newCIBAGrantHandler(cibaService, tokenBuilder, attrCacheService,
-			resourceService)
+			resourceService, enforcementService, authzDetails)
 	}
-	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeJWTBearer) {
+	// The jwt-bearer grant accepts only ID-JAGs, so it is not served while ID-JAG acceptance is off.
+	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeJWTBearer) && cfg.OAuth.IDJAG.Acceptance.IsEnabled() {
 		grantProvider.jwtBearerGrantHandler = newJWTBearerGrantHandler(
-			tokenBuilder, tokenValidator, resourceService)
+			tokenBuilder, tokenValidator, resourceService, rbacAuthzService, actorProvider)
 	}
 	return grantProvider
 }

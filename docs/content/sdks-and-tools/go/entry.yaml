@@ -1,0 +1,14 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: go
+name: Go
+icon: GoLogo
+category: backend
+type: sdk
+origin: official
+status: soon
+package:
+  name: github.com/thunder-id/go
+  manager: go
+description: Idiomatic Go SDK for verifying tokens and protecting services.

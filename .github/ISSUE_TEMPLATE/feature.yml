@@ -34,16 +34,32 @@ body:
     validations:
       required: true
   - type: textarea
+    id: usecases
+    attributes:
+      label: Use Cases
+      description: "List concrete scenarios where this feature would be used."
+      placeholder: |
+        1. As a [persona], I want to [action] so that [outcome].
+        2. ...
+    validations:
+      required: false
+  - type: textarea
     id: solution
     attributes:
       label: Proposed Solution
       description: Describe the solution you'd like to have.
     validations:
-      required: true
+      required: false
   - type: textarea
-    id: alternatives
+    id: scope
     attributes:
-      label: Alternatives
-      description: Describe any alternatives you have considered.
+      label: Scope
+      description: "Clarify what is included and what is explicitly left out."
+      placeholder: |
+        In scope:
+        - [Item]
+
+        Out of scope:
+        - [Item]
     validations:
       required: false

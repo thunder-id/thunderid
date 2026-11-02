@@ -6,6 +6,24 @@ template: testify
 template-data:
   unroll-variadic: true
 packages:
+  github.com/thunder-id/thunderid/internal/connection/httpconnection:
+    interfaces:
+      httpConnectionStoreInterface:
+        config:
+          dir: internal/connection/httpconnection
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: httpconnection
+          filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice:
+    interfaces:
+      ouActorRoleProvider:
+        config:
+          dir: internal/oauth/oauth2/tokenservice
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: tokenservice
+          filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/system/cache:
     config:
       all: true
@@ -37,6 +55,16 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: par
       filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/sharing:
+    config:
+      dir: internal/sharing
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: sharing
+      filename: "{{.InterfaceName}}_mock_test.go"
+    interfaces:
+      sharingPolicyStoreInterface:
+      SharingServiceInterface:
 
   github.com/thunder-id/thunderid/internal/oauth/oauth2/logout:
     interfaces:
@@ -127,9 +155,20 @@ packages:
       pkgname: flowexec
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/system/eventlistener:
+    config:
+      # Listener is what tests register; Hook is only ever the real one.
+      include-interface-regex: '^Listener$'
+      dir: internal/system/eventlistener
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: eventlistener
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/flow/session:
     config:
-      all: true
+      # Every interface except TerminationHook, which is only ever the real eventlistener hook.
+      include-interface-regex: '.*'
+      exclude-interface-regex: '^TerminationHook$'
       dir: internal/flow/session
       structname: '{{.InterfaceName}}Mock'
       pkgname: session
@@ -166,6 +205,18 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: entity
       filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/identitygovernance:
+    config:
+      dir: internal/identitygovernance
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: identitygovernance
+      filename: "{{.InterfaceName}}_mock_test.go"
+    interfaces:
+      entityStateProvider:
+      accountAccessSourceInterface:
+      LockNotifierInterface:
+      notificationTemplateRenderer:
 
   github.com/thunder-id/thunderid/internal/user:
     config:
@@ -224,12 +275,29 @@ packages:
       inpackage: true
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/project:
+    config:
+      all: true
+      dir: internal/project
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: project
+      inpackage: true
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/vc/credential:
     config:
       all: true
       dir: internal/vc/credential
       structname: '{{.InterfaceName}}Mock'
       pkgname: credential
+      filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/variablestore:
+    config:
+      all: true
+      dir: internal/variablestore
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: variablestore
       filename: "{{.InterfaceName}}_mock_test.go"
 
   github.com/thunder-id/thunderid/internal/ou:
@@ -336,6 +404,14 @@ packages:
       pkgname: cert
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/cimd:
+    config:
+      all: true
+      dir: internal/cimd
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: cimd
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/resource:
     config:
       all: true
@@ -352,6 +428,31 @@ packages:
       pkgname: mgt
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/system/outboundauth:
+    interfaces:
+      Authenticator:
+        config:
+          dir: internal/system/outboundauth
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: outboundauth
+          filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/authzdetail/mgt:
+    config:
+      all: true
+      dir: internal/authzdetail/mgt
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: authzdetailmgt
+      filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/authzdetail/exec:
+    config:
+      all: true
+      dir: internal/authzdetail/exec
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: authzdetailexec
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/consent:
     config:
       all: true
@@ -366,14 +467,6 @@ packages:
       dir: internal/attributecache
       structname: '{{.InterfaceName}}Mock'
       pkgname: attributecache
-      filename: "{{.InterfaceName}}_mock_test.go"
-
-  github.com/thunder-id/thunderid/internal/system/template:
-    config:
-      all: true
-      dir: internal/system/template
-      structname: '{{.InterfaceName}}Mock'
-      pkgname: template
       filename: "{{.InterfaceName}}_mock_test.go"
 
   github.com/thunder-id/thunderid/internal/runtimestore/redisstore:
@@ -415,6 +508,55 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: attestation
       filename: "{{.InterfaceName}}_mock_test.go"
+      
+  github.com/thunder-id/thunderid/internal/scim/discovery:
+    config:
+      all: true
+      dir: internal/scim/discovery
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: discovery
+      filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/scim/groups:
+    config:
+      all: true
+      dir: internal/scim/groups
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: groups
+      filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/scim/users:
+    config:
+      all: true
+      dir: internal/scim/users
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: users
+      filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/notificationtemplate:
+    config:
+      dir: internal/notificationtemplate
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: notificationtemplate
+      filename: "{{.InterfaceName}}_mock_test.go"
+    interfaces:
+      notificationTemplateStoreInterface:
+      NotificationTemplateServiceInterface:
+      translationResolver:
+      designResolver:
+
+  github.com/thunder-id/thunderid/internal/system/importer:
+    config:
+      dir: internal/system/importer
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: importer
+      filename: "{{.InterfaceName}}_mock_test.go"
+    interfaces:
+      authZENPDPAdapter:
+      idpAdapter:
+      httpConnectionAdapter:
+      notificationTemplateAdapter:
+      senderAdapter:
 
   github.com/thunder-id/thunderid/internal/system/resourcedependency:
     config:

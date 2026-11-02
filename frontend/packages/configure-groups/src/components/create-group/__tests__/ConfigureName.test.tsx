@@ -42,7 +42,7 @@ describe('ConfigureName', () => {
   it('should render the text field with correct label', () => {
     renderComponent();
 
-    expect(screen.getByText('Group Name')).toBeInTheDocument();
+    expect(screen.getByText('Group name')).toBeInTheDocument();
     expect(screen.getByRole('textbox')).toBeInTheDocument();
   });
 
@@ -112,7 +112,7 @@ describe('ConfigureName', () => {
   it('should render required field indicator', () => {
     renderComponent();
 
-    const label = screen.getByText('Group Name');
+    const label = screen.getByText('Group name');
     const labelElement = label.closest('label');
     expect(labelElement).toHaveClass('Mui-required');
   });

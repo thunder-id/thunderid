@@ -17,10 +17,19 @@ func NewSecurityServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *SecurityServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &SecurityServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -73,7 +82,7 @@ type SecurityServiceInterfaceMock_Process_Call struct {
 
 // Process is a helper method to define mock.On call
 //   - r *http.Request
-func (_e *SecurityServiceInterfaceMock_Expecter) Process(r interface{}) *SecurityServiceInterfaceMock_Process_Call {
+func (_e *SecurityServiceInterfaceMock_Expecter) Process(r any) *SecurityServiceInterfaceMock_Process_Call {
 	return &SecurityServiceInterfaceMock_Process_Call{Call: _e.mock.On("Process", r)}
 }
 

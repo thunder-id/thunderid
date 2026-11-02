@@ -16,10 +16,19 @@ func NewOpenID4VCIServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *OpenID4VCIServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &OpenID4VCIServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -79,7 +88,7 @@ type OpenID4VCIServiceInterfaceMock_GenerateCredentialOffer_Call struct {
 // GenerateCredentialOffer is a helper method to define mock.On call
 //   - ctx context.Context
 //   - configID string
-func (_e *OpenID4VCIServiceInterfaceMock_Expecter) GenerateCredentialOffer(ctx interface{}, configID interface{}) *OpenID4VCIServiceInterfaceMock_GenerateCredentialOffer_Call {
+func (_e *OpenID4VCIServiceInterfaceMock_Expecter) GenerateCredentialOffer(ctx any, configID any) *OpenID4VCIServiceInterfaceMock_GenerateCredentialOffer_Call {
 	return &OpenID4VCIServiceInterfaceMock_GenerateCredentialOffer_Call{Call: _e.mock.On("GenerateCredentialOffer", ctx, configID)}
 }
 
@@ -144,7 +153,7 @@ type OpenID4VCIServiceInterfaceMock_GenerateNonce_Call struct {
 
 // GenerateNonce is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *OpenID4VCIServiceInterfaceMock_Expecter) GenerateNonce(ctx interface{}) *OpenID4VCIServiceInterfaceMock_GenerateNonce_Call {
+func (_e *OpenID4VCIServiceInterfaceMock_Expecter) GenerateNonce(ctx any) *OpenID4VCIServiceInterfaceMock_GenerateNonce_Call {
 	return &OpenID4VCIServiceInterfaceMock_GenerateNonce_Call{Call: _e.mock.On("GenerateNonce", ctx)}
 }
 
@@ -207,7 +216,7 @@ type OpenID4VCIServiceInterfaceMock_GetCredentialOffer_Call struct {
 // GetCredentialOffer is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *OpenID4VCIServiceInterfaceMock_Expecter) GetCredentialOffer(ctx interface{}, id interface{}) *OpenID4VCIServiceInterfaceMock_GetCredentialOffer_Call {
+func (_e *OpenID4VCIServiceInterfaceMock_Expecter) GetCredentialOffer(ctx any, id any) *OpenID4VCIServiceInterfaceMock_GetCredentialOffer_Call {
 	return &OpenID4VCIServiceInterfaceMock_GetCredentialOffer_Call{Call: _e.mock.On("GetCredentialOffer", ctx, id)}
 }
 
@@ -265,7 +274,7 @@ type OpenID4VCIServiceInterfaceMock_GetMetadata_Call struct {
 
 // GetMetadata is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *OpenID4VCIServiceInterfaceMock_Expecter) GetMetadata(ctx interface{}) *OpenID4VCIServiceInterfaceMock_GetMetadata_Call {
+func (_e *OpenID4VCIServiceInterfaceMock_Expecter) GetMetadata(ctx any) *OpenID4VCIServiceInterfaceMock_GetMetadata_Call {
 	return &OpenID4VCIServiceInterfaceMock_GetMetadata_Call{Call: _e.mock.On("GetMetadata", ctx)}
 }
 
@@ -329,7 +338,7 @@ type OpenID4VCIServiceInterfaceMock_IssueCredential_Call struct {
 //   - ctx context.Context
 //   - accessToken string
 //   - body []byte
-func (_e *OpenID4VCIServiceInterfaceMock_Expecter) IssueCredential(ctx interface{}, accessToken interface{}, body interface{}) *OpenID4VCIServiceInterfaceMock_IssueCredential_Call {
+func (_e *OpenID4VCIServiceInterfaceMock_Expecter) IssueCredential(ctx any, accessToken any, body any) *OpenID4VCIServiceInterfaceMock_IssueCredential_Call {
 	return &OpenID4VCIServiceInterfaceMock_IssueCredential_Call{Call: _e.mock.On("IssueCredential", ctx, accessToken, body)}
 }
 

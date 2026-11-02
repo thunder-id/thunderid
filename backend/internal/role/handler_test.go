@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -52,7 +54,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_Success() {
 		Links: []utils.Link{},
 	}
 
-	suite.mockService.On("GetRoleList", mock.Anything, 10, 0).Return(expectedResponse, nil)
+	suite.mockService.On("GetRoleList", mock.Anything, 10, 0, mock.Anything).Return(expectedResponse, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/roles?limit=10&offset=0", nil)
 	w := httptest.NewRecorder()
@@ -68,6 +70,106 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_Success() {
 	suite.Equal(2, len(response.Roles))
 }
 
+// An organization unit filter reaches the service, and each role says whether that unit owns it.
+func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_OUFilter() {
+	suite.mockService.On("GetRoleList", mock.Anything, 10, 0, map[string]interface{}{"ouId": "ou-child"}).
+		Return(&RoleList{TotalResults: 1, StartIndex: 1, Count: 1, Roles: []Role{
+			{ID: "role1", OUID: "ou-child", IsReadOnly: true, IsOwnedByOU: false},
+		}, Links: []utils.Link{}}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, `/roles?limit=10&offset=0&filter=ouId+eq+%22ou-child%22`, nil)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleRoleListRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	suite.Contains(w.Body.String(), `"isOwnedByOU":false`)
+}
+
+func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_MalformedFilter() {
+	for _, query := range []string{"filter=ouId", `filter=ouId+sw+%22ou%22`} {
+		req := httptest.NewRequest(http.MethodGet, "/roles?"+query, nil)
+		w := httptest.NewRecorder()
+
+		suite.handler.HandleRoleListRequest(w, req)
+
+		suite.Equal(http.StatusBadRequest, w.Code, query)
+		suite.Contains(w.Body.String(), ErrorInvalidFilter.Code)
+	}
+	suite.mockService.AssertNotCalled(suite.T(), "GetRoleList",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// The ouId query parameter reads the role as that organization unit sees it.
+func (suite *RoleHandlerTestSuite) TestHandleRoleGetRequest_InOU() {
+	suite.mockService.On("GetRoleInOU", mock.Anything, "role1", "ou-child").
+		Return(&RoleWithPermissions{ID: "role1", OUID: "ou-child", IsOwnedByOU: false}, nil).Once()
+	suite.mockService.On("GetRoleInOU", mock.Anything, "role1", "stranger").
+		Return(nil, &ErrorRoleNotSharedToOU).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/roles/role1?ouId=ou-child", nil)
+	req.SetPathValue("id", "role1")
+	w := httptest.NewRecorder()
+	suite.handler.HandleRoleGetRequest(w, req)
+	suite.Equal(http.StatusOK, w.Code)
+	suite.Contains(w.Body.String(), `"isOwnedByOU":false`)
+
+	req = httptest.NewRequest(http.MethodGet, "/roles/role1?ouId=stranger", nil)
+	req.SetPathValue("id", "role1")
+	w = httptest.NewRecorder()
+	suite.handler.HandleRoleGetRequest(w, req)
+	suite.Equal(http.StatusNotFound, w.Code)
+}
+
+// Assignments are listed across organization units unless a filter names one.
+func (suite *RoleHandlerTestSuite) TestHandleRoleAssignmentsGetRequest_OUFilter() {
+	suite.mockAssignmentService.On("GetRoleAssignments", mock.Anything, "role1", "ou-child", 30, 0, false).
+		Return(&AssignmentList{TotalResults: 1, StartIndex: 1, Count: 1, Assignments: []RoleAssignmentWithDisplay{
+			{ID: "user1", Type: AssigneeTypeUser, OUID: "ou-child"},
+		}}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, `/roles/role1/assignments?filter=ouId+eq+%22ou-child%22`, nil)
+	req.SetPathValue("id", "role1")
+	w := httptest.NewRecorder()
+	suite.handler.HandleRoleAssignmentsGetRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	suite.Contains(w.Body.String(), `"ouId":"ou-child"`)
+
+	for _, query := range []string{`filter=type+eq+%22user%22`, "filter=ouId"} {
+		req = httptest.NewRequest(http.MethodGet, "/roles/role1/assignments?"+query, nil)
+		req.SetPathValue("id", "role1")
+		w = httptest.NewRecorder()
+		suite.handler.HandleRoleAssignmentsGetRequest(w, req)
+
+		suite.Equal(http.StatusBadRequest, w.Code, query)
+		suite.Contains(w.Body.String(), ErrorInvalidFilter.Code)
+	}
+}
+
+// The body's ouId names the organization unit the assignments are made in or taken from.
+func (suite *RoleHandlerTestSuite) TestHandleRoleAssignmentsRequest_InOU() {
+	body := `{"ouId":"ou-child","assignments":[{"id":"user1","type":"user"}]}`
+	assignments := []RoleAssignment{{ID: "user1", Type: AssigneeTypeUser}}
+	suite.mockAssignmentService.On("AddAssignments", mock.Anything, "role1", "ou-child", assignments).
+		Return(&ErrorAssigneeNotInOU).Once()
+	suite.mockAssignmentService.On("RemoveAssignments", mock.Anything, "role1", "ou-child", assignments).
+		Return(nil).Once()
+
+	req := httptest.NewRequest(http.MethodPost, "/roles/role1/assignments/add", bytes.NewBufferString(body))
+	req.SetPathValue("id", "role1")
+	w := httptest.NewRecorder()
+	suite.handler.HandleRoleAddAssignmentsRequest(w, req)
+	suite.Equal(http.StatusBadRequest, w.Code)
+	suite.Contains(w.Body.String(), ErrorAssigneeNotInOU.Code)
+
+	req = httptest.NewRequest(http.MethodPost, "/roles/role1/assignments/remove", bytes.NewBufferString(body))
+	req.SetPathValue("id", "role1")
+	w = httptest.NewRecorder()
+	suite.handler.HandleRoleRemoveAssignmentsRequest(w, req)
+	suite.Equal(http.StatusNoContent, w.Code)
+}
+
 func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_DefaultPagination() {
 	expectedResponse := &RoleList{
 		TotalResults: 1,
@@ -77,7 +179,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_DefaultPagination()
 		Links:        []utils.Link{},
 	}
 
-	suite.mockService.On("GetRoleList", mock.Anything, 30, 0).Return(expectedResponse, nil)
+	suite.mockService.On("GetRoleList", mock.Anything, 30, 0, mock.Anything).Return(expectedResponse, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/roles", nil)
 	w := httptest.NewRecorder()
@@ -88,7 +190,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_DefaultPagination()
 }
 
 func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_ServiceError() {
-	suite.mockService.On("GetRoleList", mock.Anything, 10, 0).Return(nil, &ErrorInvalidLimit)
+	suite.mockService.On("GetRoleList", mock.Anything, 10, 0, mock.Anything).Return(nil, &ErrorInvalidLimit)
 
 	req := httptest.NewRequest(http.MethodGet, "/roles?limit=10&offset=0", nil)
 	w := httptest.NewRecorder()
@@ -132,6 +234,37 @@ func (suite *RoleHandlerTestSuite) TestHandleRolePostRequest_Success() {
 	suite.NoError(err)
 	suite.Equal("role1", response.ID)
 	suite.Equal("Test Role", response.Name)
+}
+
+func (suite *RoleHandlerTestSuite) TestHandleRolePostRequest_WithoutPermissions_ReturnsEmptyArray() {
+	request := CreateRoleRequest{
+		Name: "Test Role",
+		OUID: "ou1",
+	}
+
+	expectedRole := &RoleWithPermissionsAndAssignments{
+		ID:   "role1",
+		Name: "Test Role",
+		OUID: "ou1",
+	}
+
+	suite.mockService.On("CreateRole", mock.Anything, mock.AnythingOfType("RoleCreationDetail")).
+		Return(expectedRole, nil)
+
+	body, _ := json.Marshal(request)
+	req := httptest.NewRequest(http.MethodPost, "/roles", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleRolePostRequest(w, req)
+
+	suite.Equal(http.StatusCreated, w.Code)
+
+	var response CreateRoleResponse
+	err := json.NewDecoder(w.Body).Decode(&response)
+	suite.NoError(err)
+	suite.NotNil(response.Permissions)
+	suite.Empty(response.Permissions)
 }
 
 func (suite *RoleHandlerTestSuite) TestHandleRolePostRequest_InvalidJSON() {
@@ -196,7 +329,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleAddAssignmentsRequest_Validatio
 	suite.Contains(w.Body.String(), "Invalid request format")
 
 	suite.mockAssignmentService.AssertNotCalled(
-		suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything)
+		suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 // HandleRoleGetRequest Tests
@@ -209,7 +342,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleGetRequest_Success() {
 		Permissions: []ResourcePermissions{{ResourceServerID: "rs1", Permissions: []string{"perm1"}}},
 	}
 
-	suite.mockService.On("GetRoleWithPermissions", mock.Anything, "role1").Return(expectedRole, nil)
+	suite.mockService.On("GetRoleInOU", mock.Anything, "role1", "").Return(expectedRole, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/roles/role1", nil)
 	req.SetPathValue("id", "role1")
@@ -227,7 +360,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleGetRequest_Success() {
 }
 
 func (suite *RoleHandlerTestSuite) TestHandleRoleGetRequest_MissingID() {
-	suite.mockService.On("GetRoleWithPermissions", mock.Anything, "").Return(nil, &ErrorMissingRoleID)
+	suite.mockService.On("GetRoleInOU", mock.Anything, "", "").Return(nil, &ErrorMissingRoleID)
 
 	req := httptest.NewRequest(http.MethodGet, "/roles/", nil)
 	w := httptest.NewRecorder()
@@ -238,7 +371,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleGetRequest_MissingID() {
 }
 
 func (suite *RoleHandlerTestSuite) TestHandleRoleGetRequest_NotFound() {
-	suite.mockService.On("GetRoleWithPermissions", mock.Anything, "nonexistent").Return(nil, &ErrorRoleNotFound)
+	suite.mockService.On("GetRoleInOU", mock.Anything, "nonexistent", "").Return(nil, &ErrorRoleNotFound)
 
 	req := httptest.NewRequest(http.MethodGet, "/roles/nonexistent", nil)
 	req.SetPathValue("id", "nonexistent")
@@ -320,7 +453,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleAssignmentsGetRequest_Success()
 		Links: []utils.Link{},
 	}
 
-	suite.mockAssignmentService.On("GetRoleAssignments", mock.Anything, "role1", 10, 0, false).
+	suite.mockAssignmentService.On("GetRoleAssignments", mock.Anything, "role1", "", 10, 0, false).
 		Return(expectedResponse, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/roles/role1/assignments?limit=10&offset=0", nil)
@@ -339,7 +472,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleAssignmentsGetRequest_Success()
 }
 
 func (suite *RoleHandlerTestSuite) TestHandleRoleAssignmentsGetRequest_RoleNotFound() {
-	suite.mockAssignmentService.On("GetRoleAssignments", mock.Anything, "nonexistent", 30, 0, false).
+	suite.mockAssignmentService.On("GetRoleAssignments", mock.Anything, "nonexistent", "", 30, 0, false).
 		Return(nil, &ErrorRoleNotFound)
 
 	req := httptest.NewRequest(http.MethodGet, "/roles/nonexistent/assignments", nil)
@@ -360,7 +493,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleAddAssignmentsRequest_Success()
 	}
 
 	suite.mockAssignmentService.On(
-		"AddAssignments", mock.Anything, "role1", mock.AnythingOfType("[]role.RoleAssignment"),
+		"AddAssignments", mock.Anything, "role1", "", mock.AnythingOfType("[]role.RoleAssignment"),
 	).Return(nil)
 
 	body, _ := json.Marshal(request)
@@ -393,7 +526,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleAddAssignmentsRequest_ServiceEr
 	}
 
 	suite.mockAssignmentService.On(
-		"AddAssignments", mock.Anything, "role1", mock.AnythingOfType("[]role.RoleAssignment"),
+		"AddAssignments", mock.Anything, "role1", "", mock.AnythingOfType("[]role.RoleAssignment"),
 	).Return(&ErrorInvalidAssignmentID)
 
 	body, _ := json.Marshal(request)
@@ -416,7 +549,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleRemoveAssignmentsRequest_Succes
 	}
 
 	suite.mockAssignmentService.On(
-		"RemoveAssignments", mock.Anything, "role1", mock.AnythingOfType("[]role.RoleAssignment"),
+		"RemoveAssignments", mock.Anything, "role1", "", mock.AnythingOfType("[]role.RoleAssignment"),
 	).Return(nil)
 
 	body, _ := json.Marshal(request)
@@ -561,7 +694,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleDeleteRequest_RoleNotFound() {
 
 // HandleRoleAssignmentsGetRequest additional tests
 func (suite *RoleHandlerTestSuite) TestHandleRoleAssignmentsGetRequest_MissingID() {
-	suite.mockAssignmentService.On("GetRoleAssignments", mock.Anything, "", 30, 0, false).
+	suite.mockAssignmentService.On("GetRoleAssignments", mock.Anything, "", "", 30, 0, false).
 		Return(nil, &ErrorMissingRoleID)
 
 	req := httptest.NewRequest(http.MethodGet, "/roles//assignments", nil)
@@ -590,8 +723,9 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleAddAssignmentsRequest_MissingID
 		},
 	}
 
-	suite.mockAssignmentService.On("AddAssignments", mock.Anything, "", mock.AnythingOfType("[]role.RoleAssignment")).
-		Return(&ErrorMissingRoleID)
+	suite.mockAssignmentService.On(
+		"AddAssignments", mock.Anything, "", "", mock.AnythingOfType("[]role.RoleAssignment"),
+	).Return(&ErrorMissingRoleID)
 
 	body, _ := json.Marshal(request)
 	req := httptest.NewRequest(http.MethodPost, "/roles//add-assignments", bytes.NewBuffer(body))
@@ -611,7 +745,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleAddAssignmentsRequest_RoleNotFo
 	}
 
 	suite.mockAssignmentService.On(
-		"AddAssignments", mock.Anything, "nonexistent", mock.AnythingOfType("[]role.RoleAssignment"),
+		"AddAssignments", mock.Anything, "nonexistent", "", mock.AnythingOfType("[]role.RoleAssignment"),
 	).Return(&ErrorRoleNotFound)
 
 	body, _ := json.Marshal(request)
@@ -634,7 +768,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleRemoveAssignmentsRequest_Missin
 	}
 
 	suite.mockAssignmentService.On(
-		"RemoveAssignments", mock.Anything, "", mock.AnythingOfType("[]role.RoleAssignment"),
+		"RemoveAssignments", mock.Anything, "", "", mock.AnythingOfType("[]role.RoleAssignment"),
 	).Return(&ErrorMissingRoleID)
 
 	body, _ := json.Marshal(request)
@@ -665,7 +799,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleRemoveAssignmentsRequest_RoleNo
 		},
 	}
 
-	suite.mockAssignmentService.On("RemoveAssignments", mock.Anything, "nonexistent",
+	suite.mockAssignmentService.On("RemoveAssignments", mock.Anything, "nonexistent", "",
 		mock.AnythingOfType("[]role.RoleAssignment")).
 		Return(&ErrorRoleNotFound)
 
@@ -688,7 +822,7 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleRemoveAssignmentsRequest_Servic
 	}
 
 	suite.mockAssignmentService.On(
-		"RemoveAssignments", mock.Anything, "role1", mock.AnythingOfType("[]role.RoleAssignment"),
+		"RemoveAssignments", mock.Anything, "role1", "", mock.AnythingOfType("[]role.RoleAssignment"),
 	).Return(&ErrorInvalidAssignmentID)
 
 	body, _ := json.Marshal(request)
@@ -744,6 +878,46 @@ func (suite *RoleHandlerTestSuite) TestSanitizeUpdateRoleRequest() {
 	suite.Equal("perm3", sanitized.Permissions[0].Permissions[0])
 }
 
+func (suite *RoleHandlerTestSuite) TestSanitizeCreateRoleRequest_PreservesSpecialCharacters() {
+	request := &CreateRoleRequest{
+		Name:        "  Dean's Sub team  ",
+		Description: `  R&D <team> "core"  `,
+	}
+
+	sanitized := suite.handler.sanitizeCreateRoleRequest(request)
+
+	suite.Equal("Dean's Sub team", sanitized.Name)
+	suite.Equal(`R&D <team> "core"`, sanitized.Description)
+}
+
+func (suite *RoleHandlerTestSuite) TestSanitizeUpdateRoleRequest_PreservesSpecialCharacters() {
+	request := &UpdateRoleRequest{
+		Name:        "  Dean's Sub team  ",
+		Description: `  R&D <team> "core"  `,
+	}
+
+	sanitized := suite.handler.sanitizeUpdateRoleRequest(request)
+
+	suite.Equal("Dean's Sub team", sanitized.Name)
+	suite.Equal(`R&D <team> "core"`, sanitized.Description)
+}
+
+// The Console echoes the stored name back on every save. Replaying that loop must not drift the name.
+func (suite *RoleHandlerTestSuite) TestSanitizeUpdateRoleRequestIsIdempotentAcrossSaves() {
+	name := suite.handler.sanitizeCreateRoleRequest(&CreateRoleRequest{
+		Name: "Dean's Sub team",
+	}).Name
+
+	for i := 0; i < 5; i++ {
+		sanitized := suite.handler.sanitizeUpdateRoleRequest(&UpdateRoleRequest{
+			Name:        name,
+			Description: "save " + strconv.Itoa(i),
+		})
+		suite.Equal("Dean's Sub team", sanitized.Name)
+		name = sanitized.Name
+	}
+}
+
 func (suite *RoleHandlerTestSuite) TestSanitizeAssignmentsRequest() {
 	request := &AssignmentsRequest{
 		Assignments: []AssignmentRequest{
@@ -782,4 +956,220 @@ func (suite *RoleHandlerTestSuite) TestHandleError_ClientAndServerErrors() {
 		suite.NoError(err)
 		suite.Equal(tidcommon.InternalServerError.Code, resp.Code)
 	})
+}
+
+func sharingRequest(method, target string, body interface{}, pathValues map[string]string) *http.Request {
+	var raw []byte
+	if body != nil {
+		raw, _ = json.Marshal(body)
+	}
+	req := httptest.NewRequest(method, target, bytes.NewReader(raw))
+	for k, v := range pathValues {
+		req.SetPathValue(k, v)
+	}
+	return req
+}
+
+// The status separates the kinds of refusal a sharing call produces: a malformed request, a policy
+// or an organization unit that is not there, and a conflict with state the caller has not seen.
+func (suite *RoleHandlerTestSuite) TestSharingErrorsCarryTheirOwnStatus() {
+	for _, tc := range []struct {
+		name       string
+		svcErr     *tidcommon.ServiceError
+		wantStatus int
+	}{
+		{"a policy the unit may not write", &ErrorInvalidSharingPolicy, http.StatusBadRequest},
+		{"no such policy", &ErrorSharingPolicyNotFound, http.StatusNotFound},
+		{"a second policy for one unit", &ErrorSharingPolicyExists, http.StatusConflict},
+		{"a stale version", &ErrorSharingPolicyVersionMismatch, http.StatusConflict},
+		{"a shared role moved", &ErrorSharedRoleCannotMove, http.StatusBadRequest},
+		{"a declared policy", &ErrorSharingPolicyDeclared, http.StatusBadRequest},
+		{"an unshared organization unit", &ErrorRoleNotSharedToOU, http.StatusNotFound},
+		{"a framework failure", &tidcommon.InternalServerError, http.StatusInternalServerError},
+	} {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockService.EXPECT().GetSharingPolicy(mock.Anything, "role1", "p1").
+				Return(sharing.Policy{}, tc.svcErr)
+
+			w := httptest.NewRecorder()
+			suite.handler.HandleSharingPolicyGetRequest(w, sharingRequest(http.MethodGet,
+				"/roles/role1/sharing-policies/p1", nil, map[string]string{"id": "role1", "policyId": "p1"}))
+
+			suite.Equal(tc.wantStatus, w.Code)
+			var body map[string]interface{}
+			suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+			suite.Equal(tc.svcErr.Code, body["code"])
+		})
+	}
+}
+
+// A create answers 201 with the recorded policy, and names the issuer the body gives.
+func (suite *RoleHandlerTestSuite) TestSharingPolicyPostAnswersCreated() {
+	var recorded sharing.PolicyRequest
+	suite.mockService.EXPECT().CreateSharingPolicy(mock.Anything, "role1", mock.Anything).
+		Run(func(_ context.Context, _ string, req sharing.PolicyRequest) { recorded = req }).
+		Return(sharing.Policy{ID: "p1", Version: 1,
+			ChildUnits: &sharing.ChildUnits{Mode: sharing.ChildUnitsAll}}, nil)
+
+	w := httptest.NewRecorder()
+	suite.handler.HandleSharingPolicyPostRequest(w, sharingRequest(http.MethodPost, "/roles/role1/sharing-policies",
+		map[string]interface{}{
+			"initiatingOuId": "ou-owner",
+			"childUnits": map[string]interface{}{
+				"mode": "selected",
+				"units": []map[string]interface{}{{"ouId": "ou-child", "reach": "subtree",
+					"overlayRules": map[string]interface{}{"assignments": map[string]bool{"editable": false}}}}},
+		},
+		map[string]string{"id": "role1"}))
+
+	suite.Require().Equal(http.StatusCreated, w.Code, "body: %s", w.Body.String())
+	var body map[string]interface{}
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+	suite.Equal("p1", body["id"])
+
+	suite.Equal("ou-owner", recorded.InitiatingOUID)
+	suite.Require().NotNil(recorded.ChildUnits)
+	suite.Equal(sharing.ChildUnitsSelected, recorded.ChildUnits.Mode)
+	suite.Require().Len(recorded.ChildUnits.Units, 1)
+	suite.Equal(sharing.ReachSubtree, recorded.ChildUnits.Units[0].Reach)
+	suite.Equal(map[string]sharing.OverlayRule{"assignments": {Editable: false}},
+		recorded.ChildUnits.Units[0].OverlayRules, "a policy may turn the role's assignments off")
+}
+
+// A field name the body gets wrong is refused rather than dropped, so a misspelled exclusion does
+// not share the role with the organization unit the caller named to keep it from.
+func (suite *RoleHandlerTestSuite) TestSharingPolicyPostRefusesAnUnknownField() {
+	for _, tc := range []struct {
+		name string
+		body map[string]interface{}
+	}{
+		{"a misspelled exclusion", map[string]interface{}{"childUnits": map[string]interface{}{
+			"mode": "all", "excludeOuIds": []string{"ou-trial"}}}},
+		{"a policy id", map[string]interface{}{"id": "caller-chosen",
+			"childUnits": map[string]string{"mode": "all"}}},
+	} {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+
+			w := httptest.NewRecorder()
+			suite.handler.HandleSharingPolicyPostRequest(w, sharingRequest(http.MethodPost,
+				"/roles/role1/sharing-policies", tc.body, map[string]string{"id": "role1"}))
+
+			// The service mock records no call: the body never gets that far.
+			suite.Equal(http.StatusBadRequest, w.Code, "body: %s", w.Body.String())
+		})
+	}
+}
+
+// This API leaves a deployment-wide reach to resource files and imports.
+func (suite *RoleHandlerTestSuite) TestSharingPolicyPostRefusesADeploymentWideReach() {
+	for _, tc := range []struct {
+		name string
+		body map[string]interface{}
+	}{
+		{"all units", map[string]interface{}{"allUnits": map[string]interface{}{}}},
+		{"every other tree's root", map[string]interface{}{"otherTreeRoots": map[string]string{"mode": "all"}}},
+	} {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+
+			w := httptest.NewRecorder()
+			suite.handler.HandleSharingPolicyPostRequest(w, sharingRequest(http.MethodPost,
+				"/roles/role1/sharing-policies", tc.body, map[string]string{"id": "role1"}))
+
+			suite.Require().Equal(http.StatusBadRequest, w.Code, "body: %s", w.Body.String())
+			var body map[string]interface{}
+			suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+			suite.Equal(ErrorDeploymentWideSharingNotAllowed.Code, body["code"])
+		})
+	}
+}
+
+// An edit cannot change whose decision a policy is, so a PUT naming an issuer is refused.
+func (suite *RoleHandlerTestSuite) TestSharingPolicyPutRefusesAnIssuer() {
+	w := httptest.NewRecorder()
+	suite.handler.HandleSharingPolicyPutRequest(w, sharingRequest(http.MethodPut, "/roles/role1/sharing-policies/p1",
+		map[string]interface{}{"version": 1, "initiatingOuId": "another-ou",
+			"childUnits": map[string]string{"mode": "all"}},
+		map[string]string{"id": "role1", "policyId": "p1"}))
+
+	suite.Require().Equal(http.StatusBadRequest, w.Code, "body: %s", w.Body.String())
+	var body map[string]interface{}
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+	suite.Equal(ErrorInvalidRequestFormat.Code, body["code"])
+}
+
+// An edit may restate a deployment-wide section to move its exclusions.
+func (suite *RoleHandlerTestSuite) TestSharingPolicyPutPassesADeploymentWideSection() {
+	var recorded sharing.PolicyRequest
+	suite.mockService.EXPECT().UpdateSharingPolicy(mock.Anything, "role1", "p1", mock.Anything).
+		Run(func(_ context.Context, _, _ string, req sharing.PolicyRequest) { recorded = req }).
+		Return(sharing.Policy{ID: "p1", Version: 3}, nil)
+
+	w := httptest.NewRecorder()
+	suite.handler.HandleSharingPolicyPutRequest(w, sharingRequest(http.MethodPut, "/roles/role1/sharing-policies/p1",
+		map[string]interface{}{"version": 2,
+			"allUnits": map[string]interface{}{"excludedOuIds": []string{"ou-trial"}}},
+		map[string]string{"id": "role1", "policyId": "p1"}))
+
+	suite.Require().Equal(http.StatusOK, w.Code, "body: %s", w.Body.String())
+	suite.Equal(2, recorded.Version)
+	suite.Require().NotNil(recorded.AllUnits)
+	suite.Equal([]string{"ou-trial"}, recorded.AllUnits.ExcludedOUIDs)
+}
+
+func (suite *RoleHandlerTestSuite) TestSharingPolicyDeleteAnswersNoContent() {
+	suite.mockService.EXPECT().DeleteSharingPolicy(mock.Anything, "role1", "p1").Return(nil)
+
+	w := httptest.NewRecorder()
+	suite.handler.HandleSharingPolicyDeleteRequest(w, sharingRequest(http.MethodDelete,
+		"/roles/role1/sharing-policies/p1", nil, map[string]string{"id": "role1", "policyId": "p1"}))
+
+	suite.Equal(http.StatusNoContent, w.Code)
+	suite.Empty(w.Body.String())
+}
+
+// A listing pages the role's own policies and links within the role's own path.
+func (suite *RoleHandlerTestSuite) TestSharingPolicyListShapesThePage() {
+	suite.mockService.EXPECT().ListSharingPolicies(mock.Anything, "role1", 1, 0).
+		Return(sharing.PolicyList{TotalResults: 2, StartIndex: 1, Count: 1,
+			Policies: []sharing.Policy{{ID: "p1"}}}, nil)
+
+	w := httptest.NewRecorder()
+	suite.handler.HandleSharingPolicyListRequest(w, sharingRequest(http.MethodGet,
+		"/roles/role1/sharing-policies?limit=1", nil, map[string]string{"id": "role1"}))
+
+	suite.Require().Equal(http.StatusOK, w.Code)
+	var body sharing.PolicyListResponse
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+	suite.Equal(2, body.TotalResults)
+	suite.Require().Len(body.Policies, 1)
+	suite.Require().NotEmpty(body.Links)
+	suite.Contains(body.Links[0].Href, "/roles/role1/sharing-policies")
+}
+
+func (suite *RoleHandlerTestSuite) TestSharingPolicyListRefusesABadLimit() {
+	w := httptest.NewRecorder()
+	suite.handler.HandleSharingPolicyListRequest(w, sharingRequest(http.MethodGet,
+		"/roles/role1/sharing-policies?limit=many", nil, map[string]string{"id": "role1"}))
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+}
+
+// The organization unit to resolve for travels as a query parameter.
+func (suite *RoleHandlerTestSuite) TestOverlayRulesReadsTheUnitFromTheQuery() {
+	suite.mockService.EXPECT().ResolveSharingOverlay(mock.Anything, "role1", "ou-child").
+		Return(sharing.ResolvedOverlay{OUID: "ou-child", Visible: true}, nil)
+
+	w := httptest.NewRecorder()
+	suite.handler.HandleOverlayRuleGetRequest(w, sharingRequest(http.MethodGet,
+		"/roles/role1/overlay-rules?ouId=ou-child", nil, map[string]string{"id": "role1"}))
+
+	suite.Require().Equal(http.StatusOK, w.Code)
+	var body map[string]interface{}
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+	suite.Equal("ou-child", body["ouId"])
+	suite.Equal(true, body["visible"])
+	suite.NotNil(body["rules"], "an absent rule set is an empty object, not null")
 }

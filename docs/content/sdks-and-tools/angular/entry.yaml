@@ -1,0 +1,14 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: angular
+name: Angular
+icon: AngularLogo
+category: spa
+type: sdk
+origin: official
+status: soon
+package:
+  name: "@thunderid/angular"
+  manager: npm
+description: Guards, services, and components for {{ProductName}} in Angular apps.

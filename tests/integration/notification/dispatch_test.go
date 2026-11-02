@@ -1,0 +1,493 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package notification
+
+import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
+)
+
+const (
+	mockDispatchServerPort = 8099
+	otpSendEndpoint        = "/auth/otp/sms/send"
+	smsGatewayPath         = "/connections/sms-gateway"
+)
+
+var (
+	dispatchTestOU = testutils.OrganizationUnit{
+		Handle:      "notification-dispatch-test-ou",
+		Name:        "Notification Dispatch Test OU",
+		Description: "Organization unit for notification dispatch tests",
+	}
+
+	dispatchEntityType = testutils.UserType{
+		Handle:      "dispatch_user",
+		DisplayName: "Dispatch User",
+		Schema: map[string]interface{}{
+			"username":      map[string]interface{}{"type": "string"},
+			"mobile_number": map[string]interface{}{"type": "string"},
+		},
+	}
+)
+
+// DispatchTestSuite exercises how the custom SMS sender puts a message on the wire. The connection
+// CRUD surface is covered by the connection suite; what matters here is the shape of the outbound
+// request each configuration produces, and how a gateway failure surfaces.
+type DispatchTestSuite struct {
+	suite.Suite
+	client       *http.Client
+	mockServer   *testutils.MockNotificationServer
+	ouID         string
+	entityTypeID string
+	userID       string
+	mobileNumber string
+}
+
+func TestDispatchTestSuite(t *testing.T) {
+	suite.Run(t, new(DispatchTestSuite))
+}
+
+func (ts *DispatchTestSuite) SetupSuite() {
+	ts.client = testutils.GetHTTPClient()
+	ts.mobileNumber = "+1555000111"
+
+	ouID, err := testutils.CreateOrganizationUnit(dispatchTestOU)
+	ts.Require().NoError(err, "Failed to create test organization unit")
+	ts.ouID = ouID
+
+	dispatchEntityType.OUID = ouID
+	entityTypeID, err := testutils.CreateUserType(dispatchEntityType)
+	ts.Require().NoError(err, "Failed to create test user type")
+	ts.entityTypeID = entityTypeID
+
+	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
+		OUID: ouID,
+		Type: dispatchEntityType.Handle,
+		Attributes: json.RawMessage(`{
+			"username": "dispatchuser",
+			"mobile_number": "` + ts.mobileNumber + `"
+		}`),
+	})
+	ts.Require().NoError(err, "Failed to create test user")
+	ts.userID = userIDs[0]
+
+	ts.mockServer = testutils.NewMockNotificationServer(mockDispatchServerPort)
+	ts.Require().NoError(ts.mockServer.Start(), "Failed to start mock notification server")
+}
+
+func (ts *DispatchTestSuite) TearDownSuite() {
+	if ts.userID != "" {
+		if err := testutils.CleanupUsers([]string{ts.userID}); err != nil {
+			ts.T().Logf("Failed to cleanup user during teardown: %v", err)
+		}
+	}
+	if ts.entityTypeID != "" {
+		if err := testutils.DeleteUserType(ts.entityTypeID); err != nil {
+			ts.T().Logf("Failed to delete user type during teardown: %v", err)
+		}
+	}
+	if ts.ouID != "" {
+		if err := testutils.DeleteOrganizationUnit(ts.ouID); err != nil {
+			ts.T().Logf("Failed to delete organization unit during teardown: %v", err)
+		}
+	}
+	if ts.mockServer != nil {
+		if err := ts.mockServer.Stop(); err != nil {
+			ts.T().Logf("Failed to stop mock notification server during teardown: %v", err)
+		}
+	}
+}
+
+func (ts *DispatchTestSuite) SetupTest() {
+	ts.mockServer.ClearMessages()
+	ts.mockServer.SetResponseStatus(0)
+}
+
+// createSender creates a custom SMS gateway connection with the given configuration and registers
+// its cleanup.
+func (ts *DispatchTestSuite) createSender(name string, extra map[string]interface{}) string {
+	body := map[string]interface{}{
+		"name":        name,
+		"description": "Sender for notification dispatch testing",
+		"ouId":        ts.ouID,
+		"url":         ts.mockServer.GetSendSMSURL(),
+	}
+	for key, value := range extra {
+		body[key] = value
+	}
+
+	payload, err := json.Marshal(body)
+	ts.Require().NoError(err, "Failed to marshal sender payload")
+
+	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+smsGatewayPath,
+		bytes.NewReader(payload))
+	ts.Require().NoError(err, "Failed to build sender request")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err, "Failed to create sender")
+	defer resp.Body.Close()
+
+	responseBody, _ := io.ReadAll(resp.Body)
+	ts.Require().Equal(http.StatusCreated, resp.StatusCode,
+		"Failed to create sender %s: %s", name, string(responseBody))
+
+	var decoded map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(responseBody, &decoded), "Failed to decode sender response")
+
+	senderID, ok := decoded["id"].(string)
+	ts.Require().True(ok, "Sender response should carry an id")
+
+	ts.T().Cleanup(func() { ts.deleteSender(senderID) })
+
+	return senderID
+}
+
+func (ts *DispatchTestSuite) deleteSender(senderID string) {
+	req, err := http.NewRequest(http.MethodDelete,
+		testutils.TestServerURL+smsGatewayPath+"/"+senderID, nil)
+	if err != nil {
+		ts.T().Logf("Failed to build sender delete request: %v", err)
+		return
+	}
+	resp, err := ts.client.Do(req)
+	if err != nil {
+		ts.T().Logf("Failed to delete sender %s: %v", senderID, err)
+		return
+	}
+	resp.Body.Close()
+}
+
+// sendOTP asks the server to deliver an OTP through the given sender and returns the status of that
+// request, so both successful dispatch and gateway failures can be inspected.
+func (ts *DispatchTestSuite) sendOTP(senderID string) int {
+	payload, err := json.Marshal(map[string]interface{}{
+		"recipient": ts.mobileNumber,
+		"senderId":  senderID,
+	})
+	ts.Require().NoError(err, "Failed to marshal OTP send payload")
+
+	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+otpSendEndpoint,
+		bytes.NewReader(payload))
+	ts.Require().NoError(err, "Failed to build OTP send request")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err, "Failed to send the OTP request")
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+
+	return resp.StatusCode
+}
+
+// waitForDispatch waits for the mock gateway to record an inbound request.
+func (ts *DispatchTestSuite) waitForDispatch() *testutils.SMSMessage {
+	for i := 0; i < 20; i++ {
+		if message := ts.mockServer.GetLastMessage(); message != nil {
+			return message
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return nil
+}
+
+// TestDispatchJSONPost sends through a sender configured for a JSON body over POST.
+func (ts *DispatchTestSuite) TestDispatchJSONPost() {
+	senderID := ts.createSender("Dispatch JSON POST Sender", map[string]interface{}{
+		"httpMethod":  "POST",
+		"contentType": "JSON",
+	})
+
+	ts.Require().Equal(http.StatusOK, ts.sendOTP(senderID), "Expected the OTP send to succeed")
+
+	message := ts.waitForDispatch()
+	ts.Require().NotNil(message, "The gateway should have received a request")
+	ts.Equal(http.MethodPost, message.Method, "The sender should dispatch over POST")
+	ts.Contains(message.ContentType, "application/json", "The body should be sent as JSON")
+	ts.NotEmpty(message.OTP, "The dispatched message should carry the OTP")
+}
+
+// TestDispatchFormPost sends through a sender configured for a form encoded body.
+//
+// The form encoder builds its fields by splitting the rendered message into "key=value" lines. The
+// OTP SMS template renders prose rather than key value pairs, so no fields are produced and the
+// gateway receives an empty body while the send still reports success. This test pins that
+// behaviour; if the encoder is changed to carry the message, the assertion below will fail and
+// should be updated to assert the OTP is present.
+func (ts *DispatchTestSuite) TestDispatchFormPost() {
+	senderID := ts.createSender("Dispatch FORM POST Sender", map[string]interface{}{
+		"httpMethod":  "POST",
+		"contentType": "FORM",
+	})
+
+	ts.Require().Equal(http.StatusOK, ts.sendOTP(senderID), "Expected the OTP send to succeed")
+
+	message := ts.waitForDispatch()
+	ts.Require().NotNil(message, "The gateway should have received a request")
+	ts.Equal(http.MethodPost, message.Method, "The sender should dispatch over POST")
+	ts.Contains(message.ContentType, "application/x-www-form-urlencoded",
+		"The body should be form encoded")
+	ts.Empty(message.Message,
+		"A prose template produces no form fields, so the body reaches the gateway empty")
+}
+
+// TestDispatchCustomHeaders confirms configured headers reach the gateway.
+func (ts *DispatchTestSuite) TestDispatchCustomHeaders() {
+	senderID := ts.createSender("Dispatch Custom Headers Sender", map[string]interface{}{
+		"httpMethod":  "POST",
+		"contentType": "JSON",
+		"authentication": map[string]interface{}{
+			"type":       "api_key",
+			"properties": map[string]string{"X-Dispatch-Test": "integration"},
+		},
+	})
+
+	ts.Require().Equal(http.StatusOK, ts.sendOTP(senderID), "Expected the OTP send to succeed")
+
+	message := ts.waitForDispatch()
+	ts.Require().NotNil(message, "The gateway should have received a request")
+	ts.Equal("integration", message.Headers["X-Dispatch-Test"],
+		"The configured header should be present on the outbound request, got %v", message.Headers)
+}
+
+func (ts *DispatchTestSuite) TestDispatchBearerAndBasicAuthentication() {
+	for _, test := range []struct {
+		name           string
+		authentication map[string]interface{}
+		authorization  string
+	}{
+		{"bearer", map[string]interface{}{
+			"type": "bearer", "properties": map[string]string{"token": "test-token"},
+		}, "Bearer test-token"},
+		{"basic", map[string]interface{}{
+			"type": "basic", "properties": map[string]string{"username": "test-user", "password": "test-password"},
+		}, "Basic " + base64.StdEncoding.EncodeToString([]byte("test-user:test-password"))},
+	} {
+		ts.Run(test.name, func() {
+			ts.mockServer.ClearMessages()
+			senderID := ts.createSender("Dispatch "+test.name+" Sender", map[string]interface{}{
+				"httpMethod": "POST", "contentType": "JSON", "authentication": test.authentication,
+			})
+			ts.Require().Equal(http.StatusOK, ts.sendOTP(senderID))
+			message := ts.waitForDispatch()
+			ts.Require().NotNil(message)
+			ts.Equal(test.authorization, message.Headers["Authorization"])
+		})
+	}
+}
+
+func (ts *DispatchTestSuite) TestDispatchLegacyPlaintextHeaders() {
+	if testutils.GetDBType() != "sqlite" {
+		ts.T().Skip("legacy stored-property fixture uses the SQLite config DB")
+	}
+	senderID := ts.createSender("Legacy Plaintext Headers Sender", map[string]interface{}{
+		"httpMethod": "POST", "contentType": "JSON",
+	})
+	ts.setLegacyHeaders(senderID, "X-Legacy-Key: legacy-secret, X-Tenant: legacy-tenant", false)
+	ts.assertLegacyHeadersVisible(senderID, "X-Legacy-Key: legacy-secret, X-Tenant: legacy-tenant")
+
+	ts.Require().Equal(http.StatusOK, ts.sendOTP(senderID))
+	message := ts.waitForDispatch()
+	ts.Require().NotNil(message)
+	ts.Equal("legacy-secret", message.Headers["X-Legacy-Key"])
+	ts.Equal("legacy-tenant", message.Headers["X-Tenant"])
+}
+
+func (ts *DispatchTestSuite) TestDispatchGeneralHeadersWithEmptyAndReservedValues() {
+	senderID := ts.createSender("General Empty Header Sender", map[string]interface{}{
+		"httpMethod": "POST", "contentType": "JSON",
+		"httpHeaders": "Content-Type: text/plain, X-Empty: ",
+	})
+
+	ts.Require().Equal(http.StatusOK, ts.sendOTP(senderID))
+	message := ts.waitForDispatch()
+	ts.Require().NotNil(message)
+	ts.Equal("text/plain", message.Headers["Content-Type"])
+	value, exists := message.Headers["X-Empty"]
+	ts.True(exists)
+	ts.Empty(value)
+}
+
+func (ts *DispatchTestSuite) TestDispatchRejectsMalformedLegacyHeaders() {
+	if testutils.GetDBType() != "sqlite" {
+		ts.T().Skip("legacy stored-property fixture uses the SQLite config DB")
+	}
+	senderID := ts.createSender("Malformed Legacy Headers Sender", map[string]interface{}{
+		"httpMethod": "POST", "contentType": "JSON",
+	})
+	ts.setLegacyHeaders(senderID, "malformed-header-without-value", false)
+	ts.NotEqual(http.StatusOK, ts.sendOTP(senderID))
+}
+
+func (ts *DispatchTestSuite) TestDispatchLegacyEncryptedHeaders() {
+	if testutils.GetDBType() != "sqlite" {
+		ts.T().Skip("legacy stored-property fixture uses the SQLite config DB")
+	}
+	headers := "X-Legacy-Key: encrypted-secret, X-Tenant: encrypted-tenant"
+	senderID := ts.createSender("Legacy Encrypted Headers Sender", map[string]interface{}{
+		"httpMethod": "POST", "contentType": "JSON",
+		"authentication": map[string]interface{}{
+			"type": "api_key", "properties": map[string]string{"X-Staging": headers},
+		},
+	})
+	ts.setLegacyHeaders(senderID, "", true)
+	ts.assertLegacyHeadersVisible(senderID, headers)
+
+	ts.Require().Equal(http.StatusOK, ts.sendOTP(senderID))
+	message := ts.waitForDispatch()
+	ts.Require().NotNil(message)
+	ts.Equal("encrypted-secret", message.Headers["X-Legacy-Key"])
+	ts.Equal("encrypted-tenant", message.Headers["X-Tenant"])
+}
+
+type storedSenderProperty struct {
+	Name     string `json:"name"`
+	Value    string `json:"value"`
+	IsSecret bool   `json:"isSecret"`
+}
+
+// setLegacyHeaders replaces a test sender's new authentication properties with the old stored
+// representation. It uses an already encrypted API-key property for the encrypted case.
+func (ts *DispatchTestSuite) setLegacyHeaders(senderID, plaintext string, encrypted bool) {
+	deploymentID, err := testutils.QueryConfigDB(fmt.Sprintf(
+		`SELECT DEPLOYMENT_ID FROM "NOTIFICATION_SENDER" WHERE ID='%s';`, senderID))
+	ts.Require().NoError(err)
+	ts.Require().NotEmpty(deploymentID)
+	query := fmt.Sprintf(`SELECT PROPERTIES FROM "NOTIFICATION_SENDER" WHERE ID='%s' AND DEPLOYMENT_ID='%s';`,
+		senderID, deploymentID)
+	storedJSON, err := testutils.QueryConfigDB(query)
+	ts.Require().NoError(err)
+	var stored []storedSenderProperty
+	ts.Require().NoError(json.Unmarshal([]byte(storedJSON), &stored))
+
+	legacyValue := plaintext
+	properties := make([]storedSenderProperty, 0, len(stored)+1)
+	for _, property := range stored {
+		if property.Name == "authentication_X-Staging" {
+			legacyValue = property.Value
+		}
+		if !strings.HasPrefix(property.Name, "authentication_") {
+			properties = append(properties, property)
+		}
+	}
+	ts.Require().NotEmpty(legacyValue)
+	properties = append(properties, storedSenderProperty{
+		Name: "http_headers", Value: legacyValue, IsSecret: encrypted,
+	})
+	encoded, err := json.Marshal(properties)
+	ts.Require().NoError(err)
+	escaped := strings.ReplaceAll(string(encoded), "'", "''")
+	update := fmt.Sprintf(`UPDATE "NOTIFICATION_SENDER" SET PROPERTIES='%s' `+
+		`WHERE ID='%s' AND DEPLOYMENT_ID='%s'; SELECT changes();`, escaped, senderID, deploymentID)
+	changed, err := testutils.QueryConfigDB(update)
+	ts.Require().NoError(err)
+	ts.Equal("1", changed)
+}
+
+func (ts *DispatchTestSuite) assertLegacyHeadersVisible(senderID, expected string) {
+	request, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+smsGatewayPath+"/"+senderID, nil)
+	ts.Require().NoError(err)
+	response, err := ts.client.Do(request)
+	ts.Require().NoError(err)
+	defer response.Body.Close()
+	ts.Require().Equal(http.StatusOK, response.StatusCode)
+	var connection struct {
+		HTTPHeaders string `json:"httpHeaders"`
+	}
+	ts.Require().NoError(json.NewDecoder(response.Body).Decode(&connection))
+	ts.Equal(expected, connection.HTTPHeaders)
+}
+
+// TestDispatchGatewayFailure confirms a gateway error surfaces rather than being reported as a
+// successful send.
+func (ts *DispatchTestSuite) TestDispatchGatewayFailure() {
+	senderID := ts.createSender("Dispatch Failing Sender", map[string]interface{}{
+		"httpMethod":  "POST",
+		"contentType": "JSON",
+	})
+
+	ts.mockServer.SetResponseStatus(http.StatusInternalServerError)
+
+	status := ts.sendOTP(senderID)
+	ts.NotEqual(http.StatusOK, status,
+		"A gateway failure must not be reported as a successful send, got %d", status)
+
+	message := ts.waitForDispatch()
+	ts.Require().NotNil(message, "The gateway should still have received the attempt")
+}
+
+// TestDispatchUnsupportedContentType confirms an unusable content type is rejected rather than
+// silently dispatched in some default encoding.
+func (ts *DispatchTestSuite) TestDispatchUnsupportedContentType() {
+	senderID, err := ts.tryCreateSender("Dispatch Unsupported Content Type Sender",
+		map[string]interface{}{"httpMethod": "POST", "contentType": "XML"})
+	if err != nil {
+		// Rejecting the configuration up front is a valid guard, and preferable to failing at send.
+		ts.T().Logf("the connection API rejected an unsupported content type: %v", err)
+		return
+	}
+	ts.T().Cleanup(func() { ts.deleteSender(senderID) })
+
+	status := ts.sendOTP(senderID)
+	ts.NotEqual(http.StatusOK, status,
+		"An unsupported content type must not produce a successful send, got %d", status)
+}
+
+// tryCreateSender creates a sender and returns any API error rather than failing the test, for
+// configurations that may be rejected at creation time.
+func (ts *DispatchTestSuite) tryCreateSender(name string, extra map[string]interface{}) (string, error) {
+	body := map[string]interface{}{
+		"name":        name,
+		"description": "Sender for notification dispatch testing",
+		"ouId":        ts.ouID,
+		"url":         ts.mockServer.GetSendSMSURL(),
+	}
+	for key, value := range extra {
+		body[key] = value
+	}
+
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+smsGatewayPath,
+		bytes.NewReader(payload))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := ts.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	responseBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(responseBody))
+	}
+
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(responseBody, &decoded); err != nil {
+		return "", err
+	}
+
+	senderID, ok := decoded["id"].(string)
+	if !ok || senderID == "" {
+		return "", fmt.Errorf("sender response carried no id: %s", string(responseBody))
+	}
+	return senderID, nil
+}

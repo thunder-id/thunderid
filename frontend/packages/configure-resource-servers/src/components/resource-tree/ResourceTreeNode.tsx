@@ -3,6 +3,7 @@
 
 import {useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
+import {getErrorMessage} from '@thunderid/utils';
 import {
   Box,
   CircularProgress,
@@ -27,7 +28,7 @@ import {
   Wrench,
   Zap,
 } from '@wso2/oxygen-ui-icons-react';
-import {useState, type JSX} from 'react';
+import {useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {AddNodeMode} from './AddNodeDialog';
 import type {SelectedNode} from './ResourceTree';
@@ -287,6 +288,15 @@ export function ActionNode({
   const [hovered, setHovered] = useState(false);
 
   const deleteAction = useDeleteAction(resourceServerId, parentResourceId);
+
+  // Resolves an error through the `resourceServers` catalog. `t` defaults to the `common`
+  // namespace, so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with
+  // `resourceServers:`, per getErrorMessage's namespace-resolution contract.
+  const tForErrors = useCallback(
+    (key: string, options?: Record<string, unknown>): string =>
+      t(key.includes(':') ? key : `resourceServers:${key}`, options),
+    [t],
+  );
   const isSelected = selectedNodeId === action.id;
   const nodeType: SelectedNode['type'] = parentResourceId ? 'resource-action' : 'server-action';
   const [copiedPermission, setCopiedPermission] = useState(false);
@@ -314,7 +324,7 @@ export function ActionNode({
       onSuccess: () => showToast(resolveDeleteSuccessToast(), 'success'),
       onError: (err: Error) => {
         logger.error('Failed to delete action', {error: err});
-        showToast(t('resourceServers:tree.deleteAction.error', 'Failed to delete action.'), 'error');
+        showToast(getErrorMessage(err, tForErrors, 'tree.deleteAction.error', 'Failed to delete action.'), 'error');
       },
     });
   };

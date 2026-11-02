@@ -1,0 +1,596 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+import {render, screen, within} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type {OAuth2Config} from '@thunderid/configure-applications';
+import {describe, it, expect, vi} from 'vitest';
+import OperationModesSection from '../OperationModesSection';
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, fallback?: string) => fallback ?? key,
+  }),
+  Trans: ({defaults = ''}: {defaults?: string}) => <span>{defaults}</span>,
+}));
+
+vi.mock('@thunderid/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/react')>()),
+  useThunderID: () => ({
+    discovery: {
+      wellKnown: {
+        token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
+      },
+    },
+  }),
+}));
+
+const TOKEN_EXCHANGE = 'urn:ietf:params:oauth:grant-type:token-exchange';
+const JWT_BEARER = 'urn:ietf:params:oauth:grant-type:jwt-bearer';
+
+describe('OperationModesSection', () => {
+  const autonomousOnlyConfig: OAuth2Config = {
+    grantTypes: ['client_credentials'],
+    responseTypes: [],
+  };
+
+  const delegatedConfig: OAuth2Config = {
+    grantTypes: ['client_credentials', 'authorization_code'],
+    responseTypes: ['code'],
+    redirectUris: ['https://example.com/cb'],
+  };
+
+  it('returns null when oauth2Config is undefined', () => {
+    const {container} = render(<OperationModesSection />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('renders the card title and description', () => {
+    render(<OperationModesSection oauth2Config={autonomousOnlyConfig} />);
+
+    expect(screen.getByText('OAuth 2 configuration')).toBeInTheDocument();
+  });
+
+  it('shows an info note explaining the Delegated-mode dependency, before the grant types selector', () => {
+    render(<OperationModesSection oauth2Config={autonomousOnlyConfig} onOAuth2ConfigChange={vi.fn()} />);
+
+    expect(
+      screen.getByText(/greyed-out grants unlock once you turn on Delegated mode at the top of this tab/i),
+    ).toBeInTheDocument();
+  });
+
+  describe('Grant type selection', () => {
+    it('lists every grant type in Autonomous-only mode, but locks the delegated-only ones', async () => {
+      const user = userEvent.setup();
+      render(<OperationModesSection oauth2Config={autonomousOnlyConfig} onOAuth2ConfigChange={vi.fn()} />);
+
+      await user.click(document.getElementById('agent-grant-types')!);
+
+      const listbox = await screen.findByRole('listbox');
+      expect(within(listbox).getByText('client_credentials')).toBeInTheDocument();
+      expect(within(listbox).getByText('Token exchange')).toBeInTheDocument();
+      expect(within(listbox).getByText('authorization_code')).toBeInTheDocument();
+      expect(within(listbox).getByText('CIBA (Client-Initiated Backchannel Authentication)')).toBeInTheDocument();
+      expect(within(listbox).getByText('refresh_token')).toBeInTheDocument();
+      expect(within(listbox).getByText('JWT bearer')).toBeInTheDocument();
+
+      expect(within(listbox).getByText('authorization_code').closest('li')).toHaveAttribute('aria-disabled', 'true');
+      expect(
+        within(listbox).getByText('CIBA (Client-Initiated Backchannel Authentication)').closest('li'),
+      ).toHaveAttribute('aria-disabled', 'true');
+      expect(within(listbox).getByText('refresh_token').closest('li')).toHaveAttribute('aria-disabled', 'true');
+      expect(within(listbox).getByText('Token exchange').closest('li')).toHaveAttribute('aria-disabled', 'true');
+      expect(within(listbox).getByText('JWT bearer').closest('li')).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('should list JWT bearer right after token exchange', async () => {
+      const user = userEvent.setup();
+      render(<OperationModesSection oauth2Config={autonomousOnlyConfig} onOAuth2ConfigChange={vi.fn()} />);
+
+      await user.click(document.getElementById('agent-grant-types')!);
+      const options = within(await screen.findByRole('listbox')).getAllByRole('option');
+
+      expect(options.map((option) => option.textContent)).toEqual([
+        'client_credentials',
+        'authorization_code',
+        'CIBA (Client-Initiated Backchannel Authentication)',
+        'refresh_token',
+        'Token exchange',
+        'JWT bearer',
+      ]);
+    });
+
+    it('unlocks the other delegated grants, and keeps the only delegation grant locked, once Delegated mode is on', async () => {
+      const user = userEvent.setup();
+      render(<OperationModesSection oauth2Config={delegatedConfig} onOAuth2ConfigChange={vi.fn()} />);
+
+      await user.click(document.getElementById('agent-grant-types')!);
+
+      const listbox = await screen.findByRole('listbox');
+      expect(within(listbox).getByText('authorization_code').closest('li')).toHaveAttribute('aria-disabled', 'true');
+      expect(
+        within(listbox).getByText('CIBA (Client-Initiated Backchannel Authentication)').closest('li'),
+      ).not.toHaveAttribute('aria-disabled', 'true');
+      expect(within(listbox).getByText('refresh_token').closest('li')).not.toHaveAttribute('aria-disabled', 'true');
+      expect(within(listbox).getByText('Token exchange').closest('li')).not.toHaveAttribute('aria-disabled', 'true');
+      expect(within(listbox).getByText('JWT bearer').closest('li')).not.toHaveAttribute('aria-disabled', 'true');
+    });
+
+    // Delegated mode is any of authorization code, CIBA, token exchange or JWT bearer, as on the server.
+    it.each([
+      ['ciba', 'CIBA (Client-Initiated Backchannel Authentication)', 'urn:openid:params:grant-type:ciba'],
+      ['token_exchange', 'Token exchange', TOKEN_EXCHANGE],
+      ['jwt_bearer', 'JWT bearer', JWT_BEARER],
+    ])(
+      'is in Delegated mode with %s alone, which stays locked while it is the only one',
+      async (_name, label, grant) => {
+        const user = userEvent.setup();
+        render(
+          <OperationModesSection
+            oauth2Config={{grantTypes: ['client_credentials', grant], responseTypes: []}}
+            onOAuth2ConfigChange={vi.fn()}
+          />,
+        );
+
+        await user.click(document.getElementById('agent-grant-types')!);
+        const listbox = await screen.findByRole('listbox');
+
+        expect(within(listbox).getByText(label).closest('li')).toHaveAttribute('aria-disabled', 'true');
+        expect(within(listbox).getByText('authorization_code').closest('li')).not.toHaveAttribute(
+          'aria-disabled',
+          'true',
+        );
+      },
+    );
+
+    it('lets one delegation grant go while another is held', async () => {
+      const user = userEvent.setup();
+      render(
+        <OperationModesSection
+          oauth2Config={{
+            grantTypes: ['client_credentials', 'authorization_code', 'urn:openid:params:grant-type:ciba'],
+            responseTypes: ['code'],
+            redirectUris: ['https://example.com/cb'],
+          }}
+          onOAuth2ConfigChange={vi.fn()}
+        />,
+      );
+
+      await user.click(document.getElementById('agent-grant-types')!);
+      const listbox = await screen.findByRole('listbox');
+
+      expect(within(listbox).getByText('authorization_code').closest('li')).not.toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+      expect(
+        within(listbox).getByText('CIBA (Client-Initiated Backchannel Authentication)').closest('li'),
+      ).not.toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('locks client_credentials so it cannot be toggled off', async () => {
+      const user = userEvent.setup();
+      render(<OperationModesSection oauth2Config={autonomousOnlyConfig} onOAuth2ConfigChange={vi.fn()} />);
+
+      await user.click(document.getElementById('agent-grant-types')!);
+      const listbox = await screen.findByRole('listbox');
+
+      expect(within(listbox).getByText('client_credentials').closest('li')).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('toggles token_exchange on when selected', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(<OperationModesSection oauth2Config={delegatedConfig} onOAuth2ConfigChange={onOAuth2ConfigChange} />);
+
+      await user.click(document.getElementById('agent-grant-types')!);
+      const listbox = await screen.findByRole('listbox');
+      await user.click(within(listbox).getByText('Token exchange'));
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grantTypes: expect.arrayContaining([
+            'client_credentials',
+            'urn:ietf:params:oauth:grant-type:token-exchange',
+          ]) as string[],
+        }),
+      );
+    });
+
+    it('should let JWT bearer go while another delegation grant is held', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(
+        <OperationModesSection
+          oauth2Config={{grantTypes: ['client_credentials', TOKEN_EXCHANGE, JWT_BEARER], responseTypes: []}}
+          onOAuth2ConfigChange={onOAuth2ConfigChange}
+        />,
+      );
+
+      await user.click(document.getElementById('agent-grant-types')!);
+      const listbox = await screen.findByRole('listbox');
+      expect(within(listbox).getByText('JWT bearer').closest('li')).not.toHaveAttribute('aria-disabled', 'true');
+      await user.click(within(listbox).getByText('JWT bearer'));
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith(
+        expect.objectContaining({grantTypes: ['client_credentials', TOKEN_EXCHANGE]}),
+      );
+    });
+
+    it('should keep the client confidential when JWT bearer is selected', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(
+        <OperationModesSection
+          oauth2Config={{
+            grantTypes: ['authorization_code', 'refresh_token'],
+            responseTypes: ['code'],
+            redirectUris: ['https://example.com/cb'],
+            publicClient: true,
+            tokenEndpointAuthMethod: 'none',
+          }}
+          onOAuth2ConfigChange={onOAuth2ConfigChange}
+        />,
+      );
+
+      await user.click(document.getElementById('agent-grant-types')!);
+      await user.click(within(await screen.findByRole('listbox')).getByText('JWT bearer'));
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grantTypes: ['authorization_code', 'refresh_token', JWT_BEARER],
+          publicClient: false,
+          tokenEndpointAuthMethod: 'client_secret_basic',
+          pkceRequired: true,
+        }),
+      );
+    });
+
+    it('should drop refresh_token, and not force PKCE, when only JWT bearer is left to act for a user', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(
+        <OperationModesSection
+          oauth2Config={{
+            grantTypes: ['client_credentials', 'authorization_code', 'refresh_token', JWT_BEARER],
+            responseTypes: ['code'],
+            redirectUris: ['https://example.com/cb'],
+            pkceRequired: true,
+          }}
+          onOAuth2ConfigChange={onOAuth2ConfigChange}
+        />,
+      );
+
+      await user.click(document.getElementById('agent-grant-types')!);
+      await user.click(within(await screen.findByRole('listbox')).getByText('authorization_code'));
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith({
+        grantTypes: ['client_credentials', JWT_BEARER],
+        pkceRequired: false,
+        responseTypes: [],
+      });
+    });
+
+    describe('while identity assertions (ID-JAG) are on', () => {
+      const idJagConfig = (grantTypes: string[]): OAuth2Config => ({
+        grantTypes,
+        responseTypes: [],
+        token: {idJag: {enabled: true, allowedAudiences: ['https://api.example.com']}} as OAuth2Config['token'],
+      });
+
+      it('should lock token exchange with the ID-JAG hint, even while another delegation grant is held', async () => {
+        const user = userEvent.setup();
+        render(
+          <OperationModesSection
+            oauth2Config={idJagConfig(['client_credentials', TOKEN_EXCHANGE, JWT_BEARER])}
+            onOAuth2ConfigChange={vi.fn()}
+          />,
+        );
+
+        await user.click(document.getElementById('agent-grant-types')!);
+        const listbox = await screen.findByRole('listbox');
+        const tokenExchange = within(listbox).getByText('Token exchange').closest('li');
+
+        expect(tokenExchange).toHaveAttribute('aria-disabled', 'true');
+        expect(within(tokenExchange!).getByText('Required by identity assertions (ID-JAG)')).toBeInTheDocument();
+        expect(within(listbox).getByText('JWT bearer').closest('li')).not.toHaveAttribute('aria-disabled', 'true');
+      });
+
+      it('should keep token exchange when another grant is changed', async () => {
+        const user = userEvent.setup();
+        const onOAuth2ConfigChange = vi.fn();
+        render(
+          <OperationModesSection
+            oauth2Config={idJagConfig(['client_credentials', TOKEN_EXCHANGE, JWT_BEARER])}
+            onOAuth2ConfigChange={onOAuth2ConfigChange}
+          />,
+        );
+
+        await user.click(document.getElementById('agent-grant-types')!);
+        await user.click(within(await screen.findByRole('listbox')).getByText('JWT bearer'));
+
+        expect(onOAuth2ConfigChange).toHaveBeenCalledWith(
+          expect.objectContaining({grantTypes: ['client_credentials', TOKEN_EXCHANGE]}),
+        );
+      });
+
+      it('should not show the ID-JAG hint on token exchange while ID-JAG is off', async () => {
+        const user = userEvent.setup();
+        render(
+          <OperationModesSection
+            oauth2Config={{grantTypes: ['client_credentials', TOKEN_EXCHANGE, JWT_BEARER], responseTypes: []}}
+            onOAuth2ConfigChange={vi.fn()}
+          />,
+        );
+
+        await user.click(document.getElementById('agent-grant-types')!);
+        const listbox = await screen.findByRole('listbox');
+
+        expect(within(listbox).getByText('Token exchange').closest('li')).not.toHaveAttribute('aria-disabled', 'true');
+        expect(within(listbox).queryByText('Required by identity assertions (ID-JAG)')).not.toBeInTheDocument();
+      });
+
+      it('should not offer the none client authentication method, which would make the client public', async () => {
+        const user = userEvent.setup();
+        render(
+          <OperationModesSection
+            oauth2Config={{
+              ...idJagConfig(['authorization_code', TOKEN_EXCHANGE]),
+              responseTypes: ['code'],
+              redirectUris: ['https://example.com/cb'],
+              tokenEndpointAuthMethod: 'client_secret_basic',
+            }}
+            onOAuth2ConfigChange={vi.fn()}
+          />,
+        );
+
+        await user.click(document.getElementById('agent_token_endpoint_auth_method')!);
+
+        expect(screen.getByRole('option', {name: 'none'})).toHaveAttribute('aria-disabled', 'true');
+      });
+    });
+
+    it('toggles ciba on within delegated grants', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(<OperationModesSection oauth2Config={delegatedConfig} onOAuth2ConfigChange={onOAuth2ConfigChange} />);
+
+      await user.click(document.getElementById('agent-grant-types')!);
+      const listbox = await screen.findByRole('listbox');
+      await user.click(within(listbox).getByText('CIBA (Client-Initiated Backchannel Authentication)'));
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grantTypes: expect.arrayContaining(['authorization_code', 'urn:openid:params:grant-type:ciba']) as string[],
+        }),
+      );
+    });
+  });
+
+  describe('Redirect URIs', () => {
+    it('renders the redirect URI section once authorization_code is selected', () => {
+      render(<OperationModesSection oauth2Config={delegatedConfig} onOAuth2ConfigChange={vi.fn()} />);
+
+      expect(screen.getByText('Authorized redirect URIs')).toBeInTheDocument();
+    });
+
+    it('hides the redirect URI section in Autonomous-only mode', () => {
+      render(<OperationModesSection oauth2Config={autonomousOnlyConfig} onOAuth2ConfigChange={vi.fn()} />);
+
+      expect(screen.queryByText('Authorized redirect URIs')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Back-channel logout URI', () => {
+    it('shows the registered URI once a user-facing grant is selected', () => {
+      render(
+        <OperationModesSection
+          oauth2Config={{...delegatedConfig, backchannelLogoutUri: 'https://agent.example.com/bcl'}}
+          onOAuth2ConfigChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Back-channel logout URI')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://agent.example.com/bcl')).toBeInTheDocument();
+    });
+
+    it('is hidden in Autonomous-only mode, where the agent never joins a session', () => {
+      render(<OperationModesSection oauth2Config={autonomousOnlyConfig} onOAuth2ConfigChange={vi.fn()} />);
+
+      expect(screen.queryByText('Back-channel logout URI')).not.toBeInTheDocument();
+    });
+
+    it('commits backchannelLogoutUri on blur', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(<OperationModesSection oauth2Config={delegatedConfig} onOAuth2ConfigChange={onOAuth2ConfigChange} />);
+
+      await user.type(
+        screen.getByPlaceholderText('https://example.com/backchannel-logout'),
+        'https://agent.example.com/bcl',
+      );
+      await user.tab();
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith({backchannelLogoutUri: 'https://agent.example.com/bcl'});
+    });
+
+    it('reports an invalid typed value, which is not committed', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      const onValidationChange = vi.fn();
+      render(
+        <OperationModesSection
+          oauth2Config={delegatedConfig}
+          onOAuth2ConfigChange={onOAuth2ConfigChange}
+          onBackchannelLogoutUriValidationChange={onValidationChange}
+        />,
+      );
+
+      await user.type(
+        screen.getByPlaceholderText('https://example.com/backchannel-logout'),
+        'https://agent.example.com/bcl#frag',
+      );
+      await user.tab();
+
+      expect(onValidationChange).toHaveBeenLastCalledWith(true);
+      expect(onOAuth2ConfigChange).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('read-only', () => {
+    it('disables the grant types input when there is no onOAuth2ConfigChange handler', () => {
+      render(<OperationModesSection oauth2Config={delegatedConfig} />);
+
+      expect(document.getElementById('agent-grant-types')).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('disables the grant types input when disabled is true', () => {
+      render(<OperationModesSection oauth2Config={delegatedConfig} onOAuth2ConfigChange={vi.fn()} disabled />);
+
+      expect(document.getElementById('agent-grant-types')).toHaveAttribute('aria-disabled', 'true');
+    });
+  });
+
+  describe('Client authentication method', () => {
+    it('shows the placeholder when no method is set', () => {
+      render(<OperationModesSection oauth2Config={autonomousOnlyConfig} />);
+
+      expect(screen.getByText('Select an auth method')).toBeInTheDocument();
+    });
+
+    it('locks the token method when the client is public', () => {
+      render(<OperationModesSection oauth2Config={{...autonomousOnlyConfig, publicClient: true}} />);
+
+      expect(screen.getByText('Set to "none" because this agent is a public client.')).toBeInTheDocument();
+      expect(document.getElementById('agent_token_endpoint_auth_method')).toHaveClass('Mui-disabled');
+    });
+
+    it('renders the currently selected method', () => {
+      render(
+        <OperationModesSection
+          oauth2Config={{...autonomousOnlyConfig, tokenEndpointAuthMethod: 'client_secret_basic'}}
+        />,
+      );
+
+      expect(screen.getByText('client_secret_basic')).toBeInTheDocument();
+    });
+
+    it('calls onOAuth2ConfigChange when a new method is selected', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(
+        <OperationModesSection
+          oauth2Config={{...autonomousOnlyConfig, tokenEndpointAuthMethod: 'client_secret_basic'}}
+          onOAuth2ConfigChange={onOAuth2ConfigChange}
+        />,
+      );
+
+      await user.click(document.getElementById('agent_token_endpoint_auth_method')!);
+      await user.click(screen.getByRole('option', {name: 'client_secret_post'}));
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith(
+        expect.objectContaining({tokenEndpointAuthMethod: 'client_secret_post'}) as Partial<OAuth2Config>,
+      );
+    });
+  });
+
+  describe('Require PKCE', () => {
+    it('checks PKCE automatically when authorization_code is selected', () => {
+      render(<OperationModesSection oauth2Config={delegatedConfig} />);
+
+      expect(screen.getByLabelText('Require PKCE')).toBeChecked();
+    });
+
+    it('unchecks PKCE when authorization_code is not selected', () => {
+      render(<OperationModesSection oauth2Config={autonomousOnlyConfig} />);
+
+      expect(screen.getByLabelText('Require PKCE')).not.toBeChecked();
+    });
+
+    it('checks PKCE when the client is public even without authorization_code', () => {
+      render(<OperationModesSection oauth2Config={{...autonomousOnlyConfig, publicClient: true}} />);
+
+      expect(screen.getByLabelText('Require PKCE')).toBeChecked();
+    });
+
+    it('is never directly editable by the user', () => {
+      render(<OperationModesSection oauth2Config={delegatedConfig} onOAuth2ConfigChange={vi.fn()} />);
+
+      expect(screen.getByLabelText('Require PKCE')).toBeDisabled();
+    });
+
+    it('shows the not-applicable caption when authorization_code is off', () => {
+      render(<OperationModesSection oauth2Config={autonomousOnlyConfig} />);
+
+      expect(screen.getByText(/PKCE only applies to the/)).toBeInTheDocument();
+    });
+  });
+
+  describe('Require pushed authorization requests', () => {
+    it('reflects the configured value', () => {
+      render(<OperationModesSection oauth2Config={{...delegatedConfig, requirePushedAuthorizationRequests: true}} />);
+
+      expect(screen.getByLabelText('Require pushed authorization requests')).toBeChecked();
+    });
+
+    it('treats an unset value as unchecked', () => {
+      render(<OperationModesSection oauth2Config={delegatedConfig} />);
+
+      expect(screen.getByLabelText('Require pushed authorization requests')).not.toBeChecked();
+    });
+
+    it('calls onOAuth2ConfigChange when toggled', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(<OperationModesSection oauth2Config={delegatedConfig} onOAuth2ConfigChange={onOAuth2ConfigChange} />);
+
+      await user.click(screen.getByLabelText('Require pushed authorization requests'));
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith({requirePushedAuthorizationRequests: true});
+    });
+
+    it('is disabled and unchecked when the authorization_code grant is off', () => {
+      render(
+        <OperationModesSection
+          oauth2Config={{...autonomousOnlyConfig, requirePushedAuthorizationRequests: true}}
+          onOAuth2ConfigChange={vi.fn()}
+        />,
+      );
+
+      const parSwitch = screen.getByLabelText('Require pushed authorization requests');
+      expect(parSwitch).toBeDisabled();
+      expect(parSwitch).not.toBeChecked();
+    });
+  });
+
+  describe('Default audience', () => {
+    it('renders the current default audience', () => {
+      render(
+        <OperationModesSection
+          oauth2Config={{
+            ...autonomousOnlyConfig,
+            token: {accessToken: {defaultAudience: 'https://api.example.com'}} as OAuth2Config['token'],
+          }}
+        />,
+      );
+
+      expect(screen.getByDisplayValue('https://api.example.com')).toBeInTheDocument();
+    });
+
+    it('calls onOAuth2ConfigChange when the audience changes', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(<OperationModesSection oauth2Config={autonomousOnlyConfig} onOAuth2ConfigChange={onOAuth2ConfigChange} />);
+
+      await user.type(screen.getByLabelText('Default audience (aud)'), 'a');
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          token: expect.objectContaining({
+            accessToken: expect.objectContaining({defaultAudience: 'a'}) as Record<string, unknown>,
+          }) as Record<string, unknown>,
+        }),
+      );
+    });
+  });
+});

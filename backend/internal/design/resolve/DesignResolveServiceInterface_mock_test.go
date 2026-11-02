@@ -18,10 +18,19 @@ func NewDesignResolveServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *DesignResolveServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &DesignResolveServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type DesignResolveServiceInterfaceMock_ResolveDesign_Call struct {
 //   - ctx context.Context
 //   - resolveType providers.DesignResolveType
 //   - id string
-func (_e *DesignResolveServiceInterfaceMock_Expecter) ResolveDesign(ctx interface{}, resolveType interface{}, id interface{}) *DesignResolveServiceInterfaceMock_ResolveDesign_Call {
+func (_e *DesignResolveServiceInterfaceMock_Expecter) ResolveDesign(ctx any, resolveType any, id any) *DesignResolveServiceInterfaceMock_ResolveDesign_Call {
 	return &DesignResolveServiceInterfaceMock_ResolveDesign_Call{Call: _e.mock.On("ResolveDesign", ctx, resolveType, id)}
 }
 
@@ -111,6 +120,86 @@ func (_c *DesignResolveServiceInterfaceMock_ResolveDesign_Call) Return(designRes
 }
 
 func (_c *DesignResolveServiceInterfaceMock_ResolveDesign_Call) RunAndReturn(run func(ctx context.Context, resolveType providers.DesignResolveType, id string) (*providers.DesignResponse, *common.ServiceError)) *DesignResolveServiceInterfaceMock_ResolveDesign_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ResolveDesignContent provides a mock function for the type DesignResolveServiceInterfaceMock
+func (_mock *DesignResolveServiceInterfaceMock) ResolveDesignContent(ctx context.Context, themeID string, colorScheme string, content string) (string, *common.ServiceError) {
+	ret := _mock.Called(ctx, themeID, colorScheme, content)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveDesignContent")
+	}
+
+	var r0 string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (string, *common.ServiceError)); ok {
+		return returnFunc(ctx, themeID, colorScheme, content)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) string); ok {
+		r0 = returnFunc(ctx, themeID, colorScheme, content)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, themeID, colorScheme, content)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// DesignResolveServiceInterfaceMock_ResolveDesignContent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveDesignContent'
+type DesignResolveServiceInterfaceMock_ResolveDesignContent_Call struct {
+	*mock.Call
+}
+
+// ResolveDesignContent is a helper method to define mock.On call
+//   - ctx context.Context
+//   - themeID string
+//   - colorScheme string
+//   - content string
+func (_e *DesignResolveServiceInterfaceMock_Expecter) ResolveDesignContent(ctx any, themeID any, colorScheme any, content any) *DesignResolveServiceInterfaceMock_ResolveDesignContent_Call {
+	return &DesignResolveServiceInterfaceMock_ResolveDesignContent_Call{Call: _e.mock.On("ResolveDesignContent", ctx, themeID, colorScheme, content)}
+}
+
+func (_c *DesignResolveServiceInterfaceMock_ResolveDesignContent_Call) Run(run func(ctx context.Context, themeID string, colorScheme string, content string)) *DesignResolveServiceInterfaceMock_ResolveDesignContent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *DesignResolveServiceInterfaceMock_ResolveDesignContent_Call) Return(s string, serviceError *common.ServiceError) *DesignResolveServiceInterfaceMock_ResolveDesignContent_Call {
+	_c.Call.Return(s, serviceError)
+	return _c
+}
+
+func (_c *DesignResolveServiceInterfaceMock_ResolveDesignContent_Call) RunAndReturn(run func(ctx context.Context, themeID string, colorScheme string, content string) (string, *common.ServiceError)) *DesignResolveServiceInterfaceMock_ResolveDesignContent_Call {
 	_c.Call.Return(run)
 	return _c
 }

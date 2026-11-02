@@ -41,7 +41,7 @@ func (s *UtilsTestSuite) SetupTest() {
 	s.mockInbound = inboundclientmock.NewInboundClientServiceInterfaceMock(s.T())
 	s.mockEntity = entityprovidermock.NewEntityProviderInterfaceMock(s.T())
 	s.provider = Initialize(s.mockInbound, s.mockEntity, managermock.NewAuthnProviderManagerMock(s.T()),
-		rolemock.NewRoleServiceInterfaceMock(s.T()))
+		rolemock.NewRoleServiceInterfaceMock(s.T()), nil)
 }
 
 func (s *UtilsTestSuite) TestBuildApplication_Success() {
@@ -55,7 +55,7 @@ func (s *UtilsTestSuite) TestBuildApplication_Success() {
 	entity := &providers.Entity{ID: "app-1", SystemAttributes: attrs}
 
 	s.mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").Return(client, nil)
-	s.mockEntity.On("GetEntity", "app-1").Return(entity, (*entityprovider.EntityProviderError)(nil))
+	s.mockEntity.On("GetEntityProfile", "app-1").Return(entity, (*entityprovider.EntityProviderError)(nil))
 
 	app, svcErr := BuildApplication(context.Background(), s.provider, "app-1")
 
@@ -81,7 +81,7 @@ func (s *UtilsTestSuite) TestBuildApplication_NilClient() {
 func (s *UtilsTestSuite) TestBuildApplication_EntityLoadError() {
 	client := &inboundmodel.InboundClient{ID: "app-1"}
 	s.mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").Return(client, nil)
-	s.mockEntity.On("GetEntity", "app-1").Return(
+	s.mockEntity.On("GetEntityProfile", "app-1").Return(
 		(*providers.Entity)(nil),
 		entityprovider.NewEntityProviderError("INTERNAL_ERROR", "boom", ""))
 
@@ -94,7 +94,7 @@ func (s *UtilsTestSuite) TestBuildApplication_EntityLoadError() {
 func (s *UtilsTestSuite) TestBuildApplication_EntityNotFound() {
 	client := &inboundmodel.InboundClient{ID: "app-1", AllowedUserTypes: []string{"customer"}}
 	s.mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").Return(client, nil)
-	s.mockEntity.On("GetEntity", "app-1").Return(
+	s.mockEntity.On("GetEntityProfile", "app-1").Return(
 		(*providers.Entity)(nil),
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "missing", ""))
 
@@ -136,6 +136,39 @@ func (s *UtilsTestSuite) TestAssembleApplication_CarriesFlowIDs() {
 
 	s.Equal("auth-flow", app.AuthFlowID)
 	s.Equal("signout-flow", app.SignOutFlowID)
+}
+
+func (s *UtilsTestSuite) TestAssembleApplication_CarriesThemeID() {
+	client := &providers.InboundClient{ID: "app-1", ThemeID: "theme-1"}
+
+	app := assembleApplication(client, nil)
+
+	s.Equal("theme-1", app.ThemeID)
+}
+
+func (s *UtilsTestSuite) TestAssembleApplication_CarriesEntityCategory() {
+	client := &providers.InboundClient{ID: "agent-1"}
+	entity := &providers.Entity{ID: "agent-1", Category: providers.EntityCategoryAgent}
+
+	app := assembleApplication(client, entity)
+
+	s.Equal(providers.EntityCategoryAgent, app.EntityCategory)
+}
+
+func (s *UtilsTestSuite) TestAssembleApplication_CarriesOUAndType() {
+	client := &providers.InboundClient{ID: "app-1", Properties: map[string]interface{}{"type": "browser"}}
+	entity := &providers.Entity{ID: "app-1", Category: providers.EntityCategoryApp, OUID: "ou-1"}
+
+	app := assembleApplication(client, entity)
+
+	s.Equal("ou-1", app.OUID)
+	s.Equal("browser", app.Type)
+}
+
+func (s *UtilsTestSuite) TestAssembleApplication_NoEntityLeavesCategoryEmpty() {
+	app := assembleApplication(&providers.InboundClient{ID: "app-1"}, nil)
+
+	s.Empty(app.EntityCategory)
 }
 
 func (s *UtilsTestSuite) TestBuildApplication_NotFound() {
@@ -201,7 +234,7 @@ func TestBuildApplication_InboundClientStoreError(t *testing.T) {
 	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
 	mockEntity := entityprovidermock.NewEntityProviderInterfaceMock(t)
 	provider := Initialize(mockInbound, mockEntity, managermock.NewAuthnProviderManagerMock(t),
-		rolemock.NewRoleServiceInterfaceMock(t))
+		rolemock.NewRoleServiceInterfaceMock(t), nil)
 
 	mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").
 		Return((*inboundmodel.InboundClient)(nil), errors.New("db error"))
@@ -211,4 +244,33 @@ func TestBuildApplication_InboundClientStoreError(t *testing.T) {
 	assert.Nil(t, app)
 	assert.NotNil(t, svcErr)
 	assert.NotEqual(t, ErrorActorNotFound.Code, svcErr.Code)
+}
+
+func (s *UtilsTestSuite) TestAgentName_ComesFromResolvedDisplay() {
+	entity := &providers.Entity{
+		Category:         providers.EntityCategoryAgent,
+		Display:          "Ledger Agent",
+		SystemAttributes: []byte(`{"name":"stale","description":"d","clientId":"cid"}`),
+	}
+
+	app := assembleApplication(&providers.InboundClient{ID: "agent-1"}, entity)
+	meta := BuildApplicationMetadata("agent-1", entity, nil)
+
+	s.Equal("Ledger Agent", app.Name)
+	s.Equal("Ledger Agent", meta.Name)
+	s.Equal("d", meta.Description)
+}
+
+func (s *UtilsTestSuite) TestApplicationName_ComesFromSystemAttributes() {
+	entity := &providers.Entity{
+		Category:         providers.EntityCategoryApp,
+		Attributes:       []byte(`{"name":"ignored"}`),
+		SystemAttributes: []byte(`{"name":"My App"}`),
+	}
+
+	app := assembleApplication(&providers.InboundClient{ID: "app-1"}, entity)
+	meta := BuildApplicationMetadata("app-1", entity, nil)
+
+	s.Equal("My App", app.Name)
+	s.Equal("My App", meta.Name)
 }

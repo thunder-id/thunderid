@@ -481,7 +481,8 @@ var (
 	}
 
 	consentEntityType = testutils.UserType{
-		Name: "consent_flow_user",
+		Handle:      "consent_flow_user",
+		DisplayName: "Consent Flow User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -505,7 +506,7 @@ var (
 	}
 
 	consentTestUser = testutils.User{
-		Type: consentEntityType.Name,
+		Type: consentEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "` + consentTestUsername + `",
 			"password": "` + consentTestPassword + `",
@@ -711,15 +712,15 @@ func (ts *ConsentExecutorFlowTestSuite) TearDownSuite() {
 		}
 	}
 
-	if consentExecFlowOUID != "" {
-		if err := testutils.DeleteOrganizationUnit(consentExecFlowOUID); err != nil {
-			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
-		}
-	}
-
 	if consentExecFlowEntityTypeID != "" {
 		if err := testutils.DeleteUserType(consentExecFlowEntityTypeID); err != nil {
 			ts.T().Logf("Failed to delete test user type during teardown: %v", err)
+		}
+	}
+
+	if consentExecFlowOUID != "" {
+		if err := testutils.DeleteOrganizationUnit(consentExecFlowOUID); err != nil {
+			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
 		}
 	}
 

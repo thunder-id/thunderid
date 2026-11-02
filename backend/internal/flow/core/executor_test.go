@@ -207,19 +207,20 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 				RuntimeData: tt.runtimeData,
 			}
 
-			if tt.name == "Data in forwarded data (string)" {
+			switch tt.name {
+			case "Data in forwarded data (string)":
 				ctx.ForwardedData = map[string]interface{}{
 					testInputName: testInputValue,
 				}
-			} else if tt.name == "Data in forwarded data (non-string)" {
+			case "Data in forwarded data (non-string)":
 				ctx.ForwardedData = map[string]interface{}{
 					testInputName: 123,
 				}
-			} else if tt.name == "Partial data with forwarded data" {
+			case "Partial data with forwarded data":
 				ctx.ForwardedData = map[string]interface{}{
 					"password": "pass123",
 				}
-			} else if tt.name == "All sources empty" {
+			case "All sources empty":
 				ctx.ForwardedData = map[string]interface{}{}
 			}
 
@@ -429,6 +430,24 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
 					Return(providers.AuthUser{}, &providers.EntityReference{EntityID: ""}, nil)
+				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(providers.AuthUser{}, &providers.AttributesResponse{}, nil)
+			},
+			map[string]string{},
+			map[string]string{},
+			nil,
+			false,
+			providers.ExecFailure,
+			true,
+		},
+		{
+			// A federated identity with no local user yet resolves to no reference and no error.
+			"Entity reference not resolved yet - attribute still checked",
+			[]providers.Input{{Identifier: userAttributeUserID, Required: true}},
+			providers.AuthUser{},
+			func(m *managermock.AuthnProviderManagerMock) {
+				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
+					Return(providers.AuthUser{}, nil, nil)
 				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return(providers.AuthUser{}, &providers.AttributesResponse{}, nil)
 			},

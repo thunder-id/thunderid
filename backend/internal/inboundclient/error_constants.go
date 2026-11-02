@@ -51,10 +51,16 @@ var (
 	ErrFKInvalidUserType = errors.New("invalid user type")
 	// ErrFKInvalidSubjectAttributeMapping is returned when the specified subject attribute mapping is invalid.
 	ErrFKInvalidSubjectAttributeMapping = errors.New("invalid subject attribute mapping")
+	// ErrFKInvalidAgentType is returned when the specified agent type is invalid.
+	ErrFKInvalidAgentType = errors.New("invalid agent type")
 	// ErrUserSchemaLookupFailed is returned when the user-schema service fails (e.g. DB outage)
 	// while validating allowed user types. Distinct from ErrFKInvalidUserType so the handler
 	// can map it to a server error instead of a client validation error.
 	ErrUserSchemaLookupFailed = errors.New("user schema lookup failed")
+	// ErrAgentSchemaLookupFailed is returned when the agent-schema service fails (e.g. DB outage)
+	// while validating allowed agent types. Distinct from ErrFKInvalidAgentType so the handler
+	// can map it to a server error instead of a client validation error.
+	ErrAgentSchemaLookupFailed = errors.New("agent schema lookup failed")
 	// ErrUniqueAttributeLookupFailed is returned when the user-schema service fails (e.g. DB outage)
 	// while retrieving unique attributes for validation. Distinct from ErrFKInvalidSubjectAttributeMapping
 	// so the handler can map it to a server error instead of a client validation error.
@@ -68,6 +74,15 @@ var (
 	ErrOAuthRedirectURIFragmentNotAllowed = errors.New("redirect URI must not contain a fragment")
 	// ErrOAuthAuthCodeRequiresRedirectURIs is returned when authorization_code grant has no redirect URIs.
 	ErrOAuthAuthCodeRequiresRedirectURIs = errors.New("authorization_code grant requires redirect URIs")
+	// ErrOAuthInvalidBackchannelLogoutURI is returned when the back-channel logout URI is not an absolute
+	// http or https URL, or carries userinfo, a fragment or a wildcard.
+	ErrOAuthInvalidBackchannelLogoutURI = errors.New("invalid backchannel logout URI")
+	// ErrOAuthBackchannelLogoutURIRequiresHTTPS is returned when a public client registers a plain http
+	// back-channel logout URI.
+	ErrOAuthBackchannelLogoutURIRequiresHTTPS = errors.New("backchannel logout URI must use https for a public client")
+	// ErrOAuthBackchannelLogoutURIPrivateHost is returned when private addresses are rejected by
+	// configuration and the back-channel logout URI names one.
+	ErrOAuthBackchannelLogoutURIPrivateHost = errors.New("backchannel logout URI must not name a private address")
 	// ErrOAuthInvalidGrantType is returned when an unsupported grant type is specified.
 	ErrOAuthInvalidGrantType = errors.New("invalid grant type")
 	// ErrOAuthInvalidResponseType is returned when an unsupported response type is specified.
@@ -106,6 +121,13 @@ var (
 	// ErrOAuthClientIDJAGCannotUseNoneAuth is returned when an ID-JAG configuration uses none auth method.
 	// Requesting ID-JAGs requires a confidential client.
 	ErrOAuthClientIDJAGCannotUseNoneAuth = errors.New("ID-JAG configuration cannot use none auth method")
+	// ErrOAuthClientIDJAGRequiresTokenExchange is returned when an ID-JAG configuration is enabled without
+	// the token-exchange grant, the only grant that issues ID-JAGs.
+	ErrOAuthClientIDJAGRequiresTokenExchange = errors.New("ID-JAG configuration requires the token-exchange grant")
+	// ErrOAuthClientIDJAGRequiresAllowedAudience is returned when an ID-JAG configuration is enabled
+	// without an allowed audience, so no ID-JAG request can be granted, or with a blank one.
+	ErrOAuthClientIDJAGRequiresAllowedAudience = errors.New(
+		"ID-JAG configuration requires at least one allowed audience and no blank ones")
 	// ErrOAuthPublicClientMustUseNoneAuth is returned when a public client uses an auth method other than none.
 	ErrOAuthPublicClientMustUseNoneAuth = errors.New("public client must use none auth method")
 	// ErrOAuthPublicClientMustHavePKCE is returned when a public client does not have PKCE required.
@@ -148,6 +170,9 @@ var (
 	ErrOAuthUserInfoAlgRequiresResponseType = errors.New(
 		"userinfo responseType is required when signingAlg or encryptionAlg is set")
 
+	// ErrOAuthIDTokenUnsupportedSigningAlg is returned when the ID token signing algorithm has no
+	// matching signing key configured for the deployment.
+	ErrOAuthIDTokenUnsupportedSigningAlg = errors.New("unsupported ID token signing algorithm")
 	// ErrOAuthIDTokenUnsupportedEncryptionAlg is returned when the ID token encryption algorithm is not supported.
 	ErrOAuthIDTokenUnsupportedEncryptionAlg = errors.New("unsupported ID token encryption algorithm")
 	// ErrOAuthIDTokenUnsupportedEncryptionEnc is returned when the ID token content-encryption
@@ -198,6 +223,17 @@ func (e *CertOperationError) Error() string {
 // IsClientError reports whether the underlying cert service error is a client error.
 func (e *CertOperationError) IsClientError() bool {
 	return e.Underlying != nil && e.Underlying.Type == tidcommon.ClientErrorType
+}
+
+// CIMDValidationError wraps a Client ID Metadata Document rule violation, so every consumer reports
+// the same error.
+type CIMDValidationError struct {
+	Underlying *tidcommon.ServiceError
+}
+
+// Error implements the error interface.
+func (e *CIMDValidationError) Error() string {
+	return e.Underlying.ErrorDescription.DefaultValue
 }
 
 // FlowMismatchError is returned when a flow reached from one of the inbound client's configured flows

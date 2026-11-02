@@ -7,7 +7,7 @@
 // executions. It is grouped by flow: the flow ID is the group key, so only
 // applications configured with the same flow can share a session (SSO). The
 // session is referenced by an opaque handle, decoupled from the transport that
-// carries it (a cookie is one such transport; see HandleTransport).
+// carries it (a cookie is one such transport; see HandleTransportInterface).
 package session
 
 import (
@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -29,6 +30,9 @@ type Service interface {
 	// Resolve returns the live session for the given flow, or nil when none applies: no or expired
 	// session, a session from a different flow, or one established at an incompatible flow version.
 	Resolve(ctx context.Context, handle, flowID string, flowVersion int, now time.Time) (*Session, error)
+
+	// AbsoluteTimeout returns the longest a session lasts from its start.
+	AbsoluteTimeout() time.Duration
 
 	// FindCheckpoint returns the resolved session's snapshot for the checkpoint, or (nil, nil) when
 	// the session holds none. Callers deciding only whether a checkpoint is available compare the
@@ -62,6 +66,12 @@ type Service interface {
 	// grants first so no session is deleted while its tokens remain live. It is idempotent, returning
 	// nil when the subject holds no sessions.
 	TerminateBySubject(ctx context.Context, subjectID string) error
+
+	// DetachApplication detaches an application from every SSO session it participates in: it revokes
+	// the token family of that participation and drops the participant row, deleting the session itself
+	// only when the application was its last participant. It is idempotent, returning nil when the
+	// application participates in none.
+	DetachApplication(ctx context.Context, appID string) error
 }
 
 // LoadCheckpointInput carries what a Session join needs to restore a checkpoint. Session and Context
@@ -103,13 +113,18 @@ type SaveCheckpointInput struct {
 	TokenFamilyID string
 }
 
-// SaveCheckpointResult reports the outcome of a save. Handle is the session's handle; Created is
-// true only when this call minted the session (so the caller emits the cookie); Skipped is true
-// when the save was declined because of a subject mismatch.
+// SaveCheckpointResult reports the outcome of a save. Handle is the session's handle and SessionID
+// its id; Created is true only when this call minted the session (so the caller emits the cookie);
+// Skipped is true when the save was declined because of a subject mismatch.
 type SaveCheckpointResult struct {
-	Handle  string
-	Created bool
-	Skipped bool
+	Handle    string
+	SessionID string
+	Created   bool
+	Skipped   bool
+	// AuthenticatedAt is when the subject authenticated for this session, as the session records
+	// it. The caller publishes it so auth_time is read from the session on the fresh-login path
+	// too, rather than being re-derived from the clock when the assertion is built.
+	AuthenticatedAt time.Time
 }
 
 // CriteriaRevoker revokes a token family (one authorization grant) by its id. It is injected so session
@@ -121,15 +136,21 @@ type CriteriaRevoker interface {
 
 // service is the store-backed implementation of Service.
 type service struct {
-	store           sessionStore
-	resolver        Resolver
-	transactioner   providers.Transactioner
-	criteriaRevoker CriteriaRevoker
-	timeouts        Timeouts
-	logger          *log.Logger
+	store            sessionStore
+	resolver         Resolver
+	transactioner    providers.Transactioner
+	criteriaRevoker  CriteriaRevoker
+	terminationTopic *eventlistener.Topic[TerminatedSession]
+	timeouts         Timeouts
+	logger           *log.Logger
 }
 
 var _ Service = (*service)(nil)
+
+// AbsoluteTimeout implements Service.
+func (s *service) AbsoluteTimeout() time.Duration {
+	return s.timeouts.Absolute
+}
 
 // Resolve implements Service.
 func (s *service) Resolve(ctx context.Context, handle, flowID string, flowVersion int,
@@ -176,6 +197,23 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 		return SaveCheckpointResult{Skipped: true}, nil
 	}
 
+	// Reaching this point means the subject authenticated during this execution: the SSO-hit path
+	// loads its checkpoint and never saves one. When that happens inside a session that already
+	// existed, it was a re-authentication (prompt=login, or a max_age the previous authentication no
+	// longer satisfied), so the session's authentication time has to move forward with it. Leaving it
+	// stale would make the session claim an older authentication than actually took place, which
+	// under-reports auth_time and makes a later max_age check reject a request it should allow.
+	if !created {
+		now := time.Now().UTC()
+		if err := s.store.TouchAuthenticatedAt(ctx, target.SessionID, now,
+			now.Add(s.timeouts.Idle)); err != nil {
+			// The checkpoint itself is still worth saving, so degrade rather than fail the login.
+			s.logger.Error(ctx, "Failed to refresh session authentication time", log.Error(err))
+		} else {
+			target.AuthenticatedAt = now
+		}
+	}
+
 	snapshot := SessionContext{
 		SessionID:      target.SessionID,
 		CheckpointID:   in.Checkpoint,
@@ -197,7 +235,12 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 	}
 
 	s.logger.Debug(ctx, "Saved SSO checkpoint", log.String("checkpoint", in.Checkpoint))
-	return SaveCheckpointResult{Handle: target.HandleID, Created: created}, nil
+	return SaveCheckpointResult{
+		Handle:          target.HandleID,
+		SessionID:       target.SessionID,
+		Created:         created,
+		AuthenticatedAt: target.AuthenticatedAt,
+	}, nil
 }
 
 // LoadCheckpoint implements Service.
@@ -303,13 +346,35 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 	// (SSO_SESSION_PARTICIPANT). Repeated calls are idempotent: once the row is gone, GetByHandle
 	// returns nil above. Token families are revoked first, in the same transaction, so a crash can
 	// never orphan live tokens for a deleted session.
+	//
+	// Participants are read once, inside the transaction, for both the revoker and the listener; the
+	// rows are gone after commit. The read is skipped when neither is wired. A failed read is fatal
+	// only when the revoker needs it; for the listener alone it just drops the notification.
+	var participants []Participant
+	notify := s.terminationTopic.HasListeners()
 	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		if revErr := s.revokeSessionFamilies(txCtx, sess.SessionID); revErr != nil {
+		if s.criteriaRevoker != nil || notify {
+			list, listErr := s.store.ListBySessionID(txCtx, sess.SessionID)
+			switch {
+			case listErr == nil:
+				participants = list
+			case s.criteriaRevoker != nil:
+				return listErr
+			default:
+				s.logger.Error(txCtx, "Failed to read session participants before termination; "+
+					"participants will not be notified", log.Error(listErr))
+				notify = false
+			}
+		}
+		if revErr := s.revokeFamilies(txCtx, participants); revErr != nil {
 			return revErr
 		}
-		if delErr := s.store.DeleteSession(txCtx, sess.SessionID); delErr != nil {
+		removed, delErr := s.store.DeleteSession(txCtx, sess.SessionID)
+		if delErr != nil {
 			return delErr
 		}
+		// A concurrent termination already removed the row; only the node that removed it notifies.
+		notify = notify && removed
 		if delErr := s.store.Delete(txCtx, sess.SessionID); delErr != nil {
 			return delErr
 		}
@@ -319,6 +384,14 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 	}
 
 	s.logger.Debug(ctx, "Terminated SSO session", log.String("flowId", sess.FlowID))
+	if notify {
+		s.terminationTopic.Notify(ctx, TerminatedSession{
+			SessionID:    sess.SessionID,
+			SubjectID:    sess.SubjectID,
+			Participants: participants,
+			Reason:       TerminationReasonSignOut,
+		})
+	}
 	return sess, nil
 }
 
@@ -348,11 +421,19 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 		return nil
 	}
 
+	// Capture every session's participants in one read inside the transaction, before the deletes
+	// remove them, as Terminate does. A failed read only drops the notification; it never blocks the
+	// revocation.
+	var participantsBySession map[string][]Participant
+	removed := make(map[string]bool, len(sessions))
 	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		participantsBySession = s.participantsForTermination(txCtx, sessions)
 		for _, sess := range sessions {
-			if delErr := s.store.DeleteSession(txCtx, sess.SessionID); delErr != nil {
+			wasRemoved, delErr := s.store.DeleteSession(txCtx, sess.SessionID)
+			if delErr != nil {
 				return delErr
 			}
+			removed[sess.SessionID] = wasRemoved
 			if delErr := s.store.Delete(txCtx, sess.SessionID); delErr != nil {
 				return delErr
 			}
@@ -366,19 +447,77 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 	}
 
 	s.logger.Debug(ctx, "Terminated all SSO sessions for subject", log.Int("sessionCount", len(sessions)))
+	if participantsBySession != nil {
+		for _, sess := range sessions {
+			if !removed[sess.SessionID] {
+				// A concurrent termination already removed this session and notifies for it.
+				continue
+			}
+			s.terminationTopic.Notify(ctx, TerminatedSession{
+				SessionID:    sess.SessionID,
+				SubjectID:    sess.SubjectID,
+				Participants: participantsBySession[sess.SessionID],
+				Reason:       TerminationReasonSubjectRevocation,
+			})
+		}
+	}
 	return nil
 }
 
-// revokeSessionFamilies revokes the token family of every application participating in the session,
-// so signing out of a login drops all of that login's grants. It is a no-op when no family revoker is
-// wired. A participant recorded before tfid was introduced (empty tfid) is skipped by the revoker.
-func (s *service) revokeSessionFamilies(ctx context.Context, sessionID string) error {
-	if s.criteriaRevoker == nil {
+// DetachApplication detaches an application from every SSO session it participates in. Narrower than
+// Terminate: only this application's participation goes, and the session is deleted once nothing is left
+// to participate. Each token family is revoked before its row is dropped, in one transaction.
+func (s *service) DetachApplication(ctx context.Context, appID string) error {
+	if appID == "" {
 		return nil
 	}
-	participants, err := s.store.ListBySessionID(ctx, sessionID)
+	participations, err := s.store.ListByAppID(ctx, appID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to list session participation by application: %w", err)
+	}
+	if len(participations) == 0 {
+		return nil
+	}
+
+	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		for _, participation := range participations {
+			if s.criteriaRevoker != nil {
+				if revErr := s.criteriaRevoker.RevokeTokenFamily(txCtx, participation.TokenFamilyID); revErr != nil {
+					return revErr
+				}
+			}
+			if delErr := s.store.DeleteParticipant(txCtx, participation.SessionID, appID); delErr != nil {
+				return delErr
+			}
+			remaining, listErr := s.store.ListBySessionID(txCtx, participation.SessionID)
+			if listErr != nil {
+				return listErr
+			}
+			if len(remaining) > 0 {
+				continue
+			}
+			if _, delErr := s.store.DeleteSession(txCtx, participation.SessionID); delErr != nil {
+				return delErr
+			}
+			if delErr := s.store.Delete(txCtx, participation.SessionID); delErr != nil {
+				return delErr
+			}
+		}
+		return nil
+	}); txErr != nil {
+		return fmt.Errorf("failed to remove session for the application: %w", txErr)
+	}
+
+	s.logger.Debug(ctx, "Detached application from SSO sessions",
+		log.Int("sessionCount", len(participations)))
+	return nil
+}
+
+// revokeFamilies revokes each participant's token family, so signing out drops all of the login's
+// grants. It is a no-op when no revoker is wired; the revoker skips an empty tfid.
+func (s *service) revokeFamilies(ctx context.Context, participants []Participant) error {
+	if s.criteriaRevoker == nil {
+		return nil
 	}
 	for _, p := range participants {
 		if err := s.criteriaRevoker.RevokeTokenFamily(ctx, p.TokenFamilyID); err != nil {
@@ -386,6 +525,29 @@ func (s *service) revokeSessionFamilies(ctx context.Context, sessionID string) e
 		}
 	}
 	return nil
+}
+
+// participantsForTermination returns the participants of the given sessions grouped by session id.
+// It returns nil, meaning nothing to notify, when no listener is wired or the read fails.
+func (s *service) participantsForTermination(ctx context.Context, sessions []Session) map[string][]Participant {
+	if !s.terminationTopic.HasListeners() {
+		return nil
+	}
+	sessionIDs := make([]string, 0, len(sessions))
+	for _, sess := range sessions {
+		sessionIDs = append(sessionIDs, sess.SessionID)
+	}
+	participants, err := s.store.ListBySessionIDs(ctx, sessionIDs)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read session participants before subject termination; "+
+			"participants will not be notified", log.Error(err))
+		return nil
+	}
+	grouped := make(map[string][]Participant, len(sessions))
+	for _, p := range participants {
+		grouped[p.SessionID] = append(grouped[p.SessionID], p)
+	}
+	return grouped
 }
 
 // targetSession returns the session this execution's checkpoints attach to, establishing one when

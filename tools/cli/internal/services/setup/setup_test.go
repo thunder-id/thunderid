@@ -285,6 +285,72 @@ func TestLogTail_MissingLog(t *testing.T) {
 	assert.Equal(t, "", setup.LogTail(t.TempDir(), 5))
 }
 
+func TestTailFileFollow_ReadsAppendedContent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "follow.log")
+	require.NoError(t, os.WriteFile(path, []byte("one\ntwo\n"), 0o644))
+
+	lines, offset, ok := setup.TailFileFollow(path, 0)
+	require.True(t, ok)
+	assert.Equal(t, []string{"one", "two"}, lines)
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	require.NoError(t, err)
+	_, err = f.WriteString("three\n")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	lines, _, ok = setup.TailFileFollow(path, offset)
+	require.True(t, ok)
+	assert.Equal(t, []string{"three"}, lines, "a second call must only return what was appended since offset")
+}
+
+func TestTailFileFollow_KeepsIncompleteRecordPending(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "follow.log")
+	require.NoError(t, os.WriteFile(path, []byte("part"), 0o644))
+
+	lines, offset, ok := setup.TailFileFollow(path, 0)
+	require.True(t, ok)
+	assert.Empty(t, lines, "an unterminated record must not be reported until it is complete")
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	require.NoError(t, err)
+	_, err = f.WriteString("ial\n")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	lines, _, ok = setup.TailFileFollow(path, offset)
+	require.True(t, ok)
+	assert.Equal(t, []string{"partial"}, lines, "the completed record must be reported whole, not split across reads")
+}
+
+func TestTailFileFollow_HandlesTruncation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "follow.log")
+	require.NoError(t, os.WriteFile(path, []byte("one\ntwo\nthree\n"), 0o644))
+
+	_, offset, ok := setup.TailFileFollow(path, 0)
+	require.True(t, ok)
+
+	require.NoError(t, os.WriteFile(path, []byte("new\n"), 0o644))
+
+	lines, _, ok := setup.TailFileFollow(path, offset)
+	require.True(t, ok)
+	assert.Equal(t, []string{"new"}, lines, "a file shorter than the offset must be re-read from the start")
+}
+
+func TestTailFileFollow_EmptyLogIsNotAnError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "empty.log")
+	require.NoError(t, os.WriteFile(path, nil, 0o644))
+
+	lines, _, ok := setup.TailFileFollow(path, 0)
+	assert.True(t, ok, "a valid, empty log must still report ok so the caller enters follow mode")
+	assert.Empty(t, lines)
+}
+
+func TestTailFileFollow_MissingFileIsAnError(t *testing.T) {
+	_, _, ok := setup.TailFileFollow(filepath.Join(t.TempDir(), "missing.log"), 0)
+	assert.False(t, ok)
+}
+
 func TestServerPort_PrefersConfiguredPort(t *testing.T) {
 	dir := t.TempDir()
 	writeDeployment(t, dir, "server:\n  port: 8091\n")

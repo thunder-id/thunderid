@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -482,4 +483,37 @@ func (suite *JWEServiceTestSuite) TestEncryptDecrypt_CBC() {
 		assert.Nil(suite.T(), sErr, "enc=%s", enc)
 		assert.Equal(suite.T(), payload, decrypted, "enc=%s", enc)
 	}
+}
+
+func (suite *JWEServiceTestSuite) TestEncrypt_ExtraProtectedHeader() {
+	suite.jweService = &jweService{
+		cryptoProvider: suite.newRoundTripMockProvider(suite.testRSAPrivateKey, 1),
+		keyRef:         providers.KeyRef{KeyID: "test-kid"},
+		logger:         log.GetLogger(),
+	}
+	payload := []byte("logout token")
+	recipientPublicKey := &providers.KeyRef{PublicKey: &suite.testRSAPrivateKey.PublicKey}
+
+	jweToken, sErr := suite.jweService.Encrypt(context.Background(), payload, recipientPublicKey,
+		string(RSAOAEP256), A256GCM, "JWT", "rp-kid",
+		WithProtectedHeader("iss", "https://op.example.com"),
+		WithProtectedHeader("alg", "none"),
+		WithProtectedHeader("typ", "JWT"),
+		WithProtectedHeader("zip", "DEF"))
+	assert.Nil(suite.T(), sErr)
+
+	headerJSON, err := base64.RawURLEncoding.DecodeString(strings.Split(jweToken, ".")[0])
+	assert.NoError(suite.T(), err)
+	var header map[string]interface{}
+	assert.NoError(suite.T(), json.Unmarshal(headerJSON, &header))
+	assert.Equal(suite.T(), "https://op.example.com", header["iss"], "the extra header is present")
+	assert.Equal(suite.T(), string(RSAOAEP256), header["alg"], "an option cannot replace a computed header")
+	assert.Equal(suite.T(), "JWE", header["typ"])
+	assert.NotContains(suite.T(), header, "zip", "zip is dropped because Encrypt does not compress")
+	assert.Equal(suite.T(), "JWT", header["cty"])
+	assert.Equal(suite.T(), "rp-kid", header["kid"])
+
+	decrypted, sErr := suite.jweService.Decrypt(context.Background(), jweToken)
+	assert.Nil(suite.T(), sErr)
+	assert.Equal(suite.T(), payload, decrypted)
 }

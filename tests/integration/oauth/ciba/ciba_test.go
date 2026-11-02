@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
@@ -129,8 +130,9 @@ func (ts *CIBATestSuite) SetupSuite() {
 	// User type + user. mobile_number is the recipient the SMS executor resolves from the
 	// identified user; username/password back the credential confirmation step.
 	userTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: "ciba-test-person",
-		OUID: ts.ouID,
+		Handle:      "ciba-test-person",
+		DisplayName: "Ciba Test Person",
+		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
 			"username":      map[string]interface{}{"type": "string"},
 			"password":      map[string]interface{}{"type": "string", "credential": true},
@@ -349,11 +351,108 @@ func (ts *CIBATestSuite) TestCIBAGrantFlow() {
 	claims, err := testutils.DecodeJWT(tokenRes.accessToken)
 	ts.Require().NoError(err, "issued access token should be a decodable JWT")
 	ts.Require().Equal(ts.userID, claims.Sub, "token subject should be the CIBA user")
+	ts.Require().NotContains(claims.Additional, "act",
+		"an application that has not opted in must not get an act claim")
 
 	// Step 7: A second poll is rejected — the request is CONSUMED (one-time use).
 	reuse := ts.cibaPollToken(bcResp.AuthReqID, "")
 	ts.Require().Equal(http.StatusBadRequest, reuse.statusCode)
 	ts.Require().Equal("invalid_grant", reuse.errorCode, "a consumed request must not issue tokens again")
+}
+
+// A CIBA request authenticated before its user is suspended is refused at redemption: the request's
+// authentication time falls before the suspension's cutoff. The user is this test's own, so the
+// suite's shared user stays usable.
+func (ts *CIBATestSuite) TestCIBASuspensionBeforeRedemptionRefusesTheGrant() {
+	const (
+		username = "ciba_suspend_user"
+		password = "cibasuspend123"
+	)
+	userID, err := testutils.CreateUser(testutils.User{
+		OUID: ts.ouID,
+		Type: "ciba-test-person",
+		Attributes: json.RawMessage(`{
+			"username": "` + username + `",
+			"password": "` + password + `",
+			"email": "ciba_suspend_user@example.com",
+			"mobile_number": "+1987654322"
+		}`),
+	})
+	ts.Require().NoError(err, "failed to create the suspended CIBA user")
+	defer func() {
+		if err := testutils.DeleteUser(userID); err != nil {
+			ts.T().Logf("failed to delete the suspended CIBA user: %v", err)
+		}
+	}()
+
+	status, bcResp := ts.cibaBackchannelAuthorize(username, "openid")
+	ts.Require().Equal(http.StatusOK, status, "bc-authorize should succeed")
+	executionID, inviteToken := ts.recoverCIBAInvite(bcResp.AuthReqID)
+
+	resumeStep, err := testutils.ExecuteAuthenticationFlow(executionID,
+		map[string]string{"inviteToken": inviteToken}, "")
+	ts.Require().NoError(err)
+	flowStep, err := testutils.ExecuteAuthenticationFlow(executionID, map[string]string{
+		"username": username, "password": password,
+	}, "action_001", resumeStep.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus)
+	callbackStatus, _ := ts.cibaPostCallback(bcResp.AuthReqID, flowStep.Assertion)
+	ts.Require().Equal(http.StatusOK, callbackStatus, "the request must be authenticated before the suspension")
+
+	adminFlowID, err := testutils.GetFlowIDByHandle("default-user-suspend-flow", "ADMINISTRATION")
+	ts.Require().NoError(err)
+	flowResult, err := common.ExecuteAdministrationFlow(adminFlowID, map[string]string{"subject": userID}, true)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, flowResult.StatusCode, "%+v", flowResult.Error)
+	ts.Require().Equal("COMPLETE", flowResult.Step.FlowStatus, "the suspension must be placed")
+
+	tokenRes := ts.pollCIBATokenUntilIssued(bcResp.AuthReqID, cibaClientID, cibaClientSecret)
+	ts.Equal(http.StatusBadRequest, tokenRes.statusCode,
+		"a request authenticated before the suspension must not issue tokens")
+	ts.Equal("invalid_grant", tokenRes.errorCode, "the refusal must be an ordinary invalid grant")
+	ts.Empty(tokenRes.accessToken)
+}
+
+// A suspended application's backchannel request cannot be completed: its callback is refused as an
+// unauthorized client. The application is this test's own, so the suite's client stays usable.
+func (ts *CIBATestSuite) TestCIBACallbackIsRefusedForASuspendedApplication() {
+	const (
+		clientID     = "ciba_test_client_suspended"
+		clientSecret = "ciba_test_secret_suspended"
+	)
+	appID := ts.createCIBAApp("CIBASuspendedApp", clientID, clientSecret, []string{cibaGrantType}, ts.flowID)
+	defer func() {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("failed to delete the suspended CIBA application: %v", err)
+		}
+	}()
+
+	form := url.Values{}
+	form.Set("login_hint", cibaTestUsername)
+	form.Set("scope", "openid")
+	status, bcResp := ts.cibaBackchannelAuthorizeForm(form, clientID, clientSecret)
+	ts.Require().Equal(http.StatusOK, status, "bc-authorize should succeed before the suspension")
+	executionID, inviteToken := ts.recoverCIBAInvite(bcResp.AuthReqID)
+	resumeStep, err := testutils.ExecuteAuthenticationFlow(executionID,
+		map[string]string{"inviteToken": inviteToken}, "")
+	ts.Require().NoError(err)
+	flowStep, err := testutils.ExecuteAuthenticationFlow(executionID, map[string]string{
+		"username": cibaTestUsername, "password": cibaTestPassword,
+	}, "action_001", resumeStep.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus, "the user must authenticate before the suspension")
+
+	adminFlowID, err := testutils.GetFlowIDByHandle("default-application-suspend-flow", "ADMINISTRATION")
+	ts.Require().NoError(err)
+	flowResult, err := common.ExecuteAdministrationFlow(adminFlowID, map[string]string{"subject": appID}, true)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, flowResult.StatusCode, "%+v", flowResult.Error)
+	ts.Require().Equal("COMPLETE", flowResult.Step.FlowStatus, "the application must be suspended")
+
+	callbackStatus, errorCode := ts.cibaPostCallback(bcResp.AuthReqID, flowStep.Assertion)
+	ts.Equal(http.StatusBadRequest, callbackStatus, "the callback of a suspended application must be refused")
+	ts.Equal("unauthorized_client", errorCode, "the refusal must name the client as unauthorized")
 }
 
 // TestCIBAFlowFailureDeniesRequest verifies that a terminal flow failure is propagated to the polling
@@ -450,8 +549,8 @@ func (ts *CIBATestSuite) TestCIBAExpiredRequestRejectsPolling() {
 
 // TestCIBAUnknownLoginHintReturnsUnknownUserID verifies that a login_hint matching no user maps to
 // unknown_user_id (CIBA Core 1.0 ​§7.3), not server_error. mapFlowErrorToCIBAError switches on the
-// literal flow-engine failure string "User not found"; the unit tests mock the flow entirely, so this
-// coupling between the flow engine's wording and the CIBA error mapping is otherwise unverified.
+// flow executor's error code, FET-1001; the unit tests mock the flow entirely, so this coupling
+// between the flow engine's codes and the CIBA error mapping is otherwise unverified.
 func (ts *CIBATestSuite) TestCIBAUnknownLoginHintReturnsUnknownUserID() {
 	status, bcResp := ts.cibaBackchannelAuthorize("no_such_ciba_user_xyz", "openid")
 	ts.Require().Equal(http.StatusBadRequest, status)
@@ -1002,7 +1101,7 @@ func cibaAuthFlowNodes(loginHintAttribute, senderID string, withAuthzCheck bool)
 			"type": "TASK_EXECUTION",
 			"properties": map[string]interface{}{
 				"senderId":    senderID,
-				"smsTemplate": "CIBA_NOTIFICATION",
+				"smsTemplate": "ciba-notification",
 			},
 			"executor": map[string]interface{}{
 				"name": "SMSExecutor",

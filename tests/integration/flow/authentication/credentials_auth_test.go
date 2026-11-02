@@ -150,12 +150,13 @@ var (
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{"credentials_auth_user"},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "userTypeName", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
 	testUserType = testutils.UserType{
-		Name: "credentials_auth_user",
+		Handle:      "credentials_auth_user",
+		DisplayName: "Credentials Auth User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -177,7 +178,7 @@ var (
 	}
 
 	testUser = testutils.User{
-		Type: testUserType.Name,
+		Type: testUserType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "testuser",
 			"password": "testpassword",
@@ -335,13 +336,16 @@ func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowSuccess() {
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		completeFlowStep.Assertion,
 		testAppID,
-		testUserType.Name,
+		testUserType.Handle,
 		ts.ouID,
 		testOU.Name,
 		testOU.Handle,
 	)
 	ts.Require().NoError(err, "Failed to validate JWT assertion fields")
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
+	ts.Require().Equal(testUserType.DisplayName, jwtClaims.UserTypeName,
+		"userTypeName should carry the user type's display name")
+	ts.Require().Empty(jwtClaims.UserType, "userType should NOT be present when not configured")
 }
 
 func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowSuccessWithSingleRequest() {
@@ -375,7 +379,7 @@ func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowSuccessWithSingle
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		flowStep.Assertion,
 		testAppID,
-		testUserType.Name,
+		testUserType.Handle,
 		ts.ouID,
 		testOU.Name,
 		testOU.Handle,
@@ -444,7 +448,7 @@ func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowWithTwoStepInput(
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		completeFlowStep.Assertion,
 		testAppID,
-		testUserType.Name,
+		testUserType.Handle,
 		ts.ouID,
 		testOU.Name,
 		testOU.Handle,
@@ -639,7 +643,8 @@ func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlow_WithoutTokenConf
 	ts.Require().NotEmpty(jwtClaims.Sub, "JWT subject should not be empty")
 
 	// Verify userType and OU attributes are NOT present (since TokenConfig is not specified)
-	ts.Require().Empty(jwtClaims.UserType, "userType should NOT be present when TokenConfig is not specified")
+	ts.Require().Empty(jwtClaims.UserTypeHandle,
+		"userTypeHandle should NOT be present when TokenConfig is not specified")
 	ts.Require().Empty(jwtClaims.OUID, "ouId should NOT be present when TokenConfig is not specified")
 	ts.Require().Empty(jwtClaims.OuName, "ouName should NOT be present when TokenConfig is not specified")
 	ts.Require().Empty(jwtClaims.OuHandle, "ouHandle should NOT be present when TokenConfig is not specified")
@@ -702,8 +707,63 @@ func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlow_WithEmptyUserAtt
 	ts.Require().NotEmpty(jwtClaims.Sub, "JWT subject should not be empty")
 
 	// Verify userType and OU attributes are NOT present (since user_attributes is empty)
-	ts.Require().Empty(jwtClaims.UserType, "userType should NOT be present when user_attributes is empty")
+	ts.Require().Empty(jwtClaims.UserTypeHandle,
+		"userTypeHandle should NOT be present when user_attributes is empty")
 	ts.Require().Empty(jwtClaims.OUID, "ouId should NOT be present when user_attributes is empty")
 	ts.Require().Empty(jwtClaims.OuName, "ouName should NOT be present when user_attributes is empty")
 	ts.Require().Empty(jwtClaims.OuHandle, "ouHandle should NOT be present when user_attributes is empty")
+}
+
+// TestCredentialsAuthFlow_LegacyUserTypeClaim tests that an app configured with the legacy userType
+// attribute keeps receiving the user type's display name in the JWT assertion.
+func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlow_LegacyUserTypeClaim() {
+	appWithLegacyUserType := testutils.Application{
+		Name:                      "Flow Test Application With Legacy User Type",
+		OUID:                      ts.ouID,
+		Description:               "Application for testing the legacy userType claim",
+		IsRegistrationFlowEnabled: false,
+		ClientID:                  "flow_test_client_legacy_user_type",
+		ClientSecret:              "flow_test_secret_legacy_user_type",
+		RedirectURIs:              []string{"http://localhost:3000/callback"},
+		AllowedUserTypes:          []string{"credentials_auth_user"},
+		AuthFlowID:                ts.config.CreatedFlowIDs[0],
+		AssertionConfig: map[string]interface{}{
+			"userAttributes": []string{"userType"},
+		},
+	}
+
+	appID, err := testutils.CreateApplication(appWithLegacyUserType)
+	ts.Require().NoError(err, "Failed to create application with legacy userType attribute")
+	defer func() {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("Failed to delete test application: %v", err)
+		}
+	}()
+
+	err = common.UpdateAppConfig(appID, ts.config.CreatedFlowIDs[0], "")
+	ts.Require().NoError(err, "App config update should succeed")
+
+	var userAttrs map[string]interface{}
+	err = json.Unmarshal(testUser.Attributes, &userAttrs)
+	ts.Require().NoError(err, "Failed to unmarshal user attributes")
+
+	inputs := map[string]string{
+		"username": userAttrs["username"].(string),
+		"password": userAttrs["password"].(string),
+	}
+
+	flowStep, err := common.InitiateAuthenticationFlow(appID, false, inputs, "")
+	ts.Require().NoError(err, "Failed to initiate authentication flow")
+
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus, "Expected flow status to be COMPLETE")
+	ts.Require().NotEmpty(flowStep.Assertion, "JWT assertion should be returned")
+
+	jwtClaims, err := testutils.DecodeJWT(flowStep.Assertion)
+	ts.Require().NoError(err, "Failed to decode JWT assertion")
+	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
+
+	ts.Require().Equal(testUserType.DisplayName, jwtClaims.UserType,
+		"userType should carry the user type's display name")
+	ts.Require().Empty(jwtClaims.UserTypeHandle, "userTypeHandle should NOT be present when not configured")
+	ts.Require().Empty(jwtClaims.UserTypeName, "userTypeName should NOT be present when not configured")
 }

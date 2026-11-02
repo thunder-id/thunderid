@@ -1,0 +1,413 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package gateway
+
+import (
+	"context"
+	"errors"
+	"net/url"
+	"regexp"
+	"strings"
+	"unicode"
+
+	"github.com/google/uuid"
+
+	"github.com/thunder-id/thunderid/internal/system/cmodels"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+)
+
+// ServiceInterface is the gateway management surface.
+type ServiceInterface interface {
+	List(ctx context.Context) ([]Gateway, *tidcommon.ServiceError)
+	Get(ctx context.Context, id string) (*Gateway, *tidcommon.ServiceError)
+	// Register records a gateway and issues the key this control plane will present to it. The
+	// key is in the result and nowhere else afterwards.
+	Register(ctx context.Context, req RegisterRequest) (*Registration, *tidcommon.ServiceError)
+	// Update changes a registration's name, address or certificate. What the request omits is left
+	// alone.
+	Update(ctx context.Context, id string, req UpdateRequest) (*Gateway, *tidcommon.ServiceError)
+	Delete(ctx context.Context, id string) *tidcommon.ServiceError
+}
+
+type service struct {
+	store  storeInterface
+	logger *log.Logger
+}
+
+func newService(store storeInterface) ServiceInterface {
+	return &service{
+		store:  store,
+		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GatewayService")),
+	}
+}
+
+// maxGateways is how many gateways this deployment may administer.
+//
+// The value comes from configuration and nothing here supplies a fallback: config/default.json
+// carries it, so an unset deployment.yaml still reads a number rather than this code deciding one.
+// Nothing configured at all means none, which is also what an explicit zero means.
+func maxGateways() int {
+	if !config.IsServerRuntimeInitialized() {
+		return 0
+	}
+	return config.GetServerRuntime().Config.Gateway.MaxGatewayCount()
+}
+
+func (s *service) List(ctx context.Context) ([]Gateway, *tidcommon.ServiceError) {
+	gateways, err := s.store.List(ctx)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to list the gateways", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	for i := range gateways {
+		gateways[i].Key = ""
+	}
+	return gateways, nil
+}
+
+func (s *service) Get(ctx context.Context, id string) (*Gateway, *tidcommon.ServiceError) {
+	if strings.TrimSpace(id) == "" {
+		return nil, &ErrorInvalidGatewayID
+	}
+	gw, err := s.store.GetByID(ctx, id)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read the gateway", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if gw == nil {
+		return nil, &ErrorGatewayNotFound
+	}
+	gw.Key = ""
+	return gw, nil
+}
+
+// Register records a gateway this control plane administers.
+func (s *service) Register(ctx context.Context,
+	req RegisterRequest) (*Registration, *tidcommon.ServiceError) {
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return nil, &ErrorGatewayNameRequired
+	}
+	if !validGatewayName(name) {
+		return nil, &ErrorInvalidGatewayName
+	}
+	// Without an address there is no way to reach the gateway, and a registration that cannot be
+	// applied to is worse than none: it looks configured.
+	if strings.TrimSpace(req.BaseURL) == "" {
+		return nil, &ErrorGatewayConnectionRequired
+	}
+	baseURL, svcErr := s.baseURLOf(req.BaseURL)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	count, err := s.store.Count(ctx)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to count the gateways", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if count >= maxGateways() {
+		return nil, &ErrorGatewayLimitReached
+	}
+
+	existing, err := s.store.GetByName(ctx, name)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to check the gateway name", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if existing != nil {
+		return nil, &ErrorGatewayNameTaken
+	}
+
+	// One gateway registers once, and its address is what decides which one it is. Two rows for
+	// the same deployment would be applied to independently and drift apart.
+	owner, err := s.store.GetByBaseURL(ctx, baseURL)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to check the gateway address", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if owner != nil {
+		return nil, &ErrorGatewayAlreadyRegistered
+	}
+
+	// A registration that names no key gets one. Generating it here means it is not typed, mailed
+	// or committed on the way in, which is the usual way to register. A caller that already holds
+	// one, because the gateway was configured with it first, supplies it instead and that is
+	// what is stored. Either way it is held encrypted with the deployment's configuration key, the
+	// way every other stored credential is.
+	key := strings.TrimSpace(req.Key)
+	if key == "" {
+		generated, svcErr := s.newKey(ctx)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		key = generated
+	}
+	stored, svcErr := s.protect(ctx, key)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	gw := &Gateway{
+		ID:            uuid.New().String(),
+		Name:          name,
+		BaseURL:       baseURL,
+		Key:           stored,
+		CACertificate: strings.TrimSpace(req.CACertificate),
+
+		// The first gateway registered is the default: with a single gateway there is no other
+		// candidate, and it should not need the flag to say so.
+		IsDefault: req.IsDefault || count == 0,
+	}
+	// The insert carries the capacity check and returns the row it wrote, so what comes back is what
+	// is stored, timestamps included. No row means the limit refused it.
+	registered, err := s.store.Create(ctx, gw, maxGateways())
+	// Two registrations made at once can both become the default, and the index that keeps it on one
+	// gateway refuses the second. One that asked to be the default writes again and takes it over, so
+	// the last caller to ask holds it. One that is the default only for being first registers without
+	// it. Any other failure is not retried, so a first gateway is never left non-default by one.
+	if errors.Is(err, errDefaultTaken) {
+		gw.IsDefault = req.IsDefault
+		registered, err = s.store.Create(ctx, gw, maxGateways())
+	}
+	if err != nil {
+		s.logger.Error(ctx, "Failed to register the gateway", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if registered == nil {
+		return nil, &ErrorGatewayLimitReached
+	}
+
+	s.logger.Info(ctx, "Registered a gateway", log.String("gatewayId", registered.ID),
+		log.String("baseUrl", registered.BaseURL))
+	registered.Key = ""
+	// The generated key travels in the response and is not kept anywhere readable.
+	return &Registration{Gateway: *registered, Key: key}, nil
+}
+
+// newKey generates the token this control plane will present to a gateway.
+func (s *service) newKey(ctx context.Context) (string, *tidcommon.ServiceError) {
+	key, err := cryptolib.GenerateSecureToken()
+	if err != nil {
+		s.logger.Error(ctx, "Failed to generate a gateway credential", log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+	return key, nil
+}
+
+// Update applies the fields the request names and leaves the rest as they are.
+func (s *service) Update(ctx context.Context, id string,
+	req UpdateRequest) (*Gateway, *tidcommon.ServiceError) {
+	if strings.TrimSpace(id) == "" {
+		return nil, &ErrorInvalidGatewayID
+	}
+	if req.Name == nil && req.BaseURL == nil && req.CACertificate == nil && req.Key == nil {
+		return nil, &ErrorNothingToUpdate
+	}
+
+	existing, err := s.store.GetByID(ctx, id)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read the gateway", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if existing == nil {
+		return nil, &ErrorGatewayNotFound
+	}
+
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		if name == "" {
+			return nil, &ErrorGatewayNameRequired
+		}
+		if !validGatewayName(name) {
+			return nil, &ErrorInvalidGatewayName
+		}
+		// A name is how a declared gateway is matched, so two registrations may not share one. Its
+		// own row is not a clash: renaming a gateway to what it is already called is a no-op, not a
+		// conflict.
+		if clash, clashErr := s.store.GetByName(ctx, name); clashErr != nil {
+			s.logger.Error(ctx, "Failed to check the gateway name", log.Error(clashErr))
+			return nil, &tidcommon.InternalServerError
+		} else if clash != nil && clash.ID != existing.ID {
+			return nil, &ErrorGatewayNameTaken
+		}
+		existing.Name = name
+	}
+
+	if req.BaseURL != nil {
+		baseURL, svcErr := s.baseURLOf(*req.BaseURL)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		// The address identifies the gateway, so moving one onto an address another already
+		// answers at would leave two registrations for the same deployment. Its own address is not a
+		// clash: re-sending the address it already has is a no-op.
+		if owner, ownerErr := s.store.GetByBaseURL(ctx, baseURL); ownerErr != nil {
+			s.logger.Error(ctx, "Failed to check the gateway address", log.Error(ownerErr))
+			return nil, &tidcommon.InternalServerError
+		} else if owner != nil && owner.ID != existing.ID {
+			return nil, &ErrorGatewayAlreadyRegistered
+		}
+		existing.BaseURL = baseURL
+	}
+
+	if req.CACertificate != nil {
+		existing.CACertificate = strings.TrimSpace(*req.CACertificate)
+	}
+
+	// A key the edit carries replaces the stored one, which is how a credential is rotated: the
+	// same value then has to reach the gateway, which holds it as its management API key.
+	//
+	// An edit that carries none keeps it. Nothing is generated here, because a caller who renamed a
+	// gateway did not ask for its credential to change, and a new one would stop the gateway
+	// being reachable until it was given the new value.
+	if req.Key != nil {
+		key := strings.TrimSpace(*req.Key)
+		if key == "" {
+			return nil, &ErrorGatewayKeyRequired
+		}
+		stored, svcErr := s.protect(ctx, key)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		existing.Key = stored
+	}
+
+	if err := s.store.Update(ctx, existing); err != nil {
+		if errors.Is(err, errDeclarativeGateway) {
+			return nil, &ErrorGatewayIsDeclarative
+		}
+		s.logger.Error(ctx, "Failed to update the gateway", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	s.logger.Info(ctx, "Updated a gateway", log.String("gatewayId", existing.ID))
+	existing.Key = ""
+	return existing, nil
+}
+
+func (s *service) Delete(ctx context.Context, id string) *tidcommon.ServiceError {
+	if strings.TrimSpace(id) == "" {
+		return &ErrorInvalidGatewayID
+	}
+	existing, err := s.store.GetByID(ctx, id)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read the gateway", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if existing == nil {
+		return &ErrorGatewayNotFound
+	}
+	if err := s.store.Delete(ctx, id); err != nil {
+		if errors.Is(err, errDeclarativeGateway) {
+			return &ErrorGatewayIsDeclarative
+		}
+		s.logger.Error(ctx, "Failed to remove the gateway", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	s.logger.Info(ctx, "Removed a gateway", log.String("gatewayId", id))
+	return nil
+}
+
+// baseURLOf trims a base URL to how it is stored, refusing one this plane may not call.
+func (s *service) baseURLOf(raw string) (string, *tidcommon.ServiceError) {
+	baseURL, problem := normalizeBaseURL(raw, allowPrivateAddresses())
+	switch problem {
+	case baseURLUsable:
+		return baseURL, nil
+	case baseURLPrivate:
+		return "", &ErrorPrivateBaseURL
+	default:
+		return "", &ErrorInvalidBaseURL
+	}
+}
+
+// baseURLProblem says what keeps a base URL from being one this plane may call.
+type baseURLProblem int
+
+const (
+	baseURLUsable baseURLProblem = iota
+	baseURLNotAbsolute
+	baseURLNotHTTPS
+	baseURLHasCredentials
+	baseURLPrivate
+)
+
+// baseURLProblemText is each problem as it reads at the end of "the base URL ...".
+var baseURLProblemText = map[baseURLProblem]string{
+	baseURLUsable:         "is usable",
+	baseURLNotAbsolute:    "is not an absolute URL",
+	baseURLNotHTTPS:       "is not https",
+	baseURLHasCredentials: "carries credentials",
+	baseURLPrivate: "names a loopback, link-local or private address, which " +
+		"gateway.allow_private_addresses is off for",
+}
+
+func (p baseURLProblem) String() string {
+	return baseURLProblemText[p]
+}
+
+// normalizeBaseURL trims a base URL to how it is stored, and says what keeps it from being an address
+// this plane may call.
+//
+// Emptiness is not enough of a check. "/" trims to nothing and "https://" trims to "https:", and both
+// would be stored as an address no call can ever reach. The failure would surface much later, as a
+// gateway that looks registered and never answers, so it is refused here where the caller can still
+// see which field was wrong. Every call to a gateway carries its key, so the address must be https,
+// and must carry no credentials of its own, which would be sent along with it. Unless the deployment
+// allows them, a loopback, link-local or private address is refused too: this plane sits inside a
+// network, and what it is pointed at there is reached with the gateway's key.
+func normalizeBaseURL(raw string, allowPrivate bool) (string, baseURLProblem) {
+	trimmed := strings.TrimRight(strings.TrimSpace(raw), "/")
+	parsed, err := url.Parse(trimmed)
+	switch {
+	case trimmed == "" || err != nil || parsed.Host == "":
+		return "", baseURLNotAbsolute
+	case parsed.Scheme != "https":
+		return "", baseURLNotHTTPS
+	case parsed.User != nil:
+		return "", baseURLHasCredentials
+	case !allowPrivate && syshttp.IsPrivateHost(parsed.Hostname()):
+		return "", baseURLPrivate
+	}
+	return trimmed, baseURLUsable
+}
+
+// gatewayNamePattern is what a gateway may be called: up to 64 letters, digits, spaces, hyphens,
+// underscores and dots, so a name reads the same wherever it is shown or written to a file.
+var gatewayNamePattern = regexp.MustCompile(`^[\p{L}\p{N} ._-]{1,64}$`)
+
+// validGatewayName reports whether a trimmed name is one a gateway may have: one of the pattern, with
+// at least one letter or digit, so a name is never punctuation alone.
+func validGatewayName(name string) bool {
+	return gatewayNamePattern.MatchString(name) &&
+		strings.IndexFunc(name, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) }) >= 0
+}
+
+// allowPrivateAddresses reports whether gateways may sit on loopback, link-local or private addresses.
+func allowPrivateAddresses() bool {
+	if !config.IsServerRuntimeInitialized() {
+		return false
+	}
+	return config.GetServerRuntime().Config.Gateway.AllowPrivateAddresses
+}
+
+// protect encrypts a management token for storage.
+func (s *service) protect(ctx context.Context, secret string) (string, *tidcommon.ServiceError) {
+	property, err := cmodels.NewProperty("key", secret, true)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to protect the gateway credential", log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+	stored, err := cmodels.SerializePropertiesToJSONArray([]cmodels.Property{*property})
+	if err != nil {
+		s.logger.Error(ctx, "Failed to protect the gateway credential", log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+	return stored, nil
+}

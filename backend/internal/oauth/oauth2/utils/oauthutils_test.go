@@ -1,9 +1,10 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package utils
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/url"
@@ -14,9 +15,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
+	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
+	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 )
 
 type OAuth2UtilsTestSuite struct {
@@ -1730,6 +1737,45 @@ func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_ValidWithAllCla
 	suite.Equal(int64(1700000002), claims.AuthTime.Unix())
 }
 
+// TestDecodeFlowAssertionClaims_AuthTimeWinsOverIat covers the SSO path, where the subject
+// authenticated before this assertion was issued. auth_time carries that earlier moment and must
+// win over iat, or the claim would advance on every authorization within one session.
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_AuthTimeWinsOverIat() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub":       "user-sso",
+		"iat":       float64(1700000000),
+		"auth_time": float64(1699990000),
+	})
+
+	claims, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.NoError(err)
+	suite.Equal(int64(1699990000), claims.AuthTime.Unix())
+}
+
+// TestDecodeFlowAssertionClaims_NoAuthTimeFallsBackToIat covers an assertion minted without the
+// claim, where the fresh-authentication reading of iat remains correct.
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_NoAuthTimeFallsBackToIat() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub": "user-fresh",
+		"iat": float64(1700000000),
+	})
+
+	claims, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.NoError(err)
+	suite.Equal(int64(1700000000), claims.AuthTime.Unix())
+}
+
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_AuthTimeUnexpectedType_ReturnsError() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub":       "user-bad",
+		"iat":       float64(1700000000),
+		"auth_time": "not-a-number",
+	})
+
+	_, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.Error(err)
+}
+
 func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_IatUnexpectedType_ReturnsError() {
 	assertion := buildTestAssertion(map[string]interface{}{
 		"sub": "user-x",
@@ -1790,9 +1836,10 @@ func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_MissingOptional
 func (suite *OAuth2UtilsTestSuite) TestDefaultScopeClaims_ReturnsStandardDefaultsWithoutOpenID() {
 	defaults := DefaultScopeClaims()
 
-	suite.Len(defaults, len(constants.StandardOIDCScopes)-1)
+	suite.Len(defaults, len(constants.StandardOIDCScopes)-2)
 	suite.NotContains(defaults, "openid",
 		"openid is always granted and carries no user attributes, so it must not be seeded")
+	suite.NotContains(defaults, "device_sso", "device_sso releases no user attributes, so it must not be seeded")
 	suite.Equal([]string{"email", "email_verified"}, defaults["email"])
 	suite.Contains(defaults["profile"], "name")
 	suite.Contains(defaults["profile"], "family_name")
@@ -1844,4 +1891,222 @@ func (suite *OAuth2UtilsTestSuite) TestSanitizeErrorDescriptionKeepsRedirectBuil
 
 	assert.NoError(suite.T(), err)
 	assert.Contains(suite.T(), uri, "error=access_denied")
+}
+
+// No token configuration is the common case, so the helper builds the nested config.
+func (suite *OAuth2UtilsTestSuite) TestEnsureClientSubTypeAttribute_BuildsMissingConfig() {
+	token := EnsureClientSubTypeAttribute(nil)
+
+	assert.NotNil(suite.T(), token)
+	assert.NotNil(suite.T(), token.AccessToken)
+	assert.NotNil(suite.T(), token.AccessToken.ClientConfig)
+	assert.Equal(suite.T(), []string{constants.ClaimSubType}, token.AccessToken.ClientConfig.Attributes)
+}
+
+// Seeding adds the claim without replacing a caller-supplied selection.
+func (suite *OAuth2UtilsTestSuite) TestEnsureClientSubTypeAttribute_KeepsExistingAttributes() {
+	token := EnsureClientSubTypeAttribute(&providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
+			ClientConfig: &providers.AccessTokenSubConfig{
+				ValidityPeriod: 1800,
+				Attributes:     []string{constants.ClaimOUID},
+			},
+		},
+	})
+
+	clientConfig := token.AccessToken.ClientConfig
+	assert.Equal(suite.T(), []string{constants.ClaimOUID, constants.ClaimSubType}, clientConfig.Attributes)
+	assert.Equal(suite.T(), int64(1800), clientConfig.ValidityPeriod,
+		"seeding the claim must not disturb the rest of the client config")
+}
+
+// The caller may already have set the claim, so seeding must not duplicate it.
+func (suite *OAuth2UtilsTestSuite) TestEnsureClientSubTypeAttribute_IsIdempotent() {
+	token := EnsureClientSubTypeAttribute(&providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
+			ClientConfig: &providers.AccessTokenSubConfig{Attributes: []string{constants.ClaimSubType}},
+		},
+	})
+	token = EnsureClientSubTypeAttribute(token)
+
+	assert.Equal(suite.T(), []string{constants.ClaimSubType}, token.AccessToken.ClientConfig.Attributes)
+}
+
+// sub_type never appears on a user-subject token, so the user sub-config is untouched.
+func (suite *OAuth2UtilsTestSuite) TestEnsureClientSubTypeAttribute_LeavesUserConfigAlone() {
+	token := EnsureClientSubTypeAttribute(&providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
+			UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"email"}},
+		},
+	})
+
+	assert.Equal(suite.T(), []string{"email"}, token.AccessToken.UserConfig.Attributes)
+	assert.Equal(suite.T(), []string{constants.ClaimSubType}, token.AccessToken.ClientConfig.Attributes)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestIsClientHeld() {
+	client := &providers.OAuthClient{ID: "app-1"}
+	cases := []struct {
+		name     string
+		decision providers.AccessDecision
+		svcErr   *tidcommon.ServiceError
+		held     bool
+		wantErr  bool
+	}{
+		{name: "Admitted", decision: providers.AccessDecision{Admitted: true}},
+		{
+			name:     "Refused",
+			decision: providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended},
+			held:     true,
+		},
+		{name: "GovernanceFault", svcErr: &tidcommon.InternalServerError, wantErr: true},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+			governance.EXPECT().EvaluateAccess(context.Background(), "app-1", providers.AccessPlaneApplication,
+				providers.AuthenticationMethod("")).Return(tc.decision, tc.svcErr)
+
+			held, svcErr := IsClientHeld(context.Background(), governance, client)
+
+			suite.Equal(tc.held, held)
+			if tc.wantErr {
+				suite.Equal(&tidcommon.InternalServerError, svcErr)
+			} else {
+				suite.Nil(svcErr)
+			}
+		})
+	}
+}
+
+func (suite *OAuth2UtilsTestSuite) TestIsClientHeld_NothingToCheck() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	for name, tc := range map[string]struct {
+		governance providers.IdentityGovernanceProvider
+		client     *providers.OAuthClient
+	}{
+		"NoGovernance": {nil, &providers.OAuthClient{ID: "app-1"}},
+		"NoClient":     {governance, nil},
+		"NoEntityID":   {governance, &providers.OAuthClient{}},
+	} {
+		suite.Run(name, func() {
+			held, svcErr := IsClientHeld(context.Background(), tc.governance, tc.client)
+
+			suite.False(held)
+			suite.Nil(svcErr)
+		})
+	}
+}
+
+func (suite *OAuth2UtilsTestSuite) TestPrepareAuthorizationDetails() {
+	raw := json.RawMessage(`[{"type":"payment_initiation","amount":45.00}]`)
+	prepared := []providers.AuthorizationDetail{{ID: "d-1", Type: "payment_initiation", TypeID: "type-2",
+		TypeVersion: 2, Requested: raw}}
+	encoded, err := json.Marshal(prepared)
+	suite.Require().NoError(err)
+
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().PrepareAuthorizationDetails(context.Background(), raw).Return(prepared, nil)
+
+	details, gotEncoded, errResp, err := PrepareAuthorizationDetails(context.Background(), authzDetails, raw)
+
+	suite.NoError(err)
+	suite.Nil(errResp)
+	suite.Equal(prepared, details)
+	suite.Equal(string(encoded), gotEncoded)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestPrepareAuthorizationDetails_Refused() {
+	raw := json.RawMessage(`[{"type":"unknown"}]`)
+	svcErr := authzdetailexec.ErrorMalformedAuthorizationDetails.WithParams(map[string]string{"reason": "bad"})
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().PrepareAuthorizationDetails(context.Background(), raw).Return(nil, svcErr)
+
+	details, encoded, errResp, err := PrepareAuthorizationDetails(context.Background(), authzDetails, raw)
+
+	suite.NoError(err)
+	suite.Equal(AuthorizationDetailsErrorResponse(svcErr), errResp)
+	suite.Equal(constants.ErrorInvalidAuthorizationDetails, errResp.Error)
+	suite.Nil(details)
+	suite.Empty(encoded)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestPrepareAuthorizationDetails_EncodeFailure() {
+	raw := json.RawMessage(`[{"type":"payment_initiation"}]`)
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().PrepareAuthorizationDetails(context.Background(), raw).Return(
+		[]providers.AuthorizationDetail{{Type: "payment_initiation", Requested: json.RawMessage(`{`)}}, nil)
+
+	details, encoded, errResp, err := PrepareAuthorizationDetails(context.Background(), authzDetails, raw)
+
+	suite.Error(err)
+	suite.Nil(errResp)
+	suite.Nil(details)
+	suite.Empty(encoded)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestPrepareAuthorizationDetails_Absent() {
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+
+	for name, raw := range map[string]json.RawMessage{"Nil": nil, "Empty": json.RawMessage("")} {
+		suite.Run(name, func() {
+			details, encoded, errResp, err := PrepareAuthorizationDetails(context.Background(), authzDetails, raw)
+
+			suite.NoError(err)
+			suite.Nil(errResp)
+			suite.Nil(details)
+			suite.Empty(encoded)
+		})
+	}
+}
+
+func (suite *OAuth2UtilsTestSuite) TestAuthorizationDetailsErrorResponse() {
+	testCases := []struct {
+		name     string
+		svcErr   *tidcommon.ServiceError
+		expected *model.ErrorResponse
+	}{
+		{
+			name: "InvalidDetails",
+			svcErr: authzdetailexec.ErrorAuthorizationDetailExceedsGrant.WithParams(
+				map[string]string{"index": "1", "reason": "field amount exceeds the granted value"}),
+			expected: &model.ErrorResponse{
+				Error: constants.ErrorInvalidAuthorizationDetails,
+				ErrorDescription: "authorization_details entry 1 exceeds the grant: " +
+					"field amount exceeds the granted value",
+			},
+		},
+		{
+			name: "DescriptionLimitedToAllowedCharacters",
+			svcErr: authzdetailexec.ErrorMalformedAuthorizationDetails.WithParams(
+				map[string]string{"reason": `invalid character '"' after object key \ é`}),
+			expected: &model.ErrorResponse{
+				Error:            constants.ErrorInvalidAuthorizationDetails,
+				ErrorDescription: "invalid character '' after object key",
+			},
+		},
+		{
+			name: "EmptyDescriptionFallsBackToError",
+			svcErr: authzdetailexec.ErrorMalformedAuthorizationDetails.WithParams(
+				map[string]string{"reason": `"\"`}),
+			expected: &model.ErrorResponse{
+				Error:            constants.ErrorInvalidAuthorizationDetails,
+				ErrorDescription: "Malformed authorization details",
+			},
+		},
+		{
+			name:   "ServerError",
+			svcErr: &authzdetailcommon.ErrorProcessorUnavailable,
+			expected: &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Failed to process authorization details",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			assert.Equal(suite.T(), tc.expected, AuthorizationDetailsErrorResponse(tc.svcErr))
+		})
+	}
 }

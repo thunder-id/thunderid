@@ -25,7 +25,7 @@ export default function CredentialsTabPanel({userId, credentialFields}: Credenti
   return (
     <>
       <SettingsCard
-        title={t('users:manageUser.sections.credentials.resetCredentialsTitle', 'Reset Credentials')}
+        title={t('users:manageUser.sections.credentials.resetCredentialsTitle', 'Reset credentials')}
         description={t(
           'users:manageUser.sections.credentials.resetCredentialsDescription',
           'Reset user credentials. These actions are irreversible.',

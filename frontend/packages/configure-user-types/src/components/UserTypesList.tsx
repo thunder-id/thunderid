@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
@@ -20,7 +20,7 @@ import {
   Button,
   DataGrid,
 } from '@wso2/oxygen-ui';
-import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Pencil, Trash2, UserRoundCog} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -83,17 +83,22 @@ export default function UserTypesList() {
   const columns: GridColDef<UserTypeListItem>[] = useMemo(
     () => [
       {
-        field: 'name',
+        field: 'displayName',
         headerName: t('userTypes:listing.columns.name', 'Name'),
         flex: 1.5,
         minWidth: 220,
         renderCell: (params: DataGrid.GridRenderCellParams<UserTypeListItem>) => (
-          <Typography variant="body2">{params.row.name}</Typography>
+          <ListingTable.CellIcon
+            icon={<UserRoundCog size={20} />}
+            primary={params.row.displayName}
+            secondary={params.row.handle}
+            sx={{width: '100%'}}
+          />
         ),
       },
       {
         field: 'id',
-        headerName: t('userTypes:listing.columns.id', 'User Type ID'),
+        headerName: t('userTypes:listing.columns.id', 'User type ID'),
         width: 350,
         renderCell: (params: DataGrid.GridRenderCellParams<UserTypeListItem>) => (
           <Typography variant="body2" sx={{fontFamily: 'monospace', fontSize: '0.875rem'}}>
@@ -103,7 +108,7 @@ export default function UserTypesList() {
       },
       {
         field: 'ouHandle',
-        headerName: t('userTypes:listing.columns.organizationUnit', 'Organization Unit'),
+        headerName: t('userTypes:listing.columns.organizationUnit', 'Organization unit'),
         flex: 1,
         minWidth: 220,
         renderCell: (params: DataGrid.GridRenderCellParams<UserTypeListItem>) => (
@@ -114,7 +119,7 @@ export default function UserTypesList() {
       },
       {
         field: 'allowSelfRegistration',
-        headerName: t('userTypes:listing.columns.allowSelfRegistration', 'Self Registration'),
+        headerName: t('userTypes:listing.columns.allowSelfRegistration', 'Self registration'),
         width: 200,
         renderCell: (params: GridRenderCellParams<UserTypeListItem>) => (
           <Chip
@@ -136,16 +141,22 @@ export default function UserTypesList() {
         renderCell: (params: GridRenderCellParams<UserTypeListItem>) => (
           <ListingTable.RowActions>
             {params.row.isReadOnly ? (
-              <Tooltip title={t('common:status.readOnly', 'Read Only')}>
-                <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
+              <Tooltip title={t('common:status.readOnly', 'Read only')}>
+                <IconButton
+                  size="small"
+                  disableRipple
+                  aria-label={t('common:status.readOnly', 'Read only')}
+                  sx={{cursor: 'default'}}
+                >
                   <Eye size={16} />
                 </IconButton>
               </Tooltip>
             ) : (
               <>
-                <Tooltip title={t('common:actions.edit')}>
+                <Tooltip title={t('common:actions.edit', 'Edit')}>
                   <IconButton
                     size="small"
+                    aria-label={t('common:actions.edit', 'Edit')}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleViewClick(params.row.id);
@@ -154,10 +165,11 @@ export default function UserTypesList() {
                     <Pencil size={16} />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title={t('common:actions.delete')}>
+                <Tooltip title={t('common:actions.delete', 'Delete')}>
                   <IconButton
                     size="small"
                     color="error"
+                    aria-label={t('common:actions.delete', 'Delete')}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDeleteClick(params.row.id);
@@ -189,8 +201,8 @@ export default function UserTypesList() {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
-        <ListingTable.Container disablePaper>
+      <ListingTable.Provider variant="data-grid" loading={isLoading}>
+        <ListingTable.Container>
           <ListingTable.DataGrid
             rows={userTypesData?.types ?? []}
             columns={columns}
@@ -198,6 +210,7 @@ export default function UserTypesList() {
             onRowClick={(params) => {
               handleViewClick((params.row as UserTypeListItem).id);
             }}
+            rowHeight={64}
             initialState={{
               pagination: {
                 paginationModel: {pageSize: 10},

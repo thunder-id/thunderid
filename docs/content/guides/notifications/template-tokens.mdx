@@ -1,0 +1,91 @@
+---
+title: Notification Template Tokens
+docType: reference
+sidebar_position: 2
+description: Complete reference for the context, design, and translation tokens you can insert into notification template subjects and bodies.
+---
+
+# Notification Template Tokens
+
+This catalog lists the tokens you can insert into a notification template's subject or body. For how templates are written, validated, and managed, see [Notification Templates](../templates).
+
+A template field carries three kinds of token, which <ProductName /> resolves in order: translations first, then design, then the runtime context values:
+
+| Token | Syntax | Resolves to | Allowed in |
+| :--- | :--- | :--- | :--- |
+| [Context](#context-tokens) | `{{ctx(key)}}` | A value the sender supplies at send time. | Subject, email body, SMS body |
+| [Design](#design-tokens) | `{{design(token)}}` | A design token from the applicable theme and color scheme. | Email body only |
+| [Translation](#translation-tokens) | `{{t(key)}}` | Translated text from the `notification` namespace. | Subject, email body, SMS body |
+
+A few rules apply to every token:
+
+- **Keys are case sensitive.** `{{ctx(otpCode)}}` resolves; `{{ctx(otpcode)}}` does not.
+- **There are no filters, defaults, conditionals, or loops.** Tokens are substituted as-is.
+- **Rendering is fail-closed.** If a referenced key or token cannot be resolved, <ProductName /> does not send the message and reports the error, rather than delivering it with a raw `{{...}}` left in place.
+
+## Context Tokens
+
+`{{ctx(...)}}` tokens are replaced with values the sender supplies when the message goes out. A context token only resolves if something earlier in the flow produced its value; referencing one that nothing supplies fails the send.
+
+In an HTML email body, <ProductName /> HTML-escapes each `{{ctx(...)}}` value before inserting it, so a value that contains `<` or `&` reads as text rather than markup.
+
+### Available values
+
+Each value is supplied only to the messages listed with it. A template that references a value its message does not supply fails to send.
+
+**Messages sent from a flow:**
+
+| Token | Value |
+| :--- | :--- |
+| `{{ctx(appName)}}` | Name of the application the flow is running for. |
+
+**One-time passcode and magic link messages:**
+
+| Token | Value |
+| :--- | :--- |
+| `{{ctx(otpCode)}}` | The one-time passcode. |
+| `{{ctx(magicLink)}}` | The magic-link sign-in URL. |
+| `{{ctx(expiryTime)}}` | How long the code or link stays valid. Arrives already formatted for display, as a string such as `5 minutes` or `1 hour`. |
+
+**Invitation, recovery, and CIBA messages:**
+
+| Token | Value |
+| :--- | :--- |
+| `{{ctx(inviteLink)}}` | The invitation or recovery link. |
+| `{{ctx(bindingMessage)}}` | The CIBA binding message shown for approval. |
+
+**The email sent when an account locks.** It is not sent from a flow, so only these values are available. See [Email Users When a Lock Forms](../../account-protection/configure-account-lockout#email-users-when-a-lock-forms).
+
+| Token | Value |
+| :--- | :--- |
+| `{{ctx(lockedAuthenticationMethod)}}` | The sign-in method that locked, `credential` or `otp`. Empty for a lock on every sign-in method. |
+| `{{ctx(lockDuration)}}` | How long the lock lasts, such as `5 minutes`. Empty for a lock that does not expire. |
+| `{{ctx(unlockTime)}}` | When the lock lifts, in UTC, such as `2026-10-26 10:05`. Empty for a lock that does not expire. |
+
+## Design Tokens
+
+`{{design(...)}}` tokens resolve a design token against the applicable theme and color scheme, so a template follows your branding without carrying a copy of it. They are allowed only in an **email body**, never in a subject or in SMS.
+
+The editor's token panel offers these design tokens:
+
+| Token | Label | Resolves to |
+| :--- | :--- | :--- |
+| `{{design(palette.primary.main)}}` | Primary color | Main brand color for buttons, links, and interactive elements. |
+| `{{design(palette.primary.contrastText)}}` | Primary contrast text | Foreground color that sits on the primary color. |
+| `{{design(palette.secondary.main)}}` | Secondary color | Supporting brand color for secondary actions and accents. |
+| `{{design(palette.text.primary)}}` | Text primary | Primary text color. |
+| `{{design(palette.background.default)}}` | Background default | Page background color. |
+| `{{design(palette.background.paper)}}` | Background paper | Card or surface background color. |
+
+For the full set of theme properties these tokens draw from, see the [Design Catalog](../../design/design-catalog#theme-properties).
+
+## Translation Tokens
+
+`{{t(...)}}` tokens resolve to translated text from the `notification` translation namespace, so you author one template rather than one copy per language. Because copy is written as `{{t(...)}}` keys rather than literal text, wording stays out of the template.
+
+Translation keys are user-defined. Create and edit them from the editor's token panel or the Console **Translations** page. <ProductName /> currently renders every notification in the system default language, `en-US`, falling back to the nearest available value for a key.
+
+## Next Steps
+
+- [Notification Templates](../templates): Write, validate, and manage the templates these tokens go into
+- [Design Catalog](../../design/design-catalog): The full theme-property reference behind `{{design(...)}}` tokens

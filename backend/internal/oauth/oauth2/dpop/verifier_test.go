@@ -6,6 +6,7 @@ package dpop
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -85,6 +86,22 @@ func newEdDSASigner(t *testing.T) *signer {
 			"kty": "OKP",
 			"crv": "Ed25519",
 			"x":   base64.RawURLEncoding.EncodeToString(pub),
+		},
+	}
+}
+
+func newMLDSASigner(t *testing.T, alg string, params mldsa.Parameters) *signer {
+	t.Helper()
+	priv, err := mldsa.GenerateKey(params)
+	require.NoError(t, err)
+	return &signer{
+		alg:     alg,
+		signAlg: cryptolib.SignAlgorithm(alg),
+		priv:    priv,
+		jwk: map[string]any{
+			"kty": "AKP",
+			"alg": alg,
+			"pub": base64.RawURLEncoding.EncodeToString(priv.PublicKey().Bytes()),
 		},
 	}
 }
@@ -225,6 +242,37 @@ func (suite *DpopTestSuite) TestVerify_HappyPath_EdDSA() {
 	res, err := v.Verify(context.Background(), params)
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "EdDSA", res.Alg)
+}
+
+func (suite *DpopTestSuite) TestVerify_HappyPath_MLDSA() {
+	cases := []struct {
+		alg    string
+		params mldsa.Parameters
+	}{
+		{"ML-DSA-44", mldsa.MLDSA44()},
+		{"ML-DSA-65", mldsa.MLDSA65()},
+		{"ML-DSA-87", mldsa.MLDSA87()},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.alg, func() {
+			store := jtimock.NewStoreInterfaceMock(suite.T())
+			expectInsert(store)
+			v := newTestVerifier(suite.T(), store, suite.now)
+			v.allowedAlgs[tc.alg] = struct{}{}
+			s := newMLDSASigner(suite.T(), tc.alg, tc.params)
+
+			jkt, err := jws.ComputeJKT(s.jwk)
+			require.NoError(suite.T(), err)
+
+			params := defaultParams()
+			params.Proof = s.signProof(suite.T(), nil, defaultPayload(suite.now))
+			params.ExpectedJkt = jkt
+
+			res, err := v.Verify(context.Background(), params)
+			require.NoError(suite.T(), err)
+			assert.Equal(suite.T(), tc.alg, res.Alg)
+		})
+	}
 }
 
 func (suite *DpopTestSuite) TestVerify_ExpectedJktMatch() {
@@ -413,6 +461,22 @@ func (suite *DpopTestSuite) TestVerify_FailureModes() {
 		_, err := v.Verify(context.Background(), params)
 		require.ErrorIs(suite.T(), err, ErrInvalidProof)
 		assert.Contains(suite.T(), err.Error(), "private")
+	})
+
+	suite.Run("priv member in jwk rejected", func() {
+		v := newTestVerifier(suite.T(), suite.jtiStore, suite.now)
+		s := newPS256Signer(suite.T())
+		jwkWithPriv := map[string]any{}
+		for k, v := range s.jwk {
+			jwkWithPriv[k] = v
+		}
+		jwkWithPriv["priv"] = "NOT-PUBLIC-MATERIAL"
+		proof := s.signProof(suite.T(), map[string]any{"jwk": jwkWithPriv}, defaultPayload(suite.now))
+		params := defaultParams()
+		params.Proof = proof
+		_, err := v.Verify(context.Background(), params)
+		require.ErrorIs(suite.T(), err, ErrInvalidProof)
+		assert.Contains(suite.T(), err.Error(), `private-key member "priv"`)
 	})
 
 	suite.Run("htm mismatch", func() {

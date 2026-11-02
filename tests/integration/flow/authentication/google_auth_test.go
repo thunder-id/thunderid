@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 var (
@@ -61,7 +61,7 @@ var (
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{"google_auth_user"},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	}
 )
@@ -80,7 +80,8 @@ const (
 )
 
 var googleEntityType = testutils.UserType{
-	Name: "google_auth_user",
+	Handle:      "google_auth_user",
+	DisplayName: "Google Auth User",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{
 			"type": "string",
@@ -186,7 +187,7 @@ func (ts *GoogleAuthFlowTestSuite) SetupSuite() {
 
 	// Create user in the pre-configured OU from database scripts
 	user := testutils.User{
-		Type:       googleEntityType.Name,
+		Type:       googleEntityType.Handle,
 		OUID:       googleEntityType.OUID,
 		Attributes: json.RawMessage(attributesJSON),
 	}
@@ -222,11 +223,27 @@ func (ts *GoogleAuthFlowTestSuite) SetupSuite() {
 				IsSecret: false,
 			},
 		},
+		// Link on email so SetupSuite can record the link below.
+		AttributeConfiguration: &testutils.AttributeConfiguration{
+			AccountLinking: &testutils.AccountLinking{Attributes: []string{"email"}},
+		},
 	}
 
 	idpID, err := testutils.CreateIDP(googleIDP)
 	ts.Require().NoError(err, "Failed to create Google IDP")
 	ts.config.CreatedIdpIDs = append(ts.config.CreatedIdpIDs, idpID)
+
+	// Record the link the federated sign-ins below resolve through.
+	err = common.LinkAccount(common.LinkRequest{
+		Handle:       "google-flow-link",
+		ExecutorName: "GoogleOIDCAuthExecutor",
+		IDPID:        idpID,
+		OUID:         googleAuthTestOU.ID,
+		UserType:     googleEntityType.Handle,
+		Username:     "googleflowuser",
+		Password:     "Test@1234",
+	})
+	ts.Require().NoError(err, "Failed to record the federated link for the existing user")
 
 	// Update flow definition with created IDP ID
 	nodes := googleAuthFlow.Nodes.([]map[string]interface{})
@@ -380,7 +397,7 @@ func (ts *GoogleAuthFlowTestSuite) TestGoogleAuthFlowCompleteSuccess() {
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		completeFlowStep.Assertion,
 		googleAuthTestAppID,
-		googleEntityType.Name,
+		googleEntityType.Handle,
 		googleAuthTestOU.ID,
 		googleAuthTestOU.Name,
 		googleAuthTestOU.Handle,
@@ -479,7 +496,7 @@ func (ts *GoogleAuthFlowTestSuite) TestGoogleAuthFlowMultipleUsersSuccess() {
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		completeFlowStep.Assertion,
 		googleAuthTestAppID,
-		googleEntityType.Name,
+		googleEntityType.Handle,
 		googleAuthTestOU.ID,
 		googleAuthTestOU.Name,
 		googleAuthTestOU.Handle,

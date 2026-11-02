@@ -14,9 +14,14 @@ import type {AgentTypeListResponse} from '../models/responses';
  * @param params - Optional pagination parameters
  * @param params.limit - Maximum number of records to return
  * @param params.offset - Number of records to skip for pagination
+ * @param options - Optional query options
+ * @param options.enabled - Set to false to skip the request
  * @returns TanStack Query result object containing agent types list data, loading state, and error information
  */
-export default function useGetAgentTypes(params?: AgentTypeListParams): UseQueryResult<AgentTypeListResponse> {
+export default function useGetAgentTypes(
+  params?: AgentTypeListParams,
+  options?: {enabled?: boolean},
+): UseQueryResult<AgentTypeListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const {limit, offset} = params ?? {};
@@ -50,5 +55,6 @@ export default function useGetAgentTypes(params?: AgentTypeListParams): UseQuery
 
       return response.data;
     },
+    enabled: options?.enabled ?? true,
   });
 }

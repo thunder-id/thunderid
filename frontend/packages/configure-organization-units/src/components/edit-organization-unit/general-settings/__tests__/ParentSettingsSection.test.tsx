@@ -1,9 +1,8 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {screen, renderWithProviders, renderHook} from '@thunderid/test-utils';
-import {useTranslation} from 'react-i18next';
-import {describe, it, expect, vi, beforeEach, beforeAll} from 'vitest';
+import {screen, renderWithProviders} from '@thunderid/test-utils';
+import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {OrganizationUnit} from '../../../../models/organization-unit';
 import ParentSettingsSection from '../ParentSettingsSection';
 
@@ -24,11 +23,6 @@ vi.mock('react-router', async () => {
 });
 
 describe('ParentSettingsSection', () => {
-  let t: (key: string) => string;
-
-  beforeAll(() => {
-    ({t} = renderHook(() => useTranslation()).result.current);
-  });
   const mockOrganizationUnit: OrganizationUnit = {
     id: 'ou-child-123',
     handle: 'engineering-frontend',
@@ -57,15 +51,12 @@ describe('ParentSettingsSection', () => {
 
     renderWithProviders(<ParentSettingsSection organizationUnit={mockOrganizationUnit} />);
 
-    expect(
-      screen.getByRole('heading', {name: t('organizationUnits:edit.general.sections.parentOUSettings.title')}),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(t('organizationUnits:edit.general.sections.parentOUSettings.description')),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', {name: 'Parent organization unit'})).toBeInTheDocument();
+    expect(screen.getByText('The parent organization unit in the hierarchy.')).toBeInTheDocument();
+    expect(screen.getAllByText('Parent organization unit')).toHaveLength(1);
   });
 
-  it('should show "Root Organization Unit" when no parent exists', () => {
+  it('should identify a root organization unit when no parent exists', () => {
     const rootOU: OrganizationUnit = {
       ...mockOrganizationUnit,
       parent: null,
@@ -78,9 +69,8 @@ describe('ParentSettingsSection', () => {
 
     renderWithProviders(<ParentSettingsSection organizationUnit={rootOU} />);
 
-    const input = screen.getByDisplayValue(t('organizationUnits:edit.general.ou.noParent.label'));
-    expect(input).toBeInTheDocument();
-    expect(input).toHaveAttribute('readonly');
+    expect(screen.getByText('This is a root organization unit.')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 
   it('should show loading spinner while fetching parent', () => {

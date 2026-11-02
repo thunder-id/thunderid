@@ -46,7 +46,8 @@ type TestCase struct {
 var (
 	testOUID     string
 	testUserType = testutils.UserType{
-		Name: "authz-test-person",
+		Handle:      "authz-test-person",
+		DisplayName: "Authz Test Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -299,17 +300,17 @@ func (ts *AuthzTestSuite) TearDownSuite() {
 		}
 	}
 
-	// Delete test organization unit
-	if testOUID != "" {
-		if err := testutils.DeleteOrganizationUnit(testOUID); err != nil {
-			ts.T().Logf("Failed to delete test organization unit %s: %v", testOUID, err)
-		}
-	}
-
 	if ts.entityTypeID != "" {
 		err := testutils.DeleteUserType(ts.entityTypeID)
 		if err != nil {
 			ts.T().Errorf("Failed to delete test user type: %v", err)
+		}
+	}
+
+	// Delete test organization unit
+	if testOUID != "" {
+		if err := testutils.DeleteOrganizationUnit(testOUID); err != nil {
+			ts.T().Logf("Failed to delete test organization unit %s: %v", testOUID, err)
 		}
 	}
 

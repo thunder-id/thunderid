@@ -8,7 +8,7 @@ import type {AgentTypeDefinition} from './property-definition';
  * Request body for `PUT /agent-types/{id}` (update).
  */
 export interface UpdateAgentTypeRequest {
-  name: string;
+  displayName: string;
   ouId: string;
   systemAttributes?: SystemAttributes;
   schema: AgentTypeDefinition;

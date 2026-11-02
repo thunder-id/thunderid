@@ -14,10 +14,19 @@ func newWebAuthnServiceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *webAuthnServiceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &webAuthnServiceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -88,8 +97,8 @@ func (_c *webAuthnServiceMock_BeginDiscoverableLogin_Call) Run(run func()) *webA
 	return _c
 }
 
-func (_c *webAuthnServiceMock_BeginDiscoverableLogin_Call) Return(v *credentialAssertion, v1 *sessionData, err error) *webAuthnServiceMock_BeginDiscoverableLogin_Call {
-	_c.Call.Return(v, v1, err)
+func (_c *webAuthnServiceMock_BeginDiscoverableLogin_Call) Return(credentialAssertionMoqParam *credentialAssertion, sessionDataMoqParam *sessionData, err error) *webAuthnServiceMock_BeginDiscoverableLogin_Call {
+	_c.Call.Return(credentialAssertionMoqParam, sessionDataMoqParam, err)
 	return _c
 }
 
@@ -141,7 +150,7 @@ type webAuthnServiceMock_BeginLogin_Call struct {
 
 // BeginLogin is a helper method to define mock.On call
 //   - user webauthnUserInterface
-func (_e *webAuthnServiceMock_Expecter) BeginLogin(user interface{}) *webAuthnServiceMock_BeginLogin_Call {
+func (_e *webAuthnServiceMock_Expecter) BeginLogin(user any) *webAuthnServiceMock_BeginLogin_Call {
 	return &webAuthnServiceMock_BeginLogin_Call{Call: _e.mock.On("BeginLogin", user)}
 }
 
@@ -158,8 +167,8 @@ func (_c *webAuthnServiceMock_BeginLogin_Call) Run(run func(user webauthnUserInt
 	return _c
 }
 
-func (_c *webAuthnServiceMock_BeginLogin_Call) Return(v *credentialAssertion, v1 *sessionData, err error) *webAuthnServiceMock_BeginLogin_Call {
-	_c.Call.Return(v, v1, err)
+func (_c *webAuthnServiceMock_BeginLogin_Call) Return(credentialAssertionMoqParam *credentialAssertion, sessionDataMoqParam *sessionData, err error) *webAuthnServiceMock_BeginLogin_Call {
+	_c.Call.Return(credentialAssertionMoqParam, sessionDataMoqParam, err)
 	return _c
 }
 
@@ -212,7 +221,7 @@ type webAuthnServiceMock_BeginRegistration_Call struct {
 // BeginRegistration is a helper method to define mock.On call
 //   - user webauthnUserInterface
 //   - options []registrationOption
-func (_e *webAuthnServiceMock_Expecter) BeginRegistration(user interface{}, options interface{}) *webAuthnServiceMock_BeginRegistration_Call {
+func (_e *webAuthnServiceMock_Expecter) BeginRegistration(user any, options any) *webAuthnServiceMock_BeginRegistration_Call {
 	return &webAuthnServiceMock_BeginRegistration_Call{Call: _e.mock.On("BeginRegistration", user, options)}
 }
 
@@ -234,8 +243,8 @@ func (_c *webAuthnServiceMock_BeginRegistration_Call) Run(run func(user webauthn
 	return _c
 }
 
-func (_c *webAuthnServiceMock_BeginRegistration_Call) Return(v *credentialCreation, v1 *sessionData, err error) *webAuthnServiceMock_BeginRegistration_Call {
-	_c.Call.Return(v, v1, err)
+func (_c *webAuthnServiceMock_BeginRegistration_Call) Return(credentialCreationMoqParam *credentialCreation, sessionDataMoqParam *sessionData, err error) *webAuthnServiceMock_BeginRegistration_Call {
+	_c.Call.Return(credentialCreationMoqParam, sessionDataMoqParam, err)
 	return _c
 }
 
@@ -281,7 +290,7 @@ type webAuthnServiceMock_CreateCredential_Call struct {
 //   - user webauthnUserInterface
 //   - session sessionData
 //   - response *parsedCredentialCreationData
-func (_e *webAuthnServiceMock_Expecter) CreateCredential(user interface{}, session interface{}, response interface{}) *webAuthnServiceMock_CreateCredential_Call {
+func (_e *webAuthnServiceMock_Expecter) CreateCredential(user any, session any, response any) *webAuthnServiceMock_CreateCredential_Call {
 	return &webAuthnServiceMock_CreateCredential_Call{Call: _e.mock.On("CreateCredential", user, session, response)}
 }
 
@@ -308,8 +317,8 @@ func (_c *webAuthnServiceMock_CreateCredential_Call) Run(run func(user webauthnU
 	return _c
 }
 
-func (_c *webAuthnServiceMock_CreateCredential_Call) Return(v *webauthnCredential, err error) *webAuthnServiceMock_CreateCredential_Call {
-	_c.Call.Return(v, err)
+func (_c *webAuthnServiceMock_CreateCredential_Call) Return(webauthnCredentialMoqParam *webauthnCredential, err error) *webAuthnServiceMock_CreateCredential_Call {
+	_c.Call.Return(webauthnCredentialMoqParam, err)
 	return _c
 }
 
@@ -355,7 +364,7 @@ type webAuthnServiceMock_ValidateLogin_Call struct {
 //   - user webauthnUserInterface
 //   - session sessionData
 //   - response *parsedCredentialAssertionData
-func (_e *webAuthnServiceMock_Expecter) ValidateLogin(user interface{}, session interface{}, response interface{}) *webAuthnServiceMock_ValidateLogin_Call {
+func (_e *webAuthnServiceMock_Expecter) ValidateLogin(user any, session any, response any) *webAuthnServiceMock_ValidateLogin_Call {
 	return &webAuthnServiceMock_ValidateLogin_Call{Call: _e.mock.On("ValidateLogin", user, session, response)}
 }
 
@@ -382,8 +391,8 @@ func (_c *webAuthnServiceMock_ValidateLogin_Call) Run(run func(user webauthnUser
 	return _c
 }
 
-func (_c *webAuthnServiceMock_ValidateLogin_Call) Return(v *webauthnCredential, err error) *webAuthnServiceMock_ValidateLogin_Call {
-	_c.Call.Return(v, err)
+func (_c *webAuthnServiceMock_ValidateLogin_Call) Return(webauthnCredentialMoqParam *webauthnCredential, err error) *webAuthnServiceMock_ValidateLogin_Call {
+	_c.Call.Return(webauthnCredentialMoqParam, err)
 	return _c
 }
 
@@ -437,7 +446,7 @@ type webAuthnServiceMock_ValidatePasskeyLogin_Call struct {
 //   - userHandler func(rawID []byte, userHandle []byte) (webauthnUserInterface, error)
 //   - session sessionData
 //   - response *parsedCredentialAssertionData
-func (_e *webAuthnServiceMock_Expecter) ValidatePasskeyLogin(userHandler interface{}, session interface{}, response interface{}) *webAuthnServiceMock_ValidatePasskeyLogin_Call {
+func (_e *webAuthnServiceMock_Expecter) ValidatePasskeyLogin(userHandler any, session any, response any) *webAuthnServiceMock_ValidatePasskeyLogin_Call {
 	return &webAuthnServiceMock_ValidatePasskeyLogin_Call{Call: _e.mock.On("ValidatePasskeyLogin", userHandler, session, response)}
 }
 
@@ -464,8 +473,8 @@ func (_c *webAuthnServiceMock_ValidatePasskeyLogin_Call) Run(run func(userHandle
 	return _c
 }
 
-func (_c *webAuthnServiceMock_ValidatePasskeyLogin_Call) Return(webauthnUserInterfaceMoqParam webauthnUserInterface, v *webauthnCredential, err error) *webAuthnServiceMock_ValidatePasskeyLogin_Call {
-	_c.Call.Return(webauthnUserInterfaceMoqParam, v, err)
+func (_c *webAuthnServiceMock_ValidatePasskeyLogin_Call) Return(webauthnUserInterfaceMoqParam webauthnUserInterface, webauthnCredentialMoqParam *webauthnCredential, err error) *webAuthnServiceMock_ValidatePasskeyLogin_Call {
+	_c.Call.Return(webauthnUserInterfaceMoqParam, webauthnCredentialMoqParam, err)
 	return _c
 }
 

@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 type SilverTestSuite struct {
@@ -38,7 +38,8 @@ var (
 		Parent: nil,
 	}
 	entityType = testutils.UserType{
-		Name: entityTypeName,
+		Handle:      entityTypeName,
+		DisplayName: "Emailuser",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type":   "string",

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -26,8 +26,14 @@ type consentStoreInterface interface {
 
 // consentStore is the default database-backed implementation of consentStoreInterface.
 type consentStore struct {
-	dbProvider   provider.DBProviderInterface
-	deploymentID string
+	dbProvider provider.DBProviderInterface
+}
+
+// scope returns the deployment id this request acts for. The id is put on the context at the
+// edge, so a request scopes by what it names; a context that never passed through the edge,
+// such as a start-up task or a background job, falls back to the configured identifier.
+func (s *consentStore) scope(ctx context.Context) string {
+	return deployment.Resolve(ctx)
 }
 
 // newConsentStore creates a new consentStore along with a transactioner that callers can use to
@@ -42,8 +48,7 @@ func newConsentStore() (consentStoreInterface, providers.Transactioner, error) {
 	}
 
 	return &consentStore{
-		dbProvider:   dbProvider,
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		dbProvider: dbProvider,
 	}, transactioner, nil
 }
 
@@ -68,7 +73,7 @@ func (s *consentStore) CreateConsent(ctx context.Context, consent *Consent) erro
 		string(consent.Status),
 		unixToNullableTime(consent.ValidityTime),
 		purposes,
-		s.deploymentID,
+		s.scope(ctx),
 		now,
 		now,
 	)
@@ -86,7 +91,7 @@ func (s *consentStore) GetConsent(ctx context.Context, id string) (*Consent, err
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, QueryGetConsentByID, id, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, QueryGetConsentByID, id, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -129,7 +134,7 @@ func (s *consentStore) UpdateConsent(ctx context.Context, consent *Consent) erro
 		unixToNullableTime(consent.ValidityTime),
 		purposes,
 		time.Now().UTC(),
-		s.deploymentID,
+		s.scope(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update consent: %w", err)
@@ -140,7 +145,7 @@ func (s *consentStore) UpdateConsent(ctx context.Context, consent *Consent) erro
 	}
 
 	if _, err := dbClient.ExecuteContext(
-		ctx, QueryDeleteConsentAuthorizations, consent.ID, s.deploymentID); err != nil {
+		ctx, QueryDeleteConsentAuthorizations, consent.ID, s.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to delete consent authorizations: %w", err)
 	}
 
@@ -154,7 +159,7 @@ func (s *consentStore) SearchConsents(ctx context.Context, filters ConsentFilter
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	query, args := buildSearchConsentsQuery(filters, s.deploymentID)
+	query, args := buildSearchConsentsQuery(filters, s.scope(ctx))
 	results, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute search query: %w", err)
@@ -194,7 +199,7 @@ func (s *consentStore) insertAuthorizations(
 		return nil
 	}
 
-	query, args := buildInsertConsentAuthorizationsQuery(consentID, authorizations, s.deploymentID)
+	query, args := buildInsertConsentAuthorizationsQuery(consentID, authorizations, s.scope(ctx))
 	if _, err := dbClient.ExecuteContext(ctx, query, args...); err != nil {
 		return fmt.Errorf("failed to create consent authorizations: %w", err)
 	}
@@ -206,7 +211,7 @@ func (s *consentStore) insertAuthorizations(
 func (s *consentStore) getAuthorizations(
 	ctx context.Context, dbClient provider.DBClientInterface, consentIDs []string,
 ) (map[string][]ConsentAuthorization, error) {
-	query, args := buildGetConsentAuthorizationsQuery(consentIDs, s.deploymentID)
+	query, args := buildGetConsentAuthorizationsQuery(consentIDs, s.scope(ctx))
 	results, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get consent authorizations: %w", err)

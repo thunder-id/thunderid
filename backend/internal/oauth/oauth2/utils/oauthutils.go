@@ -1,21 +1,74 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package utils provides utility functions for OAuth2 operations.
 package utils
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
+
+// ValidateAuthorizationDetails validates a request's authorization_details, mapping a refusal to an OAuth error.
+func ValidateAuthorizationDetails(ctx context.Context,
+	authzDetails providers.AuthorizationDetailProvider,
+	raw string) (json.RawMessage, *model.ErrorResponse) {
+	details, svcErr := authzDetails.ValidateAuthorizationDetails(ctx, raw)
+	if svcErr != nil {
+		return nil, AuthorizationDetailsErrorResponse(svcErr)
+	}
+	return details, nil
+}
+
+// PrepareAuthorizationDetails prepares a request's validated authorization_details for a flow and encodes them
+// for its runtime data. A refusal is mapped to an OAuth error; a failure to encode is returned as an error.
+// Absent details yield no details and an empty encoding.
+func PrepareAuthorizationDetails(ctx context.Context,
+	authzDetails providers.AuthorizationDetailProvider,
+	raw json.RawMessage) ([]providers.AuthorizationDetail, string, *model.ErrorResponse, error) {
+	if len(raw) == 0 {
+		return nil, "", nil, nil
+	}
+	details, svcErr := authzDetails.PrepareAuthorizationDetails(ctx, raw)
+	if svcErr != nil {
+		return nil, "", AuthorizationDetailsErrorResponse(svcErr), nil
+	}
+	encoded, err := json.Marshal(details)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	return details, string(encoded), nil, nil
+}
+
+// AuthorizationDetailsErrorResponse maps an authorization details error to an OAuth error response.
+func AuthorizationDetailsErrorResponse(svcErr *tidcommon.ServiceError) *model.ErrorResponse {
+	if svcErr.Type != tidcommon.ClientErrorType {
+		return &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to process authorization details",
+		}
+	}
+	description := SanitizeErrorDescription(svcErr.ErrorDescription.String())
+	if description == "" {
+		description = SanitizeErrorDescription(svcErr.Error.String())
+	}
+	return &model.ErrorResponse{
+		Error:            constants.ErrorInvalidAuthorizationDetails,
+		ErrorDescription: description,
+	}
+}
 
 // GetURIWithQueryParams constructs a URI with the given query parameters.
 // It validates the error code and error description according to the spec.
@@ -175,11 +228,11 @@ func ResolveScopeClaims(scope string, scopeClaimsMapping map[string][]string) []
 }
 
 // DefaultScopeClaims returns the standard OIDC scope-to-claims mapping a client starts with when
-// created without one. openid is left out: it is always granted and carries no user attributes.
+// created without one. openid and device_sso are left out: neither releases user attributes.
 func DefaultScopeClaims() map[string][]string {
 	defaults := make(map[string][]string, len(constants.StandardOIDCScopes))
 	for scope, def := range constants.StandardOIDCScopes {
-		if scope == constants.ScopeOpenID {
+		if scope == constants.ScopeOpenID || scope == constants.ScopeDeviceSSO {
 			continue
 		}
 		claims := make([]string, len(def.Claims))
@@ -256,4 +309,39 @@ func SerializeClaimsRequest(cr *model.ClaimsRequest) (string, error) {
 	}
 
 	return string(data), nil
+}
+
+// EnsureClientSubTypeAttribute selects the sub_type claim in a client's own access token attribute
+// list, returning the updated token config. Called at client creation only, so a claim removed later
+// stays removed. Selection alone enables the claim; the builder supplies its value.
+func EnsureClientSubTypeAttribute(token *providers.OAuthTokenConfig) *providers.OAuthTokenConfig {
+	if token == nil {
+		token = &providers.OAuthTokenConfig{}
+	}
+	if token.AccessToken == nil {
+		token.AccessToken = &providers.AccessTokenConfig{}
+	}
+	if token.AccessToken.ClientConfig == nil {
+		token.AccessToken.ClientConfig = &providers.AccessTokenSubConfig{}
+	}
+
+	clientConfig := token.AccessToken.ClientConfig
+	if !slices.Contains(clientConfig.Attributes, constants.ClaimSubType) {
+		clientConfig.Attributes = append(clientConfig.Attributes, constants.ClaimSubType)
+	}
+	return token
+}
+
+// IsClientHeld reports whether governance holds the client's entity at the application plane. With no
+// governance, client or entity ID the client is not held. A governance fault is a server error.
+func IsClientHeld(ctx context.Context, governance providers.IdentityGovernanceProvider,
+	client *providers.OAuthClient) (bool, *tidcommon.ServiceError) {
+	if governance == nil || client == nil || client.ID == "" {
+		return false, nil
+	}
+	decision, svcErr := governance.EvaluateAccess(ctx, client.ID, providers.AccessPlaneApplication, "")
+	if svcErr != nil {
+		return false, &tidcommon.InternalServerError
+	}
+	return !decision.Admitted, nil
 }

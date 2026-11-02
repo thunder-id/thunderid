@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -102,8 +103,9 @@ func (ts *UserAuthzTestSuite) SetupSuite() {
 
 	// ---- 2. Create user types (one per OU) ----
 	schemaOU1ID, err := testutils.CreateUserType(testutils.UserType{
-		Name: entityTypeOU1Name,
-		OUID: ts.userOU1ID,
+		Handle:      entityTypeOU1Name,
+		DisplayName: "Authz User Type Ou1",
+		OUID:        ts.userOU1ID,
 		Schema: map[string]interface{}{
 			"username":     map[string]interface{}{"type": "string"},
 			"password":     map[string]interface{}{"type": "string", "credential": true},
@@ -114,8 +116,9 @@ func (ts *UserAuthzTestSuite) SetupSuite() {
 	ts.entityTypeOU1ID = schemaOU1ID
 
 	schemaOU2ID, err := testutils.CreateUserType(testutils.UserType{
-		Name: entityTypeOU2Name,
-		OUID: ts.userOU2ID,
+		Handle:      entityTypeOU2Name,
+		DisplayName: "Authz User Type Ou2",
+		OUID:        ts.userOU2ID,
 		Schema: map[string]interface{}{
 			"display_name": map[string]interface{}{"type": "string"},
 		},
@@ -214,8 +217,11 @@ func (ts *UserAuthzTestSuite) TearDownSuite() {
 		}
 	}
 	if ts.scopedRSID != "" {
-		if err := testutils.DeleteResourceServer(ts.scopedRSID); err != nil {
-			ts.T().Logf("teardown: delete scoped resource server: %v", err)
+		// The scoped resource server owns a nested resource tree, and a plain delete is refused with
+		// RES-1006 while those resources exist. Logging that failure left the tree behind in the
+		// shared database on every run.
+		if err := testutils.DeleteResourceServerWithChildren(ts.scopedRSID); err != nil {
+			ts.T().Errorf("teardown: delete scoped resource server: %v", err)
 		}
 	}
 	for _, id := range []string{ts.targetUserOU1ID, ts.deletableUserOU1ID, ts.userMgrUserID} {
@@ -423,4 +429,72 @@ func (ts *UserAuthzTestSuite) TestDeleteUserInOtherOU() {
 
 	ts.Equal(http.StatusForbidden, resp.StatusCode,
 		"user-manager must not delete a user in a different OU")
+}
+
+// TestCreateUserByPathRequiresRootPermission pins the authorization boundary of the by-path create
+// route, which differs from the direct create above.
+//
+// `POST /users` is gated by `system:user`, so the user-manager can create in their own OU
+// (TestCreateUserInOwnOU). `POST /users/tree/{path...}` has **no entry** in the API permission table
+// (`system/security/permissions.go:244-249` lists GET, PUT and DELETE under `/users/**` but no
+// POST), and unmatched routes fall back to the **root** system permission
+// (`security/service.go:159-166`). The user-manager is therefore refused on this route for their own
+// OU as well as for OU2 — the refusal is the root-permission gate, not OU scoping.
+//
+// Both OUs are asserted deliberately. Testing only OU2 would look like a subtree-scoping test and
+// pass for the wrong reason, since the same caller is refused inside their own subtree.
+func (ts *UserAuthzTestSuite) TestCreateUserByPathRequiresRootPermission() {
+	for _, tc := range []struct {
+		name     string
+		ouHandle string
+		typeName string
+		username string
+	}{
+		{name: "own OU", ouHandle: userAuthzOU1Handle, typeName: entityTypeOU1Name,
+			username: "authz-bypath-own-ou"},
+		{name: "other OU", ouHandle: userAuthzOU2Handle, typeName: entityTypeOU2Name,
+			username: "authz-bypath-other-ou"},
+	} {
+		ts.Run(tc.name, func() {
+			payload, err := json.Marshal(map[string]interface{}{
+				"type":       tc.typeName,
+				"attributes": map[string]interface{}{"username": tc.username},
+			})
+			ts.Require().NoError(err)
+
+			resp := ts.doUser(http.MethodPost, "/users/tree/"+tc.ouHandle, payload)
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			ts.Require().NoError(err)
+			ts.Require().Equal(http.StatusForbidden, resp.StatusCode, "error body: %s", string(body))
+
+			var errResp testutils.ErrorResponse
+			ts.Require().NoError(json.Unmarshal(body, &errResp), "error body: %s", string(body))
+			ts.Equal("AUTH-4030", errResp.Code,
+				"refusal must come from the route permission gate, not from OU scoping")
+
+			ts.Equal(0, ts.countUsersByUsername(tc.username),
+				"a refused by-path create must not persist a user")
+		})
+	}
+}
+
+// countUsersByUsername counts users with the given username using the unrestricted admin client, so
+// the check is not itself subject to the scoped caller's visibility.
+func (ts *UserAuthzTestSuite) countUsersByUsername(username string) int {
+	ts.T().Helper()
+
+	req, err := http.NewRequest(http.MethodGet,
+		userAuthzServerURL+"/users?filter="+url.QueryEscape(`username eq "`+username+`"`), nil)
+	ts.Require().NoError(err)
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var listResp testutils.UserListResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+	return listResp.TotalResults
 }

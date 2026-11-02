@@ -9,6 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -20,10 +21,19 @@ func NewApplicationServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ApplicationServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ApplicationServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -39,6 +49,80 @@ type ApplicationServiceInterfaceMock_Expecter struct {
 
 func (_m *ApplicationServiceInterfaceMock) EXPECT() *ApplicationServiceInterfaceMock_Expecter {
 	return &ApplicationServiceInterfaceMock_Expecter{mock: &_m.Mock}
+}
+
+// ApplyCredentialAction provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) ApplyCredentialAction(ctx context.Context, appID string, action model.CredentialAction) (string, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID, action)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ApplyCredentialAction")
+	}
+
+	var r0 string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, model.CredentialAction) (string, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID, action)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, model.CredentialAction) string); ok {
+		r0 = returnFunc(ctx, appID, action)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, model.CredentialAction) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID, action)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_ApplyCredentialAction_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ApplyCredentialAction'
+type ApplicationServiceInterfaceMock_ApplyCredentialAction_Call struct {
+	*mock.Call
+}
+
+// ApplyCredentialAction is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - action model.CredentialAction
+func (_e *ApplicationServiceInterfaceMock_Expecter) ApplyCredentialAction(ctx any, appID any, action any) *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call {
+	return &ApplicationServiceInterfaceMock_ApplyCredentialAction_Call{Call: _e.mock.On("ApplyCredentialAction", ctx, appID, action)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call) Run(run func(ctx context.Context, appID string, action model.CredentialAction)) *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 model.CredentialAction
+		if args[2] != nil {
+			arg2 = args[2].(model.CredentialAction)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call) Return(s string, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call {
+	_c.Call.Return(s, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call) RunAndReturn(run func(ctx context.Context, appID string, action model.CredentialAction) (string, *common.ServiceError)) *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // CreateApplication provides a mock function for the type ApplicationServiceInterfaceMock
@@ -79,7 +163,7 @@ type ApplicationServiceInterfaceMock_CreateApplication_Call struct {
 // CreateApplication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - app *model.ApplicationDTO
-func (_e *ApplicationServiceInterfaceMock_Expecter) CreateApplication(ctx interface{}, app interface{}) *ApplicationServiceInterfaceMock_CreateApplication_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) CreateApplication(ctx any, app any) *ApplicationServiceInterfaceMock_CreateApplication_Call {
 	return &ApplicationServiceInterfaceMock_CreateApplication_Call{Call: _e.mock.On("CreateApplication", ctx, app)}
 }
 
@@ -111,6 +195,80 @@ func (_c *ApplicationServiceInterfaceMock_CreateApplication_Call) RunAndReturn(r
 	return _c
 }
 
+// CreateSharingPolicy provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) CreateSharingPolicy(ctx context.Context, appID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateSharingPolicy")
+	}
+
+	var r0 sharing.Policy
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID, req)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, sharing.PolicyRequest) sharing.Policy); ok {
+		r0 = returnFunc(ctx, appID, req)
+	} else {
+		r0 = ret.Get(0).(sharing.Policy)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, sharing.PolicyRequest) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID, req)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_CreateSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateSharingPolicy'
+type ApplicationServiceInterfaceMock_CreateSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// CreateSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - req sharing.PolicyRequest
+func (_e *ApplicationServiceInterfaceMock_Expecter) CreateSharingPolicy(ctx any, appID any, req any) *ApplicationServiceInterfaceMock_CreateSharingPolicy_Call {
+	return &ApplicationServiceInterfaceMock_CreateSharingPolicy_Call{Call: _e.mock.On("CreateSharingPolicy", ctx, appID, req)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_CreateSharingPolicy_Call) Run(run func(ctx context.Context, appID string, req sharing.PolicyRequest)) *ApplicationServiceInterfaceMock_CreateSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 sharing.PolicyRequest
+		if args[2] != nil {
+			arg2 = args[2].(sharing.PolicyRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_CreateSharingPolicy_Call) Return(policy sharing.Policy, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_CreateSharingPolicy_Call {
+	_c.Call.Return(policy, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_CreateSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, appID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)) *ApplicationServiceInterfaceMock_CreateSharingPolicy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DeleteApplication provides a mock function for the type ApplicationServiceInterfaceMock
 func (_mock *ApplicationServiceInterfaceMock) DeleteApplication(ctx context.Context, appID string) *common.ServiceError {
 	ret := _mock.Called(ctx, appID)
@@ -138,7 +296,7 @@ type ApplicationServiceInterfaceMock_DeleteApplication_Call struct {
 // DeleteApplication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - appID string
-func (_e *ApplicationServiceInterfaceMock_Expecter) DeleteApplication(ctx interface{}, appID interface{}) *ApplicationServiceInterfaceMock_DeleteApplication_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) DeleteApplication(ctx any, appID any) *ApplicationServiceInterfaceMock_DeleteApplication_Call {
 	return &ApplicationServiceInterfaceMock_DeleteApplication_Call{Call: _e.mock.On("DeleteApplication", ctx, appID)}
 }
 
@@ -166,6 +324,71 @@ func (_c *ApplicationServiceInterfaceMock_DeleteApplication_Call) Return(service
 }
 
 func (_c *ApplicationServiceInterfaceMock_DeleteApplication_Call) RunAndReturn(run func(ctx context.Context, appID string) *common.ServiceError) *ApplicationServiceInterfaceMock_DeleteApplication_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteSharingPolicy provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) DeleteSharingPolicy(ctx context.Context, appID string, policyID string) *common.ServiceError {
+	ret := _mock.Called(ctx, appID, policyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteSharingPolicy")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, appID, policyID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// ApplicationServiceInterfaceMock_DeleteSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteSharingPolicy'
+type ApplicationServiceInterfaceMock_DeleteSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// DeleteSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - policyID string
+func (_e *ApplicationServiceInterfaceMock_Expecter) DeleteSharingPolicy(ctx any, appID any, policyID any) *ApplicationServiceInterfaceMock_DeleteSharingPolicy_Call {
+	return &ApplicationServiceInterfaceMock_DeleteSharingPolicy_Call{Call: _e.mock.On("DeleteSharingPolicy", ctx, appID, policyID)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_DeleteSharingPolicy_Call) Run(run func(ctx context.Context, appID string, policyID string)) *ApplicationServiceInterfaceMock_DeleteSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_DeleteSharingPolicy_Call) Return(serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_DeleteSharingPolicy_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_DeleteSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, appID string, policyID string) *common.ServiceError) *ApplicationServiceInterfaceMock_DeleteSharingPolicy_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -208,7 +431,7 @@ type ApplicationServiceInterfaceMock_GetApplication_Call struct {
 // GetApplication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - appID string
-func (_e *ApplicationServiceInterfaceMock_Expecter) GetApplication(ctx interface{}, appID interface{}) *ApplicationServiceInterfaceMock_GetApplication_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) GetApplication(ctx any, appID any) *ApplicationServiceInterfaceMock_GetApplication_Call {
 	return &ApplicationServiceInterfaceMock_GetApplication_Call{Call: _e.mock.On("GetApplication", ctx, appID)}
 }
 
@@ -241,8 +464,8 @@ func (_c *ApplicationServiceInterfaceMock_GetApplication_Call) RunAndReturn(run 
 }
 
 // GetApplicationList provides a mock function for the type ApplicationServiceInterfaceMock
-func (_mock *ApplicationServiceInterfaceMock) GetApplicationList(ctx context.Context) (*model.ApplicationListResponse, *common.ServiceError) {
-	ret := _mock.Called(ctx)
+func (_mock *ApplicationServiceInterfaceMock) GetApplicationList(ctx context.Context, filters map[string]interface{}) (*model.ApplicationListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, filters)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetApplicationList")
@@ -250,18 +473,18 @@ func (_mock *ApplicationServiceInterfaceMock) GetApplicationList(ctx context.Con
 
 	var r0 *model.ApplicationListResponse
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context) (*model.ApplicationListResponse, *common.ServiceError)); ok {
-		return returnFunc(ctx)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}) (*model.ApplicationListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, filters)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context) *model.ApplicationListResponse); ok {
-		r0 = returnFunc(ctx)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}) *model.ApplicationListResponse); ok {
+		r0 = returnFunc(ctx, filters)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*model.ApplicationListResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context) *common.ServiceError); ok {
-		r1 = returnFunc(ctx)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, map[string]interface{}) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, filters)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -277,18 +500,24 @@ type ApplicationServiceInterfaceMock_GetApplicationList_Call struct {
 
 // GetApplicationList is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *ApplicationServiceInterfaceMock_Expecter) GetApplicationList(ctx interface{}) *ApplicationServiceInterfaceMock_GetApplicationList_Call {
-	return &ApplicationServiceInterfaceMock_GetApplicationList_Call{Call: _e.mock.On("GetApplicationList", ctx)}
+//   - filters map[string]interface{}
+func (_e *ApplicationServiceInterfaceMock_Expecter) GetApplicationList(ctx any, filters any) *ApplicationServiceInterfaceMock_GetApplicationList_Call {
+	return &ApplicationServiceInterfaceMock_GetApplicationList_Call{Call: _e.mock.On("GetApplicationList", ctx, filters)}
 }
 
-func (_c *ApplicationServiceInterfaceMock_GetApplicationList_Call) Run(run func(ctx context.Context)) *ApplicationServiceInterfaceMock_GetApplicationList_Call {
+func (_c *ApplicationServiceInterfaceMock_GetApplicationList_Call) Run(run func(ctx context.Context, filters map[string]interface{})) *ApplicationServiceInterfaceMock_GetApplicationList_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
+		var arg1 map[string]interface{}
+		if args[1] != nil {
+			arg1 = args[1].(map[string]interface{})
+		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -299,7 +528,83 @@ func (_c *ApplicationServiceInterfaceMock_GetApplicationList_Call) Return(applic
 	return _c
 }
 
-func (_c *ApplicationServiceInterfaceMock_GetApplicationList_Call) RunAndReturn(run func(ctx context.Context) (*model.ApplicationListResponse, *common.ServiceError)) *ApplicationServiceInterfaceMock_GetApplicationList_Call {
+func (_c *ApplicationServiceInterfaceMock_GetApplicationList_Call) RunAndReturn(run func(ctx context.Context, filters map[string]interface{}) (*model.ApplicationListResponse, *common.ServiceError)) *ApplicationServiceInterfaceMock_GetApplicationList_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetApplicationListByProject provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) GetApplicationListByProject(ctx context.Context, projectID string, filters map[string]interface{}) (*model.ApplicationListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID, filters)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetApplicationListByProject")
+	}
+
+	var r0 *model.ApplicationListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}) (*model.ApplicationListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID, filters)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}) *model.ApplicationListResponse); ok {
+		r0 = returnFunc(ctx, projectID, filters)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.ApplicationListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, map[string]interface{}) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID, filters)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_GetApplicationListByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetApplicationListByProject'
+type ApplicationServiceInterfaceMock_GetApplicationListByProject_Call struct {
+	*mock.Call
+}
+
+// GetApplicationListByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - filters map[string]interface{}
+func (_e *ApplicationServiceInterfaceMock_Expecter) GetApplicationListByProject(ctx any, projectID any, filters any) *ApplicationServiceInterfaceMock_GetApplicationListByProject_Call {
+	return &ApplicationServiceInterfaceMock_GetApplicationListByProject_Call{Call: _e.mock.On("GetApplicationListByProject", ctx, projectID, filters)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetApplicationListByProject_Call) Run(run func(ctx context.Context, projectID string, filters map[string]interface{})) *ApplicationServiceInterfaceMock_GetApplicationListByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 map[string]interface{}
+		if args[2] != nil {
+			arg2 = args[2].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetApplicationListByProject_Call) Return(applicationListResponse *model.ApplicationListResponse, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_GetApplicationListByProject_Call {
+	_c.Call.Return(applicationListResponse, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetApplicationListByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, filters map[string]interface{}) (*model.ApplicationListResponse, *common.ServiceError)) *ApplicationServiceInterfaceMock_GetApplicationListByProject_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -342,7 +647,7 @@ type ApplicationServiceInterfaceMock_GetOAuthApplication_Call struct {
 // GetOAuthApplication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - clientID string
-func (_e *ApplicationServiceInterfaceMock_Expecter) GetOAuthApplication(ctx interface{}, clientID interface{}) *ApplicationServiceInterfaceMock_GetOAuthApplication_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) GetOAuthApplication(ctx any, clientID any) *ApplicationServiceInterfaceMock_GetOAuthApplication_Call {
 	return &ApplicationServiceInterfaceMock_GetOAuthApplication_Call{Call: _e.mock.On("GetOAuthApplication", ctx, clientID)}
 }
 
@@ -411,7 +716,7 @@ type ApplicationServiceInterfaceMock_GetResourceDependencies_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *ApplicationServiceInterfaceMock_Expecter) GetResourceDependencies(ctx interface{}, resourceType interface{}, id interface{}) *ApplicationServiceInterfaceMock_GetResourceDependencies_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) GetResourceDependencies(ctx any, resourceType any, id any) *ApplicationServiceInterfaceMock_GetResourceDependencies_Call {
 	return &ApplicationServiceInterfaceMock_GetResourceDependencies_Call{Call: _e.mock.On("GetResourceDependencies", ctx, resourceType, id)}
 }
 
@@ -448,6 +753,234 @@ func (_c *ApplicationServiceInterfaceMock_GetResourceDependencies_Call) RunAndRe
 	return _c
 }
 
+// GetSharingPolicy provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) GetSharingPolicy(ctx context.Context, appID string, policyID string) (sharing.Policy, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID, policyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetSharingPolicy")
+	}
+
+	var r0 sharing.Policy
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (sharing.Policy, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID, policyID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) sharing.Policy); ok {
+		r0 = returnFunc(ctx, appID, policyID)
+	} else {
+		r0 = ret.Get(0).(sharing.Policy)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID, policyID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_GetSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetSharingPolicy'
+type ApplicationServiceInterfaceMock_GetSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// GetSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - policyID string
+func (_e *ApplicationServiceInterfaceMock_Expecter) GetSharingPolicy(ctx any, appID any, policyID any) *ApplicationServiceInterfaceMock_GetSharingPolicy_Call {
+	return &ApplicationServiceInterfaceMock_GetSharingPolicy_Call{Call: _e.mock.On("GetSharingPolicy", ctx, appID, policyID)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetSharingPolicy_Call) Run(run func(ctx context.Context, appID string, policyID string)) *ApplicationServiceInterfaceMock_GetSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetSharingPolicy_Call) Return(policy sharing.Policy, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_GetSharingPolicy_Call {
+	_c.Call.Return(policy, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, appID string, policyID string) (sharing.Policy, *common.ServiceError)) *ApplicationServiceInterfaceMock_GetSharingPolicy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListSharingPolicies provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) ListSharingPolicies(ctx context.Context, appID string, limit int, offset int) (sharing.PolicyList, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListSharingPolicies")
+	}
+
+	var r0 sharing.PolicyList
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (sharing.PolicyList, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) sharing.PolicyList); ok {
+		r0 = returnFunc(ctx, appID, limit, offset)
+	} else {
+		r0 = ret.Get(0).(sharing.PolicyList)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_ListSharingPolicies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListSharingPolicies'
+type ApplicationServiceInterfaceMock_ListSharingPolicies_Call struct {
+	*mock.Call
+}
+
+// ListSharingPolicies is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - limit int
+//   - offset int
+func (_e *ApplicationServiceInterfaceMock_Expecter) ListSharingPolicies(ctx any, appID any, limit any, offset any) *ApplicationServiceInterfaceMock_ListSharingPolicies_Call {
+	return &ApplicationServiceInterfaceMock_ListSharingPolicies_Call{Call: _e.mock.On("ListSharingPolicies", ctx, appID, limit, offset)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_ListSharingPolicies_Call) Run(run func(ctx context.Context, appID string, limit int, offset int)) *ApplicationServiceInterfaceMock_ListSharingPolicies_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ListSharingPolicies_Call) Return(policyList sharing.PolicyList, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_ListSharingPolicies_Call {
+	_c.Call.Return(policyList, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ListSharingPolicies_Call) RunAndReturn(run func(ctx context.Context, appID string, limit int, offset int) (sharing.PolicyList, *common.ServiceError)) *ApplicationServiceInterfaceMock_ListSharingPolicies_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ResolveSharingOverlay provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) ResolveSharingOverlay(ctx context.Context, appID string, ouID string) (sharing.ResolvedOverlay, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveSharingOverlay")
+	}
+
+	var r0 sharing.ResolvedOverlay
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (sharing.ResolvedOverlay, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) sharing.ResolvedOverlay); ok {
+		r0 = returnFunc(ctx, appID, ouID)
+	} else {
+		r0 = ret.Get(0).(sharing.ResolvedOverlay)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_ResolveSharingOverlay_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveSharingOverlay'
+type ApplicationServiceInterfaceMock_ResolveSharingOverlay_Call struct {
+	*mock.Call
+}
+
+// ResolveSharingOverlay is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - ouID string
+func (_e *ApplicationServiceInterfaceMock_Expecter) ResolveSharingOverlay(ctx any, appID any, ouID any) *ApplicationServiceInterfaceMock_ResolveSharingOverlay_Call {
+	return &ApplicationServiceInterfaceMock_ResolveSharingOverlay_Call{Call: _e.mock.On("ResolveSharingOverlay", ctx, appID, ouID)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_ResolveSharingOverlay_Call) Run(run func(ctx context.Context, appID string, ouID string)) *ApplicationServiceInterfaceMock_ResolveSharingOverlay_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ResolveSharingOverlay_Call) Return(resolvedOverlay sharing.ResolvedOverlay, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_ResolveSharingOverlay_Call {
+	_c.Call.Return(resolvedOverlay, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ResolveSharingOverlay_Call) RunAndReturn(run func(ctx context.Context, appID string, ouID string) (sharing.ResolvedOverlay, *common.ServiceError)) *ApplicationServiceInterfaceMock_ResolveSharingOverlay_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetDependencyRegistry provides a mock function for the type ApplicationServiceInterfaceMock
 func (_mock *ApplicationServiceInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
 	_mock.Called(r)
@@ -461,7 +994,7 @@ type ApplicationServiceInterfaceMock_SetDependencyRegistry_Call struct {
 
 // SetDependencyRegistry is a helper method to define mock.On call
 //   - r resourcedependency.Registry
-func (_e *ApplicationServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) SetDependencyRegistry(r any) *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call {
 	return &ApplicationServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
 }
 
@@ -527,7 +1060,7 @@ type ApplicationServiceInterfaceMock_UpdateApplication_Call struct {
 //   - ctx context.Context
 //   - appID string
 //   - app *model.ApplicationDTO
-func (_e *ApplicationServiceInterfaceMock_Expecter) UpdateApplication(ctx interface{}, appID interface{}, app interface{}) *ApplicationServiceInterfaceMock_UpdateApplication_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) UpdateApplication(ctx any, appID any, app any) *ApplicationServiceInterfaceMock_UpdateApplication_Call {
 	return &ApplicationServiceInterfaceMock_UpdateApplication_Call{Call: _e.mock.On("UpdateApplication", ctx, appID, app)}
 }
 
@@ -560,6 +1093,86 @@ func (_c *ApplicationServiceInterfaceMock_UpdateApplication_Call) Return(applica
 }
 
 func (_c *ApplicationServiceInterfaceMock_UpdateApplication_Call) RunAndReturn(run func(ctx context.Context, appID string, app *model.ApplicationDTO) (*model.ApplicationDTO, *common.ServiceError)) *ApplicationServiceInterfaceMock_UpdateApplication_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateSharingPolicy provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) UpdateSharingPolicy(ctx context.Context, appID string, policyID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID, policyID, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateSharingPolicy")
+	}
+
+	var r0 sharing.Policy
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID, policyID, req)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, sharing.PolicyRequest) sharing.Policy); ok {
+		r0 = returnFunc(ctx, appID, policyID, req)
+	} else {
+		r0 = ret.Get(0).(sharing.Policy)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, sharing.PolicyRequest) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID, policyID, req)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_UpdateSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateSharingPolicy'
+type ApplicationServiceInterfaceMock_UpdateSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// UpdateSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - policyID string
+//   - req sharing.PolicyRequest
+func (_e *ApplicationServiceInterfaceMock_Expecter) UpdateSharingPolicy(ctx any, appID any, policyID any, req any) *ApplicationServiceInterfaceMock_UpdateSharingPolicy_Call {
+	return &ApplicationServiceInterfaceMock_UpdateSharingPolicy_Call{Call: _e.mock.On("UpdateSharingPolicy", ctx, appID, policyID, req)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_UpdateSharingPolicy_Call) Run(run func(ctx context.Context, appID string, policyID string, req sharing.PolicyRequest)) *ApplicationServiceInterfaceMock_UpdateSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 sharing.PolicyRequest
+		if args[3] != nil {
+			arg3 = args[3].(sharing.PolicyRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_UpdateSharingPolicy_Call) Return(policy sharing.Policy, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_UpdateSharingPolicy_Call {
+	_c.Call.Return(policy, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_UpdateSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, appID string, policyID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)) *ApplicationServiceInterfaceMock_UpdateSharingPolicy_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -610,7 +1223,7 @@ type ApplicationServiceInterfaceMock_ValidateApplication_Call struct {
 // ValidateApplication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - app *model.ApplicationDTO
-func (_e *ApplicationServiceInterfaceMock_Expecter) ValidateApplication(ctx interface{}, app interface{}) *ApplicationServiceInterfaceMock_ValidateApplication_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) ValidateApplication(ctx any, app any) *ApplicationServiceInterfaceMock_ValidateApplication_Call {
 	return &ApplicationServiceInterfaceMock_ValidateApplication_Call{Call: _e.mock.On("ValidateApplication", ctx, app)}
 }
 
@@ -638,6 +1251,152 @@ func (_c *ApplicationServiceInterfaceMock_ValidateApplication_Call) Return(appli
 }
 
 func (_c *ApplicationServiceInterfaceMock_ValidateApplication_Call) RunAndReturn(run func(ctx context.Context, app *model.ApplicationDTO) (*model.ApplicationProcessedDTO, *providers.InboundAuthConfigWithSecret, *common.ServiceError)) *ApplicationServiceInterfaceMock_ValidateApplication_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateCredentialAction provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) ValidateCredentialAction(ctx context.Context, appID string, action model.CredentialAction) (*model.ApplicationArtifactProfile, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID, action)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateCredentialAction")
+	}
+
+	var r0 *model.ApplicationArtifactProfile
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, model.CredentialAction) (*model.ApplicationArtifactProfile, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID, action)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, model.CredentialAction) *model.ApplicationArtifactProfile); ok {
+		r0 = returnFunc(ctx, appID, action)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.ApplicationArtifactProfile)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, model.CredentialAction) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID, action)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_ValidateCredentialAction_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateCredentialAction'
+type ApplicationServiceInterfaceMock_ValidateCredentialAction_Call struct {
+	*mock.Call
+}
+
+// ValidateCredentialAction is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - action model.CredentialAction
+func (_e *ApplicationServiceInterfaceMock_Expecter) ValidateCredentialAction(ctx any, appID any, action any) *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call {
+	return &ApplicationServiceInterfaceMock_ValidateCredentialAction_Call{Call: _e.mock.On("ValidateCredentialAction", ctx, appID, action)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call) Run(run func(ctx context.Context, appID string, action model.CredentialAction)) *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 model.CredentialAction
+		if args[2] != nil {
+			arg2 = args[2].(model.CredentialAction)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call) Return(applicationArtifactProfile *model.ApplicationArtifactProfile, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call {
+	_c.Call.Return(applicationArtifactProfile, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call) RunAndReturn(run func(ctx context.Context, appID string, action model.CredentialAction) (*model.ApplicationArtifactProfile, *common.ServiceError)) *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateDeleteApplication provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) ValidateDeleteApplication(ctx context.Context, appID string) (*model.ApplicationArtifactProfile, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateDeleteApplication")
+	}
+
+	var r0 *model.ApplicationArtifactProfile
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*model.ApplicationArtifactProfile, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *model.ApplicationArtifactProfile); ok {
+		r0 = returnFunc(ctx, appID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.ApplicationArtifactProfile)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateDeleteApplication'
+type ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call struct {
+	*mock.Call
+}
+
+// ValidateDeleteApplication is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+func (_e *ApplicationServiceInterfaceMock_Expecter) ValidateDeleteApplication(ctx any, appID any) *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call {
+	return &ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call{Call: _e.mock.On("ValidateDeleteApplication", ctx, appID)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call) Run(run func(ctx context.Context, appID string)) *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call) Return(applicationArtifactProfile *model.ApplicationArtifactProfile, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call {
+	_c.Call.Return(applicationArtifactProfile, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call) RunAndReturn(run func(ctx context.Context, appID string) (*model.ApplicationArtifactProfile, *common.ServiceError)) *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call {
 	_c.Call.Return(run)
 	return _c
 }

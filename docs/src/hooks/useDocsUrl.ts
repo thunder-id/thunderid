@@ -20,7 +20,7 @@ import {
  *      (e.g. the footer on a `/docs/next/` page → `/docs/next`; on `/docs/v1.0.x/`
  *      → `/docs/v1.0.x`).
  *   2. The preferred version, when there is no active version (a version-less
- *      custom page such as `/sdks/`) but the reader has selected one via the
+ *      custom page such as `/sdks-and-tools/`) but the reader has selected one via the
  *      version dropdown — that choice is persisted and carries across pages.
  *   3. The latest published version (`lastVersion` in docusaurus.config.ts), as the
  *      default when neither applies (a first visit to a custom page).

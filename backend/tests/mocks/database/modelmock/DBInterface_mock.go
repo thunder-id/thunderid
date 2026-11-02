@@ -16,10 +16,19 @@ func NewDBInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *DBInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &DBInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -138,7 +147,7 @@ func (_c *DBInterfaceMock_Close_Call) RunAndReturn(run func() error) *DBInterfac
 
 // Exec provides a mock function for the type DBInterfaceMock
 func (_mock *DBInterfaceMock) Exec(query string, args ...any) (sql.Result, error) {
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, query)
 	_ca = append(_ca, args...)
 	ret := _mock.Called(_ca...)
@@ -175,9 +184,9 @@ type DBInterfaceMock_Exec_Call struct {
 // Exec is a helper method to define mock.On call
 //   - query string
 //   - args ...any
-func (_e *DBInterfaceMock_Expecter) Exec(query interface{}, args ...interface{}) *DBInterfaceMock_Exec_Call {
+func (_e *DBInterfaceMock_Expecter) Exec(query any, args ...any) *DBInterfaceMock_Exec_Call {
 	return &DBInterfaceMock_Exec_Call{Call: _e.mock.On("Exec",
-		append([]interface{}{query}, args...)...)}
+		append([]any{query}, args...)...)}
 }
 
 func (_c *DBInterfaceMock_Exec_Call) Run(run func(query string, args ...any)) *DBInterfaceMock_Exec_Call {
@@ -260,7 +269,7 @@ func (_c *DBInterfaceMock_GetSQLDB_Call) RunAndReturn(run func() *sql.DB) *DBInt
 
 // Query provides a mock function for the type DBInterfaceMock
 func (_mock *DBInterfaceMock) Query(query string, args ...any) (*sql.Rows, error) {
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, query)
 	_ca = append(_ca, args...)
 	ret := _mock.Called(_ca...)
@@ -297,9 +306,9 @@ type DBInterfaceMock_Query_Call struct {
 // Query is a helper method to define mock.On call
 //   - query string
 //   - args ...any
-func (_e *DBInterfaceMock_Expecter) Query(query interface{}, args ...interface{}) *DBInterfaceMock_Query_Call {
+func (_e *DBInterfaceMock_Expecter) Query(query any, args ...any) *DBInterfaceMock_Query_Call {
 	return &DBInterfaceMock_Query_Call{Call: _e.mock.On("Query",
-		append([]interface{}{query}, args...)...)}
+		append([]any{query}, args...)...)}
 }
 
 func (_c *DBInterfaceMock_Query_Call) Run(run func(query string, args ...any)) *DBInterfaceMock_Query_Call {

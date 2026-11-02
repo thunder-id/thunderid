@@ -1,0 +1,14 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: nuxt-auth-provider
+name: Nuxt Auth Provider
+icon: NuxtAuthLogo
+category: fullstack
+type: integration
+origin: community
+status: soon
+package:
+  name: "@sidebase/nuxt-auth (built-in)"
+description: Community {{ProductName}} provider built into @sidebase/nuxt-auth, just add your credentials.
+author: sidebase

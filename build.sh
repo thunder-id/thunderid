@@ -59,6 +59,8 @@ PRODUCT_NAME="ThunderID"
 PRODUCT_NAME_LOWERCASE="$(echo "$PRODUCT_NAME" | tr '[:upper:]' '[:lower:]')"
 BINARY_NAME="${PRODUCT_NAME_LOWERCASE}"
 PRODUCT_FOLDER=${BINARY_NAME}-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}
+CP_PRODUCT_FOLDER=${BINARY_NAME}-cp-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}
+QUICKSTART_PRODUCT_FOLDER=${BINARY_NAME}-quickstart-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}
 
 # --- Sample App Distribution details ---
 # Vanilla Sample
@@ -84,10 +86,21 @@ TARGET_DIR=target
 OUTPUT_DIR=$TARGET_DIR/out
 DIST_DIR=$TARGET_DIR/dist
 BUILD_DIR=$OUTPUT_DIR/.build
+# Where `run` stages the quickstart pack it runs from, kept between runs so the databases, key
+# material and secrets in it survive a restart. Delete it to start from scratch.
+DEV_QUICKSTART_DIR=$TARGET_DIR/dev-quickstart
+DEV_QUICKSTART_STAGE_DIR=$OUTPUT_DIR/.dev-quickstart-stage
 LOCAL_CERT_DIR=$OUTPUT_DIR/.cert
 BACKEND_BASE_DIR=backend
 BACKEND_DIR=$BACKEND_BASE_DIR/cmd/server
 REPOSITORY_DB_DIR=$BACKEND_DIR/database
+# Bootstrap resources layered onto the quickstart pack's planes, one directory per plane
+# (dp-cp is layered onto both the managed Data Plane and the Control Plane).
+QUICKSTART_DIR=quickstart
+QUICKSTART_BOOTSTRAP_DIR=$QUICKSTART_DIR/bootstrap
+CPSERVER_DIR=$BACKEND_BASE_DIR/cmd/cpserver
+CP_REPOSITORY_DB_DIR=$CPSERVER_DIR/database
+
 SERVER_SCRIPTS_DIR=$BACKEND_BASE_DIR/scripts
 SERVER_DB_SCRIPTS_DIR=$BACKEND_BASE_DIR/dbscripts
 SECURITY_DIR=config/certs
@@ -96,6 +109,15 @@ GATE_APP_DIST_DIR=apps/gate
 CONSOLE_APP_DIST_DIR=apps/console
 FRONTEND_GATE_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/gate
 FRONTEND_CONSOLE_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/console
+# The console the Control Plane serves, packaged into the same apps/console slot (see
+# prepare_cp_frontend_for_packaging): it runs every administration operation as a direct API call,
+# since a Control Plane executes no flows.
+FRONTEND_CONSOLE_CP_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/console-cp
+# The Data Plane's own admin app (Users, Agents, Groups, Roles). Every Data Plane distribution ships
+# it, in place of the full console, in the same apps/console slot (see
+# prepare_admin_console_for_packaging). Applications, connections and flows are authored on a
+# Control Plane.
+FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/admin-console
 SAMPLE_BASE_DIR=samples
 VANILLA_SAMPLE_APP_DIR=$SAMPLE_BASE_DIR/apps/vanilla-sample
 REACT_SDK_SAMPLE_APP_DIR=$SAMPLE_BASE_DIR/apps/react-sdk-sample
@@ -110,11 +132,13 @@ WAYFINDER_SAMPLE_APP_DIR=$SAMPLE_BASE_DIR/apps/wayfinder-sample
 QUICKSTART_SAMPLE_BUNDLES=(
     "wayfinder:$WAYFINDER_SAMPLE_APP_DIR/thunderid-config"
 )
-QUICKSTART_BUNDLE_STAGE_DIR="$FRONTEND_CONSOLE_APP_SOURCE_DIR/src/features/welcome/data/sample-bundles"
+QUICKSTART_BUNDLE_STAGE_DIR="$FRONTEND_CONSOLE_APP_SOURCE_DIR/src/data/sample-bundles"
 
 # Default ports
 GATE_APP_DEFAULT_PORT=5190
 CONSOLE_APP_DEFAULT_PORT=5191
+ADMIN_CONSOLE_APP_DEFAULT_PORT=5192
+CONSOLE_CP_APP_DEFAULT_PORT=5193
 DOCS_DEFAULT_PORT=3000
 
 # Integration test filters (optional)
@@ -142,7 +166,7 @@ read_config() {
         PUBLIC_HOSTNAME=""
     else
         # Try yq first (YAML parser)
-        if command -v yq >/dev/null 2>&1; then
+        if command -v yq >/dev/null 2>&1 && yq eval '.' /dev/null >/dev/null 2>&1; then
             HOSTNAME=$(yq eval '.server.hostname // "localhost"' "$config_file" 2>/dev/null)
             PORT=$(yq eval '.server.port // 8090' "$config_file" 2>/dev/null)
             HTTP_ONLY=$(yq eval '.server.http_only // false' "$config_file" 2>/dev/null)
@@ -229,9 +253,28 @@ function clean() {
     echo "================================================================"
 }
 
-function build_backend() {
-    echo "================================================================"
-    echo "Building Go backend..."
+# Prints the go build flags for a backend binary. With ENABLE_COVERAGE=true they instrument every
+# backend package not excluded by .excludecoverage, so an integration run records what it executed.
+function get_build_flags() {
+    local build_flags="-x"
+    if [ "$ENABLE_COVERAGE" = "true" ]; then
+        echo "Building with coverage instrumentation enabled..." >&2
+        cd "$BACKEND_BASE_DIR" || exit 1
+        local exclude_pattern=$(get_coverage_exclusion_pattern)
+        local coverpkg
+        if [ -n "$exclude_pattern" ]; then
+            echo "Excluding coverage for patterns: $exclude_pattern" >&2
+            coverpkg=$(go list ./... | grep -v -E "$exclude_pattern" | tr '\n' ',' | sed 's/,$//')
+        else
+            coverpkg=$(go list ./... | tr '\n' ',' | sed 's/,$//')
+        fi
+        cd "$SCRIPT_DIR" || exit 1
+        build_flags="$build_flags -cover -coverpkg=$coverpkg"
+    fi
+    echo "$build_flags"
+}
+
+function compile_backend() {
     mkdir -p "$BUILD_DIR"
 
     # Set binary name with .exe extension for Windows
@@ -240,31 +283,55 @@ function build_backend() {
         output_binary="${BINARY_NAME}.exe"
     fi
 
-    # Check if coverage build is requested via ENABLE_COVERAGE environment variable
-    local build_flags="-x"
-    if [ "$ENABLE_COVERAGE" = "true" ]; then
-        echo "Building with coverage instrumentation enabled..."
-        # Build coverage package list
-        cd "$BACKEND_BASE_DIR" || exit 1
-        local exclude_pattern=$(get_coverage_exclusion_pattern)
-        local coverpkg
-        if [ -n "$exclude_pattern" ]; then
-            echo "Excluding coverage for patterns: $exclude_pattern"
-            coverpkg=$(go list ./... | grep -v -E "$exclude_pattern" | tr '\n' ',' | sed 's/,$//')
-        else
-            coverpkg=$(go list ./... | tr '\n' ',' | sed 's/,$//')
-        fi
-        cd "$SCRIPT_DIR" || exit 1
-        build_flags="$build_flags -cover -coverpkg=$coverpkg"
-    fi
+    local build_flags
+    build_flags=$(get_build_flags)
 
     GOOS=$GO_OS GOARCH=$GO_ARCH CGO_ENABLED=0 go build -C "$BACKEND_BASE_DIR" \
     $build_flags -ldflags "-X \"main.version=$VERSION\" \
     -X \"main.buildDate=$$(date -u '+%Y-%m-%d %H:%M:%S UTC')\"" \
     -o "../$BUILD_DIR/$output_binary" ./cmd/server
+}
+
+function build_backend() {
+    echo "================================================================"
+    echo "Building Go backend..."
+    compile_backend
 
     echo "Initializing databases..."
     initialize_databases true
+    echo "================================================================"
+}
+
+function compile_cp_backend() {
+    mkdir -p "$BUILD_DIR"
+
+    # The Control Plane ships alongside the all-in-one server rather than replacing it, so it takes
+    # its own binary name.
+    local output_binary="${BINARY_NAME}-cp"
+    if [ "$GO_OS" = "windows" ]; then
+        output_binary="${BINARY_NAME}-cp.exe"
+    fi
+
+    # Instrumented like the all-in-one server when ENABLE_COVERAGE=true, so the Control Plane
+    # integration suite records what it executed.
+    local build_flags
+    build_flags=$(get_build_flags)
+
+    GOOS=$GO_OS GOARCH=$GO_ARCH CGO_ENABLED=0 go build -C "$BACKEND_BASE_DIR" \
+    $build_flags -ldflags "-X \"main.version=$VERSION\" \
+    -X \"main.buildDate=$(date -u '+%Y-%m-%d %H:%M:%S UTC')\"" \
+    -o "../$BUILD_DIR/$output_binary" ./cmd/cpserver
+
+    echo "Control Plane binary: $BUILD_DIR/$output_binary"
+}
+
+function build_cp_backend() {
+    echo "================================================================"
+    echo "Building Go Control Plane backend..."
+    compile_cp_backend
+
+    echo "Initializing Control Plane databases..."
+    initialize_cp_databases true
     echo "================================================================"
 }
 
@@ -312,6 +379,56 @@ function initialize_databases() {
     done
 
     echo "SQLite database initialization complete."
+    echo "================================================================"
+}
+
+# initialize_cp_databases is initialize_databases scoped to the datasources the Control Plane uses:
+# configuration and entities, plus the runtime persistent database that holds entity runtime state,
+# which entity and group management read. It issues no tokens, so it has no transient datastore.
+function initialize_cp_databases() {
+    echo "================================================================"
+    local override=$1
+    if [[ -z "$override" ]]; then
+        override=false
+    fi
+
+    echo "Initializing Control Plane SQLite databases..."
+
+    mkdir -p "$CP_REPOSITORY_DB_DIR"
+
+    db_files=("configdb.db" "entitydb.db" "runtime_persistent.db")
+    script_paths=("configdb/sqlite.sql" "entitydb/sqlite.sql" "runtime_persistent/sqlite.sql")
+
+    for ((i = 0; i < ${#db_files[@]}; i++)); do
+        db_file="${db_files[$i]}"
+        script_rel_path="${script_paths[$i]}"
+        db_path="$CP_REPOSITORY_DB_DIR/$db_file"
+        script_path="$SERVER_DB_SCRIPTS_DIR/$script_rel_path"
+
+        if [[ -f "$script_path" ]]; then
+            if [[ -f "$db_path" ]]; then
+                if $override; then
+                    echo " - Removing existing $db_file as override is true"
+                    rm "$db_path"
+                else
+                    echo " ! Skipping $db_file: DB already exists. Delete the existing and re-run to recreate."
+                    continue
+                fi
+            fi
+
+            echo " - Creating $db_file using $script_path"
+            sqlite3 "$db_path" < "$script_path"
+            sqlite3 "$db_path" "PRAGMA journal_mode=WAL;"
+            if [ $? -ne 0 ]; then
+                echo "Failed to enable WAL mode for $db_file"
+                exit 1
+            fi
+        else
+            echo " ! Skipping $db_file: SQL script not found at $script_path"
+        fi
+    done
+
+    echo "Control Plane SQLite database initialization complete."
     echo "================================================================"
 }
 
@@ -367,14 +484,20 @@ function test_i18n_extractor() {
 }
 
 function lint_cli() {
-    local golangci_lint="$SCRIPT_DIR/backend/bin/tools/golangci-lint"
+    # tools/cli is a separate Go module with its own Go directive, and golangci-lint refuses to
+    # run when the Go it was built with is older than the module it is linting. The CLI therefore
+    # uses a linter installed into its own bin directory with its own toolchain, rather than the
+    # backend's binary. `make lint_cli` installs it.
+    local golangci_lint="$SCRIPT_DIR/tools/cli/bin/tools/golangci-lint"
     echo "Linting CLI tool..."
     cd "$SCRIPT_DIR/tools/cli" && "$golangci_lint" run ./...
     cd "$SCRIPT_DIR" || exit 1
 }
 
 function lint_i18n_extractor() {
-    local golangci_lint="$SCRIPT_DIR/backend/bin/tools/golangci-lint"
+    # Its own linter, not the backend's: see the note in lint_cli. `make tools_lint_i18n_extractor`
+    # installs it.
+    local golangci_lint="$SCRIPT_DIR/tools/i18n-extractor/bin/tools/golangci-lint"
     echo "Linting i18n-extractor..."
     cd "$SCRIPT_DIR/tools/i18n-extractor" && "$golangci_lint" run ./...
     cd "$SCRIPT_DIR" || exit 1
@@ -467,6 +590,48 @@ function prepare_backend_for_packaging() {
     # Key material is not generated into the distribution; setup.sh generates it per deployment.
 }
 
+# prepare_cp_backend_for_packaging mirrors prepare_backend_for_packaging for the Control Plane
+# binary. It reuses the data-plane's bootstrap resources: every resource type they declare is
+# wired into cpserver's own registerServices, so the same content imports cleanly there too.
+function prepare_cp_backend_for_packaging() {
+    echo "================================================================"
+    echo "Copying Control Plane backend artifacts..."
+
+    local binary_name="${BINARY_NAME}-cp"
+    if [ "$GO_OS" = "windows" ]; then
+        binary_name="${BINARY_NAME}-cp.exe"
+    fi
+
+    cp "$BUILD_DIR/$binary_name" "$DIST_DIR/$CP_PRODUCT_FOLDER/"
+    cp "$CPSERVER_DIR/deployment.yaml" "$DIST_DIR/$CP_PRODUCT_FOLDER/"
+    # config/default.json is shared across both binaries; take it from the data plane's copy.
+    cp -r "$BACKEND_DIR/config" "$DIST_DIR/$CP_PRODUCT_FOLDER/"
+    if [ -d "$CP_REPOSITORY_DB_DIR" ]; then
+        cp -r "$CP_REPOSITORY_DB_DIR" "$DIST_DIR/$CP_PRODUCT_FOLDER/"
+    fi
+    cp "$VERSION_FILE" "$DIST_DIR/$CP_PRODUCT_FOLDER/"
+    cp -r "$SERVER_SCRIPTS_DIR" "$DIST_DIR/$CP_PRODUCT_FOLDER/"
+    cp -r "$SERVER_DB_SCRIPTS_DIR" "$DIST_DIR/$CP_PRODUCT_FOLDER/"
+    mkdir -p "$DIST_DIR/$CP_PRODUCT_FOLDER/$SECURITY_DIR"
+    # Never ship key material: strip any dev certs/keys that "cp -r config" above may have copied in.
+    rm -f "$DIST_DIR/$CP_PRODUCT_FOLDER/$SECURITY_DIR"/*.cert "$DIST_DIR/$CP_PRODUCT_FOLDER/$SECURITY_DIR"/*.key
+    # Ship an empty config/secrets directory so a named volume mounted there inherits the runtime
+    # user's ownership instead of being created as root. The Control Plane has no Direct Auth
+    # Secret concept of its own (that gates a data-plane-only endpoint), so unlike the data plane's
+    # packaging this clears the directory outright rather than stripping one named file: nothing
+    # that "cp -r config" above may have copied in belongs here.
+    rm -rf "$DIST_DIR/$CP_PRODUCT_FOLDER/config/secrets"
+    mkdir -p "$DIST_DIR/$CP_PRODUCT_FOLDER/config/secrets"
+
+    # Reuse the data plane's bootstrap directory as-is (see function comment above).
+    echo "Copying bootstrap scripts..."
+    cp -r "$BACKEND_DIR/bootstrap" "$DIST_DIR/$CP_PRODUCT_FOLDER/"
+    # Never ship the dev-only CORS seed that `run` stages into the source bootstrap dir.
+    rm -f "$DIST_DIR/$CP_PRODUCT_FOLDER/bootstrap/03-dev-server-configurations.yaml"
+
+    # Key material is not generated into the distribution; setup-cp.sh generates it per deployment.
+}
+
 function prepare_frontend_for_packaging() {
     echo "================================================================"
     echo "Copying frontend artifacts..."
@@ -492,6 +657,45 @@ function prepare_frontend_for_packaging() {
         shopt -u dotglob
     else
         echo "Warning: Console app build output not found at $FRONTEND_CONSOLE_APP_SOURCE_DIR/dist"
+    fi
+
+    echo "================================================================"
+}
+
+# prepare_admin_console_for_packaging replaces the full console in the Data Plane folder named by
+# $1 with the admin console (Users, Agents, Groups, Roles). Applications, connections, flows and
+# roles are authored on a Control Plane, so a Data Plane only needs what manages its own local
+# identity data.
+function prepare_admin_console_for_packaging() {
+    local pack_dir="$1"
+    if [ ! -d "$FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR/dist" ]; then
+        echo "Warning: Admin Console build output not found at $FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR/dist"
+        return
+    fi
+    echo "Replacing the Console with the Admin Console in $pack_dir..."
+    rm -rf "${pack_dir:?}/$CONSOLE_APP_DIST_DIR"
+    mkdir -p "$pack_dir/$CONSOLE_APP_DIST_DIR"
+    shopt -s dotglob
+    cp -r "$FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR/dist/"* "$pack_dir/$CONSOLE_APP_DIST_DIR"
+    shopt -u dotglob
+}
+
+# prepare_cp_frontend_for_packaging copies only the console app: the Control Plane serves no
+# login/registration traffic, so cpserver's own static file handlers mount no gate app to match.
+# It ships the Control Plane console, which runs every operation as a direct API call.
+function prepare_cp_frontend_for_packaging() {
+    echo "================================================================"
+    echo "Copying Control Plane frontend artifacts..."
+
+    mkdir -p "$DIST_DIR/$CP_PRODUCT_FOLDER/$CONSOLE_APP_DIST_DIR"
+
+    if [ -d "$FRONTEND_CONSOLE_CP_APP_SOURCE_DIR/dist" ]; then
+        echo "Copying Control Plane console build output..."
+        shopt -s dotglob
+        cp -r "$FRONTEND_CONSOLE_CP_APP_SOURCE_DIR/dist/"* "$DIST_DIR/$CP_PRODUCT_FOLDER/$CONSOLE_APP_DIST_DIR"
+        shopt -u dotglob
+    else
+        echo "Warning: Control Plane console build output not found at $FRONTEND_CONSOLE_CP_APP_SOURCE_DIR/dist"
     fi
 
     echo "================================================================"
@@ -525,6 +729,7 @@ function package() {
 
     prepare_frontend_for_packaging
     prepare_backend_for_packaging
+    prepare_admin_console_for_packaging "$DIST_DIR/$PRODUCT_FOLDER"
 
     # Copy the appropriate startup and setup scripts based on the target OS
     if [ "$GO_OS" = "windows" ]; then
@@ -544,6 +749,312 @@ function package() {
     rm -f "$DIST_DIR/$PRODUCT_FOLDER.zip"
     (cd "$DIST_DIR" && find "$PRODUCT_FOLDER" | sort | zip "$PRODUCT_FOLDER.zip" -@)
     rm -rf "${DIST_DIR:?}/$PRODUCT_FOLDER" "$BUILD_DIR"
+    echo "================================================================"
+}
+
+# package_cp mirrors package() for the Control Plane: a ready-to-run distribution with its own
+# start-cp.sh/setup-cp.sh rather than the data plane's start.sh/setup.sh, since the two bind
+# different default ports and the Control Plane has no Direct Auth Secret to configure.
+function package_cp() {
+    echo "================================================================"
+    echo "Packaging Control Plane backend & frontend artifacts..."
+
+    mkdir -p "$DIST_DIR/$CP_PRODUCT_FOLDER"
+
+    prepare_cp_frontend_for_packaging
+    prepare_cp_backend_for_packaging
+
+    if [ "$GO_OS" = "windows" ]; then
+        echo "Including Windows scripts (start-cp.ps1, setup-cp.ps1)..."
+        cp -r "start-cp.ps1" "$DIST_DIR/$CP_PRODUCT_FOLDER"
+        cp -r "setup-cp.ps1" "$DIST_DIR/$CP_PRODUCT_FOLDER"
+    else
+        echo "Including Unix scripts (start-cp.sh, setup-cp.sh)..."
+        cp -r "start-cp.sh" "$DIST_DIR/$CP_PRODUCT_FOLDER"
+        cp -r "setup-cp.sh" "$DIST_DIR/$CP_PRODUCT_FOLDER"
+        chmod +x "$DIST_DIR/$CP_PRODUCT_FOLDER/start-cp.sh"
+        chmod +x "$DIST_DIR/$CP_PRODUCT_FOLDER/setup-cp.sh"
+    fi
+
+    echo "Creating zip file..."
+    rm -f "$DIST_DIR/$CP_PRODUCT_FOLDER.zip"
+    (cd "$DIST_DIR" && find "$CP_PRODUCT_FOLDER" | sort | zip "$CP_PRODUCT_FOLDER.zip" -@)
+    # $BUILD_DIR is deliberately left in place, unlike package(): it is what makes `package_cp`
+    # useful on its own (re-zip after editing start-cp.sh/setup-cp.sh without recompiling).
+    rm -rf "${DIST_DIR:?}/$CP_PRODUCT_FOLDER"
+    echo "================================================================"
+}
+
+# The quickstart runs three deployments, not two: the Control Plane's own sign-in is kept
+# separate from the Data Plane it manages, so logging into the Control Plane never depends on
+# the one deployment it also pushes applications/connections/roles/flows to. auth-dp is a
+# second, otherwise-ordinary Data Plane build whose only job is backing that sign-in (its own
+# Admin Console, its own admin user); dp remains the "managed" one the gateway bootstrap below
+# registers and the push dispatcher targets.
+QUICKSTART_AUTH_DP_PORT=8091
+QUICKSTART_CP_PORT=8095
+QUICKSTART_DP_PORT=8090
+
+# assert_patched fails the build when a quickstart patch below did not land. Each patch is a
+# sed or awk that silently does nothing when its anchor is missing, which would otherwise ship a
+# pack that cannot sign in.
+function assert_patched() {
+    if ! grep -qF -- "$2" "$1"; then
+        echo "Quickstart patch did not apply: expected '$2' in $1"
+        exit 1
+    fi
+}
+
+# strip_console_application drops the default CONSOLE application from a plane's copy of
+# 01-default-resources.yaml. Documents are split on "---"; the one declaring clientId CONSOLE is
+# skipped.
+function strip_console_application() {
+    local plane_dir="$1"
+    awk '
+        function flush() { if (doc != "" && doc !~ /clientId: CONSOLE\n/) printf "%s", doc; doc = "" }
+        /^---$/ { flush() }
+        { doc = doc $0 "\n" }
+        END { flush() }
+    ' "$plane_dir/bootstrap/01-default-resources.yaml" > "$plane_dir/bootstrap/01-default-resources.yaml.tmp"
+    mv "$plane_dir/bootstrap/01-default-resources.yaml.tmp" "$plane_dir/bootstrap/01-default-resources.yaml"
+}
+
+# rename_quickstart_service_desk_admin makes a plane's default resources create the quickstart's
+# Service Desk Admin instead of the default admin: an account authored on the Control Plane and
+# synced to the Data Plane, where it signs into the Admin Console. It is applied to the Control Plane
+# and the Data Plane alike, so the Data Plane holds the account from the start and the Control
+# Plane's copy, the same resource under the same ID, arrives on the first sync unchanged.
+#
+# The account gets a group and role of its own, under IDs of their own. auth-dp keeps the default
+# admin, group and role (the operator who signs into the Control Plane console), and the Control
+# Plane never holds that user, so nothing here shares an ID with it. The email follows the username
+# the pack is started with.
+function rename_quickstart_service_desk_admin() {
+    local plane_dir="$1"
+    sed -i.bak \
+        -e 's#01900000-0000-7000-8000-000000000030#01900000-0000-7000-8000-0000000000f3#g' \
+        -e 's#01900000-0000-7000-8000-000000000040#01900000-0000-7000-8000-0000000000f4#g' \
+        -e 's#01900000-0000-7000-8000-000000000050#01900000-0000-7000-8000-0000000000f5#g' \
+        -e 's#^name: Administrators$#name: Service Desk Administrators#' \
+        -e 's#^name: Administrator$#name: Service Desk Administrator#' \
+        -e 's#^description: System administrators group$#description: Administrators of the service desk#' \
+        -e 's#^description: System administrator role with full permissions$#description: Service desk administrator role with full permissions#' \
+        -e 's#^  email: admin@example.com$#  email: "{{ .ADMIN_USERNAME }}@example.com"#' \
+        -e 's#^  name: Administrator$#  name: Service Desk Admin#' \
+        -e 's#^  given_name: Admin$#  given_name: Service Desk#' \
+        -e 's#^  family_name: User$#  family_name: Admin#' \
+        "$plane_dir/bootstrap/01-default-resources.yaml"
+    rm -f "$plane_dir/bootstrap/01-default-resources.yaml.bak"
+}
+
+# stage_quickstart_pack nests a full auth-only DP pack, a full managed DP pack, and a full CP pack
+# under one folder, pre-wired together: the CP copy's bootstrap gains one extra resource that
+# registers the managed DP as a gateway with a key quickstart/setup.sh generates (which also makes
+# the managed DP trust that key's digest), and the CP copy authenticates against auth-dp instead. Assumes
+# build_backend and build_cp_backend already ran (their binaries are read from $BUILD_DIR, which
+# neither of their own dispatch cases delete before this can run in the same invocation). It
+# leaves the staged folder at $DIST_DIR/$QUICKSTART_PRODUCT_FOLDER for package_quickstart to zip, or
+# for `run` to run from.
+function stage_quickstart_pack() {
+    # A staging directory left behind by an interrupted previous run (the final rm -rf below
+    # never ran) must not bleed into this one: nesting three plane types here makes a stale
+    # auth-dp-only file surviving into the dp copy, or vice versa, an easy mistake to miss.
+    rm -rf "${DIST_DIR:?}/$QUICKSTART_PRODUCT_FOLDER"
+    mkdir -p "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/auth-dp" \
+        "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/dp" "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/cp"
+
+    # Reuse the existing per-plane packaging functions verbatim, by pointing the product-folder
+    # globals they read at the quickstart's nested auth-dp/, dp/ and cp/ subfolders instead of
+    # their own top-level folders, then restoring them so a later package()/package_cp() in the
+    # same process is unaffected. auth-dp and dp are both ordinary Data Plane builds, so the same
+    # DP packaging functions run twice, once per folder.
+    local saved_dp_folder="$PRODUCT_FOLDER"
+    local saved_cp_folder="$CP_PRODUCT_FOLDER"
+
+    PRODUCT_FOLDER="$QUICKSTART_PRODUCT_FOLDER/auth-dp"
+    prepare_frontend_for_packaging
+    prepare_backend_for_packaging
+
+    PRODUCT_FOLDER="$QUICKSTART_PRODUCT_FOLDER/dp"
+    prepare_frontend_for_packaging
+    prepare_backend_for_packaging
+    prepare_admin_console_for_packaging "$DIST_DIR/$PRODUCT_FOLDER"
+
+    CP_PRODUCT_FOLDER="$QUICKSTART_PRODUCT_FOLDER/cp"
+    prepare_cp_frontend_for_packaging
+    prepare_cp_backend_for_packaging
+
+    PRODUCT_FOLDER="$saved_dp_folder"
+    CP_PRODUCT_FOLDER="$saved_cp_folder"
+
+    local auth_dp_dir="$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/auth-dp"
+    local dp_dir="$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/dp"
+    local cp_dir="$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/cp"
+
+    # Each plane's own setup/start scripts: prepare_*_for_packaging only stages the binary and its
+    # supporting files, the same way package()/package_cp() add these separately. Only setup.sh and start.sh
+    # are invoked directly in this pack, but they shell out to these per-plane scripts in turn.
+    if [ "$GO_OS" = "windows" ]; then
+        cp "start.ps1" "setup.ps1" "$auth_dp_dir/"
+        cp "start.ps1" "setup.ps1" "$dp_dir/"
+        cp "start-cp.ps1" "setup-cp.ps1" "$cp_dir/"
+    else
+        cp -r "start.sh" "setup.sh" "$auth_dp_dir/"
+        chmod +x "$auth_dp_dir/start.sh" "$auth_dp_dir/setup.sh"
+        cp -r "start.sh" "setup.sh" "$dp_dir/"
+        chmod +x "$dp_dir/start.sh" "$dp_dir/setup.sh"
+        cp -r "start-cp.sh" "setup-cp.sh" "$cp_dir/"
+        chmod +x "$cp_dir/start-cp.sh" "$cp_dir/setup-cp.sh"
+    fi
+
+    # Layer the quickstart-only gateway bootstrap resource onto the CP copy alone: the standalone
+    # CP pack must never see it, since there is no known DP to point at there.
+    cp "$QUICKSTART_BOOTSTRAP_DIR/cp"/*.yaml "$cp_dir/bootstrap/"
+
+    # Layer the quickstart-only CORS allowlist onto auth-dp alone: it is the one the Control
+    # Plane's console calls directly from the browser (its /oauth2/token, discovery, and similar
+    # endpoints). The managed dp is never called from the Control Plane's browser session, so it
+    # needs no such allowlist, and the standalone DP pack must never see this file either way,
+    # since there is no known Control Plane console origin to allow there.
+    cp "$QUICKSTART_BOOTSTRAP_DIR/auth-dp"/*.yaml "$auth_dp_dir/bootstrap/"
+
+    # No plane in this pack uses the default CONSOLE application: auth-dp only signs operators
+    # into the Control Plane's console, so it carries just that console's own client
+    # (04-quickstart-cp-console.yaml above) and serves no console UI; the Control Plane's console
+    # signs in through auth-dp; and the managed dp's admin console has its own ADMIN_CONSOLE
+    # client. It is dropped from every bootstrap, so it appears nowhere.
+    strip_console_application "$auth_dp_dir"
+    strip_console_application "$dp_dir"
+    strip_console_application "$cp_dir"
+
+    rename_quickstart_service_desk_admin "$dp_dir"
+    rename_quickstart_service_desk_admin "$cp_dir"
+
+    # The Control Plane's console signs in through auth-dp as a trusted issuer, and asks for a token
+    # for the Control Plane's own URL (the RFC 8707 "resource" parameter). auth-dp refuses a resource
+    # no resource server is registered for, so its System resource server, whose permissions the
+    # admin role already holds, is identified by that URL instead of the default Data Plane one.
+    sed -i.bak "s#^identifier: https://localhost:8090/mcp\$#identifier: https://localhost:$QUICKSTART_CP_PORT#" \
+        "$auth_dp_dir/bootstrap/01-default-resources.yaml"
+    rm -f "$auth_dp_dir/bootstrap/01-default-resources.yaml.bak"
+    rm -rf "${auth_dp_dir:?}/$CONSOLE_APP_DIST_DIR"
+
+    # Layer the Data Plane's own admin console application onto the managed dp and the cp. It is
+    # the same resource, with the same fixed ID, on both: the cp is where it is administered and
+    # synced from, and the dp needs it to exist before the first sync so its console can sign in.
+    cp "$QUICKSTART_BOOTSTRAP_DIR/dp-cp"/*.yaml "$dp_dir/bootstrap/"
+    cp "$QUICKSTART_BOOTSTRAP_DIR/dp-cp"/*.yaml "$cp_dir/bootstrap/"
+
+    # The managed dp's admin console signs in with its own ADMIN_CONSOLE client rather than the
+    # CONSOLE one every other copy of this app (auth-dp, a standalone Data Plane) uses.
+    sed -i.bak "s/client_id: 'CONSOLE'/client_id: 'ADMIN_CONSOLE'/" "$dp_dir/$CONSOLE_APP_DIST_DIR/config.js"
+    rm -f "$dp_dir/$CONSOLE_APP_DIST_DIR/config.js.bak"
+
+    # auth-dp runs on its own port, distinct from the managed dp it shares a generated
+    # certificate and signing keys with (see quickstart/setup.sh). Patched into this copy of
+    # deployment.yaml only — the checked-in source at backend/cmd/server/deployment.yaml is never
+    # touched, and the managed dp copy keeps the default port untouched.
+    awk -v port="$QUICKSTART_AUTH_DP_PORT" '
+        { gsub(/^  port: 8090$/, "  port: " port); print }
+    ' "$auth_dp_dir/deployment.yaml" > "$auth_dp_dir/deployment.yaml.tmp"
+    mv "$auth_dp_dir/deployment.yaml.tmp" "$auth_dp_dir/deployment.yaml"
+
+    # The CP issues no tokens of its own; it validates a caller's bearer token by comparing its
+    # iss claim to its own configured jwt.issuer, then verifying the signature with its own
+    # loaded signing keys (see backend/internal/system/security/jwt_authenticator.go). Since the
+    # CP and auth-dp here share one signing key (copied alongside the certificate below) and
+    # auth-dp is what actually issues the Control Plane's tokens, the CP's copy of deployment.yaml
+    # is patched to claim auth-dp's issuer as its own — otherwise an operator has a running
+    # Console with no way to sign into it.
+    awk -v port="$QUICKSTART_AUTH_DP_PORT" '
+        { print }
+        /^jwt:/ { print "    issuer: \"https://localhost:" port "\"" }
+    ' "$cp_dir/deployment.yaml" > "$cp_dir/deployment.yaml.tmp"
+    mv "$cp_dir/deployment.yaml.tmp" "$cp_dir/deployment.yaml"
+
+    # The CP Console has no login of its own to redirect to (the backend above validates tokens,
+    # it does not mint them), so its config.js is patched, in this copy only, with a trusted_issuer
+    # block naming auth-dp: the console SDK then sends the actual /oauth2/authorize and
+    # /oauth2/token calls there, while every management-API call it makes (applications, roles,
+    # users, ...) is automatically repointed back to wherever the console itself is served from —
+    # see frontend/packages/contexts/src/Config/ConfigProvider.tsx and withConfig.tsx. Inserted
+    # right before the file's closing "};" so it lands inside the top-level config object.
+    awk -v port="$QUICKSTART_AUTH_DP_PORT" '
+        /^};$/ {
+            print "  trusted_issuer: {"
+            print "    hostname: \"localhost\","
+            print "    port: " port ","
+            print "    http_only: false,"
+            print "    client_id: \"CP_CONSOLE\","
+            print "  },"
+        }
+        { print }
+    ' "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js" > "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js.tmp"
+    mv "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js.tmp" "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js"
+
+    # The browser enforces the CP's own Content-Security-Policy, not auth-dp's, on every fetch the
+    # console page makes — including the cross-origin token exchange the trusted_issuer config
+    # above now sends to auth-dp. The shared csp.yaml's default connect-src only allows the page's
+    # own origin plus thunderid.dev, so without this the browser blocks that fetch outright
+    # (visible as a CSP console error, not an API error). Patched into this copy only, right after
+    # the one other allowed connect-src entry.
+    awk -v port="$QUICKSTART_AUTH_DP_PORT" '
+        { print }
+        /"https:\/\/thunderid\.dev"/ { print "          - \"https://localhost:" port "\"" }
+    ' "$cp_dir/config/resources/server_configs/csp.yaml" > "$cp_dir/config/resources/server_configs/csp.yaml.tmp"
+    mv "$cp_dir/config/resources/server_configs/csp.yaml.tmp" "$cp_dir/config/resources/server_configs/csp.yaml"
+
+    # Turns on zero-touch propagation for this pack alone: a write on the Control Plane console
+    # automatically captures a configuration version and applies it to the managed Data Plane,
+    # instead of requiring an operator to call POST /configuration-versions and
+    # POST /gateways/{id}/apply by hand. Off everywhere else (gateway.auto_apply defaults to
+    # false), since a production control plane administering several gateways generally wants to
+    # keep Capture/Apply a deliberate, reviewable action. CP's deployment.yaml has no existing
+    # "gateway:" block to patch into, so this is a plain append, not an anchor-insert.
+    #
+    # allow_private_addresses lets the Control Plane register and reach the managed Data Plane on
+    # localhost, which it refuses by default: a gateway is otherwise reached on public addresses only.
+    {
+        echo ""
+        echo "gateway:"
+        echo "  auto_apply: true"
+        echo "  allow_private_addresses: true"
+    } >> "$cp_dir/deployment.yaml"
+
+    assert_patched "$auth_dp_dir/bootstrap/01-default-resources.yaml" "identifier: https://localhost:$QUICKSTART_CP_PORT"
+    assert_patched "$auth_dp_dir/deployment.yaml" "port: $QUICKSTART_AUTH_DP_PORT"
+    assert_patched "$dp_dir/bootstrap/01-default-resources.yaml" "Service Desk Administrators"
+    assert_patched "$cp_dir/bootstrap/01-default-resources.yaml" "Service Desk Administrators"
+    assert_patched "$dp_dir/$CONSOLE_APP_DIST_DIR/config.js" "client_id: 'ADMIN_CONSOLE'"
+    assert_patched "$dp_dir/deployment.yaml" "  security:"
+    assert_patched "$cp_dir/deployment.yaml" "issuer: \"https://localhost:$QUICKSTART_AUTH_DP_PORT\""
+    assert_patched "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js" "trusted_issuer"
+    assert_patched "$cp_dir/config/resources/server_configs/csp.yaml" "https://localhost:$QUICKSTART_AUTH_DP_PORT"
+
+    if [ "$GO_OS" = "windows" ]; then
+        echo "Including orchestration scripts (setup.ps1, start.ps1)..."
+        cp "$QUICKSTART_DIR/setup.ps1" "$QUICKSTART_DIR/start.ps1" "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/"
+        cp "$QUICKSTART_DIR/bootstrap.ps1" "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/quickstart-bootstrap.ps1"
+    else
+        echo "Including orchestration scripts (setup.sh, start.sh)..."
+        cp "$QUICKSTART_DIR/setup.sh" "$QUICKSTART_DIR/start.sh" "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/"
+        cp "$QUICKSTART_DIR/bootstrap.sh" "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/quickstart-bootstrap.sh"
+        chmod +x "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/setup.sh" "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/start.sh"
+    fi
+    cp "$VERSION_FILE" "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/"
+}
+
+# package_quickstart zips the staged quickstart pack. See stage_quickstart_pack.
+function package_quickstart() {
+    echo "================================================================"
+    echo "Packaging quickstart (Control Plane + Data Plane) distribution..."
+
+    stage_quickstart_pack
+
+    echo "Creating zip file..."
+    rm -f "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER.zip"
+    (cd "$DIST_DIR" && find "$QUICKSTART_PRODUCT_FOLDER" | sort | zip "$QUICKSTART_PRODUCT_FOLDER.zip" -@)
+    rm -rf "${DIST_DIR:?}/$QUICKSTART_PRODUCT_FOLDER" "$BUILD_DIR"
     echo "================================================================"
 }
 
@@ -994,88 +1505,242 @@ function ensure_direct_auth_secret_file() {
     echo "================================================================"
 }
 
-function run() {
+# kill_dev_port frees a TCP port still held by an earlier run.
+function kill_dev_port() {
+    local pids
+    pids="$(lsof -ti "tcp:$1" 2>/dev/null || true)"
+    if [ -n "$pids" ]; then
+        # shellcheck disable=SC2086
+        kill -TERM $pids 2>/dev/null || true
+        sleep 0.5
+        pids="$(lsof -ti "tcp:$1" 2>/dev/null || true)"
+    fi
+    if [ -n "$pids" ]; then
+        # shellcheck disable=SC2086
+        kill -KILL $pids 2>/dev/null || true
+    fi
+}
+
+# wait_for_dev_port waits up to a minute for something to listen on a TCP port.
+function wait_for_dev_port() {
+    local i
+    for i in $(seq 1 120); do
+        if lsof -ti "tcp:$1" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.5
+    done
+    return 1
+}
+
+# write_cors_bootstrap writes a bootstrap resource that allows the origins given after the file
+# name to call a plane from a browser.
+function write_cors_bootstrap() {
+    local file="$1"
+    shift
+    {
+        echo "resource_type: server_config"
+        echo "name: cors"
+        echo "value:"
+        echo "  allowedOrigins:"
+        for origin in "$@"; do
+            echo "    - \"$origin\""
+        done
+    } > "$file"
+}
+
+# apply_dev_quickstart_overrides adapts a staged quickstart pack (the folder stage_quickstart_pack
+# produced, named by $1) to run against the frontend dev servers, which are served from origins of
+# their own: the Data Plane sends sign-in to the dev Gate, and each plane allows the dev origins
+# that call it. The pack itself is untouched; this only edits the staged copy.
+function apply_dev_quickstart_overrides() {
+    local root="$1"
+
+    # The managed Data Plane's sign-in page is the Gate dev server (HMR), not the built Gate it
+    # serves itself.
+    {
+        echo ""
+        echo "gate_client:"
+        echo "  port: $GATE_APP_DEFAULT_PORT"
+    } >> "$root/dp/deployment.yaml"
+    assert_patched "$root/dp/deployment.yaml" "port: $GATE_APP_DEFAULT_PORT"
+
+    write_cors_bootstrap "$root/dp/bootstrap/03-dev-cors.yaml" \
+        "https://localhost:$GATE_APP_DEFAULT_PORT" "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT"
+    write_cors_bootstrap "$root/cp/bootstrap/03-dev-cors.yaml" \
+        "https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT"
+    # auth-dp keeps the pack's allowance for the Control Plane's own origin and gains the dev one:
+    # the console calls its /oauth2/token and discovery endpoints from the browser.
+    write_cors_bootstrap "$root/auth-dp/bootstrap/03-quickstart-cors.yaml" \
+        "https://localhost:$QUICKSTART_CP_PORT" "https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT"
+}
+
+# stage_dev_quickstart builds the binaries and stages the quickstart pack into
+# $DEV_QUICKSTART_DIR. It is staged in a scratch folder first and copied over the previous one, so
+# the databases, key material and secrets of an earlier run stay where they are.
+function stage_dev_quickstart() {
+    compile_backend
+    compile_cp_backend
+
+    rm -rf "${DEV_QUICKSTART_STAGE_DIR:?}"
+    (
+        set -e
+        DIST_DIR="$DEV_QUICKSTART_STAGE_DIR"
+        QUICKSTART_PRODUCT_FOLDER=quickstart
+        # The source tree's own databases belong to run_backend; a plane here gets its own.
+        REPOSITORY_DB_DIR=/nonexistent
+        CP_REPOSITORY_DB_DIR=/nonexistent
+        stage_quickstart_pack
+        apply_dev_quickstart_overrides "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER"
+    )
+
+    mkdir -p "$DEV_QUICKSTART_DIR"
+    rsync -a \
+        --exclude '/*/database/*' --exclude '/*/config/certs/*' --exclude '/*/config/secrets/*' \
+        "$DEV_QUICKSTART_STAGE_DIR/quickstart/" "$DEV_QUICKSTART_DIR/"
+    rm -rf "${DEV_QUICKSTART_STAGE_DIR:?}"
+
+    # A plane's databases are created once and then kept. The pack ships them ready-made, but a
+    # staged pack must not take them from the source tree.
+    local plane
+    for plane in auth-dp dp; do
+        (REPOSITORY_DB_DIR="$DEV_QUICKSTART_DIR/$plane/database" initialize_databases)
+    done
+    (CP_REPOSITORY_DB_DIR="$DEV_QUICKSTART_DIR/cp/database" initialize_cp_databases)
+}
+
+# run_quickstart runs the quickstart from source: auth-dp, the managed Data Plane and the Control
+# Plane, wired together as in the packaged quickstart, with the frontends on their dev servers.
+# $1 limits it to one side: "dp" runs the Data Plane and its Admin Console, "cp" runs the Control
+# Plane, its console and auth-dp (which its console signs in through). Setup always covers all
+# three, since the planes share key material and the Control Plane registers the Data Plane.
+function run_quickstart() {
+    local scope="${1:-all}"
+    local dp_url="https://localhost:$QUICKSTART_DP_PORT"
+    local cp_url="https://localhost:$QUICKSTART_CP_PORT"
+    local auth_dp_url="https://localhost:$QUICKSTART_AUTH_DP_PORT"
+    local run_dp=false run_cp=false
+    case "$scope" in
+        all) run_dp=true; run_cp=true ;;
+        dp) run_dp=true ;;
+        cp) run_cp=true ;;
+    esac
+
     cleanup_servers() {
+        trap - EXIT INT TERM
         echo -e "\n🛑 Shutting down servers..."
-        if [ ! -z "$FRONTEND_PID" ]; then 
-            kill $FRONTEND_PID 2>/dev/null
-        fi
-        pkill -f "pnpm.*dev" 2>/dev/null
-        pkill -f "vite" 2>/dev/null
-        if [ ! -z "$BACKEND_PID" ]; then
-            kill $BACKEND_PID 2>/dev/null
-        fi
-        sleep 1
+        local pid
+        for pid in ${DEV_PIDS[@]+"${DEV_PIDS[@]}"}; do
+            kill "$pid" 2>/dev/null || true
+        done
+        pkill -f "pnpm.*dev" 2>/dev/null || true
+        pkill -f "vite" 2>/dev/null || true
+        kill_dev_port "$QUICKSTART_DP_PORT"
+        kill_dev_port "$QUICKSTART_AUTH_DP_PORT"
+        kill_dev_port "$QUICKSTART_CP_PORT"
         echo "✅ All servers stopped successfully."
     }
+    DEV_PIDS=()
     trap cleanup_servers EXIT INT TERM
 
-    echo "Running frontend apps..."
-    run_frontend
+    ensure_pnpm
+    echo "Installing frontend dependencies..."
+    pnpm install --frozen-lockfile
+    echo "Building frontend applications & packages..."
+    pnpm build:frontend
 
-    # Ensure runtime prerequisites (certificates, crypto material, databases) so the
-    # in-process bootstrap can create the default resources before the server starts.
-    echo "=== Ensuring server certificates exist ==="
-    ensure_certificates "$BACKEND_DIR/$SECURITY_DIR" "server"
-    ensure_certificates "$BACKEND_DIR/$SECURITY_DIR" "signing"
-    ensure_certificates "$BACKEND_DIR/$SECURITY_DIR" "ecdsa-signing"
+    stage_dev_quickstart
 
-    echo "=== Ensuring sample app certificates exist ==="
-    ensure_certificates "$REACT_API_SAMPLE_APP_DIR" "server"
+    # Local dev only: default both accounts to admin/admin. This never produces a shared or
+    # distributed artifact, so a fixed default here is acceptable.
+    export ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
+    export ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
+    export SERVICE_DESK_USERNAME="${SERVICE_DESK_USERNAME:-admin}"
+    export SERVICE_DESK_PASSWORD="${SERVICE_DESK_PASSWORD:-admin}"
+    # The consoles sign in from their dev servers, so those are the origins their OAuth2 clients
+    # register (the pack registers the origins the planes serve them from).
+    export ADMIN_CONSOLE_URL="https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/console"
+    export CP_CONSOLE_URL="https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT/console"
 
-    ensure_crypto_file "$BACKEND_DIR/$SECURITY_DIR"
-    ensure_direct_auth_secret_file "$BACKEND_DIR/config/secrets"
-
-    echo "Initializing databases..."
-    initialize_databases
-
-    # Create default resources via the in-process bootstrap one-shot (security stays
-    # enabled; the bootstrap runs through the service layer under a runtime context).
-    echo "⚙️  Creating default resources..."
-    echo ""
-
-    # Dev-only: seed CORS allowed origins for the Gate and Console apps so they can call
-    # the backend without manual configuration. Regenerated on every run and picked up by
-    # the bootstrap one-shot; it is git-ignored and never packaged (see build()).
-    cat > "$BACKEND_DIR/bootstrap/03-dev-server-configurations.yaml" <<EOF
-resource_type: server_config
-name: cors
-value:
-  allowedOrigins:
-    - "https://localhost:$GATE_APP_DEFAULT_PORT"
-    - "https://localhost:$CONSOLE_APP_DEFAULT_PORT"
-EOF
-
-    # Local dev only: default to admin/admin if not supplied. This path never produces a
-    # shared or distributed artifact, so a fixed default here is acceptable.
-    if ! ( cd "$BACKEND_DIR" && \
-        ADMIN_USERNAME="${ADMIN_USERNAME:-admin}" \
-        ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}" \
-        PUBLIC_URL="$PUBLIC_URL" \
-        go run . bootstrap --console-redirect-uris "https://localhost:$CONSOLE_APP_DEFAULT_PORT/console" ); then
+    echo "⚙️  Setting up the quickstart..."
+    if ! (cd "$DEV_QUICKSTART_DIR" && ./setup.sh); then
         echo "❌ Initial data setup failed"
         echo "💡 Check the logs above for more details"
         exit 1
     fi
 
-    # Start backend with initial output but without final output/wait
-    start_backend false
+    # auth-dp starts first, as in quickstart/start.sh: its start.sh checks the default port 8090
+    # before binding its own, so it has to be up before the Data Plane takes that port.
+    if [ "$run_cp" = "true" ]; then
+        kill_dev_port "$QUICKSTART_AUTH_DP_PORT"
+        kill_dev_port "$QUICKSTART_CP_PORT"
+        echo "⚡ Starting auth-dp..."
+        (cd "$DEV_QUICKSTART_DIR/auth-dp" && ./start.sh) &
+        DEV_PIDS+=($!)
+        if ! wait_for_dev_port "$QUICKSTART_AUTH_DP_PORT"; then
+            echo "❌ auth-dp did not start on port $QUICKSTART_AUTH_DP_PORT"
+            exit 1
+        fi
+    fi
+    if [ "$run_dp" = "true" ]; then
+        kill_dev_port "$QUICKSTART_DP_PORT"
+        echo "⚡ Starting the Data Plane..."
+        (cd "$DEV_QUICKSTART_DIR/dp" && ./start.sh) &
+        DEV_PIDS+=($!)
+    fi
+    if [ "$run_cp" = "true" ]; then
+        echo "⚡ Starting the Control Plane..."
+        (cd "$DEV_QUICKSTART_DIR/cp" && ./start-cp.sh) &
+        DEV_PIDS+=($!)
+    fi
+
+    echo "Starting frontend applications in the background..."
+    if [ "$run_dp" = "true" ]; then
+        THUNDERID_DEV_SERVER_URL="$dp_url" \
+            pnpm --filter "@thunderid/gate" dev &
+        DEV_PIDS+=($!)
+        THUNDERID_DEV_SERVER_URL="$dp_url" THUNDERID_DEV_GATE_URL="https://localhost:$GATE_APP_DEFAULT_PORT" \
+            THUNDERID_DEV_CLIENT_ID=ADMIN_CONSOLE \
+            pnpm --filter "@thunderid/admin-console" dev &
+        DEV_PIDS+=($!)
+    fi
+    if [ "$run_cp" = "true" ]; then
+        THUNDERID_DEV_SERVER_URL="$cp_url" THUNDERID_DEV_TRUSTED_ISSUER_URL="$auth_dp_url" \
+            pnpm --filter "@thunderid/console-cp" dev &
+        DEV_PIDS+=($!)
+    fi
 
     echo ""
-    echo "🚀 Servers running:"
-    echo "  👉 Backend : $BASE_URL"
-    echo "  📱 Frontend :"
-    echo "      🚪 Gate (Login/Register): https://localhost:$GATE_APP_DEFAULT_PORT/gate"
-    echo "      🛠️  Console (System Management): https://localhost:$CONSOLE_APP_DEFAULT_PORT/console"
+    echo "🚀 Quickstart running:"
+    if [ "$run_dp" = "true" ]; then
+        echo "  📱 Data Plane (managed): $dp_url"
+        echo "      🚪 Gate (Login/Register): https://localhost:$GATE_APP_DEFAULT_PORT/gate"
+        echo "      🛠️  Admin Console (Users, Agents, Groups, Roles): https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/console"
+        echo "      Sign in as $SERVICE_DESK_USERNAME (Service Desk Admin)"
+    fi
+    if [ "$run_cp" = "true" ]; then
+        echo "  🔐 auth-dp (Control Plane sign-in): $auth_dp_url"
+        echo "  🛠️  Control Plane: $cp_url"
+        echo "      Console: https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT/console"
+        echo "      Sign in as $ADMIN_USERNAME"
+    fi
     echo ""
-
+    echo "  Data and key material are kept in $DEV_QUICKSTART_DIR between runs; delete it to start over."
     echo "Press Ctrl+C to stop."
 
-    wait $BACKEND_PID 2>/dev/null
+    wait
 }
 
-function debug_backend() {
-    run_backend true true
+function run() {
+    run_quickstart all
+}
+
+function run_dp() {
+    run_quickstart dp
+}
+
+function run_cp() {
+    run_quickstart cp
 }
 
 function run_backend() {
@@ -1154,7 +1819,7 @@ function run_frontend() {
     # In dev the apps are served on their own origins, so point them at the backend via
     # THUNDERID_DEV_SERVER_URL (injected into __DEV_SERVER_URL__; applied only in dev builds).
     THUNDERID_DEV_SERVER_URL="$PUBLIC_URL" \
-        pnpm -r --parallel --filter "@thunderid/console" --filter "@thunderid/gate" dev &
+        pnpm -r --parallel --filter "@thunderid/console" --filter "@thunderid/gate" --filter "@thunderid/admin-console" dev &
     FRONTEND_PID=$!
     
     # Return to script directory
@@ -1192,23 +1857,56 @@ case "$1" in
         build_backend
         package
         ;;
+    build_cp_backend)
+        build_cp_backend
+        package_cp
+        ;;
+    build_quickstart)
+        build_backend
+        build_cp_backend
+        package_quickstart
+        ;;
     build_frontend)
         build_frontend
         ;;
     build_docs)
         build_docs
         ;;
-    build_tools)
+    tools_build)
         build_tools
         ;;
-    test_tools)
+    tools_test)
         test_tools
         ;;
-    lint_tools)
+    tools_lint)
         lint_tools
+        ;;
+    tools_build_cli)
+        build_cli
+        ;;
+    tools_test_cli)
+        test_cli
+        ;;
+    tools_lint_cli)
+        lint_cli
+        ;;
+    tools_build_i18n_extractor)
+        build_i18n_extractor
+        ;;
+    tools_test_i18n_extractor)
+        test_i18n_extractor
+        ;;
+    tools_lint_i18n_extractor)
+        lint_i18n_extractor
         ;;
     package_samples)
         package_sample_app
+        ;;
+    package_cp)
+        package_cp
+        ;;
+    package_quickstart)
+        package_quickstart
         ;;
     build)
         build_backend
@@ -1232,6 +1930,12 @@ case "$1" in
     run)
         run
         ;;
+    run_dp)
+        run_dp
+        ;;
+    run_cp)
+        run_cp
+        ;;
     run_backend)
         run_backend
         ;;
@@ -1250,17 +1954,29 @@ case "$1" in
         echo "  clean                    - Clean build artifacts"
         echo "  build                    - Build the complete ${PRODUCT_NAME} application (backend + frontend + samples)"
         echo "  build_backend            - Build only the ${PRODUCT_NAME} backend server"
+        echo "  build_cp_backend         - Build and package the ${PRODUCT_NAME} Control Plane server"
+        echo "  build_quickstart         - Build and package a combined Control Plane + Data Plane quickstart, pre-wired together"
         echo "  build_frontend           - Build only the Next.js frontend applications"
         echo "  build_docs               - Build only the documentation"
-        echo "  build_tools              - Build all tool binaries (CLI + i18n-extractor + npm tools)"
-        echo "  test_tools               - Run tests for all tools (CLI + i18n-extractor)"
-        echo "  lint_tools               - Run linting for all tools (CLI + i18n-extractor)"
+        echo "  tools_build              - Build all tool binaries (CLI + i18n-extractor + npm tools)"
+        echo "  tools_test               - Run tests for all tools (CLI + i18n-extractor)"
+        echo "  tools_lint               - Run linting for all tools (CLI + i18n-extractor)"
+        echo "  tools_build_cli          - Cross-compile the CLI for all supported platforms"
+        echo "  tools_test_cli           - Run CLI unit tests"
+        echo "  tools_lint_cli           - Run golangci-lint on the CLI code"
+        echo "  tools_build_i18n_extractor - Build the i18n-extractor binary"
+        echo "  tools_test_i18n_extractor  - Run i18n-extractor tests"
+        echo "  tools_lint_i18n_extractor  - Run golangci-lint on the i18n-extractor code"
         echo "  package_samples          - Package the sample applications (samples are distributed as source)"
+        echo "  package_cp               - Package the ${PRODUCT_NAME} Control Plane server (assumes build_cp_backend already ran)"
+        echo "  package_quickstart       - Package the combined quickstart (assumes build_backend and build_cp_backend already ran)"
         echo "  test_unit                - Run unit tests with coverage"
         echo "  test_integration         - Run integration tests. Use -run and -package for filtering"
         echo "  merge_coverage           - Merge unit and integration test coverage reports"
         echo "  test                     - Run all tests (unit and integration)"
-        echo "  run                      - Run the ${PRODUCT_NAME} server for development (with automatic initial data setup)"
+        echo "  run                      - Run the ${PRODUCT_NAME} quickstart (auth-dp, Data Plane and Control Plane) from source for development"
+        echo "  run_dp                   - Run the Data Plane and its Admin Console from the quickstart for development"
+        echo "  run_cp                   - Run the Control Plane, its console and auth-dp from the quickstart for development"
         echo "  run_backend              - Run the ${PRODUCT_NAME} backend for development"
         echo "  debug_backend            - Run the ${PRODUCT_NAME} backend for development in debug mode"
         echo "  run_frontend             - Run the ${PRODUCT_NAME} frontend for development"

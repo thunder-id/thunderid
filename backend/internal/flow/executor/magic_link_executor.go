@@ -30,6 +30,7 @@ type magicLinkExecutor struct {
 	entityProvider   entityprovider.EntityProviderInterface
 	magicLinkService magiclink.MagicLinkAuthnServiceInterface
 	authnProvider    providers.AuthnProviderManager
+	accessGuard      *accessGuard
 	logger           *log.Logger
 }
 
@@ -51,6 +52,7 @@ func newMagicLinkExecutor(
 	magicLinkService magiclink.MagicLinkAuthnServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 	entityProvider entityprovider.EntityProviderInterface,
+	accessGuard *accessGuard,
 ) *magicLinkExecutor {
 	defaultInputs := []providers.Input{{
 		Ref:        "magic_link_token_input",
@@ -64,7 +66,7 @@ func newMagicLinkExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameMagicLink))
 
 	identifyExec := newIdentifyingExecutor(ExecutorNameMagicLink, defaultInputs, prerequisites,
-		flowFactory, entityProvider)
+		flowFactory, entityProvider, nil, nil)
 	base := flowFactory.CreateExecutor(ExecutorNameMagicLink, providers.ExecutorTypeAuthentication,
 		defaultInputs, prerequisites, &providers.ExecutorMeta{
 			SupportedModes: []string{ExecutorModeGenerate, ExecutorModeVerify},
@@ -80,6 +82,7 @@ func newMagicLinkExecutor(
 		entityProvider:               entityProvider,
 		magicLinkService:             magicLinkService,
 		authnProvider:                authnProvider,
+		accessGuard:                  accessGuard,
 		logger:                       logger,
 	}
 }
@@ -136,7 +139,7 @@ func (m *magicLinkExecutor) InitiateMagicLink(ctx *providers.NodeContext,
 	logger *log.Logger) (*providers.ExecutorResponse, error) {
 	execResp := newMagicLinkExecutorResponse()
 	execResp.AuthUser = ctx.AuthUser
-	isRegistration := ctx.FlowType == providers.FlowTypeRegistration
+	isRegistration := isRegistrationFlow(ctx)
 	searchAttrs := m.buildUserSearchAttributes(ctx)
 
 	// 1. Resolve the destination attribute name
@@ -151,7 +154,7 @@ func (m *magicLinkExecutor) InitiateMagicLink(ctx *providers.NodeContext,
 		if destValue == "" {
 			return execResp, fmt.Errorf("%s is required for magic link registration", destAttr)
 		}
-		userID, identifyErr := m.IdentifyUser(ctx.Context, searchAttrs, execResp)
+		userID, identifyErr := m.IdentifyEntity(ctx.Context, searchAttrs, execResp, categoryUnscoped)
 		if identifyErr != nil {
 			return execResp, fmt.Errorf("failed to identify user: %w", identifyErr)
 		}
@@ -181,6 +184,27 @@ func (m *magicLinkExecutor) InitiateMagicLink(ctx *providers.NodeContext,
 			}
 			userID = *identifiedUserID
 		}
+		// A refusal that names no hold answers as an unknown user does: delivery is skipped and the step
+		// succeeds.
+		withheld, stated, fault := m.accessGuard.heldAtDispatch(ctx.Context, userID,
+			providers.AuthenticationMethodMagicLink, ctx.FlowType, logger)
+		if fault != nil {
+			// Answered as a failed user lookup.
+			execResp.RuntimeData[common.RuntimeKeySkipDelivery] = dataValueTrue
+			execResp.Status = providers.ExecComplete
+			return execResp, nil
+		}
+		if withheld {
+			if stated != nil {
+				execResp.Status = providers.ExecFailure
+				execResp.Error = stated
+				return execResp, nil
+			}
+			execResp.RuntimeData[common.RuntimeKeySkipDelivery] = dataValueTrue
+			execResp.Status = providers.ExecComplete
+			return execResp, nil
+		}
+
 		execResp.RuntimeData[userAttributeUserID] = userID
 		subject = userID
 	}
@@ -210,6 +234,10 @@ func (m *magicLinkExecutor) InitiateMagicLink(ctx *providers.NodeContext,
 
 	if destValue != "" {
 		execResp.RuntimeData[destAttr] = destValue
+	}
+	// An earlier skipped attempt in this flow left the flag set; this link is delivered.
+	if ctx.RuntimeData[common.RuntimeKeySkipDelivery] == dataValueTrue {
+		execResp.RuntimeData[common.RuntimeKeySkipDelivery] = ""
 	}
 
 	execResp.ForwardedData[common.ForwardedDataKeyTemplateData] = map[string]interface{}{
@@ -308,7 +336,7 @@ func (m *magicLinkExecutor) executeVerify(ctx *providers.NodeContext) (*provider
 	token := ctx.UserInputs[userInputMagicLinkToken]
 
 	subjectAttribute := ""
-	if ctx.FlowType == providers.FlowTypeRegistration {
+	if isRegistrationFlow(ctx) {
 		subjectAttribute = ctx.RuntimeData[common.RuntimeKeyMagicLinkDestinationAttribute]
 		if subjectAttribute == "" {
 			return execResp, errors.New("magic link destination attribute missing from runtime data")
@@ -326,6 +354,12 @@ func (m *magicLinkExecutor) executeVerify(ctx *providers.NodeContext) (*provider
 		ctx.Context, nil, creds, nil, nil, execResp.AuthUser)
 	execResp.AuthUser = newAuthUser
 	if svcErr != nil {
+		// A stated hold fails the step, as a failed verification does.
+		if stated := statedHold(svcErr); stated != nil {
+			execResp.Status = providers.ExecFailure
+			execResp.Error = stated
+			return execResp, nil
+		}
 		if svcErr.Code == authnprovidermgr.ErrorAuthenticationFailed.Code {
 			execResp.Status = providers.ExecFailure
 			execResp.Error = svcErr

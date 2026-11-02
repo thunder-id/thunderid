@@ -1,0 +1,8 @@
+resource_type: group
+id: decl-group-1
+name: Declarative Test Group
+description: A declarative test group for integration testing
+ouId: decl-ou-1
+members:
+  - id: decl-group-2
+    type: group
