@@ -5,6 +5,7 @@ import Link from '@docusaurus/Link';
 import {Box, Typography, useTheme} from '@wso2/oxygen-ui';
 import {JSX} from 'react';
 import DeveloperShortcut from './DeveloperShortcut';
+import ProductName from './ProductName';
 import UseCaseBranchCards from './UseCaseBranchCards';
 import useScrollAnimation from '../hooks/useScrollAnimation';
 import {useDocsUrl} from '@site/src/hooks/useDocsUrl';
@@ -192,7 +193,8 @@ export default function DocsGetStarted(): JSX.Element {
           variant="body1"
           sx={{color: 'text.secondary', fontSize: '1rem', whiteSpace: 'normal', overflowWrap: 'anywhere'}}
         >
-          Learn how to add sign-in, secure APIs, manage organizations, and connect AI agents with ThunderID.
+          <ProductName />, an LF Decentralized Trust project, is an open-source IAM stack for humans, AI agents, and
+          machines. Here, you'll learn how to use it to add sign-in, secure APIs, and connect AI agents.
         </Typography>
       </Box>
 
