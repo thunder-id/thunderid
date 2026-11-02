@@ -1807,6 +1807,38 @@ func (suite *ConfigTestSuite) TestNotificationConfig_Validate_DelegatesToOTP() {
 	assert.Contains(suite.T(), err.Error(), "notification.otp.length")
 }
 
+func (suite *ConfigTestSuite) TestNotificationTemplateConfig_Validate() {
+	// Zero and positive values are accepted (zero means "use the default").
+	assert.NoError(suite.T(), (&NotificationTemplateConfig{}).Validate())
+	assert.NoError(suite.T(), (&NotificationTemplateConfig{
+		MaxSubjectLength: 1000, MaxEmailBodyLength: 10000, MaxSMSBodyLength: 4096}).Validate())
+
+	// A negative value is rejected, and the error names the offending key.
+	for key, cfg := range map[string]*NotificationTemplateConfig{
+		"notification.template.max_subject_length":    {MaxSubjectLength: -1},
+		"notification.template.max_email_body_length": {MaxEmailBodyLength: -1},
+		"notification.template.max_sms_body_length":   {MaxSMSBodyLength: -1},
+	} {
+		err := cfg.Validate()
+		assert.Error(suite.T(), err)
+		assert.Contains(suite.T(), err.Error(), key)
+	}
+}
+
+func (suite *ConfigTestSuite) TestNotificationTemplateConfig_LengthLimits() {
+	// An unset (zero) value yields the built-in default.
+	zero := NotificationTemplateConfig{}
+	assert.Equal(suite.T(), defaultMaxSubjectLength, zero.SubjectLengthLimit())
+	assert.Equal(suite.T(), defaultMaxEmailBodyLength, zero.EmailBodyLengthLimit())
+	assert.Equal(suite.T(), defaultMaxSMSBodyLength, zero.SMSBodyLengthLimit())
+
+	// A configured positive value takes effect.
+	set := NotificationTemplateConfig{MaxSubjectLength: 10, MaxEmailBodyLength: 20, MaxSMSBodyLength: 30}
+	assert.Equal(suite.T(), 10, set.SubjectLengthLimit())
+	assert.Equal(suite.T(), 20, set.EmailBodyLengthLimit())
+	assert.Equal(suite.T(), 30, set.SMSBodyLengthLimit())
+}
+
 func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() {
 	sendErrs := true
 	idJAG := engineconfig.IDJAGConfig{

@@ -551,6 +551,9 @@ Password fields are available in `configuration.database.config.postgres`, `conf
 | `configuration.flow.store`                        | Storage mode for flows (`mutable`, `declarative`, `composite`)                                                                                           | `""`                         |
 | `configuration.openid4vp.store`                   | Storage mode for presentation definitions (`mutable`, `declarative`, `composite`)                                                                        | `""`                         |
 | `configuration.openid4vci.store`                  | Storage mode for credential configurations (`mutable`, `declarative`, `composite`)                                                                       | `""`                         |
+| `configuration.notification.template.maxSubjectLength`   | Maximum email template subject length, in characters. Unset uses the server default.                                                              | unset (`1000`)               |
+| `configuration.notification.template.maxEmailBodyLength` | Maximum email template body length, in characters. Unset uses the server default.                                                                 | unset (`50000`)              |
+| `configuration.notification.template.maxSmsBodyLength`   | Maximum SMS template body length, in characters. Unset uses the server default.                                                                   | unset (`4096`)               |
 
 > CORS allowed origins are configured through the server-config `cors` section — by creating the declarative resource `config/resources/server_configs/cors.yaml` (with `server_config.store: composite` set so it loads at boot) or at runtime with `PUT /server-config/cors` — not through Helm values.
 

@@ -693,6 +693,14 @@ configuration:
   # authorization_detail_type, http_connection, notification_template.
   stores: {}
 
+  # Notification template content-length limits (in characters). Unset keys use the server defaults
+  # (subject 1000, email body 50000, SMS body 4096). A negative value fails startup.
+  # notification:
+  #   template:
+  #     maxSubjectLength: 1000
+  #     maxEmailBodyLength: 50000
+  #     maxSmsBodyLength: 4096
+
 
 # Persistence configuration for SQLite databases
 # Only relevant when using SQLite as the database type

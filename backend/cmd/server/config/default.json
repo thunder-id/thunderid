@@ -234,7 +234,10 @@
       "validity_period_seconds": 120
     },
     "template": {
-      "store": "composite"
+      "store": "composite",
+      "max_subject_length": 1000,
+      "max_email_body_length": 50000,
+      "max_sms_body_length": 4096
     }
   },
   "user": {

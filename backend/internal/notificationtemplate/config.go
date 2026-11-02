@@ -42,3 +42,12 @@ func isDeclarativeModeEnabled() bool {
 	mode, err := getStoreMode()
 	return err == nil && mode == serverconst.StoreModeDeclarative
 }
+
+// templateConfig returns the notification-template deployment config, or the zero value when the server
+// runtime is not initialized. The zero value's length-limit accessors return the built-in defaults.
+func templateConfig() config.NotificationTemplateConfig {
+	if !config.IsServerRuntimeInitialized() {
+		return config.NotificationTemplateConfig{}
+	}
+	return config.GetServerRuntime().Config.Notification.Template
+}

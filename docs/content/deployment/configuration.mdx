@@ -943,13 +943,16 @@ Server-sent email that is not part of a flow, such as the automatic account-lock
 
 ## Notification Configuration
 
-Controls notification delivery behaviour, including OTP generation parameters.
+Controls notification delivery behaviour, including OTP generation parameters and notification-template content limits.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `notification.otp.length` | `6` | OTP character length. Must be in `[4, 10]`. |
 | `notification.otp.use_numeric_only` | `true` | If `true`, OTPs use digits only; if `false`, OTPs use a mixed alphanumeric character set. |
 | `notification.otp.validity_period_seconds` | `120` | OTP validity period in seconds. Must be in `[30, 600]`. |
+| `notification.template.max_subject_length` | `1000` | Maximum email template subject length, in characters. `0` uses the default; a negative value fails startup. |
+| `notification.template.max_email_body_length` | `50000` | Maximum email template body length, in characters. `0` uses the default; a negative value fails startup. |
+| `notification.template.max_sms_body_length` | `4096` | Maximum SMS template body length, in characters. `0` uses the default; a negative value fails startup. |
 
 ## Authentication Provider Configuration
 
