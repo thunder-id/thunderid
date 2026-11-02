@@ -1,0 +1,183 @@
+---
+title: Configuration
+docType: reference
+displayed_sidebar: javascriptSdkSidebar
+description: Configuration reference for the JavaScript SDK, covering client ID, base URL, scopes, and storage settings.
+---
+
+# Configuration
+
+The `initialize()` method accepts a configuration object (`AuthClientConfig`) that controls how the SDK connects to your <ProductName /> instance and manages authentication.
+
+## Basic Configuration
+
+```ts
+import ThunderIDJavaScriptClient from '@thunderid/javascript'
+
+const client = new ThunderIDJavaScriptClient()
+
+await client.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+})
+```
+
+## Configuration Reference
+
+### Required Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `baseUrl` | `string` | Base URL of the <ProductName /> instance (e.g., `https://localhost:8090`) |
+| `clientId` | `string` | Client ID from your <ProductName /> application registration |
+
+### Authentication Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `afterSignInUrl` | `string` | - | URL to redirect to after a successful sign-in. Must match an allowed redirect URI in your IdP |
+| `afterSignOutUrl` | `string` | - | URL to redirect to after sign-out. Must match an allowed post-logout redirect URI |
+| `scopes` | `string \| string[]` | `['openid']` | OAuth 2.0 scopes to request. Accepts a space-separated string or an array |
+| `clientSecret` | `string` | - | Client secret. Only required for confidential clients. Do not use in browser applications |
+| `enablePKCE` | `boolean` | `true` | Enable PKCE (RFC 7636). Disable only if your authorization server does not support it |
+| `prompt` | `string` | - | Controls the authentication UI behavior (e.g., `"login"`, `"none"`, `"consent"`) |
+| `responseMode` | `string` | `'query'` | OAuth 2.0 response mode for the authorization request |
+| `sendCookiesInRequests` | `boolean` | `true` | Include cookies in token, refresh-token, and custom-grant requests |
+| `sendIdTokenInLogoutRequest` | `boolean` | - | Include `id_token_hint` in the logout request to the end-session endpoint |
+| `mode` | `'redirect' \| 'embedded'` | `'redirect'` | Authentication interaction mode. Use `'embedded'` for app-native flows |
+| `signInOptions` | `Record<string, any>` | - | Additional query parameters to include in every authorization request |
+| `signInUrl` | `string` | - | Override the sign-in page URL. Defaults to the <ProductName /> hosted login page |
+| `signOutOptions` | `Record<string, unknown>` | - | Additional parameters to include in the sign-out request |
+| `signUpOptions` | `Record<string, unknown>` | - | Additional parameters to include in the sign-up request |
+| `signUpUrl` | `string` | - | Override the sign-up page URL |
+
+### Token Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `tokenRequest.authMethod` | `'client_secret_basic' \| 'client_secret_post' \| 'none'` | Platform default | Client authentication method used at the token endpoint |
+| `tokenValidation.idToken.validate` | `boolean` | `true` | Whether to validate ID tokens |
+| `tokenValidation.idToken.validateIssuer` | `boolean` | `true` | Whether to validate the `iss` claim in ID tokens |
+| `tokenValidation.idToken.clockTolerance` | `number` | `300` | Allowed clock skew in seconds when validating token expiry |
+| `tokenLifecycle.refreshToken.autoRefresh` | `boolean` | - | Automatically refresh the access token before it expires |
+
+### Session Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `storage` | `T` | Platform default | Storage backend for session and config data. The accepted values depend on the platform SDK |
+| `syncSession` | `boolean` | `false` | Sync the application session with the IdP using OIDC iframe session management (RFC). May not work in browsers with third-party cookie restrictions |
+| `instanceId` | `number` | `0` | Instance identifier for namespacing storage. Use when running multiple SDK instances |
+
+### Discovery and Endpoint Parameters
+
+By default the SDK fetches `{baseUrl}/.well-known/openid-configuration` to resolve endpoint URLs.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `discovery.wellKnown.enabled` | `boolean` | `true` | Whether to use the well-known discovery document to resolve endpoints |
+| `endpoints.wellKnown` | `string` | `{baseUrl}/.well-known/openid-configuration` | Override the discovery document URL |
+| `endpoints.authorization` | `string` | - | Override the authorization endpoint |
+| `endpoints.token` | `string` | - | Override the token endpoint |
+| `endpoints.endSession` | `string` | - | Override the end-session (logout) endpoint |
+| `endpoints.userInfo` | `string` | - | Override the userinfo endpoint |
+| `endpoints.jwks` | `string` | - | Override the JWKS endpoint |
+| `endpoints.introspection` | `string` | - | Override the token introspection endpoint |
+| `endpoints.flowExecute` | `string` | `{baseUrl}/flow/execute` | Override the flow execution endpoint (embedded sign-in, sign-up, recovery, and user onboarding flows) |
+| `endpoints.flowMeta` | `string` | `{baseUrl}/flow/meta` | Override the flow metadata endpoint |
+| `endpoints.usersMe` | `string` | `{baseUrl}/users/me` | Override the current-user profile endpoint |
+
+The `endpoints.authorization`, `endpoints.token`, `endpoints.userInfo`, `endpoints.jwks`, `endpoints.introspection`,
+and `endpoints.endSession` overrides address OIDC/OAuth endpoints, which are otherwise resolved from the discovery
+document. The `endpoints.flowExecute`, `endpoints.flowMeta`, and `endpoints.usersMe` overrides address resource-server
+endpoints, which are otherwise derived by concatenating `baseUrl` with a fixed path.
+
+Split these two groups when the OAuth authorization server and the <ProductName /> resource server are different hosts,
+for example when two <ProductName /> instances are connected as trusted issuers. Point `baseUrl` (and hence the
+OAuth/discovery endpoints) at the authorization server, and override the resource-server endpoints to target the
+resource server that owns the users and flows:
+
+```ts
+{
+  baseUrl: 'https://idp.example.com',
+  endpoints: {
+    flowExecute: 'https://rs.example.com/flow/execute',
+    flowMeta: 'https://rs.example.com/flow/meta',
+    usersMe: 'https://rs.example.com/users/me',
+  },
+}
+```
+
+### Application Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `applicationId` | `string` | - | UUID of the <ProductName /> application. Used for Application Branding and sign-up flow access URLs |
+| `allowedExternalUrls` | `string[]` | - | URL prefixes the SDK may attach access tokens to when making HTTP requests. Only applies when using the `webWorker` storage type |
+
+### Preferences
+
+The `preferences` object customizes UI behavior for SDKs that render built-in components (React SDK, Browser SDK).
+
+#### Theme Preferences (`preferences.theme`)
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `inheritFromBranding` | `boolean` | `false` | Fetch and apply branding from the <ProductName /> server |
+| `mode` | `'light' \| 'dark' \| 'system'` | `'system'` | Theme mode. `'system'` follows the OS preference |
+| `overrides` | `RecursivePartial<ThemeConfig>` | `{}` | Custom theme overrides for colors, typography, and spacing |
+| `direction` | `'ltr' \| 'rtl'` | `'ltr'` | Text direction for UI components |
+
+#### Internationalization Preferences (`preferences.i18n`)
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `language` | `string` | Browser default | Hard override for the UI language (e.g., `'en-US'`, `'fr-FR'`). Bypasses all other language detection |
+| `fallbackLanguage` | `string` | `'en-US'` | Fallback language when translations are not available |
+| `bundles` | `Record<string, I18nBundle>` | `{}` | Custom translation bundles to override default text |
+| `storageStrategy` | `'cookie' \| 'localStorage' \| 'none'` | `'cookie'` | How to persist the user's language selection |
+| `storageKey` | `string` | `'thunderid-i18n-language'` | Key name for reading/writing the language to storage |
+| `cookieDomain` | `string` | Derived from hostname | Domain for the language cookie. Override for eTLD+1 domains |
+| `urlParam` | `string \| false` | `'lang'` | URL query parameter to inspect for a language override. Set to `false` to disable |
+
+#### User Preferences (`preferences.user`)
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `fetchUserProfile` | `boolean` | `true` | Automatically fetch the full user profile after sign-in. When `false`, only ID token claims are available |
+
+## Full Example
+
+```ts title="src/auth.ts" showLineNumbers
+import ThunderIDJavaScriptClient from '@thunderid/javascript'
+
+const client = new ThunderIDJavaScriptClient()
+
+await client.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  afterSignInUrl: 'http://localhost:3000',
+  afterSignOutUrl: 'http://localhost:3000',
+  scopes: ['openid', 'profile', 'email', 'internal_login'],
+  enablePKCE: true,
+  tokenValidation: {
+    idToken: {
+      validate: true,
+      validateIssuer: true,
+      clockTolerance: 300,
+    },
+  },
+  preferences: {
+    theme: {
+      inheritFromBranding: true,
+      mode: 'system',
+    },
+    i18n: {
+      language: 'en-US',
+      fallbackLanguage: 'en-US',
+    },
+  },
+})
+
+export default client
+```

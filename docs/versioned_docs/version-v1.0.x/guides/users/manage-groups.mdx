@@ -67,6 +67,16 @@ A group nesting chain must stay within a single source. Mixing declarative (YAML
 2. Locate the member you want to remove.
 3. Click **Remove** next to the member and confirm.
 
+### Permission Requirements for Membership Changes
+
+Adding a member to a group grants that member every permission the group confers, so <ProductName /> requires you to already hold those permissions yourself. The same requirement applies when you remove a member, which prevents an administrator from stripping members out of a group more privileged than their own.
+
+The check covers permissions the group inherits. A group carries the roles assigned to it and the roles assigned to every group that contains it, so joining a group that grants nothing on its own still confers whatever its parent groups grant.
+
+Both requirements apply regardless of who the member is, including your own account, and regardless of the member type. Adding a group as a member is covered too, since that makes the inner group's members part of the outer group.
+
+If the change would grant more than you hold, the API returns `403 Forbidden` with the error code `SAZ-4030`, and no member is added or removed. For the full rule, including how permissions are compared, see [Permission Requirements](../manage-roles#permission-requirements).
+
 ## Assign Roles to a Group
 
 Roles assigned to a group apply to all members of that group. This is the recommended way to grant permissions to a set of users instead of assigning roles individually.

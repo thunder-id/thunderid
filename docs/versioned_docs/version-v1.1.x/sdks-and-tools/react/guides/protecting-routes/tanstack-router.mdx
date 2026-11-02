@@ -1,0 +1,238 @@
+---
+title: TanStack Router
+docType: guide
+description: Protect TanStack Router routes using the ProtectedRoute component from the ThunderID React SDK.
+---
+
+# TanStack Router
+
+`@thunderid/tanstack-router` is a supplementary package that provides seamless integration between <ProductName /> authentication and TanStack Router. It offers components to easily protect routes and handle authentication flows in your React applications using TanStack Router.
+
+## Installation
+
+<CodeGroup>
+<CodeBlock icon="npm" label="npm">
+```bash
+npm install @thunderid/tanstack-router
+```
+</CodeBlock>
+<CodeBlock icon="yarn" label="yarn">
+```bash
+yarn add @thunderid/tanstack-router
+```
+</CodeBlock>
+<CodeBlock icon="pnpm" label="pnpm">
+```bash
+pnpm add @thunderid/tanstack-router
+```
+</CodeBlock>
+</CodeGroup>
+
+## Basic Setup with ProtectedRoute
+
+```tsx title="src/App.tsx" showLineNumbers
+import React from 'react'
+import { createRouter, createRoute, createRootRoute, RouterProvider } from '@tanstack/react-router'
+import { ThunderIDProvider } from '@thunderid/react'
+import { ProtectedRoute } from '@thunderid/tanstack-router'
+import Dashboard from './components/Dashboard'
+import Profile from './components/Profile'
+import SignIn from './components/SignIn'
+
+const rootRoute = createRootRoute({
+  component: () => <div>Root Layout</div>,
+})
+
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/',
+  component: () => <div>Public Home Page</div>,
+})
+
+const signinRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/signin',
+  component: SignIn,
+})
+
+const dashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dashboard',
+  component: () => (
+    <ProtectedRoute redirectTo="/signin">
+      <Dashboard />
+    </ProtectedRoute>
+  ),
+})
+
+const profileRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/profile',
+  component: () => (
+    <ProtectedRoute redirectTo="/signin">
+      <Profile />
+    </ProtectedRoute>
+  ),
+})
+
+const routeTree = rootRoute.addChildren([indexRoute, signinRoute, dashboardRoute, profileRoute])
+
+const router = createRouter({ routeTree })
+
+function App() {
+  return (
+    <ThunderIDProvider
+      baseUrl="https://localhost:8090"
+      clientId="your-client-id"
+    >
+      <RouterProvider router={router} />
+    </ThunderIDProvider>
+  )
+}
+
+export default App
+```
+
+## Custom Fallback and Loading States
+
+```tsx title="src/routes.tsx" showLineNumbers
+import { ProtectedRoute } from '@thunderid/tanstack-router'
+
+// Redirect to custom login page
+const dashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dashboard',
+  component: () => (
+    <ProtectedRoute redirectTo="/login">
+      <Dashboard />
+    </ProtectedRoute>
+  ),
+})
+
+// Custom fallback component
+const dashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dashboard',
+  component: () => (
+    <ProtectedRoute
+      fallback={
+        <div className="auth-required">
+          <h2>Please sign in</h2>
+          <p>You need to be signed in to access this page.</p>
+        </div>
+      }
+    >
+      <Dashboard />
+    </ProtectedRoute>
+  ),
+})
+
+// Custom loading state
+const dashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dashboard',
+  component: () => (
+    <ProtectedRoute redirectTo="/signin" loader={<div className="spinner">Loading...</div>}>
+      <Dashboard />
+    </ProtectedRoute>
+  ),
+})
+```
+
+## Integration with Layouts
+
+```tsx title="src/App.tsx" showLineNumbers
+import React from 'react'
+import { createRouter, createRoute, createRootRoute, RouterProvider } from '@tanstack/react-router'
+import { ThunderIDProvider } from '@thunderid/react'
+import { ProtectedRoute } from '@thunderid/tanstack-router'
+import Home from './components/Home'
+import About from './components/About'
+import SignIn from './components/SignIn'
+import AppLayout from './components/AppLayout'
+import Dashboard from './components/Dashboard'
+import Profile from './components/Profile'
+import Settings from './components/Settings'
+
+const rootRoute = createRootRoute({
+  component: () => <div>Root Layout</div>,
+})
+
+// Public routes
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/',
+  component: Home,
+})
+
+const aboutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/about',
+  component: About,
+})
+
+const signinRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/signin',
+  component: SignIn,
+})
+
+// Protected routes with layout
+const appLayoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/app',
+  component: AppLayout,
+})
+
+const appDashboardRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/dashboard',
+  component: () => (
+    <ProtectedRoute redirectTo="/signin">
+      <Dashboard />
+    </ProtectedRoute>
+  ),
+})
+
+const appProfileRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/profile',
+  component: () => (
+    <ProtectedRoute redirectTo="/signin">
+      <Profile />
+    </ProtectedRoute>
+  ),
+})
+
+const appSettingsRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/settings',
+  component: () => (
+    <ProtectedRoute redirectTo="/signin">
+      <Settings />
+    </ProtectedRoute>
+  ),
+})
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  aboutRoute,
+  signinRoute,
+  appLayoutRoute.addChildren([appDashboardRoute, appProfileRoute, appSettingsRoute]),
+])
+
+const router = createRouter({ routeTree })
+
+function App() {
+  return (
+    <ThunderIDProvider
+      baseUrl="https://localhost:8090"
+      clientId="your-client-id"
+    >
+      <RouterProvider router={router} />
+    </ThunderIDProvider>
+  )
+}
+
+export default App
+```

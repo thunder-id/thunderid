@@ -49,6 +49,9 @@ curl https://{{productSlug}}.example.com/.well-known/openid-configuration
     "private_key_jwt",
     "none"
   ],
+  "token_endpoint_auth_signing_alg_values_supported": [
+    "RS256", "RS512", "PS256", "ES256", "ES384", "ES512", "EdDSA"
+  ],
   "dpop_signing_alg_values_supported": [
     "RS256", "RS512", "PS256", "ES256", "ES384", "ES512", "EdDSA"
   ],

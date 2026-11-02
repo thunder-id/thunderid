@@ -1,0 +1,73 @@
+---
+title: <Loading />
+docType: reference
+description: Display loading content while authentication status is being determined in your React application.
+---
+
+# `<Loading />`
+
+The `Loading` component renders its children while the authentication state is being determined.
+It checks the current authentication state and displays a loading indicator or custom content during the initial authentication check. Once authentication is complete, it renders optional `fallback` content or nothing by default.
+This makes it ideal for providing user feedback during the initial app load or authentication verification.
+
+## Usage
+
+You can use the `Loading` component to wrap any content that should be visible during authentication state checks.
+
+### Basic Usage
+
+Use `Loading` to show content while authentication is being verified.
+
+```jsx title="src/App.jsx" showLineNumbers
+import { Loading } from '@thunderid/react'
+
+function App() {
+  return (
+    <Loading>
+      <div>Checking authentication...</div>
+    </Loading>
+  )
+}
+
+export default App
+```
+
+:::note
+Once the authentication state is determined, nothing will be rendered unless you provide a `fallback` prop.
+:::
+
+### Fallback Prop
+
+Show your main application content once loading is complete:
+
+```jsx title="src/App.jsx" showLineNumbers
+import { Loading, SignedIn, SignedOut } from '@thunderid/react'
+
+function App() {
+  return (
+    <Loading
+      fallback={
+        <>
+          <SignedIn>
+            <Dashboard />
+          </SignedIn>
+          <SignedOut>
+            <LandingPage />
+          </SignedOut>
+        </>
+      }
+    >
+      <div>Checking authentication...</div>
+    </Loading>
+  )
+}
+
+export default App
+```
+
+## Props
+
+| Prop      | Type       | Required | Description                                          |
+|-----------|------------|:--------:|------------------------------------------------------|
+| `children`| ReactNode  |   ✅     | Content to render during authentication loading      |
+| `fallback`| ReactNode  |   ❌     | Content to render once authentication is determined  |

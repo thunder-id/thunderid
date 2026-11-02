@@ -1,0 +1,193 @@
+---
+title: HttpClient
+docType: reference
+displayed_sidebar: javascriptSdkSidebar
+description: Abstract HTTP client base class with handler lifecycle, callbacks, and pluggable transport implementation.
+---
+
+# `HttpClient`
+
+`HttpClient` is an abstract base class that provides handler lifecycle management, request/response callbacks, and parallel request utilities. Platform SDKs extend it to add token attachment, retry logic, or custom transport implementations.
+
+## Usage
+
+Extend `HttpClient` and implement the abstract `transport()` method:
+
+```ts
+import { HttpClient } from '@thunderid/javascript'
+import type { HttpRequestConfig, HttpResponse } from '@thunderid/javascript'
+
+class FetchHttpClient extends HttpClient {
+  async transport<T>(config: HttpRequestConfig): Promise<HttpResponse<T>> {
+    const response = await fetch(config.url, {
+      method: config.method,
+      headers: config.headers as HeadersInit,
+      body: config.data ? JSON.stringify(config.data) : undefined,
+    })
+
+    return {
+      data: await response.json(),
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries()),
+    }
+  }
+}
+```
+
+## Abstract Methods
+
+### `transport<T>(config)`
+
+Implement the actual HTTP transport. Called by `request()` after handler and callback checks.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `config` | `HttpRequestConfig` | Request configuration |
+
+**Returns:** `Promise<HttpResponse<T>>`
+
+## Methods
+
+### Request Execution
+
+#### `request<T>(config)`
+
+Execute a request through the handler pipeline. If the handler is disabled, the transport is still invoked but callbacks are suppressed.
+
+```ts
+const response = await client.request<{ id: string }>({
+  url: 'https://api.example.com/users/me',
+  method: 'GET',
+})
+```
+
+**Returns:** `Promise<HttpResponse<T>>`
+
+#### `all<T>(values)`
+
+Execute multiple requests in parallel (analogous to `Promise.all`).
+
+```ts
+const [users, roles] = await client.all([
+  client.request({ url: '/users', method: 'GET' }),
+  client.request({ url: '/roles', method: 'GET' }),
+])
+```
+
+**Returns:** `Promise<T[]>`
+
+#### `spread<T, R>(callback)`
+
+Spread an array result as individual arguments to a callback. Use with `all()` for typed destructuring.
+
+```ts
+const handler = client.spread((users, roles) => ({ users, roles }))
+const result = await client.all([userReq, roleReq]).then(handler)
+```
+
+**Returns:** `(array: T[]) => R`
+
+### Handler Control
+
+#### `enableHandler()`
+
+Enable the request handler. Callbacks fire and the handler-enabled path executes.
+
+```ts
+client.enableHandler()
+```
+
+#### `disableHandler()`
+
+Disable the request handler immediately.
+
+```ts
+client.disableHandler()
+```
+
+#### `disableHandlerWithTimeout(timeout?)`
+
+Disable the handler for a fixed duration, then automatically re-enable it.
+
+```ts
+client.disableHandlerWithTimeout(5000) // disabled for 5 seconds
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `timeout` | `number` | `100` | Duration in milliseconds |
+
+### Callbacks
+
+Register callbacks to observe the request lifecycle. All callbacks are optional.
+
+#### `setHttpRequestStartCallback(callback)`
+
+Called before the request is dispatched.
+
+```ts
+client.setHttpRequestStartCallback((req) => {
+  console.log('Starting request to', req.url)
+})
+```
+
+#### `setHttpRequestSuccessCallback(callback)`
+
+Called when a request completes successfully.
+
+```ts
+client.setHttpRequestSuccessCallback((res) => {
+  console.log('Request succeeded with status', res.status)
+})
+```
+
+#### `setHttpRequestErrorCallback(callback)`
+
+Called when a request fails.
+
+```ts
+client.setHttpRequestErrorCallback((err) => {
+  console.error('Request failed:', err.message)
+})
+```
+
+#### `setHttpRequestFinishCallback(callback)`
+
+Called after every request, whether it succeeded or failed.
+
+```ts
+client.setHttpRequestFinishCallback(() => {
+  console.log('Request finished')
+})
+```
+
+## Types
+
+### `HttpRequestConfig`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `url` | `string` | Request URL |
+| `method` | `string` | HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) |
+| `headers` | `Record<string, string>` | Request headers |
+| `data` | `unknown` | Request body |
+| `params` | `Record<string, string>` | URL query parameters |
+| `withCredentials` | `boolean` | Include credentials in cross-origin requests |
+
+### `HttpResponse<T>`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `data` | `T` | Parsed response body |
+| `status` | `number` | HTTP status code |
+| `statusText` | `string` | HTTP status text |
+| `headers` | `Record<string, string>` | Response headers |
+
+### `HttpError`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `message` | `string` | Error message |
+| `code` | `string` | Error code |
+| `response` | `HttpResponse` | The response that triggered the error |

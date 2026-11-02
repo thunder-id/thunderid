@@ -1,0 +1,50 @@
+# Integrate {{productName}} Authentication in a Node.js Application (Custom UI / Embedded Mode)
+
+## Context
+I have a Node.js application and I want to integrate {{productName}} authentication using the @thunderid/node SDK's embedded flow functions and the built-in http module — no framework required — rendering my own sign-in form instead of redirecting to {{productName}}-hosted pages.
+
+## Requirements
+- Use @thunderid/node SDK with the built-in Node.js http module
+- Use `executeEmbeddedSignInFlow` (re-exported by @thunderid/node from the core @thunderid/javascript client) to drive the sign-in flow directly, instead of `ThunderIDNodeClient.signIn()` (which is redirect-only)
+- Implement a `/login` route that serves a minimal HTML form
+- Implement a `/flow/sign-in` route that calls `executeEmbeddedSignInFlow` on each POST and returns/renders whatever `components` the flow response asks for next
+- Implement a `/logout` route to sign out and clear the session cookie
+- Protect the `/profile` route using `isSignedIn()` and display user info with `getUser()`
+- Manage sessions using a session ID stored in an HttpOnly cookie
+- Keep code minimal and fully runnable with CommonJS `require()`
+
+## Configuration
+- **Application ID**: {{applicationId}}
+- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **Flow Secret**: `<your-flow-secret>`
+- **App URL**: http://localhost:3000
+- **Sign-In Page**: /login
+- **Flow Route**: /flow/sign-in
+- **SDK**: @thunderid/node
+
+## Important Rules
+- Use CommonJS syntax (require) in index.js
+- `ThunderIDNodeClient` itself only implements the redirect flow — for embedded mode, call `executeEmbeddedSignInFlow({baseUrl, payload: {applicationId, flowType: 'AUTHENTICATION', ...}, flowSecret})` directly, imported from `@thunderid/node` (or `@thunderid/javascript`). `applicationId` and `flowType` go inside `payload`; `flowSecret` stays a top-level argument
+- @thunderid/node has NO bundled sign-in UI — write the HTML/JS form yourself, rendering whatever fields the flow response's `components` array specifies
+- Each flow step returns an `executionId`; POST the next step's user input back to `/flow/sign-in` along with that `executionId` (inside `payload`) until the flow completes
+- Store the session ID in a cookie named 'tid_session' with HttpOnly and SameSite=Lax flags
+- Use randomUUID() from the built-in 'crypto' module to generate session IDs
+- Use isSignedIn(sessionId) to guard protected routes
+- Use getUser(sessionId) to retrieve the authenticated user profile
+- Use signOut(sessionId) to clear the local session
+- Read `flowSecret` from `process.env.THUNDERID_FLOW_SECRET` and pass it on every `executeEmbeddedSignInFlow` call that starts a new flow. It authenticates this app when the flow starts, sent in the `Flow-Secret` request header. It is a separate credential from an OAuth2 client secret, never a substitute for one
+- Never ask the developer to type or paste the Flow Secret into this conversation. If it is not supplied above, add a `THUNDERID_FLOW_SECRET` placeholder to a local `.env` file and tell the developer to fill it in locally before running the app
+
+## Implementation Steps
+1. Create a new project: mkdir my-node-service && cd my-node-service && npm init -y
+2. Install @thunderid/node: npm install @thunderid/node
+3. If the flow secret was not provided, add a `THUNDERID_FLOW_SECRET` placeholder to a local `.env` file and tell the developer to fill it in before running the app
+4. Create index.js importing `executeEmbeddedSignInFlow` from @thunderid/node, reading `flowSecret` from `process.env.THUNDERID_FLOW_SECRET`
+5. Add /login route serving a minimal HTML form
+6. Add /flow/sign-in route: call executeEmbeddedSignInFlow with `payload: {applicationId, flowType: 'AUTHENTICATION', ...the user's submitted inputs}` and `flowSecret`, and set the session cookie once the flow completes
+7. Add /logout route: clear the session cookie
+8. Add / route: show sign-in or profile link based on isSignedIn()
+9. Add /profile route: guard with isSignedIn(), display user info from getUser()
+10. Start the server: node index.js
+
+Please provide a complete, working index.js file with all routes, driven by the embedded flow functions (not a redirect).

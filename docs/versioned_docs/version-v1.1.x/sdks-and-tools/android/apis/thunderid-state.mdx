@@ -1,0 +1,151 @@
+---
+title: ThunderIDState
+docType: reference
+description: Reactive authentication state for Jetpack Compose applications, providing current user and session status.
+---
+
+# `ThunderIDState`
+
+`ThunderIDState` is the reactive authentication state class provided by the `dev.thunderid:compose` library. It holds the current user, loading state, and initialization status, and exposes the underlying `ThunderIDClient` for direct API calls.
+
+`ThunderIDState` is provided via `LocalThunderID`, a `CompositionLocal` injected by `ThunderIDProvider`. Any composable in the hierarchy can read it using `LocalThunderID.current`.
+
+## Setup
+
+Wrap your root composable with `ThunderIDProvider`:
+
+```kotlin
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import dev.thunderid.android.ThunderIDConfig
+import dev.thunderid.compose.ThunderIDProvider
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            ThunderIDProvider(
+                config = ThunderIDConfig(
+                    baseUrl = "https://localhost:8090",
+                    clientId = "<your-client-id>",
+                    afterSignInUrl = "dev.thunderid.app://callback",
+                    afterSignOutUrl = "dev.thunderid.app://logout"
+                )
+            ) {
+                AppContent()
+            }
+        }
+    }
+}
+```
+
+Access `ThunderIDState` in any child composable:
+
+```kotlin
+import dev.thunderid.compose.LocalThunderID
+
+@Composable
+fun ProfileView() {
+    val thunder = LocalThunderID.current
+    Text(thunder.user?.displayName ?: "Not signed in")
+}
+```
+
+## Properties
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `user` | `User?` | The currently authenticated user. `null` when not signed in. |
+| `isSignedIn` | `Boolean` | `true` when `user` is not `null`. |
+| `isLoading` | `Boolean` | `true` while the SDK is initializing or a sign-in/sign-out operation is in progress. |
+| `isInitialized` | `Boolean` | `true` after the SDK has completed initialization (whether or not sign-in succeeded). |
+| `error` | `String?` | A human-readable error message if initialization or the last auth operation failed. `null` on success. |
+| `client` | `ThunderIDClient` | The underlying `ThunderIDClient` instance for direct API calls. |
+
+## Methods
+
+### `refresh()`
+
+Re-fetches the current sign-in state from the token store and updates `user`. Call this after a sign-in or sign-out operation that you perform manually via `thunder.client`.
+
+```kotlin
+suspend fun refresh()
+```
+
+```kotlin
+val thunder = LocalThunderID.current
+val scope = rememberCoroutineScope()
+
+Button(onClick = {
+    scope.launch {
+        runCatching { thunder.client.signOut() }
+        thunder.refresh()
+    }
+}) {
+    Text("Sign Out")
+}
+```
+
+:::note
+`SignOutButton` and `SignIn` call `refresh()` automatically. You only need to call it directly when driving auth operations through `thunder.client` yourself.
+:::
+
+### `setLocale(locale)`
+
+Changes the active locale for all `dev.thunderid:compose` components. The selected locale is persisted to `SharedPreferences`.
+
+```kotlin
+fun setLocale(locale: String)
+```
+
+```kotlin
+val thunder = LocalThunderID.current
+Button(onClick = { thunder.setLocale("fr-FR") }) {
+    Text("Switch to French")
+}
+```
+
+## Example: Conditional Rendering
+
+Use `thunder.isInitialized`, `thunder.isLoading`, and `thunder.isSignedIn` to drive your root navigation:
+
+```kotlin
+@Composable
+fun RootView() {
+    val thunder = LocalThunderID.current
+    when {
+        !thunder.isInitialized || thunder.isLoading -> {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        }
+        thunder.error != null -> {
+            Text("Configuration error: ${thunder.error}")
+        }
+        thunder.isSignedIn -> HomeScreen()
+        else -> AuthScreen()
+    }
+}
+```
+
+## Example: Accessing the Client Directly
+
+Use `thunder.client` to call any `ThunderIDClient` method:
+
+```kotlin
+@Composable
+fun TokenDebugView() {
+    val thunder = LocalThunderID.current
+    var tokenClaims by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        runCatching {
+            val token = thunder.client.getAccessToken()
+            val claims = thunder.client.decodeJwtToken(token)
+            tokenClaims = claims.toString()
+        }
+    }
+
+    Text(tokenClaims)
+}
+```

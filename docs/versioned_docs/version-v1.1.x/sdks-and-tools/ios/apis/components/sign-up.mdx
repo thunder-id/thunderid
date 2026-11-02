@@ -1,0 +1,94 @@
+---
+title: SignUp
+docType: reference
+description: Embedded SwiftUI registration form driven by the ThunderID Flow Execution API for multi-step sign-up.
+---
+
+# `SignUp`
+
+The `SignUp` component renders a full app-native registration form. It drives the Flow Execution API registration loop automatically: initiating the flow, presenting the server-defined inputs and actions on each step, and completing when the user is registered and authenticated.
+
+`SignUp` requires `.thunderIDProvider(config:)` in its ancestor view hierarchy.
+
+## Usage
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct AuthView: View {
+    @State private var showSignUp = false
+
+    var body: some View {
+        if showSignUp {
+            SignUp(applicationId: "<your-application-id>")
+                .padding()
+        } else {
+            SignIn(applicationId: "<your-application-id>")
+                .padding()
+        }
+    }
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `applicationId` | `String` | ✅ | The Application ID from your <ProductName /> application settings. Identifies which registration flow to execute. |
+| `onComplete` | `(() -> Void)?` | ❌ | Called when registration completes successfully. |
+| `onError` | `((String) -> Void)?` | ❌ | Called with an error message when a flow step fails. |
+
+## Handling Completion
+
+Use `onComplete` to navigate away from the registration screen after a successful sign-up. `ThunderIDState.user` is updated automatically before this callback fires.
+
+```swift
+SignUp(
+    applicationId: "<your-application-id>",
+    onComplete: {
+        // state.isSignedIn is now true
+    },
+    onError: { errorMessage in
+        print("Registration error: \(errorMessage)")
+    }
+)
+```
+
+## Customization with `BaseSignUp`
+
+`BaseSignUp` is the unstyled builder variant. It manages the Flow Execution registration loop and passes a `SignUpState` object to your content closure.
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct CustomSignUpView: View {
+    var body: some View {
+        BaseSignUp(applicationId: "<your-application-id>") { signUpState in
+            VStack(spacing: 16) {
+                if let error = signUpState.error {
+                    Text(error).foregroundStyle(.red)
+                }
+
+                ForEach(signUpState.inputs, id: \.name) { input in
+                    if input.type == "PASSWORD_INPUT" {
+                        SecureField(input.name, text: signUpState.binding(for: input.name))
+                    } else {
+                        TextField(input.name, text: signUpState.binding(for: input.name))
+                    }
+                }
+
+                ForEach(signUpState.actions, id: \.id) { action in
+                    Button(action.label ?? "Register") {
+                        signUpState.submit(actionId: action.id)
+                    }
+                    .disabled(signUpState.isLoading)
+                }
+            }
+        }
+    }
+}
+```
+
+`SignUpState` exposes the same properties and methods as `SignInState`. See [SignIn: SignInState Properties](../sign-in#signinstate-properties) for the full reference.

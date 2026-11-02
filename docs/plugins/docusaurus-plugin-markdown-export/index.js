@@ -13,7 +13,7 @@ const {processMarkdownFile} = require('./mdxProcessor');
  *     → build/docs/next/getting-started/foo.md
  *     → served at /docs/next/getting-started/foo.md
  *
- *   versioned_docs/version-v1.0.x/getting-started/foo.mdx (v1.0.x is the
+ *   versioned_docs/version-v1.1.x/getting-started/foo.mdx (v1.1.x is the
  *   lastVersion, so its permalink is the bare /docs/getting-started/foo)
  *     → build/docs/getting-started/foo.md
  *     → served at /docs/getting-started/foo.md
@@ -28,7 +28,7 @@ const {processMarkdownFile} = require('./mdxProcessor');
  * permalink has no trailing "/index" segment.
  *
  * The lastVersion's docs also get a copy written under their old
- * /docs/<versionName>/... path (e.g. /docs/v1.0.x/getting-started/foo.md),
+ * /docs/<versionName>/... path (e.g. /docs/v1.1.x/getting-started/foo.md),
  * matching the alias @docusaurus/plugin-client-redirects generates for the
  * HTML pages, so links and tooling built against the pre-lastVersion-move
  * .md URLs (see tools/cli/internal/product.DocsVersionURL) keep working.
@@ -51,7 +51,7 @@ module.exports = function pluginMarkdownExport(context) {
   }
 
   // For the lastVersion, also resolve the pre-move URL (e.g. "/docs/getting-started/foo"
-  // → "/docs/v1.0.x/getting-started/foo") so its .md files stay reachable at their old
+  // → "/docs/v1.1.x/getting-started/foo") so its .md files stay reachable at their old
   // path. Returns null for every other version, since only the lastVersion's URL moved.
   function legacyLastVersionAlias(relPermalink, version) {
     if (!version.isLast || version.versionName === 'current') {

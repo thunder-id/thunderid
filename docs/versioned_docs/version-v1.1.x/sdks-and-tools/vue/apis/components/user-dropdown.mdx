@@ -1,0 +1,95 @@
+---
+title: <UserDropdown />
+docType: reference
+description: User dropdown menu showing the authenticated user's profile with a sign-out action for Vue apps.
+---
+
+# `<UserDropdown />`
+
+The `UserDropdown` component renders an avatar button that opens a dropdown menu with user information and common actions like viewing the profile and signing out. You can insert additional menu items between the Profile link and Sign Out.
+
+## Usage
+
+### Basic Usage
+
+```vue title="src/Header.vue" showLineNumbers
+<script setup>
+import { UserDropdown } from '@thunderid/vue'
+</script>
+
+<template>
+  <header>
+    <UserDropdown />
+  </header>
+</template>
+```
+
+### Custom Menu Items
+
+Add extra menu items between the built-in Profile link and Sign Out. Each item can optionally render with an icon, mark itself as `danger` for destructive styling, or insert a divider line above with `separatorBefore`.
+
+```vue title="src/Header.vue" showLineNumbers
+<script setup>
+import { h } from 'vue'
+import { UserDropdown } from '@thunderid/vue'
+import { Settings, HelpCircle } from 'lucide-vue-next'
+
+const menuItems = [
+  {
+    label: 'Settings',
+    icon: h(Settings, { size: 15 }),
+    onClick: () => { /* navigate to settings */ },
+  },
+  {
+    label: 'Help',
+    icon: h(HelpCircle, { size: 15 }),
+    onClick: () => { /* open help */ },
+    separatorBefore: true,
+  },
+]
+</script>
+
+<template>
+  <UserDropdown :menu-items="menuItems" />
+</template>
+```
+
+### Compact Variant
+
+Render a smaller, left-aligned dropdown without the chevron:
+
+```vue title="src/Header.vue" showLineNumbers
+<script setup>
+import { UserDropdown } from '@thunderid/vue'
+</script>
+
+<template>
+  <UserDropdown size="sm" menu-align="left" />
+</template>
+```
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `menuItems` | `DropdownMenuItem[]` | ❌ | Extra items inserted between the Profile link and Sign Out |
+| `menuAlign` | `'auto' \| 'left' \| 'right'` | ❌ | How the dropdown panel aligns relative to the trigger. Defaults to `'auto'`. |
+| `showChevron` | `boolean` | ❌ | Whether to render the animated down-chevron beside the avatar. Defaults to `false`. |
+| `size` | `'sm' \| 'md' \| 'lg'` | ❌ | Dropdown density. Defaults to `'md'`. |
+| `className` | `string` | ❌ | Extra CSS class added to the root element |
+
+## Events
+
+| Event | Description |
+| :--- | :--- |
+| `profileClick` | Emitted when the user clicks the Profile menu item |
+
+### `DropdownMenuItem`
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `label` | `string` | The menu item's label text |
+| `onClick` | `() => void` | Handler invoked when the item is clicked |
+| `icon` | `VNode` | Optional icon rendered to the left of the label |
+| `danger` | `boolean` | When `true`, applies destructive (red) styling |
+| `separatorBefore` | `boolean` | When `true`, inserts a divider line before this item |

@@ -1,0 +1,113 @@
+---
+title: Theme
+docType: reference
+displayed_sidebar: javascriptSdkSidebar
+description: Create and customize theme objects to control colors, fonts, and layout for ThunderID UI components.
+---
+
+# Theme
+
+The theme system provides a structured way to define colors, typography, spacing, and other visual properties used by <ProductName /> UI components. Use `createTheme()` to build a theme from scratch or apply partial overrides on top of the defaults.
+
+## `createTheme(config?)`
+
+Create a `Theme` object by merging the provided `ThemeConfig` with the default theme. Returns the merged theme plus computed CSS variable references and raw CSS custom property declarations.
+
+```ts
+import { createTheme } from '@thunderid/javascript'
+
+const theme = createTheme({
+  colors: {
+    primary: {
+      main: '#6200ea',
+      contrastText: '#ffffff',
+    },
+  },
+})
+
+// Apply CSS variables to the document root
+Object.entries(theme.cssVariables).forEach(([key, value]) => {
+  document.documentElement.style.setProperty(key, value)
+})
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `config` | `RecursivePartial<ThemeConfig>` | ❌ | Partial theme configuration. Deep-merged with `DEFAULT_THEME` |
+
+### Response: `Theme`
+
+`Theme` extends `ThemeConfig` with two additional properties:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `vars` | `ThemeVars` | CSS variable references (e.g., `theme.vars.colors.primary.main` → `'var(--thunderid-colors-primary-main)'`) |
+| `cssVariables` | `Record<string, string>` | Flat map of CSS custom property declarations ready to apply to `:root` |
+
+## `DEFAULT_THEME`
+
+The default theme object. Import it to inspect the base values or extend them:
+
+```ts
+import { DEFAULT_THEME } from '@thunderid/javascript'
+
+console.log(DEFAULT_THEME.colors.primary.main)
+```
+
+## `ThemeConfig`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `colors` | `ThemeColors` | Color palette |
+| `typography` | `ThemeTypography` | Font families and sizes |
+| `borderRadius` | `{ large, medium, small }` | Border radius scale |
+| `spacing` | `{ unit }` | Base spacing unit in pixels |
+| `shadows` | `{ large, medium, small }` | Box shadow definitions |
+| `components` | `ThemeComponents` | Per-component style overrides |
+| `cssVarPrefix` | `string` | Custom prefix for CSS variable names. Defaults to `'thunderid'` |
+| `direction` | `'ltr' \| 'rtl'` | Text direction |
+| `images` | `ThemeImages` | Logo, favicon, and other image URLs |
+
+## `ThemeColors`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `primary` | `ColorVariants` | Primary brand color (`main`, `light`, `dark`, `contrastText`) |
+| `secondary` | `ColorVariants` | Secondary brand color |
+| `background` | `object` | Page and surface background colors |
+| `text` | `object` | Foreground text colors (primary, secondary, disabled) |
+| `divider` | `string` | Divider and border color |
+| `action` | `object` | State colors for hover, focus, selected, disabled |
+| `alerts` | `object` | Semantic colors for info, success, warning, and error states |
+
+## `ThemeMode`
+
+| Value | Description |
+|-------|-------------|
+| `'light'` | Force light mode |
+| `'dark'` | Force dark mode |
+| `'system'` | Follow the OS preference (`prefers-color-scheme`) |
+| `'class'` | Controlled by CSS class (see `ThemeDetection`) |
+
+## `ThemeDetection`
+
+Used when `mode` is `'class'` to specify which CSS class activates each mode:
+
+```ts
+const theme = createTheme({
+  // ...
+})
+
+// Apply 'dark-mode' CSS class to <html> to activate dark theme
+const detection: ThemeDetection = {
+  darkClass: 'dark-mode',
+  lightClass: 'light-mode',
+}
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `darkClass` | `string` | CSS class name that triggers dark mode |
+| `lightClass` | `string` | CSS class name that triggers light mode |

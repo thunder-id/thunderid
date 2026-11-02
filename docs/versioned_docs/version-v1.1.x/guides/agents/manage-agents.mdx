@@ -1,0 +1,124 @@
+---
+title: Create and Manage Agents
+docType: guide
+sidebar_position: 2
+persona: iam
+description: Register an agent in {{ProductName}}, manage its identifiers, owner, access, and attribute schema, and retire it, from the Console or the API.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Create and Manage Agents
+
+Create an agent, give it identifiers and an owner, and assign the groups and roles that decide what it can reach. Manage its attribute schema, then delete it when it is retired.
+
+## Create an agent
+
+Creating an agent gives that agent its own identity in <ProductName />, with its own owner, attributes, and lifecycle, separate from any user.
+
+<Tabs groupId="agent-config">
+<TabItem value="console" label="Console" default>
+
+1. Go to **Agents** and click **Add Agent**.
+2. If the organization hierarchy requires it, choose an **Organization Unit**.
+3. Enter an **Agent name** (type one or pick a suggestion).
+4. If the agent schema defines attributes, fill them in.
+5. Choose an **Owner** (defaults to the creator), the person accountable for the agent throughout its lifecycle.
+6. Click **Create**.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+```bash
+curl -X POST https://localhost:8090/agents \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Invoice Reconciler",
+    "type": "default",
+    "ouId": "<organization-unit-id>",
+    "owner": "<owner-user-id>",
+    "attributes": { }
+  }'
+```
+
+`ouId`, `type`, and `name` are required; `owner` and `attributes` are optional. `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
+
+</TabItem>
+</Tabs>
+
+:::note[Agents also get an OAuth profile]
+An agent needs an OAuth profile before it can request tokens. The Console creates one at registration, issuing a **Client ID** and showing the **Client Secret** once on the confirmation screen. Copy the secret there, because it cannot be retrieved later, only regenerated.
+
+That profile is configured on the **Credentials**, **Flows**, **Tokens**, and **Advanced** tabs, which appear only for an agent that has one, and are summarized under [Manage an agent](#manage-an-agent) below.
+:::
+
+## Manage an agent
+
+In the Console, open the agent from the list. The name and description are editable inline in the header, and changes across tabs are saved together from the unsaved-changes bar.
+
+Through the API, update an agent with `PUT /agents/<AGENT_ID>`, sending only the fields being changed. See the [Agents API Reference](../../../apis#tag/agents) for the full request and response.
+
+### Identifiers and owner
+
+Every agent has an **Agent ID**, its identity in <ProductName />, and an **Owner**, the person accountable for it. The owner is the contact point for what the agent does. Assigning one grants that user no access to the agent.
+
+- **Console:** the **Overview** tab shows the Agent ID and owner under **Agent details**, and the **Advanced** tab is where the owner is changed.
+- **API:** `GET /agents/<AGENT_ID>` returns both.
+
+### Attribute values
+
+The agent schema decides which attributes an agent carries, and each agent holds its own values for them.
+
+- **Console:** set the values on the **Attributes** tab. The **Overview** tab previews them under **Attributes**, alongside the agent's organization unit under **Agent details**.
+- **API:** send `attributes` in the `PUT` request.
+
+### Groups and roles
+
+An agent should reach only the resources its task needs. What its tokens are allowed to carry comes from the groups and roles assigned to it, so the agent's reach is controlled separately from its credential, and changing what an agent can do never rotates its secret.
+
+The scopes an agent can hold, the permissions that travel in the token's `scope` claim, are defined by the resource it will call, not by the agent. Register the API and its scopes as a [Resource Server](../../resource-servers) first, then grant the matching scopes to the agent. An agent can never be granted a scope the resource has not declared.
+
+- **Console:** the **Access** tab is a read-only view of the groups the agent belongs to and the roles assigned to it, directly or through its groups. Assign them from the Console **Roles** and **Groups** pages; see [Manage Roles](../../users/manage-roles) and [Manage Groups](../../users/manage-groups). A role carries a set of scopes, and a group can carry roles and inherit from parent groups.
+- **API:** assign the agent to roles and groups through the roles and groups APIs. To read what an agent can already reach, call `GET /agents/<AGENT_ID>/roles` and `GET /agents/<AGENT_ID>/groups`. See the [Agents API Reference](../../../apis#tag/agents).
+
+Group membership is transitive: scopes inherited from a parent group are included.
+
+### Credentials
+
+The credential the agent authenticates with, either a client secret or a signed key, along with any sensitive credential attributes it carries. [Rotate the secret](../authentication#use-a-client-secret) or switch to a [private key JWT](../authentication#use-a-private-key-jwt) here.
+
+### Flows
+
+Available once the agent is extended to act for users. Pick the authentication and registration flows that decide how users authenticate through the agent. The flows themselves are built in the flow builder, [Login and Registration Flows](../../flows/build-a-flow); this tab only selects which one the agent uses. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
+
+### Tokens
+
+What the agent's tokens carry and how long they last, set independently for each audience: the **Agent** token it uses on its own, and the **User** token it holds for a signed-in user. See [Agent Token](../authentication/agent-own-token) for the agent token and [Agent Access on Behalf of Users](../authentication/on-behalf-of-user) for the user token.
+
+### Advanced
+
+The **Advanced** tab gathers the agent's OAuth and operational settings:
+
+- **Operating Mode** has a **Delegated mode** toggle that sets whether the agent acts only on its own or is extended to also act for a signed-in user. On its own it uses its own credentials (`client_credentials`); with Delegated mode on, it additionally signs users in (`authorization_code` with PKCE). See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
+- **Owner** is changed here; see [Identifiers and owner](#identifiers-and-owner) for what it means.
+- **Allowed User Types** restricts self-service registration to the selected user types. If none are selected, users cannot register through the agent; existing users can still sign in. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
+- **Agent Sign-In** controls whether other agents can sign in to this agent. Turn it on to let agents sign in, and leave it off to block every agent. This setting does not affect users. 
+- **Grant Types** are the OAuth grants the agent may use. Acting on its own (`client_credentials`) and handing a task to another agent (token exchange) are available in either operating mode; signing users in (`authorization_code`), keeping that access without a new sign-in (`refresh_token`), and out-of-band approval (CIBA) become available once the agent is extended to act for users. See [Agent Token](../authentication/agent-own-token) and [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
+- **Authorized Redirect URIs** are the callback URLs allowed for the `authorization_code` grant. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
+- **Client Authentication Method** is how the agent authenticates to the token endpoint, with a client secret or a private key JWT. See [Agent Authentication](../authentication).
+- **Security** covers **Require PKCE** and **Require Pushed Authorization Requests (PAR)**, which apply to the `authorization_code` grant. Require PKCE turns on automatically when Delegated mode is on and cannot be turned off here; PAR is optional.
+- **Default Audience** is the `aud` the agent's own token carries when a request names no `resource` and no scopes. See [Agent Token](../authentication/agent-own-token).
+
+## Agent schema
+
+The custom attributes every agent carries come from the agent schema, a single built-in schema shared by all agents. See [Agent Schema](../agent-schema) to view the default attributes and change what an agent holds.
+
+## Delete an agent
+
+- **Console:** on the **Advanced** tab, in the **Danger Zone** section, click **Delete Agent**.
+- **API:** call `DELETE /agents/<AGENT_ID>`. See the [Agents API Reference](../../../apis#tag/agents) for details.
+
+:::warning
+Deletion is permanent and revokes the agent's credentials. Tokens the agent was already issued stay valid until they expire, so keep agent token lifetimes short.
+:::

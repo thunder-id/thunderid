@@ -1,0 +1,100 @@
+---
+title: ExpressClientConfig
+docType: reference
+description: Configuration reference for the Express SDK, covering all options accepted by ThunderIDExpressClient.
+---
+
+# `ExpressClientConfig`
+
+`ExpressClientConfig` is the main configuration type for `@thunderid/express`.
+
+## Type Relationships
+
+The Express SDK exports these related types:
+
+| Type | Definition |
+| :--- | :--- |
+| `StrictExpressClientConfig` | Express-specific callback fields |
+| `ExpressClientConfig` | `ThunderIDNodeConfig & StrictExpressClientConfig` |
+| `ThunderIDExpressConfig` | Alias of `ExpressClientConfig` |
+
+`ExpressClientConfig` extends `ThunderIDNodeConfig`, which itself extends the base JavaScript SDK configuration. This page focuses on the fields that directly affect Express integration.
+
+## Usage
+
+```js title="index.js" showLineNumbers
+const {thunderID} = require('@thunderid/express');
+
+app.use(
+  thunderID({
+    baseUrl: 'https://localhost:8090',
+    clientId: '<your-client-id>',
+    clientSecret: '<your-client-secret>',
+    afterSignInUrl: 'http://localhost:3000/login',
+    afterSignOutUrl: 'http://localhost:3000/logout',
+    sessionCookie: {
+      expiryTime: 28800,
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+    },
+  }),
+);
+```
+
+## Core Fields
+
+| Field | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `baseUrl` | `string` | ✅ | Base URL of the <ProductName /> instance |
+| `clientId` | `string` | ❌ | Client ID for the application |
+| `clientSecret` | `string` | ❌ | Client secret for confidential clients |
+
+## Flow Fields
+
+| Field | Type | Required | Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `afterSignInUrl` | `string` | ❌ | `${origin}/login` | Callback URL used after sign-in when not explicitly set |
+| `afterSignOutUrl` | `string` | ❌ | `${origin}/logout` | Callback URL used after sign-out when not explicitly set |
+| `mode` | `'redirect' \| 'embedded'` | ❌ | `'redirect'` | Authentication interaction mode |
+| `signInOptions` | `Record<string, any>` | ❌ | - | Additional authorize request parameters |
+| `signOutOptions` | `Record<string, unknown>` | ❌ | - | Additional sign-out request parameters |
+| `applicationId` | `string` | ❌ | - | Application identifier used by some flows such as embedded sign-in |
+
+## Express Callbacks
+
+These fields come from `StrictExpressClientConfig`.
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `onSignIn` | `(res: express.Response, tokenResponse: TokenResponse) => void` | Called after a successful sign-in callback exchange |
+| `onSignOut` | `(res: express.Response) => void` | Called after a successful sign-out completion request |
+| `onError` | `(res: express.Response, exception: ThunderIDRuntimeError) => void` | Called when authentication-related work fails |
+| `onUnauthenticated` | `(res: express.Response) => void` | Intended callback for unauthenticated access handling |
+
+:::note
+`protect()` accepts its own `onUnauthenticated` callback argument. The current `protect()` implementation does not read `config.onUnauthenticated`.
+:::
+
+## Session Cookie Configuration
+
+The `sessionCookie` field is inherited from `ThunderIDNodeConfig`.
+
+| Field | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `expiryTime` | `number` | `86400` | Session lifetime in seconds |
+| `httpOnly` | `boolean` | `true` | Makes the cookie inaccessible to JavaScript |
+| `sameSite` | `'lax' \| 'strict' \| 'none'` | `'lax'` | SameSite policy for the session cookie |
+| `secure` | `boolean` | `false` | Requires HTTPS when `true` |
+
+## Notes
+
+- `afterSignInUrl` and `afterSignOutUrl` are optional because the Express middleware can derive defaults from the first incoming request origin
+- Use `mode: 'embedded'` only when you plan to mount [`handleFlow()`](../../middleware/handle-flow)
+- Other inherited `ThunderIDNodeConfig` and base JavaScript SDK options remain available, but they are outside the scope of this Express-first reference
+
+## Related APIs
+
+- [`thunderID()`](../../middleware/thunderid)
+- [`handleFlow()`](../../middleware/handle-flow)
+- [`CookieConfig`](../../constants/cookie-config)

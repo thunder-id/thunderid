@@ -52,7 +52,9 @@ To assemble the consent step manually, add and connect the individual nodes inst
 
 ### Configure optional timeout for the user input
 
-By default, the consent flow will wait indefinitely for the user to provide input. However, you can configure an optional timeout to automatically deny consent if the user does not respond within a specified time frame.
+By default, the consent flow will wait indefinitely for the user to provide input. However, you can configure an optional timeout to end the prompt if the user does not respond within a specified time frame.
+
+When the timeout expires, the prompt is submitted automatically as a denial. No consent decision is recorded, and the login completes without granting any of the requested attributes or permissions. This is not the same as denying an essential attribute, which terminates the login.
 
 To set a timeout for user input in the consent flow:
 
@@ -68,7 +70,7 @@ To set a timeout for user input in the consent flow:
 This setting is available from the 1.0.1 patch release. If you are using an earlier version, please upgrade to 1.0.1 or later to access this feature.
 :::
 
-By default, the login flow still completes when the user clicks **Deny** on the consent prompt, as long as every requested attribute and permission is optional. Only a denial of an essential attribute or permission terminates the login on the default setting.
+By default, the login flow still completes when the user clicks **Deny** on the consent prompt, as long as every requested attribute is optional. Only a denial of an essential attribute terminates the login on the default setting.
 
 Enable **Fail flow when user denies consent** on the **User Consent** node when the flow must fail instead.
 

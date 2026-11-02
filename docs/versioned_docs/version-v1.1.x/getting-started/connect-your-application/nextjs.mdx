@@ -1,0 +1,299 @@
+---
+toc_progress: quickstart
+title: Next.js Quickstart
+docType: quickstart
+sidebar_position: 3
+persona: app
+description: Add {{ProductName}} authentication to a Next.js application using the @thunderid/nextjs SDK with full App Router support.
+---
+
+import {
+  Boxes,
+  Package,
+  LogIn,
+  BookOpen,
+  Clock,
+  Server,
+  Hexagon,
+  FileCode,
+} from '@wso2/oxygen-ui-icons-react';
+
+# Next.js Quickstart
+
+Use this guide to add <ProductName /> authentication to a Next.js application using the `@thunderid/nextjs` SDK with full App Router support.
+
+<SdkQuickstartDownload packageId="nextjs" sample="quickstarts/nextjs" icon={<NextLogo size={22} />} promptFlow="embedded" />
+
+<TutorialHero>
+
+## What You Will Learn
+
+<TutorialHeroItem icon={<Boxes />}>Create a new Next.js app</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>Install the <code>@thunderid/nextjs</code> package</TutorialHeroItem>
+<TutorialHeroItem icon={<LogIn />}>Add working sign-in and sign-out</TutorialHeroItem>
+<TutorialHeroItem icon={<BookOpen />}>Protect routes with middleware</TutorialHeroItem>
+
+## Prerequisites
+
+<TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
+<TutorialHeroItem icon={<Hexagon />}>Node.js installed on your system</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>npm, yarn, or pnpm</TutorialHeroItem>
+<TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
+
+</TutorialHero>
+
+<Stepper stepNode="h2" as="h2">
+
+## Run <ProductName />
+
+Start a local <ProductName /> instance. Pick the method that works best for you:
+
+<RunThunderID />
+
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
+
+## Create an Application
+
+1. Sign in to the Console.
+
+    :::info Test User
+    If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+    :::
+
+2. Navigate to **Applications**.
+3. Click **Add Application**.
+4. From the **Choose a type** page, select **Next.js**.
+5. Enter a name (e.g. `My Next.js App`).
+6. Select how you want to sign in users (e.g., email/password, social login, etc.).
+7. Select Theme settings.
+8. Leave **Sign-In Approach** set to **Bring Your Own UI** (the default for Next.js applications).
+9. Click **Create**.
+
+:::note Note
+Copy the **Application ID** from the **General** tab, under **Quick Copy**. Also copy the **Flow Secret** from the window that pops up when the application is created; it's shown only once (if lost, regenerate it from the application's **Credentials** tab).
+:::
+
+## Create a Next.js App
+
+Create your new Next.js app:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npx create-next-app@latest my-nextjs-app
+    cd my-nextjs-app
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn create next-app my-nextjs-app
+    cd my-nextjs-app
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm create next-app my-nextjs-app
+    cd my-nextjs-app
+  </CodeBlock>
+</CodeGroup>
+
+When prompted, select the **App Router** option (the default).
+
+## Install @thunderid/nextjs
+
+Install the <ProductName /> Next.js SDK in your project:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm install @thunderid/nextjs
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn add @thunderid/nextjs
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm add @thunderid/nextjs
+  </CodeBlock>
+</CodeGroup>
+
+## Set Environment Variables
+
+Create a `.env` file in your project root with the following:
+
+:::warning Configuration
+Replace `<your-application-id>` and `<your-flow-secret>` with the values from your <ProductName /> application.
+
+Generate a random string for `THUNDERID_SECRET` (at least 32 characters):
+
+```bash
+openssl rand -base64 32
+```
+:::
+
+```dotenv title=".env" showLineNumbers
+NEXT_PUBLIC_THUNDERID_BASE_URL=https://localhost:8090
+NEXT_PUBLIC_THUNDERID_APPLICATION_ID=<your-application-id>
+THUNDERID_FLOW_SECRET=<your-flow-secret>
+NEXT_PUBLIC_THUNDERID_SIGN_IN_URL=/signin
+NEXT_PUBLIC_THUNDERID_SIGN_UP_URL=/signup
+THUNDERID_SECRET=<a-random-secret-for-session-signing>
+# DANGER: Disables ALL TLS verification. Only for local development with self-signed certs. NEVER use in production.
+NODE_TLS_REJECT_UNAUTHORIZED=0
+```
+
+## Add `ThunderIDProvider` to Your Layout
+
+Wrap your root layout with `ThunderIDProvider` from the server export. This enables authentication across your entire app.
+
+```tsx title="app/layout.tsx" {3,32} showLineNumbers
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import { ThunderIDProvider } from '@thunderid/nextjs/server'
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Create Next App",
+  description: "Generated by create next app",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">
+        <ThunderIDProvider>{children}</ThunderIDProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+## Add the <ProductName /> Proxy
+
+Create a `proxy.ts` file at your project root to proxy requests through <ProductName /> and protect routes:
+
+```ts title="proxy.ts" showLineNumbers
+import {
+  thunderIDProxy,
+  createRouteMatcher,
+} from '@thunderid/nextjs/server'
+
+const isProtectedRoute = createRouteMatcher([
+  // Add the paths you want to protect, e.g. '/dashboard(.*)'
+])
+
+export default thunderIDProxy(async (thunderid, request) => {
+  if (isProtectedRoute(request)) {
+    await thunderid.protectRoute()
+  }
+})
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+}
+```
+
+## Add Sign-In and Sign-Up Pages
+
+The `<SignIn />` and `<SignUp />` components render the sign-in and sign-up forms natively, using the Flow Execution API. Create the routes configured above as `NEXT_PUBLIC_THUNDERID_SIGN_IN_URL` and `NEXT_PUBLIC_THUNDERID_SIGN_UP_URL`:
+
+```tsx title="app/signin/page.tsx" showLineNumbers
+"use client";
+import { useRouter } from "next/navigation";
+import { SignIn } from "@thunderid/nextjs";
+
+export default function SignInPage() {
+  const router = useRouter();
+
+  return (
+    <section className="flex flex-col items-center justify-center min-h-screen py-2">
+      <SignIn onSuccess={() => router.push("/")} />
+    </section>
+  );
+}
+```
+
+```tsx title="app/signup/page.tsx" showLineNumbers
+"use client";
+import { SignUp } from "@thunderid/nextjs";
+
+export default function SignUpPage() {
+  return (
+    <section className="flex flex-col items-center justify-center min-h-screen py-2">
+      <SignUp afterSignUpUrl="/" />
+    </section>
+  );
+}
+```
+
+## Build with <ProductName /> components
+
+Update your home page with <ProductName /> authentication components:
+
+```tsx title="app/page.tsx" {1,6-11} showLineNumbers
+import { SignedIn, UserDropdown, SignedOut, SignInButton } from "@thunderid/nextjs";
+
+export default function Home() {
+  return (
+    <section className="flex flex-col items-center justify-center min-h-screen py-2">
+      <SignedIn>
+        <UserDropdown />
+      </SignedIn>
+      <SignedOut>
+        <SignInButton>Sign In</SignInButton>
+      </SignedOut>
+    </section>
+  );
+}
+```
+
+:::info
+`<SignInButton />` navigates to the local `NEXT_PUBLIC_THUNDERID_SIGN_IN_URL` route you created above, rather than redirecting to a <ProductName />-hosted page.
+:::
+
+## Run Your App
+
+Start the development server:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm run dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm dev
+  </CodeBlock>
+</CodeGroup>
+
+Visit your app at [http://localhost:3000](http://localhost:3000)
+
+:::tip Success
+You should see the sign-in button. Click it, you'll land on your application's own `/signin` page. Authenticate with the test user you created in step 2, then return to your application with the user dropdown displayed.
+:::
+
+</Stepper>
+
+## What's Next
+
+<NextSteps>
+  <NextStepsCard title="Upgrade the Sign-In Flow" href="../../../guides/flows/what-are-flows" description="Add MFA, passkeys, or social login to your flow. No app code changes required." cta="Flow Designer" />
+  <NextStepsCard title="Next.js SDK Reference" href="../../../sdks-and-tools/nextjs/overview" description="Explore the full API reference for the Next.js SDK." cta="API Reference" />
+</NextSteps>

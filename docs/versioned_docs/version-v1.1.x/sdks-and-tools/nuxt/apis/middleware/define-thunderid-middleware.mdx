@@ -1,0 +1,89 @@
+---
+title: defineThunderIDMiddleware()
+docType: reference
+description: Create route middleware that gates pages by auth state or required scopes
+---
+
+# `defineThunderIDMiddleware()`
+
+`defineThunderIDMiddleware` is a factory function that returns a Nuxt route middleware. It handles authentication guards and scope checks, and redirects unauthenticated users.
+
+The module also registers a named `'auth'` middleware that you can apply to any page using `definePageMeta`. It uses `defineThunderIDMiddleware` with its default options.
+
+## Signature
+
+```ts
+defineThunderIDMiddleware(
+  options?: ThunderIDMiddlewareOptions
+): ReturnType<typeof defineNuxtRouteMiddleware>
+```
+
+## Import
+
+```ts
+import { defineThunderIDMiddleware } from '@thunderid/nuxt'
+```
+
+## Usage
+
+### Named `'auth'` Middleware (Recommended)
+
+The simplest way to protect a page is to use the pre-built named `'auth'` middleware. No imports needed:
+
+```vue title="pages/dashboard.vue" showLineNumbers
+<script setup lang="ts">
+definePageMeta({ middleware: 'auth' })
+</script>
+
+<template>
+  <h1>Dashboard</h1>
+</template>
+```
+
+Unauthenticated users are redirected to `/api/auth/signin`.
+
+### Scope Guard
+
+Require specific OIDC scopes before allowing access to a page:
+
+```ts title="middleware/require-admin.ts" showLineNumbers
+import { defineThunderIDMiddleware } from '@thunderid/nuxt'
+
+export default defineThunderIDMiddleware({
+  requireScopes: ['internal_user_mgt_create', 'internal_user_mgt_update'],
+  redirectTo: '/unauthorized',
+})
+```
+
+## Options
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `redirectTo` | `string` | `'/api/auth/signin'` | Where to redirect unauthenticated (or unauthorized) users |
+| `requireScopes` | `string[]` | `[]` | One or more OIDC scopes that must be present in the user's session |
+
+## Behavior
+
+For each incoming navigation, the middleware:
+
+1. Reads the session from the server (via `requireServerSession`)
+2. If no session exists, redirects to `redirectTo`
+3. If `requireScopes` is non-empty, checks that all listed scopes are present in `session.scopes`; redirects to `redirectTo` if any are missing
+4. If all checks pass, continues to the page
+
+## Notes
+
+- The middleware runs on the server during SSR and on the client during client-side navigation.
+- Combining `defineThunderIDMiddleware` with `createRouteMatcher` lets you apply auth guards programmatically in `middleware/auth.global.ts` instead of page-by-page.
+
+```ts title="middleware/auth.global.ts" showLineNumbers
+import { defineThunderIDMiddleware, createRouteMatcher } from '@thunderid/nuxt'
+
+const isProtected = createRouteMatcher(['/dashboard/**', '/account/**'])
+
+export default defineNuxtRouteMiddleware((to) => {
+  if (isProtected(to.path)) {
+    return defineThunderIDMiddleware()
+  }
+})
+```

@@ -13,8 +13,8 @@ A **scope** is what a client *asks for*. A **claim** is what <ProductName /> *re
 
 <ProductName /> implements three layers:
 
-1. **Standard OIDC scopes** ([OIDC Core §5.4](https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims)): `openid`, `profile`, `email`, `phone`, `address`, with fixed claim sets defined by the spec.
-2. **Application-defined scope-to-claim mappings** (`scopeClaims`): request a scope, get a configurable bundle of claims.
+1. **Standard OIDC scopes** ([OIDC Core §5.4](https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims)): `openid`, `profile`, `email`, `phone`, `address`, with fixed claim sets defined by the spec. A client created without a mapping of its own starts with these.
+2. **Application-defined scope-to-claim mappings** (`scopeClaims`): request a scope, get a configurable bundle of claims. The mapping is the single authority on which OIDC scopes a client can obtain, and on the user attributes each one exposes.
 3. **The `claims` request parameter** ([OIDC Core §5.5](https://openid.net/specs/openid-connect-core-1_0.html#ClaimsParameter)): request specific claims directly, claim-by-claim.
 
 ## Standard OIDC Scopes
@@ -28,6 +28,12 @@ A **scope** is what a client *asks for*. A **claim** is what <ProductName /> *re
 | `address` | `address` (structured JSON object) |
 
 The actual values come from the authenticated user's attributes. Claims are omitted when the user has no value for them.
+
+These defaults are written into a client's `scopeClaims` mapping at creation when it declares no mapping of its own, and they remain the fallback at runtime: a standard scope the mapping does not define still returns the claims listed above. Edit an entry to change what the scope returns, or map it to an empty list to stop it returning anything.
+
+`openid` is the exception: it carries no user attributes of its own, its `sub` comes from the token subject, and it is always granted. It needs no mapping entry.
+
+The attributes a mapping can reference come from the schemas of the client's allowed user types, plus the runtime-computed `groups`, `roles`, `ouId`, `ouName`, `ouHandle`, and `userType`. Anything else is removed when the client is saved. A client with no allowed user types has no schema to draw on, so the scopes it is seeded with start empty: the scope names are there, but no attributes are mapped to them until user types are configured. A mapping you send yourself is still stored as sent.
 
 ## Custom Scope-to-Claim Mapping (`scopeClaims`)
 
@@ -45,10 +51,19 @@ Each application can define its own scope-to-claim bundles. Asking for the scope
 
 | Behavior | Detail |
 |---|---|
-| Overrides the standard mapping | Yes, `profile` here returns only the three listed claims, not the full OIDC `profile` set |
+| Replaces the standard mapping | Yes, `profile` here returns only the three listed claims, not the full OIDC `profile` set |
 | Custom scope names | Allowed, `roles` here is an application-defined scope |
-| Scope not in `scopeClaims` | Returns no extra claims (but the scope still passes through to access tokens) |
+| Standard scope not in `scopeClaims` | Granted on its standard claims, the built-in mapping is the fallback |
+| Custom scope not in `scopeClaims` | Not granted, there is no fallback to inherit |
 | Bypasses resource-server filtering | Yes, see "Filtering rules" below |
+
+**A standard scope cannot be switched off by removing it.** Deleting `profile` from the mapping returns it to the standard claim set, it does not stop the client granting it. To stop a standard scope releasing anything, map it to an empty list (`"profile": []`), which is honored as sent.
+
+**Create and update differ.** On create, omitting `scopeClaims` seeds the standard scopes, while sending one stores exactly what you sent, so `{"profile": [...]}` yields a client whose stored mapping is only `profile`. On update the mapping is replaced by what you send, and omitting the field clears it. In both cases the standard scopes remain available at runtime through the fallback.
+
+**Declarative resource files are never seeded.** A client loaded from a file under the declarative resources directory is stored exactly as written, so its mapping stays empty until you declare one. The runtime fallback still applies, so the standard scopes work as documented above; declare a mapping only where you want to narrow one.
+
+**Attribute lists follow the mapping.** On create, `token.idToken.userAttributes` is derived from the mapping only when you omit it; send a list and it is stored as sent. `userInfo.userAttributes` inherits the ID token list when you omit it, so both end up covering the mapping by default. The list is a second gate: a claim reaches a token only when the scope releases it **and** the list allows it. So a client created with a narrow mapping has a correspondingly narrow list, and the standard claims a fallback scope resolves to are filtered out until you add them to the list. In the Console, mapping an attribute to a scope adds it to both lists for you; the lists themselves sit under **Token Attributes (Advanced)**, where they exist for attributes you want reachable through the `claims` request parameter without tying them to a scope.
 
 ## `claims` Request Parameter
 
@@ -77,8 +92,8 @@ How the request-time scope list becomes the issued-token scope list:
 
 | Scope category | Filtered by resource indicators? | Notes |
 |---|---|---|
-| `openid`, `profile`, `email`, `phone`, `address` | ❌ Not by resource indicators | OpenID Connect standard scopes are reserved. When the application has a scopes allowlist, <ProductName /> only keeps requested scopes that the application allows. |
-| Custom scopes covered by `scopeClaims` | ❌ Not by resource indicators | The application owns these scopes. When the application has a scopes allowlist, <ProductName /> only keeps requested scopes that the application allows. |
+| `openid`, `profile`, `email`, `phone`, `address` | ❌ Not by resource indicators | OpenID Connect standard scopes are reserved. <ProductName /> keeps only the ones the application's `scopeClaims` mapping defines, plus `openid`, which is always granted. |
+| Custom scopes covered by `scopeClaims` | ❌ Not by resource indicators | The application owns these scopes. |
 | Permissions owned by a targeted resource server (see [Resource Indicators](../resource-indicators)) | ✅ Kept | RS-defined |
 | Permissions owned by a different resource server | ❌ Dropped silently | RS-defined |
 | Permissions not allowed on the application | ❌ Rejected | Request fails with `invalid_scope` |
@@ -89,7 +104,7 @@ How the request-time scope list becomes the issued-token scope list:
 <TabItem value="console" label="Console" default>
 
 1. Open **Applications** or **Agents** in the <ProductName /> Console and select your client.
-2. Open the **Token** tab to list the allowed scopes and to define custom scope-to-claim mappings.
+2. Open the **Token** tab to add or remove scopes and to map the user attributes each one exposes. Mapping an attribute allow-lists it for the ID Token and UserInfo automatically, so there is nothing else to configure.
 3. Save.
 
 </TabItem>
@@ -104,11 +119,11 @@ Content-Type: application/json
   "redirect_uris": ["https://app.example.com/callback"],
   "grant_types": ["authorization_code"],
   "response_types": ["code"],
-  "scope": "openid profile email roles"
+  "scope": "openid profile email"
 }
 ```
 
-The `scopeClaims` mapping is configured on the application object itself, alongside the `scopes` allowlist.
+The `scopeClaims` mapping is configured on the application object itself. A registration request is seeded with the standard scopes, so a scope outside that set is granted only once you map it there.
 
 </TabItem>
 </Tabs>

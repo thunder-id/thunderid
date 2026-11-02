@@ -1,0 +1,137 @@
+---
+title: <ProtectedRoute />
+docType: reference
+displayed_sidebar: tanstackRouterSdkSidebar
+description: Guard routes in TanStack Router by redirecting unauthenticated users or rendering a fallback component.
+---
+
+# `<ProtectedRoute />`
+
+The `ProtectedRoute` component wraps a route component and enforces authentication. When the user is not signed in it either redirects to a specified URL or renders a fallback element. While authentication state is being resolved it shows a loading state.
+
+:::note
+`ProtectedRoute` must be rendered inside a `ThunderIDProvider`. It also requires TanStack Router's router context: wrap your application with `RouterProvider`.
+:::
+
+## Usage
+
+### Basic Usage
+
+Use `ProtectedRoute` in the `component` of a TanStack Router route definition:
+
+```tsx title="src/routes.tsx" showLineNumbers
+import { createRoute } from '@tanstack/react-router'
+import { ProtectedRoute } from '@thunderid/tanstack-router'
+import Dashboard from './pages/Dashboard'
+
+export const dashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dashboard',
+  component: () => (
+    <ProtectedRoute redirectTo="/signin">
+      <Dashboard />
+    </ProtectedRoute>
+  ),
+})
+```
+
+### Custom Fallback
+
+Render a custom element instead of redirecting when the user is not authenticated:
+
+```tsx title="src/routes.tsx"
+createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dashboard',
+  component: () => (
+    <ProtectedRoute
+      fallback={
+        <div>
+          <h2>Sign in required</h2>
+          <p>You must be signed in to view this page.</p>
+        </div>
+      }
+    >
+      <Dashboard />
+    </ProtectedRoute>
+  ),
+})
+```
+
+### Custom Loading State
+
+Replace the default `null` loading state with a spinner or skeleton:
+
+```tsx title="src/routes.tsx"
+createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dashboard',
+  component: () => (
+    <ProtectedRoute
+      redirectTo="/signin"
+      loader={<div className="spinner">Loading...</div>}
+    >
+      <Dashboard />
+    </ProtectedRoute>
+  ),
+})
+```
+
+### Protecting a Nested Layout
+
+Protect a group of routes by placing `ProtectedRoute` in a shared layout route:
+
+```tsx title="src/routes.tsx" showLineNumbers
+import { createRoute, Outlet } from '@tanstack/react-router'
+import { ProtectedRoute } from '@thunderid/tanstack-router'
+
+const appLayoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/app',
+  component: () => (
+    <ProtectedRoute redirectTo="/signin">
+      <Outlet />
+    </ProtectedRoute>
+  ),
+})
+
+const dashboardRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/dashboard',
+  component: Dashboard,
+})
+
+const settingsRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/settings',
+  component: Settings,
+})
+```
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `children` | `ReactElement` | ✅ | The element to render when the user is authenticated |
+| `redirectTo` | `string` | ❌ | Path to redirect unauthenticated users to. Either `redirectTo` or `fallback` must be provided |
+| `fallback` | `ReactElement` | ❌ | Element to render when the user is not authenticated. Either `redirectTo` or `fallback` must be provided |
+| `loader` | `ReactNode` | ❌ | Element to render while authentication state is being resolved. Defaults to `null` |
+
+:::note
+You must provide either `redirectTo` or `fallback`. If neither is provided, a `ThunderIDRuntimeError` is thrown.
+:::
+
+## Differences from `@thunderid/react-router`
+
+The TanStack Router `ProtectedRoute` does not include `onSignIn` or `signInOptions` props. For custom sign-in logic, use the [`useThunderID()`](../../../react/apis/hooks/use-thunderid) hook directly in the protected component or layout.
+
+## Error Handling
+
+`ProtectedRoute` throws a `ThunderIDRuntimeError` if neither `redirectTo` nor `fallback` is provided.
+
+```tsx
+// This will throw — one of redirectTo or fallback is required
+<ProtectedRoute>
+  <Dashboard />
+</ProtectedRoute>
+```

@@ -1,0 +1,107 @@
+---
+title: <CallbackRoute />
+docType: reference
+displayed_sidebar: tanstackRouterSdkSidebar
+description: Handle OAuth 2.0 authorization code callbacks in TanStack Router to complete the sign-in exchange.
+---
+
+# `<CallbackRoute />`
+
+The `CallbackRoute` component handles the OAuth 2.0 authorization code callback. Mount it at your application's redirect URI path. It processes the authorization code, validates the CSRF state parameter, exchanges the code for tokens, and navigates the user back to their original destination.
+
+:::note
+`CallbackRoute` must be rendered inside a `ThunderIDProvider` and a TanStack Router context.
+:::
+
+## Usage
+
+### Basic Usage
+
+Define a callback route and use `CallbackRoute` as its component:
+
+```tsx title="src/routes.tsx" showLineNumbers
+import { createRoute } from '@tanstack/react-router'
+import { CallbackRoute } from '@thunderid/tanstack-router'
+
+const callbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/callback',
+  component: CallbackRoute,
+})
+```
+
+Configure `afterSignInUrl` in `ThunderIDProvider` to match:
+
+```tsx title="src/main.tsx" showLineNumbers
+<ThunderIDProvider
+  clientId="<your-client-id>"
+  baseUrl="https://localhost:8090"
+  afterSignInUrl="http://localhost:5173/callback"
+>
+  <RouterProvider router={router} />
+</ThunderIDProvider>
+```
+
+The callback path must also be registered as an allowed redirect URI in the <ProductName /> Console.
+
+### Error Handling
+
+Use `onError` to handle failures during token exchange:
+
+```tsx title="src/routes.tsx"
+const callbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/callback',
+  component: () => (
+    <CallbackRoute
+      onError={(error) => {
+        console.error('Authentication callback failed:', error.message)
+      }}
+    />
+  ),
+})
+```
+
+### Custom Navigation
+
+Override the post-callback navigation with `onNavigate`. Receives the path the user should be sent to after successful authentication:
+
+```tsx title="src/routes.tsx"
+const callbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/callback',
+  component: () => (
+    <CallbackRoute
+      onNavigate={(path) => {
+        router.navigate({ to: path, replace: true })
+      }}
+    />
+  ),
+})
+```
+
+### Router Basepath
+
+`CallbackRoute` automatically accounts for TanStack Router's `basepath` when resolving the post-callback navigation path, no extra configuration needed.
+
+```tsx title="src/main.tsx"
+const router = createRouter({ routeTree, basepath: '/app' })
+```
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `onError` | `(error: Error) => void` | ❌ | Called when callback processing fails (e.g., invalid state, token exchange error) |
+| `onNavigate` | `(path: string) => void` | ❌ | Override the default post-callback navigation. Receives the resolved destination path. Defaults to TanStack Router's `router.navigate()` |
+
+## How It Works
+
+When the authorization server redirects back to your application, `CallbackRoute`:
+
+1. Reads the `code` and `state` parameters from the URL via `useRouterState()`
+2. Validates the `state` against the value stored during sign-in (CSRF protection)
+3. Exchanges the authorization code for tokens via the configured token endpoint
+4. Navigates the user to their original pre-authentication path using `router.navigate()`
+
+It renders nothing visible. It completes silently and redirects immediately on success.

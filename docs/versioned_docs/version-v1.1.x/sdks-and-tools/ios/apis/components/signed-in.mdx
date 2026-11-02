@@ -1,0 +1,69 @@
+---
+title: SignedIn
+docType: reference
+description: Conditionally render SwiftUI content only when a user is currently signed in to the application.
+---
+
+# `SignedIn`
+
+The `SignedIn` component conditionally renders its content only when the user is authenticated. It reads the current sign-in state from `ThunderIDState` and displays protected UI for signed-in users, while rendering optional fallback content (or nothing) when the user is not authenticated.
+
+`SignedIn` requires `.thunderIDProvider(config:)` in its ancestor view hierarchy.
+
+## Usage
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct ContentView: View {
+    var body: some View {
+        SignedIn {
+            Text("You are signed in.")
+        }
+    }
+}
+```
+
+When the user is not signed in, nothing is rendered unless you provide a `fallback` closure.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `content` | `@ViewBuilder () -> Content` | ✅ | The view to render when the user is authenticated. |
+| `fallback` | `@ViewBuilder () -> Fallback` | ❌ | The view to render when the user is not authenticated. Defaults to `EmptyView`. |
+
+## Providing a Fallback
+
+Show alternative content when the user is not signed in:
+
+```swift
+SignedIn {
+    HomeView()
+} fallback: {
+    AuthView()
+}
+```
+
+## Example: Route Between Screens
+
+Use `SignedIn` and `SignedOut` together to implement your app's root routing logic:
+
+```swift
+struct RootView: View {
+    @EnvironmentObject var state: ThunderIDState
+
+    var body: some View {
+        if !state.isInitialized {
+            ProgressView("Loading...")
+        } else {
+            SignedIn {
+                HomeView()
+            } fallback: {
+                AuthView()
+            }
+        }
+    }
+}
+```

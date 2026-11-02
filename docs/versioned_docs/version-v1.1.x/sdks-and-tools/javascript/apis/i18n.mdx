@@ -1,0 +1,122 @@
+---
+title: Internationalization
+docType: reference
+displayed_sidebar: javascriptSdkSidebar
+description: Localize UI strings and override default text in the JavaScript SDK using the i18n configuration.
+---
+
+# Internationalization
+
+The SDK ships with built-in translation bundles for <ProductName /> UI components and provides utilities for loading, extending, and normalizing translations.
+
+## Supported Locales
+
+| Locale | Language |
+|--------|----------|
+| `en-US` | English (United States) |
+| `fr-FR` | French (France) |
+| `hi-IN` | Hindi (India) |
+| `ja-JP` | Japanese (Japan) |
+| `pt-BR` | Portuguese (Brazil) |
+| `pt-PT` | Portuguese (Portugal) |
+| `si-LK` | Sinhala (Sri Lanka) |
+| `ta-IN` | Tamil (India) |
+| `te-IN` | Telugu (India) |
+
+## `getDefaultI18nBundles()`
+
+Return all built-in translation bundles indexed by locale code.
+
+```ts
+import { getDefaultI18nBundles } from '@thunderid/javascript'
+
+const bundles = getDefaultI18nBundles()
+console.log(bundles['en-US'])   // I18nBundle
+console.log(bundles['fr-FR'])   // I18nBundle
+```
+
+**Returns:** `Record<string, I18nBundle>`
+
+## `normalizeTranslations(translations)`
+
+Flatten a potentially nested translation object into a flat key-value map. Nested keys are joined with `.`.
+
+```ts
+import { normalizeTranslations } from '@thunderid/javascript'
+
+const flat = normalizeTranslations({
+  signin: {
+    title: 'Sign In',
+    button: 'Continue',
+  },
+})
+// { 'signin.title': 'Sign In', 'signin.button': 'Continue' }
+```
+
+**Returns:** `Record<string, string>`
+
+## `TranslationBundleConstants`
+
+Constants for the default locale list and bundle configuration.
+
+```ts
+import { TranslationBundleConstants } from '@thunderid/javascript'
+
+console.log(TranslationBundleConstants.DEFAULT_LOCALES)
+// ['en-US', 'fr-FR', 'hi-IN', 'ja-JP', 'pt-BR', 'pt-PT', 'si-LK', 'ta-IN', 'te-IN']
+```
+
+## Types
+
+### `I18nBundle`
+
+A translation bundle for a single locale.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `locale` | `string` | BCP 47 locale code (e.g., `'en-US'`) |
+| `translations` | `I18nTranslations` | Key-value translation map |
+
+### `I18nTranslations`
+
+```ts
+type I18nTranslations = Record<string, string>
+```
+
+Keys follow dot-notation (e.g., `'signin.title'`, `'user.profile.update.generic.error'`). Values are the translated strings, which may include `{{placeholder}}` interpolation tokens.
+
+### `TranslationFn`
+
+A function type used to resolve a translation key to its string value in custom integrations:
+
+```ts
+type TranslationFn = (key: string, values?: Record<string, string>) => string
+```
+
+## Providing Custom Translations
+
+Custom translations can be passed via the `preferences.i18n.bundles` configuration option:
+
+```ts
+await client.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  preferences: {
+    i18n: {
+      language: 'en-US',
+      bundles: {
+        'en-US': {
+          'signin.title': 'Welcome Back',
+          'signin.button': 'Log In',
+        },
+        'de-DE': {
+          'signin.title': 'Willkommen zurück',
+          'signin.button': 'Anmelden',
+        },
+      },
+    },
+  },
+})
+```
+
+Custom keys are merged on top of the built-in bundle: you only need to supply the keys you want to override.

@@ -1,0 +1,291 @@
+---
+title: Agent Sign-In
+docType: guide
+sidebar_position: 6
+persona: iam
+description: Configure an agent in {{ProductName}} to complete an interactive sign-in built for humans, using a username and password, an emailed or texted one-time code or magic link, or a registered passkey.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Agent Sign-In
+
+An agent can complete an interactive sign-in built for a human, without impersonating an employee or sharing a login. Which credential it uses depends on what the target application expects. That might be a username and password held as schema attributes, an emailed or texted one-time code or magic link, or a passkey the agent registers and uses itself.
+
+## Allow the agent type on the application
+
+An application accepts an agent as a sign-in subject only when agent sign-in is enabled for it. Every application rejects agents until you turn it on, even when the agent presents the right credentials.
+
+<Tabs groupId="agent-config">
+<TabItem value="console" label="Console" default>
+
+1. Go to **Applications** and open the application the agent signs in to.
+2. On the **Access** tab, click on **Enable Agent Sign-In**.
+3. Save from the unsaved-changes bar.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+The update replaces the application in full, so fetch the current one first:
+
+```bash
+curl -X GET https://localhost:8090/applications/<application-id> \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+Add `allowedAgentTypes` alongside the existing fields, then send the merged application back:
+
+```bash
+curl -X PUT https://localhost:8090/applications/<application-id> \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "Vendor Portal",
+    "allowedUserTypes": ["customer"],
+    "allowedAgentTypes": ["default"]
+  }'
+```
+
+See the [Applications API Reference](../../../../apis#tag/applications).
+
+</TabItem>
+</Tabs>
+
+This setting gates sign-in only. Roles and scopes still govern what the agent can do once it is signed in.
+
+## Sign the agent in
+
+An agent can have multiple methods of authentication to sign in to an application. Choose the method that fits your use case.
+
+<SignInMethodSelector />
+
+<SignInMethodContent value="password">
+
+### Add the attributes to the agent schema
+
+<ProductName /> agents carry one schema per organization unit, shared by every agent in it. See [Agent Schema](../../agent-schema) for the full attribute model.
+
+<Tabs groupId="agent-config">
+<TabItem value="console" label="Console" default>
+
+1. On the **Agents** list, click **Schema**.
+2. Add a `username` attribute: set **Type** to **String**, and turn on **Required** and **Unique**.
+3. Add a `password` attribute: set **Type** to **String**, and turn on **Required** and **Credential**.
+4. Save from the unsaved-changes bar.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+The update replaces the schema in full, so fetch the current one first:
+
+```bash
+curl -X GET https://localhost:8090/agent-types/<agent-type-id> \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+Add `username` and `password` alongside the existing attributes, then send the merged schema back:
+
+```bash
+curl -X PUT https://localhost:8090/agent-types/<agent-type-id> \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "default",
+    "ouId": "<organization-unit-id>",
+    "schema": {
+      "username": { "type": "string", "required": true, "unique": true },
+      "password": { "type": "string", "required": true, "credential": true }
+    }
+  }'
+```
+
+See the [Agent Types API Reference](../../../../apis#tag/agent-types).
+
+</TabItem>
+</Tabs>
+
+Marking `password` as a credential means <ProductName /> hashes it on write and never returns it in a read response, the same guarantee that applies to any credential attribute.
+
+### Create an agent
+
+Create the agent the same way as any agent, filling in the `username` and `password` attributes with the values the application expects. See [Create an agent](../../manage-agents#create-an-agent).
+
+:::note[The password cannot be read back]
+Once created, <ProductName /> can verify the password but cannot return it, the same as any credential attribute. Provision the same value to the agent's runtime through your own secrets manager or deployment pipeline, since creating the agent already required it.
+:::
+
+### Authenticate to the application
+
+The agent submits the `username` and `password` from its schema to the application's own sign-in flow, exactly as a person would.
+
+See [Authenticate the Agent](../../../../use-cases/ai-agents/solve-sign-in) for this pattern applied in a full scenario.
+
+</SignInMethodContent>
+
+<SignInMethodContent value="otp">
+
+### Add the attributes to the agent schema
+
+<ProductName /> agents carry one schema per organization unit, shared by every agent in it. See [Agent Schema](../../agent-schema) for the full attribute model.
+
+<Tabs groupId="agent-config">
+<TabItem value="console" label="Console" default>
+
+1. On the **Agents** list, click **Schema**.
+2. For an email OTP or magic link, add `email` attribute: set **Type** to **String**, and turn on **Required**.
+3. For SMS OTP, add `mobile_number` attribute: set **Type** to **String**, and turn on **Required**.
+4. Save from the unsaved-changes bar.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+The update replaces the schema in full, so fetch the current one first:
+
+```bash
+curl -X GET https://localhost:8090/agent-types/<agent-type-id> \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+Add `email`, `mobile_number`, or both, depending on which channel the application uses, then send the merged schema back:
+
+```bash
+curl -X PUT https://localhost:8090/agent-types/<agent-type-id> \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "default",
+    "ouId": "<organization-unit-id>",
+    "schema": {
+      "email": { "type": "string", "required": true },
+      "mobile_number": { "type": "string", "required": true }
+    }
+  }'
+```
+
+See the [Agent Types API Reference](../../../../apis#tag/agent-types).
+
+</TabItem>
+</Tabs>
+
+### Create an agent
+
+Create the agent the same way as any agent, filling in whichever of the `email` or `mobile_number` attributes matches the channel the application uses. See [Create an agent](../../manage-agents#create-an-agent).
+
+### Let the agent read its own code or link
+
+Connect the agent's `email` address or `mobile_number` to an email API, SMS gateway, or MCP integration under your control, so the agent can retrieve what the application sends. An emailed or texted code reads like any other message. A magic link differs only in that the agent extracts the `token` query parameter from the link itself, rather than opening it in a browser, and submits that token back to complete the sign-in.
+
+This connection runs outside <ProductName />, through whatever email provider, SMS gateway, or MCP server the agent already uses for other tasks.
+
+</SignInMethodContent>
+
+<SignInMethodContent value="passkey">
+
+### Create the agent
+
+A passkey is stored against the agent's own entity ID, so the agent must exist first. Create it the same way as any agent; a passkey does not need a schema attribute, so leave `attributes` out or set only the ones your organization tracks. See [Create an agent](../../manage-agents#create-an-agent).
+
+### Register a passkey for the agent
+
+The agent registers a passkey through the same Direct API a human user uses. <ProductName /> issues the registration challenge and verifies the result; producing the attestation is the agent's own responsibility. Give the agent a WebAuthn client capable of generating a key pair and signing the challenge, the role a browser's `navigator.credentials.create()` plays for a human user.
+
+:::note[Direct Auth Secret]
+The Direct API gates these endpoints with a server-level Direct Auth Secret, sent in the `Direct-Auth-Secret` header shown below. Running `setup.sh` generates one automatically at `<thunderid-root>/backend/config/secrets/direct_auth_secret`. See [Direct Auth Secret](../../../../key-concepts/authentication/integration-models#direct-auth-secret).
+:::
+
+1. **Start registration.** Request creation options for the agent's entity ID.
+
+```bash
+curl -X POST https://localhost:8090/register/passkey/start \
+  -H 'Content-Type: application/json' \
+  -H 'Direct-Auth-Secret: YOUR_SECRET_TOKEN' \
+  -d '{
+    "userId": "<agent-id>",
+    "relyingPartyId": "<relying-party-id>",
+    "relyingPartyName": "<relying-party-name>",
+    "authenticatorSelection": {
+    "authenticatorAttachment": "platform",
+      "requireResidentKey": false,
+      "residentKey": "preferred",
+      "userVerification": "preferred"
+    },
+    "attestation": "none"
+  }'
+```
+
+The response carries `publicKeyCredentialCreationOptions` for the agent's WebAuthn client and a `sessionToken` for the finish call.
+
+2. **Produce the attestation.** Pass `publicKeyCredentialCreationOptions` to the agent's WebAuthn client so it generates a key pair and signs the challenge.
+
+3. **Finish registration.** Send the resulting attestation with the session token.
+
+```bash
+curl -X POST https://localhost:8090/register/passkey/finish \
+  -H 'Content-Type: application/json' \
+  -H 'Direct-Auth-Secret: YOUR_SECRET_TOKEN' \
+  -d '{
+    "publicKeyCredential": {
+      "id": "<credential-id>",
+      "rawId": "<raw-id>",
+      "type": "public-key",
+      "response": {
+        "clientDataJSON": "<base64url>",
+        "attestationObject": "<base64url>"
+      }
+    },
+    "sessionToken": "<session-token>",
+    "skipAssertion": false,
+    "assertion": "<assertion>"
+  }'
+```
+
+On success, the response returns the credential's `CredentialID`, `CredentialName`, and `CreatedAt`.
+
+See [Passkeys](../../../../key-concepts/authentication/passwordless/passkeys) for the full ceremony and the [Passkeys API Reference](../../../../apis#tag/passkeys) for both requests.
+
+### Authenticate with the passkey
+
+1. **Start authentication.** Request assertion options for the agent's entity ID.
+
+```bash
+curl -X POST https://localhost:8090/auth/passkey/start \
+  -H 'Content-Type: application/json' \
+  -H 'Direct-Auth-Secret: YOUR_SECRET_TOKEN' \
+  -d '{
+    "userId": "<agent-id>",
+    "relyingPartyId": "<relying-party-id>"
+  }'
+```
+
+The response carries `publicKeyCredentialRequestOptions` for the agent's WebAuthn client and a `sessionToken` for the finish call.
+
+2. **Produce the assertion.** Pass `publicKeyCredentialRequestOptions` to the agent's WebAuthn client so it signs the challenge with the private key generated at registration.
+
+3. **Finish authentication.** Send the resulting assertion with the session token.
+
+```bash
+curl -X POST https://localhost:8090/auth/passkey/finish \
+  -H 'Content-Type: application/json' \
+  -H 'Direct-Auth-Secret: YOUR_SECRET_TOKEN' \
+  -d '{
+    "publicKeyCredential": {
+      "id": "<credential-id>",
+      "rawId": "<raw-id>",
+      "type": "public-key",
+      "response": {
+        "clientDataJSON": "<base64url>",
+        "authenticatorData": "<base64url>",
+        "signature": "<base64url>",
+        "userHandle": "<base64url>"
+      }
+    },
+    "sessionToken": "<session-token>",
+    "skipAssertion": false,
+    "assertion": "<assertion>"
+  }'
+```
+
+On success, the response returns an authentication result compatible with other <ProductName /> auth flows. See the [Passkeys API Reference](../../../../apis#tag/passkeys).
+
+</SignInMethodContent>

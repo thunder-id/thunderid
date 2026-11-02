@@ -1,0 +1,346 @@
+---
+title: Organization Units
+docType: guide
+sidebar_position: 11
+persona: iam
+description: Create and manage organization units to structure users into hierarchical groups for access control.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Organization Units
+
+Organization units (OUs) let you organize users and groups to match your organization's structure. 
+You can use OUs to model departments, teams, regions, or even separate tenants.
+
+**Root organization units** are the top-level nodes that represent major segments of your organization. 
+**Child organization units** are nested under root OUs. Together they form a tree-like structure that reflects your organizational hierarchy.
+
+OUs can be nested to any depth. Common patterns include:
+
+<Tabs>
+<TabItem value="department" label="By Department" default>
+
+```text
+engineering/
+  frontend/
+  backend/
+  platform/
+sales/
+hr/
+```
+
+</TabItem>
+<TabItem value="region" label="By Region">
+
+```text
+americas/
+  us/
+  latam/
+emea/
+apac/
+```
+
+</TabItem>
+</Tabs>
+
+
+## Organization Units and User Types
+
+All users belong to an OU and each user also has a [user type](../users/user-types). A user type defines:
+
+- the attributes in the user's profile.
+
+- validation rules for those attributes.
+
+- whether users can self-register.
+
+<ProductName /> ships with two default organization units, each with a predefined user type.
+
+| Organization Unit | Default User Type | Purpose |
+|-------------------|-----------|---------|
+| **Default** | Person | Administrator-managed users |
+| **Customers** | Customer | Self-registering end users |
+
+Each user type belongs to a single OU and inherited by its child OUs. This means, a user of a certain type can only exist in that OU or its descendants. For example, the default **Customers** OU has a **Customer** user type. A user of Customer type can only exist in the Customers OU or its descendants.
+
+
+## Organization Handles
+
+Every OU has a **handle**, a short, URL-safe identifier used to reference the OU in the hierarchy. Handles must be unique within the same parent.
+
+<ProductName />'s two default OUs have fixed handles:
+
+| Organization Unit | Handle |
+|-------------------|--------|
+| Default | `default` |
+| Customers | `customers` |
+
+Handles compose into **hierarchical paths** by joining each OU's handle with a forward slash `/`. For example:
+
+| Path | Description |
+|------|-------------|
+| `engineering` | The root OU with handle `engineering` |
+| `engineering/frontend` | The `frontend` OU nested under `engineering` |
+| `engineering/frontend/ui` | The `ui` OU nested under `engineering/frontend` |
+
+Hierarchical paths let you navigate directly to any OU in the tree without knowing its UUID, which is useful in API calls and CLI operations.
+
+:::note
+Handles must be unique within the same parent. Two sibling OUs cannot share the same handle. Handles at different levels of the hierarchy can be the same, only siblings conflict.
+:::
+
+## Create an Organization Unit
+
+1. Navigate to **Organization Units** in the <ProductName /> Console.
+   - To create a root OU, click **Add Root Organization Unit**.
+   - To create a child OU, expand the parent OU and click **Add Child Organization Unit**.
+2. Enter a **Name** - the human-readable display name for the OU.
+3. Enter a **Handle** - a short, URL-safe identifier. Use lowercase letters, numbers, and hyphens (for example, `engineering` or `frontend-team`).
+4. Optionally enter a **Description**.
+5. The **Parent Organization Unit** field shows where the OU will be created. For root OUs this displays **Root Organization Unit**; for child OUs it shows the selected parent.
+6. Click **Create**.
+
+When creating an OU through the API, you can also provide the following optional branding and policy fields:
+
+| Field | Description |
+|-------|-------------|
+| `themeId` | Identifier of the theme to apply to the OU. |
+| `layoutId` | Identifier of the layout to apply to the OU. |
+| `logoUrl` | URL of the logo to display for the OU. |
+| `tosUri` | URL of the Terms of Service page. |
+| `policyUri` | URL of the Privacy Policy page. |
+| `cookiePolicyUri` | URL of the Cookie Policy page. |
+
+**Example: create an OU with branding:**
+
+```bash
+curl -kL -X POST "https://localhost:8090/organization-units" \
+  -H 'Authorization: Bearer <access-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Engineering",
+    "handle": "engineering",
+    "parent": null,
+    "logoUrl": "https://example.com/logo.png",
+    "tosUri": "https://example.com/tos"
+  }'
+```
+
+## View an Organization Unit
+
+Navigate to **Organization Units** in the <ProductName /> Console to see all OUs. Click the three-dot menu on any OU and select **Edit** to view its details:
+
+- **Details** - name, handle, description, and parent OU.
+- **Child Organization Units** - nested OUs directly under this OU.
+- **Users** - all users belonging to this OU.
+- **Groups** - all groups belonging to this OU.
+
+When using the Organization Unit APIs, each OU response also includes system metadata:
+
+- **isReadOnly** - indicates whether the OU is immutable (for example, because it is defined declaratively and cannot be modified at runtime).
+- **createdAt** - UTC timestamp when the OU was created.
+- **updatedAt** - UTC timestamp when the OU was last updated.
+
+To retrieve an OU by its ID:
+
+```bash
+curl -kL "https://localhost:8090/organization-units/{id}" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+To retrieve an OU by its hierarchical handle path:
+
+```bash
+curl -kL "https://localhost:8090/organization-units/tree/{path}" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+## Update an Organization Unit
+
+1. Navigate to **Organization Units** in the <ProductName /> Console.
+2. Click the three-dot menu on the OU you want to update and select **Edit**.
+3. Update the **Name**, **Handle**, or **Description** as needed.
+4. Click **Save**.
+
+To update an OU using the API by its ID:
+
+```bash
+curl -kL -X PUT "https://localhost:8090/organization-units/{id}" \
+  -H 'Authorization: Bearer <access-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "Engineering Team", "handle": "engineering", "parent": null}'
+```
+
+To update by hierarchical path:
+
+```bash
+curl -kL -X PUT "https://localhost:8090/organization-units/tree/{path}" \
+  -H 'Authorization: Bearer <access-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "Engineering Team", "handle": "engineering", "parent": null}'
+```
+
+The request body accepts the same fields as the create request, including the optional branding and policy fields.
+
+## List and Filter Organization Units
+
+The Organization Unit API returns paginated results on all list endpoints. Append a `filter` query parameter to narrow results.
+
+### Supported Endpoints
+
+Filtering applies to the following list endpoints:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /organization-units` | List all root-level organization units |
+| `GET /organization-units/{id}/ous` | List child organization units by parent ID |
+| `GET /organization-units/tree/{path}/ous` | List child organization units by hierarchical path |
+
+### Filter Expression Syntax
+
+A filter expression can contain one or more conditions joined by `AND` or `OR`:
+
+```bash
+attribute operator "value" [AND|OR attribute operator "value" ...]
+```
+
+- **attribute**: the OU field to filter on.
+- **operator**: the comparison operator (`eq`, `gt`, or `lt`).
+- **value**: the value to compare against. Enclose string values in double quotes.
+- **AND / OR**: logical connectors between conditions. `AND` has higher precedence than `OR`, matching standard SQL behaviour.
+
+### Supported Operators
+
+| Operator | Meaning |
+|----------|---------|
+| `eq` | Equals (case-insensitive for text attributes) |
+| `gt` | Greater than |
+| `lt` | Less than |
+
+### Filterable Attributes
+
+| Attribute | Type | Notes |
+|-----------|------|-------|
+| `name` | text | Case-insensitive equality |
+| `handle` | text | Case-insensitive equality |
+| `description` | text | Case-insensitive equality |
+| `createdAt` | timestamp | Compared lexicographically; use ISO 8601 format |
+| `updatedAt` | timestamp | Compared lexicographically; use ISO 8601 format |
+
+### Filter Examples
+
+**Filter by exact name:**
+
+```bash
+curl -kL "https://localhost:8090/organization-units?filter=name%20eq%20%22Engineering%22" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+**Filter with AND, both conditions must match:**
+
+```bash
+curl -kL "https://localhost:8090/organization-units?filter=name%20eq%20%22Engineering%22%20AND%20handle%20eq%20%22engineering%22" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+**Filter with OR, either condition may match:**
+
+```bash
+curl -kL "https://localhost:8090/organization-units?filter=name%20eq%20%22Engineering%22%20OR%20name%20eq%20%22Sales%22" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+**Filter children by timestamp range:**
+
+```bash
+curl -kL "https://localhost:8090/organization-units/<parent-id>/ous?filter=createdAt%20gt%20%222024-01-01T00:00:00Z%22" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+**Combine filter with pagination:**
+
+```bash
+curl -kL "https://localhost:8090/organization-units?filter=name%20eq%20%22Engineering%22&limit=10&offset=0" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+### Filter Error Responses
+
+| Error Code | HTTP Status | Cause |
+|------------|-------------|-------|
+| `OU-1014` | 400 | The filter expression is malformed, uses an unsupported connector, or references an unsupported attribute |
+| `OU-1013` | 400 | The result count exceeds the limit supported in the current store configuration |
+
+## List Users in an Organization Unit
+
+### Using Organization Unit ID
+
+```bash
+curl -kL "https://localhost:8090/organization-units/{id}/users" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+### Using Hierarchical Path
+
+```bash
+curl -kL "https://localhost:8090/organization-units/tree/{path}/users" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+Append `include=display` to include a human-readable display name for each user:
+
+```bash
+curl -kL "https://localhost:8090/organization-units/{id}/users?include=display" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+The response includes pagination fields (`totalResults`, `startIndex`, `count`) and a `users` array. Each user entry contains an `id` and `type`, and optionally a `display` name when `include=display` is requested.
+
+## List Groups in an Organization Unit
+
+### Using Organization Unit ID
+
+```bash
+curl -kL "https://localhost:8090/organization-units/{id}/groups" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+### Using Hierarchical Path
+
+```bash
+curl -kL "https://localhost:8090/organization-units/tree/{path}/groups" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+The response includes pagination fields and a `groups` array. Each group entry contains an `id` and `name`.
+
+## Delete an Organization Unit
+
+1. Open the OU from the **Organization Units** list.
+2. Click **Delete** and confirm.
+
+:::warning
+Deletion fails if the OU still contains users, groups, or child OUs. Delete or reassign all contained resources before deleting the OU.
+:::
+
+To delete an OU using the API by its ID:
+
+```bash
+curl -kL -X DELETE "https://localhost:8090/organization-units/{id}" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+To delete by hierarchical path:
+
+```bash
+curl -kL -X DELETE "https://localhost:8090/organization-units/tree/{path}" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+## Related Guides
+
+- [User Types](../users/user-types) - User types are scoped to an organization unit
+- [Users](../users/manage-users) - Each user belongs to an organization unit
+- [Groups](../users/manage-groups) - Each group belongs to an organization unit
