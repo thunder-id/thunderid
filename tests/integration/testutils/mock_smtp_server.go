@@ -110,6 +110,15 @@ func (m *MockSMTPServer) GetLastEmail() *EmailMessage {
 	return &last
 }
 
+// GetEmails returns every captured email, oldest first, without consuming them.
+func (m *MockSMTPServer) GetEmails() []EmailMessage {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	emails := make([]EmailMessage, len(m.emails))
+	copy(emails, m.emails)
+	return emails
+}
+
 // handleConnection processes a single SMTP client connection.
 func (m *MockSMTPServer) handleConnection(conn net.Conn) {
 	defer conn.Close()

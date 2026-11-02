@@ -6,6 +6,7 @@ package flowmgt
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -102,6 +103,7 @@ func (s *FlowStoreTestSuite) TestListFlowsSuccess() {
 			colName:          "Flow 1",
 			colFlowType:      string(providers.FlowTypeAuthentication),
 			colActiveVersion: int64(1),
+			colOUID:          "ou-1",
 			colCreatedAt:     "2025-01-01T00:00:00Z",
 			colUpdatedAt:     "2025-01-01T00:00:00Z",
 		},
@@ -111,6 +113,7 @@ func (s *FlowStoreTestSuite) TestListFlowsSuccess() {
 			colName:          "Flow 2",
 			colFlowType:      string(providers.FlowTypeRegistration),
 			colActiveVersion: int64(2),
+			colOUID:          "ou-1",
 			colCreatedAt:     "2025-01-02T00:00:00Z",
 			colUpdatedAt:     "2025-01-02T00:00:00Z",
 		},
@@ -141,6 +144,7 @@ func (s *FlowStoreTestSuite) TestListFlowsWithTypeSuccess() {
 			colName:          "Auth Flow",
 			colFlowType:      string(providers.FlowTypeAuthentication),
 			colActiveVersion: int64(1),
+			colOUID:          "ou-1",
 			colCreatedAt:     "2025-01-01T00:00:00Z",
 			colUpdatedAt:     "2025-01-01T00:00:00Z",
 		},
@@ -185,6 +189,7 @@ func (s *FlowStoreTestSuite) TestGetFlowByIDSuccess() {
 		colName:          "Test Flow",
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colActiveVersion: int64(1),
+		colOUID:          "ou-1",
 		colNodes:         `[{"id":"START","type":"START"}]`,
 		colCreatedAt:     "2025-01-01T00:00:00Z",
 		colUpdatedAt:     "2025-01-01T00:00:00Z",
@@ -269,6 +274,7 @@ func (s *FlowStoreTestSuite) TestGetFlowByHandleSuccess() {
 		colName:          "Test Flow",
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colActiveVersion: int64(1),
+		colOUID:          "ou-1",
 		colNodes:         `[{"id":"START","type":"START"}]`,
 		colCreatedAt:     time.Now().Format(time.RFC3339),
 		colUpdatedAt:     time.Now().Format(time.RFC3339),
@@ -391,11 +397,13 @@ func (s *FlowStoreTestSuite) TestListFlowVersionsSuccess() {
 			colVersion:       int64(2),
 			colCreatedAt:     "2025-01-02T00:00:00Z",
 			colActiveVersion: int64(2),
+			colOUID:          "ou-1",
 		},
 		{
 			colVersion:       int64(1),
 			colCreatedAt:     "2025-01-01T00:00:00Z",
 			colActiveVersion: int64(2),
+			colOUID:          "ou-1",
 		},
 	}
 
@@ -436,6 +444,7 @@ func (s *FlowStoreTestSuite) TestGetFlowVersionSuccess() {
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colVersion:       int64(2),
 		colActiveVersion: int64(3),
+		colOUID:          "ou-1",
 		colNodes:         `[{"id":"node-1","type":"basic-auth"}]`,
 		colCreatedAt:     "2025-01-02T00:00:00Z",
 	}
@@ -578,6 +587,7 @@ func (s *FlowStoreTestSuite) TestBuildBasicFlowDefinitionFromRowInvalidActiveVer
 		colName:          "Test Flow",
 		colFlowType:      "authentication",
 		colActiveVersion: "not-an-int", // Invalid type
+		colOUID:          "ou-1",
 		colCreatedAt:     "2024-01-01T00:00:00Z",
 		colUpdatedAt:     "2024-01-02T00:00:00Z",
 	}
@@ -596,6 +606,7 @@ func (s *FlowStoreTestSuite) TestBuildCompleteFlowDefinitionFromRowInvalidActive
 		colName:          "Test Flow",
 		colFlowType:      "authentication",
 		colActiveVersion: "invalid", // Invalid type
+		colOUID:          "ou-1",
 		colNodes:         "{}",
 		colCreatedAt:     "2024-01-01T00:00:00Z",
 		colUpdatedAt:     "2024-01-02T00:00:00Z",
@@ -613,6 +624,7 @@ func (s *FlowStoreTestSuite) TestBuildBasicFlowVersionFromRowInvalidVersion() {
 		colVersion:       "not-an-int", // Invalid type
 		colCreatedAt:     "2024-01-01T00:00:00Z",
 		colActiveVersion: int64(1),
+		colOUID:          "ou-1",
 	}
 
 	version, err := s.store.buildBasicFlowVersionFromRow(row)
@@ -627,6 +639,7 @@ func (s *FlowStoreTestSuite) TestBuildBasicFlowVersionFromRowInvalidActiveVersio
 		colVersion:       int64(1),
 		colCreatedAt:     "2024-01-01T00:00:00Z",
 		colActiveVersion: "not-an-int", // Invalid type
+		colOUID:          "ou-1",
 	}
 
 	version, err := s.store.buildBasicFlowVersionFromRow(row)
@@ -675,6 +688,7 @@ func (s *FlowStoreTestSuite) TestBuildFlowVersionFromRowInvalidFlowID() {
 
 func (s *FlowStoreTestSuite) TestCreateFlow_ExecError() {
 	flowDef := &FlowDefinition{
+		OUID:     "ou-1",
 		Handle:   "login-handle",
 		Name:     "Login Flow",
 		FlowType: providers.FlowTypeAuthentication,
@@ -683,7 +697,8 @@ func (s *FlowStoreTestSuite) TestCreateFlow_ExecError() {
 
 	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
 	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryCreateFlow, "flow-1", "login-handle", "Login Flow",
-		providers.FlowTypeAuthentication, int64(1), "test-deployment").Return(int64(0), errors.New("insert error"))
+		providers.FlowTypeAuthentication, int64(1), "ou-1", "test-deployment").
+		Return(int64(0), errors.New("insert error"))
 
 	result, err := s.store.CreateFlow(context.Background(), "flow-1", flowDef)
 
@@ -815,6 +830,7 @@ func (s *FlowStoreTestSuite) TestBuildBasicFlowDefinitionFromRow() {
 		colName:          "Test Flow",
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colActiveVersion: int64(1),
+		colOUID:          "ou-1",
 		colCreatedAt:     "2025-01-01T00:00:00Z",
 		colUpdatedAt:     "2025-01-01T00:00:00Z",
 	}
@@ -848,6 +864,7 @@ func (s *FlowStoreTestSuite) TestBuildCompleteFlowDefinitionFromRow() {
 		colName:          "Test Flow",
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colActiveVersion: int64(1),
+		colOUID:          "ou-1",
 		colNodes:         nodesJSON,
 		colCreatedAt:     "2025-01-01T00:00:00Z",
 		colUpdatedAt:     "2025-01-01T00:00:00Z",
@@ -870,6 +887,7 @@ func (s *FlowStoreTestSuite) TestBuildCompleteFlowDefinitionFromRowInvalidJSON()
 		colName:          "Test Flow",
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colActiveVersion: int64(1),
+		colOUID:          "ou-1",
 		colNodes:         "invalid-json",
 		colCreatedAt:     "2025-01-01T00:00:00Z",
 		colUpdatedAt:     "2025-01-01T00:00:00Z",
@@ -887,6 +905,7 @@ func (s *FlowStoreTestSuite) TestBuildBasicFlowVersionFromRow() {
 		colVersion:       int64(2),
 		colCreatedAt:     "2025-01-02T00:00:00Z",
 		colActiveVersion: int64(3),
+		colOUID:          "ou-1",
 	}
 
 	version, err := s.store.buildBasicFlowVersionFromRow(validRow)
@@ -907,6 +926,7 @@ func (s *FlowStoreTestSuite) TestBuildFlowVersionFromRow() {
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colVersion:       int64(2),
 		colActiveVersion: int64(2),
+		colOUID:          "ou-1",
 		colNodes:         nodesJSON,
 		colCreatedAt:     "2025-01-02T00:00:00Z",
 	}
@@ -935,6 +955,7 @@ func (s *FlowStoreTestSuite) TestGetConfigDBClientError() {
 
 func (s *FlowStoreTestSuite) TestCreateFlow_InsertFlowVersionError() {
 	flowDef := &FlowDefinition{
+		OUID:     "ou-1",
 		Handle:   "login-handle",
 		Name:     "Login Flow",
 		FlowType: providers.FlowTypeAuthentication,
@@ -944,7 +965,7 @@ func (s *FlowStoreTestSuite) TestCreateFlow_InsertFlowVersionError() {
 	nodesJSON := `[{"id":"node1","type":"start"}]`
 	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
 	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryCreateFlow, "flow-1", "login-handle", "Login Flow",
-		providers.FlowTypeAuthentication, int64(1), "test-deployment").Return(int64(0), nil)
+		providers.FlowTypeAuthentication, int64(1), "ou-1", "test-deployment").Return(int64(0), nil)
 	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-1", 1, nodesJSON, "null",
 		"test-deployment").Return(int64(0), errors.New("version insert error"))
 
@@ -989,6 +1010,7 @@ func (s *FlowStoreTestSuite) TestUpdateFlow_PushToVersionStackError() {
 		colName:          "Updated Flow",
 		colFlowType:      "authentication",
 		colActiveVersion: int64(3),
+		colOUID:          "ou-1",
 		colNodes:         "[]",
 		colCreatedAt:     "2025-01-01T00:00:00Z",
 		colUpdatedAt:     "2025-01-01T00:00:00Z",
@@ -1026,6 +1048,7 @@ func (s *FlowStoreTestSuite) TestRestoreFlowVersion_GetVersionQueryError() {
 		colName:          "Some Flow",
 		colFlowType:      "authentication",
 		colActiveVersion: int64(2),
+		colOUID:          "ou-1",
 		colNodes:         "[]",
 		colCreatedAt:     "2025-01-01T00:00:00Z",
 		colUpdatedAt:     "2025-01-01T00:00:00Z",
@@ -1051,6 +1074,7 @@ func (s *FlowStoreTestSuite) TestRestoreFlowVersion_PushToVersionStackError() {
 		colName:          "Some Flow",
 		colFlowType:      "authentication",
 		colActiveVersion: int64(1),
+		colOUID:          "ou-1",
 		colNodes:         "[]",
 		colCreatedAt:     "2025-01-01T00:00:00Z",
 		colUpdatedAt:     "2025-01-01T00:00:00Z",
@@ -1161,6 +1185,7 @@ func (s *FlowStoreTestSuite) TestGetFlowByIDWithInterceptors() {
 		colName:          "Flow With Interceptors",
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colActiveVersion: int64(1),
+		colOUID:          "ou-1",
 		colNodes:         `[{"id":"START","type":"START"}]`,
 		colInterceptors:  interceptorsJSON,
 		colCreatedAt:     "2025-01-01T00:00:00Z",
@@ -1187,6 +1212,7 @@ func (s *FlowStoreTestSuite) TestGetFlowByIDWithNullInterceptors() {
 		colName:          "Flow Without Interceptors",
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colActiveVersion: int64(1),
+		colOUID:          "ou-1",
 		colNodes:         `[{"id":"START","type":"START"}]`,
 		colCreatedAt:     "2025-01-01T00:00:00Z",
 		colUpdatedAt:     "2025-01-01T00:00:00Z",
@@ -1210,6 +1236,7 @@ func (s *FlowStoreTestSuite) TestBuildCompleteFlowDefinitionFromRowWithIntercept
 		colName:          "Test Flow",
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colActiveVersion: int64(1),
+		colOUID:          "ou-1",
 		colNodes:         `[{"id":"node-1","type":"basic-auth"}]`,
 		colInterceptors:  `[{"name":"rate-limit","mode":"PRE"},{"name":"audit","mode":"POST"}]`,
 		colCreatedAt:     "2025-01-01T00:00:00Z",
@@ -1234,6 +1261,7 @@ func (s *FlowStoreTestSuite) TestBuildCompleteFlowDefinitionFromRowInvalidInterc
 		colName:          "Test Flow",
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colActiveVersion: int64(1),
+		colOUID:          "ou-1",
 		colNodes:         `[{"id":"node-1","type":"basic-auth"}]`,
 		colInterceptors:  "invalid-json",
 		colCreatedAt:     "2025-01-01T00:00:00Z",
@@ -1255,6 +1283,7 @@ func (s *FlowStoreTestSuite) TestBuildFlowVersionFromRowWithInterceptors() {
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colVersion:       int64(2),
 		colActiveVersion: int64(2),
+		colOUID:          "ou-1",
 		colNodes:         `[{"id":"node-1","type":"basic-auth"}]`,
 		colInterceptors:  `[{"name":"captcha","mode":"PRE"}]`,
 		colCreatedAt:     "2025-01-02T00:00:00Z",
@@ -1276,6 +1305,7 @@ func (s *FlowStoreTestSuite) TestBuildFlowVersionFromRowWithNullInterceptors() {
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colVersion:       int64(2),
 		colActiveVersion: int64(2),
+		colOUID:          "ou-1",
 		colNodes:         `[{"id":"node-1","type":"basic-auth"}]`,
 		colCreatedAt:     "2025-01-02T00:00:00Z",
 	}
@@ -1295,6 +1325,7 @@ func (s *FlowStoreTestSuite) TestBuildFlowVersionFromRowInvalidInterceptorsJSON(
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colVersion:       int64(2),
 		colActiveVersion: int64(2),
+		colOUID:          "ou-1",
 		colNodes:         `[{"id":"node-1","type":"basic-auth"}]`,
 		colInterceptors:  "invalid-json",
 		colCreatedAt:     "2025-01-02T00:00:00Z",
@@ -1309,6 +1340,7 @@ func (s *FlowStoreTestSuite) TestBuildFlowVersionFromRowInvalidInterceptorsJSON(
 
 func (s *FlowStoreTestSuite) TestCreateFlowWithInterceptors() {
 	flowDef := &FlowDefinition{
+		OUID:     "ou-1",
 		Handle:   "login-handle",
 		Name:     "Login Flow",
 		FlowType: providers.FlowTypeAuthentication,
@@ -1327,6 +1359,7 @@ func (s *FlowStoreTestSuite) TestCreateFlowWithInterceptors() {
 		colName:          "Login Flow",
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colActiveVersion: int64(1),
+		colOUID:          "ou-1",
 		colNodes:         nodesJSON,
 		colInterceptors:  interceptorsJSON,
 		colCreatedAt:     "2025-01-01T00:00:00Z",
@@ -1335,7 +1368,7 @@ func (s *FlowStoreTestSuite) TestCreateFlowWithInterceptors() {
 
 	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
 	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryCreateFlow, "flow-1", "login-handle", "Login Flow",
-		providers.FlowTypeAuthentication, int64(1), "test-deployment").Return(int64(1), nil)
+		providers.FlowTypeAuthentication, int64(1), "ou-1", "test-deployment").Return(int64(1), nil)
 	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-1", 1, nodesJSON,
 		interceptorsJSON, "test-deployment").Return(int64(1), nil)
 
@@ -1360,6 +1393,7 @@ func (s *FlowStoreTestSuite) TestGetFlowByHandleWithInterceptors() {
 		colName:          "Flow With Interceptors",
 		colFlowType:      string(providers.FlowTypeAuthentication),
 		colActiveVersion: int64(1),
+		colOUID:          "ou-1",
 		colNodes:         `[{"id":"START","type":"START"}]`,
 		colInterceptors:  interceptorsJSON,
 		colCreatedAt:     "2025-01-01T00:00:00Z",
@@ -1408,4 +1442,221 @@ func (s *FlowStoreTestSuite) TestListFlows_ScopesByTheRequestDeployment() {
 	_, _, err := s.store.ListFlows(deployment.WithID(context.Background(), "acme"), 10, 0, "")
 
 	s.Error(err)
+}
+
+// Owner tests
+
+const ownedFlowNodes = `[{"id":"START","type":"START"}]`
+
+// ownedFlowRow returns a flow row as the queries that read the OU_ID column return it.
+func ownedFlowRow(flowType providers.FlowType, ouID interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		colFlowID:        "flow-1",
+		colHandle:        "handle-1",
+		colName:          "Flow 1",
+		colFlowType:      string(flowType),
+		colActiveVersion: int64(1),
+		colOUID:          ouID,
+		colNodes:         ownedFlowNodes,
+		colCreatedAt:     "2025-01-01T00:00:00Z",
+		colUpdatedAt:     "2025-01-01T00:00:00Z",
+	}
+}
+
+func (s *FlowStoreTestSuite) TestListFlows_ReadsTheOwner() {
+	rows := []map[string]interface{}{
+		ownedFlowRow(providers.FlowTypeAuthentication, "ou-1"),
+		ownedFlowRow(providers.FlowTypeAuthentication, []byte("ou-2")),
+	}
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlows, "test-deployment").
+		Return([]map[string]interface{}{{colCount: int64(2)}}, nil).Once()
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryListFlows, "test-deployment", 10, 0).
+		Return(rows, nil).Once()
+
+	flows, count, err := s.store.ListFlows(context.Background(), 10, 0, "")
+
+	s.NoError(err)
+	s.Equal(2, count)
+	s.Equal("ou-1", flows[0].OUID)
+	s.Equal("ou-2", flows[1].OUID)
+}
+
+func (s *FlowStoreTestSuite) TestListFlows_FailsWhenARowHasNoOwner() {
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlows, "test-deployment").
+		Return([]map[string]interface{}{{colCount: int64(1)}}, nil).Once()
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryListFlows, "test-deployment", 10, 0).
+		Return([]map[string]interface{}{ownedFlowRow(providers.FlowTypeAuthentication, nil)}, nil).Once()
+
+	_, _, err := s.store.ListFlows(context.Background(), 10, 0, "")
+
+	s.Error(err)
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsWithType_ReadsTheOwner() {
+	row := ownedFlowRow(providers.FlowTypeRegistration, "ou-1")
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlowsWithType, "REGISTRATION", "test-deployment").
+		Return([]map[string]interface{}{{colCount: int64(1)}}, nil).Once()
+	s.mockDBClient.EXPECT().
+		QueryContext(mock.Anything, queryListFlowsWithType, "REGISTRATION", "test-deployment", 10, 0).
+		Return([]map[string]interface{}{row}, nil).Once()
+
+	flows, _, err := s.store.ListFlows(context.Background(), 10, 0, "REGISTRATION")
+
+	s.NoError(err)
+	s.Equal("ou-1", flows[0].OUID)
+}
+
+func (s *FlowStoreTestSuite) TestGetFlowByID_ReadsTheOwner() {
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryGetFlow, "flow-1", "test-deployment").
+		Return([]map[string]interface{}{ownedFlowRow(providers.FlowTypeAuthentication, "ou-1")}, nil).Once()
+
+	flow, err := s.store.GetFlowByID(context.Background(), "flow-1")
+
+	s.NoError(err)
+	s.Equal("ou-1", flow.OUID)
+}
+
+func (s *FlowStoreTestSuite) TestGetFlowByHandle_ReadsTheOwner() {
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().
+		QueryContext(mock.Anything, queryGetFlowByHandle, "handle-1", "AUTHENTICATION", "test-deployment").
+		Return([]map[string]interface{}{ownedFlowRow(providers.FlowTypeAuthentication, "ou-1")}, nil).Once()
+
+	flow, err := s.store.GetFlowByHandle(context.Background(), "handle-1", providers.FlowTypeAuthentication)
+
+	s.NoError(err)
+	s.Equal("ou-1", flow.OUID)
+}
+
+func (s *FlowStoreTestSuite) TestListActiveFlowsWithNodes_ReadsTheOwner() {
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryListActiveFlowsWithNodes, "test-deployment").
+		Return([]map[string]interface{}{ownedFlowRow(providers.FlowTypeAuthentication, "ou-1")}, nil).Once()
+
+	flows, err := s.store.ListActiveFlowsWithNodes(context.Background())
+
+	s.NoError(err)
+	s.Require().Len(flows, 1)
+	s.Equal("ou-1", flows[0].OUID)
+}
+
+func (s *FlowStoreTestSuite) TestCreateFlow_StoresTheOwner() {
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryCreateFlow, "flow-1", "handle-1", "Flow 1",
+		providers.FlowTypeAuthentication, int64(1), "ou-1", "test-deployment").Return(int64(1), nil)
+	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-1", 1, ownedFlowNodes, "null",
+		"test-deployment").Return(int64(1), nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryGetFlow, "flow-1", "test-deployment").
+		Return([]map[string]interface{}{ownedFlowRow(providers.FlowTypeAuthentication, "ou-1")}, nil)
+
+	flow, err := s.store.CreateFlow(context.Background(), "flow-1", &FlowDefinition{
+		Handle: "handle-1", Name: "Flow 1", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		Nodes: []providers.NodeDefinition{{Type: "START", ID: "START"}},
+	})
+
+	s.NoError(err)
+	s.Equal("ou-1", flow.OUID)
+}
+
+func flowRow(id, flowType string) map[string]interface{} {
+	return map[string]interface{}{
+		colFlowID: id, colHandle: "handle-" + id, colName: "Flow " + id, colFlowType: flowType,
+		colActiveVersion: int64(1), colOUID: "ou-1", colCreatedAt: "2025-01-01T00:00:00Z",
+		colUpdatedAt: "2025-01-01T00:00:00Z",
+	}
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsByOUReadsOnlyThePageOfThatUnit() {
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlowsByOU, "ou-1", "test-deployment").
+		Return([]map[string]interface{}{{colCount: int64(3)}}, nil).Once()
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryListFlowsByOU, "ou-1", "test-deployment", 2, 1).
+		Return([]map[string]interface{}{flowRow("flow-2", "AUTHENTICATION"),
+			flowRow("flow-3", "REGISTRATION")}, nil).Once()
+
+	flows, count, err := s.store.ListFlowsByOU(context.Background(), "ou-1", 2, 1, "")
+
+	s.NoError(err)
+	s.Equal(3, count)
+	s.Require().Len(flows, 2)
+	s.Equal("flow-2", flows[0].ID)
+	s.Equal("ou-1", flows[0].OUID)
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsByOUOfOneType() {
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlowsByOUWithType, "ou-1", "AUTHENTICATION",
+		"test-deployment").Return([]map[string]interface{}{{colCount: int64(1)}}, nil).Once()
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryListFlowsByOUWithType, "ou-1", "AUTHENTICATION",
+		"test-deployment", 10, 0).
+		Return([]map[string]interface{}{flowRow("flow-1", "AUTHENTICATION")}, nil).Once()
+
+	flows, count, err := s.store.ListFlowsByOU(context.Background(), "ou-1", 10, 0, "AUTHENTICATION")
+
+	s.NoError(err)
+	s.Equal(1, count)
+	s.Len(flows, 1)
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsByOUReportsEitherQueryFailing() {
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil).Twice()
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlowsByOU, "ou-1", "test-deployment").
+		Return(nil, errors.New("count failed")).Once()
+	_, _, err := s.store.ListFlowsByOU(context.Background(), "ou-1", 10, 0, "")
+	s.ErrorContains(err, "failed to count the flows of an organization unit")
+
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlowsByOU, "ou-1", "test-deployment").
+		Return([]map[string]interface{}{{colCount: int64(1)}}, nil).Once()
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryListFlowsByOU, "ou-1", "test-deployment", 10, 0).
+		Return(nil, errors.New("list failed")).Once()
+	_, _, err = s.store.ListFlowsByOU(context.Background(), "ou-1", 10, 0, "")
+	s.ErrorContains(err, "failed to list the flows of an organization unit")
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsByIDsNamesTheIDsAndTheType() {
+	query, args := buildListFlowsByIDsQuery([]string{"a", "b"}, "REGISTRATION", "dep")
+
+	s.Equal([]interface{}{"dep", "REGISTRATION", "a", "b"}, args)
+	s.Contains(query.PostgresQuery, "WHERE DEPLOYMENT_ID = $1 AND FLOW_TYPE = $2 AND ID IN ($3, $4)")
+	s.Contains(query.SQLiteQuery, "WHERE DEPLOYMENT_ID = ? AND FLOW_TYPE = ? AND ID IN (?, ?)")
+
+	query, args = buildListFlowsByIDsQuery([]string{"a"}, "", "dep")
+	s.Equal([]interface{}{"dep", "a"}, args)
+	s.Contains(query.PostgresQuery, "WHERE DEPLOYMENT_ID = $1 AND ID IN ($2)")
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsByIDsReadsInChunks() {
+	ids := make([]string, flowIDsPerQuery+1)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("flow-%d", i)
+	}
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	for _, chunk := range [][]string{ids[:flowIDsPerQuery], ids[flowIDsPerQuery:]} {
+		query, args := buildListFlowsByIDsQuery(chunk, "", "test-deployment")
+		s.mockDBClient.EXPECT().QueryContext(mock.Anything, query, args...).
+			Return([]map[string]interface{}{flowRow(chunk[0], "AUTHENTICATION")}, nil).Once()
+	}
+
+	flows, err := s.store.ListFlowsByIDs(context.Background(), ids, "")
+
+	s.NoError(err)
+	s.Require().Len(flows, 2, "more IDs than one query takes are read in two")
+	s.Equal("flow-0", flows[0].ID)
+	s.Equal(fmt.Sprintf("flow-%d", flowIDsPerQuery), flows[1].ID)
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsByIDsReportsAFailure() {
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	query, args := buildListFlowsByIDsQuery([]string{"a"}, "", "test-deployment")
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, query, args...).
+		Return(nil, errors.New("query failed")).Once()
+
+	flows, err := s.store.ListFlowsByIDs(context.Background(), []string{"a"}, "")
+
+	s.ErrorContains(err, "failed to list flows by ID")
+	s.Nil(flows)
 }

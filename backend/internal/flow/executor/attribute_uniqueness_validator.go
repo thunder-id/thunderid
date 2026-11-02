@@ -37,16 +37,16 @@ func newAttributeUniquenessValidator(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, ExecutorNameAttributeUniquenessValidator))
 	prerequisites := []providers.Input{
 		{
+			Identifier: categoryNameKey,
+			Required:   true,
+		},
+		{
 			Identifier: categoryTypeKey,
 			Required:   true,
 		},
 	}
 	base := flowFactory.CreateExecutor(ExecutorNameAttributeUniquenessValidator, providers.ExecutorTypeUtility,
-		[]providers.Input{}, prerequisites, &providers.ExecutorMeta{
-			SupportedProperties: []providers.ExecutorSupportedProperties{
-				{Property: propertyKeyProvisioningMode},
-			},
-		})
+		[]providers.Input{}, prerequisites, &providers.ExecutorMeta{})
 	return &attributeUniquenessValidator{
 		Executor:          base,
 		entityTypeService: entityTypeService,
@@ -69,20 +69,21 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 		RuntimeData:    make(map[string]string),
 	}
 
-	category, err := categoryFromMode(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	if !e.ValidatePrerequisites(ctx, execResp, e.authnProvider) {
 		return execResp, nil
 	}
 
+	categoryName := ctx.RuntimeData[categoryNameKey]
 	entityType := ctx.RuntimeData[categoryTypeKey]
-	if entityType == "" {
-		logger.Debug(ctx.Context, "No entity type in runtime data, nothing to check uniqueness against")
+	if categoryName == "" || entityType == "" {
+		logger.Debug(ctx.Context, "No category or entity type in runtime data, nothing to check uniqueness against")
 		execResp.Status = providers.ExecComplete
 		return execResp, nil
+	}
+
+	category := entitytype.TypeCategory(categoryName)
+	if !category.IsValid() {
+		return nil, fmt.Errorf("invalid category: %s", category)
 	}
 
 	svcCtx := security.WithRuntimeContext(context.Background())

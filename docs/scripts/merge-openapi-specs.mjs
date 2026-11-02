@@ -143,30 +143,12 @@ function mergeOpenAPISpecs() {
 
     // Merge components
     if (spec.components) {
-      if (spec.components.schemas) {
-        combined.components.schemas = {
-          ...combined.components.schemas,
-          ...spec.components.schemas,
+      Object.entries(spec.components).forEach(([section, entries]) => {
+        combined.components[section] = {
+          ...combined.components[section],
+          ...entries,
         };
-      }
-      if (spec.components.securitySchemes) {
-        combined.components.securitySchemes = {
-          ...combined.components.securitySchemes,
-          ...spec.components.securitySchemes,
-        };
-      }
-      if (spec.components.responses) {
-        combined.components.responses = {
-          ...combined.components.responses,
-          ...spec.components.responses,
-        };
-      }
-      if (spec.components.parameters) {
-        combined.components.parameters = {
-          ...combined.components.parameters,
-          ...spec.components.parameters,
-        };
-      }
+      });
     }
   });
 

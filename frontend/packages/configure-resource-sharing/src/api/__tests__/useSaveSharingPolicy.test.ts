@@ -90,6 +90,16 @@ describe('useSaveSharingPolicy', () => {
     expect(mockHttpRequest).not.toHaveBeenCalled();
   });
 
+  it("words the success toast in the resource's own wording", async () => {
+    mockHttpRequest.mockResolvedValue({data: {}});
+    const {result} = renderHook(() => useSaveSharingPolicy('users/u-1', 'users'));
+
+    result.current.mutate({type: 'create', sections: {childUnits: {mode: 'all'}}});
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockShowToast).toHaveBeenCalledWith('Affiliations updated.', 'success');
+  });
+
   it('reports a failure without a success toast', async () => {
     mockHttpRequest.mockRejectedValue(new Error('refused'));
     const {result} = renderHook(() => useSaveSharingPolicy('applications/app-1'));

@@ -25,39 +25,42 @@ func TestInitTestSuite(t *testing.T) {
 }
 
 func (s *InitTestSuite) TestInitializeRequiresAnEntityStateProvider() {
-	svc, handler, stop, err := Initialize(nil, Config{}, nil, nil, nil)
+	svc, notifier, err := Initialize(nil, serverconfigmock.NewServerConfigServiceMock(s.T()), Config{}, nil, nil, nil)
 	s.Require().ErrorIs(err, errNoEntityStateProvider)
 	s.Nil(svc)
-	s.Nil(handler)
-	s.Nil(stop)
+	s.Nil(notifier)
 }
 
-// Without notification dependencies the service is built and the stop function does nothing.
+func (s *InitTestSuite) TestInitializeRequiresAServerConfigService() {
+	svc, notifier, err := Initialize(newEntityStateProviderMock(s.T()), nil, Config{}, nil, nil, nil)
+	s.Require().ErrorIs(err, errNoServerConfigService)
+	s.Nil(svc)
+	s.Nil(notifier)
+}
+
+// Without notification dependencies the service is built and there is no notifier to stop.
 func (s *InitTestSuite) TestInitializeWithoutNotificationsBuildsTheService() {
-	svc, handler, stop, err := Initialize(newEntityStateProviderMock(s.T()), Config{}, nil, nil, nil)
+	svc, notifier, err := Initialize(newEntityStateProviderMock(s.T()),
+		serverconfigmock.NewServerConfigServiceMock(s.T()), Config{}, nil, nil, nil)
 	s.Require().NoError(err)
 	s.NotNil(svc)
-	s.NotNil(handler)
-	s.Require().NotNil(stop)
-	s.NotPanics(stop)
+	s.Nil(notifier)
 }
 
-// With notification dependencies the stop function closes the notifier, so a later notice is dropped.
-func (s *InitTestSuite) TestStopClosesTheNotifier() {
-	svc, _, stop, err := Initialize(newEntityStateProviderMock(s.T()), Config{},
-		&NotificationDependencies{
-			Templates:   newNotificationTemplateRendererMock(s.T()),
-			Senders:     notificationmock.NewNotificationSenderServiceInterfaceMock(s.T()),
-			EntityTypes: entitytypemock.NewEntityTypeServiceInterfaceMock(s.T()),
-		}, nil, nil)
+// With notification dependencies the returned notifier stops the workers, so a later notice is dropped.
+func (s *InitTestSuite) TestTheReturnedNotifierStops() {
+	svc, notifier, err := Initialize(newEntityStateProviderMock(s.T()),
+		serverconfigmock.NewServerConfigServiceMock(s.T()), Config{}, s.notificationDependencies(), nil, nil)
 	s.Require().NoError(err)
+	s.Require().NotNil(notifier)
 
-	stop()
+	notifier.Stop()
 
-	notifier, ok := svc.(*identityGovernanceService).notifier.(*lockEmailNotifier)
+	emailNotifier, ok := svc.(*identityGovernanceService).notifier.(*lockEmailNotifier)
 	s.Require().True(ok)
-	s.True(notifier.closed)
-	s.NotPanics(stop, "stopping twice is safe")
+	s.Same(emailNotifier, notifier)
+	s.True(emailNotifier.closed)
+	s.NotPanics(notifier.Stop, "stopping twice is safe")
 }
 
 // The lock email needs every notification dependency, so with any one missing no notifier is built.
@@ -72,48 +75,42 @@ func (s *InitTestSuite) TestInitializeBuildsNoNotifierWithoutEveryDependency() {
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
-			deps := &NotificationDependencies{
-				Templates:   newNotificationTemplateRendererMock(s.T()),
-				Senders:     notificationmock.NewNotificationSenderServiceInterfaceMock(s.T()),
-				EntityTypes: entitytypemock.NewEntityTypeServiceInterfaceMock(s.T()),
-			}
+			deps := s.notificationDependencies()
 			tc.remove(deps)
 
-			svc, _, stop, err := Initialize(newEntityStateProviderMock(s.T()), Config{}, deps, nil, nil)
+			svc, notifier, err := Initialize(newEntityStateProviderMock(s.T()),
+				serverconfigmock.NewServerConfigServiceMock(s.T()), Config{}, deps, nil, nil)
 
 			s.Require().NoError(err)
 			s.Nil(svc.(*identityGovernanceService).notifier)
-			s.Require().NotNil(stop)
-			s.NotPanics(stop)
+			s.Nil(notifier)
 		})
 	}
 }
 
-// The handler is built over the deployment configuration, which every merge is laid over.
-func (s *InitTestSuite) TestInitializeReturnsTheHandlerOverTheDeploymentBase() {
-	_, handler, _, err := Initialize(newEntityStateProviderMock(s.T()),
-		Config{AccountAccess: testAccountAccessConfig()}, nil, nil, nil)
-	s.Require().NoError(err)
-
-	merged, ok := handler.Merge(nil, accountAccessValue{}).(accountAccessValue)
-
-	s.Require().True(ok)
-	s.Equal(testAccountAccessConfig(), merged)
-}
-
-// The deployment configuration applies until the server-config service is set; then the section does.
-func (s *InitTestSuite) TestTheSectionIsReadOnceTheServerConfigServiceIsSet() {
-	svc, _, _, err := Initialize(newEntityStateProviderMock(s.T()),
-		Config{AccountAccess: testAccountAccessConfig()}, nil, nil, nil)
-	s.Require().NoError(err)
-	source := svc.(*identityGovernanceService).source
-	s.Equal(testAccountAccessConfig(), source.Current(context.Background()))
-
+// The accountAccess section and the lock email's default sender are read through the given service.
+func (s *InitTestSuite) TestTheSectionAndTheSenderAreReadThroughTheServerConfigService() {
 	section := accountAccessValue{User: &accountAccessCategory{Default: &accountAccessPolicy{Threshold: new(3)}}}
 	reader := serverconfigmock.NewServerConfigServiceMock(s.T())
 	reader.EXPECT().GetMergedConfig(mock.Anything, string(serverconfig.ConfigNameAccountAccess)).
 		Return(section, nil).Once()
-	svc.SetServerConfigService(reader)
+	svc, notifier, err := Initialize(newEntityStateProviderMock(s.T()), reader,
+		Config{AccountAccess: testAccountAccessConfig()}, s.notificationDependencies(), nil, nil)
+	s.Require().NoError(err)
+	defer notifier.Stop()
 
-	s.Equal(section, source.Current(context.Background()))
+	governance := svc.(*identityGovernanceService)
+	s.Equal(section, governance.source.Current(context.Background()))
+	emailNotifier, ok := governance.notifier.(*lockEmailNotifier)
+	s.Require().True(ok)
+	s.Same(reader, emailNotifier.serverConfig)
+}
+
+// notificationDependencies returns every dependency the lock email needs, as mocks.
+func (s *InitTestSuite) notificationDependencies() *NotificationDependencies {
+	return &NotificationDependencies{
+		Templates:   newNotificationTemplateRendererMock(s.T()),
+		Senders:     notificationmock.NewNotificationSenderServiceInterfaceMock(s.T()),
+		EntityTypes: entitytypemock.NewEntityTypeServiceInterfaceMock(s.T()),
+	}
 }

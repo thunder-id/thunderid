@@ -4,6 +4,9 @@
 package executor
 
 import (
+	"cmp"
+	"errors"
+
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/openid4vp"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
@@ -183,8 +186,11 @@ func (e *openid4vpVerifier) authenticate(
 	if svcErr != nil {
 		logger.Debug(ctx.Context, "OpenID4VP authentication through provider failed",
 			log.String("errorCode", svcErr.Code))
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return errors.New("OpenID4VP authentication failed")
+		}
 		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrOpenID4VPVerificationFailed
+		execResp.Error = cmp.Or(statedHold(svcErr), &ErrOpenID4VPVerificationFailed)
 		return nil
 	}
 

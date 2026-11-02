@@ -152,7 +152,7 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 	oidcScopes, permissionScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
 		tokenservice.JoinScopes(grantedScopes), oauthApp.ScopeClaims)
 	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
-		ctx, h.resourceService, resources, permissionScopes)
+		ctx, h.resourceService, resources, permissionScopes, false)
 	if errResp != nil {
 		return nil, errResp
 	}
@@ -186,8 +186,10 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 
 	// The subject is the external IdP's identifier carried in the assertion; no local user resolution
 	// is performed. The access token carries the source IdP as the `idp` claim so that this external
-	// `sub` is not mistaken for a local user id by downstream consumers.
-	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, &tokenservice.AccessTokenBuildContext{
+	// `sub` is not mistaken for a local user id by downstream consumers. The subject is a user, so the
+	// client's user access token settings apply. An agent, or an application that opts in with
+	// includeActClaim, is recorded as acting for that user.
+	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
 		Subject:           assertionClaims.Sub,
 		Audiences:         audiences,
 		ClientID:          tokenRequest.ClientID,
@@ -196,8 +198,13 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 		GrantType:         string(providers.GrantTypeJWTBearer),
 		OAuthApp:          oauthApp,
 		SourceIDP:         assertionClaims.Iss,
+		ValidityPeriod:    oauthApp.UserAccessTokenConfig().ValidityPeriodOrZero(),
 		DPoPJkt:           dpop.GetJkt(ctx),
-	})
+	}
+	if oauthApp.ShouldAppendActorClaim() {
+		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
+	}
+	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, accessTokenCtx)
 	if err != nil {
 		logger.Error(ctx, "Failed to generate token", log.Error(err))
 		return nil, &model.ErrorResponse{

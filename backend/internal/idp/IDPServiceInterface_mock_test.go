@@ -650,6 +650,65 @@ func (_c *IDPServiceInterfaceMock_GetIdentityProvidersByProperty_Call) RunAndRet
 	return _c
 }
 
+// ResolveIdentityProviderOU provides a mock function for the type IDPServiceInterfaceMock
+func (_mock *IDPServiceInterfaceMock) ResolveIdentityProviderOU(ctx context.Context, idp *providers.IDPDTO) *common.ServiceError {
+	ret := _mock.Called(ctx, idp)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveIdentityProviderOU")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.IDPDTO) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, idp)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveIdentityProviderOU'
+type IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call struct {
+	*mock.Call
+}
+
+// ResolveIdentityProviderOU is a helper method to define mock.On call
+//   - ctx context.Context
+//   - idp *providers.IDPDTO
+func (_e *IDPServiceInterfaceMock_Expecter) ResolveIdentityProviderOU(ctx any, idp any) *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call {
+	return &IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call{Call: _e.mock.On("ResolveIdentityProviderOU", ctx, idp)}
+}
+
+func (_c *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call) Run(run func(ctx context.Context, idp *providers.IDPDTO)) *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *providers.IDPDTO
+		if args[1] != nil {
+			arg1 = args[1].(*providers.IDPDTO)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call) Return(serviceError *common.ServiceError) *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call) RunAndReturn(run func(ctx context.Context, idp *providers.IDPDTO) *common.ServiceError) *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetDependencyRegistry provides a mock function for the type IDPServiceInterfaceMock
 func (_mock *IDPServiceInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
 	_mock.Called(r)

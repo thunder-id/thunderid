@@ -803,7 +803,7 @@ describe('ApplicationCreatePage', () => {
     mockUseHasMultipleOUs.mockReturnValue({
       hasMultipleOUs: false,
       isLoading: false,
-      ouList: [],
+      ouList: [{id: 'ou-1', name: 'Default'}],
     });
 
     mockUseGetOrganizationUnit.mockReturnValue({
@@ -2283,9 +2283,95 @@ describe('ApplicationCreatePage', () => {
         expect(mockCreateApplication).toHaveBeenCalled();
       });
 
+      // The generated flow is owned by the organization unit of the application
+      expect(mockCreateFlow).toHaveBeenCalledWith(expect.objectContaining({ouId: 'ou-1'}), expect.anything());
+
       // Verify createApplication called with generated flow ID
       const createAppCall = mockCreateApplication.mock.calls[0][0] as Application;
       expect(createAppCall.authFlowId).toBe('generated-flow-id');
+    });
+
+    it('should not generate a flow when no organization unit could be resolved', async () => {
+      mockUseHasMultipleOUs.mockReturnValue({hasMultipleOUs: false, isLoading: false, ouList: []});
+
+      // Mock createFlow to return success
+      mockCreateFlow.mockImplementation((_data, {onSuccess}: {onSuccess: (flow: unknown) => void}) => {
+        onSuccess({
+          id: 'generated-flow-id',
+          name: 'Generated Flow',
+          handle: 'generated-flow',
+        });
+      });
+
+      // Mock createApplication to success
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'app-with-generated-flow', name: 'My App'} as Application);
+      });
+
+      // Override MockConfigureSignInOptions to simulate selection without setting a flow
+      const ConfigureSignInOptionsModule = await import(
+        '../../components/create-application/configure-signin-options/ConfigureSignInOptions'
+      );
+      const useApplicationCreateContextModule = await import('../../hooks/useApplicationCreateContext');
+
+      vi.mocked(ConfigureSignInOptionsModule.default).mockImplementation(
+        ({onReadyChange}: {onReadyChange?: (ready: boolean) => void}) => {
+          const {setSelectedAuthFlow, setIntegrations} = useApplicationCreateContextModule.default();
+
+          const handleSetup = () => {
+            // Explicitly set flow to null to trigger generation logic
+            setSelectedAuthFlow(null);
+            // Explicitly set integrations
+            setIntegrations({basic_auth: true});
+            onReadyChange?.(true);
+          };
+
+          return (
+            <div data-testid="application-configure-sign-in">
+              <button type="button" data-testid="setup-flow-generation" onClick={handleSetup}>
+                Setup Flow Generation
+              </button>
+            </div>
+          );
+        },
+      );
+
+      renderWithProviders();
+
+      // Navigate to the security (sign in options) step
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // DETAILS → SECURITY
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      // At Security step
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
+      });
+
+      // Trigger setup
+      await user.click(screen.getByTestId('setup-flow-generation'));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', {name: /continue/i})).toBeEnabled();
+      });
+      // SECURITY → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-design')).toBeInTheDocument();
+      });
+      // DESIGN → CONFIGURE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
+      });
+      // CONFIGURE → Create
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(() => {
+        expect(screen.getByText('Organization unit is required')).toBeInTheDocument();
+      });
+      expect(mockCreateFlow).not.toHaveBeenCalled();
+      expect(mockCreateApplication).not.toHaveBeenCalled();
     });
 
     it('should show error when flow generation fails', async () => {

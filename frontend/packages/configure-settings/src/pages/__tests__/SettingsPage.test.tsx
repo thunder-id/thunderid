@@ -7,7 +7,15 @@ import {renderWithProviders} from '@thunderid/test-utils';
 import {describe, it, expect, vi} from 'vitest';
 
 vi.mock('../../components/cors/CorsSection', () => ({
-  default: () => <div data-testid="cors-section" />,
+  default: () => (
+    <div data-testid="cors-section">
+      <input aria-label="CORS draft" />
+    </div>
+  ),
+}));
+
+vi.mock('../../components/accountSecurity/AccountSecuritySection', () => ({
+  default: () => <div data-testid="account-security-section" />,
 }));
 
 const {default: SettingsPage} = await import('../SettingsPage');
@@ -32,5 +40,18 @@ describe('SettingsPage', () => {
     renderWithProviders(<SettingsPage />);
     await user.click(screen.getByRole('tab', {name: 'CORS'}));
     expect(screen.getByTestId('cors-section')).toBeInTheDocument();
+  });
+
+  it('keeps an unsaved edit when switching tabs and back', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SettingsPage />);
+
+    await user.type(screen.getByRole('textbox', {name: 'CORS draft'}), 'https://example.com');
+    await user.click(screen.getByRole('tab', {name: 'Account security'}));
+    expect(screen.getByTestId('cors-section')).not.toBeVisible();
+    expect(screen.getByTestId('account-security-section')).toBeVisible();
+
+    await user.click(screen.getByRole('tab', {name: 'CORS'}));
+    expect(screen.getByRole('textbox', {name: 'CORS draft'})).toHaveValue('https://example.com');
   });
 });

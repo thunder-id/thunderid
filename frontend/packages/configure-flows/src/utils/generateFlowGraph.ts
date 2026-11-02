@@ -391,9 +391,9 @@ function assignLayout(nodes: FlowNode[]): void {
  * Supports any combination of Basic, Passkey, Magic Link, Google, GitHub, and SMS.
  *
  * @param options - Selected authentication methods and IDs
- * @returns Complete flow creation request payload
+ * @returns Flow creation request payload without its owner, which the caller adds as `ouId`
  */
-export default function generateFlowGraph(options: FlowGeneratorOptions): CreateFlowRequest {
+export default function generateFlowGraph(options: FlowGeneratorOptions): Omit<CreateFlowRequest, 'ouId'> {
   const {
     appName,
     hasCredentialsAuth,

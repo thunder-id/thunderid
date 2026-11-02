@@ -35,9 +35,11 @@ const (
 	resourceTypeUserType                = "user_type"
 	resourceTypeAgentType               = "agent_type"
 	resourceTypeOU                      = "organization_unit"
+	resourceTypeProject                 = "project"
 	resourceTypeUser                    = "user"
 	resourceTypeGroup                   = "group"
 	resourceTypeResourceServer          = "resource_server"
+	resourceTypeAuthorizationDetailType = "authorization_detail_type"
 	resourceTypeRole                    = "role"
 	resourceTypeFlow                    = "flow"
 	resourceTypeTranslation             = "translation"
@@ -158,9 +160,11 @@ func (es *exportService) ExportResources(
 		resourceTypeUserType:                request.UserTypes,
 		resourceTypeAgentType:               request.AgentTypes,
 		resourceTypeOU:                      request.OrganizationUnits,
+		resourceTypeProject:                 request.Projects,
 		resourceTypeUser:                    request.Users,
 		resourceTypeGroup:                   request.Groups,
 		resourceTypeResourceServer:          request.ResourceServers,
+		resourceTypeAuthorizationDetailType: request.AuthorizationDetailTypes,
 		resourceTypeRole:                    request.Roles,
 		resourceTypeFlow:                    request.Flows,
 		resourceTypeTranslation:             request.Translations,

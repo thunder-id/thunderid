@@ -31,17 +31,16 @@ async function gotoDashboard(page: Page): Promise<void> {
 }
 
 /**
- * Navigate to the users list and wait for the loaded rows, not network idle: UsersListPage is
- * React.lazy-loaded (frontend/apps/console/src/App.tsx) and its grid
- * (frontend/packages/configure-users/src/components/UsersList.tsx) renders unconditionally, with
- * `/users` still in flight, so neither the grid root nor a row on its own means the data arrived.
- * MUI's skeleton overlay renders placeholder rows as `.MuiDataGrid-row.MuiDataGrid-rowSkeleton`;
- * excluding that class is what separates the settled DOM from the loading one.
+ * Navigate to the users list and wait for a loaded row, not network idle: the table and its header
+ * row render while `/users` is still in flight, so only a row with cells means the data arrived.
  */
 async function gotoUsersList(page: Page): Promise<void> {
   await page.goto(routes.users, { timeout: Timeouts.PAGE_LOAD });
+  // The header row is there while the list loads, so wait for a data row: a row with cells.
   await page
-    .locator(".MuiDataGrid-row:not(.MuiDataGrid-rowSkeleton)")
+    .getByRole("table")
+    .getByRole("row")
+    .filter({ has: page.getByRole("cell") })
     .first()
     .waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
 }
@@ -65,12 +64,8 @@ const KNOWN_VIOLATIONS = ["document-title", "html-has-lang", "target-size"];
  * color-contrast (serious, WCAG 2 SC 1.4.3): the initials inside MuiAvatar fall below the AA 4.5:1
  * threshold, reported on 2 nodes. Firefox and WebKit flag it; Chromium computes the ratio slightly
  * differently and does not.
- *
- * TODO: Remove .MuiDataGrid-main once the users list grid exposes the required child roles.
- * aria-required-children (critical): the grid declares an ARIA grid role without the row roles that
- * role requires. Surfaces on Firefox, where the grid body is rendered differently than on Chromium.
  */
-const KNOWN_VIOLATION_SELECTORS = [".MuiAvatar-root", ".MuiDataGrid-main"];
+const KNOWN_VIOLATION_SELECTORS = [".MuiAvatar-root"];
 
 test.describe("Accessibility — Dashboard & Main Views @accessibility", () => {
   test.describe("Dashboard Home", () => {

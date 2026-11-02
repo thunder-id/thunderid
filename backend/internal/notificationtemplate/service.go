@@ -140,10 +140,14 @@ func (ts *notificationTemplateService) CreateTemplate(ctx context.Context, chann
 	dao.Handle = request.Handle
 	dao.OUID = request.OUID
 
-	id, err := utils.GenerateUUIDv7()
-	if err != nil {
-		ts.logger.Error(ctx, "Failed to generate template id", log.Error(err))
-		return nil, &tidcommon.InternalServerError
+	id := request.ID
+	if id == "" {
+		var err error
+		id, err = utils.GenerateUUIDv7()
+		if err != nil {
+			ts.logger.Error(ctx, "Failed to generate template id", log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
 	}
 	dao.ID = id
 

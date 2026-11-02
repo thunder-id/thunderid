@@ -8,7 +8,7 @@ description: View, update, and delete identity provider connections from the {{P
 
 # Manage Identity Providers
 
-This guide explains how to view, update, and delete identity providers from the <ProductName /> Console.
+This guide explains how to view, update, and delete identity providers from the <ProductName /> Console. It also describes organization unit ownership, which applies to every kind of connection.
 
 For provider-specific setup instructions, see:
 
@@ -31,12 +31,16 @@ For provider-specific setup instructions, see:
 
 On the detail page, the **General** tab's **Quick copy** section shows the **Connection ID**, an identifier you can copy for use in your integration.
 
+The **Organization unit** card on the same tab shows the **Handle** and **ID** of the organization unit that owns the connection. See [Organization Unit Ownership](#organization-unit-ownership).
+
 ## Update an Identity Provider
 
 1. Open the connection from the Connections page.
 2. On the **General** tab, edit the fields under **Connection details**.
 3. Stored secrets, such as **Client secret**, are write-only: the field stays locked until you click **Update**. Leave it unchanged to keep the stored secret.
 4. Click **Save changes** in the bar at the bottom of the page. You can click **Discard** instead to abandon your edits.
+
+The owning organization unit is not editable, because a connection cannot move to another organization unit.
 
 Only custom OIDC and OAuth 2.0 connections have an editable **Connection name**. Google, GitHub, and other branded connections keep the vendor's name.
 
@@ -56,6 +60,58 @@ If an authentication flow or another resource still references this identity pro
 :::note
 Identity providers created through declarative configuration are read-only. Deleting one fails even when no other resource references it.
 :::
+
+## Organization Unit Ownership
+
+Every connection belongs to exactly one organization unit (OU). This applies to every kind of connection behind the `/connections` API: identity providers, including trusted issuers, SMS and email providers, AuthZEN PDP connections, and HTTP endpoint connections.
+
+- **Required on create.** There is no default, so the request has to name the organization unit. The Console creates every connection in your own organization unit, which it takes from your sign-in token.
+- **Cannot change.** To keep the owner on update, leave `ouId` out or send the current one. The Console never sends it on update.
+- **Blocks deleting the organization unit.** An organization unit that still owns a connection cannot be deleted. Delete the connection first. See [Delete an Organization Unit](../../organization-units/manage-organization-units#delete-an-organization-unit).
+
+Every connection response, and every entry of the `GET /connections` list, carries `ouId`.
+
+### Create a Connection Through the API
+
+Send `ouId` in the body of `POST /connections/{type}`. Get the organization unit's `id` from `GET /organization-units`.
+
+```bash
+curl -k -X POST https://localhost:8090/connections/google \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Google",
+    "ouId": "<organization-unit-id>",
+    "clientId": "<google-client-id>",
+    "clientSecret": "<google-client-secret>",
+    "redirectUri": "https://<your-thunderid-host>/gate/callback"
+  }'
+```
+
+The REST API accepts only `ouId`. A request that fails the owner check returns a `400` error:
+
+| Case | Identity providers | SMS and email providers | AuthZEN PDP connections | HTTP connections |
+|------|--------------------|-------------------------|-------------------------|------------------|
+| `ouId` missing on create | `IDP-1016` | `MNS-1020` | `CON-1025` | `CON-1030` |
+| Organization unit does not exist | `IDP-1014` | `MNS-1018` | `CON-1023` | `CON-1028` |
+| `ouId` differs from the current owner on update | `IDP-1015` | `MNS-1019` | `CON-1024` | `CON-1029` |
+
+### Declare the Owner in a Resource File
+
+A declarative or imported `resource_type: connection` document for an identity provider, an SMS or email provider, or an AuthZEN PDP connection must carry `ouId` or `ouHandle`. Use `ouHandle` to keep the file portable across environments. If you give both, `ouId` wins. A document with neither fails to load, and the server does not start. An item of an import request fails the same way, including in a dry run. Exports write `ouId`. HTTP endpoint connections are not declarative resources.
+
+```yaml
+resource_type: connection
+id: 019e201d-5634-7533-a971-538b66914721
+name: Google
+ouHandle: default
+type: google
+clientId: "{{.GOOGLE_CLIENT_ID}}"
+clientSecret: "{{.GOOGLE_CLIENT_SECRET}}"
+redirectUri: "{{.GOOGLE_REDIRECT_URI}}"
+```
+
+For the full list of handle fields, see [Cross-Resource References by Handle](../../declarative-configurations/import-resources#cross-resource-references-by-handle).
 
 ## Next Steps
 

@@ -1,0 +1,49 @@
+---
+title: Account Protection
+docType: concept
+persona: iam
+sidebar_position: 0
+description: How automatic locks and administrative suspensions hold users, agents, and applications, and how the two interact.
+---
+
+# Account Protection
+
+Account protection is how <ProductName /> withholds access from an account without deleting it. It places two kinds of hold. A **lock** forms automatically after repeated failed sign-in attempts, to stop guessing. A **suspension** is an administrator's decision to contain an account, for example after a reported compromise. Each hold has its own release, and releasing one leaves the other in place.
+
+## Locks and Suspensions
+
+| | Automatic lock | Suspension |
+|---|---|---|
+| Applies to | Users and agents | Users, agents, and applications |
+| Placed by | Repeated failed attempts with a password, a PIN, or another stored credential, or with a one-time password | An administrator |
+| New sign-ins | Refused through the locked sign-in method, or through every method when the lock covers the whole account | Refused through every method |
+| Existing sessions and tokens | Kept | Ended and revoked |
+| Account recovery | Allowed for users, and completing it releases the lock | Refused |
+| Ends | When a timed lock expires, when the user completes recovery, or when an administrator unlocks the account | When an administrator unsuspends the account |
+
+## How the Holds Interact
+
+A lock never ends sessions or stops token refresh. Anyone who knows an identifier can cause failed attempts, so a lock that reached existing access would let an attacker sign a user out. Ending existing access is what a suspension is for.
+
+Unsuspending a user leaves a lock on every sign-in method that does not expire. It stays until the user completes recovery or an administrator unlocks the account. Unsuspending an agent leaves any automatic lock that is still in force. Applications are never locked.
+
+While an account is suspended, its record stays editable, so an administrator can rotate a credential or correct an attribute during an investigation. Changing a credential does not clear a lock or lift a suspension.
+
+## Account Status
+
+Every user, agent, and application has a status, shown in the **Status** column of its Console list and returned on API reads:
+
+| Status | Meaning |
+|---|---|
+| `ACTIVE` | No hold applies. |
+| `LOCKED` | A lock is in force on one or more sign-in methods. |
+| `SUSPENDED` | An administrator suspended the account. A suspended account shows this status even when it is also locked. |
+
+While an account is held, its Console page shows a banner that lists each locked sign-in method and when its lock ends. See the [API Reference](../../../apis#tag/users) for the status fields.
+
+## Related
+
+- [Configure Account Lockout](../configure-account-lockout): Set the lock policy and let users recover from a lock
+- [Suspend and Restore Accounts](../suspend-and-restore-accounts): Suspend, unsuspend, and unlock accounts
+- [Account Access](../../../deployment/configuration#account-access): Configuration reference for the lock policy
+- [Token Revocation](../../protocols/oauth-oidc/token-revocation): How a suspension revokes tokens

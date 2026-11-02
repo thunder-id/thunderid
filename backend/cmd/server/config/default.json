@@ -4,6 +4,11 @@
     "port": 8090,
     "http_only": false,
     "identifier": "default-deployment",
+    "timeouts": {
+      "read_header_seconds": 10,
+      "write_seconds": 10,
+      "idle_seconds": 120
+    },
     "security": {
       "jwks_cache_ttl": 300,
       "trusted_issuer": {
@@ -160,7 +165,7 @@
       "required": false,
       "iat_window": 60,
       "leeway": 5,
-      "allowed_algs": ["ES256", "PS256", "ES384", "ES512", "EdDSA", "RS256"],
+      "allowed_algs": ["ES256", "PS256", "ES384", "ES512", "EdDSA", "RS256", "ML-DSA-44", "ML-DSA-65", "ML-DSA-87"],
       "max_jti_length": 256
     },
     "client_assertion": {
@@ -187,6 +192,10 @@
         "queue_size" : 1024,
         "reject_private_addresses" : true
       }
+    },
+    "authorization_details": {
+      "processor_timeout": 5,
+      "type_metadata_enabled": true
     },
     "revocation": {
       "token_family": {
@@ -321,6 +330,9 @@
     "default_delimiter": ":",
     "store": "composite"
   },
+  "authorization_detail_type": {
+    "store": "composite"
+  },
   "resource_sharing": {
     "allow_child_ou_cross_tree_sharing": false
   },
@@ -374,6 +386,9 @@
   "identity_provider": {
     "store": "composite"
   },
+  "http_connection": {
+    "store": "composite"
+  },
   "application": {
     "store": "composite"
   },
@@ -420,6 +435,9 @@
   "user_mgt_provider": {
     "type": "default"
   },
+  "identity_governance_provider": {
+    "type": "default"
+  },
   "openid4vp": {
     "client_id_scheme": "x509_san_dns",
     "signing_key_id": "ecdsa-key",
@@ -456,8 +474,13 @@
   "gateway": {
     "max_gateways": 1,
     "max_versions": 3,
+    "auto_apply": false,
     "allow_private_addresses": false,
     "removal_confirmation_threshold": 5,
-    "store": "composite"
+    "store": "composite",
+    "apply_timeout_seconds": 300
+  },
+  "import": {
+    "timeout_seconds": 120
   }
 }

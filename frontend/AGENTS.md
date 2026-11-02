@@ -14,6 +14,12 @@ Console management features ship as `@thunderid/configure-*` packages (e.g. `@th
 `frontend/packages/`. Shared building blocks live in packages such as `@thunderid/components`, `@thunderid/hooks`,
 `@thunderid/contexts`, and `@thunderid/i18n`.
 
+The Admin Console's (`apps/admin-console`) pages ship as `@thunderid/manage-*` packages (`manage-users`,
+`manage-groups`, `manage-roles`, `manage-agents`), built on the React SDK's admin components. The two families split by
+runtime: `configure-*` call the native management APIs only, while `manage-*` run destructive and lifecycle operations
+through the server's administration flows (`administrationMode: 'flow'` by default), so grants are revoked and sessions
+end first. Don't add flow handling to a `configure-*` package.
+
 Gate consumes ThunderID's published SDK packages — `@thunderid/react` and `@thunderid/react-router` — from the separate
 [javascript-sdks](https://github.com/thunder-id/javascript-sdks) repository. Clone that repository only to develop or
 debug the SDK itself, or to test against unreleased SDK changes.
@@ -34,6 +40,29 @@ existing dependency: add that exact subpath as a string literal to the package's
 next to the existing `// Peer dep subpaths are not matched by exact string - add them explicitly.` entries (see
 `packages/configure-resource-servers/rolldown.config.js`). Do this for every subpath actually imported by the package's
 source, not just `@thunderid/logger/react`.
+
+## UI Components and Styling
+
+Read [.agent/skills/ui-development/SKILL.md](../.agent/skills/ui-development/SKILL.md) before writing or changing any
+UI: a page, dialog, form, table, card, shared component, or styling. The rules that matter most:
+
+- Reuse before you build. Check `@thunderid/components` first, then Oxygen UI's own components, and write a new
+  component only when neither has it. A component a second package needs moves into `@thunderid/components`. It is never
+  copied.
+- Import components from `@wso2/oxygen-ui` and icons from `@wso2/oxygen-ui-icons-react`. Never import from `@mui/*` or
+  `lucide-react`. For a product category (Overview, Deploy, Gateways, and others), use the icon the WSO2 unification
+  guidelines assign to it, listed in the skill's Category Icons table.
+- Style with `sx` and theme tokens (`p: 2`, `color: 'text.secondary'`, `Typography variant`). No hex or `rgba()` colors,
+  `px` spacing, `style={{}}`, or CSS files.
+- Follow the existing page anatomy: `PageContent` + `PageTitle` + `DocumentTitle` for pages in the app shell,
+  `FullScreenCreationWizardLayout` for create flows, `SettingsCard` sections and `UnsavedChangesBar` on edit pages.
+- Read a component's docs before using or reconfiguring it. The Oxygen Storybook (https://wso2.github.io/oxygen-ui, and
+  the story source at the pinned version's git tag) says which variant to use when, for example for `ListingTable`. The
+  bundled `node_modules/@wso2/oxygen-ui/.ai/` docs are a quick reference but can lag the stories. Use a documented prop
+  before writing custom styling.
+- Meet WCAG 2.1 AA, as Oxygen does. Follow each component's Accessibility section in Storybook: every control has an
+  accessible name, nothing clickable is a `Box` or `Typography`, focus stays visible, and state is never shown by color
+  alone.
 
 ## Route Configuration — Never Hardcode a Path
 

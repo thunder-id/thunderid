@@ -8,12 +8,15 @@ import {
   applyGrantTypesChange,
   applyPublicClientChange,
   applyTokenEndpointAuthMethodChange,
+  CIMD_GRANT_TYPES,
   deriveOAuth2Flags,
+  getCimdGrantRestriction,
   getPkceCaption,
   getPublicClientCaption,
   hasClientAccess,
   hasUserAccess,
   isGrantItemDisabled,
+  isCimdGrantAllowed,
   isGrantLockedByIdJag,
   isIdJagEnabled,
   isOAuthTokenMode,
@@ -500,5 +503,78 @@ describe('getPkceCaption', () => {
     expect(getPkceCaption(deriveOAuth2Flags(enabled), enabled)[0]).toBe('applications:edit.advanced.pkce.enabled');
     const disabled = baseConfig({grantTypes: [OAuth2GrantTypes.AUTHORIZATION_CODE], pkceRequired: false});
     expect(getPkceCaption(deriveOAuth2Flags(disabled), disabled)[0]).toBe('applications:edit.advanced.pkce.disabled');
+  });
+});
+
+describe('isCimdGrantAllowed', () => {
+  const {NONE, PRIVATE_KEY_JWT, CLIENT_SECRET_BASIC} = TokenEndpointAuthMethods;
+  it.each([
+    [OAuth2GrantTypes.AUTHORIZATION_CODE, true, true, true],
+    [OAuth2GrantTypes.REFRESH_TOKEN, true, true, true],
+    [OAuth2GrantTypes.TOKEN_EXCHANGE, false, true, false],
+    [OAuth2GrantTypes.JWT_BEARER, false, true, false],
+    [OAuth2GrantTypes.CLIENT_CREDENTIALS, false, false, false],
+    [OAuth2GrantTypes.CIBA, false, false, false],
+    [OAuth2GrantTypes.PASSWORD, false, false, false],
+  ])('%s: none=%s, private_key_jwt=%s, client_secret_basic=%s', (grant, none, privateKeyJwt, secretBasic) => {
+    expect(isCimdGrantAllowed(grant, NONE)).toBe(none);
+    expect(isCimdGrantAllowed(grant, PRIVATE_KEY_JWT)).toBe(privateKeyJwt);
+    expect(isCimdGrantAllowed(grant, CLIENT_SECRET_BASIC)).toBe(secretBasic);
+  });
+
+  it('lists exactly the grants a private key JWT client may hold', () => {
+    expect(CIMD_GRANT_TYPES.every((grant) => isCimdGrantAllowed(grant, PRIVATE_KEY_JWT))).toBe(true);
+    expect(CIMD_GRANT_TYPES).toHaveLength(4);
+  });
+});
+
+describe('getCimdGrantRestriction', () => {
+  const cimdConfig = (tokenEndpointAuthMethod: string): OAuth2Config =>
+    baseConfig({clientIdMetadataDocument: true, tokenEndpointAuthMethod});
+
+  it('returns nothing for a client that is not registered from a metadata document', () => {
+    expect(getCimdGrantRestriction(OAuth2GrantTypes.AUTHORIZATION_CODE, baseConfig())).toBeUndefined();
+    expect(getCimdGrantRestriction(OAuth2GrantTypes.JWT_BEARER, baseConfig())).toBeUndefined();
+  });
+
+  it('keeps the authorization code grant for every metadata document client', () => {
+    for (const method of [TokenEndpointAuthMethods.NONE, TokenEndpointAuthMethods.PRIVATE_KEY_JWT]) {
+      expect(getCimdGrantRestriction(OAuth2GrantTypes.AUTHORIZATION_CODE, cimdConfig(method))?.[0]).toBe(
+        'applications:edit.advanced.grantTypes.requiredByMetadataDocument',
+      );
+    }
+  });
+
+  it('restricts the identity assertion grants to private key JWT clients', () => {
+    const publicClient = cimdConfig(TokenEndpointAuthMethods.NONE);
+    for (const grant of [OAuth2GrantTypes.TOKEN_EXCHANGE, OAuth2GrantTypes.JWT_BEARER]) {
+      expect(getCimdGrantRestriction(grant, publicClient)?.[0]).toBe(
+        'applications:edit.advanced.grantTypes.requiresPrivateKeyJwt',
+      );
+    }
+    expect(getCimdGrantRestriction(OAuth2GrantTypes.REFRESH_TOKEN, publicClient)).toBeUndefined();
+  });
+
+  it('lets a private key JWT client pick JWT bearer but ties token exchange to identity assertions', () => {
+    const confidentialClient = cimdConfig(TokenEndpointAuthMethods.PRIVATE_KEY_JWT);
+    expect(getCimdGrantRestriction(OAuth2GrantTypes.JWT_BEARER, confidentialClient)).toBeUndefined();
+    expect(getCimdGrantRestriction(OAuth2GrantTypes.TOKEN_EXCHANGE, confidentialClient)?.[0]).toBe(
+      'applications:edit.advanced.grantTypes.followsIdJag',
+    );
+  });
+});
+
+describe('metadata document captions', () => {
+  it('attributes the public client and PKCE settings to the metadata document', () => {
+    const config = baseConfig({
+      clientIdMetadataDocument: true,
+      grantTypes: [OAuth2GrantTypes.AUTHORIZATION_CODE, OAuth2GrantTypes.JWT_BEARER],
+      tokenEndpointAuthMethod: TokenEndpointAuthMethods.PRIVATE_KEY_JWT,
+    });
+    const flags = deriveOAuth2Flags(config);
+    expect(getPublicClientCaption(flags, config)[0]).toBe(
+      'applications:edit.advanced.publicClient.setByMetadataDocument',
+    );
+    expect(getPkceCaption(flags, config)[0]).toBe('applications:edit.advanced.pkce.requiredForMetadataDocument');
   });
 });

@@ -8,7 +8,6 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/serverconfig"
 )
 
 // newAccountAccessSourceInterfaceMock creates a new instance of accountAccessSourceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -95,45 +94,5 @@ func (_c *accountAccessSourceInterfaceMock_Current_Call) Return(accountAccessVal
 
 func (_c *accountAccessSourceInterfaceMock_Current_Call) RunAndReturn(run func(ctx context.Context) accountAccessValue) *accountAccessSourceInterfaceMock_Current_Call {
 	_c.Call.Return(run)
-	return _c
-}
-
-// setReader provides a mock function for the type accountAccessSourceInterfaceMock
-func (_mock *accountAccessSourceInterfaceMock) setReader(reader serverconfig.ServerConfigService) {
-	_mock.Called(reader)
-	return
-}
-
-// accountAccessSourceInterfaceMock_setReader_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'setReader'
-type accountAccessSourceInterfaceMock_setReader_Call struct {
-	*mock.Call
-}
-
-// setReader is a helper method to define mock.On call
-//   - reader serverconfig.ServerConfigService
-func (_e *accountAccessSourceInterfaceMock_Expecter) setReader(reader any) *accountAccessSourceInterfaceMock_setReader_Call {
-	return &accountAccessSourceInterfaceMock_setReader_Call{Call: _e.mock.On("setReader", reader)}
-}
-
-func (_c *accountAccessSourceInterfaceMock_setReader_Call) Run(run func(reader serverconfig.ServerConfigService)) *accountAccessSourceInterfaceMock_setReader_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 serverconfig.ServerConfigService
-		if args[0] != nil {
-			arg0 = args[0].(serverconfig.ServerConfigService)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *accountAccessSourceInterfaceMock_setReader_Call) Return() *accountAccessSourceInterfaceMock_setReader_Call {
-	_c.Call.Return()
-	return _c
-}
-
-func (_c *accountAccessSourceInterfaceMock_setReader_Call) RunAndReturn(run func(reader serverconfig.ServerConfigService)) *accountAccessSourceInterfaceMock_setReader_Call {
-	_c.Run(run)
 	return _c
 }

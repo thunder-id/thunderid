@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  AccessStatusBanner,
+  AccountStatusAction,
   DocumentTitle,
   PageLoadingAnimation,
   QueryErrorNotice,
@@ -12,6 +14,7 @@ import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-type
 import {
   getBackchannelLogoutUriServerError,
   hasUserAccess,
+  isIdJagEnabled,
   validateBackchannelLogoutUri,
 } from '@thunderid/configure-applications';
 import {dropNonConformingOptionalAttributes} from '@thunderid/configure-users';
@@ -47,8 +50,10 @@ import AgentOverview from '../components/edit-agent/overview/AgentOverview';
 import EditTokensSettings from '../components/edit-agent/tokens/EditTokensSettings';
 import ShowClientSecret from '../components/ShowClientSecret';
 import AgentConstants from '../constants/agent-constants';
+import AgentQueryKeys from '../constants/agent-query-keys';
 import useAgentRoutes from '../hooks/useAgentRoutes';
 import type {Agent, OAuthAgentConfig} from '../models/agent';
+import isDelegatedAgent, {hasDelegationGrant} from '../utils/isDelegatedAgent';
 
 interface TabPanelProps {
   children?: ReactNode;
@@ -86,6 +91,9 @@ export default function AgentEditPage(): JSX.Element {
 
   const {data: agent, isLoading, error, refetch} = useGetAgent(agentId ?? '');
   const updateAgent = useUpdateAgent();
+  const handleStatusChanged = useCallback((): void => {
+    void refetch();
+  }, [refetch]);
 
   // Resolves an error through the `agents` catalog. `t` defaults to the `common` namespace, so
   // this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `agents:`, per
@@ -123,6 +131,7 @@ export default function AgentEditPage(): JSX.Element {
   );
   const hasAnyOtherValidationError = Object.values(validationErrorSources).some(Boolean);
   const [backchannelLogoutUriInvalid, setBackchannelLogoutUriInvalid] = useState(false);
+  const [identityAssertionsInvalid, setIdentityAssertionsInvalid] = useState(false);
 
   const handleBack = async () => {
     await navigate(routes.agents.list());
@@ -157,7 +166,10 @@ export default function AgentEditPage(): JSX.Element {
     const attributes = dropNonConformingOptionalAttributes(updatedData.attributes ?? {}, agentTypeDetails?.schema);
 
     try {
-      await updateAgent.mutateAsync({agentId, data: {...updatedData, attributes}});
+      await updateAgent.mutateAsync({
+        agentId,
+        data: {...updatedData, attributes, delegated: isDelegatedAgent(updatedData.inboundAuthConfig)},
+      });
       setEditedAgent({});
       await refetch();
       setSectionResetKey((key) => key + 1);
@@ -245,12 +257,20 @@ export default function AgentEditPage(): JSX.Element {
     hasUserAccess(oauth2Config?.grantTypes) &&
     (backchannelLogoutUriInvalid ||
       !validateBackchannelLogoutUri(oauth2Config?.backchannelLogoutUri, oauth2Config?.publicClient ?? false).valid);
+  // The Identity assertions card shows only in Delegated mode, so a hidden config never blocks
+  // saving. An enabled config needs an allowed audience, checked here from state, and the card also
+  // reports a validity period it has not committed because it is invalid.
+  const isInvalidIdentityAssertions =
+    hasDelegationGrant(oauth2Config?.grantTypes) &&
+    isIdJagEnabled(oauth2Config) &&
+    (identityAssertionsInvalid || (oauth2Config?.token?.idJag?.allowedAudiences ?? []).length === 0);
   const hasAnyValidationError =
     hasAnyOtherValidationError ||
     isMissingRedirectUri ||
     isMissingAllowedUserType ||
     isMissingCertificate ||
-    isInvalidBackchannelLogoutUri;
+    isInvalidBackchannelLogoutUri ||
+    isInvalidIdentityAssertions;
 
   // ResourceAvatar opens its picker on any avatar click while onSelect is set, so a read-only
   // agent has to withhold the callback rather than rely on `editable` alone.
@@ -273,6 +293,11 @@ export default function AgentEditPage(): JSX.Element {
   if (isInvalidBackchannelLogoutUri) {
     validationIssues.push(
       t('agents:edit.page.validation.invalidBackchannelLogoutUri', 'fix the back-channel logout URI'),
+    );
+  }
+  if (isInvalidIdentityAssertions) {
+    validationIssues.push(
+      t('agents:edit.page.validation.invalidIdentityAssertions', 'fix the identity assertions (ID-JAG) settings'),
     );
   }
   if (hasAnyOtherValidationError) {
@@ -389,6 +414,7 @@ export default function AgentEditPage(): JSX.Element {
         oauth2Config={oauth2Config}
         onFieldChange={handleFieldChange}
         onBackchannelLogoutUriValidationChange={setBackchannelLogoutUriInvalid}
+        onIdentityAssertionsValidationChange={setIdentityAssertionsInvalid}
         onDeleteSuccess={() => {
           void handleBack();
         }}
@@ -416,6 +442,7 @@ export default function AgentEditPage(): JSX.Element {
           {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
         </Alert>
       )}
+      <AccessStatusBanner status={agent.status} category="agent" sx={{mb: 2}} />
       <PageTitle>
         <PageTitle.BackButton component={<Link to={routes.agents.list()} />}>
           {t('agents:edit.page.back', 'Back to agents')}
@@ -503,6 +530,16 @@ export default function AgentEditPage(): JSX.Element {
             )}
           </Stack>
         </PageTitle.SubHeader>
+        {/* Read-only records too: the flows change only runtime state. */}
+        <PageTitle.Actions>
+          <AccountStatusAction
+            category="agent"
+            subject={agent.id}
+            status={agent.status}
+            listQueryKey={[AgentQueryKeys.AGENTS]}
+            onChanged={handleStatusChanged}
+          />
+        </PageTitle.Actions>
       </PageTitle>
 
       <Tabs value={safeActiveTab} onChange={handleTabChange} aria-label="agent settings tabs">

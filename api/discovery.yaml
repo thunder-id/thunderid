@@ -199,6 +199,17 @@ components:
         client_id_metadata_document_supported:
           type: boolean
           description: Whether clients registered from a Client ID Metadata Document are supported. Present only when true.
+        authorization_details_types_supported:
+          type: array
+          items:
+            type: string
+          description: |
+            The RFC 9396 authorization details types the server supports. Omitted when no types are registered.
+        authorization_details_types_endpoint:
+          type: string
+          format: uri
+          description: |
+            ThunderID metadata parameter: the endpoint returning the request view of each supported RFC 9396 authorization details type. Omitted when `oauth.authorization_details.type_metadata_enabled` is `false`.
 
     OIDCProviderMetadata:
       allOf:

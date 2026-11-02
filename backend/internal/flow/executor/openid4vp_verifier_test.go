@@ -13,6 +13,7 @@ import (
 
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/openid4vp"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -222,6 +223,51 @@ func TestOpenID4VPExecutorPollCompleted_StoreClaimsFails(t *testing.T) {
 	resp, err := exec.Execute(openid4vpNodeContext(runtime, nil))
 	require.Error(t, err)
 	assert.Nil(t, resp)
+}
+
+// A hold the provider states fails the step with its own code; another refusal is a failed
+// presentation, and a server fault surfaces as an error.
+func TestOpenID4VPExecutorPollCompleted_ProviderRefuses(t *testing.T) {
+	cases := []struct {
+		name     string
+		svcErr   *tidcommon.ServiceError
+		wantCode string
+	}{
+		{name: "a stated lock", svcErr: &authnprovidermgr.ErrorAccountLocked, wantCode: ErrAccountLocked.Code},
+		{name: "a stated suspension", svcErr: &authnprovidermgr.ErrorAccountSuspended,
+			wantCode: ErrAccountSuspended.Code},
+		{name: "another refusal", svcErr: &authnprovidermgr.ErrorAuthenticationFailed,
+			wantCode: ErrOpenID4VPVerificationFailed.Code},
+		{name: "a server fault", svcErr: &tidcommon.InternalServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &fakeOpenID4VPService{
+				getResult: func(_ context.Context, _ string) (*openid4vp.RequestState, *tidcommon.ServiceError) {
+					return &openid4vp.RequestState{
+						Status: openid4vp.StatusCompleted,
+						Result: &openid4vp.VerifiedPresentation{Subject: "sub-1"},
+					}, nil
+				},
+			}
+			mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
+			mockAuthnProvider.On("AuthenticateUser",
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Return(providers.AuthUser{}, providers.AuthenticatedClaims(nil), tc.svcErr)
+			exec := newTestOpenID4VPExecutorWithProvider(t, svc, mockAuthnProvider)
+
+			runtime := map[string]string{common.RuntimeKeyOpenID4VPState: "state-123"}
+			resp, err := exec.Execute(openid4vpNodeContext(runtime, nil))
+			if tc.wantCode == "" {
+				require.Error(t, err)
+				assert.Nil(t, resp)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, providers.ExecFailure, resp.Status)
+			assert.Equal(t, tc.wantCode, resp.Error.Code)
+		})
+	}
 }
 
 func TestOpenID4VPExecutorPollFailed(t *testing.T) {

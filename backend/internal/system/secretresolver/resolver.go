@@ -305,8 +305,13 @@ func hasUnescapedDot(path string) bool {
 
 // fieldAllowed reports whether a secret may stand in the field: it is named exactly, or its
 // mapping is named with a trailing ".*", which covers the mapping's own keys, dotted ones included,
-// and nothing beneath them.
+// and nothing beneath them. A field named with a leading "!" is excluded, even from a ".*" mapping.
 func fieldAllowed(path string, secretFields []string) bool {
+	for _, field := range secretFields {
+		if excluded, ok := strings.CutPrefix(field, "!"); ok && excluded == path {
+			return false
+		}
+	}
 	for _, field := range secretFields {
 		if field == path {
 			return true

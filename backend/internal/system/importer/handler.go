@@ -9,6 +9,7 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -27,6 +28,12 @@ func newImportHandler(service ImportServiceInterface) *importHandler {
 }
 
 func (ih *importHandler) HandleImportRequest(w http.ResponseWriter, r *http.Request) {
+	// An import writes every resource it carries, which can take longer than the server's write
+	// timeout allows any request.
+	if err := sysutils.ExtendWriteDeadline(w, config.GetServerRuntime().Config.Import.Timeout()); err != nil {
+		ih.logger.Warn(r.Context(),
+			"Could not extend the write deadline of an import; the server's write timeout applies", log.Error(err))
+	}
 	importRequest, err := sysutils.DecodeJSONBody[ImportRequest](r)
 	if err != nil {
 		errResp := apierror.ErrorResponse{

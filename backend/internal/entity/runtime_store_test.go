@@ -299,7 +299,7 @@ func (s *RuntimeStoreTestSuite) TestWritesReportStoreFailures() {
 		},
 		"release onto a hold": func() error {
 			_, err := s.store.ClearAccessSuspension(s.ctx, "e1",
-				&identitygovernance.EntityHold{UnlockAt: testPermanentUnlockAt}, "")
+				&identitygovernance.AccountHold{UnlockAt: testPermanentUnlockAt}, "")
 			return err
 		},
 	}
@@ -359,7 +359,7 @@ func (s *RuntimeStoreTestSuite) TestIncrementAccessFailureWithNoRowRecordsNothin
 		Return([]map[string]interface{}{}, nil).Once()
 
 	observed, recorded, err := s.store.IncrementAccessFailure(s.ctx, "e1",
-		identitygovernance.AuthenticationMethodEntity,
+		identitygovernance.AuthenticationMethodAccount,
 		s.now, time.Time{})
 
 	s.Require().NoError(err)
@@ -441,11 +441,12 @@ func (s *RuntimeStoreTestSuite) TestFormAccessLockIsGuardedOnTheObservedCounters
 		s.Run(fmt.Sprint(formed), func() {
 			s.SetupTest()
 			s.expectClient()
-			s.client.On("ExecuteContext", s.ctx, formAccessQueries[identitygovernance.AuthenticationMethodEntity], "e1",
+			s.client.On("ExecuteContext", s.ctx,
+				formAccessQueries[identitygovernance.AuthenticationMethodAccount], "e1",
 				"2026-09-08T10:00:00Z", 2, "2026-09-08T10:15:00Z", 5, 1, s.now, int64(8), testDeploymentID).
 				Return(rowsAffected, nil).Once()
 
-			got, err := s.store.FormAccessLock(s.ctx, "e1", identitygovernance.AuthenticationMethodEntity, observed,
+			got, err := s.store.FormAccessLock(s.ctx, "e1", identitygovernance.AuthenticationMethodAccount, observed,
 				episode, s.now)
 
 			s.Require().NoError(err)
@@ -455,7 +456,7 @@ func (s *RuntimeStoreTestSuite) TestFormAccessLockIsGuardedOnTheObservedCounters
 }
 
 func (s *RuntimeStoreTestSuite) TestClearAccessStateRemovesTheGivenMethods() {
-	methods := []providers.AuthenticationMethod{testMethod, identitygovernance.AuthenticationMethodEntity}
+	methods := []providers.AuthenticationMethod{testMethod, identitygovernance.AuthenticationMethodAccount}
 	query, _, err := buildClearAccessStateQuery("e1", methods, s.now, nil, testDeploymentID)
 	s.Require().NoError(err)
 	s.expectClient()
@@ -523,7 +524,7 @@ func (s *RuntimeStoreTestSuite) TestRecordAccessLoginPassesTheWindow() {
 // A release with no hold clears only the suspension; with a hold the same statement writes it. Either is
 // guarded on the observed placement.
 func (s *RuntimeStoreTestSuite) TestClearAccessSuspensionWritesTheHoldInTheSameStatement() {
-	hold := &identitygovernance.EntityHold{UnlockAt: testPermanentUnlockAt,
+	hold := &identitygovernance.AccountHold{UnlockAt: testPermanentUnlockAt,
 		Reason: testPostSuspensionReason}
 	s.Run("without a hold", func() {
 		s.SetupTest()

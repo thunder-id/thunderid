@@ -788,6 +788,46 @@ describe('flowToCanvasTransformer', () => {
       });
     });
 
+    describe('VARIABLES node transformation', () => {
+      const declarations = [{identifier: 'supportEmail', type: 'EMAIL_INPUT', defaultValue: 'support@example.com'}];
+      const flowData = createBaseFlowData([
+        {id: 'start', type: 'START', onSuccess: 'vars'},
+        {id: 'vars', type: 'VARIABLES', onSuccess: 'login', inputs: declarations},
+        {id: 'login', type: 'TASK_EXECUTION', onSuccess: 'end', executor: {name: 'BasicAuthExecutor'}},
+        {id: 'end', type: 'END'},
+      ]);
+
+      it('should show the node as a placeholder step that keeps what it declares', () => {
+        const node = transformFlowToCanvas(flowData).nodes.find((n) => n.id === 'vars');
+
+        expect(node).toMatchObject({
+          type: StaticStepTypes.Variables,
+          deletable: false,
+          data: {displayOnly: true, inputs: declarations},
+        });
+      });
+
+      it('should draw the paths on both sides of the node', () => {
+        const {edges} = transformFlowToCanvas(flowData);
+
+        expect(edges.map((edge) => `${edge.source}->${edge.target}`)).toEqual([
+          'start->vars',
+          'vars->login',
+          'login->end',
+        ]);
+        expect(edges.find((edge) => edge.source === 'vars')?.sourceHandle).toBe(
+          `vars${VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX}`,
+        );
+      });
+
+      it('should write the node back as it was read', () => {
+        const canvas = transformFlowToCanvas(flowData);
+        const saved = transformReactFlow({nodes: canvas.nodes, edges: canvas.edges}).nodes.find((n) => n.id === 'vars');
+
+        expect(saved).toMatchObject({type: 'VARIABLES', inputs: declarations, onSuccess: 'login'});
+      });
+    });
+
     describe('CALL node transformation', () => {
       it('should transform CALL node with flow ref, resourceType and category', () => {
         const flowData = createBaseFlowData([

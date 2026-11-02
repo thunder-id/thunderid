@@ -14,6 +14,10 @@ export interface ExecutorModeOption {
   value: string;
   translationKey: string;
   displayLabel: string;
+  /**
+   * Node icon for the mode, when the mode changes what the node does.
+   */
+  image?: string;
 }
 
 /**
@@ -89,6 +93,7 @@ function ModeSelectorProperties({
       display: {
         ...((resource?.data as StepData)?.['display'] ?? {}),
         label: modeConfig?.displayLabel ?? fallbackLabel,
+        ...(modeConfig?.image ? {image: modeConfig.image} : {}),
       },
     };
 

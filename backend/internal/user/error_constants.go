@@ -442,7 +442,7 @@ var (
 		Code: "USR-1038",
 		Error: tidcommon.I18nMessage{
 			Key:          "error.userservice.shared_user_cannot_move",
-			DefaultValue: "Shared user cannot be moved",
+			DefaultValue: "User with sharing policies cannot be moved",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.userservice.shared_user_cannot_move_description",

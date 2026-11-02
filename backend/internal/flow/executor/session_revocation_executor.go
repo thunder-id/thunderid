@@ -26,7 +26,7 @@ func newSessionRevocationExecutor(factory core.FlowFactoryInterface,
 	sessionSvc session.Service) *sessionRevocationExecutor {
 	base := factory.CreateExecutor(ExecutorNameSessionRevocation, providers.ExecutorTypeUtility,
 		nil, nil, &providers.ExecutorMeta{
-			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration},
+			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeSystem},
 		})
 	return &sessionRevocationExecutor{Executor: base, sessionSvc: sessionSvc}
 }

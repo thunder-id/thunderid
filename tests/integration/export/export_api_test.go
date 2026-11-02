@@ -952,7 +952,13 @@ func (ts *ExportAPITestSuite) createIDP(idp IDP) (string, error) {
 		return "", err
 	}
 
-	idpJSON, err := json.Marshal(idpToConnectionBody(idp))
+	ouID, err := testutils.DefaultConnectionOUID()
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve the connection organization unit: %w", err)
+	}
+	body := idpToConnectionBody(idp)
+	body["ouId"] = ouID
+	idpJSON, err := json.Marshal(body)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal IDP: %w", err)
 	}

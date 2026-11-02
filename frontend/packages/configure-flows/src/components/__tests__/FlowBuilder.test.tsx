@@ -1026,6 +1026,7 @@ describe('Update Existing Flow', () => {
     mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
     mockExistingFlowData.value = {
       id: 'existing-flow-123',
+      ouId: 'ou-1',
       name: 'Existing Flow',
       handle: 'existing-flow',
       nodes: [],
@@ -1059,6 +1060,7 @@ describe('Update Existing Flow', () => {
     mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
     mockExistingFlowData.value = {
       id: 'existing-flow-123',
+      ouId: 'ou-1',
       name: 'Existing Flow',
       handle: 'existing-flow',
       nodes: [],
@@ -1083,6 +1085,7 @@ describe('Update Existing Flow', () => {
     mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
     mockExistingFlowData.value = {
       id: 'existing-flow-123',
+      ouId: 'ou-1',
       name: 'Existing Flow',
       handle: 'existing-flow',
       nodes: [],
@@ -2204,6 +2207,7 @@ describe('Navigation After Save', () => {
     mockUseParams.mockReturnValue({flowId: 'existing-flow-id'});
     mockExistingFlowData.value = {
       id: 'existing-flow-id',
+      ouId: 'ou-1',
       name: 'Existing Flow',
       handle: 'existing-flow',
       nodes: [],
@@ -2241,6 +2245,7 @@ describe('Existing Flow Loading with Layout', () => {
     mockUseParams.mockReturnValue({flowId: 'flow-with-no-layout'});
     mockExistingFlowData.value = {
       id: 'flow-with-no-layout',
+      ouId: 'ou-1',
       name: 'Flow Without Layout',
       handle: 'flow-without-layout',
       nodes: [
@@ -2258,6 +2263,7 @@ describe('Existing Flow Loading with Layout', () => {
     mockUseParams.mockReturnValue({flowId: 'flow-with-layout'});
     mockExistingFlowData.value = {
       id: 'flow-with-layout',
+      ouId: 'ou-1',
       name: 'Flow With Layout',
       handle: 'flow-with-layout',
       nodes: [
@@ -2275,6 +2281,7 @@ describe('Existing Flow Loading with Layout', () => {
     mockUseParams.mockReturnValue({flowId: 'flow-with-handle'});
     mockExistingFlowData.value = {
       id: 'flow-with-handle',
+      ouId: 'ou-1',
       name: 'Flow With Handle',
       handle: 'custom-handle',
       nodes: [],
@@ -2289,6 +2296,7 @@ describe('Existing Flow Loading with Layout', () => {
     mockUseParams.mockReturnValue({flowId: 'flow-without-handle'});
     mockExistingFlowData.value = {
       id: 'flow-without-handle',
+      ouId: 'ou-1',
       name: 'Flow Without Handle',
       nodes: [],
     };
@@ -4014,6 +4022,7 @@ describe('Existing Flow Loading - useLayoutEffect', () => {
     mockUseParams.mockReturnValue({flowId: 'existing-flow-id'});
     mockExistingFlowData.value = {
       id: 'existing-flow-id',
+      ouId: 'ou-1',
       name: 'Existing Flow',
       handle: 'existing-flow',
       nodes: [
@@ -4035,6 +4044,7 @@ describe('Existing Flow Loading - useLayoutEffect', () => {
     mockUseParams.mockReturnValue({flowId: 'flow-without-layout'});
     mockExistingFlowData.value = {
       id: 'flow-without-layout',
+      ouId: 'ou-1',
       name: 'Flow Without Layout',
       handle: 'flow-without-layout',
       nodes: [
@@ -4058,6 +4068,7 @@ describe('Existing Flow Loading - useLayoutEffect', () => {
     mockUseParams.mockReturnValue({flowId: 'flow-with-layout'});
     mockExistingFlowData.value = {
       id: 'flow-with-layout',
+      ouId: 'ou-1',
       name: 'Flow With Layout',
       handle: 'flow-with-layout',
       nodes: [
@@ -4484,6 +4495,7 @@ describe('updateAllNodeInternals - Node Internals Update', () => {
     mockUseParams.mockReturnValue({flowId: 'existing-flow'});
     mockExistingFlowData.value = {
       id: 'existing-flow',
+      ouId: 'ou-1',
       name: 'Existing',
       handle: 'existing',
       nodes: [
@@ -5171,6 +5183,7 @@ describe('Existing Flow Data Loading - Sync Logic', () => {
     mockUseParams.mockReturnValue({flowId: 'test-flow-id'});
     mockExistingFlowData.value = {
       id: 'test-flow-id',
+      ouId: 'ou-1',
       name: 'My Custom Flow',
       nodes: [],
     };
@@ -5186,6 +5199,7 @@ describe('Existing Flow Data Loading - Sync Logic', () => {
     mockUseParams.mockReturnValue({flowId: 'test-flow-id'});
     mockExistingFlowData.value = {
       id: 'test-flow-id',
+      ouId: 'ou-1',
       name: 'My Custom Flow',
       // No handle property
       nodes: [],
@@ -5203,6 +5217,7 @@ describe('Existing Flow Data Loading - Sync Logic', () => {
     mockUseParams.mockReturnValue({flowId: 'test-flow-id'});
     mockExistingFlowData.value = {
       id: 'test-flow-id',
+      ouId: 'ou-1',
       name: 'My Custom Flow',
       handle: 'custom-handle-value',
       nodes: [],
@@ -5219,6 +5234,7 @@ describe('Existing Flow Data Loading - Sync Logic', () => {
     mockUseParams.mockReturnValue({flowId: 'test-flow-id'});
     mockExistingFlowData.value = {
       id: 'test-flow-id',
+      ouId: 'ou-1',
       name: 'Flow Without Layout',
       nodes: [
         {id: 'node-1', type: 'VIEW', layout: null},
@@ -5238,6 +5254,7 @@ describe('Existing Flow Data Loading - Sync Logic', () => {
     mockUseParams.mockReturnValue({flowId: 'test-flow-id'});
     mockExistingFlowData.value = {
       id: 'test-flow-id',
+      ouId: 'ou-1',
       name: 'Flow With Layout',
       nodes: [
         {id: 'node-1', type: 'VIEW', layout: {position: {x: 100, y: 200}}},
@@ -5482,6 +5499,7 @@ describe('Update Flow - Callbacks', () => {
     mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
     mockExistingFlowData.value = {
       id: 'existing-flow-123',
+      ouId: 'ou-1',
       name: 'Existing Flow',
       handle: 'existing-flow',
       nodes: [],
@@ -5504,6 +5522,7 @@ describe('Update Flow - Callbacks', () => {
     mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
     mockExistingFlowData.value = {
       id: 'existing-flow-123',
+      ouId: 'ou-1',
       name: 'Existing Flow',
       handle: 'existing-flow',
       nodes: [],
@@ -5531,6 +5550,7 @@ describe('Update Flow - Callbacks', () => {
     mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
     mockExistingFlowData.value = {
       id: 'existing-flow-123',
+      ouId: 'ou-1',
       name: 'Existing Flow',
       handle: 'existing-flow',
       nodes: [],
@@ -5811,6 +5831,7 @@ describe('Snackbar Display and Close - Branch Coverage', () => {
     mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
     mockExistingFlowData.value = {
       id: 'existing-flow-123',
+      ouId: 'ou-1',
       name: 'Existing Flow',
       handle: 'existing-flow',
       nodes: [],
@@ -5841,6 +5862,7 @@ describe('Snackbar Display and Close - Branch Coverage', () => {
     mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
     mockExistingFlowData.value = {
       id: 'existing-flow-123',
+      ouId: 'ou-1',
       name: 'Existing Flow',
       handle: 'existing-flow',
       nodes: [],
@@ -6035,6 +6057,7 @@ describe('isEditingExistingFlow Branch Coverage', () => {
     mockUseParams.mockReturnValue({});
     mockExistingFlowData.value = {
       id: 'existing-flow',
+      ouId: 'ou-1',
       name: 'Existing Flow',
       handle: 'existing-flow',
       nodes: [],
@@ -6056,6 +6079,7 @@ describe('isEditingExistingFlow Branch Coverage', () => {
     mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
     mockExistingFlowData.value = {
       id: 'existing-flow-123',
+      ouId: 'ou-1',
       name: 'Existing Flow',
       handle: 'existing-flow',
       nodes: [],

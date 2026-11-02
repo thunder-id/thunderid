@@ -26,6 +26,11 @@ export interface UseOrganizationAccessOptions {
    * Whether to load the resource's sharing policies.
    */
   enabled?: boolean;
+  /**
+   * The i18n namespace holding the resource's own wording under `organizationAccess.*`, e.g. `users`.
+   * Any sentence it leaves out keeps the generic wording.
+   */
+  wordingNamespace?: string;
 }
 
 /**
@@ -72,6 +77,10 @@ export interface OrganizationAccessState {
   save: () => Promise<void>;
   isSaving: boolean;
   saveError: Error | null;
+  /**
+   * The i18n namespace holding the resource's own wording, as given to the hook.
+   */
+  wordingNamespace?: string;
 }
 
 /**
@@ -93,22 +102,26 @@ export interface OrganizationAccessState {
 export default function useOrganizationAccess({
   resourcePath,
   enabled = true,
+  wordingNamespace = undefined,
 }: UseOrganizationAccessOptions): OrganizationAccessState {
   const policiesQuery = useGetSharingPolicies(resourcePath, enabled);
-  const saveMutation = useSaveSharingPolicy(resourcePath);
-  const [editedDraft, setEditedDraft] = useState<OrganizationAccessDraft | null>(null);
+  const saveMutation = useSaveSharingPolicy(resourcePath, wordingNamespace);
+  // The draft and the policy it started from. The save is planned against that policy, not the latest
+  // fetch, so a reload mid-edit cannot move the version a PUT sends past someone else's change.
+  const [edit, setEdit] = useState<{draft: OrganizationAccessDraft; base: SharingPolicy | undefined} | null>(null);
 
   const savedPolicy = useMemo(
     () => policiesQuery.data?.find((policy) => policy.stage === 'share'),
     [policiesQuery.data],
   );
   const savedDraft = useMemo(() => sharingPolicyToDraft(savedPolicy), [savedPolicy]);
-  const draft = editedDraft ?? savedDraft;
-  const offers = useMemo(() => getOrganizationAccessOffers(savedPolicy), [savedPolicy]);
+  const basePolicy = edit ? edit.base : savedPolicy;
+  const draft = edit?.draft ?? savedDraft;
+  const offers = useMemo(() => getOrganizationAccessOffers(basePolicy), [basePolicy]);
 
   const plan = useMemo<SharingPolicySavePlan>(
-    () => (editedDraft ? planSharingPolicySave(savedPolicy, draftToSharingSections(editedDraft)) : {type: 'none'}),
-    [editedDraft, savedPolicy],
+    () => (edit ? planSharingPolicySave(edit.base, draftToSharingSections(edit.draft)) : {type: 'none'}),
+    [edit],
   );
 
   const {reset: resetSaveMutation, mutateAsync: runSave} = saveMutation;
@@ -118,15 +131,17 @@ export default function useOrganizationAccess({
     (update: (current: OrganizationAccessDraft) => OrganizationAccessDraft): void => {
       // A previous save error is stale the moment the draft changes again.
       resetSaveMutation();
-      setEditedDraft((current) => update(current ?? savedDraft));
+      setEdit((current) =>
+        current ? {...current, draft: update(current.draft)} : {draft: update(savedDraft), base: savedPolicy},
+      );
     },
-    [resetSaveMutation, savedDraft],
+    [resetSaveMutation, savedDraft, savedPolicy],
   );
 
   const previewSwitch = useCallback(
     (field: AccessSwitch['field'], to: AccessSwitch['to']): AccessSwitch =>
-      switchOrganizationAccess(draft, field, to, savedPolicy),
-    [draft, savedPolicy],
+      switchOrganizationAccess(draft, field, to, basePolicy),
+    [draft, basePolicy],
   );
 
   const applySwitch = useCallback(
@@ -136,7 +151,7 @@ export default function useOrganizationAccess({
 
   const reset = useCallback((): void => {
     resetSaveMutation();
-    setEditedDraft(null);
+    setEdit(null);
     // refetch() runs even while the query is disabled, so a resource that doesn't load its
     // policies would otherwise request them on every page reset.
     if (enabled && resourcePath) void refetch();
@@ -146,7 +161,7 @@ export default function useOrganizationAccess({
     if (plan.type === 'none') return;
     await runSave(plan);
     await refetch();
-    setEditedDraft(null);
+    setEdit(null);
   }, [plan, runSave, refetch]);
 
   return {
@@ -165,5 +180,6 @@ export default function useOrganizationAccess({
     save,
     isSaving: saveMutation.isPending,
     saveError: saveMutation.error,
+    wordingNamespace,
   };
 }

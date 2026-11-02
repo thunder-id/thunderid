@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -106,13 +107,25 @@ func newUserService(
 	}
 }
 
-// GetUserList retrieves a list of users with pagination and filtering.
+// GetUserList retrieves a list of users with pagination and filtering. An organization unit filter
+// lists the users that unit owns, followed by the ones shared into it.
 func (us *userService) GetUserList(ctx context.Context, limit, offset int,
 	filters map[string]interface{}, includeDisplay bool) (*UserListResponse, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	if err := validatePaginationParams(limit, offset); err != nil {
 		return nil, err
+	}
+
+	listQuery := utils.FilterQueryParam(filters) + utils.DisplayQueryParam(includeDisplay)
+	ouID, filters, err := filter.SplitOUIDFilter(filters)
+	if err != nil {
+		return nil, &ErrorInvalidFilter
+	}
+	// Other conditions cannot narrow the users shared into an organization unit yet, so they are
+	// refused alongside one rather than applied to the owned users only.
+	if ouID != "" && len(filters) > 0 {
+		return nil, &ErrorInvalidFilter
 	}
 
 	// Resolve the set of organization units the caller is authorized to list users from.
@@ -124,19 +137,31 @@ func (us *userService) GetUserList(ctx context.Context, limit, offset int,
 		return nil, &tidcommon.InternalServerError
 	}
 
+	if ouID != "" {
+		// An organization unit the caller cannot list users from has none to show.
+		if !accessible.AllAllowed && !slices.Contains(accessible.IDs, ouID) {
+			return buildUserListResponse([]providers.User{}, 0, limit, offset, listQuery), nil
+		}
+		users, totalCount, listErr := us.listUsersInOU(ctx, ouID, limit, offset, filters, includeDisplay, logger)
+		if listErr != nil {
+			return nil, listErr
+		}
+		return buildUserListResponse(users, totalCount, limit, offset, listQuery), nil
+	}
+
 	// Unfiltered path: system-level caller — return all users.
 	if accessible.AllAllowed {
-		return us.listAllUsers(ctx, limit, offset, filters, includeDisplay, logger)
+		return us.listAllUsers(ctx, limit, offset, filters, includeDisplay, listQuery, logger)
 	}
 
 	// Filtered path: return users belonging to the accessible OUs.
-	return us.listUsersByOUIDs(ctx, accessible.IDs, limit, offset, filters, includeDisplay, logger)
+	return us.listUsersByOUIDs(ctx, accessible.IDs, limit, offset, filters, includeDisplay, listQuery, logger)
 }
 
 // listAllUsers retrieves users without OU filtering.
 func (us *userService) listAllUsers(
 	ctx context.Context, limit, offset int, filters map[string]interface{},
-	includeDisplay bool, logger *log.Logger,
+	includeDisplay bool, listQuery string, logger *log.Logger,
 ) (*UserListResponse, *tidcommon.ServiceError) {
 	totalCount, err := us.entityService.GetEntityListCount(ctx, providers.EntityCategoryUser, filters)
 	if err != nil {
@@ -149,23 +174,22 @@ func (us *userService) listAllUsers(
 	}
 
 	users := us.usersWithAccess(ctx, entities)
+	markOwned(users, true)
 	if includeDisplay {
 		us.populateUserDisplayNames(ctx, users, logger)
 		us.populateOUHandles(ctx, users, logger)
 	}
 
-	return buildUserListResponse(users, totalCount, limit, offset, utils.DisplayQueryParam(includeDisplay)), nil
+	return buildUserListResponse(users, totalCount, limit, offset, listQuery), nil
 }
 
 // listUsersByOUIDs retrieves users scoped to the given organization unit IDs.
 func (us *userService) listUsersByOUIDs(
 	ctx context.Context, ouIDs []string, limit, offset int, filters map[string]interface{},
-	includeDisplay bool, logger *log.Logger,
+	includeDisplay bool, listQuery string, logger *log.Logger,
 ) (*UserListResponse, *tidcommon.ServiceError) {
-	displayQuery := utils.DisplayQueryParam(includeDisplay)
-
 	if len(ouIDs) == 0 {
-		return buildUserListResponse([]providers.User{}, 0, limit, offset, displayQuery), nil
+		return buildUserListResponse([]providers.User{}, 0, limit, offset, listQuery), nil
 	}
 
 	totalCount, err := us.entityService.GetEntityListCountByOUIDs(ctx, providers.EntityCategoryUser, ouIDs, filters)
@@ -180,24 +204,51 @@ func (us *userService) listUsersByOUIDs(
 	}
 
 	users := us.usersWithAccess(ctx, entities)
+	markOwned(users, true)
 	if includeDisplay {
 		us.populateUserDisplayNames(ctx, users, logger)
 		us.populateOUHandles(ctx, users, logger)
 	}
 
-	return buildUserListResponse(users, totalCount, limit, offset, displayQuery), nil
+	return buildUserListResponse(users, totalCount, limit, offset, listQuery), nil
+}
+
+// listUsersInOU lists the users an organization unit owns, followed by the ones shared into it, and
+// returns the total across every page.
+func (us *userService) listUsersInOU(
+	ctx context.Context, ouID string, limit, offset int, filters map[string]interface{},
+	includeDisplay bool, logger *log.Logger,
+) ([]providers.User, int, *tidcommon.ServiceError) {
+	page, err := us.entityService.GetEntityPageInOU(
+		ctx, providers.EntityCategoryUser, ouID, entity.OUEntityScopeAll, limit, offset, filters)
+	if err != nil {
+		return nil, 0, logErrorAndReturnServerError(ctx, logger, "Failed to list users in organization unit", err)
+	}
+
+	users := us.usersWithAccess(ctx, slices.Concat(page.Owned, page.Shared))
+	markOwned(users[:len(page.Owned)], true)
+	markOwned(users[len(page.Owned):], false)
+	// A shared user is listed under the organization unit it is shared into, not the one owning it.
+	for i := len(page.Owned); i < len(users); i++ {
+		users[i].OUID = ouID
+	}
+	if includeDisplay {
+		us.populateUserDisplayNames(ctx, users, logger)
+		us.populateOUHandles(ctx, users, logger)
+	}
+	return users, page.TotalResults, nil
 }
 
 // buildUserListResponse constructs a paginated UserListResponse.
 func buildUserListResponse(
-	users []providers.User, totalCount, limit, offset int, displayQuery string,
+	users []providers.User, totalCount, limit, offset int, listQuery string,
 ) *UserListResponse {
 	return &UserListResponse{
 		TotalResults: totalCount,
 		StartIndex:   offset + 1,
 		Count:        len(users),
 		Users:        users,
-		Links:        utils.BuildPaginationLinks("/users", limit, offset, totalCount, displayQuery),
+		Links:        utils.BuildPaginationLinks("/users", limit, offset, totalCount, listQuery),
 	}
 }
 
@@ -212,6 +263,11 @@ func (us *userService) GetUsersByPath(
 	serviceError := validateAndProcessHandlePath(handlePath)
 	if serviceError != nil {
 		return nil, serviceError
+	}
+	// The path names the organization unit, and a filter cannot narrow the users shared into it yet,
+	// so a filter is refused rather than applied to the owned users only.
+	if len(filters) > 0 {
+		return nil, &ErrorInvalidFilter
 	}
 
 	ou, svcErr := us.ouService.GetOrganizationUnitByPath(ctx, handlePath)
@@ -238,88 +294,19 @@ func (us *userService) GetUsersByPath(
 		return nil, err
 	}
 
-	ouResponse, svcErr := us.ouService.GetOrganizationUnitUsers(ctx, oUID, limit, offset, false)
+	users, totalCount, svcErr := us.listUsersInOU(ctx, oUID, limit, offset, nil, includeDisplay, logger)
 	if svcErr != nil {
-		return nil, mapOUServiceError(ctx,
-			svcErr,
-			logger,
-			"listing organization unit users",
-			map[string]*tidcommon.ServiceError{
-				oupkg.ErrorOrganizationUnitNotFound.Code: &ErrorOrganizationUnitNotFound,
-				oupkg.ErrorInvalidLimit.Code:             &ErrorInvalidLimit,
-				oupkg.ErrorInvalidOffset.Code:            &ErrorInvalidOffset,
-			},
-			log.String("oUID", oUID),
-			log.Int("limit", limit),
-			log.Int("offset", offset),
-		)
-	}
-	if ouResponse == nil {
-		return &UserListResponse{}, nil
+		return nil, svcErr
 	}
 
-	var users []providers.User
-	if includeDisplay && len(ouResponse.Users) > 0 {
-		// Batch-fetch full user data to resolve display names.
-		userIDs := make([]string, len(ouResponse.Users))
-		for i, ouUser := range ouResponse.Users {
-			userIDs[i] = ouUser.ID
-		}
-		fetchedEntities, err := us.entityService.GetEntitiesByIDs(ctx, userIDs)
-		if err != nil {
-			logger.Warn(ctx, "Failed to batch fetch users for display names, skipping display resolution",
-				log.Error(err))
-			// Fall back to bare IDs without display — partial display is worse than none.
-			users = make([]providers.User, len(ouResponse.Users))
-			for i, ouUser := range ouResponse.Users {
-				users[i] = providers.User{ID: ouUser.ID, OUHandle: ou.Handle}
-			}
-		} else {
-			fetchedUsers := entitiesToUsers(fetchedEntities)
-			// Build an ID-keyed map for display resolution, but only expose ID + Display.
-			userMap := make(map[string]providers.User, len(fetchedUsers))
-			for _, u := range fetchedUsers {
-				userMap[u.ID] = u
-			}
-
-			// Resolve display attribute paths for the fetched user types.
-			userTypes := make([]string, 0, len(fetchedUsers))
-			for _, u := range fetchedUsers {
-				userTypes = append(userTypes, u.Type)
-			}
-			displayAttrPaths := entitytype.ResolveDisplayAttributePaths(
-				ctx, entitytype.TypeCategoryUser, userTypes, us.entityTypeService, logger)
-
-			users = make([]providers.User, len(ouResponse.Users))
-			for i, ouUser := range ouResponse.Users {
-				if u, ok := userMap[ouUser.ID]; ok {
-					users[i] = providers.User{
-						ID:       u.ID,
-						OUHandle: ou.Handle,
-						Display:  utils.ResolveDisplay(u.ID, u.Type, u.Attributes, displayAttrPaths),
-					}
-				} else {
-					users[i] = providers.User{ID: ouUser.ID, OUHandle: ou.Handle}
-				}
-			}
-		}
-	} else {
-		users = make([]providers.User, len(ouResponse.Users))
-		for i, ouUser := range ouResponse.Users {
-			users[i] = providers.User{ID: ouUser.ID}
-		}
-	}
-
-	response := &UserListResponse{
-		TotalResults: ouResponse.TotalResults,
-		StartIndex:   ouResponse.StartIndex,
-		Count:        ouResponse.Count,
+	return &UserListResponse{
+		TotalResults: totalCount,
+		StartIndex:   offset + 1,
+		Count:        len(users),
 		Users:        users,
 		Links: buildTreePaginationLinks(
-			handlePath, limit, offset, ouResponse.TotalResults, utils.DisplayQueryParam(includeDisplay)),
-	}
-
-	return response, nil
+			handlePath, limit, offset, totalCount, utils.DisplayQueryParam(includeDisplay)),
+	}, nil
 }
 
 // CreateUser creates the user.
@@ -440,6 +427,7 @@ func (us *userService) GetUser(
 	}
 	access := us.governance.ReadEntityAccess(ctx, *e)
 	user.Status = &access.Status
+	user.LastLoginAt = access.LastLoginAt
 
 	if includeDisplay {
 		displayAttrPaths := entitytype.ResolveDisplayAttributePaths(
@@ -647,6 +635,7 @@ func (us *userService) UpdateUser(
 	// The status is derived from the updated entity, never taken from the request.
 	access := us.governance.ReadEntityAccess(ctx, *updated)
 	user.Status = &access.Status
+	user.LastLoginAt = access.LastLoginAt
 	logger.Debug(ctx, "Successfully updated user", log.MaskedString(log.LoggerKeyUserID, userID))
 	return user, nil
 }
@@ -732,6 +721,7 @@ func (us *userService) UpdateUserAttributes(
 
 	access := us.governance.ReadEntityAccess(ctx, *existingEntity)
 	existingUser.Status = &access.Status
+	existingUser.LastLoginAt = access.LastLoginAt
 
 	logger.Debug(ctx, "Successfully updated user attributes", log.MaskedString(log.LoggerKeyUserID, userID))
 	return &existingUser, nil
@@ -1168,12 +1158,21 @@ func (us *userService) validateOrganizationUnitForUserType(
 	return nil
 }
 
-// usersWithAccess converts entities to users with the status governance derived for each, in one read.
+// markOwned records on each user whether the listed organization unit owns it.
+func markOwned(users []providers.User, owned bool) {
+	for i := range users {
+		users[i].IsOwnedByOU = new(owned)
+	}
+}
+
+// usersWithAccess converts entities to users with the access facts governance derived for each, in one
+// read.
 func (us *userService) usersWithAccess(ctx context.Context, entities []providers.Entity) []providers.User {
 	reads := us.governance.ReadAccess(ctx, entities)
 	users := entitiesToUsers(entities)
 	for i := range users {
 		users[i].Status = &reads[i].Status
+		users[i].LastLoginAt = reads[i].LastLoginAt
 	}
 	return users
 }

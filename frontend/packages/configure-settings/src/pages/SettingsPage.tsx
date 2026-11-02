@@ -5,11 +5,11 @@ import {DocumentTitle, ExternalLink} from '@thunderid/components';
 import {Box, PageContent, PageTitle, Tab, Tabs} from '@wso2/oxygen-ui';
 import {useState, type JSX, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
+import AccountSecuritySection from '../components/accountSecurity/AccountSecuritySection';
 import CorsSection from '../components/cors/CorsSection';
 
 export default function SettingsPage(): JSX.Element {
   const {t} = useTranslation();
-  // Controlled Tabs; only the CORS tab exists for now.
   const [activeTab, setActiveTab] = useState(0);
 
   const handleTabChange = (_event: SyntheticEvent, newValue: number): void => {
@@ -33,10 +33,32 @@ export default function SettingsPage(): JSX.Element {
           aria-controls="settings-tabpanel-0"
           sx={{textTransform: 'none'}}
         />
+        <Tab
+          label={t('settings:tabs.accountSecurity', 'Account security')}
+          id="settings-tab-1"
+          aria-controls="settings-tabpanel-1"
+          sx={{textTransform: 'none'}}
+        />
       </Tabs>
 
-      <Box role="tabpanel" id="settings-tabpanel-0" aria-labelledby="settings-tab-0" sx={{py: 3}}>
+      {/* Both panels stay mounted so unsaved drafts survive a tab switch. */}
+      <Box
+        role="tabpanel"
+        id="settings-tabpanel-0"
+        aria-labelledby="settings-tab-0"
+        hidden={activeTab !== 0}
+        sx={{py: 3}}
+      >
         <CorsSection />
+      </Box>
+      <Box
+        role="tabpanel"
+        id="settings-tabpanel-1"
+        aria-labelledby="settings-tab-1"
+        hidden={activeTab !== 1}
+        sx={{py: 3}}
+      >
+        <AccountSecuritySection />
       </Box>
     </PageContent>
   );

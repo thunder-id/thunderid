@@ -257,10 +257,36 @@ func (s *CompositeStoreTestSuite) TestGetEntityListCount_FileCountError() {
 
 func (s *CompositeStoreTestSuite) TestGetEntityListCount_DBListError() {
 	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(2, nil)
-	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(0, nil)
+	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
 	s.dbStore.On("GetEntityList", mock.Anything, "user", 2, 0, mock.Anything).Return(nil, s.testErr)
 	_, err := s.store.GetEntityListCount(s.ctx, "user", nil)
 	s.Error(err)
+}
+
+func (s *CompositeStoreTestSuite) TestGetEntityListCount_OneStoreEmpty_ReadsNoEntities() {
+	for _, tc := range []struct {
+		name      string
+		dbCount   int
+		fileCount int
+	}{
+		{"no declared matches", 5, 0},
+		{"no stored matches", 0, 3},
+	} {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(tc.dbCount, nil)
+			s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(tc.fileCount, nil)
+
+			count, err := s.store.GetEntityListCount(s.ctx, "user", nil)
+
+			s.Require().NoError(err)
+			s.Equal(tc.dbCount+tc.fileCount, count)
+			s.dbStore.AssertNotCalled(s.T(), "GetEntityList", mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything)
+			s.fileStore.AssertNotCalled(s.T(), "GetEntityList", mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything)
+		})
+	}
 }
 
 func (s *CompositeStoreTestSuite) TestGetEntityListCount_FileListError() {

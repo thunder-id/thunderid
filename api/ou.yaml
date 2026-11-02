@@ -33,7 +33,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
-        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/ouFilterParam'
       responses:
         "200":
           description: List of root organization units
@@ -403,7 +403,7 @@ paths:
                       defaultValue: "Organization unit has children"
                     description:
                       key: "error.ouservice.organization_unit_has_children_description"
-                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, or sharing policies it issued"
+                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, connections, flows, or sharing policies it issued"
         "404":
           description: Organization unit not found
           content:
@@ -435,7 +435,7 @@ paths:
             format: uuid
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
-        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/ouFilterParam'
       responses:
         "200":
           description: List of child organization units
@@ -520,6 +520,9 @@ paths:
       tags:
         - Organization Units
       summary: List users in organization unit
+      description: |
+        Lists the users the organization unit owns, followed by the users shared into it. Each
+        listed user's `isOwnedByOU` field says which of the two it is.
       parameters:
         - in: path
           name: id
@@ -544,8 +547,10 @@ paths:
                 users:
                   - id: "3f9d5c8e-3c56-4f09-a1db-bb3d5e3f4b5d"
                     display: "John Doe"
+                    isOwnedByOU: true
                   - id: "9f4bc2ee-8d1e-4e21-a3b4-17d9b612e320"
                     display: "Jane Smith"
+                    isOwnedByOU: false
                 links:
                   - href: "organization-units/afc77cfd-620b-4cf0-a31c-7377b0ea8902/users?offset=2&limit=2"
                     rel: "next"
@@ -675,6 +680,10 @@ paths:
       tags:
         - Organization Units
       summary: List roles in organization unit
+      description: |
+        Lists the roles the organization unit owns, followed by the roles shared with it. Each
+        listed role's `isOwnedByOU` field says which of the two it is. A shared role is read-only
+        here.
       parameters:
         - in: path
           name: id
@@ -700,10 +709,12 @@ paths:
                     name: "OU Admin"
                     description: "Administers this organization unit"
                     isReadOnly: false
+                    isOwnedByOU: true
                   - id: "f1a2b3c4-5d6e-4f7a-8b9c-0d1e2f3a4b5c"
                     name: "Viewer"
-                    description: "Read-only access to this organization unit"
+                    description: "Read-only access, shared from the parent organization unit"
                     isReadOnly: true
+                    isOwnedByOU: false
                 links:
                   - href: "organization-units/afc77cfd-620b-4cf0-a31c-7377b0ea8902/roles?offset=2&limit=2"
                     rel: "next"
@@ -970,7 +981,7 @@ paths:
                       defaultValue: "Organization unit has children"
                     description:
                       key: "error.ouservice.organization_unit_has_children_description"
-                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, or sharing policies it issued"
+                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, connections, flows, or sharing policies it issued"
         "404":
           description: Organization unit not found
           content:
@@ -1009,7 +1020,7 @@ paths:
           example: "engineering/frontend"
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
-        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/ouFilterParam'
       responses:
         "200":
           description: List of child organization units
@@ -1094,6 +1105,9 @@ paths:
       tags:
         - organization-units-by-path
       summary: List users in organization unit by handle path
+      description: |
+        Lists the users the organization unit owns, followed by the users shared into it. Each
+        listed user's `isOwnedByOU` field says which of the two it is.
       parameters:
         - in: path
           name: path
@@ -1263,6 +1277,9 @@ paths:
       tags:
         - organization-units-by-path
       summary: List roles in organization unit by handle path
+      description: |
+        Lists the roles the organization unit owns, followed by the roles shared with it. Each
+        listed role's `isOwnedByOU` field says which of the two it is.
       parameters:
         - in: path
           name: path
@@ -1295,10 +1312,12 @@ paths:
                     name: "OU Admin"
                     description: "Administers this organization unit"
                     isReadOnly: false
+                    isOwnedByOU: true
                   - id: "f1a2b3c4-5d6e-4f7a-8b9c-0d1e2f3a4b5c"
                     name: "Viewer"
-                    description: "Read-only access to this organization unit"
+                    description: "Read-only access, shared from the parent organization unit"
                     isReadOnly: true
+                    isOwnedByOU: false
                 links:
                   - href: "organization-units/tree/engineering/frontend/roles?offset=2&limit=2"
                     rel: "next"
@@ -1395,28 +1414,39 @@ components:
         type: string
         enum:
           - display
-    filterParam:
+    ouFilterParam:
       in: query
       name: filter
       required: false
       description: |
         Filter organization units by attribute values.
-        Supported operators: `eq`, `gt`, `lt`.
+        Format: `attribute operator "value"`. Join multiple conditions with `AND` or `OR`; `AND` takes precedence over `OR`.
         Filterable attributes: `name`, `handle`, `description`, `createdAt`, `updatedAt`.
-        Format: `attribute operator "value"`.
+        Supported operators:
+        - `eq` - Equals. Case-insensitive for `name`, `handle`, and `description`.
+        - `sw` - Starts with. Case-insensitive.
+        - `gt` - Greater than. Use with `createdAt` or `updatedAt` in ISO 8601 format.
+        - `lt` - Less than. Use with `createdAt` or `updatedAt` in ISO 8601 format.
         Examples:
-        - `name eq "Engineering"`
-        - `handle eq "frontend"`
-        - `createdAt gt "2026-01-01T00:00:00Z"`
+        - `name eq "Engineering"` - Organization units named "Engineering"
+        - `handle sw "eng"` - Organization units whose handle starts with "eng"
+        - `createdAt gt "2026-01-01T00:00:00Z"` - Organization units created after 1 January 2026
+        - `name eq "Engineering" OR name eq "Sales"` - Organization units named "Engineering" or "Sales"
       schema:
         type: string
       examples:
         name-filter:
           summary: Filter by name
           value: 'name eq "Engineering"'
+        handle-prefix-filter:
+          summary: Filter by handle prefix
+          value: 'handle sw "eng"'
         created-at-filter:
           summary: Filter by creation timestamp
           value: 'createdAt gt "2026-01-01T00:00:00Z"'
+        combined-filter:
+          summary: Combine conditions with OR
+          value: 'name eq "Engineering" OR name eq "Sales"'
 
   schemas:
     OrganizationUnitBasic:
@@ -1542,6 +1572,9 @@ components:
             display attribute. Falls back to the user ID when no display
             attribute is configured or the value cannot be resolved. Only
             included when include=display is specified.
+        isOwnedByOU:
+          type: boolean
+          description: "Whether the organization unit owns the user rather than being shared it."
 
     Group:
       type: object
@@ -1566,7 +1599,10 @@ components:
           type: string
         isReadOnly:
           type: boolean
-          description: "Whether the role is declarative (read-only) or mutable."
+          description: "Whether the role is read-only here: declarative, or shared with the organization unit."
+        isOwnedByOU:
+          type: boolean
+          description: "Whether the organization unit owns the role rather than being shared it."
 
     Link:
       type: object

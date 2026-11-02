@@ -73,6 +73,7 @@ resources:
 
 resource_type: flow
 id: 0193b0a1-2001-7000-8000-000000000001
+ouHandle: default
 name: Agent Identity Playground Authentication Flow
 handle: agent-identity-agent-auth-flow
 flowType: AUTHENTICATION

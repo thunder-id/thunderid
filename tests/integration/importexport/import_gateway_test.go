@@ -125,7 +125,7 @@ func (suite *ImportGatewaySuite) TestReimportingUpdatesRatherThanDuplicating() {
 // registering something unusable.
 func (suite *ImportGatewaySuite) TestImportRefusesAGatewayWithoutABaseURL() {
 	name := fmt.Sprintf("incomplete-gateway-%d", time.Now().UnixNano())
-	payload := suite.marshal(importRequest{
+	payload := suite.marshal(testutils.ImportRequest{
 		Content: fmt.Sprintf("resource_type: gateway\nname: %s\n", name),
 		Options: runtimeOptions(),
 	})
@@ -133,7 +133,7 @@ func (suite *ImportGatewaySuite) TestImportRefusesAGatewayWithoutABaseURL() {
 	status, body := suite.post("/import", payload)
 	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
 
-	var resp importResponse
+	var resp testutils.ImportResponse
 	suite.Require().NoError(json.Unmarshal(body, &resp))
 	suite.Equal(1, resp.Summary.Failed, "an incomplete gateway was imported: %+v", resp.Results)
 	suite.Require().Len(resp.Results, 1)
@@ -142,7 +142,7 @@ func (suite *ImportGatewaySuite) TestImportRefusesAGatewayWithoutABaseURL() {
 }
 
 // importGateway posts one gateway document and returns the decoded response.
-func (suite *ImportGatewaySuite) importGateway(name, baseURL, key string) importResponse {
+func (suite *ImportGatewaySuite) importGateway(name, baseURL, key string) testutils.ImportResponse {
 	suite.T().Helper()
 	return suite.importDocument(suite.gatewayDocument(name, baseURL, key, ""), runtimeOptions(), false)
 }
@@ -161,15 +161,15 @@ func (suite *ImportGatewaySuite) gatewayDocument(name, baseURL, key, caCertifica
 
 // importDocument posts one document and returns the decoded response.
 func (suite *ImportGatewaySuite) importDocument(
-	content string, options importOptions, dryRun bool) importResponse {
+	content string, options testutils.ImportOptions, dryRun bool) testutils.ImportResponse {
 	suite.T().Helper()
 
-	status, body := suite.post("/import", suite.marshal(importRequest{
+	status, body := suite.post("/import", suite.marshal(testutils.ImportRequest{
 		Content: content, Options: options, DryRun: dryRun,
 	}))
 	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
 
-	var resp importResponse
+	var resp testutils.ImportResponse
 	suite.Require().NoError(json.Unmarshal(body, &resp))
 	return resp
 }
@@ -195,7 +195,7 @@ func (suite *ImportGatewaySuite) countGatewaysNamed(name string) int {
 	return count
 }
 
-func (suite *ImportGatewaySuite) marshal(req importRequest) string {
+func (suite *ImportGatewaySuite) marshal(req testutils.ImportRequest) string {
 	suite.T().Helper()
 	payload, err := json.Marshal(req)
 	suite.Require().NoError(err)
@@ -266,7 +266,7 @@ func (suite *ImportGatewaySuite) TestImportRefusesADuplicateNameWithoutUpsert() 
 	suite.Require().Equal(1, first.Summary.Imported, "results: %+v", first.Results)
 	defer suite.removeGateway(first.Results[0].ResourceID)
 
-	noUpsert := importOptions{Upsert: false, ContinueOnError: true, Target: "runtime"}
+	noUpsert := testutils.ImportOptions{Upsert: false, ContinueOnError: true, Target: "runtime"}
 	second := suite.importDocument(
 		suite.gatewayDocument(name, "https://"+name+".other.test:8090", "", ""), noUpsert, false)
 

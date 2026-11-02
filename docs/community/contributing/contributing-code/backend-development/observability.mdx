@@ -70,6 +70,8 @@ Use the predefined component constants when setting the component name:
 |----------|-------|-------|
 | `event.ComponentFlowEngine` | `FlowEngine` | Events from the flow execution engine |
 | `event.ComponentAuthHandler` | `AuthHandler` | Events from authentication handlers |
+| `event.ComponentIdentityGovernance` | `IdentityGovernance` | Events from the identity governance service |
+| `event.ComponentServerConfig` | `ServerConfig` | Events from the server configuration service |
 
 ## Event Anatomy
 
@@ -93,6 +95,10 @@ Always use the predefined constants. Do not pass raw strings as event types.
 | `event.EventTypeTokenIssuanceStarted` | `TOKEN_ISSUANCE_STARTED` | Token issuance begins |
 | `event.EventTypeTokenIssued` | `TOKEN_ISSUED` | Token successfully issued |
 | `event.EventTypeTokenIssuanceFailed` | `TOKEN_ISSUANCE_FAILED` | Token issuance failed |
+| `event.EventTypeTokenRevocationFailed` | `TOKEN_REVOCATION_FAILED` | A revocation record cannot be stored, such as during a suspension, a user deletion, or a sign-out. A suspension or deletion flow stops |
+| `event.EventTypeIdentityLocked` | `IDENTITY_LOCKED` | Failed authentication attempts lock a user or agent |
+| `event.EventTypeIdentitySelfUnlocked` | `IDENTITY_SELF_UNLOCKED` | A recovery flow releases every lock on the holder's own account |
+| `event.EventTypeIdentitySelfUnlockFailed` | `IDENTITY_SELF_UNLOCK_FAILED` | A recovery flow's unlock is refused or fails |
 
 **Flow execution events** (category: `observability.flows`):
 
@@ -106,15 +112,29 @@ Always use the predefined constants. Do not pass raw strings as event types.
 | `event.EventTypeFlowCompleted` | `FLOW_COMPLETED` | Flow execution succeeds |
 | `event.EventTypeFlowFailed` | `FLOW_FAILED` | Flow execution fails |
 
+**Administration events** (category: `observability.administration`):
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `event.EventTypeIdentitySuspended` | `IDENTITY_SUSPENDED` | A suspension is placed or repeated |
+| `event.EventTypeIdentitySuspensionFailed` | `IDENTITY_SUSPENSION_FAILED` | A suspension is refused or cannot be written |
+| `event.EventTypeIdentityUnsuspended` | `IDENTITY_UNSUSPENDED` | A suspension is released |
+| `event.EventTypeIdentityUnsuspensionFailed` | `IDENTITY_UNSUSPENSION_FAILED` | A release is refused or cannot be written |
+| `event.EventTypeIdentityUnlocked` | `IDENTITY_UNLOCKED` | An operator releases every sign-in lock on an identity |
+| `event.EventTypeIdentityUnlockFailed` | `IDENTITY_UNLOCK_FAILED` | An unlock is refused or cannot be written |
+| `event.EventTypeServerConfigUpdated` | `SERVER_CONFIG_UPDATED` | A server configuration section is written |
+| `event.EventTypeServerConfigUpdateFailed` | `SERVER_CONFIG_UPDATE_FAILED` | A server configuration write is rejected or fails |
+
 ### Event Categories
 
 Categories control event routing. Each event type maps to exactly one category. Subscribers declare which categories they are interested in and receive only matching events.
 
 | Category | Description |
 |----------|-------------|
-| `observability.authentication` | Token issuance events |
+| `observability.authentication` | Token issuance and revocation, back-channel logout, and account lock events |
 | `observability.authorization` | Authorization-related events |
 | `observability.flows` | Flow execution events |
+| `observability.administration` | Identity lifecycle operations and server configuration writes |
 | `observability.all` | Special category that matches all events regardless of type |
 
 ### Common Data Keys
@@ -173,6 +193,20 @@ On an on-behalf-of issuance the agent appears as `act_sub` against the user's `s
 |----------|-----|-------|
 | `event.DataKey.Scope` | `scope` | OAuth scopes |
 | `event.DataKey.GrantType` | `grant_type` | OAuth grant type |
+| `event.DataKey.CriterionType` | `criterion_type` | Type of the revocation criterion that could not be stored, such as `subject` or `app.key` |
+
+**Administration and account lock keys:**
+
+Administration events never record a configuration value or an operator's note.
+
+| Constant | Key | Usage |
+|----------|-----|-------|
+| `event.DataKey.ConfigName` | `config_name` | Server configuration section that was written |
+| `event.DataKey.OperatorNoteRecorded` | `operator_note_recorded` | Whether the operator gave a note with a suspension |
+| `event.DataKey.LockMethod` | `lock_method` | Authentication method the lock holds, or `account` for a lock on every method |
+| `event.DataKey.LockCount` | `lock_count` | Number of consecutive locks, which selects the lock duration |
+| `event.DataKey.LockPermanent` | `lock_permanent` | Whether the lock does not expire |
+| `event.DataKey.UnlockAt` | `unlock_at` | When the lock ends. Set only for a lock that expires |
 
 **Event metadata keys:**
 

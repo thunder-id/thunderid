@@ -6,6 +6,7 @@ import {Checkbox, FormControl, FormControlLabel, FormLabel, Stack, TextField, Ty
 import {useEffect, type ChangeEvent, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {isDefaultEligibleType, type ResourceServerType} from '../../models/resource-server';
+import {isValidMcpServerIdentifier} from '../../utils/isValidMcpServerIdentifier';
 
 interface ConfigureNameProps {
   name: string;
@@ -38,11 +39,15 @@ export default function ConfigureName({
 }: ConfigureNameProps): JSX.Element {
   const {t} = useTranslation();
 
+  const trimmedIdentifier = identifier.trim();
+  const isIdentifierInvalid =
+    selectedType === 'MCP' && trimmedIdentifier.length > 0 && !isValidMcpServerIdentifier(trimmedIdentifier);
+
   useEffect((): void => {
     if (onReadyChange) {
-      onReadyChange(name.trim().length > 0 && identifier.trim().length > 0);
+      onReadyChange(name.trim().length > 0 && trimmedIdentifier.length > 0 && !isIdentifierInvalid);
     }
-  }, [name, identifier, onReadyChange]);
+  }, [name, trimmedIdentifier, isIdentifierInvalid, onReadyChange]);
 
   const handleNameChange = (e: ChangeEvent<HTMLInputElement>): void => {
     onNameChange(e.target.value);
@@ -94,19 +99,25 @@ export default function ConfigureName({
           onChange={handleIdentifierChange}
           placeholder={
             selectedType === 'MCP'
-              ? t('resourceServers:create.name.identifierPlaceholderMcp', 'https://mcp.example.com')
+              ? t('resourceServers:create.name.identifierPlaceholderMcp', 'https://mcp.example.com/mcp')
               : t('resourceServers:create.name.identifierPlaceholder', 'https://api.example.com')
           }
+          error={isIdentifierInvalid}
           helperText={
-            selectedType === 'MCP'
+            isIdentifierInvalid
               ? t(
-                  'resourceServers:create.name.identifierHintMcp',
-                  'A unique identifier for this MCP server. When set as an absolute URI, it becomes the token audience for RFC 8707 resource indicators.',
+                  'resourceServers:create.name.identifierInvalidMcp',
+                  'Enter an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
                 )
-              : t(
-                  'resourceServers:create.name.identifierHint',
-                  'A unique identifier for this resource server. When set as an absolute URI, it becomes the token audience for RFC 8707 resource indicators.',
-                )
+              : selectedType === 'MCP'
+                ? t(
+                    'resourceServers:create.name.identifierHintMcp',
+                    'The URL MCP clients use to reach this server, such as https://mcp.example.com/mcp. MCP clients send it as the resource parameter, and it becomes the token audience.',
+                  )
+                : t(
+                    'resourceServers:create.name.identifierHint',
+                    'A unique identifier for this resource server. When set as an absolute URI, it becomes the token audience for RFC 8707 resource indicators.',
+                  )
           }
         />
       </FormControl>

@@ -175,6 +175,75 @@ func (_c *sharingPolicyStoreInterfaceMock_CreatePolicy_Call) RunAndReturn(run fu
 	return _c
 }
 
+// DeleteField provides a mock function for the type sharingPolicyStoreInterfaceMock
+func (_mock *sharingPolicyStoreInterfaceMock) DeleteField(ctx context.Context, rt ResourceType, resourceID string, fieldKey string) error {
+	ret := _mock.Called(ctx, rt, resourceID, fieldKey)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteField")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, string) error); ok {
+		r0 = returnFunc(ctx, rt, resourceID, fieldKey)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// sharingPolicyStoreInterfaceMock_DeleteField_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteField'
+type sharingPolicyStoreInterfaceMock_DeleteField_Call struct {
+	*mock.Call
+}
+
+// DeleteField is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+//   - fieldKey string
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) DeleteField(ctx any, rt any, resourceID any, fieldKey any) *sharingPolicyStoreInterfaceMock_DeleteField_Call {
+	return &sharingPolicyStoreInterfaceMock_DeleteField_Call{Call: _e.mock.On("DeleteField", ctx, rt, resourceID, fieldKey)}
+}
+
+func (_c *sharingPolicyStoreInterfaceMock_DeleteField_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string, fieldKey string)) *sharingPolicyStoreInterfaceMock_DeleteField_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *sharingPolicyStoreInterfaceMock_DeleteField_Call) Return(err error) *sharingPolicyStoreInterfaceMock_DeleteField_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *sharingPolicyStoreInterfaceMock_DeleteField_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string, fieldKey string) error) *sharingPolicyStoreInterfaceMock_DeleteField_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DeleteOverlayValue provides a mock function for the type sharingPolicyStoreInterfaceMock
 func (_mock *sharingPolicyStoreInterfaceMock) DeleteOverlayValue(ctx context.Context, rt ResourceType, resourceID string, ouID string, fieldKey string) error {
 	ret := _mock.Called(ctx, rt, resourceID, ouID, fieldKey)
@@ -670,6 +739,80 @@ func (_c *sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call) Retur
 }
 
 func (_c *sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string) ([]Policy, error)) *sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListOverlayValuesForResource provides a mock function for the type sharingPolicyStoreInterfaceMock
+func (_mock *sharingPolicyStoreInterfaceMock) ListOverlayValuesForResource(ctx context.Context, rt ResourceType, resourceID string) (map[string]map[string][]string, error) {
+	ret := _mock.Called(ctx, rt, resourceID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListOverlayValuesForResource")
+	}
+
+	var r0 map[string]map[string][]string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string) (map[string]map[string][]string, error)); ok {
+		return returnFunc(ctx, rt, resourceID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string) map[string]map[string][]string); ok {
+		r0 = returnFunc(ctx, rt, resourceID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]map[string][]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ResourceType, string) error); ok {
+		r1 = returnFunc(ctx, rt, resourceID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sharingPolicyStoreInterfaceMock_ListOverlayValuesForResource_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListOverlayValuesForResource'
+type sharingPolicyStoreInterfaceMock_ListOverlayValuesForResource_Call struct {
+	*mock.Call
+}
+
+// ListOverlayValuesForResource is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) ListOverlayValuesForResource(ctx any, rt any, resourceID any) *sharingPolicyStoreInterfaceMock_ListOverlayValuesForResource_Call {
+	return &sharingPolicyStoreInterfaceMock_ListOverlayValuesForResource_Call{Call: _e.mock.On("ListOverlayValuesForResource", ctx, rt, resourceID)}
+}
+
+func (_c *sharingPolicyStoreInterfaceMock_ListOverlayValuesForResource_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string)) *sharingPolicyStoreInterfaceMock_ListOverlayValuesForResource_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *sharingPolicyStoreInterfaceMock_ListOverlayValuesForResource_Call) Return(stringToStringToStrings map[string]map[string][]string, err error) *sharingPolicyStoreInterfaceMock_ListOverlayValuesForResource_Call {
+	_c.Call.Return(stringToStringToStrings, err)
+	return _c
+}
+
+func (_c *sharingPolicyStoreInterfaceMock_ListOverlayValuesForResource_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string) (map[string]map[string][]string, error)) *sharingPolicyStoreInterfaceMock_ListOverlayValuesForResource_Call {
 	_c.Call.Return(run)
 	return _c
 }

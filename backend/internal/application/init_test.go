@@ -144,6 +144,7 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesDisabled() {
 	mux := http.NewServeMux()
 
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 
 	// Execute
@@ -160,6 +161,7 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesDisabled() {
 		newSharingServiceStub(suite.T()),
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
+		nil, // projectResolver - not needed for this test
 	)
 
 	// Assert
@@ -191,6 +193,7 @@ func (suite *InitTestSuite) TestInitialize_WithMCPServer() {
 	}, nil)
 
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 
 	// Execute
@@ -207,6 +210,7 @@ func (suite *InitTestSuite) TestInitialize_WithMCPServer() {
 		newSharingServiceStub(suite.T()),
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
+		nil, // projectResolver - not needed for this test
 	)
 
 	// Assert
@@ -622,6 +626,7 @@ func TestInitialize_Standalone(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(t)
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 
 	// Execute
@@ -638,6 +643,7 @@ func TestInitialize_Standalone(t *testing.T) {
 		newSharingServiceStub(t),
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
+		nil, // projectResolver - not needed for this test
 	)
 
 	// Assert
@@ -674,6 +680,7 @@ func TestInitialize_WithDeclarativeResources_Standalone(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(t)
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 	mockEntityService.On("LoadDeclarativeResources", mock.Anything).Return(nil)
 	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
@@ -693,6 +700,7 @@ func TestInitialize_WithDeclarativeResources_Standalone(t *testing.T) {
 		newSharingServiceStub(t),
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
+		nil, // projectResolver - not needed for this test
 	)
 
 	// Assert
@@ -921,13 +929,14 @@ func (suite *InitTestSuite) declarativeConfig() {
 func (suite *InitTestSuite) TestInitializeReportsAFailureLoadingApplications() {
 	suite.declarativeConfig()
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 	mockEntityService.On("LoadDeclarativeResources", mock.Anything).Return(assert.AnError)
 
 	service, _, err := Initialize(
 		http.NewServeMux(), nil, mockEntityService,
 		inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T()),
-		nil, nil, nil, nil, nil, newSharingServiceStub(suite.T()), nil, nil,
+		nil, nil, nil, nil, nil, newSharingServiceStub(suite.T()), nil, nil, nil,
 	)
 
 	assert.ErrorIs(suite.T(), err, assert.AnError)
@@ -937,6 +946,7 @@ func (suite *InitTestSuite) TestInitializeReportsAFailureLoadingApplications() {
 func (suite *InitTestSuite) TestInitializeReportsAFailureLoadingSharingPolicies() {
 	suite.declarativeConfig()
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 	mockEntityService.On("LoadDeclarativeResources", mock.Anything).Return(nil)
 	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
@@ -949,7 +959,7 @@ func (suite *InitTestSuite) TestInitializeReportsAFailureLoadingSharingPolicies(
 
 	service, _, err := Initialize(
 		http.NewServeMux(), nil, mockEntityService, mockInboundClient,
-		nil, nil, nil, nil, nil, sharingService, nil, nil,
+		nil, nil, nil, nil, nil, sharingService, nil, nil, nil,
 	)
 
 	assert.ErrorIs(suite.T(), err, assert.AnError)

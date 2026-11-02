@@ -135,12 +135,12 @@ func (s *RuntimeStoreConstantsTestSuite) assertFragments(cases []statementCase) 
 	}
 }
 
-// Paths of the entries the method statements address: a method entry and the entity-wide entry.
+// Paths of the entries the method statements address: a method entry and the account-wide entry.
 const (
 	pgCredentialEntry   = `RUNTIME_ATTRIBUTES->'accessState'->'lock'->'authenticationMethods'->'credential'`
-	pgEntityEntry       = `RUNTIME_ATTRIBUTES->'accessState'->'lock'->'entity'`
+	pgAccountEntry      = `RUNTIME_ATTRIBUTES->'accessState'->'lock'->'account'`
 	sqliteCredentialKey = `'$.accessState.lock.authenticationMethods.credential.`
-	sqliteEntityKey     = `'$.accessState.lock.entity.`
+	sqliteAccountKey    = `'$.accessState.lock.account.`
 )
 
 // methodStatement is one method's statement with the paths of its entry in both dialects.
@@ -150,10 +150,10 @@ type methodStatement struct {
 	sqliteKey string
 }
 
-// methodStatements are the methods the increment and formation tables check: a method and the entity.
+// methodStatements are the methods the increment and formation tables check: a method and the account key.
 var methodStatements = []methodStatement{
 	{testMethod, pgCredentialEntry, sqliteCredentialKey},
-	{identitygovernance.AuthenticationMethodEntity, pgEntityEntry, sqliteEntityKey},
+	{identitygovernance.AuthenticationMethodAccount, pgAccountEntry, sqliteAccountKey},
 }
 
 // sqliteFieldOf is the SQLite path of one field of an entry.
@@ -232,17 +232,17 @@ func (s *RuntimeStoreConstantsTestSuite) TestStatementsGuardTheirWrites() {
 		s.Require().NoError(err)
 		pg, key := entry.pgEntry, entry.sqliteKey
 		cases = append(cases,
-			// A live entity-wide lock or a live lock on the method stops the count.
+			// A live account-wide lock or a live lock on the method stops the count.
 			statementCase{"increment " + string(entry.method) + ", postgres", increment.PostgresQuery, []string{
 				`WHERE ENTITY_ID = $1 ` +
-					`AND COALESCE((` + pgEntityEntry + `->>'unlockAt')::timestamptz, 'epoch'::timestamptz) ` +
+					`AND COALESCE((` + pgAccountEntry + `->>'unlockAt')::timestamptz, 'epoch'::timestamptz) ` +
 					`<= $3::timestamptz ` +
 					`AND COALESCE((` + pg + `->>'unlockAt')::timestamptz, 'epoch'::timestamptz) <= $3::timestamptz ` +
 					`AND DEPLOYMENT_ID = $6 RETURNING`}},
 			statementCase{"increment " + string(entry.method) + ", sqlite", increment.SQLiteQuery, []string{
 				`WHERE ENTITY_ID = $1 ` +
-					`AND NOT (COALESCE(` + sqliteValue(sqliteEntityKey, "unlockAt") + `, '') <> '' ` +
-					`AND ` + sqliteValue(sqliteEntityKey, "unlockAt") + ` > $3) ` +
+					`AND NOT (COALESCE(` + sqliteValue(sqliteAccountKey, "unlockAt") + `, '') <> '' ` +
+					`AND ` + sqliteValue(sqliteAccountKey, "unlockAt") + ` > $3) ` +
 					`AND NOT (COALESCE(` + sqliteValue(key, "unlockAt") + `, '') <> '' ` +
 					`AND ` + sqliteValue(key, "unlockAt") + ` > $3) ` +
 					`AND DEPLOYMENT_ID = $6 RETURNING`}},
@@ -269,7 +269,7 @@ func (s *RuntimeStoreConstantsTestSuite) TestStatementsGuardTheirWrites() {
 func (s *RuntimeStoreConstantsTestSuite) TestStatementsWriteOnlyTheirOwnMember() {
 	clearQuery, _, err := buildClearAccessStateQuery("e1",
 		[]providers.AuthenticationMethod{testMethod,
-			identitygovernance.AuthenticationMethodEntity}, time.Now(), nil, testDeploymentID)
+			identitygovernance.AuthenticationMethodAccount}, time.Now(), nil, testDeploymentID)
 	s.Require().NoError(err)
 	keepState := `RUNTIME_ATTRIBUTES || jsonb_build_object('accessState', ` +
 		`COALESCE(RUNTIME_ATTRIBUTES->'accessState', '{}'::jsonb)`
@@ -294,12 +294,12 @@ func (s *RuntimeStoreConstantsTestSuite) TestStatementsWriteOnlyTheirOwnMember()
 		{"release onto a hold, postgres", queryClearAccessSuspensionWithHold.PostgresQuery, []string{
 			`SET STATE = 'ACTIVE', RUNTIME_ATTRIBUTES = RUNTIME_ATTRIBUTES || jsonb_build_object('accessState', ` +
 				`(COALESCE(RUNTIME_ATTRIBUTES->'accessState', '{}'::jsonb) - 'suspend') || ` +
-				`jsonb_build_object('lock', jsonb_build_object('entity', ` +
+				`jsonb_build_object('lock', jsonb_build_object('account', ` +
 				`jsonb_build_object('unlockAt', $2::text, 'reason', $3::text)))), ` +
 				`REVISION = REVISION + 1, UPDATED_AT = $4`}},
 		{"release onto a hold, sqlite", queryClearAccessSuspensionWithHold.SQLiteQuery, []string{
 			`SET STATE = 'ACTIVE', RUNTIME_ATTRIBUTES = json_set(json_remove(RUNTIME_ATTRIBUTES, ` +
-				`'$.accessState.suspend'), '$.accessState.lock', json_object('entity', ` +
+				`'$.accessState.suspend'), '$.accessState.lock', json_object('account', ` +
 				`json_object('unlockAt', $2, 'reason', $3))), REVISION = REVISION + 1, UPDATED_AT = $4`}},
 		{"record login, postgres", queryRecordAccessLogin.PostgresQuery, []string{
 			`SET RUNTIME_ATTRIBUTES = ` + keepState + ` || jsonb_build_object('lastLoginAt', $2::text)), ` +
@@ -310,10 +310,10 @@ func (s *RuntimeStoreConstantsTestSuite) TestStatementsWriteOnlyTheirOwnMember()
 		{"clear, postgres", clearQuery.PostgresQuery, []string{
 			`SET RUNTIME_ATTRIBUTES = RUNTIME_ATTRIBUTES` +
 				` #- ARRAY['accessState','lock','authenticationMethods','credential']::text[]` +
-				` #- ARRAY['accessState','lock','entity']::text[], REVISION = REVISION + 1, UPDATED_AT = $1`}},
+				` #- ARRAY['accessState','lock','account']::text[], REVISION = REVISION + 1, UPDATED_AT = $1`}},
 		{"clear, sqlite", clearQuery.SQLiteQuery, []string{
 			`SET RUNTIME_ATTRIBUTES = json_remove(RUNTIME_ATTRIBUTES, ` +
-				`'$.accessState.lock.authenticationMethods.credential', '$.accessState.lock.entity'), ` +
+				`'$.accessState.lock.authenticationMethods.credential', '$.accessState.lock.account'), ` +
 				`REVISION = REVISION + 1, UPDATED_AT = $1`}},
 	}...)
 	for _, entry := range methodStatements {
@@ -324,8 +324,8 @@ func (s *RuntimeStoreConstantsTestSuite) TestStatementsWriteOnlyTheirOwnMember()
 		pg, key := entry.pgEntry, entry.sqliteKey
 		keepEntry := keepState + ` || jsonb_build_object('lock', ` +
 			`COALESCE(RUNTIME_ATTRIBUTES->'accessState'->'lock', '{}'::jsonb) || `
-		if entry.method == identitygovernance.AuthenticationMethodEntity {
-			keepEntry += `jsonb_build_object('entity', `
+		if entry.method == identitygovernance.AuthenticationMethodAccount {
+			keepEntry += `jsonb_build_object('account', `
 		} else {
 			keepEntry += `jsonb_build_object('authenticationMethods', ` +
 				`COALESCE(RUNTIME_ATTRIBUTES->'accessState'->'lock'->'authenticationMethods', '{}'::jsonb) || ` +

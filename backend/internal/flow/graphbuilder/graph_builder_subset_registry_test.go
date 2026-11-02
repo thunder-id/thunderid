@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -54,9 +55,9 @@ func (s *GraphBuilderSubsetRegistryTestSuite) subsetExecutorRegistry() executor.
 		OIDCSvc:        oidcmock.NewOIDCAuthnServiceInterfaceMock(s.T()),
 		GithubSvc:      githubmock.NewGithubOAuthAuthnServiceInterfaceMock(s.T()),
 		GoogleSvc:      googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(s.T()),
-	}, engineconfig.FlowConfig{
+	}, flowconfig.Config{Flow: engineconfig.FlowConfig{
 		Executors: []string{executor.ExecutorNameInviteExecutor},
-	})
+	}})
 	require.NoError(s.T(), err)
 	return reg
 }

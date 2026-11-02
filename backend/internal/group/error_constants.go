@@ -169,6 +169,19 @@ var (
 				"which cannot be expanded",
 		},
 	}
+	// ErrorInvalidFilter is the error returned when a group listing carries a filter it cannot apply.
+	ErrorInvalidFilter = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GRP-1018",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.groupservice.invalid_filter_parameter",
+			DefaultValue: "Invalid filter parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.groupservice.invalid_filter_parameter_description",
+			DefaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID",
+		},
+	}
 )
 
 // Declarative mode errors for group management operations.

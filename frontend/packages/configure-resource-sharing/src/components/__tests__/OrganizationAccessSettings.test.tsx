@@ -97,24 +97,40 @@ describe('OrganizationAccessSettings', () => {
     expect(access.reload).toHaveBeenCalled();
   });
 
-  it('uses the description the resource gives instead of the sign-in one', () => {
+  it("uses the resource's own wording from its namespace", () => {
     renderWithProviders(
       <OrganizationAccessSettings
-        access={accessWith({})}
+        access={accessWith({scope: 'owner'}, {wordingNamespace: 'users'})}
         ownerOuId="acme"
-        resourceName="Storefront"
-        description="Storefront can request tokens for a granted unit."
+        resourceName="Alice"
       />,
     );
 
-    expect(screen.getByText('Storefront can request tokens for a granted unit.')).toBeInTheDocument();
-    expect(screen.queryByText(/can sign in to Storefront/)).not.toBeInTheDocument();
+    expect(
+      radio('Where Alice is affiliated', /Acme Corp only Alice isn't affiliated with any other unit\./),
+    ).toBeChecked();
+    expect(screen.getByText(/Alice can sign in and act within the units selected here\./)).toBeInTheDocument();
+    expect(screen.queryByText('Who can use Alice')).not.toBeInTheDocument();
+    expect(screen.queryByText('No child unit and no other tree can use it.')).not.toBeInTheDocument();
+  });
+
+  it('keeps the generic wording for a sentence the namespace leaves out', () => {
+    // applications:organizationAccess.* sets the heading but not the load error.
+    renderWithProviders(
+      <OrganizationAccessSettings
+        access={accessWith({}, {loadError: new Error('down'), wordingNamespace: 'applications'})}
+        ownerOuId="acme"
+        resourceName="Storefront"
+      />,
+    );
+
+    expect(screen.getByText('Failed to load organization access')).toBeInTheDocument();
   });
 
   it('hides both sections when only the owner can use the resource', () => {
     renderSettings(accessWith({scope: 'owner'}));
 
-    expect(radio('Who can use Storefront', /Only Acme Corp/)).toBeChecked();
+    expect(radio('Who can use Storefront', /Acme Corp only/)).toBeChecked();
     expect(screen.queryByText('Child organization units of Acme Corp')).not.toBeInTheDocument();
     expect(screen.queryByText('Other organization trees')).not.toBeInTheDocument();
   });
@@ -203,7 +219,7 @@ describe('OrganizationAccessSettings', () => {
     const access = accessWith({scope: 'owner'});
     renderSettings(access);
 
-    fireEvent.click(radio('Who can use Storefront', /Chosen organization units/));
+    fireEvent.click(radio('Who can use Storefront', /Acme Corp and chosen units/));
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(access.previewSwitch).toHaveBeenCalledWith('scope', 'chosen');
@@ -213,8 +229,8 @@ describe('OrganizationAccessSettings', () => {
   it('does not offer every organization unit unless the saved policy holds it', () => {
     renderSettings(accessWith({scope: 'owner'}));
 
-    expect(radio('Who can use Storefront', /Only Acme Corp/)).toBeChecked();
-    expect(radio('Who can use Storefront', /Chosen organization units/)).toBeEnabled();
+    expect(radio('Who can use Storefront', /Acme Corp only/)).toBeChecked();
+    expect(radio('Who can use Storefront', /Acme Corp and chosen units/)).toBeEnabled();
     expect(screen.queryByRole('radio', {name: /Every organization unit/})).not.toBeInTheDocument();
   });
 
@@ -226,8 +242,8 @@ describe('OrganizationAccessSettings', () => {
     renderSettings(access);
 
     expect(radio('Who can use Storefront', /Every organization unit/)).toBeChecked();
-    expect(screen.queryByRole('radio', {name: /Only Acme Corp/})).not.toBeInTheDocument();
-    expect(screen.queryByRole('radio', {name: /Chosen organization units/})).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', {name: /Acme Corp only/})).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', {name: /Acme Corp and chosen units/})).not.toBeInTheDocument();
     expect(screen.queryByText('Other organization trees')).not.toBeInTheDocument();
 
     const exception = screen.getByText('Acme Trials');
@@ -278,7 +294,7 @@ describe('OrganizationAccessSettings', () => {
       ),
     );
 
-    expect(radio('Who can use Storefront', /Only Acme Corp/)).toBeDisabled();
+    expect(radio('Who can use Storefront', /Acme Corp only/)).toBeDisabled();
     expect(radio('Child organization units of Acme Corp', /None/)).toBeDisabled();
     expect(screen.queryByText('Grant access')).not.toBeInTheDocument();
     expect(screen.queryByText('Add a tree')).not.toBeInTheDocument();

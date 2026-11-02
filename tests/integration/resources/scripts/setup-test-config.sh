@@ -90,7 +90,7 @@ elif [ "$DB_TYPE" = "redis" ]; then
     type: sqlite
     sqlite:
       path: "database/configdb.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
   runtime_transient:
     type: redis
@@ -103,13 +103,13 @@ elif [ "$DB_TYPE" = "redis" ]; then
     type: sqlite
     sqlite:
       path: "database/entitydb.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
   runtime_persistent:
     type: sqlite
     sqlite:
       path: "database/runtime_persistent.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 EOF
 else
   cat >> tests/integration/resources/deployment.yaml <<EOF
@@ -117,25 +117,25 @@ else
     type: sqlite
     sqlite:
       path: "database/configdb.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
   runtime_transient:
     type: sqlite
     sqlite:
       path: "database/runtime_transient.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
   entity:
     type: sqlite
     sqlite:
       path: "database/entitydb.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
   runtime_persistent:
     type: sqlite
     sqlite:
       path: "database/runtime_persistent.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 EOF
 fi
 

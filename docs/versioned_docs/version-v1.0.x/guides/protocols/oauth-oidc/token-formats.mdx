@@ -30,7 +30,7 @@ For **UserInfo**, JSON is the default. Switch to JWS when integrity matters; to 
 
 Applies to `JWS` and the signing step of `NESTED_JWT`.
 
-<ProductName /> signs every token (access token, ID Token, and signed UserInfo response) with the deployment signing key, and the algorithm follows that key's type, for example an RSA key signs with `RS256` and an Ed25519 key signs with `EdDSA`.
+<ProductName /> signs every token (access token, ID Token, and signed UserInfo response) with the deployment signing key, and the algorithm follows that key's type, for example an RSA key signs with `RS256`, an Ed25519 key signs with `EdDSA`, and an ML-DSA-44, ML-DSA-65, or ML-DSA-87 key signs with `ML-DSA-44`, `ML-DSA-65`, or `ML-DSA-87`.
 
 To see which algorithm a deployment signs with, read `id_token_signing_alg_values_supported` (and `userinfo_signing_alg_values_supported`) in the [Server Metadata](../server-metadata) document, or inspect the published keys at the [JWKS](../jwks) endpoint. Clients verify signatures against those keys.
 

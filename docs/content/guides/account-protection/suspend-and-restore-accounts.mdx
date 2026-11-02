@@ -1,0 +1,119 @@
+---
+title: Suspend and Restore Accounts
+docType: guide
+persona: iam
+sidebar_position: 2
+description: Suspend a user, agent, or application to end its access during an investigation, then restore access by unsuspending or unlocking it.
+---
+
+# Suspend and Restore Accounts
+
+Suspend a user, agent, or application to end its access while you investigate it, then restore access by unsuspending it. Unlock a user or agent to release the locks that failed sign-in attempts formed. Each operation runs an administration flow, so you can customize what it does.
+
+## Prerequisites
+
+- <ProductName /> running. See [Get <ProductName />](../../../getting-started/get-thunderid).
+- An administrator account with the `system` permission. You cannot suspend, unsuspend, or unlock your own account.
+- To email account holders, an [email provider](../../notifications/email-providers). See [Lifecycle Notifications](#lifecycle-notifications).
+
+## Suspend an Account
+
+The default suspend flow checks that you may suspend the account, revokes its tokens, ends its sessions, and then places the hold. It then emails the account holder when the flow's **Send Email** node has an email provider.
+
+1. Open the user, agent, or application from its list.
+2. Click **Actions**. Select **Suspend**.
+3. For a user or an agent, enter an **Operator note (optional)** of up to 100 characters. Anyone who can read the record can read the note, and it is never shown on a sign-in attempt.
+4. Click **Suspend**.
+
+For an application, or an agent with an OAuth client, the flow also revokes the user tokens issued through its client. See [Account Suspension](../../protocols/oauth-oidc/token-revocation#account-suspension).
+
+If revoking tokens or ending sessions fails, the flow stops before placing the suspension, and some tokens or sessions may already be withdrawn. Correct the failure, then suspend the account again. Suspending an account that is already suspended repeats the revocation and keeps the original suspension time and note.
+
+:::warning
+A suspension rejects the account's existing tokens only while token revocation is enabled, which is the default. If `oauth.token_revocation.enabled` is off, introspection and token exchange keep accepting those tokens until they expire. If `server.security.token_revocation.enabled` is off, <ProductName />'s own APIs keep accepting them. The suspension still refuses new sign-ins and token refresh. See [Token Revocation configuration](../../protocols/oauth-oidc/token-revocation#configuration).
+
+A resource server that validates access tokens offline, by signature and expiry alone, keeps accepting revoked tokens until they expire. See [Where Revocation Is Enforced](../../protocols/oauth-oidc/token-revocation#where-revocation-is-enforced).
+:::
+
+The Console offers no actions on your own user account or on the Console application itself. Accounts defined in declarative resources can be suspended like any other.
+
+## Unsuspend an Account
+
+Unsuspending removes the suspension. Sessions and tokens revoked during the suspension are not restored, so the account holder signs in again.
+
+1. Open the suspended user, agent, or application.
+2. Click **Actions**. Select **Unsuspend**.
+3. Click **Unsuspend**.
+
+What follows depends on the category:
+
+- A **user** stays locked on every sign-in method until recovery or an administrator unlock. This lock does not expire and applies even when automatic locking is turned off. To lift both holds at once, select **Unsuspend and unlock** instead. It runs the unsuspend flow and then the unlock flow; if the unlock fails, the suspension is removed and the user stays locked.
+- An **agent** can authenticate again, unless an automatic lock from before the suspension is still in force.
+- An **application** can authenticate and obtain tokens again.
+
+## Unlock an Account
+
+Unlocking clears every lock on a user or an agent, and the history that makes repeated locks longer. It does not lift a suspension.
+
+1. Open the locked user or agent.
+2. Click **Actions**. Select **Unlock**.
+
+Unlock runs without a confirmation. A user can also release their own locks by completing a recovery flow that has an unlock step. See [Let Users Recover From a Lock](../configure-account-lockout#let-users-recover-from-a-lock).
+
+## Lifecycle Notifications
+
+The user suspend, unsuspend, and unlock flows email the user when they complete, with the `account-suspended`, `account-unsuspended`, and `account-unlocked` templates. The agent and application suspend flows send one only when the record holds an email address.
+
+No provider is selected by default, so these notices are not sent until you select one:
+
+1. Create an [email provider](../../notifications/email-providers).
+2. Open each lifecycle flow, as described in [Customize the Lifecycle Flows](#customize-the-lifecycle-flows).
+3. Select the provider in **Email provider** on the flow's **Send Email** node.
+
+These flows do not use the server-wide default sender, which sends only the automatic lock email. An email failure never undoes the operation, and the Console reports that the email was not sent.
+
+## Customize the Lifecycle Flows
+
+1. Navigate to **Settings**. Open the **Account security** tab.
+2. Find the **Lock and suspension flows** card.
+3. Open the flow for the operation you want to change.
+
+The shipped flows have handles of the form `default-<category>-<operation>-flow`, such as `default-user-suspend-flow`. Applications are never locked, so they have no unlock flow. To run a different flow for an operation, set it in the `flow` server configuration section, under keys such as `userSuspendFlow`. See [Flow Defaults](../../../deployment/configuration#flow-defaults).
+
+Keep the suspend flow in this order, so that nothing is revoked before your access is checked: **Validate Permission**, **Validate and Plan Suspension**, **Revoke Tokens**, **Revoke Sessions**, then **Suspend Identity**. For each node, see [Account Lifecycle Executors](../../flows/advanced-configurations#account-lifecycle).
+
+## Run Lifecycle Flows From Automation
+
+There is no direct suspend, unsuspend, or unlock endpoint, and a profile update cannot change an account's status. Run the administration flow through the Flow Execution API instead:
+
+1. Obtain an administrator access token with the `system` permission, and set it as `ADMIN_TOKEN`.
+2. Find the flow ID with `GET /flows?flowType=ADMINISTRATION`, matching the flow's handle, such as `default-user-suspend-flow`.
+3. Start the flow with the target account's ID as `subject`:
+
+```bash
+curl -k -X POST https://localhost:8090/flow/execute \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"flowId": "<suspend-flow-id>", "inputs": {"subject": "<user-id>", "operatorNote": "Credential exposure reported"}}'
+```
+
+The optional `operatorNote`, at most 100 characters, is recorded only for a suspension.
+
+A completed run returns `"flowStatus": "COMPLETE"`. A refused operation returns `"flowStatus": "ERROR"` with the error code `FET-1112`, which does not name the cause; the server logs the cause at debug level. See the [Flow Execution API](../../../apis#tag/flow-execution).
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| No **Suspend**, **Unsuspend**, or **Unlock** action | Check the account's status and its flow under **Lock and suspension flows**. Actions are hidden on your own user account and the Console application, and **Unlock** is offered only while a lock is enforced. If the Console reports that the account actions could not be loaded, reload the page. |
+| User stays locked after unsuspension | This is expected. Run **Unlock**, or have the user complete recovery. Turning off automatic locking does not release this hold. |
+| Operation returns `FET-1112` | Check the target ID, the account's status, your permissions, and the server debug log. Operations on your own user or agent are refused. |
+| A revoked token still works | For <ProductName />'s own APIs, check that `server.security.token_revocation.enabled` is on, and allow up to `server.security.token_revocation.sync_interval_seconds` (60 seconds by default). For introspection and token exchange, check that `oauth.token_revocation.enabled` is on. Check that the token was issued before the [suspension cutoff](../../protocols/oauth-oidc/token-revocation#account-suspension). A resource server that validates tokens offline cannot detect revocation. |
+| No suspension email | Check that the flow's **Send Email** node has an **Email provider** selected and that the record has an email address. |
+
+## Next Steps
+
+- [Configure Account Lockout](../configure-account-lockout): Set the lock policy and let users recover from a lock
+- [Account Protection](../overview): How locks and suspensions interact
+- [Token Revocation](../../protocols/oauth-oidc/token-revocation): How revoked tokens are enforced
+- [Advanced Configurations](../../flows/advanced-configurations#account-lifecycle): Executors used by the lifecycle and recovery flows

@@ -31,3 +31,9 @@ func getGatewayStoreMode() serverconst.StoreMode {
 
 	return serverconst.StoreModeMutable
 }
+
+// isAutoApplyEnabled reports whether a capture of the current version also applies it to the default
+// gateway.
+func isAutoApplyEnabled() bool {
+	return config.GetServerRuntime().Config.Gateway.IsAutoApplyEnabled()
+}

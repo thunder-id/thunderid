@@ -31,6 +31,9 @@ type Service interface {
 	// session, a session from a different flow, or one established at an incompatible flow version.
 	Resolve(ctx context.Context, handle, flowID string, flowVersion int, now time.Time) (*Session, error)
 
+	// AbsoluteTimeout returns the longest a session lasts from its start.
+	AbsoluteTimeout() time.Duration
+
 	// FindCheckpoint returns the resolved session's snapshot for the checkpoint, or (nil, nil) when
 	// the session holds none. Callers deciding only whether a checkpoint is available compare the
 	// result against nil; the SSO-Check node forwards it to the paired Session node so the load path
@@ -143,6 +146,11 @@ type service struct {
 }
 
 var _ Service = (*service)(nil)
+
+// AbsoluteTimeout implements Service.
+func (s *service) AbsoluteTimeout() time.Duration {
+	return s.timeouts.Absolute
+}
 
 // Resolve implements Service.
 func (s *service) Resolve(ctx context.Context, handle, flowID string, flowVersion int,

@@ -86,6 +86,7 @@ describe('responseToFormValues', () => {
     const response = {
       id: '1',
       type: 'sms-gateway',
+      ouId: 'ou-1',
       name: 'SMS Gateway',
       authentication: {
         type: 'api_key',
@@ -102,6 +103,7 @@ describe('responseToFormValues', () => {
     const response = {
       id: '1',
       type: 'sms-gateway',
+      ouId: 'ou-1',
       name: 'SMS Gateway',
       httpHeaders: 'X-Campaign: campaign-1',
       authentication: {type: 'api_key', properties: {'X-Api-Key': '******'}},
@@ -117,7 +119,7 @@ describe('responseToFormValues', () => {
     expect(request).toMatchObject({
       httpHeaders: 'X-Campaign: campaign-1',
     });
-    expect(request.authentication).toBeUndefined();
+    expect(request).not.toHaveProperty('authentication');
     expect(outboundAuthenticationFromFormValues(values)).toEqual({
       type: 'api_key',
       properties: {'X-Api-Key': '******'},
@@ -157,6 +159,7 @@ describe('responseToFormValues', () => {
     const response = {
       id: '1',
       type: 'authzen-pdp',
+      ouId: 'ou-1',
       name: 'Cerbos PDP',
       endpoint: 'http://localhost:3592/.well-known/authzen-configuration',
       batchEndpoint: 'http://localhost:3592/access/v1/evaluations',
@@ -173,6 +176,7 @@ describe('responseToFormValues', () => {
     const response = {
       id: '1',
       type: 'authzen-pdp',
+      ouId: 'ou-1',
       name: 'Cerbos PDP',
       endpoint: 'https://pdp.example.com/access/v1/evaluation',
       authentication: {
@@ -345,8 +349,8 @@ describe('formValuesToRequest', () => {
       mode: 'edit',
       excludeGenericAuthentication: true,
     });
-    expect(general.httpHeaders).toBe('X-Campaign: campaign-1');
-    expect(general.authentication).toBeUndefined();
+    expect(general).toMatchObject({httpHeaders: 'X-Campaign: campaign-1'});
+    expect(general).not.toHaveProperty('authentication');
     expect(outboundAuthenticationFromFormValues(values)).toEqual({
       type: 'api_key',
       properties: {'X-API-Key': 'secret'},
@@ -956,7 +960,7 @@ describe('HTTP endpoint mapping', () => {
       });
     }
     for (const name of ['Transfer-Encoding', 'Connection', 'TE', 'Trailer', 'Upgrade', 'Keep-Alive', 'Expect']) {
-      expect(validateConnectionForm({...valid, headers: headers([name, 'x'])}, HTTP_FIELDS, 'edit').headers).toBe(
+      expect(validateConnectionForm({...valid, headers: headers([name, 'x'])}, HTTP_FIELDS, 'edit')['headers']).toBe(
         'connections:validation.httpEndpointHeaderReserved',
       );
     }

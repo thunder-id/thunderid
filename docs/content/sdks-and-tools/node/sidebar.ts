@@ -61,6 +61,11 @@ const sidebar: SidebarsConfig = {
               id: 'sdks-and-tools/node/apis/utilities/get-session-cookie-options',
               label: 'getSessionCookieOptions()',
             },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/node/apis/utilities/logged-out-sessions',
+              label: 'LoggedOutSessions',
+            },
           ],
         },
       ],

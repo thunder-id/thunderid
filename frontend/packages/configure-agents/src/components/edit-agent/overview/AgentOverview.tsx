@@ -7,7 +7,7 @@ import {
   LangChainLogo,
   useExternalLinkConfirmation,
 } from '@thunderid/components';
-import {OAuth2GrantTypes} from '@thunderid/configure-applications';
+import {deriveOAuth2Flags} from '@thunderid/configure-applications';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
 import {useGetUsers} from '@thunderid/configure-users';
 import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
@@ -17,6 +17,7 @@ import {ArrowRight, ArrowUpRight} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {Agent, OAuthAgentConfig} from '../../../models/agent';
+import {hasDelegationGrant} from '../../../utils/isDelegatedAgent';
 import AttributesSummarySection from '../attributes/AttributesSummarySection';
 
 const formatUserLabel = (user: {id: string; display?: string; attributes?: Record<string, unknown>}): string => {
@@ -153,7 +154,10 @@ export default function AgentOverview({
     return match ? formatUserLabel(match) : agent.owner;
   }, [usersData, agent.owner]);
 
-  const isDelegated = oauth2Config?.grantTypes?.includes(OAuth2GrantTypes.AUTHORIZATION_CODE) ?? false;
+  const isDelegated = hasDelegationGrant(oauth2Config?.grantTypes);
+  // Allowed user types apply only to users signing in through this agent, which takes the
+  // authorization code grant, the same rule as the Advanced tab's Allowed user types section.
+  const hasAuthorizationCodeGrant = Boolean(oauth2Config && deriveOAuth2Flags(oauth2Config).hasAuthorizationCodeGrant);
   const allowedUserTypes = (agent.allowedUserTypes ?? []).map((handle) =>
     getUserTypeLabel(userTypesData?.types ?? [], handle),
   );
@@ -288,7 +292,7 @@ export default function AgentOverview({
             sx={{height: 20, fontSize: '0.7rem'}}
           />
         </Stack>
-        {isDelegated && (
+        {hasAuthorizationCodeGrant && (
           <Stack
             direction="row"
             alignItems="center"

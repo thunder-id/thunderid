@@ -230,6 +230,42 @@ func (s *PromptOnlyNodeTestSuite) TestExecuteWithVerboseModeEnabled() {
 	s.Equal(meta, resp.Meta)
 }
 
+func (s *PromptOnlyNodeTestSuite) TestExecuteLeavesVariablePlaceholdersInMeta() {
+	meta := map[string]interface{}{
+		"components": []interface{}{
+			map[string]interface{}{
+				"type":  "TEXT",
+				"id":    "help",
+				"label": "Trouble signing in? Write to {{var(supportEmail)}}",
+			},
+		},
+	}
+
+	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+	promptNode := node.(PromptNodeInterface)
+	promptNode.SetMeta(meta)
+	promptNode.SetPrompts([]common.Prompt{
+		{
+			Inputs: []providers.Input{{Identifier: "username", Required: true}},
+			Action: &common.Action{Ref: "submit", NextNode: "next"},
+		},
+	})
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		UserInputs:  map[string]string{},
+		RuntimeData: map[string]string{"var.supportEmail": `"help@example.com"`},
+		Verbose:     true,
+	}
+	resp, err := node.Execute(ctx)
+
+	s.Nil(err)
+	s.NotNil(resp)
+	components := resp.Meta.(map[string]interface{})["components"].([]interface{})
+	s.Equal("Trouble signing in? Write to {{var(supportEmail)}}", components[0].(map[string]interface{})["label"],
+		"variables are resolved in executor properties only")
+}
+
 func (s *PromptOnlyNodeTestSuite) TestExecuteWithVerboseModeDisabled() {
 	meta := map[string]interface{}{
 		"components": []interface{}{

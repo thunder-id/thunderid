@@ -5,6 +5,8 @@
 package tokenservice
 
 import (
+	"encoding/json"
+
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -71,6 +73,8 @@ type AccessTokenBuildContext struct {
 	// Neither is emitted as a token claim; both are carried for observability.
 	SubjectEntityID string
 	SubjectCategory string
+	// AuthorizationDetails, when set, is emitted as the RFC 9396 `authorization_details` claim.
+	AuthorizationDetails json.RawMessage
 }
 
 // RefreshTokenBuildContext contains all the information needed to build a refresh token.
@@ -132,7 +136,32 @@ const (
 	claimEvents = "events"
 	// eventBackchannelLogout is the single member of the events claim, with an empty object value.
 	eventBackchannelLogout = "http://schemas.openid.net/event/backchannel-logout"
+	// claimSessionData is the device secret claim listing the SSO sessions it carries.
+	claimSessionData = "session_data"
+	// claimFlowIdentifier names, in a session_data entry, the flow the session belongs to, as the
+	// per-flow session cookie name does.
+	claimFlowIdentifier = "flow_identifier"
+	// claimSessionHandle carries, in a session_data entry, the handle that resumes the session.
+	claimSessionHandle = "session_handle"
 )
+
+// DeviceSecretClaims represents the validated claims of a device secret.
+type DeviceSecretClaims struct {
+	// Subject is the resource ID of the user the device secret was issued for.
+	Subject     string
+	SessionData []oauth2model.SessionData
+}
+
+// DeviceSecretBuildContext holds what a device secret is built from.
+type DeviceSecretBuildContext struct {
+	OAuthApp *providers.OAuthClient
+	// SubjectID is the resource ID of the user, the same for every application whatever its token
+	// subject maps to.
+	SubjectID   string
+	SessionData []oauth2model.SessionData
+	// ValidityPeriod is how many seconds the device secret stays usable.
+	ValidityPeriod int64
+}
 
 // LogoutTokenBuildContext holds what an OIDC Back-Channel Logout token is built from.
 type LogoutTokenBuildContext struct {

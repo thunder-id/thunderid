@@ -4,7 +4,8 @@
 import {focusManager} from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import {renderWithProviders, screen, waitFor, within} from '@thunderid/test-utils';
-import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
+import {page} from 'vitest/browser';
 import {apiError, createHttpRouter, SERVER_URL, type HttpCall} from '../../__tests__/http';
 import GatewaysListPage from '../GatewaysListPage';
 
@@ -39,6 +40,11 @@ const gateways = [
 const routes = {
   'GET /gateways': gateways,
 };
+
+// The grid renders only the columns that fit, so a desktop width keeps the actions column in the DOM.
+beforeAll(async () => {
+  await page.viewport(1280, 800);
+});
 
 beforeEach(() => {
   mockHttpRequest.mockReset();

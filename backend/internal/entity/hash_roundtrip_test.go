@@ -45,11 +45,11 @@ func TestCredentialHashRoundTrip(t *testing.T) {
 			storedJSON, err := svc.hashPlaintextCredentials(plaintextJSON)
 			require.NoError(t, err)
 
-			err = svc.verifyCredentials(t.Context(),
+			_, err = svc.verifyCredentials(t.Context(),
 				map[string]interface{}{"password": "correct horse battery staple"}, storedJSON, nil)
 			require.NoError(t, err, "correct password must verify against the persisted credential")
 
-			err = svc.verifyCredentials(t.Context(),
+			_, err = svc.verifyCredentials(t.Context(),
 				map[string]interface{}{"password": "wrong password"}, storedJSON, nil)
 			require.ErrorIs(t, err, ErrAuthenticationFailed)
 		})

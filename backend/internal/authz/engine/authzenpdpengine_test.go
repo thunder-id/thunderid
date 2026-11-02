@@ -453,6 +453,83 @@ func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPEvaluateAccessBatchFallsBa
 	require.False(t, response.Evaluations[1].Decision)
 }
 
+const testPDPAuthorizationDetails = `[{"type":"payment_initiation","instructedAmount":{"amount":"10"}}]`
+
+func authorizationDetailsInPDPContext(t *testing.T, evaluation json.RawMessage) string {
+	t.Helper()
+	var decoded struct {
+		Context map[string]json.RawMessage `json:"context"`
+	}
+	require.NoError(t, json.Unmarshal(evaluation, &decoded))
+	details, ok := decoded.Context["authorization_details"]
+	require.True(t, ok)
+	return string(details)
+}
+
+func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPEvaluateAccessBatchForwardsAuthorizationDetails() {
+	t := suite.T()
+	server := newAuthZENTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/access/v1/evaluations", r.URL.Path)
+		var request struct {
+			Evaluations []json.RawMessage `json:"evaluations"`
+		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		require.Len(t, request.Evaluations, 2)
+		for _, evaluation := range request.Evaluations {
+			require.JSONEq(t, testPDPAuthorizationDetails, authorizationDetailsInPDPContext(t, evaluation))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"evaluations":[{"decision":true},{"decision":false}]}`))
+	}))
+	defer server.Close()
+
+	details := []json.RawMessage{json.RawMessage(`{"type":"payment_initiation","instructedAmount":{"amount":"10"}}`)}
+	evaluationContext := map[string]interface{}{"authorization_details": details}
+	pdp := newLegacyAuthZENPDP(server.Client())
+	response, err := pdp.EvaluateAccessBatch(context.Background(), authZENPDPConfig(server),
+		AccessEvaluationsRequest{
+			Evaluations: []AccessEvaluationRequest{
+				{Subject: Subject{ID: "user-1"}, ResourceServer: ResourceServer{ID: "resource-1"},
+					Permission: Permission{Name: "read"}, Context: evaluationContext},
+				{Subject: Subject{ID: "user-1"}, ResourceServer: ResourceServer{ID: "resource-1"},
+					Permission: Permission{Name: "cancel"}, Context: evaluationContext},
+			},
+		})
+
+	require.NoError(t, err)
+	require.Len(t, response.Evaluations, 2)
+}
+
+func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPSingleEndpointForwardsAuthorizationDetails() {
+	t := suite.T()
+	server := newAuthZENTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/access/v1/evaluation", r.URL.Path)
+		var evaluation json.RawMessage
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&evaluation))
+		require.JSONEq(t, testPDPAuthorizationDetails, authorizationDetailsInPDPContext(t, evaluation))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"decision":true}`))
+	}))
+	defer server.Close()
+
+	pdp := newLegacyAuthZENPDP(server.Client())
+	response, err := pdp.EvaluateAccessBatch(context.Background(), AuthZENPDPConfig{
+		Endpoint: evaluationEndpoint(server),
+	}, AccessEvaluationsRequest{
+		Evaluations: []AccessEvaluationRequest{{
+			Subject: Subject{ID: "user-1"}, ResourceServer: ResourceServer{ID: "resource-1"},
+			Permission: Permission{Name: "read"},
+			Context: map[string]interface{}{
+				"authorization_details": json.RawMessage(testPDPAuthorizationDetails),
+			},
+		}},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, response.Evaluations, 1)
+	require.True(t, response.Evaluations[0].Decision)
+}
+
 func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPEvaluateAccessBatchEmpty() {
 	t := suite.T()
 	settings := AuthZENPDPConfig{

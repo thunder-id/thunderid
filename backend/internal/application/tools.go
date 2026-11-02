@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/application/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 )
 
@@ -29,8 +31,13 @@ func registerMCPTools(server *mcp.Server, appService ApplicationServiceInterface
 	}
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "thunderid_list_applications",
-		Description: `List all registered applications.`,
+		Name: "list_applications",
+		Description: `List all registered applications.
+
+Behavior:
+- With ouId, lists the applications the organization unit owns, followed by the ones shared into it.
+- With projectId, lists the project's root organization unit, or ouId when it is in the project.
+  A project that does not exist, or an organization unit outside it, has no applications.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "List Applications",
 			ReadOnlyHint: true,
@@ -38,7 +45,7 @@ func registerMCPTools(server *mcp.Server, appService ApplicationServiceInterface
 	}, tools.listApplications)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "thunderid_get_application_by_id",
+		Name: "get_application_by_id",
 		Description: `Retrieve full details of an application by ID including OAuth settings, ` +
 			`customizations, and flow associations.`,
 		Annotations: &mcp.ToolAnnotations{
@@ -48,7 +55,7 @@ func registerMCPTools(server *mcp.Server, appService ApplicationServiceInterface
 	}, tools.getApplicationByID)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "thunderid_get_application_by_client_id",
+		Name: "get_application_by_client_id",
 		Description: `Retrieve full details of an application by client_id including OAuth ` +
 			`settings, customizations, and flow associations.`,
 		Annotations: &mcp.ToolAnnotations{
@@ -58,14 +65,14 @@ func registerMCPTools(server *mcp.Server, appService ApplicationServiceInterface
 	}, tools.getApplicationByClientID)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "thunderid_create_application",
+		Name: "create_application",
 		Description: `Create a new application optionally with OAuth configuration.
 
 Use get_application_templates to get pre-configured minimal templates for common app types (SPA, Mobile, Server, M2M).
 
 Prerequisites:
 - Create flows first using create_flow if custom authentication/registration flows are needed.
-- Use thunderid_list_themes to pick a theme and set themeId before creating the application
+- Use list_themes to pick a theme and set themeId before creating the application
   (skip for M2M — no login page).
 
 Behavior:
@@ -81,7 +88,7 @@ Behavior:
 	}, tools.createApplication)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "thunderid_update_application",
+		Name: "update_application",
 		Description: `Update an existing application (full replacement).
 
 Provide the COMPLETE application object to update the application.
@@ -100,7 +107,7 @@ Any field not provided will be reset to empty/default.`,
 	}, tools.updateApplication)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "thunderid_get_application_templates",
+		Name: "get_application_templates",
 		Description: `Get minimal OAuth configuration templates for common application types.
 
 Templates contain ONLY the required fields to create each app type. ` +
@@ -108,7 +115,7 @@ Templates contain ONLY the required fields to create each app type. ` +
 
 Theme: SPA, Mobile, and Server templates include a themeId field that controls the ` +
 			`visual appearance of the ThunderID-hosted login page. ` +
-			`Call thunderid_list_themes first to see available themes, then replace the ` +
+			`Call list_themes first to see available themes, then replace the ` +
 			`<THEME_ID> placeholder with the ID of the desired theme. ` +
 			`Omit themeId to use the system default theme. ` +
 			`M2M templates do not include themeId — M2M apps have no login page.
@@ -125,9 +132,20 @@ Prompt the user for any missing required placeholders.`,
 func (t *applicationTools) listApplications(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
-	_ any,
+	input model.ApplicationListInput,
 ) (*mcp.CallToolResult, model.ApplicationListOutput, error) {
-	listResponse, svcErr := t.appService.GetApplicationList(ctx)
+	var filters map[string]interface{}
+	if input.OUID != "" {
+		filters = map[string]interface{}{filter.AttributeOUID: input.OUID}
+	}
+
+	var listResponse *model.ApplicationListResponse
+	var svcErr *tidcommon.ServiceError
+	if input.ProjectID != "" {
+		listResponse, svcErr = t.appService.GetApplicationListByProject(ctx, input.ProjectID, filters)
+	} else {
+		listResponse, svcErr = t.appService.GetApplicationList(ctx, filters)
+	}
 	if svcErr != nil {
 		return nil, model.ApplicationListOutput{},
 			fmt.Errorf("failed to list applications: %s", svcErr.ErrorDescription)

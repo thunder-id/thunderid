@@ -33,7 +33,7 @@ type AuthFixtures = {
 };
 
 export const test = base.extend<AuthFixtures>({
-  authenticatedPage: async ({ page }, use) => {
+  authenticatedPage: async ({ page }, use, testInfo) => {
     // Setup authentication before test usage
     const debugAuth = process.env.DEBUG_AUTH === "true";
     const authPath = await setupAuthentication(page, baseUrl, { debug: debugAuth });
@@ -61,6 +61,13 @@ export const test = base.extend<AuthFixtures>({
 
     // Provide the authenticated page to the test
     await use(page);
+
+    // A failed test may have failed because its session was dead. Saving that session back would
+    // hand it to the retry and to every later test in this worker, so start them from a fresh login.
+    if (testInfo.status !== testInfo.expectedStatus) {
+      invalidateAuthState(authPath);
+      return;
+    }
 
     // Re-save whatever session the page ends up holding: the SDK may have silently rotated the
     // access/refresh token pair mid-test (see saveAuthState's doc comment), and the next test in

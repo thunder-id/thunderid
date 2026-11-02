@@ -164,7 +164,7 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
 		case idp.ErrorIDPNotFound.Code, notification.ErrorSenderNotFound.Code, authzenpdp.ErrorNotFound.Code,
-			httpconnection.ErrorNotFound.Code:
+			httpconnection.ErrorNotFound.Code, ErrorSharingPolicyNotFound.Code, ErrorConnectionNotSharedToOU.Code:
 			status = http.StatusNotFound
 		case idp.ErrorIDPAlreadyExists.Code,
 			idp.ErrorIDPHasBlockingDependencies.Code,
@@ -172,7 +172,10 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 			notification.ErrorSenderHasBlockingDependencies.Code,
 			authzenpdp.ErrorHasBlockingDependencies.Code,
 			authzenpdp.ErrorAlreadyExists.Code,
-			httpconnection.ErrorAlreadyExists.Code:
+			httpconnection.ErrorAlreadyExists.Code,
+			httpconnection.ErrorHasBlockingDependencies.Code,
+			ErrorSharingPolicyExists.Code,
+			ErrorSharingPolicyVersionMismatch.Code:
 			status = http.StatusConflict
 		default:
 			status = http.StatusBadRequest

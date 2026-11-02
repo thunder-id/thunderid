@@ -6,6 +6,7 @@ import {useLogger} from '@thunderid/logger/react';
 import {Box, Button, Chip, ColorSchemeSVG, IconButton, Paper, Stack, Typography} from '@wso2/oxygen-ui';
 import {
   Bot,
+  BoxIcon,
   Building,
   Copy,
   FileDown,
@@ -88,6 +89,7 @@ export default function ConfigureExport({
   const [expandedUsers, setExpandedUsers] = useState(false);
   const [expandedConnections, setExpandedConnections] = useState(false);
   const [expandedOrgUnits, setExpandedOrgUnits] = useState(false);
+  const [expandedProjects, setExpandedProjects] = useState(false);
   const [expandedSchemas, setExpandedSchemas] = useState(false);
   const [expandedAgentTypes, setExpandedAgentTypes] = useState(false);
   const [expandedTranslations, setExpandedTranslations] = useState(false);
@@ -257,6 +259,8 @@ export default function ConfigureExport({
   const orgUnitsCount =
     resourceCounts?.['organization_unit'] ??
     (Array.isArray(configData?.['organization_unit']) ? configData['organization_unit'].length : 0);
+  const projectsCount =
+    resourceCounts?.['project'] ?? (Array.isArray(configData?.['project']) ? configData['project'].length : 0);
   const userTypesCount =
     resourceCounts?.['user_type'] ?? (Array.isArray(configData?.['user_type']) ? configData['user_type'].length : 0);
   const agentTypesCount =
@@ -588,6 +592,67 @@ export default function ConfigureExport({
                   size="small"
                   variant="outlined"
                   onClick={() => setExpandedUsers(!expandedUsers)}
+                  sx={{cursor: 'pointer'}}
+                />
+              </Box>
+            )}
+          </Stack>
+        </Box>
+      ),
+    });
+  }
+
+  // Add projects if present. A project's root organization unit is listed under organization units.
+  if (projectsCount > 0) {
+    const projects = (configData?.['project'] as {displayName?: string; handle?: string; description?: string}[]) ?? [];
+    const displayedProjects = expandedProjects ? projects : projects.slice(0, 5);
+    const remainingCount = projects.length - 5;
+
+    items.push({
+      id: 'projects',
+      label: t('importExport:configureExport.labels.projects'),
+      icon: <BoxIcon size={16} />,
+      value: projectsCount,
+      status: 'ready',
+      dependencyCount: 0,
+      content: (
+        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
+          <Stack spacing={2}>
+            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
+              {displayedProjects.map((project, idx) => (
+                <Stack key={project.handle ?? project.displayName ?? `project-${idx}`} spacing={0.5}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
+                    <BoxIcon size={14} />
+                    <Typography variant="body2" fontWeight={600}>
+                      {project.displayName ??
+                        project.handle ??
+                        t('importExport:configureExport.fallback.unnamedProject')}
+                    </Typography>
+                  </Stack>
+                  {project.description && (
+                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5}}>
+                      {project.description}
+                    </Typography>
+                  )}
+                  {project.handle && project.displayName !== project.handle && (
+                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5, fontFamily: 'monospace'}}>
+                      {project.handle}
+                    </Typography>
+                  )}
+                </Stack>
+              ))}
+            </Stack>
+            {remainingCount > 0 && (
+              <Box sx={{pt: 1, textAlign: 'center'}}>
+                <Chip
+                  label={
+                    expandedProjects
+                      ? t('importExport:configureExport.actions.showLess')
+                      : t('importExport:configureExport.actions.more', {count: remainingCount})
+                  }
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setExpandedProjects(!expandedProjects)}
                   sx={{cursor: 'pointer'}}
                 />
               </Box>

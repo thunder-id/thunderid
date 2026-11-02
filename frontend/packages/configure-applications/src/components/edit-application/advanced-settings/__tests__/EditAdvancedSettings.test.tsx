@@ -364,6 +364,47 @@ describe('EditAdvancedSettings', () => {
 
       expect(onValidationChange).toHaveBeenLastCalledWith(true);
     });
+
+    it('should drop a cleared Assertion validity and its error on reset when no ID-JAG change was committed', () => {
+      const onValidationChange = vi.fn();
+      const oauth2ConfigWithIdJag: OAuth2Config = {
+        ...mockOAuth2Config,
+        token: {
+          accessToken: {} as never,
+          idToken: {} as never,
+          idJag: {enabled: true, allowedAudiences: ['https://api.example.com'], validityPeriod: 300},
+        },
+      };
+
+      const {rerender} = render(
+        <EditAdvancedSettings
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={oauth2ConfigWithIdJag}
+          onFieldChange={mockOnFieldChange}
+          onValidationChange={onValidationChange}
+          sectionResetKey={0}
+        />,
+      );
+
+      fireEvent.change(screen.getByDisplayValue('300'), {target: {value: ''}});
+      expect(onValidationChange).toHaveBeenLastCalledWith(true);
+
+      rerender(
+        <EditAdvancedSettings
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={oauth2ConfigWithIdJag}
+          onFieldChange={mockOnFieldChange}
+          onValidationChange={onValidationChange}
+          sectionResetKey={1}
+        />,
+      );
+
+      expect(screen.getByDisplayValue('300')).toBeInTheDocument();
+      expect(screen.queryByText('applications:edit.advanced.idJag.validityPeriod.error')).not.toBeInTheDocument();
+      expect(onValidationChange).toHaveBeenLastCalledWith(false);
+    });
   });
 
   describe('PasskeysSection Integration', () => {

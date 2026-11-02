@@ -791,6 +791,7 @@ describe('ImportConfigurationSummaryPage', () => {
         ],
         layout: [{name: 'My Layout', handle: 'layout-1', description: 'Layout description'}],
         organization_unit: [{name: 'Engineering OU', handle: 'eng-ou', description: 'Org description'}],
+        project: [{displayName: 'Shop', handle: 'shop-project', description: 'Project description'}],
         theme: [{name: 'Dark Theme', handle: 'dark-theme', description: 'Theme description'}],
         translation: [{locale: 'fr-FR', namespace: 'common'}],
         user: [{type: 'customer', attributes: {name: 'Jane Doe', username: 'jane', email: 'jane@example.com'}}],
@@ -826,10 +827,12 @@ describe('ImportConfigurationSummaryPage', () => {
       // Handle detail lines shown when distinct from the name.
       expect(screen.getByText('login-flow')).toBeInTheDocument();
       expect(screen.getByText('eng-ou')).toBeInTheDocument();
+      expect(screen.getByText('shop-project')).toBeInTheDocument();
 
       // Description detail lines for the remaining types.
       expect(screen.getByText('Layout description')).toBeInTheDocument();
       expect(screen.getByText('Org description')).toBeInTheDocument();
+      expect(screen.getByText('Project description')).toBeInTheDocument();
       expect(screen.getByText('Theme description')).toBeInTheDocument();
       expect(screen.getByText('RS description')).toBeInTheDocument();
       expect(screen.getByText('Role description')).toBeInTheDocument();

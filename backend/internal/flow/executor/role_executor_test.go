@@ -77,14 +77,38 @@ func (s *RoleExecutorTestSuite) TestUnknownModeIsAnError() {
 func (s *RoleExecutorTestSuite) TestRemoveAssignment_ConsumesTheValidatorPlan() {
 	target := oneCaliforniaScope(testAssigneeID)
 	target.AssigneeType = string(role.AssigneeTypeApp)
-	s.assignments.On("ValidateRemoveAssignment", mock.Anything, testRoleID, testAssigneeID).Return(target, nil)
-	s.assignments.On("RemoveAssignments", mock.Anything, testRoleID,
+	s.assignments.On("ValidateRemoveAssignment", mock.Anything, testRoleID, "", testAssigneeID).Return(target, nil)
+	s.assignments.On("RemoveAssignments", mock.Anything, testRoleID, "",
 		[]role.RoleAssignment{{ID: testAssigneeID, Type: role.AssigneeTypeApp}}).Return(nil)
 
 	pre, err := newAccessChangeValidator(s.factory, s.roles, s.assignments,
 		nil).Execute(
 		administrationNodeContext(ExecutorModeRoleAssignmentRemoval,
 			map[string]string{revocationInputRole: testRoleID, revocationInputAssignee: testAssigneeID}))
+	s.Require().NoError(err)
+	s.Require().Equal(providers.ExecComplete, pre.Status)
+
+	ctx := administrationNodeContext(ExecutorModeRoleAssignmentRemoval, nil)
+	ctx.SharedRuntimeData = pre.SharedRuntimeData
+	resp, err := s.executor().Execute(ctx)
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, resp.Status)
+}
+
+func (s *RoleExecutorTestSuite) TestRemoveAssignment_RemovesItInTheOUItWasMadeIn() {
+	target := oneCaliforniaScope(testAssigneeID)
+	target.AssigneeType = string(role.AssigneeTypeUser)
+	s.assignments.On("ValidateRemoveAssignment", mock.Anything, testRoleID, "ou-child", testAssigneeID).
+		Return(target, nil)
+	s.assignments.On("RemoveAssignments", mock.Anything, testRoleID, "ou-child",
+		[]role.RoleAssignment{{ID: testAssigneeID, Type: role.AssigneeTypeUser}}).Return(nil)
+
+	pre, err := newAccessChangeValidator(s.factory, s.roles, s.assignments, nil).Execute(
+		administrationNodeContext(ExecutorModeRoleAssignmentRemoval, map[string]string{
+			revocationInputRole: testRoleID, revocationInputAssignee: testAssigneeID,
+			revocationInputAssignmentOU: "ou-child",
+		}))
 	s.Require().NoError(err)
 	s.Require().Equal(providers.ExecComplete, pre.Status)
 
@@ -112,7 +136,8 @@ func (s *RoleExecutorTestSuite) TestRemoveAssignment_RefusesAPlanWithoutAnAssign
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "no target assignee")
-	s.assignments.AssertNotCalled(s.T(), "RemoveAssignments", mock.Anything, mock.Anything, mock.Anything)
+	s.assignments.AssertNotCalled(s.T(), "RemoveAssignments",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (s *RoleExecutorTestSuite) TestRemovePermissions_CarriesARefusedRoleRead() {
@@ -217,7 +242,7 @@ func (s *RoleExecutorTestSuite) TestEveryModeRejectsAForeignPlan() {
 
 func (s *RoleExecutorTestSuite) TestUncodedRefusalFallsBackToTheModeError() {
 	uncoded := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType}
-	s.assignments.On("RemoveAssignments", mock.Anything, mock.Anything, mock.Anything).Return(uncoded)
+	s.assignments.On("RemoveAssignments", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(uncoded)
 	s.roles.On("DeleteRole", mock.Anything, mock.Anything).Return(uncoded)
 	s.roles.On("GetRoleWithPermissions", mock.Anything, mock.Anything).
 		Return(&role.RoleWithPermissions{ID: testRoleID}, nil)

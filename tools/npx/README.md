@@ -39,13 +39,13 @@ manifest URL, so you can pin a release or point at your own mirror.
 
 ```bash
 # Install and run a specific release instead of the latest.
-npx thunderid --product-version 1.0.1
+npx thunderid --product-version 1.0.2
 
 # Read releases from somewhere other than thunderid.dev, such as an internal mirror.
 npx thunderid --product-version https://releases.example.com/releases.json
 
 # Both: that version, from that mirror.
-npx thunderid --product-version https://releases.example.com/releases.json --product-version 1.0.1
+npx thunderid --product-version https://releases.example.com/releases.json --product-version 1.0.2
 ```
 
 The same value can be given as `THUNDERID_PRODUCT_VERSION` for scripted runs. Flags win over the

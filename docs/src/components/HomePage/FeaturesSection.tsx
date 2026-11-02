@@ -13,7 +13,7 @@ import {
   User,
   Wallet,
 } from '@wso2/oxygen-ui-icons-react';
-import {type JSX, type ReactNode, useMemo, useState} from 'react';
+import {type JSX, type ReactNode, useEffect, useMemo, useRef, useState} from 'react';
 import {ACCENTS, cardSx, DISPLAY_FONT, type HomeTokens, sxList, useHomeTokens, HOME_MAX_WIDTH} from './homeTheme';
 import SDKShowcase from './SDKShowcase';
 import {Reveal, Section, SectionHeading} from './shared';
@@ -968,6 +968,15 @@ const FEATURES: Feature[] = [
 const SDK_CATEGORY: Category = 'build';
 const TOTAL = FEATURES.length + 1;
 
+/** How long the grid takes to fade out before the filtered tiles are swapped in. */
+const FILTER_FADE_MS = 180;
+
+/** Turns a bento `area` into column and row spans, so a tile keeps its shape once the grid is filtered. */
+function areaSpan(area: string): {gridColumn: string; gridRow: string} {
+  const [rowStart, colStart, rowEnd, colEnd] = area.split('/').map((n) => Number(n.trim()));
+  return {gridColumn: `span ${colEnd - colStart}`, gridRow: `span ${rowEnd - rowStart}`};
+}
+
 /* ─── Section ────────────────────────────────────────────────────────────── */
 
 function CategoryLabel({category}: {category: Category}): JSX.Element {
@@ -991,7 +1000,29 @@ function CategoryLabel({category}: {category: Category}): JSX.Element {
 
 export default function FeaturesSection(): JSX.Element {
   const t = useHomeTokens();
+  // `filter` drives the toolbar straight away; `shown` drives the grid and lags behind it
+  // while the grid fades out, so tiles are never hidden or shown mid-fade.
   const [filter, setFilter] = useState<Filter>('all');
+  const [shown, setShown] = useState<Filter>('all');
+  const [fading, setFading] = useState(false);
+  const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => () => clearTimeout(fadeTimer.current), []);
+
+  const changeFilter = (next: Filter): void => {
+    if (next === filter) return;
+    setFilter(next);
+    clearTimeout(fadeTimer.current);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setShown(next);
+      return;
+    }
+    setFading(true);
+    fadeTimer.current = setTimeout(() => {
+      setShown(next);
+      setFading(false);
+    }, FILTER_FADE_MS);
+  };
   const {siteConfig} = useDocusaurusContext();
   const productName = (siteConfig.customFields?.product as DocusaurusProductConfig).project.name;
 
@@ -1003,16 +1034,20 @@ export default function FeaturesSection(): JSX.Element {
     return c;
   }, []);
 
-  const tileSx = (category: Category) => {
-    const match = filter === 'all' || filter === category;
+  const filtered = shown !== 'all';
+
+  const tileSx = (category: Category, index: number) => {
+    const match = !filtered || shown === category;
     return {
       ...cardSx(t),
-      display: 'flex',
+      display: match ? 'flex' : 'none',
       flexDirection: 'column',
-      '&:hover': match ? {transform: 'translateY(-4px)', bgcolor: t.surfaceStrong} : {},
-      ...(match
-        ? filter !== 'all' && {'& > [aria-hidden]': {borderColor: 'rgba(54,136,255,0.4)'}}
-        : {opacity: '0.18 !important', filter: 'saturate(0.2)'}),
+      '&:hover': {transform: 'translateY(-4px)', bgcolor: t.surfaceStrong},
+      ...(filtered && {
+        '& > [aria-hidden]': {borderColor: 'rgba(54,136,255,0.4)'},
+        // Showing a tile again (display: none → flex) restarts this, so tiles stagger in on every filter change.
+        animation: `featureTileIn 0.45s cubic-bezier(0.22, 0.7, 0.2, 1) ${index * 50}ms backwards`,
+      }),
     };
   };
 
@@ -1046,7 +1081,7 @@ export default function FeaturesSection(): JSX.Element {
                 <ButtonBase
                   key={f}
                   aria-pressed={on}
-                  onClick={() => setFilter(f)}
+                  onClick={() => changeFilter(f)}
                   sx={{
                     flex: 'none',
                     gap: 1,
@@ -1088,6 +1123,14 @@ export default function FeaturesSection(): JSX.Element {
 
         <Box
           sx={(theme) => ({
+            '@keyframes featureTileIn': {
+              from: {opacity: 0, transform: 'translateY(14px) scale(0.98)'},
+              to: {opacity: 1, transform: 'none'},
+            },
+            '@media (prefers-reduced-motion: reduce)': {'& > *': {animation: 'none !important'}},
+            opacity: fading ? 0 : 1,
+            transform: fading ? 'translateY(6px)' : 'none',
+            transition: `opacity ${FILTER_FADE_MS}ms ease, transform ${FILTER_FADE_MS}ms ease`,
             display: 'grid',
             gap: 1.75,
             gridTemplateColumns: '1fr',
@@ -1101,14 +1144,14 @@ export default function FeaturesSection(): JSX.Element {
               component="article"
               delay={(i % 4) * 60}
               sx={[
-                tileSx(f.category),
+                tileSx(f.category, FEATURES.filter((g) => g.category === f.category).indexOf(f)),
                 (theme: Theme) => ({
                   p: f.visual ? '14px 14px 22px' : '22px 22px 24px',
                   [theme.breakpoints.up('sm')]: {
                     gridColumn: f.wide ? 'span 2' : 'auto',
                     order: f.visual ? 0 : 1,
                   },
-                  [theme.breakpoints.up('lg')]: {gridArea: f.area, order: 0},
+                  [theme.breakpoints.up('lg')]: filtered ? {...areaSpan(f.area), order: 0} : {gridArea: f.area, order: 0},
                 }),
               ]}
             >
@@ -1138,12 +1181,12 @@ export default function FeaturesSection(): JSX.Element {
           <Reveal
             component="article"
             sx={[
-              tileSx(SDK_CATEGORY),
+              tileSx(SDK_CATEGORY, 0),
               (theme: Theme) => ({
                 p: '14px',
                 gridColumn: '1 / -1',
                 [theme.breakpoints.up('sm')]: {order: 2},
-                [theme.breakpoints.up('lg')]: {gridRow: 9, order: 0},
+                [theme.breakpoints.up('lg')]: {gridRow: filtered ? 'auto' : 9, order: 0},
               }),
             ]}
           >

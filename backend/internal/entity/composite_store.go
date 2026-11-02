@@ -448,7 +448,8 @@ func (c *entityCompositeStore) LoadIndexedAttributes(attributes []string) error 
 	return c.dbStore.LoadIndexedAttributes(attributes)
 }
 
-// getDistinctEntityCount retrieves the count of distinct entities from both stores.
+// getDistinctEntityCount retrieves the count of distinct entities from both stores. Entities are
+// listed to find the ones both stores hold only when both have matches.
 func (c *entityCompositeStore) getDistinctEntityCount(
 	dbCount func() (int, error),
 	fileCount func() (int, error),
@@ -462,6 +463,9 @@ func (c *entityCompositeStore) getDistinctEntityCount(
 	fileCountValue, err := fileCount()
 	if err != nil {
 		return 0, err
+	}
+	if count == 0 || fileCountValue == 0 {
+		return count + fileCountValue, nil
 	}
 
 	entityIDs := make(map[string]struct{}, count+fileCountValue)

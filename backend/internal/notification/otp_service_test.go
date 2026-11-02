@@ -268,7 +268,8 @@ func (suite *OTPServiceTestSuite) TestVerifyOTP_ExpiredOTP() {
 
 	suite.Nil(err)
 	suite.NotNil(res)
-	suite.Equal(common.OTPVerifyStatusInvalid, res.Status)
+	suite.Equal(common.OTPVerifyStatusExpired, res.Status)
+	suite.Equal("+15559876543", res.Recipient)
 }
 
 func (suite *OTPServiceTestSuite) TestVerifyOTP_InvalidSessionToken() {

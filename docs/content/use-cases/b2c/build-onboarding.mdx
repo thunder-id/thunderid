@@ -33,7 +33,7 @@ See [Authorization](../../../key-concepts/authorization).
 
 ### Create the user onboarding flow
 
-Save the JSON below as `wayfinder-onboarding-flow.json`, replace each `<email-provider-id>` with the `id` of the email provider you created in [Build the Flows](../build-flows), and POST it to the flows API. The flow validates admin permission, resolves the user type, prompts for the staff role (Support or DestinationsAdmin), collects the invitee's email, sends the invitation, and on accept provisions the new user with the matching role attached via `properties.assignRole`.
+Save the JSON below as `wayfinder-onboarding-flow.json`, replace each `<email-provider-id>` with the `id` of the email provider you created in [Build the Flows](../build-flows) and `<default-ou-id>` with the ID of your default organization unit (look it up via `GET /organization-units`), and POST it to the flows API. The flow validates admin permission, resolves the user type, prompts for the staff role (Support or DestinationsAdmin), collects the invitee's email, sends the invitation, and on accept provisions the new user with the matching role attached via `properties.assignRole`.
 
 ```bash
 curl -k -X POST https://localhost:8090/flows \
@@ -50,6 +50,7 @@ curl -k -X POST https://localhost:8090/flows \
   "handle": "wayfinder-onboarding-flow",
   "name": "Wayfinder Staff Onboarding Flow",
   "flowType": "USER_ONBOARDING",
+  "ouId": "<default-ou-id>",
   "nodes": [
     { "id": "start", "type": "START", "onSuccess": "permission_validator" },
     {

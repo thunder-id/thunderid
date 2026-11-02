@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package testutils
@@ -202,6 +202,16 @@ func (m *MockNotificationServer) GetLastMessage() *SMSMessage {
 	lastMessage := m.messages[len(m.messages)-1]
 	m.messages = m.messages[:len(m.messages)-1]
 	return &lastMessage
+}
+
+// GetMessages returns every message held, oldest first, without consuming them.
+func (m *MockNotificationServer) GetMessages() []SMSMessage {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	messages := make([]SMSMessage, len(m.messages))
+	copy(messages, m.messages)
+	return messages
 }
 
 // ClearMessages clears all stored messages

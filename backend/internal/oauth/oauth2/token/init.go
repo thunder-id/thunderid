@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package token
@@ -34,6 +34,7 @@ func Initialize(
 	dpopVerifier dpop.VerifierInterface,
 	jtiStore jti.JTIStoreInterface,
 	ouService providers.OrganizationUnitProvider,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 ) TokenHandlerInterface {
 	tokenEndpoint := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).TokenEndpoint
@@ -42,7 +43,7 @@ func Initialize(
 		dpopVerifier, tokenEndpoint, dpopRequired)
 	tokenHandler := newTokenHandler(tokenSvc, observabilitySvc)
 	registerRoutes(mux, tokenHandler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, ouService, cfg.EnableOUQualifiedEndpoints, cfg.OAuth.ClientAssertion,
+		jtiStore, ouService, governance, cfg.EnableOUQualifiedEndpoints, cfg.OAuth.ClientAssertion,
 		cfg.JWT.Leeway)
 	return tokenHandler
 }
@@ -57,6 +58,7 @@ func registerRoutes(
 	discoveryService discovery.DiscoveryServiceInterface,
 	jtiStore jti.JTIStoreInterface,
 	ouService providers.OrganizationUnitProvider,
+	governance providers.IdentityGovernanceProvider,
 	ouQualifiedEndpointsEnabled bool,
 	assertionCfg engineconfig.ClientAssertionConfig,
 	jwtLeeway int64,
@@ -69,7 +71,7 @@ func registerRoutes(
 	}
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
-	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
+	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, governance, jwtService,
 		jtiStore, issuer, assertionCfg, jwtLeeway)
 	endpoint := http.HandlerFunc(tokenHandler.HandleTokenRequest)
 	register := func(route string, handler http.Handler) {

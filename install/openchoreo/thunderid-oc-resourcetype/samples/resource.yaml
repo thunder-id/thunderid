@@ -270,6 +270,7 @@ spec:
       # File: Default_Authentication_Flow.yaml
       resource_type: flow
       id: 01900000-0000-7000-8000-000000000061
+      ouId: 01900000-0000-7000-8000-000000000001
       handle: default-flow
       name: Default Authentication Flow
       flowType: AUTHENTICATION
@@ -385,6 +386,7 @@ spec:
       # File: Default_CIBA_Email_Notification_Flow.yaml
       resource_type: flow
       id: 01900000-0000-7000-8000-000000000062
+      ouId: 01900000-0000-7000-8000-000000000001
       handle: default-ciba-email-flow
       name: Default CIBA Email Notification Flow
       flowType: AUTHENTICATION
@@ -486,6 +488,7 @@ spec:
       # File: Console_App_Authentication_Flow.yaml
       resource_type: flow
       id: 01900000-0000-7000-8000-000000000068
+      ouId: 01900000-0000-7000-8000-000000000001
       handle: console-app-flow
       name: Console App Authentication Flow
       flowType: AUTHENTICATION
@@ -565,6 +568,7 @@ spec:
       # File: Console_App_Recovery_Flow.yaml
       resource_type: flow
       id: 01900000-0000-7000-8000-000000000070
+      ouId: 01900000-0000-7000-8000-000000000001
       handle: console-app-flow
       name: Console App Recovery Flow
       flowType: RECOVERY
@@ -651,6 +655,12 @@ spec:
           type: TASK_EXECUTION
           executor:
             name: CredentialSetter
+          onSuccess: release_account_locks
+        - id: release_account_locks
+          type: TASK_EXECUTION
+          executor:
+            name: IdentityGovernanceExecutor
+            mode: unlock
           onSuccess: recovery_complete
         - id: recovery_complete
           type: PROMPT
@@ -672,6 +682,7 @@ spec:
       # File: Default_Recovery_Flow.yaml
       resource_type: flow
       id: 01900000-0000-7000-8000-000000000067
+      ouId: 01900000-0000-7000-8000-000000000001
       handle: default-flow
       name: Default Recovery Flow
       flowType: RECOVERY
@@ -821,6 +832,19 @@ spec:
               y: 340
           executor:
             name: CredentialSetter
+          onSuccess: release_account_locks
+        - id: release_account_locks
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 206
+              height: 113
+            position:
+              x: 3200
+              y: 340
+          executor:
+            name: IdentityGovernanceExecutor
+            mode: unlock
           onSuccess: recovery_complete
         - id: recovery_complete
           type: PROMPT
@@ -829,7 +853,7 @@ spec:
               width: 350
               height: 340
             position:
-              x: 3140
+              x: 3580
               y: 250
           meta: '{"components":[{"align":"center","id":"recovery_complete_icon","label":"✅","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"recovery_complete_heading","label":"{{ t(recovery:forms.complete.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"recovery_complete_message","label":"{{ t(recovery:forms.complete.message) }}","type":"TEXT","variant":"HEADING_6"}]}'
           next: end
@@ -853,7 +877,7 @@ spec:
               width: 85
               height: 34
             position:
-              x: 3600
+              x: 4040
               y: 375
       createdAt: 2026-08-06 04:50:14
       updatedAt: 2026-08-06 04:50:14
@@ -863,6 +887,7 @@ spec:
       # File: Default_Registration_Flow.yaml
       resource_type: flow
       id: 01900000-0000-7000-8000-000000000064
+      ouId: 01900000-0000-7000-8000-000000000001
       handle: default-flow
       name: Default Registration Flow
       flowType: REGISTRATION
@@ -1007,6 +1032,7 @@ spec:
       # File: Console_App_Registration_Flow.yaml
       resource_type: flow
       id: 01900000-0000-7000-8000-000000000069
+      ouId: 01900000-0000-7000-8000-000000000001
       handle: console-app-flow
       name: Console App Registration Flow
       flowType: REGISTRATION
@@ -1108,6 +1134,7 @@ spec:
       # File: Default_Sign_Out_Flow.yaml
       resource_type: flow
       id: 01900000-0000-7000-8000-00000000006a
+      ouId: 01900000-0000-7000-8000-000000000001
       handle: default-flow
       name: Default Sign Out Flow
       flowType: SIGNOUT
@@ -1152,6 +1179,7 @@ spec:
       # File: Default_User_Onboarding_Flow.yaml
       resource_type: flow
       id: 01900000-0000-7000-8000-000000000066
+      ouId: 01900000-0000-7000-8000-000000000001
       handle: default-flow
       name: Default User Onboarding Flow
       flowType: USER_ONBOARDING

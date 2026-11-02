@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
@@ -36,8 +36,16 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
     OxygenUIThemeProvider: ({children}: {children: React.ReactNode}) => children,
     ListingTable: {
       ...actual.ListingTable,
-      Provider: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
-      Container: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
+      Provider: ({children, variant = undefined}: {children: React.ReactNode; variant?: string}) => (
+        <div data-testid="listing-provider" data-variant={variant}>
+          {children}
+        </div>
+      ),
+      Container: ({children, disablePaper = undefined}: {children: React.ReactNode; disablePaper?: boolean}) => (
+        <div data-testid="listing-container" data-disable-paper={disablePaper}>
+          {children}
+        </div>
+      ),
       DataGrid: ({
         rows,
         columns,
@@ -47,7 +55,7 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
         rows: Record<string, unknown>[];
         columns: {
           field: string;
-          renderCell?: (params: {row: Record<string, unknown>}) => React.ReactElement;
+          renderCell?: (params: {row: Record<string, unknown>; tabIndex: number}) => React.ReactElement;
           valueGetter?: (value: unknown, row: Record<string, unknown>) => string;
         }[];
         onRowClick?: (params: {row: Record<string, unknown>}) => void;
@@ -65,11 +73,12 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
               {columns.map(
                 (col: {
                   field: string;
-                  renderCell?: (params: {row: Record<string, unknown>}) => React.ReactElement;
+                  renderCell?: (params: {row: Record<string, unknown>; tabIndex: number}) => React.ReactElement;
                   valueGetter?: (value: unknown, row: Record<string, unknown>) => string;
                 }) => {
                   if (col.renderCell) {
-                    return <div key={col.field}>{col.renderCell({row})}</div>;
+                    // The real grid hands an unfocused cell tabIndex -1.
+                    return <div key={col.field}>{col.renderCell({row, tabIndex: -1})}</div>;
                   }
                   if (col.valueGetter) {
                     return <div key={col.field}>{col.valueGetter(null, row)}</div>;
@@ -212,6 +221,59 @@ describe('ApplicationsList', () => {
     expect(screen.getByText('Test App 2')).toBeInTheDocument();
     expect(screen.getByText('First test application')).toBeInTheDocument();
     expect(screen.getByText('Second test application')).toBeInTheDocument();
+  });
+
+  it("should show each application's access status, treating an absent status as active", () => {
+    vi.mocked(useGetApplications).mockReturnValue({
+      data: {
+        ...mockApplicationsData,
+        applications: [
+          {...mockApplicationsData.applications[0], status: {value: 'SUSPENDED'}},
+          mockApplicationsData.applications[1],
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetApplications>);
+
+    renderComponent();
+
+    expect(screen.getByText('Suspended')).toBeInTheDocument();
+    expect(screen.getByText('Active')).toBeInTheDocument();
+  });
+
+  it("should keep the status indicators in the grid's roving focus rather than the page tab order", () => {
+    renderComponent();
+
+    const indicators = screen.getAllByRole('img', {name: 'Active'});
+    expect(indicators.length).toBeGreaterThan(0);
+    indicators.forEach((indicator) => expect(indicator).toHaveAttribute('tabindex', '-1'));
+  });
+
+  it('should render the listing as a papered data grid', () => {
+    vi.mocked(useGetApplications).mockReturnValue({
+      data: mockApplicationsData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetApplications>);
+
+    renderComponent();
+
+    expect(screen.getByTestId('listing-provider')).toHaveAttribute('data-variant', 'data-grid');
+    expect(screen.getByTestId('listing-container')).not.toHaveAttribute('data-disable-paper');
+  });
+
+  it('should give each row action button an accessible name', () => {
+    vi.mocked(useGetApplications).mockReturnValue({
+      data: mockApplicationsData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetApplications>);
+
+    renderComponent();
+
+    expect(screen.getAllByRole('button', {name: 'Edit'})).toHaveLength(2);
+    expect(screen.getAllByRole('button', {name: 'Delete'})).toHaveLength(2);
   });
 
   it('should display client IDs as chips', () => {

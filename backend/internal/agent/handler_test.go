@@ -134,6 +134,41 @@ func TestHandleAgentPostRequest_Success(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 }
 
+func TestHandleAgentPostRequest_PassesDelegatedToTheService(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		delegated bool
+	}{
+		{"DelegatedSet", `{"ouId": "ou-123", "type": "worker", "delegated": true}`, true},
+		{"DelegatedAbsent", `{"ouId": "ou-123", "type": "worker"}`, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var received *providers.Agent
+			stubService := &InlineStubAgentService{
+				OnCreateAgent: func(
+					ctx context.Context, agent *providers.Agent,
+				) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
+					received = agent
+					return &model.AgentCompleteResponse{ID: "agent-123"}, nil
+				},
+			}
+			handler := newAgentHandler(stubService)
+			req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(tt.body))
+			w := httptest.NewRecorder()
+
+			handler.HandleAgentPostRequest(w, req)
+
+			assert.Equal(t, http.StatusCreated, w.Code)
+			if assert.NotNil(t, received) {
+				assert.Equal(t, tt.delegated, received.Delegated)
+			}
+		})
+	}
+}
+
 func TestHandleAgentPostRequest_ValidationError(t *testing.T) {
 	stubService := &InlineStubAgentService{}
 	handler := newAgentHandler(stubService)
@@ -292,6 +327,25 @@ func TestHandleAgentListRequest_Success(t *testing.T) {
 
 	handler.HandleAgentListRequest(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHandleAgentListRequest_WithOrganizationUnitFilter(t *testing.T) {
+	var gotFilters map[string]interface{}
+	stubService := &InlineStubAgentService{
+		OnGetAgentList: func(
+			ctx context.Context, limit, offset int, filters map[string]interface{}, inc bool,
+		) (*model.AgentListResponse, *tidcommon.ServiceError) {
+			gotFilters = filters
+			return &model.AgentListResponse{}, nil
+		},
+	}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodGet, `/agents?filter=ouId+eq+%22ou-1%22`, nil)
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentListRequest(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, map[string]interface{}{"ouId": "ou-1"}, gotFilters)
 }
 
 func TestHandleAgentListRequest_InvalidFilter(t *testing.T) {

@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {keepPreviousData, useQuery, type UseQueryResult} from '@tanstack/react-query';
+import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import GroupQueryKeys from '../constants/group-query-keys';
@@ -17,11 +17,13 @@ import type {GroupListParams} from '../models/requests';
 export default function useGetGroups(params?: GroupListParams): UseQueryResult<GroupListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {limit = 30, offset = 0} = params ?? {};
+  const {limit = 30, offset = 0, filter} = params ?? {};
 
   return useQuery<GroupListResponse>({
-    queryKey: [GroupQueryKeys.GROUPS, {limit, offset}],
-    placeholderData: keepPreviousData,
+    queryKey: [GroupQueryKeys.GROUPS, {limit, offset, filter}],
+    // Keep the previous page on screen while paging, but never show one filter's groups as another's.
+    placeholderData: (previousData, previousQuery) =>
+      (previousQuery?.queryKey[1] as {filter?: string} | undefined)?.filter === filter ? previousData : undefined,
     queryFn: async (): Promise<GroupListResponse> => {
       const serverUrl: string = getServerUrl();
       const queryParams: URLSearchParams = new URLSearchParams({
@@ -29,6 +31,9 @@ export default function useGetGroups(params?: GroupListParams): UseQueryResult<G
         offset: offset.toString(),
         include: 'display',
       });
+      if (filter) {
+        queryParams.append('filter', filter);
+      }
 
       const response: {
         data: GroupListResponse;

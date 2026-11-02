@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package jwt
@@ -28,14 +28,9 @@ func DecodeJWT(token string) (map[string]interface{}, map[string]interface{}, er
 
 // DecodeJWTPayload decodes the payload of a JWT token and returns it as a map.
 func DecodeJWTPayload(jwtToken string) (map[string]interface{}, error) {
-	parts := strings.Split(jwtToken, ".")
-	if len(parts) != 3 {
-		return nil, errors.New("invalid JWT format")
-	}
-
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	payload, err := decodePayload(jwtToken)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode JWT payload: %w", err)
+		return nil, err
 	}
 
 	var claims map[string]interface{}
@@ -44,6 +39,22 @@ func DecodeJWTPayload(jwtToken string) (map[string]interface{}, error) {
 	}
 
 	return claims, nil
+}
+
+// DecodeJWTClaim returns a claim of a JWT payload as raw JSON, preserving number precision.
+func DecodeJWTClaim(jwtToken, name string) (json.RawMessage, bool, error) {
+	payload, err := decodePayload(jwtToken)
+	if err != nil {
+		return nil, false, err
+	}
+
+	var claims map[string]json.RawMessage
+	if err = json.Unmarshal(payload, &claims); err != nil {
+		return nil, false, fmt.Errorf("failed to unmarshal JWT claims: %w", err)
+	}
+
+	claim, ok := claims[name]
+	return claim, ok, nil
 }
 
 // DecodeJWTHeader decodes the header of a JWT token and returns it as a map.
@@ -78,4 +89,18 @@ func IsRefreshTokenType(typ string) bool {
 // can still be valid; refresh tokens will then be identified by their typ header alone.
 func IsLegacyRefreshTokenType(typ string) bool {
 	return strings.EqualFold(typ, TokenTypeJWT)
+}
+
+// decodePayload returns the decoded payload of a compact JWT.
+func decodePayload(jwtToken string) ([]byte, error) {
+	parts := strings.Split(jwtToken, ".")
+	if len(parts) != 3 {
+		return nil, errors.New("invalid JWT format")
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JWT payload: %w", err)
+	}
+	return payload, nil
 }

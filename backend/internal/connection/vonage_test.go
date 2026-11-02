@@ -112,3 +112,15 @@ func (s *VonageTestSuite) TestGetRoundTrip() {
 	s.Equal(maskedSecretValue, resp.APISecret)
 	s.Equal("ThunderID", resp.SenderID)
 }
+
+func (s *VonageTestSuite) TestOUCarriedThroughMapping() {
+	dto, err := vonageToSenderDTO(vonageConnectionRequest{
+		Name: "n", OUID: "ou-1", APIKey: "k", APISecret: "s", SenderID: "x",
+	})
+	s.Require().NoError(err)
+	s.Equal("ou-1", dto.OUID)
+
+	resp, err := vonageFromSenderDTO(*dto)
+	s.Require().NoError(err)
+	s.Equal("ou-1", resp.OUID)
+}

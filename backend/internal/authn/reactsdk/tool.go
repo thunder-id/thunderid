@@ -14,7 +14,7 @@ import (
 // RegisterTools registers all React SDK tools with the MCP server.
 func RegisterTools(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "thunderid_integrate_react_sdk",
+		Name: "integrate_react_sdk",
 		Description: "Provides instructions and code snippets for integrating ThunderID authentication via the " +
 			"ThunderID React SDK into a React application. Supports two modes: Mode 1 (default) - ThunderID-hosted " +
 			"login pages with redirect-based OAuth 2.0/OIDC flow. Mode 2 - Self-hosted login pages using Flow API " +
@@ -82,7 +82,7 @@ following props.
 Always create a NEW public SPA application with token endpoint method as none and use the
 client id. Use the application's URL as the redirect URL.
 
-Use the thunderid_get_application_templates tool to get the template and defaults(e.g. user attributes and scopes)
+Use the get_application_templates tool to get the template and defaults(e.g. user attributes and scopes)
 before creating the application.
 
 No variations, no abstractions, no helper objects.
@@ -176,7 +176,7 @@ sign-in page automatically renders a **Sign Up** link.
 
 **1. The application must have registration enabled.**
 
-Use ~thunderid_update_application~ to set ~isRegistrationFlowEnabled~ and point it at a registration flow.
+Use ~update_application~ to set ~isRegistrationFlowEnabled~ and point it at a registration flow.
 Also add the user type handle to ~allowedUserTypes~:
 
 ~~~json
@@ -191,7 +191,7 @@ Also add the user type handle to ~allowedUserTypes~:
 
 **2. The user type must have ~allowSelfRegistration~ enabled.**
 
-Use ~thunderid_list_user_types~ to find user types. The user type(s) listed in ~allowedUserTypes~ above
+Use ~list_user_types~ to find user types. The user type(s) listed in ~allowedUserTypes~ above
 must have ~allowSelfRegistration: true~. Without this, the sign-in page will not show the Sign Up link
 even if the application has registration enabled.
 
@@ -229,7 +229,7 @@ function App() {
 **Prerequisites — configure the application before using user attributes:**
 
 User attributes are only available in the React SDK if the application's inbound OAuth config explicitly
-includes them. Use the ~thunderid_update_application~ tool to set this on the application:
+includes them. Use the ~update_application~ tool to set this on the application:
 
 ~~~json
 {
@@ -671,8 +671,8 @@ Use this guide when switching an existing Mode 1 (redirect-based) integration to
 
 In Mode 2 the provider is configured with the application's UUID (~applicationId~), not a client ID string.
 
-Use ~thunderid_list_applications~ to find your application and copy its UUID. If you need a new application,
-use ~thunderid_create_application~ and note the returned UUID.
+Use ~list_applications~ to find your application and copy its UUID. If you need a new application,
+use ~create_application~ and note the returned UUID.
 
 ### Step 2: Update the provider
 

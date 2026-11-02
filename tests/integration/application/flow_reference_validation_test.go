@@ -51,6 +51,7 @@ type flowDefinition struct {
 	Handle   string           `json:"handle,omitempty"`
 	FlowType string           `json:"flowType"`
 	Nodes    []nodeDefinition `json:"nodes"`
+	OUID     string           `json:"ouId,omitempty"`
 }
 
 type nodeDefinition struct {
@@ -503,6 +504,11 @@ func (suite *FlowReferenceValidationTestSuite) baseApp(nameSuffix string) testut
 }
 
 func (suite *FlowReferenceValidationTestSuite) createFlowReturningID(flowDef flowDefinition) string {
+	if flowDef.OUID == "" {
+		ouID, err := testutils.DefaultOUID()
+		suite.Require().NoError(err)
+		flowDef.OUID = ouID
+	}
 	body, _ := json.Marshal(flowDef)
 	req, _ := http.NewRequest(http.MethodPost, testServerURL+flowsEndpoint, bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")

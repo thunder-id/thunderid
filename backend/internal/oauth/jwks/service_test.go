@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package jwks
@@ -8,8 +8,10 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/base64"
 	"errors"
 	"testing"
 
@@ -123,7 +125,7 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_EdDSA_Success() {
 }
 
 func (suite *JWKSServiceTestSuite) TestGetJWKS_MLDSA_Success() {
-	signer, err := cryptolib.GenerateMLDSAKey(cryptolib.AlgorithmMLDSA65)
+	signer, err := mldsa.GenerateKey(mldsa.MLDSA65())
 	assert.NoError(suite.T(), err)
 	info := providers.PublicKeyInfo{
 		KeyID:          "key-1",
@@ -144,18 +146,12 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_MLDSA_Success() {
 	assert.Equal(suite.T(), "AKP", k.Kty)
 	assert.Equal(suite.T(), "ML-DSA-65", k.Alg)
 	assert.Equal(suite.T(), "sig", k.Use)
-	assert.NotEmpty(suite.T(), k.Pub)
+	assert.Equal(suite.T(), base64.RawURLEncoding.EncodeToString(signer.PublicKey().Bytes()), k.Pub)
 	assert.Empty(suite.T(), k.Crv)
 	assert.Empty(suite.T(), k.X)
 	assert.NotEmpty(suite.T(), k.X5c)
 	assert.NotEmpty(suite.T(), k.X5t)
 	assert.NotEmpty(suite.T(), k.X5tS256)
-}
-
-func (suite *JWKSServiceTestSuite) TestGetMLDSAPublicKeyJWKS_NonMLDSAKey() {
-	ecdsaKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	_, ok := getMLDSAPublicKeyJWKS(&ecdsaKey.PublicKey, "kid-1", "", nil, "", "")
-	assert.False(suite.T(), ok)
 }
 
 func (suite *JWKSServiceTestSuite) TestGetJWKS_GetPublicKeysError() {

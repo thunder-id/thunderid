@@ -38,7 +38,7 @@ type entityRuntimeStoreInterface interface {
 		revision int64) (bool, error)
 	SetAccessSuspension(ctx context.Context, entityID string, at time.Time, operatorNote string) (bool, error)
 	RecordAccessLogin(ctx context.Context, entityID string, at, notBefore time.Time) error
-	ClearAccessSuspension(ctx context.Context, entityID string, hold *identitygovernance.EntityHold,
+	ClearAccessSuspension(ctx context.Context, entityID string, hold *identitygovernance.AccountHold,
 		suspendedAt string) (bool, error)
 }
 
@@ -269,10 +269,10 @@ func (rs *entityRuntimeDBStore) RecordAccessLogin(ctx context.Context, entityID 
 }
 
 // ClearAccessSuspension removes the suspension if it is still the one placed at suspendedAt. When
-// hold is set, the same statement replaces the lock member with that entity-wide hold. It returns
+// hold is set, the same statement replaces the lock member with that account-wide hold. It returns
 // false, not an error, when that suspension is no longer there.
 func (rs *entityRuntimeDBStore) ClearAccessSuspension(ctx context.Context, entityID string,
-	hold *identitygovernance.EntityHold, suspendedAt string) (bool, error) {
+	hold *identitygovernance.AccountHold, suspendedAt string) (bool, error) {
 	dbClient, err := rs.client()
 	if err != nil {
 		return false, fmt.Errorf("failed to get database client: %w", err)

@@ -1,5 +1,6 @@
 resource_type: connection
 id: decl-idp-1
+ouHandle: decl-ou-1
 name: Declarative Test IDP
 description: A declarative test identity provider
 type: google

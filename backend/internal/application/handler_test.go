@@ -351,7 +351,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationListRequest_Success() {
 		},
 	}
 
-	mockService.On("GetApplicationList", mock.Anything).Return(expectedList, nil)
+	mockService.On("GetApplicationList", mock.Anything, mock.Anything).Return(expectedList, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/applications", nil)
 	w := httptest.NewRecorder()
@@ -394,7 +394,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationListRequest_WithTemplate() {
 		},
 	}
 
-	mockService.On("GetApplicationList", mock.Anything).Return(expectedList, nil)
+	mockService.On("GetApplicationList", mock.Anything, mock.Anything).Return(expectedList, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/applications", nil)
 	w := httptest.NewRecorder()
@@ -413,13 +413,135 @@ func (suite *HandlerTestSuite) TestHandleApplicationListRequest_WithTemplate() {
 	mockService.AssertExpectations(suite.T())
 }
 
+func (suite *HandlerTestSuite) TestHandleApplicationListRequest_WithOrganizationUnitFilter() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	mockService.On("GetApplicationList", mock.Anything, map[string]interface{}{"ouId": "ou-1"}).
+		Return(&model.ApplicationListResponse{Applications: []model.BasicApplicationResponse{}}, nil)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/applications?filter="+url.QueryEscape(`ouId eq "ou-1"`), nil)
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationListRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationListRequest_InvalidFilter() {
+	for name, expression := range map[string]string{
+		"an empty filter":                   "",
+		"no value":                          "ouId eq",
+		"an unquoted ID":                    "ouId eq ou-1",
+		"another operator":                  `ouId sw "ou-1"`,
+		"a second expression joined by and": `ouId eq "ou-1" and name eq "App 1"`,
+	} {
+		suite.Run(name, func() {
+			mockService := NewApplicationServiceInterfaceMock(suite.T())
+			handler := newApplicationHandler(mockService)
+
+			req := httptest.NewRequest(http.MethodGet, "/applications?filter="+url.QueryEscape(expression), nil)
+			w := httptest.NewRecorder()
+
+			handler.HandleApplicationListRequest(w, req)
+
+			assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
+			var errResp apierror.ErrorResponse
+			suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &errResp))
+			assert.Equal(suite.T(), ErrorInvalidFilter.Code, errResp.Code)
+		})
+	}
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationListRequest_WithProject() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	mockService.On("GetApplicationListByProject", mock.Anything, "project-1", mock.Anything).
+		Return(&model.ApplicationListResponse{Applications: []model.BasicApplicationResponse{}}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/applications?projectId=project-1", nil)
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationListRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationListRequest_ProjectWithFilter() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	mockService.On("GetApplicationListByProject", mock.Anything, "project-1",
+		map[string]interface{}{"ouId": "ou-1"}).
+		Return(&model.ApplicationListResponse{Applications: []model.BasicApplicationResponse{}}, nil)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/applications?projectId=project-1&filter="+url.QueryEscape(`ouId eq "ou-1"`), nil)
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationListRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_PassesTheProject() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	mockService.On("CreateApplication", mock.Anything, mock.MatchedBy(func(app *model.ApplicationDTO) bool {
+		return app.ProjectID == "project-1" && app.OUID == ""
+	})).Return(nil, &ErrorInvalidProject)
+
+	body, _ := json.Marshal(model.ApplicationRequest{ProjectID: "project-1", Name: "TestApp"})
+	req := httptest.NewRequest(http.MethodPost, "/applications", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationPostRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
+	var errResp apierror.ErrorResponse
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Equal(suite.T(), ErrorInvalidProject.Code, errResp.Code)
+	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_PassesTheProject() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	mockService.On("UpdateApplication", mock.Anything, "test-app-id",
+		mock.MatchedBy(func(app *model.ApplicationDTO) bool {
+			return app.ProjectID == "project-1" && app.OUID == ""
+		})).Return(nil, &ErrorInvalidProject)
+
+	body, _ := json.Marshal(model.ApplicationRequest{ProjectID: "project-1", Name: "UpdatedApp"})
+	req := httptest.NewRequest(http.MethodPut, "/applications/test-app-id", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "test-app-id")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationPutRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
+	var errResp apierror.ErrorResponse
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Equal(suite.T(), ErrorInvalidProject.Code, errResp.Code)
+	mockService.AssertExpectations(suite.T())
+}
+
 func (suite *HandlerTestSuite) TestHandleApplicationListRequest_ServiceError() {
 	mockService := NewApplicationServiceInterfaceMock(suite.T())
 	handler := newApplicationHandler(mockService)
 
 	svcErr := &tidcommon.InternalServerError
 
-	mockService.On("GetApplicationList", mock.Anything).Return(nil, svcErr)
+	mockService.On("GetApplicationList", mock.Anything, mock.Anything).Return(nil, svcErr)
 
 	req := httptest.NewRequest(http.MethodGet, "/applications", nil)
 	w := httptest.NewRecorder()
@@ -1736,7 +1858,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationListRequest_EncodeResponseEr
 		Count:        1,
 	}
 
-	mockService.On("GetApplicationList", mock.Anything).Return(listResponse, nil)
+	mockService.On("GetApplicationList", mock.Anything, mock.Anything).Return(listResponse, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/applications", nil)
 	w := &failingResponseWriter{failOnce: true}
@@ -2760,9 +2882,8 @@ func (suite *HandlerTestSuite) TestSharingPolicyPostRefusesAnUnknownField() {
 	}
 }
 
-// The schema lists neither a policy id nor overlay rules, so a body carrying either is refused
-// rather than silently accepted and dropped. The id is the framework's to mint, and an application
-// declares no overlay fields for terms to govern.
+// The schema lists no policy id, so a body carrying one is refused rather than silently accepted
+// and dropped. The id is the framework's to mint.
 func (suite *HandlerTestSuite) TestSharingPolicyPostRefusesWhatTheSchemaOmits() {
 	for _, tc := range []struct {
 		name string
@@ -2774,21 +2895,6 @@ func (suite *HandlerTestSuite) TestSharingPolicyPostRefusesWhatTheSchemaOmits() 
 				"id":         "caller-chosen",
 				"childUnits": map[string]string{"mode": "all"},
 			},
-		},
-		{
-			name: "overlay rules on a section",
-			body: map[string]interface{}{"childUnits": map[string]interface{}{
-				"mode": "all", "overlayRules": map[string]interface{}{
-					"isRecoveryFlowEnabled": map[string]bool{"editable": false}}}},
-		},
-		{
-			name: "overlay rules on a named unit",
-			body: map[string]interface{}{"childUnits": map[string]interface{}{
-				"mode": "selected",
-				"units": []map[string]interface{}{{
-					"ouId": "acme-customer-a", "reach": "unit",
-					"overlayRules": map[string]interface{}{
-						"isRecoveryFlowEnabled": map[string]bool{"editable": false}}}}}},
 		},
 	} {
 		suite.Run(tc.name, func() {
@@ -2826,6 +2932,38 @@ func (suite *HandlerTestSuite) TestSharingPolicyPostAcceptsExclusions() {
 	suite.Require().NotNil(recorded.ChildUnits)
 	suite.Equal(sharing.ChildUnitsAll, recorded.ChildUnits.Mode)
 	suite.Equal([]string{"acme-trial"}, recorded.ChildUnits.ExcludedOUIDs)
+}
+
+// Overlay rules decode and reach the service, on a section and on a named unit. The refusal is the
+// framework's, since an application declares no field for them to govern.
+func (suite *HandlerTestSuite) TestSharingPolicyPostPassesOverlayRulesToTheService() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	var recorded sharing.PolicyRequest
+	mockService.EXPECT().CreateSharingPolicy(mock.Anything, "app-1", mock.Anything).
+		Run(func(_ context.Context, _ string, req sharing.PolicyRequest) { recorded = req }).
+		Return(sharing.Policy{}, &ErrorInvalidSharingPolicy)
+
+	w := httptest.NewRecorder()
+	handler.HandleSharingPolicyPostRequest(w, sharingRequest(http.MethodPost,
+		"/applications/app-1/sharing-policies",
+		map[string]interface{}{"childUnits": map[string]interface{}{
+			"mode":         "selected",
+			"overlayRules": map[string]interface{}{"isRecoveryFlowEnabled": map[string]bool{"editable": false}},
+			"units": []map[string]interface{}{{
+				"ouId": "acme-customer-a", "reach": "unit",
+				"overlayRules": map[string]interface{}{"isRecoveryFlowEnabled": map[string]bool{"editable": true}},
+			}}}},
+		map[string]string{"id": "app-1"}))
+
+	suite.Equal(http.StatusBadRequest, w.Code, "body: %s", w.Body.String())
+	var errResp apierror.ErrorResponse
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &errResp))
+	suite.Equal(ErrorInvalidSharingPolicy.Code, errResp.Code)
+	suite.Require().NotNil(recorded.ChildUnits)
+	suite.Contains(recorded.ChildUnits.OverlayRules, "isRecoveryFlowEnabled")
+	suite.Require().Len(recorded.ChildUnits.Units, 1)
+	suite.Contains(recorded.ChildUnits.Units[0].OverlayRules, "isRecoveryFlowEnabled")
 }
 
 // This API leaves a deployment-wide reach to resource files and imports, so a create stating one is

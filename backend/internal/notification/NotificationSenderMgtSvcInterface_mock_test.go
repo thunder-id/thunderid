@@ -522,6 +522,65 @@ func (_c *NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call) RunAndRe
 	return _c
 }
 
+// ResolveSenderOU provides a mock function for the type NotificationSenderMgtSvcInterfaceMock
+func (_mock *NotificationSenderMgtSvcInterfaceMock) ResolveSenderOU(ctx context.Context, sender *common.NotificationSenderDTO) *common0.ServiceError {
+	ret := _mock.Called(ctx, sender)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveSenderOU")
+	}
+
+	var r0 *common0.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *common.NotificationSenderDTO) *common0.ServiceError); ok {
+		r0 = returnFunc(ctx, sender)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common0.ServiceError)
+		}
+	}
+	return r0
+}
+
+// NotificationSenderMgtSvcInterfaceMock_ResolveSenderOU_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveSenderOU'
+type NotificationSenderMgtSvcInterfaceMock_ResolveSenderOU_Call struct {
+	*mock.Call
+}
+
+// ResolveSenderOU is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sender *common.NotificationSenderDTO
+func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) ResolveSenderOU(ctx any, sender any) *NotificationSenderMgtSvcInterfaceMock_ResolveSenderOU_Call {
+	return &NotificationSenderMgtSvcInterfaceMock_ResolveSenderOU_Call{Call: _e.mock.On("ResolveSenderOU", ctx, sender)}
+}
+
+func (_c *NotificationSenderMgtSvcInterfaceMock_ResolveSenderOU_Call) Run(run func(ctx context.Context, sender *common.NotificationSenderDTO)) *NotificationSenderMgtSvcInterfaceMock_ResolveSenderOU_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *common.NotificationSenderDTO
+		if args[1] != nil {
+			arg1 = args[1].(*common.NotificationSenderDTO)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *NotificationSenderMgtSvcInterfaceMock_ResolveSenderOU_Call) Return(serviceError *common0.ServiceError) *NotificationSenderMgtSvcInterfaceMock_ResolveSenderOU_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *NotificationSenderMgtSvcInterfaceMock_ResolveSenderOU_Call) RunAndReturn(run func(ctx context.Context, sender *common.NotificationSenderDTO) *common0.ServiceError) *NotificationSenderMgtSvcInterfaceMock_ResolveSenderOU_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetDependencyRegistry provides a mock function for the type NotificationSenderMgtSvcInterfaceMock
 func (_mock *NotificationSenderMgtSvcInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
 	_mock.Called(r)

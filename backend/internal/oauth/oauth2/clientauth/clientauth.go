@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package clientauth provides shared client authentication logic for OAuth2 endpoints.
@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
+	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -30,7 +31,9 @@ import (
 const jtiNamespace = "client_assertion"
 
 // authenticate authenticates the OAuth2 client from the request.
-// It extracts credentials, validates them, and returns OAuthClientInfo on success.
+// It extracts credentials, validates them, and returns OAuthClientInfo on success. A held client is
+// refused as an unregistered one is, and only once its credentials verify, so a caller without them
+// cannot learn of the hold.
 // The issuer is the audience value accepted when validating client assertion JWTs.
 // Returns an authError on failure.
 func authenticate(
@@ -38,6 +41,7 @@ func authenticate(
 	r *http.Request,
 	actorProvider providers.ActorProvider,
 	authnProvider providers.AuthnProviderManager,
+	governance providers.IdentityGovernanceProvider,
 	jwtService jwt.JWTServiceInterface,
 	jtiStore jti.JTIStoreInterface,
 	issuer string,
@@ -160,6 +164,16 @@ func authenticate(
 				log.MaskedString("clientID", clientID))
 			return nil, errInvalidClientCredentials
 		}
+	}
+
+	held, svcErr := oauth2utils.IsClientHeld(ctx, governance, oauthApp)
+	if svcErr != nil {
+		logger.Error(ctx, "Failed to read the client's access state", log.MaskedString("clientID", clientID))
+		return nil, errInvalidClientCredentials
+	}
+	if held {
+		logger.Debug(ctx, "Refused a held client", log.MaskedString("clientID", clientID))
+		return nil, errInvalidClientCredentials
 	}
 
 	return &OAuthClientInfo{

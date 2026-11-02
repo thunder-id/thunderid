@@ -100,6 +100,7 @@ explicitSubGroups:
   - name: Identities
     tags:
       - Users
+      - User Sharing
       - Self
       - User Types
       - Groups

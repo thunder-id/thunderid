@@ -80,6 +80,21 @@ func (c *TokenRevocationConfig) Validate() error {
 	return nil
 }
 
+// maxProcessorTimeout caps the processor timeout in seconds, since the call blocks an interactive login.
+const maxProcessorTimeout = 30
+
+// Validate checks that the authorization details processor timeout, when set, is within bounds.
+func (c *AuthorizationDetailsConfig) Validate() error {
+	if c.ProcessorTimeout == 0 {
+		return nil
+	}
+	if c.ProcessorTimeout < 0 || c.ProcessorTimeout > maxProcessorTimeout {
+		return fmt.Errorf("oauth.authorization_details.processor_timeout must be between 1 and %d (got %d)",
+			maxProcessorTimeout, c.ProcessorTimeout)
+	}
+	return nil
+}
+
 // Upper bounds for the back-channel logout retry settings. The retry wait doubles per attempt, so
 // without them a large max_attempts or retry_delay overflows the wait to zero or less and the
 // remaining attempts fire back to back. At the bounds the longest wait is 60s x 2^8, about 4.3 hours.
@@ -155,9 +170,10 @@ func (c *DPoPConfig) Validate() error {
 	}
 	supported := map[string]struct{}{
 		"ES256": {}, "ES384": {}, "ES512": {},
-		"PS256": {}, "PS384": {}, "PS512": {},
-		"RS256": {}, "RS384": {}, "RS512": {},
-		"EdDSA": {},
+		"PS256": {},
+		"RS256": {}, "RS512": {},
+		"EdDSA":     {},
+		"ML-DSA-44": {}, "ML-DSA-65": {}, "ML-DSA-87": {},
 	}
 	for _, alg := range c.AllowedAlgs {
 		if _, ok := supported[alg]; !ok {

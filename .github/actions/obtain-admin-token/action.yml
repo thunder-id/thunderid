@@ -13,6 +13,10 @@ inputs:
     description: 'Base URL of the running ThunderID server'
     required: false
     default: 'https://localhost:8090'
+  client-id:
+    description: 'Client ID of the console application to authenticate through (CONSOLE, or ADMIN_CONSOLE on a quickstart pack)'
+    required: false
+    default: 'CONSOLE'
 
 outputs:
   token:
@@ -29,10 +33,11 @@ runs:
         SERVER_URL: ${{ inputs.server-url }}
         ADMIN_USERNAME: ${{ inputs.admin-username }}
         ADMIN_PASSWORD: ${{ inputs.admin-password }}
+        CONSOLE_CLIENT_ID: ${{ inputs.client-id }}
       run: |
         # The server runs with security enabled, so the management /import and
         # /applications calls below need an admin token.
-        # Obtain one via OAuth2 authorization code + PKCE through the CONSOLE app,
+        # Obtain one via OAuth2 authorization code + PKCE through the console app,
         # authenticating the bootstrapped admin user.
         CONSOLE_REDIRECT_URI="$SERVER_URL/console"
         # Tokens are bound to a single resource server (RFC 8707), so the CONSOLE app targets the
@@ -42,7 +47,7 @@ runs:
         CODE_CHALLENGE=$(printf '%s' "$CODE_VERIFIER" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
 
         curl -sk -o /dev/null -D /tmp/authz_headers.txt -G "$SERVER_URL/oauth2/authorize" \
-          --data-urlencode "client_id=CONSOLE" \
+          --data-urlencode "client_id=$CONSOLE_CLIENT_ID" \
           --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
           --data-urlencode "scope=system" \
           --data-urlencode "response_type=code" \
@@ -100,7 +105,7 @@ runs:
           --data-urlencode "grant_type=authorization_code" \
           --data-urlencode "code=$AUTH_CODE" \
           --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
-          --data-urlencode "client_id=CONSOLE" \
+          --data-urlencode "client_id=$CONSOLE_CLIENT_ID" \
           --data-urlencode "code_verifier=$CODE_VERIFIER")
         ADMIN_TOKEN=$(echo "$TOKEN_RESP" | jq -r '.access_token // empty')
         if [ -z "$ADMIN_TOKEN" ]; then

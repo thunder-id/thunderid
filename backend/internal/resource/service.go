@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -23,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
 
 const (
@@ -122,6 +124,8 @@ type resourceService struct {
 	transactioner      providers.Transactioner
 	dependencyRegistry resourcedependency.Registry
 	valueCapturer      declarativeresource.ValueCapturer
+	// keepsReferences is set on a control plane, which keeps a value reference where a value belongs.
+	keepsReferences bool
 }
 
 // authZENPDPConnectionLookup retrieves AuthZEN PDP connections for resource-server validation.
@@ -225,6 +229,7 @@ func newResourceService(
 	transactionerInstance providers.Transactioner,
 	authZENPDPService authZENPDPConnectionLookup,
 	valueCapturer declarativeresource.ValueCapturer,
+	options ...Option,
 ) (ResourceServiceInterface, error) {
 	// Load default delimiter from config
 	defaultDelimiter := getDefaultDelimiter()
@@ -232,7 +237,7 @@ func newResourceService(
 		return nil, fmt.Errorf("configured permission delimiter is invalid")
 	}
 
-	return &resourceService{
+	service := &resourceService{
 		logger:            *log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 		resourceStore:     resourceStore,
 		ouService:         ouService,
@@ -240,7 +245,11 @@ func newResourceService(
 		defaultDelimiter:  defaultDelimiter,
 		transactioner:     transactionerInstance,
 		valueCapturer:     valueCapturer,
-	}, nil
+	}
+	for _, option := range options {
+		option(service)
+	}
+	return service, nil
 }
 
 // Resource Server Methods
@@ -482,6 +491,9 @@ func (rs *resourceService) UpdateResourceServer(
 	if resourceServer.Identifier == "" {
 		resourceServer.Identifier = existingResServer.Identifier
 	} else if resourceServer.Identifier != existingResServer.Identifier {
+		if hasInvalidMCPIdentifier(resourceServer.Type, resourceServer.Identifier, rs.keepsReferences) {
+			return nil, &ErrorInvalidMCPIdentifier
+		}
 		identifierExists, err := rs.resourceStore.CheckResourceServerIdentifierExists(ctx, resourceServer.Identifier)
 		if err != nil {
 			rs.logger.Error(ctx, "Failed to check resource server identifier", log.Error(err))
@@ -1414,6 +1426,9 @@ func (rs *resourceService) validateResourceServerCreate(
 	if resourceServer.Type != "" && !resourceServer.Type.IsValid() {
 		return &ErrorInvalidRequestFormat
 	}
+	if hasInvalidMCPIdentifier(resourceServer.Type, resourceServer.Identifier, rs.keepsReferences) {
+		return &ErrorInvalidMCPIdentifier
+	}
 	if resourceServer.AuthorizationEngine.Type != "" &&
 		resourceServer.AuthorizationEngine.Type != providers.AuthorizationEngineTypeRBAC &&
 		resourceServer.AuthorizationEngine.Type != providers.AuthorizationEngineTypeAuthZENPDP {
@@ -1633,6 +1648,26 @@ func validateHandle(handle string, delimiter string) *tidcommon.ServiceError {
 		}
 	}
 	return nil
+}
+
+// hasInvalidMCPIdentifier reports whether an MCP resource server identifier is not an http or https
+// URL with a host and no fragment. MCP clients send the server's canonical URL as the RFC 8707
+// resource parameter, so any other value can never match their token requests. A control plane keeps
+// a variable reference where a deployment's identifier belongs; the value it names is checked where it
+// is put in, on import into that deployment.
+func hasInvalidMCPIdentifier(resourceType providers.ResourceServerType, identifier string,
+	keepsReferences bool) bool {
+	if resourceType != providers.ResourceServerTypeMCP {
+		return false
+	}
+	if keepsReferences && valueref.IsWellFormedReference(identifier) && !valueref.IsSecretReference(identifier) {
+		return false
+	}
+	// url.Parse reports an empty fragment for a trailing "#" and keeps a "\" in the path, which clients
+	// rewrite to "/", so the raw value is checked for both.
+	parsed, err := url.Parse(identifier)
+	return err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+		parsed.Hostname() == "" || strings.ContainsAny(identifier, "#\\")
 }
 
 // getDefaultDelimiter returns the default delimiter from configuration.

@@ -1,0 +1,13 @@
+# Quickstart-only: this file is packaged into auth-dp alone, the Data Plane that backs the
+# Control Plane's own sign-in (see quickstart/setup.sh and build.sh's package_quickstart).
+# Without a CORS allowlist, auth-dp answers no cross-origin requests at all (see
+# backend/internal/system/cors/dynamic.go — an empty allowedOrigins falls back to the
+# deployment's static config, which the shipped deployment.yaml doesn't set either). The Control
+# Plane's console calls auth-dp directly from the browser (its /oauth2/token, discovery, and
+# similar endpoints, since the Control Plane's console is pointed there as its trusted issuer),
+# so this origin has to be explicitly allowed.
+resource_type: server_config
+name: cors
+value:
+  allowedOrigins:
+    - "https://localhost:8095"

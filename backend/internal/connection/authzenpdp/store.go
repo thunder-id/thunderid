@@ -51,7 +51,8 @@ func (s *authZENPDPStore) CreateAuthZENPDP(ctx context.Context, connection AuthZ
 		return err
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryCreateAuthZENPDPConnection,
-		connection.ID, connection.Name, connection.Description, authZENPDPConnectionType, properties, s.scope(ctx))
+		connection.ID, connection.Name, connection.Description, authZENPDPConnectionType, connection.OUID, properties,
+		s.scope(ctx))
 	return err
 }
 
@@ -214,7 +215,7 @@ func (s *authZENPDPStore) buildAuthZENPDPConnection(row map[string]interface{}) 
 	}
 	return AuthZENPDPConnection{
 		ID: stringValue(row["id"]), Name: stringValue(row["name"]), Description: stringValue(row["description"]),
-		Endpoint: properties.Endpoint, BatchEndpoint: properties.BatchEndpoint,
+		OUID: stringValue(row["ou_id"]), Endpoint: properties.Endpoint, BatchEndpoint: properties.BatchEndpoint,
 		TimeoutMS: properties.TimeoutMS, RetryCount: properties.RetryCount,
 		SubjectAttributeMappings: properties.SubjectAttributeMappings,
 		AuthenticationProperties: authenticationProperties,

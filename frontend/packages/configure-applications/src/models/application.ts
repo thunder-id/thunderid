@@ -1,6 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {AccessStatusReport} from '@thunderid/types';
 import type {InboundAuthConfig} from './inbound-auth';
 import type {AttestationConfig} from './oauth';
 import type {AssertionConfig} from './token';
@@ -63,6 +64,7 @@ export type BasicApplication = Pick<
   | 'type'
   | 'template'
   | 'isReadOnly'
+  | 'status'
 > & {
   /**
    * OAuth2 client identifier
@@ -342,4 +344,9 @@ export interface Application {
    * Whether this application is read-only (declarative/immutable)
    */
   isReadOnly?: boolean;
+
+  /**
+   * Effective access status, derived by the server at read time. Read-only; never LOCKED.
+   */
+  status?: {value: Exclude<AccessStatusReport['value'], 'LOCKED'>};
 }

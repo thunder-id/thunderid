@@ -42,7 +42,7 @@ describe('TrustedIssuerCreateForm', () => {
   });
 
   it('should render the form with the ID-JAG switch off and token exchange switch on by default', () => {
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     expect(screen.getByLabelText(/^Issuer URI/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^JWKS endpoint/)).toBeInTheDocument();
@@ -51,14 +51,14 @@ describe('TrustedIssuerCreateForm', () => {
   });
 
   it('should not render a name field (collected on the wizard name step)', () => {
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
   });
 
   it('should render a Back button that calls onBack, and no Cancel affordance', async () => {
     const user = userEvent.setup();
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     expect(screen.queryByRole('button', {name: /^cancel$/i})).not.toBeInTheDocument();
 
@@ -68,7 +68,7 @@ describe('TrustedIssuerCreateForm', () => {
 
   it('should disable the submit button until all required fields are valid', async () => {
     const user = userEvent.setup();
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     const submitButton = screen.getByTestId('trusted-issuer-create-submit');
     expect(submitButton).toBeDisabled();
@@ -82,7 +82,7 @@ describe('TrustedIssuerCreateForm', () => {
 
   it('should show a validation error when an issuer URI is not https', async () => {
     const user = userEvent.setup();
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     const issuerField = screen.getByLabelText(/^Issuer URI/);
     await user.type(issuerField, 'http://acme.okta.com');
@@ -93,7 +93,7 @@ describe('TrustedIssuerCreateForm', () => {
 
   it('should show a required error when a field is left blank on blur', async () => {
     const user = userEvent.setup();
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     const issuerField = screen.getByLabelText(/^Issuer URI/);
     await user.click(issuerField);
@@ -111,10 +111,11 @@ describe('TrustedIssuerCreateForm', () => {
         issuer: 'https://acme.okta.com',
         jwksEndpoint: 'https://acme.okta.com/keys',
         idJagEnabled: true,
+        ouId: 'ou-1',
       });
     });
 
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
     await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://acme.okta.com/keys');
@@ -122,6 +123,7 @@ describe('TrustedIssuerCreateForm', () => {
 
     expect(mockMutate).toHaveBeenCalledWith(
       {
+        ouId: 'ou-1',
         name: 'Acme Okta',
         issuer: 'https://acme.okta.com',
         jwksEndpoint: 'https://acme.okta.com/keys',
@@ -137,13 +139,25 @@ describe('TrustedIssuerCreateForm', () => {
     });
   });
 
+  it('should report a missing organization unit instead of creating', async () => {
+    const user = userEvent.setup();
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="" onNameConflict={onNameConflict} onBack={onBack} />);
+
+    await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
+    await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://acme.okta.com/keys');
+    await user.click(screen.getByTestId('trusted-issuer-create-submit'));
+
+    expect(screen.getByText('Organization unit is required')).toBeInTheDocument();
+    expect(mockMutate).not.toHaveBeenCalled();
+  });
+
   it('should call onNameConflict on a 409 conflict without navigating', async () => {
     const user = userEvent.setup();
     mockMutate.mockImplementation((_data, opts) => {
       opts.onError({response: {status: 409}});
     });
 
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
     await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://acme.okta.com/keys');
@@ -159,7 +173,7 @@ describe('TrustedIssuerCreateForm', () => {
       opts.onError({response: {status: 500}});
     });
 
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
     await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://acme.okta.com/keys');
@@ -175,7 +189,7 @@ describe('TrustedIssuerCreateForm', () => {
       opts.onError({response: {status: 500}});
     });
 
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
     await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://acme.okta.com/keys');
@@ -192,7 +206,7 @@ describe('TrustedIssuerCreateForm', () => {
     mutationState.isPending = true;
     mutationState.isError = false;
 
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
 
@@ -204,7 +218,7 @@ describe('TrustedIssuerCreateForm', () => {
     mutationState.isPending = false;
     mutationState.isError = true;
 
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
 
@@ -223,7 +237,7 @@ describe('TrustedIssuerCreateForm', () => {
       });
     });
 
-    render(<TrustedIssuerCreateForm name="Beta AD" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Beta AD" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     await user.click(screen.getByRole('switch', {name: /id-jag/i}));
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://beta.example.com');
@@ -234,7 +248,7 @@ describe('TrustedIssuerCreateForm', () => {
   });
 
   it('should not render a client id field', () => {
-    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} onBack={onBack} />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
 
     expect(screen.queryByLabelText(/^Client ID/)).not.toBeInTheDocument();
   });

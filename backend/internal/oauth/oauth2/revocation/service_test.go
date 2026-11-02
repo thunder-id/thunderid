@@ -16,7 +16,9 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	serviceerror "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
 )
@@ -42,7 +44,7 @@ func (s *RevocationServiceTestSuite) SetupTest() {
 	s.jwtServiceMock = jwtmock.NewJWTServiceInterfaceMock(s.T())
 	s.storeMock = newRevocationStoreInterfaceMock(s.T())
 	s.obsMock = observabilitymock.NewObservabilityServiceInterfaceMock(s.T())
-	s.service = newRevocationService(s.jwtServiceMock, s.storeMock, time.Hour, true, s.obsMock,
+	s.service = newRevocationService(s.jwtServiceMock, s.storeMock, time.Hour, 0, true, s.obsMock,
 		testMaxEntriesPerChange)
 }
 
@@ -225,7 +227,7 @@ func TestRevokeTokenFamily_WritesTokenFamilyCriterion(t *testing.T) {
 		}).
 		Return(nil)
 
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, testMaxEntriesPerChange)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, testMaxEntriesPerChange)
 	err := revoker.RevokeTokenFamily(context.Background(), "tfid-abc", RevocationReasonSessionLogout)
 
 	assert.NoError(t, err)
@@ -238,7 +240,7 @@ func TestRevokeTokenFamily_WritesTokenFamilyCriterion(t *testing.T) {
 func TestRevokeTokenFamily_EmptyIDIsNoOp(t *testing.T) {
 	store := newRevocationStoreInterfaceMock(t)
 	// No insertCriterion expectation: an empty tfid must not write.
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, testMaxEntriesPerChange)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, testMaxEntriesPerChange)
 
 	err := revoker.RevokeTokenFamily(context.Background(), "", RevocationReasonSessionLogout)
 	assert.NoError(t, err)
@@ -255,7 +257,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_UsesCutoffAsRevoked
 			rows[0].RevokedAt.Equal(cutoff)
 	})).Return(nil)
 
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, testMaxEntriesPerChange)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, testMaxEntriesPerChange)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{{
 		Criterion: Criterion{Type: CriterionTypeApplicationID, Value: "app-123"},
 		Mode:      RevocationModeBeforeAction,
@@ -270,7 +272,7 @@ func TestRevokeTokenFamily_PropagatesStoreError(t *testing.T) {
 	store := newRevocationStoreInterfaceMock(t)
 	store.On("insertCriterion", mock.Anything, mock.Anything).Return(errors.New("db down"))
 
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, testMaxEntriesPerChange)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, testMaxEntriesPerChange)
 	err := revoker.RevokeTokenFamily(context.Background(), "tfid-abc", RevocationReasonRefreshReplay)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "db down")
@@ -285,7 +287,7 @@ func TestRevokeTokenFamily_NonPositiveTTLFallsBack(t *testing.T) {
 		}).
 		Return(nil)
 
-	revoker := newRevocationService(nil, store, 0, false, nil, testMaxEntriesPerChange)
+	revoker := newRevocationService(nil, store, 0, 0, false, nil, testMaxEntriesPerChange)
 	err := revoker.RevokeTokenFamily(context.Background(), "tfid-abc", RevocationReasonCodeReplay)
 	assert.NoError(t, err)
 	assert.WithinDuration(t, captured.RevokedAt.Add(defaultTokenFamilyRevocationTTL), captured.ExpiryTime, time.Second)
@@ -300,7 +302,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_RequestedTTLExtends
 			rows[0].ExpiryTime.Before(before.Add(requested+time.Minute))
 	})).Return(nil)
 
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, testMaxEntriesPerChange)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, testMaxEntriesPerChange)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{{
 		Criterion: Criterion{Type: CriterionTypeApplicationKey, Value: "client-long-lived"},
 		Mode:      RevocationModeAll,
@@ -319,7 +321,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_ShorterRequestedTTL
 		return len(rows) == 1 && rows[0].ExpiryTime.After(before.Add(configured-time.Minute))
 	})).Return(nil)
 
-	revoker := newRevocationService(nil, store, configured, false, nil, testMaxEntriesPerChange)
+	revoker := newRevocationService(nil, store, configured, 0, false, nil, testMaxEntriesPerChange)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{{
 		Criterion: Criterion{Type: CriterionTypeApplicationKey, Value: "client-short-lived"},
 		Mode:      RevocationModeAll,
@@ -339,7 +341,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_ZeroTTLUsesTheConfi
 			rows[0].ExpiryTime.Before(before.Add(configured+time.Minute))
 	})).Return(nil)
 
-	revoker := newRevocationService(nil, store, configured, false, nil, testMaxEntriesPerChange)
+	revoker := newRevocationService(nil, store, configured, 0, false, nil, testMaxEntriesPerChange)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{{
 		Criterion: Criterion{Type: CriterionTypeSubject, Value: "user-1"},
 		Mode:      RevocationModeAll,
@@ -353,7 +355,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_ZeroTTLUsesTheConfi
 func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_EmptySliceSkipsTheStore() {
 	store := newRevocationStoreInterfaceMock(s.T())
 
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, testMaxEntriesPerChange)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, testMaxEntriesPerChange)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), nil)
 
 	s.Nil(svcErr)
@@ -363,7 +365,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_EmptySliceSkipsTheS
 func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_EmptyValuesAreFilteredNotWritten() {
 	store := newRevocationStoreInterfaceMock(s.T())
 
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, testMaxEntriesPerChange)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, testMaxEntriesPerChange)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{
 		{Criterion: Criterion{Type: CriterionTypeSubject, Value: ""}, Mode: RevocationModeAll,
 			Reason: RevocationReasonUserDeleted},
@@ -376,7 +378,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_EmptyValuesAreFilte
 func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_OneInvalidEntryWritesNothing() {
 	store := newRevocationStoreInterfaceMock(s.T())
 
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, testMaxEntriesPerChange)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, testMaxEntriesPerChange)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{
 		{Criterion: Criterion{Type: CriterionTypeEntityScope, Value: "digest-1"},
 			Mode: RevocationModeBeforeAction, Cutoff: time.Now().UTC(),
@@ -405,7 +407,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_WritesEveryEntryInO
 			rows[1].RevokedAt.Equal(boundaryCutoff)
 	})).Return(nil)
 
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, testMaxEntriesPerChange)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, testMaxEntriesPerChange)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{
 		{Criterion: Criterion{Type: CriterionTypeApplicationKey, Value: "client-1"},
 			Mode: RevocationModeAll, Reason: RevocationReasonApplicationDeleted},
@@ -421,7 +423,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_PropagatesStoreErro
 	store := newRevocationStoreInterfaceMock(s.T())
 	store.On("insertCriteria", mock.Anything, mock.Anything).Return(errors.New("db down"))
 
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, testMaxEntriesPerChange)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, testMaxEntriesPerChange)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{
 		{Criterion: Criterion{Type: CriterionTypeSubject, Value: "user-1"}, Mode: RevocationModeAll,
 			Reason: RevocationReasonUserDeleted},
@@ -435,7 +437,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_OverTheCapWritesNot
 	store := newRevocationStoreInterfaceMock(s.T())
 	cutoff := time.Now().UTC()
 
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, 1)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, 1)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{
 		{Criterion: Criterion{Type: CriterionTypeEntityScope, Value: "digest-1"},
 			Mode: RevocationModeBeforeAction, Cutoff: cutoff, Reason: RevocationReasonRoleDeleted},
@@ -458,7 +460,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_ExactlyTheCapIsWrit
 	})).Return(nil)
 	cutoff := time.Now().UTC()
 
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, 2)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, 2)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{
 		{Criterion: Criterion{Type: CriterionTypeEntityScope, Value: "digest-1"},
 			Mode: RevocationModeBeforeAction, Cutoff: cutoff, Reason: RevocationReasonRoleDeleted},
@@ -472,7 +474,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_ExactlyTheCapIsWrit
 func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_ZeroCapRefusesEveryRevocation() {
 	store := newRevocationStoreInterfaceMock(s.T())
 
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, 0)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, 0)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{
 		{Criterion: Criterion{Type: CriterionTypeSubject, Value: "user-1"}, Mode: RevocationModeAll,
 			Reason: RevocationReasonUserDeleted},
@@ -492,7 +494,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_RepeatedCriterionIs
 	repeated := CriteriaRevocation{Criterion: Criterion{Type: CriterionTypeEntityScope, Value: "digest-1"},
 		Mode: RevocationModeBeforeAction, Cutoff: cutoff, Reason: RevocationReasonRolePermissionRemoved}
 
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, 1)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, 1)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{repeated, repeated})
 
 	s.Nil(svcErr)
@@ -509,8 +511,155 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_DifferingRepeatsAre
 		return len(rows) == 1 && rows[0].Value == boundary.Criterion.Value && rows[0].RevokedAt.Equal(cutoff)
 	})).Return(nil).Once()
 
-	revoker := newRevocationService(nil, store, time.Hour, false, nil, 1)
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, 1)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{boundary, later})
 
 	s.Nil(svcErr)
+}
+
+// A boundary row lives until the last token it covers has expired and its leeway has passed: that
+// token was issued at the cutoff, which a suspension sets ahead of the write.
+func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_ExpiryCountsFromACutoffAheadAndAddsTheLeeway() {
+	store := newRevocationStoreInterfaceMock(s.T())
+	configured := time.Hour
+	leeway := 30 * time.Second
+	cutoff := time.Now().UTC().Add(leeway)
+	store.On("insertCriteria", mock.Anything, mock.MatchedBy(func(rows []revocationCriterion) bool {
+		return len(rows) == 1 && rows[0].RevokedAt.Equal(cutoff) &&
+			rows[0].ExpiryTime.Equal(cutoff.Add(configured+leeway))
+	})).Return(nil)
+
+	revoker := newRevocationService(nil, store, configured, leeway, false, nil, testMaxEntriesPerChange)
+	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{{
+		Criterion: Criterion{Type: CriterionTypeSubject, Value: "user-1"},
+		Mode:      RevocationModeBeforeAction,
+		Cutoff:    cutoff,
+		Reason:    RevocationReasonIdentitySuspended,
+	}})
+
+	s.Nil(svcErr)
+}
+
+// A criteria revocation that cannot be stored is published for an operator to alert on, naming the
+// reason and the target.
+func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_StoreFailureIsPublished() {
+	for _, tc := range []struct {
+		criterion Criterion
+		dataKey   string
+	}{
+		{Criterion{Type: CriterionTypeSubject, Value: "user-1"}, event.DataKey.Subject},
+		{Criterion{Type: CriterionTypeApplicationKey, Value: "client-1"}, event.DataKey.ClientID},
+	} {
+		s.Run(string(tc.criterion.Type), func() {
+			store := newRevocationStoreInterfaceMock(s.T())
+			store.On("insertCriteria", mock.Anything, mock.Anything).Return(errors.New("db unavailable"))
+			obsMock := observabilitymock.NewObservabilityServiceInterfaceMock(s.T())
+			obsMock.On("IsEnabled").Return(true)
+			var published *providers.Event
+			obsMock.On("PublishEvent", mock.Anything, mock.Anything).
+				Run(func(args mock.Arguments) { published = args.Get(1).(*providers.Event) }).Once()
+
+			revoker := newRevocationService(nil, store, time.Hour, 0, false, obsMock, testMaxEntriesPerChange)
+			svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{{
+				Criterion: tc.criterion,
+				Mode:      RevocationModeBeforeAction,
+				Cutoff:    time.Now().UTC(),
+				Reason:    RevocationReasonIdentitySuspended,
+			}})
+
+			s.Require().NotNil(svcErr)
+			s.Equal(serviceerror.ServerErrorType, svcErr.Type)
+			s.Require().NotNil(published)
+			s.Equal(string(event.EventTypeTokenRevocationFailed), published.Type)
+			s.Equal(providers.StatusFailure, published.Status)
+			s.Equal(string(RevocationReasonIdentitySuspended), published.Data[event.DataKey.RevocationReason])
+			s.Equal(string(tc.criterion.Type), published.Data[event.DataKey.CriterionType])
+			s.Equal(tc.criterion.Value, published.Data[tc.dataKey])
+		})
+	}
+}
+
+// A terminal row counts from the write, plus the leeway.
+func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_TerminalExpiryAddsTheLeeway() {
+	store := newRevocationStoreInterfaceMock(s.T())
+	configured := time.Hour
+	leeway := 30 * time.Second
+	before := time.Now().UTC()
+	store.On("insertCriteria", mock.Anything, mock.MatchedBy(func(rows []revocationCriterion) bool {
+		return len(rows) == 1 && !rows[0].ExpiryTime.Before(before.Add(configured+leeway)) &&
+			rows[0].ExpiryTime.Before(before.Add(configured+leeway+time.Minute))
+	})).Return(nil)
+
+	revoker := newRevocationService(nil, store, configured, leeway, false, nil, testMaxEntriesPerChange)
+	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{{
+		Criterion: Criterion{Type: CriterionTypeSubject, Value: "user-1"},
+		Mode:      RevocationModeAll,
+		Reason:    RevocationReasonUserDeleted,
+	}})
+
+	s.Nil(svcErr)
+}
+
+// A token is accepted until exp plus the leeway, so its row lives that long too.
+func (s *RevocationServiceTestSuite) TestRevokeToken_ExpiryAddsTheLeeway() {
+	leeway := 30 * time.Second
+	exp := time.Now().Add(time.Hour).Truncate(time.Second).UTC()
+	token := buildToken(map[string]interface{}{"jti": "jti-leeway", "client_id": testClientID,
+		"exp": float64(exp.Unix())})
+	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.MatchedBy(func(rt RevokedToken) bool {
+		return rt.JTI == "jti-leeway" && rt.ExpiryTime.Equal(exp.Add(leeway))
+	})).Return(nil)
+	s.obsMock.On("IsEnabled").Return(false)
+
+	revoker := newRevocationService(s.jwtServiceMock, s.storeMock, time.Hour, leeway, false, s.obsMock,
+		testMaxEntriesPerChange)
+	revokeOutcome, err := revoker.RevokeToken(context.Background(), token, "", testClientID)
+
+	s.NoError(err)
+	s.Equal(RevokeOutcomeRevoked, revokeOutcome)
+}
+
+func (s *RevocationServiceTestSuite) TestRevokeRefreshToken_ExpiryAddsTheLeeway() {
+	leeway := 30 * time.Second
+	expiry := time.Now().Add(time.Hour).UTC()
+	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.MatchedBy(func(rt RevokedToken) bool {
+		return rt.JTI == "rotated-jti" && rt.ExpiryTime.Equal(expiry.Add(leeway))
+	})).Return(nil)
+
+	revoker := newRevocationService(nil, s.storeMock, time.Hour, leeway, false, nil, testMaxEntriesPerChange)
+	err := revoker.(RefreshTokenRevokerInterface).RevokeRefreshToken(context.Background(), "rotated-jti", expiry)
+
+	s.NoError(err)
+}
+
+// A token family row lives the configured lifetime plus the leeway.
+func (s *RevocationServiceTestSuite) TestRevokeTokenFamily_ExpiryAddsTheLeeway() {
+	leeway := 30 * time.Second
+	var captured revocationCriterion
+	s.storeMock.On("insertCriterion", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { captured = args.Get(1).(revocationCriterion) }).Return(nil)
+
+	revoker := newRevocationService(nil, s.storeMock, time.Hour, leeway, false, nil, testMaxEntriesPerChange)
+	err := revoker.RevokeTokenFamily(context.Background(), "tfid-1", RevocationReasonExplicitTokenFamily)
+
+	s.Require().NoError(err)
+	s.WithinDuration(captured.RevokedAt.Add(time.Hour+leeway), captured.ExpiryTime, time.Second)
+}
+
+func (s *RevocationServiceTestSuite) TestRevokeTokenFamily_StoreFailureIsPublished() {
+	s.storeMock.On("insertCriterion", mock.Anything, mock.Anything).Return(errors.New("db unavailable"))
+	s.obsMock.On("IsEnabled").Return(true)
+	var published *providers.Event
+	s.obsMock.On("PublishEvent", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { published = args.Get(1).(*providers.Event) }).Once()
+
+	err := s.service.RevokeTokenFamily(context.Background(), "tfid-1", RevocationReasonExplicitTokenFamily)
+
+	s.Require().Error(err)
+	s.Require().NotNil(published)
+	s.Equal(string(event.EventTypeTokenRevocationFailed), published.Type)
+	s.Equal(providers.StatusFailure, published.Status)
+	s.Equal(string(CriterionTypeTokenFamily), published.Data[event.DataKey.CriterionType])
+	s.Equal(string(RevocationReasonExplicitTokenFamily), published.Data[event.DataKey.RevocationReason])
 }

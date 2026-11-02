@@ -4,16 +4,19 @@
 #
 # run-e2e.sh - Local E2E test runner for ThunderID.
 #
-# Extracts the built distribution to tests/e2e/distribution/, runs setup.sh
-# once to bootstrap default resources, then starts the server, imports sample-app
-# resources via the import API (authenticated with OAuth2), and runs the Playwright test suite.
+# Extracts the built quickstart pack (make build_quickstart) to tests/e2e/distribution/, runs its
+# setup.sh once, then starts its three deployments (auth-dp, the managed Data Plane and the Control
+# Plane). The suite exercises the Data Plane (https://localhost:8090): its Admin Console and the
+# applications it authenticates. The Data Plane's resources are imported directly through its
+# import API (authenticated with OAuth2 as the Service Desk Admin), and the Playwright test suite
+# runs against it.
 #
-# Runs in two phases against two independently provisioned servers:
-#   1. Everything tagged @wayfinder excluded, against a server with the sample apps imported.
-#   2. Only @wayfinder specs, against a fresh server with just the E2E admin app imported. The
-#      Wayfinder bundle those specs import replaces the server-wide CORS allowlist and default
+# Runs in two phases against two independently provisioned packs:
+#   1. Everything tagged @wayfinder excluded, against a pack with the sample apps imported.
+#   2. Only @wayfinder specs, against a fresh pack with the E2E admin app and the Wayfinder bundle
+#      imported. The Wayfinder bundle replaces the server-wide CORS allowlist and default
 #      resource server (full-replace import semantics, see server_config_import.go), so it must
-#      not share a server with anything that depends on either setting; a fresh server also avoids
+#      not share a server with anything that depends on either setting; a fresh pack also avoids
 #      a `Customer` user-type name collision with the sample apps' own `Customer` type. This phase
 #      also starts the standalone Wayfinder sample app (port 5173) that the tryout specs
 #      (tests/wayfinder/**) drive a real browser against.
@@ -93,11 +96,13 @@ fi
 GO_OS=$(go env GOOS)
 GO_ARCH=$(go env GOARCH)
 [ "$GO_OS" = "darwin" ] && PKG_OS="macos" || PKG_OS="$GO_OS"
+[ "$GO_ARCH" = "amd64" ] && GO_ARCH="x64"
 VERSION=$(sed 's/^v//' "$PROJECT_ROOT/version.txt")
-DIST_FOLDER="thunderid-${VERSION}-${PKG_OS}-${GO_ARCH}"
+DIST_FOLDER="thunderid-quickstart-${VERSION}-${PKG_OS}-${GO_ARCH}"
 DIST_HOME="$SCRIPT_DIR/distribution"
 DIST_ZIP="$PROJECT_ROOT/target/dist/${DIST_FOLDER}.zip"
 
+# The Service Desk Admin: the account that signs into the Data Plane's Admin Console.
 ADMIN_USER="${ADMIN_USERNAME:-admin}"
 ADMIN_PASS="${ADMIN_PASSWORD:-admin}"
 ADMIN_TOKEN=""
@@ -121,12 +126,19 @@ wait_for_url() {
     return 1
 }
 
+# The pack's three deployments: the managed Data Plane under test, auth-dp and the Control Plane.
+kill_pack_ports() {
+    kill_port "$SERVER_PORT"
+    kill_port 8091
+    kill_port 8095
+}
+
 cleanup() {
     echo "Cleaning up..."
     kill_port "$SAMPLE_PORT"
     kill_port "$WAYFINDER_PORT"
     kill_port "$MOCK_SMTP_INBOX_PORT"
-    kill_port "$SERVER_PORT"
+    kill_pack_ports
     rm -rf "$DIST_HOME"
 }
 trap cleanup EXIT
@@ -137,10 +149,10 @@ trap cleanup EXIT
 start_fresh_server() {
     rm -rf "$DIST_HOME"
     if [ ! -f "$DIST_ZIP" ]; then
-        echo "ERROR: Distribution zip not found at $DIST_ZIP. Run 'make build' first."
+        echo "ERROR: Quickstart pack not found at $DIST_ZIP. Run 'make build' first."
         exit 1
     fi
-    echo "Extracting distribution to $DIST_HOME..."
+    echo "Extracting the quickstart pack to $DIST_HOME..."
     mkdir -p "$DIST_HOME"
     unzip -q "$DIST_ZIP" -d "$SCRIPT_DIR/distribution-tmp"
     mv "$SCRIPT_DIR/distribution-tmp/$DIST_FOLDER/"* "$DIST_HOME/"
@@ -154,10 +166,10 @@ start_fresh_server() {
         # defaults.env.
         MOCK_GOOGLE_BASE_URL="${MOCK_GOOGLE_BASE_URL:-http://localhost:8093}"
         MOCK_GITHUB_BASE_URL="${MOCK_GITHUB_BASE_URL:-http://localhost:8092}"
-        if grep -q "identity_provider:" "$DIST_HOME/deployment.yaml"; then
-            echo "deployment.yaml already has an identity_provider: block; leaving it as-is (mock URLs not appended)."
+        if grep -q "identity_provider:" "$DIST_HOME/dp/deployment.yaml"; then
+            echo "dp/deployment.yaml already has an identity_provider: block; leaving it as-is (mock URLs not appended)."
         else
-            cat >> "$DIST_HOME/deployment.yaml" <<EOF
+            cat >> "$DIST_HOME/dp/deployment.yaml" <<EOF
 
 identity_provider:
   google_base_url: "$MOCK_GOOGLE_BASE_URL"
@@ -166,20 +178,24 @@ EOF
         fi
     fi
 
-    # Run setup.sh to bootstrap default resources (admin user, console app config, etc.).
+    # Run setup.sh to bootstrap the three deployments. The Service Desk Admin is the account the
+    # suite signs in with; the auth-dp admin only signs into the Control Plane, which the suite does
+    # not drive.
     echo "Running setup..."
-    (cd "$DIST_HOME" && ./setup.sh --admin-username "$ADMIN_USER" --admin-password "$ADMIN_PASS")
+    (cd "$DIST_HOME" && ADMIN_USERNAME=admin ADMIN_PASSWORD=admin \
+        SERVICE_DESK_USERNAME="$ADMIN_USER" SERVICE_DESK_PASSWORD="$ADMIN_PASS" ./setup.sh)
 
-    echo "Starting ThunderID server..."
+    echo "Starting the quickstart pack..."
     (cd "$DIST_HOME" && ./start.sh) &
-    wait_for_url "$SERVER_URL/health/liveness" "ThunderID server"
+    wait_for_url "$SERVER_URL/health/liveness" "Data Plane"
+    wait_for_url "https://localhost:8095/health/liveness" "Control Plane"
 }
 
 # Stops the server started by start_fresh_server and removes its distribution, so the next
 # start_fresh_server call is not racing an orphaned process still holding the sqlite files.
 stop_server() {
-    echo "Stopping ThunderID server..."
-    kill_port "$SERVER_PORT"
+    echo "Stopping the quickstart pack..."
+    kill_pack_ports
     local i=0
     while curl -skf "$SERVER_URL/health/liveness" > /dev/null 2>&1 && [ $i -lt 30 ]; do
         sleep 1
@@ -192,7 +208,7 @@ stop_server() {
     rm -rf "$DIST_HOME"
 }
 
-# Obtains an admin token via OAuth2 auth code + PKCE (CONSOLE app, admin credentials) and sets the
+# Obtains an admin token via OAuth2 auth code + PKCE (ADMIN_CONSOLE app, Service Desk Admin credentials) and sets the
 # global ADMIN_TOKEN. Must be called plainly (never `ADMIN_TOKEN=$(mint_admin_token)` and never
 # inside an `if`/`||`) - its `exit 1` calls only abort the right way when the function's own exit
 # status is what `set -e` sees.
@@ -207,7 +223,7 @@ mint_admin_token() {
     headers_file=$(mktemp)
     curl -sk -o /dev/null -D "$headers_file" \
         -G "$SERVER_URL/oauth2/authorize" \
-        --data-urlencode "client_id=CONSOLE" \
+        --data-urlencode "client_id=ADMIN_CONSOLE" \
         --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
         --data-urlencode "scope=system" \
         --data-urlencode "resource=$SERVER_URL/mcp" \
@@ -279,7 +295,7 @@ mint_admin_token() {
         --data-urlencode "grant_type=authorization_code" \
         --data-urlencode "code=$AUTH_CODE" \
         --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
-        --data-urlencode "client_id=CONSOLE" \
+        --data-urlencode "client_id=ADMIN_CONSOLE" \
         --data-urlencode "resource=$SERVER_URL/mcp" \
         --data-urlencode "code_verifier=$CODE_VERIFIER")
     ADMIN_TOKEN=$(echo "$TOKEN_RESP" | jq -r '.access_token // empty' || echo "")
@@ -469,6 +485,8 @@ if [ -z "$PHASE" ] || [ "$PHASE" = "2" ]; then
     start_fresh_server
     mint_admin_token
     import_config "$SCRIPT_DIR/thunderid-config.yaml" "" "E2E admin app"
+    wayfinder_config="$PROJECT_ROOT/samples/apps/wayfinder-sample/thunderid-config/redirect"
+    import_config "$wayfinder_config/thunderid-config.yaml" "$wayfinder_config/thunderid.env" "Wayfinder bundle"
     start_wayfinder_app
     start_mock_smtp_server
 

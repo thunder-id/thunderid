@@ -47,6 +47,7 @@ type userInfoService struct {
 	inboundClient     providers.ActorProvider
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface
 	dpopVerifier      dpop.VerifierInterface
+	governance        providers.IdentityGovernanceProvider
 	logger            *log.Logger
 }
 
@@ -59,6 +60,7 @@ func newUserInfoService(
 	actorProvider providers.ActorProvider,
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	dpopVerifier dpop.VerifierInterface,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 ) userInfoServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, serviceLoggerComponentName))
@@ -71,6 +73,7 @@ func newUserInfoService(
 		inboundClient:     actorProvider,
 		attributeCacheSvc: attributeCacheSvc,
 		dpopVerifier:      dpopVerifier,
+		governance:        governance,
 		logger:            logger,
 	}
 }
@@ -163,7 +166,10 @@ func (s *userInfoService) buildResponseFromClaims(
 		return nil, svcErr
 	}
 
-	oauthApp := s.getOAuthApp(ctx, tokenClaims)
+	oauthApp, svcErr := s.getOAuthApp(ctx, tokenClaims)
+	if svcErr != nil {
+		return nil, svcErr
+	}
 
 	// Extract allowed user attributes
 	var allowedUserAttributes []string
@@ -433,21 +439,33 @@ func (s *userInfoService) validateOpenIDScope(ctx context.Context, scopes []stri
 }
 
 // getOAuthApp retrieves the OAuth client configuration if client_id is present in claims.
-// Returns nil when no client_id is present, on error, or when the app is not found.
+// Returns nil when no client_id is present or the app is not found. A failed lookup is a server
+// error, and a held client refuses the token.
 func (s *userInfoService) getOAuthApp(
 	ctx context.Context, claims map[string]interface{},
-) *providers.OAuthClient {
+) (*providers.OAuthClient, *tidcommon.ServiceError) {
 	clientID, ok := claims["client_id"].(string)
 	if !ok || clientID == "" {
-		return nil
+		return nil, nil
 	}
 
 	app, svcErr := s.inboundClient.GetOAuthClientByClientID(ctx, clientID)
-	if svcErr != nil || app == nil {
-		return nil
+	if svcErr != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	if app == nil {
+		return nil, nil
 	}
 
-	return app
+	held, svcErr := oauth2utils.IsClientHeld(ctx, s.governance, app)
+	if svcErr != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	if held {
+		s.logger.Debug(ctx, "Refusing userinfo for a token of an unavailable application")
+		return nil, &errorInvalidAccessToken
+	}
+	return app, nil
 }
 
 // buildUserInfoResponse builds the final UserInfo response from sub, scopes, and user attributes.

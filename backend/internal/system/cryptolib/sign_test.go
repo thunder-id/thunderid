@@ -9,11 +9,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"testing"
 
-	"github.com/cloudflare/circl/sign/ed448"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -381,11 +381,12 @@ func (suite *SignUtilsTestSuite) TestRSAPSSAndPKCS1v15AreNotCrossVerifiable() {
 
 func (suite *SignUtilsTestSuite) TestMLDSASignVerifyRoundTrip() {
 	data := []byte("ml-dsa signing input")
-	for _, alg := range mldsaAlgorithms {
+	for _, params := range []mldsa.Parameters{mldsa.MLDSA44(), mldsa.MLDSA65(), mldsa.MLDSA87()} {
+		alg := Algorithm(params.String())
 		signAlg, err := SignAlgorithmFor(alg)
 		suite.Require().NoError(err)
 
-		signer, err := GenerateMLDSAKey(alg)
+		signer, err := mldsa.GenerateKey(params)
 		suite.Require().NoError(err)
 
 		sig, err := Generate(data, signAlg, signer)
@@ -404,7 +405,7 @@ func (suite *SignUtilsTestSuite) TestMLDSASignVerifyRoundTrip() {
 		suite.ErrorIs(Verify([]byte("other"), sig, signAlg, signer.Public()), ErrInvalidSignature)
 
 		// Wrong key must fail.
-		other, err := GenerateMLDSAKey(alg)
+		other, err := mldsa.GenerateKey(params)
 		suite.Require().NoError(err)
 		suite.ErrorIs(Verify(data, sig, signAlg, other.Public()), ErrInvalidSignature)
 	}
@@ -419,21 +420,6 @@ func (suite *SignUtilsTestSuite) TestMLDSASignInvalidKeyType() {
 
 func (suite *SignUtilsTestSuite) TestMLDSAVerifyInvalidKeyType() {
 	err := Verify([]byte("data"), []byte("sig"), MLDSA65, &suite.rsaPrivateKey.PublicKey)
-	suite.ErrorIs(err, ErrInvalidPublicKey)
-}
-
-// TestMLDSASignVerifyRejectNonMLDSAScheme covers a circl key that satisfies the
-// generic sign.PrivateKey/sign.PublicKey interfaces but belongs to a different
-// scheme (Ed448): it must be rejected rather than signed/verified with the
-// wrong algorithm.
-func (suite *SignUtilsTestSuite) TestMLDSASignVerifyRejectNonMLDSAScheme() {
-	pub, priv, err := ed448.Scheme().GenerateKey()
-	suite.Require().NoError(err)
-
-	_, err = Generate([]byte("data"), MLDSA65, priv)
-	suite.ErrorIs(err, ErrInvalidPrivateKey)
-
-	err = Verify([]byte("data"), []byte("sig"), MLDSA65, pub)
 	suite.ErrorIs(err, ErrInvalidPublicKey)
 }
 

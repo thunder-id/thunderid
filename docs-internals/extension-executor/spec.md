@@ -1,7 +1,7 @@
 # Extension Executor Specification
 
 - **Status:** Draft
-- **Version:** 0.7
+- **Version:** 0.8
 - **Related documents:**
   - Discovery issue #5555 (ThunderID Extensibility: extension model and authentication)
   - Design discussion #5659 (Extension executor: architecture, response contract and custom authentication)
@@ -332,6 +332,7 @@ A connection of type `http`. Fields and validation:
 |---|---|---|
 | `name` | Required, unique per deployment, at most 255 characters | `httpconnection.ErrorInvalidName`; `httpconnection.ErrorAlreadyExists` when duplicate |
 | `description` | Optional, at most 500 characters | `httpconnection.ErrorInvalidDescription` |
+| `ouId` | Required on create, with no default. The ID of the one organization unit that owns the connection. The unit has to exist. It cannot change: on update, omitting it keeps the owner and giving the current one is accepted, but any other is refused. | `httpconnection.ErrorOURequired` (`CON-1030`) when missing; `httpconnection.ErrorInvalidOU` (`CON-1028`) when the unit does not exist; `httpconnection.ErrorOUUpdateNotAllowed` (`CON-1029`) when it differs from the current owner |
 | `url` | Required, absolute `http` or `https` URL with a valid host and a port from 1 to 65535, and no user name or password. Must be `https` when `authentication.type` is not `none`, so that a stored credential never crosses the network in clear. `http` remains for services that receive no credential, such as a local development service. Stored canonicalized: scheme and host in lower case, default port removed. The URL, including its query string, is not secret: it is stored and returned in clear, so a credential must not be put in it. | `httpconnection.ErrorInvalidURL` |
 | `timeoutMs` | 1 to 20 000; `0` or omitted means 10 000 | `httpconnection.ErrorInvalidTimeout` |
 | `headers` | `[{name, value}]`; names valid and unique (case-insensitive); values without line breaks. A PUT replaces the whole list, so omitted means none. Names that carry credentials or that the HTTP stack manages are refused: `Authorization`, `Proxy-Authorization`, `Cookie`, `Host`, `Content-Length`, `Content-Type`, `Transfer-Encoding`, `Connection`, `TE`, `Trailer`, `Upgrade`, `Keep-Alive` and `Expect`. A credential belongs in `authentication`, where it is encrypted and masked. | `httpconnection.ErrorInvalidHeaders` |
@@ -351,6 +352,7 @@ Authentication reuses the shared outbound authentication model rather than defin
 
 - Delete is refused with `httpconnection.ErrorHasBlockingDependencies` while any flow references the connection through `connectionId`. Flow management reports those references through the dependency registry. A failure to determine usages also refuses the delete.
 - Connections defined in declarative YAML are read-only (update and delete fail as declarative resources).
+- An organization unit that still owns a connection cannot be deleted. The request is refused with `OU-1006`, as for users, groups, child units and entity types, and the owner is never moved to another unit.
 - Export writes each secret as a `.env` parameter, as for SMTP connections. Import accepts the same shape.
 
 ### Extension auth resolver
@@ -525,6 +527,7 @@ CREATE TABLE "HTTP_CONNECTION" (
     ID            VARCHAR(36)  NOT NULL,
     NAME          VARCHAR(255) NOT NULL,
     DESCRIPTION   VARCHAR(500),
+    OU_ID         VARCHAR(36)  NOT NULL,
     PROPERTIES    JSONB        NOT NULL,
     CREATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
     UPDATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
@@ -541,6 +544,7 @@ CREATE TABLE "HTTP_CONNECTION" (
     ID            VARCHAR(36)  NOT NULL,
     NAME          VARCHAR(255) NOT NULL,
     DESCRIPTION   VARCHAR(500),
+    OU_ID         VARCHAR(36)  NOT NULL,
     PROPERTIES    TEXT         NOT NULL,
     CREATED_AT    TEXT         DEFAULT (datetime('now')),
     UPDATED_AT    TEXT         DEFAULT (datetime('now')),
@@ -550,8 +554,9 @@ CREATE UNIQUE INDEX idx_http_connection_name_deployment ON "HTTP_CONNECTION" (DE
 ```
 
 - `PROPERTIES` is a JSON object `{url, timeoutMs, headers, authentication}`. `authentication` is the property array the shared outbound authentication model writes: the authentication type, the username, and the password marked secret and encrypted. It is omitted when the connection has no authentication. No other secret is stored.
-- The table is added to the SQLite and Postgres configuration scripts. There is no migration framework, so the release notes carry the DDL for existing deployments.
-- No other table changes.
+- `OU_ID` holds the owning organization unit. It has no index, and nothing falls back for a database without the column.
+- The table is added to the SQLite and Postgres configuration scripts. There is no migration framework, so the release notes carry the DDL, with `OU_ID VARCHAR(36) NOT NULL`, for existing deployments. A deployment that already created the table adds the column nullable, sets it on every row, and then makes it `NOT NULL` before it starts this version.
+- The same change gives every other kind of connection an owner, by adding `OU_ID VARCHAR(36) NOT NULL` to `IDP`, `NOTIFICATION_SENDER` and `AUTHORIZATION_PDP_CONNECTION`. No other table changes.
 
 ### API
 
@@ -560,18 +565,18 @@ All routes require the same authorization as the other connection routes.
 | Method and path | Request | Response |
 |---|---|---|
 | `GET /connections/http` | none | `200`, a list of connection summaries |
-| `POST /connections/http` | `HTTPConnectionCreateRequest` | `201`, `HTTPConnectionResponse` |
+| `POST /connections/http` | `HTTPConnectionCreateRequest` | `201`, `HTTPConnectionResponse`; `400`, one of the validation errors in the field table above, including the owner errors `httpconnection.ErrorOURequired` (`CON-1030`) and `httpconnection.ErrorInvalidOU` (`CON-1028`); `409 httpconnection.ErrorAlreadyExists` |
 | `GET /connections/http/{id}` | none | `200`, `HTTPConnectionResponse`; `404 httpconnection.ErrorNotFound` |
-| `PUT /connections/http/{id}` | `HTTPConnectionUpdateRequest` | `200`; `400`, one of the validation errors in the field table above; `404`; `409 httpconnection.ErrorAlreadyExists` |
+| `PUT /connections/http/{id}` | `HTTPConnectionUpdateRequest` | `200`; `400`, one of the validation errors in the field table above, including `httpconnection.ErrorOUUpdateNotAllowed` (`CON-1029`) for a different `ouId`; `404`; `409 httpconnection.ErrorAlreadyExists` |
 | `DELETE /connections/http/{id}` | none | `204`; `404`; `409 httpconnection.ErrorHasBlockingDependencies` |
 | `GET /connections/http/{id}/usages` | none | `200`, `{totalResults, summary, usages[]}` |
 | `GET /connections?category=http` | none | `200`, the standard paginated list |
 
-The request and response bodies have the fields in *HTTP endpoint connection*. Responses carry `id` and `type: "http"`, with secrets masked. `api/connections.yaml` defines these schemas, the `http` category and the `http` type.
+The request and response bodies have the fields in *HTTP endpoint connection*. Responses carry `id`, `ouId` and `type: "http"`, with secrets masked. `api/connections.yaml` defines these schemas, the `http` category and the `http` type.
 
 ### UI
 
-**Connections, create.** "HTTP Endpoint" in the custom section of the wizard. The steps are name, then URL and authentication, which offers the same methods as on the detail page and defaults to `none`. Timeout and headers use defaults on create and can be edited afterwards.
+**Connections, create.** "HTTP Endpoint" in the custom section of the wizard. The wizard creates the connection in the organization unit of the signed-in user, taken from the `ouId` claim of the Console's token, and sends it as `ouId` only on create. The steps are name, then URL and authentication, which offers the same methods as on the detail page and defaults to `none`. Timeout and headers use defaults on create and can be edited afterwards.
 
 **Connections, detail page:**
 
@@ -594,7 +599,7 @@ HTTP Endpoint · Risk Engine                                   [Delete]
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-When the URL's origin is edited, the Save button stays disabled until every secret field of the current method holds a new value.
+When the URL's origin is edited, the Save button stays disabled until every secret field of the current method holds a new value. The General tab also shows an Organization unit card with the owner's handle and ID, which cannot be edited.
 
 **Flow builder, extension step:**
 
@@ -654,6 +659,7 @@ The connection's timeout bounds and the 64 KiB cap are constants, not configurat
 - **AC3.1:** Given a flow whose extension step references a connection, when its usages are requested, then the flow is listed.
 - **AC3.2:** Given that reference, when the connection is deleted, then the request fails with `409 httpconnection.ErrorHasBlockingDependencies`.
 - **AC3.3:** Given no references, when the connection is deleted, then it returns `204`, and a later read returns `404 httpconnection.ErrorNotFound`.
+- **AC3.4:** Given an organization unit that owns a connection, when its deletion is attempted, then it is refused with `OU-1006` and the unit and the connection are unchanged.
 
 ### R4. A service answers with a fixed contract and the flow routes on it
 
@@ -741,11 +747,12 @@ The connection's timeout bounds and the 64 KiB cap are constants, not configurat
 
 **Acceptance criteria:**
 
-- **AC10.1:** Given the connection wizard, when an administrator chooses HTTP Endpoint and enters a name and URL, then a connection is created with timeout 10 000 ms and authentication `none`.
+- **AC10.1:** Given the connection wizard, when an administrator chooses HTTP Endpoint and enters a name and URL, then a connection is created with timeout 10 000 ms and authentication `none`, owned by the organization unit the administrator chose, or by the only one the deployment has.
 - **AC10.2:** Given a connection's detail page, when the administrator edits the URL origin, then Save stays disabled until each secret of the current method is re-entered.
 - **AC10.3:** Given the flow builder, when an administrator adds an extension step, then a connection must be selected before the flow can be saved, and the step offers no URL, headers or timeout fields.
 - **AC10.4:** Given the flow builder, when an administrator adds inputs to send, then `inputKeys` stores them. With none chosen, `inputKeys` is empty.
 - **AC10.5:** Given the flow builder, when an administrator ticks Allow authentication without a local user on a resolver, then `allowAuthenticationWithoutLocalUser` is stored as `true`.
+- **AC10.6:** Given an administrator signed in to the Console, when they create a connection, then the wizard creates it in the organization unit named by the `ouId` claim of their token, and sends `ouId` on create only.
 
 ## Change log
 
@@ -758,3 +765,4 @@ The connection's timeout bounds and the 64 KiB cap are constants, not configurat
 | 0.5 | 2026-10-13 | Connection authentication reuses the shared outbound authentication model (`none` and `basic` today; bearer token and API key follow in a separate feature), with its secret-retention rule and the URL origin as the credential target. Plain headers refuse credential-carrying and HTTP-managed names (AC2.8). URL host and port are validated and the URL stored canonicalized. A separate error for an invalid description. The URL and its query string are documented as not secret. An omitted secret is kept under the shared rule; `******` is not treated as a kept value. |
 | 0.6 | 2026-10-14 | Aligned with the HTTP endpoint connection implementation: `PROPERTIES` stores the shared model's authentication property array, not a separate `secrets` array; connection errors are named by their `httpconnection.Error*` constants, and an unsupported authentication type returns the existing `connection.ErrorInvalidAuthenticationType`; the create wizard includes authentication; the primary key is `(DEPLOYMENT_ID, ID)`, as in the other configuration tables. |
 | 0.7 | 2026-10-15 | Aligned with the extension executor implementation: `groups` and `password` are reserved, while profile attributes stay storable; a credential failure returns ThunderID's own `ErrInvalidCredentials` with no params (AC7.2); a connection that exists but cannot be resolved is `ErrExtensionCallFailed` with `errorKind` `internal`; the audit event carries `failureReason` but never `failureDescription`; a flow whose extension step has no connection is refused at save (AC1.2); property types for `inputKeys`, `runtimeDataKeys` and `responseKeys`; an `INCOMPLETE` without `onIncomplete` ends the flow with an internal server error; a redirect is treated as `ERROR` until custom authentication is delivered; the embedded engine has no connection resolver; the never-sent and engine-key lists add the linking, ownership and OU keys the executor classifies. |
+| 0.8 | 2026-10-26 | HTTP endpoint connections are owned by exactly one organization unit. `ouId` is required on create, has to exist and cannot change (`CON-1030`, `CON-1028`, `CON-1029`), responses carry it, and deleting an organization unit that owns a connection is refused with `OU-1006` (AC3.4). Both `HTTP_CONNECTION` schemas gain `OU_ID VARCHAR(36) NOT NULL`, and the other connection tables gain it in the same change. The create wizard takes the organization unit from the signed-in user's token (AC10.6). |

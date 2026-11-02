@@ -95,8 +95,8 @@ describe('CimdDocumentSection', () => {
 
     expect(await screen.findByText(/The document has changed/)).toBeInTheDocument();
     expect(request).toHaveBeenCalledWith(expect.objectContaining({data: {clientId: CLIENT_ID}}));
-    expect(screen.getByLabelText('removed')).toBeInTheDocument();
-    expect(screen.getByLabelText('added')).toBeInTheDocument();
+    expect(screen.getByLabelText('Removed')).toBeInTheDocument();
+    expect(screen.getByLabelText('Added')).toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId('cimd-apply-button'));
 
@@ -122,6 +122,171 @@ describe('CimdDocumentSection', () => {
 
     expect(await screen.findByText(/Couldn't retrieve a metadata document from this URL/)).toBeInTheDocument();
     expect(screen.getByTestId('cimd-apply-button')).toBeDisabled();
+  });
+
+  describe('a private key JWT client with identity assertions', () => {
+    const TOKEN_EXCHANGE = 'urn:ietf:params:oauth:grant-type:token-exchange';
+    const JWT_BEARER = 'urn:ietf:params:oauth:grant-type:jwt-bearer';
+    const documentConfig: OAuth2Config = {
+      ...oauth2Config,
+      clientId: 'https://chatgpt.com/oauth/client.json',
+      redirectUris: ['https://chatgpt.com/connector_platform_oauth_redirect'],
+      tokenEndpointAuthMethod: 'private_key_jwt',
+      publicClient: false,
+      certificate: {type: 'JWKS_URI', value: 'https://chatgpt.com/oauth/jwks.json'},
+      requirePushedAuthorizationRequests: false,
+    };
+    const confidentialConfig = {
+      ...documentConfig,
+      grantTypes: ['authorization_code', 'refresh_token', TOKEN_EXCHANGE, JWT_BEARER],
+      requirePushedAuthorizationRequests: true,
+      token: {idJag: {enabled: true, allowedAudiences: ['https://as.example.com']}},
+    } as OAuth2Config;
+    const confidentialApplication = {
+      ...application,
+      inboundAuthConfig: [{type: 'oauth2', config: confidentialConfig}],
+    } as unknown as Application;
+    const previewResponse = (config: OAuth2Config) => ({
+      data: {name: 'ChatGPT', inboundAuthConfig: [{type: 'oauth2', config}]},
+    });
+    const appliedConfig = (onFieldChange: ReturnType<typeof vi.fn>): OAuth2Config => {
+      const call = onFieldChange.mock.calls.find(([field]) => field === 'inboundAuthConfig') as [
+        string,
+        {config: OAuth2Config}[],
+      ];
+      return call[1][0].config;
+    };
+
+    it('treats the grants the administrator added as unchanged', async () => {
+      request.mockResolvedValue(previewResponse(documentConfig));
+      render(
+        <CimdDocumentSection
+          application={confidentialApplication}
+          oauth2Config={confidentialConfig}
+          onFieldChange={vi.fn()}
+          isReadOnly={false}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('cimd-refetch-button'));
+
+      expect(await screen.findByText('The document matches what this application uses.')).toBeInTheDocument();
+      expect(screen.getByText('Token exchange')).toBeInTheDocument();
+      expect(screen.getByText('JWT bearer')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Removed')).not.toBeInTheDocument();
+    });
+
+    it('keeps those grants and the other settings when the document changes', async () => {
+      request.mockResolvedValue(
+        previewResponse({...documentConfig, redirectUris: ['https://chatgpt.com/connector_platform_oauth_redirect2']}),
+      );
+      const onFieldChange = vi.fn();
+      render(
+        <CimdDocumentSection
+          application={confidentialApplication}
+          oauth2Config={confidentialConfig}
+          onFieldChange={onFieldChange}
+          isReadOnly={false}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('cimd-refetch-button'));
+      await screen.findByText(/The document has changed/);
+      await userEvent.click(screen.getByTestId('cimd-apply-button'));
+
+      const config = appliedConfig(onFieldChange);
+      expect(config.redirectUris).toEqual(['https://chatgpt.com/connector_platform_oauth_redirect2']);
+      expect(config.grantTypes).toEqual(['authorization_code', 'refresh_token', TOKEN_EXCHANGE, JWT_BEARER]);
+      expect(config.token?.idJag?.enabled).toBe(true);
+      expect(config.requirePushedAuthorizationRequests).toBe(true);
+    });
+
+    it('removes those grants and turns identity assertions off when the document becomes public', async () => {
+      request.mockResolvedValue(
+        previewResponse({
+          ...documentConfig,
+          tokenEndpointAuthMethod: 'none',
+          publicClient: true,
+          certificate: undefined,
+        }),
+      );
+      const onFieldChange = vi.fn();
+      render(
+        <CimdDocumentSection
+          application={confidentialApplication}
+          oauth2Config={confidentialConfig}
+          onFieldChange={onFieldChange}
+          isReadOnly={false}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('cimd-refetch-button'));
+
+      expect(await screen.findByText(/Identity assertions \(ID-JAG\) will be turned off/)).toBeInTheDocument();
+      expect(screen.getAllByLabelText('Removed')).toHaveLength(2);
+
+      await userEvent.click(screen.getByTestId('cimd-apply-button'));
+
+      const config = appliedConfig(onFieldChange);
+      expect(config.grantTypes).toEqual(['authorization_code', 'refresh_token']);
+      expect(config.tokenEndpointAuthMethod).toBe('none');
+      expect(config.certificate).toBeNull();
+      expect(config.token?.idJag).toEqual({enabled: false, allowedAudiences: ['https://as.example.com']});
+    });
+
+    it('marks a grant the document now declares as added', async () => {
+      const withoutRefresh = {...confidentialConfig, grantTypes: ['authorization_code', TOKEN_EXCHANGE, JWT_BEARER]};
+      request.mockResolvedValue(previewResponse(documentConfig));
+      render(
+        <CimdDocumentSection
+          application={
+            {...confidentialApplication, inboundAuthConfig: [{type: 'oauth2', config: withoutRefresh}]} as Application
+          }
+          oauth2Config={withoutRefresh}
+          onFieldChange={vi.fn()}
+          isReadOnly={false}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('cimd-refetch-button'));
+
+      expect(await screen.findByText(/The document has changed/)).toBeInTheDocument();
+      expect(screen.getByLabelText('Added')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Removed')).not.toBeInTheDocument();
+    });
+
+    it('removes JWT bearer without a warning when identity assertions are off and the document becomes public', async () => {
+      const redeemOnly = {...documentConfig, grantTypes: ['authorization_code', 'refresh_token', JWT_BEARER]};
+      request.mockResolvedValue(
+        previewResponse({
+          ...documentConfig,
+          tokenEndpointAuthMethod: 'none',
+          publicClient: true,
+          certificate: undefined,
+        }),
+      );
+      const onFieldChange = vi.fn();
+      render(
+        <CimdDocumentSection
+          application={
+            {...confidentialApplication, inboundAuthConfig: [{type: 'oauth2', config: redeemOnly}]} as Application
+          }
+          oauth2Config={redeemOnly}
+          onFieldChange={onFieldChange}
+          isReadOnly={false}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('cimd-refetch-button'));
+
+      expect(await screen.findByText(/The document has changed/)).toBeInTheDocument();
+      expect(screen.getAllByLabelText('Removed')).toHaveLength(1);
+      expect(screen.queryByText(/Identity assertions \(ID-JAG\) will be turned off/)).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByTestId('cimd-apply-button'));
+
+      expect(appliedConfig(onFieldChange).grantTypes).toEqual(['authorization_code', 'refresh_token']);
+    });
   });
 
   it('disables re-fetch for a read-only application', () => {

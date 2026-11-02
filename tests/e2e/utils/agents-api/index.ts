@@ -12,7 +12,7 @@
  */
 
 import type { APIRequestContext } from "@playwright/test";
-import { send, sendOk } from "../api-request";
+import { send, sendOk, type ApiAccessStatus } from "../api-request";
 
 /** An agent as returned by `/agents`. */
 export type ApiAgent = {
@@ -23,10 +23,31 @@ export type ApiAgent = {
   type?: string;
   ouId?: string;
   attributes?: Record<string, unknown>;
+  status?: ApiAccessStatus;
 };
 
 export class AgentsApi {
   constructor(private readonly request: APIRequestContext) {}
+
+  /**
+   * Create an agent of the default type directly via the API, in the organization unit that type
+   * belongs to. Agent types are limited to the one bootstrap `default` schema.
+   */
+  async create(name: string): Promise<ApiAgent> {
+    const types = (await (await sendOk(this.request, "GET", "/agent-types")).json()) as {
+      types?: { handle: string; ouId: string }[];
+    };
+    const agentType = types.types?.find(type => type.handle === "default");
+    if (!agentType) {
+      throw new Error('GET /agent-types returned no "default" agent type');
+    }
+    const response = await sendOk(this.request, "POST", "/agents", {
+      ouId: agentType.ouId,
+      type: agentType.handle,
+      attributes: { name },
+    });
+    return (await response.json()) as ApiAgent;
+  }
 
   /**
    * Every agent in the system. The list endpoint has no name filter (agents are matched on their display value) and `limit` caps at 100,

@@ -1,7 +1,7 @@
 # Machine-to-Machine Access Across Organization Units Specification
 
 - **Status:** Draft
-- **Version:** 0.2
+- **Version:** 0.4
 - **Related documents:** [Discussion #5461: Machine-to-Machine (M2M) service working across OUs](https://github.com/thunder-id/thunderid/discussions/5461), [Issue #4037: Allow trusted machine clients to obtain an access token scoped to a chosen Organization Unit (without a per-OU application)](https://github.com/thunder-id/thunderid/issues/4037)
 
 ## Summary
@@ -133,6 +133,8 @@ A sharing policy declaration carries its own id, so a reshare beneath it points 
 
 A declaration the framework refuses is fatal at startup, naming the application, the policy index and the organization unit, because a silent skip leaves an operator with a service that cannot act for anyone and no indication why.
 
+A policy field the format does not declare is refused, at any level of the policy, rather than ignored. A misspelled `excludedOuIds` would otherwise read as a section with no exclusions and share the application with the unit the file meant to withhold. The same decoding applies to a document imported through the import API, which fails that document.
+
 Where a declared application's sharing is managed depends on the application store mode:
 
 | Store mode | Owner policy | Reshares |
@@ -158,6 +160,7 @@ Importing the document replays the policies against the stored ones:
 
 - Deleting an application deletes its stored sharing policies, and the reshares beneath them.
 - An organization unit that issued a sharing policy cannot be deleted until the policy is withdrawn.
+- An application that has sharing policies cannot be moved to another organization unit, because its policies were issued against the unit that owns it. The update is refused until the policies are deleted.
 - A policy naming an organization unit that was deleted stays editable and deletable.
 
 ### Claims naming the accessing organization unit
@@ -170,13 +173,15 @@ The claims stay gated by the application's own `clientConfig.attributes` allow-l
 
 An application with no organization unit of its own still answers for one a request named, which is why the guard checks the application and the accessing unit separately rather than together.
 
+The `groups` and `roles` claims follow the entitlement rule below: `groups` names only the groups the application's own organization unit owns, and `roles` names only the roles assigned to the application in that unit, directly or through those groups.
+
 ### Scopes available to the accessing organization unit
 
 A token issued for an organization unit must not carry permissions that unit may not use. The accessing unit travels on the request context, so the resource service reads it while downscoping rather than taking it as a parameter:
 
 1. Requested scopes are downscoped to the permissions the target resource server defines.
 2. In the same pass, a permission the accessing organization unit may not use is treated as undefined and dropped.
-3. The application's own entitlement is evaluated afterwards, unchanged.
+3. The application's own entitlement is evaluated afterwards, from the role assignments made in the application's own organization unit, directly or through the groups that unit owns. Roles an organization unit the application is shared with assigned it, directly or through that unit's groups, are that unit's and do not count, at either endpoint.
 
 What the accessing unit may use comes from the resource server's own sharing policy. A resource server declares one field, `permissions`, as a hierarchy over its permission strings, so naming a resource shares it together with everything beneath it. The field is pinned: the sharing organization unit decides what is shared, and a reached unit has nothing of its own to choose.
 
@@ -379,6 +384,7 @@ inboundAuthConfig:
 - **AC6.5:** Given a permission the application is not entitled to, when any organization unit is named, then the permission is absent, so the accessing unit never widens.
 - **AC6.6:** Given a permission an organization unit may not use, when a role is created in that unit naming it, then the request is refused, so the bound is not specific to tokens.
 - **AC6.7:** Given a request to the bare endpoint, when a token is issued, then the scopes are unchanged from before this feature.
+- **AC6.8:** Given an application assigned a role in an organization unit it is shared with, directly or through a group of that unit, when a token is requested at either endpoint, then the role's permissions are absent, and the `roles` and `groups` claims name only the roles assigned in, and the groups owned by, the application's own organization unit.
 
 ### R7. The deployment decides whether the qualified endpoint exists
 
@@ -396,3 +402,5 @@ inboundAuthConfig:
 |---|---|---|
 | 0.1 | 2026-10-09 | Initial specification. |
 | 0.2 | 2026-10-16 | Specified the application sharing API request shapes and error statuses, sharing for declared applications per store mode, import and export, lifecycle, and the Organization Access tab. |
+| 0.3 | 2026-10-27 | A policy field the format does not declare fails a resource file or an imported document instead of being ignored. A shared application cannot be moved to another organization unit. |
+| 0.4 | 2026-10-30 | An application's scopes and its `roles` and `groups` claims come only from the role assignments made in, and the groups owned by, its own organization unit. |

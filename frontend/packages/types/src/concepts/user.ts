@@ -1,6 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {AccessStatusReport} from './access-status';
+
 /**
  * User representation.
  *
@@ -29,6 +31,11 @@ export interface User {
    * User category or classification.
    */
   type: string;
+
+  /**
+   * Effective access status, derived by the server at read time. Read-only.
+   */
+  status?: AccessStatusReport;
 
   /**
    * Additional user attributes returned by the API.

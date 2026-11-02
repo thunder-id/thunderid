@@ -48,7 +48,8 @@ sections:
     title: Handling authentication
     meta: "~8 min"
     intro: >-
-      Four files, all standard Spring Security: login flow, token validation, and scope-based access control.
+      Five steps, all standard Spring Security: login flow, token validation, scope-based access control, and
+      back-channel logout.
       Spring Security is maintained by the Spring team; {{ProductName}} maintains this guide and the
       configuration below.
     steps:
@@ -139,6 +140,41 @@ sections:
               }
             }
         note: Enable @PreAuthorize with @EnableMethodSecurity on any configuration class.
+      - title: Receive back-channel logout
+        description: >-
+          Spring Security implements OpenID Connect Back-Channel Logout. These additions to the configuration above
+          stand up the receiving endpoint and end the matching Spring session when {{ProductName}} posts a logout
+          token. Register the endpoint URL as the application's back-channel logout URI in {{ProductName}}. They need
+          Spring Security 6.4 or later, which Spring Boot 3.4 ships.
+        code:
+          file: SecurityConfig.java
+          lang: java
+          content: |-
+            @Bean
+            OidcSessionRegistry oidcSessionRegistry() {
+              return new InMemoryOidcSessionRegistry();
+            }
+
+            @Bean
+            OidcBackChannelLogoutHandler oidcLogoutHandler(OidcSessionRegistry oidcSessionRegistry) {
+              return new OidcBackChannelLogoutHandler(oidcSessionRegistry);
+            }
+
+            // Removes a registry entry when its servlet session ends
+            @Bean
+            HttpSessionEventPublisher sessionEventPublisher() {
+              return new HttpSessionEventPublisher();
+            }
+
+            // In the SecurityFilterChain, next to oauth2Login(...):
+            .oidcLogout(logout -> logout.backChannel(Customizer.withDefaults()))
+        note: >-
+          The endpoint is /logout/connect/back-channel/thunderid, where thunderid is the registration id. Spring
+          correlates each login's sid to the servlet session in the OidcSessionRegistry, which this example keeps in
+          memory. Several instances need a shared OidcSessionRegistry and a shared servlet session store, such as
+          Spring Session, since the notification can reach an instance that does not hold the session. The handler
+          sends the JSESSIONID cookie by default; with Spring Session's SESSION cookie, call
+          setSessionCookieName("SESSION") on the handler.
 
   - type: table
     id: mapping

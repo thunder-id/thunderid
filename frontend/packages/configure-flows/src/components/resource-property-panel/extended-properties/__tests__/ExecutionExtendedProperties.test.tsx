@@ -85,6 +85,7 @@ vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   useEmailProviders: () => mockEmailProviders(),
   useIdentityProviders: () => mockIdentityProviders(),
   useSMSProviders: () => mockSMSProviders(),
+  useConnectionInstances: () => ({data: [], isLoading: false, isSuccess: true, error: null, refetch: vi.fn()}),
 }));
 
 // Mock useGetNotificationTemplates, which backs the Email/SMS template pickers.
@@ -97,6 +98,11 @@ interface TemplatesState {
 const mockNotificationTemplates = vi.fn<() => TemplatesState>();
 vi.mock('../../../../api/useGetNotificationTemplates', () => ({
   default: () => mockNotificationTemplates(),
+}));
+
+// The Identity Governance panel reads the flow's type; an administration flow offers every operation.
+vi.mock('../../../../api/useGetFlowById', () => ({
+  default: () => ({data: {flowType: 'ADMINISTRATION'}}),
 }));
 
 /** Builds a resolved (successful) query state for the template hook mock. */
@@ -1311,7 +1317,7 @@ describe('ExecutionExtendedProperties', () => {
       render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
 
       const checkboxes = screen.getAllByRole('checkbox');
-      const allowCrossOUCheckbox = checkboxes[0];
+      const allowCrossOUCheckbox = checkboxes[1];
       fireEvent.click(allowCrossOUCheckbox);
 
       expect(mockOnChange).toHaveBeenCalledWith('data.properties.allowCrossOUProvisioning', true, provisioningResource);
@@ -1321,7 +1327,7 @@ describe('ExecutionExtendedProperties', () => {
       render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
 
       const checkboxes = screen.getAllByRole('checkbox');
-      const includeOptionalCheckbox = checkboxes[1];
+      const includeOptionalCheckbox = checkboxes[2];
       fireEvent.click(includeOptionalCheckbox);
 
       expect(mockOnChange).toHaveBeenCalledWith('data.properties.includeOptional', true, provisioningResource);
@@ -1331,7 +1337,7 @@ describe('ExecutionExtendedProperties', () => {
       render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
 
       const checkboxes = screen.getAllByRole('checkbox');
-      const includeOptionalCredentialsCheckbox = checkboxes[2];
+      const includeOptionalCredentialsCheckbox = checkboxes[3];
       fireEvent.click(includeOptionalCredentialsCheckbox);
 
       expect(mockOnChange).toHaveBeenCalledWith(
@@ -1409,7 +1415,7 @@ describe('ExecutionExtendedProperties', () => {
       render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
 
       const checkboxes = screen.getAllByRole('checkbox');
-      const seedGroupsFromMappingCheckbox = checkboxes[3];
+      const seedGroupsFromMappingCheckbox = checkboxes[4];
       fireEvent.click(seedGroupsFromMappingCheckbox);
 
       expect(mockOnChange).toHaveBeenCalledWith('data.properties.seedGroupsFromMapping', true, provisioningResource);
@@ -1419,7 +1425,7 @@ describe('ExecutionExtendedProperties', () => {
       render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
 
       const checkboxes = screen.getAllByRole('checkbox');
-      const seedRolesFromMappingCheckbox = checkboxes[4];
+      const seedRolesFromMappingCheckbox = checkboxes[5];
       fireEvent.click(seedRolesFromMappingCheckbox);
 
       expect(mockOnChange).toHaveBeenCalledWith('data.properties.seedRolesFromMapping', true, provisioningResource);
@@ -1557,6 +1563,38 @@ describe('ExecutionExtendedProperties', () => {
       expect(screen.getByLabelText('flows:core.executions.userTypeResolver.allowedUserTypes.label')).toHaveValue(
         'customer, partner',
       );
+    });
+  });
+
+  describe('Extension Executor', () => {
+    it('should render the extension connection selector and key lists', () => {
+      const extensionResource = {
+        id: 'extension-executor-1',
+        data: {
+          action: {executor: {name: ExecutionTypes.ExtensionExecutor}},
+          properties: {connectionId: '', inputKeys: []},
+        },
+      } as unknown as Resource;
+
+      render(<ExecutionExtendedProperties resource={extensionResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.extension.description')).toBeInTheDocument();
+      expect(screen.getByText('flows:core.executions.extension.connection.label')).toBeInTheDocument();
+      expect(screen.getByText('flows:core.executions.extension.inputKeys.label')).toBeInTheDocument();
+    });
+
+    it('should hide the inputs editor', () => {
+      const extensionResource = {
+        id: 'extension-executor-1',
+        data: {
+          action: {executor: {name: ExecutionTypes.ExtensionExecutor}},
+          properties: {connectionId: 'conn-1'},
+        },
+      } as unknown as Resource;
+
+      render(<ExecutionExtendedProperties resource={extensionResource} onChange={mockOnChange} />);
+
+      expect(screen.queryByText('flows:core.executions.inputs.title')).not.toBeInTheDocument();
     });
   });
 
@@ -1764,36 +1802,12 @@ describe('ExecutionExtendedProperties', () => {
       },
     } as unknown as Resource;
 
-    // The executor reads the entity category from the node's mode property, and it ships as a single
-    // catalog entry, so the property has to be settable here or no flow can target agents.
-    it('should offer the entity category', () => {
+    // The category comes from the type resolver earlier in the flow, so there is nothing to set here.
+    it('should show that no configuration is needed', () => {
       render(<ExecutionExtendedProperties resource={attributeUniquenessResource} onChange={mockOnChange} />);
 
-      expect(screen.getByText('flows:core.executions.attributeUniquenessValidator.mode.label')).toBeInTheDocument();
-    });
-
-    // A free text field would let an author save a mode the backend rejects.
-    it('should restrict the category to the values the backend accepts', async () => {
-      const user = userEvent.setup();
-
-      render(<ExecutionExtendedProperties resource={attributeUniquenessResource} onChange={mockOnChange} />);
-
-      await user.click(screen.getByRole('combobox'));
-
-      expect(screen.getAllByText('flows:core.executions.entityMode.user')).toHaveLength(2);
-      expect(screen.getByText('flows:core.executions.entityMode.agent')).toBeInTheDocument();
-      expect(screen.getAllByRole('option')).toHaveLength(2);
-    });
-
-    it('should call onChange when the category is changed', async () => {
-      const user = userEvent.setup();
-
-      render(<ExecutionExtendedProperties resource={attributeUniquenessResource} onChange={mockOnChange} />);
-
-      await user.click(screen.getByRole('combobox'));
-      await user.click(screen.getByText('flows:core.executions.entityMode.agent'));
-
-      expect(mockOnChange).toHaveBeenCalledWith('data.properties.mode', 'agent', attributeUniquenessResource);
+      expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     });
   });
 
@@ -1814,6 +1828,27 @@ describe('ExecutionExtendedProperties', () => {
       render(<ExecutionExtendedProperties resource={linkingResource} onChange={mockOnChange} />);
 
       expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
+    });
+  });
+
+  describe('Pre Suspend Executor', () => {
+    const preSuspendResource = {
+      id: 'pre-suspend-1',
+      data: {
+        action: {
+          executor: {
+            name: ExecutionTypes.PreSuspend,
+          },
+        },
+        properties: {},
+      },
+    } as unknown as Resource;
+
+    it('should render NoConfigProperties message and hide the inputs editor', () => {
+      render(<ExecutionExtendedProperties resource={preSuspendResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.inputs.title')).not.toBeInTheDocument();
     });
   });
 
@@ -1919,6 +1954,7 @@ describe('ExecutionExtendedProperties', () => {
       [ExecutionTypes.RoleExecutor, 'role_deletion', 'roleExecutor'],
       [ExecutionTypes.GroupExecutor, 'group_membership_removal', 'groupExecutor'],
       [ExecutionTypes.CriteriaRevocation, 'advance_cutoff', 'criteriaRevocation'],
+      [ExecutionTypes.IdentityGovernance, 'unlock', 'identityGovernance'],
     ])('should route %s to its mode selector and hide the inputs editor', (name, mode, namespace) => {
       render(<ExecutionExtendedProperties resource={makeResource(name, mode)} onChange={mockOnChange} />);
 

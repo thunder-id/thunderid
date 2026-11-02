@@ -13,8 +13,9 @@ import (
 	"strings"
 )
 
-// privateJWKMembers lists JWK parameter names that indicate private-key material.
-var privateJWKMembers = []string{"d", "p", "q", "dp", "dq", "qi", "oth", "k"}
+// privateJWKMembers lists JWK parameter names that indicate private-key material: RSA, EC and OKP
+// members (RFC 7518, RFC 8037), the symmetric key, and the AKP (ML-DSA) private key (RFC 9964).
+var privateJWKMembers = []string{"d", "p", "q", "dp", "dq", "qi", "oth", "k", "priv"}
 
 // DecodeHeader decodes the header of a JWS token and returns it as a map.
 func DecodeHeader(token string) (map[string]interface{}, error) {

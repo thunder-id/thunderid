@@ -43,6 +43,7 @@ type Role struct {
 	Name        string                `json:"name"`
 	Description string                `json:"description,omitempty"`
 	OUID        string                `json:"ouId"`
+	IsOwnedByOU bool                  `json:"isOwnedByOU"`
 	Permissions []ResourcePermissions `json:"permissions"`
 	Assignments []Assignment          `json:"assignments,omitempty"`
 }
@@ -53,6 +54,8 @@ type RoleSummary struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	OUID        string `json:"ouId"`
+	IsReadOnly  bool   `json:"isReadOnly"`
+	IsOwnedByOU bool   `json:"isOwnedByOU"`
 }
 
 // Link represents a pagination link
@@ -72,6 +75,7 @@ type RoleListResponse struct {
 
 // AssignmentsRequest represents add/remove assignments request
 type AssignmentsRequest struct {
+	OUID        string       `json:"ouId,omitempty"`
 	Assignments []Assignment `json:"assignments"`
 }
 
@@ -103,6 +107,7 @@ type OURole struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	IsReadOnly  bool   `json:"isReadOnly"`
+	IsOwnedByOU bool   `json:"isOwnedByOU"`
 }
 
 // OURoleListResponse represents the paginated role listing of an organization unit

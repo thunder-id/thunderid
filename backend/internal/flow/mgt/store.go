@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package flowmgt
@@ -24,6 +24,7 @@ const (
 	colName          = "name"
 	colFlowType      = "flow_type"
 	colActiveVersion = "active_version"
+	colOUID          = "ou_id"
 	colNodes         = "nodes"
 	colInterceptors  = "interceptors"
 	colCreatedAt     = "created_at"
@@ -37,6 +38,11 @@ var getDBProvider = provider.GetDBProvider
 // flowStoreInterface defines the interface for flow store operations.
 type flowStoreInterface interface {
 	ListFlows(ctx context.Context, limit, offset int, flowType string) ([]BasicFlowDefinition, int, error)
+	// ListFlowsByOU lists one page of the flows an organization unit owns, with how many it owns.
+	ListFlowsByOU(ctx context.Context, ouID string, limit, offset int, flowType string) (
+		[]BasicFlowDefinition, int, error)
+	// ListFlowsByIDs reads the flows with the given IDs, leaving out the ones that do not exist.
+	ListFlowsByIDs(ctx context.Context, ids []string, flowType string) ([]BasicFlowDefinition, error)
 	ListActiveFlowsWithNodes(ctx context.Context) ([]*providers.CompleteFlowDefinition, error)
 	CreateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (*providers.CompleteFlowDefinition, error)
 	GetFlowByID(ctx context.Context, flowID string) (*providers.CompleteFlowDefinition, error)
@@ -75,10 +81,11 @@ func newFlowStore() (flowStoreInterface, providers.Transactioner, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowStore"))
 	return &flowStore{
 		dbProvider:        dbProvider,
 		maxVersionHistory: getMaxVersionHistory(),
-		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowStore")),
+		logger:            logger,
 	}, transactioner, nil
 }
 
@@ -98,7 +105,8 @@ func (s *flowStore) ListFlows(ctx context.Context, limit, offset int, flowType s
 				return fmt.Errorf("failed to count flows: %w", err)
 			}
 
-			results, err = dbClient.QueryContext(ctx, queryListFlowsWithType, flowType, s.scope(ctx), limit, offset)
+			results, err = dbClient.QueryContext(ctx, queryListFlowsWithType,
+				flowType, s.scope(ctx), limit, offset)
 			if err != nil {
 				return fmt.Errorf("failed to list flows: %w", err)
 			}
@@ -108,7 +116,8 @@ func (s *flowStore) ListFlows(ctx context.Context, limit, offset int, flowType s
 				return fmt.Errorf("failed to count flows: %w", err)
 			}
 
-			results, err = dbClient.QueryContext(ctx, queryListFlows, s.scope(ctx), limit, offset)
+			results, err = dbClient.QueryContext(ctx, queryListFlows,
+				s.scope(ctx), limit, offset)
 			if err != nil {
 				return fmt.Errorf("failed to list flows: %w", err)
 			}
@@ -136,6 +145,86 @@ func (s *flowStore) ListFlows(ctx context.Context, limit, offset int, flowType s
 	}
 
 	return flows, totalCount, nil
+}
+
+// ListFlowsByOU lists one page of the flows an organization unit owns, with how many it owns. An empty flow type
+// lists every type.
+func (s *flowStore) ListFlowsByOU(ctx context.Context, ouID string, limit, offset int, flowType string) (
+	[]BasicFlowDefinition, int, error) {
+	var flows []BasicFlowDefinition
+	var totalCount int
+
+	err := s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
+		listQuery, countQuery := queryListFlowsByOU, queryCountFlowsByOU
+		listArgs := []interface{}{ouID, s.scope(ctx), limit, offset}
+		countArgs := []interface{}{ouID, s.scope(ctx)}
+		if flowType != "" {
+			listQuery, countQuery = queryListFlowsByOUWithType, queryCountFlowsByOUWithType
+			listArgs = []interface{}{ouID, flowType, s.scope(ctx), limit, offset}
+			countArgs = []interface{}{ouID, flowType, s.scope(ctx)}
+		}
+
+		countResults, err := dbClient.QueryContext(ctx, countQuery, countArgs...)
+		if err != nil {
+			return fmt.Errorf("failed to count the flows of an organization unit: %w", err)
+		}
+		totalCount, err = s.parseCountResult(countResults)
+		if err != nil {
+			return err
+		}
+
+		results, err := dbClient.QueryContext(ctx, listQuery, listArgs...)
+		if err != nil {
+			return fmt.Errorf("failed to list the flows of an organization unit: %w", err)
+		}
+		flows = make([]BasicFlowDefinition, 0, len(results))
+		for _, row := range results {
+			flow, err := s.buildBasicFlowDefinitionFromRow(row)
+			if err != nil {
+				return fmt.Errorf("failed to build flow: %w", err)
+			}
+			flows = append(flows, flow)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return flows, totalCount, nil
+}
+
+// flowIDsPerQuery bounds how many IDs one query names, as databases limit the parameters of a statement.
+const flowIDsPerQuery = 500
+
+// ListFlowsByIDs reads the flows with the given IDs, leaving out the ones that do not exist. An empty flow type reads
+// every type.
+func (s *flowStore) ListFlowsByIDs(ctx context.Context, ids []string, flowType string) (
+	[]BasicFlowDefinition, error) {
+	flows := make([]BasicFlowDefinition, 0, len(ids))
+	err := s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
+		for start := 0; start < len(ids); start += flowIDsPerQuery {
+			chunk := ids[start:min(start+flowIDsPerQuery, len(ids))]
+			query, args := buildListFlowsByIDsQuery(chunk, flowType, s.scope(ctx))
+			results, err := dbClient.QueryContext(ctx, query, args...)
+			if err != nil {
+				return fmt.Errorf("failed to list flows by ID: %w", err)
+			}
+			for _, row := range results {
+				flow, err := s.buildBasicFlowDefinitionFromRow(row)
+				if err != nil {
+					return fmt.Errorf("failed to build flow: %w", err)
+				}
+				flows = append(flows, flow)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return flows, nil
 }
 
 // ListActiveFlowsWithNodes retrieves every flow's active version, including its node definitions, in
@@ -183,7 +272,7 @@ func (s *flowStore) CreateFlow(ctx context.Context, flowID string, flow *FlowDef
 
 	err = s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(ctx, queryCreateFlow, flowID, flow.Handle,
-			flow.Name, flow.FlowType, int64(1), s.scope(ctx))
+			flow.Name, flow.FlowType, int64(1), flow.OUID, s.scope(ctx))
 		if err != nil {
 			return fmt.Errorf("failed to create flow: %w", err)
 		}
@@ -228,7 +317,8 @@ func (s *flowStore) GetFlowByHandle(ctx context.Context, handle string, flowType
 	*providers.CompleteFlowDefinition, error) {
 	var flow *providers.CompleteFlowDefinition
 	err := s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
-		results, err := dbClient.QueryContext(ctx, queryGetFlowByHandle, handle, string(flowType), s.scope(ctx))
+		results, err := dbClient.QueryContext(ctx, queryGetFlowByHandle,
+			handle, string(flowType), s.scope(ctx))
 		if err != nil {
 			return fmt.Errorf("failed to get flow by handle: %w", err)
 		}
@@ -569,6 +659,11 @@ func (s *flowStore) buildBasicFlowDefinitionFromRow(row map[string]interface{}) 
 		return BasicFlowDefinition{}, err
 	}
 
+	ouID, err := s.getString(row, colOUID)
+	if err != nil {
+		return BasicFlowDefinition{}, err
+	}
+
 	createdAt, err := s.getTimestamp(row, colCreatedAt)
 	if err != nil {
 		return BasicFlowDefinition{}, err
@@ -587,6 +682,7 @@ func (s *flowStore) buildBasicFlowDefinitionFromRow(row map[string]interface{}) 
 		ActiveVersion: int(activeVersion),
 		CreatedAt:     createdAt,
 		UpdatedAt:     updatedAt,
+		OUID:          ouID,
 	}, nil
 }
 
@@ -618,6 +714,11 @@ func (s *flowStore) buildCompleteFlowDefinitionFromRow(row map[string]interface{
 		return nil, err
 	}
 
+	ouID, err := s.getString(row, colOUID)
+	if err != nil {
+		return nil, err
+	}
+
 	createdAt, err := s.getTimestamp(row, colCreatedAt)
 	if err != nil {
 		return nil, err
@@ -641,6 +742,7 @@ func (s *flowStore) buildCompleteFlowDefinitionFromRow(row map[string]interface{
 		ActiveVersion: int(activeVersion),
 		CreatedAt:     createdAt,
 		UpdatedAt:     updatedAt,
+		OUID:          ouID,
 	}
 
 	if err := json.Unmarshal([]byte(nodesJSON), &flow.Nodes); err != nil {

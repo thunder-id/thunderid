@@ -19,6 +19,7 @@ import (
 const (
 	testServerURL                  = "https://localhost:8095"
 	systemResourceServerIdentifier = "https://localhost:8090/mcp"
+	invalidMCPIdentifierCode       = "RES-1024"
 )
 
 var (
@@ -473,6 +474,89 @@ func (suite *MCPResourceServerTestSuite) TestCreateResourceServerInvalidType() {
 	})
 	suite.Error(err, "Should fail with an unsupported resource server type")
 	suite.Contains(err.Error(), "400")
+}
+
+func (suite *MCPResourceServerTestSuite) TestCreateMCPResourceServerRejectsNonURLIdentifier() {
+	testCases := []struct {
+		name       string
+		identifier string
+	}{
+		{"PlainName", "my-mcp-server"},
+		{"NotAURI", "not a uri"},
+		{"Path", "/mcp"},
+		{"HostAndPortWithoutScheme", "mcp.example.com:8443/mcp"},
+		{"LocalhostWithoutScheme", "localhost:8000/mcp"},
+		{"URN", "urn:example:mcp"},
+		{"Fragment", "https://mcp.example.com/mcp#tools"},
+	}
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			resp, err := doJSONRequest(http.MethodPost, resourceServerURL(""), CreateResourceServerRequest{
+				Name:       "MCP Non-URL Server",
+				Identifier: tc.identifier,
+				Type:       "MCP",
+				OUID:       suite.ouID,
+			})
+			suite.Require().NoError(err)
+			if resp.StatusCode == http.StatusCreated {
+				var created ResourceServerResponse
+				if json.Unmarshal([]byte(resp.Body), &created) == nil {
+					deleteResourceServer(created.ID)
+				}
+			}
+			suite.Equal(http.StatusBadRequest, resp.StatusCode, "Response: %s", resp.Body)
+			suite.Equal(invalidMCPIdentifierCode, resp.Error.Code)
+		})
+	}
+}
+
+func (suite *MCPResourceServerTestSuite) TestCreateNonMCPResourceServerAcceptsNonURIIdentifier() {
+	rsID, err := createResourceServer(CreateResourceServerRequest{
+		Name:       "API Non-URI Server",
+		Identifier: fmt.Sprintf("my-api-server-%d", time.Now().UnixNano()),
+		Type:       "API",
+		OUID:       suite.ouID,
+	})
+	suite.Require().NoError(err, "Non-MCP resource servers keep accepting any identifier")
+	deleteResourceServer(rsID)
+}
+
+func (suite *MCPResourceServerTestSuite) TestUpdateMCPResourceServerRejectsNonURLIdentifier() {
+	before, err := getResourceServer(suite.resourceServerID)
+	suite.Require().NoError(err)
+
+	resp, err := doJSONRequest(http.MethodPut, resourceServerURL("/%s", suite.resourceServerID),
+		UpdateResourceServerRequest{
+			Name:       before.Name,
+			Identifier: "my-mcp-server",
+			OUID:       suite.ouID,
+		})
+	suite.Require().NoError(err)
+	suite.Equal(http.StatusBadRequest, resp.StatusCode, "Response: %s", resp.Body)
+	suite.Equal(invalidMCPIdentifierCode, resp.Error.Code)
+
+	after, err := getResourceServer(suite.resourceServerID)
+	suite.Require().NoError(err)
+	suite.Equal(before.Identifier, after.Identifier)
+}
+
+func (suite *MCPResourceServerTestSuite) TestUpdateMCPResourceServerWithURLIdentifier() {
+	before, err := getResourceServer(suite.resourceServerID)
+	suite.Require().NoError(err)
+	newIdentifier := fmt.Sprintf("https://mcp.example.com/mcp-%d", time.Now().UnixNano())
+
+	resp, err := doJSONRequest(http.MethodPut, resourceServerURL("/%s", suite.resourceServerID),
+		UpdateResourceServerRequest{
+			Name:       before.Name,
+			Identifier: newIdentifier,
+			OUID:       suite.ouID,
+		})
+	suite.Require().NoError(err)
+	suite.Equal(http.StatusOK, resp.StatusCode, "Response: %s", resp.Body)
+
+	after, err := getResourceServer(suite.resourceServerID)
+	suite.Require().NoError(err)
+	suite.Equal(newIdentifier, after.Identifier)
 }
 
 func (suite *MCPResourceServerTestSuite) TestActionKindDefaultsToToolForMCP() {

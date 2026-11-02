@@ -1,0 +1,489 @@
+openapi: 3.0.3
+info:
+  title: Project Management API
+  version: "1.0"
+  description: |
+    Create and manage projects. A project groups identity configuration under exactly one root
+    organization unit. Creating a project creates its root organization unit, and resources belong to a
+    project when their organization unit is the root organization unit or one of its descendants. A
+    project stores only its ID and its root organization unit; its handle, display name and description
+    are the root organization unit's, and updating a project updates that organization unit.
+
+    Projects are a Control Plane concept: only the Control Plane serves this API. The Data Plane works
+    on organization unit IDs alone.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: Projects
+    description: Create, retrieve, update, delete, and list projects.
+
+security:
+  - OAuth2: [system]
+
+paths:
+  /projects:
+    get:
+      tags:
+        - Projects
+      summary: List projects
+      description: |
+        Lists projects, oldest first.
+      parameters:
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: A page of projects, oldest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectListResponse'
+              example:
+                totalResults: 3
+                startIndex: 1
+                count: 2
+                projects:
+                  - id: "019a0000-0000-7000-8000-000000000001"
+                    handle: "shop"
+                    displayName: "Shop"
+                    description: "Online shop"
+                    rootOuId: "019a0000-0000-7000-8000-0000000000aa"
+                    createdAt: "2026-10-23T10:15:00Z"
+                  - id: "019a0000-0000-7000-8000-000000000002"
+                    handle: "support"
+                    displayName: "Support"
+                    rootOuId: "019a0000-0000-7000-8000-0000000000bb"
+                    createdAt: "2026-10-23T10:15:00Z"
+                links:
+                  - href: "/projects?offset=2&limit=2"
+                    rel: "next"
+                  - href: "/projects?offset=2&limit=2"
+                    rel: "last"
+        "400":
+          description: The limit or offset parameter is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-limit:
+                  value:
+                    code: "PRJ-1008"
+                    message:
+                      key: "error.projectservice.invalid_limit"
+                      defaultValue: "Invalid pagination parameter"
+                    description:
+                      key: "error.projectservice.invalid_limit_description"
+                      defaultValue: "The limit parameter must be a positive integer within the maximum page size"
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+        - Projects
+      summary: Create a project
+      description: |
+        Creates a project and its root organization unit in one operation. The root organization unit
+        takes the project's handle, display name and description. Supply `id` to keep an ID that another
+        system already uses for the project; otherwise one is generated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+            example:
+              handle: "shop"
+              displayName: "Shop"
+              description: "Online shop"
+      responses:
+        "201":
+          description: Project created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+              example:
+                id: "019a0000-0000-7000-8000-000000000001"
+                handle: "shop"
+                displayName: "Shop"
+                description: "Online shop"
+                rootOuId: "019a0000-0000-7000-8000-0000000000aa"
+                createdAt: "2026-10-23T10:15:00Z"
+        "400":
+          description: The request is malformed or a field is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-display-name:
+                  value:
+                    code: "PRJ-1003"
+                    message:
+                      key: "error.projectservice.invalid_display_name"
+                      defaultValue: "Invalid project display name"
+                    description:
+                      key: "error.projectservice.invalid_display_name_description"
+                      defaultValue: "The display name is required and must not exceed 100 characters"
+                invalid-project-id:
+                  value:
+                    code: "PRJ-1005"
+                    message:
+                      key: "error.projectservice.invalid_project_id"
+                      defaultValue: "Invalid project ID"
+                    description:
+                      key: "error.projectservice.invalid_project_id_description"
+                      defaultValue: "A supplied project ID must be a valid UUID"
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          description: |
+            The project ID is already used, or a root organization unit with the same handle or name
+            already exists. A project's handle is its root organization unit's handle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                handle-conflict:
+                  value:
+                    code: "OU-1008"
+                    message:
+                      key: "error.ouservice.organization_unit_handle_conflict"
+                      defaultValue: "Organization unit handle conflict"
+                    description:
+                      key: "error.ouservice.organization_unit_handle_conflict_description"
+                      defaultValue: "An organization unit with the same handle already exists under the same parent"
+                id-conflict:
+                  value:
+                    code: "PRJ-1006"
+                    message:
+                      key: "error.projectservice.project_id_conflict"
+                      defaultValue: "Project ID already exists"
+                    description:
+                      key: "error.projectservice.project_id_conflict_description"
+                      defaultValue: "Omit the ID to have one generated, or supply an ID that no other project uses"
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /projects/{id}:
+    parameters:
+      - $ref: '#/components/parameters/projectIdPathParam'
+    get:
+      tags:
+        - Projects
+      summary: Get a project
+      responses:
+        "200":
+          description: The project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+              example:
+                id: "019a0000-0000-7000-8000-000000000001"
+                handle: "shop"
+                displayName: "Shop"
+                description: "Online shop"
+                rootOuId: "019a0000-0000-7000-8000-0000000000aa"
+                createdAt: "2026-10-23T10:15:00Z"
+        "404":
+          $ref: '#/components/responses/ProjectNotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+        - Projects
+      summary: Update a project
+      description: |
+        Updates the display name and description of a project, which are its root organization unit's name
+        and description, so the root organization unit is renamed too. The handle cannot change; send the
+        current handle or omit it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
+            example:
+              displayName: "Storefront"
+              description: "Online storefront"
+      responses:
+        "200":
+          description: Project updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+              example:
+                id: "019a0000-0000-7000-8000-000000000001"
+                handle: "shop"
+                displayName: "Storefront"
+                description: "Online storefront"
+                rootOuId: "019a0000-0000-7000-8000-0000000000aa"
+                createdAt: "2026-10-23T10:15:00Z"
+        "400":
+          description: The request is malformed, a field is invalid, or the handle was changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                handle-change:
+                  value:
+                    code: "PRJ-1007"
+                    message:
+                      key: "error.projectservice.handle_change_not_allowed"
+                      defaultValue: "Project handle cannot be changed"
+                    description:
+                      key: "error.projectservice.handle_change_not_allowed_description"
+                      defaultValue: "Send the current handle, or omit it, when updating a project"
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/ProjectNotFound'
+        "409":
+          description: |
+            Another root organization unit already has the new display name. A project's display name is
+            its root organization unit's name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                name-conflict:
+                  value:
+                    code: "OU-1004"
+                    message:
+                      key: "error.ouservice.organization_unit_name_conflict"
+                      defaultValue: "Organization unit name conflict"
+                    description:
+                      key: "error.ouservice.organization_unit_name_conflict_description"
+                      defaultValue: "An organization unit with the same name exists under the same parent"
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Projects
+      summary: Delete a project
+      description: |
+        Deletes a project and its root organization unit. The deletion is refused while the root
+        organization unit still has child organization units or other resources that depend on it.
+      responses:
+        "204":
+          description: Project deleted, or no project exists with the given ID.
+        "400":
+          description: The root organization unit still has dependent resources.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://localhost:8090/oauth2/authorize
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+        clientCredentials:
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+
+  parameters:
+    projectIdPathParam:
+      in: path
+      name: id
+      required: true
+      description: The project ID.
+      schema:
+        type: string
+        format: uuid
+    limitQueryParam:
+      in: query
+      name: limit
+      required: false
+      description: Maximum number of records to return. At most 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 30
+    offsetQueryParam:
+      in: query
+      name: offset
+      required: false
+      description: Number of records to skip for pagination.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  responses:
+    ProjectNotFound:
+      description: No project exists with the given ID.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "PRJ-1002"
+            message:
+              key: "error.projectservice.project_not_found"
+              defaultValue: "Project not found"
+            description:
+              key: "error.projectservice.project_not_found_description"
+              defaultValue: "No project exists with the given ID"
+    Forbidden:
+      description: The caller is not allowed to create a root organization unit.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Project:
+      type: object
+      required: [id, handle, displayName, rootOuId, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The project ID.
+        handle:
+          type: string
+          description: Immutable, human-readable identifier of the project.
+        displayName:
+          type: string
+          description: Display name of the project.
+        description:
+          type: string
+          description: Description of the project.
+        rootOuId:
+          type: string
+          format: uuid
+          description: ID of the root organization unit that backs the project.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the project was created.
+
+    CreateProjectRequest:
+      type: object
+      required: [handle, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Optional project ID. Use it to keep an ID that another system already uses for the project.
+        handle:
+          type: string
+          maxLength: 100
+          description: Immutable, human-readable identifier of the project. It is the root organization unit's handle, so the organization unit's handle rules apply and it must not contain "/".
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Display name of the project. It is the root organization unit's name.
+        description:
+          type: string
+          maxLength: 255
+          description: Description of the project.
+
+    UpdateProjectRequest:
+      type: object
+      required: [displayName]
+      properties:
+        handle:
+          type: string
+          description: The current handle. It cannot be changed.
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Display name of the project.
+        description:
+          type: string
+          maxLength: 255
+          description: Description of the project.
+
+    ProjectListResponse:
+      type: object
+      required: [totalResults, startIndex, count, projects, links]
+      properties:
+        totalResults:
+          type: integer
+          description: Total number of projects.
+        startIndex:
+          type: integer
+          description: One-based index of the first project in this page.
+        count:
+          type: integer
+          description: Number of projects in this page.
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+
+    Link:
+      type: object
+      properties:
+        href:
+          type: string
+          example: "/projects?offset=20&limit=10"
+        rel:
+          type: string
+          example: "next"
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: "Error code. Codes follow the PRJ-XXXX convention, or OU-XXXX for errors raised while managing the root organization unit."
+          example: "PRJ-1001"
+        message:
+          $ref: '#/components/schemas/I18nMessage'
+        description:
+          $ref: '#/components/schemas/I18nMessage'
+
+    I18nMessage:
+      type: object
+      description: Internationalized message with translation key and default value.
+      required:
+        - key
+        - defaultValue
+      properties:
+        key:
+          type: string
+          description: Translation key for fetching localized message.
+        defaultValue:
+          type: string
+          description: Default message in English (fallback).

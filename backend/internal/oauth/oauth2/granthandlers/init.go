@@ -4,6 +4,8 @@
 package granthandlers
 
 import (
+	"time"
+
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
@@ -31,6 +33,9 @@ func Initialize(
 	refreshTokenRevoker revocation.RefreshTokenRevokerInterface,
 	criteriaRevoker revocation.CriteriaRevokerInterface,
 	enforcementService revocation.EnforcementServiceInterface,
+	governance providers.IdentityGovernanceProvider,
+	authzDetails providers.AuthorizationDetailProvider,
+	deviceSecretValidity time.Duration,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
 	return newGrantHandlerProvider(
@@ -47,6 +52,9 @@ func Initialize(
 		refreshTokenRevoker,
 		criteriaRevoker,
 		enforcementService,
+		governance,
+		authzDetails,
+		deviceSecretValidity,
 		cfg,
 	)
 }

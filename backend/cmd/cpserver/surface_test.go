@@ -91,6 +91,7 @@ func TestControlPlaneLinksManagement(t *testing.T) {
 		"internal/flow/executormeta",
 		"internal/idp",
 		"internal/ou",
+		"internal/project",
 		"internal/role",
 		"internal/system/importer",
 		"internal/system/export",

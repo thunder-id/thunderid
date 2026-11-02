@@ -92,3 +92,16 @@ func (suite *ConstantsTestSuite) TestResourceServerType_IsValid() {
 	assert.False(suite.T(), ResourceServerType("UNKNOWN").IsValid())
 	assert.False(suite.T(), ResourceServerType("").IsValid())
 }
+
+// The selection inputs are rendering hints the client fills from a managed resource, so the engine
+// has to recognize them before a flow can declare one.
+func (suite *ConstantsTestSuite) TestValidInputTypes_AcceptsTheSelectionInputs() {
+	for _, inputType := range []string{
+		InputTypeUserSelect, InputTypeOUSelect, InputTypeAuthFlowSelect, InputTypeUserTypeSelect,
+	} {
+		assert.True(suite.T(), ValidInputTypes[inputType], inputType)
+	}
+	assert.Equal(suite.T(), "AUTH_FLOW_SELECT", InputTypeAuthFlowSelect)
+	assert.Equal(suite.T(), "USER_TYPE_SELECT", InputTypeUserTypeSelect)
+	assert.False(suite.T(), ValidInputTypes["FLOW_SELECT"])
+}

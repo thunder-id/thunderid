@@ -52,6 +52,7 @@ schema: {
 ---
 resource_type: flow
 id: 019e3a5c-0533-7b06-aa66-ec42ad05784f
+ouHandle: default
 name: React SDK Sample Sign Out Flow
 handle: react-sdk-sample-signout-flow
 flowType: SIGNOUT

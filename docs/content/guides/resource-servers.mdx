@@ -32,7 +32,7 @@ Resource Server (identifier: "https://api.example.com/booking", delimiter: ":")
 
 Permission strings use one of two forms. Flat permissions, for server-level actions, are just the `{action-handle}` (for example, `list`). Hierarchical permissions follow `{resource-handle}{delimiter}{action-handle}` (for example, `reservations:create`). Permission strings are not prefixed by the resource server; the resource server is identified by its `identifier`, which becomes the access token audience.
 
-- **Resource Server**: container for all resources and actions. Requires a unique `identifier`. When the identifier is set to an absolute URI, the resource server is used in [resource indicator](../protocols/oauth-oidc/resource-indicators) flows (RFC 8707).
+- **Resource Server**: container for all resources and actions. Requires a unique `identifier`. When the identifier is set to an absolute URI, the resource server is used in [resource indicator](../protocols/oauth-oidc/resource-indicators) flows (RFC 8707). An MCP resource server's identifier must be an `http` or `https` URL.
 - **Resource**: a named entity within a resource server. Resources can nest to form hierarchies.
 - **Action**: an operation that can be performed. Actions can exist at the resource server level (global) or within a specific resource.
 
@@ -71,7 +71,8 @@ curl -kL -X POST https://localhost:8090/resource-servers \
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | Yes | Display name for the resource server. Must be unique. |
-| `identifier` | Yes | Unique identifier for the resource server. When set to an absolute URI (for example, `https://api.example.com/booking`), the resource server is used in RFC 8707 resource indicator flows and the identifier becomes the access token audience claim value. |
+| `identifier` | Yes | Unique identifier for the resource server. When set to an absolute URI (for example, `https://api.example.com/booking`), the resource server is used in RFC 8707 resource indicator flows and the identifier becomes the access token audience claim value. For an MCP resource server, the identifier must be an `http` or `https` URL with no fragment, such as `https://mcp.example.com/mcp`. |
+| `type` | No | `API`, `MCP`, or `CUSTOM`. Defaults to `CUSTOM`. Immutable after creation. |
 | `ouId` | Yes | Organization unit ID. |
 | `delimiter` | No | Character that separates hierarchy levels in permission strings. Defaults to `:`. Immutable after creation. Allowed characters: `a-z A-Z 0-9 . _ : - /`. |
 | `description` | No | Description of the resource server. |
@@ -294,7 +295,7 @@ curl -kL -X DELETE https://localhost:8090/resource-servers/<resource-server-id>/
 ## Best Practices
 
 - **Plan handle names before creation.** The `handle` on resources and actions is immutable, as is the resource server `delimiter`. Use lowercase with hyphens for readability (for example, `reservations`, `create`).
-- **Use absolute URIs as identifiers for RFC 8707.** The `identifier` field accepts any string, but only resource servers with absolute URI identifiers (such as `https://api.example.com/booking`) are used in [resource indicator](../protocols/oauth-oidc/resource-indicators) flows. Set a URI identifier if you need audience-restricted access tokens.
+- **Use absolute URIs as identifiers for RFC 8707.** The `identifier` field accepts any string for API and custom resource servers, but only resource servers with absolute URI identifiers (such as `https://api.example.com/booking`) are used in [resource indicator](../protocols/oauth-oidc/resource-indicators) flows. Set a URI identifier if you need audience-restricted access tokens.
 - **Create one resource server per API boundary.** Separate resource servers for different microservices or applications produce cleaner permission models and more targeted access tokens.
 - **Choose the delimiter before creation.** The delimiter separates hierarchy levels in permission strings and cannot be changed. The colon (`:`) is the most common choice.
 

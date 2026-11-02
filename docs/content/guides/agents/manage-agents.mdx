@@ -90,29 +90,41 @@ The credential the agent authenticates with, either a client secret or a signed 
 
 ### Flows
 
-Available once the agent is extended to act for users. Pick the authentication and registration flows that decide how users authenticate through the agent. The flows themselves are built in the flow builder, [Login and Registration Flows](../../flows/build-a-flow); this tab only selects which one the agent uses. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
+Applies only when the agent signs users in with the authorization code or CIBA grant. An agent that holds only token exchange or JWT bearer never starts a sign-in, so these settings stay frozen. Pick the authentication and registration flows that decide how users authenticate through the agent. The flows themselves are built in the flow builder, [Login and Registration Flows](../../flows/build-a-flow); this tab only selects which one the agent uses. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
 
 ### Tokens
 
-What the agent's tokens carry and how long they last, set independently for each audience: the **Agent** token it uses on its own, and the **User** token it holds for a signed-in user. See [Agent Token](../authentication/agent-own-token) for the agent token and [Agent Access on Behalf of Users](../authentication/on-behalf-of-user) for the user token.
+What the agent's tokens carry and how long they last, set independently for each audience: the **Agent** token it uses on its own, and the **User** token it holds when acting for a user. Without the authorization code or CIBA grant, the **User** token shows only the access token settings, since the other delegated grants issue no ID or refresh token. See [Agent Token](../authentication/agent-own-token) for the agent token and [Agent Access on Behalf of Users](../authentication/on-behalf-of-user) for the user token.
 
 ### Advanced
 
 The **Advanced** tab gathers the agent's OAuth and operational settings:
 
-- **Operating mode** has a **Delegated mode** toggle that sets whether the agent acts only on its own or is extended to also act for a signed-in user. On its own it uses its own credentials (`client_credentials`); with Delegated mode on, it additionally signs users in (`authorization_code` with PKCE). See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
+- **Operating mode** has a **Delegated mode** toggle that sets whether the agent acts only on its own or is extended to also act for a signed-in user. On its own it uses its own credentials (`client_credentials`); with Delegated mode on, it can also act for a user, and turning it on adds the authorization code (`authorization_code` with PKCE) and refresh token grants by default. Turning it off removes every grant that depends on it and turns off identity assertions. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
 - **Owner** is changed here; see [Identifiers and owner](#identifiers-and-owner) for what it means.
-- **Allowed user types** restricts self-service registration to the selected user types. If none are selected, users cannot register through the agent; existing users can still sign in. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
+- **Allowed user types** restricts self-service registration to the selected user types. Once the authorization code grant is on, you must select at least one user type before **Save** is enabled. Users of the selected types can register through the agent. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
 - **Agent sign-in** controls whether other agents can sign in to this agent. Turn it on to let agents sign in, and leave it off to block every agent. This setting does not affect users. 
-- **Grant types** are the OAuth grants the agent may use. Acting on its own (`client_credentials`) and handing a task to another agent (token exchange) are available in either operating mode; signing users in (`authorization_code`), keeping that access without a new sign-in (`refresh_token`), and out-of-band approval (CIBA) become available once the agent is extended to act for users. See [Agent Token](../authentication/agent-own-token) and [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
+- **Grant types** are the OAuth grants the agent may use. Acting on its own (`client_credentials`) is always on. The other grants stay locked until the agent is extended to act for users: signing users in (`authorization_code`), keeping that access without a new sign-in (`refresh_token`), out-of-band approval (CIBA), handing a task to another agent (**Token exchange**), and redeeming an ID-JAG from an external identity provider (**JWT bearer**). See [Agent Token](../authentication/agent-own-token) and [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
 - **Authorized redirect URIs** are the callback URLs allowed for the `authorization_code` grant. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
 - **Client authentication method** is how the agent authenticates to the token endpoint, with a client secret or a private key JWT. See [Agent Authentication](../authentication).
-- **Security** covers **Require PKCE** and **Require Pushed Authorization Requests (PAR)**, which apply to the `authorization_code` grant. Require PKCE turns on automatically when Delegated mode is on and cannot be turned off here; PAR is optional.
+- **Security** covers **Require PKCE** and **Require Pushed Authorization Requests (PAR)**, which apply to the `authorization_code` grant. Require PKCE turns on automatically when the `authorization_code` grant is on and cannot be turned off here; PAR is optional.
 - **Default audience** is the `aud` the agent's own token carries when a request names no `resource` and no scopes. See [Agent Token](../authentication/agent-own-token).
+- **Identity assertions (ID-JAG)** lets the agent issue an Identity Assertion JWT Authorization Grant for the signed-in user that an external authorization server accepts. The card appears after the grant settings, only while Delegated mode is on. Set the **Allowed audiences** and the **Assertion validity**. Turning it on also enables the token exchange grant, which you cannot remove while identity assertions are on. See [Issue Identity Assertions (ID-JAG)](../../protocols/oauth-oidc/identity-assertion-grant/issue-identity-assertions).
 
 ## Agent schema
 
 The custom attributes every agent carries come from the agent schema, a single built-in schema shared by all agents. See [Agent Schema](../agent-schema) to view the default attributes and change what an agent holds.
+
+## Suspend or unlock an agent
+
+An agent locks automatically after repeated failed sign-in attempts, but its client secret never locks. To stop an agent while you investigate, suspend it. Suspending revokes the agent's tokens, including user tokens issued through its OAuth client, and ends its sessions.
+
+- **Console:** open the agent, click **Actions** in its header, and select **Suspend**, **Unsuspend**, or **Unlock**. The menu offers only the operations that apply to the agent's **Status**.
+- **API:** `GET /agents/<AGENT_ID>` returns the agent's `status`. Suspend, unsuspend, and unlock run as administration flows; there is no direct endpoint.
+
+To find agents that no longer authenticate, set `accountAccess.agent.recordLastLogin` to `true`. `GET /agents/<AGENT_ID>` then returns `lastLoginAt`, the time the agent was last granted access, and every `client_credentials` token the agent obtains records it too. The value is absent until the first recorded grant, and it can lag the latest grant by up to `lastLoginResolutionSeconds`, one hour by default. See [Account Access](../../../deployment/configuration#account-access).
+
+For what each operation does, see [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts). For the agent lock policy, see [Configure Account Lockout](../../account-protection/configure-account-lockout).
 
 ## Delete an agent
 

@@ -35,11 +35,20 @@ interface BlockContext {
   hasMultipleSubmits?: boolean;
   /** ID of the primary submit action that stays as type="submit" */
   primarySubmitId?: string;
+  /** When true, the approving (primary) submit action is disabled while other actions stay available */
+  approvalBlocked?: boolean;
+}
+
+// The primary submit action approves a consent prompt; any other submit action denies it.
+function isApprovalAction(component: EmbeddedFlowComponent): boolean {
+  return (component as FlowComponent).variant?.toUpperCase() === 'PRIMARY';
 }
 
 interface SubmitButtonAdapterProps {
   component: FlowComponent;
   isLoading: boolean;
+  /** When true, the button is disabled even while the flow is not loading */
+  disabled?: boolean;
   resolve: (template: string | undefined) => string | undefined;
   /** When provided, the button fires its own action via onClick instead of form submit */
   onClick?: () => void;
@@ -48,6 +57,7 @@ interface SubmitButtonAdapterProps {
 function SubmitButtonAdapter({
   component,
   isLoading,
+  disabled = false,
   resolve,
   onClick = undefined,
 }: SubmitButtonAdapterProps): JSX.Element {
@@ -64,7 +74,7 @@ function SubmitButtonAdapter({
         component.variant === 'PRIMARY' ? 'Button--primary' : 'Button--outlined',
       )}
       variant={component.variant === 'PRIMARY' ? 'contained' : 'outlined'}
-      disabled={isLoading}
+      disabled={isLoading || disabled}
       onClick={onClick}
       sx={{mt: 2}}
     >
@@ -247,6 +257,7 @@ function renderFormSubComponent(
         key={sub.id ?? compIndex}
         component={sub}
         isLoading={ctx.isLoading}
+        disabled={ctx.approvalBlocked === true && isApprovalAction(sub)}
         resolve={ctx.resolve}
         onClick={
           ctx.hasMultipleSubmits && sub.id !== ctx.primarySubmitId
@@ -321,7 +332,9 @@ function FormBlockAdapter({component, index, ...ctx}: FormBlockAdapterProps): JS
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (ctx.onValidate && !ctx.onValidate(blockComponents)) return;
-    if (primarySubmit) ctx.onSubmit(primarySubmit, ctx.values);
+    if (primarySubmit && !(ctx.approvalBlocked && isApprovalAction(primarySubmit))) {
+      ctx.onSubmit(primarySubmit, ctx.values);
+    }
   };
 
   return (

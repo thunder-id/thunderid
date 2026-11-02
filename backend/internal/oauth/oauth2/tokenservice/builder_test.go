@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package tokenservice
@@ -31,6 +31,7 @@ import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jwksresolver"
+	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -2843,6 +2844,58 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_CarriesSessionID() {
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_CarriesAuthorizationDetails() {
+	details := json.RawMessage(`[{"type":"payment_initiation","id":"d1"}]`)
+	buildCtx := &AccessTokenBuildContext{
+		Subject:              "user123",
+		Audiences:            []string{"app123"},
+		ClientID:             "test-client",
+		Scopes:               []string{"read"},
+		GrantType:            string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:             suite.oauthApp,
+		AuthorizationDetails: details,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, "user123", "https://example.com", mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			value, ok := claims[constants.ClaimAuthorizationDetails].(json.RawMessage)
+			return ok && string(value) == string(details)
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), details, result.AuthorizationDetails)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_OmitsAuthorizationDetailsWhenNone() {
+	buildCtx := &AccessTokenBuildContext{
+		Subject:   "user123",
+		Audiences: []string{"app123"},
+		ClientID:  "test-client",
+		Scopes:    []string{"read"},
+		GrantType: string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:  suite.oauthApp,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, "user123", "https://example.com", mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			_, exists := claims[constants.ClaimAuthorizationDetails]
+			return !exists
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.Nil(suite.T(), result.AuthorizationDetails)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
 // sidAllowListedApp is an application that allow-lists a user attribute named sid for the ID token,
 // the configuration under which the attribute merge would otherwise emit a user-supplied sid.
 func sidAllowListedApp() *providers.OAuthClient {
@@ -3232,4 +3285,78 @@ func (s *OUAttributesTestSuite) TestOnlyTheClaimsSuppliedAreReplaced() {
 
 	s.Equal("customer-a", claims[constants.ClaimOUID])
 	s.Equal("owner", claims[constants.ClaimOUHandle])
+}
+
+// ----- BuildDeviceSecret -----
+
+const deviceSecretSignedToken = "signed.sso.session.token"
+
+func deviceSecretCtx(client *providers.OAuthClient) *DeviceSecretBuildContext {
+	return &DeviceSecretBuildContext{OAuthApp: client, SubjectID: logoutTestSubjectID,
+		SessionData: []oauth2model.SessionData{
+			{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-abc"},
+			{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-def"},
+		}, ValidityPeriod: 600}
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildDeviceSecret_ClaimShape() {
+	var claims map[string]interface{}
+	suite.mockJWTService.EXPECT().
+		GenerateJWT(mock.Anything, logoutTestSubjectID, "https://example.com", int64(600), mock.Anything,
+			jwt.TokenTypeDeviceSecret, "").
+		Run(func(_ context.Context, _, _ string, _ int64, got map[string]interface{}, _, _ string) {
+			claims = got
+		}).Return(deviceSecretSignedToken, int64(1700000000), nil).Once()
+
+	result, err := suite.newLogoutBuilder(120, nil).
+		BuildDeviceSecret(context.Background(), deviceSecretCtx(&providers.OAuthClient{ClientID: logoutTestClientID}))
+
+	suite.Require().NoError(err)
+	suite.Equal(deviceSecretSignedToken, result.Token)
+	suite.Equal(int64(600), result.ExpiresIn)
+	suite.Equal(map[string]interface{}{
+		"aud": "https://example.com",
+		"session_data": []map[string]string{
+			{"flow_identifier": "77e0937879f72858", "session_handle": "handle-abc"},
+			{"flow_identifier": "f51bdb0f22d906bb", "session_handle": "handle-def"},
+		},
+	}, claims)
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildDeviceSecret_RejectsMissingInputs() {
+	b := suite.newLogoutBuilder(120, nil)
+	client := &providers.OAuthClient{ClientID: logoutTestClientID}
+	noSubject := deviceSecretCtx(client)
+	noSubject.SubjectID = ""
+	noSession := deviceSecretCtx(client)
+	noSession.SessionData = nil
+	noValidity := deviceSecretCtx(client)
+	noValidity.ValidityPeriod = 0
+	cases := []struct {
+		name string
+		ctx  *DeviceSecretBuildContext
+	}{
+		{"nil context", nil},
+		{"client without id", deviceSecretCtx(&providers.OAuthClient{})},
+		{"no subject", noSubject},
+		{"no session", noSession},
+		{"no validity left", noValidity},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			_, err := b.BuildDeviceSecret(context.Background(), tc.ctx)
+			suite.Error(err)
+		})
+	}
+	suite.mockJWTService.AssertNotCalled(suite.T(), "GenerateJWT")
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildDeviceSecret_SigningFailurePropagates() {
+	suite.mockJWTService.EXPECT().GenerateJWT(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return("", 0, &tidcommon.InternalServerError).Once()
+
+	_, err := suite.newLogoutBuilder(120, nil).
+		BuildDeviceSecret(context.Background(), deviceSecretCtx(&providers.OAuthClient{ClientID: logoutTestClientID}))
+
+	suite.Error(err)
 }

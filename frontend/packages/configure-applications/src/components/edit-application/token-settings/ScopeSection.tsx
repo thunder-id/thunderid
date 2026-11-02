@@ -39,10 +39,19 @@ interface ScopeSectionProps {
    * Whether inputs should be disabled (e.g. read-only resource).
    */
   disabled?: boolean;
+  /**
+   * Whether only the scope names take effect, for an entity whose grants issue an access token
+   * alone (token exchange, JWT bearer). Those grants keep a listed custom scope as an OpenID
+   * Connect scope (a standard one is kept either way) but never add its mapped attributes, so the
+   * description says so and the hint about adding allowed user types is dropped. Defaults to false.
+   */
+  scopesOnly?: boolean;
 }
 
 /**
- * Scope → user attribute mapping editor, rendered beneath the ID Token and User Info tabs.
+ * Scope → user attribute mapping editor. It renders on the combined ID Token and User Info tab,
+ * above the panels it feeds, or, for an entity issued only an access token on behalf of a user,
+ * below that access token.
  *
  * The mapping is the single source of truth: a scope is available to the {@link entityLabel} only
  * while it has an entry here, and the attributes mapped to it are the ones exposed when it is
@@ -60,6 +69,7 @@ export default function ScopeSection({
   onScopeClaimsChange,
   entityLabel = 'application',
   disabled = false,
+  scopesOnly = false,
 }: ScopeSectionProps) {
   const {t} = useTranslation();
 
@@ -69,14 +79,19 @@ export default function ScopeSection({
         {t('applications:edit.token.scopes_card.title', 'Scopes & user attribute mappings')}
       </Typography>
       <Typography variant="body2" color="text.disabled" sx={{mb: 2}}>
-        {t('applications:edit.token.scopes_card.description', {
-          defaultValue:
-            'Configure the OAuth2 scopes available to this {{entity}} and the user attributes each exposes. This mapping is shared by the ID Token and the User Info endpoint.',
-          entity: entityLabel,
-        })}
+        {scopesOnly
+          ? t(
+              'applications:edit.token.scopes_card.description.scopesOnly',
+              'A custom scope listed here is kept as an OpenID Connect scope instead of being treated as a resource server permission. Its mapped attributes are not added to the access token.',
+            )
+          : t('applications:edit.token.scopes_card.description', {
+              defaultValue:
+                'Configure the OAuth2 scopes available to this {{entity}} and the user attributes each exposes. This mapping is shared by the ID Token and the User Info endpoint.',
+              entity: entityLabel,
+            })}
       </Typography>
 
-      {!hasAllowedUserTypes && !isLoadingUserAttributes && (
+      {!scopesOnly && !hasAllowedUserTypes && !isLoadingUserAttributes && (
         <Alert severity="info" sx={{mb: 2}}>
           {t('applications:edit.token.scopes_card.no_user_types', {
             defaultValue:

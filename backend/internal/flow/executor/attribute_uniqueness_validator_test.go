@@ -50,17 +50,22 @@ func (suite *AttributeUniquenessValidatorTestSuite) SetupTest() {
 			execResp *providers.ExecutorResponse,
 			_ providers.AuthnProviderManager,
 		) bool {
-			if _, ok := ctx.RuntimeData[categoryTypeKey]; !ok {
-				execResp.Status = providers.ExecFailure
-				execResp.Error = &tidcommon.ServiceError{
-					Error: tidcommon.I18nMessage{DefaultValue: "Prerequisite not met: " + categoryTypeKey},
+			for _, key := range []string{categoryNameKey, categoryTypeKey} {
+				if _, ok := ctx.RuntimeData[key]; !ok {
+					execResp.Status = providers.ExecFailure
+					execResp.Error = &tidcommon.ServiceError{
+						Error: tidcommon.I18nMessage{DefaultValue: "Prerequisite not met: " + key},
+					}
+					return false
 				}
-				return false
 			}
 			return true
 		}).Maybe()
 
-	prerequisites := []providers.Input{{Identifier: categoryTypeKey, Required: true}}
+	prerequisites := []providers.Input{
+		{Identifier: categoryNameKey, Required: true},
+		{Identifier: categoryTypeKey, Required: true},
+	}
 	suite.mockFlowFactory.On("CreateExecutor",
 		ExecutorNameAttributeUniquenessValidator,
 		providers.ExecutorTypeUtility,
@@ -90,6 +95,7 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_NoConflict_Retur
 		ExecutionID: "flow-1",
 		UserInputs:  map[string]string{"email": "free@example.com", "username": "newuser"},
 		RuntimeData: map[string]string{
+			categoryNameKey: string(entitytype.TypeCategoryUser),
 			categoryTypeKey: testUniquenessUserType,
 		},
 	}
@@ -98,9 +104,11 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_NoConflict_Retur
 		Return([]string{"email", "username"}, nil)
 
 	freeID := (*string)(nil)
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"email": "free@example.com"}).
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{"email": "free@example.com"}).
 		Return(freeID, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "not found", ""))
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"username": "newuser"}).
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{"username": "newuser"}).
 		Return(freeID, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "not found", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -126,6 +134,7 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AttributeConflic
 				ExecutionID: "flow-1",
 				UserInputs:  map[string]string{tt.attribute: tt.value},
 				RuntimeData: map[string]string{
+					categoryNameKey: string(entitytype.TypeCategoryUser),
 					categoryTypeKey: testUniquenessUserType,
 				},
 			}
@@ -134,7 +143,8 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AttributeConflic
 				Return([]string{tt.attribute}, nil).Once()
 
 			existingUserID := testExistingUserID
-			suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{tt.attribute: tt.value}).
+			suite.mockEntityProvider.On("IdentifyEntity",
+				map[string]interface{}{tt.attribute: tt.value}).
 				Return(&existingUserID, nil).Once()
 
 			resp, err := suite.executor.Execute(ctx)
@@ -152,19 +162,22 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AttributeConflic
 	}
 }
 
-func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AttributeConflictInAgentMode_NamesTheAgent() {
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AttributeConflictForAgent_NamesTheAgent() {
 	ctx := &providers.NodeContext{
-		ExecutionID:    "flow-1",
-		NodeProperties: map[string]interface{}{propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent)},
-		UserInputs:     map[string]string{"model": "gpt-5"},
-		RuntimeData:    map[string]string{categoryTypeKey: testUniquenessAgentType},
+		ExecutionID: "flow-1",
+		UserInputs:  map[string]string{"model": "gpt-5"},
+		RuntimeData: map[string]string{
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testUniquenessAgentType,
+		},
 	}
 
 	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, entitytype.TypeCategoryAgent,
 		testUniquenessAgentType).Return([]string{"model"}, nil).Once()
 
 	existingID := testExistingUserID
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"model": "gpt-5"}).
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{"model": "gpt-5"}).
 		Return(&existingID, nil).Once()
 
 	resp, err := suite.executor.Execute(ctx)
@@ -177,12 +190,104 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AttributeConflic
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_CategoryFromRuntime_SelectsTheSchema() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		UserInputs:  map[string]string{"name": "Foo"},
+		RuntimeData: map[string]string{
+			categoryTypeKey: testUniquenessAgentType,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+		},
+	}
+
+	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, entitytype.TypeCategoryAgent,
+		testUniquenessAgentType).Return([]string{"name"}, nil).Once()
+
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{"name": "Foo"}).
+		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "not found", "")).
+		Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockEntityProvider.AssertExpectations(suite.T())
+}
+
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_NoCategoryInRuntime_PrerequisiteNotMet() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		UserInputs:  map[string]string{"email": "test@example.com"},
+		RuntimeData: map[string]string{categoryTypeKey: testUniquenessUserType},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Contains(suite.T(), resp.Error.Error.DefaultValue, categoryNameKey)
+	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetUniqueAttributes")
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity")
+}
+
+// The category and the type are read the same way: an empty value leaves nothing to check.
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_EmptyCategoryOrTypeInRuntime_SkipsCheck() {
+	tests := []struct {
+		name        string
+		runtimeData map[string]string
+	}{
+		{
+			name:        "EmptyCategory",
+			runtimeData: map[string]string{categoryNameKey: "", categoryTypeKey: testUniquenessUserType},
+		},
+		{
+			name:        "EmptyType",
+			runtimeData: map[string]string{categoryNameKey: string(entitytype.TypeCategoryUser), categoryTypeKey: ""},
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			ctx := &providers.NodeContext{
+				ExecutionID: "flow-1",
+				UserInputs:  map[string]string{"email": "test@example.com"},
+				RuntimeData: tt.runtimeData,
+			}
+
+			resp, err := suite.executor.Execute(ctx)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+			suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetUniqueAttributes")
+		})
+	}
+}
+
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_InvalidCategoryInRuntime_ReturnsError() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		UserInputs:  map[string]string{"email": "test@example.com"},
+		RuntimeData: map[string]string{
+			categoryNameKey: "machine",
+			categoryTypeKey: testUniquenessUserType,
+		},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), resp)
+	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetUniqueAttributes")
+}
+
 func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_UniqueAttrNotInInputs_Skipped() {
 	// Schema says "email" is unique, but the user hasn't provided it yet — skip the check.
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-1",
 		UserInputs:  map[string]string{"username": "newuser"},
 		RuntimeData: map[string]string{
+			categoryNameKey: string(entitytype.TypeCategoryUser),
 			categoryTypeKey: testUniquenessUserType,
 		},
 	}
@@ -191,7 +296,8 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_UniqueAttrNotInI
 		Return([]string{"email", "username"}, nil)
 
 	freeID := (*string)(nil)
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"username": "newuser"}).
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{"username": "newuser"}).
 		Return(freeID, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "not found", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -208,6 +314,7 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_SchemaServiceErr
 		ExecutionID: "flow-1",
 		UserInputs:  map[string]string{"email": "test@example.com"},
 		RuntimeData: map[string]string{
+			categoryNameKey: string(entitytype.TypeCategoryUser),
 			categoryTypeKey: testUniquenessUserType,
 		},
 	}
@@ -230,6 +337,7 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_IdentifyEntitySy
 		ExecutionID: "flow-1",
 		UserInputs:  map[string]string{"email": "test@example.com"},
 		RuntimeData: map[string]string{
+			categoryNameKey: string(entitytype.TypeCategoryUser),
 			categoryTypeKey: testUniquenessUserType,
 		},
 	}
@@ -237,7 +345,8 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_IdentifyEntitySy
 	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, mock.Anything, testUniquenessUserType).
 		Return([]string{"email"}, nil)
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"email": "test@example.com"}).
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{"email": "test@example.com"}).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "db error", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -247,11 +356,35 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_IdentifyEntitySy
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AmbiguousLookup_ReturnsFailure() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		UserInputs:  map[string]string{"email": "test@example.com"},
+		RuntimeData: map[string]string{
+			categoryNameKey: string(entitytype.TypeCategoryUser),
+			categoryTypeKey: testUniquenessUserType,
+		},
+	}
+
+	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, mock.Anything, testUniquenessUserType).
+		Return([]string{"email"}, nil)
+
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{"email": "test@example.com"}).
+		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeAmbiguousEntity, "ambiguous", ""))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), resp)
+}
+
 func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_NoUniqueAttributesInSchema_ReturnsComplete() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-1",
 		UserInputs:  map[string]string{"given_name": "John"},
 		RuntimeData: map[string]string{
+			categoryNameKey: string(entitytype.TypeCategoryUser),
 			categoryTypeKey: testUniquenessUserType,
 		},
 	}

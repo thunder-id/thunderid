@@ -669,3 +669,59 @@ func (s *CompositeStoreTestSuite) TestMergeAndDeduplicateFlows_DuplicateInFile()
 	s.Equal("flow-a", result[0].Handle, "First occurrence should be kept")
 	s.True(result[0].IsReadOnly)
 }
+
+func (s *CompositeStoreTestSuite) TestListFlowsByOU_MergesBothStoresAndPages() {
+	dbFlows := []BasicFlowDefinition{s.createBasicTestFlow("flow-1", "auth", "Auth", false)}
+	fileFlows := []BasicFlowDefinition{
+		s.createBasicTestFlow("flow-1", "auth", "Auth Override", true),
+		s.createBasicTestFlow("flow-2", "signup", "Signup", true),
+	}
+	s.mockDBStore.EXPECT().ListFlowsByOU(mock.Anything, "ou-1", 10000, 0, "").Return(dbFlows, 1, nil).Once()
+	s.mockFileStore.EXPECT().ListFlowsByOU(mock.Anything, "ou-1", 10000, 0, "").Return(fileFlows, 2, nil).Once()
+
+	page, total, err := s.compositeStore.ListFlowsByOU(context.Background(), "ou-1", 1, 1, "")
+
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), 2, total, "a flow in both stores is counted once")
+	require.Len(s.T(), page, 1)
+	assert.Equal(s.T(), "flow-2", page[0].ID)
+	assert.True(s.T(), page[0].IsReadOnly)
+}
+
+func (s *CompositeStoreTestSuite) TestListFlowsByOU_ReportsEitherStoreFailing() {
+	s.mockDBStore.EXPECT().ListFlowsByOU(mock.Anything, "ou-1", 10000, 0, "").
+		Return(nil, 0, errors.New("db error")).Once()
+	_, _, err := s.compositeStore.ListFlowsByOU(context.Background(), "ou-1", 10, 0, "")
+	assert.Error(s.T(), err)
+
+	s.mockDBStore.EXPECT().ListFlowsByOU(mock.Anything, "ou-1", 10000, 0, "").Return(nil, 0, nil).Once()
+	s.mockFileStore.EXPECT().ListFlowsByOU(mock.Anything, "ou-1", 10000, 0, "").
+		Return(nil, 0, errors.New("file error")).Once()
+	_, _, err = s.compositeStore.ListFlowsByOU(context.Background(), "ou-1", 10, 0, "")
+	assert.Error(s.T(), err)
+}
+
+func (s *CompositeStoreTestSuite) TestListFlowsByIDs_MergesBothStores() {
+	ids := []string{"flow-1", "flow-2"}
+	s.mockDBStore.EXPECT().ListFlowsByIDs(mock.Anything, ids, "").
+		Return([]BasicFlowDefinition{s.createBasicTestFlow("flow-1", "a", "A", false)}, nil).Once()
+	s.mockFileStore.EXPECT().ListFlowsByIDs(mock.Anything, ids, "").
+		Return([]BasicFlowDefinition{s.createBasicTestFlow("flow-2", "b", "B", true)}, nil).Once()
+
+	flows, err := s.compositeStore.ListFlowsByIDs(context.Background(), ids, "")
+
+	require.NoError(s.T(), err)
+	assert.Len(s.T(), flows, 2)
+}
+
+func (s *CompositeStoreTestSuite) TestListFlowsByIDs_ReportsEitherStoreFailing() {
+	ids := []string{"flow-1"}
+	s.mockDBStore.EXPECT().ListFlowsByIDs(mock.Anything, ids, "").Return(nil, errors.New("db error")).Once()
+	_, err := s.compositeStore.ListFlowsByIDs(context.Background(), ids, "")
+	assert.Error(s.T(), err)
+
+	s.mockDBStore.EXPECT().ListFlowsByIDs(mock.Anything, ids, "").Return(nil, nil).Once()
+	s.mockFileStore.EXPECT().ListFlowsByIDs(mock.Anything, ids, "").Return(nil, errors.New("file error")).Once()
+	_, err = s.compositeStore.ListFlowsByIDs(context.Background(), ids, "")
+	assert.Error(s.T(), err)
+}

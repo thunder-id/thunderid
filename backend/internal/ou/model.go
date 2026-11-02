@@ -7,6 +7,8 @@ import (
 	"context"
 	"time"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -30,6 +32,17 @@ type OrganizationUnitRequest struct {
 	TosURI                    string  `json:"tosUri,omitempty" native:"omitempty,url,max=2048"`
 	PolicyURI                 string  `json:"policyUri,omitempty" native:"omitempty,url,max=2048"`
 	CookiePolicyURI           string  `json:"cookiePolicyUri,omitempty" native:"omitempty,url,max=2048"`
+}
+
+// OwnerErrors are the errors a kind of resource answers with when it refuses the organization unit that owns it, so
+// each kind keeps its own error codes.
+type OwnerErrors struct {
+	// Required is returned when neither an id nor a handle is given for a new resource.
+	Required tidcommon.ServiceError
+	// NotFound is returned when the organization unit named does not exist.
+	NotFound tidcommon.ServiceError
+	// Changed is returned when the organization unit named for an existing resource is not the one it has.
+	Changed tidcommon.ServiceError
 }
 
 // OrganizationUnit is the management representation of an organization unit. It backs the REST
@@ -104,11 +117,13 @@ type OrganizationUnitBasic struct {
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
-// User represents a user with basic information for OU endpoints.
+// User represents a user with basic information for OU endpoints. IsOwnedByOU reports whether the
+// organization unit owns the user rather than being shared it.
 type User struct {
-	ID      string `json:"id"`
-	Type    string `json:"type,omitempty"`
-	Display string `json:"display,omitempty"`
+	ID          string `json:"id"`
+	Type        string `json:"type,omitempty"`
+	Display     string `json:"display,omitempty"`
+	IsOwnedByOU bool   `json:"isOwnedByOU"`
 }
 
 // Group represents a group with basic information for OU endpoints.
@@ -129,8 +144,9 @@ type UserListResponse struct {
 // OUUserResolver provides access to user data for an organization unit
 // without requiring direct import of the user package.
 type OUUserResolver interface {
-	GetUserCountByOUID(ctx context.Context, ouID string) (int, error)
-	GetUserListByOUID(ctx context.Context, ouID string, limit, offset int, includeDisplay bool) ([]User, error)
+	// GetUserListByOUID returns one page of the users an organization unit owns, followed by the ones
+	// shared into it, and the total across every page.
+	GetUserListByOUID(ctx context.Context, ouID string, limit, offset int, includeDisplay bool) ([]User, int, error)
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 }
@@ -153,12 +169,14 @@ type GroupListResponse struct {
 	Links        []utils.Link `json:"links"`
 }
 
-// Role represents a role with basic information for OU endpoints.
+// Role represents a role with basic information for OU endpoints. IsOwnedByOU reports whether the
+// organization unit owns the role rather than being shared it.
 type Role struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	IsReadOnly  bool   `json:"isReadOnly"`
+	IsOwnedByOU bool   `json:"isOwnedByOU"`
 }
 
 // RoleListResponse represents the response for listing roles in an organization unit.
@@ -173,6 +191,7 @@ type RoleListResponse struct {
 // OURoleResolver provides access to role data for an organization unit
 // without requiring direct import of the role package.
 type OURoleResolver interface {
-	GetRoleCountByOUID(ctx context.Context, ouID string) (int, error)
-	GetRoleListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Role, error)
+	// GetRoleListByOUID returns one page of the roles an organization unit owns, followed by the ones
+	// shared with it, and the total across every page.
+	GetRoleListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Role, int, error)
 }

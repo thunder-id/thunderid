@@ -77,6 +77,7 @@ func (suite *AgentTypeResolverTestSuite) TestSingleTypeResolvesWithoutPrompting(
 	suite.NoError(err)
 	suite.Equal(providers.ExecComplete, resp.Status)
 	suite.Equal("default", resp.RuntimeData[categoryTypeKey], "the shared runtime slot both categories use")
+	suite.Equal(string(entitytype.TypeCategoryAgent), resp.RuntimeData[categoryNameKey])
 	suite.Equal("ou-agents", resp.RuntimeData[defaultOUIDKey])
 	suite.Empty(resp.Inputs)
 }
@@ -125,6 +126,7 @@ func (suite *AgentTypeResolverTestSuite) TestSubmittedHandleResolves() {
 	suite.NoError(err)
 	suite.Equal(providers.ExecComplete, resp.Status)
 	suite.Equal("worker", resp.RuntimeData[categoryTypeKey])
+	suite.Equal(string(entitytype.TypeCategoryAgent), resp.RuntimeData[categoryNameKey])
 	suite.Equal("ou-agents", resp.RuntimeData[defaultOUIDKey])
 }
 
@@ -144,6 +146,7 @@ func (suite *AgentTypeResolverTestSuite) TestAllowedAgentTypesNarrowsTheChoice()
 	suite.NoError(err)
 	suite.Equal(providers.ExecComplete, resp.Status, "narrowing to one removes the prompt")
 	suite.Equal("default", resp.RuntimeData[categoryTypeKey])
+	suite.Equal(string(entitytype.TypeCategoryAgent), resp.RuntimeData[categoryNameKey])
 	suite.Equal("ou-agents", resp.RuntimeData[defaultOUIDKey])
 }
 
@@ -197,6 +200,7 @@ func (suite *AgentTypeResolverTestSuite) TestRegistrationFlowIsRefused() {
 	suite.Require().NotNil(resp.Error)
 	suite.Equal(ErrSelfRegNotSupportedForAgents.Code, resp.Error.Code)
 	suite.Empty(resp.RuntimeData[categoryTypeKey], "a refused flow resolves no type")
+	suite.Empty(resp.RuntimeData[categoryNameKey])
 }
 
 // The refusal must not reach the type catalog, so a misplaced node cannot probe what exists.
@@ -228,6 +232,7 @@ func (suite *AgentTypeResolverTestSuite) TestUnrelatedFlowTypeIsANoOp() {
 			suite.Equal(providers.ExecComplete, resp.Status)
 			suite.Nil(resp.Error)
 			suite.Empty(resp.RuntimeData[categoryTypeKey])
+			suite.Empty(resp.RuntimeData[categoryNameKey])
 		})
 	}
 }
@@ -261,6 +266,7 @@ func (suite *AgentTypeResolverTestSuite) TestAuthenticationAllowedWhenAgentTypes
 	suite.Equal(providers.ExecComplete, resp.Status)
 	suite.Nil(resp.Error)
 	suite.Empty(resp.RuntimeData[categoryTypeKey])
+	suite.Empty(resp.RuntimeData[categoryNameKey])
 	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetEntityTypeList",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }

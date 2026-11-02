@@ -215,7 +215,7 @@ func (s *ActorProviderTestSuite) TestGetActorGroups_Delegates() {
 func (s *ActorProviderTestSuite) TestGetActorRoles_Delegates() {
 	expected := []string{"admin", "editor"}
 	groupIDs := []string{"group-1"}
-	s.mockRole.On("GetUserRoles", mock.Anything, "app-1", groupIDs).
+	s.mockRole.On("GetUserRoles", mock.Anything, "app-1", groupIDs, "").
 		Return(expected, (*tidcommon.ServiceError)(nil))
 
 	roles, err := s.provider.GetActorRoles("app-1", groupIDs)
@@ -229,7 +229,7 @@ func (s *ActorProviderTestSuite) TestGetActorRoles_PropagatesError() {
 		Code:  "ROLE-0001",
 		Error: tidcommon.I18nMessage{Key: "error.test.role", DefaultValue: "role lookup failed"},
 	}
-	s.mockRole.On("GetUserRoles", mock.Anything, "app-1", []string{"group-1"}).Return(nil, svcErr)
+	s.mockRole.On("GetUserRoles", mock.Anything, "app-1", []string{"group-1"}, "").Return(nil, svcErr)
 
 	roles, err := s.provider.GetActorRoles("app-1", []string{"group-1"})
 
@@ -244,4 +244,15 @@ func (s *ActorProviderTestSuite) TestGetActorRoles_NilRoleService_ReturnsNil() {
 
 	s.Nil(err)
 	s.Nil(roles)
+}
+
+// Roles read in an organization unit come from the assignments made there.
+func (s *ActorProviderTestSuite) TestGetActorRolesInOU_Delegates() {
+	s.mockRole.On("GetUserRoles", mock.Anything, "app-1", []string{"group-1"}, "ou-1").
+		Return([]string{"admin"}, (*tidcommon.ServiceError)(nil))
+
+	roles, err := s.provider.(*actorProvider).GetActorRolesInOU("app-1", []string{"group-1"}, "ou-1")
+
+	s.Nil(err)
+	s.Equal([]string{"admin"}, roles)
 }

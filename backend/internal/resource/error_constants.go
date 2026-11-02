@@ -286,6 +286,19 @@ var (
 			DefaultValue: "A resource server with the specified ID already exists",
 		},
 	}
+	// ErrorInvalidMCPIdentifier is returned when an MCP resource server identifier is not an http or https URL.
+	ErrorInvalidMCPIdentifier = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1024",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.invalid_mcp_identifier",
+			DefaultValue: "Invalid MCP server identifier",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.invalid_mcp_identifier_description",
+			DefaultValue: "Use an http or https URL with no fragment, such as https://mcp.example.com/mcp",
+		},
+	}
 )
 
 // Internal error constants.

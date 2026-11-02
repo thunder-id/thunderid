@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
@@ -916,6 +917,87 @@ func (ts *AuthZENAPITestSuite) TestSearchActionDeniedUserReturnsEmptyResults() {
 	var result searchActionResponse
 	ts.Require().NoError(json.Unmarshal(body, &result))
 	ts.Empty(result.Results)
+}
+
+// A suspended subject is denied whatever its roles allow, in a single evaluation, a batch and an
+// action search. The lock an unsuspend leaves is not a denial, and a decision on a subject with no
+// stored account state creates none.
+func (ts *AuthZENAPITestSuite) TestASuspendedSubjectIsDeniedAndALockIsNot() {
+	heldUserID, err := testutils.CreateUser(testutils.User{
+		Type:       authzenUserTypeName,
+		OUID:       ts.ouID,
+		Attributes: json.RawMessage(`{"username": "authzen-held-user"}`),
+	})
+	ts.Require().NoError(err, "create the held subject")
+	ts.T().Cleanup(func() { _ = testutils.DeleteUser(heldUserID) })
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name:        "AuthZEN Held Reader",
+		Description: "Role granting the held subject the read permission",
+		OUID:        ts.ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.resourceServerID, Permissions: []string{ts.readPermission}},
+		},
+		Assignments: []testutils.Assignment{{ID: heldUserID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "create the held subject's role")
+	ts.T().Cleanup(func() { _ = testutils.DeleteRole(roleID) })
+
+	read := func(subjectID string) evaluationRequest {
+		return evaluationRequest{
+			Subject:  subject{Type: "user", ID: subjectID},
+			Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
+			Action:   action{Name: ts.readPermission},
+		}
+	}
+
+	ts.Require().NoError(testutils.DeleteRuntimeRow(heldUserID))
+	ts.True(ts.evaluate(read(heldUserID)).Decision, "a subject with no stored state must be decided as active")
+	rows, err := testutils.QueryRuntimeDB(fmt.Sprintf(
+		`SELECT COUNT(*) FROM "ENTITY_RUNTIME_DATA" WHERE ENTITY_ID = '%s';`, heldUserID))
+	ts.Require().NoError(err)
+	ts.Equal("0", rows, "a decision must create no account state")
+
+	adminFlowID, err := testutils.GetFlowIDByHandle("default-user-suspend-flow", "ADMINISTRATION")
+	ts.Require().NoError(err)
+	flowResult, err := common.ExecuteAdministrationFlow(adminFlowID, map[string]string{"subject": heldUserID}, true)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, flowResult.StatusCode, "%+v", flowResult.Error)
+	ts.Require().Equal("COMPLETE", flowResult.Step.FlowStatus, "the subject must be suspended")
+
+	denied := ts.evaluate(read(heldUserID))
+	ts.False(denied.Decision, "a suspended subject must be denied whatever its roles allow")
+	ts.Equal("Subject is suspended", denied.Context["reason"])
+
+	resp, body := ts.doRequest(http.MethodPost, "/access/v1/evaluations", mustJSON(evaluationsRequest{
+		Evaluations: []evaluationRequest{read(heldUserID), read(ts.userID)},
+	}))
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(body))
+	var batch evaluationsResponse
+	ts.Require().NoError(json.Unmarshal(body, &batch))
+	ts.Require().Len(batch.Evaluations, 2)
+	ts.False(batch.Evaluations[0].Decision, "the suspended subject must be denied in a batch")
+	ts.Equal("Subject is suspended", batch.Evaluations[0].Context["reason"])
+	ts.True(batch.Evaluations[1].Decision, "another subject in the batch must be decided as usual")
+
+	resp, body = ts.doRequest(http.MethodPost, "/access/v1/search/action", mustJSON(searchActionRequest{
+		Subject:  subject{Type: "user", ID: heldUserID},
+		Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
+	}))
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(body))
+	var search searchActionResponse
+	ts.Require().NoError(json.Unmarshal(body, &search))
+	ts.Empty(search.Results, "a suspended subject must have no allowed actions")
+
+	adminFlowID, err = testutils.GetFlowIDByHandle("default-user-unsuspend-flow", "ADMINISTRATION")
+	ts.Require().NoError(err)
+	flowResult, err = common.ExecuteAdministrationFlow(adminFlowID, map[string]string{"subject": heldUserID}, true)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, flowResult.StatusCode, "%+v", flowResult.Error)
+	ts.Require().Equal("COMPLETE", flowResult.Step.FlowStatus, "the subject must be unsuspended")
+	access, err := testutils.GetAccessStatus("users", heldUserID)
+	ts.Require().NoError(err)
+	ts.Require().Equal("LOCKED", access.Value, "an unsuspended user must be left under a lock")
+	ts.True(ts.evaluate(read(heldUserID)).Decision, "a lock must not deny")
 }
 
 func (ts *AuthZENAPITestSuite) TestSearchActionResourceIDDoesNotScopeCurrentResults() {

@@ -228,11 +228,12 @@ components:
     AccountAccessConfig:
       type: object
       description: |
-        The value of the `accountAccess` section: the automatic account lock settings for each
-        identity category.
+        The value of the `accountAccess` section: automatic account lock and sign-in recording
+        settings for each identity category.
 
-        Every field is optional. An omitted field keeps its value from the layer below, so a `PUT`
-        needs only the fields this deployment changes. Omitting a field is not the same as setting it
+        Every field is optional. A `PUT` replaces the entire runtime layer; include all runtime
+        overrides that must be kept. An omitted field falls back to the deployment base, not the
+        previous runtime value. Omitting a field is not the same as setting it
         to `0`: a lock duration of `0` never expires, and a decay of `0` never resets the lock count.
 
         A category that is not included uses the deployment defaults. To turn off locking for a
@@ -262,25 +263,30 @@ components:
 
     AccountAccessCategory:
       type: object
-      description: Account lock settings for one identity category.
+      description: Account lock and sign-in recording settings for one identity category.
       properties:
         lockGranularity:
           type: string
-          enum: [authentication_method, entity]
+          enum: [authentication_method, account]
           description: |
             What a lock applies to. `authentication_method` (the default) locks only the method that
-            failed, so wrong passwords do not block a one-time code. `entity` counts failures from
+            failed, so wrong passwords do not block a one-time code. `account` counts failures from
             every method together and locks them all.
         recordLastLogin:
           type: boolean
-          description: Whether the last sign-in time is recorded for identities in this category. Defaults to `false`.
+          description: |
+            Whether to record `lastLoginAt` when an identity in this category signs in. For agents,
+            issuing a `client_credentials` token also records it. Defaults to `false`.
+
+            Recording adds a write to the sign-in path, so it is off unless enabled. The server does
+            not use the value itself; it helps find inactive identities.
         lastLoginResolutionSeconds:
           type: integer
           minimum: 0
           maximum: 9223372036
           description: |
-            Minimum time between two recorded sign-in times for the same identity. `0` records every
-            time. Defaults to `3600`.
+            Minimum time between two `lastLoginAt` updates for the same identity, which limits the
+            write cost of recording. `0` records every sign-in. Defaults to `3600`.
         default:
           description: The lock policy applied to every authentication method in this category.
           allOf:
@@ -332,7 +338,7 @@ components:
         overrides them for a lock on one sign-in method. An override field that is not set uses the
         default. With no template for a lock, no email is sent.
 
-        A template can use `{{ctx(authenticationMethod)}}`, the sign-in method that locked
+        A template can use `{{ctx(lockedAuthenticationMethod)}}`, the sign-in method that locked
         (`credential` or `otp`, empty for a lock on every sign-in method), `{{ctx(lockDuration)}}`
         and `{{ctx(unlockTime)}}`, the time a temporary lock lifts in UTC. The method is not
         translated; to word each method in its own language, set a template for each in `methods`.
@@ -419,10 +425,11 @@ components:
           minimum: 0
           description: |
             Failures with no success in between, counted per authentication method (or for the whole
-            account under `entity` granularity), that leave the lock in place until it is cleared,
-            whatever the window and lock durations say. Neither time nor a lock ending resets this
-            count; a success with that method (under `entity` granularity, a completed sign-in) or
-            clearing the lock does. `0` sets no limit; otherwise it must be at least `threshold`.
+            account under `account` granularity), that leave the lock in place until a recovery or an
+            unlock, whatever the window and lock durations say. Neither time nor a lock ending resets
+            this count; a success with that method (under `account` granularity, a completed sign-in),
+            a completed recovery, or an unlock does. `0` sets no limit; otherwise it must be at least
+            `threshold`.
           example: 50
       additionalProperties: false
 

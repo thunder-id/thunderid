@@ -31,6 +31,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -44,7 +45,13 @@ type AuthorizeServiceInterface interface {
 	HandleInitialAuthorizationRequest(
 		ctx context.Context, msg *OAuthMessage,
 	) (*AuthorizationInitResult, *AuthorizationError)
-	HandleAuthorizationCallback(ctx context.Context, authID string, assertion string) (string, *AuthorizationError)
+	HandleAuthorizationCallback(ctx context.Context, authID string, assertion string,
+		sessionData []oauth2model.SessionData) (string, *AuthorizationError)
+	// AuthorizeWithSSOSession authorizes the client silently with an SSO session it presents, as
+	// prompt=none does, and returns the authorization code the flow's assertion is minted into. The
+	// code is not persisted; the caller issues its tokens directly.
+	AuthorizeWithSSOSession(ctx context.Context, app *providers.OAuthClient, req SSOSessionAuthorization) (
+		*AuthorizationCode, *AuthorizationError)
 }
 
 // authorizeService implements the AuthorizeService for managing OAuth2 authorization flows.
@@ -69,6 +76,7 @@ type authorizeService struct {
 	// session store (the embedded engine), where prompt=none keeps answering login_required.
 	ssoSession   flowsession.Service
 	flowProvider providers.FlowProvider
+	governance   providers.IdentityGovernanceProvider
 	logger       *log.Logger
 }
 
@@ -85,6 +93,7 @@ func newAuthorizeService(
 	criteriaRevoker revocation.CriteriaRevokerInterface,
 	ssoSession flowsession.Service,
 	flowProvider providers.FlowProvider,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 	jtiStore jti.JTIStoreInterface,
 ) AuthorizeServiceInterface {
@@ -102,6 +111,7 @@ func newAuthorizeService(
 		criteriaRevoker: criteriaRevoker,
 		ssoSession:      ssoSession,
 		flowProvider:    flowProvider,
+		governance:      governance,
 		jtiStore:        jtiStore,
 		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthorizeService")),
 	}
@@ -117,12 +127,13 @@ func newAuthorizeService(
 // for".
 func (as *authorizeService) checkPromptNone(
 	ctx context.Context, oauthParams *oauth2model.OAuthParameters, app *providers.OAuthClient,
+	sessionData []oauth2model.SessionData,
 ) (string, string) {
 	if !slices.Contains(strings.Fields(oauthParams.Prompt), oauth2const.PromptNone) {
 		return "", ""
 	}
 
-	sess := as.resolveSSOSession(ctx, app)
+	sess := as.resolveSSOSession(ctx, app, sessionData)
 	if sess == nil {
 		return oauth2const.ErrorLoginRequired, "User authentication is required"
 	}
@@ -189,16 +200,17 @@ func (as *authorizeService) subjectFromIDTokenHint(ctx context.Context, idTokenH
 }
 
 // resolveSSOSession returns the live SSO session backing this request's client, or nil when there
-// is none. The handle is carried on a per-flow cookie, so the client's authentication flow has to
-// be resolved before the right cookie can be selected.
+// is none. The handle is carried per flow, in sessionData or on a per-flow cookie, so the client's
+// authentication flow has to be resolved before the right one can be selected. A handle in
+// sessionData wins over the cookie, as it does in the flow.
 func (as *authorizeService) resolveSSOSession(
-	ctx context.Context, app *providers.OAuthClient,
+	ctx context.Context, app *providers.OAuthClient, sessionData []oauth2model.SessionData,
 ) *flowsession.Session {
 	if as.ssoSession == nil || as.flowProvider == nil {
 		return nil
 	}
-	inbound, ok := flowsession.InboundFrom(ctx)
-	if !ok {
+	inbound, hasInbound := flowsession.InboundFrom(ctx)
+	if !hasInbound && len(sessionData) == 0 {
 		return nil
 	}
 
@@ -211,7 +223,10 @@ func (as *authorizeService) resolveSSOSession(
 		return nil
 	}
 
-	handle := inbound.HandleFor(client.AuthFlowID)
+	handle := presentedSessionHandle(sessionData, client.AuthFlowID)
+	if handle == "" && hasInbound {
+		handle = inbound.HandleFor(client.AuthFlowID)
+	}
 	sess, err := as.ssoSession.Resolve(ctx, handle, client.AuthFlowID, flow.ActiveVersion, time.Now().UTC())
 	if err != nil {
 		as.logger.Debug(ctx, "Failed to resolve the SSO session for the authorization request",
@@ -219,6 +234,22 @@ func (as *authorizeService) resolveSSOSession(
 		return nil
 	}
 	return sess
+}
+
+// presentedSessionHandle returns the handle of the session the caller presented for the given flow, or ""
+// when it presented none. It picks the entry by the flow's identifier, as the flow execution does, so this
+// check and the flow it guards resolve the same session.
+func presentedSessionHandle(sessionData []oauth2model.SessionData, flowID string) string {
+	if len(sessionData) == 0 {
+		return ""
+	}
+	flowIdentifier := flowsession.FlowIdentifier(flowID)
+	for _, entry := range sessionData {
+		if entry.FlowIdentifier == flowIdentifier && entry.SessionHandle != "" {
+			return entry.SessionHandle
+		}
+	}
+	return ""
 }
 
 // GetAuthorizationCodeDetails retrieves and consumes the authorization code.
@@ -321,6 +352,23 @@ func (as *authorizeService) HandleInitialAuthorizationRequest(ctx context.Contex
 		return nil, &AuthorizationError{
 			Code:    oauth2const.ErrorInvalidRequest,
 			Message: "Invalid client_id",
+		}
+	}
+
+	// A held application is shown as unavailable here, where a person reads it, and never
+	// redirected (RFC 6749 §3.1.2.4, §4.1.2.1).
+	held, svcErr := oauth2utils.IsClientHeld(ctx, as.governance, app)
+	if svcErr != nil {
+		return nil, &AuthorizationError{
+			Code:    oauth2const.ErrorServerError,
+			Message: "Failed to process authorization request",
+		}
+	}
+	if held {
+		as.logger.Debug(ctx, "Refusing an authorization request for an unavailable application")
+		return nil, &AuthorizationError{
+			Code:    oauth2const.ErrorUnauthorizedClient,
+			Message: "This application is currently unavailable",
 		}
 	}
 
@@ -526,11 +574,63 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	ctx context.Context, oauthParams *oauth2model.OAuthParameters,
 	app *providers.OAuthClient, initiatorReq *providers.InitiatorRequest,
 ) (*AuthorizationInitResult, *AuthorizationError) {
+	identifier, executionID, authErr := as.startAuthorizationFlow(ctx, oauthParams, app, initiatorReq, nil)
+	if authErr != nil {
+		return nil, authErr
+	}
+	promptNone := slices.Contains(strings.Fields(oauthParams.Prompt), oauth2const.PromptNone)
+
+	// prompt=none must not load the login page, so complete it here.
+	if promptNone {
+		redirectURI, authErr := as.tryCompleteWithSSOSession(ctx, oauthParams, app, identifier, executionID)
+		if authErr != nil {
+			return nil, authErr
+		}
+		return &AuthorizationInitResult{RedirectURI: redirectURI}, nil
+	}
+
+	// Build query parameters for login page redirect.
+	queryParams := make(map[string]string)
+	queryParams[oauth2const.AuthID] = identifier
+	queryParams[oauth2const.AppID] = app.ID
+	queryParams[oauth2const.ExecutionID] = executionID
+	if oauthParams.UILocales != "" {
+		queryParams[oauth2const.RequestParamUILocales] = oauthParams.UILocales
+	}
+
+	// Add insecure warning if the redirect URI is not using TLS.
+	// TODO: May require another redirection to a warn consent page when it directly goes to a federated IDP.
+	parsedRedirectURI, err := utils.ParseURL(oauthParams.RedirectURI)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to parse redirect URI", log.Error(err))
+		return nil, &AuthorizationError{
+			Code:              oauth2const.ErrorServerError,
+			Message:           "Failed to process authorization request",
+			SendErrorToClient: true,
+			ClientRedirectURI: oauthParams.RedirectURI,
+			State:             oauthParams.State,
+		}
+	}
+	if parsedRedirectURI.Scheme == "http" {
+		queryParams[oauth2const.ShowInsecureWarning] = "true"
+	}
+
+	return &AuthorizationInitResult{QueryParams: queryParams}, nil
+}
+
+// startAuthorizationFlow checks a prompt=none request against the SSO session, binds the request to its
+// target resource server, stores it, and initiates the client's authentication flow with the OAuth
+// context. sessionData is the sessions the caller presents itself, ahead of the cookie. It returns the
+// stored request's id and the flow's execution id.
+func (as *authorizeService) startAuthorizationFlow(
+	ctx context.Context, oauthParams *oauth2model.OAuthParameters,
+	app *providers.OAuthClient, initiatorReq *providers.InitiatorRequest, sessionData []oauth2model.SessionData,
+) (string, string, *AuthorizationError) {
 	// prompt=none forbids any user interaction, so it can only be honored by an existing session
 	// that also satisfies id_token_hint and max_age. This is checked here, where both the standard
 	// and PAR paths converge, and before the flow starts: the flow would otherwise prompt.
-	if errCode, errMsg := as.checkPromptNone(ctx, oauthParams, app); errCode != "" {
-		return nil, &AuthorizationError{
+	if errCode, errMsg := as.checkPromptNone(ctx, oauthParams, app, sessionData); errCode != "" {
+		return "", "", &AuthorizationError{
 			Code:              errCode,
 			Message:           errMsg,
 			SendErrorToClient: oauthParams.RedirectURI != "",
@@ -545,9 +645,9 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	// when neither is available. The resolved resource server id is threaded into the flow so the
 	// authorization executor scopes its permission evaluation to it.
 	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
-		ctx, as.resourceService, oauthParams.Resources, oauthParams.PermissionScopes)
+		ctx, as.resourceService, oauthParams.Resources, oauthParams.PermissionScopes, false)
 	if errResp != nil {
-		return nil, &AuthorizationError{
+		return "", "", &AuthorizationError{
 			Code:              errResp.Error,
 			Message:           errResp.ErrorDescription,
 			SendErrorToClient: oauthParams.RedirectURI != "",
@@ -560,7 +660,7 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 		downscoped, dErr := resourceindicators.DownscopeToResourceServer(
 			ctx, as.resourceService, targetRS.ID, oauthParams.PermissionScopes)
 		if dErr != nil {
-			return nil, &AuthorizationError{
+			return "", "", &AuthorizationError{
 				Code:              dErr.Error,
 				Message:           dErr.ErrorDescription,
 				SendErrorToClient: oauthParams.RedirectURI != "",
@@ -585,7 +685,7 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	identifier, storeErr := as.authReqStore.AddRequest(ctx, authRequestCtx)
 	if storeErr != nil {
 		as.logger.Error(ctx, "Failed to store authorization request context", log.Error(storeErr))
-		return nil, &AuthorizationError{
+		return "", "", &AuthorizationError{
 			Code:              oauth2const.ErrorServerError,
 			Message:           "Failed to process authorization request",
 			SendErrorToClient: true,
@@ -639,7 +739,7 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	if flowErr != nil {
 		as.logger.Error(ctx, "Failed to initiate authentication flow",
 			log.String("error_code", flowErr.Code))
-		return nil, &AuthorizationError{
+		return "", "", &AuthorizationError{
 			Code:              oauth2const.ErrorServerError,
 			Message:           "Failed to process authorization request",
 			SendErrorToClient: true,
@@ -648,42 +748,7 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 		}
 	}
 
-	// prompt=none must not load the login page, so complete it here.
-	if promptNone {
-		redirectURI, authErr := as.tryCompleteWithSSOSession(ctx, oauthParams, app, identifier, executionID)
-		if authErr != nil {
-			return nil, authErr
-		}
-		return &AuthorizationInitResult{RedirectURI: redirectURI}, nil
-	}
-
-	// Build query parameters for login page redirect.
-	queryParams := make(map[string]string)
-	queryParams[oauth2const.AuthID] = identifier
-	queryParams[oauth2const.AppID] = app.ID
-	queryParams[oauth2const.ExecutionID] = executionID
-	if oauthParams.UILocales != "" {
-		queryParams[oauth2const.RequestParamUILocales] = oauthParams.UILocales
-	}
-
-	// Add insecure warning if the redirect URI is not using TLS.
-	// TODO: May require another redirection to a warn consent page when it directly goes to a federated IDP.
-	parsedRedirectURI, err := utils.ParseURL(oauthParams.RedirectURI)
-	if err != nil {
-		as.logger.Error(ctx, "Failed to parse redirect URI", log.Error(err))
-		return nil, &AuthorizationError{
-			Code:              oauth2const.ErrorServerError,
-			Message:           "Failed to process authorization request",
-			SendErrorToClient: true,
-			ClientRedirectURI: oauthParams.RedirectURI,
-			State:             oauthParams.State,
-		}
-	}
-	if parsedRedirectURI.Scheme == "http" {
-		queryParams[oauth2const.ShowInsecureWarning] = "true"
-	}
-
-	return &AuthorizationInitResult{QueryParams: queryParams}, nil
+	return identifier, executionID, nil
 }
 
 // tryCompleteWithSSOSession runs the flow from the SSO session and returns the client redirect
@@ -694,7 +759,7 @@ func (as *authorizeService) tryCompleteWithSSOSession(
 	authID, executionID string,
 ) (string, *AuthorizationError) {
 	step, svcErr := as.flowExecService.Execute(ctx, app.ID, executionID,
-		string(providers.FlowTypeAuthentication), false, "", nil, "", "", "")
+		string(providers.FlowTypeAuthentication), false, "", nil, "", "", "", nil)
 	completed := svcErr == nil && step != nil && step.Status == providers.FlowStatusComplete &&
 		step.Assertion != ""
 	if !completed {
@@ -702,7 +767,7 @@ func (as *authorizeService) tryCompleteWithSSOSession(
 		// answered with login_required instead.
 		if step != nil && step.ErrorAssertion != "" {
 			// The callback maps the flow failure and consumes the request.
-			_, authErr := as.HandleAuthorizationCallback(ctx, authID, step.ErrorAssertion)
+			_, authErr := as.HandleAuthorizationCallback(ctx, authID, step.ErrorAssertion, nil)
 			if authErr != nil && authErr.SendErrorToClient {
 				return "", authErr
 			}
@@ -724,7 +789,7 @@ func (as *authorizeService) tryCompleteWithSSOSession(
 			"User authentication is required")
 	}
 
-	redirectURI, authErr := as.HandleAuthorizationCallback(ctx, authID, step.Assertion)
+	redirectURI, authErr := as.HandleAuthorizationCallback(ctx, authID, step.Assertion, nil)
 	if authErr != nil {
 		// The callback may reject the assertion before consuming the request.
 		if err := as.authReqStore.ClearRequest(ctx, authID); err != nil {
@@ -742,6 +807,112 @@ func (as *authorizeService) tryCompleteWithSSOSession(
 	return redirectURI, nil
 }
 
+// AuthorizeWithSSOSession implements AuthorizeServiceInterface.
+func (as *authorizeService) AuthorizeWithSSOSession(ctx context.Context, app *providers.OAuthClient,
+	req SSOSessionAuthorization) (*AuthorizationCode, *AuthorizationError) {
+	// A token is bound to exactly one resource server, as on the authorization endpoint.
+	if len(req.Resources) > 1 {
+		return nil, &AuthorizationError{
+			Code:    oauth2const.ErrorInvalidTarget,
+			Message: "Only a single resource parameter is supported",
+		}
+	}
+	oidcScopes, permissionScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(req.Scope, app.ScopeClaims)
+	oauthParams := &oauth2model.OAuthParameters{
+		ClientID:         app.ClientID,
+		StandardScopes:   oidcScopes,
+		PermissionScopes: permissionScopes,
+		Resources:        req.Resources,
+		Prompt:           oauth2const.PromptNone,
+	}
+
+	// The sessions the client presents stand in for the browser's per-flow cookies.
+	authID, executionID, authErr := as.startAuthorizationFlow(ctx, oauthParams, app, nil, req.SessionData)
+	if authErr != nil {
+		return nil, authErr
+	}
+
+	step, svcErr := as.flowExecService.Execute(ctx, app.ID, executionID,
+		string(providers.FlowTypeAuthentication), false, "", nil, "", "", "", toFlowSessionData(req.SessionData))
+	completed := svcErr == nil && step != nil && step.Status == providers.FlowStatusComplete &&
+		step.Assertion != ""
+	if !completed {
+		as.clearAuthRequest(ctx, authID)
+		if svcErr != nil && svcErr.Type == tidcommon.ServerErrorType {
+			as.logger.Error(ctx, "Failed to execute authentication flow", log.String("error_code", svcErr.Code))
+			return nil, &AuthorizationError{
+				Code:    oauth2const.ErrorServerError,
+				Message: "Failed to process authorization request",
+			}
+		}
+		as.logger.Debug(ctx, "Flow cannot complete with the SSO session alone")
+		return nil, &AuthorizationError{
+			Code:    oauth2const.ErrorLoginRequired,
+			Message: "User authentication is required",
+		}
+	}
+
+	claims, authTime, err := decodeAttributesFromAssertion(step.Assertion)
+	if err != nil {
+		as.clearAuthRequest(ctx, authID)
+		as.logger.Error(ctx, "Failed to decode the flow assertion", log.Error(err))
+		return nil, &AuthorizationError{
+			Code:    oauth2const.ErrorServerError,
+			Message: "Failed to process authorization request",
+		}
+	}
+	authzCode, _, authErr, err := as.mintAuthorizationCode(ctx, authID, claims, authTime)
+	if err != nil {
+		if authErr == nil || authErr.Code == oauth2const.ErrorServerError {
+			as.logger.Error(ctx, "Failed to authorize with the SSO session", log.Error(err))
+			return nil, &AuthorizationError{
+				Code:    oauth2const.ErrorServerError,
+				Message: "Failed to process authorization request",
+			}
+		}
+		return nil, authErr
+	}
+	return &authzCode, nil
+}
+
+// toFlowSessionData converts the sessions a client presents to the form the flow service takes.
+func toFlowSessionData(sessionData []oauth2model.SessionData) []flowexec.SessionData {
+	converted := make([]flowexec.SessionData, 0, len(sessionData))
+	for _, entry := range sessionData {
+		converted = append(converted, flowexec.SessionData{
+			FlowIdentifier: entry.FlowIdentifier,
+			SessionHandle:  entry.SessionHandle,
+		})
+	}
+	return converted
+}
+
+// bindDeviceSession keeps on the code the SSO sessions the caller posted, when the client requested the
+// device_sso scope, so the code exchange can return them in the device secret. An entry with a missing or
+// over-long field is ignored rather than failing the sign-in, which does not need it. They are not looked
+// up here: the token exchange that presents them runs the flow on them and checks they are the subject's.
+func bindDeviceSession(authzCode *AuthorizationCode, sessionData []oauth2model.SessionData) {
+	if !slices.Contains(tokenservice.ParseScopes(authzCode.Scopes), oauth2const.ScopeDeviceSSO) {
+		return
+	}
+	for _, entry := range sessionData {
+		if len(authzCode.SessionData) == maxDeviceSessions {
+			return
+		}
+		fieldLengths := []int{len(entry.FlowIdentifier), len(entry.SessionHandle)}
+		if slices.Min(fieldLengths) > 0 && slices.Max(fieldLengths) <= maxDeviceSessionFieldLength {
+			authzCode.SessionData = append(authzCode.SessionData, entry)
+		}
+	}
+}
+
+// clearAuthRequest drops an authorization request no caller can resume.
+func (as *authorizeService) clearAuthRequest(ctx context.Context, authID string) {
+	if err := as.authReqStore.ClearRequest(ctx, authID); err != nil {
+		as.logger.Error(ctx, "Failed to clear authorization request", log.Error(err))
+	}
+}
+
 // clientAuthorizationError builds an error that is sent back to the client's redirect URI.
 func clientAuthorizationError(
 	oauthParams *oauth2model.OAuthParameters, code, message string,
@@ -757,10 +928,11 @@ func clientAuthorizationError(
 
 // HandleAuthorizationCallback processes the callback assertion from the flow engine. The assertion is
 // either an authentication assertion from a completed flow or a signed error assertion minted when the
-// flow terminated in failure. Returns the client redirect URI (with authorization code) on success, or a structured
-// error.
-func (as *authorizeService) HandleAuthorizationCallback(ctx context.Context, authID string, assertion string) (
-	string, *AuthorizationError) {
+// flow terminated in failure. sessionData is the SSO sessions the caller collected while running the flow;
+// they are kept with the code when the client requested the device_sso scope. Returns the client redirect
+// URI (with authorization code) on success, or a structured error.
+func (as *authorizeService) HandleAuthorizationCallback(ctx context.Context, authID string, assertion string,
+	sessionData []oauth2model.SessionData) (string, *AuthorizationError) {
 	if assertion == "" {
 		return "", &AuthorizationError{
 			Code:    oauth2const.ErrorInvalidRequest,
@@ -795,19 +967,99 @@ func (as *authorizeService) HandleAuthorizationCallback(ctx context.Context, aut
 		return "", as.handleFailedCallback(ctx, authID, errClaims)
 	}
 
-	return as.handleSuccessCallback(ctx, authID, claims, authTime)
+	return as.handleSuccessCallback(ctx, authID, claims, authTime, sessionData)
 }
 
 // handleSuccessCallback mints an authorization code for a verified authentication assertion and
 // returns the client redirect URI carrying it.
 func (as *authorizeService) handleSuccessCallback(ctx context.Context, authID string,
-	claims assertionClaims, authTime time.Time) (string, *AuthorizationError) {
+	claims assertionClaims, authTime time.Time, sessionData []oauth2model.SessionData) (string, *AuthorizationError) {
 	var redirectURI string
 	var authErr *AuthorizationError
 
 	err := func() error {
+		authzCode, authRequestCtx, mintAuthErr, err := as.mintAuthorizationCode(ctx, authID, claims, authTime)
+		if err != nil {
+			authErr = mintAuthErr
+			return err
+		}
+		bindDeviceSession(&authzCode, sessionData)
+		// The code is delivered to the client's redirect URI, so it needs one.
+		if authzCode.RedirectURI == "" {
+			authErr = &AuthorizationError{
+				Code:    oauth2const.ErrorServerError,
+				Message: "Failed to process authorization request",
+			}
+			return errors.New("redirect_uri is missing")
+		}
+
+		// Persist the authorization code.
+		if persistErr := as.authCodeStore.InsertAuthorizationCode(ctx, authzCode); persistErr != nil {
+			authErr = &AuthorizationError{
+				Code:              oauth2const.ErrorServerError,
+				Message:           "Failed to process authorization request",
+				SendErrorToClient: true,
+				ClientRedirectURI: authRequestCtx.OAuthParameters.RedirectURI,
+				State:             authRequestCtx.OAuthParameters.State,
+			}
+			return persistErr
+		}
+
+		// Construct the redirect URI with the authorization code.
+		queryParams := map[string]string{
+			"code":                      authzCode.Code,
+			oauth2const.RequestParamIss: as.cfg.JWT.Issuer,
+		}
+		if authRequestCtx.OAuthParameters.State != "" {
+			queryParams[oauth2const.RequestParamState] = authRequestCtx.OAuthParameters.State
+		}
+		redirectURI, err = oauth2utils.GetURIWithQueryParams(authzCode.RedirectURI, queryParams)
+		if err != nil {
+			authErr = &AuthorizationError{
+				Code:              oauth2const.ErrorServerError,
+				Message:           "Failed to process authorization request",
+				SendErrorToClient: true,
+				ClientRedirectURI: authRequestCtx.OAuthParameters.RedirectURI,
+				State:             authRequestCtx.OAuthParameters.State,
+			}
+			return err
+		}
+
+		return nil
+	}()
+
+	if authErr != nil {
+		if authErr.Code == oauth2const.ErrorServerError {
+			as.logger.Error(ctx, "Failed to process authorization callback", log.Error(err))
+		}
+		return "", authErr
+	}
+	if err != nil {
+		as.logger.Error(ctx, "Failed to process authorization callback", log.Error(err))
+		return "", &AuthorizationError{
+			Code:    oauth2const.ErrorServerError,
+			Message: "Failed to process authorization request",
+		}
+	}
+
+	return redirectURI, nil
+}
+
+// mintAuthorizationCode turns a verified authentication assertion into an authorization code for the
+// request it is bound to: it loads the request, binds and spends the assertion, and applies the
+// authorized permissions. It does not persist the code. On failure it returns the error to report and
+// its cause.
+func (as *authorizeService) mintAuthorizationCode(ctx context.Context, authID string,
+	claims assertionClaims, authTime time.Time,
+) (AuthorizationCode, *authRequestContext, *AuthorizationError, error) {
+	var authErr *AuthorizationError
+	var authRequestCtx *authRequestContext
+	var authzCode AuthorizationCode
+
+	err := func() error {
 		// Load the authorization request context.
-		authRequestCtx, err := as.loadAuthRequestContext(ctx, authID)
+		var err error
+		authRequestCtx, err = as.loadAuthRequestContext(ctx, authID)
 		if err != nil {
 			if errors.Is(err, errAuthRequestNotFound) {
 				authErr = &AuthorizationError{
@@ -893,7 +1145,7 @@ func (as *authorizeService) handleSuccessCallback(ctx context.Context, authID st
 		}
 
 		// Generate the authorization code.
-		authzCode, err := createAuthorizationCode(as.cfg, authRequestCtx, &claims, authTime)
+		authzCode, err = createAuthorizationCode(as.cfg, authRequestCtx, &claims, authTime)
 		if err != nil {
 			authErr = &AuthorizationError{
 				Code:              oauth2const.ErrorServerError,
@@ -904,57 +1156,9 @@ func (as *authorizeService) handleSuccessCallback(ctx context.Context, authID st
 			}
 			return err
 		}
-
-		// Persist the authorization code.
-		if persistErr := as.authCodeStore.InsertAuthorizationCode(ctx, authzCode); persistErr != nil {
-			authErr = &AuthorizationError{
-				Code:              oauth2const.ErrorServerError,
-				Message:           "Failed to process authorization request",
-				SendErrorToClient: true,
-				ClientRedirectURI: authRequestCtx.OAuthParameters.RedirectURI,
-				State:             authRequestCtx.OAuthParameters.State,
-			}
-			return persistErr
-		}
-
-		// Construct the redirect URI with the authorization code.
-		queryParams := map[string]string{
-			"code":                      authzCode.Code,
-			oauth2const.RequestParamIss: as.cfg.JWT.Issuer,
-		}
-		if authRequestCtx.OAuthParameters.State != "" {
-			queryParams[oauth2const.RequestParamState] = authRequestCtx.OAuthParameters.State
-		}
-		redirectURI, err = oauth2utils.GetURIWithQueryParams(authzCode.RedirectURI, queryParams)
-		if err != nil {
-			authErr = &AuthorizationError{
-				Code:              oauth2const.ErrorServerError,
-				Message:           "Failed to process authorization request",
-				SendErrorToClient: true,
-				ClientRedirectURI: authRequestCtx.OAuthParameters.RedirectURI,
-				State:             authRequestCtx.OAuthParameters.State,
-			}
-			return err
-		}
-
 		return nil
 	}()
-
-	if authErr != nil {
-		if authErr.Code == oauth2const.ErrorServerError {
-			as.logger.Error(ctx, "Failed to process authorization callback", log.Error(err))
-		}
-		return "", authErr
-	}
-	if err != nil {
-		as.logger.Error(ctx, "Failed to process authorization callback", log.Error(err))
-		return "", &AuthorizationError{
-			Code:    oauth2const.ErrorServerError,
-			Message: "Failed to process authorization request",
-		}
-	}
-
-	return redirectURI, nil
+	return authzCode, authRequestCtx, authErr, err
 }
 
 // handleFailedCallback constructs the OAuth error response for a verified error assertion. The
@@ -1105,7 +1309,8 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 }
 
 // createAuthorizationCode generates an authorization code based on the provided
-// authorization request context and authenticated user.
+// authorization request context and authenticated user. A code delivered by redirect also needs the
+// request's redirect URI; that is checked where it is delivered.
 func createAuthorizationCode(
 	cfg oauthconfig.Config,
 	authRequestCtx *authRequestContext,
@@ -1115,8 +1320,8 @@ func createAuthorizationCode(
 	clientID := authRequestCtx.OAuthParameters.ClientID
 	redirectURI := authRequestCtx.OAuthParameters.RedirectURI
 
-	if clientID == "" || redirectURI == "" {
-		return AuthorizationCode{}, errors.New("client_id or redirect_uri is missing")
+	if clientID == "" {
+		return AuthorizationCode{}, errors.New("client_id is missing")
 	}
 
 	if claims.userID == "" {

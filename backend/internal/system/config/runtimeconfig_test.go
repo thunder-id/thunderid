@@ -145,3 +145,35 @@ func (suite *RuntimeConfigTestSuite) TestInitializeServerRuntime_InvalidCallback
 	assert.Equal(suite.T(), "/callback", runtime.GateClientCallbackURL.Path)
 	assert.Equal(suite.T(), "https://localhost:8443/callback", runtime.GateClientCallbackURL.String())
 }
+
+func (suite *RuntimeConfigTestSuite) TestServerModeDefaultsToDataPlane() {
+	assert.NoError(suite.T(), InitializeServerRuntime("/test/thunderid/home", &Config{}))
+
+	assert.Equal(suite.T(), ServerModeDataPlane, GetServerMode())
+	assert.Equal(suite.T(), ServerModeDataPlane, GetServerRuntime().Mode)
+}
+
+func (suite *RuntimeConfigTestSuite) TestServerModeIsSetByTheEntryPoint() {
+	assert.NoError(suite.T(),
+		InitializeServerRuntime("/test/thunderid/home", &Config{}, WithMode(ServerModeControlPlane)))
+
+	assert.Equal(suite.T(), ServerModeControlPlane, GetServerMode())
+}
+
+func (suite *RuntimeConfigTestSuite) TestServerModeCannotChangeOnceInitialized() {
+	assert.NoError(suite.T(),
+		InitializeServerRuntime("/test/thunderid/home", &Config{}, WithMode(ServerModeControlPlane)))
+	assert.NoError(suite.T(), InitializeServerRuntime("/other/home", &Config{}, WithMode(ServerModeDataPlane)))
+
+	assert.Equal(suite.T(), ServerModeControlPlane, GetServerMode(), "a second initialization must not change the mode")
+}
+
+func (suite *RuntimeConfigTestSuite) TestServerModeIsClearedByAReset() {
+	assert.NoError(suite.T(),
+		InitializeServerRuntime("/test/thunderid/home", &Config{}, WithMode(ServerModeControlPlane)))
+
+	ResetServerRuntime()
+	assert.NoError(suite.T(), InitializeServerRuntime("/test/thunderid/home", &Config{}))
+
+	assert.Equal(suite.T(), ServerModeDataPlane, GetServerMode())
+}

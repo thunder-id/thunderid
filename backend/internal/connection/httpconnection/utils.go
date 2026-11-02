@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 )
 
 // SameOrigin reports whether two URLs share scheme, host and port, with default ports normalized.
@@ -23,7 +25,7 @@ func SameOrigin(a, b string) bool {
 
 // endpointOrigin returns the normalized scheme://host:port of a URL.
 func endpointOrigin(raw string) (string, bool) {
-	parsed, ok := parseEndpointURL(raw)
+	parsed, ok := httpauth.ParseEndpointURL(raw)
 	if !ok {
 		return "", false
 	}
@@ -32,23 +34,6 @@ func endpointOrigin(raw string) (string, bool) {
 		port = defaultPort(parsed.Scheme)
 	}
 	return parsed.Scheme + "://" + net.JoinHostPort(strings.ToLower(parsed.Hostname()), port), true
-}
-
-// parseEndpointURL parses an absolute http or https URL with a valid host and port. Userinfo is
-// refused: it would be returned in clear on every read, outside the masking of secrets.
-func parseEndpointURL(raw string) (*url.URL, bool) {
-	parsed, err := url.Parse(raw)
-	if err != nil || parsed.User != nil || !isValidHost(parsed.Hostname()) ||
-		(parsed.Scheme != urlSchemeHTTP && parsed.Scheme != urlSchemeHTTPS) {
-		return nil, false
-	}
-	if port := parsed.Port(); port != "" {
-		number, err := strconv.Atoi(port)
-		if err != nil || number < minPort || number > maxPort {
-			return nil, false
-		}
-	}
-	return parsed, true
 }
 
 // canonicalURL renders a parsed endpoint URL with a lower-case host and without a default port, so
@@ -67,39 +52,8 @@ func canonicalURL(parsed *url.URL) string {
 	return canonical.String()
 }
 
-// isValidHost reports whether host is an IP literal or a DNS name.
-func isValidHost(host string) bool {
-	if net.ParseIP(host) != nil {
-		return true
-	}
-	name := strings.TrimSuffix(host, ".")
-	if name == "" || len(name) > maxHostLength {
-		return false
-	}
-	for _, label := range strings.Split(name, ".") {
-		if !isValidLabel(label) {
-			return false
-		}
-	}
-	return true
-}
-
-// isValidLabel reports whether label is a DNS label. An underscore is accepted, as service names
-// in container networks use it.
-func isValidLabel(label string) bool {
-	if label == "" || len(label) > maxLabelLength || label[0] == '-' || label[len(label)-1] == '-' {
-		return false
-	}
-	for _, c := range label {
-		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '-' && c != '_' {
-			return false
-		}
-	}
-	return true
-}
-
 // explicitPort returns the URL's port without leading zeros, or "" when it is absent or the
-// scheme's default. The URL must have passed parseEndpointURL.
+// scheme's default. The URL must have passed httpauth.ParseEndpointURL.
 func explicitPort(parsed *url.URL) string {
 	number, err := strconv.Atoi(parsed.Port())
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -96,29 +95,22 @@ func (s *RegistryTestSuite) TestGetMethodsServesFieldlessMethodAsEmptyArray() {
 	s.Contains(string(encoded), `"fields":[]`)
 }
 
-// Every credential field of every registered method is listed once, so a secret may be imported
-// into any of them and nowhere else.
-func TestCredentialFieldKeysListsEachCredentialOnce(t *testing.T) {
-	keys := CredentialFieldKeys()
+// Any authentication property may hold a secret, except a field no method marks as a credential,
+// which is stored and returned in clear.
+func (s *RegistryTestSuite) TestSecretFieldPathsExcludeFieldsShownInClear() {
+	s.Equal([]string{"auth.properties.*", "!auth.properties." + FieldBasicUsername},
+		SecretFieldPaths("auth.properties"))
+}
 
-	assert.Contains(t, keys, FieldBasicPassword)
-	seen := map[string]bool{}
-	for _, key := range keys {
-		assert.False(t, seen[key], "%q is listed twice", key)
-		seen[key] = true
-		credential := false
-		for _, method := range registeredMethods {
-			for _, field := range method.Fields {
-				credential = credential || (field.Key == key && field.Credential)
-			}
-		}
-		assert.True(t, credential, "%q is not a credential field of any method", key)
-	}
-	for _, method := range registeredMethods {
-		for _, field := range method.Fields {
-			if field.Credential {
-				assert.Contains(t, keys, field.Key)
-			}
-		}
-	}
+// Each credential an authentication holds gets a variable path; fields shown in clear, empty credentials
+// and unknown methods get none.
+func (s *RegistryTestSuite) TestSecretVariablePaths() {
+	s.Equal([]string{"P." + FieldBasicPassword}, SecretVariablePaths(&Authentication{Type: string(TypeBasic),
+		Properties: map[string]string{FieldBasicUsername: "u", FieldBasicPassword: "p"}}, "P"))
+	s.Equal([]string{"P.X-Api-Key"}, SecretVariablePaths(&Authentication{Type: string(TypeAPIKey),
+		Properties: map[string]string{"X-Api-Key": "k", "X-Empty": ""}}, "P"))
+	s.Empty(SecretVariablePaths(&Authentication{Type: string(TypeBearer),
+		Properties: map[string]string{FieldBearerToken: ""}}, "P"))
+	s.Empty(SecretVariablePaths(&Authentication{Type: "kerberos"}, "P"))
+	s.Empty(SecretVariablePaths(nil, "P"))
 }

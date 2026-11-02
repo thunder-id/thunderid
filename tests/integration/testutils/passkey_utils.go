@@ -65,12 +65,66 @@ type passkeyAttestationCredential struct {
 // does not take allowed origins from the request or the application.
 func RegisterPasskeyCredential(userID, relyingPartyID, relyingPartyName, origin, assertion string) (
 	*VirtualAuthenticator, string, error) {
-	authenticator, err := NewVirtualAuthenticator(relyingPartyID, origin)
+	registration, err := StartPasskeyRegistration(userID, relyingPartyID, relyingPartyName, origin, assertion)
 	if err != nil {
 		return nil, "", err
 	}
 
-	startBody, err := passkeyPost("/register/passkey/start", passkeyRegisterStartRequest{
+	status, body, err := registration.FinishRaw()
+	if err != nil {
+		return nil, "", fmt.Errorf("passkey registration finish failed: %w", err)
+	}
+	if status != http.StatusOK {
+		return nil, "", fmt.Errorf("passkey registration finish failed: unexpected status %d: %s", status, body)
+	}
+
+	return registration.Authenticator, registration.UserHandle, nil
+}
+
+// PasskeyRegistration is a passkey registration started through the direct passkey API and not yet
+// finished: the authenticator that will hold the credential and the user handle the server issued.
+type PasskeyRegistration struct {
+	Authenticator *VirtualAuthenticator
+	UserHandle    string
+	sessionToken  string
+	challenge     string
+}
+
+// StartPasskeyRegistration starts a passkey registration for the given user through the direct
+// passkey API, as RegisterPasskeyCredential does, and leaves it to be finished.
+func StartPasskeyRegistration(userID, relyingPartyID, relyingPartyName, origin, assertion string) (
+	*PasskeyRegistration, error) {
+	authenticator, err := NewVirtualAuthenticator(relyingPartyID, origin)
+	if err != nil {
+		return nil, err
+	}
+
+	status, startBody, err := StartPasskeyRegistrationRaw(userID, relyingPartyID, relyingPartyName, assertion)
+	if err != nil {
+		return nil, fmt.Errorf("passkey registration start failed: %w", err)
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("passkey registration start failed: unexpected status %d: %s", status, startBody)
+	}
+
+	var startResponse passkeyRegisterStartResponse
+	if err := json.Unmarshal(startBody, &startResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode passkey registration start response: %w", err)
+	}
+
+	return &PasskeyRegistration{
+		Authenticator: authenticator,
+		UserHandle:    startResponse.PublicKeyCredentialCreationOptions.User.ID,
+		sessionToken:  startResponse.SessionToken,
+		challenge:     startResponse.PublicKeyCredentialCreationOptions.Challenge,
+	}, nil
+}
+
+// StartPasskeyRegistrationRaw sends the start request StartPasskeyRegistration sends and returns the
+// status and body, whatever they are.
+func StartPasskeyRegistrationRaw(userID, relyingPartyID, relyingPartyName, assertion string) (
+	int, []byte, error) {
+	return passkeyPostRaw("/register/passkey/start", passkeyRegisterStartRequest{
 		UserID:           userID,
 		RelyingPartyID:   relyingPartyID,
 		RelyingPartyName: relyingPartyName,
@@ -80,33 +134,25 @@ func RegisterPasskeyCredential(userID, relyingPartyID, relyingPartyName, origin,
 		},
 		Assertion: assertion,
 	})
-	if err != nil {
-		return nil, "", fmt.Errorf("passkey registration start failed: %w", err)
-	}
+}
 
-	var startResponse passkeyRegisterStartResponse
-	if err := json.Unmarshal(startBody, &startResponse); err != nil {
-		return nil, "", fmt.Errorf("failed to decode passkey registration start response: %w", err)
-	}
-
-	credentialID, clientDataJSON, attestationObject, err := authenticator.CreateAttestationResponse(
-		startResponse.PublicKeyCredentialCreationOptions.Challenge, true)
+// FinishRaw answers the registration's challenge with an attestation from its authenticator and
+// returns the status and body of the finish request, whatever they are.
+func (r *PasskeyRegistration) FinishRaw() (int, []byte, error) {
+	credentialID, clientDataJSON, attestationObject, err := r.Authenticator.CreateAttestationResponse(
+		r.challenge, true)
 	if err != nil {
-		return nil, "", err
+		return 0, nil, err
 	}
 
 	credential := passkeyAttestationCredential{ID: credentialID, Type: "public-key", RawID: credentialID}
 	credential.Response.ClientDataJSON = clientDataJSON
 	credential.Response.AttestationObject = attestationObject
 
-	if _, err := passkeyPost("/register/passkey/finish", passkeyRegisterFinishRequest{
+	return passkeyPostRaw("/register/passkey/finish", passkeyRegisterFinishRequest{
 		PublicKeyCredential: credential,
-		SessionToken:        startResponse.SessionToken,
-	}); err != nil {
-		return nil, "", fmt.Errorf("passkey registration finish failed: %w", err)
-	}
-
-	return authenticator, startResponse.PublicKeyCredentialCreationOptions.User.ID, nil
+		SessionToken:        r.sessionToken,
+	})
 }
 
 // passkeyAuthStartRequest mirrors PasskeyStartRequestDTO in the backend.
@@ -193,31 +239,42 @@ func AuthenticateWithPasskey(
 // passkeyPost posts a JSON body to a passkey endpoint and returns the response body, treating any
 // non-200 status as an error.
 func passkeyPost(path string, payload interface{}) ([]byte, error) {
+	status, responseBody, err := passkeyPostRaw(path, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %d from %s: %s", status, path, responseBody)
+	}
+
+	return responseBody, nil
+}
+
+// passkeyPostRaw posts a JSON body to a passkey endpoint and returns the status and response body,
+// whatever they are.
+func passkeyPostRaw(path string, payload interface{}) (int, []byte, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return 0, nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	req, err := http.NewRequest(http.MethodPost, TestServerURL+path, bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return 0, nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := GetHTTPClient().Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return 0, nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		return 0, nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status %d from %s: %s", resp.StatusCode, path, responseBody)
-	}
-
-	return responseBody, nil
+	return resp.StatusCode, responseBody, nil
 }

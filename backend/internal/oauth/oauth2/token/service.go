@@ -127,6 +127,16 @@ func (ts *tokenService) ProcessTokenRequest(
 		}
 	}
 
+	// Other grants carry no authorization details, so the parameter is refused rather than ignored.
+	if tokenRequest.AuthorizationDetails != "" && !acceptsAuthorizationDetails(grantType) {
+		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
+			400, "Unsupported authorization_details", startTime)
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidAuthorizationDetails,
+			ErrorDescription: "authorization_details is not supported for this grant type",
+		}
+	}
+
 	// Validate the token request via the grant handler.
 	tokenError := grantHandler.ValidateGrant(ctx, tokenRequest, oauthApp)
 	if tokenError != nil && tokenError.Error != "" {
@@ -180,7 +190,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	}
 
 	// Issue refresh token if applicable.
-	if grantType.IssuesRefreshToken() &&
+	if (grantType.IssuesRefreshToken() || tokenRespDTO.IssuesRefreshToken) &&
 		oauthApp.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
 		logger.Debug(ctx, "Issuing refresh token for the token request",
 			log.String("client_id", clientID), log.String("grant_type", grantTypeStr))
@@ -233,12 +243,14 @@ func (ts *tokenService) ProcessTokenRequest(
 	// Build token response.
 	scopes := strings.Join(tokenRespDTO.AccessToken.Scopes, " ")
 	tokenResponse := &model.TokenResponse{
-		AccessToken:  tokenRespDTO.AccessToken.Token,
-		TokenType:    tokenRespDTO.AccessToken.TokenType,
-		ExpiresIn:    tokenRespDTO.AccessToken.ExpiresIn,
-		RefreshToken: tokenRespDTO.RefreshToken.Token,
-		Scope:        scopes,
-		IDToken:      tokenRespDTO.IDToken.Token,
+		AccessToken:          tokenRespDTO.AccessToken.Token,
+		TokenType:            tokenRespDTO.AccessToken.TokenType,
+		ExpiresIn:            tokenRespDTO.AccessToken.ExpiresIn,
+		RefreshToken:         tokenRespDTO.RefreshToken.Token,
+		Scope:                scopes,
+		IDToken:              tokenRespDTO.IDToken.Token,
+		AuthorizationDetails: tokenRespDTO.AccessToken.AuthorizationDetails,
+		DeviceSecret:         tokenRespDTO.DeviceSecret.Token,
 	}
 
 	// For token exchange, determine the issued_token_type from the request.
@@ -474,4 +486,10 @@ func addSubjectData(evt *providers.Event, accessToken *model.TokenDTO) {
 	if accessToken.ActorSub != "" {
 		evt.WithData(event.DataKey.ActorSub, accessToken.ActorSub)
 	}
+}
+
+// acceptsAuthorizationDetails reports whether the grant type accepts authorization_details.
+func acceptsAuthorizationDetails(grantType providers.GrantType) bool {
+	return grantType == providers.GrantTypeClientCredentials || grantType == providers.GrantTypeAuthorizationCode ||
+		grantType == providers.GrantTypeRefreshToken || grantType == providers.GrantTypeCIBA
 }

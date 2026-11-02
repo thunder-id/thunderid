@@ -23,11 +23,15 @@ const (
 	actorTokenIssuerClientSecret = "actor_token_issuer_secret"
 	actorTokenExchangeClientID   = "actor_token_exchange_client"
 	actorTokenExchangeSecret     = "actor_token_exchange_secret"
+	actorTokenActClaimClientID   = "actor_token_act_claim_client"
+	actorTokenActClaimSecret     = "actor_token_act_claim_secret"
 	actorTokenRedirectURI        = "https://localhost:3000"
 	actorTokenSubjectUsername    = "actor_token_subject_user"
 	actorTokenSubjectPassword    = "ActorTokenSubjectPass1!"
 	actorTokenActorUsername      = "actor_token_actor_user"
 	actorTokenActorPassword      = "ActorTokenActorPass1!"
+	actorTokenNextActorUsername  = "actor_token_next_actor_user"
+	actorTokenNextActorPassword  = "ActorTokenNextActorPass1!"
 )
 
 var actorTokenUserType = testutils.UserType{
@@ -86,18 +90,20 @@ var actorTokenAuthFlow = testutils.Flow{
 
 // ActorTokenTestSuite verifies RFC 8693 actor_token handling in the token-exchange grant: the "act"
 // claim built for a valid actor_token, the actor_token/actor_token_type pairing requirement, rejection
-// of an invalid, expired, or untrusted-issuer actor_token, and nested delegation chains (an actor_token
-// that itself already carries an "act" claim from a prior exchange).
+// of an invalid, expired, or untrusted-issuer actor_token, and nested delegation chains carried by the
+// subject_token or, when the subject_token has none, by the actor_token.
 type ActorTokenTestSuite struct {
 	suite.Suite
-	client        *http.Client
-	ouID          string
-	entityTypeID  string
-	authFlowID    string
-	issuerAppID   string
-	exchangeAppID string
-	subjectUserID string
-	actorUserID   string
+	client          *http.Client
+	ouID            string
+	entityTypeID    string
+	authFlowID      string
+	issuerAppID     string
+	exchangeAppID   string
+	actClaimAppID   string
+	subjectUserID   string
+	actorUserID     string
+	nextActorUserID string
 }
 
 // TestActorTokenTestSuite runs the ActorTokenTestSuite.
@@ -105,8 +111,9 @@ func TestActorTokenTestSuite(t *testing.T) {
 	suite.Run(t, new(ActorTokenTestSuite))
 }
 
-// SetupSuite creates the shared organization unit, user type, auth flow, issuer/exchange
-// applications, and the two test users (subject and actor) for the suite.
+// SetupSuite creates the shared organization unit, user type, auth flow, the issuer and exchange
+// applications (one of them recording itself as the actor), and the test users (subject and two
+// actors) for the suite.
 func (ts *ActorTokenTestSuite) SetupSuite() {
 	ts.client = testutils.GetHTTPClient()
 
@@ -143,8 +150,17 @@ func (ts *ActorTokenTestSuite) SetupSuite() {
 		"tokenEndpointAuthMethod": "client_secret_basic",
 	}, false)
 
+	ts.actClaimAppID = ts.createApplication(map[string]interface{}{
+		"clientId":                actorTokenActClaimClientID,
+		"clientSecret":            actorTokenActClaimSecret,
+		"grantTypes":              []string{"urn:ietf:params:oauth:grant-type:token-exchange"},
+		"tokenEndpointAuthMethod": "client_secret_basic",
+		"includeActClaim":         true,
+	}, false)
+
 	ts.subjectUserID = ts.createUser(actorTokenSubjectUsername, actorTokenSubjectPassword)
 	ts.actorUserID = ts.createUser(actorTokenActorUsername, actorTokenActorPassword)
+	ts.nextActorUserID = ts.createUser(actorTokenNextActorUsername, actorTokenNextActorPassword)
 }
 
 // TearDownSuite deletes the resources created in SetupSuite.
@@ -155,8 +171,14 @@ func (ts *ActorTokenTestSuite) TearDownSuite() {
 	if ts.actorUserID != "" {
 		_ = testutils.DeleteUser(ts.actorUserID)
 	}
+	if ts.nextActorUserID != "" {
+		_ = testutils.DeleteUser(ts.nextActorUserID)
+	}
 	if ts.exchangeAppID != "" {
 		_ = testutils.DeleteApplication(ts.exchangeAppID)
+	}
+	if ts.actClaimAppID != "" {
+		_ = testutils.DeleteApplication(ts.actClaimAppID)
 	}
 	if ts.issuerAppID != "" {
 		_ = testutils.DeleteApplication(ts.issuerAppID)
@@ -271,10 +293,16 @@ func (ts *ActorTokenTestSuite) obtainAccessTokenAs(clientID, clientSecret, usern
 
 // doExchange submits a token-exchange grant request authenticated as the shared exchange app.
 func (ts *ActorTokenTestSuite) doExchange(formData url.Values) (int, map[string]interface{}) {
+	return ts.doExchangeAs(actorTokenExchangeClientID, actorTokenExchangeSecret, formData)
+}
+
+// doExchangeAs submits a token-exchange grant request authenticated as the given client.
+func (ts *ActorTokenTestSuite) doExchangeAs(
+	clientID, clientSecret string, formData url.Values) (int, map[string]interface{}) {
 	req, err := http.NewRequest("POST", testutils.TestServerURL+"/oauth2/token", strings.NewReader(formData.Encode()))
 	ts.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(actorTokenExchangeClientID, actorTokenExchangeSecret)
+	req.SetBasicAuth(clientID, clientSecret)
 
 	resp, err := ts.client.Do(req)
 	ts.Require().NoError(err)
@@ -508,9 +536,10 @@ func (ts *ActorTokenTestSuite) TestActorToken_Expired_InvalidRequest() {
 	ts.Contains(body["error_description"], "actor_token has expired")
 }
 
-// TestActorToken_NestedDelegationChain verifies that exchanging with an actor_token that itself
-// already carries an "act" claim (from a prior exchange) produces a nested delegation chain: the new
-// token's act claim names the immediate actor and preserves that actor's own act claim underneath it.
+// TestActorToken_NestedDelegationChain verifies that, when the subject_token carries no "act" claim,
+// exchanging with an actor_token that itself already carries one (from a prior exchange) produces a
+// nested delegation chain: the new token's act claim names the immediate actor and preserves that
+// actor's own act claim underneath it.
 func (ts *ActorTokenTestSuite) TestActorToken_NestedDelegationChain() {
 	subjectToken := ts.obtainAccessTokenAs(
 		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenSubjectUsername, actorTokenSubjectPassword)
@@ -555,4 +584,138 @@ func (ts *ActorTokenTestSuite) TestActorToken_NestedDelegationChain() {
 	nestedAct, ok := secondAct["act"].(map[string]interface{})
 	ts.Require().True(ok, "act claim should be nested, preserving T1's own act claim")
 	ts.Equal(ts.actorUserID, nestedAct["sub"], "nested act.act.sub should identify the original actor")
+}
+
+// TestActorToken_ExtendsSubjectDelegationChain verifies that a subject_token which already records an
+// actor keeps that actor nested beneath the new actor_token's subject (RFC 8693 Section 4.1).
+func (ts *ActorTokenTestSuite) TestActorToken_ExtendsSubjectDelegationChain() {
+	subjectToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenSubjectUsername, actorTokenSubjectPassword)
+	actorToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenActorUsername, actorTokenActorPassword)
+	nextActorToken := ts.obtainAccessTokenAs(actorTokenIssuerClientID, actorTokenIssuerClientSecret,
+		actorTokenNextActorUsername, actorTokenNextActorPassword)
+
+	delegatedToken := ts.exchangeWithActor(subjectToken, actorToken)
+	finalToken := ts.exchangeWithActor(delegatedToken, nextActorToken)
+
+	claims, err := testutils.DecodeJWT(finalToken)
+	ts.Require().NoError(err)
+	ts.Equal(ts.subjectUserID, claims.Sub, "Subject should stay the original subject")
+
+	act := ts.actClaim(finalToken)
+	ts.Equal(ts.nextActorUserID, act["sub"], "act.sub should identify the current actor")
+	ts.Equal(claims.Iss, act["iss"], "act.iss should identify the actor token's issuer")
+
+	priorAct, ok := act["act"].(map[string]interface{})
+	ts.Require().True(ok, "act claim should keep the subject_token's actor as a nested act")
+	ts.Equal(ts.actorUserID, priorAct["sub"], "act.act.sub should identify the prior actor")
+	ts.NotContains(priorAct, "act")
+}
+
+// TestActorToken_SameActorIsNotRepeated verifies that an actor_token naming the actor already at the
+// head of the subject_token's chain is recorded once, not nested under itself.
+func (ts *ActorTokenTestSuite) TestActorToken_SameActorIsNotRepeated() {
+	subjectToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenSubjectUsername, actorTokenSubjectPassword)
+	actorToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenActorUsername, actorTokenActorPassword)
+
+	delegatedToken := ts.exchangeWithActor(subjectToken, actorToken)
+	finalToken := ts.exchangeWithActor(delegatedToken, actorToken)
+
+	act := ts.actClaim(finalToken)
+	ts.Equal(ts.actorUserID, act["sub"])
+	ts.NotContains(act, "act", "The same actor should not be nested under itself")
+}
+
+// TestActorToken_SubjectChainWinsOverActorChain verifies that when both tokens carry an "act" claim,
+// the subject_token's delegation history is nested under the actor, not the actor_token's own.
+func (ts *ActorTokenTestSuite) TestActorToken_SubjectChainWinsOverActorChain() {
+	subjectToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenSubjectUsername, actorTokenSubjectPassword)
+	actorToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenActorUsername, actorTokenActorPassword)
+	nextActorToken := ts.obtainAccessTokenAs(actorTokenIssuerClientID, actorTokenIssuerClientSecret,
+		actorTokenNextActorUsername, actorTokenNextActorPassword)
+
+	// The subject is acted on by the first actor, while the next actor's token records the subject
+	// user as its own actor.
+	delegatedToken := ts.exchangeWithActor(subjectToken, actorToken)
+	layeredActorToken := ts.exchangeWithActor(nextActorToken, subjectToken)
+
+	finalToken := ts.exchangeWithActor(delegatedToken, layeredActorToken)
+
+	act := ts.actClaim(finalToken)
+	ts.Equal(ts.nextActorUserID, act["sub"], "act.sub should identify the actor_token's subject")
+	priorAct, ok := act["act"].(map[string]interface{})
+	ts.Require().True(ok, "act claim should carry a nested act")
+	ts.Equal(ts.actorUserID, priorAct["sub"], "The nested act should come from the subject_token's chain")
+	ts.NotContains(priorAct, "act", "The actor_token's own chain should not be appended")
+}
+
+// TestActorToken_ImplicitActorExtendsSubjectChain verifies that an application recording itself as
+// the actor (includeActClaim) heads the subject_token's chain when it exchanges without an
+// actor_token.
+func (ts *ActorTokenTestSuite) TestActorToken_ImplicitActorExtendsSubjectChain() {
+	subjectToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenSubjectUsername, actorTokenSubjectPassword)
+	actorToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenActorUsername, actorTokenActorPassword)
+	delegatedToken := ts.exchangeWithActor(subjectToken, actorToken)
+
+	status, body := ts.doExchangeAs(
+		actorTokenActClaimClientID, actorTokenActClaimSecret, exchangeParams(delegatedToken))
+	ts.Require().Equal(http.StatusOK, status, "%v", body)
+	token, ok := body["access_token"].(string)
+	ts.Require().True(ok, "Response should contain access_token")
+
+	act := ts.actClaim(token)
+	ts.Equal(ts.actClaimAppID, act["sub"], "act.sub should name the application making the exchange")
+	priorAct, ok := act["act"].(map[string]interface{})
+	ts.Require().True(ok, "act claim should keep the subject_token's actor as a nested act")
+	ts.Equal(ts.actorUserID, priorAct["sub"], "act.act.sub should identify the prior actor")
+}
+
+// TestActorToken_NoRecordedActorDropsSubjectChain verifies that an application that does not record
+// itself as the actor issues no act claim when it exchanges a delegated token without an actor_token.
+func (ts *ActorTokenTestSuite) TestActorToken_NoRecordedActorDropsSubjectChain() {
+	subjectToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenSubjectUsername, actorTokenSubjectPassword)
+	actorToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenActorUsername, actorTokenActorPassword)
+	delegatedToken := ts.exchangeWithActor(subjectToken, actorToken)
+
+	status, body := ts.doExchange(exchangeParams(delegatedToken))
+	ts.Require().Equal(http.StatusOK, status, "%v", body)
+	token, ok := body["access_token"].(string)
+	ts.Require().True(ok, "Response should contain access_token")
+
+	claims, err := testutils.DecodeJWT(token)
+	ts.Require().NoError(err)
+	ts.Equal(ts.subjectUserID, claims.Sub)
+	ts.NotContains(claims.Additional, "act", "No act claim should be issued when no actor is recorded")
+}
+
+// exchangeWithActor exchanges the subject token with the given actor_token and returns the issued
+// access token.
+func (ts *ActorTokenTestSuite) exchangeWithActor(subjectToken, actorToken string) string {
+	form := exchangeParams(subjectToken)
+	form.Set("actor_token", actorToken)
+	form.Set("actor_token_type", "urn:ietf:params:oauth:token-type:access_token")
+
+	status, body := ts.doExchange(form)
+	ts.Require().Equal(http.StatusOK, status, "%v", body)
+	token, ok := body["access_token"].(string)
+	ts.Require().True(ok, "Response should contain access_token")
+	return token
+}
+
+// actClaim decodes the token and returns its act claim, failing the test when it has none.
+func (ts *ActorTokenTestSuite) actClaim(token string) map[string]interface{} {
+	claims, err := testutils.DecodeJWT(token)
+	ts.Require().NoError(err)
+	act, ok := claims.Additional["act"].(map[string]interface{})
+	ts.Require().True(ok, "Token should carry an act claim")
+	return act
 }

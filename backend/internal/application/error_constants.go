@@ -809,4 +809,59 @@ var (
 				"can only be created from a declarative resource file or an import",
 		},
 	}
+	// ErrorSharedApplicationCannotMove is returned when an application that sharing policies govern is
+	// moved to another organization unit.
+	ErrorSharedApplicationCannotMove = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1061",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.shared_application_cannot_move",
+			DefaultValue: "Application with sharing policies cannot be moved",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.applicationservice.shared_application_cannot_move_description",
+			DefaultValue: "The application is shared into other organization units. Delete its sharing " +
+				"policies before moving it to another organization unit",
+		},
+	}
+	// ErrorInvalidFilter is returned when an application listing carries a filter it cannot apply.
+	ErrorInvalidFilter = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1062",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_filter_parameter",
+			DefaultValue: "Invalid filter parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_filter_parameter_description",
+			DefaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID",
+		},
+	}
+	// ErrorInvalidProject is returned when an application names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1063",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+	// ErrorOUNotInProject is returned when an application names an organization unit outside the project
+	// it names.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1064",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.ou_not_in_project_description",
+			DefaultValue: "The organization unit must be the project's root organization unit or one below it",
+		},
+	}
 )

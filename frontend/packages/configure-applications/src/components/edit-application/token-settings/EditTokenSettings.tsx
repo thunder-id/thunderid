@@ -3,12 +3,12 @@
 
 import {zodResolver} from '@hookform/resolvers/zod';
 import type {PropertyDefinition, ApiUserType} from '@thunderid/configure-user-types';
-import {useGetUserTypes} from '@thunderid/configure-user-types';
+import {useGetUserTypeAttributes, useGetUserTypes} from '@thunderid/configure-user-types';
 import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger';
 import {useThunderID} from '@thunderid/react';
 import {Stack} from '@wso2/oxygen-ui';
-import {useState, useEffect, useMemo, useRef} from 'react';
+import {useState, useEffect, useMemo, useRef, type ReactNode} from 'react';
 import {useForm, useWatch} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import {z} from 'zod';
@@ -75,18 +75,48 @@ interface EditTokenSettingsProps {
    * "Credentials".
    */
   certificateLocation?: string;
+  /**
+   * In OAuth mode, whether the entity is issued an access token alone on behalf of a user, as with
+   * the token exchange and JWT bearer grants, which issue no ID token or refresh token. Only the
+   * access token's attributes, its validity and the scope mapping are then shown. Of the validity
+   * fields, only the access token's is validated and written; the hidden ones are left as stored.
+   * A scope mapping change still updates the hidden ID token and user info attribute lists, so
+   * they stay consistent with the mapping if a sign-in grant is added later. Defaults to false.
+   */
+  accessTokenOnly?: boolean;
+  /**
+   * Whether to show the access token's attribute picker and preview (OAuth mode). Pass false when
+   * the grants never put a user attribute in the access token. Defaults to true.
+   */
+  showAccessTokenAttributes?: boolean;
+  /**
+   * Note shown above the access token attributes (OAuth mode), e.g. to say where a grant takes
+   * the attribute values from.
+   */
+  accessTokenNote?: ReactNode;
+  /**
+   * Which user type schemas the selectable attributes come from. 'allowedUserTypes' (the default)
+   * uses the entity's allowed user types. 'allUserTypes' uses every user type, for a grant whose
+   * user can be of any type, such as token exchange, where the user comes from the incoming token.
+   * It reads them through useGetUserTypeAttributes, which covers the first 100 user types the
+   * server lists and surfaces read failures with a retry.
+   */
+  userAttributeSource?: 'allowedUserTypes' | 'allUserTypes';
 }
 
-const createTokenConfigSchema = (t: (key: string) => string) => {
+const createTokenConfigSchema = (t: (key: string) => string, accessTokenOnly: boolean) => {
   const validityField = z
     .number({error: t('applications:edit.token.validity.error')})
     .min(1, t('applications:edit.token.validity.error'));
+  // A validity that is not shown is not checked, so a stored value the user cannot see or fix never
+  // blocks saving.
+  const hiddenValidityField = z.number();
 
   return z.object({
-    validityPeriod: validityField,
+    validityPeriod: accessTokenOnly ? hiddenValidityField : validityField,
     accessTokenValidity: validityField,
-    idTokenValidity: validityField,
-    refreshTokenValidity: validityField,
+    idTokenValidity: accessTokenOnly ? hiddenValidityField : validityField,
+    refreshTokenValidity: accessTokenOnly ? hiddenValidityField : validityField,
   });
 };
 
@@ -172,6 +202,10 @@ export default function EditTokenSettings({
   showActorClaim = false,
   actorSub = '<agent-id>',
   certificateLocation = 'Advanced',
+  accessTokenOnly = false,
+  showAccessTokenAttributes = true,
+  accessTokenNote = undefined,
+  userAttributeSource = 'allowedUserTypes',
 }: EditTokenSettingsProps) {
   const logger = useLogger('EditTokenSettings');
   const {t} = useTranslation();
@@ -184,7 +218,20 @@ export default function EditTokenSettings({
   // per-application choice. It is surfaced read-only from the OIDC discovery document.
   const [signingAlg, setSigningAlg] = useState<string | undefined>(undefined);
 
-  const {data: userTypesData, isLoading: userTypesLoading} = useGetUserTypes();
+  const listsAllUserTypes = userAttributeSource === 'allUserTypes';
+  // The default source's list, under its usual key. Not needed for 'allUserTypes', which reads its
+  // own list through useGetUserTypeAttributes.
+  const {data: userTypesData, isLoading: userTypesLoading} = useGetUserTypes(undefined, {
+    enabled: !listsAllUserTypes,
+  });
+  // Every user type's attributes, cached and with their own loading and error state. Only fetched
+  // for 'allUserTypes'; the default source keeps its own requests below.
+  const {
+    attributes: allUserTypeAttributes,
+    isLoading: isLoadingAllUserTypeAttributes,
+    error: allUserTypeAttributesError,
+    refetch: refetchAllUserTypeAttributes,
+  } = useGetUserTypeAttributes({enabled: listsAllUserTypes});
   const [activeTokenType, setActiveTokenType] = useState<'access' | 'id' | 'userinfo'>('access');
   const [pendingAdditionsByToken, setPendingAdditionsByToken] = useState<Record<TokenAttributeScope, Set<string>>>(() =>
     createEmptyAttributeSetState(),
@@ -199,17 +246,20 @@ export default function EditTokenSettings({
   // Stabilize allowedUserTypes array reference
   const allowedUserTypes = useMemo(() => application.allowedUserTypes ?? [], [application.allowedUserTypes]);
 
-  // Get schema IDs for allowed user types
+  // Get schema IDs for allowed user types. None with 'allUserTypes', so that mode leaves the
+  // default source's state alone.
   const schemaIds = useMemo(() => {
-    if (!userTypesData?.types || allowedUserTypes.length === 0) {
+    if (listsAllUserTypes || !userTypesData?.types || allowedUserTypes.length === 0) {
       return [];
     }
 
     return userTypesData.types.filter((schema) => allowedUserTypes.includes(schema.handle)).map((schema) => schema.id);
-  }, [userTypesData, allowedUserTypes]);
+  }, [userTypesData, allowedUserTypes, listsAllUserTypes]);
 
   // Determine if this is OAuth/OIDC mode (has separate token configs) or Native mode
   const isOAuthMode = useMemo(() => isOAuthTokenMode(oauth2Config), [oauth2Config]);
+  // Only meaningful in OAuth mode: native mode issues its single token regardless.
+  const isAccessTokenOnly = isOAuthMode && accessTokenOnly;
 
   // In Native mode both the attribute list and the validity period live on this single config, so
   // each is written by spreading the other's current value. Prefer the pending assertion whenever
@@ -220,7 +270,7 @@ export default function EditTokenSettings({
     [editedApp, application.assertion],
   );
 
-  const tokenConfigSchema = useMemo(() => createTokenConfigSchema(t), [t]);
+  const tokenConfigSchema = useMemo(() => createTokenConfigSchema(t, isAccessTokenOnly), [t, isAccessTokenOnly]);
 
   const {
     control,
@@ -245,6 +295,7 @@ export default function EditTokenSettings({
   const oauth2ConfigRef = useRef(oauth2Config);
   const applicationRef = useRef(application);
   const currentAssertionRef = useRef(currentAssertion);
+  const isAccessTokenOnlyRef = useRef(isAccessTokenOnly);
   const isFirstRenderRef = useRef(true);
   const prevSectionResetKeyRef = useRef(sectionResetKey);
   // Attributes this editing session added to the token allow-lists on behalf of a scope mapping.
@@ -264,6 +315,10 @@ export default function EditTokenSettings({
     currentAssertionRef.current = currentAssertion;
   }, [currentAssertion]);
 
+  useEffect(() => {
+    isAccessTokenOnlyRef.current = isAccessTokenOnly;
+  }, [isAccessTokenOnly]);
+
   // Resets the Token Validity fields in place on Save/Reset — deliberately not a remount
   //  since TokenValidationSection owns its own local Access/ID/Refresh Token
   // sub-tab selection that must survive this. Also clears the pending attribute add/remove
@@ -281,6 +336,18 @@ export default function EditTokenSettings({
     setPendingRemovalsByToken(createEmptyAttributeSetState());
     setHighlightedAttributesByToken(createEmptyAttributeSetState());
   }, [sectionResetKey, reset]);
+
+  // The schema follows the mode, which a Reset can change while this stays mounted. Revalidate
+  // then, so a field just hidden stops blocking Save and one just shown starts to, with its error
+  // set. This only validates: the write effect below must not run on a mode change, since it would
+  // write the values it closed over, which a Reset in the same commit has already replaced.
+  // Declared after the reset effect so it validates the reset values.
+  const validatedSchemaRef = useRef(tokenConfigSchema);
+  useEffect(() => {
+    if (validatedSchemaRef.current === tokenConfigSchema) return;
+    validatedSchemaRef.current = tokenConfigSchema;
+    trigger().catch(() => undefined);
+  }, [tokenConfigSchema, trigger]);
 
   useEffect(() => {
     if (isFirstRenderRef.current) {
@@ -301,32 +368,38 @@ export default function EditTokenSettings({
 
         if (
           baseline.accessTokenValidity === accessTokenValidity &&
-          baseline.idTokenValidity === idTokenValidity &&
-          baseline.refreshTokenValidity === refreshTokenValidity
+          (isAccessTokenOnlyRef.current ||
+            (baseline.idTokenValidity === idTokenValidity && baseline.refreshTokenValidity === refreshTokenValidity))
         ) {
           return; // No changes, skip update
         }
 
+        const accessToken = {
+          ...config?.token?.accessToken,
+          userConfig: {
+            ...config?.token?.accessToken?.userConfig,
+            validityPeriod: accessTokenValidity,
+          },
+        };
+        // With only the access token shown, the ID token and refresh token validity are left as
+        // stored rather than rewritten from fields the user cannot see. Only validity is skipped:
+        // handleScopeClaimsChange still maintains the hidden ID token and user info attribute lists.
         const updatedConfig = {
           ...config,
-          token: {
-            ...config?.token,
-            accessToken: {
-              ...config?.token?.accessToken,
-              userConfig: {
-                ...config?.token?.accessToken?.userConfig,
-                validityPeriod: accessTokenValidity,
+          token: isAccessTokenOnlyRef.current
+            ? {...config?.token, accessToken}
+            : {
+                ...config?.token,
+                accessToken,
+                idToken: {
+                  ...config?.token?.idToken,
+                  validityPeriod: idTokenValidity,
+                },
+                refreshToken: {
+                  ...config?.token?.refreshToken,
+                  validityPeriod: refreshTokenValidity,
+                },
               },
-            },
-            idToken: {
-              ...config?.token?.idToken,
-              validityPeriod: idTokenValidity,
-            },
-            refreshToken: {
-              ...config?.token?.refreshToken,
-              validityPeriod: refreshTokenValidity,
-            },
-          },
         };
 
         const updatedInboundAuth = applicationRef.current.inboundAuthConfig?.map((c) =>
@@ -350,10 +423,13 @@ export default function EditTokenSettings({
   }, [validityPeriod, accessTokenValidity, idTokenValidity, refreshTokenValidity, trigger, isOAuthMode, onFieldChange]);
 
   /**
-   * Fetch user types for all allowed user types
+   * Fetch the schemas of the allowed user types (the default attribute source)
    */
   useEffect(() => {
-    if (schemaIds.length === 0) return;
+    if (schemaIds.length === 0) return undefined;
+
+    // A newer list of user types replaces this one, so a response that lands after it is dropped.
+    let cancelled = false;
 
     const fetchSchemas = async () => {
       const serverUrl = getServerUrl();
@@ -374,16 +450,20 @@ export default function EditTokenSettings({
 
         const responses = await Promise.all(schemaPromises);
         const schemas = responses.filter((schema): schema is ApiUserType => schema !== null);
-        setUserTypes(schemas);
+        if (!cancelled) setUserTypes(schemas);
       } catch (err) {
         logger.error('Failed to fetch user types', {error: err});
-        setUserTypes([]);
+        if (!cancelled) setUserTypes([]);
       }
     };
 
     fetchSchemas().catch((err) => {
       logger.error('Unexpected error in fetchUserTypes', {error: err});
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, [schemaIds, http, getServerUrl, logger]);
 
   /**
@@ -429,7 +509,7 @@ export default function EditTokenSettings({
     };
   }, [isOAuthMode, runtimeUrl, logger]);
 
-  const userAttributes = useMemo(() => {
+  const allowedUserTypeAttributes = useMemo(() => {
     if (userTypes.length === 0) return [];
 
     const flattenAttributes = (schema: Record<string, PropertyDefinition>, prefix = ''): string[] => {
@@ -464,7 +544,17 @@ export default function EditTokenSettings({
     return Array.from(allAttributes).sort();
   }, [userTypes]);
 
-  const isLoadingUserAttributes = userTypesLoading;
+  // Credentials are never offered. The hook already lists each non-credential name once, sorted.
+  const everyUserTypeAttributes = useMemo(
+    () => allUserTypeAttributes.filter(({credential}) => !credential).map(({attribute}) => attribute),
+    [allUserTypeAttributes],
+  );
+
+  const userAttributes = listsAllUserTypes ? everyUserTypeAttributes : allowedUserTypeAttributes;
+
+  const isLoadingUserAttributes = listsAllUserTypes ? isLoadingAllUserTypeAttributes : userTypesLoading;
+  // Read failures are surfaced for 'allUserTypes' only; the default source logs its own.
+  const userAttributesError = listsAllUserTypes ? allUserTypeAttributesError : null;
 
   const sharedUserAttributes = useMemo(() => {
     if (isOAuthMode) {
@@ -868,7 +958,10 @@ export default function EditTokenSettings({
     applyAttributeChange(tokenType, nextAttrs);
   };
 
-  const visibleScope: TokenAttributeScope = isOAuthMode ? activeTokenType : 'shared';
+  // The ID token tab is not shown with only the access token, so a tab picked before the mode
+  // changed (e.g. on a Reset that keeps this component mounted) must not stay selected.
+  const effectiveTokenType = isAccessTokenOnly ? 'access' : activeTokenType;
+  const visibleScope: TokenAttributeScope = isOAuthMode ? effectiveTokenType : 'shared';
   const visiblePendingAdditions = effectivePendingAdditions[visibleScope];
   const visiblePendingRemovals = effectivePendingRemovals[visibleScope];
   const visibleHighlightedAttributes = highlightedAttributesByToken[visibleScope];
@@ -884,7 +977,7 @@ export default function EditTokenSettings({
             accessTokenAttributes={currentAccessTokenAttributes}
             idTokenAttributes={currentIdTokenAttributes}
             userInfoAttributes={currentUserInfoAttributes}
-            activeTab={activeTokenType}
+            activeTab={effectiveTokenType}
             onTabChange={setActiveTokenType}
             isUserInfoCustomAttributes={isUserInfoCustomAttributes}
             onToggleUserInfo={handleToggleUserInfo}
@@ -902,6 +995,12 @@ export default function EditTokenSettings({
             signingAlg={signingAlg}
             hasCertificate={Boolean(oauth2Config?.certificate?.type)}
             certificateLocation={certificateLocation}
+            accessTokenOnly={isAccessTokenOnly}
+            showAccessTokenAttributes={showAccessTokenAttributes}
+            accessTokenNote={accessTokenNote}
+            userAttributeSource={userAttributeSource}
+            userAttributesError={userAttributesError}
+            onRetryUserAttributes={refetchAllUserTypeAttributes}
             idTokenResponseType={oauth2Config?.token?.idToken?.responseType}
             idTokenEncryptionAlg={oauth2Config?.token?.idToken?.encryptionAlg}
             idTokenEncryptionEnc={oauth2Config?.token?.idToken?.encryptionEnc}
@@ -915,10 +1014,11 @@ export default function EditTokenSettings({
                 scopeClaims={oauth2Config?.scopeClaims ?? {}}
                 userAttributes={userAttributes}
                 isLoadingUserAttributes={isLoadingUserAttributes}
-                hasAllowedUserTypes={allowedUserTypes.length > 0}
+                hasAllowedUserTypes={listsAllUserTypes || allowedUserTypes.length > 0}
                 onScopeClaimsChange={handleScopeClaimsChange}
                 entityLabel={entityLabel}
                 disabled={application.isReadOnly}
+                scopesOnly={isAccessTokenOnly}
               />
             }
           />
@@ -929,6 +1029,7 @@ export default function EditTokenSettings({
             errors={errors}
             tokenType="oauth"
             disabled={application.isReadOnly}
+            accessTokenOnly={isAccessTokenOnly}
           />
         </>
       ) : (
@@ -936,6 +1037,9 @@ export default function EditTokenSettings({
           {/* Native Flow Mode */}
           <TokenUserAttributesSection
             sharedAttributes={sharedUserAttributes}
+            userAttributeSource={userAttributeSource}
+            userAttributesError={userAttributesError}
+            onRetryUserAttributes={refetchAllUserTypeAttributes}
             userAttributes={userAttributes}
             isLoadingUserAttributes={isLoadingUserAttributes}
             pendingAdditions={visiblePendingAdditions}

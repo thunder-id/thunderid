@@ -57,7 +57,7 @@ describe('VENDOR_META_BY_TYPE', () => {
     });
   });
 
-  it('presents the HTTP endpoint as a custom connection that re-enters credentials on an origin change', () => {
+  it('presents the HTTP endpoint as a custom connection that re-enters credentials on an origin change and lists its usages', () => {
     expect(VENDOR_META_BY_TYPE[ConnectionTypes.HTTP]).toMatchObject({
       key: 'http',
       displayName: 'Service endpoint',
@@ -65,6 +65,7 @@ describe('VENDOR_META_BY_TYPE', () => {
       categories: ['custom'],
       presentation: 'custom',
       reentersCredentialsOnOriginChange: true,
+      showsUsages: true,
       generalSettingsCardCopy: 'configuration',
     });
     expect(VENDOR_META_BY_TYPE[ConnectionTypes.HTTP]?.supportsAuthentication).toBeUndefined();

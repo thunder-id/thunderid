@@ -5,7 +5,30 @@
 // URL, timeout, plain headers and authentication, whose secrets are stored encrypted.
 package httpconnection
 
-// Initialize creates the HTTP connection service over the configuration database.
-func Initialize() HTTPConnectionServiceInterface {
-	return newHTTPConnectionService(newHTTPConnectionStore())
+import (
+	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+)
+
+// Initialize creates the HTTP connection service over the store its configured mode selects.
+func Initialize(cfg config.HTTPConnectionConfig,
+	ouService ou.OrganizationUnitServiceInterface) (HTTPConnectionServiceInterface, error) {
+	mode, err := resolvedStoreMode(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return newHTTPConnectionService(initializeStore(mode), ouService), nil
+}
+
+// initializeStore selects the mutable, declarative, or composite connection store.
+func initializeStore(mode serverconst.StoreMode) httpConnectionStoreInterface {
+	switch mode {
+	case serverconst.StoreModeDeclarative:
+		return newFileBasedStore()
+	case serverconst.StoreModeComposite:
+		return newCompositeStore(newFileBasedStore(), newHTTPConnectionStore())
+	default:
+		return newHTTPConnectionStore()
+	}
 }

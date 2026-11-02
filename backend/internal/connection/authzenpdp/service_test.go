@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
@@ -20,10 +21,31 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
-func newTestAuthZENPDPService(store authZENPDPStoreInterface, defaults config.AuthZENPDPConfig) *AuthZENPDPService {
-	return newAuthZENPDPService(store, defaults, transaction.NewNoOpTransactioner(), nil)
+// newTestOUService is an organization unit service in which "ou-1" exists.
+func newTestOUService(t *testing.T) *oumock.OrganizationUnitServiceInterfaceMock {
+	t.Helper()
+	ouService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouService.On("ResolveOwner", mock.Anything, "ou-1", "", mock.Anything).Return("ou-1", nil).Maybe()
+	ouService.On("ResolveOwnerForUpdate", mock.Anything, "ou-1", "", "ou-1", mock.Anything).
+		Return("ou-1", nil).Maybe()
+	ouService.EXPECT().ResolveOwnerForUpdate(mock.Anything, "", "", mock.Anything, mock.Anything).
+		RunAndReturn(func(
+			_ context.Context, _, _, currentID string, _ ou.OwnerErrors,
+		) (string, *tidcommon.ServiceError) {
+			return currentID, nil
+		}).Maybe()
+	return ouService
+}
+
+// newTestAuthZENPDPService creates the service over the given store and defaults, with an organization unit service in
+// which "ou-1" exists.
+func newTestAuthZENPDPService(
+	t *testing.T, store authZENPDPStoreInterface, defaults config.AuthZENPDPConfig,
+) *AuthZENPDPService {
+	return newAuthZENPDPService(store, defaults, transaction.NewNoOpTransactioner(), nil, newTestOUService(t))
 }
 
 type serviceStoreStub struct {
@@ -104,8 +126,9 @@ func TestServiceDelegatesStoreOperations(t *testing.T) {
 	store := &serviceStoreStub{
 		connections: []AuthZENPDPConnection{{ID: "pdp-1"}},
 	}
-	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{})
 	request := ConnectionRequest{
+		OUID:          "ou-1",
 		Name:          "AuthZEN PDP",
 		Endpoint:      "https://pdp.example.com/evaluation",
 		BatchEndpoint: "https://pdp.example.com/evaluations",
@@ -134,7 +157,7 @@ func TestServiceDelegatesStoreOperations(t *testing.T) {
 
 func TestServiceListAndGetTranslateStoreErrors(t *testing.T) {
 	store := &serviceStoreStub{err: fmt.Errorf("store unavailable")}
-	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{})
 
 	connections, listErr := service.ListAuthZENPDPs(context.Background())
 	require.Nil(t, connections)
@@ -147,7 +170,7 @@ func TestServiceListAndGetTranslateStoreErrors(t *testing.T) {
 
 func TestServiceDeleteConnectionMapsImmutableStore(t *testing.T) {
 	store := &serviceStoreStub{err: ErrAuthZENPDPIsImmutable}
-	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{})
 
 	svcErr := service.DeleteAuthZENPDPConnection(context.Background(), "pdp-1")
 
@@ -160,9 +183,10 @@ func TestServiceAppliesDefaultsToWritesAndReads(t *testing.T) {
 		connection:  AuthZENPDPConnection{ID: "pdp-1", Name: "Existing", TimeoutMS: -1, RetryCount: -1},
 		connections: []AuthZENPDPConnection{{ID: "pdp-2", TimeoutMS: -1, RetryCount: -1}},
 	}
-	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{TimeoutMS: 1200, RetryCount: &retries})
+	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{TimeoutMS: 1200, RetryCount: &retries})
 
 	created, svcErr := service.CreateAuthZENPDPConnection(context.Background(), ConnectionRequest{
+		OUID:          "ou-1",
 		Name:          "AuthZEN PDP",
 		Endpoint:      "https://pdp.example.com/evaluation",
 		BatchEndpoint: "https://pdp.example.com/evaluations",
@@ -186,9 +210,10 @@ func TestServiceAppliesDefaultsToWritesAndReads(t *testing.T) {
 func TestCreateConnectionReturnsAppliedDefaults(t *testing.T) {
 	retries := 2
 	store := &serviceStoreStub{}
-	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{TimeoutMS: 1200, RetryCount: &retries})
+	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{TimeoutMS: 1200, RetryCount: &retries})
 
 	created, svcErr := service.CreateAuthZENPDPConnection(context.Background(), ConnectionRequest{
+		OUID:          "ou-1",
 		ID:            "imported-pdp-id",
 		Name:          "AuthZEN PDP",
 		Endpoint:      "https://pdp.example.com/evaluation",
@@ -205,9 +230,10 @@ func TestCreateConnectionReturnsAppliedDefaults(t *testing.T) {
 func TestCreateConnectionUsesTransaction(t *testing.T) {
 	store := &serviceStoreStub{}
 	transactioner := &transactionerStub{}
-	service := newAuthZENPDPService(store, config.AuthZENPDPConfig{}, transactioner, nil)
+	service := newAuthZENPDPService(store, config.AuthZENPDPConfig{}, transactioner, nil, newTestOUService(t))
 
 	created, svcErr := service.CreateAuthZENPDPConnection(context.Background(), ConnectionRequest{
+		OUID:          "ou-1",
 		Name:          "AuthZEN PDP",
 		Endpoint:      "https://pdp.example.com/evaluation",
 		BatchEndpoint: "https://pdp.example.com/evaluations",
@@ -223,8 +249,9 @@ var _ providers.Transactioner = (*transactionerStub)(nil)
 
 func TestServiceRejectsInvalidConnectionBeforePersistence(t *testing.T) {
 	store := &serviceStoreStub{}
-	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{})
 	request := ConnectionRequest{
+		OUID:          "ou-1",
 		Name:          "AuthZEN PDP",
 		Endpoint:      "https://pdp.example.com/evaluation",
 		BatchEndpoint: "ftp://pdp.example.com/evaluations",
@@ -240,8 +267,9 @@ func TestServiceRejectsInvalidConnectionBeforePersistence(t *testing.T) {
 
 func TestServiceRejectsMaskedAPIKeyHeaderBeforePersistence(t *testing.T) {
 	store := &serviceStoreStub{}
-	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{})
 	request := ConnectionRequest{
+		OUID:     "ou-1",
 		Name:     "AuthZEN PDP",
 		Endpoint: "https://pdp.example.com/evaluation",
 		Authentication: &outboundauth.Authentication{
@@ -269,7 +297,7 @@ func TestServiceUpdateRejectsRemoteHTTPForStoredAuthentication(t *testing.T) {
 		Type: string(outboundauth.TypeBearer), Properties: map[string]string{"token": "secret"},
 	})
 	store := &serviceStoreStub{connection: connection}
-	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{})
 
 	_, svcErr := service.UpdateAuthZENPDPConnection(context.Background(), "pdp-1", ConnectionRequest{
 		Name:     "AuthZEN PDP",
@@ -291,7 +319,7 @@ func TestServiceUpdateKeepsOmittedAuthenticationOnlyForSameEndpoint(t *testing.T
 		Type: string(outboundauth.TypeBearer), Properties: map[string]string{"token": "secret"},
 	})
 	store := &serviceStoreStub{connection: connection}
-	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{})
 
 	_, svcErr := service.UpdateAuthZENPDPConnection(context.Background(), "pdp-1", ConnectionRequest{
 		Name: "AuthZEN PDP", Endpoint: connection.Endpoint,
@@ -318,7 +346,7 @@ func TestServiceUpdateRequiresFreshAuthenticationForChangedBatchEndpoint(t *test
 		Type: string(outboundauth.TypeBearer), Properties: map[string]string{"token": "old-token"},
 	})
 	store := &serviceStoreStub{connection: connection}
-	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{})
 	request := ConnectionRequest{
 		Name: "AuthZEN PDP", Endpoint: connection.Endpoint,
 		BatchEndpoint: "https://other.example.com/evaluations",
@@ -350,8 +378,9 @@ func TestServiceRejectsEmptyConnectionName(t *testing.T) {
 	for _, name := range []string{"", " \t "} {
 		t.Run(fmt.Sprintf("name %q", name), func(t *testing.T) {
 			store := &serviceStoreStub{}
-			service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+			service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{})
 			request := ConnectionRequest{
+				OUID:     "ou-1",
 				Name:     name,
 				Endpoint: "https://pdp.example.com/evaluation",
 			}
@@ -371,9 +400,10 @@ func TestServiceRejectsEmptyConnectionName(t *testing.T) {
 
 func TestServiceAcceptsConnectionWithoutBatchEndpoint(t *testing.T) {
 	store := &serviceStoreStub{}
-	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{})
 
 	created, svcErr := service.CreateAuthZENPDPConnection(context.Background(), ConnectionRequest{
+		OUID:     "ou-1",
 		Name:     "AuthZEN PDP",
 		Endpoint: "https://pdp.example.com/evaluation",
 	})
@@ -394,9 +424,10 @@ func TestCreateConnectionValidatesSubjectAttributeMappings(t *testing.T) {
 	}, nil)
 	store := &serviceStoreStub{}
 	service := newAuthZENPDPService(
-		store, config.AuthZENPDPConfig{}, transaction.NewNoOpTransactioner(), entityTypes)
+		store, config.AuthZENPDPConfig{}, transaction.NewNoOpTransactioner(), entityTypes, newTestOUService(t))
 
 	created, svcErr := service.CreateAuthZENPDPConnection(context.Background(), ConnectionRequest{
+		OUID:          "ou-1",
 		Name:          "AuthZEN PDP",
 		Endpoint:      "https://pdp.example.com/evaluation",
 		BatchEndpoint: "https://pdp.example.com/evaluations",
@@ -425,9 +456,10 @@ func TestCreateConnectionRejectsUnknownSubjectMappingAttribute(t *testing.T) {
 	}, nil)
 	store := &serviceStoreStub{}
 	service := newAuthZENPDPService(
-		store, config.AuthZENPDPConfig{}, transaction.NewNoOpTransactioner(), entityTypes)
+		store, config.AuthZENPDPConfig{}, transaction.NewNoOpTransactioner(), entityTypes, newTestOUService(t))
 
 	created, svcErr := service.CreateAuthZENPDPConnection(context.Background(), ConnectionRequest{
+		OUID:          "ou-1",
 		Name:          "AuthZEN PDP",
 		Endpoint:      "https://pdp.example.com/evaluation",
 		BatchEndpoint: "https://pdp.example.com/evaluations",
@@ -451,9 +483,10 @@ func TestCreateConnectionRejectsUnknownSubjectMappingType(t *testing.T) {
 	).Return(nil, &entitytype.ErrorEntityTypeNotFound)
 	store := &serviceStoreStub{}
 	service := newAuthZENPDPService(
-		store, config.AuthZENPDPConfig{}, transaction.NewNoOpTransactioner(), entityTypes)
+		store, config.AuthZENPDPConfig{}, transaction.NewNoOpTransactioner(), entityTypes, newTestOUService(t))
 
 	created, svcErr := service.CreateAuthZENPDPConnection(context.Background(), ConnectionRequest{
+		OUID:          "ou-1",
 		Name:          "AuthZEN PDP",
 		Endpoint:      "https://pdp.example.com/evaluation",
 		BatchEndpoint: "https://pdp.example.com/evaluations",
@@ -480,9 +513,10 @@ func TestCreateConnectionRejectsAmbiguousSubjectMappingType(t *testing.T) {
 	}, nil)
 	store := &serviceStoreStub{}
 	service := newAuthZENPDPService(
-		store, config.AuthZENPDPConfig{}, transaction.NewNoOpTransactioner(), entityTypes)
+		store, config.AuthZENPDPConfig{}, transaction.NewNoOpTransactioner(), entityTypes, newTestOUService(t))
 
 	created, svcErr := service.CreateAuthZENPDPConnection(context.Background(), ConnectionRequest{
+		OUID:     "ou-1",
 		Name:     "AuthZEN PDP",
 		Endpoint: "https://pdp.example.com/evaluation",
 		SubjectAttributeMappings: []SubjectAttributeMapping{{
@@ -498,7 +532,7 @@ func TestCreateConnectionRejectsAmbiguousSubjectMappingType(t *testing.T) {
 
 func TestUpdateConnectionRejectsMissingConnection(t *testing.T) {
 	store := &serviceStoreStub{missing: true}
-	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{})
 
 	updated, svcErr := service.UpdateAuthZENPDPConnection(context.Background(), "pdp-1", ConnectionRequest{
 		Name:          "AuthZEN PDP",
@@ -519,7 +553,7 @@ func TestUpdateConnectionRejectsImmutableConnection(t *testing.T) {
 		},
 		updateErr: ErrAuthZENPDPIsImmutable,
 	}
-	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{})
 
 	updated, svcErr := service.UpdateAuthZENPDPConnection(context.Background(), "pdp-1", ConnectionRequest{
 		Name:          store.connection.Name,
@@ -606,4 +640,73 @@ func TestFileBasedStoreRejectsMutableOperations(t *testing.T) {
 	require.ErrorIs(t,
 		store.UpdateAuthZENPDP(context.Background(), connection.ID, connection), ErrAuthZENPDPIsImmutable)
 	require.ErrorIs(t, store.DeleteAuthZENPDP(context.Background(), connection.ID), ErrAuthZENPDPIsImmutable)
+}
+
+func TestServiceCreateResolvesConnectionOU(t *testing.T) {
+	ouService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouService.On("ResolveOwner", mock.Anything, "", "acme", mock.Anything).Return("ou-acme", nil).Once()
+	ouService.On("ResolveOwner", mock.Anything, "", "", mock.Anything).
+		Return("", &ErrorOURequired).Once()
+	ouService.On("ResolveOwner", mock.Anything, "missing", "", mock.Anything).
+		Return("", &ErrorInvalidOU).Once()
+	store := &serviceStoreStub{}
+	service := newAuthZENPDPService(store, config.AuthZENPDPConfig{}, transaction.NewNoOpTransactioner(), nil,
+		ouService)
+	base := ConnectionRequest{Name: "AuthZEN PDP", Endpoint: "https://pdp.example.com/evaluation"}
+
+	byHandle := base
+	byHandle.OUHandle = "acme"
+	created, svcErr := service.CreateAuthZENPDPConnection(context.Background(), byHandle)
+	require.Nil(t, svcErr)
+	require.Equal(t, "ou-acme", created.OUID)
+
+	_, svcErr = service.CreateAuthZENPDPConnection(context.Background(), base)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorOURequired.Code, svcErr.Code)
+
+	unknown := base
+	unknown.OUID = "missing"
+	_, svcErr = service.CreateAuthZENPDPConnection(context.Background(), unknown)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorInvalidOU.Code, svcErr.Code)
+}
+
+func TestServiceUpdateKeepsConnectionOU(t *testing.T) {
+	connection := AuthZENPDPConnection{
+		ID: "pdp-1", Name: "AuthZEN PDP", OUID: "ou-1", Endpoint: "https://pdp.example.com/evaluation",
+		TimeoutMS: -1, RetryCount: -1,
+	}
+	for _, test := range []struct {
+		name      string
+		requested string
+		wantCode  string
+	}{
+		{name: "omitted", requested: ""},
+		{name: "same", requested: "ou-1"},
+		{name: "changed", requested: "ou-2", wantCode: ErrorOUUpdateNotAllowed.Code},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := &serviceStoreStub{connection: connection}
+			ouService := newTestOUService(t)
+			if test.wantCode != "" {
+				ouService.On("ResolveOwnerForUpdate", mock.Anything, "ou-2", "", "ou-1", mock.Anything).
+					Return("", &ErrorOUUpdateNotAllowed).Once()
+			}
+			service := newAuthZENPDPService(
+				store, config.AuthZENPDPConfig{}, transaction.NewNoOpTransactioner(), nil, ouService)
+
+			updated, svcErr := service.UpdateAuthZENPDPConnection(context.Background(), "pdp-1", ConnectionRequest{
+				OUID: test.requested, Name: "AuthZEN PDP", Endpoint: connection.Endpoint,
+			})
+
+			if test.wantCode != "" {
+				require.NotNil(t, svcErr)
+				require.Equal(t, test.wantCode, svcErr.Code)
+				require.Zero(t, store.updateCalls)
+				return
+			}
+			require.Nil(t, svcErr)
+			require.Equal(t, "ou-1", updated.OUID)
+		})
+	}
 }

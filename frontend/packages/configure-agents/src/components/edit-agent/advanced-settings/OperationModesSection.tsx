@@ -12,6 +12,8 @@ import {
   applyTokenEndpointAuthMethodChange,
   deriveOAuth2Flags,
   hasUserAccess,
+  isGrantLockedByIdJag,
+  isIdJagEnabled,
 } from '@thunderid/configure-applications';
 import {useThunderID} from '@thunderid/react';
 import {
@@ -33,7 +35,9 @@ import {
 import type {ReactNode} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import RedirectURIsSection from './RedirectURIsSection';
-import {DELEGATED_ONLY_GRANTS} from '../../../constants/delegationGrants';
+import {DELEGATED_ONLY_GRANTS, DELEGATION_GRANTS} from '../../../constants/delegationGrants';
+import applyAgentPkceRule from '../../../utils/applyAgentPkceRule';
+import {hasDelegationGrant} from '../../../utils/isDelegatedAgent';
 import {codeComponents} from '../shared/transCodeComponents';
 
 interface OidcDiscovery {
@@ -60,32 +64,31 @@ export default function OperationModesSection({
 
   const isEditable = Boolean(onOAuth2ConfigChange) && !disabled;
   const grantTypes = oauth2Config.grantTypes ?? [];
-  const hasDelegatedMode = grantTypes.includes(OAuth2GrantTypes.AUTHORIZATION_CODE);
+  const hasDelegatedMode = hasDelegationGrant(grantTypes);
+  const heldDelegationGrants = grantTypes.filter((grant) => DELEGATION_GRANTS.includes(grant));
   const flags = deriveOAuth2Flags(oauth2Config);
+  const idJagEnabled = isIdJagEnabled(oauth2Config);
 
   const updateGrants = (next: string[]): void => {
     if (!isEditable) return;
-    const updates = applyGrantTypesChange(oauth2Config, next);
-    // PKCE is fully derived from authorization_code for agents.
-    if (next.includes(OAuth2GrantTypes.AUTHORIZATION_CODE)) {
-      updates.pkceRequired = true;
-    }
-    onOAuth2ConfigChange?.(updates);
+    onOAuth2ConfigChange?.(applyAgentPkceRule(applyGrantTypesChange(oauth2Config, next)));
   };
 
-  // client_credentials and token_exchange apply no matter which modes are active — the former
-  // is mandatory for every agent, the latter is shared across both modes. The delegated-only
-  // grants stay in the list at all times (see isGrantLocked) rather than disappearing when
-  // Delegated mode is off.
-  const availableGrantTypes: string[] = [
-    OAuth2GrantTypes.CLIENT_CREDENTIALS,
-    ...DELEGATED_ONLY_GRANTS,
-    OAuth2GrantTypes.TOKEN_EXCHANGE,
-  ];
+  // client_credentials is mandatory for every agent. The delegated-only grants stay in the list at
+  // all times (see isGrantLocked) rather than disappearing when Delegated mode is off.
+  const availableGrantTypes: string[] = [OAuth2GrantTypes.CLIENT_CREDENTIALS, ...DELEGATED_ONLY_GRANTS];
 
+  // The grant that keeps the agent delegated stays on while it is the only one, so unticking it
+  // cannot switch Delegated mode off by the back door. The Delegated mode switch does that.
+  const isLastDelegationGrant = (grant: string): boolean =>
+    heldDelegationGrants.length === 1 && heldDelegationGrants[0] === grant;
+
+  // Token exchange also stays on while identity assertions (ID-JAG) are on, since they are issued
+  // through it. The Identity assertions card turns them off.
   const isGrantLocked = (grant: string): boolean =>
     grant === OAuth2GrantTypes.CLIENT_CREDENTIALS ||
-    (DELEGATED_ONLY_GRANTS.includes(grant) && (!hasDelegatedMode || grant === OAuth2GrantTypes.AUTHORIZATION_CODE));
+    isGrantLockedByIdJag(grant, grantTypes, idJagEnabled) ||
+    (DELEGATED_ONLY_GRANTS.includes(grant) && (!hasDelegatedMode || isLastDelegationGrant(grant)));
 
   const selectedGrantTypes = grantTypes.filter((grant) => availableGrantTypes.includes(grant));
 
@@ -169,7 +172,17 @@ export default function OperationModesSection({
               {availableGrantTypes.map((grant) => (
                 <MenuItem key={grant} value={grant} disabled={isGrantLocked(grant)}>
                   <Checkbox checked={grantTypes.includes(grant)} size="small" />
-                  <ListItemText primary={getGrantTypeLabel(grant, t)} />
+                  <ListItemText
+                    primary={getGrantTypeLabel(grant, t)}
+                    secondary={
+                      isGrantLockedByIdJag(grant, grantTypes, idJagEnabled)
+                        ? t(
+                            'applications:edit.advanced.grantTypes.requiredByIdJag',
+                            'Required by identity assertions (ID-JAG)',
+                          )
+                        : undefined
+                    }
+                  />
                 </MenuItem>
               ))}
             </Select>
@@ -219,7 +232,10 @@ export default function OperationModesSection({
               <MenuItem
                 key={method}
                 value={method}
-                disabled={method === TokenEndpointAuthMethods.NONE && flags.isPublicClientDisabledByGrants}
+                disabled={
+                  method === TokenEndpointAuthMethods.NONE &&
+                  (flags.isPublicClientDisabledByGrants || flags.isPublicClientDisabledByIdJag)
+                }
               >
                 {method}
               </MenuItem>

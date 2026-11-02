@@ -3,7 +3,6 @@
 
 import {OrganizationAccessSettings, type OrganizationAccessState} from '@thunderid/configure-resource-sharing';
 import type {JSX} from 'react';
-import {useTranslation} from 'react-i18next';
 import type {Application} from '../../../models/application';
 import getApplicationErrorMessage from '../../../utils/getApplicationErrorMessage';
 
@@ -33,8 +32,6 @@ export default function EditOrganizationAccessSettings({
   application,
   access,
 }: EditOrganizationAccessSettingsProps): JSX.Element | null {
-  const {t} = useTranslation();
-
   if (!application.ouId) {
     return null;
   }
@@ -47,11 +44,6 @@ export default function EditOrganizationAccessSettings({
       readOnly={application.isReadOnly === true}
       errorNamespace="applications"
       resolveErrorMessage={getApplicationErrorMessage}
-      description={t(
-        'applications:edit.organizationAccess.tokenOnlyDescription',
-        '{{name}} can request tokens for a granted organization unit, to act within that unit.',
-        {name: application.name},
-      )}
     />
   );
 }

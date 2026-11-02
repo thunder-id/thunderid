@@ -15,6 +15,15 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// Option adjusts the resource service for the plane it runs on.
+type Option func(*resourceService)
+
+// KeepingValueReferences is for a control plane, which keeps a reference to the identifier each
+// deployment holds where the identifier belongs.
+func KeepingValueReferences() Option {
+	return func(s *resourceService) { s.keepsReferences = true }
+}
+
 // Initialize initializes the resource service and registers its routes.
 // Returns the service interface and resource server exporter for declarative resource export functionality.
 //
@@ -25,6 +34,7 @@ func Initialize(
 	ouService oupkg.OrganizationUnitServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
+	options ...Option,
 ) (ResourceServiceInterface, declarativeresource.ResourceExporter, error) {
 	// Initialize store and transactioner based on store mode
 	resourceStore, transactioner, err := initializeStore()
@@ -33,7 +43,7 @@ func Initialize(
 	}
 
 	resourceService, err := newResourceService(ouService, resourceStore, transactioner, authZENPDPService,
-		valueCapturer)
+		valueCapturer, options...)
 	if err != nil {
 		return nil, nil, err
 	}

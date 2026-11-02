@@ -1,7 +1,7 @@
 # OIDC Back-Channel Logout Specification
 
 - **Status:** Final
-- **Version:** 0.3
+- **Version:** 0.4
 - **Related documents:** [threat-model.md](threat-model.md), [#5233](https://github.com/thunder-id/thunderid/issues/5233), [#5258](https://github.com/thunder-id/thunderid/discussions/5258), [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html), [OpenID Connect RP-Initiated Logout 1.0](https://openid.net/specs/openid-connect-rpinitiated-1_0.html), [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)
 
 ## Summary
@@ -201,7 +201,7 @@ flowchart LR
 | Resolve | No back-channel logout URI | Skipped, no record |
 | Mint | Signing or encryption error | Attempt counted as failed; retried like a transient error, then `server_error` |
 | Send | Connection error, timeout, 5xx, 429 | Retried per [Delivery](#delivery); terminal after `max_attempts` as `unreachable` or `server_error` |
-| Send | 3xx or other 4xx | Terminal immediately, `rejected` |
+| Send | Any other status, including a 2xx other than 200 and 204, any 3xx and any other 4xx | Terminal immediately, `rejected` |
 | Send | Host resolves to a private address while `reject_private_addresses` is true | Terminal immediately, `private_address` |
 | Record | Observability publisher unavailable | A failed delivery's warning log line still carries the outcome; successful deliveries are then visible only at debug level |
 | Shutdown | Deadline reached with work pending | Pending jobs recorded `shutdown` and abandoned |
@@ -230,7 +230,7 @@ Response classification:
 | 200, 204 | Delivered |
 | Connection error, timeout, 5xx | Retryable. The next attempt waits `retry_delay` doubled per attempt. After `max_attempts`, failed with reason `unreachable` or `server_error` |
 | 429 | Retryable. A parseable `Retry-After`, in either form RFC 9110 section 10.2.3 defines (delay-seconds or an HTTP date), sets the wait, bounded by the longest wait of the backoff schedule, `retry_delay` doubled `max_attempts` minus two times; otherwise the backoff schedule applies. Section 2.5 asks the OP to delay retransmission by an appropriate amount, and `Retry-After` is the relying party stating it. The bound keeps a hostile or misconfigured value from holding a delivery for longer than ThunderID would have waited anyway |
-| Any other 4xx, any 3xx | Failed immediately with reason `rejected`. Retrying a misconfigured or decommissioned endpoint only delays the record |
+| Any other status, including a 2xx other than 200 and 204, any 3xx and any other 4xx | Failed immediately with reason `rejected`. Section 2.8 requires 200 for a successful logout, so a 201 or 202 does not confirm one. Retrying a misconfigured or decommissioned endpoint only delays the record |
 
 A fresh token is minted per attempt, so a retry that lands after the previous token expired is still valid, a key rotation between attempts does not matter, and a relying party tracking token identifiers does not reject the retry as a replay.
 
@@ -540,3 +540,4 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 | 0.1 | 2026-10-01 | Initial specification, from design discussion #5258. |
 | 0.2 | 2026-10-02 | Aligned with the dispatcher as reviewed in #5608. |
 | 0.3 | 2026-10-05 | Delivery and the discovery flags depend only on the back-channel flag, not on the logout endpoint, as reviewed in #5630. |
+| 0.4 | 2026-10-26 | A 2xx other than 200 and 204 is classified as rejected, matching the dispatcher, as reviewed in #5777. |

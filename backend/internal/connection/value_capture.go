@@ -6,6 +6,7 @@ package connection
 import (
 	"context"
 
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -25,13 +26,7 @@ func (s *service) captureIDPValues(ctx context.Context, dto *providers.IDPDTO) {
 		return
 	}
 	model, err := connectionModelFromIDPDTO(*dto)
-	if err != nil {
-		log.GetLogger().With(log.String(log.LoggerKeyComponentName, valueCaptureLoggerComponentName)).Warn(ctx,
-			"Failed to read a connection's values, so none were captured",
-			log.String("connectionId", dto.ID), log.Error(err))
-		return
-	}
-	s.valueCapturer.CaptureValues(ctx, resourceTypeConnection, &model)
+	s.captureModel(ctx, dto.ID, model, err)
 }
 
 // captureSenderValues hands a written message-sender-backed connection to the value capturer, in the
@@ -41,10 +36,26 @@ func (s *service) captureSenderValues(ctx context.Context, dto *ncommon.Notifica
 		return
 	}
 	model, err := connectionModelFromSenderDTO(*dto)
+	s.captureModel(ctx, dto.ID, model, err)
+}
+
+// captureHTTPValues hands a written HTTP connection to the value capturer, in the shape its exporter
+// reads back, for the same reasons captureIDPValues does.
+func (s *service) captureHTTPValues(ctx context.Context, connection *httpconnection.HTTPConnection) {
+	if s.valueCapturer == nil || connection == nil {
+		return
+	}
+	model, err := connectionModelFromHTTP(*connection)
+	s.captureModel(ctx, connection.ID, model, err)
+}
+
+// captureModel hands a connection's export model to the value capturer, or logs why it could not be
+// built.
+func (s *service) captureModel(ctx context.Context, id string, model connectionExportModel, err error) {
 	if err != nil {
 		log.GetLogger().With(log.String(log.LoggerKeyComponentName, valueCaptureLoggerComponentName)).Warn(ctx,
 			"Failed to read a connection's values, so none were captured",
-			log.String("connectionId", dto.ID), log.Error(err))
+			log.String("connectionId", id), log.Error(err))
 		return
 	}
 	s.valueCapturer.CaptureValues(ctx, resourceTypeConnection, &model)

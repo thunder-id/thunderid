@@ -10,6 +10,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -180,6 +181,10 @@ func (s *importService) deleterFor(resourceType string) deleteFunc {
 		if s.resourceService != nil {
 			return s.resourceService.DeleteResourceServer
 		}
+	case resourceTypeAuthorizationDetailType:
+		if s.authorizationDetailTypeService != nil {
+			return s.authorizationDetailTypeService.DeleteAuthorizationDetailType
+		}
 	case resourceTypeTheme:
 		if s.themeService != nil {
 			return s.themeService.DeleteTheme
@@ -196,6 +201,34 @@ func (s *importService) deleterFor(resourceType string) deleteFunc {
 		if s.agentService != nil {
 			return s.agentService.DeleteAgent
 		}
+	case resourceTypePresentationDefinition, resourceTypeCredentialConfiguration:
+		return s.verifiableCredentialDeleterFor(resourceType)
+	case resourceTypeNotificationTemplate:
+		if s.notifTemplateService != nil {
+			return s.deleteNotificationTemplate
+		}
+	}
+	return nil
+}
+
+// deleteNotificationTemplate deletes a template by id on every channel. A template id is unique across
+// channels and the delete treats an absent template as already deleted, so only its own channel
+// removes anything.
+func (s *importService) deleteNotificationTemplate(ctx context.Context, id string) *tidcommon.ServiceError {
+	for _, channel := range []notificationtemplate.ChannelType{
+		notificationtemplate.ChannelTypeEmail, notificationtemplate.ChannelTypeSMS,
+	} {
+		if svcErr := s.notifTemplateService.DeleteTemplate(ctx, channel, id); svcErr != nil {
+			return svcErr
+		}
+	}
+	return nil
+}
+
+// verifiableCredentialDeleterFor returns the delete for a verifiable credential resource type, or nil when
+// the deployment was not configured with its adapter.
+func (s *importService) verifiableCredentialDeleterFor(resourceType string) deleteFunc {
+	switch resourceType {
 	case resourceTypePresentationDefinition:
 		if s.presentationDefinitionService != nil {
 			return s.presentationDefinitionService.DeletePresentationDefinition
@@ -222,7 +255,8 @@ func (s *importService) entityTypeDeleter(resourceType string) deleteFunc {
 
 // hasConnectionAdapter reports whether any of the services a connection can be held by is configured.
 func (s *importService) hasConnectionAdapter() bool {
-	return s.idpService != nil || s.senderService != nil || s.authZENPDPService != nil
+	return s.idpService != nil || s.senderService != nil || s.authZENPDPService != nil ||
+		s.httpConnectionService != nil
 }
 
 // deleteConnection removes a connection from whichever service holds it, as importConnection writes
@@ -265,6 +299,17 @@ func (s *importService) deleteConnection(ctx context.Context, id string) *tidcom
 		if pdpConnection != nil {
 			return s.authZENPDPService.DeleteAuthZENPDPConnection(ctx, id)
 		}
+	}
+
+	if s.httpConnectionService != nil {
+		_, svcErr := s.httpConnectionService.GetHTTPConnection(ctx, id)
+		if svcErr == nil {
+			return s.httpConnectionService.DeleteHTTPConnection(ctx, id)
+		}
+		if !isNotFoundServiceError(svcErr) {
+			return svcErr
+		}
+		absent = svcErr
 	}
 
 	return absent

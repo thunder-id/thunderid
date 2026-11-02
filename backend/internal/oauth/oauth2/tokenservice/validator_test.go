@@ -23,6 +23,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/idp"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
+	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
@@ -4008,4 +4009,67 @@ func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_MalformedAudience
 	assert.Nil(suite.T(), result)
 	assert.ErrorContains(suite.T(), err, "invalid audience claim")
 	enforcement.AssertNotCalled(suite.T(), "EnsureNotRevoked", mock.Anything, mock.Anything)
+}
+
+// deviceSecretPayload is the payload of a device secret carrying two sessions for user-1.
+func deviceSecretPayload() map[string]interface{} {
+	return map[string]interface{}{
+		"sub": "user-1",
+		"session_data": []map[string]string{
+			{"flow_identifier": "77e0937879f72858", "session_handle": "handle-abc"},
+			{"flow_identifier": "f51bdb0f22d906bb", "session_handle": "handle-def"},
+		},
+	}
+}
+
+func (suite *TokenValidatorTestSuite) TestValidateDeviceSecret_Valid() {
+	token := suite.createTestJWTWithTyp(jwt.TokenTypeDeviceSecret, deviceSecretPayload())
+	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, token, "https://example.com", "https://example.com").
+		Return(nil)
+
+	claims, err := suite.validator.ValidateDeviceSecret(context.Background(), token)
+
+	suite.Require().NoError(err)
+	suite.Equal("user-1", claims.Subject)
+	suite.Equal([]oauth2model.SessionData{
+		{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-abc"},
+		{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-def"},
+	}, claims.SessionData)
+}
+
+func (suite *TokenValidatorTestSuite) TestValidateDeviceSecret_Rejected() {
+	invalid := &tidcommon.ServiceError{Error: tidcommon.I18nMessage{DefaultValue: "invalid"}}
+	noSubject := deviceSecretPayload()
+	delete(noSubject, "sub")
+	noSession := deviceSecretPayload()
+	delete(noSession, "session_data")
+	noHandle := deviceSecretPayload()
+	noHandle["session_data"] = []map[string]string{{"flow_identifier": "77e0937879f72858"}}
+	cases := []struct {
+		name      string
+		token     string
+		verified  bool
+		verifyErr *tidcommon.ServiceError
+	}{
+		{"another token type", suite.createTestJWTWithTyp(jwt.TokenTypeJWT, deviceSecretPayload()), false, nil},
+		{"not a JWT", "not-a-jwt", false, nil},
+		{"a bad signature, issuer, audience or expiry",
+			suite.createTestJWTWithTyp(jwt.TokenTypeDeviceSecret, deviceSecretPayload()), true, invalid},
+		{"no subject", suite.createTestJWTWithTyp(jwt.TokenTypeDeviceSecret, noSubject), true, nil},
+		{"no session", suite.createTestJWTWithTyp(jwt.TokenTypeDeviceSecret, noSession), true, nil},
+		{"a session without its handle", suite.createTestJWTWithTyp(jwt.TokenTypeDeviceSecret, noHandle), true, nil},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			if tc.verified {
+				suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, tc.token, mock.Anything, mock.Anything).
+					Return(tc.verifyErr).Once()
+			}
+
+			_, err := suite.validator.ValidateDeviceSecret(context.Background(), tc.token)
+
+			suite.Error(err)
+		})
+	}
 }

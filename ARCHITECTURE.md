@@ -1,15 +1,21 @@
 # ThunderID Architecture Reference
 
-Open-source IAM stack (`github.com/thunder-id/thunderid`). Single Go binary serving a REST API + two React SPAs (`/gate`, `/console`).
+Open-source IAM stack (`github.com/thunder-id/thunderid`). Two builds of one codebase, each a single Go binary serving a REST API and React SPAs:
+
+- **Data plane** (`backend/cmd/server`): where users authenticate. Issues tokens, runs the login flows, and serves `/gate` (login), `/console` and, for a data plane a control plane manages, the Admin Console. It also takes configuration pushed by a control plane through its management API (`/import`, `/variables`, `/secrets`).
+- **Control plane** (`backend/cmd/cpserver`): where configuration is authored. Serves the management APIs and `/console` (`console-cp`), and serves no authentication traffic. It captures versions of its configuration and applies them to the gateways (data planes) it manages. Its console signs in through a data plane acting as a trusted issuer.
+
+A control plane can manage many data planes. See [docs/static/assets/images/readme/architecture.svg](docs/static/assets/images/readme/architecture.svg), the editable source of the diagram in the README.
 
 ## Structure
 
 ```text
-backend/cmd/server/
+backend/cmd/server/     # data plane
   main.go               # startup
   servicemanager.go     # calls every internal/*/init.go to register routes
   bootstrap/flows/      # JSON auth/registration flow definitions (auto-seeded)
   repository/           # configdb.db · runtime_transient.db · runtime_persistent.db · entitydb.db created at runtime in the configured data directory (SQLite or Postgres)
+backend/cmd/cpserver/   # control plane: management APIs, configuration versions, gateways
 backend/internal/
   authn/                # credential / OTP / passkey / social login
   oauth/                # OAuth 2.0 + OIDC server (authorize, token, introspect, userinfo, JWKS, DCR)
@@ -22,6 +28,8 @@ backend/internal/
 frontend/apps/
   gate/         # login/registration SPA  (@thunderid/react — app-native mode)
   console/      # admin SPA               (@thunderid/react — redirect mode)
+  console-cp/   # control plane admin SPA (runs every operation as a direct API call)
+  admin-console/# data plane admin SPA    (users, agents, groups, roles)
 frontend/packages/      # @thunderid/contexts · design · hooks · i18n · utils · types · logger
 samples/apps/           # react-sdk-sample · react-api-based-sample · vanilla-sample · wayfinder-sample
 ```

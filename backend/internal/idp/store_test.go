@@ -75,13 +75,14 @@ func (s *IDPStoreTestSuite) TestCreateIdentityProvider_Success() {
 		Name:        "Test IDP",
 		Description: "Test Description",
 		Type:        providers.IDPTypeOIDC,
+		OUID:        "ou-1",
 		Properties:  []cmodels.Property{*prop},
 	}
 
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryCreateIdentityProvider, idp.ID, idp.Name,
-		idp.Description, idp.Type, `{"client_id":{"value":"test-client","isSecret":false}}`, nil, testDeploymentID).
-		Return(int64(1), nil)
+		idp.Description, idp.Type, idp.OUID, `{"client_id":{"value":"test-client","isSecret":false}}`, nil,
+		testDeploymentID).Return(int64(1), nil)
 
 	err := s.store.CreateIdentityProvider(context.Background(), idp)
 
@@ -97,12 +98,13 @@ func (s *IDPStoreTestSuite) TestCreateIdentityProvider_NoProperties() {
 		Name:        "Test IDP",
 		Description: "Test Description",
 		Type:        providers.IDPTypeOIDC,
+		OUID:        "ou-1",
 		Properties:  []cmodels.Property{},
 	}
 
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryCreateIdentityProvider, idp.ID, idp.Name,
-		idp.Description, idp.Type, "", nil, testDeploymentID).Return(int64(1), nil)
+		idp.Description, idp.Type, idp.OUID, "", nil, testDeploymentID).Return(int64(1), nil)
 
 	err := s.store.CreateIdentityProvider(context.Background(), idp)
 
@@ -126,11 +128,11 @@ func (s *IDPStoreTestSuite) TestCreateIdentityProvider_DBClientError() {
 
 // TestCreateIdentityProvider_ExecuteError tests execute error
 func (s *IDPStoreTestSuite) TestCreateIdentityProvider_ExecuteError() {
-	idp := providers.IDPDTO{ID: "idp-123", Name: "Test", Type: providers.IDPTypeOIDC}
+	idp := providers.IDPDTO{ID: "idp-123", Name: "Test", Type: providers.IDPTypeOIDC, OUID: "ou-1"}
 
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryCreateIdentityProvider, idp.ID, idp.Name,
-		idp.Description, idp.Type, "", nil, testDeploymentID).Return(int64(0), errors.New("execute error"))
+		idp.Description, idp.Type, idp.OUID, "", nil, testDeploymentID).Return(int64(0), errors.New("execute error"))
 
 	err := s.store.CreateIdentityProvider(context.Background(), idp)
 
@@ -148,12 +150,14 @@ func (s *IDPStoreTestSuite) TestGetIdentityProviderList_Success() {
 			"name":        "IDP 1",
 			"description": "Desc 1",
 			"type":        "OIDC",
+			"ou_id":       "ou-1",
 		},
 		{
 			"id":          "idp-2",
 			"name":        "IDP 2",
 			"description": "Desc 2",
 			"type":        "GOOGLE",
+			"ou_id":       "ou-1",
 		},
 	}
 
@@ -167,6 +171,8 @@ func (s *IDPStoreTestSuite) TestGetIdentityProviderList_Success() {
 	s.Len(list, 2)
 	s.Equal("idp-1", list[0].ID)
 	s.Equal("IDP 1", list[0].Name)
+	s.Equal("ou-1", list[0].OUID)
+	s.Equal("ou-1", list[1].OUID)
 	s.mockDBProvider.AssertExpectations(s.T())
 	s.mockDBClient.AssertExpectations(s.T())
 }
@@ -194,6 +200,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProviderList_IDJagEnabled() {
 			"name":        "Trusted Issuer",
 			"description": "",
 			"type":        "OIDC",
+			"ou_id":       "ou-1",
 			"properties":  `{"id_jag_enabled":{"value":"true","isSecret":false}}`,
 		},
 		{
@@ -201,6 +208,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProviderList_IDJagEnabled() {
 			"name":        "Disabled Issuer",
 			"description": "",
 			"type":        "OIDC",
+			"ou_id":       "ou-1",
 			"properties":  `{"id_jag_enabled":{"value":"false","isSecret":false}}`,
 		},
 		{
@@ -208,6 +216,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProviderList_IDJagEnabled() {
 			"name":        "Plain Federation",
 			"description": "",
 			"type":        "OIDC",
+			"ou_id":       "ou-1",
 			"properties":  `{"client_id":{"value":"abc","isSecret":false}}`,
 		},
 	}
@@ -239,6 +248,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProviderList_MalformedPropertiesDegra
 			"name":        "Malformed Properties",
 			"description": "",
 			"type":        "OIDC",
+			"ou_id":       "ou-1",
 			"properties":  `{not-valid-json`,
 		},
 		{
@@ -246,6 +256,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProviderList_MalformedPropertiesDegra
 			"name":        "Trusted Issuer",
 			"description": "",
 			"type":        "OIDC",
+			"ou_id":       "ou-1",
 			"properties":  `{"id_jag_enabled":{"value":"true","isSecret":false}}`,
 		},
 	}
@@ -300,6 +311,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProviderList_BuildError() {
 			"name":        "IDP 1",
 			"description": "Desc 1",
 			"type":        "OIDC",
+			"ou_id":       "ou-1",
 		},
 	}
 
@@ -324,6 +336,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProvider_Success() {
 			"name":        "Test IDP",
 			"description": "Test Description",
 			"type":        "OIDC",
+			"ou_id":       "ou-1",
 			"properties":  `{"client_id":{"value":"test","isSecret":false}}`,
 		},
 	}
@@ -338,6 +351,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProvider_Success() {
 	s.NotNil(idp)
 	s.Equal("idp-123", idp.ID)
 	s.Equal("Test IDP", idp.Name)
+	s.Equal("ou-1", idp.OUID)
 	s.Len(idp.Properties, 1)
 	s.mockDBProvider.AssertExpectations(s.T())
 	s.mockDBClient.AssertExpectations(s.T())
@@ -362,8 +376,8 @@ func (s *IDPStoreTestSuite) TestGetIdentityProvider_NotFound() {
 // TestGetIdentityProvider_MultipleResults tests multiple results error
 func (s *IDPStoreTestSuite) TestGetIdentityProvider_MultipleResults() {
 	results := []map[string]interface{}{
-		{"id": "idp-1", "name": "IDP 1", "description": "", "type": "OIDC"},
-		{"id": "idp-2", "name": "IDP 2", "description": "", "type": "OIDC"},
+		{"id": "idp-1", "name": "IDP 1", "description": "", "type": "OIDC", "ou_id": "ou-1"},
+		{"id": "idp-2", "name": "IDP 2", "description": "", "type": "OIDC", "ou_id": "ou-1"},
 	}
 
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
@@ -387,6 +401,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProviderByName_Success() {
 			"name":        "Test IDP",
 			"description": "Test Description",
 			"type":        "OIDC",
+			"ou_id":       "ou-1",
 			"properties":  "",
 		},
 	}
@@ -400,6 +415,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProviderByName_Success() {
 	s.NoError(err)
 	s.NotNil(idp)
 	s.Equal("Test IDP", idp.Name)
+	s.Equal("ou-1", idp.OUID)
 	s.mockDBProvider.AssertExpectations(s.T())
 	s.mockDBClient.AssertExpectations(s.T())
 }
@@ -589,6 +605,7 @@ func (s *IDPStoreTestSuite) TestBuildIDPFromResultRow() {
 				"name":        "Test IDP",
 				"description": "Test Description",
 				"type":        "OIDC",
+				"ou_id":       "ou-1",
 			},
 			expectError: false,
 			expectedID:  "idp-123",
@@ -599,6 +616,7 @@ func (s *IDPStoreTestSuite) TestBuildIDPFromResultRow() {
 				"name":        "Test IDP",
 				"description": "Test Description",
 				"type":        "OIDC",
+				"ou_id":       "ou-1",
 			},
 			expectError: true,
 		},
@@ -606,6 +624,17 @@ func (s *IDPStoreTestSuite) TestBuildIDPFromResultRow() {
 			name: "Invalid idp_id type",
 			row: map[string]interface{}{
 				"id":          123,
+				"name":        "Test IDP",
+				"description": "Test Description",
+				"type":        "OIDC",
+				"ou_id":       "ou-1",
+			},
+			expectError: true,
+		},
+		{
+			name: "Missing ou_id",
+			row: map[string]interface{}{
+				"id":          "idp-123",
 				"name":        "Test IDP",
 				"description": "Test Description",
 				"type":        "OIDC",
@@ -618,6 +647,7 @@ func (s *IDPStoreTestSuite) TestBuildIDPFromResultRow() {
 				"id":          "idp-123",
 				"description": "Test Description",
 				"type":        "OIDC",
+				"ou_id":       "ou-1",
 			},
 			expectError: true,
 		},
@@ -628,6 +658,7 @@ func (s *IDPStoreTestSuite) TestBuildIDPFromResultRow() {
 				"name":        123,
 				"description": "Test Description",
 				"type":        "OIDC",
+				"ou_id":       "ou-1",
 			},
 			expectError: true,
 		},
@@ -638,6 +669,7 @@ func (s *IDPStoreTestSuite) TestBuildIDPFromResultRow() {
 				"name":        "Test IDP",
 				"description": 123,
 				"type":        "OIDC",
+				"ou_id":       "ou-1",
 			},
 			expectError: true,
 		},
@@ -648,6 +680,7 @@ func (s *IDPStoreTestSuite) TestBuildIDPFromResultRow() {
 				"name":        "Test IDP",
 				"description": "Test Description",
 				"type":        123,
+				"ou_id":       "ou-1",
 			},
 			expectError: true,
 		},
@@ -676,6 +709,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProvider_WithByteProperties() {
 			"name":        "Test IDP",
 			"description": "Test Description",
 			"type":        "OIDC",
+			"ou_id":       "ou-1",
 			"properties":  []byte(`{"client_id":{"value":"test","isSecret":false}}`),
 		},
 	}
@@ -728,6 +762,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProvider_InvalidPropertyJSON() {
 			"name":        "Test IDP",
 			"description": "Test Description",
 			"type":        "OIDC",
+			"ou_id":       "ou-1",
 			"properties":  "invalid json",
 		},
 	}
@@ -753,6 +788,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProvider_BuildRowError() {
 			"name":        "Test IDP",
 			"description": "Test Description",
 			"type":        "OIDC",
+			"ou_id":       "ou-1",
 			"properties":  "",
 		},
 	}
@@ -778,6 +814,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProvidersByProperty_Success() {
 			"name":        "IDP 1",
 			"description": "Desc 1",
 			"type":        "OIDC",
+			"ou_id":       "ou-1",
 			"properties":  `{"issuer":{"value":"https://idp.example.com","isSecret":false}}`,
 		},
 	}
@@ -792,6 +829,7 @@ func (s *IDPStoreTestSuite) TestGetIdentityProvidersByProperty_Success() {
 	s.Len(idps, 1)
 	s.Equal("idp-1", idps[0].ID)
 	s.Equal("IDP 1", idps[0].Name)
+	s.Equal("ou-1", idps[0].OUID)
 	s.Len(idps[0].Properties, 1)
 	s.Equal("issuer", idps[0].Properties[0].GetName())
 	s.mockDBProvider.AssertExpectations(s.T())

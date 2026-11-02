@@ -61,7 +61,7 @@ The default configuration uses SQLite, which stores data in local files. SQLite 
 | `config` | Application configuration, flows, and identity providers |
 | `runtime_transient` | Short-lived OAuth state: authorization codes, requests, and nonces |
 | `entity` | User accounts and credentials |
-| `runtime_persistent` | Long-lived operational state: revoked tokens, SSO sessions, and consents |
+| `runtime_persistent` | Long-lived operational state: revoked tokens, SSO sessions, consents, and account access state |
 
 Configure each database in `deployment.yaml`:
 
@@ -129,6 +129,70 @@ database:
 For stronger server identity verification, prefer `verify-full` when the database certificate includes its hostname. Mount the trusted database CA and set `PGSSLROOTCERT` when the CA is not available from the container's system trust store. See the [PostgreSQL SSL documentation](https://www.postgresql.org/docs/current/libpq-ssl.html) for the verification modes.
 
 Each PostgreSQL-backed pool has its own `max_open_conns` limit. For the four pools shown above, calculate the per-process total by adding their limits. Multiply that total by the maximum replica count, then compare the result with the database connection limit.
+
+### Clean Up Expired Data
+
+<ProductName /> ignores expired rows when it reads them, but it does not delete them. Expired rows build up in the `runtime_transient` and `runtime_persistent` databases until you remove them. For PostgreSQL, <ProductName /> provides a cleanup stored procedure for each of these databases:
+
+| Database | Script | Procedure | Deletes |
+|----------|--------|-----------|---------|
+| `runtime_transient` | <RepoLink path="/blob/main/backend/dbscripts/runtime_transient/postgres-cleanup.sql">`runtime_transient/postgres-cleanup.sql`</RepoLink> | `cleanup_expired_runtime_transient_data` | Expired short-lived OAuth state |
+| `runtime_persistent` | <RepoLink path="/blob/main/backend/dbscripts/runtime_persistent/postgres-cleanup.sql">`runtime_persistent/postgres-cleanup.sql`</RepoLink> | `cleanup_expired_runtime_persistent_data` | Expired revoked tokens, expired revocation criteria, and SSO sessions past their absolute timeout, together with their session context and participant records |
+
+The distribution includes these scripts in the `<THUNDERID_HOME>/dbscripts` directory. The schema scripts (`postgres.sql`) do not create the procedures, so apply each cleanup script to its database:
+
+```bash
+psql -h <host> -p <port> -U <user> -d runtime_transient -f dbscripts/runtime_transient/postgres-cleanup.sql
+psql -h <host> -p <port> -U <user> -d runtime_persistent -f dbscripts/runtime_persistent/postgres-cleanup.sql
+```
+
+Replace the database names if your deployment uses different ones. Applying a script again replaces the existing procedure.
+
+To run a cleanup once, call the procedure in its database:
+
+```sql
+CALL cleanup_expired_runtime_transient_data();
+CALL cleanup_expired_runtime_persistent_data();
+```
+
+Each procedure deletes 1000 rows per batch and commits after each batch, which keeps locks short on large tables. To change the batch size, pass it as the argument, such as `CALL cleanup_expired_runtime_persistent_data(500);`. Run each `CALL` as a top-level statement. A procedure that commits cannot run inside an explicit transaction block.
+
+The procedure deletes an SSO session only after its absolute timeout passes. A session that ends earlier because of the idle timeout stays in the database until then, but <ProductName /> does not reuse it.
+
+#### Schedule the Cleanup
+
+Run both procedures on a schedule, such as every hour. Use pg_cron, a Kubernetes CronJob that runs `psql`, or an operating system cron job.
+
+pg_cron can only be installed in one database per PostgreSQL cluster, set by `cron.database_name`. Before you create the extension, add `pg_cron` to `shared_preload_libraries` and restart PostgreSQL. Then run the following in the pg_cron database. It uses `cron.schedule_in_database` to run each job in its own runtime database:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+SELECT cron.schedule_in_database(
+  'thunderid-cleanup-runtime-transient',
+  '0 * * * *',
+  'CALL cleanup_expired_runtime_transient_data()',
+  'runtime_transient'
+);
+
+SELECT cron.schedule_in_database(
+  'thunderid-cleanup-runtime-persistent',
+  '0 * * * *',
+  'CALL cleanup_expired_runtime_persistent_data()',
+  'runtime_persistent'
+);
+```
+
+By default, pg_cron opens a local connection to run each job, so `pg_hba.conf` must allow the job user to connect without a password prompt. Use `trust` authentication for local connections, a `.pgpass` file, or set `cron.use_background_workers = on`. After the first scheduled run, check the job results:
+
+```sql
+SELECT jobid, status, return_message, start_time
+FROM cron.job_run_details
+ORDER BY start_time DESC
+LIMIT 10;
+```
+
+See the [pg_cron documentation](https://github.com/citusdata/pg_cron) for installation and job management.
 
 ## Replace TLS Certificates
 
@@ -352,7 +416,9 @@ If PostgreSQL uses a private CA with `verify-full`, mount the CA certificate rea
 
 ## Configure Rate Limiting
 
-<ProductName /> does not apply rate limiting, account lockout, or brute-force protection to Direct API endpoints. The Direct Auth Secret authenticates callers, but it does not limit repeated requests.
+<ProductName /> does not apply rate limiting to Direct API endpoints. The Direct Auth Secret authenticates callers, but it does not limit repeated requests.
+
+Automatic account lockout does apply to these endpoints, and it is not a substitute for rate limiting. Lockout counts failures per identity and holds the sign-in method that failed, so it protects an account from guessing. It does nothing about request volume: an unlimited caller can still enumerate identifiers, drive messaging costs through repeated OTP delivery, and lock legitimate accounts out on purpose.
 
 Configure rate limits at the API gateway, ingress, or front door for:
 
@@ -531,6 +597,8 @@ Back up the state required to recover the same deployment:
 - Encryption and signing material.
 - The Direct Auth Secret and other secrets that cannot be recreated safely.
 - Declarative resources and reviewed deployment configuration.
+
+Restore the `entity` and `runtime_persistent` databases to the same recovery point. Account suspensions and sign-in locks are stored in `runtime_persistent`, so restoring it to an earlier point than `entity` lifts any suspension placed after that point.
 
 Define a separate recovery policy for `runtime_transient`. Restoring old authorization codes, requests, and nonces can reintroduce expired or consumed state. A recovery plan may instead discard this database and require in-flight sign-in operations to restart.
 

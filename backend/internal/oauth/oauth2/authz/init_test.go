@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package authz
@@ -82,7 +82,7 @@ func (suite *InitTestSuite) TestInitialize() {
 		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil),
 		suite.mockResourceService,
 		suite.mockJWTService, suite.mockFlowExecService, nil, nil, nil,
-		flowsession.NewHandleTransport(flowsession.TransportConfig{}), nil,
+		flowsession.NewHandleTransport(flowsession.TransportConfig{}), nil, nil,
 		testhelpers.OAuthConfig(),
 		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
 		jti.Initialize(inmemory.Initialize("test-deployment")),
@@ -101,7 +101,7 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil),
 		suite.mockResourceService,
 		suite.mockJWTService, suite.mockFlowExecService, nil, nil, nil,
-		flowsession.NewHandleTransport(flowsession.TransportConfig{}), nil,
+		flowsession.NewHandleTransport(flowsession.TransportConfig{}), nil, nil,
 		testhelpers.OAuthConfig(),
 		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
 		jti.Initialize(inmemory.Initialize("test-deployment")),
@@ -122,7 +122,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSConfiguration() {
 		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil),
 		suite.mockResourceService,
 		suite.mockJWTService, suite.mockFlowExecService, nil, nil, nil,
-		flowsession.NewHandleTransport(flowsession.TransportConfig{}), nil,
+		flowsession.NewHandleTransport(flowsession.TransportConfig{}), nil, nil,
 		testhelpers.OAuthConfig(),
 		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
 		jti.Initialize(inmemory.Initialize("test-deployment")),

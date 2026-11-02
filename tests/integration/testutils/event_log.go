@@ -138,6 +138,17 @@ func (r *EventLogReader) Await(match func(ObservabilityEvent) bool) (Observabili
 	}
 }
 
+// Read returns every event written since the last Reset that has reached the log. It does not wait,
+// so a caller counting events first awaits one published after them.
+func (r *EventLogReader) Read() ([]ObservabilityEvent, error) {
+	if err := r.poll(); err != nil {
+		return nil, err
+	}
+	events := make([]ObservabilityEvent, len(r.batched))
+	copy(events, r.batched)
+	return events, nil
+}
+
 // poll reads whatever complete lines have been appended since the last read and adds them to the
 // batch. A partial trailing line is left for the next poll: the sink's buffered writer can flush
 // mid-record once a record straddles its buffer.

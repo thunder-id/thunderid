@@ -18,6 +18,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v3"
 )
@@ -192,8 +193,18 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_Success() {
 		},
 	}
 
+	serverActions := &ActionList{
+		TotalResults: 1,
+		Actions: []providers.Action{
+			{ID: "act0", Name: "Read All", Handle: "read_all", Description: "Read everything", Permission: "read_all"},
+		},
+	}
+
 	resourceID := "res1"
 	s.mockService.EXPECT().GetResourceServer(ctx, serverID).Return(server, nil)
+	s.mockService.EXPECT().
+		GetActionList(ctx, serverID, (*string)(nil), providers.ActionKind(""), serverconst.MaxPageSize, 0).
+		Return(serverActions, nil)
 	s.mockService.EXPECT().GetAllResourceList(ctx, serverID).Return(resources, nil)
 	s.mockService.EXPECT().
 		GetActionList(ctx, serverID, &resourceID, providers.ActionKind(""), serverconst.MaxPageSize, 0).
@@ -210,6 +221,9 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_Success() {
 	assert.Equal(s.T(), serverID, dto.ID)
 	assert.Equal(s.T(), "Test Server", dto.Name)
 	assert.Equal(s.T(), server.AuthorizationEngine, dto.AuthorizationEngine)
+	assert.Equal(s.T(), []providers.Action{
+		{Name: "Read All", Handle: "read_all", Description: "Read everything"},
+	}, dto.Actions)
 	assert.Len(s.T(), dto.Resources, 1)
 	assert.Len(s.T(), dto.Resources[0].Actions, 1)
 	assert.Equal(s.T(), providers.ActionKindTool, dto.Resources[0].Actions[0].Kind)
@@ -223,6 +237,52 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_Success() {
 	s.Require().NoError(parseErr)
 	s.Require().NotNil(imported)
 	assert.Equal(s.T(), server.AuthorizationEngine, imported.AuthorizationEngine)
+	assert.Equal(s.T(), dto.Actions, imported.Actions)
+}
+
+// TestGetResourceByID_PagesServerActions verifies that every page of the resource server's own
+// actions is exported, and that a server with no resources still exports them.
+func (s *ResourceServerExporterTestSuite) TestGetResourceByID_PagesServerActions() {
+	ctx := context.Background()
+	serverID := testRS1ID
+	server := &providers.ResourceServer{
+		ID: serverID, Name: "Test Server", Identifier: "test-server", OUID: "ou1", Delimiter: ":",
+	}
+
+	s.mockService.EXPECT().GetResourceServer(ctx, serverID).Return(server, nil)
+	s.mockService.EXPECT().
+		GetActionList(ctx, serverID, (*string)(nil), providers.ActionKind(""), serverconst.MaxPageSize, 0).
+		Return(&ActionList{TotalResults: 2, Actions: []providers.Action{{Name: "Read", Handle: "read"}}}, nil)
+	s.mockService.EXPECT().
+		GetActionList(ctx, serverID, (*string)(nil), providers.ActionKind(""), serverconst.MaxPageSize, 1).
+		Return(&ActionList{TotalResults: 2, Actions: []providers.Action{{Name: "Write", Handle: "write"}}}, nil)
+	s.mockService.EXPECT().GetAllResourceList(ctx, serverID).Return([]providers.Resource{}, nil)
+
+	result, _, err := s.exporter.GetResourceByID(ctx, serverID)
+
+	s.Require().Nil(err)
+	dto, ok := result.(*providers.ResourceServer)
+	s.Require().True(ok)
+	assert.Equal(s.T(), []providers.Action{{Name: "Read", Handle: "read"}, {Name: "Write", Handle: "write"}},
+		dto.Actions)
+	assert.Empty(s.T(), dto.Resources)
+}
+
+func (s *ResourceServerExporterTestSuite) TestGetResourceByID_ServerActionsError() {
+	ctx := context.Background()
+	serverID := testRS1ID
+	server := &providers.ResourceServer{ID: serverID, Name: "Test Server", Delimiter: ":"}
+
+	s.mockService.EXPECT().GetResourceServer(ctx, serverID).Return(server, nil)
+	s.mockService.EXPECT().
+		GetActionList(ctx, serverID, (*string)(nil), providers.ActionKind(""), serverconst.MaxPageSize, 0).
+		Return(nil, &tidcommon.InternalServerError)
+
+	result, name, err := s.exporter.GetResourceByID(ctx, serverID)
+
+	assert.Nil(s.T(), result)
+	assert.Equal(s.T(), "", name)
+	assert.Equal(s.T(), &tidcommon.InternalServerError, err)
 }
 
 func (s *ResourceServerExporterTestSuite) TestGetResourceByID_MCPExportImportRoundTrip() {
@@ -261,8 +321,19 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_MCPExportImportRou
 		},
 	}
 
+	serverActions := &ActionList{
+		TotalResults: 1,
+		Actions: []providers.Action{
+			{ID: "act0", Name: "List Bookings", Handle: "list_bookings", Permission: "list_bookings",
+				Kind: providers.ActionKindResource},
+		},
+	}
+
 	resourceID := "res1"
 	s.mockService.EXPECT().GetResourceServer(ctx, serverID).Return(server, nil)
+	s.mockService.EXPECT().
+		GetActionList(ctx, serverID, (*string)(nil), providers.ActionKind(""), serverconst.MaxPageSize, 0).
+		Return(serverActions, nil)
 	s.mockService.EXPECT().GetAllResourceList(ctx, serverID).Return(resources, nil)
 	s.mockService.EXPECT().
 		GetActionList(ctx, serverID, &resourceID, providers.ActionKind(""), serverconst.MaxPageSize, 0).
@@ -285,6 +356,9 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_MCPExportImportRou
 	s.Require().NoError(parseErr)
 	s.Require().NotNil(imported)
 	assert.Equal(s.T(), providers.ResourceServerTypeMCP, imported.Type)
+	s.Require().Len(imported.Actions, 1)
+	assert.Equal(s.T(), "list_bookings", imported.Actions[0].Handle)
+	assert.Equal(s.T(), providers.ActionKindResource, imported.Actions[0].Kind)
 	assert.Len(s.T(), imported.Resources, 1)
 	assert.Len(s.T(), imported.Resources[0].Actions, 1)
 	assert.Equal(s.T(), providers.ActionKindTool, imported.Resources[0].Actions[0].Kind)
@@ -1067,6 +1141,93 @@ func TestProcessResourceServer_NonMCPSkipsPermissionCollisionCheck(t *testing.T)
 	assert.NoError(t, err)
 }
 
+func TestProcessResourceServer_ServerActions(t *testing.T) {
+	t.Run("an action of the resource server has its handle as its permission", func(t *testing.T) {
+		rs := &providers.ResourceServer{
+			ID: "rs1", Name: "Test Server", OUID: "ou1",
+			Actions:   []providers.Action{{Name: "Read All", Handle: "read_all"}},
+			Resources: []providers.Resource{{Name: "Users", Handle: "users"}},
+		}
+
+		assert.NoError(t, ProcessResourceServer(rs))
+		assert.Equal(t, "read_all", rs.Actions[0].Permission)
+		assert.Equal(t, "users", rs.Resources[0].Permission)
+	})
+
+	t.Run("an action handle holding the delimiter is refused", func(t *testing.T) {
+		rs := &providers.ResourceServer{
+			ID: "rs1", Name: "Test Server", OUID: "ou1",
+			Actions: []providers.Action{{Name: "Read All", Handle: "read:all"}},
+		}
+
+		err := ProcessResourceServer(rs)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid handle 'read:all' for action 'Read All'")
+	})
+
+	t.Run("an MCP action sharing a top-level group's permission is refused", func(t *testing.T) {
+		rs := &providers.ResourceServer{
+			ID: "rs-mcp", Name: "Booking MCP", OUID: "ou1", Type: providers.ResourceServerTypeMCP,
+			Actions:   []providers.Action{{Name: "Ops Tool", Handle: "ops", Kind: providers.ActionKindTool}},
+			Resources: []providers.Resource{{Name: "Ops", Handle: "ops"}},
+		}
+
+		err := ProcessResourceServer(rs)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "duplicate permission 'ops' derived for handles 'ops' and 'ops'")
+	})
+
+	t.Run("two MCP actions of the resource server with one handle are refused", func(t *testing.T) {
+		rs := &providers.ResourceServer{
+			ID: "rs-mcp", Name: "Booking MCP", OUID: "ou1", Type: providers.ResourceServerTypeMCP,
+			Actions: []providers.Action{
+				{Name: "Search", Handle: "search", Kind: providers.ActionKindTool},
+				{Name: "Search Again", Handle: "search", Kind: providers.ActionKindTool},
+			},
+		}
+
+		err := ProcessResourceServer(rs)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "duplicate permission 'search'")
+	})
+}
+
+func TestParseToResourceServer_ServerActionKinds(t *testing.T) {
+	t.Run("an MCP action of the resource server defaults to the tool kind", func(t *testing.T) {
+		dto, err := parseToResourceServer([]byte(`
+id: "rs1"
+name: "Test Server"
+type: "MCP"
+ouId: "ou1"
+actions:
+  - { name: "Search", handle: "search" }
+  - { name: "Docs", handle: "docs", kind: "resource" }
+`))
+
+		require.NoError(t, err)
+		assert.Equal(t, providers.ActionKindTool, dto.Actions[0].Kind)
+		assert.Equal(t, providers.ActionKindResource, dto.Actions[1].Kind)
+	})
+
+	t.Run("an action of the resource server with an invalid kind is refused", func(t *testing.T) {
+		dto, err := parseToResourceServer([]byte(`
+id: "rs1"
+name: "Test Server"
+type: "MCP"
+ouId: "ou1"
+actions:
+  - { name: "Prompt", handle: "prompt", kind: "prompt" }
+`))
+
+		assert.Error(t, err)
+		assert.Nil(t, dto)
+		assert.Contains(t, err.Error(), `action "prompt" in resource server 'Test Server' has invalid kind "prompt"`)
+	})
+}
+
 func TestParseAndValidateResourceServerWrapper_Success(t *testing.T) {
 	yamlData := []byte(`
 id: "rs1"
@@ -1184,6 +1345,43 @@ func TestValidateResourceServerWrapper_EmptyIdentifier(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "identifier cannot be empty")
+}
+
+func TestValidateResourceServerWrapper_InvalidMCPIdentifier(t *testing.T) {
+	fileStore := newResourceStoreInterfaceMock(t)
+
+	err := validateResourceServerWrapper(&providers.ResourceServer{
+		ID: "rs1", Name: "Server", Identifier: "my-mcp-server", Type: providers.ResourceServerTypeMCP, OUID: "ou1",
+	}, fileStore, nil, nil)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "must be an http or https URL")
+}
+
+func TestValidateResourceServerWrapper_MCPWithURIIdentifier(t *testing.T) {
+	fileStore := newResourceStoreInterfaceMock(t)
+	fileStore.On("GetResourceServer", mock.Anything, "rs1").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+
+	err := validateResourceServerWrapper(&providers.ResourceServer{
+		ID: "rs1", Name: "Server", Identifier: "https://mcp.example.com/mcp",
+		Type: providers.ResourceServerTypeMCP, OUID: "ou1",
+	}, fileStore, nil, nil)
+
+	assert.NoError(t, err)
+}
+
+func TestValidateResourceServerWrapper_MCPIdentifierReferenceOnControlPlane(t *testing.T) {
+	fileStore := newResourceStoreInterfaceMock(t)
+	fileStore.On("GetResourceServer", mock.Anything, "rs1").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+
+	err := validateResourceServerWrapper(&providers.ResourceServer{
+		ID: "rs1", Name: "Server", Identifier: "var:RESOURCE_SERVER_SERVER_IDENTIFIER",
+		Type: providers.ResourceServerTypeMCP, OUID: "ou1",
+	}, fileStore, nil, &resourceService{keepsReferences: true})
+
+	assert.NoError(t, err)
 }
 
 func TestValidateResourceServerWrapper_DuplicateInFileStore(t *testing.T) {

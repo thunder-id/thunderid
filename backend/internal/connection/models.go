@@ -113,8 +113,11 @@ type connectionInstance struct {
 	Name         string               `json:"name"`
 	Description  string               `json:"description,omitempty"`
 	Type         string               `json:"type"`
+	OUID         string               `json:"ouId,omitempty"`
 	Categories   []connectionCategory `json:"categories"`
 	IDJagEnabled *bool                `json:"idJagEnabled,omitempty"`
+	// IsOwnedByOU says whether the listed organization unit owns the connection rather than being shared it.
+	IsOwnedByOU *bool `json:"isOwnedByOU,omitempty"`
 }
 
 // connectionListResponse is the paginated payload for GET /connections (the flat instance list).

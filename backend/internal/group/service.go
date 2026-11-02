@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -30,7 +32,7 @@ const loggerComponentName = "GroupMgtService"
 
 // GroupServiceInterface defines the interface for the group service.
 type GroupServiceInterface interface {
-	GetGroupList(ctx context.Context, limit, offset int,
+	GetGroupList(ctx context.Context, limit, offset int, filters map[string]interface{},
 		includeDisplay bool) (*GroupListResponse, *tidcommon.ServiceError)
 	GetGroupsByPath(ctx context.Context, handlePath string, limit, offset int, includeDisplay bool) (
 		*GroupListResponse, *tidcommon.ServiceError)
@@ -102,27 +104,41 @@ func newGroupServiceWithStore(
 }
 
 // GetGroupList retrieves a list of groups. limit should be a positive integer & offset should be non-negative
-// integer
-func (gs *groupService) GetGroupList(ctx context.Context, limit, offset int, includeDisplay bool) (
-	*GroupListResponse, *tidcommon.ServiceError) {
+// integer. An organization unit filter lists the groups that unit owns.
+func (gs *groupService) GetGroupList(ctx context.Context, limit, offset int, filters map[string]interface{},
+	includeDisplay bool) (*GroupListResponse, *tidcommon.ServiceError) {
 	if err := validatePaginationParams(limit, offset); err != nil {
 		return nil, err
 	}
+
+	ouID, rest, err := filter.SplitOUIDFilter(filters)
+	if err != nil || len(rest) > 0 {
+		return nil, &ErrorInvalidFilter
+	}
+	listQuery := utils.FilterQueryParam(filters) + utils.DisplayQueryParam(includeDisplay)
 
 	accessibleOUs, svcErr := gs.getAccessibleOUs(ctx, security.ActionListGroups)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 
-	if accessibleOUs.AllAllowed {
-		return gs.listAllGroups(ctx, limit, offset, includeDisplay)
+	if ouID != "" {
+		// An organization unit the caller cannot list groups from has none to show.
+		if !accessibleOUs.AllAllowed && !slices.Contains(accessibleOUs.IDs, ouID) {
+			return gs.listGroupsByOUIDs(ctx, nil, limit, offset, includeDisplay, listQuery)
+		}
+		return gs.listGroupsByOUIDs(ctx, []string{ouID}, limit, offset, includeDisplay, listQuery)
 	}
 
-	return gs.listGroupsByOUIDs(ctx, accessibleOUs.IDs, limit, offset, includeDisplay)
+	if accessibleOUs.AllAllowed {
+		return gs.listAllGroups(ctx, limit, offset, includeDisplay, listQuery)
+	}
+
+	return gs.listGroupsByOUIDs(ctx, accessibleOUs.IDs, limit, offset, includeDisplay, listQuery)
 }
 
-func (gs *groupService) listAllGroups(ctx context.Context, limit, offset int, includeDisplay bool) (
-	*GroupListResponse, *tidcommon.ServiceError) {
+func (gs *groupService) listAllGroups(ctx context.Context, limit, offset int, includeDisplay bool,
+	listQuery string) (*GroupListResponse, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	totalCount, err := gs.groupStore.GetGroupListCount(ctx)
 	if err != nil {
@@ -145,23 +161,20 @@ func (gs *groupService) listAllGroups(ctx context.Context, limit, offset int, in
 		gs.populateGroupOUHandles(ctx, groupBasics, logger)
 	}
 
-	displayQuery := utils.DisplayQueryParam(includeDisplay)
 	response := &GroupListResponse{
 		TotalResults: totalCount,
 		Groups:       groupBasics,
 		StartIndex:   offset + 1,
 		Count:        len(groupBasics),
-		Links:        utils.BuildPaginationLinks("/groups", limit, offset, totalCount, displayQuery),
+		Links:        utils.BuildPaginationLinks("/groups", limit, offset, totalCount, listQuery),
 	}
 
 	return response, nil
 }
 
 func (gs *groupService) listGroupsByOUIDs(ctx context.Context, ouIDs []string, limit, offset int,
-	includeDisplay bool) (*GroupListResponse, *tidcommon.ServiceError) {
+	includeDisplay bool, listQuery string) (*GroupListResponse, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-
-	displayQuery := utils.DisplayQueryParam(includeDisplay)
 
 	if len(ouIDs) == 0 {
 		return &GroupListResponse{
@@ -209,7 +222,7 @@ func (gs *groupService) listGroupsByOUIDs(ctx context.Context, ouIDs []string, l
 		Groups:       groupBasics,
 		StartIndex:   offset + 1,
 		Count:        len(groupBasics),
-		Links:        utils.BuildPaginationLinks("/groups", limit, offset, totalCount, displayQuery),
+		Links:        utils.BuildPaginationLinks("/groups", limit, offset, totalCount, listQuery),
 	}
 
 	return response, nil

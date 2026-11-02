@@ -10,6 +10,7 @@ import ToastContext, {type ToastSeverity} from './ToastContext';
  * Internal state shape for the active toast notification.
  */
 interface ToastState {
+  id: number;
   open: boolean;
   message: string;
   severity: ToastSeverity;
@@ -70,6 +71,7 @@ export type ToastProviderProps = PropsWithChildren;
  */
 export default function ToastProvider({children}: ToastProviderProps): JSX.Element {
   const [toast, setToast] = useState<ToastState>({
+    id: 0,
     open: false,
     message: '',
     severity: 'success',
@@ -78,7 +80,8 @@ export default function ToastProvider({children}: ToastProviderProps): JSX.Eleme
 
   const showToast = useCallback(
     (message: string, severity: ToastSeverity = 'success', durationMs: number = DEFAULT_TOAST_DURATION_MS): void => {
-      setToast({open: true, message, severity, durationMs});
+      // A new id remounts the Snackbar so its auto-hide timer restarts even when a toast is already open.
+      setToast((prev) => ({id: prev.id + 1, open: true, message, severity, durationMs}));
     },
     [],
   );
@@ -94,6 +97,7 @@ export default function ToastProvider({children}: ToastProviderProps): JSX.Eleme
     <ToastContext.Provider value={contextValue}>
       {children}
       <Snackbar
+        key={toast.id}
         open={toast.open}
         autoHideDuration={toast.durationMs}
         onClose={handleClose}

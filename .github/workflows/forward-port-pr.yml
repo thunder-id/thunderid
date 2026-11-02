@@ -1,20 +1,26 @@
-# This workflow forward-ports merged PRs from configured patch branches to main.
-# For each merged PR on an enrolled branch, it fetches the original PR's commits
-# from the GitHub API and cherry-picks them (in order) onto a new branch off main,
-# preserving the original commit history. It then opens a PR. The original PR
-# author and everyone who approved the original PR are added as assignees on the
-# new PR and @mentioned in a comment. If any cherry-pick has conflicts, the branch
-# is still pushed with the conflict markers committed and the PR is opened as a
-# draft for manual resolution.
+# This workflow forward-ports merged PRs from patch branches (<major>.<minor>.x) to
+# newer patch branches and main.
+# When a PR is opened on a patch branch, a comment is posted with a checkbox for
+# each newer patch branch and main, all checked by default. Unchecking a branch
+# skips the forward-port to it. Once the PR is merged, a forward-port runs for each
+# checked branch. It fetches the original PR's commits from the GitHub API and
+# cherry-picks them (in order) onto a new branch off the target branch, preserving
+# the original commit history. It then opens a PR. The original PR author and
+# everyone who approved the original PR are added as assignees on the new PR and
+# @mentioned in a comment. If any cherry-pick has conflicts, the branch is still
+# pushed with the conflict markers committed and the PR is opened as a draft for
+# manual resolution. The forward-port branch is deleted once its PR is closed.
 
 name: Forward-port Merged PRs
 
 on:
   pull_request_target:
-    types: [closed]
+    types: [opened, reopened, synchronize, closed]
     branches:
-      # Patch branches whose merged PRs get forward-ported to main.
-      - "1.0.x"
+      # Patch branches whose merged PRs get forward-ported.
+      - "[0-9]+.[0-9]+.x"
+      # Target of forward-port PRs, listed only to delete their branches once closed.
+      - "main"
 
 permissions:
   contents: write
@@ -22,15 +28,138 @@ permissions:
   issues: write
 
 env:
-  TARGET_BRANCH: "main"
+  MAIN_BRANCH: "main"
   RELEASE_GIT_USER_NAME: "thunderid-automation-bot"
   RELEASE_GIT_USER_EMAIL: "thunderid-bot@thunderid.dev"
 
 jobs:
-  forward-port:
-    name: 🚚 Forward-port to main
-    if: github.event.pull_request.merged == true
+  resolve-targets:
+    name: ☑️ Resolve Forward-port Targets
+    # Forward-port PRs are skipped so a port to a newer patch branch isn't ported again.
+    if: >-
+      endsWith(github.event.pull_request.base.ref, '.x') &&
+      !startsWith(github.event.pull_request.head.ref, 'forward-port/') &&
+      (github.event.action != 'closed' || github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
+    # Runs for the same PR are queued, so a run always sees the comment posted by the previous one.
+    concurrency:
+      group: forward-port-targets-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    outputs:
+      targets: ${{ steps.resolve.outputs.targets }}
+    steps:
+      - name: ☑️ Post or Read Forward-port Targets
+        id: resolve
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            // Identifies the targets comment. Only a comment posted by this workflow is read,
+            // so a reply carrying the marker can't add targets.
+            const MARKER = '<!-- thunderid-forward-port-targets -->';
+            const COMMENT_AUTHOR = 'github-actions[bot]';
+            const PATCH_BRANCH = /^(\d+)\.(\d+)\.x$/;
+            const CHECKED_TARGET = /^\s*[-*]\s+\[[xX]\]\s+`([^`]+)`/;
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pr = context.payload.pull_request;
+            const mainBranch = process.env.MAIN_BRANCH;
+
+            core.setOutput('targets', '[]');
+
+            const version = branch => {
+              const match = PATCH_BRANCH.exec(branch);
+              return match ? [Number(match[1]), Number(match[2])] : null;
+            };
+            const compare = (a, b) => a[0] - b[0] || a[1] - b[1];
+
+            const sourceVersion = version(pr.base.ref);
+            if (!sourceVersion) {
+              core.info(`${pr.base.ref} is not a patch branch. Skipping.`);
+              return;
+            }
+
+            // Every patch branch newer than the source, oldest first, then main.
+            const refs = await github.paginate(github.rest.git.listMatchingRefs, {
+              owner,
+              repo,
+              ref: 'heads/'
+            });
+            const newerBranches = refs
+              .map(ref => ref.ref.replace(/^refs\/heads\//, ''))
+              .filter(branch => {
+                const branchVersion = version(branch);
+                return branchVersion && compare(branchVersion, sourceVersion) > 0;
+              })
+              .sort((a, b) => compare(version(a), version(b)));
+            const allowedTargets = [...newerBranches, mainBranch];
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: pr.number,
+              per_page: 100
+            });
+            const targetsComment = comments.find(comment =>
+              comment.user?.login === COMMENT_AUTHOR && (comment.body || '').includes(MARKER));
+
+            if (context.payload.action !== 'closed') {
+              if (targetsComment) {
+                core.info('Forward-port targets comment already exists.');
+                return;
+              }
+
+              const body = [
+                MARKER,
+                '### 🚚 Forward-port',
+                '',
+                'Once this PR is merged, it will be forward-ported to the checked branches.',
+                'Uncheck a branch if the change isn\'t needed there (Ex: the fix is a backport from that branch).',
+                '',
+                ...allowedTargets.map(branch => `- [x] \`${branch}\``)
+              ].join('\n');
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pr.number,
+                body
+              });
+              core.info(`Posted forward-port targets: ${allowedTargets.join(', ')}`);
+              return;
+            }
+
+            if (!targetsComment) {
+              core.info('No forward-port targets comment found. Skipping.');
+              return;
+            }
+
+            const checked = targetsComment.body
+              .split('\n')
+              .map(line => CHECKED_TARGET.exec(line))
+              .filter(Boolean)
+              .map(match => match[1]);
+
+            const ignored = checked.filter(branch => !allowedTargets.includes(branch));
+            if (ignored.length > 0) {
+              core.warning(`Ignoring checked branches that aren't valid targets: ${ignored.join(', ')}`);
+            }
+
+            const targets = allowedTargets.filter(branch => checked.includes(branch));
+            core.info(`Forward-port targets: ${targets.join(', ') || '(none)'}`);
+            core.setOutput('targets', JSON.stringify(targets));
+
+  forward-port:
+    name: 🚚 Forward-port to ${{ matrix.target }}
+    needs: resolve-targets
+    if: needs.resolve-targets.outputs.targets != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.resolve-targets.outputs.targets) }}
+    env:
+      TARGET_BRANCH: ${{ matrix.target }}
     steps:
       - name: 📥 Checkout Target Branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,7 +182,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          FORWARD_BRANCH="forward-port/${SOURCE_BRANCH}/pr-${PR_NUMBER}"
+          FORWARD_BRANCH="forward-port/${SOURCE_BRANCH}/pr-${PR_NUMBER}-to-${TARGET_BRANCH}"
 
           # Fetch the target branch and the original PR's head ref so every commit
           # from the PR is reachable locally (even after squash/rebase merges).
@@ -262,3 +391,34 @@ jobs:
               issue_number: newPrNumber,
               body
             });
+
+  delete-forward-port-branch:
+    name: 🧹 Delete Forward-port Branch
+    if: >-
+      github.event.action == 'closed' &&
+      startsWith(github.event.pull_request.head.ref, 'forward-port/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🧹 Delete Branch
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        with:
+          script: |
+            const headRef = process.env.HEAD_REF;
+            try {
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `heads/${headRef}`
+              });
+              core.info(`Deleted branch ${headRef}.`);
+            } catch (err) {
+              // The branch may already be deleted, either by hand or by a re-run.
+              if (err.status === 404 || err.status === 422) {
+                core.info(`Branch ${headRef} doesn't exist. Nothing to delete.`);
+                return;
+              }
+              throw err;
+            }

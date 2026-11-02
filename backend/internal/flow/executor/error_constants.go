@@ -1568,6 +1568,139 @@ var (
 			DefaultValue: "The {{param(input)}} input is required and must not be empty",
 		},
 	}
+
+	// ErrIdentityGovernanceFailed is returned when a lifecycle operation is refused. It names no cause.
+	ErrIdentityGovernanceFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1112",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.identity_governance_failed",
+			DefaultValue: "Operation failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.identity_governance_failed_description",
+			DefaultValue: "Check that the account exists and that the operation applies to its current state",
+		},
+	}
+
+	// ErrAccountLocked is returned when a lock refuses a step.
+	ErrAccountLocked = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1113",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.account_locked",
+			DefaultValue: "Account locked",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.account_locked_description",
+			DefaultValue: "Sign-in is locked. Try again later or contact an administrator.",
+		},
+	}
+
+	// ErrAccountSuspended is returned when a suspension refuses a step.
+	ErrAccountSuspended = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1114",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.account_suspended",
+			DefaultValue: "Account suspended",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.account_suspended_description",
+			DefaultValue: "This account is suspended. Contact an administrator",
+		},
+	}
+
+	// ErrExtensionCallFailed is returned when an extension's service does not give a usable answer:
+	// it times out, cannot be reached, answers with a non-2xx status, a body outside the contract or
+	// ERROR. It carries nothing from the service's answer.
+	ErrExtensionCallFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1115",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_call_failed",
+			DefaultValue: "Extension call failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_call_failed_desc",
+			DefaultValue: "The step could not get a valid answer from the external service",
+		},
+	}
+
+	// ErrExtensionActionFailed is returned when an extension answers FAILED with a reason other than a
+	// credential failure.
+	ErrExtensionActionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1116",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_action_failed",
+			DefaultValue: "Request rejected",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_action_failed_desc",
+			DefaultValue: "The external service rejected the request",
+		},
+	}
+
+	// ErrExtensionInputRequired is returned when an extension answers INCOMPLETE with a message for
+	// the user.
+	ErrExtensionInputRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1117",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_input_required",
+			DefaultValue: "Additional input required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_input_required_desc",
+			DefaultValue: "The external service needs more information to continue",
+		},
+	}
+
+	// ErrExtensionAttemptsExceeded is returned when an extension step has had maxAttempts FAILED and
+	// INCOMPLETE answers in this flow execution. No call is made.
+	ErrExtensionAttemptsExceeded = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1118",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_attempts_exceeded",
+			DefaultValue: "Too many attempts",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_attempts_exceeded_desc",
+			DefaultValue: "The maximum number of attempts for this step has been reached",
+		},
+	}
+
+	// ErrFederatedUserSyncFailed is returned when a federated user cannot be updated with
+	// the attributes received from the identity provider.
+	ErrFederatedUserSyncFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1120",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.federated_user_sync_failed",
+			DefaultValue: "Failed to sync user",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.federated_user_sync_failed_desc",
+			DefaultValue: "The account could not be updated with the details from the identity provider",
+		},
+	}
+
+	// ErrOUNotDirectChild is returned when the selected OU is not a direct child of the OU being selected from.
+	ErrOUNotDirectChild = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1121",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.ou_not_direct_child",
+			DefaultValue: "The selected organization unit is not a direct child of the parent organization unit.",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "flows.executor.errors.ou_not_direct_child_desc",
+			DefaultValue: "Only organization units directly under the parent organization unit can be " +
+				"selected. Choose one of those.",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

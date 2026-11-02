@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package authz
@@ -62,11 +62,23 @@ type AuthorizationCode struct {
 	// SessionID is the SSO session id carried on the flow assertion, emitted in the ID token as the
 	// sid claim. Empty when the flow established no session; unlike TokenFamilyID it is never minted here.
 	SessionID string
+	// SessionData is the SSO sessions the caller posted with the callback, kept when the client requested
+	// the device_sso scope. The code exchange returns them in the device secret.
+	SessionData []oauth2model.SessionData
 }
 
 // AuthZPostResponse represents the response body for the authorization POST request.
 type AuthZPostResponse struct {
 	RedirectURI string `json:"redirect_uri"`
+}
+
+// SSOSessionAuthorization is a silent authorization request a client makes with an SSO session it
+// presents, in place of a browser redirect.
+type SSOSessionAuthorization struct {
+	// SessionData is the SSO sessions the client presents; the one for its authentication flow is used.
+	SessionData []oauth2model.SessionData
+	Scope       string
+	Resources   []string
 }
 
 // AuthorizationInitResult holds the result of a successful initial authorization request processing.

@@ -60,6 +60,8 @@ const (
 	RevocationReasonConsentRevoked = sharedrevocation.ReasonConsentRevoked
 	// RevocationReasonUserDeleted permanently revokes artifacts belonging to a deleted user.
 	RevocationReasonUserDeleted = sharedrevocation.ReasonUserDeleted
+	// RevocationReasonIdentitySuspended revokes what a suspended identity held before the hold.
+	RevocationReasonIdentitySuspended = sharedrevocation.ReasonIdentitySuspended
 )
 
 // CriterionType identifies an artifact attribute used for criteria-based revocation.

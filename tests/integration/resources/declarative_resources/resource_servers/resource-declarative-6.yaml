@@ -1,0 +1,21 @@
+resource_type: resource_server
+id: decl-rs-6
+name: Declarative Server Actions Resource Server
+description: A declarative MCP test resource server that declares actions on the resource server itself
+identifier: https://localhost:8090/decl-rs-6
+ouId: decl-ou-1
+type: MCP
+delimiter: ":"
+actions:
+  - name: Search
+    handle: search
+  - name: Read Docs
+    handle: docs
+    description: Read the documentation
+    kind: resource
+resources:
+  - name: Bookings
+    handle: bookings
+    actions:
+      - name: Cancel
+        handle: cancel

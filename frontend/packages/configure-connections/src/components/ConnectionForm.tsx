@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useConfig} from '@thunderid/contexts';
 import {
   Alert,
   Box,
@@ -66,6 +67,8 @@ export default function ConnectionForm({
   onSecretReplacingChange,
 }: ConnectionFormProps): JSX.Element {
   const {t} = useTranslation('connections');
+  const {config} = useConfig();
+  const productName: string = config.brand.product_name;
   const fields: ConnectionFieldDef[] = useMemo(
     () =>
       fieldsForMode(type, mode).filter(
@@ -114,6 +117,7 @@ export default function ConnectionForm({
     <Trans
       t={t}
       i18nKey={hintKey}
+      values={{productName}}
       components={{
         code: (
           <Box

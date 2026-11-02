@@ -79,7 +79,7 @@ func (s *notificationStore) createSender(ctx context.Context, sender common.Noti
 	}
 
 	_, err = dbClient.ExecuteContext(ctx, queryCreateNotificationSender, sender.Name, sender.ID,
-		sender.Description, string(sender.Type), string(sender.Provider), propertiesJSON, s.scope(ctx))
+		sender.Description, string(sender.Type), sender.OUID, string(sender.Provider), propertiesJSON, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -271,6 +271,11 @@ func (s *notificationStore) buildSenderFromResultRow(
 		return nil, fmt.Errorf("failed to parse type as string")
 	}
 
+	ouID, ok := row["ou_id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("failed to parse ou_id as string")
+	}
+
 	provider, ok := row["provider"].(string)
 	if !ok {
 		return nil, fmt.Errorf("failed to parse provider as string")
@@ -281,6 +286,7 @@ func (s *notificationStore) buildSenderFromResultRow(
 		Name:        name,
 		Description: description,
 		Type:        common.NotificationSenderType(_type),
+		OUID:        ouID,
 		Provider:    common.NotificationProviderType(provider),
 		Properties:  []cmodels.Property{},
 	}

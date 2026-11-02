@@ -67,6 +67,20 @@ describe('UnsavedChangesBar', () => {
     });
   });
 
+  describe('Reset Button State', () => {
+    it('should enable the reset button by default', () => {
+      render(<UnsavedChangesBar {...defaultProps} />);
+
+      expect(screen.getByRole('button', {name: 'Reset'})).not.toBeDisabled();
+    });
+
+    it('should disable the reset button when asked to', () => {
+      render(<UnsavedChangesBar {...defaultProps} resetDisabled />);
+
+      expect(screen.getByRole('button', {name: 'Reset'})).toBeDisabled();
+    });
+  });
+
   describe('Interactions', () => {
     it('should call onReset when the reset button is clicked', async () => {
       const user = userEvent.setup();

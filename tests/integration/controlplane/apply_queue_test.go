@@ -21,15 +21,26 @@ import (
 // makes as holding every value asked for, and takes each import slowly enough for another apply to
 // arrive while one runs.
 type applyGateway struct {
-	server  *httptest.Server
-	delay   time.Duration
+	server *httptest.Server
+	delay  time.Duration
+	// refuse makes every import fail, as a data plane that cannot take the version would.
+	refuse  bool
 	began   chan struct{}
 	mu      sync.Mutex
 	imports int
 }
 
 func newApplyGateway(delay time.Duration) *applyGateway {
-	g := &applyGateway{delay: delay, began: make(chan struct{}, 8)}
+	return startApplyGateway(delay, false)
+}
+
+// newRefusingApplyGateway stands in for a data plane that answers every import with a failure.
+func newRefusingApplyGateway() *applyGateway {
+	return startApplyGateway(0, true)
+}
+
+func startApplyGateway(delay time.Duration, refuse bool) *applyGateway {
+	g := &applyGateway{delay: delay, refuse: refuse, began: make(chan struct{}, 8)}
 	g.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("API-Key") != captureGatewayKey {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -50,6 +61,10 @@ func newApplyGateway(delay time.Duration) *applyGateway {
 			g.mu.Lock()
 			g.imports++
 			g.mu.Unlock()
+			if g.refuse {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
 			g.began <- struct{}{}
 			time.Sleep(g.delay)
 			_, _ = w.Write([]byte(`{"summary":{"totalDocuments":0,"imported":0,"failed":0},"results":[]}`))

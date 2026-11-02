@@ -76,7 +76,7 @@ func (suite *ApplicationToolsTestSuite) TestListApplications_Success() {
 		},
 	}
 
-	mockService.On("GetApplicationList", mock.Anything).Return(&model.ApplicationListResponse{
+	mockService.On("GetApplicationList", mock.Anything, mock.Anything).Return(&model.ApplicationListResponse{
 		TotalResults: 2,
 		Applications: expectedApps,
 	}, nil)
@@ -84,7 +84,7 @@ func (suite *ApplicationToolsTestSuite) TestListApplications_Success() {
 	ctx := context.Background()
 	req := &mcp.CallToolRequest{}
 
-	result, output, err := tools.listApplications(ctx, req, nil)
+	result, output, err := tools.listApplications(ctx, req, model.ApplicationListInput{})
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), result)
@@ -99,14 +99,14 @@ func (suite *ApplicationToolsTestSuite) TestListApplications_Error() {
 	mockService := NewApplicationServiceInterfaceMock(suite.T())
 	tools := &applicationTools{appService: mockService}
 
-	mockService.On("GetApplicationList", mock.Anything).Return(nil, &tidcommon.ServiceError{
+	mockService.On("GetApplicationList", mock.Anything, mock.Anything).Return(nil, &tidcommon.ServiceError{
 		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "database error"},
 	})
 
 	ctx := context.Background()
 	req := &mcp.CallToolRequest{}
 
-	result, output, err := tools.listApplications(ctx, req, nil)
+	result, output, err := tools.listApplications(ctx, req, model.ApplicationListInput{})
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
@@ -114,6 +114,65 @@ func (suite *ApplicationToolsTestSuite) TestListApplications_Error() {
 	assert.Contains(suite.T(), err.Error(), "failed to list applications")
 
 	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *ApplicationToolsTestSuite) TestListApplications_Scoped() {
+	listed := &model.ApplicationListResponse{
+		TotalResults: 1,
+		Applications: []model.BasicApplicationResponse{{ID: "app1"}},
+	}
+	ouFilter := map[string]interface{}{"ouId": "ou-1"}
+
+	for name, tc := range map[string]struct {
+		input  model.ApplicationListInput
+		expect func(*ApplicationServiceInterfaceMock)
+	}{
+		"an organization unit": {
+			input: model.ApplicationListInput{OUID: "ou-1"},
+			expect: func(m *ApplicationServiceInterfaceMock) {
+				m.On("GetApplicationList", mock.Anything, ouFilter).Return(listed, nil)
+			},
+		},
+		"a project": {
+			input: model.ApplicationListInput{ProjectID: "project-1"},
+			expect: func(m *ApplicationServiceInterfaceMock) {
+				m.On("GetApplicationListByProject", mock.Anything, "project-1",
+					map[string]interface{}(nil)).Return(listed, nil)
+			},
+		},
+		"an organization unit of a project": {
+			input: model.ApplicationListInput{ProjectID: "project-1", OUID: "ou-1"},
+			expect: func(m *ApplicationServiceInterfaceMock) {
+				m.On("GetApplicationListByProject", mock.Anything, "project-1", ouFilter).Return(listed, nil)
+			},
+		},
+	} {
+		suite.Run(name, func() {
+			mockService := NewApplicationServiceInterfaceMock(suite.T())
+			tc.expect(mockService)
+			tools := &applicationTools{appService: mockService}
+
+			_, output, err := tools.listApplications(context.Background(), &mcp.CallToolRequest{}, tc.input)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), 1, output.TotalCount)
+			assert.Equal(suite.T(), "app1", output.Applications[0].ID)
+		})
+	}
+}
+
+func (suite *ApplicationToolsTestSuite) TestListApplications_ProjectError() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	mockService.On("GetApplicationListByProject", mock.Anything, "project-1", mock.Anything).
+		Return(nil, &ErrorInvalidFilter)
+	tools := &applicationTools{appService: mockService}
+
+	_, output, err := tools.listApplications(context.Background(), &mcp.CallToolRequest{},
+		model.ApplicationListInput{ProjectID: "project-1"})
+
+	assert.Error(suite.T(), err)
+	assert.Equal(suite.T(), model.ApplicationListOutput{}, output)
+	assert.Contains(suite.T(), err.Error(), "failed to list applications")
 }
 
 func (suite *ApplicationToolsTestSuite) TestGetApplicationByID_Success() {

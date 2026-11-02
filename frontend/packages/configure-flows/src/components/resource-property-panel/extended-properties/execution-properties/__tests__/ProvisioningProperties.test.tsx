@@ -26,6 +26,9 @@ vi.mock('react-i18next', async (importOriginal) => ({
         'flows:core.executions.provisioning.assignGroup.placeholder': 'group-id',
         'flows:core.executions.provisioning.assignRole.label': 'Assign role',
         'flows:core.executions.provisioning.assignRole.placeholder': 'role-id',
+        'flows:core.executions.provisioning.delegated.label': 'Delegated mode',
+        'flows:core.executions.provisioning.delegated.hint':
+          'When enabled, agents created by this node act on behalf of a signed-in user. A value collected by the flow takes precedence.',
       };
       return translations[key] ?? key;
     },
@@ -74,6 +77,29 @@ describe('ProvisioningProperties', () => {
     await user.click(screen.getByLabelText('Allow cross-OU provisioning'));
 
     expect(mockOnChange).toHaveBeenCalledWith('data.properties.allowCrossOUProvisioning', true, expect.anything());
+  });
+
+  it('should offer the delegation setting, unchecked by default', () => {
+    render(<ProvisioningProperties resource={createResource()} onChange={mockOnChange} />);
+
+    expect(screen.getByLabelText('Delegated mode')).not.toBeChecked();
+  });
+
+  it('should keep delegation as a real boolean when it is switched on and back off', async () => {
+    const user = userEvent.setup();
+    const {rerender} = render(<ProvisioningProperties resource={createResource()} onChange={mockOnChange} />);
+
+    await user.click(screen.getByLabelText('Delegated mode'));
+
+    expect(mockOnChange).toHaveBeenLastCalledWith('data.properties.delegated', true, expect.anything());
+
+    rerender(<ProvisioningProperties resource={createResource({delegated: true})} onChange={mockOnChange} />);
+    expect(screen.getByLabelText('Delegated mode')).toBeChecked();
+
+    await user.click(screen.getByLabelText('Delegated mode'));
+
+    // Unchecking stores an explicit false rather than removing the property.
+    expect(mockOnChange).toHaveBeenLastCalledWith('data.properties.delegated', false, expect.anything());
   });
 
   it('should commit a new assignGroup value on blur', () => {

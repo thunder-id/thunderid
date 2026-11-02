@@ -36,10 +36,11 @@ func Initialize(
 			"oauth.revocation.criteria.max_entries_per_change must not be negative, got %d", maxEntriesPerChange)
 	}
 	tokenFamilyRevocationTTL := time.Duration(cfg.OAuth.RefreshToken.ValidityPeriod) * time.Second
+	validationLeeway := time.Duration(cfg.JWT.Leeway) * time.Second
 	store := newRevocationStore()
 	return newEnforcementService(observabilitySvc, store), newRevocationService(
-		jwtService, store, tokenFamilyRevocationTTL, revocationCfg.TokenFamily.OnExplicitRevokeEnabled(),
-		observabilitySvc, maxEntriesPerChange), nil
+		jwtService, store, tokenFamilyRevocationTTL, validationLeeway,
+		revocationCfg.TokenFamily.OnExplicitRevokeEnabled(), observabilitySvc, maxEntriesPerChange), nil
 }
 
 // RegisterRoutes registers the RFC 7009 revocation endpoint using the shared revocation service.
@@ -51,12 +52,13 @@ func RegisterRoutes(
 	discoveryService discovery.DiscoveryServiceInterface,
 	revocationService RevocationServiceInterface,
 	jtiStore jti.JTIStoreInterface,
+	governance providers.IdentityGovernanceProvider,
 	assertionCfg engineconfig.ClientAssertionConfig,
 	jwtLeeway int64,
 ) {
 	revocationHandler := newRevocationHandler(revocationService)
 	registerRoutes(mux, revocationHandler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, assertionCfg, jwtLeeway)
+		jtiStore, governance, assertionCfg, jwtLeeway)
 }
 
 // registerRoutes registers the routes for the token revocation endpoint.
@@ -68,6 +70,7 @@ func registerRoutes(
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	jtiStore jti.JTIStoreInterface,
+	governance providers.IdentityGovernanceProvider,
 	assertionCfg engineconfig.ClientAssertionConfig,
 	jwtLeeway int64,
 ) {
@@ -79,7 +82,7 @@ func registerRoutes(
 	}
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
-	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
+	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, governance, jwtService,
 		jtiStore, issuer, assertionCfg, jwtLeeway)
 	handler := clientAuthMiddleware(http.HandlerFunc(revocationHandler.HandleRevoke))
 

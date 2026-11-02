@@ -14,6 +14,7 @@ import type {OnboardingRoutePaths} from '@thunderid/configure-onboarding';
 import type {OrganizationUnitRoutePaths} from '@thunderid/configure-organization-units';
 import type {ResourceServerRoutePaths} from '@thunderid/configure-resource-servers';
 import type {RoleRoutePaths} from '@thunderid/configure-roles';
+import type {SettingsRoutePaths} from '@thunderid/configure-settings';
 import type {TranslationRoutePaths} from '@thunderid/configure-translations';
 import type {UserTypeRoutePaths} from '@thunderid/configure-user-types';
 import type {UserRoutePaths} from '@thunderid/configure-users';
@@ -63,6 +64,7 @@ export type RouteConfig = OrganizationUnitRoutePaths &
   GroupRoutePaths &
   RoleRoutePaths &
   OnboardingRoutePaths &
+  SettingsRoutePaths &
   ConsoleRoutePaths;
 
 /**

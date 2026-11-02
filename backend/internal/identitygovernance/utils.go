@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
@@ -31,7 +32,7 @@ func isSuspended(state providers.EntityState, accessState AccessState) bool {
 
 // hasLockEntries reports whether the entity has any recorded lock entry, live or lapsed.
 func hasLockEntries(entity GovernedEntity) bool {
-	return entity.AccessState.Lock.Entity != nil || len(entity.AccessState.Lock.AuthenticationMethods) > 0
+	return entity.AccessState.Lock.Account != nil || len(entity.AccessState.Lock.AuthenticationMethods) > 0
 }
 
 // isLockLive reports whether a stored unlockAt is permanent or still in the future.
@@ -45,11 +46,11 @@ func isLockLive(unlockAt string, now time.Time) bool {
 	return now.UTC().Format(time.RFC3339) < unlockAt
 }
 
-// lockFor reports whether anything holds method, ignoring configured granularity: a live entity-wide
+// lockFor reports whether anything holds method, ignoring configured granularity: a live account-wide
 // lock holds every method, else a live lock on method holds it. The first return is true when the
-// entity-wide entry holds.
+// account-wide entry holds.
 func lockFor(a AccessState, method providers.AuthenticationMethod, now time.Time) (bool, bool) {
-	if a.Lock.Entity != nil && isLockLive(a.Lock.Entity.UnlockAt, now) {
+	if a.Lock.Account != nil && isLockLive(a.Lock.Account.UnlockAt, now) {
 		return true, true
 	}
 	entry, recorded := a.Lock.AuthenticationMethods[method]
@@ -162,6 +163,11 @@ func refuse(mode disclosureMode, reason providers.AccessRefusalReason) providers
 	return providers.AccessDecision{Reason: reason}
 }
 
+// isOperatorNoteTooLong reports whether a suspension's operator note exceeds the limit.
+func isOperatorNoteTooLong(note string) bool {
+	return utf8.RuneCountInString(note) > maxOperatorNoteLength
+}
+
 // failureClass maps a lifecycle error to its failure class, without store detail.
 func failureClass(svcErr *tidcommon.ServiceError) lifecycleFailure {
 	switch svcErr.Code {
@@ -173,6 +179,8 @@ func failureClass(svcErr *tidcommon.ServiceError) lifecycleFailure {
 		return failureNoSubject
 	case ErrorEntityNotFound.Code:
 		return failureNotFound
+	case ErrorOperatorNoteTooLong.Code:
+		return failureNoteTooLong
 	default:
 		return failureOperationFailed
 	}
@@ -180,8 +188,8 @@ func failureClass(svcErr *tidcommon.ServiceError) lifecycleFailure {
 
 // effectiveMethodFor returns the access-state key a method maps to under the given granularity.
 func effectiveMethodFor(g granularity, method providers.AuthenticationMethod) providers.AuthenticationMethod {
-	if g == granularityEntity {
-		return AuthenticationMethodEntity
+	if g == granularityAccount {
+		return AuthenticationMethodAccount
 	}
 	return method
 }
@@ -250,8 +258,8 @@ func categoryConfig(cfg accountAccessValue, category providers.EntityCategory) a
 
 // parseGranularity returns the granularity, defaulting an unknown value to per-method.
 func parseGranularity(value granularity) granularity {
-	if value == granularityEntity {
-		return granularityEntity
+	if value == granularityAccount {
+		return granularityAccount
 	}
 	return granularityAuthenticationMethod
 }
@@ -278,9 +286,9 @@ func lockEnforcementFor(cfg accountAccessValue, category providers.EntityCategor
 
 	unenforced := make(map[providers.AuthenticationMethod]struct{}, len(AllAuthenticationMethods))
 	for _, method := range AllAuthenticationMethods {
-		// Under entity granularity only the entity entry is enforced. The post-suspension hold is
+		// Under account granularity only the account entry is enforced. The post-suspension hold is
 		// exempt from this in reportFor.
-		if (g == granularityEntity && method != AuthenticationMethodEntity) || !policyFor(block, g, method).enabled {
+		if (g == granularityAccount && method != AuthenticationMethodAccount) || !policyFor(block, g, method).enabled {
 			unenforced[method] = struct{}{}
 		}
 	}
@@ -313,10 +321,10 @@ func reportFor(state providers.EntityState, accessState AccessState, now time.Ti
 		return suspendedReport(accessState.Suspend)
 	}
 
-	if entry := accessState.Lock.Entity; entry != nil && isLockLive(entry.UnlockAt, now) &&
-		(entry.Reason == lockReasonPostSuspension || enforcement.enforces(AuthenticationMethodEntity)) {
-		return lockedReport(entityHoldReason(entry.Reason), []providers.AccessLockedMethod{{
-			Method:    string(AuthenticationMethodEntity),
+	if entry := accessState.Lock.Account; entry != nil && isLockLive(entry.UnlockAt, now) &&
+		(entry.Reason == lockReasonPostSuspension || enforcement.enforces(AuthenticationMethodAccount)) {
+		return lockedReport(accountHoldReason(entry.Reason), []providers.AccessLockedMethod{{
+			Method:    string(AuthenticationMethodAccount),
 			ExpiresAt: expiryOf(entry.UnlockAt),
 		}})
 	}
@@ -369,9 +377,9 @@ func liveAuthenticationMethodLocks(accessState AccessState, now time.Time,
 	return locked
 }
 
-// entityHoldReason maps the stored reason to the published one. Anything other than the
+// accountHoldReason maps the stored reason to the published one. Anything other than the
 // post-suspension hold reports as failed attempts.
-func entityHoldReason(stored LockReason) providers.AccessHoldReason {
+func accountHoldReason(stored LockReason) providers.AccessHoldReason {
 	if stored == lockReasonPostSuspension {
 		return providers.AccessHoldReasonSuspensionReleaseLock
 	}
@@ -449,7 +457,7 @@ func validateLockEmail(path string, email *accountAccessLockEmail) error {
 func lockTemplateMethods() []string {
 	var methods []string
 	for method, lockable := range lockableMethods {
-		if lockable && method != AuthenticationMethodEntity {
+		if lockable && method != AuthenticationMethodAccount {
 			methods = append(methods, string(method))
 		}
 	}
@@ -496,11 +504,11 @@ func validateGranularity(category string, value *granularity) error {
 		return nil
 	}
 	switch *value {
-	case granularityAuthenticationMethod, granularityEntity:
+	case granularityAuthenticationMethod, granularityAccount:
 		return nil
 	default:
 		return fmt.Errorf("%s: %s.lockGranularity must be %q or %q",
-			serverconfig.ConfigNameAccountAccess, category, granularityAuthenticationMethod, granularityEntity)
+			serverconfig.ConfigNameAccountAccess, category, granularityAuthenticationMethod, granularityAccount)
 	}
 }
 
@@ -735,18 +743,18 @@ func lockTemplateFor(email *accountAccessLockEmail, method providers.Authenticat
 	var pair lockEmailTemplatePair
 	if templates := email.Templates; templates != nil {
 		override := templates.Methods[string(method)]
-		if method == AuthenticationMethodEntity {
+		if method == AuthenticationMethodAccount {
 			override = sysutils.DerefOr(templates.Account, lockEmailTemplatePair{})
 		}
 		pair = overlayTemplatePair(templates.lockEmailTemplatePair, override)
 	}
 	data := map[string]string{
-		templateKeyAuthenticationMethod: string(method),
-		templateKeyLockDuration:         "",
-		templateKeyUnlockTime:           "",
+		templateKeyLockedAuthenticationMethod: string(method),
+		templateKeyLockDuration:               "",
+		templateKeyUnlockTime:                 "",
 	}
-	if method == AuthenticationMethodEntity {
-		data[templateKeyAuthenticationMethod] = ""
+	if method == AuthenticationMethodAccount {
+		data[templateKeyLockedAuthenticationMethod] = ""
 	}
 
 	ends, err := time.Parse(time.RFC3339, episode.UnlockAt)

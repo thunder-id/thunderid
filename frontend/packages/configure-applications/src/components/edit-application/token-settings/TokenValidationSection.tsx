@@ -40,6 +40,12 @@ interface TokenValidationSectionProps {
    * Whether inputs should be disabled (e.g. read-only resource).
    */
   disabled?: boolean;
+  /**
+   * In OAuth mode, whether only the access token validity applies, for an entity whose grants
+   * issue an access token alone (token exchange, JWT bearer). It is then shown on its own, without
+   * the ID token and refresh token tabs. Defaults to false.
+   */
+  accessTokenOnly?: boolean;
 }
 
 /**
@@ -48,7 +54,8 @@ interface TokenValidationSectionProps {
  * - `tokenType="shared"`: renders a single validity period input for native apps.
  * - `tokenType="oauth"`: renders token tabs (Access Token / ID Token / Refresh Token), each with its
  *   own validity period input. The tab state is managed internally and is independent
- *   of any other tab state in the page.
+ *   of any other tab state in the page. With `accessTokenOnly`, only the access token input is
+ *   shown, without tabs.
  *
  * @param props - Component props
  * @returns Token validity configuration UI within a SettingsCard
@@ -58,6 +65,7 @@ export default function TokenValidationSection({
   errors,
   tokenType,
   disabled = false,
+  accessTokenOnly = false,
 }: TokenValidationSectionProps) {
   const {t} = useTranslation();
   const [activeValidationTab, setActiveValidationTab] = useState<'access' | 'id' | 'refresh'>('access');
@@ -72,9 +80,10 @@ export default function TokenValidationSection({
 
   const renderField = (
     fieldName: 'validityPeriod' | 'accessTokenValidity' | 'idTokenValidity' | 'refreshTokenValidity',
+    fieldLabel: string = label,
   ) => (
     <FormControl fullWidth required>
-      <FormLabel htmlFor={`${fieldName}-input`}>{label}</FormLabel>
+      <FormLabel htmlFor={`${fieldName}-input`}>{fieldLabel}</FormLabel>
       <Controller
         name={fieldName}
         control={control}
@@ -94,6 +103,18 @@ export default function TokenValidationSection({
       />
     </FormControl>
   );
+
+  // With no tabs to say which token the field is for, its label names the access token.
+  if (tokenType === 'oauth' && accessTokenOnly) {
+    return (
+      <SettingsCard title={title} description={description}>
+        {renderField(
+          'accessTokenValidity',
+          t('applications:edit.token.labels.access_token_validity', 'Access token validity'),
+        )}
+      </SettingsCard>
+    );
+  }
 
   if (tokenType === 'oauth') {
     return (

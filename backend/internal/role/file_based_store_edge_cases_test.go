@@ -126,7 +126,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetRoleAssignments_ZeroLim
 		},
 	})
 
-	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", 0, 0)
+	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 0, 0)
 
 	assert.NoError(suite.T(), err)
 	assert.Len(suite.T(), assignments, 0)
@@ -134,7 +134,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetRoleAssignments_ZeroLim
 
 // Test GetRoleAssignments for non-existent role
 func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetRoleAssignments_NonExistentRole() {
-	assignments, err := suite.store.GetRoleAssignments(context.Background(), "nonexistent", 10, 0)
+	assignments, err := suite.store.GetRoleAssignments(context.Background(), "nonexistent", "", 10, 0)
 
 	assert.NoError(suite.T(), err)
 	assert.Len(suite.T(), assignments, 0)
@@ -142,7 +142,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetRoleAssignments_NonExis
 
 // Test GetRoleAssignmentsCount for non-existent role
 func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetRoleAssignmentsCount_NonExistentRole() {
-	count, err := suite.store.GetRoleAssignments(context.Background(), "nonexistent", 10, 0)
+	count, err := suite.store.GetRoleAssignments(context.Background(), "nonexistent", "", 10, 0)
 
 	assert.NoError(suite.T(), err)
 	assert.Empty(suite.T(), count)
@@ -218,7 +218,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_E
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"",
-		[]string{}, nil, "",
+		[]string{}, nil, "", "",
 
 		[]string{"perm1"})
 
@@ -243,7 +243,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_E
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"user1",
-		[]string{}, nil, "",
+		[]string{}, nil, "", "",
 
 		[]string{})
 
@@ -268,7 +268,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_G
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"",
-		[]string{"group1", "group2"}, nil, "",
+		[]string{"group1", "group2"}, nil, "", "",
 
 		[]string{"perm1", "perm2", "perm3"})
 
@@ -276,6 +276,48 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_G
 	assert.Len(suite.T(), perms, 2)
 	assert.Contains(suite.T(), perms, "perm1")
 	assert.Contains(suite.T(), perms, "perm2")
+}
+
+// An organization unit restricts the declared assignments that count to the ones made there. One
+// that names none is made in the role's owner.
+func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_RestrictedToAnOU() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID: "role1", Name: "Admin", OUID: "ou-owner",
+		Assignments: []RoleAssignment{
+			{ID: "user1", Type: assigneeTypeEntity, OUID: "ou-child"},
+			{ID: "group1", Type: AssigneeTypeGroup},
+		},
+		Permissions: []ResourcePermissions{{ResourceServerID: "rs1", Permissions: []string{"perm1"}}},
+	})
+	authorized := func(entityID string, groupIDs []string, ouID string) []string {
+		perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
+			context.Background(), entityID, groupIDs, nil, ouID, "", []string{"perm1"})
+		suite.Require().NoError(err)
+		return perms
+	}
+
+	suite.Empty(authorized("user1", nil, "ou-owner"), "user1 was assigned in ou-child")
+	suite.Equal([]string{"perm1"}, authorized("user1", nil, "ou-child"))
+	suite.Equal([]string{"perm1"}, authorized("", []string{"group1"}, "ou-owner"))
+	suite.Empty(authorized("", []string{"group1"}, "ou-child"), "group1 was assigned in the owner")
+	suite.Equal([]string{"perm1"}, authorized("user1", nil, ""), "no organization unit counts every assignment")
+}
+
+// An organization unit restricts the declared assignments a role name is read from to the ones made
+// there.
+func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetUserRoles_RestrictedToAnOU() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID: "role1", Name: "Admin", OUID: "ou-owner",
+		Assignments: []RoleAssignment{{ID: "app1", Type: assigneeTypeEntity, OUID: "ou-child"}},
+	})
+
+	inOwner, err := suite.store.GetUserRoles(context.Background(), "app1", nil, "ou-owner")
+	suite.Require().NoError(err)
+	suite.Empty(inOwner)
+
+	inChild, err := suite.store.GetUserRoles(context.Background(), "app1", nil, "ou-child")
+	suite.Require().NoError(err)
+	suite.Equal([]string{"Admin"}, inChild)
 }
 
 // Test GetAuthorizedPermissions with multiple roles and multiple resource servers
@@ -307,7 +349,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_M
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"user1",
-		[]string{}, nil, "",
+		[]string{}, nil, "", "",
 
 		[]string{"read", "write", "delete"})
 
@@ -335,7 +377,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_M
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"user1",
-		[]string{}, nil, "",
+		[]string{}, nil, "", "",
 
 		[]string{"perm3", "perm2", "perm1"})
 
@@ -410,17 +452,17 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetRoleAssignments_Paginat
 	})
 
 	// Get all assignments
-	all, err := suite.store.GetRoleAssignments(context.Background(), "role1", 3, 0)
+	all, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 3, 0)
 	assert.NoError(suite.T(), err)
 	assert.Len(suite.T(), all, 3)
 
 	// Get first page
-	page1, err := suite.store.GetRoleAssignments(context.Background(), "role1", 2, 0)
+	page1, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 2, 0)
 	assert.NoError(suite.T(), err)
 	assert.Len(suite.T(), page1, 2)
 
 	// Get second page
-	page2, err := suite.store.GetRoleAssignments(context.Background(), "role1", 2, 2)
+	page2, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 2, 2)
 	assert.NoError(suite.T(), err)
 	assert.Len(suite.T(), page2, 1)
 }
@@ -442,7 +484,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_A
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"app-uuid-123",
-		[]string{}, nil, "",
+		[]string{}, nil, "", "",
 
 		[]string{"read:docs", "write:docs", "admin:docs"})
 
@@ -467,7 +509,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_A
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"different-app-uuid",
-		[]string{}, nil, "",
+		[]string{}, nil, "", "",
 
 		[]string{"read:docs"})
 
@@ -493,7 +535,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_M
 
 	// App entity resolves permissions via entity ID.
 	appPerms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), "app-uuid-1", []string{}, nil, "",
+		context.Background(), "app-uuid-1", []string{}, nil, "", "",
 		[]string{"perm1", "perm2", "perm3"})
 
 	assert.NoError(suite.T(), err)
@@ -501,7 +543,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_M
 
 	// User entity resolves permissions via entity ID.
 	userPerms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), "user-uuid-1", []string{}, nil, "",
+		context.Background(), "user-uuid-1", []string{}, nil, "", "",
 		[]string{"perm1", "perm2", "perm3"})
 
 	assert.NoError(suite.T(), err)
@@ -509,7 +551,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_M
 
 	// Group-only resolution still works.
 	groupPerms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), "", []string{"group1"}, nil, "",
+		context.Background(), "", []string{"group1"}, nil, "", "",
 		[]string{"perm1"})
 
 	assert.NoError(suite.T(), err)
@@ -544,7 +586,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_A
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"app-uuid-1",
-		[]string{}, nil, "",
+		[]string{}, nil, "", "",
 
 		[]string{"read:docs", "write:docs", "delete:docs"})
 
@@ -577,7 +619,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetUserRoles_AppEntity() {
 		},
 	})
 
-	roles, err := suite.store.GetUserRoles(context.Background(), "app-uuid-1", []string{})
+	roles, err := suite.store.GetUserRoles(context.Background(), "app-uuid-1", []string{}, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Len(suite.T(), roles, 1)

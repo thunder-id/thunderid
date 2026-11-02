@@ -44,7 +44,7 @@ func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
 	service := Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService,
-		suite.mockTokenValidator, nil, engineconfig.ClientAssertionConfig{}, 0)
+		suite.mockTokenValidator, nil, nil, engineconfig.ClientAssertionConfig{}, 0)
 
 	assert.NotNil(suite.T(), service)
 	assert.Implements(suite.T(), (*TokenIntrospectionServiceInterface)(nil), service)
@@ -54,7 +54,7 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 	mux := http.NewServeMux()
 
 	Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService,
-		suite.mockTokenValidator, nil, engineconfig.ClientAssertionConfig{}, 0)
+		suite.mockTokenValidator, nil, nil, engineconfig.ClientAssertionConfig{}, 0)
 
 	// Verify that the routes are registered by attempting to get a handler for them.
 	// The pattern includes the method because of CORS middleware wrapping.

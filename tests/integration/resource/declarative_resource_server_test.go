@@ -23,6 +23,7 @@ const (
 	declarativeMCPServerID            = "decl-rs-3"
 	declarativeRepeatedHandleServerID = "decl-rs-4"
 	declarativeRepeatedActionServerID = "decl-rs-5"
+	declarativeServerActionsServerID  = "decl-rs-6"
 	declarativeReadActionHandle       = "read"
 	declarativeWriteActionHandle      = "write"
 	declarativeResourcePermission     = "test-resource"
@@ -373,6 +374,86 @@ func (suite *DeclarativeResourceServerTestSuite) TestListDeclarativeActionsFilte
 	suite.Equal("tools:fetch", resources.Actions[0].Permission)
 }
 
+// TestDeclarativeResourceServerActions verifies that the actions a file declares on the resource
+// server itself are served at the resource server level, each with the resource server ID, the
+// delimiter and its handle as its ID, its handle as its permission, and the MCP kind defaulting.
+func (suite *DeclarativeResourceServerTestSuite) TestDeclarativeResourceServerActions() {
+	list, err := listActionsAtResourceServer(declarativeServerActionsServerID, 0, 100)
+	suite.Require().NoError(err)
+	suite.Equal(2, list.TotalResults)
+	suite.ElementsMatch([]ActionResponse{
+		{ID: "decl-rs-6:search", Name: "Search", Handle: "search", Permission: "search", Kind: "tool"},
+		{ID: "decl-rs-6:docs", Name: "Read Docs", Handle: "docs", Description: "Read the documentation",
+			Permission: "docs", Kind: "resource"},
+	}, list.Actions)
+
+	tools, err := listActionsByKind(declarativeServerActionsServerID, "", "tool")
+	suite.Require().NoError(err)
+	suite.Equal(1, tools.TotalResults)
+	suite.Equal("search", tools.Actions[0].Handle)
+
+	action, err := getActionAtResourceServer(declarativeServerActionsServerID, "decl-rs-6:docs")
+	suite.Require().NoError(err)
+	suite.Equal("docs", action.Permission)
+	suite.Equal("resource", action.Kind)
+
+	resources, err := listResources(declarativeServerActionsServerID, "", 0, 100)
+	suite.Require().NoError(err)
+	suite.Require().Equal(1, resources.TotalResults)
+	bookingsID := resources.Resources[0].ID
+
+	nested, err := listActionsAtResource(declarativeServerActionsServerID, bookingsID, 0, 100)
+	suite.Require().NoError(err)
+	suite.Require().Equal(1, nested.TotalResults, "Actions of the resource server are not listed under a resource")
+	suite.Equal("bookings:cancel", nested.Actions[0].Permission)
+	suite.Equal("tool", nested.Actions[0].Kind)
+
+	nestedAction, err := getActionAtResource(declarativeServerActionsServerID, bookingsID, nested.Actions[0].ID)
+	suite.Require().NoError(err)
+	suite.Equal("tool", nestedAction.Kind, "A read of one action returns its kind, as the list does")
+
+	_, err = getActionAtResourceServer(declarativeServerActionsServerID, nested.Actions[0].ID)
+	suite.Require().Error(err, "An action of a resource is not found at the resource server level")
+	suite.Contains(err.Error(), "404")
+
+	_, err = getActionAtResource(declarativeServerActionsServerID, bookingsID, "decl-rs-6:search")
+	suite.Require().Error(err, "An action of the resource server is not found under a resource")
+	suite.Contains(err.Error(), "404")
+}
+
+// TestDeclarativeResourceServerActionsAreRolePermissions verifies that a role can carry the
+// permission of an action a file declares on the resource server itself.
+func (suite *DeclarativeResourceServerTestSuite) TestDeclarativeResourceServerActionsAreRolePermissions() {
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "decl_server_actions_role_ou",
+		Name:   "Declarative Server Actions Role OU",
+	})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.DeleteOrganizationUnit(ouID)) }()
+
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: "Declarative Server Actions Role",
+		OUID: ouID,
+		Permissions: []testutils.ResourcePermissions{{
+			ResourceServerID: declarativeServerActionsServerID,
+			Permissions:      []string{"search", "bookings:cancel"},
+		}},
+	})
+	suite.Require().NoError(err)
+	suite.NoError(testutils.DeleteRole(roleID))
+
+	_, err = testutils.CreateRole(testutils.Role{
+		Name: "Declarative Server Actions Invalid Role",
+		OUID: ouID,
+		Permissions: []testutils.ResourcePermissions{{
+			ResourceServerID: declarativeServerActionsServerID,
+			Permissions:      []string{"unknown"},
+		}},
+	})
+	suite.Require().Error(err, "A permission the declarative resource server does not declare is refused")
+	suite.Contains(err.Error(), "status 400")
+}
+
 // exportRequest is the request payload of the export API, limited to the fields used here.
 type exportRequest struct {
 	ResourceServers []string `json:"resourceServers,omitempty"`
@@ -441,6 +522,13 @@ func (suite *ResourceServerExportTestSuite) SetupSuite() {
 		Description: "List catalog items",
 	})
 	suite.Require().NoError(err, "Failed to create action")
+
+	_, err = createActionAtResourceServer(rsID, CreateActionRequest{
+		Name:        "Audit Catalog",
+		Handle:      "audit",
+		Description: "Audit the whole catalog",
+	})
+	suite.Require().NoError(err, "Failed to create resource server action")
 }
 
 func (suite *ResourceServerExportTestSuite) TearDownSuite() {
@@ -458,6 +546,12 @@ func (suite *ResourceServerExportTestSuite) TearDownSuite() {
 		deleteResource(suite.resourceServerID, suite.parentID)
 	}
 	if suite.resourceServerID != "" {
+		actions, err := listActionsAtResourceServer(suite.resourceServerID, 0, 100)
+		if err == nil {
+			for _, action := range actions.Actions {
+				deleteAction(suite.resourceServerID, action.ID)
+			}
+		}
 		deleteResourceServer(suite.resourceServerID)
 	}
 	if suite.ouID != "" {
@@ -480,6 +574,8 @@ func (suite *ResourceServerExportTestSuite) TestExportResourceServerByID() {
 	suite.Contains(yamlContent, "handle: items")
 	suite.Contains(yamlContent, "parent: catalog", "Child resources should reference their parent handle")
 	suite.Contains(yamlContent, "handle: list", "Nested actions should be exported")
+	suite.Contains(yamlContent, "\nactions:\n  - name: Audit Catalog\n    handle: audit\n",
+		"Actions of the resource server itself should be exported at the top level")
 }
 
 // The environment file beside the export carries the identifier the template variable stands for.
@@ -533,6 +629,87 @@ func (suite *ResourceServerExportTestSuite) TestImportFillsTheIdentifierFromTheV
 		handles = append(handles, res.Handle)
 	}
 	suite.Contains(handles, "catalog")
+
+	serverActions, err := listActionsAtResourceServer(suite.resourceServerID, 0, 100)
+	suite.Require().NoError(err)
+	suite.Require().Equal(1, serverActions.TotalResults, "An existing action of the resource server is kept once")
+	suite.Equal("audit", serverActions.Actions[0].Handle)
+}
+
+// TestServerActionsExportAndImport verifies that the actions of a resource server itself survive an
+// export, the deletion of the resource server and an import of the export, with their permissions and
+// MCP kinds, beside the actions of its resources.
+func (suite *ResourceServerExportTestSuite) TestServerActionsExportAndImport() {
+	rsID, err := createResourceServer(CreateResourceServerRequest{
+		Name:       "Server Actions Export",
+		Identifier: "https://api.example.com/server-actions-export",
+		Type:       "MCP",
+		OUID:       suite.ouID,
+	})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.DeleteResourceServerWithChildren(rsID)) }()
+
+	_, err = createActionAtResourceServer(rsID, CreateActionRequest{Name: "Search", Handle: "search"})
+	suite.Require().NoError(err)
+	_, err = createActionAtResourceServer(rsID, CreateActionRequest{
+		Name: "Read Docs", Handle: "docs", Description: "Read the documentation", Kind: "resource",
+	})
+	suite.Require().NoError(err)
+	bookingsID, err := createResource(rsID, CreateResourceRequest{Name: "Bookings", Handle: "bookings"})
+	suite.Require().NoError(err)
+	_, err = createActionAtResource(rsID, bookingsID, CreateActionRequest{Name: "Cancel", Handle: "cancel"})
+	suite.Require().NoError(err)
+
+	export, err := exportResourceServersResponse([]string{rsID})
+	suite.Require().NoError(err)
+	suite.Contains(export.Resources, "handle: search")
+	suite.Contains(export.Resources, "kind: resource")
+
+	variables := map[string]string{}
+	for _, line := range strings.Split(export.EnvironmentVariables, "\n") {
+		if key, value, ok := strings.Cut(line, "="); ok {
+			variables[key] = value
+		}
+	}
+	suite.Require().NoError(testutils.DeleteResourceServerWithChildren(rsID))
+
+	resp, err := doJSONRequest(http.MethodPost, testServerURL+"/import", map[string]interface{}{
+		"content":   export.Resources,
+		"variables": variables,
+		"options":   map[string]interface{}{"target": "runtime", "upsert": true},
+	})
+	suite.Require().NoError(err)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode, resp.Body)
+	var outcome struct {
+		Summary struct {
+			Imported int `json:"imported"`
+			Failed   int `json:"failed"`
+		} `json:"summary"`
+	}
+	suite.Require().NoError(json.Unmarshal([]byte(resp.Body), &outcome))
+	suite.Require().Equal(0, outcome.Summary.Failed, resp.Body)
+	suite.Require().Equal(1, outcome.Summary.Imported, resp.Body)
+
+	serverActions, err := listActionsAtResourceServer(rsID, 0, 100)
+	suite.Require().NoError(err)
+	suite.Require().Equal(2, serverActions.TotalResults)
+	type restored struct{ permission, kind, description string }
+	byHandle := map[string]restored{}
+	for _, action := range serverActions.Actions {
+		byHandle[action.Handle] = restored{action.Permission, action.Kind, action.Description}
+	}
+	suite.Equal(map[string]restored{
+		"search": {permission: "search", kind: "tool"},
+		"docs":   {permission: "docs", kind: "resource", description: "Read the documentation"},
+	}, byHandle)
+
+	resources, err := listResources(rsID, "", 0, 100)
+	suite.Require().NoError(err)
+	suite.Require().Equal(1, resources.TotalResults)
+	nested, err := listActionsAtResource(rsID, resources.Resources[0].ID, 0, 100)
+	suite.Require().NoError(err)
+	suite.Require().Equal(1, nested.TotalResults)
+	suite.Equal("bookings:cancel", nested.Actions[0].Permission)
 }
 
 // TestRepeatedHandleExportAndImport verifies a resource tree that repeats a handle under different
@@ -617,6 +794,7 @@ func (suite *ResourceServerExportTestSuite) TestRepeatedHandleExportAndImport() 
 func (suite *ResourceServerExportTestSuite) TestImportRejectsInvalidResourceTrees() {
 	tests := []struct {
 		name      string
+		header    string
 		delimiter string
 		resources string
 		errSubstr string
@@ -691,6 +869,42 @@ func (suite *ResourceServerExportTestSuite) TestImportRejectsInvalidResourceTree
 			errSubstr: "invalid handle 'read:all' for action 'Read'",
 		},
 		{
+			name: "resource server action handle that contains the delimiter",
+			resources: ` []
+actions:
+  - { name: Read All, handle: "read:all" }
+`,
+			errSubstr: "invalid handle 'read:all' for action 'Read All'",
+		},
+		{
+			name:   "MCP resource server action that shares a resource's permission",
+			header: "type: MCP\n",
+			resources: `
+  - { name: Ops, handle: ops }
+actions:
+  - { name: Ops Tool, handle: ops }
+`,
+			errSubstr: "duplicate permission 'ops' derived for handles 'ops' and 'ops'",
+		},
+		{
+			name: "resource server action with an unknown kind",
+			resources: ` []
+actions:
+  - { name: Prompt, handle: prompt, kind: prompt }
+`,
+			errSubstr: `"code":"RES-1001"`,
+		},
+		{
+			name: "resource action with an unknown kind",
+			resources: `
+  - name: App
+    handle: app
+    actions:
+      - { name: Prompt, handle: prompt, kind: prompt }
+`,
+			errSubstr: `"code":"RES-1001"`,
+		},
+		{
 			name:      "delimiter outside the allowed set",
 			delimiter: "#",
 			resources: `
@@ -711,7 +925,7 @@ func (suite *ResourceServerExportTestSuite) TestImportRejectsInvalidResourceTree
 				}
 				for _, server := range servers.ResourceServers {
 					if server.Identifier == identifier {
-						_ = deleteResourceServer(server.ID)
+						_ = testutils.DeleteResourceServerWithChildren(server.ID)
 					}
 				}
 			}()
@@ -721,8 +935,8 @@ func (suite *ResourceServerExportTestSuite) TestImportRejectsInvalidResourceTree
 				delimiter = ":"
 			}
 			content := fmt.Sprintf(
-				"resource_type: resource_server\nname: Invalid Tree %d\nidentifier: %s\nouId: %s\n"+
-					"delimiter: \"%s\"\nresources:%s", i, identifier, suite.ouID, delimiter, tc.resources)
+				"resource_type: resource_server\nname: Invalid Tree %d\nidentifier: %s\nouId: %s\n%s"+
+					"delimiter: \"%s\"\nresources:%s", i, identifier, suite.ouID, tc.header, delimiter, tc.resources)
 			resp, err := doJSONRequest(http.MethodPost, testServerURL+"/import", map[string]interface{}{
 				"content": content,
 				"options": map[string]interface{}{"target": "runtime", "upsert": true},
@@ -759,6 +973,16 @@ func (suite *ResourceServerExportTestSuite) TestExportDeclarativeResourceServerB
 	suite.Contains(yamlContent, "name: Declarative Resource Server")
 	suite.Contains(yamlContent, "handle: "+declarativeResourceHandle)
 	suite.Contains(yamlContent, "handle: "+declarativeReadActionHandle)
+}
+
+func (suite *ResourceServerExportTestSuite) TestExportDeclarativeResourceServerActions() {
+	yamlContent, err := exportResourceServers([]string{declarativeServerActionsServerID})
+	suite.Require().NoError(err)
+
+	suite.Contains(yamlContent, "\nactions:\n  - name: Search\n    handle: search\n    kind: tool\n",
+		"Actions a file declares on the resource server itself are exported at the top level")
+	suite.Contains(yamlContent, "handle: docs")
+	suite.Contains(yamlContent, "handle: cancel")
 }
 
 func (suite *ResourceServerExportTestSuite) TestExportNonExistentResourceServer() {

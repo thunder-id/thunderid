@@ -11,13 +11,13 @@ The **Identity Assertion Authorization Grant (ID-JAG)**, defined by the IETF dra
 
 ## Two Roles
 
-<ProductName /> plays both roles in the ID-JAG exchange.
+<ProductName /> plays both roles in the ID-JAG exchange, and both applications and agents can take part in either one.
 
-**<ProductName /> issues ID-JAGs** for your applications to present to an external authorization server:
+**<ProductName /> issues ID-JAGs** for your applications and agents to present to an external authorization server:
 
 ```mermaid
 flowchart LR
-  A[Application] -->|Token exchange| T1[ThunderID]
+  A[Application or agent] -->|Token exchange| T1[ThunderID]
   T1 -->|ID-JAG| E[External authorization server]
 ```
 
@@ -25,16 +25,16 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  I[External identity provider] -->|ID-JAG| C[Client]
+  I[External identity provider] -->|ID-JAG| C[Application or agent]
   C -->|jwt-bearer grant| T2[ThunderID]
 ```
 
-- To issue ID-JAGs from your own applications, see [Issue Identity Assertions](./issue-identity-assertions).
-- To accept ID-JAGs from an external identity provider, see [Accept Identity Assertions](./accept-identity-assertions).
+- To issue ID-JAGs from your own applications or agents, see [Issue Identity Assertions](./issue-identity-assertions).
+- To accept ID-JAGs from an external identity provider, for an application or an agent, see [Accept Identity Assertions](./accept-identity-assertions).
 
 ## Notes
 
-No ID-JAG discovery metadata is advertised in well-known documents; only the two grant URNs appear in `grant_types_supported`. Configuration, including trusted issuers and allowed audiences, is exchanged out of band. Scope semantics differ per leg: issuance passes the requested scope through verbatim, while acceptance intersects it with the assertion's own scope. Neither leg issues a refresh token.
+While `oauth.allowed_grant_types` allows them, the well-known documents list `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:grant-type:jwt-bearer` in `grant_types_supported` and, with the JWT bearer grant, the ID-JAG grant profile `urn:ietf:params:oauth:grant-profile:id-jag` in `authorization_grant_profiles_supported`. Configuration, including trusted issuers and allowed audiences, is exchanged out of band. Scope semantics differ per leg: issuance passes the requested scope through verbatim, while acceptance intersects it with the assertion's own scope. Neither leg issues a refresh token.
 
 ## Related Guides
 

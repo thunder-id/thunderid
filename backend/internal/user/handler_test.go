@@ -57,6 +57,38 @@ func TestHandleSelfUserGetRequest_Success(t *testing.T) {
 	require.JSONEq(t, string(expectedUser.Attributes), string(respUser.Attributes))
 }
 
+func TestHandleSelfUserGetRequest_OmitsOperatorNote(t *testing.T) {
+	userID := testUserID123
+	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
+
+	mockSvc := NewUserServiceInterfaceMock(t)
+	suspended := &providers.User{ID: userID, Status: &providers.AccessStatusReport{
+		Value: providers.AccessStatusSuspended,
+		Details: &providers.AccessStatusDetails{
+			Reason:       providers.AccessHoldReasonAdministrativeSuspension,
+			Since:        "2026-10-09T10:00:00Z",
+			OperatorNote: "Under investigation",
+		},
+	}}
+	mockSvc.On("GetUser", mock.Anything, userID, false).Return(suspended, nil)
+
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/users/me", nil)
+	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
+	rr := httptest.NewRecorder()
+
+	handler.HandleSelfUserGetRequest(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.NotContains(t, rr.Body.String(), "operatorNote")
+	var respUser providers.User
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&respUser))
+	require.Equal(t, providers.AccessStatusSuspended, respUser.Status.Value)
+	require.Equal(t, "2026-10-09T10:00:00Z", respUser.Status.Details.Since)
+	require.Equal(t, "Under investigation", suspended.Status.Details.OperatorNote,
+		"the service's value is not modified")
+}
+
 func TestHandleSelfUserGetRequest_IncludeDisplay(t *testing.T) {
 	userID := testUserID123
 	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
@@ -118,6 +150,36 @@ func TestHandleSelfUserPutRequest_Success(t *testing.T) {
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&respUser))
 	require.Equal(t, updatedUser.ID, respUser.ID)
 	require.JSONEq(t, string(updatedUser.Attributes), string(respUser.Attributes))
+}
+
+func TestHandleSelfUserPutRequest_OmitsOperatorNote(t *testing.T) {
+	userID := testUserID456
+	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
+	attributes := json.RawMessage(`{"email":"alice@example.com"}`)
+
+	mockSvc := NewUserServiceInterfaceMock(t)
+	updatedUser := &providers.User{ID: userID, Attributes: attributes, Status: &providers.AccessStatusReport{
+		Value: providers.AccessStatusSuspended,
+		Details: &providers.AccessStatusDetails{Reason: providers.AccessHoldReasonAdministrativeSuspension,
+			Since: "2026-10-21T08:00:00Z", OperatorNote: "Under investigation"},
+	}}
+	mockSvc.On("UpdateUserAttributes", mock.Anything, userID, attributes).Return(updatedUser, nil)
+
+	handler := newUserHandler(mockSvc)
+	body := bytes.NewBufferString(`{"attributes":{"email":"alice@example.com"}}`)
+	req := httptest.NewRequest(http.MethodPut, "/users/me", body)
+	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
+	rr := httptest.NewRecorder()
+
+	handler.HandleSelfUserPutRequest(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.NotContains(t, rr.Body.String(), "operatorNote")
+	var response providers.User
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
+	require.Equal(t, &providers.AccessStatusReport{Value: providers.AccessStatusSuspended,
+		Details: &providers.AccessStatusDetails{Reason: providers.AccessHoldReasonAdministrativeSuspension,
+			Since: "2026-10-21T08:00:00Z"}}, response.Status, "only the note is withheld from the holder")
 }
 
 func TestHandleSelfUserPutRequest_InvalidBody(t *testing.T) {
@@ -1350,9 +1412,6 @@ func TestHandleSharingPolicyPostRequest_RefusesFieldsTheSchemaDoesNotList(t *tes
 		"UnknownTopLevel":     `{"childUnits":{"mode":"all"},"extra":true}`,
 		"FlatTargets":         `{"targets":[{"scope":"child","ouId":"ou-1"}]}`,
 		"PolicyID":            `{"id":"policy-1","childUnits":{"mode":"all"}}`,
-		"SectionTerms":        `{"childUnits":{"mode":"all","overlayRules":{"roles":{"editable":false}}}}`,
-		"UnitTerms": `{"childUnits":{"mode":"selected","units":[` +
-			`{"ouId":"ou-1","reach":"unit","overlayRules":{"roles":{"editable":true}}}]}}`,
 	}
 	for name, body := range bodies {
 		t.Run(name, func(t *testing.T) {
@@ -1418,6 +1477,33 @@ func TestHandleSharingPolicyPostRequest_PassesTheWireShapeToTheService(t *testin
 	handler.HandleSharingPolicyPostRequest(rr, req)
 
 	require.Equal(t, http.StatusCreated, rr.Code)
+}
+
+// Overlay rules decode and reach the service, on a section and on a named unit. The refusal is the
+// framework's, since a user declares no field for them to govern.
+func TestHandleSharingPolicyPostRequest_PassesOverlayRulesToTheService(t *testing.T) {
+	var recorded sharing.PolicyRequest
+	mockSvc := NewUserServiceInterfaceMock(t)
+	mockSvc.On("CreateSharingPolicy", mock.Anything, "user-1", mock.Anything).
+		Run(func(args mock.Arguments) { recorded = args.Get(2).(sharing.PolicyRequest) }).
+		Return(sharing.Policy{}, &ErrorInvalidSharingPolicy).Once()
+	handler := newUserHandler(mockSvc)
+	body := `{"childUnits":{"mode":"selected","overlayRules":{"roles":{"editable":false}},"units":[` +
+		`{"ouId":"ou-1","reach":"unit","overlayRules":{"roles":{"editable":true}}}]}}`
+	req := httptest.NewRequest(http.MethodPost, "/users/user-1/sharing-policies", strings.NewReader(body))
+	req.SetPathValue("id", "user-1")
+	rr := httptest.NewRecorder()
+
+	handler.HandleSharingPolicyPostRequest(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	var errResp apierror.ErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+	require.Equal(t, ErrorInvalidSharingPolicy.Code, errResp.Code)
+	require.NotNil(t, recorded.ChildUnits)
+	require.Contains(t, recorded.ChildUnits.OverlayRules, "roles")
+	require.Len(t, recorded.ChildUnits.Units, 1)
+	require.Contains(t, recorded.ChildUnits.Units[0].OverlayRules, "roles")
 }
 
 func TestHandleSharingPolicyPutRequest_RefusesAChangeOfIssuer(t *testing.T) {
@@ -1513,4 +1599,26 @@ func TestHandleSharingPolicyListRequest_Pagination(t *testing.T) {
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
+}
+
+// A user with no operator note is returned as is, without a copy.
+func TestWithoutOperatorNote_ReturnsAUserWithoutANoteUnchanged(t *testing.T) {
+	cases := []struct {
+		name string
+		user *providers.User
+	}{
+		{name: "no user"},
+		{name: "no status", user: &providers.User{ID: testUserID123}},
+		{name: "no details", user: &providers.User{ID: testUserID123,
+			Status: &providers.AccessStatusReport{Value: providers.AccessStatusActive}}},
+		{name: "an empty note", user: &providers.User{ID: testUserID123, Status: &providers.AccessStatusReport{
+			Value:   providers.AccessStatusSuspended,
+			Details: &providers.AccessStatusDetails{Reason: providers.AccessHoldReasonAdministrativeSuspension},
+		}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.True(t, withoutOperatorNote(tc.user) == tc.user)
+		})
+	}
 }

@@ -58,6 +58,7 @@ const NODE_TO_STEP_TYPE_MAP: Record<string, string> = {
   END: StepTypes.End,
   CALL: StepTypes.Call,
   START: StaticStepTypes.Start,
+  VARIABLES: StaticStepTypes.Variables,
 };
 
 /**
@@ -305,7 +306,8 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
           height: apiNode.layout.size.height,
         }
       : undefined,
-    deletable: stepType !== StaticStepTypes.Start && stepType !== StepTypes.End,
+    deletable:
+      stepType !== StaticStepTypes.Start && stepType !== StaticStepTypes.Variables && stepType !== StepTypes.End,
     data: {},
   };
 
@@ -313,6 +315,15 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
   if (stepType === StaticStepTypes.Start) {
     canvasNode.data = {
       displayOnly: true,
+    };
+    canvasNode.deletable = false;
+  }
+
+  // Handle VARIABLES nodes: a placeholder on the canvas that carries the declarations so a save writes them back
+  if (stepType === StaticStepTypes.Variables) {
+    canvasNode.data = {
+      displayOnly: true,
+      inputs: apiNode.inputs ?? [],
     };
     canvasNode.deletable = false;
   }
@@ -413,6 +424,21 @@ function generateEdgesFromNodes(apiNodes: FlowNode[]): Edge[] {
     if (stepType === StaticStepTypes.Start && node.onSuccess && nodeIds.has(node.onSuccess)) {
       edges.push({
         id: `${node.id}-${node.onSuccess}`,
+        source: node.id,
+        sourceHandle: `${node.id}${VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX}`,
+        target: node.onSuccess,
+        type: 'smoothstep',
+        animated: false,
+        markerEnd: {
+          type: MarkerType.Arrow,
+        },
+      });
+    }
+
+    // Handle VARIABLES node -> next step connection
+    if (stepType === StaticStepTypes.Variables && node.onSuccess && nodeIds.has(node.onSuccess)) {
+      edges.push({
+        id: `${node.id}-to-${node.onSuccess}`,
         source: node.id,
         sourceHandle: `${node.id}${VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX}`,
         target: node.onSuccess,

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 
+	authzdetail "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/pkce"
@@ -21,23 +22,29 @@ import (
 type DiscoveryServiceInterface interface {
 	GetOAuth2AuthorizationServerMetadata(ctx context.Context) *OAuth2AuthorizationServerMetadata
 	GetOIDCMetadata(ctx context.Context) (*OIDCProviderMetadata, error)
+	ListAuthorizationDetailsTypeMetadata(ctx context.Context) ([]AuthorizationDetailsTypeMetadata, error)
+	GetAuthorizationDetailsTypeMetadata(ctx context.Context, value string) (*AuthorizationDetailsTypeMetadata,
+		error)
 }
 
 // discoveryService implements DiscoveryServiceInterface
 type discoveryService struct {
-	cfg            oauthconfig.Config
-	cryptoProvider providers.RuntimeCryptoProvider
-	jweService     jwe.JWEServiceInterface
+	cfg              oauthconfig.Config
+	cryptoProvider   providers.RuntimeCryptoProvider
+	jweService       jwe.JWEServiceInterface
+	authzDetailTypes providers.AuthorizationDetailTypeProvider
 }
 
 // newDiscoveryService creates a new discovery service instance
 func newDiscoveryService(
-	cryptoProvider providers.RuntimeCryptoProvider, jweService jwe.JWEServiceInterface, cfg oauthconfig.Config,
+	cryptoProvider providers.RuntimeCryptoProvider, jweService jwe.JWEServiceInterface,
+	authzDetailTypes providers.AuthorizationDetailTypeProvider, cfg oauthconfig.Config,
 ) DiscoveryServiceInterface {
 	return &discoveryService{
-		cfg:            cfg,
-		cryptoProvider: cryptoProvider,
-		jweService:     jweService,
+		cfg:              cfg,
+		cryptoProvider:   cryptoProvider,
+		jweService:       jweService,
+		authzDetailTypes: authzDetailTypes,
 	}
 }
 
@@ -62,6 +69,7 @@ func (ds *discoveryService) GetOAuth2AuthorizationServerMetadata(
 		DPoPSigningAlgValuesSupported:              ds.getSupportedDPoPSigningAlgs(),
 		AuthorizationGrantProfilesSupported:        ds.getSupportedAuthorizationGrantProfiles(),
 		ClientIDMetadataDocumentSupported:          ds.cfg.OAuth.CIMD.IsEnabled(),
+		AuthorizationDetailsTypesSupported:         ds.getSupportedAuthorizationDetailsTypes(ctx),
 	}
 
 	if slices.Contains(metadata.GrantTypesSupported, string(providers.GrantTypeCIBA)) {
@@ -75,7 +83,27 @@ func (ds *discoveryService) GetOAuth2AuthorizationServerMetadata(
 	if ds.cfg.OAuth.DCR.IsEnabled() {
 		metadata.RegistrationEndpoint = ds.getRegistrationEndpoint()
 	}
+	if ds.isTypeMetadataEnabled() {
+		metadata.AuthorizationDetailsTypesEndpoint = ds.cfg.BaseURL + constants.OAuth2AuthorizationDetailsTypesEndpoint
+	}
 	return metadata
+}
+
+// getSupportedAuthorizationDetailsTypes returns the registered type values, or nil when none can be read.
+func (ds *discoveryService) getSupportedAuthorizationDetailsTypes(ctx context.Context) []string {
+	if ds.authzDetailTypes == nil {
+		return nil
+	}
+	registered, svcErr := ds.authzDetailTypes.ListAllAuthorizationDetailTypes(ctx)
+	if svcErr != nil {
+		log.GetLogger().Error(ctx, "Failed to list authorization details types", log.String("code", svcErr.Code))
+		return nil
+	}
+	types := make([]string, 0, len(registered))
+	for i := range registered {
+		types = append(types, registered[i].Type)
+	}
+	return types
 }
 
 // GetOIDCMetadata returns OpenID Connect Provider Metadata
@@ -118,6 +146,43 @@ func (ds *discoveryService) GetOIDCMetadata(ctx context.Context) (*OIDCProviderM
 	oidcProviderMetadata.BackchannelLogoutSessionSupported = backchannel
 
 	return oidcProviderMetadata, nil
+}
+
+// ListAuthorizationDetailsTypeMetadata returns the request view of every registered type.
+func (ds *discoveryService) ListAuthorizationDetailsTypeMetadata(
+	ctx context.Context) ([]AuthorizationDetailsTypeMetadata, error) {
+	if ds.authzDetailTypes == nil {
+		return []AuthorizationDetailsTypeMetadata{}, nil
+	}
+	registered, svcErr := ds.authzDetailTypes.ListAllAuthorizationDetailTypes(ctx)
+	if svcErr != nil {
+		return nil, errAuthorizationDetailsTypesUnavailable
+	}
+	types := make([]AuthorizationDetailsTypeMetadata, 0, len(registered))
+	for i := range registered {
+		metadata, err := requestView(&registered[i])
+		if err != nil {
+			return nil, err
+		}
+		types = append(types, *metadata)
+	}
+	return types, nil
+}
+
+// GetAuthorizationDetailsTypeMetadata returns the request view of the type registered under value, or nil.
+func (ds *discoveryService) GetAuthorizationDetailsTypeMetadata(ctx context.Context,
+	value string) (*AuthorizationDetailsTypeMetadata, error) {
+	if ds.authzDetailTypes == nil {
+		return nil, nil
+	}
+	t, svcErr := ds.authzDetailTypes.GetAuthorizationDetailTypeByValue(ctx, value)
+	if svcErr != nil {
+		return nil, errAuthorizationDetailsTypesUnavailable
+	}
+	if t == nil {
+		return nil, nil
+	}
+	return requestView(t)
 }
 
 func (ds *discoveryService) getEndSessionEndpoint() string {
@@ -189,7 +254,13 @@ func (ds *discoveryService) isGlobalPARRequired() bool {
 }
 
 func (ds *discoveryService) getSupportedDPoPSigningAlgs() []string {
-	return ds.cryptoProvider.GetSupportedSigningAlgorithms()
+	algs := ds.cfg.OAuth.DPoP.AllowedAlgs
+	if len(algs) == 0 {
+		return nil
+	}
+	out := make([]string, len(algs))
+	copy(out, algs)
+	return out
 }
 
 func (ds *discoveryService) getSupportedTokenEndpointAuthSigningAlgs() []string {
@@ -246,4 +317,25 @@ func (ds *discoveryService) getSupportedAuthorizationGrantProfiles() []string {
 	}
 
 	return supportedProfiles
+}
+
+// isTypeMetadataEnabled reports whether the type metadata endpoint is served and advertised.
+func (ds *discoveryService) isTypeMetadataEnabled() bool {
+	return ds.cfg.OAuth.AuthorizationDetails.IsTypeMetadataEnabled()
+}
+
+// requestView returns the metadata a client sees for a type.
+func requestView(t *providers.AuthorizationDetailType) (*AuthorizationDetailsTypeMetadata, error) {
+	schema, err := authzdetail.RequestSchema(t.Schema)
+	if err != nil {
+		return nil, err
+	}
+	return &AuthorizationDetailsTypeMetadata{
+		Type:          t.Type,
+		Name:          t.Name,
+		Description:   t.Description,
+		Version:       t.Version,
+		Schema:        schema,
+		Modifications: authzdetail.ClientModifications(t.Schema),
+	}, nil
 }

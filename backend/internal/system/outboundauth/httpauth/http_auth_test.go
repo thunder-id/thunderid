@@ -55,7 +55,8 @@ func TestAuthenticationMethods(t *testing.T) {
 
 func TestRejectsInvalidAPIKeyHeaders(t *testing.T) {
 	for _, header := range []struct{ name, value string }{
-		{"X Key", "value"}, {"Content-Type", "value"}, {"Content-Length", "value"}, {"Host", "value"},
+		{"X Key", "value"}, {"X.Api.Key", "value"}, {"Content-Type", "value"}, {"Content-Length", "value"},
+		{"Host", "value"},
 		{"Transfer-Encoding", "value"}, {"Connection", "value"}, {"TE", "value"},
 		{"Trailer", "value"}, {"Upgrade", "value"}, {"Proxy-Connection", "value"},
 		{"Keep-Alive", "value"}, {"Proxy-Authorization", "value"},

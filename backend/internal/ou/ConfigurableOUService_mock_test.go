@@ -1475,6 +1475,172 @@ func (_c *ConfigurableOUServiceMock_IsParent_Call) RunAndReturn(run func(ctx con
 	return _c
 }
 
+// ResolveOwner provides a mock function for the type ConfigurableOUServiceMock
+func (_mock *ConfigurableOUServiceMock) ResolveOwner(ctx context.Context, ouID string, ouHandle string, errs OwnerErrors) (string, *common.ServiceError) {
+	ret := _mock.Called(ctx, ouID, ouHandle, errs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveOwner")
+	}
+
+	var r0 string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, OwnerErrors) (string, *common.ServiceError)); ok {
+		return returnFunc(ctx, ouID, ouHandle, errs)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, OwnerErrors) string); ok {
+		r0 = returnFunc(ctx, ouID, ouHandle, errs)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, OwnerErrors) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, ouID, ouHandle, errs)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ConfigurableOUServiceMock_ResolveOwner_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveOwner'
+type ConfigurableOUServiceMock_ResolveOwner_Call struct {
+	*mock.Call
+}
+
+// ResolveOwner is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ouID string
+//   - ouHandle string
+//   - errs OwnerErrors
+func (_e *ConfigurableOUServiceMock_Expecter) ResolveOwner(ctx any, ouID any, ouHandle any, errs any) *ConfigurableOUServiceMock_ResolveOwner_Call {
+	return &ConfigurableOUServiceMock_ResolveOwner_Call{Call: _e.mock.On("ResolveOwner", ctx, ouID, ouHandle, errs)}
+}
+
+func (_c *ConfigurableOUServiceMock_ResolveOwner_Call) Run(run func(ctx context.Context, ouID string, ouHandle string, errs OwnerErrors)) *ConfigurableOUServiceMock_ResolveOwner_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 OwnerErrors
+		if args[3] != nil {
+			arg3 = args[3].(OwnerErrors)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ConfigurableOUServiceMock_ResolveOwner_Call) Return(s string, serviceError *common.ServiceError) *ConfigurableOUServiceMock_ResolveOwner_Call {
+	_c.Call.Return(s, serviceError)
+	return _c
+}
+
+func (_c *ConfigurableOUServiceMock_ResolveOwner_Call) RunAndReturn(run func(ctx context.Context, ouID string, ouHandle string, errs OwnerErrors) (string, *common.ServiceError)) *ConfigurableOUServiceMock_ResolveOwner_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ResolveOwnerForUpdate provides a mock function for the type ConfigurableOUServiceMock
+func (_mock *ConfigurableOUServiceMock) ResolveOwnerForUpdate(ctx context.Context, requestedID string, requestedHandle string, currentID string, errs OwnerErrors) (string, *common.ServiceError) {
+	ret := _mock.Called(ctx, requestedID, requestedHandle, currentID, errs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveOwnerForUpdate")
+	}
+
+	var r0 string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, OwnerErrors) (string, *common.ServiceError)); ok {
+		return returnFunc(ctx, requestedID, requestedHandle, currentID, errs)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, OwnerErrors) string); ok {
+		r0 = returnFunc(ctx, requestedID, requestedHandle, currentID, errs)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, OwnerErrors) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, requestedID, requestedHandle, currentID, errs)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ConfigurableOUServiceMock_ResolveOwnerForUpdate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveOwnerForUpdate'
+type ConfigurableOUServiceMock_ResolveOwnerForUpdate_Call struct {
+	*mock.Call
+}
+
+// ResolveOwnerForUpdate is a helper method to define mock.On call
+//   - ctx context.Context
+//   - requestedID string
+//   - requestedHandle string
+//   - currentID string
+//   - errs OwnerErrors
+func (_e *ConfigurableOUServiceMock_Expecter) ResolveOwnerForUpdate(ctx any, requestedID any, requestedHandle any, currentID any, errs any) *ConfigurableOUServiceMock_ResolveOwnerForUpdate_Call {
+	return &ConfigurableOUServiceMock_ResolveOwnerForUpdate_Call{Call: _e.mock.On("ResolveOwnerForUpdate", ctx, requestedID, requestedHandle, currentID, errs)}
+}
+
+func (_c *ConfigurableOUServiceMock_ResolveOwnerForUpdate_Call) Run(run func(ctx context.Context, requestedID string, requestedHandle string, currentID string, errs OwnerErrors)) *ConfigurableOUServiceMock_ResolveOwnerForUpdate_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		var arg4 OwnerErrors
+		if args[4] != nil {
+			arg4 = args[4].(OwnerErrors)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *ConfigurableOUServiceMock_ResolveOwnerForUpdate_Call) Return(s string, serviceError *common.ServiceError) *ConfigurableOUServiceMock_ResolveOwnerForUpdate_Call {
+	_c.Call.Return(s, serviceError)
+	return _c
+}
+
+func (_c *ConfigurableOUServiceMock_ResolveOwnerForUpdate_Call) RunAndReturn(run func(ctx context.Context, requestedID string, requestedHandle string, currentID string, errs OwnerErrors) (string, *common.ServiceError)) *ConfigurableOUServiceMock_ResolveOwnerForUpdate_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetDependencyRegistry provides a mock function for the type ConfigurableOUServiceMock
 func (_mock *ConfigurableOUServiceMock) SetDependencyRegistry(r resourcedependency.Registry) {
 	_mock.Called(r)

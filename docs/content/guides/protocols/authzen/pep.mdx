@@ -76,7 +76,7 @@ During an authorization flow, <ProductName /> resolves the target resource serve
 2. Select **Policy decision point (PDP)**, then select **AuthZEN**.
 3. Enter a connection name and continue to the connection configuration.
 4. Enter the required **AuthZEN evaluation endpoint**. Optionally enter an **AuthZEN batch evaluation endpoint**, then select **Create connection**.
-5. On the **General** tab, configure **Timeout** and **Retry count**. <ProductName /> uses the configured defaults when you leave them unchanged.
+5. On the **General** tab, configure **Timeout** and **Retry count**. <ProductName /> uses the configured defaults when you leave them unchanged. The **Organization unit** card on this tab shows the owner of the connection.
 6. Open the **Authentication** tab. Select **None**, **Bearer token**, **Basic authentication**, or **API key** as the authentication method.
 7. To configure which user and agent attributes to send to the configured AuthZEN PDP, open the **Attribute configuration** tab.
    1. Under **User**, select a user type. Select the user attributes to send to the configured AuthZEN PDP. If the PDP expects different property names, map each attribute to the corresponding name.
@@ -84,6 +84,8 @@ During an authorization flow, <ProductName /> resolves the target resource serve
 
 Authenticated remote evaluation endpoints must use HTTPS. Loopback endpoints may use HTTP. Changing the single or batch
 evaluation endpoint requires fresh credentials before the connection can be saved.
+
+Every AuthZEN PDP connection belongs to one organization unit. Through the API, `POST /connections/authzen-pdp` requires `ouId` in the body, and a request without it fails with `CON-1025`. A declarative AuthZEN PDP connection must carry `ouId` or `ouHandle`.
 
 ### Assign an authorization engine to a resource server
 

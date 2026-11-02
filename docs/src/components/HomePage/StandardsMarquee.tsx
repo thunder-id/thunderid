@@ -17,7 +17,8 @@ interface Standard {
 const STANDARDS: Standard[] = [
   {label: 'OAuth 2.1', logo: 'oauth'},
   {label: 'OpenID Connect', logo: 'openid'},
-  {label: 'SAML', logo: 'saml'},
+  // Hidden for now; restore when ready.
+  // {label: 'SAML', logo: 'saml'},
   {label: 'SCIM', logo: 'scim', wordmark: {width: 60}},
   {label: 'AuthZEN', logo: 'openid'},
   {label: 'OpenID4VCI', logo: 'openid'},
@@ -25,7 +26,8 @@ const STANDARDS: Standard[] = [
   {label: 'ID-JAG'},
   {label: 'CIBA', logo: 'ciba', wordmark: {width: 55}},
   {label: 'MCP', logo: 'mcp'},
-  {label: 'A2A', logo: 'a2a'},
+  // Hidden for now; restore when ready.
+  // {label: 'A2A', logo: 'a2a'},
 ];
 
 function StandardItem({label, logo = undefined, wordmark = undefined}: Standard): JSX.Element {

@@ -5,7 +5,7 @@ import {QueryErrorNotice} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
-import {Pencil, QrCode as QrCodeIcon, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Pencil, QrCode as QrCodeIcon, ShieldCheck, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -69,7 +69,12 @@ export default function VerifiablePresentationsList(): JSX.Element {
         flex: 1,
         minWidth: 180,
         renderCell: (params: DataGrid.GridRenderCellParams<VerifiablePresentationSummary>): JSX.Element => (
-          <Typography variant="body2">{params.row.name ?? '-'}</Typography>
+          <ListingTable.CellIcon
+            icon={<ShieldCheck size={20} />}
+            primary={params.row.name ?? '-'}
+            secondary={params.row.handle}
+            sx={{width: '100%'}}
+          />
         ),
       },
       {
@@ -94,9 +99,10 @@ export default function VerifiablePresentationsList(): JSX.Element {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<VerifiablePresentationSummary>): JSX.Element => (
           <ListingTable.RowActions>
-            <Tooltip title={t('verifiable-presentations:listing.verify')}>
+            <Tooltip title={t('verifiable-presentations:listing.verify', 'Verify')}>
               <IconButton
                 size="small"
+                aria-label={t('verifiable-presentations:listing.verify', 'Verify')}
                 onClick={(e) => {
                   e.stopPropagation();
                   setVerifyHandle(params.row.handle);
@@ -105,9 +111,10 @@ export default function VerifiablePresentationsList(): JSX.Element {
                 <QrCodeIcon size={16} />
               </IconButton>
             </Tooltip>
-            <Tooltip title={t('common:actions.edit')}>
+            <Tooltip title={t('common:actions.edit', 'Edit')}>
               <IconButton
                 size="small"
+                aria-label={t('common:actions.edit', 'Edit')}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleEditClick(params.row.id);
@@ -116,10 +123,11 @@ export default function VerifiablePresentationsList(): JSX.Element {
                 <Pencil size={16} />
               </IconButton>
             </Tooltip>
-            <Tooltip title={t('common:actions.delete')}>
+            <Tooltip title={t('common:actions.delete', 'Delete')}>
               <IconButton
                 size="small"
                 color="error"
+                aria-label={t('common:actions.delete', 'Delete')}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleDeleteClick(params.row.id);
@@ -149,8 +157,8 @@ export default function VerifiablePresentationsList(): JSX.Element {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
-        <ListingTable.Container disablePaper>
+      <ListingTable.Provider variant="data-grid" loading={isLoading}>
+        <ListingTable.Container>
           <ListingTable.DataGrid
             rows={data ?? []}
             columns={columns}
@@ -158,6 +166,7 @@ export default function VerifiablePresentationsList(): JSX.Element {
             onRowClick={(params) => {
               handleEditClick((params.row as VerifiablePresentationSummary).id);
             }}
+            rowHeight={64}
             pageSizeOptions={[5, 10, 25]}
             disableRowSelectionOnClick
             // Filtering is not wired end to end, so the column filter panel stays hidden.

@@ -17,6 +17,9 @@ import {
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {AccessSwitch, ClearedAccessItem} from '../models/organization-access';
+import translateOrganizationAccessWording, {
+  type OrganizationAccessWordingKey,
+} from '../utils/translateOrganizationAccessWording';
 
 export interface SwitchAccessConfirmDialogProps {
   accessSwitch: AccessSwitch | null;
@@ -35,6 +38,10 @@ export interface SwitchAccessConfirmDialogProps {
    * Whether units can hold settings of their own for this resource, which a switch also clears.
    */
   hasUnitSettings?: boolean;
+  /**
+   * The i18n namespace holding the resource's own wording for stopping sharing, e.g. `users`.
+   */
+  wordingNamespace?: string;
   onCancel: () => void;
   onConfirm: (accessSwitch: AccessSwitch) => void;
 }
@@ -51,11 +58,14 @@ export default function SwitchAccessConfirmDialog({
   resourceName,
   unitsById,
   hasUnitSettings = false,
+  wordingNamespace = undefined,
   onCancel,
   onConfirm,
 }: SwitchAccessConfirmDialogProps): JSX.Element {
   const {t} = useTranslation();
   const stopsSharing = accessSwitch?.field === 'scope' && accessSwitch.to === 'owner';
+  const wording = (key: OrganizationAccessWordingKey): string =>
+    translateOrganizationAccessWording(t, wordingNamespace, key, {resource: resourceName, owner: ownerName});
   // Leaving "Every organization unit" deletes that policy, so the dialog says so in its own words.
   const changesScope = accessSwitch?.field === 'scope' && accessSwitch.losesEveryUnit;
 
@@ -97,7 +107,7 @@ export default function SwitchAccessConfirmDialog({
   return (
     <Dialog open={Boolean(accessSwitch)} onClose={onCancel} maxWidth="sm" fullWidth>
       <DialogTitle>
-        {stopsSharing && t('resourceSharing:switch.titleOwner', 'Stop sharing {{resource}}?', {resource: resourceName})}
+        {stopsSharing && wording('stopSharingTitle')}
         {!stopsSharing && changesScope && t('resourceSharing:switch.titleChangeScope', 'Change the scope?')}
         {!stopsSharing &&
           !changesScope &&
@@ -106,11 +116,7 @@ export default function SwitchAccessConfirmDialog({
       <DialogContent>
         <Stack spacing={2}>
           <DialogContentText>
-            {stopsSharing &&
-              t('resourceSharing:switch.introOwner', 'Only {{owner}} will be able to use {{resource}}. This clears:', {
-                owner: ownerName,
-                resource: resourceName,
-              })}
+            {stopsSharing && wording('stopSharingIntro')}
             {!stopsSharing &&
               changesScope &&
               t(
@@ -176,7 +182,7 @@ export default function SwitchAccessConfirmDialog({
             if (accessSwitch) onConfirm(accessSwitch);
           }}
         >
-          {stopsSharing && t('resourceSharing:switch.confirmOwner', 'Stop sharing')}
+          {stopsSharing && wording('stopSharingConfirm')}
           {!stopsSharing &&
             changesScope &&
             t('resourceSharing:switch.confirmChangeScope', 'Delete policy and change scope')}

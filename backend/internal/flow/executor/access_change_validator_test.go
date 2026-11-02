@@ -192,7 +192,7 @@ func (s *AccessChangeValidatorTestSuite) TestExecutePromptsForTheModeInputs() {
 }
 
 func (s *AccessChangeValidatorTestSuite) TestRoleAssignmentRemoval_PlansOneCriterionPerEntityScope() {
-	s.assignments.On("ValidateRemoveAssignment", mock.Anything, testRoleID, testAssigneeID).
+	s.assignments.On("ValidateRemoveAssignment", mock.Anything, testRoleID, "", testAssigneeID).
 		Return(&revocation.AccessRevocationTarget{
 			EntityIDs: []string{testAssigneeID, "entity-2"},
 			Scopes: []revocation.AudienceScope{
@@ -229,8 +229,29 @@ func (s *AccessChangeValidatorTestSuite) TestRoleAssignmentRemoval_PlansOneCrite
 	})
 }
 
+// An assignment made in an organization unit the role is shared with is validated there, and the
+// plan carries that unit to the removal.
+func (s *AccessChangeValidatorTestSuite) TestRoleAssignmentRemoval_CarriesTheAssignmentOU() {
+	s.assignments.On("ValidateRemoveAssignment", mock.Anything, testRoleID, "ou-child", testAssigneeID).
+		Return(&revocation.AccessRevocationTarget{
+			EntityIDs:    []string{testAssigneeID},
+			Scopes:       []revocation.AudienceScope{{Audience: testCaliforniaAud, Scope: testLicenceScope}},
+			AssigneeType: string(role.AssigneeTypeUser),
+		}, nil)
+
+	resp, err := s.validator().Execute(administrationNodeContext(
+		ExecutorModeRoleAssignmentRemoval, map[string]string{
+			revocationInputRole: testRoleID, revocationInputAssignee: testAssigneeID,
+			revocationInputAssignmentOU: "ou-child",
+		}))
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, resp.Status)
+	s.Equal("ou-child", s.planFrom(resp).ActionArgs[revocationInputAssignmentOU])
+}
+
 func (s *AccessChangeValidatorTestSuite) TestRoleAssignmentRemoval_NothingToRevoke() {
-	s.assignments.On("ValidateRemoveAssignment", mock.Anything, testRoleID, testAssigneeID).
+	s.assignments.On("ValidateRemoveAssignment", mock.Anything, testRoleID, "", testAssigneeID).
 		Return(&revocation.AccessRevocationTarget{EntityIDs: []string{testAssigneeID}}, nil)
 
 	resp, err := s.validator().Execute(administrationNodeContext(
@@ -262,7 +283,8 @@ func (s *AccessChangeValidatorTestSuite) TestCarriesValidatorRefusal() {
 
 func (s *AccessChangeValidatorTestSuite) TestUncodedRefusalFallsBackToTheModeError() {
 	uncoded := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType}
-	s.assignments.On("ValidateRemoveAssignment", mock.Anything, mock.Anything, mock.Anything).Return(nil, uncoded)
+	s.assignments.On("ValidateRemoveAssignment", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, uncoded)
 	s.roles.On("ValidateDeleteRole", mock.Anything, mock.Anything).Return(nil, uncoded)
 	s.roles.On("ValidateUpdateRolePermissions", mock.Anything, mock.Anything, mock.Anything).Return(nil, uncoded)
 	s.roles.On("ValidateGroupDeletion", mock.Anything, mock.Anything).Return(nil, uncoded)

@@ -14,6 +14,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/ou"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -35,11 +36,20 @@ type NotificationSenderMgtSvcInterface interface {
 	GetSenderUsages(ctx context.Context, id string) (*resourcedependency.DependenciesResponse,
 		*tidcommon.ServiceError)
 	SetDependencyRegistry(r resourcedependency.Registry)
+	ResolveSenderOU(ctx context.Context, sender *common.NotificationSenderDTO) *tidcommon.ServiceError
+}
+
+// ownerErrors are the errors given when the organization unit of a notification sender is refused.
+var ownerErrors = ou.OwnerErrors{
+	Required: ErrorSenderOURequired,
+	NotFound: ErrorInvalidSenderOU,
+	Changed:  ErrorSenderOUUpdateNotAllowed,
 }
 
 // notificationSenderMgtService implements the NotificationSenderMgtSvcInterface.
 type notificationSenderMgtService struct {
 	notificationStore  notificationStoreInterface
+	ouService          ou.OrganizationUnitServiceInterface
 	transactioner      providers.Transactioner
 	dependencyRegistry resourcedependency.Registry
 	uuidGenerator      func() (string, error)
@@ -47,9 +57,11 @@ type notificationSenderMgtService struct {
 
 // newNotificationSenderMgtService returns a new instance of NotificationSenderMgtSvcInterface.
 func newNotificationSenderMgtService(
-	store notificationStoreInterface, tx providers.Transactioner) NotificationSenderMgtSvcInterface {
+	store notificationStoreInterface, tx providers.Transactioner,
+	ouService ou.OrganizationUnitServiceInterface) NotificationSenderMgtSvcInterface {
 	return &notificationSenderMgtService{
 		notificationStore: store,
+		ouService:         ouService,
 		transactioner:     tx,
 		uuidGenerator:     sysutils.GenerateUUIDv7,
 	}
@@ -68,6 +80,9 @@ func (s *notificationSenderMgtService) CreateSender(
 
 	if err := validateNotificationSender(sender); err != nil {
 		return nil, err
+	}
+	if svcErr := s.ResolveSenderOU(ctx, &sender); svcErr != nil {
+		return nil, svcErr
 	}
 
 	applyDefaultSenderProperties(&sender)
@@ -117,9 +132,23 @@ func (s *notificationSenderMgtService) CreateSender(
 		Name:        sender.Name,
 		Description: sender.Description,
 		Type:        sender.Type,
+		OUID:        sender.OUID,
 		Provider:    sender.Provider,
 		Properties:  sender.Properties,
 	}, nil
+}
+
+// ResolveSenderOU sets the organization unit a notification sender is owned by. The owner is named by id or by handle,
+// and a handle is resolved to the id of the unit it names; when both are given the id wins. A sender has to name an
+// organization unit, and it has to exist.
+func (s *notificationSenderMgtService) ResolveSenderOU(
+	ctx context.Context, sender *common.NotificationSenderDTO) *tidcommon.ServiceError {
+	ouID, svcErr := s.ouService.ResolveOwner(ctx, sender.OUID, sender.OUHandle, ownerErrors)
+	if svcErr != nil {
+		return svcErr
+	}
+	sender.OUID = ouID
+	return nil
 }
 
 // ListSenders retrieves all notification senders.
@@ -246,6 +275,15 @@ func (s *notificationSenderMgtService) UpdateSender(ctx context.Context, id stri
 			}
 		}
 
+		// An owner cannot change. Leaving it out keeps the one the sender has.
+		ouID, ouErr := s.ouService.ResolveOwnerForUpdate(
+			txCtx, sender.OUID, sender.OUHandle, senderRetv.OUID, ownerErrors)
+		if ouErr != nil {
+			svcErr = ouErr
+			return errors.New("organization unit of a notification sender cannot be resolved")
+		}
+		sender.OUID = ouID
+
 		// Ensure the type is not changed
 		if sender.Type != senderRetv.Type {
 			logger.Debug(ctx, "Attempting to change sender type", log.String("id", id),
@@ -276,6 +314,7 @@ func (s *notificationSenderMgtService) UpdateSender(ctx context.Context, id stri
 		Name:        sender.Name,
 		Description: sender.Description,
 		Type:        sender.Type,
+		OUID:        sender.OUID,
 		Provider:    sender.Provider,
 		Properties:  sender.Properties,
 	}, nil

@@ -80,6 +80,7 @@ export const StepTypes = {
 export const StaticStepTypes = {
   UserOnboard: 'USER_ONBOARD',
   Start: 'START',
+  Variables: 'VARIABLES',
 } as const;
 
 export const ExecutionTypes = {
@@ -103,6 +104,7 @@ export const ExecutionTypes = {
   ProvisioningExecutor: 'ProvisioningExecutor',
   OwnerResolver: 'OwnerResolver',
   HTTPRequestExecutor: 'HTTPRequestExecutor',
+  ExtensionExecutor: 'ExtensionExecutor',
   OUExecutor: 'OUExecutor',
   UserTypeResolver: 'UserTypeResolver',
   AgentTypeResolver: 'AgentTypeResolver',
@@ -110,6 +112,7 @@ export const ExecutionTypes = {
   Session: 'SessionExecutor',
   SessionSignOut: 'SessionSignOutExecutor',
   PreDelete: 'PreDeleteExecutor',
+  PreSuspend: 'PreSuspendExecutor',
   ApplicationActionValidator: 'ApplicationActionValidator',
   ApplicationDelete: 'ApplicationDeleteExecutor',
   ClientSecret: 'ClientSecretExecutor',
@@ -118,6 +121,7 @@ export const ExecutionTypes = {
   RoleExecutor: 'RoleExecutor',
   GroupExecutor: 'GroupExecutor',
   ActionDeletion: 'ActionDeletionExecutor',
+  IdentityGovernance: 'IdentityGovernanceExecutor',
   AuthAssert: 'AuthAssertExecutor',
   Authorization: 'AuthorizationExecutor',
   AccountLinking: 'AccountLinkingExecutor',

@@ -119,6 +119,16 @@ To update an application:
 
 Changes take effect immediately for new authentication requests. Active sessions and issued access tokens are not affected until they expire. Rotating the client secret is the exception: it also rejects refresh tokens issued before the rotation.
 
+## Suspend an Application
+
+Suspend an application to stop it from authenticating without deleting it. Suspending revokes the tokens issued to it or through its client ID, including user tokens. Sign-ins through the application are refused until it is unsuspended.
+
+1. Open the application from the **Applications** list.
+2. Click **Actions**. Select **Suspend**.
+3. Click **Suspend** to confirm.
+
+To lift the suspension, select **Unsuspend** from the same menu. Revoked tokens are not restored. Applications are never locked automatically. For what a suspension refuses and how to customize the suspend flows, see [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts).
+
 ## Delete an Application
 
 To delete an application:
@@ -130,8 +140,18 @@ To delete an application:
 Deleting an application is permanent. Any client using the application's Client ID will immediately lose the ability to authenticate. Issued tokens remain valid until they expire.
 :::
 
+## Scope Applications to a Project
+
+A project on the control plane is backed by one root organization unit. When you manage applications through the REST API on the control plane, pass a project ID to work within a project.
+
+- **List**: `GET /applications?projectId=<project-id>` returns the applications that the project's root organization unit owns, followed by the ones shared into it. To list an organization unit below the root instead, add `filter=ouId eq "<ou-id>"`. A project that does not exist, or an organization unit outside the project, returns an empty list.
+- **Create or update**: set `projectId` in the request body of `POST /applications` or `PUT /applications/{id}`. Without `ouId`, the application belongs to the project's root organization unit. With `ouId`, that organization unit must be the project's root organization unit or one below it. An organization unit outside the project fails the request with `APP-1064`, and one that does not exist fails it with `APP-1018`. A project that does not exist fails the request with `APP-1063`.
+
+A data plane has no projects. It rejects a `projectId` in a create or update request with `APP-1063`, and returns an empty list for `GET /applications?projectId=<project-id>`.
+
 ## Next Steps
 
 - [Application Settings](../application-settings) - Configure OAuth 2.0, tokens, flows, and consent for your application
 - [Flows](../../flows/what-are-flows) - Build and assign custom authentication and registration flows
 - [Dynamic Client Registration](../../protocols/oauth-oidc/dynamic-client-registration) - Register OAuth 2.0 clients programmatically without using the Console
+- [Account Protection](../../account-protection/overview) - How a suspension holds an application

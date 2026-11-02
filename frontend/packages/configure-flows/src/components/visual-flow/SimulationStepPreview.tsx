@@ -5,7 +5,6 @@ import {BuilderStaticPanel} from '@thunderid/components';
 import {GatePreview} from '@thunderid/configure-design';
 import {DefaultTheme, DesignResolveType, useGetDesignResolve, type Theme} from '@thunderid/design';
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
-import {useGetApplication, useGetApplications} from '@thunderid/react';
 import type {BasicApplication, EmbeddedFlowComponent} from '@thunderid/react';
 import {
   Box,
@@ -37,6 +36,8 @@ import {useCallback, useEffect, useMemo, useRef, useState, type ReactElement} fr
 import {useTranslation} from 'react-i18next';
 import SimulationOptionsFooter from './SimulationOptionsFooter';
 import SimulationScreenSketch from './SimulationScreenSketch';
+import useGetApplication from '../../api/useGetApplication';
+import useGetApplications from '../../api/useGetApplications';
 import {
   DEVICE_ASPECT_RATIOS,
   DEVICE_LABEL_FALLBACKS,

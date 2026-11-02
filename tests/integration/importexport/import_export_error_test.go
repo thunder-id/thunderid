@@ -66,9 +66,9 @@ func (suite *ImportExportErrorSuite) TestImportMalformedBodyReturns400() {
 // TestImportFileTargetReturns400 pins that the file target is rejected; only the runtime target is
 // supported through the API.
 func (suite *ImportExportErrorSuite) TestImportFileTargetReturns400() {
-	payload := suite.importBody(importRequest{
+	payload := suite.importBody(testutils.ImportRequest{
 		Content: "resource_type: organization_unit\nname: Target Test\nhandle: target-test\n",
-		Options: importOptions{Upsert: true, ContinueOnError: true, Target: "file"},
+		Options: testutils.ImportOptions{Upsert: true, ContinueOnError: true, Target: "file"},
 	})
 
 	status, body := suite.postJSON(suite.client, "/import", payload)
@@ -78,7 +78,7 @@ func (suite *ImportExportErrorSuite) TestImportFileTargetReturns400() {
 }
 
 func (suite *ImportExportErrorSuite) TestImportInvalidYAMLReturns400() {
-	payload := suite.importBody(importRequest{
+	payload := suite.importBody(testutils.ImportRequest{
 		Content: "resource_type: organization_unit\n  name: badly indented\n\tmore: bad\n",
 		Options: runtimeOptions(),
 	})
@@ -91,7 +91,7 @@ func (suite *ImportExportErrorSuite) TestImportInvalidYAMLReturns400() {
 
 // TestImportNonMappingRootReturns400 covers the parser's "root must be a YAML mapping" branch.
 func (suite *ImportExportErrorSuite) TestImportNonMappingRootReturns400() {
-	payload := suite.importBody(importRequest{
+	payload := suite.importBody(testutils.ImportRequest{
 		Content: "- just\n- a\n- sequence\n",
 		Options: runtimeOptions(),
 	})
@@ -105,7 +105,7 @@ func (suite *ImportExportErrorSuite) TestImportNonMappingRootReturns400() {
 // TestImportUnknownResourceTypeReturns400 covers the parser's unresolvable-resource-type branch.
 // An unknown type fails the whole request rather than producing a per-document failure.
 func (suite *ImportExportErrorSuite) TestImportUnknownResourceTypeReturns400() {
-	payload := suite.importBody(importRequest{
+	payload := suite.importBody(testutils.ImportRequest{
 		Content: "resource_type: not_a_real_type\nname: Nope\n",
 		Options: runtimeOptions(),
 	})
@@ -117,7 +117,7 @@ func (suite *ImportExportErrorSuite) TestImportUnknownResourceTypeReturns400() {
 }
 
 func (suite *ImportExportErrorSuite) TestImportMissingResourceTypeFieldReturns400() {
-	payload := suite.importBody(importRequest{
+	payload := suite.importBody(testutils.ImportRequest{
 		Content: "name: No Resource Type\nhandle: no-resource-type\n",
 		Options: runtimeOptions(),
 	})
@@ -131,7 +131,7 @@ func (suite *ImportExportErrorSuite) TestImportMissingResourceTypeFieldReturns40
 // TestImportUnresolvedTemplateVariableReturns400 pins missingkey=error: a placeholder with no
 // matching variable is a hard failure, not an empty substitution.
 func (suite *ImportExportErrorSuite) TestImportUnresolvedTemplateVariableReturns400() {
-	payload := suite.importBody(importRequest{
+	payload := suite.importBody(testutils.ImportRequest{
 		Content: "resource_type: organization_unit\nname: {{.MISSING_VAR}}\nhandle: missing-var\n",
 		Options: runtimeOptions(),
 	})
@@ -143,7 +143,7 @@ func (suite *ImportExportErrorSuite) TestImportUnresolvedTemplateVariableReturns
 }
 
 func (suite *ImportExportErrorSuite) TestImportMalformedTemplateReturns400() {
-	payload := suite.importBody(importRequest{
+	payload := suite.importBody(testutils.ImportRequest{
 		Content: "resource_type: organization_unit\nname: {{ .Unclosed \nhandle: unclosed\n",
 		Options: runtimeOptions(),
 	})
@@ -158,7 +158,7 @@ func (suite *ImportExportErrorSuite) TestImportMalformedTemplateReturns400() {
 // (comments and blank lines only) parses to zero documents and reports an empty, successful import
 // rather than an error. Content that is literally empty is rejected earlier, by the content check.
 func (suite *ImportExportErrorSuite) TestImportEmptyDocumentsSucceedsWithZeroCount() {
-	payload := suite.importBody(importRequest{
+	payload := suite.importBody(testutils.ImportRequest{
 		Content: "# no documents here\n\n",
 		Options: runtimeOptions(),
 	})
@@ -166,7 +166,7 @@ func (suite *ImportExportErrorSuite) TestImportEmptyDocumentsSucceedsWithZeroCou
 	status, body := suite.postJSON(suite.client, "/import", payload)
 	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
 
-	var resp importResponse
+	var resp testutils.ImportResponse
 	suite.Require().NoError(json.Unmarshal(body, &resp))
 	suite.Equal(0, resp.Summary.TotalDocuments)
 	suite.Equal(0, resp.Summary.Imported)
@@ -180,7 +180,7 @@ func (suite *ImportExportErrorSuite) TestImportEmptyDocumentsSucceedsWithZeroCou
 // validation yields a 200 with a per-item failed outcome carrying a code, not a request-level error.
 func (suite *ImportExportErrorSuite) TestImportInvalidDocumentReportsFailedOutcome() {
 	// An OU document with no name/handle passes the parser and fails in the OU service.
-	payload := suite.importBody(importRequest{
+	payload := suite.importBody(testutils.ImportRequest{
 		Content: "resource_type: organization_unit\ndescription: missing name and handle\n",
 		Options: runtimeOptions(),
 	})
@@ -188,7 +188,7 @@ func (suite *ImportExportErrorSuite) TestImportInvalidDocumentReportsFailedOutco
 	status, body := suite.postJSON(suite.client, "/import", payload)
 	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
 
-	var resp importResponse
+	var resp testutils.ImportResponse
 	suite.Require().NoError(json.Unmarshal(body, &resp))
 	suite.Equal(1, resp.Summary.TotalDocuments)
 	suite.Equal(0, resp.Summary.Imported)
@@ -211,15 +211,15 @@ func (suite *ImportExportErrorSuite) TestImportContinueOnErrorFalseStopsAtFirstF
 		fmt.Sprintf("resource_type: organization_unit\nname: Should Not Import %s\nhandle: should-not-import-%s\n",
 			suffix, suffix)
 
-	payload := suite.importBody(importRequest{
+	payload := suite.importBody(testutils.ImportRequest{
 		Content: content,
-		Options: importOptions{Upsert: true, ContinueOnError: false, Target: "runtime"},
+		Options: testutils.ImportOptions{Upsert: true, ContinueOnError: false, Target: "runtime"},
 	})
 
 	status, body := suite.postJSON(suite.client, "/import", payload)
 	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
 
-	var resp importResponse
+	var resp testutils.ImportResponse
 	suite.Require().NoError(json.Unmarshal(body, &resp))
 	suite.Equal(2, resp.Summary.TotalDocuments)
 	suite.Equal(1, resp.Summary.Failed)
@@ -236,7 +236,7 @@ func (suite *ImportExportErrorSuite) TestImportContinueOnErrorTrueProcessesRemai
 		"---\n" +
 		fmt.Sprintf("resource_type: organization_unit\nname: Continue On Error %s\nhandle: %s\n", suffix, handle)
 
-	payload := suite.importBody(importRequest{
+	payload := suite.importBody(testutils.ImportRequest{
 		Content: content,
 		Options: runtimeOptions(),
 	})
@@ -244,7 +244,7 @@ func (suite *ImportExportErrorSuite) TestImportContinueOnErrorTrueProcessesRemai
 	status, body := suite.postJSON(suite.client, "/import", payload)
 	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
 
-	var resp importResponse
+	var resp testutils.ImportResponse
 	suite.Require().NoError(json.Unmarshal(body, &resp))
 	suite.Equal(2, resp.Summary.TotalDocuments)
 	suite.Equal(1, resp.Summary.Failed)
@@ -259,7 +259,7 @@ func (suite *ImportExportErrorSuite) TestImportDryRunDoesNotPersist() {
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	handle := "dry-run-ou-" + suffix
 
-	payload := suite.importBody(importRequest{
+	payload := suite.importBody(testutils.ImportRequest{
 		Content: fmt.Sprintf("resource_type: organization_unit\nname: Dry Run OU %s\nhandle: %s\n", suffix, handle),
 		DryRun:  true,
 		Options: runtimeOptions(),
@@ -268,20 +268,20 @@ func (suite *ImportExportErrorSuite) TestImportDryRunDoesNotPersist() {
 	status, body := suite.postJSON(suite.client, "/import", payload)
 	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
 
-	var resp importResponse
+	var resp testutils.ImportResponse
 	suite.Require().NoError(json.Unmarshal(body, &resp))
 	suite.Equal(1, resp.Summary.Imported)
 	suite.Equal(0, resp.Summary.Failed)
 
 	// Nothing was written, so a real import of the same handle still creates it.
-	confirmPayload := suite.importBody(importRequest{
+	confirmPayload := suite.importBody(testutils.ImportRequest{
 		Content: fmt.Sprintf("resource_type: organization_unit\nname: Dry Run OU %s\nhandle: %s\n", suffix, handle),
 		Options: runtimeOptions(),
 	})
 	confirmStatus, confirmBody := suite.postJSON(suite.client, "/import", confirmPayload)
 	suite.Require().Equal(http.StatusOK, confirmStatus, "body: %s", confirmBody)
 
-	var confirmResp importResponse
+	var confirmResp testutils.ImportResponse
 	suite.Require().NoError(json.Unmarshal(confirmBody, &confirmResp))
 	suite.Require().Len(confirmResp.Results, 1)
 	suite.Equal("success", confirmResp.Results[0].Status)
@@ -384,19 +384,19 @@ func (suite *ImportExportErrorSuite) TestImportEndpointsRequireAuth() {
 // --- helpers ---
 
 // runtimeOptions returns the default runtime-target options with upsert and continueOnError on.
-func runtimeOptions() importOptions {
-	return importOptions{Upsert: true, ContinueOnError: true, Target: "runtime"}
+func runtimeOptions() testutils.ImportOptions {
+	return testutils.ImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"}
 }
 
 // importBody marshals an import request to a JSON string.
-func (suite *ImportExportErrorSuite) importBody(req importRequest) string {
+func (suite *ImportExportErrorSuite) importBody(req testutils.ImportRequest) string {
 	payload, err := json.Marshal(req)
 	suite.Require().NoError(err)
 	return string(payload)
 }
 
 // deleteImportedOU removes any OU created by an import so the shared server is not left mutated.
-func (suite *ImportExportErrorSuite) deleteImportedOU(resp *importResponse) {
+func (suite *ImportExportErrorSuite) deleteImportedOU(resp *testutils.ImportResponse) {
 	for _, result := range resp.Results {
 		if result.Status != "success" || result.ResourceType != "organization_unit" || result.ResourceID == "" {
 			continue
@@ -442,7 +442,7 @@ func (suite *ImportExportErrorSuite) errorCode(body []byte) string {
 // the secret would be stored as an ordinary value and could be read back.
 func (suite *ImportExportErrorSuite) TestImportRefusesASecretOutsideACredentialField() {
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
-	payload := suite.importBody(importRequest{
+	payload := suite.importBody(testutils.ImportRequest{
 		Content: fmt.Sprintf("resource_type: application\nname: Misplaced Secret %s\ncontacts:\n"+
 			"  - sec:MISPLACED_CONTACT_%s\n", suffix, suffix),
 		Options: runtimeOptions(),
@@ -451,7 +451,7 @@ func (suite *ImportExportErrorSuite) TestImportRefusesASecretOutsideACredentialF
 	status, body := suite.postJSON(suite.client, "/import", payload)
 	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
 
-	var resp importResponse
+	var resp testutils.ImportResponse
 	suite.Require().NoError(json.Unmarshal(body, &resp))
 	suite.Equal(1, resp.Summary.Failed)
 	suite.Require().Len(resp.Results, 1)
@@ -495,7 +495,7 @@ func (suite *ImportExportErrorSuite) TestImportResolvesASecretInACredentialField
 	}()
 
 	username := "secret-import-user-" + suffix
-	payload := suite.importBody(importRequest{
+	payload := suite.importBody(testutils.ImportRequest{
 		Content: fmt.Sprintf("resource_type: user\ntype: %s\nouId: %s\nattributes:\n  username: %s\n"+
 			"credentials:\n  password: sec:%s\n", typeHandle, ouID, username, secretName),
 		Options: runtimeOptions(),
@@ -503,7 +503,7 @@ func (suite *ImportExportErrorSuite) TestImportResolvesASecretInACredentialField
 	status, body = suite.postJSON(suite.client, "/import", payload)
 	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
 
-	var resp importResponse
+	var resp testutils.ImportResponse
 	suite.Require().NoError(json.Unmarshal(body, &resp))
 	suite.Require().Len(resp.Results, 1)
 	suite.Equal("success", resp.Results[0].Status, "the user was not written: %+v", resp.Results[0])

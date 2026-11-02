@@ -33,6 +33,8 @@ import validateTrustedIssuerForm, {
 interface TrustedIssuerCreateFormProps {
   /** Connection name collected on the wizard's name step. */
   name: string;
+  /** The organization unit that will own the trusted issuer. */
+  ouId: string;
   /** Call when the create request 409s on a duplicate name, to bounce back to the name step. */
   onNameConflict: () => void;
   /** Call when the wizard's Back button is pressed, to return to the name step. */
@@ -49,6 +51,7 @@ interface TrustedIssuerCreateFormProps {
  */
 export default function TrustedIssuerCreateForm({
   name,
+  ouId,
   onNameConflict,
   onBack,
 }: TrustedIssuerCreateFormProps): JSX.Element {
@@ -107,9 +110,15 @@ export default function TrustedIssuerCreateForm({
   const handleCreate = (): void => {
     if (!formValid) return;
 
+    if (!ouId) {
+      setGeneralError(t('connections:wizard.organizationUnit.required', 'Organization unit is required'));
+      return;
+    }
+
     setGeneralError(null);
     createTrustedIssuer.mutate(
       {
+        ouId,
         name,
         issuer: issuer.trim(),
         jwksEndpoint: jwksEndpoint.trim(),

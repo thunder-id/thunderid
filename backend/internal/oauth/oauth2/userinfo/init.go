@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package userinfo
@@ -30,10 +30,11 @@ func Initialize(
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	dpopVerifier dpop.VerifierInterface,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 ) userInfoServiceInterface {
 	userInfoService := newUserInfoService(jwtService, jweService, resolver, tokenValidator,
-		actorProvider, attributeCacheSvc, dpopVerifier, cfg)
+		actorProvider, attributeCacheSvc, dpopVerifier, governance, cfg)
 	userInfoEndpoint := cfg.BaseURL + constants.OAuth2UserInfoEndpoint
 	dpopAlgs := cfg.OAuth.DPoP.AllowedAlgs
 	userInfoHandler := newUserInfoHandler(userInfoService, userInfoEndpoint, dpopAlgs)

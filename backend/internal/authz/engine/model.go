@@ -23,6 +23,7 @@ type rbacEngine struct {
 // evaluationGroup collects equivalent evaluations for one role-service lookup.
 type evaluationGroup struct {
 	subject          Subject
+	ouID             string
 	resourceServerID string
 	permissions      []string
 	indexes          []int

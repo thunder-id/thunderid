@@ -21,6 +21,7 @@ import path from "path";
 import { Page, BrowserContext } from "@playwright/test";
 import { Timeouts } from "../../constants/timeouts";
 import { ConsoleSigninPage } from "../../pages/authentication/console-signin.page";
+import { E2E_ADMIN_CLIENT_ID, E2E_ADMIN_CLIENT_SECRET } from "./admin-api-auth";
 
 /** Re-login this far ahead of the real expiry, so a token can't lapse mid-test. */
 const TOKEN_EXPIRY_MARGIN_MS = Timeouts.GLOBAL_TEST;
@@ -209,6 +210,12 @@ export async function setupAuthentication(
     return authPath;
   }
 
+  if (await isTokenRevoked(page, baseUrl, authState)) {
+    console.log("⚠️ Tokens revoked by the server, performing inline login...");
+    await performInlineLogin(page, baseUrl, authPath, debug);
+    return authPath;
+  }
+
   console.log(
     `Loaded auth state: ${authState.origins?.[0]?.localStorage?.length || 0} localStorage, ${authState.origins?.[0]?.sessionStorage?.length || 0} sessionStorage items`
   );
@@ -219,8 +226,8 @@ export async function setupAuthentication(
   // Restore cookies if any exist
   await restoreCookies(context, authState, debug);
 
-  // CRITICAL: Add init script to inject storage BEFORE page loads. checkTokensExpired above
-  // already confirmed the token isn't expired, and the test itself navigates to its real target
+  // CRITICAL: Add init script to inject storage BEFORE page loads. The checks above already
+  // confirmed the token is live, and the test itself navigates to its real target
   // route right after this fixture resolves - that navigation is what applies this init script,
   // so there's no need to load the console here too just to re-check what it would find.
   const initScript = createStorageInitScript(authState);
@@ -362,6 +369,40 @@ function checkTokensExpired(authState: AuthState, debug: boolean): boolean {
 }
 
 /**
+ * Ask the server whether it still accepts the saved access token. checkTokensExpired only reads the
+ * clock, but the server can revoke an unexpired token: replay revocation is on by default
+ * (oauth.revocation.token_family.on_refresh_replay in default.json), so presenting a refresh token
+ * that was already rotated out revokes every token from that login (see refresh_token.go). Reusing
+ * such a file fails every request of the test, and of every later test in this worker, since the
+ * fixture saves the same dead session back.
+ *
+ * Uses introspection rather than a protected API such as /users/me: protected APIs check revocations
+ * against a cache that syncs every 60 seconds (server.security.token_revocation.sync_interval_seconds),
+ * so a token revoked within the last minute still passes there. Introspection reads the deny list
+ * directly. Only `active: false` counts as revoked; any other outcome leaves the decision to the test.
+ */
+async function isTokenRevoked(page: Page, baseUrl: string, authState: AuthState): Promise<boolean> {
+  const sessionDataKey = authState.origins?.[0]?.sessionStorage?.find(item =>
+    item.name.includes(SESSION_DATA_KEY_SUBSTRING)
+  );
+  const accessToken = sessionDataKey && JSON.parse(sessionDataKey.value).access_token;
+
+  const response = await page.request
+    .post(`${baseUrl}/oauth2/introspect`, {
+      form: { token: accessToken },
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${E2E_ADMIN_CLIENT_ID}:${E2E_ADMIN_CLIENT_SECRET}`).toString("base64")}`,
+      },
+    })
+    .catch(() => null);
+  if (response?.status() !== 200) {
+    return false;
+  }
+  const { active } = await response.json().catch(() => ({}));
+  return active === false;
+}
+
+/**
  * Wait for redirect to the console page, then for the SDK to actually write the session it
  * establishes there - checkTokensExpired() reads this same sessionStorage key, and
  * saveAuthState() would otherwise capture storage before the token exists.
@@ -369,21 +410,8 @@ function checkTokensExpired(authState: AuthState, debug: boolean): boolean {
 async function waitForSessionData(page: Page): Promise<void> {
   await page.waitForURL("**/console/**", { timeout: Timeouts.REDIRECT });
 
-  // The welcome key is the later of the two: WelcomeRedirect marks itself dismissed in
-  // sessionStorage the first time a signed-in session renders a non-/welcome route (see
-  // WelcomeRedirect.tsx), which is a useEffect that only runs once the session token exists.
-  // Capturing state before that effect commits replays a session that looks brand new to every
-  // consumer of this file, redirecting whatever page they navigate to next into /welcome instead
-  // of the page the test actually asked for. Both are still checked because a retried sign-in
-  // starts with the previous attempt's welcome key already in storage.
   await page.waitForFunction(
-    () => {
-      const keys = Object.keys(sessionStorage);
-      return (
-        keys.some(key => key.includes("session_data-instance_0")) &&
-        keys.some(key => key.endsWith(":welcome:dismissed"))
-      );
-    },
+    () => Object.keys(sessionStorage).some(key => key.includes("session_data-instance_0")),
     undefined,
     { timeout: Timeouts.PAGE_LOAD }
   );
@@ -420,7 +448,7 @@ Please ensure they are set in your .env file or the test environment configurati
     // from that. Re-visiting /console rides the IdP's SSO cookie (see
     // backend/internal/flow/session/transport.go) to a fresh code without re-entering credentials.
     console.log(
-      "⚠️ Sign-in did not settle (SDK code-exchange race, or the welcome effect never committed), retrying..."
+      "⚠️ Sign-in did not settle (SDK code-exchange race), retrying..."
     );
     await signinPage.gotoHome();
     await waitForSessionData(page);

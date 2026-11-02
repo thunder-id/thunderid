@@ -14,6 +14,8 @@ import type {RoleAssignment} from '../../../models/role';
 
 interface EditAssignmentsSettingsProps {
   roleId: string;
+  /** The role's organization unit, which bounds who can be assigned. */
+  ouId?: string;
   isReadOnly?: boolean;
 }
 
@@ -23,6 +25,7 @@ interface EditAssignmentsSettingsProps {
  */
 export default function EditAssignmentsSettings({
   roleId,
+  ouId = undefined,
   isReadOnly = false,
 }: EditAssignmentsSettingsProps): JSX.Element {
   const {t} = useTranslation('roles');
@@ -108,6 +111,7 @@ export default function EditAssignmentsSettings({
         <AddAssignmentDialog
           open={addDialogOpen}
           roleId={roleId}
+          ouId={ouId}
           onClose={() => {
             setAddDialogOpen(false);
             setAddError(null);

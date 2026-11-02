@@ -8,7 +8,7 @@ import {useTranslation} from 'react-i18next';
 import ConnectionQueryKeys from '../constants/query-keys';
 import type {ConnectionResponse} from '../models/connection';
 import {ConnectionTypes} from '../models/connection';
-import type {TrustedIssuer, TrustedIssuerFormData} from '../models/trusted-issuer';
+import type {CreateTrustedIssuerRequest, TrustedIssuer} from '../models/trusted-issuer';
 import mapConnectionToTrustedIssuer from '../utils/mapConnectionToTrustedIssuer';
 
 /**
@@ -20,20 +20,20 @@ import mapConnectionToTrustedIssuer from '../utils/mapConnectionToTrustedIssuer'
  * @example
  * ```tsx
  * const createTrustedIssuer = useCreateTrustedIssuer();
- * createTrustedIssuer.mutate({name, issuer, jwksEndpoint, idJagEnabled: true});
+ * createTrustedIssuer.mutate({ouId, name, issuer, jwksEndpoint, idJagEnabled: true});
  * ```
  *
  * @public
  */
-export default function useCreateTrustedIssuer(): UseMutationResult<TrustedIssuer, Error, TrustedIssuerFormData> {
+export default function useCreateTrustedIssuer(): UseMutationResult<TrustedIssuer, Error, CreateTrustedIssuerRequest> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
   const {t} = useTranslation();
   const {showToast} = useToast();
 
-  return useMutation<TrustedIssuer, Error, TrustedIssuerFormData>({
-    mutationFn: async (data: TrustedIssuerFormData): Promise<TrustedIssuer> => {
+  return useMutation<TrustedIssuer, Error, CreateTrustedIssuerRequest>({
+    mutationFn: async (data: CreateTrustedIssuerRequest): Promise<TrustedIssuer> => {
       const serverUrl: string = getServerUrl();
       const response: {
         data: ConnectionResponse;

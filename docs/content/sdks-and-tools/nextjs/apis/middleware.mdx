@@ -39,6 +39,8 @@ export const config = {
 | `handler` | `(thunderid, request) => Promise<void>` | Optional callback that receives the auth context and the request |
 | `options` | `ThunderIDProxyOptions` | Optional configuration overrides |
 
+`ThunderIDProxyOptions` accepts every `ThunderIDNextConfig` key, plus `backchannelLogout.store`, a `LogoutRecordStore` shared with [`backchannelLogout()`](../backchannel-logout). Set it when the application runs more than one instance, or when this middleware runs on the Edge runtime, which shares no memory with the route handler that records logouts.
+
 ### Proxy Context
 
 The `thunderid` object passed to your handler provides:
@@ -77,6 +79,10 @@ const isProtectedRoute = createRouteMatcher([
 | `patterns` | `string[]` | Array of glob-like route patterns |
 
 **Returns:** `(req: NextRequest) => boolean`
+
+## Back-Channel Logout
+
+The middleware treats a session that a [back-channel logout](../backchannel-logout) ended as signed out, so `isSignedIn()` returns `false` and `protectRoute()` redirects. For the runtime and store this needs, see [Requirements](../backchannel-logout#requirements).
 
 ## Automatic Token Refresh
 

@@ -37,6 +37,9 @@ Register the new type in all of:
 - The handler and its `api/<resource>.yaml` change go in the same PR.
 - `DELETE` of a missing resource returns `204`. The spec declares no `404` for it.
 - A changed error code, message, or response shape updates every named example that embeds it. A new error does not need a new example.
+- The docs build merges all `api/*.yaml` by component name, so a duplicate name silently takes the other file's definition.
+  Give a component with resource-specific descriptions or examples, such as a filter parameter, a name unique across `api/`.
+  Components that read the same for every resource, such as `limit` and `offset`, can share a name.
 
 ## Deployment and Tests
 

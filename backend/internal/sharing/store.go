@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
@@ -55,12 +56,20 @@ type sharingPolicyStoreInterface interface {
 
 	// GetOverlayValues returns one organization unit's own values for a resource, by field.
 	GetOverlayValues(ctx context.Context, rt ResourceType, resourceID, ouID string) (map[string][]string, error)
+	// ListOverlayValuesForResource returns the values every organization unit holds for a resource, by unit and then
+	// by field.
+	ListOverlayValuesForResource(
+		ctx context.Context, rt ResourceType, resourceID string,
+	) (map[string]map[string][]string, error)
 	// SetOverlayValue records one organization unit's value for one field.
 	SetOverlayValue(ctx context.Context, rt ResourceType, resourceID, ouID, fieldKey string, value []string) error
 	// DeleteOverlayValue removes one organization unit's value for one field.
 	DeleteOverlayValue(ctx context.Context, rt ResourceType, resourceID, ouID, fieldKey string) error
 	// DeleteOverlayValuesForOU removes every value one organization unit holds for a resource.
 	DeleteOverlayValuesForOU(ctx context.Context, rt ResourceType, resourceID, ouID string) error
+	// DeleteField removes what is held for one field of a resource: the rule each policy states for it and the value
+	// every organization unit holds for it.
+	DeleteField(ctx context.Context, rt ResourceType, resourceID, fieldKey string) error
 }
 
 // sharingStore is the database-backed implementation of sharingPolicyStoreInterface.
@@ -434,6 +443,35 @@ func (s *sharingStore) GetOverlayValues(
 	return out, nil
 }
 
+// ListOverlayValuesForResource returns the values every organization unit holds for a resource, by unit and then by
+// field.
+func (s *sharingStore) ListOverlayValuesForResource(
+	ctx context.Context, rt ResourceType, resourceID string,
+) (map[string]map[string][]string, error) {
+	dbClient, err := s.client()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := dbClient.QueryContext(ctx, queryListOverlayValuesForResource,
+		string(rt), resourceID, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list overlay values: %w", err)
+	}
+	out := make(map[string]map[string][]string)
+	for _, row := range rows {
+		var members []string
+		if err := json.Unmarshal([]byte(utils.ConvertInterfaceValueToString(row["value"])), &members); err != nil {
+			return nil, fmt.Errorf("failed to decode overlay value: %w", err)
+		}
+		ouID := utils.ConvertInterfaceValueToString(row["ou_id"])
+		if out[ouID] == nil {
+			out[ouID] = make(map[string][]string)
+		}
+		out[ouID][utils.ConvertInterfaceValueToString(row["field_key"])] = members
+	}
+	return out, nil
+}
+
 // SetOverlayValue records one organization unit's value for one field.
 func (s *sharingStore) SetOverlayValue(
 	ctx context.Context, rt ResourceType, resourceID, ouID, fieldKey string, value []string,
@@ -483,24 +521,78 @@ func (s *sharingStore) DeleteOverlayValuesForOU(
 	return nil
 }
 
-// hydrateAll builds a policy from every row, loading the named units and rules each one has.
+// DeleteField removes what is held for one field of a resource: the rule each policy states for it and the value every
+// organization unit holds for it.
+func (s *sharingStore) DeleteField(ctx context.Context, rt ResourceType, resourceID, fieldKey string) error {
+	dbClient, err := s.client()
+	if err != nil {
+		return err
+	}
+	scope := s.scope(ctx)
+	if _, err := dbClient.ExecuteContext(ctx, queryDeleteOverlayValuesForField,
+		string(rt), resourceID, fieldKey, scope); err != nil {
+		return fmt.Errorf("failed to delete overlay values of a field: %w", err)
+	}
+	if _, err := dbClient.ExecuteContext(ctx, queryDeleteOverlayRulesForField,
+		fieldKey, scope, string(rt), resourceID); err != nil {
+		return fmt.Errorf("failed to delete overlay rules of a field: %w", err)
+	}
+	return nil
+}
+
+// hydrateAll builds a policy from every row, loading the named units and rules of the whole set in
+// one statement each per batch, rather than two per policy.
 func (s *sharingStore) hydrateAll(
 	ctx context.Context, dbClient provider.DBClientInterface, rows []map[string]interface{},
 ) ([]Policy, error) {
 	out := make([]Policy, 0, len(rows))
+	positions := make(map[string]int, len(rows))
 	for _, row := range rows {
-		p, err := s.hydrate(ctx, dbClient, row)
-		if err != nil {
+		p := policyFromRow(row)
+		if err := decodeSections(&p, row["sections"]); err != nil {
 			return nil, err
 		}
+		positions[p.ID] = len(out)
 		out = append(out, p)
+	}
+
+	ids := make([]string, len(out))
+	for i := range out {
+		ids[i] = out[i].ID
+	}
+	for chunk := range slices.Chunk(ids, hydrateBatchSize) {
+		query, args := buildListUnitsForPoliciesQuery(chunk, s.scope(ctx))
+		unitRows, err := dbClient.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list sharing policy units: %w", err)
+		}
+		for _, row := range unitRows {
+			if i, ok := positions[utils.ConvertInterfaceValueToString(row["policy_id"])]; ok {
+				addUnit(&out[i], row)
+			}
+		}
+
+		query, args = buildListRulesForPoliciesQuery(chunk, s.scope(ctx))
+		ruleRows, err := dbClient.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list overlay rules: %w", err)
+		}
+		for _, row := range ruleRows {
+			i, ok := positions[utils.ConvertInterfaceValueToString(row["policy_id"])]
+			if !ok {
+				continue
+			}
+			rule, err := hydrateRule(row)
+			if err != nil {
+				return nil, err
+			}
+			out[i].Rules = append(out[i].Rules, rule)
+		}
 	}
 	return out, nil
 }
 
-// hydrate builds one policy from its row and loads the named units and rules belonging to it. A
-// unit row for a section the policy row does not state, or for a mode that names none, is left
-// out: the policy row is what says which decisions were made.
+// hydrate builds one policy from its row and loads the named units and rules belonging to it.
 func (s *sharingStore) hydrate(
 	ctx context.Context, dbClient provider.DBClientInterface, row map[string]interface{},
 ) (Policy, error) {
@@ -514,20 +606,7 @@ func (s *sharingStore) hydrate(
 		return Policy{}, fmt.Errorf("failed to list sharing policy units: %w", err)
 	}
 	for _, row := range unitRows {
-		ouID := utils.ConvertInterfaceValueToString(row["ou_id"])
-		switch Section(utils.ConvertInterfaceValueToString(row["section"])) {
-		case SectionChildUnits:
-			if p.ChildUnits != nil && p.ChildUnits.Mode == ChildUnitsSelected {
-				p.ChildUnits.Units = append(p.ChildUnits.Units, ChildUnit{
-					OUID:  ouID,
-					Reach: UnitReach(utils.ConvertInterfaceValueToString(row["reach"])),
-				})
-			}
-		case SectionOtherTreeRoots:
-			if p.OtherTreeRoots != nil && p.OtherTreeRoots.Mode == OtherTreeRootsSelected {
-				p.OtherTreeRoots.Units = append(p.OtherTreeRoots.Units, ouID)
-			}
-		}
+		addUnit(&p, row)
 	}
 
 	ruleRows, err := dbClient.QueryContext(ctx, queryListRules, p.ID, s.scope(ctx))
@@ -542,6 +621,26 @@ func (s *sharingStore) hydrate(
 		p.Rules = append(p.Rules, rule)
 	}
 	return p, nil
+}
+
+// addUnit adds one named unit row to its policy. A unit row for a section the policy row does not
+// state, or for a mode that names none, is left out: the policy row is what says which decisions
+// were made.
+func addUnit(p *Policy, row map[string]interface{}) {
+	ouID := utils.ConvertInterfaceValueToString(row["ou_id"])
+	switch Section(utils.ConvertInterfaceValueToString(row["section"])) {
+	case SectionChildUnits:
+		if p.ChildUnits != nil && p.ChildUnits.Mode == ChildUnitsSelected {
+			p.ChildUnits.Units = append(p.ChildUnits.Units, ChildUnit{
+				OUID:  ouID,
+				Reach: UnitReach(utils.ConvertInterfaceValueToString(row["reach"])),
+			})
+		}
+	case SectionOtherTreeRoots:
+		if p.OtherTreeRoots != nil && p.OtherTreeRoots.Mode == OtherTreeRootsSelected {
+			p.OtherTreeRoots.Units = append(p.OtherTreeRoots.Units, ouID)
+		}
+	}
 }
 
 // hydrateRule rebuilds one rule from its stored documents. Absent and empty come back as they went

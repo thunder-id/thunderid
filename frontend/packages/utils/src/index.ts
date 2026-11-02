@@ -60,6 +60,7 @@ export {
   findAdministrationFlowId,
   resolveAdministrationFlowHandle,
   resolveAdministrationFlowId,
+  resolveAdministrationFlows,
   runAdministrationFlow,
 } from './flow/administrationFlow';
 export type {

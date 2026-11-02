@@ -1,10 +1,11 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package tokenservice
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -44,6 +45,13 @@ func (suite *UtilsTestSuite) SetupTest() {
 		},
 	}
 	_ = config.InitializeServerRuntime("test", testConfig)
+}
+
+func (suite *UtilsTestSuite) TestReservedAccessTokenClaimNames_IncludesAuthorizationDetails() {
+	reserved := ReservedAccessTokenClaimNames()
+
+	assert.True(suite.T(), reserved[constants.ClaimAuthorizationDetails])
+	assert.True(suite.T(), builderOwnedClaimNames()[constants.ClaimAuthorizationDetails])
 }
 
 func (suite *UtilsTestSuite) TestJoinScopes_WithMultipleScopes() {
@@ -1053,6 +1061,33 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsAndRoles_Resolved()
 	actors.AssertNotCalled(suite.T(), "GetActor")
 }
 
+// A client's groups and roles are those of its own organization unit. A group of an organization
+// unit it is shared with is left out, and its roles are read from assignments made in its own.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsAndRoles_OwnOUOnly() {
+	base := actorprovidermock.NewActorProviderMock(suite.T())
+	base.On("GetActorGroups", testBCCAppID).Return([]providers.EntityGroup{
+		{ID: "g-own", Name: "owners", OUID: "ou-owner"},
+		{ID: "g-sharee", Name: "sharee-team", OUID: "ou-child"},
+	}, (*tidcommon.ServiceError)(nil))
+	inOU := newOuActorRoleProviderMock(suite.T())
+	inOU.On("GetActorRolesInOU", testBCCAppID, []string{"g-own"}, "ou-owner").
+		Return([]string{"owner-role"}, (*tidcommon.ServiceError)(nil))
+	// The server's own provider reads roles in an organization unit as well.
+	actors := struct {
+		*actorprovidermock.ActorProviderMock
+		*ouActorRoleProviderMock
+	}{base, inOU}
+
+	app := newOAuthAppForOwnAttributes([]string{"groups", "roles"})
+	app.OUID = "ou-owner"
+	claims, err := BuildClientAttributes(app, actors)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []string{"owners"}, claims["groups"])
+	assert.Equal(suite.T(), []string{"owner-role"}, claims["roles"])
+	base.AssertNotCalled(suite.T(), "GetActorRoles")
+}
+
 func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsOnly_DoesNotResolveRoles() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
 	actors.On("GetActorGroups", testBCCAppID).Return([]providers.EntityGroup{
@@ -1265,4 +1300,18 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_FallsBackToServ
 	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeRefresh, 0)
 
 	suite.Equal(int64(86400), result.ValidityPeriod)
+}
+
+func (suite *UtilsTestSuite) TestBuildAccessEvaluationsRequest_SetsTheContextOnEveryEvaluation() {
+	details := json.RawMessage(`[{"type":"payment_initiation"}]`)
+	request := BuildAccessEvaluationsRequest("app-1", "app", nil, nil, []string{"read", "write"}, "rs-1",
+		map[string]interface{}{providers.AccessEvaluationContextAuthorizationDetails: details})
+
+	suite.Require().Len(request.Evaluations, 2)
+	for _, evaluation := range request.Evaluations {
+		suite.Equal(details, evaluation.Context[providers.AccessEvaluationContextAuthorizationDetails])
+	}
+
+	request = BuildAccessEvaluationsRequest("app-1", "app", nil, nil, []string{"read"}, "rs-1", nil)
+	suite.Nil(request.Evaluations[0].Context, "no context is sent when there is none")
 }

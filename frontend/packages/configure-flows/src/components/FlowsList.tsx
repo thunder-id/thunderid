@@ -1,12 +1,11 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
+import {QueryErrorNotice, useFlowListColumns} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
-import {Chip, IconButton, Tooltip, ListingTable, DataGrid} from '@wso2/oxygen-ui';
-import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
-import {useMemo, useCallback, useState, type JSX} from 'react';
+import {ListingTable} from '@wso2/oxygen-ui';
+import {useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import FlowDeleteDialog from './FlowDeleteDialog';
@@ -54,103 +53,7 @@ export default function FlowsList(): JSX.Element {
     [flowRoutes, logger, navigate],
   );
 
-  const columns: DataGrid.GridColDef<BasicFlowDefinition>[] = useMemo(
-    () => [
-      {
-        field: 'name',
-        headerName: t('flows:listing.columns.name'),
-        flex: 1,
-        minWidth: 220,
-      },
-      {
-        field: 'flowType',
-        headerName: t('flows:listing.columns.flowType'),
-        width: 180,
-        renderCell: (params: DataGrid.GridRenderCellParams<BasicFlowDefinition>): JSX.Element => (
-          <Chip
-            label={params.row.flowType}
-            size="small"
-            color="primary"
-            variant="outlined"
-            sx={{
-              fontSize: '0.7rem',
-            }}
-          />
-        ),
-      },
-      {
-        field: 'updatedAt',
-        headerName: t('flows:listing.columns.updatedAt'),
-        width: 180,
-        valueGetter: (_value, row): string => {
-          const date = new Date(row.updatedAt);
-          return date.toLocaleDateString(undefined, {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          });
-        },
-      },
-      {
-        field: 'actions',
-        headerName: t('flows:listing.columns.actions'),
-        width: 150,
-        align: 'center',
-        headerAlign: 'center',
-        sortable: false,
-        filterable: false,
-        hideable: false,
-        renderCell: (params: DataGrid.GridRenderCellParams<BasicFlowDefinition>): JSX.Element | null => {
-          return (
-            <ListingTable.RowActions>
-              {params.row.isReadOnly ? (
-                <Tooltip title={t('common:actions.view', 'View')}>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenClick(params.row);
-                    }}
-                  >
-                    <Eye size={16} />
-                  </IconButton>
-                </Tooltip>
-              ) : (
-                <>
-                  <Tooltip title={t('common:actions.edit')}>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenClick(params.row);
-                      }}
-                    >
-                      <Pencil size={16} />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title={t('common:actions.delete')}>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteClick(params.row);
-                      }}
-                    >
-                      <Trash2 size={16} />
-                    </IconButton>
-                  </Tooltip>
-                </>
-              )}
-            </ListingTable.RowActions>
-          );
-        },
-      },
-    ],
-    [handleDeleteClick, handleOpenClick, t],
-  );
+  const columns = useFlowListColumns<BasicFlowDefinition>({onOpen: handleOpenClick, onDelete: handleDeleteClick});
 
   if (error) {
     return (
@@ -168,8 +71,8 @@ export default function FlowsList(): JSX.Element {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
-        <ListingTable.Container disablePaper>
+      <ListingTable.Provider variant="data-grid" loading={isLoading}>
+        <ListingTable.Container>
           <ListingTable.DataGrid
             rows={data?.flows ?? []}
             columns={columns}
@@ -177,6 +80,7 @@ export default function FlowsList(): JSX.Element {
             onRowClick={(params) => {
               handleOpenClick(params.row as BasicFlowDefinition);
             }}
+            rowHeight={64}
             initialState={{
               pagination: {
                 paginationModel: {pageSize: 10},

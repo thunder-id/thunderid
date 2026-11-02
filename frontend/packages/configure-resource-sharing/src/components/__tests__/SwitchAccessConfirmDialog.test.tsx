@@ -23,7 +23,10 @@ const accessSwitch = (overrides: Partial<AccessSwitch>): AccessSwitch => ({
   ...overrides,
 });
 
-const renderDialog = (value: AccessSwitch | null, extra: {hasUnitSettings?: boolean} = {}) => {
+const renderDialog = (
+  value: AccessSwitch | null,
+  extra: {hasUnitSettings?: boolean; wordingNamespace?: string} = {},
+) => {
   const onCancel = vi.fn();
   const onConfirm = vi.fn();
   renderWithProviders(
@@ -110,5 +113,14 @@ describe('SwitchAccessConfirmDialog', () => {
 
     fireEvent.click(screen.getByRole('button', {name: 'Keep current choice'}));
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("says stopping sharing in the resource's own words", () => {
+    renderDialog(accessSwitch({field: 'scope', to: 'owner'}), {wordingNamespace: 'users'});
+
+    expect(screen.getByText('Keep Storefront in Acme Corp only?')).toBeInTheDocument();
+    expect(screen.getByText(/Storefront will be affiliated with Acme Corp only\./)).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Remove affiliations'})).toBeInTheDocument();
+    expect(screen.queryByText('Stop sharing Storefront?')).not.toBeInTheDocument();
   });
 });

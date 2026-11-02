@@ -79,6 +79,7 @@ func TestCreateHTTPServer_WithHTTPOnly(t *testing.T) {
 			Hostname: "localhost",
 			Port:     0,
 			HTTPOnly: true,
+			Timeouts: engineconfig.ServerTimeouts{ReadHeaderSeconds: 7, WriteSeconds: 180, IdleSeconds: 90},
 		},
 	}
 
@@ -87,9 +88,22 @@ func TestCreateHTTPServer_WithHTTPOnly(t *testing.T) {
 
 	assert.Equal(t, "localhost:0", server.Addr)
 	assert.NotNil(t, server.Handler)
-	assert.NotZero(t, server.ReadHeaderTimeout)
-	assert.NotZero(t, server.WriteTimeout)
-	assert.NotZero(t, server.IdleTimeout)
+	// The timeouts are the configured ones, so a slow route such as an apply can be given room.
+	assert.Equal(t, 7*time.Second, server.ReadHeaderTimeout)
+	assert.Equal(t, 180*time.Second, server.WriteTimeout)
+	assert.Equal(t, 90*time.Second, server.IdleTimeout)
+}
+
+// A configuration built without default.json still gets a server with every timeout set, so the header
+// read keeps its guard against slow clients.
+func TestCreateHTTPServer_UnsetTimeoutsFallBackToTheShippedOnes(t *testing.T) {
+	cfg := &config.Config{Server: engineconfig.ServerConfig{Hostname: "localhost", HTTPOnly: true}}
+
+	server := createHTTPServer(context.Background(), log.GetLogger(), cfg, http.NewServeMux(), nil, nil)
+
+	assert.Equal(t, 10*time.Second, server.ReadHeaderTimeout)
+	assert.Equal(t, 10*time.Second, server.WriteTimeout)
+	assert.Equal(t, 120*time.Second, server.IdleTimeout)
 }
 
 func TestCreateListener_Success(t *testing.T) {

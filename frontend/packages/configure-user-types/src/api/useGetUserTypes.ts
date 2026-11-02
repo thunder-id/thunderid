@@ -13,15 +13,22 @@ import type {UserTypeListParams, UserTypeListResponse} from '../types/user-types
  * @param params - Optional pagination parameters
  * @param params.limit - Maximum number of records to return
  * @param params.offset - Number of records to skip for pagination
+ * @param options - Optional query options
+ * @param options.enabled - Whether to fetch; defaults to true. A disabled query requests nothing.
  * @returns TanStack Query result object containing user types list data, loading state, and error information
  */
-export default function useGetUserTypes(params?: UserTypeListParams): UseQueryResult<UserTypeListResponse> {
+export default function useGetUserTypes(
+  params?: UserTypeListParams,
+  options?: {enabled?: boolean},
+): UseQueryResult<UserTypeListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const {limit, offset} = params ?? {};
+  const {enabled = true} = options ?? {};
 
   return useQuery<UserTypeListResponse>({
     queryKey: [UserTypeQueryKeys.USER_TYPES, {limit, offset}],
+    enabled,
     queryFn: async (): Promise<UserTypeListResponse> => {
       const serverUrl: string = getServerUrl();
       const queryParams: URLSearchParams = new URLSearchParams();

@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {ServerConfigLayers} from '@thunderid/utils';
 import type {JSX} from 'react';
 
 /**
@@ -60,6 +61,8 @@ export interface ConnectionInstance {
   name: string;
   description?: string;
   type: ConnectionType;
+  /** The organization unit the connection belongs to. */
+  ouId?: string;
   categories: ConnectionInstanceCategory[];
   /**
    * Present only for trust-only OIDC instances (trusted issuers); absent for plain federation
@@ -87,6 +90,13 @@ export interface ConnectionListResponse {
   connections: ConnectionInstance[];
   links: ConnectionListLink[];
 }
+
+/**
+ * Resource types reported in a connection's usages.
+ */
+export const ConnectionUsageResourceTypes = {
+  FLOW: 'flow',
+} as const;
 
 /**
  * A single resource that references a connection (e.g. a flow that uses it).
@@ -422,6 +432,15 @@ export type ConnectionRequest =
   | HTTPConnectionRequest;
 
 /**
+ * Request payload for creating a connection of any type. Every connection is owned by an organization unit,
+ * chosen once at creation; an update does not carry it, since the owner cannot change.
+ */
+export type CreateConnectionRequest = ConnectionRequest & {
+  /** The organization unit that will own the connection. */
+  ouId: string;
+};
+
+/**
  * Vendor response — secrets are never returned. A superset carrying every vendor's
  * fields (IdP + SMS); the shared form mapping reads only the fields relevant to each type.
  */
@@ -429,6 +448,8 @@ export interface ConnectionResponse extends Partial<OIDCConnectionRequest> {
   id: string;
   type: ConnectionType;
   name: string;
+  /** The organization unit the connection belongs to. */
+  ouId: string;
   /** SMS (Twilio) fields. */
   accountSid?: string;
   authToken?: string;
@@ -490,6 +511,8 @@ export interface ConnectionVendorMeta {
   supportsAuthentication?: boolean;
   /** Changing the `url` origin requires the stored credentials to be entered again. */
   reentersCredentialsOnOriginChange?: boolean;
+  /** Whether the detail page lists the resources that use this connection. */
+  showsUsages?: boolean;
   /** Whether this connection exposes subject attribute mappings for authorization requests. */
   supportsSubjectMapping?: boolean;
   /** Copy variant for the General tab settings card. */
@@ -514,6 +537,8 @@ export interface ConnectionCardModel {
   comingSoon: boolean;
   /** Route to navigate to when the card is activated; null for coming-soon. */
   navTarget: string | null;
+  /** Whether this card is the default email sender. */
+  isDefault?: boolean;
 }
 
 /**
@@ -568,3 +593,12 @@ export interface ConnectionMetaVendor {
 export interface ConnectionMetaResponse {
   vendors: ConnectionMetaVendor[];
 }
+
+/**
+ * Value of the `notification` server-config section.
+ */
+export interface NotificationConfigValue {
+  defaultEmailSenderId?: string;
+}
+
+export type NotificationConfigResponse = ServerConfigLayers<NotificationConfigValue>;

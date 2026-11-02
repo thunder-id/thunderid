@@ -6,6 +6,7 @@ package granthandlers
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/authzmock"
@@ -183,7 +185,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) stubDefaultResourceServer()
 
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestNewAuthorizationCodeGrantHandler() {
 	handler := newAuthorizationCodeGrantHandler(suite.mockAuthzService, suite.mockTokenBuilder,
-		suite.mockAttrCacheService, suite.mockResourceService, suite.mockEnforcement)
+		suite.mockAttrCacheService, suite.mockResourceService, suite.mockEnforcement, time.Hour)
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }
@@ -1900,4 +1902,61 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_DenyListUna
 	suite.Require().NotNil(errResp)
 	suite.Equal(constants.ErrorServerError, errResp.Error)
 	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+}
+
+// boundSessions is the SSO sessions the callback kept on the test code.
+var boundSessions = []model.SessionData{
+	{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-abc"},
+	{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-def"},
+}
+
+// boundCode returns the test code keeping the SSO sessions the callback bound to it.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) boundCode() authz.AuthorizationCode {
+	code := suite.testAuthzCode
+	code.SubjectID = "user-entity-id"
+	code.SessionData = boundSessions
+	return code
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_CarriesTheBoundSessions() {
+	suite.handler.deviceSecretValidity = time.Hour
+	code := suite.boundCode()
+	suite.mockTokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything,
+		mock.MatchedBy(func(c *tokenservice.DeviceSecretBuildContext) bool {
+			return c.OAuthApp == suite.oauthApp && c.SubjectID == "user-entity-id" &&
+				slices.Equal(c.SessionData, boundSessions) && c.ValidityPeriod == 3600
+		})).Return(&model.TokenDTO{Token: "device-secret"}, nil)
+
+	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
+
+	suite.Equal("device-secret", got.Token)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_NoneWhenTheCodeKeepsNoSession() {
+	code := suite.testAuthzCode
+
+	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
+
+	suite.Empty(got.Token)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildDeviceSecret", mock.Anything, mock.Anything)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_NoneWithoutASessionService() {
+	code := suite.boundCode()
+
+	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
+
+	suite.Empty(got.Token)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildDeviceSecret", mock.Anything, mock.Anything)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_BuildFailureIsNotFatal() {
+	suite.handler.deviceSecretValidity = time.Hour
+	code := suite.boundCode()
+	suite.mockTokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything, mock.Anything).
+		Return(nil, errors.New("signing failed"))
+
+	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
+
+	suite.Empty(got.Token)
 }

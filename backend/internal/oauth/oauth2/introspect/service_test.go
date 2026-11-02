@@ -6,6 +6,7 @@ package introspect
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -43,6 +44,17 @@ func tokenWithTyp(typ, id string) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"` + typ + `"}`))
 	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"id":"` + id + `"}`))
 	return header + "." + payload + ".signature"
+}
+
+// accessTokenWithClaims returns an access token whose payload carries the given claims.
+func accessTokenWithClaims(t *testing.T, claims map[string]interface{}) string {
+	t.Helper()
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"` + jwt.TokenTypeAccessToken + `"}`))
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("encoding claims: %v", err)
+	}
+	return header + "." + base64.RawURLEncoding.EncodeToString(payload) + ".signature"
 }
 
 // accessTokenFor returns a token routed to the access-token validator (RFC 9068 at+jwt).
@@ -196,6 +208,42 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_OmitsAbsentSubT
 	assert.NoError(s.T(), err)
 	assert.True(s.T(), response.Active)
 	assert.Empty(s.T(), response.SubType)
+}
+
+// The details are returned as the token's claim text, so a number is kept exactly.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_SurfacesAuthorizationDetails() {
+	const details = `[{"type":"payment_initiation","amount":12345678901234567890.25}]`
+	claims := map[string]interface{}{"sub": "user123", constants.ClaimAuthorizationDetails: json.RawMessage(details)}
+	token := accessTokenWithClaims(s.T(), claims)
+	s.stubAccessToken(token, claims)
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
+
+	assert.NoError(s.T(), err)
+	assert.True(s.T(), response.Active)
+	encoded, err := json.Marshal(response.AuthorizationDetails)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), details, string(encoded))
+}
+
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_OmitsEmptyOrMalformedAuthorizationDetails() {
+	cases := map[string]interface{}{
+		"empty":     []interface{}{},
+		"not-array": "payment_initiation",
+	}
+	for name, value := range cases {
+		s.Run(name, func() {
+			claims := map[string]interface{}{"sub": "user123", constants.ClaimAuthorizationDetails: value}
+			token := accessTokenWithClaims(s.T(), claims)
+			s.stubAccessToken(token, claims)
+
+			response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
+
+			assert.NoError(s.T(), err)
+			assert.True(s.T(), response.Active)
+			assert.Nil(s.T(), response.AuthorizationDetails)
+		})
+	}
 }
 
 // RFC 7662 Section 2.1 covers refresh tokens as well as access tokens, so a refresh token is

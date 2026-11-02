@@ -716,3 +716,43 @@ func (suite *CredentialsAuthExecutorTestSuite) TestExecute_PreResolvedUser_WithP
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.True(suite.T(), resp.AuthUser.IsAuthenticated())
 }
+
+// A stated hold re-prompts, so the form still offers recovery.
+func (suite *CredentialsAuthExecutorTestSuite) TestExecute_StatedHoldsDifferFromEachOther() {
+	cases := []struct {
+		name     string
+		svcErr   *tidcommon.ServiceError
+		wantCode string
+	}{
+		{name: "a stated lock", svcErr: &authnprovidermgr.ErrorAccountLocked, wantCode: ErrAccountLocked.Code},
+		{name: "a stated suspension", svcErr: &authnprovidermgr.ErrorAccountSuspended,
+			wantCode: ErrAccountSuspended.Code},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything,
+				map[string]interface{}{userAttributeUsername: "testuser"},
+				map[string]interface{}{userAttributePassword: "correcthorse"},
+				mock.Anything, mock.Anything, mock.Anything).
+				Return(providers.AuthUser{}, (providers.AuthenticatedClaims)(nil), tc.svcErr).Once()
+
+			resp, err := suite.executor.Execute(&providers.NodeContext{
+				ExecutionID: "flow-hold",
+				FlowType:    providers.FlowTypeAuthentication,
+				UserInputs: map[string]string{
+					userAttributeUsername: "testuser",
+					userAttributePassword: "correcthorse",
+				},
+				RuntimeData: make(map[string]string),
+			})
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecUserInputRequired, resp.Status)
+			suite.Require().NotNil(resp.Error)
+			suite.Equal(tc.wantCode, resp.Error.Code)
+			suite.NotEmpty(resp.Inputs)
+		})
+	}
+}

@@ -16,6 +16,7 @@ import {
   FormControlLabel,
   Stack,
   Typography,
+  useTheme,
 } from '@wso2/oxygen-ui';
 import {KeyRound, Laptop, Minus, Plus, RefreshCw, UserRound} from '@wso2/oxygen-ui-icons-react';
 import type {JSX, ReactNode} from 'react';
@@ -30,6 +31,8 @@ import type {OAuth2Config} from '../../../models/oauth';
 import {TokenEndpointAuthMethods} from '../../../models/oauth';
 import getCimdErrorMessage from '../../../utils/getCimdErrorMessage';
 import isLoopbackRedirectUri from '../../../utils/isLoopbackRedirectUri';
+import mergeCimdPreview from '../../../utils/mergeCimdPreview';
+import {isIdJagEnabled} from '../../../utils/oauth2Rules';
 import CimdPreviewCard from '../../create-application/cimd/CimdPreviewCard';
 
 /**
@@ -69,6 +72,7 @@ export default function CimdDocumentSection({
   isReadOnly,
 }: CimdDocumentSectionProps): JSX.Element {
   const {t} = useTranslation();
+  const theme = useTheme();
   const previewDocument = usePreviewCimdDocument();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [updateDetails, setUpdateDetails] = useState(false);
@@ -85,22 +89,31 @@ export default function CimdDocumentSection({
   };
 
   const preview: CimdPreview | undefined = previewDocument.data;
+  const updatedConfig: OAuth2Config | undefined = preview
+    ? mergeCimdPreview(oauth2Config, preview.oauth2Config)
+    : undefined;
   const removedUris = preview ? currentRedirectUris.filter((uri) => !preview.redirectUris.includes(uri)) : [];
   const addedUris = preview ? preview.redirectUris.filter((uri) => !currentRedirectUris.includes(uri)) : [];
+  const currentGrants = oauth2Config.grantTypes ?? [];
+  const updatedGrants = updatedConfig?.grantTypes ?? [];
+  const removedGrants = updatedConfig ? currentGrants.filter((grant) => !updatedGrants.includes(grant)) : [];
+  const addedGrants = updatedGrants.filter((grant) => !currentGrants.includes(grant));
+  const keptGrants = preview ? updatedGrants.filter((grant) => !preview.grantTypes.includes(grant)) : [];
+  const idJagTurnedOff = isIdJagEnabled(oauth2Config) && updatedConfig !== undefined && !isIdJagEnabled(updatedConfig);
   const authChanged = preview ? preview.tokenEndpointAuthMethod !== oauth2Config.tokenEndpointAuthMethod : false;
   const keysChanged = preview
     ? JSON.stringify(preview.oauth2Config.certificate ?? null) !== JSON.stringify(oauth2Config.certificate ?? null)
     : false;
-  const hasChanges = removedUris.length > 0 || addedUris.length > 0 || authChanged || keysChanged;
+  const hasChanges =
+    removedUris.length > 0 ||
+    addedUris.length > 0 ||
+    removedGrants.length > 0 ||
+    addedGrants.length > 0 ||
+    authChanged ||
+    keysChanged;
 
   const applyDocument = (): void => {
-    if (!preview) return;
-    // The previewed values replace the document's fields as returned; everything else stays as configured.
-    const updatedConfig: OAuth2Config = {
-      ...oauth2Config,
-      ...preview.oauth2Config,
-      certificate: preview.oauth2Config.certificate ?? null,
-    };
+    if (!preview || !updatedConfig) return;
     onFieldChange(
       'inboundAuthConfig',
       application.inboundAuthConfig?.map((config) =>
@@ -117,9 +130,25 @@ export default function CimdDocumentSection({
     setDialogOpen(false);
   };
 
-  const marker = (uri: string): ReactNode => {
-    if (addedUris.includes(uri)) return <Plus size={14} color="green" aria-label="added" />;
-    if (removedUris.includes(uri)) return <Minus size={14} color="red" aria-label="removed" />;
+  const changeMarker = (value: string, added: string[], removed: string[]): ReactNode => {
+    if (added.includes(value)) {
+      return (
+        <Plus
+          size={14}
+          color={theme.vars?.palette.success.main}
+          aria-label={t('applications:cimd.refetch.added', 'Added')}
+        />
+      );
+    }
+    if (removed.includes(value)) {
+      return (
+        <Minus
+          size={14}
+          color={theme.vars?.palette.error.main}
+          aria-label={t('applications:cimd.refetch.removed', 'Removed')}
+        />
+      );
+    }
     return <Box sx={{width: 14}} />;
   };
 
@@ -220,7 +249,21 @@ export default function CimdDocumentSection({
                   })}
                 </Alert>
               )}
-              <CimdPreviewCard preview={preview} redirectUriMarker={marker} extraRedirectUris={removedUris} />
+              {idJagTurnedOff && (
+                <Alert severity="warning">
+                  {t(
+                    'applications:cimd.refetch.idJagTurnedOff',
+                    'Identity assertions (ID-JAG) will be turned off because the document no longer declares private key JWT authentication.',
+                  )}
+                </Alert>
+              )}
+              <CimdPreviewCard
+                preview={preview}
+                redirectUriMarker={(uri) => changeMarker(uri, addedUris, removedUris)}
+                extraRedirectUris={removedUris}
+                grantMarker={(grant) => changeMarker(grant, addedGrants, removedGrants)}
+                extraGrantTypes={[...keptGrants, ...removedGrants]}
+              />
               <FormControlLabel
                 control={<Checkbox checked={updateDetails} onChange={(_e, checked) => setUpdateDetails(checked)} />}
                 label={t('applications:cimd.refetch.updateDetails', 'Also update the name and links from the document')}

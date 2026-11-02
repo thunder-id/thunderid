@@ -30,6 +30,8 @@ type NotificationSenderDTO struct {
 	Name        string                   `yaml:"name"`
 	Description string                   `yaml:"description,omitempty"`
 	Type        NotificationSenderType   `yaml:"-"`
+	OUID        string                   `yaml:"ouId,omitempty"`
+	OUHandle    string                   `yaml:"ouHandle,omitempty"`
 	Provider    NotificationProviderType `yaml:"provider"`
 	Properties  []cmodels.Property       `yaml:"properties,omitempty"`
 }

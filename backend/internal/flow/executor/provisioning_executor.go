@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -50,6 +51,7 @@ type provisioningExecutor struct {
 
 var _ providers.Executor = (*provisioningExecutor)(nil)
 var _ identifyingExecutorInterface = (*provisioningExecutor)(nil)
+var _ agentMgtProviderConsumerInterface = (*provisioningExecutor)(nil)
 
 // newProvisioningExecutor creates a new instance of ProvisioningExecutor.
 func newProvisioningExecutor(
@@ -75,7 +77,7 @@ func newProvisioningExecutor(
 				providers.FlowTypeAdministration,
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
-				{Property: propertyKeyProvisioningMode},
+				{Property: propertyKeyDelegated},
 				{Property: propertyKeyDynamicInputsIncludeOptional},
 				{Property: propertyKeyDynamicInputsIncludeOptionalCredentials},
 				{Property: propertyKeyMaxDynamicInputsPerPrompt},
@@ -88,7 +90,7 @@ func newProvisioningExecutor(
 		})
 
 	identifyingExec := newIdentifyingExecutor(ExecutorNameProvisioning,
-		[]providers.Input{}, []providers.Input{}, flowFactory, entityProvider, nil)
+		[]providers.Input{}, []providers.Input{}, flowFactory, entityProvider, nil, nil)
 
 	return &provisioningExecutor{
 		Executor:                     base,
@@ -105,6 +107,11 @@ func newProvisioningExecutor(
 	}
 }
 
+// setAgentMgtProvider injects the agent provider. See SetAgentMgtProvider.
+func (p *provisioningExecutor) setAgentMgtProvider(provider providers.AgentMgtProvider) {
+	p.agentMgtProvider = provider
+}
+
 // Execute provisions an entity of the node's category. It runs the category-independent
 // preparation, hands the collected attributes to the category's create step, and finishes with the
 // category-independent work that follows a create.
@@ -118,19 +125,21 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		AuthUser:       ctx.AuthUser,
 	}
 
-	category, err := categoryFromMode(ctx)
+	category, err := categoryFromContext(ctx)
 	if err != nil {
 		return execResp, err
 	}
 
-	// Agents do not self-register yet. The capability is not blocked anywhere structural, so
-	// lifting this is a matter of deleting the guard once the rules for it are settled.
-	if category == entitytype.TypeCategoryAgent && ctx.FlowType == providers.FlowTypeRegistration {
-		logger.Debug(ctx.Context, "Agent provisioning is not available in a registration flow")
-		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrSelfRegNotSupportedForAgents
+	// An agent is created by an administrator, so only an administration flow provisions one.
+	if category == entitytype.TypeCategoryAgent && ctx.FlowType != providers.FlowTypeAdministration {
+		if ctx.FlowType == providers.FlowTypeRegistration {
+			logger.Debug(ctx.Context, "Agent provisioning is not available in a registration flow")
+			execResp.Status = providers.ExecFailure
+			execResp.Error = &ErrSelfRegNotSupportedForAgents
 
-		return execResp, nil
+			return execResp, nil
+		}
+		return execResp, fmt.Errorf("agent provisioning is not supported in a %s flow", ctx.FlowType)
 	}
 
 	// A resolved user needs no provisioning. Checked before required inputs so the user is not
@@ -173,15 +182,17 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 				return nil, err
 			}
 			if len(holderIDs) > 0 {
-				p.applyExistingLinkHolderRules(ctx, category, holderIDs, execResp, logger)
+				err = p.applyExistingLinkHolderRules(ctx, category, holderIDs, execResp, logger)
+				if err != nil {
+					return nil, err
+				}
 				return execResp, nil
 			}
 		}
 	}
 
-	// Authentication only auto-provisions the categories it can authenticate, and only when it
-	// marked the entity eligible.
-	if ctx.FlowType == providers.FlowTypeAuthentication && traitsFor(category).autoProvisionedAtAuthentication {
+	// Authentication auto-provisions only an entity it marked eligible.
+	if ctx.FlowType == providers.FlowTypeAuthentication {
 		eligible, ok := ctx.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning]
 		if !ok || eligible != dataValueTrue {
 			logger.Debug(ctx.Context, "Entity is not eligible for auto provisioning, skipping execution")
@@ -250,37 +261,44 @@ func (p *provisioningExecutor) registrationLinkHolders(ctx *providers.NodeContex
 }
 
 // applyExistingLinkHolderRules completes registration as the one user holding the link when
-// registering an existing user is allowed, and fails it otherwise.
+// registering an existing user is allowed, and fails it otherwise. It returns an error only for a
+// server fault while binding the holder.
 func (p *provisioningExecutor) applyExistingLinkHolderRules(ctx *providers.NodeContext,
 	category entitytype.TypeCategory, holderIDs []string, execResp *providers.ExecutorResponse,
-	logger *log.Logger) {
+	logger *log.Logger) error {
 	logger.Debug(ctx.Context, "Federated identity is already linked to a user",
 		log.Int("holderCount", len(holderIDs)))
 	if len(holderIDs) > 1 || !isAllowRegistrationWithExistingUserRuntimeFlagSet(ctx) {
 		execResp.Status = providers.ExecFailure
 		execResp.Error = errForEntityCategory(ErrEntityAlreadyExists, category)
-		return
+		return nil
 	}
 	// Several users hold the link, so the AuthUser names none of them yet.
 	if ctx.RuntimeData[common.RuntimeKeyEntityState] == entityStateAmbiguous {
-		p.authenticateProvisionedEntity(ctx, category, holderIDs[0], execResp)
-		if execResp.Status == providers.ExecFailure {
-			return
+		if svcErr := authenticateEntityByID(ctx, p.authnProvider, holderIDs[0], execResp.AuthUser,
+			execResp); svcErr != nil {
+			if svcErr.Type == tidcommon.ServerErrorType {
+				return fmt.Errorf("failed to bind the existing link holder: %s", svcErr.Code)
+			}
+			execResp.Status = providers.ExecFailure
+			execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrEntityAuthFailed, category))
+			return nil
 		}
 	}
 	execResp.Status = providers.ExecComplete
+	return nil
 }
 
-// categoryFromMode maps the node's mode property onto the entity category it works on. A mode is
-// the category name, and a node that sets none works on the default category.
-func categoryFromMode(ctx *providers.NodeContext) (entitytype.TypeCategory, error) {
-	mode, ok := ctx.NodeProperties[propertyKeyProvisioningMode].(string)
-	if !ok || mode == "" {
+// categoryFromContext resolves the category a provisioning node works on: the one a type resolver
+// put in the runtime data, or the default category when no resolver ran.
+func categoryFromContext(ctx *providers.NodeContext) (entitytype.TypeCategory, error) {
+	name := ctx.RuntimeData[categoryNameKey]
+	if name == "" {
 		return defaultProvisioningCategory, nil
 	}
-	category := entitytype.TypeCategory(mode)
+	category := entitytype.TypeCategory(name)
 	if !category.IsValid() {
-		return "", fmt.Errorf("invalid provisioning mode: %s", mode)
+		return "", fmt.Errorf("invalid category: %s", name)
 	}
 	return category, nil
 }
@@ -452,7 +470,7 @@ func (p *provisioningExecutor) completeProvisioning(ctx *providers.NodeContext,
 	execResp.Status = providers.ExecComplete
 
 	// Record the auto-provisioning so later nodes can tell it from an ordinary sign-in.
-	if ctx.FlowType == providers.FlowTypeAuthentication && traitsFor(category).autoProvisionedAtAuthentication {
+	if ctx.FlowType == providers.FlowTypeAuthentication {
 		execResp.RuntimeData[common.RuntimeKeyUserAutoProvisioned] = dataValueTrue
 	}
 
@@ -599,7 +617,7 @@ func (p *provisioningExecutor) resolveAmbiguousEntityForProvisioning(ctx *provid
 // the category once and calls hasRequiredInputs with it directly.
 func (p *provisioningExecutor) HasRequiredInputs(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse) bool {
-	category, err := categoryFromMode(ctx)
+	category, err := categoryFromContext(ctx)
 	if err != nil {
 		p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID)).
 			Warn(ctx.Context, "Failed to resolve the provisioning category", log.Any("error", err))
@@ -746,10 +764,16 @@ func (p *provisioningExecutor) buildMissingInputs(
 			}
 			// An attribute restricted to a fixed set is offered as a choice rather than as free
 			// text. A prompt node declaring the field itself is enriched with these options by
-			// identifier, so the permitted values need not be repeated in the flow.
+			// identifier, so the permitted values need not be repeated in the flow. A field the
+			// prompt does not declare is rendered from a generated component, and clients attach
+			// the options to a select by matching the input's ref to the component id, so the ref
+			// is set to the identifier.
 			if len(attr.Enum) > 0 {
 				input.Type = providers.InputTypeSelect
 				input.Options = attr.Enum
+				if input.Ref == "" {
+					input.Ref = attr.Attribute
+				}
 			}
 			input.Required = effectiveRequired
 			if effectiveRequired {
@@ -962,32 +986,39 @@ func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext
 		return nil, errForEntityCategory(ErrProvisioningFailed, entitytype.TypeCategoryAgent)
 	}
 
+	delegated, flagErr := agentDelegation(nodeCtx)
+	if flagErr != nil {
+		logger.Debug(nodeCtx.Context, "Delegation could not be read", log.String("key", delegatedKey))
+		return nil, flagErr
+	}
+
+	// The flow shows the agent's client credentials, so an OAuth client is always requested. The
+	// agent service fills in its grant types from Delegated.
+	oauthConfig := &providers.OAuthConfigWithSecret{}
 	agent := &providers.Agent{
 		OUID:        targetRef.ouID,
 		Type:        targetRef.entityType,
 		Description: collectedValue(nodeCtx, descriptionKey),
 		LogoURL:     collectedValue(nodeCtx, logoURLKey),
 		Owner:       nodeCtx.RuntimeData[ownerIDKey],
+		Delegated:   delegated,
 		Attributes:  attributesJSON,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{Type: providers.OAuthInboundAuthType, OAuthConfig: oauthConfig},
+		},
 	}
-	// Redirect URIs are the only OAuth value a caller may supply, and are attached only when
-	// collected so the provider applies its default otherwise.
-	if uris := splitTrimmed(collectedValue(nodeCtx, redirectURIsKey)); len(uris) > 0 {
-		agent.InboundAuthConfig = []providers.InboundAuthConfigWithSecret{
-			{
-				Type:        providers.OAuthInboundAuthType,
-				OAuthConfig: &providers.OAuthConfigWithSecret{RedirectURIs: uris},
-			},
+	// The callback URIs, login flow and user type belong to a delegated agent, and all three are
+	// required with delegation, so leftovers from an earlier choice are not applied to one that acts
+	// on its own behalf. The service validates all three.
+	if delegated {
+		oauthConfig.RedirectURIs = splitTrimmed(collectedValue(nodeCtx, redirectURIsKey))
+		agent.AuthFlowID = collectedValue(nodeCtx, authFlowIDKey)
+		if handle := collectedValue(nodeCtx, allowedUserTypesKey); handle != "" {
+			agent.AllowedUserTypes = []string{handle}
 		}
 	}
 
-	delegated, flagErr := collectedFlag(nodeCtx, delegatedKey)
-	if flagErr != nil {
-		logger.Debug(nodeCtx.Context, "Delegation flag could not be read", log.String("key", delegatedKey))
-		return nil, flagErr
-	}
-
-	createdAgent, svcErr := p.agentMgtProvider.CreateAgent(nodeCtx.Context, agent, delegated)
+	createdAgent, svcErr := p.agentMgtProvider.CreateAgent(nodeCtx.Context, agent)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -999,22 +1030,32 @@ func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext
 	return createdAgent, nil
 }
 
-// collectedFlag reads a boolean the flow collected. Values arrive as strings and are parsed the
-// way a boolean schema attribute is, accepting the casings and 1/0 forms a hand-authored flow may
-// carry. An absent value is false; one that cannot be read is an error rather than a silent false,
-// which would provision the entity in the shape the caller did not ask for.
-func collectedFlag(ctx *providers.NodeContext, key string) (bool, *tidcommon.ServiceError) {
-	raw := collectedValue(ctx, key)
-	if raw == "" {
-		return false, nil
+// agentDelegation resolves whether the agent acts on behalf of a signed-in user. The first value
+// that is not empty wins: what an executor resolved, what the caller submitted, the node's
+// delegated property, then false. Collected values arrive as strings and are parsed the way a
+// boolean schema attribute is, accepting the casings and 1/0 forms a hand-authored flow may carry.
+// A value that cannot be read is an error rather than a silent false, which would provision the
+// agent in the shape the caller did not ask for.
+func agentDelegation(ctx *providers.NodeContext) (bool, *tidcommon.ServiceError) {
+	if raw := collectedValue(ctx, delegatedKey); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			return false, errInvalidFlagValueFor(delegatedKey)
+		}
+
+		return parsed, nil
 	}
 
-	parsed, err := strconv.ParseBool(raw)
-	if err != nil {
-		return false, errInvalidFlagValueFor(key)
+	if property, ok := ctx.NodeProperties[propertyKeyDelegated]; ok && property != nil {
+		fallback, isBool := property.(bool)
+		if !isBool {
+			return false, errInvalidFlagValueFor(propertyKeyDelegated)
+		}
+
+		return fallback, nil
 	}
 
-	return parsed, nil
+	return false, nil
 }
 
 // collectedValue reads a value the flow collected for key, preferring what an executor resolved

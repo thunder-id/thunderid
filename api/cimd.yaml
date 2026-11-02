@@ -32,7 +32,9 @@ paths:
         Retrieves and validates the Client ID Metadata Document at the given Client Identifier URL and
         returns the values to store. Nothing is stored. This is the only operation that retrieves a
         document. Create the client with the returned values, which include
-        `clientIdMetadataDocument: true`.
+        `clientIdMetadataDocument: true`. The returned grant types are those the document declares,
+        narrowed to `authorization_code` and `refresh_token` and to the grant types the deployment
+        allows.
       requestBody:
         required: true
         content:

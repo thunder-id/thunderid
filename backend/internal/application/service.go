@@ -27,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -41,7 +42,10 @@ type ApplicationServiceInterface interface {
 		ctx context.Context, app *model.ApplicationDTO) (*model.ApplicationDTO, *tidcommon.ServiceError)
 	ValidateApplication(ctx context.Context, app *model.ApplicationDTO) (
 		*model.ApplicationProcessedDTO, *providers.InboundAuthConfigWithSecret, *tidcommon.ServiceError)
-	GetApplicationList(ctx context.Context) (*model.ApplicationListResponse, *tidcommon.ServiceError)
+	GetApplicationList(ctx context.Context, filters map[string]interface{}) (
+		*model.ApplicationListResponse, *tidcommon.ServiceError)
+	GetApplicationListByProject(ctx context.Context, projectID string, filters map[string]interface{}) (
+		*model.ApplicationListResponse, *tidcommon.ServiceError)
 	GetOAuthApplication(
 		ctx context.Context, clientID string) (*providers.OAuthClient, *tidcommon.ServiceError)
 	GetApplication(ctx context.Context, appID string) (*providers.Application, *tidcommon.ServiceError)
@@ -80,6 +84,11 @@ type ApplicationServiceInterface interface {
 // duration, leaves the revocation service on its configured default.
 type artifactLifetimeResolver func(client *providers.OAuthClient) time.Duration
 
+// projectOUResolver finds the organization unit that a resource scoped to a project belongs to.
+type projectOUResolver interface {
+	ResolveProjectOU(ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError)
+}
+
 // ApplicationService is the default implementation of the ApplicationServiceInterface.
 type applicationService struct {
 	logger               *log.Logger
@@ -95,6 +104,8 @@ type applicationService struct {
 	sharingService       sharing.SharingServiceInterface
 	// governance derives the access status.
 	governance identitygovernance.IdentityGovernanceServiceInterface
+	// projectResolver is nil on a deployment that serves no projects.
+	projectResolver projectOUResolver
 }
 
 // newApplicationService creates a new instance of ApplicationService.
@@ -109,6 +120,7 @@ func newApplicationService(
 	valueCapturer declarativeresource.ValueCapturer,
 	sharingService sharing.SharingServiceInterface,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
+	projectResolver projectOUResolver,
 ) ApplicationServiceInterface {
 	return &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
@@ -122,6 +134,7 @@ func newApplicationService(
 		valueCapturer:        valueCapturer,
 		sharingService:       sharingService,
 		governance:           governance,
+		projectResolver:      projectResolver,
 	}
 }
 
@@ -327,9 +340,18 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 	return processedDTO, inboundAuthConfig, nil
 }
 
-// GetApplicationList list the applications.
+// GetApplicationList list the applications. An organization unit filter lists the applications that
+// unit owns, followed by the ones shared into it.
 func (as *applicationService) GetApplicationList(
-	ctx context.Context) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
+	ctx context.Context, filters map[string]interface{}) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
+	ouID, rest, err := filter.SplitOUIDFilter(filters)
+	if err != nil || len(rest) > 0 {
+		return nil, &ErrorInvalidFilter
+	}
+	if ouID != "" {
+		return as.listApplicationsInOU(ctx, ouID)
+	}
+
 	totalResults, entErr := as.entityService.GetEntityListCount(ctx, providers.EntityCategoryApp, nil)
 	if entErr != nil {
 		as.logger.Error(ctx, "Failed to count application entities", log.Error(entErr))
@@ -342,6 +364,74 @@ func (as *applicationService) GetApplicationList(
 		as.logger.Error(ctx, "Failed to list application entities", log.Error(entErr))
 		return nil, &tidcommon.InternalServerError
 	}
+	return as.buildApplicationList(ctx, entities, len(entities), totalResults)
+}
+
+// GetApplicationListByProject lists the applications an organization unit of the project owns, followed
+// by the ones shared into it. Without an organization unit filter it lists the project's root
+// organization unit. A project that does not exist, or an organization unit outside it, has none.
+func (as *applicationService) GetApplicationListByProject(ctx context.Context, projectID string,
+	filters map[string]interface{}) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
+	ouID, rest, err := filter.SplitOUIDFilter(filters)
+	if err != nil || len(rest) > 0 {
+		return nil, &ErrorInvalidFilter
+	}
+
+	ouID, svcErr := as.resolveProjectOU(ctx, projectID, ouID)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ClientErrorType {
+			return as.buildApplicationList(ctx, nil, 0, 0)
+		}
+		return nil, svcErr
+	}
+	return as.listApplicationsInOU(ctx, ouID)
+}
+
+// resolveProjectOU returns the organization unit of the project that an application belongs to: the
+// project's root organization unit when ouID is empty, or ouID when it is in the project. It returns
+// ErrorInvalidProject when no such project exists, ErrorOUNotInProject when the organization unit is
+// outside the project, and ErrorInvalidRequestFormat when the organization unit does not exist.
+func (as *applicationService) resolveProjectOU(
+	ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError) {
+	if projectID == "" || as.projectResolver == nil {
+		return "", &ErrorInvalidProject
+	}
+	resolved, svcErr := as.projectResolver.ResolveProjectOU(ctx, projectID, ouID)
+	if svcErr == nil {
+		return resolved, nil
+	}
+	if svcErr.Type != tidcommon.ClientErrorType {
+		return "", &tidcommon.InternalServerError
+	}
+	switch svcErr.Code {
+	case projectNotFoundErrorCode:
+		return "", &ErrorInvalidProject
+	case ouNotInProjectErrorCode:
+		return "", &ErrorOUNotInProject
+	default:
+		return "", &ErrorInvalidRequestFormat
+	}
+}
+
+// listApplicationsInOU lists the applications an organization unit owns, followed by the ones shared
+// into it.
+func (as *applicationService) listApplicationsInOU(
+	ctx context.Context, ouID string) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
+	page, err := as.entityService.GetEntityPageInOU(ctx, providers.EntityCategoryApp, ouID,
+		entity.OUEntityScopeAll, serverconst.MaxCompositeStoreRecords, 0, nil)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to list application entities in organization unit",
+			log.String("ouID", ouID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return as.buildApplicationList(ctx, slices.Concat(page.Owned, page.Shared), len(page.Owned),
+		page.TotalResults)
+}
+
+// buildApplicationList builds the list response for application entities, of which the first
+// ownedCount are owned by the listed organization unit and the rest are shared into it.
+func (as *applicationService) buildApplicationList(ctx context.Context, entities []providers.Entity,
+	ownedCount, totalResults int) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
 	if len(entities) == 0 {
 		return &model.ApplicationListResponse{
 			TotalResults: totalResults,
@@ -382,6 +472,13 @@ func (as *applicationService) GetApplicationList(
 		}
 		resp := buildBasicApplicationResponse(*cfg, &entities[i])
 		resp.Status = statuses[i]
+		owned := i < ownedCount
+		resp.IsOwnedByOU = new(owned)
+		// The organization unit an application is shared into cannot change it until templated configs are
+		// supported for applications.
+		if !owned {
+			resp.IsReadOnly = true
+		}
 		applicationList = append(applicationList, resp)
 	}
 
@@ -1466,6 +1563,17 @@ func (as *applicationService) validateApplicationForUpdate(
 	}
 	app.Type = existingApp.Type
 
+	// A shared application stays in its organization unit: its policies were issued against that unit.
+	if app.OUID != existingApp.OUID {
+		policies, svcErr := as.sharingService.ListPolicies(ctx, ApplicationSharingType, appID)
+		if svcErr != nil {
+			return nil, nil, translateSharingError(svcErr)
+		}
+		if len(policies) > 0 {
+			return nil, nil, &ErrorSharedApplicationCannotMove
+		}
+	}
+
 	inboundAuthConfig, svcErr := as.processInboundAuthConfig(ctx, app, existingApp)
 	if svcErr != nil {
 		return nil, nil, svcErr
@@ -1488,6 +1596,15 @@ func (as *applicationService) validateApplicationFields(
 			return &ErrorInvalidRequestFormat
 		}
 		app.OUID = ou.ID
+	}
+	// A project places the application in its root organization unit, or checks that the one named
+	// belongs to it.
+	if app.ProjectID != "" {
+		ouID, svcErr := as.resolveProjectOU(ctx, app.ProjectID, app.OUID)
+		if svcErr != nil {
+			return svcErr
+		}
+		app.OUID = ouID
 	}
 	// Resolve flow handles to IDs when the direct IDs are absent.
 	if err := as.inboundClientService.ResolveInboundAuthProfileHandles(ctx, &app.InboundAuthProfile); err != nil {

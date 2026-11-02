@@ -15,18 +15,39 @@ interface MockDataGridProps {
     renderCell?: (params: {row: Record<string, unknown>; field: string; value: unknown; id: string}) => React.ReactNode;
   }[];
   loading?: boolean;
+  paginationMode?: string;
+  getRowId?: (row: {id: string; [key: string]: unknown}) => string;
+  disableColumnFilter?: boolean;
 }
 
 vi.mock('@wso2/oxygen-ui', async () => {
   const actual = await vi.importActual<typeof OxygenUI>('@wso2/oxygen-ui');
   return {
     ...actual,
-    DataGrid: {
-      ...(actual.DataGrid ?? {}),
-      DataGrid: ({rows = [], columns = [], loading = false}: MockDataGridProps) => (
-        <div data-testid="members-grid" data-loading={loading}>
+    ListingTable: {
+      ...actual.ListingTable,
+      Provider: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
+      Container: ({children, disablePaper = false}: {children: React.ReactNode; disablePaper?: boolean}) => (
+        <div data-testid="listing-table-container" data-disable-paper={disablePaper ? 'true' : undefined}>
+          {children}
+        </div>
+      ),
+      DataGrid: ({
+        rows = [],
+        columns = [],
+        loading = false,
+        paginationMode = undefined,
+        getRowId = (row) => row.id,
+        disableColumnFilter = false,
+      }: MockDataGridProps) => (
+        <div
+          data-testid="members-grid"
+          data-loading={loading}
+          data-pagination-mode={paginationMode}
+          data-disable-column-filter={disableColumnFilter}
+        >
           {rows.map((row) => (
-            <div key={row.id} data-testid={`member-${row.id}`}>
+            <div key={getRowId(row)} data-testid={`member-${getRowId(row)}`}>
               {columns.map((column) => {
                 if (!column?.field || !column.renderCell) return null;
                 return (
@@ -87,6 +108,15 @@ describe('ManageMembersSection', () => {
     expect(screen.getByTestId('member-u1')).toBeInTheDocument();
     expect(screen.getByTestId('member-g2')).toBeInTheDocument();
     expect(screen.getByTestId('member-a1')).toBeInTheDocument();
+  });
+
+  it('should render a server paginated grid with the column filter disabled', () => {
+    renderWithProviders(<ManageMembersSection {...defaultProps} />);
+
+    const grid = screen.getByTestId('members-grid');
+    expect(grid).toHaveAttribute('data-pagination-mode', 'server');
+    expect(grid).toHaveAttribute('data-disable-column-filter', 'true');
+    expect(screen.getByTestId('listing-table-container')).not.toHaveAttribute('data-disable-paper');
   });
 
   it('should show loading state', () => {

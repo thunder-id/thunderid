@@ -173,10 +173,18 @@ func (p *actorProvider) GetTransitiveGroupAncestors(
 func (p *actorProvider) GetActorRoles(
 	actorID string, groupIDs []string,
 ) ([]string, *tidcommon.ServiceError) {
+	return p.GetActorRolesInOU(actorID, groupIDs, "")
+}
+
+// GetActorRolesInOU returns the names of the roles assigned to the actor directly or through
+// groupIDs, counting only the assignments made in ouID, or those made anywhere when it is empty.
+func (p *actorProvider) GetActorRolesInOU(
+	actorID string, groupIDs []string, ouID string,
+) ([]string, *tidcommon.ServiceError) {
 	if p.roleService == nil {
 		return nil, nil
 	}
-	return p.roleService.GetUserRoles(context.Background(), actorID, groupIDs)
+	return p.roleService.GetUserRoles(context.Background(), actorID, groupIDs, ouID)
 }
 
 func mapEntityProviderError(epErr *entityprovider.EntityProviderError) *tidcommon.ServiceError {

@@ -28,7 +28,6 @@ describe('EditOrganizationAccessSettings', () => {
       readOnly: false,
       errorNamespace: 'applications',
       resolveErrorMessage: getApplicationErrorMessage,
-      description: 'Storefront can request tokens for a granted organization unit, to act within that unit.',
     });
   });
 

@@ -49,16 +49,21 @@ CREATE TABLE "ROLE_PERMISSION" (
 -- Index for resource server queries with deployment isolation on ROLE_PERMISSION
 CREATE INDEX idx_role_permission_resource_server ON "ROLE_PERMISSION" (RESOURCE_SERVER_ID, DEPLOYMENT_ID);
 
--- Table to store Role assignments (to entities and groups)
+-- Table to store Role assignments (to entities and groups). ASSIGNMENT_OU_ID is the organization unit
+-- the assignment was made in: the role's owner, or an organization unit the role is shared with.
 CREATE TABLE "ROLE_ASSIGNMENT" (
     DEPLOYMENT_ID       VARCHAR(255) NOT NULL,
     ROLE_ID         VARCHAR(36) NOT NULL,
+    ASSIGNMENT_OU_ID VARCHAR(36) NOT NULL,
     ASSIGNEE_TYPE   VARCHAR(6)  NOT NULL CHECK (ASSIGNEE_TYPE IN ('entity', 'group')),
     ASSIGNEE_ID     VARCHAR(36) NOT NULL,
     CREATED_AT      TIMESTAMPTZ DEFAULT NOW(),
     UPDATED_AT      TIMESTAMPTZ DEFAULT NOW(),
-    PRIMARY KEY (ROLE_ID, DEPLOYMENT_ID, ASSIGNEE_TYPE, ASSIGNEE_ID)
+    PRIMARY KEY (ROLE_ID, DEPLOYMENT_ID, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, ASSIGNEE_ID)
 );
+
+-- Index for looking up an assignee's role assignments, optionally in one organization unit, with deployment isolation
+CREATE INDEX idx_role_assignment_assignee ON "ROLE_ASSIGNMENT" (DEPLOYMENT_ID, ASSIGNEE_TYPE, ASSIGNEE_ID, ASSIGNMENT_OU_ID);
 
 -- Table to store theme configurations.
 CREATE TABLE "THEME" (
@@ -139,6 +144,7 @@ CREATE TABLE "IDP" (
     NAME VARCHAR(255) NOT NULL,
     DESCRIPTION VARCHAR(500),
     TYPE VARCHAR(20) NOT NULL,
+    OU_ID VARCHAR(36) NOT NULL,
     PROPERTIES JSONB,
     ATTRIBUTE_CONFIGURATION JSONB,
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
@@ -159,6 +165,7 @@ CREATE TABLE "NOTIFICATION_SENDER" (
     ID VARCHAR(36) NOT NULL,
     DESCRIPTION VARCHAR(500),
     TYPE VARCHAR(20) NOT NULL,
+    OU_ID VARCHAR(36) NOT NULL,
     PROVIDER VARCHAR(20) NOT NULL,
     PROPERTIES JSONB,
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
@@ -176,6 +183,7 @@ CREATE TABLE "AUTHORIZATION_PDP_CONNECTION" (
 	NAME VARCHAR(255) NOT NULL,
 	DESCRIPTION VARCHAR(500),
 	TYPE VARCHAR(50) NOT NULL,
+	OU_ID VARCHAR(36) NOT NULL,
 	PROPERTIES JSONB NOT NULL,
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
     UPDATED_AT TIMESTAMPTZ DEFAULT NOW()
@@ -191,6 +199,7 @@ CREATE TABLE "HTTP_CONNECTION" (
     ID            VARCHAR(36) NOT NULL,
     NAME          VARCHAR(255) NOT NULL,
     DESCRIPTION   VARCHAR(500),
+    OU_ID         VARCHAR(36) NOT NULL,
     PROPERTIES    JSONB NOT NULL,
     CREATED_AT    TIMESTAMPTZ DEFAULT NOW(),
     UPDATED_AT    TIMESTAMPTZ DEFAULT NOW(),
@@ -237,6 +246,26 @@ CREATE INDEX idx_resource_server_name_deployment ON "RESOURCE_SERVER" (DEPLOYMEN
 -- Unique constraint: Resource server identifier must be unique per deployment
 CREATE UNIQUE INDEX uq_resource_server_identifier
     ON "RESOURCE_SERVER"(IDENTIFIER, DEPLOYMENT_ID);
+
+-- Table to store RFC 9396 authorization details types. The schema is kept as text, as it was written,
+-- so that the order in which it declares its properties is kept.
+CREATE TABLE "AUTHORIZATION_DETAIL_TYPE" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID VARCHAR(36) NOT NULL,
+    TYPE VARCHAR(512) NOT NULL,
+    NAME VARCHAR(100) NOT NULL,
+    DESCRIPTION TEXT,
+    VERSION INTEGER NOT NULL DEFAULT 1,
+    SCHEMA_DEFINITION TEXT NOT NULL,
+    PROPERTIES JSONB,
+    CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
+    UPDATED_AT TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (DEPLOYMENT_ID, ID)
+);
+
+-- Unique constraint: an authorization details type value is unique per deployment
+CREATE UNIQUE INDEX uq_authorization_detail_type
+    ON "AUTHORIZATION_DETAIL_TYPE"(DEPLOYMENT_ID, TYPE);
 
 -- Table to store resources within resource servers.
 CREATE TABLE "RESOURCE" (
@@ -322,6 +351,7 @@ CREATE TABLE "FLOW" (
     NAME VARCHAR(100) NOT NULL,
     FLOW_TYPE VARCHAR(50) NOT NULL,
     ACTIVE_VERSION INTEGER NOT NULL,
+    OU_ID VARCHAR(36) NOT NULL,
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
     UPDATED_AT TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (HANDLE, FLOW_TYPE, DEPLOYMENT_ID),

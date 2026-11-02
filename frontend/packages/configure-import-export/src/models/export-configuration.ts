@@ -28,6 +28,10 @@ export interface ExportRequest {
    */
   organizationUnits?: string[];
   /**
+   * List of project IDs to export. Use `["*"]` to export all. Only a Control Plane serves projects.
+   */
+  projects?: string[];
+  /**
    * List of user IDs to export. Use `["*"]` to export all.
    */
   users?: string[];

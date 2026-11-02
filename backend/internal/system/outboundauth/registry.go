@@ -90,20 +90,6 @@ func GetMethod(authType Type) (Method, bool) {
 	return Method{}, false
 }
 
-// CredentialFieldKeys returns, in registration order and without repeats, the key of every field
-// any registered method marks as a credential.
-func CredentialFieldKeys() []string {
-	var keys []string
-	for _, method := range registeredMethods {
-		for _, field := range method.Fields {
-			if field.Credential && !slices.Contains(keys, field.Key) {
-				keys = append(keys, field.Key)
-			}
-		}
-	}
-	return keys
-}
-
 // GetMethods returns the methods for the given types, in the order given, skipping any that
 // names no registered method. Callers pass the set of methods they support and serve the result.
 //
@@ -126,4 +112,61 @@ func GetMethods(types []Type) []Method {
 // systemI18nRef returns the i18n template reference to msg in the system namespace.
 func systemI18nRef(msg tidcommon.I18nMessage) string {
 	return "{{t(" + i18nmgt.SystemNamespace + ":" + msg.Key + ")}}"
+}
+
+// SecretFieldPaths returns the secret fields of an outbound authentication exported at prefix: any of
+// its properties, since an API key is named by its header, except the fields no method marks as a
+// credential, which are stored and returned in clear.
+func SecretFieldPaths(prefix string) []string {
+	keys := nonCredentialFieldKeys()
+	paths := make([]string, 0, len(keys)+1)
+	paths = append(paths, prefix+".*")
+	for _, key := range keys {
+		paths = append(paths, "!"+prefix+"."+key)
+	}
+	return paths
+}
+
+// nonCredentialFieldKeys returns the keys of the fields that no registered method marks as a credential.
+func nonCredentialFieldKeys() []string {
+	var keys []string
+	for _, method := range registeredMethods {
+		for _, field := range method.Fields {
+			if !field.Credential && !slices.Contains(keys, field.Key) {
+				keys = append(keys, field.Key)
+			}
+		}
+	}
+	return keys
+}
+
+// SecretVariablePaths returns the template variable path of each credential an authentication holds, under
+// prefix. The paths follow the registered method rather than a fixed list, so a new method needs no change
+// to its callers. An empty credential has nothing to export and is left out.
+func SecretVariablePaths(auth *Authentication, prefix string) []string {
+	if auth == nil {
+		return nil
+	}
+	authType, ok := ParseType(auth.Type)
+	if !ok {
+		return nil
+	}
+	method, ok := GetMethod(authType)
+	if !ok {
+		return nil
+	}
+	var paths []string
+	for _, field := range method.Fields {
+		if field.Credential && auth.Properties[field.Key] != "" {
+			paths = append(paths, prefix+"."+field.Key)
+		}
+	}
+	if method.AdditionalProperties != nil && method.AdditionalProperties.Credential {
+		for name, value := range auth.Properties {
+			if value != "" {
+				paths = append(paths, prefix+"."+name)
+			}
+		}
+	}
+	return paths
 }

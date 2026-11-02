@@ -1,0 +1,88 @@
+---
+title: Configure Account Lockout
+docType: guide
+persona: iam
+sidebar_position: 1
+description: Set how many failed sign-in attempts lock a user or agent and for how long, let users recover from a lock, and email users when a lock forms.
+---
+
+# Configure Account Lockout
+
+Set how many failed sign-in attempts lock a user or an agent, and for how long, so that repeated guessing stops. A lock refuses new sign-ins only; it leaves sessions and tokens alone, and it does not limit request volume, which [rate limiting](../../../deployment/production-guidelines#configure-rate-limiting) does. To end an account's existing access, [suspend it](../suspend-and-restore-accounts#suspend-an-account) instead.
+
+## Prerequisites
+
+- <ProductName /> running. See [Get <ProductName />](../../../getting-started/get-thunderid).
+- An administrator account with the `system` permission.
+- To email users when a lock forms, an [email provider](../../notifications/email-providers).
+
+## What Counts Toward a Lock
+
+Only failed stored credentials, such as passwords or PINs, and failed one-time passwords count toward a lock. Passkeys, magic links, federated sign-in, and verifiable presentations never form a lock, but a lock on every sign-in method refuses them too. OAuth client secret authentication is not counted, so an agent's or application's client secret never locks.
+
+<ProductName /> ships a policy for users and one for agents, and every lockable sign-in method in a category uses that category's policy:
+
+- **Users** lock after 5 failed attempts with no gap longer than 1 hour. Repeated locks last 5 minutes, 15 minutes, 30 minutes, and then 1 hour.
+- **Agents** lock after 5 failed attempts with no gap longer than 15 minutes. Repeated locks last 1 minute, 5 minutes, and then 15 minutes.
+- In both categories, the 50th consecutive failed attempt forms a lock that does not expire. The count resets only on a successful sign-in with that method (with any method when locks cover every sign-in method), a completed recovery, or an unlock.
+
+## Change the Policy in the Console
+
+1. Navigate to **Settings**. Open the **Account security** tab.
+2. Under **Automatic account lock**, find the **Users** or **Agents** card. Turn the switch off to stop locking that category.
+3. Under **Lock after**, set how many failed attempts form a lock and the longest gap allowed between two of them. A longer gap starts the count again.
+4. Under **Lockout applies to**, select **Only the affected sign-in method** or **All sign-in methods**. The **Agents** card calls them authentication methods.
+5. Expand **Advanced settings** to change **Lockout duration** or **Consecutive failure limit**. **Reset lockout progression** appears only when the lockout duration has more than one step or a reset is already set. For users, this is also where **Notify user by email** turns the lock email on or off.
+6. Click **Save changes**.
+
+A saved change applies without a restart. A save changes only the values you edited and keeps everything the cards do not show, such as the lock email templates. The cards are read-only when a declarative resource sets the policy. To configure the policy through the API, a declarative resource, or `deployment.yaml`, see [Account Access](../../../deployment/configuration#account-access).
+
+## Turn Off Automatic Locking
+
+Turning the switch off for a category stops forming and enforcing failure-based locks, but keeps their stored history, so turning it on again restores any lock still within its duration. It does not lift a suspension or the lock left when a user is unsuspended.
+
+While locking is off, an account with only failure-based locks shows as `ACTIVE`, so the Console does not offer **Unlock** for it. To clear the stored history, [run the unlock flow from automation](../suspend-and-restore-accounts#run-lifecycle-flows-from-automation).
+
+## Let Users Recover From a Lock
+
+A locked user can still recover the account through a recovery flow that verifies them with a one-time password, magic link, passkey, or federated sign-in. A suspended user cannot recover.
+
+Completing recovery releases the user's locks only when the recovery flow runs **Unlock Identity** after **Set Credentials**. The default recovery flows do. Add the same sequence to a custom recovery flow; without it, resetting a password leaves the lock in place. See [Account Lifecycle Executors](../../flows/advanced-configurations#account-lifecycle).
+
+An agent cannot recover. Its timed locks expire; a lock that does not expire needs an [administrator unlock](../suspend-and-restore-accounts#unlock-an-account).
+
+## Email Users When a Lock Forms
+
+When a lock forms on a user, <ProductName /> emails the address in the user type's primary email attribute. Agent locks notify nobody.
+
+1. Create an [email provider](../../notifications/email-providers).
+2. Set `notification.defaultEmailSenderId` to the provider's ID. See [Notification Defaults](../../../deployment/configuration#notification-defaults).
+3. Check that **Notify user by email** is selected on the **Users** card, under **Advanced settings**. It is selected by default.
+
+A user without a primary email address gets no email. Each lock sends at most one email, and a failed email does not undo the lock.
+
+The email uses one of four templates, chosen by what the lock covers and whether it expires:
+
+| Lock covers | Lock expires | Template |
+|---|---|---|
+| One sign-in method | Yes | `authentication-method-locked` |
+| One sign-in method | No | `authentication-method-locked-permanent` |
+| All sign-in methods | Yes | `account-locked` |
+| All sign-in methods | No | `account-locked-permanent` |
+
+A lock covers all sign-in methods when **Lockout applies to** is **All sign-in methods**. To change the wording, edit these templates in [Notification Templates](../../notifications/templates). A template can state the locked sign-in method, how long the lock lasts, and when it lifts; see [Template Tokens](../../notifications/template-tokens#available-values). To use other templates, or to word each sign-in method separately, see [Lock Email](../../../deployment/configuration#lock-email).
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| User stays locked after a password reset | Check that the recovery flow runs **Unlock Identity** after **Set Credentials**. A credential update alone does not release locks. |
+| User stays locked after unsuspension | This is expected. Complete recovery or [unlock the account](../suspend-and-restore-accounts#unlock-an-account). Turning off automatic locking does not release this hold. |
+| No lock email | Check **Notify user by email**, the user's primary email, the default sender in `notification.defaultEmailSenderId`, and that the `accountAccess` configuration names the [lock email templates](../../../deployment/configuration#lock-email). |
+| A policy change applies on one node but not another | With the default in-memory cache, other nodes read the change when their cached copy expires. See [Account Access](../../../deployment/configuration#layers-and-locking). |
+
+## Next Steps
+
+- [Suspend and Restore Accounts](../suspend-and-restore-accounts): Suspend, unsuspend, and unlock users, agents, and applications
+- [Account Access](../../../deployment/configuration#account-access): Configuration reference for the lock policy and the lock email
+- [Account Protection](../overview): How locks and suspensions interact

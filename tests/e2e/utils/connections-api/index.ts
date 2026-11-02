@@ -16,6 +16,7 @@
 
 import type { APIRequestContext } from "@playwright/test";
 import { send, sendOk } from "../api-request";
+import { UserTypesApi } from "../user-types-api";
 
 export type ApiConnection = {
   id: string;
@@ -39,9 +40,26 @@ export class ConnectionsApi {
     return (await response.json()) as ApiConnection[];
   }
 
-  /** Create a connection directly via the API. */
+  /**
+   * The organization unit a connection created by a test belongs to: the one that owns the
+   * bootstrap "person" user type, resolved the way the other e2e helpers do rather than
+   * hardcoding the bootstrap-default id.
+   */
+  async defaultOuId(): Promise<string> {
+    const personType = await new UserTypesApi(this.request).findByHandle("person");
+    if (!personType) {
+      throw new Error('GET /user-types returned no "person" user type');
+    }
+    return personType.ouId;
+  }
+
+  /**
+   * Create a connection directly via the API. Every connection needs an owning organization
+   * unit, so `ouId` defaults to {@link defaultOuId} when the caller does not give one.
+   */
   async create(vendor: string, data: Record<string, unknown>): Promise<ApiConnection> {
-    const response = await sendOk(this.request, "POST", `/connections/${vendor}`, data);
+    const body = { ...data, ouId: data.ouId ?? (await this.defaultOuId()) };
+    const response = await sendOk(this.request, "POST", `/connections/${vendor}`, body);
     return (await response.json()) as ApiConnection;
   }
 

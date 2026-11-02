@@ -87,12 +87,19 @@ Every event shares one envelope:
 | `TOKEN_ISSUED` | A token is issued |
 | `TOKEN_ISSUANCE_FAILED` | A token request fails |
 | `TOKEN_REVOKED` | A token is revoked |
+| `TOKEN_REVOCATION_FAILED` | A revocation record cannot be stored, such as during a suspension, a user deletion, or a sign-out. A suspension or deletion flow stops |
 | `RUNTIME_PERSISTENT_DB_UNAVAILABLE` | Revocation enforcement fails closed |
+| `IDENTITY_LOCKED` | Failed sign-in attempts lock a user or agent. The event names the locked authentication method and, for a lock that expires, when it ends. It has no actor |
+| `IDENTITY_SUSPENDED`, `IDENTITY_SUSPENSION_FAILED` | A user, agent, or application is suspended, or the suspension is refused or fails |
+| `IDENTITY_UNSUSPENDED`, `IDENTITY_UNSUSPENSION_FAILED` | A suspension is released, or the release is refused or fails |
+| `IDENTITY_UNLOCKED`, `IDENTITY_UNLOCK_FAILED` | An operator releases every sign-in lock on a user or agent, or the unlock is refused or fails |
+| `IDENTITY_SELF_UNLOCKED`, `IDENTITY_SELF_UNLOCK_FAILED` | A recovery flow releases every sign-in lock on the holder's own account, or the unlock is refused or fails |
+| `SERVER_CONFIG_UPDATED`, `SERVER_CONFIG_UPDATE_FAILED` | A server configuration section is written, or the write is rejected. The value is not recorded |
 | `FLOW_STARTED`, `FLOW_COMPLETED`, `FLOW_FAILED` | A flow execution starts, succeeds, or fails |
 | `FLOW_NODE_EXECUTION_STARTED`, `FLOW_NODE_EXECUTION_COMPLETED`, `FLOW_NODE_EXECUTION_FAILED` | A single flow node runs |
 | `FLOW_USER_INPUT_REQUIRED` | A flow pauses for user input |
 
-This is the full set. There are no agent lifecycle events, no credential rotation events, and no events for an agent calling an API with a token it already holds. What you can measure is agent **token activity**, which is not the same as everything an agent does.
+An operator suspend, unsuspend, or unlock names the operator as `act_sub` and the agent as `sub`, and never carries the operator's note. An automatic lock is `IDENTITY_LOCKED`, with the agent as `sub` and no `act_sub`. There are no credential rotation events, and no events for an agent calling an API with a token it already holds. What you can measure is agent **token activity**, which is not the same as everything an agent does.
 
 ### Agent Attribution Keys
 
@@ -171,7 +178,7 @@ So **filter agent traffic on `act_type`, never on `sub_type`.** A query keyed on
 
 `is_delegated` is a floor, not an exact count:
 
-- An impersonation exchange that presents no actor token reports `is_delegated: false`.
+- An application's token exchange that presents no actor token reports `is_delegated: false` unless the application has `includeActClaim` on. An agent's exchange without an actor token names the agent as the actor. A request for an ID-JAG reports `is_delegated: false` for every client, because the ID-JAG carries no `act` claim.
 - On token exchange, `jwt-bearer`, and ID-JAG, `sub` and `sub_type` are omitted when the presented subject is a mapped attribute rather than a resource ID, because a mapped attribute resolves to no entity and <ProductName /> omits the field rather than publishing a value it cannot verify.
 
 Note this next to any panel that reports delegation, because a reviewer will act on the number.
@@ -435,7 +442,7 @@ Keyed on `client_id`, which is operator chosen and present on every token event.
 {span.act_type="agent" && span.component="AuthHandler" && span."event.status"="success"} | count_over_time() by (span.grant_type)
 ```
 
-`client_credentials` is the agent acting as itself. The authorization code flow with an actor claim is the on-behalf-of path.
+`client_credentials` is the agent acting as itself. The grants that add an actor claim, such as authorization code, CIBA, JWT bearer, and token exchange other than an ID-JAG request, are the on-behalf-of path.
 
 ### Delegated against direct
 

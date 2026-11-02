@@ -95,7 +95,7 @@ func (s *IDPInitTestSuite) TestInitialize() {
 	_ = config.InitializeServerRuntime("", testConfig)
 
 	service, err := Initialize(
-		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil)
+		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil, nil)
 	s.NoError(err)
 	s.NotNil(service)
 	s.Implements((*IDPServiceInterface)(nil), service)
@@ -103,7 +103,7 @@ func (s *IDPInitTestSuite) TestInitialize() {
 
 func (s *IDPInitTestSuite) TestNewIDPService() {
 	store := &idpStore{}
-	service := newIDPService(store, nil, nil, nil, nil, &mockTransactioner{})
+	service := newIDPService(store, nil, nil, nil, nil, &mockTransactioner{}, nil)
 
 	s.NotNil(service)
 	s.Implements((*IDPServiceInterface)(nil), service)
@@ -206,7 +206,7 @@ func (suite *IDPInitTestSuite) TestInitialize_WithDeclarativeResourcesDisabled()
 
 	// Execute
 	service, err := Initialize(
-		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil)
+		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil, nil)
 
 	// Assert
 	suite.NoError(err)
@@ -348,7 +348,7 @@ func (s *IDPInitTestSuite) TestInitialize_DBClientError() {
 	}()
 
 	_, err := Initialize(
-		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil)
+		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil, nil)
 
 	s.Error(err)
 	s.Equal("mock db client error", err.Error())
@@ -372,7 +372,7 @@ func (s *IDPInitTestSuite) TestInitialize_TransactionerError() {
 	}()
 
 	_, err := Initialize(
-		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil)
+		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil, nil)
 
 	s.Error(err)
 	s.Equal("mock transactioner error", err.Error())

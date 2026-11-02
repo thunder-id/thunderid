@@ -56,6 +56,9 @@ type TokenValidatorInterface interface {
 	// ValidateIDJAGAssertion validates an ID-JAG assertion presented on the jwt-bearer grant,
 	// binding it to the authenticated client via its client_id claim.
 	ValidateIDJAGAssertion(ctx context.Context, assertion, clientID string) (*IDJAGAssertionClaims, error)
+	// ValidateDeviceSecret validates a device secret presented back to this server: its
+	// signature, its sso-session+jwt type, this server as issuer and audience, and its expiry.
+	ValidateDeviceSecret(ctx context.Context, token string) (*DeviceSecretClaims, error)
 }
 
 // TokenValidator implements TokenValidatorInterface.
@@ -409,6 +412,47 @@ func (tv *tokenValidator) ValidateIDJAGSubjectToken(
 	}
 
 	return subjectClaims, nil
+}
+
+// ValidateDeviceSecret validates a device secret presented back to this server.
+func (tv *tokenValidator) ValidateDeviceSecret(ctx context.Context, token string) (
+	*DeviceSecretClaims, error) {
+	header, err := jwt.DecodeJWTHeader(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode device secret header: %w", err)
+	}
+	if typ, _ := header["typ"].(string); typ != jwt.TokenTypeDeviceSecret {
+		return nil, fmt.Errorf("not a device secret: expected typ %q", jwt.TokenTypeDeviceSecret)
+	}
+	if svcErr := tv.jwtService.VerifyJWT(ctx, token, tv.cfg.JWT.Issuer, tv.cfg.JWT.Issuer); svcErr != nil {
+		return nil, fmt.Errorf("invalid device secret: %s", svcErr.Error.DefaultValue)
+	}
+	claims, err := jwt.DecodeJWTPayload(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode device secret: %w", err)
+	}
+	subject, _ := claims[constants.ClaimSub].(string)
+	if subject == "" {
+		return nil, fmt.Errorf("device secret is missing its subject")
+	}
+	entries, _ := claims[claimSessionData].([]interface{})
+	sessionData := make([]oauth2model.SessionData, 0, len(entries))
+	for _, raw := range entries {
+		entry, _ := raw.(map[string]interface{})
+		flowIdentifier, _ := entry[claimFlowIdentifier].(string)
+		sessionHandle, _ := entry[claimSessionHandle].(string)
+		if flowIdentifier == "" || sessionHandle == "" {
+			return nil, fmt.Errorf("device secret has a session without its flow identifier or handle")
+		}
+		sessionData = append(sessionData, oauth2model.SessionData{
+			FlowIdentifier: flowIdentifier,
+			SessionHandle:  sessionHandle,
+		})
+	}
+	if len(sessionData) == 0 {
+		return nil, fmt.Errorf("device secret carries no session")
+	}
+	return &DeviceSecretClaims{Subject: subject, SessionData: sessionData}, nil
 }
 
 // ValidateIDJAGAssertion validates an ID-JAG assertion presented on the jwt-bearer grant

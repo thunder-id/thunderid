@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -160,6 +160,18 @@ func generateUniqueHandle(base string) string {
 	timestamp := time.Now().UnixNano()
 	random := rand.Intn(10000)
 	return fmt.Sprintf("%s-%d-%d", base, timestamp, random)
+}
+
+// withOwner returns the flow with the default organization unit as its owner when it names none.
+func withOwner(flow FlowDefinition) FlowDefinition {
+	if flow.OUID == "" {
+		ouID, err := testutils.DefaultOUID()
+		if err != nil {
+			panic(fmt.Sprintf("failed to resolve the default organization unit: %v", err))
+		}
+		flow.OUID = ouID
+	}
+	return flow
 }
 
 // cloneFlowWithUniqueHandle creates a deep copy of a flow definition with a unique handle
@@ -551,6 +563,125 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_ValidationErrors() {
 	}
 }
 
+// authFlowWithOUResolver returns an authentication flow with an OUResolverExecutor node carrying the
+// given properties between credentials authentication and the assertion.
+func authFlowWithOUResolver(
+	handle string, properties map[string]interface{}, inputs ...InputDefinition) FlowDefinition {
+	return FlowDefinition{
+		Name:     "OU Resolver Sign-in Flow",
+		Handle:   handle,
+		FlowType: "AUTHENTICATION",
+		Nodes: []NodeDefinition{
+			{ID: "START", Type: "START", OnSuccess: "credentials_auth"},
+			{
+				ID:        "credentials_auth",
+				Type:      "TASK_EXECUTION",
+				Executor:  &ExecutorDefinition{Name: "CredentialsAuthExecutor"},
+				OnSuccess: "ou_resolver",
+			},
+			{
+				ID:         "ou_resolver",
+				Type:       "TASK_EXECUTION",
+				Executor:   &ExecutorDefinition{Name: "OUResolverExecutor", Inputs: inputs},
+				Properties: properties,
+				OnSuccess:  "auth_assert",
+			},
+			{
+				ID:        "auth_assert",
+				Type:      "TASK_EXECUTION",
+				Executor:  &ExecutorDefinition{Name: "AuthAssertExecutor"},
+				OnSuccess: "END",
+			},
+			{ID: "END", Type: "END"},
+		},
+	}
+}
+
+// A sign-in flow has no UserTypeResolver and so no default OU, so an OU resolver that prompts needs
+// parentOuId to know where to select from. The flow is refused at save time rather than failing every
+// sign-in at runtime.
+func (suite *FlowMgtAPITestSuite) TestCreateFlow_OUResolverPromptRequiresParentOUInSignIn() {
+	for name, properties := range map[string]map[string]interface{}{
+		"missing":              {"resolveFrom": "prompt"},
+		"blank":                {"resolveFrom": "prompt", "parentOuId": "  "},
+		"direct children only": {"resolveFrom": "prompt", "directChildrenOnly": true},
+	} {
+		suite.Run(name, func() {
+			flowDef := authFlowWithOUResolver(generateUniqueHandle("ou-prompt-no-parent"), properties)
+			suite.createFlowExpectError(flowDef, http.StatusBadRequest, "FLM-1023")
+		})
+	}
+}
+
+// Properties the strategy would ignore are refused at save time instead of being silently dropped.
+func (suite *FlowMgtAPITestSuite) TestCreateFlow_OUResolverIgnoredPropertiesRejected() {
+	for name, properties := range map[string]map[string]interface{}{
+		"parent with caller":             {"resolveFrom": "caller", "parentOuId": "ou-1"},
+		"parent with prompt all":         {"resolveFrom": "promptAll", "parentOuId": "ou-1"},
+		"direct children with caller":    {"resolveFrom": "caller", "directChildrenOnly": true},
+		"direct children with promptAll": {"resolveFrom": "promptAll", "directChildrenOnly": true},
+	} {
+		suite.Run(name, func() {
+			flowDef := authFlowWithOUResolver(generateUniqueHandle("ou-ignored-property"), properties)
+			suite.createFlowExpectError(flowDef, http.StatusBadRequest, "FLM-1023")
+		})
+	}
+}
+
+// In direct children mode the resolver reads a single required ouId or ouHandle input declared on the node.
+func (suite *FlowMgtAPITestSuite) TestCreateFlow_OUResolverInputsRejected() {
+	idInput := InputDefinition{Ref: "ou_id", Type: "TEXT_INPUT", Identifier: "ouId", Required: true}
+	handleInput := InputDefinition{Ref: "ou_handle", Type: "TEXT_INPUT", Identifier: "ouHandle", Required: true}
+	optionalHandle := InputDefinition{Ref: "ou_handle", Type: "TEXT_INPUT", Identifier: "ouHandle"}
+	directChildren := map[string]interface{}{
+		"resolveFrom": "prompt", "parentOuId": "ou-1", "directChildrenOnly": true,
+	}
+
+	for name, tc := range map[string]struct {
+		properties map[string]interface{}
+		inputs     []InputDefinition
+	}{
+		"handle without direct children": {
+			map[string]interface{}{"resolveFrom": "prompt", "parentOuId": "ou-1"}, []InputDefinition{handleInput},
+		},
+		"optional handle":  {directChildren, []InputDefinition{optionalHandle}},
+		"both identifiers": {directChildren, []InputDefinition{idInput, handleInput}},
+	} {
+		suite.Run(name, func() {
+			flowDef := authFlowWithOUResolver(generateUniqueHandle("ou-inputs"), tc.properties, tc.inputs...)
+			suite.createFlowExpectError(flowDef, http.StatusBadRequest, "FLM-1023")
+		})
+	}
+}
+
+func (suite *FlowMgtAPITestSuite) TestCreateFlow_OUResolverInSignInAccepted() {
+	for name, properties := range map[string]map[string]interface{}{
+		"prompt with parent":      {"resolveFrom": "prompt", "parentOuId": "019d94ff-072c-7d7f-a5c5-0a638c1f62bc"},
+		"prompt all without":      {"resolveFrom": "promptAll"},
+		"caller strategy without": {"resolveFrom": "caller"},
+	} {
+		suite.Run(name, func() {
+			flowDef := authFlowWithOUResolver(generateUniqueHandle("ou-sign-in"), properties)
+			createdFlow := suite.createFlow(flowDef)
+			suite.NotEmpty(createdFlow.ID)
+			suite.deleteFlow(createdFlow.ID)
+		})
+	}
+}
+
+func (suite *FlowMgtAPITestSuite) TestCreateFlow_OUResolverDirectChildrenWithHandleInputAccepted() {
+	properties := map[string]interface{}{
+		"resolveFrom": "prompt", "parentOuId": "019d94ff-072c-7d7f-a5c5-0a638c1f62bc", "directChildrenOnly": true,
+	}
+	handleInput := InputDefinition{Ref: "ou_handle", Type: "TEXT_INPUT", Identifier: "ouHandle", Required: true}
+
+	flowDef := authFlowWithOUResolver(generateUniqueHandle("ou-handle-input"), properties, handleInput)
+	createdFlow := suite.createFlow(flowDef)
+
+	suite.NotEmpty(createdFlow.ID)
+	suite.deleteFlow(createdFlow.ID)
+}
+
 func (suite *FlowMgtAPITestSuite) TestGetFlow_Success() {
 	createdFlow := suite.createFlow(cloneFlowWithUniqueHandle(testAuthFlow))
 	suite.trackFlow(createdFlow.ID)
@@ -875,7 +1006,7 @@ func (suite *FlowMgtAPITestSuite) TestRestoreFlowVersion_FlowNotFound() {
 // Helper methods for API interactions
 
 func (suite *FlowMgtAPITestSuite) createFlow(flowDef FlowDefinition) *CompleteFlowDefinition {
-	body, _ := json.Marshal(flowDef)
+	body, _ := json.Marshal(withOwner(flowDef))
 	req, _ := http.NewRequest(http.MethodPost, testServerURL+flowsEndpoint, bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -896,7 +1027,7 @@ func (suite *FlowMgtAPITestSuite) createFlow(flowDef FlowDefinition) *CompleteFl
 
 func (suite *FlowMgtAPITestSuite) createFlowExpectError(
 	flowDef FlowDefinition, expectedStatus int, expectedCode string) {
-	body, _ := json.Marshal(flowDef)
+	body, _ := json.Marshal(withOwner(flowDef))
 	req, _ := http.NewRequest(http.MethodPost, testServerURL+flowsEndpoint, bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 

@@ -585,6 +585,39 @@ func (ts *GroupAuthzTestSuite) TestListGroups() {
 		"list must NOT include target group in OU2 (sibling), got IDs: %v", ids)
 }
 
+// TestListGroupsFilteredOnOwnOU verifies an OU filter on the manager's own OU lists that OU's groups.
+func (ts *GroupAuthzTestSuite) TestListGroupsFilteredOnOwnOU() {
+	resp := ts.doGroup(http.MethodGet, "/groups?limit=100&"+groupOUFilter(ts.groupOU1ID), nil)
+	defer resp.Body.Close()
+
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var listResp GroupListResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+
+	ids := make([]string, 0, len(listResp.Groups))
+	for _, g := range listResp.Groups {
+		ts.Equal(ts.groupOU1ID, g.OUID, "group %s", g.Id)
+		ids = append(ids, g.Id)
+	}
+	ts.Containsf(ids, ts.targetGroupOU1ID, "filtered list must include the OU1 group, got IDs: %v", ids)
+}
+
+// TestListGroupsFilteredOnOtherOUReturnsNothing verifies an OU filter on an OU the manager cannot
+// list groups from returns an empty list rather than an error.
+func (ts *GroupAuthzTestSuite) TestListGroupsFilteredOnOtherOUReturnsNothing() {
+	resp := ts.doGroup(http.MethodGet, "/groups?"+groupOUFilter(ts.groupOU2ID), nil)
+	defer resp.Body.Close()
+
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var listResp GroupListResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+
+	ts.Zero(listResp.TotalResults)
+	ts.Empty(listResp.Groups)
+}
+
 // TestGetGroupInOwnOU verifies the group-manager can read a group in their own OU.
 func (ts *GroupAuthzTestSuite) TestGetGroupInOwnOU() {
 	resp := ts.doGroup(http.MethodGet, "/groups/"+ts.targetGroupOU1ID, nil)

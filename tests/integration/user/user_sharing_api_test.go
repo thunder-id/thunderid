@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -162,48 +163,63 @@ func (ts *UserSharingAPITestSuite) adminClient(ouID, username, name string) *htt
 	userID := ts.createUser(ouID, username)
 	ts.adminUserIDs = append(ts.adminUserIDs, userID)
 
-	identifier := "https://user-sharing-test.example.com/" + name
-	rsID, err := testutils.CreateSystemScopedResourceServer(
-		ouID, "User Sharing Test RS ("+name+")", identifier, "user", "usertype")
-	ts.Require().NoError(err, "create resource server for %s", name)
+	client, rsID, roleID := scopedAdminClient(ts.T(), ouID, userID, username,
+		"User Sharing Test ("+name+")", "https://user-sharing-test.example.com/"+name)
 	ts.rsIDs = append(ts.rsIDs, rsID)
+	ts.roleIDs = append(ts.roleIDs, roleID)
+	return client
+}
 
-	roleID, err := testutils.CreateRole(testutils.Role{
-		Name: "User Sharing Admin (" + name + ")",
+// do sends a request and returns its status and body.
+func (ts *UserSharingAPITestSuite) do(client *http.Client, method, path string, body interface{}) (int, []byte) {
+	ts.T().Helper()
+	return sendRequest(ts.T(), client, method, path, body)
+}
+
+// scopedAdminClient makes userID hold system:user in ouID and nowhere else, and returns a client
+// carrying a token obtained as username, with the resource server and role it created for teardown.
+func scopedAdminClient(
+	t *testing.T, ouID, userID, username, label, identifier string,
+) (client *http.Client, rsID, roleID string) {
+	t.Helper()
+	rsID, err := testutils.CreateSystemScopedResourceServer(ouID, label+" RS", identifier, "user", "usertype")
+	require.NoError(t, err, "create resource server for %s", label)
+
+	roleID, err = testutils.CreateRole(testutils.Role{
+		Name: label + " Admin",
 		OUID: ouID,
 		Permissions: []testutils.ResourcePermissions{
 			{ResourceServerID: rsID, Permissions: []string{"system:user", "system:usertype:view"}},
 		},
 		Assignments: []testutils.Assignment{{ID: userID, Type: "user"}},
 	})
-	ts.Require().NoError(err, "create role for %s", name)
-	ts.roleIDs = append(ts.roleIDs, roleID)
+	require.NoError(t, err, "create role for %s", label)
 
 	token, err := testutils.ObtainAccessTokenWithPassword(
 		"CONSOLE", sharingTestConsoleURI, sharingTestScopes, username, sharingTestPassword, true, "", identifier)
-	ts.Require().NoError(err, "obtain token for %s", name)
-	return testutils.GetHTTPClientWithToken(token.AccessToken)
+	require.NoError(t, err, "obtain token for %s", label)
+	return testutils.GetHTTPClientWithToken(token.AccessToken), rsID, roleID
 }
 
-// do sends a request and returns its status and body.
-func (ts *UserSharingAPITestSuite) do(client *http.Client, method, path string, body interface{}) (int, []byte) {
-	ts.T().Helper()
+// sendRequest sends a request to the test server and returns its status and body.
+func sendRequest(t *testing.T, client *http.Client, method, path string, body interface{}) (int, []byte) {
+	t.Helper()
 	var reader io.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
-		ts.Require().NoError(err)
+		require.NoError(t, err)
 		reader = bytes.NewReader(raw)
 	}
 	req, err := http.NewRequest(method, testServerURL+path, reader)
-	ts.Require().NoError(err)
+	require.NoError(t, err)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := client.Do(req)
-	ts.Require().NoError(err)
+	require.NoError(t, err)
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
-	ts.Require().NoError(err)
+	require.NoError(t, err)
 	return resp.StatusCode, raw
 }
 
@@ -290,6 +306,16 @@ func (ts *UserSharingAPITestSuite) TestSharingPolicyRefusals() {
 	ts.expectError(status, raw, http.StatusBadRequest, "USR-1001")
 
 	status, raw = ts.do(ts.rootClient, http.MethodPost, path, map[string]interface{}{})
+	ts.expectError(status, raw, http.StatusBadRequest, "USR-1029")
+
+	// A user declares no field for overlay rules to govern, on a section or on a named unit.
+	status, raw = ts.do(ts.rootClient, http.MethodPost, path, map[string]interface{}{"childUnits": map[string]interface{}{
+		"mode": "all", "overlayRules": map[string]interface{}{"roles": map[string]bool{"editable": false}}}})
+	ts.expectError(status, raw, http.StatusBadRequest, "USR-1029")
+	status, raw = ts.do(ts.rootClient, http.MethodPost, path, map[string]interface{}{"childUnits": map[string]interface{}{
+		"mode": "selected", "units": []map[string]interface{}{{
+			"ouId": ts.childOUID, "reach": "unit",
+			"overlayRules": map[string]interface{}{"roles": map[string]bool{"editable": false}}}}}})
 	ts.expectError(status, raw, http.StatusBadRequest, "USR-1029")
 
 	// Reaching every unit, or every other tree, is left to a resource file or an import.

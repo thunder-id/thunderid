@@ -7,14 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
+	"github.com/thunder-id/thunderid/tests/testhelpers"
 )
 
 type SchemaValidateTestSuite struct {
@@ -28,24 +26,6 @@ func TestSchemaValidateTestSuite(t *testing.T) {
 
 func (s *SchemaValidateTestSuite) SetupTest() {
 	s.logger = log.GetLogger()
-}
-
-func (s *SchemaValidateTestSuite) captureLogs(fn func()) string {
-	path := filepath.Join(s.T().TempDir(), "validation.log")
-	s.Require().NoError(s.logger.Configure(log.OutputOptions{
-		FileEnabled: true,
-		File:        rollingfile.Config{Path: path},
-	}))
-	s.Require().NoError(s.logger.SetLevel("DEBUG"))
-	defer func() {
-		s.Require().NoError(s.logger.SetLevel("INFO"))
-		s.Require().NoError(s.logger.Configure(log.OutputOptions{ConsoleEnabled: true}))
-	}()
-	fn()
-	// #nosec G304 -- path is in the test's temp directory
-	out, err := os.ReadFile(path)
-	s.Require().NoError(err)
-	return string(out)
 }
 
 func (s *SchemaValidateTestSuite) TestValidationLogs_ExcludeAttributeValues() {
@@ -155,7 +135,7 @@ func (s *SchemaValidateTestSuite) TestValidationLogs_ExcludeAttributeValues() {
 		s.Run(tc.name, func() {
 			schema, err := CompileSchema(json.RawMessage(tc.definition))
 			s.Require().NoError(err)
-			out := s.captureLogs(func() {
+			out := testhelpers.CaptureLogs(s.T(), "DEBUG", func() {
 				valid, err := schema.Validate(context.Background(), json.RawMessage(tc.payload), s.logger, false)
 				s.Require().NoError(err)
 				s.False(valid)
@@ -179,7 +159,7 @@ func (s *SchemaValidateTestSuite) TestUniquenessLogs_ExcludeInvalidObjectValue()
 		"profile":{"type":"object","properties":{"email":{"type":"email","unique":true}}}
 	}`))
 	s.Require().NoError(err)
-	out := s.captureLogs(func() {
+	out := testhelpers.CaptureLogs(s.T(), "DEBUG", func() {
 		valid, err := schema.ValidateUniqueness(context.Background(),
 			map[string]interface{}{"profile": "privacy-canary@example.test credential-canary"},
 			func(map[string]interface{}) (bool, error) {

@@ -38,6 +38,8 @@ export interface UseFlowSaveProps {
   flowHandle: string;
   /** Flow type. */
   flowType: string;
+  /** ID of the organization unit that owns the flow. It cannot change, so an update must send the flow's own. */
+  ouId?: string;
   /** Callback to show error notification. */
   showError: (message: string) => void;
   /** Callback to show success notification. */
@@ -77,6 +79,7 @@ const useFlowSave = (props: UseFlowSaveProps): UseFlowSaveReturn => {
     flowName,
     flowHandle,
     flowType,
+    ouId,
     showError,
     showSuccess,
     setOpenValidationPanel,
@@ -117,11 +120,17 @@ const useFlowSave = (props: UseFlowSaveProps): UseFlowSaveReturn => {
 
       // Send to backend API - use update if editing existing flow, create if new
       if (isEditingExistingFlow && flowId) {
+        // The owner cannot change, so an update has to carry the flow's own organization unit
+        if (!ouId) {
+          showError(t('flows:core.loginFlowBuilder.errors.saveFailed'));
+          return;
+        }
+
         // Update existing flow
         updateFlow.mutate(
           {
             flowId,
-            flowData: flowConfig as UpdateFlowRequest,
+            flowData: {...(flowConfig as Omit<UpdateFlowRequest, 'ouId'>), ouId},
           },
           {
             onSuccess: () => {
@@ -167,6 +176,7 @@ const useFlowSave = (props: UseFlowSaveProps): UseFlowSaveReturn => {
       flowName,
       flowHandle,
       flowType,
+      ouId,
       showError,
       showSuccess,
       setOpenValidationPanel,

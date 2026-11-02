@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
@@ -18,12 +19,13 @@ import (
 func Initialize(
 	defaults config.AuthZENPDPConfig,
 	entityTypes entitytype.EntityTypeServiceInterface,
+	ouService ou.OrganizationUnitServiceInterface,
 ) (AuthZENPDPServiceInterface, error) {
 	transactioner, err := provider.GetDBProvider().GetConfigDBTransactioner()
 	if err != nil {
 		return nil, err
 	}
-	return newAuthZENPDPService(initializeStore(defaults), defaults, transactioner, entityTypes), nil
+	return newAuthZENPDPService(initializeStore(defaults), defaults, transactioner, entityTypes, ouService), nil
 }
 
 // ShouldLoadDeclarativeAuthZENPDPResources reports whether the file store is enabled.

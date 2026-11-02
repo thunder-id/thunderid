@@ -1,5 +1,6 @@
 resource_type: connection
 id: decl-authzen-pdp-1
+ouHandle: decl-ou-1
 name: Declarative File AuthZEN PDP
 description: A declarative AuthZEN PDP connection
 type: authzen-pdp

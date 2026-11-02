@@ -12,6 +12,8 @@ import { RPInitiatedLogoutDiagram } from '@site/src/components/OAuthFlowDiagrams
 
 Signing out of your application alone leaves the <ProductName /> session intact, so the next sign-in reuses it and the user is not prompted. RP-Initiated Logout closes that gap: it ends the session at <ProductName /> too, so the next sign-in authenticates the user again.
 
+Ending the session at <ProductName /> does not clear what the other applications in that session remember. For that, <ProductName /> posts a logout token to every participating application that registered a back-channel logout URI, see [Back-Channel Logout](../backchannel-logout).
+
 ## How It Works
 
 <RPInitiatedLogoutDiagram />
@@ -116,4 +118,5 @@ https://app.example.com/signed-out?state=xyz
 - [Single Sign-On for Flows](../../../flows/single-sign-on), how a session is established in the first place
 - [Build a Sign-Out Flow](../../../flows/build-a-flow#go-further), the flow that RP-Initiated Logout runs
 - [OpenID Connect](../openid-connect), the identity layer these tokens come from
+- [Back-Channel Logout](../backchannel-logout), how the other applications in the session are told that it ended
 - [Server Metadata](../server-metadata), the `/.well-known/openid-configuration` document that advertises the endpoint

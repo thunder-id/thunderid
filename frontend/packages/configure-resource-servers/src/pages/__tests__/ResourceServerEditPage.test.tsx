@@ -70,6 +70,7 @@ vi.mocked(componentsModule.UnsavedChangesBar).mockImplementation(
     message,
     resetLabel,
     saveLabel,
+    saveDisabled = false,
     error = undefined,
     onReset,
     onSave,
@@ -77,6 +78,7 @@ vi.mocked(componentsModule.UnsavedChangesBar).mockImplementation(
     message: string;
     resetLabel: string;
     saveLabel: string;
+    saveDisabled?: boolean;
     error?: string;
     onReset: () => void;
     onSave: () => void;
@@ -87,7 +89,7 @@ vi.mocked(componentsModule.UnsavedChangesBar).mockImplementation(
       <button type="button" onClick={onReset}>
         {resetLabel}
       </button>
-      <button type="button" onClick={onSave}>
+      <button type="button" onClick={onSave} disabled={saveDisabled}>
         {saveLabel}
       </button>
     </div>
@@ -156,9 +158,22 @@ vi.mock('../../components/resource-tree/ResourceTree', () => ({
 }));
 
 vi.mock('../../components/resource-server-detail/AdvancedTab', () => ({
-  default: ({identifier, onIdentifierChange}: {identifier: string; onIdentifierChange: (value: string) => void}) => (
+  default: ({
+    identifier,
+    isIdentifierInvalid = false,
+    onIdentifierChange,
+  }: {
+    identifier: string;
+    isIdentifierInvalid?: boolean;
+    onIdentifierChange: (value: string) => void;
+  }) => (
     <div data-testid="advanced-tab">
-      <input aria-label="Identifier" value={identifier} onChange={(e) => onIdentifierChange(e.target.value)} />
+      <input
+        aria-label="Identifier"
+        aria-invalid={isIdentifierInvalid}
+        value={identifier}
+        onChange={(e) => onIdentifierChange(e.target.value)}
+      />
     </div>
   ),
 }));
@@ -670,5 +685,137 @@ describe('ResourceServerEditPage', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Reset'}));
 
     expect(mockUpdateReset).toHaveBeenCalled();
+  });
+
+  describe('MCP server identifier validation', () => {
+    const renderMcpServer = async (identifier = 'https://mcp.example.com/mcp'): Promise<void> => {
+      mockUseGetResourceServer.mockReturnValue({
+        data: {...mockMcpResourceServer, identifier},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      renderWithProviders(<ResourceServerEditPage />);
+
+      fireEvent.click(screen.getByRole('tab', {name: 'Advanced'}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('advanced-tab')).toBeInTheDocument();
+      });
+    };
+
+    it.each([
+      'my-mcp-server',
+      '/mcp',
+      'mcp.example.com',
+      'localhost:8000/mcp',
+      'mcp.example.com:8443/mcp',
+      'urn:example:mcp',
+      'https://mcp.example.com/#x',
+    ])('should flag the edited identifier %s and block the save', async (value) => {
+      await renderMcpServer();
+
+      fireEvent.change(screen.getByLabelText('Identifier'), {target: {value}});
+
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'true');
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      expect(mockUpdateMutate).not.toHaveBeenCalled();
+    });
+
+    it('should save a valid edited identifier, trimmed', async () => {
+      await renderMcpServer();
+
+      fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: '  https://new-mcp.example.com/mcp  '}});
+
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'false');
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      expect(mockUpdateMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({identifier: 'https://new-mcp.example.com/mcp'}) as unknown,
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('should clear the error once the identifier is corrected', async () => {
+      await renderMcpServer();
+
+      fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: 'my-mcp-server'}});
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'true');
+
+      fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: 'http://localhost:8000/mcp'}});
+
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'false');
+      expect(screen.getByRole('button', {name: 'Save'})).toBeEnabled();
+    });
+
+    it('should not flag a cleared identifier, which the required check handles', async () => {
+      await renderMcpServer();
+
+      fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: '   '}});
+
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'false');
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      expect(mockUpdateMutate).not.toHaveBeenCalled();
+    });
+
+    it('should not flag a saved identifier that predates the rule while other fields are edited', async () => {
+      await renderMcpServer('legacy-mcp');
+
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'false');
+
+      const nameEditButton = screen
+        .getAllByRole('button')
+        .find((btn) => btn.querySelector('svg') && btn.closest('div')?.textContent?.includes('Dark Dodos Smash'));
+      fireEvent.click(nameEditButton!);
+      const nameInput = await screen.findByDisplayValue('Dark Dodos Smash');
+      fireEvent.change(nameInput, {target: {value: 'Renamed MCP server'}});
+      fireEvent.keyDown(nameInput, {key: 'Enter'});
+
+      expect(screen.getByRole('button', {name: 'Save'})).toBeEnabled();
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      expect(mockUpdateMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({name: 'Renamed MCP server', identifier: 'legacy-mcp'}) as unknown,
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('should flag a saved identifier that predates the rule once it is changed to another invalid value', async () => {
+      await renderMcpServer('legacy-mcp');
+
+      fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: 'legacy-mcp-2'}});
+
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'true');
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    });
+
+    it('should not flag a non-URI identifier on an API resource server', async () => {
+      renderWithProviders(<ResourceServerEditPage />);
+
+      fireEvent.click(screen.getByRole('tab', {name: 'Advanced'}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('advanced-tab')).toBeInTheDocument();
+      });
+
+      fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: 'my-api'}});
+
+      expect(screen.getByLabelText('Identifier')).toHaveAttribute('aria-invalid', 'false');
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      expect(mockUpdateMutate).toHaveBeenCalledWith(
+        expect.objectContaining({data: expect.objectContaining({identifier: 'my-api'}) as unknown}),
+        expect.any(Object),
+      );
+    });
   });
 });

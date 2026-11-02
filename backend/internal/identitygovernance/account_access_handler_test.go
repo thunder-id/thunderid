@@ -35,6 +35,16 @@ func (s *AccountAccessHandlerTestSuite) mergedOverBase(readOnly,
 	return value
 }
 
+// The exported constructor builds the handler over the deployment configuration.
+func (s *AccountAccessHandlerTestSuite) TestNewAccountAccessHandlerMergesOverTheDeploymentBase() {
+	handler := NewAccountAccessHandler(Config{AccountAccess: testAccountAccessConfig()})
+
+	merged, ok := handler.Merge(nil, accountAccessValue{}).(accountAccessValue)
+
+	s.Require().True(ok)
+	s.Equal(testAccountAccessConfig(), merged)
+}
+
 func (s *AccountAccessHandlerTestSuite) decode(raw string) accountAccessValue {
 	value, err := s.handler.Decode(json.RawMessage(raw))
 	s.Require().NoError(err)
@@ -103,7 +113,6 @@ func (s *AccountAccessHandlerTestSuite) TestAnUnknownTemplateKeyIsRejected() {
 	for _, email := range []string{
 		`{"template":"authentication-method-locked"}`,
 		`{"templates":{"expiring":"authentication-method-locked"}}`,
-		`{"templates":{"entity":{"temporary":"authentication-method-locked"}}}`,
 		`{"templates":{"methods":{"otp":{"template":"otp-locked"}}}}`,
 	} {
 		_, err := s.handler.Decode(json.RawMessage(`{"user":{"notifications":{"onLock":{"email":` + email + `}}}}`))
@@ -123,8 +132,8 @@ func (s *AccountAccessHandlerTestSuite) TestAnInvalidLockTemplateIsRejected() {
 		path + ".methods.otp.permanent is not a valid handle": `{"methods":{"otp":{"permanent":"Not A Handle"}}}`,
 		path + ".methods.passkey is not a lockable authentication method; use credential or otp": `{` +
 			`"methods":{"passkey":{"temporary":"passkey-locked"}}}`,
-		path + ".methods.entity is not a lockable authentication method; use credential or otp": `{` +
-			`"methods":{"entity":{"temporary":"authentication-method-locked"}}}`,
+		path + ".methods.account is not a lockable authentication method; use credential or otp": `{` +
+			`"methods":{"account":{"temporary":"authentication-method-locked"}}}`,
 	} {
 		incoming := s.decode(`{"user":{"notifications":{"onLock":{"email":{"templates":` + templates + `}}}}}`)
 		err := s.handler.Validate(incoming, nil, nil)
@@ -139,7 +148,7 @@ func (s *AccountAccessHandlerTestSuite) TestAnUnknownGranularityIsRejected() {
 }
 
 func (s *AccountAccessHandlerTestSuite) TestEachKnownGranularityIsAccepted() {
-	for _, value := range []granularity{granularityAuthenticationMethod, granularityEntity} {
+	for _, value := range []granularity{granularityAuthenticationMethod, granularityAccount} {
 		incoming := s.decode(`{"user":{"lockGranularity":"` + string(value) + `"}}`)
 		s.Require().NoError(s.handler.Validate(incoming, nil, nil), value)
 	}

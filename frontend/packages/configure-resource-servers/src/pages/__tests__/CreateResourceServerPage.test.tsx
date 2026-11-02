@@ -282,6 +282,76 @@ describe('CreateResourceServerPage', () => {
     });
   });
 
+  it('should keep Continue disabled while an MCP identifier is not an http or https URL', async () => {
+    renderWithProviders(<CreateResourceServerPage />);
+
+    fireEvent.click(screen.getByRole('button', {name: /MCP/i}));
+    fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', {name: /mcp server name/i})).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByRole('textbox', {name: /mcp server name/i}), {
+      target: {value: 'Payments MCP'},
+    });
+    fireEvent.change(screen.getByRole('textbox', {name: /identifier/i}), {
+      target: {value: 'my-mcp-server'},
+    });
+
+    expect(screen.getByRole('textbox', {name: /identifier/i})).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', {name: /Continue/i})).toBeDisabled();
+
+    fireEvent.change(screen.getByRole('textbox', {name: /identifier/i}), {
+      target: {value: 'https://mcp.example.com/mcp'},
+    });
+
+    expect(screen.getByRole('textbox', {name: /identifier/i})).toHaveAttribute('aria-invalid', 'false');
+    expect(screen.getByRole('button', {name: /Continue/i})).toBeEnabled();
+  });
+
+  it('should show the catalog message when the backend rejects an MCP identifier', async () => {
+    mockCreateResourceServerMutate.mockImplementation((_payload: unknown, options: {onError: (err: Error) => void}) => {
+      options.onError(
+        Object.assign(new Error('raw backend detail'), {
+          response: {data: {code: 'RES-1024', message: 'Invalid identifier', description: 'raw backend detail'}},
+        }),
+      );
+    });
+
+    renderWithProviders(<CreateResourceServerPage />);
+
+    fireEvent.click(screen.getByRole('button', {name: /MCP/i}));
+    fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', {name: /mcp server name/i})).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByRole('textbox', {name: /mcp server name/i}), {
+      target: {value: 'Payments MCP'},
+    });
+    fireEvent.change(screen.getByRole('textbox', {name: /identifier/i}), {
+      target: {value: 'https://mcp.example.com/mcp'},
+    });
+    fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', {name: /Create MCP server/i})).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: /Create MCP server/i}));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          'An MCP server identifier must be an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText('raw backend detail')).not.toBeInTheDocument();
+  });
+
   it('shows the Create resource server submit button on the last step after selecting the API type', async () => {
     renderWithProviders(<CreateResourceServerPage />);
 

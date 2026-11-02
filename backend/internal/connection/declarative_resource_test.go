@@ -5,6 +5,8 @@ package connection
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,16 +15,22 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/internal/system/export"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/secretresolver"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/connection/authzenpdpmock"
+	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
 
@@ -45,7 +53,7 @@ func (s *DeclarativeResourceTestSuite) SetupTest() {
 	s.T().Cleanup(config.ResetServerRuntime)
 	s.mockIDP = idpmock.NewIDPServiceInterfaceMock(s.T())
 	s.mockNotif = notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T())
-	s.exporter = NewConnectionExporterForTest(s.mockIDP, s.mockNotif, nil)
+	s.exporter = NewConnectionExporterForTest(s.mockIDP, s.mockNotif, nil, nil)
 }
 
 func (s *DeclarativeResourceTestSuite) TestGetResourceType() {
@@ -297,10 +305,10 @@ redirectUri: https://app/cb
 `
 	var node yaml.Node
 	s.Require().NoError(yaml.Unmarshal([]byte(doc), &node))
-	idpDTO, senderDTO, err := ParseConnectionFromNode(node.Content[0])
+	resource, err := ParseConnectionFromNode(node.Content[0])
 	s.Require().NoError(err)
-	s.Require().NotNil(idpDTO)
-	s.Nil(senderDTO)
+	idpDTO, ok := resource.(*providers.IDPDTO)
+	s.Require().True(ok)
 	s.Equal("corp-google", idpDTO.ID)
 	s.Equal(providers.IDPTypeGoogle, idpDTO.Type)
 }
@@ -319,10 +327,10 @@ tokenExchangeEnabled: true
 `
 	var node yaml.Node
 	s.Require().NoError(yaml.Unmarshal([]byte(doc), &node))
-	idpDTO, senderDTO, err := ParseConnectionFromNode(node.Content[0])
+	resource, err := ParseConnectionFromNode(node.Content[0])
 	s.Require().NoError(err)
-	s.Require().NotNil(idpDTO)
-	s.Nil(senderDTO)
+	idpDTO, ok := resource.(*providers.IDPDTO)
+	s.Require().True(ok)
 
 	values, err := propertyValues(idpDTO.Properties)
 	s.Require().NoError(err)
@@ -341,10 +349,10 @@ httpMethod: POST
 `
 	var node yaml.Node
 	s.Require().NoError(yaml.Unmarshal([]byte(doc), &node))
-	idpDTO, senderDTO, err := ParseConnectionFromNode(node.Content[0])
+	resource, err := ParseConnectionFromNode(node.Content[0])
 	s.Require().NoError(err)
-	s.Nil(idpDTO)
-	s.Require().NotNil(senderDTO)
+	senderDTO, ok := resource.(*ncommon.NotificationSenderDTO)
+	s.Require().True(ok)
 	s.Equal("prod-sms", senderDTO.ID)
 	s.Equal(ncommon.NotificationProviderTypeCustom, senderDTO.Provider)
 }
@@ -384,20 +392,21 @@ func (s *DeclarativeResourceTestSuite) TestConnectionResourceID() {
 }
 
 func (s *DeclarativeResourceTestSuite) TestValidateConnectionDTOWrapper() {
-	s.Error(validateConnectionDTOWrapper(&providers.IDPDTO{ID: "idp-1", Name: ""}, nil))
-	s.Error(validateConnectionDTOWrapper(&providers.IDPDTO{ID: "idp-1", Name: "Google"}, nil),
+	s.Error(validateConnectionDTOWrapper(&providers.IDPDTO{ID: "idp-1", Name: ""}, nil, nil, nil, nil))
+	s.Error(validateConnectionDTOWrapper(&providers.IDPDTO{ID: "idp-1", Name: "Google"}, nil, nil, nil, nil),
 		"a name-only IdP DTO must fail full validation (missing type and required properties)")
 	s.NoError(validateConnectionDTOWrapper(&providers.IDPDTO{
-		ID: "idp-1", Name: "Google", Type: providers.IDPTypeGoogle,
+		ID: "idp-1", Name: "Google", Type: providers.IDPTypeGoogle, OUID: "ou-1",
 		Properties: []cmodels.Property{
 			mustProperty(s.T(), idp.PropClientID, "client-id", false),
 			mustProperty(s.T(), idp.PropClientSecret, "client-secret", true),
 			mustProperty(s.T(), idp.PropRedirectURI, "https://app/cb", false),
 		},
-	}, nil))
-	s.Error(validateConnectionDTOWrapper(&ncommon.NotificationSenderDTO{ID: "s-1", Name: ""}, nil))
-	s.NoError(validateConnectionDTOWrapper(&ncommon.NotificationSenderDTO{ID: "s-1", Name: "Twilio"}, nil))
-	s.NoError(validateConnectionDTOWrapper("not-a-dto", nil))
+	}, nil, nil, nil, nil))
+	s.Error(validateConnectionDTOWrapper(&ncommon.NotificationSenderDTO{ID: "s-1", Name: ""}, nil, nil, nil, nil))
+	s.NoError(validateConnectionDTOWrapper(&ncommon.NotificationSenderDTO{ID: "s-1", Name: "Twilio", OUID: "ou-1"},
+		nil, nil, nil, nil))
+	s.NoError(validateConnectionDTOWrapper("not-a-dto", nil, nil, nil, nil))
 }
 
 // An email sender takes the API's validation path on load, so a provider that cannot deliver
@@ -411,9 +420,9 @@ func (s *DeclarativeResourceTestSuite) TestValidateConnectionDTOWrapperValidates
 		return sender
 	}
 
-	valid := "id: sm-1\ntype: email-smtp\nname: SMTP\nhost: smtp.example.com\nport: 587\n" +
-		"fromAddress: noreply@example.com\n"
-	s.NoError(validateConnectionDTOWrapper(parse(valid), nil))
+	valid := "id: sm-1\ntype: email-smtp\nname: SMTP\nouId: ou-1\nhost: smtp.example.com\n" +
+		"port: 587\nfromAddress: noreply@example.com\n"
+	s.NoError(validateConnectionDTOWrapper(parse(valid), nil, nil, nil, nil))
 
 	cases := map[string]string{
 		"missing port": "id: sm-1\ntype: email-smtp\nname: SMTP\nhost: smtp.example.com\n" +
@@ -425,7 +434,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateConnectionDTOWrapperValidates
 			"  properties:\n    username: mailer\n    password: s3cret\n",
 	}
 	for name, doc := range cases {
-		err := validateConnectionDTOWrapper(parse(doc), nil)
+		err := validateConnectionDTOWrapper(parse(doc), nil, nil, nil, nil)
 		s.Require().Error(err, name)
 		s.Contains(err.Error(), `connection resource "sm-1" is invalid`, name)
 	}
@@ -535,12 +544,13 @@ func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDsExcludesDeclarativeA
 		Return([]idp.BasicIDPDTO{}, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("ListSenders", mock.Anything).
 		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
-	pdpService := &authZENPDPServiceStub{connections: []authzenpdp.AuthZENPDPConnection{
+	pdpService := authzenpdpmock.NewAuthZENPDPServiceInterfaceMock(s.T())
+	pdpService.On("ListAuthZENPDPs", mock.Anything).Return([]authzenpdp.AuthZENPDPConnection{
 		{ID: "mutable", Name: "Mutable PDP"},
 		{ID: "declarative", Name: "Declarative PDP", IsReadOnly: true},
-	}}
+	}, (*tidcommon.ServiceError)(nil))
 	exporter := newConnectionExporter(s.mockIDP, s.mockNotif,
-		pdpService)
+		pdpService, nil)
 
 	ids, svcErr := exporter.GetAllResourceIDs(context.Background())
 	s.Require().Nil(svcErr)
@@ -770,10 +780,10 @@ authentication:
 `
 	var node yaml.Node
 	s.Require().NoError(yaml.Unmarshal([]byte(doc), &node))
-	idpDTO, senderDTO, err := ParseConnectionFromNode(node.Content[0])
+	resource, err := ParseConnectionFromNode(node.Content[0])
 	s.Require().NoError(err)
-	s.Nil(idpDTO)
-	s.Require().NotNil(senderDTO)
+	senderDTO, ok := resource.(*ncommon.NotificationSenderDTO)
+	s.Require().True(ok)
 	s.Equal("prod-smtp", senderDTO.ID)
 	s.Equal(ncommon.NotificationSenderTypeEmail, senderDTO.Type)
 	s.Equal(ncommon.NotificationProviderTypeSMTP, senderDTO.Provider)
@@ -783,7 +793,7 @@ authentication:
 // connection must externalize, so it never lands in the rendered YAML. The path is derived from
 // the registered method, which is what keeps a new method from needing a change here.
 func (s *DeclarativeResourceTestSuite) TestGetResourceRulesExternalizesAuthenticationSecrets() {
-	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil)
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil, nil)
 
 	basicAuth := func(properties map[string]string) *outboundauth.Authentication {
 		return &outboundauth.Authentication{
@@ -842,14 +852,21 @@ func yamlPathOf(structPath string) string {
 // Every secret a connection of any vendor exports a reference for is one of the fields the exporter
 // says may hold a secret, so an import can put each one back where it came from and nowhere else.
 func (s *DeclarativeResourceTestSuite) TestSecretFieldsCoverEveryVendorsSecrets() {
-	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil)
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil, nil)
 	fields := exporter.SecretFields()
-	s.Contains(fields, "authentication.properties."+outboundauth.FieldBasicPassword)
+	s.True(secretAllowedAt(fields, "authentication.properties."+outboundauth.FieldBasicPassword))
+	s.False(secretAllowedAt(fields, "authentication.properties."+outboundauth.FieldBasicUsername),
+		"a secret in a field shown in clear is refused")
+	s.False(secretAllowedAt(fields, "name"), "a secret outside a credential field is refused")
 
 	for _, model := range []*connectionExportModel{
 		{Type: "google", ClientSecret: "s"},
 		{Type: "twilio", AuthToken: "t"},
 		{Type: "vonage", APISecret: "a"},
+		{Type: smsGatewayVendorName, Authentication: &outboundauth.Authentication{
+			Type:       string(outboundauth.TypeAPIKey),
+			Properties: map[string]string{"X-Api-Key": "k"},
+		}},
 		{Type: emailSMTPVendorName, Authentication: &outboundauth.Authentication{
 			Type: string(outboundauth.TypeBasic),
 			Properties: map[string]string{
@@ -860,7 +877,525 @@ func (s *DeclarativeResourceTestSuite) TestSecretFieldsCoverEveryVendorsSecrets(
 		rules := exporter.GetResourceRulesForResource(model)
 		s.Require().NotEmpty(rules.SecretVariables, model.Type)
 		for _, path := range rules.SecretVariables {
-			s.Contains(fields, yamlPathOf(path), model.Type)
+			s.True(secretAllowedAt(fields, yamlPathOf(path)), "%s: %s", model.Type, path)
 		}
+	}
+}
+
+// secretAllowedAt reports whether an import accepts a secret reference at a dotted field path, judged the way
+// the secret resolver judges an imported document.
+func secretAllowedAt(fields []string, path string) bool {
+	parts := strings.Split(path, ".")
+	doc := map[string]interface{}{}
+	current := doc
+	for _, part := range parts[:len(parts)-1] {
+		next := map[string]interface{}{}
+		current[part] = next
+		current = next
+	}
+	current[parts[len(parts)-1]] = "sec:TEST_SECRET"
+	encoded, err := yaml.Marshal(doc)
+	if err != nil {
+		return false
+	}
+	var node yaml.Node
+	if err := yaml.Unmarshal(encoded, &node); err != nil {
+		return false
+	}
+	return len(secretresolver.MisplacedSecrets(&node, fields)) == 0
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionModelCarriesOU() {
+	tests := []struct {
+		name    string
+		export  func() (connectionExportModel, error)
+		restore func(connectionExportModel) (ouID, ouHandle string, err error)
+	}{
+		{
+			name: "identity provider",
+			export: func() (connectionExportModel, error) {
+				return connectionModelFromIDPDTO(providers.IDPDTO{
+					ID: "google-1", Name: "My Google", Type: providers.IDPTypeGoogle, OUID: "ou-1"})
+			},
+			restore: func(model connectionExportModel) (string, string, error) {
+				idpDTO, senderDTO, err := connectionModelToDTO(model)
+				s.Nil(senderDTO)
+				return idpDTO.OUID, idpDTO.OUHandle, err
+			},
+		},
+		{
+			name: "notification sender",
+			export: func() (connectionExportModel, error) {
+				return connectionModelFromSenderDTO(ncommon.NotificationSenderDTO{
+					ID: "s-1", Name: "Twilio", Type: ncommon.NotificationSenderTypeMessage,
+					Provider: ncommon.NotificationProviderTypeTwilio, OUID: "ou-1",
+				})
+			},
+			restore: func(model connectionExportModel) (string, string, error) {
+				idpDTO, senderDTO, err := connectionModelToDTO(model)
+				s.Nil(idpDTO)
+				return senderDTO.OUID, senderDTO.OUHandle, err
+			},
+		},
+		{
+			name: "AuthZEN PDP",
+			export: func() (connectionExportModel, error) {
+				return connectionModelFromAuthZENPDP(authzenpdp.AuthZENPDPConnection{
+					ID: "pdp-1", Name: "PDP", OUID: "ou-1", Endpoint: "https://pdp.example.com/evaluation",
+				})
+			},
+			restore: func(model connectionExportModel) (string, string, error) {
+				pdp, err := connectionModelToAuthZENPDP(model)
+				return pdp.OUID, pdp.OUHandle, err
+			},
+		},
+		{
+			name: "HTTP",
+			export: func() (connectionExportModel, error) {
+				return connectionModelFromHTTP(httpconnection.HTTPConnection{
+					ID: "http-1", Name: "Risk", OUID: "ou-1", URL: "https://risk.example.com/evaluate",
+				})
+			},
+			restore: func(model connectionExportModel) (string, string, error) {
+				connection, err := connectionModelToHTTP(model)
+				return connection.OUID, connection.OUHandle, err
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			model, err := tc.export()
+			s.Require().NoError(err)
+			s.Equal("ou-1", model.OUID)
+
+			model.OUHandle = "acme"
+			ouID, ouHandle, err := tc.restore(model)
+
+			s.Require().NoError(err)
+			s.Equal("ou-1", ouID)
+			s.Equal("acme", ouHandle)
+		})
+	}
+}
+
+// httpConnectionWithBasicAuth builds an HTTP connection through httpToDTO, so its password is encrypted.
+func (s *DeclarativeResourceTestSuite) httpConnectionWithBasicAuth() httpconnection.HTTPConnection {
+	dto, err := httpToDTO(httpConnectionRequest{
+		Name: "Risk Engine", Description: "Risk", URL: "https://risk.example.com/evaluate", TimeoutMS: 5000,
+		Headers: []httpconnection.Header{{Name: "X-Tenant", Value: "acme"}},
+		Authentication: &outboundauth.Authentication{Type: string(outboundauth.TypeBasic),
+			Properties: map[string]string{
+				outboundauth.FieldBasicUsername: "svc-user",
+				outboundauth.FieldBasicPassword: "s3cret",
+			}},
+	})
+	s.Require().NoError(err)
+	dto.ID = "http-1"
+	return *dto
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionModelFromHTTPUnmasksSecret() {
+	connection := s.httpConnectionWithBasicAuth()
+	s.Require().NotContains(fmt.Sprint(connection.AuthProperties), "s3cret", "the stored password is encrypted")
+
+	model, err := connectionModelFromHTTP(connection)
+
+	s.Require().NoError(err)
+	s.Equal(connectionExportModel{
+		ID: "http-1", Type: httpVendorName, Name: "Risk Engine", Description: "Risk",
+		URL: "https://risk.example.com/evaluate", TimeoutMS: 5000,
+		Headers: []httpconnection.Header{{Name: "X-Tenant", Value: "acme"}},
+		Authentication: &outboundauth.Authentication{Type: string(outboundauth.TypeBasic),
+			Properties: map[string]string{
+				outboundauth.FieldBasicUsername: "svc-user",
+				outboundauth.FieldBasicPassword: "s3cret",
+			}},
+	}, model)
+	rules := s.exporter.GetResourceRulesForResource(&model)
+	s.Equal([]string{"Authentication.Properties.password"}, rules.SecretVariables)
+}
+
+func (s *DeclarativeResourceTestSuite) TestHTTPConnectionDocumentRoundTrips() {
+	doc := `
+id: http-1
+type: http
+name: Risk Engine
+url: https://risk.example.com/evaluate
+timeoutMs: 5000
+headers:
+  - name: X-Tenant
+    value: acme
+authentication:
+  type: basic
+  properties:
+    username: svc-user
+    password: s3cret
+`
+	parsed, err := parseToConnectionDTOWrapper([]byte(doc))
+	s.Require().NoError(err)
+	connection, ok := parsed.(*httpconnection.HTTPConnection)
+	s.Require().True(ok)
+	s.Equal("http-1", connectionResourceID(connection))
+	s.Equal("https://risk.example.com/evaluate", connection.URL)
+	s.Equal(5000, connection.TimeoutMS)
+	s.Equal([]httpconnection.Header{{Name: "X-Tenant", Value: "acme"}}, connection.Headers)
+	s.NotContains(fmt.Sprint(connection.AuthProperties), "s3cret")
+	authConfig, err := outboundauth.FromProperties(connection.AuthProperties)
+	s.Require().NoError(err)
+	s.Equal("s3cret", authConfig.Get(outboundauth.FieldBasicPassword))
+
+	var node yaml.Node
+	s.Require().NoError(yaml.Unmarshal([]byte(doc), &node))
+	fromNode, err := ParseConnectionFromNode(node.Content[0])
+	s.Require().NoError(err)
+	nodeConnection, ok := fromNode.(*httpconnection.HTTPConnection)
+	s.Require().True(ok)
+	s.Equal("http-1", nodeConnection.ID)
+
+	var other yaml.Node
+	s.Require().NoError(yaml.Unmarshal([]byte("id: h\ntype: http\nname: H\nurl: https://h.example.com\n"+
+		"authentication:\n  type: kerberos\n"), &other))
+	_, err = ParseConnectionFromNode(other.Content[0])
+	s.Error(err)
+}
+
+func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDsListsMutableHTTPConnections() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).
+		Return([]idp.BasicIDPDTO{{ID: "idp-1", Type: providers.IDPTypeGoogle}}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSenders", mock.Anything).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	httpService.On("ListHTTPConnections", mock.Anything).Return([]httpconnection.HTTPConnection{
+		{ID: "mutable", Name: "Mutable", OUID: "ou-1"},
+		{ID: "declarative", Name: "Declarative", OUID: "ou-1", IsReadOnly: true},
+	}, (*tidcommon.ServiceError)(nil))
+
+	ids, svcErr := newConnectionExporter(s.mockIDP, s.mockNotif, nil, httpService).
+		GetAllResourceIDs(context.Background())
+
+	s.Require().Nil(svcErr)
+	s.ElementsMatch([]string{"idp-1", "mutable"}, ids, "a declared HTTP connection is not exported")
+}
+
+func (s *DeclarativeResourceTestSuite) TestGetResourceByIDFallsBackToHTTP() {
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, mock.Anything).
+		Return(nil, &idp.ErrorIDPNotFound)
+	s.mockNotif.On("GetSender", mock.Anything, mock.Anything).
+		Return(nil, &notification.ErrorSenderNotFound)
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	connection := s.httpConnectionWithBasicAuth()
+	httpService.On("GetHTTPConnection", mock.Anything, "http-1").
+		Return(&connection, (*tidcommon.ServiceError)(nil))
+	httpService.On("GetHTTPConnection", mock.Anything, "missing").
+		Return(nil, &httpconnection.ErrorNotFound)
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil, httpService)
+
+	resource, name, svcErr := exporter.GetResourceByID(context.Background(), "http-1")
+	s.Require().Nil(svcErr)
+	s.Equal("Risk Engine", name)
+	s.Equal(httpVendorName, resource.(*connectionExportModel).Type)
+
+	_, _, svcErr = exporter.GetResourceByID(context.Background(), "missing")
+	s.Require().NotNil(svcErr)
+}
+
+func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDsReportsAnHTTPListFailure() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).
+		Return([]idp.BasicIDPDTO{}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSenders", mock.Anything).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	httpService.On("ListHTTPConnections", mock.Anything).
+		Return(nil, &httpconnection.ErrorResultLimitExceededInCompositeMode)
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil, httpService)
+
+	ids, svcErr := exporter.GetAllResourceIDs(context.Background())
+
+	s.Nil(ids)
+	s.Require().NotNil(svcErr)
+	s.Equal(httpconnection.ErrorResultLimitExceededInCompositeMode.Code, svcErr.Code)
+}
+
+func (s *DeclarativeResourceTestSuite) TestGetResourceByIDReportsHTTPFailures() {
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, mock.Anything).
+		Return(nil, &idp.ErrorIDPNotFound)
+	s.mockNotif.On("GetSender", mock.Anything, mock.Anything).
+		Return(nil, &notification.ErrorSenderNotFound)
+	undecryptable, err := cmodels.DeserializePropertiesFromJSON(
+		`[{"name":"authentication_type","value":"basic"},` +
+			`{"name":"authentication_password","value":"not-a-ciphertext","isSecret":true}]`)
+	s.Require().NoError(err)
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	httpService.On("GetHTTPConnection", mock.Anything, "unreadable").
+		Return(nil, &tidcommon.InternalServerError)
+	httpService.On("GetHTTPConnection", mock.Anything, "undecryptable").
+		Return(&httpconnection.HTTPConnection{ID: "undecryptable", Name: "U", AuthProperties: undecryptable},
+			(*tidcommon.ServiceError)(nil))
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil, httpService)
+
+	for _, id := range []string{"unreadable", "undecryptable"} {
+		resource, _, svcErr := exporter.GetResourceByID(context.Background(), id)
+		s.Nil(resource, id)
+		s.Require().NotNil(svcErr, id)
+		s.Equal(tidcommon.InternalServerError.Code, svcErr.Code, id)
+	}
+}
+
+func (s *DeclarativeResourceTestSuite) TestValidateConnectionDTOWrapperValidatesHTTPConnections() {
+	valid := &httpconnection.HTTPConnection{ID: "h", Name: "H", URL: "https://h.example.com/x", OUHandle: "acme"}
+	invalid := &httpconnection.HTTPConnection{ID: "i", Name: "I", URL: "http://h.example.com/x", OUID: "ou-1"}
+	unowned := &httpconnection.HTTPConnection{ID: "u", Name: "U", URL: "https://h.example.com/x",
+		OUHandle: "missing"}
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	for _, connection := range []*httpconnection.HTTPConnection{valid, unowned} {
+		httpService.On("ValidateHTTPConnection", mock.Anything, connection).Return((*tidcommon.ServiceError)(nil))
+	}
+	httpService.On("ValidateHTTPConnection", mock.Anything, invalid).Return(&httpconnection.ErrorInvalidURL)
+	httpService.On("ResolveConnectionOU", mock.Anything, valid).
+		Run(func(mock.Arguments) { valid.OUID = "ou-acme" }).Return((*tidcommon.ServiceError)(nil))
+	httpService.On("ResolveConnectionOU", mock.Anything, unowned).Return(&httpconnection.ErrorInvalidOU)
+
+	s.NoError(validateConnectionDTOWrapper(valid, nil, nil, nil, httpService))
+	s.Equal("ou-acme", valid.OUID)
+	err := validateConnectionDTOWrapper(invalid, nil, nil, nil, httpService)
+	s.Require().Error(err)
+	s.Contains(err.Error(), `connection resource "i" is invalid`)
+	s.ErrorContains(validateConnectionDTOWrapper(unowned, nil, nil, nil, httpService),
+		`organization unit "missing" of connection resource "u" could not be resolved`)
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreLoadsHTTPByStoreMode() {
+	for mode, loads := range map[string]bool{"mutable": false, "composite": true, "declarative": true} {
+		s.Run(mode, func() {
+			config.ResetServerRuntime()
+			s.Require().NoError(config.InitializeServerRuntime("/tmp/test", &config.Config{
+				HTTPConnection: config.HTTPConnectionConfig{Store: mode},
+			}))
+			s.T().Cleanup(config.ResetServerRuntime)
+			store := &connectionDeclarativeStore{
+				httpConnectionStore: declarativeresource.NewGenericFileBasedStoreForTest(entity.KeyTypeHTTPConnection),
+			}
+
+			s.Require().NoError(store.Create("http-1", &httpconnection.HTTPConnection{Name: "H"}))
+
+			got, err := store.httpConnectionStore.Get("http-1")
+			if !loads {
+				s.Error(err)
+				return
+			}
+			s.Require().NoError(err)
+			s.Equal("http-1", got.(*httpconnection.HTTPConnection).ID)
+		})
+	}
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionDocumentOUHandle() {
+	var node yaml.Node
+	s.Require().NoError(yaml.Unmarshal([]byte(
+		"id: idp-1\ntype: google\nname: G\nouHandle: acme\nclientId: c\nredirectUri: https://app/cb\n"), &node))
+
+	resource, err := ParseConnectionFromNode(&node)
+	s.Require().NoError(err)
+	dto, ok := resource.(*providers.IDPDTO)
+	s.Require().True(ok)
+	s.Equal("acme", dto.OUHandle)
+	s.Empty(dto.OUID)
+
+	exported, err := connectionModelFromIDPDTO(providers.IDPDTO{
+		ID: "idp-1", Name: "G", Type: providers.IDPTypeGoogle, OUID: "ou-acme", OUHandle: "acme",
+	})
+	s.Require().NoError(err)
+	s.Equal("ou-acme", exported.OUID)
+	s.Empty(exported.OUHandle)
+}
+
+func (s *DeclarativeResourceTestSuite) TestValidateConnectionDTOOwner() {
+	const resolvedOUID = "ou-acme"
+	newSender := func(ouID, ouHandle string) *ncommon.NotificationSenderDTO {
+		return &ncommon.NotificationSenderDTO{ID: "s-1", Name: "Twilio", OUID: ouID, OUHandle: ouHandle}
+	}
+	newPDP := func(ouID, ouHandle string) *authzenpdp.AuthZENPDPConnection {
+		return &authzenpdp.AuthZENPDPConnection{ID: "pdp-1", Name: "PDP", Endpoint: "https://pdp.example.com/e",
+			OUID: ouID, OUHandle: ouHandle}
+	}
+
+	newIDP := func(ouID, ouHandle string) *providers.IDPDTO {
+		return &providers.IDPDTO{ID: "idp-1", Name: "Google", Type: providers.IDPTypeGoogle, OUID: ouID,
+			OUHandle: ouHandle, Properties: []cmodels.Property{
+				mustProperty(s.T(), idp.PropClientID, "client-id", false),
+				mustProperty(s.T(), idp.PropClientSecret, "client-secret", true),
+				mustProperty(s.T(), idp.PropRedirectURI, "https://app/cb", false),
+			}}
+	}
+
+	s.Run("an identity provider resolves its owner through the identity provider service", func() {
+		dto := newIDP("", "acme")
+		s.mockIDP.On("ResolveIdentityProviderOU", mock.Anything, dto).
+			Run(func(mock.Arguments) { dto.OUID = resolvedOUID }).Return((*tidcommon.ServiceError)(nil)).Once()
+		s.mockIDP.On("ApplySchemaAwareDefaults", mock.Anything, dto).Return().Once()
+		s.NoError(validateConnectionDTOWrapper(dto, s.mockIDP, nil, nil, nil))
+		s.Equal(resolvedOUID, dto.OUID)
+	})
+	s.Run("an identity provider fails when its owner cannot be resolved", func() {
+		dto := newIDP("", "missing")
+		s.mockIDP.On("ResolveIdentityProviderOU", mock.Anything, dto).Return(&idp.ErrorInvalidIDPOU).Once()
+		err := validateConnectionDTOWrapper(dto, s.mockIDP, nil, nil, nil)
+		s.ErrorContains(err, `organization unit "missing" of connection resource "idp-1"`)
+	})
+	s.Run("an identity provider fails without an owner", func() {
+		s.ErrorContains(validateConnectionDTOWrapper(newIDP("", ""), nil, nil, nil, nil), "needs an organization unit")
+	})
+	s.Run("fails without an owner", func() {
+		s.ErrorContains(validateConnectionDTOWrapper(newSender("", ""), nil, nil, nil, nil),
+			"needs an organization unit")
+		s.ErrorContains(validateConnectionDTOWrapper(newPDP("", ""), nil, nil, nil, nil),
+			"needs an organization unit")
+	})
+	s.Run("fails for a handle when no service can resolve it", func() {
+		s.ErrorContains(validateConnectionDTOWrapper(newSender("", "acme"), nil, nil, nil, nil),
+			"needs an organization unit")
+		s.ErrorContains(validateConnectionDTOWrapper(newPDP("", "acme"), nil, nil, nil, nil),
+			"needs an organization unit")
+	})
+	s.Run("keeps an id given", func() {
+		s.NoError(validateConnectionDTOWrapper(newSender("ou-1", ""), nil, nil, nil, nil))
+		s.NoError(validateConnectionDTOWrapper(newPDP("ou-1", ""), nil, nil, nil, nil))
+	})
+	s.Run("resolves the owner through the service of the kind", func() {
+		sender := newSender("", "acme")
+		s.mockNotif.On("ResolveSenderOU", mock.Anything, sender).
+			Run(func(mock.Arguments) { sender.OUID = resolvedOUID }).Return((*tidcommon.ServiceError)(nil)).Once()
+		s.NoError(validateConnectionDTOWrapper(sender, nil, s.mockNotif, nil, nil))
+		s.Equal(resolvedOUID, sender.OUID)
+
+		pdp := newPDP("", "acme")
+		pdpService := authzenpdpmock.NewAuthZENPDPServiceInterfaceMock(s.T())
+		pdpService.On("ResolveConnectionOU", mock.Anything, pdp).
+			Run(func(mock.Arguments) { pdp.OUID = resolvedOUID }).Return((*tidcommon.ServiceError)(nil)).Once()
+		s.NoError(validateConnectionDTOWrapper(pdp, nil, nil, pdpService, nil))
+		s.Equal(resolvedOUID, pdp.OUID)
+	})
+	s.Run("fails when the service cannot resolve the owner", func() {
+		sender := newSender("", "missing")
+		s.mockNotif.On("ResolveSenderOU", mock.Anything, sender).Return(&authzenpdp.ErrorInvalidOU).Once()
+		err := validateConnectionDTOWrapper(sender, nil, s.mockNotif, nil, nil)
+		s.ErrorContains(err, `organization unit "missing" of connection resource "s-1" could not be resolved`)
+	})
+	s.Run("fails when the AuthZEN PDP service cannot resolve the owner", func() {
+		pdp := newPDP("", "missing")
+		pdpService := authzenpdpmock.NewAuthZENPDPServiceInterfaceMock(s.T())
+		pdpService.On("ResolveConnectionOU", mock.Anything, pdp).Return(&authzenpdp.ErrorInvalidOU).Once()
+		err := validateConnectionDTOWrapper(pdp, nil, nil, pdpService, nil)
+		s.ErrorContains(err, `organization unit "missing" of connection resource`)
+	})
+	s.Run("fails when the service cannot find the ouId given", func() {
+		sender := newSender("ou-missing", "")
+		s.mockNotif.On("ResolveSenderOU", mock.Anything, sender).Return(&authzenpdp.ErrorInvalidOU).Once()
+		err := validateConnectionDTOWrapper(sender, nil, s.mockNotif, nil, nil)
+		s.ErrorContains(err, `organization unit of connection resource "s-1" could not be resolved`)
+	})
+}
+
+// apiKeyConnectionExporter returns an exporter holding one connection of the given vendor with the
+// API-key headers, under ID c-1.
+func (s *DeclarativeResourceTestSuite) apiKeyConnectionExporter(vendor string,
+	headers map[string]string) *connectionExporter {
+	s.T().Helper()
+	authProps, err := outboundauth.ToProperties(outboundauth.Config{Type: outboundauth.TypeAPIKey,
+		Properties: headers})
+	s.Require().NoError(err)
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, "c-1").Return(nil, &idp.ErrorIDPNotFound)
+	var pdpService authzenpdp.AuthZENPDPServiceInterface
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	switch vendor {
+	case smsGatewayVendorName:
+		s.mockNotif.On("GetSender", mock.Anything, "c-1").Return(&ncommon.NotificationSenderDTO{
+			ID: "c-1", Name: "Risk Engine", Type: ncommon.NotificationSenderTypeMessage,
+			Provider: ncommon.NotificationProviderTypeCustom,
+			Properties: append([]cmodels.Property{
+				mustProperty(s.T(), ncommon.CustomPropKeyURL, "https://sms.example.com/send", false),
+			}, authProps...),
+		}, (*tidcommon.ServiceError)(nil))
+	case authZENPDPVendorName:
+		s.mockNotif.On("GetSender", mock.Anything, "c-1").Return(nil, &notification.ErrorSenderNotFound)
+		pdpMock := authzenpdpmock.NewAuthZENPDPServiceInterfaceMock(s.T())
+		pdpMock.On("GetAuthZENPDP", mock.Anything, "c-1").Return(&authzenpdp.AuthZENPDPConnection{
+			ID: "c-1", Name: "Risk Engine", Endpoint: "https://pdp.example.com/access/v1/evaluation",
+			AuthenticationProperties: authProps,
+		}, (*tidcommon.ServiceError)(nil))
+		pdpService = pdpMock
+	default:
+		s.mockNotif.On("GetSender", mock.Anything, "c-1").Return(nil, &notification.ErrorSenderNotFound)
+		httpService.On("GetHTTPConnection", mock.Anything, "c-1").Return(&httpconnection.HTTPConnection{
+			ID: "c-1", Name: "Risk Engine", URL: "https://risk.example.com/evaluate", AuthProperties: authProps,
+		}, (*tidcommon.ServiceError)(nil)).Maybe()
+	}
+	return newConnectionExporter(s.mockIDP, s.mockNotif, pdpService, httpService)
+}
+
+// exportConnection exports c-1 through the template-style export, as the export API does.
+func exportConnection(exporter *connectionExporter) (*export.ExportResponse, *tidcommon.ServiceError) {
+	return export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{exporter},
+		export.TemplatePlaceholders).ExportResources(context.Background(), &export.ExportRequest{
+		Connections: []string{"c-1"}, Options: &export.ExportOptions{Format: "yaml"},
+	})
+}
+
+func (s *DeclarativeResourceTestSuite) TestAPIKeyHeadersTheExportCannotNameAreRefused() {
+	cases := map[string]struct {
+		headers map[string]string
+		reason  string
+	}{
+		"a dotted header": {map[string]string{"X.Tenant.Key": "dotted-s3cret"},
+			"the API-key header 'X.Tenant.Key' contains a dot"},
+		"headers deriving one parameter": {
+			map[string]string{"X-Region_Key": "first-s3cret", "X_Region-Key": "second-s3cret"},
+			"the API-key headers 'X-Region_Key' and 'X_Region-Key' map to the same parameter " +
+				"CONNECTION_RISK_ENGINE_X_REGION_KEY"},
+	}
+	for _, vendor := range []string{httpVendorName, smsGatewayVendorName, authZENPDPVendorName} {
+		for name, tc := range cases {
+			s.Run(vendor+"/"+name, func() {
+				s.SetupTest()
+				exporter := s.apiKeyConnectionExporter(vendor, tc.headers)
+				resource, _, svcErr := exporter.GetResourceByID(context.Background(), "c-1")
+				s.Require().Nil(svcErr)
+
+				_, exportErr := exporter.ValidateResource(context.Background(), resource, "c-1", log.GetLogger())
+
+				s.Require().NotNil(exportErr)
+				s.Equal("CONN_VALIDATION_ERROR", exportErr.Code)
+				s.Equal("connection 'Risk Engine' cannot be exported: "+tc.reason, exportErr.Error)
+				for _, value := range tc.headers {
+					s.NotContains(exportErr.Error, value)
+				}
+				result, svcErr := exportConnection(exporter)
+				s.Require().NotNil(svcErr, "the connection was exported")
+				s.Nil(result)
+			})
+		}
+	}
+}
+
+func (s *DeclarativeResourceTestSuite) TestAPIKeyHeadersExportAsParameters() {
+	for _, vendor := range []string{httpVendorName, smsGatewayVendorName, authZENPDPVendorName} {
+		s.Run(vendor, func() {
+			s.SetupTest()
+
+			result, svcErr := exportConnection(s.apiKeyConnectionExporter(vendor,
+				map[string]string{"X-Tenant-Key": "tenant-s3cret", "X-Region-Key": "region-s3cret"}))
+
+			s.Require().Nil(svcErr)
+			s.Require().Len(result.Files, 1)
+			content := result.Files[0].Content
+			s.Contains(content, "X-Tenant-Key: {{.CONNECTION_RISK_ENGINE_X_TENANT_KEY}}")
+			s.Contains(content, "X-Region-Key: {{.CONNECTION_RISK_ENGINE_X_REGION_KEY}}")
+			s.NotContains(content, "tenant-s3cret")
+			s.NotContains(content, "region-s3cret")
+			s.Require().NotNil(result.EnvFile)
+			s.Contains(result.EnvFile.Content, "CONNECTION_RISK_ENGINE_X_TENANT_KEY=tenant-s3cret")
+			s.Contains(result.EnvFile.Content, "CONNECTION_RISK_ENGINE_X_REGION_KEY=region-s3cret")
+		})
 	}
 }

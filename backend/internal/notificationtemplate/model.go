@@ -53,6 +53,9 @@ type TemplateSummary struct {
 // CreateTemplateRequest is the request body for creating a template. The channel is taken from the
 // path, not the body. The handle and ouId are immutable, set only at creation.
 type CreateTemplateRequest struct {
+	// ID is optional and set only by an import, so a template keeps the id it has where it was
+	// authored. The API never reads it from the request body. An empty ID is generated.
+	ID          string          `json:"-"`
 	Handle      string          `json:"handle"`
 	OUID        string          `json:"ouId"`
 	DisplayName string          `json:"displayName"`

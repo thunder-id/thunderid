@@ -13,6 +13,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 )
 
 func viewConnectionDocument(t *testing.T, model connectionExportModel) *yaml.Node {
@@ -28,7 +29,7 @@ func newViewTestExporter(t *testing.T) *connectionExporter {
 	t.Helper()
 	initConfigWithTestCryptoKey(t)
 	t.Cleanup(config.ResetServerRuntime)
-	return newConnectionExporter(nil, nil, nil)
+	return newConnectionExporter(nil, nil, nil, nil)
 }
 
 // An exported identity-provider connection is shown as its vendor's read returns it, with its
@@ -97,7 +98,7 @@ func TestViewResourceShowsAnAuthZENPDPConnectionAsItsRead(t *testing.T) {
 	view, err := newViewTestExporter(t).ViewResource(context.Background(),
 		viewConnectionDocument(t, connectionExportModel{
 			ID: "pdp-1", Type: "authzen-pdp", Name: "PDP", AuthZENPDPEndpoint: "var:CONNECTION_PDP_ENDPOINT",
-			AuthZENPDPTimeoutMS: 500, AuthZENPDPRetryCount: &retries,
+			TimeoutMS: 500, AuthZENPDPRetryCount: &retries,
 		}))
 
 	require.NoError(t, err)
@@ -122,4 +123,26 @@ func TestViewResourceRefusesAnUnreadableConnection(t *testing.T) {
 	_, err = exporter.ViewResource(context.Background(),
 		viewConnectionDocument(t, connectionExportModel{ID: "conn-9", Type: "unknown", Name: "U"}))
 	assert.Error(t, err)
+}
+
+func (s *DeclarativeResourceTestSuite) TestViewResourceShowsAnHTTPConnectionAsItsRead() {
+	exporter := newViewTestExporter(s.T())
+
+	view, err := exporter.ViewResource(context.Background(), viewConnectionDocument(s.T(), connectionExportModel{
+		ID: "http-1", Type: httpVendorName, Name: "Risk Engine", URL: "https://risk.example.com/evaluate",
+		TimeoutMS: 5000,
+		Authentication: &outboundauth.Authentication{Type: string(outboundauth.TypeBasic),
+			Properties: map[string]string{
+				outboundauth.FieldBasicUsername: "svc-user",
+				outboundauth.FieldBasicPassword: "sec:CONNECTION_RISK_ENGINE_PASSWORD",
+			}},
+	}))
+
+	s.Require().NoError(err)
+	resp, ok := view.(httpConnectionResponse)
+	s.Require().True(ok)
+	s.Equal("http-1", resp.ID)
+	s.Equal("https://risk.example.com/evaluate", resp.URL)
+	s.Equal("svc-user", resp.Authentication.Properties[outboundauth.FieldBasicUsername])
+	s.Equal(maskedSecretValue, resp.Authentication.Properties[outboundauth.FieldBasicPassword])
 }

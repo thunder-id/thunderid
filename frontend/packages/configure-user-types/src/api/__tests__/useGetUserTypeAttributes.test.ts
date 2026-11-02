@@ -1,8 +1,10 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {QueryClient} from '@tanstack/react-query';
 import {waitFor, renderHook} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
+import UserTypeQueryKeys from '../../constants/userTypeQueryKeys';
 import type {ApiUserType, UserTypeListResponse} from '../../types/user-types';
 import useGetUserTypeAttributes from '../useGetUserTypeAttributes';
 
@@ -290,5 +292,88 @@ describe('useGetUserTypeAttributes', () => {
     });
 
     expect(mockLoggerWarn).not.toHaveBeenCalled();
+  });
+
+  it('should request nothing, and report no loading or error, when disabled', () => {
+    mockRequests(buildListResponse([{id: '1', handle: 'person', displayName: 'Person'}]), {});
+
+    const {result} = renderHook(() => useGetUserTypeAttributes({enabled: false}));
+
+    expect(mockHttpRequest).not.toHaveBeenCalled();
+    expect(result.current).toEqual(expect.objectContaining({attributes: [], isLoading: false, error: null}));
+  });
+
+  it('should report the list failure as its error, and request the list again on refetch', async () => {
+    mockHttpRequest.mockRejectedValue(new Error('list failed'));
+    const listRequests = (): number =>
+      mockHttpRequest.mock.calls.filter(([request]) => !/\/user-types\/[^?]+/.test((request as {url: string}).url))
+        .length;
+
+    const {result} = renderHook(() => useGetUserTypeAttributes());
+
+    await waitFor(() => {
+      expect(result.current.error?.message).toBe('list failed');
+    });
+    expect(result.current.attributes).toEqual([]);
+    const requestsBeforeRetry = listRequests();
+
+    result.current.refetch();
+
+    await waitFor(() => {
+      expect(listRequests()).toBe(requestsBeforeRetry + 1);
+    });
+  });
+
+  it('should ignore a cached list, and not warn about it, when disabled', () => {
+    const queryClient = new QueryClient({defaultOptions: {queries: {retry: false}}});
+    queryClient.setQueryData(
+      [UserTypeQueryKeys.USER_TYPES, {limit: 100, offset: undefined}],
+      buildListResponse([{id: '1', handle: 'person', displayName: 'Person'}], 101),
+    );
+
+    const {result} = renderHook(() => useGetUserTypeAttributes({enabled: false}), {queryClient});
+
+    expect(mockHttpRequest).not.toHaveBeenCalled();
+    expect(result.current.attributes).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(mockLoggerWarn).not.toHaveBeenCalled();
+  });
+
+  it('should report a schema failure, alongside the attributes that loaded, and retry it', async () => {
+    const person: ApiUserType = {
+      id: '1',
+      handle: 'person',
+      displayName: 'Person',
+      ouId: 'root-ou',
+      allowSelfRegistration: false,
+      schema: {email: {type: 'string'}},
+    };
+    const broken: ApiUserType = {
+      ...person,
+      id: '2',
+      handle: 'broken',
+      displayName: 'Broken',
+      schema: {code: {type: 'string'}},
+    };
+    const list = buildListResponse([
+      {id: '1', handle: 'person', displayName: 'Person'},
+      {id: '2', handle: 'broken', displayName: 'Broken'},
+    ]);
+    mockRequests(list, {'1': person});
+
+    const {result} = renderHook(() => useGetUserTypeAttributes());
+
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull();
+    });
+    expect(result.current.attributes.map((attribute) => attribute.attribute)).toEqual(['email']);
+
+    mockRequests(list, {'1': person, '2': broken});
+    result.current.refetch();
+
+    await waitFor(() => {
+      expect(result.current.error).toBeNull();
+    });
+    expect(result.current.attributes.map((attribute) => attribute.attribute)).toEqual(['code', 'email']);
   });
 });

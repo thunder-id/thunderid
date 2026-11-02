@@ -34,6 +34,9 @@ const (
 	agentTEUsername     = "agent_te_test_user"
 	agentTEPassword     = "AgentTE_Pass1!"
 
+	agentTENextClientID     = "agent_token_exchange_next_client"
+	agentTENextClientSecret = "agent_token_exchange_next_secret"
+
 	agentOAuthDefaultRSIdentifier = "https://agent-oauth-default.example.com"
 	ccAgentAuthzRSIdentifier      = "https://cc-agent-authz.example.com"
 	agentTEDefaultRSIdentifier    = "https://agent-te-default.example.com"
@@ -835,6 +838,7 @@ type AgentTokenExchangeTestSuite struct {
 	entityTypeID      string
 	agentTypeSnapshot *testutils.AgentTypeSnapshot
 	agentID           string
+	nextAgentID       string
 	userID            string
 	resourceServerID  string
 	assertionToken    string
@@ -906,7 +910,12 @@ func (s *AgentTokenExchangeTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.userID = userID
 
-	s.agentID, err = s.createTokenExchangeAgent()
+	s.agentID, err = s.createTokenExchangeAgent(
+		"Agent Token Exchange Test", agentTEClientID, agentTEClientSecret)
+	s.Require().NoError(err)
+
+	s.nextAgentID, err = s.createTokenExchangeAgent(
+		"Agent Token Exchange Next Test", agentTENextClientID, agentTENextClientSecret)
 	s.Require().NoError(err)
 }
 
@@ -920,6 +929,9 @@ func (s *AgentTokenExchangeTestSuite) SetupTest() {
 func (s *AgentTokenExchangeTestSuite) TearDownSuite() {
 	if s.agentID != "" {
 		_ = deleteAgent(s.agentID)
+	}
+	if s.nextAgentID != "" {
+		_ = deleteAgent(s.nextAgentID)
 	}
 	if s.userID != "" {
 		_ = testutils.DeleteUser(s.userID)
@@ -946,17 +958,17 @@ func (s *AgentTokenExchangeTestSuite) TearDownSuite() {
 	}
 }
 
-func (s *AgentTokenExchangeTestSuite) createTokenExchangeAgent() (string, error) {
+func (s *AgentTokenExchangeTestSuite) createTokenExchangeAgent(name, clientID, clientSecret string) (string, error) {
 	agent := map[string]interface{}{
-		"attributes": map[string]interface{}{"name": "Agent Token Exchange Test"},
+		"attributes": map[string]interface{}{"name": name},
 		"type":       "default",
 		"ouId":       s.ouID,
 		"inboundAuthConfig": []map[string]interface{}{
 			{
 				"type": "oauth2",
 				"config": map[string]interface{}{
-					"clientId":                agentTEClientID,
-					"clientSecret":            agentTEClientSecret,
+					"clientId":                clientID,
+					"clientSecret":            clientSecret,
 					"grantTypes":              []string{"urn:ietf:params:oauth:grant-type:token-exchange"},
 					"tokenEndpointAuthMethod": "client_secret_basic",
 				},
@@ -1023,12 +1035,18 @@ func (s *AgentTokenExchangeTestSuite) getUserAssertion() string {
 }
 
 func (s *AgentTokenExchangeTestSuite) doTokenExchange(formData url.Values) (*TokenExchangeResponse, int, error) {
+	return s.doTokenExchangeAs(agentTEClientID, agentTEClientSecret, formData)
+}
+
+// doTokenExchangeAs submits a token-exchange request authenticated as the given agent client.
+func (s *AgentTokenExchangeTestSuite) doTokenExchangeAs(
+	clientID, clientSecret string, formData url.Values) (*TokenExchangeResponse, int, error) {
 	req, err := http.NewRequest("POST", testServerURL+"/oauth2/token", strings.NewReader(formData.Encode()))
 	if err != nil {
 		return nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(agentTEClientID, agentTEClientSecret)
+	req.SetBasicAuth(clientID, clientSecret)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -1139,6 +1157,69 @@ func (s *AgentTokenExchangeTestSuite) TestAgentTE_MissingSubjectToken() {
 	s.Equal(http.StatusBadRequest, statusCode)
 	s.Equal("invalid_request", resp.Error)
 	s.Contains(resp.ErrorDescription, "subject_token")
+}
+
+// TestAgentTE_ExtendsSubjectDelegationChain verifies that an agent exchanging a token that already
+// records another agent as its actor becomes the current actor, with the earlier agent nested
+// beneath it (RFC 8693 Section 4.1).
+func (s *AgentTokenExchangeTestSuite) TestAgentTE_ExtendsSubjectDelegationChain() {
+	firstToken := s.exchangeAs(agentTEClientID, agentTEClientSecret,
+		s.assertionToken, "urn:ietf:params:oauth:token-type:jwt")
+	firstAct := s.actClaim(firstToken)
+	s.Equal(s.agentID, firstAct["sub"])
+	s.NotContains(firstAct, "act")
+
+	nextToken := s.exchangeAs(agentTENextClientID, agentTENextClientSecret,
+		firstToken, "urn:ietf:params:oauth:token-type:access_token")
+	claims, err := testutils.DecodeJWT(nextToken)
+	s.Require().NoError(err)
+	s.Equal(s.userID, claims.Sub, "Subject must stay the original user")
+
+	act := s.actClaim(nextToken)
+	s.Equal(s.nextAgentID, act["sub"], "act.sub must identify the agent that made this exchange")
+	priorAct, ok := act["act"].(map[string]interface{})
+	s.Require().True(ok, "act must keep the subject token's actor as a nested act")
+	s.Equal(s.agentID, priorAct["sub"], "act.act.sub must identify the earlier agent")
+	s.NotContains(priorAct, "act")
+}
+
+// TestAgentTE_SameAgentIsNotRepeated verifies that an agent re-exchanging a token it already acts
+// through is recorded once, not nested under itself.
+func (s *AgentTokenExchangeTestSuite) TestAgentTE_SameAgentIsNotRepeated() {
+	firstToken := s.exchangeAs(agentTEClientID, agentTEClientSecret,
+		s.assertionToken, "urn:ietf:params:oauth:token-type:jwt")
+
+	secondToken := s.exchangeAs(agentTEClientID, agentTEClientSecret,
+		firstToken, "urn:ietf:params:oauth:token-type:access_token")
+
+	act := s.actClaim(secondToken)
+	s.Equal(s.agentID, act["sub"])
+	s.NotContains(act, "act", "The same agent must not be nested under itself")
+}
+
+// exchangeAs exchanges the subject token as the given agent client for a token bound to the
+// suite's resource server, and returns the issued access token.
+func (s *AgentTokenExchangeTestSuite) exchangeAs(clientID, clientSecret, subjectToken, subjectTokenType string) string {
+	formData := url.Values{}
+	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	formData.Set("subject_token", subjectToken)
+	formData.Set("subject_token_type", subjectTokenType)
+	formData.Set("resource", agentTEDefaultRSIdentifier)
+
+	resp, statusCode, err := s.doTokenExchangeAs(clientID, clientSecret, formData)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, statusCode, "%s: %s", resp.Error, resp.ErrorDescription)
+	s.Require().NotEmpty(resp.AccessToken)
+	return resp.AccessToken
+}
+
+// actClaim decodes the token and returns its act claim, failing the test when it has none.
+func (s *AgentTokenExchangeTestSuite) actClaim(token string) map[string]interface{} {
+	claims, err := testutils.DecodeJWT(token)
+	s.Require().NoError(err)
+	act, ok := claims.Additional["act"].(map[string]interface{})
+	s.Require().True(ok, "Token must carry an act claim")
+	return act
 }
 
 // ============================================================================

@@ -83,6 +83,7 @@ func (h *agentHandler) HandleAgentPostRequest(w http.ResponseWriter, r *http.Req
 		Description: req.Description,
 		LogoURL:     req.LogoURL,
 		Owner:       req.Owner,
+		Delegated:   req.Delegated,
 		Attributes:  req.Attributes,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                req.AuthFlowID,

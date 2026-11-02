@@ -271,6 +271,26 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleCredentialsAuthRequestSer
 			expectedErrorCode:  ErrorReservedCredentialType.Code,
 		},
 		{
+			name: "StatedLock",
+			authRequest: map[string]interface{}{
+				"identifiers": map[string]interface{}{"username": "testuser"},
+				"credentials": map[string]interface{}{"password": "testpass"},
+			},
+			serviceError:       &common.ErrorAccountLocked,
+			expectedStatusCode: http.StatusUnauthorized,
+			expectedErrorCode:  common.ErrorAccountLocked.Code,
+		},
+		{
+			name: "StatedSuspension",
+			authRequest: map[string]interface{}{
+				"identifiers": map[string]interface{}{"username": "testuser"},
+				"credentials": map[string]interface{}{"password": "testpass"},
+			},
+			serviceError:       &common.ErrorAccountSuspended,
+			expectedStatusCode: http.StatusUnauthorized,
+			expectedErrorCode:  common.ErrorAccountSuspended.Code,
+		},
+		{
 			name: "ServerError",
 			authRequest: map[string]interface{}{
 				"identifiers": map[string]interface{}{

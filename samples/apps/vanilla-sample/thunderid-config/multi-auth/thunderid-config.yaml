@@ -64,6 +64,7 @@ schema: {
 resource_type: connection
 id: 019e201d-5634-7533-a971-538b66914721
 name: Sample Vanilla Google
+ouHandle: default
 description: Google identity provider for the sample vanilla flows
 type: google
 clientId: "{{.SAMPLE_APP_GOOGLE_CLIENT_ID}}"
@@ -78,6 +79,7 @@ scopes:
 resource_type: connection
 id: 019e3a5e-2ff3-7bfb-ae19-27aada871b80
 name: Sample Vanilla GitHub
+ouHandle: default
 description: GitHub identity provider for the sample vanilla flows
 type: github
 clientId: "{{.SAMPLE_APP_GITHUB_CLIENT_ID}}"
@@ -87,6 +89,7 @@ redirectUri: "{{.SAMPLE_APP_GITHUB_REDIRECT_URI}}"
 ---
 resource_type: flow
 id: 9b52a0a4-8c63-4b2d-9dc9-1e6c2befc0c0
+ouHandle: default
 name: Sample Vanilla Multi Auth Single Step with SMS and Passkey
 handle: sample-vanilla-multi-auth-single-step-sms
 flowType: AUTHENTICATION
@@ -463,6 +466,7 @@ nodes:
 ---
 resource_type: flow
 id: 0a840a2f-daf7-476c-8f7f-40e100666d19
+ouHandle: default
 name: Sample Vanilla Multi Auth Dual Step with SMS
 handle: sample-vanilla-multi-auth-dual-step-sms
 flowType: AUTHENTICATION
@@ -686,6 +690,7 @@ nodes:
 ---
 resource_type: flow
 id: 6b8aa940-e8e7-42d8-88b6-4411a09fad85
+ouHandle: default
 name: Sample Vanilla Multi Auth Single Step Registration with SMS and Passkey
 handle: sample-vanilla-multi-auth-single-step-sms
 flowType: REGISTRATION
@@ -1126,6 +1131,7 @@ nodes:
 ---
 resource_type: flow
 id: 58bb4b15-700c-4114-a744-f55650990259
+ouHandle: default
 name: Sample Vanilla Multi Auth Dual Step Registration with SMS
 handle: sample-vanilla-multi-auth-dual-step-sms
 flowType: REGISTRATION

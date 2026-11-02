@@ -25,6 +25,7 @@ import useDeleteConnection from '../api/useDeleteConnection';
 import useTrustedIssuer from '../api/useTrustedIssuer';
 import useUpdateTrustedIssuer from '../api/useUpdateTrustedIssuer';
 import ConnectionDeleteDialog from '../components/ConnectionDeleteDialog';
+import OrganizationUnitSection from '../components/OrganizationUnitSection';
 import ConnectionConstants from '../constants/connection-constants';
 import useConnectionRoutes from '../hooks/useConnectionRoutes';
 import {ConnectionTypes} from '../models/connection';
@@ -277,6 +278,8 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
                 </FormControl>
               </Stack>
             </SettingsCard>
+
+            {data?.ouId && <OrganizationUnitSection ouId={data.ouId} />}
 
             <SettingsCard
               title={t('trustedIssuers:detail.tokenExchange.title', 'Token exchange')}

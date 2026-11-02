@@ -13,12 +13,10 @@ package sso
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"strings"
 	"testing"
@@ -47,9 +45,6 @@ const (
 	// SSO regression: the scope user is granted "read" on rs-A only.
 	rsAIdentifier = "https://sso-scope-a.example.com"
 	rsBIdentifier = "https://sso-scope-b.example.com"
-
-	// ssoCookiePrefix is the per-flow SSO handle cookie prefix minted by the session transport.
-	ssoCookiePrefix = "tid_sso_"
 
 	// promptStepClientID is the client whose flow prompts after the SSO check.
 	promptStepClientID = "sso_prompt_none_step_client"
@@ -613,27 +608,15 @@ func (ts *SSOLogoutTestSuite) createUser(username string) string {
 // newSessionClient returns a browser-like HTTP client: a cookie jar carries the per-flow SSO
 // cookie across requests, and redirects are not followed so Location headers can be inspected.
 func (ts *SSOLogoutTestSuite) newSessionClient() *http.Client {
-	jar, err := cookiejar.New(nil)
+	client, err := testutils.NewSessionClient()
 	ts.Require().NoError(err, "Failed to create cookie jar")
-	return &http.Client{
-		Jar:       jar,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	return client
 }
 
 // ssoCookieNames returns the per-flow SSO cookie names currently held by the client's jar.
 func (ts *SSOLogoutTestSuite) ssoCookieNames(client *http.Client) []string {
-	u, err := url.Parse(testutils.TestServerURL)
+	names, err := testutils.SSOCookieNames(client)
 	ts.Require().NoError(err)
-	var names []string
-	for _, c := range client.Jar.Cookies(u) {
-		if strings.HasPrefix(c.Name, ssoCookiePrefix) {
-			names = append(names, c.Name)
-		}
-	}
 	return names
 }
 
@@ -658,35 +641,17 @@ func (ts *SSOLogoutTestSuite) authorizeWithMaxAge(client *http.Client, scope, st
 		params.Set("max_age", maxAge)
 	}
 
-	req, err := http.NewRequest("GET", testutils.TestServerURL+"/oauth2/authorize?"+params.Encode(), nil)
-	ts.Require().NoError(err)
-
-	resp, err := client.Do(req)
+	authID, executionID, err := testutils.StartAuthorizationWithSession(client, params)
 	ts.Require().NoError(err, "authorize request failed")
-	defer resp.Body.Close()
-
-	ts.Require().Equal(http.StatusFound, resp.StatusCode, "authorize should redirect to the gate")
-	authID, executionID, err := testutils.ExtractAuthData(resp.Header.Get("Location"))
-	ts.Require().NoError(err, "failed to extract auth data from authorize redirect")
 	return authID, executionID
 }
 
 // flowExecute posts a step to /flow/execute using the session client (so SSO cookies are carried and
 // updated) and returns the resulting step.
 func (ts *SSOLogoutTestSuite) flowExecute(client *http.Client, body map[string]interface{}) *testutils.FlowStep {
-	data, err := json.Marshal(body)
-	ts.Require().NoError(err)
-
-	req, err := http.NewRequest("POST", testutils.TestServerURL+"/flow/execute", bytes.NewReader(data))
-	ts.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
+	status, respBody, err := testutils.ExecuteFlowRaw(client, "", body)
 	ts.Require().NoError(err, "flow execute request failed")
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-	ts.Require().Equal(http.StatusOK, resp.StatusCode, "flow execute failed: %s", string(respBody))
+	ts.Require().Equal(http.StatusOK, status, "flow execute failed: %s", string(respBody))
 
 	var step testutils.FlowStep
 	ts.Require().NoError(json.Unmarshal(respBody, &step), "failed to decode flow step")
@@ -695,22 +660,8 @@ func (ts *SSOLogoutTestSuite) flowExecute(client *http.Client, body map[string]i
 
 // completeAuthorization submits the assertion to the authorize callback and returns the client redirect URI.
 func (ts *SSOLogoutTestSuite) completeAuthorization(client *http.Client, authID, assertion string) string {
-	data, err := json.Marshal(map[string]string{"authId": authID, "assertion": assertion})
-	ts.Require().NoError(err)
-
-	req, err := http.NewRequest("POST", testutils.TestServerURL+"/oauth2/auth/callback", bytes.NewReader(data))
-	ts.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	ts.Require().NoError(err, "auth callback request failed")
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-	ts.Require().Equal(http.StatusOK, resp.StatusCode, "auth callback failed: %s", string(respBody))
-
-	var authzResponse testutils.AuthorizationResponse
-	ts.Require().NoError(json.Unmarshal(respBody, &authzResponse), "failed to decode authorization response")
+	authzResponse, err := testutils.CompleteAuthorizationWithClient(client, authID, assertion)
+	ts.Require().NoError(err, "auth callback failed")
 	return authzResponse.RedirectURI
 }
 

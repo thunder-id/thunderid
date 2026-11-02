@@ -18,6 +18,11 @@ vi.mock('../../api/useConnections', () => ({
   default: useConnectionsMock,
 }));
 
+const useGetNotificationConfigMock = vi.hoisted(() => vi.fn());
+vi.mock('../../api/useGetNotificationConfig', () => ({
+  default: useGetNotificationConfigMock,
+}));
+
 const EMPTY_STATE_TITLE = 'No connections match your filters';
 
 const OIDC_FEDERATION: ConnectionInstance = {
@@ -56,6 +61,7 @@ describe('ConnectionsList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConnections([]);
+    useGetNotificationConfigMock.mockReturnValue({data: undefined});
   });
 
   it('hides the category chips that no connection card belongs to', () => {
@@ -155,5 +161,30 @@ describe('ConnectionsList', () => {
 
     expect(screen.getByText(EMPTY_STATE_TITLE)).toBeInTheDocument();
     expect(screen.getAllByText('Clear filters').length).toBeGreaterThan(0);
+  });
+
+  it('shows the Default chip on the default email sender card', () => {
+    mockConnections([
+      {id: 'sm1', name: 'Corp SMTP', type: 'email-smtp', categories: ['email-provider']},
+      {id: 'sm2', name: 'Backup SMTP', type: 'email-smtp', categories: ['email-provider']},
+    ]);
+    useGetNotificationConfigMock.mockReturnValue({
+      data: {readOnly: {}, writable: {defaultEmailSenderId: 'sm2'}, merged: {defaultEmailSenderId: 'sm2'}},
+    });
+
+    render(<ConnectionsList />);
+
+    expect(within(screen.getByTestId('connection-card-email-smtp:sm2')).getByText('Default')).toBeInTheDocument();
+    expect(within(screen.getByTestId('connection-card-email-smtp:sm1')).queryByText('Default')).not.toBeInTheDocument();
+  });
+
+  it('reports a notification section that fails to load', () => {
+    mockConnections([{id: 'sm1', name: 'Corp SMTP', type: 'email-smtp', categories: ['email-provider']}]);
+    useGetNotificationConfigMock.mockReturnValue({data: undefined, error: new Error('boom'), refetch: vi.fn()});
+
+    render(<ConnectionsList />);
+
+    expect(screen.getByText('Failed to load the default email sender.')).toBeInTheDocument();
+    expect(within(screen.getByTestId('connection-card-email-smtp:sm1')).queryByText('Default')).not.toBeInTheDocument();
   });
 });

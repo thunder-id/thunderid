@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 
@@ -198,7 +199,7 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			execResp.Status = providers.ExecFailure
-			execResp.Error = svcErr
+			execResp.Error = cmp.Or(statedHold(svcErr), svcErr)
 			return nil
 		}
 

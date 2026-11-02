@@ -73,4 +73,14 @@ describe('ConnectionCard', () => {
     expect(screen.queryByTestId('connection-card-action-twilio')).not.toBeInTheDocument();
     expect(screen.getByText('Coming soon')).toBeInTheDocument();
   });
+
+  it('shows a Default chip on the default email sender', () => {
+    render(<ConnectionCard card={{...baseCard, status: 'configured', isDefault: true}} onAction={onAction} />);
+    expect(screen.getByText('Default')).toBeInTheDocument();
+  });
+
+  it('shows no Default chip on other cards', () => {
+    render(<ConnectionCard card={baseCard} onAction={onAction} />);
+    expect(screen.queryByText('Default')).not.toBeInTheDocument();
+  });
 });

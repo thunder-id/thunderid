@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -57,6 +58,7 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 
 	appDTO := model.ApplicationDTO{
 		OUID:        appRequest.OUID,
+		ProjectID:   appRequest.ProjectID,
 		Name:        appRequest.Name,
 		Description: appRequest.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
@@ -146,7 +148,20 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 // HandleApplicationListRequest handles the application request.
 func (ah *applicationHandler) HandleApplicationListRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	listResponse, svcErr := ah.service.GetApplicationList(ctx)
+	query := r.URL.Query()
+	filters, err := filter.ParseEqualityFilterParam(query)
+	if err != nil {
+		ah.handleError(ctx, w, r, &ErrorInvalidFilter)
+		return
+	}
+
+	var listResponse *model.ApplicationListResponse
+	var svcErr *tidcommon.ServiceError
+	if query.Has(projectIDQueryParam) {
+		listResponse, svcErr = ah.service.GetApplicationListByProject(ctx, query.Get(projectIDQueryParam), filters)
+	} else {
+		listResponse, svcErr = ah.service.GetApplicationList(ctx, filters)
+	}
 	if svcErr != nil {
 		ah.handleError(ctx, w, r, svcErr)
 		return
@@ -322,6 +337,7 @@ func (ah *applicationHandler) HandleApplicationPutRequest(w http.ResponseWriter,
 	updateReqAppDTO := model.ApplicationDTO{
 		ID:          id,
 		OUID:        appRequest.OUID,
+		ProjectID:   appRequest.ProjectID,
 		Name:        appRequest.Name,
 		Description: appRequest.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
@@ -580,29 +596,11 @@ func (ah *applicationHandler) processInboundAuthConfigFromRequest(
 	return inboundAuthConfigDTOs
 }
 
-// decodeSharingBody reads a policy request body through the shared strict decoder, which refuses a
-// field the body does not declare: a misspelled excludedOuIds would otherwise read as a section with
-// no exclusions and share the application with the organization unit the caller named to keep it
-// from. It answers the malformed body itself.
-func decodeSharingBody[T any](ctx context.Context, w http.ResponseWriter, r *http.Request) (*T, bool) {
-	wire, err := sysutils.DecodeJSONBodyStrict[T](r)
-	if err != nil {
-		errResp := apierror.ErrorResponse{
-			Code:        ErrorInvalidRequestFormat.Code,
-			Message:     ErrorInvalidRequestFormat.Error,
-			Description: ErrorInvalidRequestFormat.ErrorDescription,
-		}
-		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
-		return nil, false
-	}
-	return wire, true
-}
-
 // HandleSharingPolicyPostRequest records a sharing policy on an application.
 func (ah *applicationHandler) HandleSharingPolicyPostRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	wire, ok := decodeSharingBody[sharing.PolicyCreateBody](ctx, w, r)
+	wire, ok := sharing.DecodePolicyBody[sharing.PolicyCreateBody](ctx, w, r, ErrorInvalidRequestFormat)
 	if !ok {
 		return
 	}
@@ -610,8 +608,7 @@ func (ah *applicationHandler) HandleSharingPolicyPostRequest(w http.ResponseWrit
 	// A reach not bounded by where the issuer sits is a deployment decision, so this API leaves it
 	// to a resource file or an import. An edit may still restate such a section to move its
 	// exclusions, and the framework refuses any edit that would introduce one.
-	if req.AllUnits != nil ||
-		(req.OtherTreeRoots != nil && req.OtherTreeRoots.Mode == sharing.OtherTreeRootsAll) {
+	if req.IsDeploymentWide() {
 		errResp := apierror.ErrorResponse{
 			Code:        ErrorDeploymentWideSharingNotAllowed.Code,
 			Message:     ErrorDeploymentWideSharingNotAllowed.Error,
@@ -666,7 +663,7 @@ func (ah *applicationHandler) HandleSharingPolicyGetRequest(w http.ResponseWrite
 func (ah *applicationHandler) HandleSharingPolicyPutRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	wire, ok := decodeSharingBody[sharing.PolicyUpdateBody](ctx, w, r)
+	wire, ok := sharing.DecodePolicyBody[sharing.PolicyUpdateBody](ctx, w, r, ErrorInvalidRequestFormat)
 	if !ok {
 		return
 	}

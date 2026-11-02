@@ -64,7 +64,7 @@ func (s *scimGroupsService) ListGroups(ctx context.Context, startIndex, count in
 	}
 
 	offset := startIndex - 1
-	listResp, svcErr := s.groupService.GetGroupList(ctx, fetchLimit, offset, true)
+	listResp, svcErr := s.groupService.GetGroupList(ctx, fetchLimit, offset, nil, true)
 	if svcErr != nil {
 		s.logger.Error(ctx, "SCIM ListGroups: failed to get group list", log.Any("error", svcErr))
 		return SCIMGroupListResponse{}, mapGroupServiceErrorToSCIM(svcErr)

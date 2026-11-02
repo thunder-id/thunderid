@@ -1,0 +1,238 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1015" width="1920" height="1015" font-family="Inter, Helvetica Neue, Arial, sans-serif">
+<rect width="1920" height="1015" fill="#ffffff"/>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2f80ff"/></marker></defs>
+<rect x="429" y="28" width="82" height="82" rx="10" fill="#1b2a41" stroke="#0f1724" stroke-width="2"/>
+<g transform="translate(470,69)" fill="none" stroke="#2f80ff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"><circle r="10"/><path d="M0,-24 V-16 M0,16 V24 M-24,0 H-16 M16,0 H24 M-17,-17 L-11,-11 M11,11 L17,17 M-17,17 L-11,11 M11,-11 L17,-17"/></g>
+<text x="470" y="148" text-anchor="middle" font-size="22" font-weight="400" fill="#1b1f2a">Console Portal</text>
+<rect x="1249" y="28" width="82" height="82" rx="10" fill="#1b2a41" stroke="#0f1724" stroke-width="2"/>
+<g transform="translate(1290,69)" fill="none" stroke="#2f80ff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"><path d="M-6,-20 H16 a4,4 0 0 1 4,4 V16 a4,4 0 0 1 -4,4 H-6"/><path d="M-22,0 H4 M-6,-12 L4,0 L-6,12"/></g>
+<text x="1290" y="148" text-anchor="middle" font-size="22" font-weight="400" fill="#1b1f2a">Login Portal</text>
+<rect x="1459" y="28" width="82" height="82" rx="10" fill="#1b2a41" stroke="#0f1724" stroke-width="2"/>
+<g transform="translate(1500,69)" fill="none" stroke="#2f80ff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"><rect x="-22" y="-18" width="44" height="30" rx="3"/><path d="M-8,20 H8 M0,12 V20"/><circle cx="0" cy="-6" r="4"/><path d="M-8,6 a8,6 0 0 1 16,0"/></g>
+<text x="1500" y="148" text-anchor="middle" font-size="22" font-weight="400" fill="#1b1f2a">Admin Console</text>
+<path d="M520,69 H1236" stroke="#2f80ff" stroke-width="3" stroke-dasharray="10 8" fill="none" marker-end="url(#ar)"/>
+<rect x="688" y="46" width="384" height="34" rx="4" fill="#ffffff"/>
+<text x="880" y="70" text-anchor="middle" font-size="20" font-weight="500" fill="#2a4f8f">Operator sign-in through a trusted issuer</text>
+<rect x="30" y="215" width="840" height="420" rx="10" fill="#ffffff" stroke="#2f80ff" stroke-width="3"/>
+<rect x="52" y="195" width="237" height="34" rx="2" fill="#ffffff"/>
+<text x="60" y="223" text-anchor="start" font-size="30" font-weight="600" fill="#1b1f2a">Control Plane</text>
+<rect x="50" y="237" width="190" height="376" rx="14" fill="#1f3a63" stroke="#0f1f3d" stroke-width="3"/>
+<rect x="55" y="255" width="180" height="34" rx="4" fill="#16294d"/>
+<text x="145.0" y="278" text-anchor="middle" font-size="18" font-weight="500" fill="#3d5f93">APIs</text>
+<rect x="55" y="297" width="180" height="34" rx="4" fill="#16294d"/>
+<text x="145.0" y="320" text-anchor="middle" font-size="18" font-weight="500" fill="#3d5f93">MCP Tools</text>
+<rect x="60.0" y="479" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="100.5" y="502.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">User</text>
+<text x="100.5" y="518.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Service</text>
+<rect x="149.0" y="479" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="189.5" y="502.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Group</text>
+<text x="189.5" y="518.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Service</text>
+<rect x="60.0" y="541" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="100.5" y="564.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">OU</text>
+<text x="100.5" y="580.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Service</text>
+<text x="145.0" y="375.0" text-anchor="middle" font-size="25" font-weight="600" fill="#ffffff">Directory</text>
+<text x="145.0" y="403.75" text-anchor="middle" font-size="25" font-weight="600" fill="#ffffff">Services</text>
+<rect x="250" y="237" width="190" height="376" rx="14" fill="#1f3a63" stroke="#0f1f3d" stroke-width="3"/>
+<rect x="255" y="255" width="180" height="34" rx="4" fill="#16294d"/>
+<text x="345.0" y="278" text-anchor="middle" font-size="18" font-weight="500" fill="#3d5f93">APIs</text>
+<rect x="255" y="297" width="180" height="34" rx="4" fill="#16294d"/>
+<text x="345.0" y="320" text-anchor="middle" font-size="18" font-weight="500" fill="#3d5f93">MCP Tools</text>
+<rect x="260.0" y="479" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="300.5" y="502.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Role</text>
+<text x="300.5" y="518.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Service</text>
+<rect x="349.0" y="479" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="389.5" y="502.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Resource</text>
+<text x="389.5" y="518.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Service</text>
+<rect x="260.0" y="541" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="300.5" y="564.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Policy</text>
+<text x="300.5" y="580.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Service</text>
+<text x="345.0" y="375.0" text-anchor="middle" font-size="25" font-weight="600" fill="#ffffff">Authz</text>
+<text x="345.0" y="403.75" text-anchor="middle" font-size="25" font-weight="600" fill="#ffffff">Services</text>
+<rect x="450" y="237" width="190" height="376" rx="14" fill="#1f3a63" stroke="#0f1f3d" stroke-width="3"/>
+<rect x="455" y="255" width="180" height="34" rx="4" fill="#16294d"/>
+<text x="545.0" y="278" text-anchor="middle" font-size="18" font-weight="500" fill="#3d5f93">APIs</text>
+<rect x="455" y="297" width="180" height="34" rx="4" fill="#16294d"/>
+<text x="545.0" y="320" text-anchor="middle" font-size="18" font-weight="500" fill="#3d5f93">MCP Tools</text>
+<rect x="460.0" y="417" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="500.5" y="440.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Application</text>
+<text x="500.5" y="456.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Service</text>
+<rect x="549.0" y="417" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="589.5" y="440.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Agent</text>
+<text x="589.5" y="456.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Service</text>
+<rect x="460.0" y="479" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="500.5" y="502.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Flow</text>
+<text x="500.5" y="518.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Service</text>
+<rect x="549.0" y="479" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="589.5" y="502.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Design</text>
+<text x="589.5" y="518.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Service</text>
+<rect x="460.0" y="541" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="500.5" y="564.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Schema</text>
+<text x="500.5" y="580.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Service</text>
+<rect x="549.0" y="541" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="589.5" y="564.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">IDP</text>
+<text x="589.5" y="580.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Service</text>
+<text x="545.0" y="375.0" text-anchor="middle" font-size="25" font-weight="600" fill="#ffffff">Configuration</text>
+<text x="545.0" y="403.75" text-anchor="middle" font-size="25" font-weight="600" fill="#ffffff">Services</text>
+<rect x="650" y="237" width="200" height="376" rx="14" fill="#1f3a63" stroke="#2f80ff" stroke-width="3"/>
+<rect x="655" y="255" width="190" height="34" rx="4" fill="#16294d"/>
+<text x="750.0" y="278" text-anchor="middle" font-size="18" font-weight="500" fill="#3d5f93">APIs</text>
+<rect x="655" y="297" width="190" height="34" rx="4" fill="#16294d"/>
+<text x="750.0" y="320" text-anchor="middle" font-size="18" font-weight="500" fill="#3d5f93">MCP Tools</text>
+<rect x="660.0" y="479" width="86.0" height="54" rx="6" fill="#193156"/>
+<text x="703.0" y="502.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Gateway</text>
+<text x="703.0" y="518.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Registry</text>
+<rect x="754.0" y="479" width="86.0" height="54" rx="6" fill="#193156"/>
+<text x="797.0" y="502.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Version</text>
+<text x="797.0" y="518.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Capture</text>
+<rect x="660.0" y="541" width="86.0" height="54" rx="6" fill="#193156"/>
+<text x="703.0" y="564.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Apply</text>
+<text x="703.0" y="580.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">&amp; Revert</text>
+<rect x="754.0" y="541" width="86.0" height="54" rx="6" fill="#193156"/>
+<text x="797.0" y="564.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Value</text>
+<text x="797.0" y="580.8" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Capture</text>
+<text x="750.0" y="375.0" text-anchor="middle" font-size="25" font-weight="600" fill="#ffffff">Deployment</text>
+<text x="750.0" y="403.75" text-anchor="middle" font-size="25" font-weight="600" fill="#ffffff">Services</text>
+<rect x="1010" y="215" width="880" height="420" rx="10" fill="#ffffff" stroke="#2f80ff" stroke-width="3"/>
+<rect x="1032" y="195" width="186" height="34" rx="2" fill="#ffffff"/>
+<text x="1040" y="223" text-anchor="start" font-size="30" font-weight="600" fill="#1b1f2a">Data Plane</text>
+<rect x="1030" y="237" width="190" height="376" rx="14" fill="#1f3a63" stroke="#2f80ff" stroke-width="3"/>
+<rect x="1035" y="255" width="180" height="34" rx="4" fill="#16294d"/>
+<text x="1125.0" y="278" text-anchor="middle" font-size="16" font-weight="500" fill="#3d5f93">Gateway Mgmt API</text>
+<rect x="1035" y="297" width="180" height="34" rx="4" fill="#16294d"/>
+<text x="1125.0" y="320" text-anchor="middle" font-size="17" font-weight="500" fill="#3d5f93">Admin APIs</text>
+<text x="1125.0" y="375.0" text-anchor="middle" font-size="25" font-weight="600" fill="#ffffff">Local</text>
+<text x="1125.0" y="403.75" text-anchor="middle" font-size="25" font-weight="600" fill="#ffffff">Management</text>
+<rect x="1040.0" y="417" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="1080.5" y="449.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Import</text>
+<rect x="1129.0" y="417" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="1169.5" y="449.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Variables</text>
+<rect x="1040.0" y="479" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="1080.5" y="511.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Secrets</text>
+<rect x="1129.0" y="479" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="1169.5" y="511.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Users</text>
+<rect x="1040.0" y="541" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="1080.5" y="573.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Roles</text>
+<rect x="1129.0" y="541" width="81.0" height="54" rx="6" fill="#193156"/>
+<text x="1169.5" y="573.0" text-anchor="middle" font-size="14" font-weight="500" fill="#3d5f93">Groups</text>
+<rect x="1230" y="237" width="170" height="376" rx="14" fill="#1f3a63" stroke="#0f1f3d" stroke-width="3"/>
+<rect x="1240.0" y="259" width="70.0" height="70" rx="6" fill="#193156"/>
+<text x="1275.0" y="291" text-anchor="middle" font-size="15" font-weight="500" fill="#3d5f93">OAuth</text>
+<text x="1275.0" y="311" text-anchor="middle" font-size="15" font-weight="500" fill="#3d5f93">Endpoints</text>
+<rect x="1320.0" y="259" width="70.0" height="70" rx="6" fill="#193156"/>
+<text x="1355.0" y="291" text-anchor="middle" font-size="15" font-weight="500" fill="#3d5f93">SAML</text>
+<text x="1355.0" y="311" text-anchor="middle" font-size="15" font-weight="500" fill="#3d5f93">Endpoints</text>
+<rect x="1240.0" y="347" width="70.0" height="251" rx="6" fill="#193156"/>
+<text x="1275.0" y="583" text-anchor="middle" font-size="16" font-weight="500" fill="#3d5f93">OAuth</text>
+<rect x="1320.0" y="347" width="70.0" height="251" rx="6" fill="#193156"/>
+<text x="1355.0" y="583" text-anchor="middle" font-size="16" font-weight="500" fill="#3d5f93">SAML</text>
+<text x="1315.0" y="442.0" text-anchor="middle" font-size="25" font-weight="600" fill="#ffffff">Protocol</text>
+<text x="1315.0" y="470.75" text-anchor="middle" font-size="25" font-weight="600" fill="#ffffff">Engines</text>
+<rect x="1410" y="237" width="235" height="376" rx="14" fill="#1f3a63" stroke="#0f1f3d" stroke-width="3"/>
+<rect x="1420" y="255" width="215" height="40" rx="4" fill="#16294d"/>
+<text x="1527.5" y="281" text-anchor="middle" font-size="15" font-weight="500" fill="#3d5f93">App Native Flow API</text>
+<rect x="1420" y="305" width="215" height="40" rx="4" fill="#16294d"/>
+<text x="1527.5" y="331" text-anchor="middle" font-size="15" font-weight="500" fill="#3d5f93">Flow Orchestration Service</text>
+<text x="1527.5" y="387.0" text-anchor="middle" font-size="22" font-weight="600" fill="#ffffff">Flow Orchestration</text>
+<text x="1527.5" y="412.3" text-anchor="middle" font-size="22" font-weight="600" fill="#ffffff">Engine</text>
+<rect x="1420.0" y="429" width="103.5" height="52" rx="6" fill="#193156"/>
+<text x="1471.75" y="451.0" text-anchor="middle" font-size="13.5" font-weight="500" fill="#3d5f93">Basic</text>
+<text x="1471.75" y="467.2" text-anchor="middle" font-size="13.5" font-weight="500" fill="#3d5f93">Executor</text>
+<rect x="1531.5" y="429" width="103.5" height="52" rx="6" fill="#193156"/>
+<text x="1583.25" y="451.0" text-anchor="middle" font-size="13.5" font-weight="500" fill="#3d5f93">Passkey</text>
+<text x="1583.25" y="467.2" text-anchor="middle" font-size="13.5" font-weight="500" fill="#3d5f93">Executor</text>
+<rect x="1420.0" y="487" width="103.5" height="52" rx="6" fill="#193156"/>
+<text x="1471.75" y="509.0" text-anchor="middle" font-size="13.5" font-weight="500" fill="#3d5f93">Invite</text>
+<text x="1471.75" y="525.2" text-anchor="middle" font-size="13.5" font-weight="500" fill="#3d5f93">Executor</text>
+<rect x="1531.5" y="487" width="103.5" height="52" rx="6" fill="#193156"/>
+<text x="1583.25" y="509.0" text-anchor="middle" font-size="13.5" font-weight="500" fill="#3d5f93">Consent</text>
+<text x="1583.25" y="525.2" text-anchor="middle" font-size="13.5" font-weight="500" fill="#3d5f93">Executor</text>
+<rect x="1420.0" y="545" width="103.5" height="52" rx="6" fill="#193156"/>
+<text x="1471.75" y="567.0" text-anchor="middle" font-size="13.5" font-weight="500" fill="#3d5f93">Authz</text>
+<text x="1471.75" y="583.2" text-anchor="middle" font-size="13.5" font-weight="500" fill="#3d5f93">Executor</text>
+<rect x="1531.5" y="545" width="103.5" height="52" rx="6" fill="#193156"/>
+<text x="1583.25" y="567.0" text-anchor="middle" font-size="13.5" font-weight="500" fill="#3d5f93">Identifying</text>
+<text x="1583.25" y="583.2" text-anchor="middle" font-size="13.5" font-weight="500" fill="#3d5f93">Executor</text>
+<rect x="1655" y="237" width="225" height="376" rx="14" fill="#1f3a63" stroke="#0f1f3d" stroke-width="3"/>
+<rect x="1665" y="255" width="205" height="50" rx="4" fill="#16294d"/>
+<text x="1767.5" y="286" text-anchor="middle" font-size="16" font-weight="500" fill="#3d5f93">Composable APIs</text>
+<text x="1767.5" y="355.0" text-anchor="middle" font-size="25" font-weight="600" fill="#ffffff">Runtime</text>
+<text x="1767.5" y="383.75" text-anchor="middle" font-size="25" font-weight="600" fill="#ffffff">Providers</text>
+<rect x="1665.0" y="417" width="63.0" height="54" rx="6" fill="#193156"/>
+<text x="1696.5" y="440.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Authn</text>
+<text x="1696.5" y="455.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Provider</text>
+<rect x="1736.0" y="417" width="63.0" height="54" rx="6" fill="#193156"/>
+<text x="1767.5" y="440.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">User</text>
+<text x="1767.5" y="455.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Mgt Provider</text>
+<rect x="1807.0" y="417" width="63.0" height="54" rx="6" fill="#193156"/>
+<text x="1838.5" y="440.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Recovery</text>
+<text x="1838.5" y="455.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Provider</text>
+<rect x="1665.0" y="479" width="63.0" height="54" rx="6" fill="#193156"/>
+<text x="1696.5" y="502.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Passkey</text>
+<text x="1696.5" y="517.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Provider</text>
+<rect x="1736.0" y="479" width="63.0" height="54" rx="6" fill="#193156"/>
+<text x="1767.5" y="502.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">TOTP</text>
+<text x="1767.5" y="517.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Provider</text>
+<rect x="1807.0" y="479" width="63.0" height="54" rx="6" fill="#193156"/>
+<text x="1838.5" y="502.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Notification</text>
+<text x="1838.5" y="517.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Provider</text>
+<rect x="1665.0" y="541" width="63.0" height="54" rx="6" fill="#193156"/>
+<text x="1696.5" y="564.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Authz</text>
+<text x="1696.5" y="579.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Provider</text>
+<rect x="1736.0" y="541" width="63.0" height="54" rx="6" fill="#193156"/>
+<text x="1767.5" y="564.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Consent</text>
+<text x="1767.5" y="579.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Provider</text>
+<rect x="1807.0" y="541" width="63.0" height="54" rx="6" fill="#193156"/>
+<text x="1838.5" y="564.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">IDP</text>
+<text x="1838.5" y="579.0" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3d5f93">Provider</text>
+<path d="M820,425.0 H1026" stroke="#2f80ff" stroke-width="5" fill="none" marker-end="url(#ar)"/>
+<rect x="872" y="329.0" width="138" height="86" rx="4" fill="#ffffff"/>
+<text x="941" y="359.0" text-anchor="middle" font-size="22" font-weight="600" fill="#2a4f8f">Capture</text>
+<text x="941" y="385.4" text-anchor="middle" font-size="22" font-weight="600" fill="#2a4f8f">and apply</text>
+<text x="941" y="405.0" text-anchor="middle" font-size="16" font-weight="500" fill="#2a4f8f">versions + values</text>
+<rect x="30" y="665" width="1860" height="82" rx="14" fill="#1f3a63" stroke="#0f1f3d" stroke-width="3"/>
+<rect x="52" y="683" width="158" height="46" rx="6" fill="#193156"/>
+<text x="131.0" y="713" text-anchor="middle" font-size="19" font-weight="500" fill="#3d5f93">Observability</text>
+<rect x="224" y="683" width="158" height="46" rx="6" fill="#193156"/>
+<text x="303.0" y="713" text-anchor="middle" font-size="19" font-weight="500" fill="#3d5f93">Logs</text>
+<rect x="396" y="683" width="158" height="46" rx="6" fill="#193156"/>
+<text x="475.0" y="713" text-anchor="middle" font-size="19" font-weight="500" fill="#3d5f93">Cache</text>
+<rect x="568" y="683" width="158" height="46" rx="6" fill="#193156"/>
+<text x="647.0" y="713" text-anchor="middle" font-size="19" font-weight="500" fill="#3d5f93">Crypto</text>
+<rect x="1177" y="683" width="158" height="46" rx="6" fill="#193156"/>
+<text x="1256.0" y="713" text-anchor="middle" font-size="19" font-weight="500" fill="#3d5f93">Security</text>
+<rect x="1349" y="683" width="158" height="46" rx="6" fill="#193156"/>
+<text x="1428.0" y="713" text-anchor="middle" font-size="19" font-weight="500" fill="#3d5f93">Declarative</text>
+<rect x="1521" y="683" width="158" height="46" rx="6" fill="#193156"/>
+<text x="1600.0" y="713" text-anchor="middle" font-size="19" font-weight="500" fill="#3d5f93">Database</text>
+<rect x="1693" y="683" width="158" height="46" rx="6" fill="#193156"/>
+<text x="1772.0" y="713" text-anchor="middle" font-size="19" font-weight="500" fill="#3d5f93">Config</text>
+<text x="960" y="719" text-anchor="middle" font-size="36" font-weight="600" fill="#ffffff">Platform Services</text>
+<circle cx="260" cy="830" r="31" fill="#1b2a41"/>
+<g transform="translate(260,830)" fill="none" stroke="#2f80ff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><rect x="-14" y="-16" width="28" height="9" rx="2"/><rect x="-14" y="-4" width="28" height="9" rx="2"/><rect x="-14" y="8" width="28" height="9" rx="2"/></g>
+<text x="260" y="892" text-anchor="middle" font-size="22" font-weight="400" fill="#1b1f2a">Config</text>
+<text x="260" y="918" text-anchor="middle" font-size="20" font-weight="400" fill="#1b1f2a">(Database / Declarative)</text>
+<circle cx="640" cy="830" r="31" fill="#1b2a41"/>
+<g transform="translate(640,830)" fill="none" stroke="#2f80ff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><rect x="-14" y="-16" width="28" height="9" rx="2"/><rect x="-14" y="-4" width="28" height="9" rx="2"/><rect x="-14" y="8" width="28" height="9" rx="2"/></g>
+<text x="640" y="892" text-anchor="middle" font-size="22" font-weight="400" fill="#1b1f2a">Directory</text>
+<text x="640" y="918" text-anchor="middle" font-size="20" font-weight="400" fill="#1b1f2a">(Database / Declarative)</text>
+<circle cx="1075" cy="830" r="31" fill="#1b2a41"/>
+<g transform="translate(1075,830)" fill="none" stroke="#2f80ff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><rect x="-12" y="-12" width="24" height="24" rx="3"/><rect x="-5" y="-5" width="10" height="10"/><path d="M-6,-19 V-12 M6,-19 V-12 M-6,12 V19 M6,12 V19 M-19,-6 H-12 M-19,6 H-12 M12,-6 H19 M12,6 H19"/></g>
+<text x="1075" y="892" text-anchor="middle" font-size="22" font-weight="400" fill="#1b1f2a">Cache</text>
+<text x="1075" y="918" text-anchor="middle" font-size="20" font-weight="400" fill="#1b1f2a">(In-memory / Redis)</text>
+<circle cx="1300" cy="830" r="31" fill="#1b2a41"/>
+<g transform="translate(1300,830)" fill="none" stroke="#2f80ff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><rect x="-14" y="-16" width="28" height="9" rx="2"/><rect x="-14" y="-4" width="28" height="9" rx="2"/><rect x="-14" y="8" width="28" height="9" rx="2"/></g>
+<text x="1300" y="892" text-anchor="middle" font-size="22" font-weight="400" fill="#1b1f2a">Runtime</text>
+<text x="1300" y="918" text-anchor="middle" font-size="20" font-weight="400" fill="#1b1f2a">(Database / Redis)</text>
+<circle cx="1525" cy="830" r="31" fill="#1b2a41"/>
+<g transform="translate(1525,830)" fill="none" stroke="#2f80ff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><rect x="-14" y="-16" width="28" height="9" rx="2"/><rect x="-14" y="-4" width="28" height="9" rx="2"/><rect x="-14" y="8" width="28" height="9" rx="2"/></g>
+<text x="1525" y="892" text-anchor="middle" font-size="22" font-weight="400" fill="#1b1f2a">Directory</text>
+<text x="1525" y="918" text-anchor="middle" font-size="20" font-weight="400" fill="#1b1f2a">(Database / Declarative)</text>
+<circle cx="1765" cy="830" r="31" fill="#1b2a41"/>
+<g transform="translate(1765,830)" fill="none" stroke="#2f80ff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><rect x="-14" y="-16" width="28" height="9" rx="2"/><rect x="-14" y="-4" width="28" height="9" rx="2"/><rect x="-14" y="8" width="28" height="9" rx="2"/></g>
+<text x="1765" y="892" text-anchor="middle" font-size="22" font-weight="400" fill="#1b1f2a">Config</text>
+<text x="1765" y="918" text-anchor="middle" font-size="20" font-weight="400" fill="#1b1f2a">(Applied from Control Plane)</text>
+<path d="M60,955 H880" stroke="#2f80ff" stroke-width="3"/>
+<text x="470" y="990" text-anchor="middle" font-size="22" font-weight="500" fill="#2a4f8f">Control Plane stores</text>
+<path d="M1010,955 H1890" stroke="#2f80ff" stroke-width="3"/>
+<text x="1450" y="990" text-anchor="middle" font-size="22" font-weight="500" fill="#2a4f8f">Data Plane stores</text>
+</svg>

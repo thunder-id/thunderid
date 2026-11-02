@@ -132,7 +132,7 @@ describe('OrganizationUnitDeleteDialog', () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          'This organization unit has child units, users, or groups and cannot be deleted while they exist.',
+          'This organization unit has child units, users, groups, connections, or flows and cannot be deleted while they exist.',
         ),
       ).toBeInTheDocument();
     });

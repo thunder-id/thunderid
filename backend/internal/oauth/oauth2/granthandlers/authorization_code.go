@@ -30,6 +30,9 @@ type authorizationCodeGrantHandler struct {
 	attributeCache     attributecache.AttributeCacheServiceInterface
 	resourceService    providers.ResourceServerProvider
 	enforcementService revocation.EnforcementServiceInterface
+	// deviceSecretValidity is how long a device secret stays usable, as long as an SSO session can last.
+	// It is zero when the deployment has no SSO session service, and then no device secret is returned.
+	deviceSecretValidity time.Duration
 }
 
 // newAuthorizationCodeGrantHandler creates a new instance of AuthorizationCodeGrantHandler.
@@ -39,13 +42,15 @@ func newAuthorizationCodeGrantHandler(
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
 	enforcementService revocation.EnforcementServiceInterface,
-) GrantHandlerInterface {
+	deviceSecretValidity time.Duration,
+) *authorizationCodeGrantHandler {
 	return &authorizationCodeGrantHandler{
-		authzService:       authzService,
-		tokenBuilder:       tokenBuilder,
-		attributeCache:     attributeCache,
-		resourceService:    resourceService,
-		enforcementService: enforcementService,
+		authzService:         authzService,
+		tokenBuilder:         tokenBuilder,
+		attributeCache:       attributeCache,
+		resourceService:      resourceService,
+		enforcementService:   enforcementService,
+		deviceSecretValidity: deviceSecretValidity,
 	}
 }
 
@@ -110,6 +115,21 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		return nil, errResp
 	}
 
+	tokenResponse, errResp := h.issueTokens(ctx, tokenRequest, oauthApp, authCode,
+		providers.GrantTypeAuthorizationCode, logger)
+	if errResp != nil {
+		return nil, errResp
+	}
+	tokenResponse.DeviceSecret = h.buildDeviceSecret(ctx, authCode, oauthApp, logger)
+
+	return tokenResponse, nil
+}
+
+// issueTokens issues the access token, and the ID token when openid was granted, for an authorization
+// code that has been validated, as the grant type given.
+func (h *authorizationCodeGrantHandler) issueTokens(ctx context.Context, tokenRequest *model.TokenRequest,
+	oauthApp *providers.OAuthClient, authCode *authz.AuthorizationCode, grantType providers.GrantType,
+	logger *log.Logger) (*model.TokenResponseDTO, *model.ErrorResponse) {
 	// Parse authorized scopes
 	authorizedScopes := tokenservice.ParseScopes(authCode.Scopes)
 
@@ -140,7 +160,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
 		strings.Join(authorizedScopes, " "), oauthApp.ScopeClaims)
 	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
-		ctx, h.resourceService, effectiveResources, nonOidcScopes)
+		ctx, h.resourceService, effectiveResources, nonOidcScopes, false)
 	if errResp != nil {
 		return nil, errResp
 	}
@@ -182,7 +202,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		Scopes:            accessTokenScopes,
 		SubjectAttributes: tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
 		AttributeCacheID:  authCode.AttributeCacheID,
-		GrantType:         string(providers.GrantTypeAuthorizationCode),
+		GrantType:         string(grantType),
 		OAuthApp:          oauthApp,
 		ClaimsRequest:     authCode.ClaimsRequest,
 		ClaimsLocales:     authCode.ClaimsLocales,
@@ -236,8 +256,29 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		}
 		tokenResponse.IDToken = *idToken
 	}
-
 	return tokenResponse, nil
+}
+
+// buildDeviceSecret returns the device secret carrying the SSO sessions kept with the code. It returns an
+// empty token when the code keeps none, and a failure to build it is logged rather than failing the
+// exchange, since the code has already been spent.
+func (h *authorizationCodeGrantHandler) buildDeviceSecret(ctx context.Context, authCode *authz.AuthorizationCode,
+	oauthApp *providers.OAuthClient, logger *log.Logger) model.TokenDTO {
+	if h.deviceSecretValidity == 0 || len(authCode.SessionData) == 0 {
+		return model.TokenDTO{}
+	}
+	token, err := h.tokenBuilder.BuildDeviceSecret(ctx, &tokenservice.DeviceSecretBuildContext{
+		OAuthApp:    oauthApp,
+		SubjectID:   authCode.SubjectID,
+		SessionData: authCode.SessionData,
+		// Each session's own deadline is checked when it is exchanged.
+		ValidityPeriod: int64(h.deviceSecretValidity.Seconds()),
+	})
+	if err != nil {
+		logger.Error(ctx, "Failed to build the device secret", log.Error(err))
+		return model.TokenDTO{}
+	}
+	return *token
 }
 
 func (h *authorizationCodeGrantHandler) retrieveAndValidateAuthCode(

@@ -255,6 +255,38 @@ func (s *TaskExecutionNodeTestSuite) TestExecutePopulatedNodeProperties() {
 	s.Equal(props, ctx.NodeProperties)
 }
 
+func (s *TaskExecutionNodeTestSuite) TestExecuteResolvesVariablePlaceholders() {
+	mockExec := NewExecutorInterfaceMock(s.T())
+
+	props := map[string]interface{}{
+		"validitySeconds": "{{var(otpValidity)}}",
+		"greeting":        "Hello {{var(brand)}}",
+		"untouched":       "{{ctx(ouId)}}",
+	}
+	node := newTaskExecutionNode("task-vars", props, false, false)
+	execNode, _ := node.(ExecutorBackedNodeInterface)
+
+	mockExec.On("GetName").Return("test-executor").Once()
+	mockExec.On("Execute", mock.Anything).Return(
+		&providers.ExecutorResponse{Status: providers.ExecComplete}, nil,
+	).Once()
+	execNode.SetExecutor(mockExec)
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		RuntimeData: map[string]string{"var.otpValidity": "120", "var.brand": `"acme"`},
+	}
+	resp, err := node.Execute(ctx)
+
+	s.Nil(err)
+	s.NotNil(resp)
+	s.Equal(float64(120), ctx.NodeProperties["validitySeconds"])
+	s.Equal("Hello acme", ctx.NodeProperties["greeting"])
+	s.Equal("{{ctx(ouId)}}", ctx.NodeProperties["untouched"])
+	s.Equal("{{var(otpValidity)}}", node.GetProperties()["validitySeconds"],
+		"the node's own properties are not changed")
+}
+
 func (s *TaskExecutionNodeTestSuite) TestBuildNodeResponse() {
 	tests := []struct {
 		name         string

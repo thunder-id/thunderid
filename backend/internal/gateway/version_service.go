@@ -64,7 +64,9 @@ type versionService struct {
 	// secretFields names, by resource type, the fields a secret reference may stand in.
 	secretFields map[string][]string
 	names        actorNamer
-	logger       *log.Logger
+	// autoApply makes a capture of the current version apply it to the default gateway.
+	autoApply bool
+	logger    *log.Logger
 }
 
 func newVersionService(gateways storeInterface, versions versionStoreInterface,
@@ -99,7 +101,8 @@ func configurationExport() *export.ExportRequest {
 		Users: all, Groups: all,
 		OrganizationUnits: all, ResourceServers: all, Roles: all, Flows: all, Translations: all,
 		Layouts: all, Themes: all, ServerConfigs: all, CredentialConfigurations: all,
-		PresentationDefinitions: all, Options: &export.ExportOptions{IncludeDependencies: true, Format: "yaml"},
+		PresentationDefinitions: all, AuthorizationDetailTypes: all, NotificationTemplates: all,
+		Options: &export.ExportOptions{IncludeDependencies: true, Format: "yaml"},
 	}
 }
 

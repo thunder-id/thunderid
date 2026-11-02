@@ -89,6 +89,12 @@ export default function DeployPage(): JSX.Element {
     );
   };
 
+  // Redeploying deploys the version a gateway runs again, so the values set on it since take effect.
+  const redeploy = (gateway: Gateway): void => {
+    const running = all.find((version: Version) => version.version === applied.byGateway[gateway.id]?.appliedVersion);
+    if (running) setOpen({kind: 'apply', version: running, gatewayId: gateway.id});
+  };
+
   const stage = (gateway: Gateway): JSX.Element => (
     <Fragment key={gateway.id}>
       <PathConnector variant="deploy" testId={`deploy-connector-${gateway.id}`} />
@@ -99,6 +105,7 @@ export default function DeployPage(): JSX.Element {
         onExplore={() => void navigate(routes.deploy.explore(gateway.id))}
         onConfigure={() => void navigate(routes.deploy.values(gateway.id))}
         onRevert={() => setOpen({kind: 'revert', gateway})}
+        onRedeploy={() => redeploy(gateway)}
       />
     </Fragment>
   );

@@ -689,8 +689,9 @@ func TestGetPublicKeys_UnsupportedKeyTypeSkipped(t *testing.T) {
 	pki := pkimock.NewPKIServiceInterfaceMock(t)
 	pki.EXPECT().GetAllX509Certificates(mock.Anything).Return(
 		map[string]*x509.Certificate{
-			"good": {Raw: []byte("der"), PublicKey: &rsaKey.PublicKey},
-			"bad":  {PublicKey: "unsupported"},
+			"good":    {Raw: []byte("der"), PublicKey: &rsaKey.PublicKey},
+			"bad":     {PublicKey: "unsupported"},
+			"nil-key": {Raw: []byte("der")},
 		}, nil,
 	)
 	pki.EXPECT().GetCertThumbprint("good").Return("tp")
@@ -929,20 +930,15 @@ func TestGetTLSMaterial_Success(t *testing.T) {
 }
 
 // TestMLDSA_RuntimeSignVerifyAndGetPublicKeys exercises the full ML-DSA path
-// through the runtime provider: GetPublicKeys derives the public key from the
-// private key (the certificate carries a crypto/mldsa public key, as Go 1.27 parses it),
-// and a signature produced by Sign verifies through Verify.
+// through the runtime provider: GetPublicKeys reports the certificate's ML-DSA
+// public key, and a signature produced by Sign verifies through Verify.
 func TestMLDSA_RuntimeSignVerifyAndGetPublicKeys(t *testing.T) {
-	signer, err := cryptolib.GenerateMLDSAKey(cryptolib.AlgorithmMLDSA65)
+	signer, err := mldsa.GenerateKey(mldsa.MLDSA65())
 	require.NoError(t, err)
 
 	const keyID = "mldsa-key"
 	const thumbprint = "mldsa-thumbprint"
-	pubBytes, ok := cryptolib.MLDSAPublicKeyBytes(signer.Public())
-	require.True(t, ok)
-	certPub, err := mldsa.NewPublicKey(mldsa.MLDSA65(), pubBytes)
-	require.NoError(t, err)
-	cert := &x509.Certificate{Raw: []byte("mldsa-cert-raw"), PublicKey: certPub}
+	cert := &x509.Certificate{Raw: []byte("mldsa-cert-raw"), PublicKey: signer.Public()}
 
 	pki := pkimock.NewPKIServiceInterfaceMock(t)
 	pki.EXPECT().GetAllX509Certificates(mock.Anything).
@@ -970,24 +966,6 @@ func TestMLDSA_RuntimeSignVerifyAndGetPublicKeys(t *testing.T) {
 	)
 }
 
-// TestGetPublicKeys_DerivePublicKeyPrivateKeyError covers the case where the
-// certificate carries no parseable public key (nil, as for ML-DSA) and the
-// configured private key cannot be retrieved either.
-func TestGetPublicKeys_DerivePublicKeyPrivateKeyError(t *testing.T) {
-	const keyID = "mldsa-key"
-	cert := &x509.Certificate{Raw: []byte("mldsa-cert-raw")}
-
-	pki := pkimock.NewPKIServiceInterfaceMock(t)
-	pki.EXPECT().GetAllX509Certificates(mock.Anything).
-		Return(map[string]*x509.Certificate{keyID: cert}, nil)
-	pki.EXPECT().GetPrivateKey(mock.Anything, keyID).Return(nil, newTestSvcErr())
-
-	svc := &runtimeCryptoService{pkiService: pki, logger: newTestLogger()}
-	keys, err := svc.GetPublicKeys(context.Background(), providers.PublicKeyFilter{})
-	require.NoError(t, err)
-	assert.Empty(t, keys)
-}
-
 func TestGetSupportedSigningAlgorithms(t *testing.T) {
 	svc := &runtimeCryptoService{}
 	algs := svc.GetSupportedSigningAlgorithms()
@@ -1009,23 +987,6 @@ func TestGetSupportedEncryptionAlgorithms(t *testing.T) {
 		string(cryptolib.AlgorithmECDHESA192KW),
 		string(cryptolib.AlgorithmECDHESA256KW),
 	}, algs)
-}
-
-// TestGetPublicKeys_DerivePublicKeyNonSignerPrivateKey covers the case where the
-// configured private key does not implement crypto.Signer.
-func TestGetPublicKeys_DerivePublicKeyNonSignerPrivateKey(t *testing.T) {
-	const keyID = "mldsa-key"
-	cert := &x509.Certificate{Raw: []byte("mldsa-cert-raw")}
-
-	pki := pkimock.NewPKIServiceInterfaceMock(t)
-	pki.EXPECT().GetAllX509Certificates(mock.Anything).
-		Return(map[string]*x509.Certificate{keyID: cert}, nil)
-	pki.EXPECT().GetPrivateKey(mock.Anything, keyID).Return([]byte("not-a-signer"), nil)
-
-	svc := &runtimeCryptoService{pkiService: pki, logger: newTestLogger()}
-	keys, err := svc.GetPublicKeys(context.Background(), providers.PublicKeyFilter{})
-	require.NoError(t, err)
-	assert.Empty(t, keys)
 }
 
 type JWKTestSuite struct {
@@ -1338,14 +1299,12 @@ func (suite *JWKTestSuite) TestJWKToPublicKeyInvalidEC() {
 	assert.Nil(suite.T(), publicKey)
 }
 
-func TestJWKToPublicKeyAKPRoundTrip(t *testing.T) {
-	for _, alg := range []cryptolib.Algorithm{
-		cryptolib.AlgorithmMLDSA44, cryptolib.AlgorithmMLDSA65, cryptolib.AlgorithmMLDSA87,
-	} {
-		signer, err := cryptolib.GenerateMLDSAKey(alg)
-		require.NoError(t, err)
-		pubBytes, ok := cryptolib.MLDSAPublicKeyBytes(signer.Public())
-		require.True(t, ok)
+func (suite *JWKTestSuite) TestJWKToPublicKeyAKPRoundTrip() {
+	for _, params := range []mldsa.Parameters{mldsa.MLDSA44(), mldsa.MLDSA65(), mldsa.MLDSA87()} {
+		alg := cryptolib.Algorithm(params.String())
+		signer, err := mldsa.GenerateKey(params)
+		require.NoError(suite.T(), err)
+		pubBytes := signer.PublicKey().Bytes()
 
 		jwk := map[string]interface{}{
 			"kty": "AKP",
@@ -1354,35 +1313,40 @@ func TestJWKToPublicKeyAKPRoundTrip(t *testing.T) {
 		}
 
 		pub, err := JWKToPublicKey(jwk)
-		require.NoError(t, err, "AKP JWK should parse for %s", alg)
+		require.NoError(suite.T(), err, "AKP JWK should parse for %s", alg)
 
 		// A signature produced by the signer must verify against the parsed key.
 		signAlg, err := cryptolib.SignAlgorithmFor(alg)
-		require.NoError(t, err)
+		require.NoError(suite.T(), err)
 		data := []byte("external issuer token")
 		sig, err := cryptolib.Generate(data, signAlg, signer)
-		require.NoError(t, err)
-		assert.NoError(t, cryptolib.Verify(data, sig, signAlg, pub))
+		require.NoError(suite.T(), err)
+		assert.NoError(suite.T(), cryptolib.Verify(data, sig, signAlg, pub))
 	}
 }
 
-func TestJWKToPublicKeyAKPMissingMembers(t *testing.T) {
+func (suite *JWKTestSuite) TestJWKToPublicKeyAKPMissingMembers() {
 	_, err := JWKToPublicKey(map[string]interface{}{"kty": "AKP", "alg": "ML-DSA-65"})
-	assert.Error(t, err)
+	assert.Error(suite.T(), err)
 
 	_, err = JWKToPublicKey(map[string]interface{}{"kty": "AKP", "pub": "AAAA"})
-	assert.Error(t, err)
+	assert.Error(suite.T(), err)
 }
 
-func TestJWKToPublicKeyAKPInvalidPub(t *testing.T) {
+func (suite *JWKTestSuite) TestJWKToPublicKeyAKPUnsupportedAlg() {
+	_, err := JWKToPublicKey(map[string]interface{}{"kty": "AKP", "alg": "RS256", "pub": "AAAA"})
+	assert.ErrorContains(suite.T(), err, "unsupported AKP alg")
+}
+
+func (suite *JWKTestSuite) TestJWKToPublicKeyAKPInvalidPub() {
 	_, err := JWKToPublicKey(map[string]interface{}{
 		"kty": "AKP", "alg": "ML-DSA-65", "pub": "not!base64url",
 	})
-	assert.Error(t, err)
+	assert.Error(suite.T(), err)
 
 	// Correctly encoded but wrong-length public key.
 	_, err = JWKToPublicKey(map[string]interface{}{
 		"kty": "AKP", "alg": "ML-DSA-65", "pub": base64.RawURLEncoding.EncodeToString([]byte("too short")),
 	})
-	assert.Error(t, err)
+	assert.Error(suite.T(), err)
 }

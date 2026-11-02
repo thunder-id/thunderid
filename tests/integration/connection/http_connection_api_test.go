@@ -52,7 +52,7 @@ const (
 )
 
 var httpConnSecrets = []string{httpConnBasicPassword, httpConnBasicPassword2, httpConnBearerToken,
-	httpConnAPIKeyValue, httpConnAPIKeyValue2}
+	httpConnAPIKeyValue, httpConnAPIKeyValue2, httpConnDeclarativePassword}
 
 type httpConnHeader struct {
 	Name  string `json:"name"`
@@ -69,6 +69,7 @@ type httpConnAuthentication struct {
 // explicit zero timeout use a map instead, since omitempty drops it.
 type httpConnRequest struct {
 	Name           string                  `json:"name"`
+	OUID           string                  `json:"ouId,omitempty"`
 	Description    string                  `json:"description,omitempty"`
 	URL            string                  `json:"url"`
 	TimeoutMS      int                     `json:"timeoutMs,omitempty"`
@@ -80,6 +81,7 @@ type httpConnRequest struct {
 type httpConnResponse struct {
 	ID             string                 `json:"id"`
 	Name           string                 `json:"name"`
+	OUID           string                 `json:"ouId"`
 	Description    string                 `json:"description"`
 	Type           string                 `json:"type"`
 	URL            string                 `json:"url"`
@@ -137,6 +139,7 @@ func noneConnAuth() *httpConnAuthentication {
 // connection yet, so AC2.2 is proven by the stored record, which only SQLite lets the harness read.
 type HTTPConnectionAPITestSuite struct {
 	suite.Suite
+	ouID       string
 	createdIDs []string
 }
 
@@ -152,16 +155,28 @@ func (s *HTTPConnectionAPITestSuite) TestStoredRowChecksNeedSQLite() {
 	}
 }
 
+func (s *HTTPConnectionAPITestSuite) SetupSuite() {
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "http-conn-api-ou", Name: "HTTP Connection API OU",
+	})
+	s.Require().NoError(err, "failed to create organization unit")
+	s.ouID = ouID
+}
+
 func (s *HTTPConnectionAPITestSuite) TearDownSuite() {
-	// Connections a test already deleted answer 404 here, which is expected.
 	for i := len(s.createdIDs) - 1; i >= 0; i-- {
 		res, err := doRequest(http.MethodDelete, httpConnPath+"/"+s.createdIDs[i], nil)
 		if err != nil {
 			s.T().Logf("failed to delete HTTP connection %s: %v", s.createdIDs[i], err)
 			continue
 		}
-		if res.status != http.StatusNoContent && res.status != http.StatusNotFound {
+		if res.status != http.StatusNoContent {
 			s.T().Logf("failed to delete HTTP connection %s: %d %s", s.createdIDs[i], res.status, string(res.body))
+		}
+	}
+	if s.ouID != "" {
+		if err := testutils.DeleteOrganizationUnit(s.ouID); err != nil {
+			s.T().Logf("failed to delete organization unit: %v", err)
 		}
 	}
 }
@@ -169,7 +184,7 @@ func (s *HTTPConnectionAPITestSuite) TearDownSuite() {
 // post sends a create request and tracks anything it created for teardown, whatever the test expected.
 func (s *HTTPConnectionAPITestSuite) post(body interface{}) httpResult {
 	s.T().Helper()
-	res, err := doRequest(http.MethodPost, httpConnPath, body)
+	res, err := doRequest(http.MethodPost, httpConnPath, ownedBy(s.T(), s.ouID, body))
 	s.Require().NoError(err, "Create HTTP connection request failed")
 	if res.status == http.StatusCreated {
 		var created httpConnResponse
@@ -788,9 +803,11 @@ func (s *HTTPConnectionAPITestSuite) TestDeleteThenNotFound() {
 	s.Require().NoError(err, "Get after delete request failed")
 	s.assertError(res, http.StatusNotFound, httpConnNotFoundCode, "Get after delete")
 
+	// Deleting a connection that is already gone is a no-op that succeeds.
 	res, err = doRequest(http.MethodDelete, httpConnPath+"/"+created.ID, nil)
 	s.Require().NoError(err, "Second delete request failed")
-	s.assertError(res, http.StatusNotFound, httpConnNotFoundCode, "Second delete")
+	s.Equal(http.StatusNoContent, res.status, "A second delete should succeed: %s", string(res.body))
+	s.Empty(res.body, "A 204 should carry no body")
 
 	if testutils.GetDBType() == "sqlite" {
 		count, err := testutils.QueryConfigDB(
@@ -804,19 +821,25 @@ func (s *HTTPConnectionAPITestSuite) TestUnknownConnectionIsNotFound() {
 	const unknownID = "00000000-0000-0000-0000-00000000c0de"
 	for _, tc := range []struct {
 		method string
+		suffix string
 		body   interface{}
 	}{
-		{http.MethodGet, nil},
-		{http.MethodPut, httpConnRequest{Name: "http-conn-api-ghost", URL: "https://ext.example.com"}},
-		{http.MethodDelete, nil},
+		{http.MethodGet, "", nil},
+		{http.MethodPut, "", httpConnRequest{Name: "http-conn-api-ghost", URL: "https://ext.example.com"}},
+		{http.MethodGet, "/usages", nil},
 	} {
-		res, err := doRequest(tc.method, httpConnPath+"/"+unknownID, tc.body)
-		s.Require().NoError(err, "%s unknown connection request failed", tc.method)
-		s.assertError(res, http.StatusNotFound, httpConnNotFoundCode, tc.method+" unknown connection")
+		res, err := doRequest(tc.method, httpConnPath+"/"+unknownID+tc.suffix, tc.body)
+		s.Require().NoError(err, "%s%s unknown connection request failed", tc.method, tc.suffix)
+		s.assertError(res, http.StatusNotFound, httpConnNotFoundCode, tc.method+tc.suffix+" unknown connection")
 	}
 
+	res, err := doRequest(http.MethodDelete, httpConnPath+"/"+unknownID, nil)
+	s.Require().NoError(err, "Delete unknown connection request failed")
+	s.Equal(http.StatusNoContent, res.status, "Deleting an unknown connection should be a no-op: %s",
+		string(res.body))
+
 	created, _ := s.create(httpConnRequest{Name: "http-conn-api-isolation", URL: "https://ext.example.com"})
-	res, err := doRequest(http.MethodGet, "/connections/authzen-pdp/"+created.ID, nil)
+	res, err = doRequest(http.MethodGet, "/connections/authzen-pdp/"+created.ID, nil)
 	s.Require().NoError(err, "Cross-type get failed")
 	s.Equal(http.StatusNotFound, res.status, "An HTTP connection must not be readable as an AuthZEN PDP")
 }

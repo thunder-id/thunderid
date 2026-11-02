@@ -72,8 +72,13 @@ func (p *organizationUnitProvider) GetOrganizationUnitChildren(
 
 // toProviderOU maps the management organization unit onto the runtime view.
 func toProviderOU(orgUnit OrganizationUnit) providers.OrganizationUnit {
+	parent := ""
+	if orgUnit.Parent != nil {
+		parent = *orgUnit.Parent
+	}
 	return providers.OrganizationUnit{
 		ID:              orgUnit.ID,
+		Parent:          parent,
 		Handle:          orgUnit.Handle,
 		Name:            orgUnit.Name,
 		Description:     orgUnit.Description,

@@ -77,6 +77,16 @@ vi.mock('@thunderid/components', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/components')>();
   return {
     ...actual,
+    AccountStatusAction: ({listQueryKey, onChanged}: {listQueryKey: unknown; onChanged: () => void}) => (
+      <button
+        type="button"
+        data-testid="account-status-action"
+        data-list-query-key={JSON.stringify(listQueryKey)}
+        onClick={onChanged}
+      >
+        status action
+      </button>
+    ),
     ResourceAvatar: ({
       value = undefined,
       fallback = undefined,
@@ -164,7 +174,7 @@ vi.mock('../../components/edit-agent/advanced-settings/EditAdvancedSettings', as
   return {
     default: (props: ComponentProps<typeof RealEditAdvancedSettings>) => {
       if (advancedSettings.real) return <RealEditAdvancedSettings {...props} />;
-      const {onDeleteSuccess, onBackchannelLogoutUriValidationChange} = props;
+      const {onDeleteSuccess, onBackchannelLogoutUriValidationChange, onIdentityAssertionsValidationChange} = props;
       return (
         <div data-testid="edit-advanced">
           <button type="button" onClick={() => onDeleteSuccess?.()}>
@@ -172,6 +182,9 @@ vi.mock('../../components/edit-agent/advanced-settings/EditAdvancedSettings', as
           </button>
           <button type="button" onClick={() => onBackchannelLogoutUriValidationChange?.(true)}>
             Type an invalid back-channel logout URI
+          </button>
+          <button type="button" onClick={() => onIdentityAssertionsValidationChange?.(true)}>
+            Type an invalid ID-JAG validity period
           </button>
         </div>
       );
@@ -416,6 +429,159 @@ describe('AgentEditPage', () => {
       descInput.dispatchEvent(new FocusEvent('blur', {bubbles: true}));
 
       expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+    });
+  });
+
+  // The server holds a delegated agent to the delegated grant rules and does not store the flag, so a
+  // save has to say whether the agent is delegated. Delegated mode is any delegation grant.
+  describe('Delegated flag on save', () => {
+    // A delegated agent has to pass the page's own checks before it can be saved: a callback and an
+    // allowed user type.
+    const saveWithGrants = async (grantTypes?: string[]): Promise<{delegated?: boolean}> => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          allowedUserTypes: ['employee'],
+          inboundAuthConfig:
+            grantTypes === undefined
+              ? []
+              : [
+                  {
+                    type: 'oauth2' as const,
+                    config: {
+                      ...baseAgent.inboundAuthConfig[0].config,
+                      grantTypes,
+                      redirectUris: ['https://app.example.com/callback'],
+                    },
+                  },
+                ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+      render(<AgentEditPage />);
+
+      await user.click(screen.getByRole('button', {name: 'Pick logo B'}));
+      await user.click(screen.getByRole('button', {name: 'Save logo'}));
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalled();
+      });
+      return (mockMutateAsync.mock.calls[0][0] as {data: {delegated?: boolean}}).data;
+    };
+
+    it('sends delegated when the agent holds the authorization code grant', async () => {
+      const data = await saveWithGrants(['client_credentials', 'authorization_code', 'refresh_token']);
+
+      expect(data.delegated).toBe(true);
+    });
+
+    it('sends delegated when the agent holds CIBA or token exchange without the authorization code grant', async () => {
+      const data = await saveWithGrants(['client_credentials', 'urn:openid:params:grant-type:ciba']);
+
+      expect(data.delegated).toBe(true);
+    });
+
+    it('should send delegated when the agent holds JWT bearer without the authorization code grant', async () => {
+      const data = await saveWithGrants(['client_credentials', 'urn:ietf:params:oauth:grant-type:jwt-bearer']);
+
+      expect(data.delegated).toBe(true);
+    });
+
+    it('sends not delegated when the agent has client credentials only', async () => {
+      const data = await saveWithGrants(['client_credentials']);
+
+      expect(data.delegated).toBe(false);
+    });
+
+    it('sends not delegated when the agent has no OAuth configuration', async () => {
+      const data = await saveWithGrants();
+
+      expect(data.delegated).toBe(false);
+    });
+  });
+
+  describe('Access status', () => {
+    const renderAgent = (agent: Record<string, unknown>): void => {
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, ...agent},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+      render(<AgentEditPage />);
+    };
+
+    it('shows the suspension banner for a suspended agent', () => {
+      renderAgent({status: {value: 'SUSPENDED'}});
+
+      expect(screen.getByRole('status')).toHaveTextContent('Suspended');
+      expect(screen.getByRole('status')).toHaveTextContent('The agent is suspended');
+    });
+
+    it('shows no banner for an active agent', () => {
+      renderAgent({});
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('offers the lifecycle action on a writable agent', () => {
+      renderAgent({});
+
+      expect(screen.getByTestId('account-status-action')).toBeInTheDocument();
+    });
+
+    // The lifecycle flows change only runtime state, which a declared record keeps too.
+    it('offers the lifecycle action on a read-only agent', () => {
+      renderAgent({isReadOnly: true});
+
+      expect(screen.getByTestId('account-status-action')).toBeInTheDocument();
+    });
+
+    it('shows the banner below the read-only notice and above the header', () => {
+      renderAgent({isReadOnly: true, status: {value: 'SUSPENDED'}});
+
+      const notice = screen.getByText('This resource is read-only and cannot be modified.');
+      const banner = screen.getByRole('status');
+      expect(banner).toHaveTextContent('Suspended');
+      expect(notice.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(
+        banner.compareDocumentPosition(screen.getByTestId('account-status-action')) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('hands the agents list query to the lifecycle action', () => {
+      renderAgent({});
+
+      expect(screen.getByTestId('account-status-action')).toHaveAttribute('data-list-query-key', '["agents"]');
+    });
+
+    it('refetches the agent after a lifecycle operation', async () => {
+      const user = userEvent.setup();
+      renderAgent({});
+
+      await user.click(screen.getByTestId('account-status-action'));
+
+      expect(mockRefetch).toHaveBeenCalled();
+    });
+
+    it('keeps a suspended agent editable', async () => {
+      const user = userEvent.setup();
+      renderAgent({allowedUserTypes: [], status: {value: 'SUSPENDED'}});
+
+      const editIcons = screen.getAllByRole('button').filter((b) => b.querySelector('svg'));
+      const editButton = editIcons.find((btn) => btn.parentElement?.textContent?.includes('Test description'));
+      if (!editButton) throw new Error('description edit button not found');
+      await user.click(editButton);
+      const input = screen.getAllByRole('textbox')[0];
+      await user.type(input, ' updated');
+      fireEvent.blur(input);
+
+      expect(screen.getByRole('button', {name: 'Save'})).toBeEnabled();
     });
   });
 
@@ -1072,6 +1238,164 @@ describe('AgentEditPage', () => {
       await user.click(screen.getByRole('tab', {name: /Advanced/i}));
       expect(screen.getByDisplayValue('https://agent.example.com/bcl')).toBeInTheDocument();
       expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+    });
+
+    describe('identity assertions (ID-JAG)', () => {
+      const renderWithIdJag = (
+        idJag: Record<string, unknown>,
+        grantTypes = ['client_credentials', 'urn:ietf:params:oauth:grant-type:token-exchange'],
+      ): void => {
+        mockUseGetAgent.mockReturnValue({
+          data: {
+            ...baseAgent,
+            inboundAuthConfig: [
+              {
+                type: 'oauth2' as const,
+                config: {grantTypes, responseTypes: [], clientId: 'client-id-xyz', token: {idJag}},
+              },
+            ],
+          },
+          isLoading: false,
+          error: null,
+          isError: false,
+          refetch: mockRefetch,
+        });
+        render(<AgentEditPage />);
+      };
+
+      it('should disable Save when ID-JAG is on with no allowed audience, even without visiting the advanced tab', async () => {
+        const user = userEvent.setup();
+        renderWithIdJag({enabled: true, allowedAudiences: []});
+        await triggerAChange(user);
+
+        expect(screen.getByText('Before saving, fix the identity assertions (ID-JAG) settings.')).toBeInTheDocument();
+        expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+      });
+
+      it('should enable Save when ID-JAG is on with an allowed audience', async () => {
+        const user = userEvent.setup();
+        renderWithIdJag({enabled: true, allowedAudiences: ['https://mcp.example.com']});
+        await triggerAChange(user);
+
+        expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+      });
+
+      it('should not block Save on an ID-JAG config that is turned off', async () => {
+        const user = userEvent.setup();
+        renderWithIdJag({enabled: false, allowedAudiences: []});
+        await triggerAChange(user);
+
+        expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+      });
+
+      it('should disable Save while the card reports an invalid typed value', async () => {
+        const user = userEvent.setup();
+        renderWithIdJag({enabled: true, allowedAudiences: ['https://mcp.example.com']});
+        await triggerAChange(user);
+        expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+
+        await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+        await user.click(screen.getByText('Type an invalid ID-JAG validity period'));
+
+        expect(screen.getByText('Before saving, fix the identity assertions (ID-JAG) settings.')).toBeInTheDocument();
+        expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+      });
+
+      it('should block Save on an invalid validity period typed in the real card, until the tab is left', async () => {
+        advancedSettings.real = true;
+        const user = userEvent.setup();
+        renderWithIdJag({enabled: true, allowedAudiences: ['https://mcp.example.com'], validityPeriod: 300});
+        await triggerAChange(user);
+        await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+
+        fireEvent.change(screen.getByDisplayValue('300'), {target: {value: '0'}});
+
+        expect(screen.getByText('Enter a value of at least 1 second.')).toBeInTheDocument();
+        expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+
+        // The typed value was never committed and is dropped with the tab, so the saved one stands.
+        await user.click(screen.getByRole('tab', {name: 'Overview'}));
+        expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+      });
+
+      it('should save token exchange and ID-JAG together when ID-JAG is turned on in the real card', async () => {
+        advancedSettings.real = true;
+        const user = userEvent.setup();
+        mockUseGetAgent.mockReturnValue({
+          data: {
+            ...baseAgent,
+            allowedUserTypes: ['person'],
+            inboundAuthConfig: [
+              {
+                type: 'oauth2' as const,
+                config: {
+                  grantTypes: ['client_credentials', 'authorization_code'],
+                  responseTypes: ['code'],
+                  redirectUris: ['https://agent.example.com/cb'],
+                  pkceRequired: true,
+                  clientId: 'client-id-xyz',
+                },
+              },
+            ],
+          },
+          isLoading: false,
+          error: null,
+          isError: false,
+          refetch: mockRefetch,
+        });
+        render(<AgentEditPage />);
+        await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+
+        await user.click(screen.getByRole('switch', {name: 'Identity assertions (ID-JAG)'}));
+        await user.type(
+          screen.getByPlaceholderText('Type an audience and press Enter'),
+          'https://mcp.example.com{Enter}',
+        );
+        await user.click(screen.getByRole('button', {name: 'Save'}));
+
+        await waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+        });
+        const {data} = mockMutateAsync.mock.calls[0][0] as {
+          data: {inboundAuthConfig: {config: Record<string, unknown>}[]};
+        };
+        expect(data.inboundAuthConfig[0].config).toEqual(
+          expect.objectContaining({
+            grantTypes: ['client_credentials', 'authorization_code', 'urn:ietf:params:oauth:grant-type:token-exchange'],
+            pkceRequired: true,
+            token: {idJag: {enabled: true, allowedAudiences: ['https://mcp.example.com'], validityPeriod: 300}},
+          }),
+        );
+      });
+
+      it('should enable Save once Delegated mode is turned off while the real card holds an invalid validity period', async () => {
+        advancedSettings.real = true;
+        const user = userEvent.setup();
+        renderWithIdJag({enabled: true, allowedAudiences: ['https://mcp.example.com'], validityPeriod: 300});
+        await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+
+        fireEvent.change(screen.getByDisplayValue('300'), {target: {value: '0'}});
+        await triggerAChange(user);
+        expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+
+        await user.click(screen.getByRole('switch', {name: 'Delegated mode'}));
+
+        expect(screen.queryByRole('switch', {name: 'Identity assertions (ID-JAG)'})).not.toBeInTheDocument();
+        expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+      });
+
+      it('should block Save when ID-JAG is turned on in the real card without an allowed audience', async () => {
+        advancedSettings.real = true;
+        const user = userEvent.setup();
+        renderWithIdJag({enabled: false});
+        await triggerAChange(user);
+        await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+
+        await user.click(screen.getByRole('switch', {name: 'Identity assertions (ID-JAG)'}));
+
+        expect(screen.getByText('Add at least one audience.')).toBeInTheDocument();
+        expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+      });
     });
 
     it('enables Save once a certificate is configured for private_key_jwt', async () => {

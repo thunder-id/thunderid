@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as thunderIdReactModule from '@thunderid/react';
-import {renderWithProviders, screen, fireEvent} from '@thunderid/test-utils';
+import {renderWithProviders, screen, fireEvent, within} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {DefaultResourceServerConfigResponse, ResourceServerListResponse} from '../../models/resource-server';
 import ResourceServersList from '../ResourceServersList';
@@ -100,6 +100,14 @@ describe('ResourceServersList', () => {
     });
   });
 
+  it('renders the grid inside a paper container as a plain data grid', () => {
+    renderWithProviders(<ResourceServersList />);
+
+    expect(screen.getByRole('grid').closest('.MuiPaper-root')).not.toBeNull();
+    // The card variant sizes rows to their content, while the plain grid keeps the fixed two-line height.
+    expect(screen.getAllByRole('row')[1]).toHaveStyle({minHeight: '64px', maxHeight: '64px'});
+  });
+
   it('renders the type chip label for a normal row', () => {
     renderWithProviders(<ResourceServersList />);
 
@@ -130,6 +138,15 @@ describe('ResourceServersList', () => {
 
     const deleteButtons = screen.queryAllByRole('button', {name: 'Delete'});
     expect(deleteButtons).toHaveLength(1);
+  });
+
+  it('marks only the read-only row as a system resource server', () => {
+    renderWithProviders(<ResourceServersList />);
+
+    const systemRow = screen.getByText('System MCP').closest<HTMLElement>('[role="row"]')!;
+    const normalRow = screen.getByText('Payments API').closest<HTMLElement>('[role="row"]')!;
+    expect(within(systemRow).getByText('System resource server')).toBeInTheDocument();
+    expect(within(normalRow).queryByText('System resource server')).not.toBeInTheDocument();
   });
 
   it('shows a Default badge on the current default row', () => {
