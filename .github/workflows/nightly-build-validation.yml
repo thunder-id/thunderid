@@ -111,10 +111,12 @@ jobs:
 
   cli-compatibility:
     name: 🌙 Published CLI (${{ matrix.dist-tag }}, ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
+      # Ubuntu is pinned to 24.04: ubuntu-latest moved to 26.04, where Playwright cannot install
+      # Chromium. os stays the job's name, so the check names do not change.
       matrix:
         os: [ubuntu-latest, macos-latest]
         dist-tag: [latest, next]

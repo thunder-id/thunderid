@@ -789,10 +789,12 @@ jobs:
     name: 🎭 CLI E2E (${{ matrix.os }})
     needs: [cli-lint-unit]
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
+      # Ubuntu is pinned to 24.04: ubuntu-latest moved to 26.04, where Playwright cannot install
+      # Chromium. os stays the job's name, so the check names do not change.
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
@@ -833,7 +835,8 @@ jobs:
     name: 🔗 CLI Against This Build
     needs: [preflight, build, build_samples]
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
-    runs-on: ubuntu-latest
+    # Pinned to 24.04: ubuntu-latest moved to 26.04, where Playwright cannot install Chromium.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: 📥 Checkout Code
