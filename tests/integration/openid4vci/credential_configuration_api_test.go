@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -250,8 +251,8 @@ vct: https://credentials.thunderid.local/DeclarativeInvalidOUCredential
 		ts.Assert().NoError(testutils.ObtainAdminAccessToken())
 	}()
 
-	err := testutils.RestartServerWithResourcesFile(resourcesPath)
-	ts.Require().Error(err)
+	ts.Require().NoError(testutils.StartServerExpectingExit(30*time.Second, "-resources="+resourcesPath),
+		"the server must refuse the invalid resources file and exit")
 }
 
 // TestStoreModesLoadDeclarativeConfigurations verifies each supported startup
