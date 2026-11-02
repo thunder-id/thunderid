@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // consentExecutor handles consent collection during identity journeys.
@@ -193,6 +194,7 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 
 	execResp.ForwardedData[common.ForwardedDataKeyConsentPrompt] = promptData.Purposes
 	execResp.AdditionalData[common.DataConsentPrompt] = string(promptJSON)
+	e.addClientHosts(ctx, execResp)
 
 	// Store the session token in RuntimeData for validation during consent recording
 	if promptData.SessionToken != "" {
@@ -215,6 +217,20 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 		log.Int("purposeCount", len(promptData.Purposes)))
 	execResp.Status = providers.ExecUserInputRequired
 	return execResp, nil
+}
+
+// addClientHosts adds the client ID and redirect URI hosts the authorization request supplied to the
+// consent prompt, with whether the redirect URI host is a loopback host.
+func (e *consentExecutor) addClientHosts(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) {
+	clientIDHost := ctx.RuntimeData[common.RuntimeKeyClientIDHost]
+	redirectURIHost := ctx.RuntimeData[common.RuntimeKeyRedirectURIHost]
+	if clientIDHost == "" || redirectURIHost == "" {
+		return
+	}
+	execResp.AdditionalData[common.DataClientIDHost] = clientIDHost
+	execResp.AdditionalData[common.DataRedirectURIHost] = redirectURIHost
+	execResp.AdditionalData[common.DataRedirectURILoopback] =
+		strconv.FormatBool(sysutils.IsLoopbackRedirectHost(redirectURIHost))
 }
 
 // handleConsentDecisions processes the user's consent decisions.

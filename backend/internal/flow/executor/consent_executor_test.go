@@ -6,6 +6,7 @@ package executor
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"strconv"
 	"testing"
 	"time"
@@ -413,6 +414,100 @@ func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_PromptRequired_NoTim
 	assert.NoError(suite.T(), parseErr)
 	assert.Len(suite.T(), parsedPrompt, 1)
 	assert.Equal(suite.T(), "app:app-123:attrs", parsedPrompt[0].PurposeName)
+}
+
+// executePrompt runs the executor for a user who has not yet consented, with the given runtime data.
+func (suite *ConsentExecutorTestSuite) executePrompt(runtimeData map[string]string) *providers.ExecutorResponse {
+	ctx := buildConsentNodeContext()
+	maps.Copy(ctx.RuntimeData, runtimeData)
+	suite.setupDefaultAuthnProviderMocks()
+	suite.executor.Executor.(*coremock.ExecutorInterfaceMock).
+		On("ValidatePrerequisites", ctx, mock.AnythingOfType("*providers.ExecutorResponse"), mock.Anything).Return(true)
+	suite.executor.Executor.(*coremock.ExecutorInterfaceMock).
+		On("HasRequiredInputs", ctx, mock.AnythingOfType("*providers.ExecutorResponse")).Return(false)
+	promptData := &providers.ConsentPromptData{
+		Purposes: []providers.ConsentPurposePrompt{
+			{
+				PurposeName: "app:app-123:attrs",
+				PurposeID:   "purpose-1",
+				Optional:    []providers.PromptElement{{Name: "phone"}},
+			},
+		},
+	}
+	suite.mockConsentEnforcer.On("ResolveConsent", mock.Anything, "default", "app-123", "", "user-123",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(promptData, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Require().Equal(providers.ExecUserInputRequired, resp.Status)
+	return resp
+}
+
+func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_PromptRequired_ClientHosts() {
+	resp := suite.executePrompt(map[string]string{
+		common.RuntimeKeyClientIDHost:    "client.example.com",
+		common.RuntimeKeyRedirectURIHost: "client.example.com",
+	})
+
+	assert.Equal(suite.T(), "client.example.com", resp.AdditionalData[common.DataClientIDHost])
+	assert.Equal(suite.T(), "client.example.com", resp.AdditionalData[common.DataRedirectURIHost])
+	assert.Equal(suite.T(), "false", resp.AdditionalData[common.DataRedirectURILoopback])
+}
+
+func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_PromptRequired_LoopbackRedirectHost() {
+	resp := suite.executePrompt(map[string]string{
+		common.RuntimeKeyClientIDHost:    "client.example.com",
+		common.RuntimeKeyRedirectURIHost: "127.0.0.1",
+	})
+
+	assert.Equal(suite.T(), "client.example.com", resp.AdditionalData[common.DataClientIDHost])
+	assert.Equal(suite.T(), "127.0.0.1", resp.AdditionalData[common.DataRedirectURIHost])
+	assert.Equal(suite.T(), "true", resp.AdditionalData[common.DataRedirectURILoopback])
+}
+
+func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_PromptRequired_NoClientHosts() {
+	testCases := []struct {
+		name        string
+		runtimeData map[string]string
+	}{
+		{name: "NoHosts", runtimeData: map[string]string{}},
+		{name: "ClientIDHostOnly", runtimeData: map[string]string{common.RuntimeKeyClientIDHost: "client.example.com"}},
+		{name: "RedirectURIHostOnly", runtimeData: map[string]string{common.RuntimeKeyRedirectURIHost: "127.0.0.1"}},
+	}
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+
+			resp := suite.executePrompt(tc.runtimeData)
+
+			assert.NotEmpty(suite.T(), resp.AdditionalData[common.DataConsentPrompt])
+			assert.NotContains(suite.T(), resp.AdditionalData, common.DataClientIDHost)
+			assert.NotContains(suite.T(), resp.AdditionalData, common.DataRedirectURIHost)
+			assert.NotContains(suite.T(), resp.AdditionalData, common.DataRedirectURILoopback)
+		})
+	}
+}
+
+func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_AllConsentsActive_NoClientHosts() {
+	ctx := buildConsentNodeContext()
+	ctx.RuntimeData[common.RuntimeKeyClientIDHost] = "client.example.com"
+	ctx.RuntimeData[common.RuntimeKeyRedirectURIHost] = "127.0.0.1"
+	suite.setupDefaultAuthnProviderMocks()
+	suite.executor.Executor.(*coremock.ExecutorInterfaceMock).
+		On("ValidatePrerequisites", ctx, mock.AnythingOfType("*providers.ExecutorResponse"), mock.Anything).Return(true)
+	suite.executor.Executor.(*coremock.ExecutorInterfaceMock).
+		On("HasRequiredInputs", ctx, mock.AnythingOfType("*providers.ExecutorResponse")).Return(false)
+	suite.mockConsentEnforcer.On("ResolveConsent", mock.Anything, "default", "app-123", "", "user-123",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.Empty(suite.T(), resp.AdditionalData)
 }
 
 func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_PromptRequired_StoresSessionToken() {

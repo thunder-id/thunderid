@@ -2901,6 +2901,9 @@ const translations = {
     'authorizationDetails.addItem': '{{item}}, add',
     'authorizationDetails.addBackItem': '{{item}}, add back',
     'authorizationDetails.newItem': '{{label}}, add',
+    'client.hosts': 'Published by {{clientIdHost}}. Returns to {{redirectUriHost}}.',
+    'client.deviceWarning':
+      'This app runs on your device. Other programs on your device can use the same address, so continue only if you started this app.',
   },
 
   // ============================================================================

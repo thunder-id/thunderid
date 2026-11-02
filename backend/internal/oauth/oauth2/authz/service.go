@@ -15,6 +15,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"golang.org/x/net/idna"
 
 	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
@@ -779,6 +782,7 @@ func (as *authorizeService) startAuthorizationFlow(
 	if preparedDetails != "" {
 		runtimeData[flowcm.RuntimeKeyRequestedAuthorizationDetails] = preparedDetails
 	}
+	as.addMetadataDocumentClientHosts(runtimeData, app, oauthParams.RedirectURI)
 	flowInitCtx := &flowexec.FlowInitContext{
 		ApplicationID:    app.ID,
 		FlowType:         string(providers.FlowTypeAuthentication),
@@ -1669,6 +1673,45 @@ func (as *authorizeService) resolveUserAttributesCacheTTL(app *providers.OAuthCl
 	}
 	authCodeTTL := as.cfg.OAuth.AuthorizationCode.ValidityPeriod
 	return maxTTL + authCodeTTL + oauth2const.AttributeCacheTTLBufferSeconds
+}
+
+// addMetadataDocumentClientHosts adds the client ID host and the redirect URI host of a client registered
+// from a Client ID Metadata Document to the flow runtime data. Such a client describes itself, so consent
+// shows where it is published and where it returns to.
+func (as *authorizeService) addMetadataDocumentClientHosts(
+	runtimeData map[string]string, app *providers.OAuthClient, redirectURI string) {
+	if !app.ClientIDMetadataDocument || redirectURI == "" {
+		return
+	}
+	clientIDURL, clientIDErr := url.Parse(app.ClientID)
+	redirectURL, redirectErr := url.Parse(redirectURI)
+	if clientIDErr != nil || redirectErr != nil {
+		return
+	}
+	clientIDHost, clientIDHostOK := asciiHost(clientIDURL.Hostname())
+	redirectURIHost, redirectURIHostOK := asciiHost(redirectURL.Hostname())
+	if !clientIDHostOK || !redirectURIHostOK {
+		return
+	}
+	runtimeData[flowcm.RuntimeKeyClientIDHost] = clientIDHost
+	runtimeData[flowcm.RuntimeKeyRedirectURIHost] = redirectURIHost
+}
+
+// asciiHost returns a host in lowercase ASCII. It converts an internationalized host with the IDNA
+// lookup profile Go's HTTP client uses, and a host that profile rejects with plain punycode. It reports
+// false when the host has no ASCII form, such as when it is not valid UTF-8.
+func asciiHost(host string) (string, bool) {
+	if strings.IndexFunc(host, func(r rune) bool { return r >= utf8.RuneSelf }) < 0 {
+		return strings.ToLower(host), true
+	}
+	if lookupHost, err := idna.Lookup.ToASCII(host); err == nil {
+		return lookupHost, true
+	}
+	punycodeHost, err := idna.Punycode.ToASCII(strings.ToLower(host))
+	if err != nil {
+		return "", false
+	}
+	return punycodeHost, true
 }
 
 func mapFlowErrorTypeToOAuthError(errorType, description string) (string, string) {
