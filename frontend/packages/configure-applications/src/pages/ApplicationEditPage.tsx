@@ -8,6 +8,7 @@ import {
   PageLoadingAnimation,
   QueryErrorNotice,
   ResourceAvatar,
+  ResourceDeployStatus,
   UnsavedChangesBar,
 } from '@thunderid/components';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
@@ -658,6 +659,7 @@ export default function ApplicationEditPage() {
         </Alert>
       )}
       <AccessStatusBanner status={application.status} category="application" sx={{mb: 2}} />
+      <ResourceDeployStatus resourceType="application" id={application.id} variant="notice" sx={{mb: 2}} />
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to={routes.applications.list()} />}>
