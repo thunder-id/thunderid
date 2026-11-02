@@ -367,7 +367,9 @@ type fakeFlowService struct {
 	ouIDByPath map[string]string
 	sharingErr *tidcommon.ServiceError
 	getErr     *tidcommon.ServiceError
-	deleted    []string
+	// shapeErr refuses a definition for what it holds itself.
+	shapeErr *tidcommon.ServiceError
+	deleted  []string
 	// withSharing records the policies each update that came with them carried, and updateSharingErr refuses them.
 	withSharing      [][]sharing.PolicyRequest
 	updateSharingErr *tidcommon.ServiceError
@@ -956,6 +958,10 @@ func (f *fakeFlowService) SetVariables(
 	}
 	f.valuesSet = append(f.valuesSet, req)
 	return &flowmgt.VariablesResponse{Values: req.Values}, nil
+}
+
+func (f *fakeFlowService) ValidateFlowShape(_ *flowmgt.FlowDefinition) *tidcommon.ServiceError {
+	return f.shapeErr
 }
 
 func (f *fakeFlowService) ResolveFlowOU(_ context.Context, flowDef *flowmgt.FlowDefinition) *tidcommon.ServiceError {
@@ -2993,6 +2999,26 @@ type fakeAgentService struct {
 	created  []*providers.Agent
 	updated  []*agentmodel.UpdateAgentRequest
 	existing map[string]*agentmodel.AgentGetResponse
+	// owners are the entities an owner may name, and clientIDs the client IDs held, by the id holding them.
+	owners    map[string]bool
+	clientIDs map[string]string
+	// ownerChecks records each owner checked.
+	ownerChecks []string
+}
+
+func (f *fakeAgentService) CheckOwner(_ context.Context, ownerID string) *tidcommon.ServiceError {
+	f.ownerChecks = append(f.ownerChecks, ownerID)
+	if !f.owners[ownerID] {
+		return &agent.ErrorOwnerNotFound
+	}
+	return nil
+}
+
+func (f *fakeAgentService) CheckClientID(_ context.Context, clientID, agentID string) *tidcommon.ServiceError {
+	if holder, ok := f.clientIDs[clientID]; ok && holder != agentID {
+		return &agent.ErrorAgentAlreadyExistsWithClientID
+	}
+	return nil
 }
 
 func (f *fakeAgentService) CreateAgent(
@@ -3212,6 +3238,14 @@ func (e *errAgentService) UpdateAgent(
 		return nil, e.updateErr
 	}
 	return e.inner.UpdateAgent(ctx, agentID, req)
+}
+
+func (e *errAgentService) CheckOwner(ctx context.Context, ownerID string) *tidcommon.ServiceError {
+	return e.inner.CheckOwner(ctx, ownerID)
+}
+
+func (e *errAgentService) CheckClientID(ctx context.Context, clientID, agentID string) *tidcommon.ServiceError {
+	return e.inner.CheckClientID(ctx, clientID, agentID)
 }
 
 func TestImportAgent_DecodeError(t *testing.T) {
@@ -6331,4 +6365,128 @@ func TestImportFlowUpdateRefusedWithItsPoliciesFailsTheDocument(t *testing.T) {
 	assert.Equal(t, flowmgt.ErrorFlowConflictsWithSharingPolicy.Code, resp.Results[0].Code)
 	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
 	assert.Empty(t, flowSvc.deleted)
+}
+
+// A dry run refuses a flow for what its definition holds, as the write would, and says what was refused.
+func TestImportFlowDryRunRefusesWhatTheDefinitionHolds(t *testing.T) {
+	flowSvc := newFakeFlowService()
+	flowSvc.shapeErr = tidcommon.CustomServiceError(flowmgt.ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+		Key:          "error.test.unsupported_property",
+		DefaultValue: "Node '{{param(nodeID)}}': executor does not support property '{{param(property)}}'",
+		Params:       map[string]string{"nodeID": "provisioning", "property": "mode"},
+	})
+	svc := newTestFlowImportWithSharing(flowSvc, &fakeSharingService{})
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: flowDocWithPolicies(), DryRun: true})
+
+	require.Nil(t, err)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, flowmgt.ErrorInvalidExecutorConfig.Code, resp.Results[0].Code)
+	assert.Equal(t, flowmgt.ErrorInvalidExecutorConfig.Error.DefaultValue, resp.Results[0].Message)
+	assert.Equal(t, "Node 'provisioning': executor does not support property 'mode'", resp.Results[0].Description)
+}
+
+const ownedAgentYAML = agentYAML + "owner: user-1\n" +
+	"inboundAuthConfig:\n  - type: oauth2\n    config:\n      clientId: client-1\n"
+
+// A dry run refuses an agent whose owner the target does not hold, as a create would.
+func TestImportAgentDryRunRefusesAnOwnerTheTargetLacks(t *testing.T) {
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil)
+
+	resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{Content: ownedAgentYAML, DryRun: true})
+
+	require.Nil(t, svcErr)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, agent.ErrorOwnerNotFound.Code, resp.Results[0].Code)
+	assert.Empty(t, agentSvc.created)
+}
+
+// An owner counts as held only once the request has written it, as the real import would find it: an
+// agent written earlier in the request owns the next, and a user the request writes after its agents
+// does not, since agents are written first.
+func TestImportAgentDryRunCountsOnlyOwnersWrittenBefore(t *testing.T) {
+	for _, tc := range []struct {
+		name, content, status string
+	}{
+		{
+			name:    "a user written after the agent",
+			content: "resource_type: user\nid: user-1\ntype: person\nouId: root\n---\n" + ownedAgentYAML,
+			status:  statusFailed,
+		},
+		{
+			name: "an agent written before it",
+			content: strings.Replace(agentYAML, "agent-1", "user-1", 1) + "---\n" +
+				strings.Replace(ownedAgentYAML, "agent-1", "agent-2", 1),
+			status: statusSuccess,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
+			svc := newImportService(
+				nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil)
+
+			resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{
+				Content: tc.content, DryRun: true, Options: &ImportOptions{ContinueOnError: boolPtr(true)}})
+
+			require.Nil(t, svcErr)
+			owned := resp.Results[0]
+			for _, result := range resp.Results {
+				if result.ResourceType == resourceTypeAgent && result.ResourceID != "user-1" {
+					owned = result
+				}
+			}
+			assert.Equal(t, tc.status, owned.Status)
+		})
+	}
+}
+
+// Two agents of one request asking for the same client ID are refused as the real import refuses the
+// second, although the target holds neither.
+func TestImportAgentDryRunRefusesAClientIDTheRequestTookAlready(t *testing.T) {
+	agentSvc := &fakeAgentService{
+		existing: map[string]*agentmodel.AgentGetResponse{}, owners: map[string]bool{"user-1": true}}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil)
+	content := ownedAgentYAML + "---\n" + strings.Replace(ownedAgentYAML, "agent-1", "agent-2", 1)
+
+	resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content, DryRun: true, Options: &ImportOptions{ContinueOnError: boolPtr(true)}})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 2)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, statusFailed, resp.Results[1].Status)
+	assert.Equal(t, agent.ErrorAgentAlreadyExistsWithClientID.Code, resp.Results[1].Code)
+}
+
+// A dry run refuses a client ID another entity holds, and leaves an agent its own.
+func TestImportAgentDryRunRefusesAClientIDAnotherHolds(t *testing.T) {
+	for _, tc := range []struct {
+		name, holder, status string
+	}{
+		{name: "held by another", holder: "agent-2", status: statusFailed},
+		{name: "held by the agent", holder: "agent-1", status: statusSuccess},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			agentSvc := &fakeAgentService{
+				existing:  map[string]*agentmodel.AgentGetResponse{"agent-1": {ID: "agent-1", Owner: "user-1"}},
+				clientIDs: map[string]string{"client-1": tc.holder},
+			}
+			svc := newImportService(
+				nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil)
+
+			resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{
+				Content: ownedAgentYAML, DryRun: true, Options: &ImportOptions{Upsert: boolPtr(true)}})
+
+			require.Nil(t, svcErr)
+			assert.Equal(t, tc.status, resp.Results[0].Status)
+			assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+			// An update that keeps the owner does not check it.
+			assert.Empty(t, agentSvc.ownerChecks)
+			assert.Empty(t, agentSvc.updated)
+		})
+	}
 }

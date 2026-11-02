@@ -61,6 +61,41 @@ func (s *importService) resolveImportOUHandle(
 }
 
 // documentState returns a document's top-level state and whether it has a non-empty one.
+type writtenKey struct{}
+
+// written is what a request has written so far, in the order it writes: the users and agents, and the
+// client IDs its agents took. A dry run checks a document against it as the real import would find it.
+type written struct {
+	identities map[string]bool
+	clientIDs  map[string]string
+}
+
+// withWritten starts the record of what a request writes.
+func withWritten(ctx context.Context) context.Context {
+	return context.WithValue(ctx, writtenKey{}, &written{identities: map[string]bool{}, clientIDs: map[string]string{}})
+}
+
+// writtenOf returns the record on ctx, or an empty one.
+func writtenOf(ctx context.Context) *written {
+	if record, ok := ctx.Value(writtenKey{}).(*written); ok {
+		return record
+	}
+	return &written{identities: map[string]bool{}, clientIDs: map[string]string{}}
+}
+
+// markWritten records a user or agent the request has written.
+func markWritten(ctx context.Context, doc parsedDocument) {
+	if doc.ResourceType != resourceTypeUser && doc.ResourceType != resourceTypeAgent {
+		return
+	}
+	var head struct {
+		ID string `yaml:"id"`
+	}
+	if err := doc.Node.Decode(&head); err == nil && head.ID != "" {
+		writtenOf(ctx).identities[head.ID] = true
+	}
+}
+
 func documentState(doc parsedDocument) (string, bool) {
 	for i := 0; i+1 < len(doc.Node.Content); i += 2 {
 		if doc.Node.Content[i].Value != "state" {
@@ -1297,9 +1332,14 @@ func (s *importService) importAgent(
 
 	if dryRun {
 		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.agentService.GetAgent(ctx, req.ID, false)
+			existing, svcErr := s.agentService.GetAgent(ctx, req.ID, false)
 			if svcErr == nil {
-				return successOutcome(resourceTypeAgent, req.ID, "", operationUpdate)
+				// An update checks the owner only when it changes one.
+				owner := req.Owner
+				if existing != nil && owner == existing.Owner {
+					owner = ""
+				}
+				return s.checkAgentWrite(ctx, req.ID, owner, req.ID, operationUpdate, &req)
 			}
 
 			if !isNotFoundServiceError(svcErr) {
@@ -1307,7 +1347,7 @@ func (s *importService) importAgent(
 			}
 		}
 
-		return successOutcome(resourceTypeAgent, req.ID, "", operationCreate)
+		return s.checkAgentWrite(ctx, req.ID, req.Owner, "", operationCreate, &req)
 	}
 
 	if options.IsUpsertEnabled() && req.ID != "" {
@@ -1330,6 +1370,37 @@ func (s *importService) importAgent(
 		return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationCreate, svcErr)
 	}
 	return successOutcome(resourceTypeAgent, created.ID, "", operationCreate)
+}
+
+// checkAgentWrite refuses, for a dry run, what a write of the agent would be refused for that the
+// target and the request decide: an owner neither holds, and a client ID another entity holds. An
+// owner counts as held when the request has written it already, as the real import would have; one it
+// writes later does not, since the agent is written first. A client ID another agent of the request
+// took is refused as the real import would refuse it.
+func (s *importService) checkAgentWrite(
+	ctx context.Context, id, owner, excludeID, operation string, req *agentmodel.AgentRequestWithID,
+) ImportItemOutcome {
+	record := writtenOf(ctx)
+	if owner != "" && !record.identities[owner] {
+		if svcErr := s.agentService.CheckOwner(ctx, owner); svcErr != nil {
+			return serviceErrorOutcome(resourceTypeAgent, id, "", operation, svcErr)
+		}
+	}
+	clientID := ""
+	if oauth := getAgentOAuthConfigForImport(req); oauth != nil {
+		clientID = oauth.ClientID
+		if svcErr := s.agentService.CheckClientID(ctx, clientID, excludeID); svcErr != nil {
+			return serviceErrorOutcome(resourceTypeAgent, id, "", operation, svcErr)
+		}
+		if holder, taken := record.clientIDs[clientID]; taken && clientID != "" && holder != id {
+			return serviceErrorOutcome(resourceTypeAgent, id, "", operation,
+				&agent.ErrorAgentAlreadyExistsWithClientID)
+		}
+	}
+	if clientID != "" {
+		record.clientIDs[clientID] = id
+	}
+	return successOutcome(resourceTypeAgent, id, "", operation)
 }
 
 func getAgentOAuthConfigForImport(req *agentmodel.AgentRequestWithID) *providers.OAuthConfigWithSecret {
@@ -1435,7 +1506,18 @@ func serviceErrorOutcome(
 		Status:       statusFailed,
 		Code:         svcErr.Code,
 		Message:      svcErr.Error.DefaultValue,
+		Description:  describeServiceError(svcErr),
 	}
+}
+
+// describeServiceError is a refusal's description with its parameters filled in, or empty when it says no
+// more than the refusal's message.
+func describeServiceError(svcErr *tidcommon.ServiceError) string {
+	description := svcErr.ErrorDescription.String()
+	if description == svcErr.Error.String() {
+		return ""
+	}
+	return description
 }
 
 func successOutcome(resourceType, id, name, operation string) ImportItemOutcome {

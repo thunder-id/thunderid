@@ -106,6 +106,59 @@ func (_c *FlowValidatorInterfaceMock_ValidateFlowDefinition_Call) RunAndReturn(r
 	return _c
 }
 
+// ValidateFlowShape provides a mock function for the type FlowValidatorInterfaceMock
+func (_mock *FlowValidatorInterfaceMock) ValidateFlowShape(flowDef *FlowDefinition) *common.ServiceError {
+	ret := _mock.Called(flowDef)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateFlowShape")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(*FlowDefinition) *common.ServiceError); ok {
+		r0 = returnFunc(flowDef)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// FlowValidatorInterfaceMock_ValidateFlowShape_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateFlowShape'
+type FlowValidatorInterfaceMock_ValidateFlowShape_Call struct {
+	*mock.Call
+}
+
+// ValidateFlowShape is a helper method to define mock.On call
+//   - flowDef *FlowDefinition
+func (_e *FlowValidatorInterfaceMock_Expecter) ValidateFlowShape(flowDef any) *FlowValidatorInterfaceMock_ValidateFlowShape_Call {
+	return &FlowValidatorInterfaceMock_ValidateFlowShape_Call{Call: _e.mock.On("ValidateFlowShape", flowDef)}
+}
+
+func (_c *FlowValidatorInterfaceMock_ValidateFlowShape_Call) Run(run func(flowDef *FlowDefinition)) *FlowValidatorInterfaceMock_ValidateFlowShape_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 *FlowDefinition
+		if args[0] != nil {
+			arg0 = args[0].(*FlowDefinition)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowValidatorInterfaceMock_ValidateFlowShape_Call) Return(serviceError *common.ServiceError) *FlowValidatorInterfaceMock_ValidateFlowShape_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *FlowValidatorInterfaceMock_ValidateFlowShape_Call) RunAndReturn(run func(flowDef *FlowDefinition) *common.ServiceError) *FlowValidatorInterfaceMock_ValidateFlowShape_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ValidateSystemFlowDefinition provides a mock function for the type FlowValidatorInterfaceMock
 func (_mock *FlowValidatorInterfaceMock) ValidateSystemFlowDefinition(ctx context.Context, flowDef *FlowDefinition) *common.ServiceError {
 	ret := _mock.Called(ctx, flowDef)

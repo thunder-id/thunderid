@@ -3192,3 +3192,87 @@ func (s *ValidatorTestSuite) TestValidateTaskExecutionNode_ChecksExecutorInputDe
 	node.Executor.Inputs[0].DefaultValue = "en-US"
 	s.Nil(s.v.validateTaskExecutionNode(node, index))
 }
+
+func (s *ValidatorTestSuite) TestValidateFlowShape_ValidWithoutLookups() {
+	s.mockExecutorRegistry.EXPECT().IsRegistered("test-executor").Return(true)
+	s.mockExecutorRegistry.EXPECT().GetExecutorMeta("test-executor").Return(nil, nil)
+
+	s.Nil(s.v.ValidateFlowShape(minimalValidFlow()))
+}
+
+// The shape check leaves an extension step's connection, which another resource provides, to the write.
+func (s *ValidatorTestSuite) TestValidateFlowShape_LeavesTheConnectionLookupOut() {
+	s.expectExtensionMeta()
+
+	s.Nil(s.v.ValidateFlowShape(extensionFlow(map[string]interface{}{
+		common.NodePropertyConnectionID:    "conn-gone",
+		common.NodePropertyInputKeys:       []interface{}{"username"},
+		common.NodePropertyRuntimeDataKeys: []interface{}{"extension.risk_check.riskScore"},
+		common.NodePropertyResponseKeys:    "riskScore, challengeId",
+		common.NodePropertyMaxAttempts:     float64(20),
+	})))
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowShape_RefusesAnUnsupportedProperty() {
+	s.mockExecutorRegistry.EXPECT().IsRegistered("test-executor").Return(true)
+	s.mockExecutorRegistry.EXPECT().GetExecutorMeta("test-executor").Return(&providers.ExecutorMeta{
+		SupportedProperties: []providers.ExecutorSupportedProperties{{Property: "timeout"}},
+	}, nil)
+	fd := minimalValidFlow()
+	fd.Nodes[1].Properties = map[string]interface{}{"mode": "agent"}
+
+	err := s.v.ValidateFlowShape(fd)
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowShape_RefusesMissingMetadata() {
+	fd := minimalValidFlow()
+	fd.Handle = ""
+
+	err := s.v.ValidateFlowShape(fd)
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorMissingFlowHandle.Code, err.Code)
+}
+
+// The shape check runs the variable checks that read the flow alone: a VARIABLES node needs an
+// organization unit resolver before it.
+func (s *ValidatorTestSuite) TestValidateFlowShape_RefusesVariablesWithoutAResolver() {
+	s.mockExecutorRegistry.EXPECT().IsRegistered("test-executor").Return(true).Maybe()
+	s.mockExecutorRegistry.EXPECT().GetExecutorMeta("test-executor").Return(nil, nil).Maybe()
+	fd := minimalValidFlow()
+	fd.Nodes[0].OnSuccess = "vars"
+	fd.Nodes = append(fd.Nodes, variablesNode("vars", "task", booleanVariable("allowSignup")))
+
+	err := s.v.ValidateFlowShape(fd)
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidFlowData.Code, err.Code)
+	s.Contains(err.ErrorDescription.Params["reason"], "OUResolverExecutor")
+}
+
+// The shape check refuses a prompt for an input a step holds constant, as the write does.
+func (s *ValidatorTestSuite) TestValidateFlowShape_RefusesAPromptedConstantInput() {
+	s.mockExecutorRegistry.EXPECT().IsRegistered("test-executor").Return(true).Maybe()
+	s.mockExecutorRegistry.EXPECT().GetExecutorMeta("test-executor").Return(nil, nil).Maybe()
+	fd := minimalValidFlow()
+	fd.Nodes[0].OnSuccess = "prompt"
+	fd.Nodes[1].Executor.Inputs = []providers.InputDefinition{
+		{Type: providers.InputTypeText, Identifier: "faculty", DefaultValue: "Engineering", Constant: true},
+	}
+	fd.Nodes = append(fd.Nodes, providers.NodeDefinition{
+		ID: "prompt", Type: string(common.NodeTypePrompt),
+		Prompts: []providers.PromptDefinition{{
+			Inputs: []providers.InputDefinition{{Type: providers.InputTypeText, Identifier: "faculty"}},
+			Action: &providers.ActionDefinition{Ref: "submit", NextNode: "task"},
+		}},
+	})
+
+	err := s.v.ValidateFlowShape(fd)
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidInputConfig.Code, err.Code)
+	s.Equal("error.flowmgtservice.prompt_input_held_constant_description", err.ErrorDescription.Key)
+}

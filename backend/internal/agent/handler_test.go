@@ -122,6 +122,14 @@ func (s *InlineStubAgentService) ValidateAgent(
 	return "", "", inboundmodel.InboundClient{}, nil
 }
 
+func (s *InlineStubAgentService) CheckOwner(ctx context.Context, ownerID string) *tidcommon.ServiceError {
+	return nil
+}
+
+func (s *InlineStubAgentService) CheckClientID(ctx context.Context, clientID, agentID string) *tidcommon.ServiceError {
+	return nil
+}
+
 func (s *InlineStubAgentService) GetResourceDependencies(
 	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
 	return nil, nil

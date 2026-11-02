@@ -57,6 +57,11 @@ type AgentServiceInterface interface {
 		*model.AgentRoleListResponse, *tidcommon.ServiceError)
 	ValidateAgent(ctx context.Context, agent *providers.Agent, excludeID string) (
 		clientID, clientSecret string, client inboundmodel.InboundClient, svcErr *tidcommon.ServiceError)
+	// CheckOwner refuses an owner that names no entity, as a create or an update naming it would.
+	CheckOwner(ctx context.Context, ownerID string) *tidcommon.ServiceError
+	// CheckClientID refuses a client ID another entity holds, as a create or an update of the agent with
+	// the given id would; agentID is empty for a create.
+	CheckClientID(ctx context.Context, clientID, agentID string) *tidcommon.ServiceError
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	SetDependencyRegistry(r resourcedependency.Registry)
@@ -1081,6 +1086,26 @@ func (s *agentService) resolveUpdateOwner(
 		}
 	}
 	return owner, nil
+}
+
+// CheckOwner refuses an owner that names no entity.
+func (s *agentService) CheckOwner(ctx context.Context, ownerID string) *tidcommon.ServiceError {
+	return s.validateOwnerExists(ctx, ownerID)
+}
+
+// CheckClientID refuses a client ID an entity other than the agent holds.
+func (s *agentService) CheckClientID(ctx context.Context, clientID, agentID string) *tidcommon.ServiceError {
+	if clientID == "" {
+		return nil
+	}
+	taken, svcErr := s.isClientIDTaken(ctx, clientID, agentID)
+	if svcErr != nil {
+		return svcErr
+	}
+	if taken {
+		return &ErrorAgentAlreadyExistsWithClientID
+	}
+	return nil
 }
 
 // validateOwnerExists returns an error when the given owner ID does not resolve to an existing entity.

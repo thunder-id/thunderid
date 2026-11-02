@@ -41,6 +41,9 @@ type FlowValidatorInterface interface {
 	// ValidateSystemFlowDefinition validates a system flow definition, which must be of the SYSTEM type
 	// and must not wait for input.
 	ValidateSystemFlowDefinition(ctx context.Context, flowDef *FlowDefinition) *tidcommon.ServiceError
+	// ValidateFlowShape runs the checks that read nothing but the definition itself: its metadata,
+	// structure, nodes and interceptors. It leaves out those that look up other resources.
+	ValidateFlowShape(flowDef *FlowDefinition) *tidcommon.ServiceError
 }
 
 // httpConnectionProvider checks that an extension step's HTTP connection exists.
@@ -92,6 +95,30 @@ func (v *flowValidator) ValidateFlowDefinition(
 		return err
 	}
 	return v.validateFlow(ctx, flowDef)
+}
+
+// ValidateFlowShape runs the validation scopes that read nothing but the flow definition.
+func (v *flowValidator) ValidateFlowShape(flowDef *FlowDefinition) *tidcommon.ServiceError {
+	if err := v.validateMetadata(flowDef, isValidFlowType); err != nil {
+		return err
+	}
+	nodeIndex, err := v.validateStructure(flowDef.Nodes)
+	if err != nil {
+		return err
+	}
+	if err := v.validateFlowTypeBasedConstraints(flowDef.FlowType, flowDef.Nodes); err != nil {
+		return err
+	}
+	if err := v.validateNodes(flowDef.Nodes, nodeIndex, flowDef.FlowType); err != nil {
+		return err
+	}
+	if err := v.validateVariableDefinitions(flowDef.Nodes); err != nil {
+		return err
+	}
+	if err := v.validateConstantInputsNotPrompted(flowDef.Nodes); err != nil {
+		return err
+	}
+	return v.validateInterceptors(flowDef.Interceptors, nodeIndex)
 }
 
 // ValidateSystemFlowDefinition runs all validation scopes on a system flow definition.
@@ -2009,7 +2036,25 @@ var identityProviderVendors = []string{"google", "github", "oidc", "oauth"}
 func (v *flowValidator) validateVariables(
 	ctx context.Context, flowDef *FlowDefinition,
 ) *tidcommon.ServiceError {
-	nodes := flowDef.Nodes
+	if err := v.validateVariableDefinitions(flowDef.Nodes); err != nil {
+		return err
+	}
+	for i := range flowDef.Nodes {
+		if flowDef.Nodes[i].Type != string(common.NodeTypeVariables) {
+			continue
+		}
+		for _, def := range flowDef.Nodes[i].Inputs {
+			if svcErr := v.validateConnectionVariable(ctx, def); svcErr != nil {
+				return svcErr
+			}
+		}
+	}
+	return nil
+}
+
+// validateVariableDefinitions runs the checks of validateVariables that read nothing but the flow's nodes,
+// leaving out whether the default of a connection variable is a connection of the kind it takes.
+func (v *flowValidator) validateVariableDefinitions(nodes []providers.NodeDefinition) *tidcommon.ServiceError {
 	declaredAt := map[string]string{}
 	var firstVariablesNodeID string
 	for i := range nodes {
@@ -2032,9 +2077,6 @@ func (v *flowValidator) validateVariables(
 					"variable %q is already declared on node '%s'", def.Identifier, other))
 			}
 			declaredAt[def.Identifier] = node.ID
-			if svcErr := v.validateConnectionVariable(ctx, def); svcErr != nil {
-				return svcErr
-			}
 		}
 	}
 	if firstVariablesNodeID != "" && len(declaredAt) == 0 {

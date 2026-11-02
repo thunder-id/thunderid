@@ -452,6 +452,12 @@ components:
             Contains error details when status is `failed`. Successful user, agent and application
             imports include a warning here when a non-empty top-level `state` was ignored.
           example: "Resource created successfully"
+        description:
+          type: string
+          description: >
+            What in the document was refused, when status is `failed` and the refusal says more than its
+            message, such as the node and property of a flow.
+          example: "Node 'provisioning': executor 'ProvisioningExecutor' does not support property 'mode'"
 
     DeleteResourceRequest:
       type: object

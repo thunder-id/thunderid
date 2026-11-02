@@ -126,6 +126,7 @@ type flowAdapter interface {
 	) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError)
 	DeleteFlow(ctx context.Context, flowID string) *tidcommon.ServiceError
 	ResolveFlowOU(ctx context.Context, flowDef *flowmgt.FlowDefinition) *tidcommon.ServiceError
+	ValidateFlowShape(flowDef *flowmgt.FlowDefinition) *tidcommon.ServiceError
 	ValidateSharingPolicies(
 		ctx context.Context, flowID string, policies []sharing.PolicyRequest) *tidcommon.ServiceError
 	SetVariables(ctx context.Context, flowID, ouID string, req flowmgt.SetVariablesRequest) (
@@ -270,6 +271,8 @@ type agentAdapter interface {
 	UpdateAgent(ctx context.Context, agentID string, req *agentmodel.UpdateAgentRequest) (
 		*agentmodel.AgentCompleteResponse, *tidcommon.ServiceError)
 	DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError
+	CheckOwner(ctx context.Context, ownerID string) *tidcommon.ServiceError
+	CheckClientID(ctx context.Context, clientID, agentID string) *tidcommon.ServiceError
 }
 
 type presentationDefinitionAdapter interface {
@@ -461,6 +464,7 @@ func (s *importService) ImportResources(
 	var mandating []userSharingReplay
 
 	orderedDocs := orderDocumentsByDependencies(docs)
+	ctx = withWritten(ctx)
 
 	for _, doc := range orderedDocs {
 		originalFlowID := ""
@@ -498,6 +502,7 @@ func (s *importService) ImportResources(
 
 		if outcome.Status == statusSuccess {
 			imported++
+			markWritten(ctx, doc)
 		} else {
 			failed++
 			if !options.IsContinueOnErrorEnabled() {
@@ -1161,6 +1166,11 @@ func (s *importService) importFlowDefinition(
 	}
 
 	if dryRun {
+		// What the definition holds is checked as a write would check it. The checks that look up other
+		// resources are left to the write, as the same request may be what brings those resources.
+		if svcErr := s.flowService.ValidateFlowShape(flowDef); svcErr != nil {
+			return serviceErrorOutcome(resourceTypeFlow, req.ID, req.Name, operationCreate, svcErr)
+		}
 		if options.IsUpsertEnabled() && req.ID != "" {
 			existing, svcErr := s.flowService.GetFlow(ctx, req.ID)
 			if svcErr == nil {
