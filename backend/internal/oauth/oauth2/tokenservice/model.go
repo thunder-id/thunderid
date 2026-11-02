@@ -102,6 +102,10 @@ type RefreshTokenBuildContext struct {
 	ExpiresAt int64
 	// AuthorizationDetails, when set, is carried on the refresh token for the access tokens minted on refresh.
 	AuthorizationDetails []providers.AuthorizationDetail
+	// SubjectEntityID is the resource ID of the entity the token's subject refers to, when the grant
+	// already knows it. Left empty the subject claim is used, which may be a mapped attribute that names
+	// no entity. The builder checks the entity with the identity governance authority before issuing.
+	SubjectEntityID string
 }
 
 // IDJAGBuildContext contains all the information needed to build an ID-JAG (Identity Assertion
@@ -131,6 +135,10 @@ type IDTokenBuildContext struct {
 	// SessionID, when set, is emitted as the `sid` claim naming the SSO session this authentication
 	// belongs to. Empty when no session backs the grant, in which case the claim is omitted.
 	SessionID string
+	// SubjectEntityID is the resource ID of the entity the token's subject refers to, when the grant
+	// already knows it. Left empty the subject claim is used, which may be a mapped attribute that names
+	// no entity. The builder checks the entity with the identity governance authority before issuing.
+	SubjectEntityID string
 }
 
 const (
@@ -235,6 +243,13 @@ type SubjectTokenClaims struct {
 	// TokenFamilyID is the subject token's token family id (tfid), if any. Token exchange may inherit
 	// it onto the exchanged token so the two share a revocation family.
 	TokenFamilyID string
+	// AttributeCacheID is the attribute cache entry (aci) a self-issued token references, which names
+	// the token's subject when its sub is a mapped attribute rather than a resource ID. Empty for
+	// externally-issued tokens.
+	AttributeCacheID string
+	// EntityID is the resource ID of the entity Sub refers to, set by the grant handler once it has
+	// resolved Sub. Left empty the token builder resolves Sub itself.
+	EntityID string
 	// Authorization is server-resolved context, not a claim from the token itself — see
 	// MappedAuthorization.
 	Authorization MappedAuthorization

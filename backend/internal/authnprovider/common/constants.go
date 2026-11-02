@@ -43,6 +43,14 @@ const SystemAttrCredentialUpdatedAt = "credentialUpdatedAt" // #nosec G101 -- at
 //	{"linkedIds": {"<idpId>": {"<sub>": {}}}}
 const SystemAttrLinkedIDs = "linkedIds"
 
+// SystemAttrValidUntil is the server-owned entity system-attribute key holding the instant the
+// entity's lifespan ends, as a UTC RFC 3339 timestamp. Only the service that owns the
+// entity type writes it.
+const SystemAttrValidUntil = "validUntil"
+
+// UnboundedValidUntil is the stored value of a lifespan that never ends.
+const UnboundedValidUntil = "9999-12-31T23:59:59Z"
+
 // MaxAccountLinkingFilters bounds the lookup filters one federated sign-in's account linking may
 // build, and so the provider lookups it runs. Each linking attribute multiplies the count by the
 // local attributes it matches on.

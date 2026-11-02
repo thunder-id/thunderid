@@ -41,7 +41,6 @@ type refreshTokenGrantHandler struct {
 	actorProvider    providers.ActorProvider
 	refreshRevoker   revocation.RefreshTokenRevokerInterface
 	criteriaRevoker  revocation.CriteriaRevokerInterface
-	governance       providers.IdentityGovernanceProvider
 	authzDetails     providers.AuthorizationDetailProvider
 }
 
@@ -56,7 +55,6 @@ func newRefreshTokenGrantHandler(
 	actorProvider providers.ActorProvider,
 	refreshRevoker revocation.RefreshTokenRevokerInterface,
 	criteriaRevoker revocation.CriteriaRevokerInterface,
-	governance providers.IdentityGovernanceProvider,
 	authzDetails providers.AuthorizationDetailProvider,
 	cfg oauthconfig.Config,
 ) RefreshTokenGrantHandlerInterface {
@@ -71,7 +69,6 @@ func newRefreshTokenGrantHandler(
 		actorProvider:    actorProvider,
 		refreshRevoker:   refreshRevoker,
 		criteriaRevoker:  criteriaRevoker,
-		governance:       governance,
 		authzDetails:     authzDetails,
 	}
 }
@@ -190,9 +187,6 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	if errResp != nil {
 		return nil, errResp
 	}
-	if errResp := h.verifySubjectAdmitted(ctx, subjectEntity, logger); errResp != nil {
-		return nil, errResp
-	}
 
 	newTokenScopes, scopeErr := h.validateAndApplyScopes(ctx, tokenRequest.Scope, refreshTokenClaims.Scopes, logger)
 	if scopeErr != nil {
@@ -303,11 +297,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	}
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, accessTokenCtx)
 	if err != nil {
-		logger.Error(ctx, "Failed to generate access token", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate access token",
-		}
+		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate access token")
 	}
 
 	// Prepare the token response
@@ -320,20 +310,17 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	// Generate ID token if 'openid' scope is present
 	if slices.Contains(newTokenScopes, constants.ScopeOpenID) {
 		idToken, idErr := h.tokenBuilder.BuildIDToken(ctx, &tokenservice.IDTokenBuildContext{
-			Subject:        refreshTokenClaims.Sub,
-			Audience:       tokenRequest.ClientID,
-			Scopes:         newTokenScopes,
-			UserAttributes: attrs,
-			OAuthApp:       oauthApp,
-			ClaimsRequest:  refreshTokenClaims.ClaimsRequest,
-			SessionID:      refreshTokenClaims.SessionID,
+			Subject:         refreshTokenClaims.Sub,
+			Audience:        tokenRequest.ClientID,
+			Scopes:          newTokenScopes,
+			UserAttributes:  attrs,
+			OAuthApp:        oauthApp,
+			ClaimsRequest:   refreshTokenClaims.ClaimsRequest,
+			SessionID:       refreshTokenClaims.SessionID,
+			SubjectEntityID: accessToken.SubjectID,
 		})
 		if idErr != nil {
-			logger.Error(ctx, "Failed to generate ID token", log.Error(idErr))
-			return nil, &model.ErrorResponse{
-				Error:            constants.ErrorServerError,
-				ErrorDescription: "Failed to generate token",
-			}
+			return nil, tokenBuildErrorResponse(ctx, logger, idErr, "Failed to generate token")
 		}
 		tokenResponse.IDToken = *idToken
 	}
@@ -443,6 +430,7 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 		TokenFamilyID:        tokenFamilyID,
 		SessionID:            tokenResponse.SessionID,
 		AuthorizationDetails: tokenResponse.RefreshableAuthorizationDetails,
+		SubjectEntityID:      tokenResponse.AccessToken.SubjectID,
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		tokenCtx.ActorSub = oauthApp.ID
@@ -451,10 +439,8 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 	// Build refresh token using token builder
 	refreshToken, err := h.tokenBuilder.BuildRefreshToken(ctx, tokenCtx)
 	if err != nil {
-		return &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate refresh token",
-		}
+		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RefreshTokenGrantHandler"))
+		return tokenBuildErrorResponse(ctx, logger, err, "Failed to generate refresh token")
 	}
 
 	tokenResponse.RefreshToken = *refreshToken
@@ -548,32 +534,6 @@ func (h *refreshTokenGrantHandler) verifyCredentialsUnchanged(ctx context.Contex
 		}
 	}
 	return subjectEntity, nil
-}
-
-// verifySubjectAdmitted refuses a refresh for a suspended subject. Issuance admits an automatic
-// lock, so a locked account keeps refreshing. A nil entity means sub did not resolve, which only a
-// provider-set subject mapping produces; that is not checked.
-func (h *refreshTokenGrantHandler) verifySubjectAdmitted(ctx context.Context,
-	subjectEntity *providers.Entity, logger *log.Logger) *model.ErrorResponse {
-	if h.governance == nil || subjectEntity == nil {
-		return nil
-	}
-	decision, svcErr := h.governance.EvaluateAccess(ctx, subjectEntity.ID, providers.AccessPlaneIssuance, "")
-	if svcErr != nil {
-		// The authority has logged the cause.
-		return &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to verify the refresh token subject",
-		}
-	}
-	if !decision.Admitted {
-		logger.Debug(ctx, "Refusing a refresh for a held subject")
-		return &model.ErrorResponse{
-			Error:            constants.ErrorInvalidGrant,
-			ErrorDescription: "Invalid refresh token",
-		}
-	}
-	return nil
 }
 
 // setRefreshSubjectIdentity records which entity the refreshed token is for, so issuance reports the

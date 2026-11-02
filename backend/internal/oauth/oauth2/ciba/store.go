@@ -21,8 +21,8 @@ const cibaStateField = "State"
 type CIBARequestStoreInterface interface {
 	Add(ctx context.Context, request *CIBAAuthRequest) error
 	GetByID(ctx context.Context, authReqID string) (*CIBAAuthRequest, error)
-	MarkAuthenticated(ctx context.Context, authReqID, userID, authorizedScopes, attributeCacheID,
-		completedACR, sessionID string, authTime time.Time,
+	MarkAuthenticated(ctx context.Context, authReqID, userID, subjectID, subjectCategory, authorizedScopes,
+		attributeCacheID, completedACR, sessionID string, authTime time.Time,
 		authorizationDetails []providers.AuthorizationDetail) error
 	MarkConsumed(ctx context.Context, authReqID string) (bool, error)
 	UpdateLastPolled(ctx context.Context, authReqID string, polledAt time.Time) error
@@ -80,10 +80,11 @@ func (s *cibaStore) GetByID(ctx context.Context, authReqID string) (*CIBAAuthReq
 }
 
 // MarkAuthenticated transitions a pending request to authenticated and records the user ID (from
-// the assertion sub claim), authorized scopes, attribute cache ID, completed ACR, SSO session id,
-// authentication time, approved authorization details, and the time of this transition. The
-// compare-and-swap on the State field prevents a double-callback race condition.
-func (s *cibaStore) MarkAuthenticated(ctx context.Context, authReqID, userID,
+// the assertion sub claim), the authenticated entity's resource ID and category, authorized scopes,
+// attribute cache ID, completed ACR, SSO session id, authentication time, approved authorization
+// details, and the time of this transition. The compare-and-swap on the State field prevents a
+// double-callback race condition.
+func (s *cibaStore) MarkAuthenticated(ctx context.Context, authReqID, userID, subjectID, subjectCategory,
 	authorizedScopes, attributeCacheID, completedACR, sessionID string, authTime time.Time,
 	authorizationDetails []providers.AuthorizationDetail) error {
 	record, err := s.GetByID(ctx, authReqID)
@@ -96,6 +97,8 @@ func (s *cibaStore) MarkAuthenticated(ctx context.Context, authReqID, userID,
 
 	record.State = CIBAStateAuthenticated
 	record.UserID = userID
+	record.SubjectID = subjectID
+	record.SubjectCategory = subjectCategory
 	record.AuthorizedScopes = authorizedScopes
 	record.AttributeCacheID = attributeCacheID
 	record.CompletedACR = completedACR

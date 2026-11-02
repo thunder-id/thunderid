@@ -329,3 +329,60 @@ func (suite *NoOpTransactionerTestSuite) TestTransact_ContextPassthrough() {
 
 	suite.NoError(err)
 }
+
+func (suite *TransactionerTestSuite) TestOnTransactionEnd_RunsAfterCommit() {
+	suite.mock.ExpectBegin()
+	suite.mock.ExpectCommit()
+
+	ran := false
+	err := suite.transactioner.Transact(context.Background(), func(txCtx context.Context) error {
+		OnTransactionEnd(txCtx, func() { ran = true })
+		suite.False(ran, "an end hook does not run before the transaction ends")
+		return nil
+	})
+
+	suite.NoError(err)
+	suite.True(ran)
+	suite.NoError(suite.mock.ExpectationsWereMet())
+}
+
+func (suite *TransactionerTestSuite) TestOnTransactionEnd_RunsAfterRollback() {
+	suite.mock.ExpectBegin()
+	suite.mock.ExpectRollback()
+
+	ran := false
+	err := suite.transactioner.Transact(context.Background(), func(txCtx context.Context) error {
+		OnTransactionEnd(txCtx, func() { ran = true })
+		return errors.New("business logic error")
+	})
+
+	suite.Error(err)
+	suite.True(ran)
+	suite.NoError(suite.mock.ExpectationsWereMet())
+}
+
+// A hook registered in a nested transaction on the same database runs once the outer one ends.
+func (suite *TransactionerTestSuite) TestOnTransactionEnd_NestedRunsAfterTheOuterTransaction() {
+	suite.mock.ExpectBegin()
+	suite.mock.ExpectCommit()
+
+	ran := false
+	err := suite.transactioner.Transact(context.Background(), func(outerCtx context.Context) error {
+		innerErr := suite.transactioner.Transact(outerCtx, func(innerCtx context.Context) error {
+			OnTransactionEnd(innerCtx, func() { ran = true })
+			return nil
+		})
+		suite.False(ran, "the nested call does not end the transaction")
+		return innerErr
+	})
+
+	suite.NoError(err)
+	suite.True(ran)
+	suite.NoError(suite.mock.ExpectationsWereMet())
+}
+
+func (suite *TransactionerTestSuite) TestOnTransactionEnd_DoesNothingOutsideATransaction() {
+	ran := false
+	OnTransactionEnd(context.Background(), func() { ran = true })
+	suite.False(ran)
+}

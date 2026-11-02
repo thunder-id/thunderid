@@ -34,3 +34,18 @@ var ErrorEntityNotFound = tidcommon.ServiceError{
 		DefaultValue: "The requested entity does not exist",
 	},
 }
+
+// ErrorActorLookupNotSupported is returned when the configured entity provider cannot look up
+// entities, so an actor cannot be resolved for a reason other than a failure.
+var ErrorActorLookupNotSupported = tidcommon.ServiceError{
+	Type: tidcommon.ServerErrorType,
+	Code: "ACP-1003",
+	Error: tidcommon.I18nMessage{
+		Key:          "error.actor_lookup_not_supported",
+		DefaultValue: "Actor lookup not supported",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.actor_lookup_not_supported_description",
+		DefaultValue: "The configured entity provider cannot look up entities",
+	},
+}

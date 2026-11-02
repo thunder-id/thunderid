@@ -4977,6 +4977,38 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Descri
 	suite.mockAgentMgtProvider.AssertExpectations(suite.T())
 }
 
+// A collected lifespan end is passed to the agent service, which validates it.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_PassesValidUntil() {
+	suite.expectSchemaForAgentProvisioning()
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+
+	var received *providers.Agent
+	suite.mockAgentMgtProvider.On("CreateAgent", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { received = args.Get(1).(*providers.Agent) }).
+		Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAdministration,
+		UserInputs: map[string]string{
+			"model": "claude", "name": "support-bot", validUntilKey: "2030-01-01T00:00:00Z",
+		},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
+	}
+
+	_, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	require.NotNil(suite.T(), received)
+	require.NotNil(suite.T(), received.ValidUntil)
+	assert.Equal(suite.T(), "2030-01-01T00:00:00Z", *received.ValidUntil)
+}
+
 // The owner carries a check no other step repeats, that it names a user rather than an agent, and
 // that check lives in the resolver. A submitted value must therefore never reach the created agent.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_IgnoresSubmittedOwner() {

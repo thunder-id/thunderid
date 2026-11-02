@@ -753,10 +753,13 @@ type AccessStatusReport struct {
 }
 
 // AccessDecision is the result of an access check. A refusal's Reason names the hold; a refusal that
-// names none answers as a wrong credential.
+// names none answers as a wrong credential. NotAfter, on an admitted decision, is the latest instant a
+// token issued now for the entity may expire: its lifespan end. It is zero when the lifespan does not
+// end.
 type AccessDecision struct {
 	Admitted bool
 	Reason   AccessRefusalReason
+	NotAfter time.Time
 }
 
 // User represents a user in the system. Status is derived at read time and read-only. LastLoginAt is
@@ -792,6 +795,9 @@ type Agent struct {
 	LogoURL     string          `json:"logoUrl,omitempty"`
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
+	// ValidUntil is the RFC 3339 instant the agent's lifespan ends; nil registers an agent that does
+	// not expire.
+	ValidUntil *string `json:"validUntil,omitempty"`
 
 	// Delegated marks an agent that acts on behalf of a user. It selects the OAuth grant types applied
 	// and checked when the agent is created and is not stored.

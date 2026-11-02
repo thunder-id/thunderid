@@ -284,7 +284,11 @@ const (
 	ClaimOUName         string = "ouName"
 	ClaimOUHandle       string = "ouHandle"
 	// ClaimOwner carries an agent's system-attribute owner on its client token.
-	ClaimOwner                  string = "owner"
+	ClaimOwner string = "owner"
+	// ClaimSubValidUntil carries when the subject agent's lifespan ends, its validUntil, on the agent's
+	// client token, in Unix seconds like the other time claims. It is omitted for an agent whose
+	// lifespan does not end.
+	ClaimSubValidUntil          string = "sub_valid_until"
 	ClaimClaimsRequest          string = "claims_req"
 	ClaimClaimsLocales          string = "claims_locales"
 	ClaimCompletedAuthClass     string = "completed_auth_class"
@@ -348,7 +352,8 @@ const (
 // SurfaceableClientSystemClaims is the fixed set of entity system-attribute keys that may be
 // surfaced as client-token claims.
 var SurfaceableClientSystemClaims = map[string]bool{
-	ClaimOwner: true,
+	ClaimOwner:         true,
+	ClaimSubValidUntil: true,
 }
 
 // OIDC subject types.

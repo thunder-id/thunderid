@@ -394,9 +394,9 @@ func (s *cibaService) handleSuccessCallback(ctx context.Context, record *CIBAAut
 		grantedDetails = claims.grantedAuthorizationDetails
 	}
 
-	if markErr := s.store.MarkAuthenticated(ctx, authReqID, claims.userID, authorizedScopes,
-		claims.attributeCacheID, claims.completedACR, claims.sessionID, authTime,
-		grantedDetails); markErr != nil {
+	if markErr := s.store.MarkAuthenticated(ctx, authReqID, claims.userID, claims.subjectID,
+		claims.subjectCategory, authorizedScopes, claims.attributeCacheID, claims.completedACR, claims.sessionID,
+		authTime, grantedDetails); markErr != nil {
 		s.logger.Error(ctx, "Failed to mark CIBA authentication request as authenticated",
 			log.Error(markErr))
 		return &CIBAError{
@@ -723,6 +723,13 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 		userID:           base.UserID,
 		attributeCacheID: base.AttributeCacheID,
 		completedACR:     base.CompletedACR,
+	}
+
+	if v, ok := payload[oauth2const.ClaimSubjectID].(string); ok {
+		claims.subjectID = v
+	}
+	if v, ok := payload[oauth2const.ClaimSubjectType].(string); ok {
+		claims.subjectCategory = v
 	}
 
 	if v, ok := payload[oauth2const.ClaimAuthorizationRequestID]; ok {
