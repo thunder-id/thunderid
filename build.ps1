@@ -162,11 +162,10 @@ $FRONTEND_BASE_DIR = "frontend"
 $GATE_APP_DIST_DIR = "apps/gate"
 $CONSOLE_APP_DIST_DIR = "apps/console"
 $FRONTEND_GATE_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/gate"
-$FRONTEND_CONSOLE_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/console"
-# The console the Control Plane serves, packaged into the same apps/console slot.
+# The console the Control Plane serves, packaged into the apps/console slot.
 $FRONTEND_CONSOLE_CP_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/console-cp"
 # The Data Plane's own admin app (Users, Agents, Groups, Roles). Only the quickstart's managed Data
-# Plane ships it, in place of the full console, in the same apps/console slot.
+# Plane ships it in the apps/console slot.
 $FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/admin-console"
 $SAMPLE_BASE_DIR = "samples"
 $VANILLA_SAMPLE_APP_DIR = Join-Path $SAMPLE_BASE_DIR "apps/vanilla-sample"
@@ -174,17 +173,8 @@ $REACT_SDK_SAMPLE_APP_DIR = Join-Path $SAMPLE_BASE_DIR "apps/react-sdk-sample"
 $REACT_API_SAMPLE_APP_DIR = Join-Path $SAMPLE_BASE_DIR "apps/react-api-based-sample"
 $WAYFINDER_SAMPLE_APP_DIR = Join-Path $SAMPLE_BASE_DIR "apps/wayfinder-sample"
 
-# Quick start declarative bundles staged into the console's welcome feature so they're inlined
-# into the console JS bundle at build time.
-# Add a new bundle as a single line. Name may include "/" for grouping.
-$QUICKSTART_SAMPLE_BUNDLES = @(
-    @{ Name = "wayfinder"; Source = (Join-Path $WAYFINDER_SAMPLE_APP_DIR "thunderid-config") }
-)
-$QUICKSTART_BUNDLE_STAGE_DIR = Join-Path $FRONTEND_CONSOLE_APP_SOURCE_DIR "src/data/sample-bundles"
-
 # Default ports
 $GATE_APP_DEFAULT_PORT = 5190
-$CONSOLE_APP_DEFAULT_PORT = 5191
 $ADMIN_CONSOLE_APP_DEFAULT_PORT = 5192
 $QUICKSTART_AUTH_DP_PORT = 8091
 $QUICKSTART_CP_PORT = 8095
@@ -510,8 +500,6 @@ function Build-Frontend {
     Write-Host "Building frontend apps..."
     Ensure-Pnpm
 
-    Sync-QuickstartBundles
-
     # Install dependencies
     try {
         Write-Host "Installing frontend dependencies..."
@@ -763,7 +751,6 @@ function Prepare-Frontend-For-Packaging {
 
     $package_folder = Join-Path $DIST_DIR $PRODUCT_FOLDER
     New-Item -Path (Join-Path $package_folder $GATE_APP_DIST_DIR) -ItemType Directory -Force | Out-Null
-    New-Item -Path (Join-Path $package_folder $CONSOLE_APP_DIST_DIR) -ItemType Directory -Force | Out-Null
 
     # Copy gate app build output
     if (Test-Path (Join-Path $FRONTEND_GATE_APP_SOURCE_DIR "dist")) {
@@ -773,36 +760,8 @@ function Prepare-Frontend-For-Packaging {
     else {
         Write-Host "Warning: Gate app build output not found at $((Join-Path $FRONTEND_GATE_APP_SOURCE_DIR "dist"))"
     }
-    
-    # Copy console app build output
-    if (Test-Path (Join-Path $FRONTEND_CONSOLE_APP_SOURCE_DIR "dist")) {
-        Write-Host "Copying Console app build output..."
-        Copy-Item -Path (Join-Path $FRONTEND_CONSOLE_APP_SOURCE_DIR "dist\*") -Destination (Join-Path $package_folder $CONSOLE_APP_DIST_DIR) -Recurse -Force
-    }
-    else {
-        Write-Host "Warning: Console app build output not found at $((Join-Path $FRONTEND_CONSOLE_APP_SOURCE_DIR "dist"))"
-    }
 
     Write-Host "================================================================"
-}
-
-function Sync-QuickstartBundles {
-    # Stage Quick start declarative bundles into the console's public dir.
-    Write-Host "Syncing quick start sample bundles to console welcome data dir..."
-    if (Test-Path $QUICKSTART_BUNDLE_STAGE_DIR) {
-        Remove-Item -Path $QUICKSTART_BUNDLE_STAGE_DIR -Recurse -Force
-    }
-    foreach ($bundle in $QUICKSTART_SAMPLE_BUNDLES) {
-        $dest_dir = Join-Path $QUICKSTART_BUNDLE_STAGE_DIR $bundle.Name
-        if (Test-Path $bundle.Source) {
-            Write-Host "  Staging '$($bundle.Name)' from $($bundle.Source)"
-            New-Item -Path $dest_dir -ItemType Directory -Force | Out-Null
-            Copy-Item -Path (Join-Path $bundle.Source "*") -Destination $dest_dir -Recurse -Force
-        }
-        else {
-            Write-Host "  Warning: Quick start bundle source not found at $($bundle.Source) (dest '$($bundle.Name)')"
-        }
-    }
 }
 
 function Package {
@@ -909,8 +868,8 @@ function Prepare-Cp-Frontend-For-Packaging {
     Write-Host "================================================================"
 }
 
-# Prepare-Admin-Console-For-Packaging replaces the full console in the Data Plane folder named by
-# $PackDir with the admin console (Users, Agents, Groups, Roles). Applications, connections, flows
+# Prepare-Admin-Console-For-Packaging copies the admin console into the Data Plane folder named by
+# $PackDir (Users, Agents, Groups, Roles). Applications, connections, flows
 # and roles are authored on a Control Plane, so a Data Plane only needs what manages its own local
 # identity data.
 function Prepare-Admin-Console-For-Packaging {
@@ -922,7 +881,7 @@ function Prepare-Admin-Console-For-Packaging {
         return
     }
 
-    Write-Host "Replacing the Console with the Admin Console in $PackDir..."
+    Write-Host "Copying the Admin Console into $PackDir..."
     $console_dir = Join-Path $PackDir $CONSOLE_APP_DIST_DIR
     Remove-Item -Path $console_dir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -Path $console_dir -ItemType Directory -Force | Out-Null
@@ -2064,7 +2023,7 @@ function Run {
     Write-Host "⚙️  Creating default resources..."
     Write-Host ""
 
-    # Dev-only: seed CORS allowed origins for the Gate and Console apps so they can call
+    # Dev-only: seed CORS allowed origins for the Gate and Admin Console apps so they can call
     # the backend without manual configuration. Regenerated on every run and picked up by
     # the bootstrap one-shot; it is git-ignored and never packaged (see Build).
     $devServerConfig = @"
@@ -2073,7 +2032,6 @@ name: cors
 value:
   allowedOrigins:
     - "https://localhost:$GATE_APP_DEFAULT_PORT"
-    - "https://localhost:$CONSOLE_APP_DEFAULT_PORT"
     - "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT"
 "@
     Set-Content -Path (Join-Path $BACKEND_DIR "bootstrap/03-dev-server-configurations.yaml") -Value $devServerConfig
@@ -2085,9 +2043,9 @@ value:
     $env:ADMIN_PASSWORD = if ($env:ADMIN_PASSWORD) { $env:ADMIN_PASSWORD } else { "admin" }
     Push-Location $BACKEND_DIR
     try {
-        # Both the Console and Admin Console dev servers use the same CONSOLE OAuth2 client, each on
-        # its own origin, so both need a registered redirect URI here.
-        & go run . bootstrap --console-redirect-uris "https://localhost:${CONSOLE_APP_DEFAULT_PORT}/console,https://localhost:${ADMIN_CONSOLE_APP_DEFAULT_PORT}/console"
+        # The Admin Console dev server uses the CONSOLE OAuth2 client, so its origin needs a
+        # registered redirect URI here.
+        & go run . bootstrap --console-redirect-uris "https://localhost:${ADMIN_CONSOLE_APP_DEFAULT_PORT}/console"
         $bootstrapExit = $LASTEXITCODE
     }
     finally {
@@ -2107,7 +2065,6 @@ value:
     Write-Host "  👉 Backend : $BASE_URL"
     Write-Host "  📱 Frontend :"
     Write-Host "      🚪 Gate (Login/Register): https://localhost:${GATE_APP_DEFAULT_PORT}/gate"
-    Write-Host "      🛠️  Console (System Management): https://localhost:${CONSOLE_APP_DEFAULT_PORT}/console"
     Write-Host "      🛠️  Admin Console (Users, Agents, Groups, Roles): https://localhost:${ADMIN_CONSOLE_APP_DEFAULT_PORT}/console"
     Write-Host ""
 
@@ -2208,8 +2165,6 @@ function Run-Frontend {
     Write-Host "Running frontend apps..."
     Ensure-Pnpm
 
-    Sync-QuickstartBundles
-
     # Install dependencies
     try {
         Write-Host "Installing frontend dependencies..."
@@ -2222,7 +2177,7 @@ function Run-Frontend {
         # In dev the apps are served on their own origins, so point them at the backend via
         # THUNDERID_DEV_SERVER_URL (injected into __DEV_SERVER_URL__; applied only in dev builds).
         $env:THUNDERID_DEV_SERVER_URL = $PUBLIC_URL
-        $frontendProcess = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "pnpm", "-r", "--parallel", "--filter", "@thunderid/console", "--filter", "@thunderid/gate", "--filter", "@thunderid/admin-console", "dev" -PassThru -NoNewWindow
+        $frontendProcess = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "pnpm", "-r", "--parallel", "--filter", "@thunderid/gate", "--filter", "@thunderid/admin-console", "dev" -PassThru -NoNewWindow
         $script:FRONTEND_PID = $frontendProcess.Id
     }
     finally {

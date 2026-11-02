@@ -425,7 +425,7 @@ pnpm lint
 
 ### Console App
 
-Complete integration example for `apps/console/src/main.tsx`:
+Complete integration example for `apps/admin-console/src/main.tsx`:
 
 ```tsx
 import * as ReactDOM from 'react-dom/client';

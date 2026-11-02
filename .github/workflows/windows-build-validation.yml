@@ -118,10 +118,6 @@ jobs:
           }
 
       # TODO: Re-enable frontend tests after E2E issues are resolved
-      # - name: 🧪 Run Console Tests
-      #   working-directory: frontend/apps/console
-      #   run: pnpm test:coverage
-
       # - name: 🧪 Run Gate Tests
       #   working-directory: frontend/apps/gate
       #   run: pnpm test:coverage

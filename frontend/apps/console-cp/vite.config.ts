@@ -19,18 +19,14 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 5193;
 const HOST = process.env.HOST ?? 'localhost';
 const BASE_URL = process.env.BASE_URL ?? '/console';
 
-// The control plane console serves the console's static assets (icons, favicons and config.js) until
-// the control plane has a distribution of its own; nothing in them is specific to a plane.
-const PUBLIC_DIR = resolve(currentDir, '../console/public');
+const PUBLIC_DIR = resolve(currentDir, 'public');
 
 // The version is read from the monorepo root, falling back to v0.0.0 when it is missing.
 const rootVersionFile = resolve(currentDir, '../../../version.txt');
 const VERSION = existsSync(rootVersionFile) ? readFileSync(rootVersionFile, 'utf-8').trim() : 'v0.0.0';
 
-// Serves version.txt as the console does, but from this app itself: it is emitted into this app's own
-// build output and answered by its dev server, rather than written into the public folder it shares
-// with the console. That folder holds version.txt only once the console has been built, which a
-// parallel build does not guarantee.
+// Serves version.txt from this app itself: it is emitted into this app's own build output and answered
+// by its dev server, rather than written into the public folder.
 const versionFile = (): Plugin => ({
   name: 'console-cp-version-file',
   configureServer(server) {

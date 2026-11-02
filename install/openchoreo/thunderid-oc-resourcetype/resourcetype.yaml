@@ -199,7 +199,7 @@ spec:
                 clientBase: { type: string, default: "/console" }
                 clientId: { type: string, default: "CONSOLE" }
                 # Must cover the management scopes the Console requests —
-                # matches frontend/apps/console/public/config.js.
+                # matches frontend/apps/admin-console/public/config.js.
                 scopes: { type: string, default: "[\"openid\", \"profile\", \"email\", \"group\", \"ou\", \"system\"]" }
                 # Resource indicator (RFC 8707) the Console sends on token requests.
                 # Must match the System resource_server identifier in declarativeResources.

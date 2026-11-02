@@ -247,7 +247,7 @@ jobs:
 
       - name: 🔨 Build Frontend
         env:
-          # Activates the Codecov bundle-analysis plugin in the gate/console Vite
+          # Activates the Codecov bundle-analysis plugin in the gate, admin console and control plane console Vite
           # builds, which uploads bundle stats to Codecov via GitHub OIDC.
           CODECOV_BUNDLE_UPLOAD: "true"
         run: |
@@ -462,26 +462,20 @@ jobs:
           path: frontend/apps/gate/coverage/lcov.info
           if-no-files-found: error
 
-  # The console suite is the longest job in the pipeline (~12 min of vitest in a
-  # single run), so it is split across shards that execute concurrently. Each
-  # shard reports coverage for the whole app with only its own tests counted;
-  # test-frontend-console-app below merges the partial reports back into one
-  # LCOV file, so coverage consumers still see a single console-coverage
-  # artifact.
-  test-frontend-console-app-shards:
-    name: 🧪 Console App Tests (shard ${{ matrix.shard }})
+  test-frontend-console-app-matrix:
+    name: 🧪 ${{ matrix.title }} Tests with Coverage
     needs: [preflight]
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     strategy:
-      # Report every failing shard, not just the first one, so a single run
-      # surfaces all breakages.
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
-    env:
-      SHARD_COUNT: 3
+        include:
+          - app: admin-console
+            title: Admin Console App
+          - app: console-cp
+            title: Control Plane Console App
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -502,75 +496,45 @@ jobs:
         run: |
           pnpm build:frontend
 
-      - name: 🧪 Run Console Tests with Coverage
-        working-directory: frontend/apps/console
+      - name: 🧪 Run ${{ matrix.title }} Tests with Coverage
         run: |
-          pnpm exec vitest run --coverage --shard=${{ matrix.shard }}/${{ env.SHARD_COUNT }}
+          cd frontend/apps/${{ matrix.app }}
+          pnpm test:coverage
 
-      # Strip branch data (BRDA/BRF/BRH) from frontend LCOV reports before uploading.
-      # React Compiler (babel-plugin-react-compiler) generates phantom branch points in compiled
-      # output that inflate the partial-line count in Codecov's coverage calculation.
-      # This is a known upstream issue: https://github.com/facebook/react/issues/32950
-      # Line and function coverage remain unaffected and accurately reflect test quality.
-      - name: 🧹 Strip branch data from console LCOV report
+      # Strip branch data (BRDA/BRF/BRH) as the gate job does: React Compiler generates
+      # phantom branch points that inflate Codecov's partial-line count.
+      # https://github.com/facebook/react/issues/32950
+      - name: 🧹 Strip branch data from ${{ matrix.app }} LCOV report
         run: |
-          if [ -f "frontend/apps/console/coverage/lcov.info" ]; then
-            sed -i '/^BRDA:/d;/^BRF:/d;/^BRH:/d' "frontend/apps/console/coverage/lcov.info"
+          if [ -f "frontend/apps/${{ matrix.app }}/coverage/lcov.info" ]; then
+            sed -i '/^BRDA:/d;/^BRF:/d;/^BRH:/d' "frontend/apps/${{ matrix.app }}/coverage/lcov.info"
           fi
 
-      # Named without "coverage" so the patch coverage gate, which downloads
-      # every "*coverage*" artifact, only ever sees the merged report.
-      - name: 📦 Upload console shard LCOV report
+      - name: 📦 Upload ${{ matrix.app }} coverage artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: console-lcov-shard-${{ matrix.shard }}
-          path: frontend/apps/console/coverage/lcov.info
+          name: ${{ matrix.app }}-coverage
+          path: frontend/apps/${{ matrix.app }}/coverage/lcov.info
           if-no-files-found: error
 
-  # Keeps the console suite reporting as one check and one coverage artifact
-  # regardless of how many shards run. Uses always() with an explicit result
-  # check so a failing shard fails this job too: a skipped required check counts
-  # as passing for branch protection, which would let a red shard through.
+  # Keeps the "Console App Tests with Coverage" check name that branch protection requires, now
+  # reporting the Admin Console and Control Plane console runs above.
   test-frontend-console-app:
     name: 🧪 Console App Tests with Coverage
-    needs: [test-frontend-console-app-shards]
+    needs: [test-frontend-console-app-matrix]
     if: ${{ always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - name: ✅ Check shard results
+      - name: ✅ Check console app results
         env:
-          SHARDS_RESULT: ${{ needs.test-frontend-console-app-shards.result }}
+          MATRIX_RESULT: ${{ needs.test-frontend-console-app-matrix.result }}
         run: |
-          if [ "$SHARDS_RESULT" != "success" ]; then
-            echo "❌ Console test shards did not pass (result: $SHARDS_RESULT)"
+          if [ "$MATRIX_RESULT" != "success" ]; then
+            echo "❌ Console app tests did not pass (result: $MATRIX_RESULT)"
             exit 1
           fi
-          echo "✅ All console test shards passed"
-
-      - name: 📥 Checkout Code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: 📥 Download console shard LCOV reports
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: console-lcov-shard-*
-          path: console-shards
-
-      - name: 🧩 Merge console shard LCOV reports
-        uses: ./.github/actions/merge-lcov
-        with:
-          reports-dir: console-shards
-          output-file: frontend/apps/console/coverage/lcov.info
-
-      - name: 📦 Upload console coverage artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: console-coverage
-          path: frontend/apps/console/coverage/lcov.info
-          if-no-files-found: error
+          echo "✅ Admin Console and Control Plane console tests passed"
 
   upload-frontend-coverage:
     name: 📊 Upload Frontend Coverage
@@ -585,11 +549,17 @@ jobs:
       - name: 📥 Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: 📥 Download console coverage artifact
+      - name: 📥 Download admin console coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: console-coverage
-          path: coverage/console
+          name: admin-console-coverage
+          path: coverage/admin-console
+
+      - name: 📥 Download control plane console coverage artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: console-cp-coverage
+          path: coverage/console-cp
 
       - name: 📥 Download gate coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -603,17 +573,30 @@ jobs:
           name: packages-coverage
           path: coverage/packages
 
-      - name: 📊 Upload `@thunderid/console` Unit Test Coverage Report to Codecov
+      - name: 📊 Upload `@thunderid/admin-console` Unit Test Coverage Report to Codecov
         if: github.event_name != 'merge_group'
         uses: codecov/codecov-action@v7
         timeout-minutes: 5
         continue-on-error: true
         with:
           use_oidc: true
-          files: coverage/console/lcov.info
+          files: coverage/admin-console/lcov.info
           disable_search: true
-          flags: frontend-apps-console-unit
-          name: Frontend Console App Unit Tests
+          flags: frontend-apps-admin-console-unit
+          name: Frontend Admin Console App Unit Tests
+          fail_ci_if_error: false
+
+      - name: 📊 Upload `@thunderid/console-cp` Unit Test Coverage Report to Codecov
+        if: github.event_name != 'merge_group'
+        uses: codecov/codecov-action@v7
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          use_oidc: true
+          files: coverage/console-cp/lcov.info
+          disable_search: true
+          flags: frontend-apps-console-cp-unit
+          name: Frontend Control Plane Console App Unit Tests
           fail_ci_if_error: false
 
       - name: 📊 Upload `@thunderid/gate` Unit Test Coverage Report to Codecov
@@ -652,8 +635,8 @@ jobs:
     # read from codecov.yml, so this enforces the same rules as codecov/patch
     # without a second copy of them here. The enforcement logic lives in
     # .github/actions/patch-coverage-gate.
-    needs: [build, test-backend-unit, test-integration, test-frontend-console-app, test-frontend-gate-app, upload-frontend-coverage]
-    if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.build.result == 'success' && needs.test-backend-unit.result == 'success' && needs.test-integration.result == 'success' && needs.test-frontend-console-app.result == 'success' && needs.test-frontend-gate-app.result == 'success' && needs.upload-frontend-coverage.result == 'success' }}
+    needs: [build, test-backend-unit, test-integration, test-frontend-gate-app, test-frontend-console-app, upload-frontend-coverage]
+    if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.build.result == 'success' && needs.test-backend-unit.result == 'success' && needs.test-integration.result == 'success' && needs.test-frontend-gate-app.result == 'success' && needs.test-frontend-console-app.result == 'success' && needs.upload-frontend-coverage.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

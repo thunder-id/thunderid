@@ -5,4 +5,3 @@ coverage
 pnpm-lock.yaml
 packages/create/src/templates
 **/.nx
-apps/console/src/data/sample-bundles
