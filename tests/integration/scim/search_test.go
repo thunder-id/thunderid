@@ -32,6 +32,7 @@ type SCIMSearchTestSuite struct {
 }
 
 func TestSCIMSearchTestSuite(t *testing.T) {
+	t.Skip(scimDisabledReason)
 	suite.Run(t, new(SCIMSearchTestSuite))
 }
 

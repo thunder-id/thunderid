@@ -19,7 +19,7 @@ const STANDARDS: Standard[] = [
   {label: 'OpenID Connect', logo: 'openid'},
   // Hidden for now; restore when ready.
   // {label: 'SAML', logo: 'saml'},
-  {label: 'SCIM', logo: 'scim', wordmark: {width: 60}},
+  // {label: 'SCIM', logo: 'scim', wordmark: {width: 60}},
   {label: 'AuthZEN', logo: 'openid'},
   {label: 'OpenID4VCI', logo: 'openid'},
   {label: 'OpenID4VP', logo: 'openid'},

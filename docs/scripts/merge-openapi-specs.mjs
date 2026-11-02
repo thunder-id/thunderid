@@ -34,6 +34,9 @@ const OUTPUT_FILE = join(STATIC_DIR, versionPath, 'combined.yaml');
 
 const GROUP_CONFIG_PATH = join(__dirname, '..', 'api-groups.config.yaml');
 
+// Spec files of APIs the server does not register.
+const SKIP_FILES = new Set(['scim.yaml']);
+
 function loadGroupConfig(configPath) {
   const config = parse(readFileSync(configPath, 'utf8'));
   return {
@@ -51,7 +54,7 @@ function mergeOpenAPISpecs() {
 
   // Dynamically read all YAML files from the API directory
   const API_FILES = readdirSync(API_DIR)
-    .filter((file) => file.endsWith('.yaml') && file !== 'combined.yaml')
+    .filter((file) => file.endsWith('.yaml') && file !== 'combined.yaml' && !SKIP_FILES.has(file))
     .sort();
 
   if (API_FILES.length === 0) {

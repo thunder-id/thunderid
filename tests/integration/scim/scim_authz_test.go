@@ -83,6 +83,7 @@ const (
 )
 
 func TestSCIMAuthzTestSuite(t *testing.T) {
+	t.Skip(scimDisabledReason)
 	suite.Run(t, new(SCIMAuthzTestSuite))
 }
 

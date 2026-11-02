@@ -31,6 +31,7 @@ type SCIMGroupsTestSuite struct {
 }
 
 func TestSCIMGroupsTestSuite(t *testing.T) {
+	t.Skip(scimDisabledReason)
 	suite.Run(t, new(SCIMGroupsTestSuite))
 }
 
