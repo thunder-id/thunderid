@@ -487,6 +487,11 @@ const sidebars: SidebarsConfig = {
                   id: 'guides/agents/agent-schema',
                   label: 'Agent Schema',
                 },
+                {
+                  type: 'doc',
+                  id: 'guides/agents/agent-lifespan',
+                  label: 'Agent Lifespan',
+                },
               ],
             },
             {
