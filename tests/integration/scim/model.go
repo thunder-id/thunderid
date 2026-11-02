@@ -9,6 +9,9 @@ import "github.com/thunder-id/thunderid/tests/integration/testutils"
 // other integration-tested endpoint (backend/internal/scim, SCIMBasePath).
 const scimBaseURL = testutils.TestServerURL + "/scim/v2"
 
+// scimDisabledReason skips the SCIM suites while the SCIM API is not registered.
+const scimDisabledReason = "the SCIM API is not registered"
+
 const (
 	scimCoreUserSchemaURN  = "urn:ietf:params:scim:schemas:core:2.0:User"
 	scimCoreGroupSchemaURN = "urn:ietf:params:scim:schemas:core:2.0:Group"

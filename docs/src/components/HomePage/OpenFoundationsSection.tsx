@@ -25,7 +25,7 @@ const FOUNDATIONS = [
     category: 'Standards',
     title: 'Open standards',
     description:
-      'Built on OAuth 2.1, OpenID Connect, SAML, SCIM, and AuthZEN, and on OpenID4VCI and OpenID4VP for wallets.',
+      'Built on OAuth 2.1, OpenID Connect, SAML, and AuthZEN, and on OpenID4VCI and OpenID4VP for wallets.',
     logo: {name: 'oauth', width: 64, height: 64, label: 'OAuth'},
   },
 ];

@@ -51,6 +51,7 @@ type SCIMUsersTestSuite struct {
 const scimCoreUserTypeName = "declarative-test-schema"
 
 func TestSCIMUsersTestSuite(t *testing.T) {
+	t.Skip(scimDisabledReason)
 	suite.Run(t, new(SCIMUsersTestSuite))
 }
 

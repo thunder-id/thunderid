@@ -37,6 +37,7 @@ type SCIMMeTestSuite struct {
 }
 
 func TestSCIMMeTestSuite(t *testing.T) {
+	t.Skip(scimDisabledReason)
 	suite.Run(t, new(SCIMMeTestSuite))
 }
 
