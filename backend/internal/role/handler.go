@@ -240,7 +240,9 @@ func (rh *roleHandler) HandleRoleAssignmentsGetRequest(w http.ResponseWriter, r 
 	// Convert service response to HTTP response
 	httpAssignments := make([]AssignmentResponse, len(serviceResponse.Assignments))
 	for i, sa := range serviceResponse.Assignments {
-		httpAssignments[i] = AssignmentResponse(sa)
+		httpAssignments[i] = AssignmentResponse{
+			ID: sa.ID, Type: sa.Type, OUID: sa.OUID, Display: sa.Display, IsReadOnly: sa.PolicyID != "",
+		}
 	}
 
 	assignmentListResponse := &AssignmentListResponse{
@@ -323,7 +325,8 @@ func handleError(ctx context.Context, w http.ResponseWriter,
 		switch svcErr.Code {
 		case ErrorRoleNotFound.Code, ErrorSharingPolicyNotFound.Code, ErrorRoleNotSharedToOU.Code:
 			statusCode = http.StatusNotFound
-		case ErrorRoleNameConflict.Code, ErrorSharingPolicyExists.Code, ErrorSharingPolicyVersionMismatch.Code:
+		case ErrorRoleNameConflict.Code, ErrorSharingPolicyExists.Code, ErrorSharingPolicyVersionMismatch.Code,
+			ErrorMandatedRoleCannotBeDeleted.Code, ErrorRoleMandatedInOU.Code:
 			statusCode = http.StatusConflict
 		case ErrorOrganizationUnitNotFound.Code,
 			ErrorInvalidRequestFormat.Code, ErrorMissingRoleID.Code,

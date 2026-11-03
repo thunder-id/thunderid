@@ -111,6 +111,24 @@ Open the role from the **Roles** list and select the **Assignments** tab to see 
 2. Select the **Assignments** tab.
 3. Click **Remove** next to the assignment you want to delete and confirm.
 
+### Mandated Assignments
+
+A [user share can mandate](./manage-users.mdx#mandate-roles-on-a-shared-user) a role for a user in a child organization unit. A mandated assignment differs from a direct one in these ways:
+
+- It appears in the role's assignments with `isReadOnly: true`.
+- The organization unit cannot remove it. A removal that names only a mandated assignment fails with `ROL-1036`.
+- A direct assignment of the same role to the same user in the same organization unit can exist beside it, and removing that direct assignment leaves the mandated one in place.
+- It is not limited by the role's sharing rules. If the role is shared with the organization unit with assignments turned off, a mandate still applies there.
+
+Two changes are refused with `409 Conflict` while a user share mandates the role:
+
+| Change | Error |
+|---|---|
+| Unsharing the role from an organization unit where a user share mandates it | `ROL-1037` |
+| Deleting the role | `ROL-1039` |
+
+Remove the role from those user shares first, then repeat the change.
+
 ## Related Guides
 
 - [Resource Servers](../../resource-servers) - Define the permissions that roles reference

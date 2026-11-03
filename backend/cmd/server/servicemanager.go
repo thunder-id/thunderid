@@ -318,6 +318,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	ouService.SetOUGroupResolver(ouGroupResolver)
 	ouService.SetOURoleResolver(ouRoleResolver)
 
+	// Two-phase initialization: user shares mandate roles through the role assignment service, which is built after
+	// users. The declared shares' mandates wait for it.
+	err = userService.SetRoleAssignmentService(ctx, roleAssignmentService)
+	fatalOnError(ctx, logger, err, "Failed to apply the roles declared user sharing policies mandate")
+
 	// Adapt the OU service to the runtime provider contract. The OAuth and flow layers depend only
 	// on providers.OrganizationUnitProvider and never see the management model.
 	ouProvider := ou.NewOrganizationUnitProvider(ouService)

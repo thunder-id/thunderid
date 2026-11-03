@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -739,8 +741,19 @@ func (s *importService) importLayout(
 	return successOutcome(resourceTypeLayout, created.ID, created.DisplayName, operationCreate)
 }
 
+// userSharingReplay is a user's sharing policies that mandate roles, replayed once the import's roles are in.
+type userSharingReplay struct {
+	// resultIndex is the user's outcome, which a refusal replaces.
+	resultIndex int
+	userID      string
+	owningOUID  string
+	policies    []sharing.PolicyRequest
+	operation   string
+}
+
+// importUser imports a user, deferring the sharing policies that mandate roles to mandating.
 func (s *importService) importUser(
-	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
+	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool, mandating *[]userSharingReplay,
 ) ImportItemOutcome {
 	if s.userService == nil {
 		return unsupportedAdapterOutcome(resourceTypeUser, "user")
@@ -813,6 +826,13 @@ func (s *importService) importUser(
 					}
 				}
 			}
+			// Replaying such policies without their roles first would strip the mandates of a share that is already
+			// there, so the whole replay waits.
+			if mandatesRoles(req.SharingPolicies) {
+				*mandating = append(*mandating, userSharingReplay{userID: updated.ID, owningOUID: updated.OUID,
+					policies: req.SharingPolicies, operation: operationUpdate})
+				return successOutcome(resourceTypeUser, updated.ID, "", operationUpdate)
+			}
 			if outcome := s.applySharingPolicies(ctx, user.UserSharingType, resourceTypeUser,
 				updated.ID, "", updated.OUID, req.SharingPolicies, operationUpdate); outcome != nil {
 				return *outcome
@@ -866,17 +886,128 @@ func (s *importService) importUser(
 	}
 
 	// The policies come after the user exists, because a policy names the user it governs. A refusal
-	// therefore undoes the create, so a retry does not meet a half-imported user.
+	// therefore undoes the create, so a retry does not meet a half-imported user. Policies mandating roles are
+	// replayed now without them, so the user already reaches its units when a role later in the import is
+	// assigned to it there, and in full once the roles are in.
+	policies := req.SharingPolicies
+	deferred := mandatesRoles(policies)
+	if deferred {
+		policies = withoutMandatedRoles(policies)
+	}
 	if outcome := s.applySharingPolicies(ctx, user.UserSharingType, resourceTypeUser,
-		created.ID, "", created.OUID, req.SharingPolicies, operationCreate); outcome != nil {
-		if delErr := s.userService.DeleteUser(ctx, created.ID); delErr != nil {
-			log.GetLogger().Error(ctx, "Failed to remove a user whose sharing policies were refused",
-				log.MaskedString(log.LoggerKeyUserID, created.ID), log.String("code", delErr.Code))
-		}
+		created.ID, "", created.OUID, policies, operationCreate); outcome != nil {
+		s.undoUserCreate(ctx, created.ID)
 		return *outcome
+	}
+	if deferred {
+		*mandating = append(*mandating, userSharingReplay{userID: created.ID, owningOUID: created.OUID,
+			policies: req.SharingPolicies, operation: operationCreate})
 	}
 
 	return successOutcome(resourceTypeUser, created.ID, "", operationCreate)
+}
+
+// replayMandatingUserSharing replays the role-mandating user shares after the roles, returning how many failed.
+func (s *importService) replayMandatingUserSharing(
+	ctx context.Context, mandating []userSharingReplay, results []ImportItemOutcome,
+) int {
+	refused := 0
+	for _, r := range mandating {
+		outcome := s.applySharingPolicies(ctx, user.UserSharingType, resourceTypeUser,
+			r.userID, "", r.owningOUID, r.policies, r.operation)
+		if outcome == nil {
+			continue
+		}
+		if r.operation == operationCreate {
+			s.undoUserCreate(ctx, r.userID)
+		}
+		results[r.resultIndex] = *outcome
+		refused++
+	}
+	return refused
+}
+
+// undoUserCreate removes a user whose sharing policies were refused.
+func (s *importService) undoUserCreate(ctx context.Context, userID string) {
+	if delErr := s.userService.DeleteUser(ctx, userID); delErr != nil {
+		log.GetLogger().Error(ctx, "Failed to remove a user whose sharing policies were refused",
+			log.MaskedString(log.LoggerKeyUserID, userID), log.String("code", delErr.Code))
+	}
+}
+
+// mandatesRoles reports whether any of a user's sharing policies carries a roles rule.
+func mandatesRoles(policies []sharing.PolicyRequest) bool {
+	for _, p := range policies {
+		for _, rules := range overlayRuleSets(p) {
+			if _, ok := rules[user.RolesFieldKey]; ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// overlayRuleSets lists every set of overlay rules a policy carries, section by section and unit by unit.
+func overlayRuleSets(p sharing.PolicyRequest) []map[string]sharing.OverlayRule {
+	var sets []map[string]sharing.OverlayRule
+	if p.AllUnits != nil {
+		sets = append(sets, p.AllUnits.OverlayRules)
+	}
+	if p.ChildUnits != nil {
+		sets = append(sets, p.ChildUnits.OverlayRules)
+		for _, u := range p.ChildUnits.Units {
+			sets = append(sets, u.OverlayRules)
+		}
+	}
+	if p.OtherTreeRoots != nil {
+		sets = append(sets, p.OtherTreeRoots.OverlayRules)
+		for _, u := range p.OtherTreeRoots.Units {
+			sets = append(sets, u.OverlayRules)
+		}
+	}
+	return sets
+}
+
+// withoutMandatedRoles returns copies of the policies with every roles rule left out.
+func withoutMandatedRoles(policies []sharing.PolicyRequest) []sharing.PolicyRequest {
+	out := make([]sharing.PolicyRequest, len(policies))
+	for i, p := range policies {
+		if p.AllUnits != nil {
+			all := *p.AllUnits
+			all.OverlayRules = withoutRolesRule(all.OverlayRules)
+			p.AllUnits = &all
+		}
+		if p.ChildUnits != nil {
+			child := *p.ChildUnits
+			child.OverlayRules = withoutRolesRule(child.OverlayRules)
+			child.Units = slices.Clone(child.Units)
+			for j := range child.Units {
+				child.Units[j].OverlayRules = withoutRolesRule(child.Units[j].OverlayRules)
+			}
+			p.ChildUnits = &child
+		}
+		if p.OtherTreeRoots != nil {
+			roots := *p.OtherTreeRoots
+			roots.OverlayRules = withoutRolesRule(roots.OverlayRules)
+			roots.Units = slices.Clone(roots.Units)
+			for j := range roots.Units {
+				roots.Units[j].OverlayRules = withoutRolesRule(roots.Units[j].OverlayRules)
+			}
+			p.OtherTreeRoots = &roots
+		}
+		out[i] = p
+	}
+	return out
+}
+
+// withoutRolesRule returns rules less the roles rule, leaving the given map unchanged.
+func withoutRolesRule(rules map[string]sharing.OverlayRule) map[string]sharing.OverlayRule {
+	if _, ok := rules[user.RolesFieldKey]; !ok {
+		return rules
+	}
+	out := maps.Clone(rules)
+	delete(out, user.RolesFieldKey)
+	return out
 }
 
 func (s *importService) importTranslation(ctx context.Context, doc parsedDocument, dryRun bool) ImportItemOutcome {

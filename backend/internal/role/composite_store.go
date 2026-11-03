@@ -437,6 +437,35 @@ func (c *compositeRoleStore) RemoveAssignments(ctx context.Context, id string, a
 	return c.dbStore.RemoveAssignments(ctx, id, assignments)
 }
 
+// AddMandatedAssignments adds a mandated assignment in the database store only.
+func (c *compositeRoleStore) AddMandatedAssignments(
+	ctx context.Context, policyID, roleID, ouID string, assignee RoleAssignment) error {
+	return c.dbStore.AddMandatedAssignments(ctx, policyID, roleID, ouID, assignee)
+}
+
+// ListMandatedAssignments lists the mandated assignments of a policy from the database store only.
+func (c *compositeRoleStore) ListMandatedAssignments(
+	ctx context.Context, policyID string) ([]MandatedAssignment, error) {
+	return c.dbStore.ListMandatedAssignments(ctx, policyID)
+}
+
+// DeleteMandatedAssignments deletes the mandated assignments of a policy in the database store only.
+func (c *compositeRoleStore) DeleteMandatedAssignments(
+	ctx context.Context, policyID string, filter MandatedFilter) error {
+	return c.dbStore.DeleteMandatedAssignments(ctx, policyID, filter)
+}
+
+// ListMandatedRoleUnits lists the roles sharing policies mandate from the database store only.
+func (c *compositeRoleStore) ListMandatedRoleUnits(ctx context.Context) ([]MandatedRoleUnit, error) {
+	return c.dbStore.ListMandatedRoleUnits(ctx)
+}
+
+// ListMandatedAssignmentsForRole lists the mandated assignments of a role from the database store only.
+func (c *compositeRoleStore) ListMandatedAssignmentsForRole(
+	ctx context.Context, roleID, ouID string) ([]RoleAssignment, error) {
+	return c.dbStore.ListMandatedAssignmentsForRole(ctx, roleID, ouID)
+}
+
 // CheckRoleNameExists checks if a role with the given name exists in either store.
 func (c *compositeRoleStore) CheckRoleNameExists(ctx context.Context, ouID, name string) (bool, error) {
 	return declarativeresource.CompositeBooleanCheckHelper(
@@ -756,16 +785,17 @@ func mergeAssignments(dbAssignments, fileAssignments []RoleAssignment) []RoleAss
 	seen := make(map[string]bool)
 	result := make([]RoleAssignment, 0, len(dbAssignments)+len(fileAssignments))
 
-	// Add database assignments first (they take precedence)
+	// Add database assignments first (they take precedence). A mandated one is keyed apart, so it never
+	// hides a declared direct assignment of the same assignee.
 	for _, assignment := range dbAssignments {
-		key := assignment.OUID + ":" + string(assignment.Type) + ":" + assignment.ID
+		key := assignment.OUID + ":" + string(assignment.Type) + ":" + assignment.ID + ":" + assignment.PolicyID
 		result = append(result, assignment)
 		seen[key] = true
 	}
 
 	// Add file-based assignments only if not already seen
 	for _, assignment := range fileAssignments {
-		key := assignment.OUID + ":" + string(assignment.Type) + ":" + assignment.ID
+		key := assignment.OUID + ":" + string(assignment.Type) + ":" + assignment.ID + ":" + assignment.PolicyID
 		if !seen[key] {
 			result = append(result, assignment)
 			seen[key] = true

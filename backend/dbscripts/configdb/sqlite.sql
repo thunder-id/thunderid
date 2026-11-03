@@ -51,16 +51,21 @@ CREATE INDEX idx_role_permission_resource_server ON "ROLE_PERMISSION" (RESOURCE_
 
 -- Table to store Role assignments (to entities and groups). ASSIGNMENT_OU_ID is the organization unit
 -- the assignment was made in: the role's owner, or an organization unit the role is shared with.
+-- SHARING_POLICY_ID is the sharing policy that mandates the assignment, or '' for a direct assignment.
 CREATE TABLE "ROLE_ASSIGNMENT" (
     DEPLOYMENT_ID       VARCHAR(255) NOT NULL,
     ROLE_ID         VARCHAR(36) NOT NULL,
     ASSIGNMENT_OU_ID VARCHAR(36) NOT NULL,
     ASSIGNEE_TYPE   VARCHAR(6)  NOT NULL CHECK (ASSIGNEE_TYPE IN ('entity', 'group')),
     ASSIGNEE_ID     VARCHAR(36) NOT NULL,
+    SHARING_POLICY_ID VARCHAR(36) NOT NULL DEFAULT '',
     CREATED_AT      TEXT DEFAULT (datetime('now')),
     UPDATED_AT      TEXT DEFAULT (datetime('now')),
-    PRIMARY KEY (ROLE_ID, DEPLOYMENT_ID, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, ASSIGNEE_ID)
+    PRIMARY KEY (ROLE_ID, DEPLOYMENT_ID, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, ASSIGNEE_ID, SHARING_POLICY_ID)
 );
+
+-- Index for removing the assignments a sharing policy mandates, with deployment isolation
+CREATE INDEX idx_role_assignment_sharing_policy ON "ROLE_ASSIGNMENT" (DEPLOYMENT_ID, SHARING_POLICY_ID);
 
 -- Index for looking up an assignee's role assignments, optionally in one organization unit, with deployment isolation
 CREATE INDEX idx_role_assignment_assignee ON "ROLE_ASSIGNMENT" (DEPLOYMENT_ID, ASSIGNEE_TYPE, ASSIGNEE_ID, ASSIGNMENT_OU_ID);

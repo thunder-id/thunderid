@@ -479,6 +479,22 @@ func (suite *RoleFileBasedStoreTestSuite) TestDeclaredAssignmentsAreMadeInTheOwn
 	suite.NoError(suite.store.DeleteAssignmentsInOU(ctx, "role1", "ou-child"))
 }
 
+// Resource files declare no mandated assignments.
+func (suite *RoleFileBasedStoreTestSuite) TestListMandatedAssignmentsForRoleIsEmpty() {
+	got, err := suite.store.ListMandatedAssignmentsForRole(context.Background(), "role1", "")
+
+	suite.Require().NoError(err)
+	suite.Empty(got)
+}
+
+// Resource files declare no mandated roles.
+func (suite *RoleFileBasedStoreTestSuite) TestListMandatedRoleUnitsIsEmpty() {
+	got, err := suite.store.ListMandatedRoleUnits(context.Background())
+
+	suite.Require().NoError(err)
+	suite.Empty(got)
+}
+
 func (suite *RoleFileBasedStoreTestSuite) TestGetRolesByIDs() {
 	suite.seedRole(RoleWithPermissionsAndAssignments{ID: "role1", Name: "Auditor", OUID: "ou1"})
 

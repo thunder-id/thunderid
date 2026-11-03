@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -974,6 +975,8 @@ type fakeSharingService struct {
 	calls   []sharingReplayCall
 	replay  sharing.PolicyReplay
 	failure *sharing.PolicyReplayError
+	// refuse, when set, answers each replay in place of failure.
+	refuse func(call sharingReplayCall) *sharing.PolicyReplayError
 }
 
 type sharingReplayCall struct {
@@ -987,8 +990,11 @@ func (f *fakeSharingService) ReplacePoliciesForResource(
 	_ context.Context, rt sharing.ResourceType, resourceID, owningOUID string,
 	requests []sharing.PolicyRequest,
 ) (sharing.PolicyReplay, *sharing.PolicyReplayError) {
-	f.calls = append(f.calls, sharingReplayCall{
-		resourceType: rt, resourceID: resourceID, owningOUID: owningOUID, policies: requests})
+	call := sharingReplayCall{resourceType: rt, resourceID: resourceID, owningOUID: owningOUID, policies: requests}
+	f.calls = append(f.calls, call)
+	if f.refuse != nil {
+		return f.replay, f.refuse(call)
+	}
 	return f.replay, f.failure
 }
 
@@ -4649,6 +4655,174 @@ func TestImportUserUndoesTheCreateWhenPoliciesAreRefused(t *testing.T) {
 	assert.Equal(t, statusFailed, resp.Results[0].Status)
 	assert.Contains(t, resp.Results[0].Message, "sharing policy 1 (organization unit ou-1)")
 	assert.Equal(t, []string{"user-4"}, userSvc.deleted, "the user the refused document created was removed")
+}
+
+// mandatingUserDoc is a user document in ou-1 whose sharing policy mandates roleID in ou-child.
+func mandatingUserDoc(id, roleID string) string {
+	return strings.Join([]string{
+		"resource_type: user", "id: " + id, "type: person", "ouId: ou-1", "attributes:", "  username: " + id,
+		"sharingPolicies:",
+		"  - childUnits:",
+		"      mode: selected",
+		"      units:",
+		"        - ouId: ou-child",
+		"          reach: unit",
+		"          overlayRules:",
+		"            roles:",
+		"              editable: false",
+		"              value: [" + roleID + "]",
+		"",
+	}, "\n")
+}
+
+// mandatedIn returns the roles a replayed user's policies mandate, by organization unit.
+func mandatedIn(call sharingReplayCall) map[string][]string {
+	mandated := map[string][]string{}
+	for _, p := range call.policies {
+		if p.ChildUnits == nil {
+			continue
+		}
+		for _, u := range p.ChildUnits.Units {
+			if rule, ok := u.OverlayRules[user.RolesFieldKey]; ok && rule.Value != nil {
+				mandated[u.OUID] = append(mandated[u.OUID], *rule.Value...)
+			}
+		}
+	}
+	return mandated
+}
+
+// refuseMandates is a sharing adapter refusing every user replay that mandates roles, as the role side does when
+// the role is not there.
+func refuseMandates() *fakeSharingService {
+	return &fakeSharingService{refuse: func(call sharingReplayCall) *sharing.PolicyReplayError {
+		if len(mandatedIn(call)) == 0 {
+			return nil
+		}
+		return &sharing.PolicyReplayError{
+			Index: 0, InitiatingOUID: call.owningOUID, Err: &role.ErrorMandatedRoleNotInOU}
+	}}
+}
+
+// ImportUserMandatedRolesTestSuite covers importing a user whose share mandates roles.
+type ImportUserMandatedRolesTestSuite struct {
+	suite.Suite
+}
+
+func TestImportUserMandatedRolesTestSuite(t *testing.T) {
+	suite.Run(t, new(ImportUserMandatedRolesTestSuite))
+}
+
+// A user and the role its share mandates import together into an empty store: the user's share reaches the child
+// unit at once without its roles, the role is imported, and the share is then replayed with the roles, which writes
+// the mandates. Nothing is undone.
+func (s *ImportUserMandatedRolesTestSuite) TestImportUserMandatingARoleInTheSameDocument() {
+	userSvc := &fakeUserService{}
+	roleSvc := &fakeRoleService{}
+	mandates := map[string][]string{}
+	sharingSvc := &fakeSharingService{refuse: func(call sharingReplayCall) *sharing.PolicyReplayError {
+		for ouID, roleIDs := range mandatedIn(call) {
+			for _, roleID := range roleIDs {
+				imported := func(r role.RoleCreationDetail) bool { return r.ID == roleID }
+				if !slices.ContainsFunc(roleSvc.created, imported) {
+					return &sharing.PolicyReplayError{
+						InitiatingOUID: call.owningOUID, Err: &role.ErrorMandatedRoleNotInOU}
+				}
+			}
+			mandates[ouID] = roleIDs
+		}
+		return nil
+	}}
+	svc := newImportService(nil, nil, nil, nil, nil, nil, roleSvc, &fakeRoleAssignmentService{}, nil, nil, nil, nil,
+		userSvc, nil, nil, nil, nil, nil, nil, nil)
+	svc.(*importService).sharingService = sharingSvc
+	content := mandatingUserDoc("user-7", "role-1") + "---\n" + strings.Join([]string{
+		"resource_type: role", "id: role-1", "name: auditor", "ouId: ou-1", "permissions: []",
+		"sharingPolicies:",
+		"  - childUnits:",
+		"      mode: selected",
+		"      units:",
+		"        - ouId: ou-child",
+		"          reach: unit",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(),
+		&ImportRequest{Content: content, Options: &ImportOptions{Upsert: boolPtr(false)}})
+
+	s.Require().Nil(err)
+	s.Assert().Equal(2, resp.Summary.Imported)
+	s.Assert().Equal(0, resp.Summary.Failed)
+	s.Assert().Empty(userSvc.deleted, "the user survives")
+	s.Assert().Empty(roleSvc.deleted)
+	s.Require().Len(sharingSvc.calls, 3)
+	s.Assert().Equal(user.UserSharingType, sharingSvc.calls[0].resourceType)
+	s.Assert().Empty(mandatedIn(sharingSvc.calls[0]), "the user's reach is replayed first, without its roles")
+	s.Assert().Equal(role.RoleSharingType, sharingSvc.calls[1].resourceType)
+	s.Assert().Equal(user.UserSharingType, sharingSvc.calls[2].resourceType)
+	s.Assert().Equal(map[string][]string{"ou-child": {"role-1"}}, mandates)
+}
+
+// A deferred replay the role side refuses fails the user's own outcome with the refusal's code and undoes its
+// create, as an immediate replay does.
+func (s *ImportUserMandatedRolesTestSuite) TestImportUserMandatedRolesRefusedUndoTheCreate() {
+	userSvc := &fakeUserService{}
+	sharingSvc := refuseMandates()
+	svc := newTestUserImportWithSharing(userSvc, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(),
+		&ImportRequest{Content: mandatingUserDoc("user-6", "role-a"), Options: &ImportOptions{Upsert: boolPtr(false)}})
+
+	s.Require().Nil(err)
+	s.Require().Len(sharingSvc.calls, 2)
+	s.Assert().Empty(mandatedIn(sharingSvc.calls[0]))
+	s.Assert().Equal(map[string][]string{"ou-child": {"role-a"}}, mandatedIn(sharingSvc.calls[1]))
+	s.Require().Len(resp.Results, 1)
+	s.Assert().Equal(statusFailed, resp.Results[0].Status)
+	s.Assert().Equal(role.ErrorMandatedRoleNotInOU.Code, resp.Results[0].Code)
+	s.Assert().Contains(resp.Results[0].Message, "sharing policy 1 (organization unit ou-1)")
+	s.Assert().Equal(0, resp.Summary.Imported)
+	s.Assert().Equal(1, resp.Summary.Failed)
+	s.Assert().Equal([]string{"user-6"}, userSvc.deleted)
+}
+
+// An existing user's policies are not replayed without their roles, which would strip the mandates its share already
+// holds: the whole replay waits, and a refusal fails the update without undoing it.
+func (s *ImportUserMandatedRolesTestSuite) TestImportExistingUserDefersItsMandatingPolicies() {
+	userSvc := &fakeUserService{}
+	sharingSvc := refuseMandates()
+	svc := newTestUserImportWithSharing(userSvc, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(),
+		&ImportRequest{Content: mandatingUserDoc("user-8", "role-a"), Options: &ImportOptions{Upsert: boolPtr(true)}})
+
+	s.Require().Nil(err)
+	s.Require().Len(sharingSvc.calls, 1)
+	s.Assert().Equal(map[string][]string{"ou-child": {"role-a"}}, mandatedIn(sharingSvc.calls[0]))
+	s.Require().Len(resp.Results, 1)
+	s.Assert().Equal(statusFailed, resp.Results[0].Status)
+	s.Assert().Equal(operationUpdate, resp.Results[0].Operation)
+	s.Assert().Equal(role.ErrorMandatedRoleNotInOU.Code, resp.Results[0].Code)
+	s.Assert().Empty(userSvc.deleted)
+}
+
+// Stripping the roles for the first replay leaves the document's own policies as they were.
+func (s *ImportUserMandatedRolesTestSuite) TestWithoutMandatedRolesCopies() {
+	roles := []string{"role-a"}
+	rules := map[string]sharing.OverlayRule{user.RolesFieldKey: {Value: &roles}}
+	policies := []sharing.PolicyRequest{{
+		AllUnits: &sharing.AllUnitsRequest{OverlayRules: rules},
+		ChildUnits: &sharing.ChildUnitsRequest{
+			OverlayRules: rules, Units: []sharing.ChildUnitRequest{{OverlayRules: rules}}},
+		OtherTreeRoots: &sharing.OtherTreeRootsRequest{
+			OverlayRules: rules, Units: []sharing.RootUnitRequest{{OverlayRules: rules}}},
+	}}
+
+	stripped := withoutMandatedRoles(policies)
+
+	s.Assert().True(mandatesRoles(policies))
+	s.Assert().False(mandatesRoles(stripped))
+	s.Assert().Equal(rules, policies[0].ChildUnits.Units[0].OverlayRules, "the document is left unchanged")
+	s.Assert().Contains(policies[0].OtherTreeRoots.Units[0].OverlayRules, user.RolesFieldKey)
 }
 
 // A deployment with no sharing adapter says so rather than importing the user and dropping its

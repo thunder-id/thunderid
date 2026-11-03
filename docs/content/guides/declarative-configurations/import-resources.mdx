@@ -350,6 +350,17 @@ The importer handles the policies and values of a document as follows:
 - An export writes the sharing policies and the saved values of each flow into its document, so importing the export recreates the same sharing and the same overrides.
 - Flow files loaded at startup declare their policies the same way. <ProductName /> loads them when it loads flows from files, which is when the flow store is in the `declarative` or `composite` mode. A file loaded at startup does not apply `variableValues`, so import the document to set the values.
 
+### Mandated Roles on User Shares
+
+A `user` document can carry a `sharingPolicies` list whose entries mandate roles with a `roles` overlay rule. See [Mandate Roles on a Shared User](../users/manage-users.mdx#mandate-roles-on-a-shared-user). An import replays those shares after the roles, so one document can carry a user, the role, and the share that mandates it. A role export leaves mandated assignments out, because the share recreates them on import.
+
+When and how the shares are replayed depends on whether the user already exists:
+
+- For a new user, the import replays every share with the user, leaving the roles rules out, and replays the shares that carry roles in full after the roles. The user therefore reaches its organization units before a role later in the document is assigned to it there.
+- For an existing user, once any of its shares carries roles, the import replays all of its shares after the roles. A role document in the same import that assigns the user directly in an organization unit the import newly shares the user into then fails, because the user does not reach that unit yet. Import the user first, then the roles.
+
+Because roles are imported before the shares, one import cannot both drop a role from a share's mandate and stop sharing that role with the organization unit. The role document is refused with `ROL-1037` while the mandate still stands. Import the user's share first, then the role.
+
 ### Dry-Run Behavior
 
 When `dryRun` is `true`, the importer validates documents and reports what would be created or updated, but does not write any changes to runtime stores. Handle resolution is mostly skipped in dry-run mode: the importer accepts handle fields, such as the flow handles of an application, without attempting to look up their target resources. The exception is `ouHandle`, which is resolved for every resource type that has one, so a handle that does not match an organization unit fails the dry run as it would a real import. Use dry-run to validate YAML structure before applying it.
