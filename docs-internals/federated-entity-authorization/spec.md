@@ -1,7 +1,7 @@
 # Authorization support for federated entities
 
 - **Status:** Final
-- **Version:** 1.1
+- **Version:** 2.0
 - **Related documents:** [Discussion #5197: Authorization support for federated entities](https://github.com/thunder-id/thunderid/discussions/5197), Issue #5192
 
 ## Summary
@@ -57,7 +57,7 @@ The declared value type does not control whether the claim's runtime value is tr
 
 An administrator names a source claim, an optional delimiter, and a target kind (role, group, or permission), plus a resource server when the target kind is permission, since a permission only means something on one resource server. Every resolved value of the claim is looked up directly:
 
-- **Role or group:** matched by exact name against all existing roles or groups, with no organization unit restriction. A name that matches no role/group, or matches more than one (role and group names are unique only within an organization unit), confers nothing, since the mapping fails closed on ambiguity rather than granting one match arbitrarily.
+- **Role or group:** matched by exact name against the roles the connection's organization unit owns or has shared with it, and the groups it owns, since groups are never shared. A name that matches none of them, or more than one (a role the organization unit owns and a role shared with it can carry the same name), confers nothing, since the mapping fails closed on ambiguity rather than granting one match arbitrarily.
 - **Permission:** validated directly against the named resource server's defined permission strings, since a permission is a string rather than a separately named entity with its own existence check. A value that doesn't validate is dropped individually, without rejecting the other valid values the same claim carries.
 
 Direct mapping intentionally has no per-value rule table and no declared value type, since a claim value is always used as a literal name or permission string, so there is nothing to declare a comparison type for.
@@ -143,7 +143,7 @@ The response's `scope` reflects only what the connection's mapping and the subje
 
 ### API
 
-A connection's attribute configuration gains an optional authorization mapping section holding the rule-based and direct mapping lists described above, alongside the connection's existing attribute mappings. The full schema, field-level requirements, and validation error catalog are defined in the connections API spec. A rule-based mapping's role, group, and permission targets are validated to exist at save time; a direct mapping has no such targets to validate, since its role, group, and permission names only exist as claim values resolved at request time, but a permission-target direct mapping's resource server is validated to exist at save time. The connection is rejected otherwise.
+A connection's attribute configuration gains an optional authorization mapping section holding the rule-based and direct mapping lists described above, alongside the connection's existing attribute mappings. The full schema, field-level requirements, and validation error catalog are defined in the connections API spec. A rule-based mapping's role, group, and permission targets are validated to exist at save time, and each role and group to be one the connection's organization unit can grant: a role it owns or has shared with it, and a group it owns. The check uses the organization unit the connection keeps, so an update that leaves `ouId` out is checked against its current one; a direct mapping has no such targets to validate, since its role, group, and permission names only exist as claim values resolved at request time, but a permission-target direct mapping's resource server is validated to exist at save time. The connection is rejected otherwise.
 
 OpenAPI schema for the mapping (nested under a connection's `attributeConfiguration.authorizationMapping`; `tokenExchangeEnabled` and `trustedTokenAudience` are separate top-level boolean/string fields on the connection resource itself):
 
@@ -236,7 +236,7 @@ The console's connection edit page gains an "Authorization Mapping" card under t
 
 ![Direct mode](assets/direct-mode.png)
 
-An Advanced Rules toggle switches the row to explicit value-to-target rules instead, each granting a combination of roles, groups, and permissions:
+An Advanced Rules toggle switches the row to explicit value-to-target rules instead, each granting a combination of roles, groups, and permissions. The role and group pickers list only what the connection's organization unit can grant: the roles it owns or has shared with it, and the groups it owns:
 
 ![Advanced mode](assets/advanced-mode.png)
 
@@ -253,6 +253,8 @@ An Advanced Rules toggle switches the row to explicit value-to-target rules inst
 - **AC1.3:** Given an administrator maps attribute values to roles, groups, or permissions, when an entity federates in carrying one or more of those values, then the entity receives the union of the permissions those values map to.
 - **AC1.4:** Given an attribute value has no mapping configured for it, or resolves ambiguously to more than one target, when an entity federates in carrying it, then it confers no permissions.
 - **AC1.5:** Given a rule-based mapping names a role, group, or permission that does not exist, or a permission-target direct mapping names a resource server that does not exist or omits one, when an administrator saves the configuration, then ThunderID rejects it.
+- **AC1.6:** Given a rule-based mapping names a role the connection's organization unit neither owns nor has shared with it, or a group it does not own, when an administrator saves the configuration, then ThunderID rejects it, and the console offers neither as a choice.
+- **AC1.7:** Given a direct mapping's claim value names a role or group only outside what the connection's organization unit can grant, when an entity federates in carrying it, then it confers nothing.
 
 ### R2. Narrowing requested scopes to what is permitted and consented
 
@@ -304,3 +306,4 @@ Not covered by this specification. Tracked separately in [Discussion #5126](http
 |---|---|---|
 | 1.0 | 2026-09-07 | Initial specification, covering rule-based mapping, direct name-based mapping, and their combination across federated login, token exchange, and ID-JAG. |
 | 1.1 | 2026-09-24 | Corrected the refresh token renewal behavior: mapping is never re-consulted on refresh, and neither token exchange nor the jwt-bearer grant issues a refresh token. |
+| 2.0 | 2026-11-03 | Bounded mapped roles and groups to the connection's organization unit: rule targets are validated against it at save time, direct name lookups match only within it, and the console pickers list only it (AC1.6, AC1.7). |

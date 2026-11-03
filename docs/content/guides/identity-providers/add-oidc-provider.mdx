@@ -121,6 +121,7 @@ Map attribute values this provider asserts, such as group membership, onto local
 
 Behavior:
 
+- A mapping grants only roles and groups from the connection's organization unit: roles it owns or that are shared with it, and groups it owns. An advanced rule offers only those roles and groups, and saving a rule that names any other is rejected. A direct lookup matches only those names.
 - An advanced rule's targets can span roles, groups, and permissions across more than one resource server at once.
 - A mapped group also grants that group's ancestor groups, transitively, the same as a direct group assignment does.
 - Everything a mapping grants adds to whatever is already assigned directly; it never replaces it.

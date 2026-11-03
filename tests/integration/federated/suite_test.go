@@ -457,7 +457,7 @@ func (s *FederatedMappingSuite) SetupSuite() {
 	})
 
 	oauthIDPID, err := testutils.CreateIDP(testutils.IDP{
-		Name: "Federated Mapping OAuth Connection", Type: "OAUTH",
+		Name: "Federated Mapping OAuth Connection", Type: "OAUTH", OUID: s.ouID,
 		Properties: []testutils.IDPProperty{
 			{Name: "client_id", Value: oidcClientID},
 			{Name: "client_secret", Value: oidcClientSecret, IsSecret: true},
@@ -486,7 +486,7 @@ func (s *FederatedMappingSuite) SetupSuite() {
 	// No endpoints are set: a GitHub connection has none to set, and supplying them would bypass the
 	// base-URL override that points the defaults at the mock.
 	githubIDPID, err := testutils.CreateIDP(testutils.IDP{
-		Name: "Federated Mapping GitHub Connection", Type: "GITHUB",
+		Name: "Federated Mapping GitHub Connection", Type: "GITHUB", OUID: s.ouID,
 		Properties: []testutils.IDPProperty{
 			{Name: "client_id", Value: oidcClientID},
 			{Name: "client_secret", Value: oidcClientSecret, IsSecret: true},
@@ -760,6 +760,7 @@ func (s *FederatedMappingSuite) idpFixture(config *testutils.AttributeConfigurat
 	return testutils.IDP{
 		Name:        "Federated Mapping OIDC Connection",
 		Description: "Generic OIDC connection for federated attribute mapping tests",
+		OUID:        s.ouID,
 		Type:        "OIDC",
 		Properties: []testutils.IDPProperty{
 			{Name: "client_id", Value: oidcClientID},
