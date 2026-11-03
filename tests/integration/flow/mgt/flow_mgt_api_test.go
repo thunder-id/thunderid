@@ -1272,3 +1272,119 @@ func (suite *FlowMgtAPITestSuite) restoreFlowVersionExpectError(
 	suite.NoError(err)
 	suite.Equal(expectedCode, errorResp.Code)
 }
+
+// ouResolverSessionFlow returns an authentication flow with Check SSO Session, then Resolve OU between the sign-in
+// step and Save/Load Session, or after Save/Load Session when resolverAfterSession is set.
+func ouResolverSessionFlow(handle string, resolverAfterSession bool) map[string]interface{} {
+	first, second := "resolve_ou", "session"
+	if resolverAfterSession {
+		first, second = second, first
+	}
+	nodes := map[string]map[string]interface{}{
+		"resolve_ou": {
+			"id":         "resolve_ou",
+			"type":       "TASK_EXECUTION",
+			"executor":   map[string]interface{}{"name": "OUResolverExecutor"},
+			"properties": map[string]interface{}{"resolveFrom": "prompt", "parentOuId": "ou-1"},
+		},
+		"session": {"id": "session", "type": "TASK_EXECUTION", "executor": map[string]interface{}{"name": "SessionExecutor"}},
+	}
+	nodes[first]["onSuccess"] = second
+	nodes[second]["onSuccess"] = "auth_assert"
+	credentialInputs := []map[string]interface{}{
+		{"ref": "input_001", "identifier": "username", "type": "TEXT_INPUT", "required": true},
+		{"ref": "input_002", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
+	}
+	return map[string]interface{}{
+		"name":     "OU Resolver Placement Flow",
+		"handle":   handle,
+		"flowType": "AUTHENTICATION",
+		"nodes": []map[string]interface{}{
+			{"id": "START", "type": "START", "onSuccess": "sso_check"},
+			{
+				"id":         "sso_check",
+				"type":       "TASK_EXECUTION",
+				"executor":   map[string]interface{}{"name": "SSOCheckExecutor"},
+				"properties": map[string]interface{}{"checkpointRef": "session"},
+				"onSuccess":  "session",
+				"onFailure":  "prompt_credentials",
+			},
+			{
+				"id":   "prompt_credentials",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": credentialInputs,
+						"action": map[string]interface{}{"ref": "action_001", "nextNode": "credentials_auth"},
+					},
+				},
+			},
+			{
+				"id":        "credentials_auth",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "CredentialsAuthExecutor", "inputs": credentialInputs},
+				"onSuccess": first,
+			},
+			nodes[first],
+			nodes[second],
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "END",
+			},
+			{"id": "END", "type": "END"},
+		},
+	}
+}
+
+// sendFlow sends a flow definition to the flow management API and returns the status and body.
+func (suite *FlowMgtAPITestSuite) sendFlow(method, path string, flow map[string]interface{}) (int, []byte) {
+	body, err := json.Marshal(flow)
+	suite.Require().NoError(err)
+	req, err := http.NewRequest(method, testServerURL+path, bytes.NewBuffer(body))
+	suite.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	return resp.StatusCode, raw
+}
+
+// requireFlowRefusal checks that a flow definition was refused with the error code.
+func (suite *FlowMgtAPITestSuite) requireFlowRefusal(status int, raw []byte, code string) {
+	suite.Require().Equal(http.StatusBadRequest, status, string(raw))
+	var refusal struct {
+		Code string `json:"code"`
+	}
+	suite.Require().NoError(json.Unmarshal(raw, &refusal))
+	suite.Equal(code, refusal.Code, string(raw))
+}
+
+// TestOUResolverAfterSessionIsRefused verifies that an authentication flow where Resolve OU can run after
+// Save/Load Session is refused on create and on update, while Resolve OU between the sign-in step and
+// Save/Load Session is accepted.
+func (suite *FlowMgtAPITestSuite) TestOUResolverAfterSessionIsRefused() {
+	ouID, err := testutils.DefaultOUID()
+	suite.Require().NoError(err)
+	between := ouResolverSessionFlow(generateUniqueHandle("ou-resolver-between"), false)
+	between["ouId"] = ouID
+	status, raw := suite.sendFlow(http.MethodPost, flowsEndpoint, between)
+	suite.Require().Equal(http.StatusCreated, status, "Resolve OU before Save/Load Session is accepted: %s",
+		string(raw))
+	var created CompleteFlowDefinition
+	suite.Require().NoError(json.Unmarshal(raw, &created))
+	suite.trackFlow(created.ID)
+
+	after := ouResolverSessionFlow(generateUniqueHandle("ou-resolver-after"), true)
+	after["ouId"] = ouID
+	status, raw = suite.sendFlow(http.MethodPost, flowsEndpoint, after)
+	suite.requireFlowRefusal(status, raw, "FLM-1044")
+
+	moved := ouResolverSessionFlow(created.Handle, true)
+	status, raw = suite.sendFlow(http.MethodPut, flowsEndpoint+"/"+created.ID, moved)
+	suite.requireFlowRefusal(status, raw, "FLM-1044")
+	suite.Equal(1, suite.getFlow(created.ID).ActiveVersion, "the refused update leaves the flow as it was")
+}

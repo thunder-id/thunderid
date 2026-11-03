@@ -21,6 +21,7 @@ import (
 
 	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
@@ -33,6 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -602,7 +604,11 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	ctx context.Context, oauthParams *oauth2model.OAuthParameters,
 	app *providers.OAuthClient, initiatorReq *providers.InitiatorRequest,
 ) (*AuthorizationInitResult, *AuthorizationError) {
-	identifier, executionID, authErr := as.startAuthorizationFlow(ctx, oauthParams, app, initiatorReq, nil)
+	// An organization unit the application is not accessible from gets the OU token route's refusal.
+	ouRefusal := clientAuthorizationError(oauthParams, oauth2const.ErrorUnauthorizedClient,
+		oauth2const.OUAccessRefusal)
+	identifier, executionID, authErr := as.startAuthorizationFlow(ctx, oauthParams, app, initiatorReq, nil,
+		ouRefusal)
 	if authErr != nil {
 		return nil, authErr
 	}
@@ -648,11 +654,13 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 
 // startAuthorizationFlow checks a prompt=none request against the SSO session, binds the request to its
 // target resource server, stores it, and initiates the client's authentication flow with the OAuth
-// context. sessionData is the sessions the caller presents itself, ahead of the cookie. It returns the
-// stored request's id and the flow's execution id.
+// context. sessionData is the sessions the caller presents itself, ahead of the cookie, and ouRefusal the
+// answer when the requested organization unit refuses the flow start. It returns the stored request's id
+// and the flow's execution id.
 func (as *authorizeService) startAuthorizationFlow(
 	ctx context.Context, oauthParams *oauth2model.OAuthParameters,
 	app *providers.OAuthClient, initiatorReq *providers.InitiatorRequest, sessionData []oauth2model.SessionData,
+	ouRefusal *AuthorizationError,
 ) (string, string, *AuthorizationError) {
 	// prompt=none forbids any user interaction, so it can only be honored by an existing session
 	// that also satisfies id_token_hint and max_age. This is checked here, where both the standard
@@ -791,6 +799,11 @@ func (as *authorizeService) startAuthorizationFlow(
 	}
 
 	executionID, flowErr := as.flowExecService.InitiateFlow(ctx, flowInitCtx)
+	// With no refusal supplied, the organization unit refusal fails closed as the server error below.
+	if flowErr != nil && flowErr.Code == flowexec.ErrorInvalidOrganizationUnit.Code && ouRefusal != nil {
+		as.logger.Debug(ctx, "Application is not accessible from the requested organization unit")
+		return "", "", ouRefusal
+	}
 	if flowErr != nil {
 		as.logger.Error(ctx, "Failed to initiate authentication flow",
 			log.String("error_code", flowErr.Code))
@@ -882,7 +895,8 @@ func (as *authorizeService) AuthorizeWithSSOSession(ctx context.Context, app *pr
 	}
 
 	// The sessions the client presents stand in for the browser's per-flow cookies.
-	authID, executionID, authErr := as.startAuthorizationFlow(ctx, oauthParams, app, nil, req.SessionData)
+	authID, executionID, authErr := as.startAuthorizationFlow(ctx, oauthParams, app, nil, req.SessionData,
+		signInBoundaryRefusal(ctx))
 	if authErr != nil {
 		return nil, authErr
 	}
@@ -899,6 +913,11 @@ func (as *authorizeService) AuthorizeWithSSOSession(ctx context.Context, app *pr
 				Code:    oauth2const.ErrorServerError,
 				Message: "Failed to process authorization request",
 			}
+		}
+		if step != nil && step.Error != nil && isSignInBoundaryRefusal(step.Error.Code) {
+			as.logger.Debug(ctx, "The sign-in boundary refused the SSO session's subject",
+				log.String("errorCode", step.Error.Code))
+			return nil, signInBoundaryRefusal(ctx)
 		}
 		as.logger.Debug(ctx, "Flow cannot complete with the SSO session alone")
 		return nil, &AuthorizationError{
@@ -928,6 +947,25 @@ func (as *authorizeService) AuthorizeWithSSOSession(ctx context.Context, app *pr
 		return nil, authErr
 	}
 	return &authzCode, nil
+}
+
+// signInBoundaryRefusal answers a silent sign-in the sign-in boundary refuses, naming no organization unit.
+func signInBoundaryRefusal(ctx context.Context) *AuthorizationError {
+	message := oauth2const.AppSignInRefusal
+	if syscontext.GetAccessingOUID(ctx) != "" {
+		message = oauth2const.OUSignInRefusal
+	}
+	return &AuthorizationError{Code: oauth2const.ErrorInvalidGrant, Message: message}
+}
+
+// isSignInBoundaryRefusal reports whether a flow error code is a refusal by the sign-in boundary.
+func isSignInBoundaryRefusal(code string) bool {
+	switch code {
+	case flowexec.ErrorInvalidOrganizationUnit.Code, executor.ErrOrganizationNotResolved.Code,
+		executor.ErrNoAccessToApplication.Code:
+		return true
+	}
+	return false
 }
 
 // toFlowSessionData converts the sessions a client presents to the form the flow service takes.

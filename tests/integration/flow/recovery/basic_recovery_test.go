@@ -291,6 +291,49 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_UnknownUsern
 		"No email should be sent for a non-existent username")
 }
 
+// TestBasicRecoveryFlow_UserInAnotherOUIsFound tests that recovery has no sign-in boundary: driven by an
+// application that is not shared and lives in the suite's OU, it still finds a user who lives in a child OU,
+// whom a sign-in to that application would not find, and resets that user's password.
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_UserInAnotherOUIsFound() {
+	ts.mockSMTP.ClearEmails()
+	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "basic-recovery-child-ou", Name: "Basic Recovery Child OU", Parent: &ts.testOUID,
+	})
+	ts.Require().NoError(err, "Failed to create the child OU")
+	defer func() {
+		if err := testutils.DeleteOrganizationUnit(childOUID); err != nil {
+			ts.T().Logf("Failed to delete the child OU: %v", err)
+		}
+	}()
+	username := common.GenerateUniqueUsername("recoverychild")
+	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
+		OUID: childOUID,
+		Type: basicRecoveryUserSchema.Handle,
+		Attributes: json.RawMessage(`{
+			"username": "` + username + `",
+			"password": "ChildOld123!",
+			"email":    "` + username + `@example.com"
+		}`),
+	})
+	ts.Require().NoError(err, "Failed to create the child OU's user")
+	defer func() {
+		if err := testutils.CleanupUsers(userIDs); err != nil {
+			ts.T().Logf("Failed to delete the child OU's user: %v", err)
+		}
+	}()
+
+	flowStep, email := ts.driveRecoveryToPasswordPromptAs(username)
+
+	ts.Equal([]string{username + "@example.com"}, email.To, "The recovery email goes to the user in the child OU")
+	finalStep, err := common.CompleteFlow(flowStep.ExecutionID, map[string]string{"password": "ChildNew456!"},
+		"action_submit_password", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the new password")
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus, "Recovery completes for the user in the child OU")
+	ok, err := testutils.AuthenticateWithCredential("username", username, "password", "ChildNew456!")
+	ts.Require().NoError(err)
+	ts.True(ok, "The new password is set on the user in the child OU")
+}
+
 // TestBasicRecoveryFlow_InvalidToken tests that submitting a wrong recovery token
 // causes the token verification to fail and the flow to return an error/incomplete status.
 func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_InvalidToken() {
@@ -434,12 +477,20 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) TestCredentialSetter_NoUserInConte
 // driveRecoveryToPasswordPrompt runs the recovery flow up to prompt_new_password and returns that
 // step, so tests that only care about the credential setting stage can skip the setup.
 func (ts *EmailLinkPasswordRecoveryTestSuite) driveRecoveryToPasswordPrompt() *common.FlowStep {
+	flowStep, _ := ts.driveRecoveryToPasswordPromptAs(ts.testUsername)
+	return flowStep
+}
+
+// driveRecoveryToPasswordPromptAs is driveRecoveryToPasswordPrompt for the given username, and also returns the
+// recovery email the user was sent.
+func (ts *EmailLinkPasswordRecoveryTestSuite) driveRecoveryToPasswordPromptAs(username string) (
+	*common.FlowStep, *testutils.EmailMessage) {
 	flowStep, err := common.InitiateRecoveryFlow(ts.testAppID, false, nil, "")
 	ts.Require().NoError(err, "Failed to initiate recovery flow")
 
 	flowStep, err = common.CompleteFlow(
 		flowStep.ExecutionID,
-		map[string]string{"username": ts.testUsername},
+		map[string]string{"username": username},
 		"action_submit_username",
 		flowStep.ChallengeToken,
 	)
@@ -469,7 +520,7 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) driveRecoveryToPasswordPrompt() *c
 	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "password"),
 		"Expected password input at prompt_new_password")
 
-	return flowStep
+	return flowStep, email
 }
 
 // assertPasswordUnchanged confirms the user's current password still authenticates, so a failed

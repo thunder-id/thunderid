@@ -96,6 +96,9 @@ type RefreshTokenBuildContext struct {
 	// SessionID, when set, is stamped as the `sid` claim on the refresh token and copied unchanged
 	// across rotation.
 	SessionID string
+	// OUID, when set, is the organization unit the grant was issued in, stamped on the refresh token and
+	// copied unchanged across rotation.
+	OUID string
 	// ExpiresAt, when set, is the Unix expiry the rotated token inherits from the token it replaces,
 	// so a grant cannot outlive its original issuance window. Zero starts a fresh validity period,
 	// which is what first issuance does.
@@ -205,7 +208,10 @@ type RefreshTokenClaims struct {
 	// SessionID is the sid carried on the refresh token, copied onto the tokens minted during rotation.
 	// Empty when the grant had no session or the token predates sid issuance.
 	SessionID string
-	Claims    map[string]interface{}
+	// OUID is the organization unit the grant was issued in, which scopes re-authorization on refresh.
+	// Empty when none was known at issuance.
+	OUID   string
+	Claims map[string]interface{}
 	// AuthorizationDetails holds the granted authorization details carried on the refresh token.
 	AuthorizationDetails []providers.AuthorizationDetail
 }

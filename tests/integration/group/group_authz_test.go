@@ -81,6 +81,10 @@ type GroupAuthzTestSuite struct {
 
 	// HTTP client carrying the user-manager's system:group scoped token
 	groupAdminClient *http.Client
+
+	// The managers live outside the default OU, and a sign-in is bounded to its application's OU, so each
+	// signs in through an application in its own OU rather than the Console.
+	signIn testutils.OUSignInApps
 }
 
 const (
@@ -93,9 +97,6 @@ const (
 	groupMgrPassword  = "GroupMgr@123"
 	groupMgrRoleName  = "Group Admin (group-authz-test)"
 	entityTypeOU1Name = "authz-mgr-schema-ou1"
-
-	groupAuthzDevelopClientID    = "CONSOLE"
-	groupAuthzDevelopRedirectURI = "https://localhost:8095/console"
 
 	memberSchemaOU2Name = "authz-member-schema-ou2"
 
@@ -257,16 +258,8 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 	ts.groupMgrRoleID = roleID
 
 	// ---- 7. Obtain a scoped access token for the user-manager ----
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
-		groupAuthzDevelopClientID,
-		groupAuthzDevelopRedirectURI,
-		"system:ou:view system:group system:group:view",
-		groupMgrUsername,
-		groupMgrPassword,
-		true,
-		"",
-		groupAuthzScopedRSID,
-	)
+	tokenResp, err := ts.signIn.ObtainAccessToken(ts.groupOU1ID,
+		"system:ou:view system:group system:group:view", groupMgrUsername, groupMgrPassword, groupAuthzScopedRSID)
 	ts.Require().NoError(err, "obtain group-manager token")
 	ts.Require().NotEmpty(tokenResp.AccessToken, "group-manager token must be non-empty")
 
@@ -360,16 +353,8 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create empty-OU manager role")
 	ts.emptyOUMgrRoleID = emptyMgrRoleID
 
-	emptyMgrToken, err := testutils.ObtainAccessTokenWithPassword(
-		groupAuthzDevelopClientID,
-		groupAuthzDevelopRedirectURI,
-		"system:ou:view system:group system:group:view",
-		emptyOUMgrUsername,
-		emptyOUMgrPassword,
-		true,
-		"",
-		groupAuthzScopedRSID,
-	)
+	emptyMgrToken, err := ts.signIn.ObtainAccessToken(ts.emptyOUID,
+		"system:ou:view system:group system:group:view", emptyOUMgrUsername, emptyOUMgrPassword, groupAuthzScopedRSID)
 	ts.Require().NoError(err, "obtain empty-OU manager token")
 	ts.Require().NotEmpty(emptyMgrToken.AccessToken, "empty-OU manager token must be non-empty")
 
@@ -416,16 +401,8 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create declarative-OU manager role")
 	ts.declOUMgrRoleID = declMgrRoleID
 
-	declMgrToken, err := testutils.ObtainAccessTokenWithPassword(
-		groupAuthzDevelopClientID,
-		groupAuthzDevelopRedirectURI,
-		"system:ou:view system:group system:group:view",
-		declOUMgrUsername,
-		declOUMgrPassword,
-		true,
-		"",
-		groupAuthzScopedRSID,
-	)
+	declMgrToken, err := ts.signIn.ObtainAccessToken(declGroupOUID,
+		"system:ou:view system:group system:group:view", declOUMgrUsername, declOUMgrPassword, groupAuthzScopedRSID)
 	ts.Require().NoError(err, "obtain declarative-OU manager token")
 	ts.Require().NotEmpty(declMgrToken.AccessToken, "declarative-OU manager token must be non-empty")
 
@@ -437,6 +414,9 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 // ---------------------------------------------------------------------------
 
 func (ts *GroupAuthzTestSuite) TearDownSuite() {
+	if err := ts.signIn.DeleteAll(); err != nil {
+		ts.T().Logf("teardown: delete sign-in applications: %v", err)
+	}
 	if ts.scopedRSID != "" {
 		if err := testutils.DeleteResourceServerWithChildren(ts.scopedRSID); err != nil {
 			ts.T().Errorf("teardown: delete scoped resource server: %v", err)

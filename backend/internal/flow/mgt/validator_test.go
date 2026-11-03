@@ -2373,6 +2373,86 @@ func (s *ValidatorTestSuite) TestValidateSystemFlowDefinition() {
 	s.Equal("ask", svcErr.ErrorDescription.Params["nodeID"])
 }
 
+// ouResolverSSOFlow is a sign-in flow that wraps a credentials step in an SSO checkpoint, with an OU resolver
+// placed before Check SSO, between the step and Save/Load Session, after Save/Load Session, or after it behind a
+// prompt.
+func ouResolverSSOFlow(placement string) []providers.NodeDefinition {
+	task := func(id, name, next string) providers.NodeDefinition {
+		return providers.NodeDefinition{ID: id, Type: string(common.NodeTypeTaskExecution),
+			Executor: &providers.ExecutorDefinition{Name: name}, OnSuccess: next}
+	}
+	nextAfter := func(at, next string) string {
+		if placement == at {
+			return "resolve_ou"
+		}
+		return next
+	}
+	resolverNext := map[string]string{
+		"before": "sso_check", "between": "session", "after": "assert", "after a prompt": "assert",
+	}[placement]
+	sessionNext := nextAfter("after", "assert")
+	if placement == "after a prompt" {
+		sessionNext = "pick"
+	}
+
+	ssoCheck := task("sso_check", executor.ExecutorNameSSOCheck, "session")
+	ssoCheck.OnFailure = "login"
+	ssoCheck.Properties = map[string]interface{}{common.NodePropertyCheckpointRef: "session"}
+	nodes := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: nextAfter("before", "sso_check")},
+		ssoCheck,
+		{ID: "login", Type: string(common.NodeTypePrompt), Prompts: []providers.PromptDefinition{
+			{Action: &providers.ActionDefinition{Ref: "submit", NextNode: "credentials"}}}},
+		task("credentials", executor.ExecutorNameCredentialsAuth, nextAfter("between", "session")),
+		task("session", executor.ExecutorNameSession, sessionNext),
+		task("resolve_ou", executor.ExecutorNameOUResolver, resolverNext),
+		task("assert", executor.ExecutorNameAuthAssert, "end"),
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	if placement == "after a prompt" {
+		nodes = append(nodes, providers.NodeDefinition{ID: "pick", Type: string(common.NodeTypePrompt),
+			Prompts: []providers.PromptDefinition{
+				{Action: &providers.ActionDefinition{Ref: "next", NextNode: "resolve_ou"}}}})
+	}
+	return nodes
+}
+
+func (s *ValidatorTestSuite) TestValidateOUResolverPlacement() {
+	tests := []struct {
+		placement   string
+		flowType    providers.FlowType
+		wantRefused bool
+	}{
+		{"before", providers.FlowTypeAuthentication, false},
+		{"between", providers.FlowTypeAuthentication, false},
+		{"after", providers.FlowTypeAuthentication, true},
+		{"after a prompt", providers.FlowTypeAuthentication, true},
+		{"after", providers.FlowTypeRegistration, false},
+		{"after", providers.FlowTypeUserOnboarding, false},
+	}
+	for _, tc := range tests {
+		s.Run(tc.placement+" in "+string(tc.flowType), func() {
+			err := validateOUResolverPlacement(tc.flowType, ouResolverSSOFlow(tc.placement))
+
+			if !tc.wantRefused {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorOUResolverAfterSession.Code, err.Code)
+			s.Equal(map[string]string{"nodeID": "resolve_ou", "sessionNodeID": "session"},
+				err.ErrorDescription.Params)
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowTypeBasedConstraints_RefusesOUResolverAfterSession() {
+	err := s.v.validateFlowTypeBasedConstraints(providers.FlowTypeAuthentication, ouResolverSSOFlow("after"))
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorOUResolverAfterSession.Code, err.Code)
+}
+
 func ouResolverNode(properties map[string]interface{}) []providers.NodeDefinition {
 	return []providers.NodeDefinition{{
 		ID: "ou", Type: string(common.NodeTypeTaskExecution),

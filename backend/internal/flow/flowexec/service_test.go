@@ -9,6 +9,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -24,6 +27,7 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
@@ -31,6 +35,8 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -44,7 +50,9 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
+	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
 )
 
 const existingExecutionID = "existing-execution-id"
@@ -308,7 +316,7 @@ func TestInitiateFlowSuccessScenarios(t *testing.T) {
 			} else {
 				mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).
 					Return(mockClient, nil)
-				mockEntityProvider.EXPECT().GetEntityProfile(appID).
+				mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).
 					Return(mockEntity, (*entityprovider.EntityProviderError)(nil))
 				mockFlowProvider.EXPECT().GetFlow(mock.Anything, "auth-graph-1").
 					Return(&providers.CompleteFlowDefinition{ID: "auth-graph-1"}, nil)
@@ -456,7 +464,7 @@ func TestInitiateFlowErrorScenarios(t *testing.T) {
 			) {
 				mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).
 					Return(&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-1"}, nil)
-				mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+				mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 					&providers.Entity{ID: appID, Category: providers.EntityCategoryApp},
 					(*entityprovider.EntityProviderError)(nil))
 
@@ -555,12 +563,14 @@ func TestInitiateFlowFallsBackToDefaultFlow(t *testing.T) {
 		mockCrypto := cryptomock.NewRuntimeCryptoProviderMock(t)
 		mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]byte("encrypted-ctx"), nil, nil)
+		mockOU := ouprovidermock.NewOrganizationUnitProviderMock(t)
 
 		service := &flowExecService{
 			graphBuilder:  mockGraphBuilder,
 			flowProvider:  mockFlowProvider,
 			flowStore:     mockStore,
 			actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr(), nil, nil),
+			ouProvider:    mockOU,
 			transactioner: &stubTransactioner{},
 			cryptoSvc:     mockCrypto,
 			cfg:           testFlowExecCfg,
@@ -571,9 +581,10 @@ func TestInitiateFlowFallsBackToDefaultFlow(t *testing.T) {
 
 		mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).
 			Return(&inboundmodel.InboundClient{ID: appID, AuthFlowID: "stale-auth-graph"}, nil)
-		mockEntityProvider.EXPECT().GetEntityProfile(appID).
+		mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).
 			Return(&providers.Entity{ID: appID, Category: providers.EntityCategoryApp},
 				(*entityprovider.EntityProviderError)(nil))
+		mockOU.EXPECT().IsApplicationShared(mock.Anything).Return(true, nil)
 
 		// The referenced flow was deleted.
 		mockFlowProvider.EXPECT().GetFlow(mock.Anything, "stale-auth-graph").
@@ -731,7 +742,7 @@ func TestEncryptedPayloadStoredBeforeWrite(t *testing.T) {
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app").Return(
 		&inboundmodel.InboundClient{ID: "test-app", AuthFlowID: "auth-graph-1"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app").Return(
 		&providers.Entity{ID: "test-app", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 	mockFlowProvider.EXPECT().
@@ -813,7 +824,7 @@ func TestDecryptCalledForEncryptedStoredContext(t *testing.T) {
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 
@@ -1113,7 +1124,7 @@ func TestExecute_ContextDecryptionSuccess(t *testing.T) {
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 	challengeToken := "test-challenge-token"
@@ -1177,7 +1188,7 @@ func TestExecute_ExistingFlowWithoutChallengeToken(t *testing.T) {
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 
@@ -1272,7 +1283,7 @@ func TestExecute_ExistingFlowWithDifferentChallengeTokens(t *testing.T) {
 			mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 			mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 				&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-			mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+			mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 				&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp},
 				(*entityprovider.EntityProviderError)(nil))
 
@@ -1349,7 +1360,7 @@ func TestExecute_EngineError_InvalidChallengeToken_PreservesContext(t *testing.T
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 	mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -1420,7 +1431,7 @@ func TestExecute_EngineError_NonChallengeToken_RemovesContext(t *testing.T) {
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 
@@ -1483,7 +1494,7 @@ func TestExecute_EngineError_NewFlow_ContextNeverRemoved(t *testing.T) {
 		Return(providers.AuthUser{}, nil, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app").Return(
 		&inboundmodel.InboundClient{ID: "test-app", AuthFlowID: "auth-graph-1"}, nil).Times(3)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app").Return(
 		&providers.Entity{ID: "test-app", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 	mockFlowProvider.EXPECT().
@@ -1563,7 +1574,7 @@ func TestBuildApplication_EntityLoadError(t *testing.T) {
 	provider, mockInbound, mockEP := newBuildAppProvider(t)
 	mockInbound.EXPECT().GetInboundClientByEntityID(mock.Anything, "app-x").
 		Return(&inboundmodel.InboundClient{ID: "app-x"}, nil)
-	mockEP.EXPECT().GetEntityProfile("app-x").Return(
+	mockEP.EXPECT().GetEntityProfile(mock.Anything, "app-x").Return(
 		(*providers.Entity)(nil),
 		entityprovider.NewEntityProviderError("INTERNAL_ERROR", "boom", ""))
 
@@ -1580,7 +1591,7 @@ func TestBuildApplication_EntityNotFound_ReturnsAppWithoutEntityFields(t *testin
 			ID:               "app-x",
 			AllowedUserTypes: []string{"customer"},
 		}, nil)
-	mockEP.EXPECT().GetEntityProfile("app-x").Return(
+	mockEP.EXPECT().GetEntityProfile(mock.Anything, "app-x").Return(
 		(*providers.Entity)(nil),
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "missing", ""))
 
@@ -1604,7 +1615,7 @@ func TestBuildApplication_Success_WithMetadataAndClientID(t *testing.T) {
 			},
 		}, nil)
 	sysAttrs := []byte(`{"name":"Acme","clientId":"client-1"}`)
-	mockEP.EXPECT().GetEntityProfile("app-x").Return(
+	mockEP.EXPECT().GetEntityProfile(mock.Anything, "app-x").Return(
 		&providers.Entity{
 			ID:               "app-x",
 			Category:         providers.EntityCategoryApp,
@@ -1726,7 +1737,7 @@ func TestInitiateAndExecute_CustomExpiryUsed(t *testing.T) {
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-expiry"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().
 		GetFlow(mock.Anything, "auth-graph-expiry").
@@ -1779,7 +1790,7 @@ func (s *ServiceTestSuite) TestInitiationRefusesAHeldApplication() {
 
 		mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 			&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-held"}, nil)
-		mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+		mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 			&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 		mockFlowProvider.EXPECT().GetFlow(mock.Anything, "auth-graph-held").
 			Return(&providers.CompleteFlowDefinition{ID: "auth-graph-held"}, nil)
@@ -1836,7 +1847,7 @@ func TestInitiateAndExecute_ZeroExpiryUsesDefault(t *testing.T) {
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-defexp"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().
 		GetFlow(mock.Anything, "auth-graph-defexp").
@@ -1901,7 +1912,7 @@ func TestInitiateAndExecute_InitialInputsAndRuntimeData(t *testing.T) {
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-ia"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().
 		GetFlow(mock.Anything, "auth-graph-ia").
@@ -1962,7 +1973,7 @@ func TestInitiateAndExecute_FlowComplete_ContextNotStored(t *testing.T) {
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-complete"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().
 		GetFlow(mock.Anything, "auth-graph-complete").
@@ -2015,7 +2026,7 @@ func TestInitiateAndExecute_EngineError(t *testing.T) {
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-ee"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().
 		GetFlow(mock.Anything, "auth-graph-ee").
@@ -2066,7 +2077,7 @@ func TestInitiateAndExecute_StoreError_ReturnsError(t *testing.T) {
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-se"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().
 		GetFlow(mock.Anything, "auth-graph-se").
@@ -2279,7 +2290,7 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_IncompleteStoresContext() {
 		Return(providers.AuthUser{}, nil, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-new"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().
 		GetFlow(mock.Anything, "auth-graph-new").
@@ -2347,7 +2358,7 @@ func (s *ServiceTestSuite) TestExecute_ExistingFlow_CompleteRemovesContext() {
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp}, nil)
 	mockEngine.EXPECT().Execute(mock.Anything).
 		Return(FlowStep{Status: providers.FlowStatusComplete}, nil)
@@ -2973,7 +2984,7 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_BackendApp_ValidSecret_Allowed() 
 		Return(providers.AuthUser{}, nil, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app").Return(
 		&inboundmodel.InboundClient{ID: "test-app", AuthFlowID: "auth-graph-1"}, nil).Times(3)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app").Return(
 		&providers.Entity{ID: "test-app", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 	mockFlowProvider.EXPECT().
@@ -3089,7 +3100,7 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_EmbeddedApp_ValidSecret_Allowed()
 		Return(providers.AuthUser{}, nil, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app").Return(
 		&inboundmodel.InboundClient{ID: "test-app", AuthFlowID: "auth-graph-1"}, nil).Times(3)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app").Return(
 		&providers.Entity{ID: "test-app", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 	mockFlowProvider.EXPECT().
@@ -3182,7 +3193,7 @@ func (s *ServiceTestSuite) TestExecute_ContinuationFlow_AuthCodeApp_NotBlocked()
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app").Return(
 		&inboundmodel.InboundClient{ID: "test-app", AuthFlowID: "auth-graph-1"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app").Return(
 		&providers.Entity{ID: "test-app", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 
@@ -3752,7 +3763,7 @@ func (s *ServiceTestSuite) TestExecuteRefusesAHeldApplicationOnAContinuingStep()
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 	governance.EXPECT().EvaluateAccess(mock.Anything, "test-app-id", providers.AccessPlaneApplication,
@@ -3860,4 +3871,355 @@ func (s *ServiceTestSuite) TestExecutionAPIRefusesSystemFlows() {
 	_, svcErr := validateFlowType(string(providers.FlowTypeSystem))
 
 	s.Equal(&ErrorInvalidFlowType, svcErr)
+}
+
+const (
+	boundaryAppID      = "boundary-app"
+	boundaryAppOUID    = "boundary-app-ou"
+	boundaryNamedOUID  = "boundary-named-ou"
+	boundaryAuthFlowID = "boundary-auth-flow"
+	boundaryRegFlowID  = "boundary-registration-flow"
+	boundaryUserID     = "boundary-user"
+)
+
+// inStartingSignInBoundary matches a context carrying the sign-in boundary of boundaryAppID before an ouId or a
+// subject is set.
+func inStartingSignInBoundary() any {
+	return mock.MatchedBy(func(c context.Context) bool {
+		b, ok := authnprovidercm.SignInBoundaryFrom(c)
+		return ok && b == authnprovidercm.SignInBoundary{ApplicationID: boundaryAppID}
+	})
+}
+
+// boundaryFixture is a service that starts flows for boundaryAppID, an application owned by
+// boundaryAppOUID, with the mocks a test states the sharing answers and outcomes on.
+type boundaryFixture struct {
+	service *flowExecService
+	actor   *actorprovidermock.ActorProviderMock
+	ou      *ouprovidermock.OrganizationUnitProviderMock
+	engine  *flowEngineInterfaceMock
+	crypto  *cryptomock.RuntimeCryptoProviderMock
+	jwt     *jwtmock.JWTServiceInterfaceMock
+	store   *flowStoreInterfaceMock
+	graph   core.GraphInterface
+}
+
+// newBoundaryFixture returns a fixture whose application starts a flow of the given type. Its store
+// has no expectations, so a test fails if any flow context is stored it did not allow.
+func (s *ServiceTestSuite) newBoundaryFixture(flowType providers.FlowType) *boundaryFixture {
+	config.ResetServerRuntime()
+	s.T().Cleanup(config.ResetServerRuntime)
+	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+
+	flowID := boundaryAuthFlowID
+	if flowType == providers.FlowTypeRegistration {
+		flowID = boundaryRegFlowID
+	}
+	actor := actorprovidermock.NewActorProviderMock(s.T())
+	actor.EXPECT().GetInboundClientByID(mock.Anything, boundaryAppID).Return(&providers.InboundClient{
+		ID: boundaryAppID, AuthFlowID: boundaryAuthFlowID,
+		RegistrationFlowID: boundaryRegFlowID, IsRegistrationFlowEnabled: true,
+	}, nil)
+	actor.EXPECT().GetActor(boundaryAppID).Return(&providers.Entity{
+		ID: boundaryAppID, OUID: boundaryAppOUID, Category: providers.EntityCategoryApp,
+	}, nil)
+	flowProvider := NewFlowProviderMock(s.T())
+	flowProvider.EXPECT().GetFlow(mock.Anything, flowID).
+		Return(&providers.CompleteFlowDefinition{ID: flowID, FlowType: flowType}, nil)
+	graph := flowFactory.CreateGraph(flowID, flowType, 1)
+	graphBuilder := NewGraphBuilderInterfaceMock(s.T())
+	graphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(graph, nil)
+	observability := observabilitymock.NewObservabilityServiceInterfaceMock(s.T())
+	observability.EXPECT().IsEnabled().Return(false).Maybe()
+
+	f := &boundaryFixture{
+		actor:  actor,
+		ou:     ouprovidermock.NewOrganizationUnitProviderMock(s.T()),
+		engine: newFlowEngineInterfaceMock(s.T()),
+		crypto: cryptomock.NewRuntimeCryptoProviderMock(s.T()),
+		jwt:    jwtmock.NewJWTServiceInterfaceMock(s.T()),
+		store:  newFlowStoreInterfaceMock(s.T()),
+		graph:  graph,
+	}
+	f.service = &flowExecService{
+		flowProvider:     flowProvider,
+		graphBuilder:     graphBuilder,
+		flowStore:        f.store,
+		flowEngine:       f.engine,
+		actorProvider:    actor,
+		ouProvider:       f.ou,
+		observabilitySvc: observability,
+		transactioner:    &stubTransactioner{},
+		cryptoSvc:        f.crypto,
+		jwtService:       f.jwt,
+		cfg:              testFlowExecCfg,
+	}
+	return f
+}
+
+// initContext starts a flow of the fixture's type the way every entry point does.
+func (f *boundaryFixture) initContext(ctx context.Context, flowType providers.FlowType) (
+	*EngineContext, *tidcommon.ServiceError) {
+	return f.service.initContext(ctx, "", boundaryAppID, flowType, nil, nil, true, log.GetLogger())
+}
+
+// The start fixes the organization unit when it can: the one the request names, or the application's
+// own when it is not shared. A shared application with no unit named leaves it open.
+func (s *ServiceTestSuite) TestBoundSignIn_FixesTheOrganizationUnitAtStart() {
+	cases := []struct {
+		name      string
+		namedOUID string
+		arrange   func(ou *ouprovidermock.OrganizationUnitProviderMock)
+		wantOUID  string
+	}{
+		{
+			name:      "a named unit the application is accessible from",
+			namedOUID: boundaryNamedOUID,
+			arrange: func(ou *ouprovidermock.OrganizationUnitProviderMock) {
+				ou.EXPECT().IsEligibleOU(inStartingSignInBoundary(), boundaryNamedOUID).Return(true, nil).Once()
+			},
+			wantOUID: boundaryNamedOUID,
+		},
+		{
+			name: "no unit named and the application not shared",
+			arrange: func(ou *ouprovidermock.OrganizationUnitProviderMock) {
+				ou.EXPECT().IsApplicationShared(inStartingSignInBoundary()).Return(false, nil).Once()
+			},
+			wantOUID: boundaryAppOUID,
+		},
+		{
+			name: "no unit named and the application shared",
+			arrange: func(ou *ouprovidermock.OrganizationUnitProviderMock) {
+				ou.EXPECT().IsApplicationShared(inStartingSignInBoundary()).Return(true, nil).Once()
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+			tc.arrange(f.ou)
+			ctx := context.Background()
+			if tc.namedOUID != "" {
+				ctx = sysContext.WithAccessingOUID(ctx, tc.namedOUID)
+			}
+
+			engineCtx, svcErr := f.initContext(ctx, providers.FlowTypeAuthentication)
+
+			s.Require().Nil(svcErr)
+			s.True(engineCtx.SignInBounded)
+			ouID, fixed := engineCtx.RuntimeData[common.RuntimeKeyOUID]
+			s.Equal(tc.wantOUID != "", fixed)
+			s.Equal(tc.wantOUID, ouID)
+		})
+	}
+}
+
+// A unit the application is not accessible from is refused at every entry point before any flow
+// context exists, with one answer whether the unit is not shared with or does not exist.
+func (s *ServiceTestSuite) TestBoundSignIn_RefusesAUnitTheApplicationIsNotAccessibleFrom() {
+	answers := map[string]*tidcommon.ServiceError{
+		"not shared with the unit": nil,
+		"unit does not exist":      {Type: tidcommon.ClientErrorType, Code: "OU-1003"},
+	}
+	for name, lookupErr := range answers {
+		refuse := func(f *boundaryFixture) {
+			f.ou.EXPECT().IsEligibleOU(inStartingSignInBoundary(), boundaryNamedOUID).Return(false, lookupErr).Once()
+		}
+		ctx := sysContext.WithAccessingOUID(context.Background(), boundaryNamedOUID)
+
+		s.Run(name+" via authorize", func() {
+			f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+			refuse(f)
+
+			executionID, svcErr := f.service.InitiateFlow(ctx, &FlowInitContext{
+				ApplicationID: boundaryAppID, FlowType: string(providers.FlowTypeAuthentication),
+			})
+
+			s.Empty(executionID)
+			s.Equal(&ErrorInvalidOrganizationUnit, svcErr)
+		})
+
+		s.Run(name+" via flow execute", func() {
+			f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+			refuse(f)
+			f.actor.EXPECT().GetOAuthProfileByID(mock.Anything, boundaryAppID).Return(nil, nil)
+			f.actor.EXPECT().AuthenticateActor(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+			step, svcErr := f.service.Execute(ctx, boundaryAppID, "", string(providers.FlowTypeAuthentication),
+				false, "", nil, "", "flow-secret", "", nil)
+
+			s.Nil(step)
+			s.Equal(&ErrorInvalidOrganizationUnit, svcErr)
+		})
+	}
+}
+
+// The unit a flow execution request names reaches the start rule, and its refusal is the request's answer.
+func (s *ServiceTestSuite) TestBoundSignIn_FlowExecuteRequestNamingAnInaccessibleUnitIsRefused() {
+	f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+	f.ou.EXPECT().IsEligibleOU(inStartingSignInBoundary(), boundaryNamedOUID).Return(false, nil).Once()
+	f.actor.EXPECT().GetOAuthProfileByID(mock.Anything, boundaryAppID).Return(nil, nil)
+	f.actor.EXPECT().AuthenticateActor(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	body := `{"applicationId":"` + boundaryAppID + `","flowType":"AUTHENTICATION","ouId":"` + boundaryNamedOUID + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/flow/execute", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(serverconst.FlowSecretHeaderName, "flow-secret")
+	w := httptest.NewRecorder()
+
+	newFlowExecutionHandler(f.service, nil, 0).HandleFlowExecutionRequest(w, req)
+
+	s.Equal(http.StatusBadRequest, w.Code)
+	s.Contains(w.Body.String(), ErrorInvalidOrganizationUnit.Code)
+}
+
+// A failed sharing lookup is a server error, not a refusal or an open boundary.
+func (s *ServiceTestSuite) TestBoundSignIn_LookupFailureIsAServerError() {
+	s.Run("access from the named unit", func() {
+		f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+		f.ou.EXPECT().IsEligibleOU(mock.Anything, boundaryNamedOUID).
+			Return(false, &tidcommon.InternalServerError).Once()
+
+		engineCtx, svcErr := f.initContext(
+			sysContext.WithAccessingOUID(context.Background(), boundaryNamedOUID), providers.FlowTypeAuthentication)
+
+		s.Nil(engineCtx)
+		s.Equal(&tidcommon.InternalServerError, svcErr)
+	})
+
+	s.Run("whether the application is shared", func() {
+		f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+		f.ou.EXPECT().IsApplicationShared(mock.Anything).Return(false, &tidcommon.InternalServerError).Once()
+
+		engineCtx, svcErr := f.initContext(context.Background(), providers.FlowTypeAuthentication)
+
+		s.Nil(engineCtx)
+		s.Equal(&tidcommon.InternalServerError, svcErr)
+	})
+}
+
+// Only sign-in is bounded: another flow type asks nothing about sharing, even with a unit named.
+func (s *ServiceTestSuite) TestBoundSignIn_OtherFlowTypesAreNotBounded() {
+	f := s.newBoundaryFixture(providers.FlowTypeRegistration)
+
+	engineCtx, svcErr := f.initContext(
+		sysContext.WithAccessingOUID(context.Background(), boundaryNamedOUID), providers.FlowTypeRegistration)
+
+	s.Require().Nil(svcErr)
+	s.False(engineCtx.SignInBounded)
+	s.NotContains(engineCtx.RuntimeData, common.RuntimeKeyOUID)
+}
+
+// The authorize entry point stores the boundary with the context, beside the runtime data it passed.
+func (s *ServiceTestSuite) TestBoundSignIn_InitiateFlowStoresTheBoundary() {
+	f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+	f.ou.EXPECT().IsApplicationShared(inStartingSignInBoundary()).Return(false, nil).Once()
+	var stored flowContextContent
+	f.crypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, _ *providers.KeyRef, _ string, _ map[string]interface{}, content []byte) {
+			s.Require().NoError(json.Unmarshal(content, &stored))
+		}).Return([]byte("encrypted-ctx"), nil, nil).Once()
+	f.service.flowStore.(*flowStoreInterfaceMock).EXPECT().
+		StoreFlowContext(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+
+	executionID, svcErr := f.service.InitiateFlow(context.Background(), &FlowInitContext{
+		ApplicationID: boundaryAppID,
+		FlowType:      string(providers.FlowTypeAuthentication),
+		RuntimeData:   map[string]string{common.RuntimeKeyClientID: "boundary-client"},
+	})
+
+	s.Require().Nil(svcErr)
+	s.NotEmpty(executionID)
+	s.True(stored.SignInBounded)
+	s.Require().NotNil(stored.RuntimeData)
+	var runtimeData map[string]string
+	s.Require().NoError(json.Unmarshal([]byte(*stored.RuntimeData), &runtimeData))
+	s.Equal(map[string]string{
+		common.RuntimeKeyClientID: "boundary-client",
+		common.RuntimeKeyOUID:     boundaryAppOUID,
+	}, runtimeData)
+}
+
+// The flow execution entry point runs the flow with the boundary and the unit it named.
+func (s *ServiceTestSuite) TestBoundSignIn_ExecuteRunsTheFlowBounded() {
+	f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+	f.ou.EXPECT().IsEligibleOU(inStartingSignInBoundary(), boundaryNamedOUID).Return(true, nil).Once()
+	f.actor.EXPECT().GetOAuthProfileByID(mock.Anything, boundaryAppID).Return(nil, nil)
+	f.actor.EXPECT().AuthenticateActor(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	var ran *EngineContext
+	f.engine.EXPECT().Execute(mock.Anything).Run(func(ctx *EngineContext) { ran = ctx }).
+		Return(FlowStep{Status: providers.FlowStatusComplete}, nil).Once()
+
+	_, svcErr := f.service.Execute(sysContext.WithAccessingOUID(context.Background(), boundaryNamedOUID),
+		boundaryAppID, "", string(providers.FlowTypeAuthentication), false, "", nil, "", "flow-secret", "", nil)
+
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(ran)
+	s.True(ran.SignInBounded)
+	s.Equal(boundaryNamedOUID, ran.RuntimeData[common.RuntimeKeyOUID])
+}
+
+// boundaryAuthUser is boundaryUserID as the default provider signed it in.
+func boundaryAuthUser() providers.AuthUser {
+	var authUser providers.AuthUser
+	authUser.SetStateFor("default", providers.AuthState{
+		EntityReference: &providers.EntityReference{EntityID: boundaryUserID, EntityCategory: "user"},
+		AttributeToken:  "attributes",
+	})
+	return authUser
+}
+
+// completedSignIn is the step the engine completes a sign-in with: an assertion and a new SSO session.
+func completedSignIn() FlowStep {
+	return FlowStep{
+		Status:       providers.FlowStatusComplete,
+		Assertion:    "success-assertion",
+		SSOHandleOut: "sso-handle",
+		SSOFlowID:    boundaryAuthFlowID,
+	}
+}
+
+// continueStoredFlow stores a flow the engine ends with step on the next request, and expects its context removed.
+func (s *ServiceTestSuite) continueStoredFlow(f *boundaryFixture, flowType providers.FlowType, bounded bool,
+	runtimeData map[string]string, step FlowStep) {
+	stored := &FlowContextDB{}
+	s.Require().NoError(stored.FromEngineContext(EngineContext{
+		ExecutionID:       existingExecutionID,
+		AppID:             boundaryAppID,
+		FlowType:          flowType,
+		SignInBounded:     bounded,
+		AuthenticatedUser: authncm.AuthenticatedUser{Attributes: map[string]interface{}{}},
+		AuthUser:          boundaryAuthUser(),
+		UserInputs:        map[string]string{},
+		RuntimeData:       runtimeData,
+		ExecutionHistory:  map[string]*providers.NodeExecutionRecord{},
+		Graph:             f.graph,
+	}))
+	f.store.EXPECT().GetFlowContext(mock.Anything, existingExecutionID).Return(stored, nil).Once()
+	f.engine.EXPECT().Execute(mock.Anything).Return(step, nil).Once()
+	f.store.EXPECT().DeleteFlowContext(mock.Anything, existingExecutionID).Return(nil).Once()
+}
+
+// execute continues the stored flow.
+func (f *boundaryFixture) execute(flowType providers.FlowType) (*FlowStep, *tidcommon.ServiceError) {
+	return f.service.Execute(context.Background(), boundaryAppID, existingExecutionID, string(flowType),
+		false, "", nil, "", "", "", nil)
+}
+
+// The service returns a bounded completion as the engine made it, since the assertion step checks the boundary.
+func (s *ServiceTestSuite) TestExecute_BoundedCompletionIsNotCheckedAgain() {
+	f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+	s.continueStoredFlow(f, providers.FlowTypeAuthentication, true,
+		map[string]string{common.RuntimeKeyOUID: boundaryNamedOUID}, completedSignIn())
+
+	step, svcErr := f.execute(providers.FlowTypeAuthentication)
+
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(step)
+	s.Equal(providers.FlowStatusComplete, step.Status)
+	s.Nil(step.Error)
+	s.Equal("success-assertion", step.Assertion)
+	s.Require().Len(step.SessionData, 1)
+	s.Equal("sso-handle", step.SessionData[0].SessionHandle)
 }

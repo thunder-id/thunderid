@@ -14,6 +14,7 @@ import "strings"
 // Auth Secret gating is owned by the authn service (internal/authn).
 var publicPaths = []string{
 	"/ou/*/oauth2/token",
+	"/ou/*/oauth2/authorize",
 	"/health/**",
 	"/flow/execute/**",
 	"/flow/meta",

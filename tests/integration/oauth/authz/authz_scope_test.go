@@ -552,7 +552,33 @@ func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_SharedRoleAssignedInChild
 		},
 	}))
 
-	scopes, _ := ts.obtainScopesAndAudience("oauth_shared_role_user", scopeTestResourceServerIdentifier)
+	// The user signs in through an application in the child, since a sign-in is bounded to its application's
+	// OU and counts only the role assignments made there.
+	const childClientID = "scope_authz_child_client"
+	childAppID, err := ts.createApplicationRaw(map[string]interface{}{
+		"name":             "OAuth Scope Child Application",
+		"ouId":             childOUID,
+		"authFlowId":       ts.flowID,
+		"allowedUserTypes": []string{"authz-test-person"},
+		"inboundAuthConfig": []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                childClientID,
+					"clientSecret":            scopeTestClientSecret,
+					"redirectUris":            []string{scopeTestRedirectURI},
+					"grantTypes":              []string{"authorization_code"},
+					"responseTypes":           []string{"code"},
+					"tokenEndpointAuthMethod": "client_secret_post",
+				},
+			},
+		},
+	})
+	ts.Require().NoError(err)
+	defer func() { ts.NoError(testutils.DeleteApplication(childAppID)) }()
+
+	scopes, _ := ts.obtainScopesAndAudienceAs(childClientID, "oauth_shared_role_user",
+		scopeTestResourceServerIdentifier)
 	ts.NotContains(scopes, "read", "the role is shared with the child but not yet assigned there")
 
 	ts.Equal(http.StatusNoContent, ts.postJSON("/roles/"+roleID+"/assignments/add", map[string]interface{}{
@@ -560,7 +586,8 @@ func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_SharedRoleAssignedInChild
 		"assignments": []map[string]string{{"id": userID, "type": "user"}},
 	}))
 
-	scopes, _ = ts.obtainScopesAndAudience("oauth_shared_role_user", scopeTestResourceServerIdentifier)
+	scopes, _ = ts.obtainScopesAndAudienceAs(childClientID, "oauth_shared_role_user",
+		scopeTestResourceServerIdentifier)
 	ts.Contains(scopes, "read")
 	ts.Contains(scopes, "write")
 }
@@ -658,8 +685,14 @@ func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_CrossResourceServerPermis
 // obtainScopesAndAudience runs the flow for the given user requesting "openid read write" bound to
 // the given resource server, and returns the issued token's scope list and audience.
 func (ts *OAuthAuthzScopeTestSuite) obtainScopesAndAudience(username, resource string) ([]string, string) {
+	return ts.obtainScopesAndAudienceAs(scopeTestClientID, username, resource)
+}
+
+// obtainScopesAndAudienceAs is obtainScopesAndAudience through the client with clientID.
+func (ts *OAuthAuthzScopeTestSuite) obtainScopesAndAudienceAs(clientID, username, resource string) ([]string,
+	string) {
 	tokenResp, err := ts.obtainTokenWithResource(
-		scopeTestClientID, scopeTestClientSecret, "openid read write", username, resource)
+		clientID, scopeTestClientSecret, "openid read write", username, resource)
 	ts.Require().NoError(err, "Failed to obtain access token")
 	ts.Require().NotNil(tokenResp, "Token response should not be nil")
 	ts.Require().NotEmpty(tokenResp.AccessToken, "Access token should not be empty")

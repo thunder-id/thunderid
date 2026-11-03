@@ -21,6 +21,7 @@ func Initialize(
 	mux *http.ServeMux,
 	flowProvider providers.FlowProvider,
 	actorProvider providers.ActorProvider,
+	ouProvider providers.OrganizationUnitProvider,
 	executorRegistry executor.ExecutorRegistryInterface,
 	interceptorRegistry interceptor.InterceptorRegistryInterface,
 	observabilitySvc providers.ObservabilityProvider,
@@ -45,7 +46,7 @@ func Initialize(
 	sessionTimeouts := session.NewTimeouts(cfg.Session.IdleTimeoutSeconds, cfg.Session.AbsoluteTimeoutSeconds,
 		cfg.Session.ActivityRefreshIntervalSeconds)
 	flowExecService := newFlowExecService(flowProvider, flowStore, flowEngine,
-		actorProvider, observabilitySvc, transactioner, cryptoSvc, attestationVerifier,
+		actorProvider, ouProvider, observabilitySvc, transactioner, cryptoSvc, attestationVerifier,
 		graphBuilder, jwtService, serverConfigSvc, governance, cfg, sessionTimeouts.Absolute)
 
 	handler := newFlowExecutionHandler(flowExecService, ssoTransport, sessionTimeouts.Absolute)

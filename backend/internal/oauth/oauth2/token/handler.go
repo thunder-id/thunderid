@@ -106,9 +106,12 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 		AuthorizationDetails: r.FormValue(constants.RequestParamAuthorizationDetails),
 	}
 
-	// Only client_credentials acts for an organization unit.
+	// Only client_credentials, the authorization code and token exchange act for an organization unit; the
+	// authorization code grant narrows itself to a code issued for the unit, and token exchange to a device secret.
 	if syscontext.GetAccessingOUID(ctx) != "" &&
-		tokenRequest.GrantType != string(providers.GrantTypeClientCredentials) {
+		tokenRequest.GrantType != string(providers.GrantTypeClientCredentials) &&
+		tokenRequest.GrantType != string(providers.GrantTypeAuthorizationCode) &&
+		tokenRequest.GrantType != string(providers.GrantTypeTokenExchange) {
 		logger.Debug(ctx, "Grant type is not available on the organization-unit-scoped endpoint",
 			log.String("grant_type", tokenRequest.GrantType))
 		utils.WriteJSONError(r.Context(), w, constants.ErrorInvalidRequest,

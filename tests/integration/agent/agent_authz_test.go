@@ -55,6 +55,9 @@ type AgentAuthzTestSuite struct {
 	deletableAgentOU1ID string
 	targetAgentOU2ID    string
 
+	// The OU1 application the manager signs in through.
+	signInAppID string
+
 	// HTTP client carrying the agent-manager's system:agent scoped token
 	agentAdminClient *http.Client
 }
@@ -74,7 +77,9 @@ const (
 	// The server restricts agent types to a single `default` schema and refuses deletion.
 	agentTypeName = "default"
 
-	agentAuthzClientID = "CONSOLE"
+	// The manager lives in OU1, and a sign-in is bounded to its application's OU, so it signs in through an
+	// application in OU1 rather than the Console.
+	agentAuthzClientID = "agent_authz_ou1_sign_in"
 )
 
 func TestAgentAuthzTestSuite(t *testing.T) {
@@ -198,9 +203,11 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 	ts.agentMgrRoleID = roleID
 
 	// ---- 8. Obtain a scoped access token for the agent-manager ----
+	ts.signInAppID, err = testutils.CreateOUSignInApplication(ts.agentOU1ID, agentAuthzClientID)
+	ts.Require().NoError(err, "create the OU1 sign-in application")
 	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
 		agentAuthzClientID,
-		agentAuthzServerURL+"/console",
+		testutils.OUSignInRedirectURI,
 		"system system:agent system:agenttype:view",
 		agentMgrUsername,
 		agentMgrPassword,
@@ -219,6 +226,11 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 // ---------------------------------------------------------------------------
 
 func (ts *AgentAuthzTestSuite) TearDownSuite() {
+	if ts.signInAppID != "" {
+		if err := testutils.DeleteApplication(ts.signInAppID); err != nil {
+			ts.T().Logf("teardown: delete the OU1 sign-in application: %v", err)
+		}
+	}
 	if ts.agentMgrRoleID != "" {
 		if err := testutils.DeleteRole(ts.agentMgrRoleID); err != nil {
 			ts.T().Logf("teardown: delete agent-manager role: %v", err)

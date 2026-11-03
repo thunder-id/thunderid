@@ -117,7 +117,7 @@ func (suite *OwnerResolverTestSuite) TestSkippedPromptCompletesWithoutOwner() {
 func (suite *OwnerResolverTestSuite) TestSelectedOwnerIsRecorded() {
 	ctx := ownerNodeContext()
 	ctx.UserInputs[ownerKey] = testOwnerUserID
-	suite.mockEntityProvider.On("GetEntityProfile", testOwnerUserID).
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, testOwnerUserID).
 		Return(&providers.Entity{Category: providers.EntityCategoryUser, ID: testOwnerUserID}, nil).Once()
 
 	resp, err := suite.executor.Execute(ctx)
@@ -132,7 +132,7 @@ func (suite *OwnerResolverTestSuite) TestSelectedOwnerIsRecorded() {
 func (suite *OwnerResolverTestSuite) TestUnknownOwnerIsRePrompted() {
 	ctx := ownerNodeContext()
 	ctx.UserInputs[ownerKey] = "does-not-exist"
-	suite.mockEntityProvider.On("GetEntityProfile", "does-not-exist").
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, "does-not-exist").
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", "")).Once()
 
 	resp, err := suite.executor.Execute(ctx)
@@ -150,7 +150,7 @@ func (suite *OwnerResolverTestSuite) TestUnknownOwnerIsRePrompted() {
 func (suite *OwnerResolverTestSuite) TestNonUserEntityIsRejected() {
 	ctx := ownerNodeContext()
 	ctx.UserInputs[ownerKey] = testOtherUserID
-	suite.mockEntityProvider.On("GetEntityProfile", testOtherUserID).
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, testOtherUserID).
 		Return(&providers.Entity{Category: providers.EntityCategoryAgent, ID: testOtherUserID}, nil).Once()
 
 	resp, err := suite.executor.Execute(ctx)
@@ -168,7 +168,7 @@ func (suite *OwnerResolverTestSuite) TestNonUserEntityIsRejected() {
 func (suite *OwnerResolverTestSuite) TestEntityLookupFailurePropagates() {
 	ctx := ownerNodeContext()
 	ctx.UserInputs[ownerKey] = testOwnerUserID
-	suite.mockEntityProvider.On("GetEntityProfile", testOwnerUserID).
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, testOwnerUserID).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "", "")).Once()
 
 	resp, err := suite.executor.Execute(ctx)

@@ -164,7 +164,8 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 			providers.AccessEvaluationContextAuthorizationDetails: json.RawMessage(encoded)}
 	}
 	evaluationsRequest := a.buildAccessEvaluationsRequest(
-		userID, entityCategory, groupIDs, mappedRoleIDs, requestedPerms, resourceServerID, evaluationContext)
+		userID, entityCategory, groupIDs, mappedRoleIDs, requestedPerms, resourceServerID,
+		ctx.RuntimeData[ouIDKey], evaluationContext)
 	authzResp, svcErr := a.authzService.EvaluateAccessBatch(ctx.Context, evaluationsRequest)
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Authorization service call failed",
@@ -224,7 +225,8 @@ func setAuthorizedPermissions(execResp *providers.ExecutorResponse, authorizedPe
 	execResp.RuntimeData[authorizedPermissionsKey] = utils.StringifyStringArray(authorizedPermissions, " ")
 }
 
-// buildAccessEvaluationsRequest builds the authorization service request for the requested permissions.
+// buildAccessEvaluationsRequest builds the authorization service request for the requested permissions. A
+// decided organization unit limits the evaluation to the role assignments made in it.
 func (a *authorizationExecutor) buildAccessEvaluationsRequest(
 	entityID string,
 	entityCategory string,
@@ -232,6 +234,7 @@ func (a *authorizationExecutor) buildAccessEvaluationsRequest(
 	roleIDs []string,
 	requestedPermissions []string,
 	resourceServerID string,
+	ouID string,
 	context map[string]interface{},
 ) providers.AccessEvaluationsRequest {
 	evaluations := make([]providers.AccessEvaluationRequest, 0, len(requestedPermissions))
@@ -245,6 +248,7 @@ func (a *authorizationExecutor) buildAccessEvaluationsRequest(
 			},
 			ResourceServer: providers.AccessEvaluationResourceServer{ID: resourceServerID},
 			Permission:     providers.Permission{Name: permission},
+			OUID:           ouID,
 			Context:        maps.Clone(context),
 		})
 	}
@@ -297,7 +301,7 @@ func (a *authorizationExecutor) extractGroupIDs(ctx *providers.NodeContext, user
 			"Groups not found in context, fetching transitive groups from entity provider",
 			log.MaskedString(log.LoggerKeyUserID, userID))
 
-		groups, err := a.entityProvider.GetTransitiveEntityGroups(userID)
+		groups, err := a.entityProvider.GetTransitiveEntityGroups(ctx.Context, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -322,7 +326,7 @@ func (a *authorizationExecutor) expandMappedGroupAncestors(
 	}
 	expanded := mappedGroupIDs
 	for _, groupID := range mappedGroupIDs {
-		ancestors, err := a.entityProvider.GetTransitiveGroupAncestors(groupID)
+		ancestors, err := a.entityProvider.GetTransitiveGroupAncestors(ctx.Context, groupID)
 		if err != nil {
 			a.logger.Warn(ctx.Context, "Failed to resolve ancestors of a mapped group, continuing without them",
 				log.String("groupId", groupID), log.Error(err))

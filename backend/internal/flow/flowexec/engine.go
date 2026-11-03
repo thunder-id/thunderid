@@ -193,6 +193,11 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 	if ctx.FlowType == providers.FlowTypeRecovery {
 		nodeCtxContext = authnprovidercm.WithRecoveryFlow(nodeCtxContext)
 	}
+	// A bounded flow carries its sign-in boundary the same way. It is read now so an ouId or a subject an
+	// earlier step set is picked up.
+	if ctx.SignInBounded {
+		nodeCtxContext = authnprovidercm.WithSignInBoundary(nodeCtxContext, signInBoundary(ctx))
+	}
 	fe.replayPromptInputs(ctx)
 
 	nodeCtx := &providers.NodeContext{
@@ -889,6 +894,10 @@ func (fe *flowEngine) processNodeResponse(ctx *EngineContext, nodeResp *common.N
 		flowStep.SSOClearFlowID = ssoFlowID(ctx)
 	}
 
+	if isSignInBoundaryRefusal(nodeResp.Error) {
+		dropRefusedSignIn(ctx, flowStep)
+	}
+
 	switch nodeResp.Status {
 	case common.NodeStatusComplete:
 		if fe.isDisplayOnlyPromptNode(ctx.CurrentNode) {
@@ -930,6 +939,21 @@ func (fe *flowEngine) processNodeResponse(ctx *EngineContext, nodeResp *common.N
 			log.String("status", string(nodeResp.Status)))
 		return nil, false, &tidcommon.InternalServerError
 	}
+}
+
+// isSignInBoundaryRefusal reports whether a node refused a sign-in for its organization unit boundary.
+func isSignInBoundaryRefusal(err *tidcommon.ServiceError) bool {
+	return err != nil &&
+		(err.Code == executor.ErrOrganizationNotResolved.Code || err.Code == executor.ErrNoAccessToApplication.Code)
+}
+
+// dropRefusedSignIn drops the user, assertion and new session handle of a refused sign-in, so none of them
+// reaches the client or a calling flow.
+func dropRefusedSignIn(ctx *EngineContext, flowStep *FlowStep) {
+	ctx.AuthUser = providers.AuthUser{}
+	ctx.Assertion = ""
+	flowStep.SSOHandleOut = ""
+	flowStep.SSOFlowID = ""
 }
 
 // isDisplayOnlyPromptNode checks if the current node is a display-only prompt node.
@@ -1094,6 +1118,10 @@ func (fe *flowEngine) handleCallResponse(ctx *EngineContext,
 func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	nodeResp *common.NodeResponse, calleeGraph core.GraphInterface, logger *log.Logger) (
 	core.NodeInterface, *tidcommon.ServiceError) {
+	// The caller's boundedness and decided organization unit are read before the reset below.
+	callerBounded := ctx.SignInBounded
+	callerOUID := ctx.RuntimeData[common.RuntimeKeyOUID]
+
 	// Push the current frame before switching to the callee
 	resumeCallNodeID := ctx.CurrentNode.GetID()
 	ctx.pushFrame(resumeCallNodeID)
@@ -1103,6 +1131,8 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	// intentionally left in place
 	ctx.Graph = calleeGraph
 	ctx.FlowType = calleeGraph.GetType()
+	// Boundedness is per frame: a sign-in callee is bounded only inside a bounded caller.
+	ctx.SignInBounded = callerBounded && ctx.FlowType == providers.FlowTypeAuthentication
 	ctx.RuntimeData = make(map[string]string)
 	ctx.ForwardedData = nil
 	ctx.AdditionalData = make(map[string]string)
@@ -1110,6 +1140,11 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	ctx.CurrentSegmentID = ""
 	ctx.CurrentAction = ""
 	ctx.clearPausedPromptInputs()
+
+	// A bounded callee stays in the organization unit its caller decided.
+	if ctx.SignInBounded && callerOUID != "" {
+		ctx.RuntimeData[common.RuntimeKeyOUID] = callerOUID
+	}
 
 	// Set the current node to the start node of the callee graph
 	startNode, startErr := calleeGraph.GetStartNode()

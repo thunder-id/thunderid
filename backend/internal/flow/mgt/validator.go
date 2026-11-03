@@ -267,7 +267,50 @@ func (v *flowValidator) validateFlowTypeBasedConstraints(
 	if svcErr := v.validateModeFlowTypes(flowType, nodes); svcErr != nil {
 		return svcErr
 	}
+	if svcErr := validateOUResolverPlacement(flowType, nodes); svcErr != nil {
+		return svcErr
+	}
 	return v.validateCompanionExecutors(nodes)
+}
+
+// validateOUResolverPlacement refuses an authentication flow that can reach an OU resolver node from a session
+// node, where a reused session has already signed in without the organization unit the resolver decides.
+func validateOUResolverPlacement(
+	flowType providers.FlowType, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	if flowType != providers.FlowTypeAuthentication {
+		return nil
+	}
+	executors := make(map[string]string, len(nodes))
+	for _, node := range nodes {
+		if node.Type == string(common.NodeTypeTaskExecution) && node.Executor != nil {
+			executors[node.ID] = node.Executor.Name
+		}
+	}
+	adjacency := buildAdjacencyList(nodes)
+	for _, node := range nodes {
+		if executors[node.ID] != executormeta.ExecutorNameSession {
+			continue
+		}
+		visited := map[string]bool{node.ID: true}
+		queue := slices.Clone(adjacency[node.ID])
+		for len(queue) > 0 {
+			current := queue[0]
+			queue = queue[1:]
+			if visited[current] {
+				continue
+			}
+			visited[current] = true
+			if executors[current] == executormeta.ExecutorNameOUResolver {
+				return ErrorOUResolverAfterSession.WithParams(map[string]string{
+					"nodeID":        current,
+					"sessionNodeID": node.ID,
+				})
+			}
+			queue = append(queue, adjacency[current]...)
+		}
+	}
+	return nil
 }
 
 // validateModeFlowTypes returns an error when a node runs an executor in a mode the flow type cannot

@@ -42,6 +42,7 @@ type refreshTokenGrantHandler struct {
 	refreshRevoker   revocation.RefreshTokenRevokerInterface
 	criteriaRevoker  revocation.CriteriaRevokerInterface
 	authzDetails     providers.AuthorizationDetailProvider
+	ouService        providers.OrganizationUnitProvider
 }
 
 // newRefreshTokenGrantHandler creates a new instance of RefreshTokenGrantHandler.
@@ -56,6 +57,7 @@ func newRefreshTokenGrantHandler(
 	refreshRevoker revocation.RefreshTokenRevokerInterface,
 	criteriaRevoker revocation.CriteriaRevokerInterface,
 	authzDetails providers.AuthorizationDetailProvider,
+	ouService providers.OrganizationUnitProvider,
 	cfg oauthconfig.Config,
 ) RefreshTokenGrantHandlerInterface {
 	return &refreshTokenGrantHandler{
@@ -70,6 +72,7 @@ func newRefreshTokenGrantHandler(
 		refreshRevoker:   refreshRevoker,
 		criteriaRevoker:  criteriaRevoker,
 		authzDetails:     authzDetails,
+		ouService:        ouService,
 	}
 }
 
@@ -187,6 +190,10 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	if errResp != nil {
 		return nil, errResp
 	}
+	if errResp := h.verifyStillInIssuingOU(ctx, subjectEntity, oauthApp, refreshTokenClaims.OUID,
+		logger); errResp != nil {
+		return nil, errResp
+	}
 
 	newTokenScopes, scopeErr := h.validateAndApplyScopes(ctx, tokenRequest.Scope, refreshTokenClaims.Scopes, logger)
 	if scopeErr != nil {
@@ -250,7 +257,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 			return nil, scopeErr
 		}
 		authorizedNonOidc, authzErr := h.reauthorizeScopes(
-			ctx, subjectEntity, targetRS.ID, downscopedNonOidc, grantedDetails, logger)
+			ctx, subjectEntity, targetRS.ID, downscopedNonOidc, grantedDetails, refreshTokenClaims.OUID, logger)
 		if authzErr != nil {
 			return nil, authzErr
 		}
@@ -305,6 +312,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		AccessToken:                     *accessToken,
 		SessionID:                       refreshTokenClaims.SessionID,
 		RefreshableAuthorizationDetails: grantedDetails,
+		OUID:                            refreshTokenClaims.OUID,
 	}
 
 	// Generate ID token if 'openid' scope is present
@@ -431,6 +439,7 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 		SessionID:            tokenResponse.SessionID,
 		AuthorizationDetails: tokenResponse.RefreshableAuthorizationDetails,
 		SubjectEntityID:      tokenResponse.AccessToken.SubjectID,
+		OUID:                 issuingOUID(tokenResponse),
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		tokenCtx.ActorSub = oauthApp.ID
@@ -445,6 +454,16 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 
 	tokenResponse.RefreshToken = *refreshToken
 	return nil
+}
+
+// issuingOUID returns the organization unit the grant was issued in: the one the response records, else the access
+// token's ouId claim. Empty when neither is known.
+func issuingOUID(tokenResponse *model.TokenResponseDTO) string {
+	if tokenResponse.OUID != "" {
+		return tokenResponse.OUID
+	}
+	ouID, _ := tokenResponse.AccessToken.UserAttributes[constants.ClaimOUID].(string)
+	return ouID
 }
 
 // dpopJktForRefresh returns the DPoP jkt to bind onto a newly issued refresh token.
@@ -653,11 +672,48 @@ func credentialChangedSince(ctx context.Context, entity *providers.Entity, iat i
 	return iat <= changedAt.UTC().Unix()
 }
 
+// verifyStillInIssuingOU refuses a refresh token issued in an organization unit its subject can no longer sign in to
+// through the client, such as one the subject's share into was removed from. A token that records no organization
+// unit, or whose subject is a mapped value that resolves to no entity, is not checked.
+func (h *refreshTokenGrantHandler) verifyStillInIssuingOU(ctx context.Context, subjectEntity *providers.Entity,
+	oauthApp *providers.OAuthClient, ouID string, logger *log.Logger) *model.ErrorResponse {
+	if ouID == "" || subjectEntity == nil || subjectEntity.ID == "" {
+		return nil
+	}
+	if h.ouService == nil {
+		logger.Error(ctx, "No organization unit provider to check the refresh token's organization unit")
+		return &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to check the refresh token's organization unit",
+		}
+	}
+	boundary := authnprovidercm.SignInBoundary{OUID: ouID, ApplicationID: oauthApp.ID, EntityID: subjectEntity.ID}
+	eligible, svcErr := h.ouService.IsEligibleOU(authnprovidercm.WithSignInBoundary(ctx, boundary), ouID)
+	if svcErr != nil {
+		logger.Error(ctx, "Failed to check the refresh token's organization unit", log.String("ouId", ouID),
+			log.String("errorCode", svcErr.Code))
+		return &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to check the refresh token's organization unit",
+		}
+	}
+	if !eligible {
+		logger.Debug(ctx, "Refresh token subject can no longer sign in to the token's organization unit",
+			log.String("ouId", ouID))
+		return &model.ErrorResponse{
+			Error:            constants.ErrorInvalidGrant,
+			ErrorDescription: "Invalid refresh token",
+		}
+	}
+	return nil
+}
+
 // reauthorizeScopes re-evaluates the subject's permission scopes against their current role and group
-// assignments, dropping the ones they no longer hold.
+// assignments, dropping the ones they no longer hold. With the organization unit the grant was issued in, only
+// the assignments made in it count.
 func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjectEntity *providers.Entity,
 	resourceServerID string, scopes []string, authorizationDetails []providers.AuthorizationDetail,
-	logger *log.Logger) ([]string, *model.ErrorResponse) {
+	ouID string, logger *log.Logger) ([]string, *model.ErrorResponse) {
 	// An unresolved subject (a mapped sub) would authorize nothing and strip every scope.
 	if len(scopes) == 0 || h.authzService == nil || subjectEntity == nil || subjectEntity.ID == "" {
 		return scopes, nil
@@ -695,9 +751,12 @@ func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjec
 		}
 		evaluationContext = map[string]interface{}{providers.AccessEvaluationContextAuthorizationDetails: values}
 	}
-	authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx,
-		tokenservice.BuildAccessEvaluationsRequest(
-			subject, subjectEntity.Category.String(), groupIDs, nil, scopes, resourceServerID, evaluationContext))
+	evaluationsRequest := tokenservice.BuildAccessEvaluationsRequest(
+		subject, subjectEntity.Category.String(), groupIDs, nil, scopes, resourceServerID, evaluationContext)
+	for i := range evaluationsRequest.Evaluations {
+		evaluationsRequest.Evaluations[i].OUID = ouID
+	}
+	authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx, evaluationsRequest)
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to evaluate authorized permissions for refresh token subject",
 			log.MaskedString(log.LoggerKeyUserID, subject),

@@ -14,6 +14,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/session"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -367,6 +368,84 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_RejectsIncompleteSessi
 			s.Contains(w.Body.String(), APIErrorInvalidSessionData.Code)
 		})
 	}
+}
+
+// A sign-in start carries the organization unit it names on the service context; none named carries none.
+func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_PutsOUIDOnTheContext() {
+	cases := []struct {
+		name     string
+		ouID     string
+		wantOUID string
+	}{
+		{"named", `"ouId":" ou-1 ",`, "ou-1"},
+		{"blank", `"ouId":"  ",`, ""},
+		{"absent", "", ""},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			mockSvc := NewFlowExecServiceInterfaceMock(s.T())
+			gotOUID := "unset"
+			mockSvc.EXPECT().Execute(mock.Anything, "app-1", "", string(providers.FlowTypeAuthentication),
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything).
+				Run(func(ctx context.Context, _ string, _ string, _ string, _ bool, _ string,
+					_ map[string]string, _ string, _ string, _ string, _ []SessionData) {
+					gotOUID = sysContext.GetAccessingOUID(ctx)
+				}).
+				Return(&FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete},
+					(*tidcommon.ServiceError)(nil)).Once()
+
+			h := newFlowExecutionHandler(mockSvc, nil, 0)
+			body := `{` + tc.ouID + `"applicationId":"app-1","flowType":"AUTHENTICATION"}`
+			req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			h.HandleFlowExecutionRequest(w, req)
+
+			s.Equal(http.StatusOK, w.Code)
+			s.Equal(tc.wantOUID, gotOUID)
+		})
+	}
+}
+
+// An organization unit is accepted only on a request that starts a sign-in; anywhere else it is refused
+// before the service is called.
+func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_RejectsOUIDOutsideASignInStart() {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"a continued flow", `{"executionId":"exec-1","action":"submit","ouId":"ou-1"}`},
+		{"a continued sign-in", `{"executionId":"exec-1","flowType":"AUTHENTICATION","ouId":"ou-1"}`},
+		{"a registration start", `{"applicationId":"app-1","flowType":"REGISTRATION","ouId":"ou-1"}`},
+		{"a sign-out start", `{"applicationId":"app-1","flowType":"SIGNOUT","ouId":"ou-1"}`},
+		{"no flow type", `{"applicationId":"app-1","ouId":"ou-1"}`},
+		{"a flow selected by ID", `{"flowId":"administration-1","ouId":"ou-1"}`},
+		{"a flow selected by ID as a sign-in", `{"flowId":"admin-1","flowType":"AUTHENTICATION","ouId":"ou-1"}`},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			h := newFlowExecutionHandler(NewFlowExecServiceInterfaceMock(s.T()), nil, 0)
+			req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			h.HandleFlowExecutionRequest(w, req)
+
+			s.Equal(http.StatusBadRequest, w.Code)
+			s.Contains(w.Body.String(), APIErrorOUIDNotAllowed.Code)
+		})
+	}
+}
+
+func (s *HandlerTestSuite) TestHandleFlowError_InvalidOrganizationUnit_Returns400() {
+	w := httptest.NewRecorder()
+	handleFlowError(context.Background(), w, &ErrorInvalidOrganizationUnit, "")
+	s.Equal(http.StatusBadRequest, w.Code)
+	s.Contains(w.Body.String(), ErrorInvalidOrganizationUnit.Code)
 }
 
 // TestHandleFlowExecutionRequest_NilSSOTransport verifies a deployment without an SSO handle transport

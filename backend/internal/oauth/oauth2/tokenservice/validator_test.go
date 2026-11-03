@@ -3840,6 +3840,31 @@ func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Success_RestoresS
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
+func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Success_RestoresTheIssuingOU() {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub":                "test-client",
+		"iss":                "https://example.com",
+		"aud":                "test-client",
+		"exp":                float64(now + 3600),
+		"iat":                float64(now),
+		"scope":              "openid",
+		"access_token_sub":   "user123",
+		"access_token_aud":   testAppID,
+		"grant_type":         "authorization_code",
+		"access_token_ou_id": "ou-issued",
+	}
+	token := suite.createTestJWT(claims)
+
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil)
+
+	result, err := suite.validator.ValidateRefreshToken(context.Background(), token)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "ou-issued", result.OUID)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
 // createTestJWTWithTyp builds a test token with an explicit typ header, for the refresh token typ
 // migration: refresh tokens are minted rt+jwt, and those minted before it carry the generic type.
 func (suite *TokenValidatorTestSuite) createTestJWTWithTyp(typ string, claims map[string]interface{}) string {

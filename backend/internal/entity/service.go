@@ -56,6 +56,9 @@ type EntityServiceInterface interface {
 	GetLinkedEntities(ctx context.Context, idpID, sub string) ([]providers.Entity, error)
 	LinkAccount(ctx context.Context, entityID, idpID, sub string) error
 	SearchEntities(ctx context.Context, filters map[string]interface{}) ([]providers.Entity, error)
+	// EntityOUs returns the organization units an entity is in: its own first, then, when its category can be
+	// shared, the ones it is shared into. found is false when the store holds no entity with that ID.
+	EntityOUs(ctx context.Context, entityID string) (ouIDs []string, found bool, err error)
 
 	// Lists (category-scoped)
 	GetEntityListCount(ctx context.Context, category providers.EntityCategory,
@@ -520,23 +523,130 @@ func (s *entityService) SetValidUntil(ctx context.Context, entityID string, vali
 	})
 }
 
-// IdentifyEntity identifies an entity using the given filters.
+// IdentifyEntity identifies an entity using the given filters. When a sign-in has fixed its organization unit, only
+// users in it are considered, so a username another unit also uses still identifies one user.
 func (s *entityService) IdentifyEntity(ctx context.Context,
 	filters map[string]interface{}) (*string, error) {
-	id, err := s.store.IdentifyEntity(ctx, filters)
+	ouID := signInOU(ctx)
+	if ouID == "" {
+		id, err := s.store.IdentifyEntity(ctx, filters)
+		if err != nil {
+			return nil, err
+		}
+		return id, nil
+	}
+
+	// A search without filters lists every entity, which identifies none of them.
+	if len(filters) == 0 {
+		return nil, ErrEntityNotFound
+	}
+	entities, err := s.searchInOU(ctx, filters, ouID)
 	if err != nil {
 		return nil, err
 	}
-	return id, nil
+	if len(entities) > 1 {
+		return nil, ErrAmbiguousEntity
+	}
+	return &entities[0].ID, nil
 }
 
-// ResolveLinkedAccounts returns the entities linked to an identity provider subject. A subject no
-// entity is linked to returns an empty list.
+// EntityOUs returns the organization units an entity is in: its own first, then, when its category can be shared,
+// the ones it is shared into. found is false when the store holds no entity with that ID.
+func (s *entityService) EntityOUs(ctx context.Context, entityID string) ([]string, bool, error) {
+	e, err := s.store.GetEntity(ctx, entityID)
+	if errors.Is(err, ErrEntityNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	ouIDs := []string{e.OUID}
+	if resourceType, ok := s.sharedTypes[e.Category]; ok {
+		shared, svcErr := s.sharingService.ListResourceSharedOUIDs(ctx, resourceType, e.ID)
+		if svcErr != nil {
+			return nil, false, fmt.Errorf("failed to list the organization units the entity is shared into: %s",
+				svcErr.Error.DefaultValue)
+		}
+		// The reach comes in no particular order, so it is sorted for a stable list.
+		slices.Sort(shared)
+		ouIDs = append(ouIDs, shared...)
+	}
+	return ouIDs, true, nil
+}
+
+// signInOU returns the organization unit a sign-in on the context has fixed, or "" when lookups run
+// deployment-wide.
+func signInOU(ctx context.Context) string {
+	b, _ := authnprovidercm.SignInBoundaryFrom(ctx)
+	return b.OUID
+}
+
+// searchInOU searches for the entities the filters match, leaving out entities not in the organization unit.
+func (s *entityService) searchInOU(ctx context.Context, filters map[string]interface{},
+	ouID string) ([]providers.Entity, error) {
+	entities, err := s.store.SearchEntities(ctx, filters)
+	if err != nil {
+		return nil, err
+	}
+	inside, err := s.keepInOU(ctx, entities, ouID)
+	if err != nil {
+		return nil, err
+	}
+	if len(inside) == 0 {
+		return nil, ErrEntityNotFound
+	}
+	return inside, nil
+}
+
+// keepInOU leaves out entities the organization unit neither owns nor, for a category that can be shared, is
+// shared with.
+func (s *entityService) keepInOU(ctx context.Context, entities []providers.Entity,
+	ouID string) ([]providers.Entity, error) {
+	inside := make([]providers.Entity, 0, len(entities))
+	for _, e := range entities {
+		if e.OUID != ouID {
+			resourceType, shareable := s.sharedTypes[e.Category]
+			if !shareable {
+				continue
+			}
+			shared, svcErr := s.sharingService.IsVisible(ctx, resourceType, e.ID, ouID)
+			if svcErr != nil {
+				return nil, fmt.Errorf("failed to check whether the entity is shared into the organization unit: %s",
+					svcErr.Error.DefaultValue)
+			}
+			if !shared {
+				continue
+			}
+		}
+		inside = append(inside, e)
+	}
+	return inside, nil
+}
+
+// ResolveLinkedAccounts returns the entities linked to an identity provider subject, leaving out entities not in the
+// organization unit a sign-in has fixed. A subject no entity is linked to returns an empty list.
 func (s *entityService) ResolveLinkedAccounts(ctx context.Context, idpID, sub string) ([]string, error) {
 	if idpID == "" || sub == "" {
 		return nil, ErrBadAttributesInRequest
 	}
-	return s.store.ResolveLinkedAccounts(ctx, idpID, sub)
+	entityIDs, err := s.store.ResolveLinkedAccounts(ctx, idpID, sub)
+	ouID := signInOU(ctx)
+	if err != nil || ouID == "" || len(entityIDs) == 0 {
+		return entityIDs, err
+	}
+	entities, err := s.store.GetEntitiesByIDs(ctx, entityIDs)
+	if err != nil {
+		return nil, err
+	}
+	inside, err := s.keepInOU(ctx, entities, ouID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(inside))
+	for _, e := range inside {
+		ids = append(ids, e.ID)
+	}
+	return ids, nil
 }
 
 // GetLinkedEntities returns the entities linked to an identity provider subject, with their OUHandle
@@ -577,11 +687,18 @@ func (s *entityService) LinkAccount(ctx context.Context, entityID, idpID, sub st
 	})
 }
 
-// SearchEntities searches for all entities matching the provided filters. The returned
-// entities have their OUHandle populated for presentation/disambiguation consumers.
+// SearchEntities searches for all entities matching the provided filters, leaving out entities not in the
+// organization unit a sign-in has fixed. The returned entities have their OUHandle populated for
+// presentation/disambiguation consumers.
 func (s *entityService) SearchEntities(ctx context.Context,
 	filters map[string]interface{}) ([]providers.Entity, error) {
-	entities, err := s.store.SearchEntities(ctx, filters)
+	var entities []providers.Entity
+	var err error
+	if ouID := signInOU(ctx); ouID != "" {
+		entities, err = s.searchInOU(ctx, filters, ouID)
+	} else {
+		entities, err = s.store.SearchEntities(ctx, filters)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1369,10 +1486,10 @@ func (s *entityService) validateEntityType(
 		return ErrSchemaValidationFailed
 	}
 
-	// Validate attribute uniqueness
+	// Validate attribute uniqueness. It reads the store, so a sign-in boundary does not narrow it.
 	isValid, svcErr = s.entityTypeService.ValidateEntityUniqueness(ctx, schemaCategory, entityType, attributes,
 		func(filters map[string]interface{}) (bool, error) {
-			id, err := s.IdentifyEntity(ctx, filters)
+			id, err := s.store.IdentifyEntity(ctx, filters)
 			if err != nil {
 				if errors.Is(err, ErrEntityNotFound) {
 					return false, nil // Not found = unique

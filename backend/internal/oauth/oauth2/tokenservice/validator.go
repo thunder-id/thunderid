@@ -188,6 +188,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 	jti, _ := extractStringClaim(claims, "jti")
 	tokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
 	sessionID, _ := extractStringClaim(claims, constants.ClaimSessionID)
+	ouID, _ := extractStringClaim(claims, constants.ClaimAccessTokenOUID)
 
 	// Extract claims request if present
 	var claimsRequest *oauth2model.ClaimsRequest
@@ -240,6 +241,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		TokenFamilyID:        tokenFamilyID,
 		SessionID:            sessionID,
 		AuthorizationDetails: authorizationDetails,
+		OUID:                 ouID,
 	}, nil
 }
 

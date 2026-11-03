@@ -1498,14 +1498,16 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
 
 **When to use:** User onboarding and sign-in flows where the target OU must be determined dynamically based on the caller, administrative or user selection, or system hierarchy.
 
+**In sign-in flows:** A sign-in lands in one OU where both the user and the application are found. See [Sign Users In to Organization Units](../organization-units/sign-in-to-organization-units.mdx). When the sign-in's OU is already decided, because the request named one or the application is not shared, this executor keeps it with every strategy and completes without prompting.
+
 **Prerequisites:** Depends on the resolution strategy (see table below).
 
 **Executor properties:**
 
 | Property | UI Label | Required | Default | Behavior |
 |---|---|---|---|---|
-| `resolveFrom` | Resolve From | Yes | - | Strategy for OU resolution: `caller`, `prompt`, or `promptAll` |
-| `parentOuId` | Parent OU ID | Yes, for `prompt` in sign-in flows | - | The OU under which the user selects an OU. Allowed only with `prompt` in sign-in flows, and rejected on save otherwise. In other flow types the default OU set by User Type Resolver is used |
+| `resolveFrom` | Resolve From | Yes | - | Strategy for OU resolution: `caller`, `prompt`, `promptAll`, or `user` |
+| `parentOuId` | Parent OU ID | Yes, for `prompt` in sign-in flows | - | The OU under which the user selects an OU. Allowed only with `prompt` or `user` in sign-in flows, and rejected on save otherwise. Optional with `user`, where it narrows the choice to the OUs beneath it. In other flow types the default OU set by User Type Resolver is used |
 | `directChildrenOnly` | Limit to direct children | No | `false` | Allowed only with `prompt`, and rejected on save otherwise. Only direct children of the parent OU can be selected, not deeper descendants |
 
 **Resolution Strategies:**
@@ -1520,7 +1522,8 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
 
 **`prompt` strategy:**
 - Prompts the user to select a child OU if the parent OU has children. The parent OU is the node's `parentOuId` or, when the node sets none, the default OU set by User Type Resolver. In sign-in flows there is no default OU, so `parentOuId` is required
-- **When to use:** Delegated onboarding where an admin selects which sub-organization to create the user in, or sign-in flows where the user picks the sub-organization to be placed in, for example when a first-time federated sign-in provisions a new account
+- In a sign-in flow, once the user has signed in, the node offers the OUs the user can sign in to instead: the user's own OU and the OUs the user is shared into, kept where the application can be used: `parentOuId` and the OUs beneath it, or with `directChildrenOnly` only its direct children. One OU is chosen without asking. Several are offered as a selection whose options are the OUs' handle paths, such as `acme/engineering`, in path order, or with `directChildrenOnly` their handles, such as `engineering`. A submitted value that is not one of the options is refused with `FET-1029`, and the selection is offered again
+- **When to use:** Delegated onboarding where an admin selects which sub-organization to create the user in, or sign-in flows where the user picks the sub-organization to be placed in, before or after signing in
 - **Prerequisites:**
   - **A parent OU**: either the `parentOuId` property, or the default OU (`defaultOUID`) that **User Type Resolver** resolves when it has run first. `parentOuId` is allowed in authentication flows only, where it is required: User Type Resolver does not set a default OU in sign-in flows, so a flow that uses `prompt` without `parentOuId` is rejected when you save it
   - **A Blank View with OU selection input must follow this executor**, to collect the user's OU selection
@@ -1542,7 +1545,7 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
 - **Failure conditions:** OU service error
 
 **Input Configuration:**
-- `ouId` (required): the user's selected organizational unit. Used for `prompt` and `promptAll` strategies. Default: `ouId`
+- `ouId` (required): the user's selected organizational unit. Used for `prompt` and `promptAll` strategies. When `prompt` offers a signed-in user's OUs, it holds the selected option: a handle path, or a handle with `directChildrenOnly`. Default: `ouId`
 - `ouHandle` (optional, alternative to `ouId`): with `prompt` and `directChildrenOnly`, declare it as the single required input in place of `ouId` to have the user enter the OU handle. The handle is looked up among the parent OU's direct children. Declaring it in any other mode is rejected on save
 
 **Example:**
@@ -1566,6 +1569,7 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
 **Failure conditions:**
 - Caller's OU not found in security context (for `caller` strategy)
 - Selected OU does not exist
+- No OU the signed-in user can sign in to (for `prompt` after sign-in), which fails with `FET-1122`
 - OU service error
 
 </details>

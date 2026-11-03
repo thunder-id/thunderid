@@ -103,7 +103,7 @@ func (ts *RecoveryReleaseTestSuite) TestAManagementCredentialWriteReleasesNothin
 // write path; its token is obtained before the lock, which a lock does not revoke.
 func (ts *RecoveryReleaseTestSuite) TestASelfServiceCredentialUpdateReleasesNothing() {
 	userID, username, password, _ := ts.newUser("self_write")
-	holder, err := testutils.GetHTTPClientForUser(username, password)
+	holder, err := testutils.GetHTTPClientForOUUser(ts.users.signInClientID, username, password)
 	ts.Require().NoError(err, "the holder must sign in before the lock")
 	expiry := ts.lockCredential(userID, username)
 
