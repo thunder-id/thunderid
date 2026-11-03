@@ -477,6 +477,20 @@ var (
 			DefaultValue: "A roles rule must list at least one role in value, without excludedValues",
 		},
 	}
+	// ErrorInvalidCredentialValue is the error returned when a new credential value does not meet the
+	// user type schema, such as a password that does not match its regex.
+	ErrorInvalidCredentialValue = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1041",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_credential_value",
+			DefaultValue: "Invalid credential value",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_credential_value_description",
+			DefaultValue: "The credential value does not meet the requirements of the user type",
+		},
+	}
 )
 
 // Error variables

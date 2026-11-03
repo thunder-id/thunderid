@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -1077,6 +1078,9 @@ func (s *entityService) UpdateCredentials(ctx context.Context, entityID string,
 	if err := s.validateCredentialKeys(ctx, existing.Category, existing.Type, updates); err != nil {
 		return err
 	}
+	if err := s.validateCredentialValues(ctx, existing.Category, existing.Type, plaintextUpdates); err != nil {
+		return err
+	}
 
 	// Hash new plaintext values.
 	hashedUpdates, err := s.hashPlaintextCredentials(plaintextUpdates)
@@ -1147,6 +1151,29 @@ func (s *entityService) validateCredentialKeys(
 		if _, ok := allowed[key]; !ok {
 			return fmt.Errorf("%w: %q is not a declared credential", ErrInvalidCredential, key)
 		}
+	}
+	return nil
+}
+
+// validateCredentialValues checks new credential values against their schema definitions, such as a
+// password regex, the same way they are checked when the entity is created.
+func (s *entityService) validateCredentialValues(
+	ctx context.Context, category providers.EntityCategory, entityType string, credentials json.RawMessage,
+) error {
+	if !usesEntityType(category) || s.entityTypeService == nil {
+		return nil
+	}
+
+	isValid, svcErr := s.entityTypeService.ValidateEntityValues(ctx, entitytype.TypeCategory(category),
+		entityType, credentials)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return fmt.Errorf("failed to validate credential values against schema: %s", svcErr.ErrorDescription)
+		}
+		return fmt.Errorf("%w: %s", ErrSchemaValidationFailed, svcErr.ErrorDescription)
+	}
+	if !isValid {
+		return ErrSchemaValidationFailed
 	}
 	return nil
 }

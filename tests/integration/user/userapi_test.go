@@ -141,7 +141,7 @@ func (ts *UserAPITestSuite) SetupSuite() {
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"email":    map[string]interface{}{"type": "string", "required": true, "unique": true},
-			"password": map[string]interface{}{"type": "string", "credential": true},
+			"password": map[string]interface{}{"type": "string", "credential": true, "regex": "^.{8,}$"},
 		},
 	}
 	credTypeID, err := testutils.CreateUserType(credentialType)
@@ -603,6 +603,36 @@ func (ts *UserAPITestSuite) TestCredentialUpdateByAdmin() {
 	ts.False(authenticated)
 
 	credentialPassword = newPassword
+}
+
+func (ts *UserAPITestSuite) TestCredentialUpdateByAdmin_PasswordFailsSchemaRegex() {
+	payload, err := json.Marshal(map[string]interface{}{
+		"credentials": map[string]interface{}{
+			"password": "1",
+		},
+	})
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPost,
+		fmt.Sprintf("%s/users/%s/update-credentials", testServerURL, credentialUserID),
+		bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	ts.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+	var errorResp testutils.ErrorResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&errorResp))
+	ts.Equal("USR-1041", errorResp.Code)
+
+	// The current password still works, since the rejected one was not stored.
+	authenticated, err := testutils.AuthenticateWithCredential(
+		"username", credentialUsername, "password", credentialPassword)
+	ts.Require().NoError(err)
+	ts.True(authenticated)
 }
 
 func (ts *UserAPITestSuite) TestCredentialUpdateByAdmin_EmptyCredentials() {

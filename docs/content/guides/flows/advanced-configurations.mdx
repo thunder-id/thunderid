@@ -552,7 +552,8 @@ Sets credentials (e.g., password) for an existing user. Typically used in regist
         "required": true
       }
     ]
-  }
+  },
+  "onIncomplete": "prompt_new_password"
 }
 ```
 
@@ -560,6 +561,7 @@ Sets credentials (e.g., password) for an existing user. Typically used in regist
 - `userID` not present in runtime data
 - Credential value not provided
 - User not found in the user store
+- Credential value does not meet the user type's requirements, such as a password regex (`FET-1133`): routes to **incomplete**, so point `onIncomplete` at the credential View to prompt the user for a different value, as the default recovery flows do. Without `onIncomplete`, the step asks for the credential again but has no View to show, so the user sees only the error
 - Credential update failed
 
 **Account locks in recovery flows:** setting a credential does not release an account lock. In a recovery flow, place an **Unlock Identity** node (`IdentityGovernanceExecutor` in `unlock` mode) right after this executor, as the default recovery flows do. Without it, a locked user who completes recovery stays locked. The node releases only the account whose credential this flow set. If identity governance is off or refuses the release, the step completes and the lock stays. If the release fails on a server error, the step fails and the user can run recovery again.

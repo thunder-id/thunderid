@@ -656,6 +656,7 @@ spec:
           executor:
             name: CredentialSetter
           onSuccess: release_account_locks
+          onIncomplete: prompt_new_password
         - id: release_account_locks
           type: TASK_EXECUTION
           executor:
@@ -833,6 +834,7 @@ spec:
           executor:
             name: CredentialSetter
           onSuccess: release_account_locks
+          onIncomplete: prompt_new_password
         - id: release_account_locks
           type: TASK_EXECUTION
           layout:

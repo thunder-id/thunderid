@@ -1209,3 +1209,83 @@ func (_c *EntityTypeServiceInterfaceMock_ValidateEntityUniqueness_Call) RunAndRe
 	_c.Call.Return(run)
 	return _c
 }
+
+// ValidateEntityValues provides a mock function for the type EntityTypeServiceInterfaceMock
+func (_mock *EntityTypeServiceInterfaceMock) ValidateEntityValues(ctx context.Context, category entitytype.TypeCategory, entityType string, attributes json.RawMessage) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx, category, entityType, attributes)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateEntityValues")
+	}
+
+	var r0 bool
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, json.RawMessage) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx, category, entityType, attributes)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entitytype.TypeCategory, string, json.RawMessage) bool); ok {
+		r0 = returnFunc(ctx, category, entityType, attributes)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, entitytype.TypeCategory, string, json.RawMessage) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, category, entityType, attributes)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// EntityTypeServiceInterfaceMock_ValidateEntityValues_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateEntityValues'
+type EntityTypeServiceInterfaceMock_ValidateEntityValues_Call struct {
+	*mock.Call
+}
+
+// ValidateEntityValues is a helper method to define mock.On call
+//   - ctx context.Context
+//   - category entitytype.TypeCategory
+//   - entityType string
+//   - attributes json.RawMessage
+func (_e *EntityTypeServiceInterfaceMock_Expecter) ValidateEntityValues(ctx any, category any, entityType any, attributes any) *EntityTypeServiceInterfaceMock_ValidateEntityValues_Call {
+	return &EntityTypeServiceInterfaceMock_ValidateEntityValues_Call{Call: _e.mock.On("ValidateEntityValues", ctx, category, entityType, attributes)}
+}
+
+func (_c *EntityTypeServiceInterfaceMock_ValidateEntityValues_Call) Run(run func(ctx context.Context, category entitytype.TypeCategory, entityType string, attributes json.RawMessage)) *EntityTypeServiceInterfaceMock_ValidateEntityValues_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 entitytype.TypeCategory
+		if args[1] != nil {
+			arg1 = args[1].(entitytype.TypeCategory)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 json.RawMessage
+		if args[3] != nil {
+			arg3 = args[3].(json.RawMessage)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_ValidateEntityValues_Call) Return(b bool, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_ValidateEntityValues_Call {
+	_c.Call.Return(b, serviceError)
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_ValidateEntityValues_Call) RunAndReturn(run func(ctx context.Context, category entitytype.TypeCategory, entityType string, attributes json.RawMessage) (bool, *common.ServiceError)) *EntityTypeServiceInterfaceMock_ValidateEntityValues_Call {
+	_c.Call.Return(run)
+	return _c
+}

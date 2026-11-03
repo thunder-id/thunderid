@@ -636,6 +636,31 @@ func TestUserService_UpdateUserCredentials_Validation(t *testing.T) {
 	})
 }
 
+func TestUserService_UpdateUserCredentials_ValueFailsSchema(t *testing.T) {
+	userStoreMock := entitymock.NewEntityServiceInterfaceMock(t)
+	userStoreMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
+	userStoreMock.
+		On("GetEntityProfile", mock.Anything, svcTestUserID1).
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: "Person",
+		}, nil).
+		Once()
+	userStoreMock.
+		On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
+		Return(entitypkg.ErrSchemaValidationFailed).
+		Once()
+
+	service := &userService{
+		entityService: userStoreMock,
+		authzService:  newAllowAllAuthz(t),
+	}
+
+	err := service.UpdateUserCredentials(context.Background(), svcTestUserID1,
+		json.RawMessage(`{"password":"short"}`))
+	require.NotNil(t, err)
+	require.Equal(t, ErrorInvalidCredentialValue, *err)
+}
+
 func TestUserService_UpdateUserCredentials_UserNotFound(t *testing.T) {
 	userStoreMock := entitymock.NewEntityServiceInterfaceMock(t)
 	userStoreMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()

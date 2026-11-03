@@ -935,6 +935,48 @@ func (s *ServiceTestSuite) TestUpdateCredentials_StampsCredentialMarkerPreservin
 	s.NotEmpty(attrs[authnprovidercm.SystemAttrCredentialUpdatedAt])
 }
 
+// testCredentialEntityType is the entity type the credential schema tests validate against.
+const testCredentialEntityType = "employee"
+
+func (s *ServiceTestSuite) TestUpdateCredentials_RejectsValueFailingSchema() {
+	svc, ets := s.newSvcWithEntityType()
+	e := testEntity("e-weak")
+	e.Category = providers.EntityCategoryUser
+	e.Type = testCredentialEntityType
+	creds := json.RawMessage(`{"password":"1"}`)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "password", Credential: true}}, nil)
+	ets.On("ValidateEntityValues", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType, creds).
+		Return(false, nil)
+
+	err := svc.UpdateCredentials(s.ctx, e.ID, creds)
+
+	s.ErrorIs(err, ErrSchemaValidationFailed)
+	s.store.AssertNotCalled(s.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestUpdateCredentials_SchemaLookupFails() {
+	svc, ets := s.newSvcWithEntityType()
+	e := testEntity("e-lookup")
+	e.Category = providers.EntityCategoryUser
+	e.Type = testCredentialEntityType
+	creds := json.RawMessage(`{"password":"long-enough"}`)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "password", Credential: true}}, nil)
+	ets.On("ValidateEntityValues", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType, creds).
+		Return(false, &tidcommon.InternalServerError)
+
+	err := svc.UpdateCredentials(s.ctx, e.ID, creds)
+
+	s.Error(err)
+	s.NotErrorIs(err, ErrSchemaValidationFailed)
+	s.store.AssertNotCalled(s.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
 // A client secret rotation stamps the entity, in the same transaction as the credential write.
 func (s *ServiceTestSuite) TestUpdateSystemCredentials_StampsOnClientSecretRotation() {
 	e := testEntity("e-cs")

@@ -2703,3 +2703,61 @@ func (s *EntityTypeServiceTestSuite) TestCreateEntityType_StoresDefaultPrimaryCo
 	s.Require().Nil(svcErr)
 	s.Equal(&SystemAttributes{PrimaryEmail: "work", PrimaryMobile: "phone"}, result.SystemAttributes)
 }
+
+func (s *EntityTypeServiceTestSuite) TestValidateEntityValues_ChecksOnlyGivenAttributes() {
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	storeMock.
+		On("GetEntityTypeByHandle", context.Background(), TypeCategoryUser, "employee").
+		Return(EntityType{
+			Handle:      "employee",
+			DisplayName: "employee",
+			Schema: json.RawMessage(`{"email":{"type":"string","required":true},` +
+				`"password":{"type":"string","credential":true,"regex":"^.{8,}$"}}`),
+		}, nil)
+
+	service := &entityTypeService{
+		entityTypeStore: storeMock,
+		transactioner:   &mockTransactioner{},
+	}
+
+	ok, svcErr := service.ValidateEntityValues(
+		context.Background(), TypeCategoryUser, "employee", json.RawMessage(`{"password":"longenough"}`))
+	s.Require().True(ok)
+	s.Require().Nil(svcErr)
+
+	ok, svcErr = service.ValidateEntityValues(
+		context.Background(), TypeCategoryUser, "employee", json.RawMessage(`{"password":"short"}`))
+	s.Require().False(ok)
+	s.Require().Nil(svcErr)
+}
+
+func (s *EntityTypeServiceTestSuite) TestValidateEntityValues_ReturnsErrors() {
+	tests := []struct {
+		name     string
+		storeErr error
+		wantCode string
+	}{
+		{name: "entity type missing", storeErr: ErrEntityTypeNotFound, wantCode: ErrorEntityTypeNotFound.Code},
+		{name: "schema load fails", storeErr: errors.New("db failure"), wantCode: tidcommon.InternalServerError.Code},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			storeMock := newEntityTypeStoreInterfaceMock(s.T())
+			storeMock.
+				On("GetEntityTypeByHandle", context.Background(), TypeCategoryUser, "employee").
+				Return(EntityType{}, tc.storeErr).
+				Once()
+
+			service := &entityTypeService{
+				entityTypeStore: storeMock,
+				transactioner:   &mockTransactioner{},
+			}
+
+			ok, svcErr := service.ValidateEntityValues(
+				context.Background(), TypeCategoryUser, "employee", json.RawMessage(`{"password":"x"}`))
+			s.Require().False(ok)
+			s.Require().NotNil(svcErr)
+			s.Require().Equal(tc.wantCode, svcErr.Code)
+		})
+	}
+}
