@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -406,9 +407,9 @@ func (p *provisioningExecutor) resolveAmbiguousUserForProvisioning(ctx *provider
 // and prompt metadata for schema attrs, but schema-absent node inputs are ignored.
 //
 // Missing inputs are ordered as: required non-credentials -> optional non-credentials ->
-// required credentials -> optional credentials. maxPerPrompt caps the forwarded
-// prompt batch after this list is built. includeOptional only affects optional
-// non-credential attrs.
+// required credentials -> optional credentials, each group sorted by attribute name so the order is
+// stable across requests. maxPerPrompt caps the forwarded prompt batch after this list is built.
+// includeOptional only affects optional non-credential attrs.
 func (p *provisioningExecutor) HasRequiredInputs(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse) bool {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
@@ -481,7 +482,12 @@ func (p *provisioningExecutor) buildMissingInputs(
 	promptOptionalCredentials := p.isPromptOptionalCredentialsEnabled(ctx)
 	presentedOptionalInputs := core.GetPresentedOptionalInputs(ctx.RuntimeData)
 
-	for _, attr := range schemaAttrs {
+	sortedAttrs := slices.Clone(schemaAttrs)
+	slices.SortFunc(sortedAttrs, func(a, b entitytype.AttributeInfo) int {
+		return strings.Compare(a.Attribute, b.Attribute)
+	})
+
+	for _, attr := range sortedAttrs {
 		if p.isAttrSatisfied(ctx, attr.Attribute) {
 			continue
 		}
