@@ -658,14 +658,32 @@ func (f *fileBasedStore) GetUserRoles(
 	return roleNames, nil
 }
 
-// GetEntityRoleIDs is a no-op for the file-based store. Role assignments are persisted in the
-// database store and queried from there by the composite store; the file store has no
-// independent record of API-added assignments. Returning an empty slice keeps the composite
-// merge correct (callers union the result with the DB store's output).
+// GetEntityRoleIDs returns roles with matching declared assignments in the requested organization unit.
 func (f *fileBasedStore) GetEntityRoleIDs(
 	ctx context.Context, entityID string, groupIDs []string, assignmentOUID string,
 ) ([]string, error) {
-	return []string{}, nil
+	roleIDs := make([]string, 0)
+	if entityID == "" && len(groupIDs) == 0 {
+		return roleIDs, nil
+	}
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+	groupSet := make(map[string]bool, len(groupIDs))
+	for _, groupID := range groupIDs {
+		groupSet[groupID] = true
+	}
+	for _, item := range list {
+		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
+		if err != nil {
+			return nil, err
+		}
+		if matchesAssignee(declaredAssignments(roleData, assignmentOUID, ""), entityID, groupSet) {
+			roleIDs = append(roleIDs, item.ID.ID)
+		}
+	}
+	return roleIDs, nil
 }
 
 // IsRoleDeclarative returns true for roles in the file-based store because they are declarative.

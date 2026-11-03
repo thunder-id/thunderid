@@ -214,7 +214,11 @@ func (p *authZENPDPEngine) evaluateBatch(
 
 	results := make([]AccessEvaluationResponse, 0, len(response.Evaluations))
 	for _, evaluation := range response.Evaluations {
-		results = append(results, AccessEvaluationResponse(evaluation))
+		// External decisions cannot supply internal permission alternatives.
+		results = append(results, AccessEvaluationResponse{
+			Decision: evaluation.Decision,
+			Context:  evaluation.Context,
+		})
 	}
 	return &AccessEvaluationsResponse{Evaluations: results}, nil
 }

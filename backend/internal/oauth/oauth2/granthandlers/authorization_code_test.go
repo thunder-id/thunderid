@@ -1919,15 +1919,12 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_OIDCScopesA
 	suite.mockEnforcement.AssertCalled(suite.T(), "EnsureNotRevoked", mock.Anything,
 		revocation.RevocationIdentity{
 			EstablishedAt: suite.testAuthzCode.TimeCreated.UTC().Truncate(time.Second),
-			Criteria: []revocation.Criterion{
-				{Type: revocation.CriterionTypeEntityScope,
-					Value: sharedrevocation.EntityScopeCriterionValue(testUserID, testResourceURL, "read")},
-				{Type: revocation.CriterionTypeScope,
-					Value: sharedrevocation.ScopeCriterionValue(testResourceURL, "read")},
-				{Type: revocation.CriterionTypeTokenFamily, Value: "family-1"},
-				{Type: revocation.CriterionTypeSubject, Value: testUserID},
-				{Type: revocation.CriterionTypeApplicationKey, Value: testClientID},
-			},
+			Criteria: append(revocation.ScopeCriteria(testUserID, []string{testResourceURL}, []string{"read"}),
+				[]revocation.Criterion{
+					{Type: revocation.CriterionTypeTokenFamily, Value: "family-1"},
+					{Type: revocation.CriterionTypeSubject, Value: testUserID},
+					{Type: revocation.CriterionTypeApplicationKey, Value: testClientID},
+				}...),
 		})
 }
 

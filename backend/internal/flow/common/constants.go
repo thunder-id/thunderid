@@ -193,11 +193,17 @@ const (
 	RuntimeKeyClientID = "clientId"
 	// RuntimeKeyRequestedPermissions holds the space-separated permission scopes requested by the OAuth client.
 	RuntimeKeyRequestedPermissions = "requested_permissions"
+
+	// RuntimeKeyPermissionDelimiter holds the bound server's enabled hierarchy delimiter.
+	// Empty values keep consent and assertion checks exact.
+	RuntimeKeyPermissionDelimiter = "permission_delimiter"
 	// RuntimeKeyResourceServerIdentifier holds the identifier of the single resource server the request is
 	// bound to. When set, the authorization executor resolves it and scopes its permission evaluation to
 	// that resource server. Using the identifier (not the internal ID) keeps the executor contract the
 	// same for OAuth requests and direct flow executions.
 	RuntimeKeyResourceServerIdentifier = "resource_server_identifier"
+	// RuntimeKeyResourceServerID holds the trusted internal ID resolved for this request.
+	RuntimeKeyResourceServerID = "resource_server_id"
 	// RuntimeKeyConsentedPermissions holds the space-separated permission scopes the user has consented to
 	// release to the client, as produced by the ConsentExecutor.
 	RuntimeKeyConsentedPermissions = "consented_permissions"
@@ -205,6 +211,7 @@ const (
 	RuntimeKeyRequestedAuthorizationDetails = "requested_authorization_details"
 	// RuntimeKeyConsentedAuthorizationDetails holds the authorization details granted by consent as JSON.
 	RuntimeKeyConsentedAuthorizationDetails = "consented_authorization_details"
+
 	// RuntimeKeyRequiredEssentialAttributes holds the space-separated essential user attributes required for the flow.
 	RuntimeKeyRequiredEssentialAttributes = "required_essential_attributes"
 	// RuntimeKeyRequiredOptionalAttributes holds the space-separated optional user attributes required for the flow.

@@ -2004,23 +2004,23 @@ func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_Interse
 	assert.Equal(suite.T(), "read cancel", got)
 }
 
-func (suite *AuthAssertExecutorTestSuite) TestIntersectPermissionSpaceList_EmptyInputs() {
-	assert.Equal(suite.T(), "", intersectPermissionSpaceList("", "a b"))
-	assert.Equal(suite.T(), "", intersectPermissionSpaceList("a b", ""))
-	assert.Equal(suite.T(), "", intersectPermissionSpaceList("", ""))
+func (suite *AuthAssertExecutorTestSuite) TestConsentedSubset_EmptyInputs() {
+	assert.Equal(suite.T(), "", consentedSubset("", "a b", ""))
+	assert.Equal(suite.T(), "", consentedSubset("a b", "", ""))
+	assert.Equal(suite.T(), "", consentedSubset("", "", ""))
 }
 
-func (suite *AuthAssertExecutorTestSuite) TestIntersectPermissionSpaceList_PreservesOrderOfFirstArg() {
-	assert.Equal(suite.T(), "c a", intersectPermissionSpaceList("c a b", "a c"))
+func (suite *AuthAssertExecutorTestSuite) TestConsentedSubset_PreservesOrderOfFirstArg() {
+	assert.Equal(suite.T(), "c a", consentedSubset("c a b", "a c", ""))
 }
 
-func (suite *AuthAssertExecutorTestSuite) TestIntersectPermissionSpaceList_DropsDuplicates() {
+func (suite *AuthAssertExecutorTestSuite) TestConsentedSubset_DropsDuplicates() {
 	// Defensive dedup: if `a` has duplicates, each token appears at most once in the result.
-	assert.Equal(suite.T(), "x y", intersectPermissionSpaceList("x y x y", "x y"))
+	assert.Equal(suite.T(), "x y", consentedSubset("x y x y", "x y", ""))
 }
 
-func (suite *AuthAssertExecutorTestSuite) TestIntersectPermissionSpaceList_NoOverlap() {
-	assert.Equal(suite.T(), "", intersectPermissionSpaceList("a b", "c d"))
+func (suite *AuthAssertExecutorTestSuite) TestConsentedSubset_NoOverlap() {
+	assert.Equal(suite.T(), "", consentedSubset("a b", "c d", ""))
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestResolveSubject() {
@@ -2308,4 +2308,17 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_UnresolvedEntityReferenceI
 				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		})
 	}
+}
+
+// A permission the subject approved answers for the ones it carries, so a consent given at the
+// resource is not undone by the token being issued for something beneath it.
+func (suite *AuthAssertExecutorTestSuite) TestConsentedSubset_ConsentToAResourceCoversWhatIsBeneathIt() {
+	assert.Equal(suite.T(), "reservations:create reservations:view",
+		consentedSubset("reservations:create reservations:view", "reservations", ":"))
+}
+
+// Without a delimiter the comparison is exact, which is what a resource server whose permissions do
+// not nest gets, and what a flow with no authorization step gets.
+func (suite *AuthAssertExecutorTestSuite) TestConsentedSubset_ExactWithoutADelimiter() {
+	assert.Equal(suite.T(), "", consentedSubset("reservations:create", "reservations", ""))
 }

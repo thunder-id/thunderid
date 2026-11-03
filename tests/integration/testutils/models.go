@@ -368,6 +368,9 @@ type ResourceServer struct {
 	Identifier  string  `json:"identifier,omitempty"`
 	OUID        string  `json:"ouId"`
 	Delimiter   *string `json:"delimiter,omitempty"`
+	// HierarchicalPermissions declares that this server's permissions nest, so a granted permission
+	// authorizes those beneath it. Off unless the resource server asks for it.
+	HierarchicalPermissions bool `json:"hierarchicalPermissions,omitempty"`
 }
 
 // Action represents an action in the resource system

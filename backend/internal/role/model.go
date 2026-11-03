@@ -129,6 +129,8 @@ type AssignmentListResponse struct {
 
 // ResourcePermissions represents permissions grouped by resource server.
 type ResourcePermissions struct {
+	// subtreeDelimiter is used only while planning revocation, never in stored role grants.
+	subtreeDelimiter string
 	ResourceServerID string   `json:"resourceServerId" yaml:"resourceServerId"`
 	Permissions      []string `json:"permissions"      yaml:"permissions"`
 }

@@ -66,6 +66,31 @@ func (suite *AuthorizationServiceTestSuite) SetupTest() {
 	suite.service = newAuthorizationService(suite.mockEngine, nil, nil, nil)
 }
 
+func (suite *AuthorizationServiceTestSuite) TestEngineResponseKeepsAlternativesSeparateFromContext() {
+	for _, decision := range []bool{false, true} {
+		input := engine.AccessEvaluationResponse{
+			Decision: decision,
+			Context: map[string]interface{}{
+				providers.ContextKeyGrantedInstead: []string{"admin:everything"},
+				"reason":                           "role evaluation",
+			},
+			GrantedInstead: []string{"reports:view"},
+		}
+		response := fromEngineAccessEvaluationsResponse(&engine.AccessEvaluationsResponse{
+			Evaluations: []engine.AccessEvaluationResponse{input},
+		})
+		suite.Require().Len(response.Evaluations, 1)
+		result := response.Evaluations[0]
+		suite.Equal(decision, result.Decision)
+		suite.Equal([]string{"reports:view"}, result.GrantedInstead)
+		suite.NotContains(result.Context, providers.ContextKeyGrantedInstead)
+		suite.Equal("role evaluation", result.Context["reason"])
+		suite.Contains(input.Context, providers.ContextKeyGrantedInstead)
+		result.GrantedInstead[0] = "changed"
+		suite.Equal([]string{"reports:view"}, input.GrantedInstead)
+	}
+}
+
 func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessSuccess() {
 	request := providers.AccessEvaluationRequest{
 		Subject:        providers.Subject{ID: "user1", GroupIDs: []string{"group1"}},

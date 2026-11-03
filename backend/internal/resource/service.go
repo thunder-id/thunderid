@@ -343,14 +343,15 @@ func (rs *resourceService) CreateResourceServer(
 		}
 
 		createdRS = &providers.ResourceServer{
-			ID:                  id,
-			Name:                resourceServer.Name,
-			Description:         resourceServer.Description,
-			Identifier:          resourceServer.Identifier,
-			Type:                resourceServer.Type,
-			OUID:                resourceServer.OUID,
-			Delimiter:           resourceServer.Delimiter,
-			AuthorizationEngine: resourceServer.AuthorizationEngine,
+			ID:                      id,
+			Name:                    resourceServer.Name,
+			Description:             resourceServer.Description,
+			Identifier:              resourceServer.Identifier,
+			Type:                    resourceServer.Type,
+			OUID:                    resourceServer.OUID,
+			Delimiter:               resourceServer.Delimiter,
+			HierarchicalPermissions: resourceServer.HierarchicalPermissions,
+			AuthorizationEngine:     resourceServer.AuthorizationEngine,
 		}
 		return nil
 	}); err != nil {
@@ -473,6 +474,7 @@ func (rs *resourceService) UpdateResourceServer(
 
 	// Delimiter is always preserved from the existing record
 	resourceServer.Delimiter = existingResServer.Delimiter
+	resourceServer.HierarchicalPermissions = existingResServer.HierarchicalPermissions
 
 	// Type is immutable and always preserved from the existing record
 	resourceServer.Type = existingResServer.Type
@@ -535,14 +537,15 @@ func (rs *resourceService) UpdateResourceServer(
 		}
 
 		updatedRS = &providers.ResourceServer{
-			ID:                  id,
-			Name:                resourceServer.Name,
-			Description:         resourceServer.Description,
-			Identifier:          resourceServer.Identifier,
-			Type:                resourceServer.Type,
-			OUID:                resourceServer.OUID,
-			Delimiter:           resourceServer.Delimiter,
-			AuthorizationEngine: resourceServer.AuthorizationEngine,
+			ID:                      id,
+			Name:                    resourceServer.Name,
+			Description:             resourceServer.Description,
+			Identifier:              resourceServer.Identifier,
+			Type:                    resourceServer.Type,
+			OUID:                    resourceServer.OUID,
+			Delimiter:               resourceServer.Delimiter,
+			HierarchicalPermissions: resourceServer.HierarchicalPermissions,
+			AuthorizationEngine:     resourceServer.AuthorizationEngine,
 		}
 		return nil
 	}); err != nil {

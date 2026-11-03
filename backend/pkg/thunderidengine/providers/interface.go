@@ -190,11 +190,12 @@ type ConsentProvider interface {
 	// for all required claims and details regardless of existing active consent. Returning nil grants
 	// every requested authorization detail, so a provider must prompt for or refuse any detail no
 	// earlier approval covers.
+	// permissionDelimiter enables hierarchy for the bound resourceServerID; empty uses exact matching.
 	ResolveConsent(ctx context.Context, ouID, appID, appName, userID string,
 		essentialAttributes, optionalAttributes, authorizedPermissions []string,
 		authorizationDetails []AuthorizationDetail,
 		availableAttributes *AttributesResponse, forceReprompt bool,
-		runtimeMetadata map[string][]string) (
+		runtimeMetadata map[string][]string, permissionDelimiter, resourceServerID string) (
 		*ConsentPromptData, *common.ServiceError)
 
 	// RecordConsent records the user's consent decisions and returns the persisted consent record.

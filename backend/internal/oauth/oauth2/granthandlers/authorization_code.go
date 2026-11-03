@@ -202,6 +202,8 @@ func (h *authorizationCodeGrantHandler) issueTokens(ctx context.Context, tokenRe
 		return nil, errResp
 	}
 
+	accessTokenScopes = compactPermissionScopes(accessTokenScopes, oidcScopes, targetRS)
+
 	// Generate access token using tokenBuilder (attributes will be filtered in BuildAccessToken)
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{

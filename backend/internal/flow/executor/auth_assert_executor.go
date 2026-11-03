@@ -28,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 const (
@@ -820,29 +821,29 @@ func (a *authAssertExecutor) appendRolesToClaims(
 func (a *authAssertExecutor) resolvePermissionsForClaim(ctx *providers.NodeContext) string {
 	if v, ok := ctx.RuntimeData[common.RuntimeKeyConsentedPermissions]; ok {
 		if authorized, hasAuthorized := ctx.RuntimeData["authorized_permissions"]; hasAuthorized {
-			return intersectPermissionSpaceList(v, authorized)
+			return consentedSubset(authorized, v, ctx.RuntimeData[common.RuntimeKeyPermissionDelimiter])
 		}
 		return v
 	}
 	return ctx.RuntimeData["authorized_permissions"]
 }
 
-// intersectPermissionSpaceList returns the space-separated set of permissions present in both
-// inputs, preserving the order of `a`. Empty inputs are handled as empty sets.
-func intersectPermissionSpaceList(a, b string) string {
-	if a == "" || b == "" {
+// consentedSubset returns the authorized permissions that a consented permission covers, so an
+// approved resource answers for the authorized permissions beneath it. An empty delimiter preserves
+// exact matching.
+func consentedSubset(authorized, consented, delimiter string) string {
+	if authorized == "" || consented == "" {
 		return ""
 	}
-	allowed := make(map[string]bool)
-	for _, p := range strings.Fields(b) {
-		allowed[p] = true
-	}
-	out := make([]string, 0, len(allowed))
-	for _, p := range strings.Fields(a) {
-		if allowed[p] {
-			out = append(out, p)
-			delete(allowed, p)
+	approved := strings.Fields(consented)
+
+	authorizedPermissions := strings.Fields(authorized)
+	out := make([]string, 0, len(authorizedPermissions))
+	for _, permission := range authorizedPermissions {
+		if slices.Contains(out, permission) || !security.AnyPermissionCovers(approved, permission, delimiter) {
+			continue
 		}
+		out = append(out, permission)
 	}
 	return strings.Join(out, " ")
 }

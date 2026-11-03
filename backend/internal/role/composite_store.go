@@ -683,13 +683,19 @@ func (c *compositeRoleStore) crossStoreAllPermissions(
 	return resourcePermissionsFromMap(byResourceServer), nil
 }
 
-// GetEntityRoleIDs returns the IDs of roles assigned to an entity (directly or via groups).
-// Delegates to the database store since assignments are persisted there even for declarative
-// roles. The file store has no independent record of API-added assignments.
+// GetEntityRoleIDs combines database and declared assignments in the requested organization unit.
 func (c *compositeRoleStore) GetEntityRoleIDs(
 	ctx context.Context, entityID string, groupIDs []string, assignmentOUID string,
 ) ([]string, error) {
-	return c.dbStore.GetEntityRoleIDs(ctx, entityID, groupIDs, assignmentOUID)
+	dbRoleIDs, err := c.dbStore.GetEntityRoleIDs(ctx, entityID, groupIDs, assignmentOUID)
+	if err != nil {
+		return nil, err
+	}
+	fileRoleIDs, err := c.fileStore.GetEntityRoleIDs(ctx, entityID, groupIDs, assignmentOUID)
+	if err != nil {
+		return nil, err
+	}
+	return mergePermissions(dbRoleIDs, fileRoleIDs), nil
 }
 
 // GetUserRoles retrieves role names assigned to an entity from both stores.

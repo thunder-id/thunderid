@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -349,9 +350,25 @@ func fromEngineAccessEvaluationsResponse(
 	evaluations := make([]providers.AccessEvaluationResponse, 0, len(response.Evaluations))
 	for _, evaluation := range response.Evaluations {
 		evaluations = append(evaluations, providers.AccessEvaluationResponse{
-			Decision: evaluation.Decision,
-			Context:  evaluation.Context,
+			Decision:       evaluation.Decision,
+			Context:        withoutGrantedInstead(evaluation.Context),
+			GrantedInstead: slices.Clone(evaluation.GrantedInstead),
 		})
 	}
 	return &providers.AccessEvaluationsResponse{Evaluations: evaluations}
+}
+
+// withoutGrantedInstead strips reserved metadata without mutating the provider's context.
+func withoutGrantedInstead(evaluationContext map[string]interface{}) map[string]interface{} {
+	_, hasReservedContext := evaluationContext[providers.ContextKeyGrantedInstead]
+	if !hasReservedContext {
+		return evaluationContext
+	}
+	filtered := make(map[string]interface{}, len(evaluationContext)-1)
+	for key, value := range evaluationContext {
+		if key != providers.ContextKeyGrantedInstead {
+			filtered[key] = value
+		}
+	}
+	return filtered
 }

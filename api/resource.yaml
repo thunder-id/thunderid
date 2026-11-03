@@ -2318,6 +2318,9 @@ components:
         delimiter:
           type: string
           description: Character used to separate permission hierarchy levels (immutable after creation)
+        hierarchicalPermissions:
+          type: boolean
+          description: Whether a granted permission on this resource server also authorizes the permissions beneath it (immutable after creation)
         authorizationEngine:
           $ref: '#/components/schemas/AuthorizationEngineConfig'
         isReadOnly:
@@ -2348,6 +2351,9 @@ components:
         delimiter:
           type: string
           description: Optional delimiter character for permission hierarchy (defaults to ":", immutable after creation)
+        hierarchicalPermissions:
+          type: boolean
+          description: Whether a granted permission covers its declared descendants (defaults to "false", immutable after creation)
 
     UpdateResourceServerRequest:
       type: object

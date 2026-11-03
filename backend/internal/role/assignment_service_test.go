@@ -1748,6 +1748,21 @@ func (s *RoleAssignmentRemovalValidationTestSuite) TestRoleReadFailureIsAServerE
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
+func (s *RoleAssignmentRemovalValidationTestSuite) TestResourceServerLookupFailureStopsAssignmentRemoval() {
+	s.mayChangeAssignments()
+	s.assignedOnPage(1, 0, providers.EntityCategoryUser, RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity})
+	s.roleGranting([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+	s.resources.On("GetResourceServer", mock.Anything, californiaRSID).
+		Return((*providers.ResourceServer)(nil), &tidcommon.InternalServerError).Once()
+
+	target, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, "", targetUserID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	s.Nil(target)
+	s.store.AssertNotCalled(s.T(), "RemoveAssignments", mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (s *RoleAssignmentRemovalValidationTestSuite) TestDeclarativeRoleListingAPermissionTwiceIsNotRefused() {
 	declared, err := parseToRole([]byte(`
 id: role-1

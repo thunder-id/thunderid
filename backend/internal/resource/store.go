@@ -72,8 +72,9 @@ type resourceStore struct {
 
 // resourceServerProperties represents the JSON structure of PROPERTIES column.
 type resourceServerProperties struct {
-	Delimiter           string                               `json:"delimiter"`
-	AuthorizationEngine *providers.AuthorizationEngineConfig `json:"authorizationEngine,omitempty"`
+	Delimiter               string                               `json:"delimiter"`
+	HierarchicalPermissions bool                                 `json:"hierarchicalPermissions,omitempty"`
+	AuthorizationEngine     *providers.AuthorizationEngineConfig `json:"authorizationEngine,omitempty"`
 }
 
 // actionProperties represents the JSON structure of the ACTION.PROPERTIES column.
@@ -952,6 +953,7 @@ func resolveProperties(row map[string]interface{}, rs *providers.ResourceServer)
 		if len(propsBytes) > 0 {
 			if err := json.Unmarshal(propsBytes, &props); err == nil {
 				rs.Delimiter = props.Delimiter
+				rs.HierarchicalPermissions = props.HierarchicalPermissions
 				if props.AuthorizationEngine != nil {
 					rs.AuthorizationEngine = *props.AuthorizationEngine
 				}
@@ -962,7 +964,10 @@ func resolveProperties(row map[string]interface{}, rs *providers.ResourceServer)
 
 // buildPropertiesJSON builds the PROPERTIES JSON for a providers.ResourceServer.
 func buildPropertiesJSON(rs providers.ResourceServer) interface{} {
-	properties := resourceServerProperties{Delimiter: rs.Delimiter}
+	properties := resourceServerProperties{
+		Delimiter:               rs.Delimiter,
+		HierarchicalPermissions: rs.HierarchicalPermissions,
+	}
 	if rs.AuthorizationEngine.Type != "" || rs.AuthorizationEngine.Properties.PDPConnectionID != "" {
 		properties.AuthorizationEngine = &rs.AuthorizationEngine
 	}

@@ -2166,3 +2166,22 @@ func (s *IDPUtilsTestSuite) TestValidateAccountLinking() {
 		})
 	}
 }
+
+func (suite *AuthorizationRuleMappingResolveTestSuite) TestUnionMappedPermissionTargetsMatchesExactly() {
+	for _, tc := range []struct {
+		name, held, requested string
+		want                  []string
+	}{
+		{"parent does not grant child", "reservations", "reservations:create", nil},
+		{"child does not answer parent", "reservations:create", "reservations", nil},
+		{"literal root", "reservations", "reservations", []string{"reservations"}},
+		{"literal child", "reservations:create", "reservations:create", []string{"reservations:create"}},
+	} {
+		suite.Run(tc.name, func() {
+			targets := []providers.AuthorizationTarget{{
+				Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: tc.held,
+			}}
+			suite.Equal(tc.want, UnionMappedPermissionTargets(nil, []string{tc.requested}, targets, "rs-1"))
+		})
+	}
+}

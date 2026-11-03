@@ -96,15 +96,16 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 
 	// Build providers.ResourceServer with nested structure
 	rs := &providers.ResourceServer{
-		ID:                  server.ID,
-		Name:                server.Name,
-		Description:         server.Description,
-		Identifier:          server.Identifier,
-		Type:                server.Type,
-		OUID:                server.OUID,
-		Delimiter:           server.Delimiter,
-		AuthorizationEngine: server.AuthorizationEngine,
-		Resources:           []providers.Resource{},
+		ID:                      server.ID,
+		Name:                    server.Name,
+		Description:             server.Description,
+		Identifier:              server.Identifier,
+		Type:                    server.Type,
+		OUID:                    server.OUID,
+		Delimiter:               server.Delimiter,
+		HierarchicalPermissions: server.HierarchicalPermissions,
+		AuthorizationEngine:     server.AuthorizationEngine,
+		Resources:               []providers.Resource{},
 	}
 
 	rs.Actions, err = e.getAllActions(ctx, id, nil)

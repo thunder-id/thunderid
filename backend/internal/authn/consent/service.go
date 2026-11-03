@@ -22,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 // ConsentEnforcerService is the consent enforcer. It exposes SetConsentService so the consent
@@ -35,19 +36,22 @@ type ConsentEnforcerService interface {
 
 // consentEnforcerService is the default implementation of ConsentEnforcerService.
 type consentEnforcerService struct {
-	consentService consent.ConsentServiceInterface
-	jwtService     jwt.JWTServiceInterface
-	detailTypes    providers.AuthorizationDetailTypeProvider
-	logger         *log.Logger
+	consentService  consent.ConsentServiceInterface
+	resourceService resource.ResourceServiceInterface
+	jwtService      jwt.JWTServiceInterface
+	detailTypes     providers.AuthorizationDetailTypeProvider
+	logger          *log.Logger
 }
 
 // newConsentEnforcerService creates a new instance of consentEnforcerService.
 func newConsentEnforcerService(jwtSvc jwt.JWTServiceInterface,
-	detailTypes providers.AuthorizationDetailTypeProvider) ConsentEnforcerService {
+	detailTypes providers.AuthorizationDetailTypeProvider,
+	resourceService resource.ResourceServiceInterface) ConsentEnforcerService {
 	return &consentEnforcerService{
-		jwtService:  jwtSvc,
-		detailTypes: detailTypes,
-		logger:      log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentEnforcerService")),
+		jwtService:      jwtSvc,
+		detailTypes:     detailTypes,
+		resourceService: resourceService,
+		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentEnforcerService")),
 	}
 }
 
@@ -61,7 +65,7 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 	essentialAttributes, optionalAttributes, authorizedPermissions []string,
 	authorizationDetails []providers.AuthorizationDetail,
 	availableAttributes *providers.AttributesResponse, forceReprompt bool,
-	runtimeMetadata map[string][]string) (
+	runtimeMetadata map[string][]string, permissionDelimiter, resourceServerID string) (
 	*providers.ConsentPromptData, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID))
 	logger.Debug(ctx, "Resolving consent for user")
@@ -123,7 +127,7 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 	userAttributeSet := buildUserAttributeSet(availableAttributes)
 
 	promptPurposes := buildPurposePrompts(purposes, essentialAttributes, optionalAttributes,
-		consentedElements, userAttributeSet, authorizedPermissions)
+		consentedElements, userAttributeSet, authorizedPermissions, permissionDelimiter)
 
 	// RFC 9396 section 3 requires authorization details to be consented in the same prompt.
 	detailPurpose, svcErr := s.authorizationDetailPurpose(ctx, appID, appName, authorizationDetails,
@@ -137,6 +141,13 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 	if len(promptPurposes) == 0 {
 		logger.Debug(ctx, "All required consents are active; no prompt needed")
 		return nil, nil
+	}
+
+	if permissionDelimiter != "" && resourceServerID != "" {
+		svcErr := s.populatePermissionDisplay(ctx, promptPurposes, resourceServerID, permissionDelimiter)
+		if svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	promptData := &providers.ConsentPromptData{Purposes: promptPurposes}
@@ -173,8 +184,10 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 	// Fill in any missing purposes as denied so incomplete submissions are treated as non-consented
 	fillMissingDecisions(sessionData, decisions)
 
-	// Push denials down the decision hierarchy so everything below reads the effective value
+	// Push denials down the decision hierarchy so everything below reads the effective value, then
+	// settle each permission branch on the decision its root carries.
 	applyDecisionHierarchy(decisions)
+	applyBranchPermissionDecisions(sessionData, decisions)
 
 	// Build essential element lookup and check whether any essential attribute was denied
 	essentialElements := buildEssentialElementSet(sessionData)
@@ -224,7 +237,7 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 	var consentRecord *consent.Consent
 	if len(existingConsents) > 0 {
 		consentRecord, svcErr = s.updateExistingConsent(ctx, appID, userID,
-			existingConsents, newPurposeItems, detailElements, detailTypes, validityTime)
+			existingConsents, newPurposeItems, detailElements, detailTypes, validityTime, sessionData)
 	} else {
 		consentRecord, svcErr = s.createNewConsent(ctx, appID, userID,
 			newPurposeItems, detailElements, detailTypes, validityTime)
@@ -244,13 +257,12 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 	return result, nil
 }
 
-// updateExistingConsent updates an existing consent record by merging new decisions into it.
-// The existing record's approved elements are preserved, and new decisions override.
-// Returns the updated consent record.
+// updateExistingConsent merges fresh decisions, replacing superseded permission approvals.
 func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, appID, userID string,
 	existingConsents []*consent.Consent, newPurposeItems []providers.ConsentPurposeItem,
 	detailElements map[string][]consent.ConsentElementApproval,
 	detailTypes map[string]providers.AuthorizationDetailType, validityTime int64,
+	session *consentSessionData,
 ) (*consent.Consent, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID),
 		log.Int("existingConsentCount", len(existingConsents)))
@@ -271,7 +283,8 @@ func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, appI
 
 	// Merge new decisions into the existing consent record.
 	existing := existingConsents[0]
-	req.Purposes = mergeAuthorizationDetailPurposes(mergeConsentPurposes(existing.Purposes, newPurposeItems),
+	req.Purposes = mergeAuthorizationDetailPurposes(mergeConsentPurposes(
+		withoutSupersededPermissionDecisions(existing.Purposes, newPurposeItems, session), newPurposeItems),
 		detailElements, detailTypes)
 
 	updated, svcErr := s.consentService.UpdateConsent(ctx, existing.ID, req)
@@ -329,7 +342,8 @@ func (s *consentEnforcerService) createNewConsent(ctx context.Context, appID, us
 
 // createConsentSessionToken creates a signed JWT containing the consent session data.
 // The session captures the purposes and their essential/optional elements from the resolve step,
-// so that the record step can verify completeness and enforce essential attribute rules.
+// plus the delimiter a permission purpose's elements nest on, so that the record step can verify
+// completeness, enforce essential attribute rules, and decide each permission branch as a whole.
 func (s *consentEnforcerService) createConsentSessionToken(ctx context.Context,
 	promptData *providers.ConsentPromptData, authorizationDetails []providers.AuthorizationDetail,
 ) (string, error) {
@@ -338,10 +352,11 @@ func (s *consentEnforcerService) createConsentSessionToken(ctx context.Context,
 	}
 	for _, p := range promptData.Purposes {
 		sessionData.Purposes = append(sessionData.Purposes, consentSessionPurpose{
-			PurposeName: p.PurposeName,
-			Essential:   elementNames(p.Essential),
-			Optional:    elementNames(p.Optional),
-			Details:     promptedDetails(p, authorizationDetails),
+			PurposeName:         p.PurposeName,
+			Essential:           elementNames(p.Essential),
+			Optional:            elementNames(p.Optional),
+			Details:             promptedDetails(p, authorizationDetails),
+			PermissionDelimiter: p.PermissionDelimiter,
 		})
 	}
 	sessionData.CoveredDetails = coveredDetails(sessionData.Purposes, authorizationDetails)
@@ -470,6 +485,116 @@ func applyDecisionHierarchy(decisions *providers.ConsentDecisions) {
 	}
 }
 
+// applyBranchPermissionDecisions applies one decision per independent permission branch.
+// Prompted descendants inherit the root's decision; child exceptions are not supported.
+func applyBranchPermissionDecisions(session *consentSessionData, decisions *providers.ConsentDecisions) {
+	for _, purpose := range session.Purposes {
+		if purpose.PermissionDelimiter == "" || len(purpose.Optional) == 0 ||
+			namespaceFromPurposeName(purpose.PurposeName) != providers.NamespacePermission {
+			continue
+		}
+		roots := permissionBranchRoots(purpose.Optional, purpose.PermissionDelimiter)
+		for i := range decisions.Purposes {
+			decision := &decisions.Purposes[i]
+			if decision.PurposeName != purpose.PurposeName {
+				continue
+			}
+			submitted := submittedElementApprovals(decision.Elements)
+			approved := make(map[string]bool, len(roots))
+			for _, name := range purpose.Optional {
+				if roots[name] == name {
+					approved[name] = decisions.Approved && decision.Approved && submitted[name]
+				}
+			}
+			decision.Elements = make([]providers.ElementDecision, 0, len(purpose.Optional))
+			for _, name := range purpose.Optional {
+				decision.Elements = append(decision.Elements,
+					providers.ElementDecision{Name: name, Approved: approved[roots[name]]})
+			}
+		}
+	}
+}
+
+// permissionBranchRoots maps every prompted permission to the root of its branch: the shortest
+// prompted permission that covers it. A permission with no prompted ancestor is its own root.
+func permissionBranchRoots(prompted []string, delimiter string) map[string]string {
+	displayed := make(map[string]bool, len(prompted))
+	for _, name := range prompted {
+		displayed[name] = true
+	}
+
+	roots := make(map[string]string, len(prompted))
+	for _, name := range prompted {
+		root := name
+		for _, ancestor := range security.AncestorPermissions(name, delimiter) {
+			if displayed[ancestor] && len(ancestor) < len(root) {
+				root = ancestor
+			}
+		}
+		roots[name] = root
+	}
+	return roots
+}
+
+// submittedElementApprovals collapses a submission's element decisions into one approval per name.
+// A name appearing more than once is approved only when every occurrence approved it.
+func submittedElementApprovals(elements []providers.ElementDecision) map[string]bool {
+	approvals := make(map[string]bool, len(elements))
+	for _, element := range elements {
+		if previous, seen := approvals[element.Name]; seen {
+			approvals[element.Name] = previous && element.Approved
+			continue
+		}
+		approvals[element.Name] = element.Approved
+	}
+	return approvals
+}
+
+// withoutSupersededPermissionDecisions removes superseded subtrees and approvals covering fresh refusals.
+func withoutSupersededPermissionDecisions(
+	existing []consent.ConsentPurposeItem, incoming []providers.ConsentPurposeItem, session *consentSessionData,
+) []consent.ConsentPurposeItem {
+	updated := make([]consent.ConsentPurposeItem, 0, len(existing))
+	for _, purpose := range existing {
+		for _, prompted := range session.Purposes {
+			if prompted.PurposeName != purpose.Name || prompted.PermissionDelimiter == "" ||
+				namespaceFromPurposeName(prompted.PurposeName) != providers.NamespacePermission {
+				continue
+			}
+			refused := refusedPermissionNames(incoming, purpose.Name)
+			kept := make([]consent.ConsentElementApproval, 0, len(purpose.Elements))
+			for _, element := range purpose.Elements {
+				coversRefusal := element.IsUserApproved && slices.ContainsFunc(refused, func(name string) bool {
+					return security.PermissionCovers(element.Name, name, prompted.PermissionDelimiter)
+				})
+				if !coversRefusal &&
+					!security.AnyPermissionCovers(prompted.Optional, element.Name, prompted.PermissionDelimiter) {
+					kept = append(kept, element)
+				}
+			}
+			purpose.Elements = kept
+		}
+		updated = append(updated, purpose)
+	}
+	return updated
+}
+
+// refusedPermissionNames returns normalized refusals for one permission purpose.
+func refusedPermissionNames(purposes []providers.ConsentPurposeItem, purposeName string) []string {
+	var refused []string
+	for _, purpose := range purposes {
+		if purpose.Name != purposeName {
+			continue
+		}
+		for _, element := range purpose.Elements {
+			if !element.IsUserApproved {
+				refused = append(refused, element.Name)
+			}
+		}
+	}
+	return refused
+}
+
 // buildEssentialElementSet builds a set of "purposeName:elementName" keys for essential elements
 // from the consent session data.
 func buildEssentialElementSet(session *consentSessionData) map[string]bool {
@@ -556,6 +681,21 @@ func buildConsentedElementSet(consents []*consent.Consent) map[string]bool {
 	return consentedSet
 }
 
+// permissionAlreadyConsented reports whether an active approval of the permission, or of an ancestor
+// that covers it, makes a prompt unnecessary. An approval of an ancestor answers for the permissions
+// beneath it. An empty delimiter preserves exact matching.
+func permissionAlreadyConsented(purposeName, permission string, consented map[string]bool, delimiter string) bool {
+	if consented[purposeElementKey(purposeName, permission)] {
+		return true
+	}
+	for _, ancestor := range security.AncestorPermissions(permission, delimiter) {
+		if consented[purposeElementKey(purposeName, ancestor)] {
+			return true
+		}
+	}
+	return false
+}
+
 // buildUserAttributeSet builds a set of attribute names present in the user's profile.
 // When availableAttributes is nil, the returned set is empty — meaning no profile filtering is applied.
 func buildUserAttributeSet(available *providers.AttributesResponse) map[string]bool {
@@ -580,7 +720,7 @@ func purposeElementKey(purposeName, elementName string) string {
 // prompts that still require user consent. Purposes whose Namespace was not inferred are skipped.
 func buildPurposePrompts(purposes []consent.ConsentPurpose, essentialAttributes, optionalAttributes []string,
 	consentedElements map[string]bool, userAttributeSet map[string]bool,
-	authorizedPermissions []string) []providers.ConsentPurposePrompt {
+	authorizedPermissions []string, delimiter string) []providers.ConsentPurposePrompt {
 	promptPurposes := make([]providers.ConsentPurposePrompt, 0, len(purposes))
 	for _, purpose := range purposes {
 		switch deriveConsentPromptTypeFromPurpose(purpose) {
@@ -591,7 +731,7 @@ func buildPurposePrompts(purposes []consent.ConsentPurpose, essentialAttributes,
 			}
 		case consentPromptTypePermissions:
 			if prompt, ok := buildPermissionPurposePrompt(purpose, consentedElements,
-				authorizedPermissions); ok {
+				authorizedPermissions, delimiter); ok {
 				promptPurposes = append(promptPurposes, prompt)
 			}
 		}
@@ -656,18 +796,20 @@ func buildAttributePurposePrompt(purpose consent.ConsentPurpose,
 	}, true
 }
 
-// buildPermissionPurposePrompt builds a ConsentPurposePrompt for a permission purpose. Only
-// elements that appear in the authorized permissions and are not already consented are included.
-// Rollup parent linkage is computed server-side from the prompted-element set.
+// buildPermissionPurposePrompt prompts undecided permissions, keeping hierarchical branches whole.
 func buildPermissionPurposePrompt(purpose consent.ConsentPurpose,
-	consentedElements map[string]bool, authorizedPermissions []string) (providers.ConsentPurposePrompt, bool) {
+	consentedElements map[string]bool, authorizedPermissions []string,
+	delimiter string) (providers.ConsentPurposePrompt, bool) {
 	prompted := make([]string, 0, len(purpose.Elements))
+	available := make([]string, 0, len(purpose.Elements))
 	for _, elem := range purpose.Elements {
-		// Skip elements outside the user's authorized permissions or already consented
+		// Skip elements outside the user's authorized permissions, or already consented either
+		// outright or through a permission the subject approved that carries this one.
 		if !slices.Contains(authorizedPermissions, elem.Name) {
 			continue
 		}
-		if consentedElements[purposeElementKey(purpose.Name, elem.Name)] {
+		available = append(available, elem.Name)
+		if permissionAlreadyConsented(purpose.Name, elem.Name, consentedElements, delimiter) {
 			continue
 		}
 		prompted = append(prompted, elem.Name)
@@ -675,29 +817,40 @@ func buildPermissionPurposePrompt(purpose consent.ConsentPurpose,
 	if len(prompted) == 0 {
 		return providers.ConsentPurposePrompt{}, false
 	}
-
-	parents := computePermissionParents(prompted)
-	optional := make([]providers.PromptElement, 0, len(prompted))
-	for _, name := range prompted {
-		optional = append(optional, providers.PromptElement{
-			Name:   name,
-			Parent: parents[name],
-		})
+	if delimiter != "" {
+		roots := permissionBranchRoots(available, delimiter)
+		undecided := make(map[string]bool, len(prompted))
+		for _, permission := range prompted {
+			undecided[roots[permission]] = true
+		}
+		prompted = nil
+		for _, permission := range available {
+			if undecided[roots[permission]] {
+				prompted = append(prompted, permission)
+			}
+		}
 	}
 
-	return providers.ConsentPurposePrompt{
+	parents := computePermissionParents(prompted, delimiter)
+	optional := make([]providers.PromptElement, 0, len(prompted))
+	for _, name := range prompted {
+		optional = append(optional, providers.PromptElement{Name: name, Parent: parents[name]})
+	}
+
+	prompt := providers.ConsentPurposePrompt{
 		PurposeName: purpose.Name,
 		PurposeID:   purpose.ID,
 		Description: purpose.Description,
 		Type:        consentPromptTypePermissions,
 		Optional:    optional,
-	}, true
+	}
+	prompt.PermissionDelimiter = delimiter
+	return prompt, true
 }
 
-// computePermissionParents returns each permission's rollup parent within the supplied set, or ""
-// when no parent is present. P's parent is the longest other Q in the set such that P starts with
-// Q followed by a permission-delimiter character.
-func computePermissionParents(permissions []string) map[string]string {
+// computePermissionParents returns the nearest displayed parent of each permission. Hierarchical
+// prompts use their resource server's delimiter; exact prompts retain their existing rollup links.
+func computePermissionParents(permissions []string, delimiter string) map[string]string {
 	parents := make(map[string]string, len(permissions))
 	for _, p := range permissions {
 		var longestParent string
@@ -712,7 +865,11 @@ func computePermissionParents(permissions []string) map[string]string {
 				continue
 			}
 			next := rune(p[len(q)])
-			if resource.IsPermissionDelimiter(next) && len(q) > len(longestParent) {
+			isParent := resource.IsPermissionDelimiter(next)
+			if delimiter != "" {
+				isParent = security.PermissionCovers(q, p, delimiter)
+			}
+			if isParent && len(q) > len(longestParent) {
 				longestParent = q
 			}
 		}
@@ -1178,4 +1335,61 @@ func mergeAuthorizationDetailPurposes(existing []consent.ConsentPurposeItem,
 		}
 	}
 	return merged
+}
+
+// populatePermissionDisplay adds read-only catalog descendants beneath the prompt's authorized branches.
+func (s *consentEnforcerService) populatePermissionDisplay(ctx context.Context,
+	purposes []providers.ConsentPurposePrompt, resourceServerID, delimiter string,
+) *tidcommon.ServiceError {
+	requested := []string{}
+	for _, purpose := range purposes {
+		if purpose.Type == consentPromptTypePermissions {
+			requested = append(requested, elementNames(purpose.Optional)...)
+		}
+	}
+	if len(requested) == 0 {
+		return nil
+	}
+	if s.resourceService == nil {
+		return &tidcommon.InternalServerError
+	}
+	server, svcErr := s.resourceService.GetResourceServer(ctx, resourceServerID)
+	if svcErr != nil {
+		return svcErr
+	}
+	if server == nil || !server.HierarchicalPermissions || server.Delimiter != delimiter {
+		return &tidcommon.InternalServerError
+	}
+	declared, svcErr := resource.DeclaredPermissions(ctx, s.resourceService, resourceServerID, requested, delimiter)
+	if svcErr != nil {
+		return svcErr
+	}
+	for i := range purposes {
+		purpose := &purposes[i]
+		if purpose.Type != consentPromptTypePermissions {
+			continue
+		}
+		prompted := elementNames(purpose.Optional)
+		rootOf := permissionBranchRoots(prompted, delimiter)
+		roots := []string{}
+		for _, name := range prompted {
+			if rootOf[name] == name {
+				roots = append(roots, name)
+			}
+		}
+		displayed := slices.Clone(prompted)
+		for _, name := range declared {
+			if security.AnyPermissionCovers(roots, name, delimiter) && !slices.Contains(displayed, name) {
+				displayed = append(displayed, name)
+			}
+		}
+		slices.Sort(displayed)
+		parents := computePermissionParents(displayed, delimiter)
+		for _, name := range displayed {
+			purpose.DisplayElements = append(purpose.DisplayElements, providers.PromptElement{
+				Name: name, Parent: parents[name],
+			})
+		}
+	}
+	return nil
 }
