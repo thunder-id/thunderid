@@ -4,6 +4,7 @@
 package csp
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -35,12 +36,12 @@ func TestPolicyHandler_Decode(t *testing.T) {
 }
 
 func TestPolicyHandler_Validate(t *testing.T) {
-	assert.NoError(t, PolicyHandler{}.Validate(PolicyConfig{}, nil, nil))
+	assert.NoError(t, PolicyHandler{}.Validate(context.Background(), PolicyConfig{}, nil, nil))
 	// Any directive may be configured, including default-src.
-	assert.NoError(t, PolicyHandler{}.Validate(
+	assert.NoError(t, PolicyHandler{}.Validate(context.Background(),
 		PolicyConfig{Directives: map[string][]string{"default-src": {"'self'"}}}, nil, nil))
 	// An invalid directive name is rejected.
-	assert.Error(t, PolicyHandler{}.Validate(
+	assert.Error(t, PolicyHandler{}.Validate(context.Background(),
 		PolicyConfig{Directives: map[string][]string{"bad name": {"'self'"}}}, nil, nil))
 }
 

@@ -4,6 +4,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -83,7 +84,7 @@ func (s *ConfigTestSuite) TestHandler_DecodeJSON() {
 }
 
 func (s *ConfigTestSuite) TestHandler_ValidateRejectsIncoherent() {
-	s.Require().Error(ConfigHandler{}.Validate(Config{IdleTimeoutSeconds: -5}, nil, nil))
+	s.Require().Error(ConfigHandler{}.Validate(context.Background(), Config{IdleTimeoutSeconds: -5}, nil, nil))
 }
 
 func (s *ConfigTestSuite) TestHandler_MergeWritableWins() {

@@ -4,6 +4,7 @@
 package serverconfig
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -74,7 +75,7 @@ func validateServerConfigDoc(data interface{}, fileStore *fileBasedStore,
 	if err != nil {
 		return fmt.Errorf("serverconfig: invalid value for %q: %w", doc.Name, err)
 	}
-	return handler.Validate(value, nil, nil)
+	return handler.Validate(context.Background(), value, nil, nil)
 }
 
 // yamlNodeToJSON decodes a YAML node into a generic value and re-encodes it as JSON, producing the same
