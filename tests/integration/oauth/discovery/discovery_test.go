@@ -18,13 +18,14 @@ import (
 const (
 	oauth2DiscoveryEndpoint = "/.well-known/oauth-authorization-server"
 	oidcDiscoveryEndpoint   = "/.well-known/openid-configuration"
-	testServerURL           = testutils.TestServerURL
 	// oidcCIBAGrantType is the OpenID Connect CIBA grant type identifier (providers.GrantTypeCIBA).
 	oidcCIBAGrantType = "urn:openid:params:grant-type:ciba"
 	// cibaBackchannelAuthEndpointPath is the backchannel authentication endpoint path
 	// (oauth2const.OAuth2BackchannelAuthEndpoint).
 	cibaBackchannelAuthEndpointPath = "/oauth2/bc-authorize"
 )
+
+var testServerURL = testutils.TestServerURL
 
 // OAuth2AuthorizationServerMetadata represents OAuth2 Authorization Server Metadata (RFC 8414)
 type OAuth2AuthorizationServerMetadata struct {

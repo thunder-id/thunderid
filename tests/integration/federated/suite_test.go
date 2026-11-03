@@ -28,20 +28,6 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-// mockOIDCPort is 8100 because 8092-8099, 9091 and 9092 are already bound by other suites, and
-// 8092/8093 are additionally pinned to the GitHub and Google mocks by the deployment.yaml override in
-// testutils/test_utils.go.
-const (
-	mockOIDCPort  = 8100
-	mockOAuthPort = 8101
-
-	// The GitHub mock must bind 8092: Google and GitHub connections carry no configurable endpoints,
-	// so the harness rewrites the scheme and host of their hardcoded defaults to the base URLs in
-	// deployment.yaml, and github_base_url is pinned to this port. Paths are preserved, which is why
-	// the mock mirrors GitHub's real ones.
-	mockGitHubPort = 8092
-)
-
 const (
 	oidcClientID     = "federated-test-client"
 	oidcClientSecret = "federated-test-secret"
@@ -403,7 +389,7 @@ func TestFederatedMappingSuite(t *testing.T) {
 func (s *FederatedMappingSuite) SetupSuite() {
 	s.config = &common.TestSuiteConfig{}
 
-	mock, err := testutils.NewMockOIDCServer(mockOIDCPort, oidcClientID, oidcClientSecret)
+	mock, err := testutils.NewMockOIDCServer(oidcClientID, oidcClientSecret)
 	s.Require().NoError(err, "failed to create mock OIDC server")
 	s.mockOIDC = mock
 
@@ -415,7 +401,6 @@ func (s *FederatedMappingSuite) SetupSuite() {
 		}
 		return s.activeSub, nil
 	})
-	s.Require().NoError(s.mockOIDC.Start(), "failed to start mock OIDC server")
 
 	ouID, err := testutils.CreateOrganizationUnit(fedTestOU)
 	s.Require().NoError(err, "failed to create organization unit")
@@ -461,8 +446,8 @@ func (s *FederatedMappingSuite) SetupSuite() {
 	s.Require().NoError(err, "failed to create application")
 	s.appID = appID
 
-	oauthMock := testutils.NewMockOAuthServer(mockOAuthPort, oidcClientID, oidcClientSecret)
-	s.Require().NoError(oauthMock.Start(), "failed to start mock OAuth server")
+	oauthMock, err := testutils.NewMockOAuthServer(oidcClientID, oidcClientSecret)
+	s.Require().NoError(err, "failed to create mock OAuth server")
 	s.mockOAuth = oauthMock
 	s.mockOAuth.SetAuthorizeFunc(func(string) (string, error) {
 		if s.activeSub == "" {
@@ -486,8 +471,8 @@ func (s *FederatedMappingSuite) SetupSuite() {
 	s.Require().NoError(err, "failed to create OAuth connection")
 	s.oauthIDPID = oauthIDPID
 
-	githubMock := testutils.NewMockGithubOAuthServer(mockGitHubPort, oidcClientID, oidcClientSecret)
-	s.Require().NoError(githubMock.Start(), "failed to start mock GitHub server")
+	githubMock, err := testutils.NewMockGithubOAuthServer(oidcClientID, oidcClientSecret)
+	s.Require().NoError(err, "failed to create mock GitHub server")
 	s.mockGitHub = githubMock
 	// Without this the mock authorizes whichever user it happens to hold first, so a scenario's
 	// selection is ignored and its identity never matches.

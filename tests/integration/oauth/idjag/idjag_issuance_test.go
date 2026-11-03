@@ -497,7 +497,7 @@ func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_Success() {
 	ts.Require().NoError(err)
 	ts.NotEmpty(claims.Sub)
 	ts.Equal(allowedAudience, claims.Aud)
-	ts.Equal("https://localhost:8095", claims.Iss)
+	ts.Equal(testutils.TestServerURL, claims.Iss)
 	ts.Equal(issuanceClientID, claims.Additional["client_id"])
 }
 

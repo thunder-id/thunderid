@@ -19,12 +19,13 @@ import (
 )
 
 const (
-	testServerURL = "https://localhost:8095"
 	rolesBasePath = "/roles"
 
 	// testAgentName is the display name of the agent assigned in the agent-type tests.
 	testAgentName = "Role Test Agent"
 )
+
+var testServerURL = testutils.TestServerURL
 
 var (
 	testOU = testutils.OrganizationUnit{

@@ -20,7 +20,6 @@ import (
 const (
 	oauthAuthStart  = "/auth/oauth/standard/start"
 	oauthAuthFinish = "/auth/oauth/standard/finish"
-	mockOAuthPort   = 8092
 )
 
 var oauthAuthTestOU = testutils.OrganizationUnit{
@@ -70,8 +69,9 @@ func TestOAuthAuthTestSuite(t *testing.T) {
 }
 
 func (suite *OAuthAuthTestSuite) SetupSuite() {
-	suite.mockOAuthServer = testutils.NewMockOAuthServer(mockOAuthPort,
-		"test-oauth-client", "test-oauth-secret")
+	var err error
+	suite.mockOAuthServer, err = testutils.NewMockOAuthServer("test-oauth-client", "test-oauth-secret")
+	suite.Require().NoError(err, "Failed to create mock OAuth server")
 
 	suite.mockOAuthServer.AddUser(&testutils.OAuthUserInfo{
 		Sub:     "user123",
@@ -83,9 +83,6 @@ func (suite *OAuthAuthTestSuite) SetupSuite() {
 			"department":   "Engineering",
 		},
 	})
-
-	err := suite.mockOAuthServer.Start()
-	suite.Require().NoError(err, "Failed to start mock OAuth server")
 
 	ouID, err := testutils.CreateOrganizationUnit(oauthAuthTestOU)
 	suite.Require().NoError(err, "Failed to create test organization unit")

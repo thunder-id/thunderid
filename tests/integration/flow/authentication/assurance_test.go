@@ -13,10 +13,6 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const (
-	assuranceMockNotificationServerPort = 8099
-)
-
 // Authenticator names used in assurance
 const (
 	AuthenticatorCredentials = "CredentialsAuthenticator"
@@ -386,13 +382,11 @@ func (ts *AssuranceTestSuite) SetupSuite() {
 	}
 	assuranceEntityTypeID = schemaID
 
-	// Start mock notification server
-	ts.mockServer = testutils.NewMockNotificationServer(assuranceMockNotificationServerPort)
-	err = ts.mockServer.Start()
+	// Create mock notification server
+	ts.mockServer, err = testutils.NewMockNotificationServer()
 	if err != nil {
-		ts.T().Fatalf("Failed to start mock notification server: %v", err)
+		ts.T().Fatalf("Failed to create mock notification server: %v", err)
 	}
-	time.Sleep(100 * time.Millisecond)
 
 	// Create test user
 	testUser := assuranceTestUser

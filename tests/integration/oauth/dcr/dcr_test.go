@@ -16,9 +16,10 @@ import (
 )
 
 const (
-	testServerURL = "https://localhost:8095"
-	dcrEndpoint   = "/oauth2/dcr/register"
+	dcrEndpoint = "/oauth2/dcr/register"
 )
+
+var testServerURL = testutils.TestServerURL
 
 type DCRTestSuite struct {
 	suite.Suite

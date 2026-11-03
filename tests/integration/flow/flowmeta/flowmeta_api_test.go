@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	testServerURL    = "https://localhost:8095"
 	flowMetaEndpoint = "/flow/meta"
 )
+
+var testServerURL = testutils.TestServerURL
 
 var (
 	testOU = testutils.OrganizationUnit{

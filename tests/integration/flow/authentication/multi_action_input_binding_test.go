@@ -14,10 +14,6 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const (
-	mockMultiActionGooglePort = 8093
-)
-
 var (
 	multiActionInputBindingFlow = testutils.Flow{
 		Name:     "Multi Action Input Binding Test Flow",
@@ -173,9 +169,8 @@ func TestMultiActionInputBindingTestSuite(t *testing.T) {
 func (ts *MultiActionInputBindingTestSuite) SetupSuite() {
 	ts.config = &common.TestSuiteConfig{}
 
-	// Start mock Google server
-	mockServer, err := testutils.NewMockGoogleOIDCServer(mockMultiActionGooglePort,
-		"test_multi_action_google_client", "test_multi_action_google_secret")
+	// Create mock Google server
+	mockServer, err := testutils.NewMockGoogleOIDCServer("test_multi_action_google_client", "test_multi_action_google_secret")
 	ts.Require().NoError(err, "Failed to create mock Google server")
 	ts.mockGoogleServer = mockServer
 
@@ -189,9 +184,6 @@ func (ts *MultiActionInputBindingTestSuite) SetupSuite() {
 		Picture:       "https://example.com/picture.jpg",
 		Locale:        "en",
 	})
-
-	err = ts.mockGoogleServer.Start()
-	ts.Require().NoError(err, "Failed to start mock Google server")
 
 	// Create test organization unit
 	ouID, err := testutils.CreateOrganizationUnit(multiActionInputBindingTestOU)

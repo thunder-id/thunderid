@@ -19,7 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const testServerURL = "https://localhost:8095"
+var testServerURL = testutils.TestServerURL
 
 // variable is what a read of one returns: the value comes back.
 type variable struct {

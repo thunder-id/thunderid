@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package testutils
+package mockservices
 
 import (
 	"encoding/json"
@@ -13,12 +13,12 @@ import (
 	"time"
 )
 
-// MockHTTPServer provides a mock HTTP server for testing HTTP request executor
-type MockHTTPServer struct {
-	server   *http.Server
+// HTTPServer provides a mock HTTP server for testing HTTP request executor
+type HTTPServer struct {
+	handler  http.Handler
+	baseURL  string
 	requests []HTTPRequest
 	mutex    sync.RWMutex
-	port     int
 }
 
 // HTTPRequest represents a captured HTTP request
@@ -29,16 +29,18 @@ type HTTPRequest struct {
 	Body    map[string]interface{} `json:"body,omitempty"`
 }
 
-// NewMockHTTPServer creates a new mock HTTP server
-func NewMockHTTPServer(port int) *MockHTTPServer {
-	return &MockHTTPServer{
-		port:     port,
+// NewHTTPServer creates a new mock HTTP server
+func NewHTTPServer(baseURL string) *HTTPServer {
+	m := &HTTPServer{
+		baseURL:  baseURL,
 		requests: make([]HTTPRequest, 0),
 	}
+	m.handler = m.routes()
+	return m
 }
 
-// Start starts the mock HTTP server
-func (m *MockHTTPServer) Start() error {
+// routes maps the mock's endpoints.
+func (m *HTTPServer) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	// Handle notification endpoint
@@ -59,51 +61,31 @@ func (m *MockHTTPServer) Start() error {
 	// Handle endpoint for clearing captured requests
 	mux.HandleFunc("/test/clear", m.handleClearRequests)
 
-	m.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", m.port),
-		Handler: mux,
-	}
-
-	go func() {
-		log.Printf("Starting mock HTTP server on port %d", m.port)
-		if err := m.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("Mock HTTP server error: %v", err)
-		}
-	}()
-
-	return nil
-}
-
-// Stop stops the mock HTTP server
-func (m *MockHTTPServer) Stop() error {
-	if m.server != nil {
-		return m.server.Close()
-	}
-	return nil
+	return mux
 }
 
 // GetURL returns the base URL of the mock server
-func (m *MockHTTPServer) GetURL() string {
-	return fmt.Sprintf("http://localhost:%d", m.port)
+func (m *HTTPServer) GetURL() string {
+	return m.baseURL
 }
 
 // GetNotificationsURL returns the notifications endpoint URL
-func (m *MockHTTPServer) GetNotificationsURL() string {
+func (m *HTTPServer) GetNotificationsURL() string {
 	return fmt.Sprintf("%s/api/notifications", m.GetURL())
 }
 
 // GetUsersURL returns the users endpoint URL
-func (m *MockHTTPServer) GetUsersURL() string {
+func (m *HTTPServer) GetUsersURL() string {
 	return fmt.Sprintf("%s/api/users", m.GetURL())
 }
 
 // GetErrorURL returns the error endpoint URL
-func (m *MockHTTPServer) GetErrorURL() string {
+func (m *HTTPServer) GetErrorURL() string {
 	return fmt.Sprintf("%s/api/error", m.GetURL())
 }
 
 // captureRequest captures an incoming request for later verification
-func (m *MockHTTPServer) captureRequest(r *http.Request, body map[string]interface{}) {
+func (m *HTTPServer) captureRequest(r *http.Request, body map[string]interface{}) {
 	capturedRequest := HTTPRequest{
 		Method:  r.Method,
 		Path:    r.URL.Path,
@@ -117,7 +99,7 @@ func (m *MockHTTPServer) captureRequest(r *http.Request, body map[string]interfa
 }
 
 // handleNotifications handles notification API requests
-func (m *MockHTTPServer) handleNotifications(w http.ResponseWriter, r *http.Request) {
+func (m *HTTPServer) handleNotifications(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -146,7 +128,7 @@ func (m *MockHTTPServer) handleNotifications(w http.ResponseWriter, r *http.Requ
 }
 
 // handleUsers handles user creation API requests
-func (m *MockHTTPServer) handleUsers(w http.ResponseWriter, r *http.Request) {
+func (m *HTTPServer) handleUsers(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -177,7 +159,7 @@ func (m *MockHTTPServer) handleUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleError simulates an error response
-func (m *MockHTTPServer) handleError(w http.ResponseWriter, r *http.Request) {
+func (m *HTTPServer) handleError(w http.ResponseWriter, r *http.Request) {
 	var body map[string]interface{}
 	if r.Body != nil {
 		bodyBytes, err := io.ReadAll(r.Body)
@@ -200,7 +182,7 @@ func (m *MockHTTPServer) handleError(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSuccess simulates a generic success response
-func (m *MockHTTPServer) handleSuccess(w http.ResponseWriter, r *http.Request) {
+func (m *HTTPServer) handleSuccess(w http.ResponseWriter, r *http.Request) {
 	var body map[string]interface{}
 	if r.Body != nil {
 		bodyBytes, err := io.ReadAll(r.Body)
@@ -222,7 +204,7 @@ func (m *MockHTTPServer) handleSuccess(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetRequests handles requests to retrieve captured requests (for test verification)
-func (m *MockHTTPServer) handleGetRequests(w http.ResponseWriter, r *http.Request) {
+func (m *HTTPServer) handleGetRequests(w http.ResponseWriter, r *http.Request) {
 	m.mutex.RLock()
 	requests := make([]HTTPRequest, len(m.requests))
 	copy(requests, m.requests)
@@ -234,7 +216,7 @@ func (m *MockHTTPServer) handleGetRequests(w http.ResponseWriter, r *http.Reques
 }
 
 // handleClearRequests handles requests to clear all captured requests
-func (m *MockHTTPServer) handleClearRequests(w http.ResponseWriter, r *http.Request) {
+func (m *HTTPServer) handleClearRequests(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -250,7 +232,7 @@ func (m *MockHTTPServer) handleClearRequests(w http.ResponseWriter, r *http.Requ
 }
 
 // GetCapturedRequests returns all captured requests
-func (m *MockHTTPServer) GetCapturedRequests() []HTTPRequest {
+func (m *HTTPServer) GetCapturedRequests() []HTTPRequest {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
@@ -260,7 +242,7 @@ func (m *MockHTTPServer) GetCapturedRequests() []HTTPRequest {
 }
 
 // GetRequestByPath returns the first captured request matching the given path
-func (m *MockHTTPServer) GetRequestByPath(path string) *HTTPRequest {
+func (m *HTTPServer) GetRequestByPath(path string) *HTTPRequest {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
@@ -273,7 +255,7 @@ func (m *MockHTTPServer) GetRequestByPath(path string) *HTTPRequest {
 }
 
 // ClearRequests clears all captured requests
-func (m *MockHTTPServer) ClearRequests() {
+func (m *HTTPServer) ClearRequests() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.requests = make([]HTTPRequest, 0)

@@ -14,7 +14,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const sessionConfigURL = testutils.TestServerURL + "/server-config/session"
+var sessionConfigURL = testutils.TestServerURL + "/server-config/session"
 
 // SSO session timeouts are read once, when the session service is constructed, so changing them
 // requires a server restart rather than only a configuration write. Every test here therefore

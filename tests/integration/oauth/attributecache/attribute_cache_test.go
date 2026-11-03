@@ -23,7 +23,6 @@ import (
 )
 
 const (
-	testServerURL            = "https://localhost:8095"
 	clientID                 = "attr_cache_client"
 	clientSecret             = "attr_cache_secret"
 	appName                  = "AttributeCacheTestApp"
@@ -36,6 +35,8 @@ const (
 	testGivenName = "AttrCache"
 	testFamily    = "RoundTrip"
 )
+
+var testServerURL = testutils.TestServerURL
 
 var testUserType = testutils.UserType{
 	Handle:      "attr-cache-person",

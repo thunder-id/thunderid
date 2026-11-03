@@ -33,9 +33,11 @@ func GetFlowSecret(appID string) string {
 	return flowSecretRegistry[appID]
 }
 
-const (
-	TestServerURL = "https://localhost:8095"
+// TestServerURL is the server under test. Each test group runs its own server, on the port the
+// runner passes in SERVER_PORT.
+var TestServerURL = "https://localhost:" + ServerPort()
 
+const (
 	// SystemResourceIdentifier is the identifier of the bootstrapped System resource server
 	// (backend/cmd/server/bootstrap/01-default-resources.yaml). The CONSOLE app binds its tokens
 	// to this resource server via the RFC 8707 resource parameter, mirroring the console runtime

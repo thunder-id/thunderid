@@ -19,7 +19,6 @@ import (
 const (
 	oidcAuthStart  = "/auth/oauth/standard/start"
 	oidcAuthFinish = "/auth/oauth/standard/finish"
-	mockOIDCPort   = 8093
 )
 
 var oidcAuthTestOU = testutils.OrganizationUnit{
@@ -70,8 +69,7 @@ func TestOIDCAuthTestSuite(t *testing.T) {
 
 func (suite *OIDCAuthTestSuite) SetupSuite() {
 	var err error
-	suite.mockOIDCServer, err = testutils.NewMockOIDCServer(mockOIDCPort,
-		"test-oidc-client", "test-oidc-secret")
+	suite.mockOIDCServer, err = testutils.NewMockOIDCServer("test-oidc-client", "test-oidc-secret")
 	suite.Require().NoError(err, "Failed to create mock OIDC server")
 
 	suite.mockOIDCServer.AddUser(&testutils.OIDCUserInfo{
@@ -88,7 +86,6 @@ func (suite *OIDCAuthTestSuite) SetupSuite() {
 		},
 	})
 
-	err = suite.mockOIDCServer.Start()
 	suite.Require().NoError(err, "Failed to start mock OIDC server")
 
 	ouID, err := testutils.CreateOrganizationUnit(oidcAuthTestOU)

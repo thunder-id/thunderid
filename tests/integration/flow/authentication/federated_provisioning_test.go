@@ -20,11 +20,6 @@ const (
 	errCodeOUNotDirectChild = "FET-1121"
 	errCodeInvalidOU        = "FET-1029"
 
-	// fedProvMockGooglePort must be 8093: testutils.GoogleMockBaseURL hardcodes
-	// http://localhost:8093 as the Google endpoint the server resolves, so the port is load-bearing
-	// rather than arbitrary. Suites in this package run serially and each stops its own mock, so
-	// sharing the port with the conditional-exec and google-auth suites is safe.
-	fedProvMockGooglePort = 8093
 	fedProvGoogleClientID = "fedprov_google_client"
 	fedProvGoogleSecret   = "fedprov_google_secret"
 )
@@ -173,11 +168,9 @@ func buildFederatedProvisioningFlow(
 }
 
 func (ts *FederatedProvisioningTestSuite) SetupSuite() {
-	mock, err := testutils.NewMockGoogleOIDCServer(
-		fedProvMockGooglePort, fedProvGoogleClientID, fedProvGoogleSecret)
+	mock, err := testutils.NewMockGoogleOIDCServer(fedProvGoogleClientID, fedProvGoogleSecret)
 	ts.Require().NoError(err, "Failed to create the mock Google server")
 	ts.mockGoogle = mock
-	ts.Require().NoError(ts.mockGoogle.Start(), "Failed to start the mock Google server")
 
 	parentOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle:      "fedprov-test-ou",

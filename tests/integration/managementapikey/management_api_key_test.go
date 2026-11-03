@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	testServerURL = "https://localhost:8095"
 	// apiKeyHeader is the header a management API key is presented in. Spelled out rather than
 	// imported: the header name is part of the contract this suite is checking.
 	apiKeyHeader = "API-Key"
@@ -23,6 +22,8 @@ const (
 	// only the digest, so this value appears nowhere in its configuration.
 	managementAPIKey = "integration-management-api-key"
 )
+
+var testServerURL = testutils.TestServerURL
 
 type ManagementAPIKeyTestSuite struct {
 	suite.Suite

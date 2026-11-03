@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package testutils
+package mockservices
 
 import (
 	"crypto"
@@ -24,16 +24,15 @@ import (
 )
 
 // mockGoogleOIDCSharedKeyPEM is a throwaway RSA-2048 private key used by every
-// MockGoogleOIDCServer instance across every integration test package. Real OIDC
+// GoogleOIDCServer instance across every integration test package. Real OIDC
 // issuers honor the contract that a given `kid` maps to exactly one key forever;
 // when they rotate they publish a new `kid` alongside the old one. The test mock
 // always advertises the same `kid` ("mock-key-id"), so it must also always advertise
 // the same underlying key material across every process that spins up the mock.
 // Embedding a single PEM via go:embed keeps the JWKS response byte-identical across
 // every mock instance in every test package, so server's process-wide JWKS cache
-// stays coherent when mocks are torn down and restarted on the same URL (e.g.
-// port 8093, which is reused by the conditional-exec, google-auth and
-// google-registration suites). Not a secret; must only be used by the test mock.
+// stays coherent as suites create and remove instances behind the same base URL.
+// Not a secret; must only be used by the test mock.
 //
 //go:embed testdata/mock_google_oidc_key.pem
 var mockGoogleOIDCSharedKeyPEM []byte
@@ -56,10 +55,10 @@ func getMockGoogleOIDCSharedKey() (*rsa.PrivateKey, error) {
 	return mockGoogleOIDCSharedKey, mockGoogleOIDCSharedKeyErr
 }
 
-// MockGoogleOIDCServer provides a mock Google OIDC server for testing
-type MockGoogleOIDCServer struct {
-	server        *http.Server
-	port          int
+// GoogleOIDCServer provides a mock Google OIDC server for testing
+type GoogleOIDCServer struct {
+	handler       http.Handler
+	baseURL       string
 	mutex         sync.RWMutex
 	privateKey    *rsa.PrivateKey
 	authCodes     map[string]*AuthCodeData
@@ -136,8 +135,8 @@ type JWK struct {
 	E   string `json:"e"`
 }
 
-// NewMockGoogleOIDCServer creates a new mock Google OIDC server
-func NewMockGoogleOIDCServer(port int, clientID, clientSecret string) (*MockGoogleOIDCServer, error) {
+// NewGoogleOIDCServer creates a new mock Google OIDC server
+func NewGoogleOIDCServer(baseURL, clientID, clientSecret string) (*GoogleOIDCServer, error) {
 	privateKey, err := getMockGoogleOIDCSharedKey()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate RSA key: %w", err)
@@ -146,8 +145,8 @@ func NewMockGoogleOIDCServer(port int, clientID, clientSecret string) (*MockGoog
 	// Use Google's actual issuer value for compatibility with Google auth service
 	issuer := "accounts.google.com"
 
-	return &MockGoogleOIDCServer{
-		port:         port,
+	m := &GoogleOIDCServer{
+		baseURL:      baseURL,
 		privateKey:   privateKey,
 		authCodes:    make(map[string]*AuthCodeData),
 		accessTokens: make(map[string]*TokenData),
@@ -155,11 +154,13 @@ func NewMockGoogleOIDCServer(port int, clientID, clientSecret string) (*MockGoog
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		issuer:       issuer,
-	}, nil
+	}
+	m.handler = m.routes()
+	return m, nil
 }
 
-// Start starts the mock Google OIDC server
-func (m *MockGoogleOIDCServer) Start() error {
+// routes maps the mock's endpoints.
+func (m *GoogleOIDCServer) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	// OIDC discovery endpoint
@@ -180,50 +181,30 @@ func (m *MockGoogleOIDCServer) Start() error {
 	// Token info endpoint (for validation)
 	mux.HandleFunc("/oauth2/v3/tokeninfo", m.handleTokenInfo)
 
-	m.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", m.port),
-		Handler: mux,
-	}
-
-	go func() {
-		log.Printf("Starting mock Google OIDC server on port %d", m.port)
-		if err := m.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("Mock Google OIDC server error: %v", err)
-		}
-	}()
-
-	return nil
-}
-
-// Stop stops the mock Google OIDC server
-func (m *MockGoogleOIDCServer) Stop() error {
-	if m.server != nil {
-		return m.server.Close()
-	}
-	return nil
+	return mux
 }
 
 // GetURL returns the base URL of the mock server
-func (m *MockGoogleOIDCServer) GetURL() string {
-	return fmt.Sprintf("http://localhost:%d", m.port)
+func (m *GoogleOIDCServer) GetURL() string {
+	return m.baseURL
 }
 
 // SetAuthorizeFunc sets a custom authorization function for testing
-func (m *MockGoogleOIDCServer) SetAuthorizeFunc(fn func(email string) (string, error)) {
+func (m *GoogleOIDCServer) SetAuthorizeFunc(fn func(email string) (string, error)) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.authorizeFunc = fn
 }
 
 // AddUser adds a test user to the mock server
-func (m *MockGoogleOIDCServer) AddUser(user *GoogleUserInfo) {
+func (m *GoogleOIDCServer) AddUser(user *GoogleUserInfo) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.users[user.Email] = user
 }
 
 // handleDiscovery handles OIDC discovery endpoint
-func (m *MockGoogleOIDCServer) handleDiscovery(w http.ResponseWriter, r *http.Request) {
+func (m *GoogleOIDCServer) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -252,7 +233,7 @@ func (m *MockGoogleOIDCServer) handleDiscovery(w http.ResponseWriter, r *http.Re
 }
 
 // handleAuthorize handles authorization endpoint
-func (m *MockGoogleOIDCServer) handleAuthorize(w http.ResponseWriter, r *http.Request) {
+func (m *GoogleOIDCServer) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -349,7 +330,7 @@ func (m *MockGoogleOIDCServer) handleAuthorize(w http.ResponseWriter, r *http.Re
 }
 
 // handleToken handles token endpoint
-func (m *MockGoogleOIDCServer) handleToken(w http.ResponseWriter, r *http.Request) {
+func (m *GoogleOIDCServer) handleToken(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -455,7 +436,7 @@ func (m *MockGoogleOIDCServer) handleToken(w http.ResponseWriter, r *http.Reques
 }
 
 // handleUserInfo handles userinfo endpoint
-func (m *MockGoogleOIDCServer) handleUserInfo(w http.ResponseWriter, r *http.Request) {
+func (m *GoogleOIDCServer) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -506,7 +487,7 @@ func (m *MockGoogleOIDCServer) handleUserInfo(w http.ResponseWriter, r *http.Req
 }
 
 // handleJWKS handles JWKS endpoint
-func (m *MockGoogleOIDCServer) handleJWKS(w http.ResponseWriter, r *http.Request) {
+func (m *GoogleOIDCServer) handleJWKS(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -534,7 +515,7 @@ func (m *MockGoogleOIDCServer) handleJWKS(w http.ResponseWriter, r *http.Request
 }
 
 // handleTokenInfo handles token info endpoint
-func (m *MockGoogleOIDCServer) handleTokenInfo(w http.ResponseWriter, r *http.Request) {
+func (m *GoogleOIDCServer) handleTokenInfo(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -583,7 +564,7 @@ func (m *MockGoogleOIDCServer) handleTokenInfo(w http.ResponseWriter, r *http.Re
 }
 
 // generateIDToken generates a signed ID token
-func (m *MockGoogleOIDCServer) generateIDToken(user *GoogleUserInfo, nonce, accessToken string) (string, error) {
+func (m *GoogleOIDCServer) generateIDToken(user *GoogleUserInfo, nonce, accessToken string) (string, error) {
 	now := time.Now()
 	claims := map[string]interface{}{
 		"iss":            m.issuer,

@@ -48,10 +48,11 @@ const (
 	agentTypeAuthzUsername     = "agent-type-authz-user"
 	agentTypeAuthzPassword     = "AgentTypeAuthz@123"
 
-	agentTypeAuthzClientID    = "CONSOLE"
-	agentTypeAuthzRedirectURI = "https://localhost:8095/console"
-	agentTypeAuthzRSIdentity  = "https://authz-test.example.com/agenttype"
+	agentTypeAuthzClientID   = "CONSOLE"
+	agentTypeAuthzRSIdentity = "https://authz-test.example.com/agenttype"
 )
+
+var agentTypeAuthzRedirectURI = testutils.TestServerURL + "/console"
 
 func TestAgentTypeAuthzTestSuite(t *testing.T) {
 	suite.Run(t, new(AgentTypeAuthzTestSuite))

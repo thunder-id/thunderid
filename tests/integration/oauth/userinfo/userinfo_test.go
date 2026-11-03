@@ -23,13 +23,14 @@ import (
 )
 
 const (
-	testServerURL                           = "https://localhost:8095"
 	clientID                                = "userinfo_test_client_123"
 	clientSecret                            = "userinfo_test_secret_123"
 	appName                                 = "UserInfoTestApp"
 	redirectURI                             = "https://localhost:3000"
 	userInfoDefaultResourceServerIdentifier = "https://userinfo-default.example.com"
 )
+
+var testServerURL = testutils.TestServerURL
 
 var (
 	testUserType = testutils.UserType{

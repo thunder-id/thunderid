@@ -20,7 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const testServerURL = testutils.TestServerURL
+var testServerURL = testutils.TestServerURL
 
 // connectionListResponse mirrors backend/internal/connection/models.go connectionListResponse.
 type connectionListResponse struct {

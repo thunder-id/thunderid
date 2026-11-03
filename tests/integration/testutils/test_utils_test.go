@@ -6,19 +6,51 @@ package testutils
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 )
 
-func TestWithoutTopLevelKeyDropsTheWholeBlock(t *testing.T) {
+type TestUtilsTestSuite struct {
+	suite.Suite
+}
+
+func TestTestUtilsTestSuite(t *testing.T) {
+	suite.Run(t, new(TestUtilsTestSuite))
+}
+
+func (ts *TestUtilsTestSuite) TestWithoutTopLevelKeyDropsTheWholeBlock() {
 	doc := "id: user-1\nsharingPolicies:\n  - childUnits:\n      mode: all\n\n  - otherTreeRoots:\n      mode: all\nattributes:\n  username: alice\n"
 
 	got := WithoutTopLevelKey(doc, "sharingPolicies")
 
-	require.Equal(t, "id: user-1\nattributes:\n  username: alice\n", got)
+	ts.Equal("id: user-1\nattributes:\n  username: alice\n", got)
 }
 
-func TestWithoutTopLevelKeyLeavesOtherKeysAlone(t *testing.T) {
+func (ts *TestUtilsTestSuite) TestWithoutTopLevelKeyLeavesOtherKeysAlone() {
 	doc := "id: user-1\nattributes:\n  id: nested\n"
 
-	require.Equal(t, "attributes:\n  id: nested\n", WithoutTopLevelKey(doc, "id"))
+	ts.Equal("attributes:\n  id: nested\n", WithoutTopLevelKey(doc, "id"))
+}
+
+func (ts *TestUtilsTestSuite) TestServerPortIgnoresAServerPortTheRunnerDidNotSet() {
+	ts.T().Setenv(TestGroupEnv, "")
+	ts.T().Setenv("SERVER_EXTRACTED_HOME", "")
+	ts.T().Setenv("SERVER_PORT", "3000")
+
+	ts.Equal(DefaultServerPort, ServerPort())
+}
+
+func (ts *TestUtilsTestSuite) TestServerPortUsesTheTestGroupPort() {
+	ts.T().Setenv(TestGroupEnv, "g1")
+	ts.T().Setenv("SERVER_EXTRACTED_HOME", "")
+	ts.T().Setenv("SERVER_PORT", "8195")
+
+	ts.Equal("8195", ServerPort())
+}
+
+func (ts *TestUtilsTestSuite) TestServerPortUsesThePortTheRunnerPassesToTestPackages() {
+	ts.T().Setenv(TestGroupEnv, "")
+	ts.T().Setenv("SERVER_EXTRACTED_HOME", "/tmp/product")
+	ts.T().Setenv("SERVER_PORT", "8195")
+
+	ts.Equal("8195", ServerPort())
 }

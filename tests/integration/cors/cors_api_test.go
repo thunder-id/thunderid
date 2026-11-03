@@ -17,8 +17,6 @@ import (
 )
 
 const (
-	testServerURL = testutils.TestServerURL
-	corsConfigURL = testServerURL + "/server-config/cors"
 
 	// declarativeOrigin is the read-only declarative cors.yaml fixture; it is the dynamic matcher's
 	// read-only layer and survives clearing the writable layer.
@@ -29,6 +27,10 @@ const (
 	// disallowedOrigin is never configured in any layer.
 	disallowedOrigin = "https://evil.example.com"
 )
+
+var corsConfigURL = testServerURL + "/server-config/cors"
+
+var testServerURL = testutils.TestServerURL
 
 // CORSIntegrationTestSuite validates live CORS behavior from the server-config cors section. The generic
 // server-config API is covered by the serverconfig integration package; this suite asserts Origin matching.
