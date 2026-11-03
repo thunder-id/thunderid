@@ -6,7 +6,9 @@ package passkey
 import (
 	"encoding/base64"
 	"encoding/json"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -163,6 +165,11 @@ func validateRegistrationFinishRequest(req *PasskeyRegistrationFinishRequest) *t
 	}
 	if strings.TrimSpace(req.AttestationObject) == "" {
 		return &ErrorInvalidFinishData
+	}
+	if utf8.RuneCountInString(strings.TrimSpace(req.Name)) > maxPasskeyNameLength {
+		return ErrorInvalidPasskeyName.WithParams(map[string]string{
+			"maxLength": strconv.Itoa(maxPasskeyNameLength),
+		})
 	}
 	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -561,7 +562,7 @@ func (suite *WebAuthnServiceTestSuite) TestStoreWebAuthnCredentialInDB_Success()
 			return ok && len(creds) == 1
 		})).Return(nil).Once()
 
-	err := suite.service.storePasskeyCredential(context.Background(), testUserID, mockCredential)
+	err := suite.service.storePasskeyCredential(context.Background(), testUserID, mockCredential, "")
 
 	suite.NoError(err)
 }
@@ -574,7 +575,7 @@ func (suite *WebAuthnServiceTestSuite) TestStoreWebAuthnCredentialInDB_GetCreden
 	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
 		Return(nil, assert.AnError).Once()
 
-	err := suite.service.storePasskeyCredential(context.Background(), testUserID, mockCredential)
+	err := suite.service.storePasskeyCredential(context.Background(), testUserID, mockCredential, "")
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to load existing passkey credentials")
@@ -592,7 +593,7 @@ func (suite *WebAuthnServiceTestSuite) TestStoreWebAuthnCredentialInDB_UpdateCre
 	suite.mockEntityService.On("UpdateSystemCredentials", mock.Anything, testUserID, mock.Anything).
 		Return(assert.AnError).Once()
 
-	err := suite.service.storePasskeyCredential(context.Background(), testUserID, mockCredential)
+	err := suite.service.storePasskeyCredential(context.Background(), testUserID, mockCredential, "")
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to update passkey credentials")
@@ -1769,4 +1770,195 @@ func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_RefusesAHeldIdenti
 			suite.mockSessionStore.AssertNotCalled(suite.T(), "deleteSession", mock.Anything, mock.Anything)
 		})
 	}
+}
+
+func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_NameTooLong() {
+	req := &PasskeyRegistrationFinishRequest{
+		SessionToken:      testSessionToken,
+		CredentialID:      validAttestationCredentialID,
+		CredentialType:    "public-key",
+		ClientDataJSON:    validAttestationClientDataJSON,
+		AttestationObject: validAttestationObject,
+		Name:              strings.Repeat("a", maxPasskeyNameLength+1),
+	}
+	result, svcErr := suite.service.FinishRegistration(context.Background(), req)
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorInvalidPasskeyName.Code, svcErr.Code)
+	suite.Equal("64", svcErr.ErrorDescription.Params["maxLength"])
+}
+
+func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_SessionOfAnotherUser() {
+	sessionData := &sessionData{
+		Challenge:      "W8GzFU8pGjhoRbWrLDlamAfq_y4S1CZG1VuoeRLARrE",
+		UserID:         []byte("another-user"),
+		RelyingPartyID: testRelyingPartyID,
+	}
+	suite.mockSessionStore.On("retrieveSession", mock.Anything, testSessionToken).
+		Return(sessionData, nil).Once()
+
+	req := &PasskeyRegistrationFinishRequest{
+		SessionToken:      testSessionToken,
+		CredentialID:      validAttestationCredentialID,
+		CredentialType:    "public-key",
+		ClientDataJSON:    validAttestationClientDataJSON,
+		AttestationObject: validAttestationObject,
+		UserID:            testUserID,
+	}
+	result, svcErr := suite.service.FinishRegistration(context.Background(), req)
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorInvalidSessionToken.Code, svcErr.Code)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestStorePasskeyCredential_StoresName() {
+	mockCredential := &webauthnCredential{ID: []byte("credential123")}
+
+	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
+		Return(nil, nil).Once()
+	suite.mockEntityService.On("UpdateSystemCredentials", mock.Anything, testUserID, mock.MatchedBy(
+		func(credentialsJSON json.RawMessage) bool {
+			var credMap map[string][]entity.StoredCredential
+			if err := json.Unmarshal(credentialsJSON, &credMap); err != nil {
+				return false
+			}
+			creds := credMap["passkey"]
+			return len(creds) == 1 && creds[0].Metadata[metadataKeyName] == "Work laptop"
+		})).Return(nil).Once()
+
+	err := suite.service.storePasskeyCredential(context.Background(), testUserID, mockCredential, "Work laptop")
+
+	suite.NoError(err)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestUpdatePasskeyCredential_KeepsMetadata() {
+	credentialID := []byte("credential123")
+	existingCredJSON, _ := json.Marshal(webauthnCredential{ID: credentialID})
+
+	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
+		Return([]entity.StoredCredential{{
+			Value:    string(existingCredJSON),
+			Metadata: map[string]string{metadataKeyName: "Work laptop"},
+		}}, nil).Once()
+	suite.mockEntityService.On("UpdateSystemCredentials", mock.Anything, testUserID, mock.MatchedBy(
+		func(credentialsJSON json.RawMessage) bool {
+			var credMap map[string][]entity.StoredCredential
+			if err := json.Unmarshal(credentialsJSON, &credMap); err != nil {
+				return false
+			}
+			creds := credMap["passkey"]
+			return len(creds) == 1 && creds[0].Metadata[metadataKeyName] == "Work laptop"
+		})).Return(nil).Once()
+
+	err := suite.service.updatePasskeyCredential(context.Background(), testUserID,
+		&webauthnCredential{ID: credentialID, Authenticator: authenticator{SignCount: 1}})
+
+	suite.NoError(err)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestListPasskeys_Success() {
+	firstJSON, _ := json.Marshal(webauthnCredential{ID: []byte("first")})
+	secondJSON, _ := json.Marshal(webauthnCredential{ID: []byte("second")})
+
+	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
+		Return([]entity.StoredCredential{
+			{Value: string(firstJSON), Metadata: map[string]string{metadataKeyName: "Work laptop"}},
+			{Value: string(secondJSON)},
+			{Value: "not-json"},
+		}, nil).Once()
+
+	passkeys, svcErr := suite.service.ListPasskeys(context.Background(), testUserID)
+
+	suite.Nil(svcErr)
+	suite.Equal([]PasskeyInfo{
+		{ID: base64.RawURLEncoding.EncodeToString([]byte("first")), Name: "Work laptop"},
+		{ID: base64.RawURLEncoding.EncodeToString([]byte("second"))},
+	}, passkeys)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestListPasskeys_NoPasskeys() {
+	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
+		Return(nil, nil).Once()
+
+	passkeys, svcErr := suite.service.ListPasskeys(context.Background(), testUserID)
+
+	suite.Nil(svcErr)
+	suite.Empty(passkeys)
+	suite.NotNil(passkeys)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestListPasskeys_UserNotFound() {
+	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
+		Return(nil, entity.ErrEntityNotFound).Once()
+
+	passkeys, svcErr := suite.service.ListPasskeys(context.Background(), testUserID)
+
+	suite.Nil(passkeys)
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorUserNotFound.Code, svcErr.Code)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestDeletePasskey_Success() {
+	keepJSON, _ := json.Marshal(webauthnCredential{ID: []byte("keep")})
+	removeJSON, _ := json.Marshal(webauthnCredential{ID: []byte("remove")})
+
+	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
+		Return([]entity.StoredCredential{{Value: string(keepJSON)}, {Value: string(removeJSON)}}, nil).Once()
+	suite.mockEntityService.On("UpdateSystemCredentials", mock.Anything, testUserID, mock.MatchedBy(
+		func(credentialsJSON json.RawMessage) bool {
+			var credMap map[string][]entity.StoredCredential
+			if err := json.Unmarshal(credentialsJSON, &credMap); err != nil {
+				return false
+			}
+			creds := credMap["passkey"]
+			return len(creds) == 1 && creds[0].Value == string(keepJSON)
+		})).Return(nil).Once()
+
+	svcErr := suite.service.DeletePasskey(context.Background(), testUserID,
+		base64.RawURLEncoding.EncodeToString([]byte("remove")))
+
+	suite.Nil(svcErr)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestDeletePasskey_LastPasskey() {
+	onlyJSON, _ := json.Marshal(webauthnCredential{ID: []byte("only")})
+
+	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
+		Return([]entity.StoredCredential{{Value: string(onlyJSON)}}, nil).Once()
+	suite.mockEntityService.On("UpdateSystemCredentials", mock.Anything, testUserID,
+		json.RawMessage(`{"passkey":[]}`)).Return(nil).Once()
+
+	svcErr := suite.service.DeletePasskey(context.Background(), testUserID,
+		base64.RawURLEncoding.EncodeToString([]byte("only")))
+
+	suite.Nil(svcErr)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestDeletePasskey_NotFound() {
+	onlyJSON, _ := json.Marshal(webauthnCredential{ID: []byte("only")})
+
+	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
+		Return([]entity.StoredCredential{{Value: string(onlyJSON)}}, nil).Once()
+
+	svcErr := suite.service.DeletePasskey(context.Background(), testUserID, "someone-elses")
+
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorCredentialNotFound.Code, svcErr.Code)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestDeletePasskey_UpdateError() {
+	onlyJSON, _ := json.Marshal(webauthnCredential{ID: []byte("only")})
+
+	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
+		Return([]entity.StoredCredential{{Value: string(onlyJSON)}}, nil).Once()
+	suite.mockEntityService.On("UpdateSystemCredentials", mock.Anything, testUserID, mock.Anything).
+		Return(assert.AnError).Once()
+
+	svcErr := suite.service.DeletePasskey(context.Background(), testUserID,
+		base64.RawURLEncoding.EncodeToString([]byte("only")))
+
+	suite.NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }

@@ -1670,6 +1670,8 @@ func applicationRequestToDTO(req *appmodel.ApplicationRequestWithID) *appmodel.A
 			LoginConsent:              req.LoginConsent,
 			AllowedUserTypes:          req.AllowedUserTypes,
 			AllowedAgentTypes:         req.AllowedAgentTypes,
+			PasskeyAllowedOrigins:     req.PasskeyAllowedOrigins,
+			PasskeyRelyingPartyID:     req.PasskeyRelyingPartyID,
 			Attestation:               req.Attestation,
 		},
 		Type:       req.Type,

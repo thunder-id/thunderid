@@ -141,7 +141,7 @@ curl -k -X POST https://localhost:8090/register/passkey/finish \
   }'
 ```
 
-On success, the API returns passkey registration metadata for the newly created credential (`CredentialID`, `CredentialName`, and `CreatedAt`).
+On success, the API returns the authenticated user's `id`, `type`, and `ouId`, plus an `assertion` token unless the request sets `skipAssertion`.
 
 ### Authentication Flow
 
@@ -187,6 +187,80 @@ curl -k -X POST https://localhost:8090/auth/passkey/finish \
 ```
 
 On success, the API returns an authentication response compatible with other <ProductName /> auth flows.
+
+## Let Users Manage Their Own Passkeys
+
+A signed-in user can add, list, and remove their own passkeys through the `/users/me/passkeys` endpoints. Call them with the user's access token. Each call acts only on the user the token was issued to.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/users/me/passkeys/register/start` | Start adding a passkey. Returns WebAuthn creation options and a session token. |
+| `POST` | `/users/me/passkeys/register/finish` | Verify and save the passkey the device created. Returns `201` with the passkey `id` and `name`. |
+| `GET` | `/users/me/passkeys` | List the user's passkeys as `{ "passkeys": [{ "id", "name" }] }`. |
+| `DELETE` | `/users/me/passkeys/{id}` | Remove one of the user's passkeys. Returns `204`. |
+
+1) **Start registration.**
+
+```bash
+curl -k -X POST https://localhost:8090/users/me/passkeys/register/start \
+  -H "Authorization: Bearer <access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{ "relyingPartyId": "example.com" }'
+```
+
+- `relyingPartyId` must be the application's passkey relying party ID, or the host (or a parent domain of the host) of one of the application's passkey origins. The application is the one the access token was issued to.
+- When the application sets no passkey origins, the server-level `passkey.allowed_origins` apply.
+- You can leave out `relyingPartyId` when the application sets `passkeyRelyingPartyId`.
+
+2) **Create the credential on the device**, using `navigator.credentials.create()` in a browser or the platform passkey API in a mobile app.
+
+3) **Finish registration.**
+
+```bash
+curl -k -X POST https://localhost:8090/users/me/passkeys/register/finish \
+  -H "Authorization: Bearer <access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "publicKeyCredential": {
+      "id": "<credential-id>",
+      "type": "public-key",
+      "response": {
+        "clientDataJSON": "<base64url>",
+        "attestationObject": "<base64url>"
+      }
+    },
+    "sessionToken": "<session-token>",
+    "name": "Work laptop"
+  }'
+```
+
+- `name` is optional and can have up to 64 characters. A passkey without a name is listed without one, so show your own label for it.
+- The session token works once, and only for the user who started the registration.
+
+The endpoints refuse a token that acts on behalf of the user, such as a delegated token from a token exchange. Removing a passkey the user does not have returns `404`. A user can remove their last passkey.
+
+## Use Passkeys in Mobile Apps
+
+A passkey belongs to one domain, the relying party ID. Mobile platforms only let an app use a passkey when that domain declares the app as trusted. Set up both the domain and the <ProductName /> application.
+
+**On the relying party domain:**
+
+- **Android:** Serve `https://<relying-party-id>/.well-known/assetlinks.json`. List the app's package name and the SHA-256 fingerprints of its signing certificates under `delegate_permission/common.get_login_creds`.
+- **iOS:** Serve `https://<relying-party-id>/.well-known/apple-app-site-association` with the app ID under `webcredentials`, and add the `webcredentials:<relying-party-id>` Associated Domains entitlement to the app.
+
+**On the <ProductName /> application:**
+
+- **Android:** Add the app's origin to `passkeyAllowedOrigins`. An Android app reports `android:apk-key-hash:` followed by the base64url-encoded SHA-256 fingerprint of its signing certificate, without padding. Each signing certificate (debug, release) has its own origin, so list one for every build you use.
+- **iOS:** An iOS app reports `https://<relying-party-id>` as its origin. Add it to `passkeyAllowedOrigins`.
+- Set `passkeyRelyingPartyId` to the relying party domain, such as `example.com`. An Android app has no web origin to match the relying party ID against, so self-service registration accepts this domain instead. The mobile app can then leave `relyingPartyId` out of the start request.
+
+To compute the Android origin from a signing certificate fingerprint:
+
+```bash
+echo "<SHA-256 fingerprint with colons>" | tr -d ':' | xxd -r -p | base64 | tr '+/' '-_' | tr -d '='
+```
+
+Prefix the result with `android:apk-key-hash:`.
 
 ## Use Passkeys with Flow/Execute
 

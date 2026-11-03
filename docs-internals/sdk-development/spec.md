@@ -506,6 +506,52 @@ Requirements:
    component shows each eligible attribute's status and, for an unverified email or mobile
    number, the verify action.
 
+#### Self passkey management
+
+Self passkey management lets a signed-in user list, add, and remove the passkeys on their own
+account through the `/users/me/passkeys` collection. The platform's passkey API creates the
+credential; the SDK carries the server's options to it and the result back. It is optional: an
+SDK MAY ship it, and one that does MUST follow this section.
+
+| Operation | Contract |
+|---|---|
+| List passkeys | Reads the collection. Returns the signed-in user's passkeys, each with its ID and, when it has one, its name. |
+| Start passkey registration | Sends the relying party ID to `register/start` under the collection. Returns the credential creation options and a session token for the registration. |
+| Finish passkey registration | Sends the credential the platform created, the session token, and an optional name to `register/finish` under the collection. Returns the saved passkey. |
+| Remove passkey | Deletes one passkey of the signed-in user by its ID. |
+
+Requirements:
+
+1. Every request is sent through the SDK's authenticated transport. The server takes the user
+   from the access token, so the SDK MUST NOT send a user identifier.
+2. The request URL comes from an explicit URL passed to the call, then the `usersMePasskeys`
+   endpoint override, then `baseUrl` followed by `/users/me/passkeys`.
+3. The relying party ID is the one the caller supplies, or else the host the platform creates
+   the credential for: the page's host name in a browser. An SDK on a platform with no such host,
+   such as a native application, MUST take it from configuration.
+4. The SDK MUST pass the creation options to the platform's passkey API unchanged and MUST NOT
+   create a credential itself. The credential and the session token are submitted and
+   discarded, as credentials are under [Security requirements](#security-requirements).
+5. The name is optional. The SDK trims it and leaves it out when it is empty. It MUST NOT
+   shorten a name; a name the server rejects as too long is reported to the user.
+6. Once the platform has created a credential, a component MUST finish the registration, with a
+   name or without one, when the user skips or dismisses naming. A passkey MUST NOT be left on
+   the device without one on the account because the user declined to name it.
+7. A component MUST ask before it removes a passkey, and MUST warn when it is the user's last.
+   After the server removes one, the SDK SHOULD tell the platform's passkey provider where the
+   platform supports it, such as the WebAuthn Signal API's `signalUnknownCredential`. That call
+   is best effort and MUST NOT turn a completed removal into a failure.
+8. A cancelled or timed out platform prompt surfaces as its own error code, distinct from a
+   server refusal, and nothing is sent to `register/finish`. HTTP 403 and 404 surface as
+   distinct API error codes.
+9. A UI SDK that ships this capability ships a passkeys component and a `Base` variant of it.
+   The `Base` variant draws the UI from the passkeys, state, and actions it is given and makes
+   no requests, so a framework integration that loads data its own way, such as one that renders
+   on the server, can reuse it. The component wires the `Base` variant to the SDK's requests. A
+   custom UI given to the component receives the passkeys, the loading, error and success state,
+   and the add, save and remove actions, and those actions apply the rules above, so the custom
+   UI does not repeat them.
+
 #### Back-channel logout handling
 
 When a session ends at the ThunderID server, the server notifies every application that took
@@ -621,7 +667,7 @@ own.
 | Actions | Trigger an operation | Sign-in button, sign-out button, sign-up button |
 | Auth flow | Handle the redirect callback | Callback |
 | Control | Render conditionally on auth state | Signed-in, signed-out, loading |
-| Presentation | Render identity UI | Sign-in, sign-up, recovery, accept invite, invite user, user, user avatar, user dropdown, user profile, verify attribute, language switcher |
+| Presentation | Render identity UI | Sign-in, sign-up, recovery, accept invite, invite user, user, user avatar, user dropdown, user profile, verify attribute, language switcher, and passkeys in an SDK that ships [self passkey management](#self-passkey-management) |
 
 Requirements:
 
@@ -1240,6 +1286,35 @@ server recorded and nothing else.
 - **AC10.6:** Given a changed email address or mobile number, when the profile saves it, then
   it shows the stored value and its reported status and waits for Verify before starting a flow.
 
+### R11. Self passkey management that leaves no passkey on only one side
+
+**Requirement:** As a developer whose users sign in with passkeys, I want the SDK to let a
+signed-in user add and remove their own passkeys, so the passkeys on their devices and on their
+account stay the same.
+
+**Acceptance criteria:**
+
+- **AC11.1:** Given a signed-in user, when any passkey request is sent, then it carries the
+  access token and no user identifier.
+- **AC11.2:** Given the platform has created a credential, when the user skips or dismisses
+  naming, then the SDK finishes the registration without a name.
+- **AC11.3:** Given a name with surrounding spaces, when the registration finishes, then the
+  trimmed name is sent; given an empty name, then no name is sent; given a name the server
+  rejects as too long, then the user is told and the name is not shortened.
+- **AC11.4:** Given a passkeys component, when the user removes a passkey, then it asks first,
+  and warns when the passkey is the user's last.
+- **AC11.5:** Given the server has removed a passkey, when the platform supports it, then the
+  SDK signals the platform's passkey provider, and a failed signal still reports the removal as
+  done.
+- **AC11.6:** Given the user cancels the platform prompt or it times out, when the error is
+  reported, then it carries its own code and nothing is sent to `register/finish`.
+- **AC11.7:** Given any passkey request, when the log output is inspected, then it contains no
+  credential and no session token.
+- **AC11.8:** Given the `Base` passkeys component, when it is rendered with passkeys and
+  actions, then it draws them without any request of its own; given a custom UI on the passkeys
+  component, when it saves a passkey, then the name is trimmed and an empty one left out, as in
+  the built-in UI.
+
 ## Change log
 
 | Version | Date | Change |
@@ -1254,3 +1329,4 @@ server recorded and nothing else.
 | 0.8 | 2026-10-26 | `authorizationDetails` configuration key (RFC 9396), sent on the authorization, silent sign-in, CIBA, and `client_credentials` requests. Granted details surfaced on the token response and the access token. Consent rendering of authorization details elements for SDKs that render consent, and decisions only in server-rendered consent. |
 | 0.9 | 2026-11-03 | Self user attribute verification added as an optional capability (R10). |
 | 0.10 | 2026-11-10 | The built-in profile waits for Verify after a contact save instead of starting verification by itself (AC10.6). |
+| 0.11 | 2026-11-16 | Self passkey management added as an optional capability (R11). |

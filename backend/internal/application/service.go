@@ -1634,6 +1634,7 @@ func toInboundClient(dto *model.ApplicationProcessedDTO) inboundmodel.InboundCli
 		AllowedAgentTypes:         dto.AllowedAgentTypes,
 		SubjectAttribute:          dto.SubjectAttribute,
 		PasskeyAllowedOrigins:     dto.PasskeyAllowedOrigins,
+		PasskeyRelyingPartyID:     dto.PasskeyRelyingPartyID,
 		Attestation:               dto.Attestation,
 	}
 
@@ -1693,6 +1694,7 @@ func toProcessedDTO(
 			AllowedAgentTypes:         dao.AllowedAgentTypes,
 			SubjectAttribute:          dao.SubjectAttribute,
 			PasskeyAllowedOrigins:     dao.PasskeyAllowedOrigins,
+			PasskeyRelyingPartyID:     dao.PasskeyRelyingPartyID,
 			Attestation:               dao.Attestation.WithoutCredentials(),
 		},
 	}
@@ -2039,6 +2041,9 @@ func (as *applicationService) validateApplicationFields(
 	if app.PolicyURI != "" && !sysutils.IsValidURI(app.PolicyURI) {
 		return &ErrorInvalidPolicyURI
 	}
+	if !isValidPasskeyRelyingPartyID(app.PasskeyRelyingPartyID) {
+		return &ErrorInvalidPasskeyRelyingPartyID
+	}
 	// Reject an unrecognized application type. Requiring a type (create) and enforcing
 	// immutability (update) are handled by the respective callers.
 	switch app.Type {
@@ -2069,6 +2074,39 @@ func (as *applicationService) validateApplicationFields(
 		return &ErrorAmbiguousAttestationConfig
 	}
 	return nil
+}
+
+// isValidPasskeyRelyingPartyID reports whether id is unset, or a bare lowercase domain name with no
+// scheme, port or path. WebAuthn takes only a domain as the relying party ID, so an IP address is
+// refused: a host whose last label is a number is an IPv4 address to a browser.
+func isValidPasskeyRelyingPartyID(id string) bool {
+	if id == "" {
+		return true
+	}
+	if len(id) > 253 {
+		return false
+	}
+	labels := strings.Split(id, ".")
+	for _, label := range labels {
+		if !isValidDomainLabel(label) {
+			return false
+		}
+	}
+	return strings.Trim(labels[len(labels)-1], "0123456789") != ""
+}
+
+// isValidDomainLabel reports whether label is 1 to 63 lowercase letters, digits or hyphens, and does not
+// start or end with a hyphen.
+func isValidDomainLabel(label string) bool {
+	if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+		return false
+	}
+	for _, c := range label {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 // validateConsentConfig validates the consent configuration for the application.
@@ -2760,6 +2798,7 @@ func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *providers.App
 			AllowedAgentTypes:         dto.AllowedAgentTypes,
 			SubjectAttribute:          dto.SubjectAttribute,
 			PasskeyAllowedOrigins:     dto.PasskeyAllowedOrigins,
+			PasskeyRelyingPartyID:     dto.PasskeyRelyingPartyID,
 			LoginConsent:              dto.LoginConsent,
 			Attestation:               dto.Attestation,
 		},
@@ -2880,6 +2919,7 @@ func buildBaseApplicationProcessedDTO(appID string, app *model.ApplicationDTO,
 			AllowedAgentTypes:         app.AllowedAgentTypes,
 			SubjectAttribute:          app.SubjectAttribute,
 			PasskeyAllowedOrigins:     app.PasskeyAllowedOrigins,
+			PasskeyRelyingPartyID:     app.PasskeyRelyingPartyID,
 			LoginConsent:              app.LoginConsent,
 			Attestation:               app.Attestation,
 		},
@@ -2971,6 +3011,7 @@ func buildReturnApplicationDTO(
 			AllowedAgentTypes:         app.AllowedAgentTypes,
 			SubjectAttribute:          app.SubjectAttribute,
 			PasskeyAllowedOrigins:     app.PasskeyAllowedOrigins,
+			PasskeyRelyingPartyID:     app.PasskeyRelyingPartyID,
 			LoginConsent:              app.LoginConsent,
 			Attestation:               app.Attestation.WithoutCredentials(),
 		},

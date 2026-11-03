@@ -3497,6 +3497,31 @@ func TestImportResources_ApplicationTypePassedToService(t *testing.T) {
 	assert.Equal(t, model.ApplicationTypeBrowser, appSvc.created[0].Type)
 }
 
+func TestImportResources_ApplicationPasskeySettingsPassedToService(t *testing.T) {
+	appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
+	svc := newImportService(
+		appSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		discardingBus{})
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: strings.Join([]string{
+			"resource_type: application",
+			"name: Account",
+			"passkeyAllowedOrigins:",
+			"  - http://localhost:5173",
+			"passkeyRelyingPartyId: localhost",
+			"",
+		}, "\n"),
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, appSvc.created, 1)
+	assert.Equal(t, []string{"http://localhost:5173"}, appSvc.created[0].PasskeyAllowedOrigins)
+	assert.Equal(t, "localhost", appSvc.created[0].PasskeyRelyingPartyID)
+}
+
 func TestImportResources_ApplicationAttestationPassedToService(t *testing.T) {
 	appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
 	svc := newImportService(
