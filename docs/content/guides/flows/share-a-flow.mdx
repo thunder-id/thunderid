@@ -53,6 +53,8 @@ A shared flow shows its variables and nothing more. The nodes, interceptors, lay
 | `/sharing-policies` | Allowed | Only to reshare what it may reshare |
 | `GET /flows/{flowId}/overlay-rules` | Allowed | For its own organization unit |
 
+When a unit reads a flow that was shared with it, the `ouId` in the response is the unit that made the request, not the owner. This applies to `GET /flows` with the filter `ouId eq "<id>"` and to `GET /flows/{flowId}?ouId=<id>`. In both, `isOwnedByOU: false` marks the flow as shared. 
+
 ## Choose the Right Read
 
 To render the variables in a UI or an SDK, use three reads, each with one job.

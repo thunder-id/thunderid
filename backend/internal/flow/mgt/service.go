@@ -1337,7 +1337,7 @@ func (s *flowMgtService) GetFlowForOU(
 		Handle:      flow.Handle,
 		Name:        flow.Name,
 		FlowType:    flow.FlowType,
-		OUID:        flow.OUID,
+		OUID:        ouID,
 		IsOwnedByOU: false,
 		IsReadOnly:  true,
 		Variables:   variables,
@@ -1455,6 +1455,7 @@ func (s *flowMgtService) ListFlowsForOU(
 		// A flow shared with the unit is read only to it.
 		flow.IsReadOnly = true
 		flow.IsOwnedByOU = new(false)
+		flow.OUID = ouID
 		entries = append(entries, flow)
 	}
 	return buildFlowListResponse(entries, ownedCount+len(sharedIDs), limit, offset, extraQuery), nil
