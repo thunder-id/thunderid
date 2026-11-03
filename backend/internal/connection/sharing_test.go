@@ -784,7 +784,7 @@ func (s *SharingTestSuite) TestListInstancesInAnOrganizationUnitListsOwnedThenSh
 	s.True(*got.Connections[0].IsOwnedByOU)
 	s.Equal("shared-1", got.Connections[1].ID, "then shared in ID order")
 	s.False(*got.Connections[1].IsOwnedByOU)
-	s.Equal("owner-ou", got.Connections[1].OUID, "the owner's, not the one listed")
+	s.Equal("ou-1", got.Connections[1].OUID, "the one listed, not the owner's")
 	s.Equal("shared-2", got.Connections[2].ID)
 	s.Require().NotEmpty(got.Links)
 	s.Contains(got.Links[0].Href, "filter=ouId+eq+%22ou-1%22", "the links keep the filter")
