@@ -34,6 +34,7 @@ function VisualFlow({
   edges,
   onEdgesChange,
   onConnect,
+  onBeforeDelete,
   onNodesDelete,
   onEdgesDelete,
   onNodeDragStop,
@@ -57,6 +58,7 @@ function VisualFlow({
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
+      onBeforeDelete={onBeforeDelete}
       onNodesDelete={onNodesDelete}
       onEdgesDelete={onEdgesDelete}
       onNodeDragStop={onNodeDragStop}
