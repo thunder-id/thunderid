@@ -41,12 +41,13 @@ type FlowData struct {
 }
 
 type Inputs struct {
-	Ref        string           `json:"ref,omitempty"`
-	Identifier string           `json:"identifier"`
-	Type       string           `json:"type"`
-	Required   bool             `json:"required"`
-	Options    []string         `json:"options,omitempty"`
-	Validation []ValidationRule `json:"validation,omitempty"`
+	Ref          string           `json:"ref,omitempty"`
+	Identifier   string           `json:"identifier"`
+	Type         string           `json:"type"`
+	Required     bool             `json:"required"`
+	DefaultValue string           `json:"defaultValue,omitempty"`
+	Options      []string         `json:"options,omitempty"`
+	Validation   []ValidationRule `json:"validation,omitempty"`
 }
 
 type ValidationRule struct {
