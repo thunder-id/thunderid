@@ -48,6 +48,14 @@ type PasskeyRegistrationFinishRequest struct {
 	AttestationObject string
 	SessionToken      string
 	AllowedOrigins    []string
+	UserID            string
+	Name              string
+}
+
+// PasskeyInfo describes one of a user's registered passkeys.
+type PasskeyInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
 }
 
 // PasskeyAuthenticationStartRequest represents the request to start passkey authentication.

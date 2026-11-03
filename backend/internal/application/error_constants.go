@@ -947,6 +947,19 @@ var (
 			DefaultValue: "Only the organization unit that owns the application can change or delete it",
 		},
 	}
+	// ErrorInvalidPasskeyRelyingPartyID is returned when the passkey relying party ID is not a domain.
+	ErrorInvalidPasskeyRelyingPartyID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1065",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_passkey_relying_party_id",
+			DefaultValue: "Invalid passkey relying party ID",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_passkey_relying_party_id_description",
+			DefaultValue: "The passkey relying party ID must be a lowercase domain name, such as example.com",
+		},
+	}
 )
 
 // errNilEventBus is returned when the service is initialized without the event bus it audits on.

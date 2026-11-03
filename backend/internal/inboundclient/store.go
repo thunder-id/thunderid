@@ -28,6 +28,7 @@ type inboundClientJSONBlob struct {
 	AllowedAgentTypes     []string                         `json:"allowedAgentTypes,omitempty"`
 	SubjectAttribute      map[string]string                `json:"subjectAttribute,omitempty"`
 	PasskeyAllowedOrigins []string                         `json:"passkeyAllowedOrigins,omitempty"`
+	PasskeyRelyingPartyID string                           `json:"passkeyRelyingPartyId,omitempty"`
 	Attestation           *providers.AttestationConfig     `json:"attestation,omitempty"`
 	Properties            map[string]interface{}           `json:"properties,omitempty"`
 }
@@ -105,6 +106,7 @@ func marshalInboundClient(c inboundmodel.InboundClient) (
 		AllowedAgentTypes:     c.AllowedAgentTypes,
 		SubjectAttribute:      c.SubjectAttribute,
 		PasskeyAllowedOrigins: c.PasskeyAllowedOrigins,
+		PasskeyRelyingPartyID: c.PasskeyRelyingPartyID,
 		Attestation:           c.Attestation,
 		Properties:            c.Properties,
 	}
@@ -515,6 +517,7 @@ func buildInboundClientFromRow(ctx context.Context, row map[string]interface{}) 
 			client.AllowedAgentTypes = blob.AllowedAgentTypes
 			client.SubjectAttribute = blob.SubjectAttribute
 			client.PasskeyAllowedOrigins = blob.PasskeyAllowedOrigins
+			client.PasskeyRelyingPartyID = blob.PasskeyRelyingPartyID
 			client.Attestation = blob.Attestation
 			client.Properties = blob.Properties
 		}

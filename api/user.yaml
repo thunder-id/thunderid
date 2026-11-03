@@ -2775,6 +2775,358 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the request"
 
+  /users/me/passkeys:
+    get:
+      tags:
+        - Self
+      summary: List my passkeys
+      description: Lists the passkeys registered for the signed-in user. The list is not paged.
+      security:
+        - OAuth2: []
+      responses:
+        "200":
+          description: The user's passkeys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfPasskeyListResponse'
+              example:
+                passkeys:
+                  - id: "AdC-ff_z-Z1gY2s6e_2A-g"
+                    name: "Work laptop"
+                  - id: "pQ3x-7Lm_Vb2kT9wE1rY0A"
+        "401":
+          description: Unauthorized - missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AUTH-4010"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "Authentication is required to access this resource"
+        "403":
+          description: The token acts on the user's behalf
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SPK-1002"
+                message:
+                  key: "error.selfpasskeyservice.delegated_token_not_allowed"
+                  defaultValue: "Delegated token not allowed"
+                description:
+                  key: "error.selfpasskeyservice.delegated_token_not_allowed_description"
+                  defaultValue: "Passkeys can only be managed with a token issued to the user directly"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+  /users/me/passkeys/register/start:
+    post:
+      tags:
+        - Self
+      summary: Start adding a passkey
+      description: |
+        Starts adding a passkey for the signed-in user. The relying party ID must be the passkey
+        relying party ID of the application the token was issued to, or the host (or a parent domain
+        of the host) of one of that application's passkey origins. When the application sets no passkey
+        origins, the server's passkey origins apply. Without a relying party ID, the application's
+        passkey relying party ID is used.
+      security:
+        - OAuth2: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelfPasskeyRegistrationStartRequest'
+            example:
+              relyingPartyId: "example.com"
+      responses:
+        "200":
+          description: Options for the device to create the passkey
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfPasskeyRegistrationStartResponse'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                relying-party-not-allowed:
+                  summary: Relying party not allowed
+                  value:
+                    code: "SPK-1003"
+                    message:
+                      key: "error.selfpasskeyservice.relying_party_not_allowed"
+                      defaultValue: "Relying party not allowed"
+                    description:
+                      key: "error.selfpasskeyservice.relying_party_not_allowed_description"
+                      defaultValue: "The relying party ID must be the application's passkey relying party ID, or match the host, or a parent domain, of an allowed passkey origin"
+                empty-relying-party-id:
+                  summary: Missing relying party ID
+                  value:
+                    code: "PSK-1002"
+                    message:
+                      key: "error.passkeyservice.empty_relying_party_id"
+                      defaultValue: "Empty relying party ID"
+                    description:
+                      key: "error.passkeyservice.empty_relying_party_id_description"
+                      defaultValue: "The relying party ID is required"
+        "401":
+          description: Unauthorized - missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AUTH-4010"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "Authentication is required to access this resource"
+        "403":
+          description: The token acts on the user's behalf, or the account is suspended or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SPK-1002"
+                message:
+                  key: "error.selfpasskeyservice.delegated_token_not_allowed"
+                  defaultValue: "Delegated token not allowed"
+                description:
+                  key: "error.selfpasskeyservice.delegated_token_not_allowed_description"
+                  defaultValue: "Passkeys can only be managed with a token issued to the user directly"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+  /users/me/passkeys/register/finish:
+    post:
+      tags:
+        - Self
+      summary: Save a new passkey
+      description: |
+        Verifies the passkey the device created and saves it for the signed-in user. The session token
+        works once, and only for the user who started the registration.
+      security:
+        - OAuth2: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelfPasskeyRegistrationFinishRequest'
+            example:
+              publicKeyCredential:
+                id: "AdC-ff_z-Z1gY2s6e_2A-g"
+                type: "public-key"
+                response:
+                  clientDataJSON: "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoi..."
+                  attestationObject: "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVjE..."
+              sessionToken: "c2Vzc2lvbl90b2tlbl8xMjM"
+              name: "Work laptop"
+      responses:
+        "201":
+          description: Passkey saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfPasskey'
+              example:
+                id: "AdC-ff_z-Z1gY2s6e_2A-g"
+                name: "Work laptop"
+        "400":
+          description: The passkey could not be verified, or the session is expired, used, or another user's
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-attestation:
+                  summary: Passkey could not be verified
+                  value:
+                    code: "PSK-1011"
+                    message:
+                      key: "error.passkeyservice.invalid_attestation_response"
+                      defaultValue: "Invalid attestation response"
+                    description:
+                      key: "error.passkeyservice.invalid_attestation_response_description"
+                      defaultValue: "The attestation response is missing required fields (clientDataJSON or attestationObject)"
+                session-expired:
+                  summary: Session expired or already used
+                  value:
+                    code: "PSK-1014"
+                    message:
+                      key: "error.passkeyservice.session_expired"
+                      defaultValue: "Session expired"
+                    description:
+                      key: "error.passkeyservice.session_expired_description"
+                      defaultValue: "The session has expired. Please start a new session"
+                invalid-name:
+                  summary: Name too long
+                  value:
+                    code: "PSK-1016"
+                    message:
+                      key: "error.passkeyservice.invalid_passkey_name"
+                      defaultValue: "Invalid passkey name"
+                    description:
+                      key: "error.passkeyservice.invalid_passkey_name_description"
+                      defaultValue: "The passkey name must be at most 64 characters"
+        "401":
+          description: Unauthorized - missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AUTH-4010"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "Authentication is required to access this resource"
+        "403":
+          description: The token acts on the user's behalf, or the account is suspended or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SPK-1002"
+                message:
+                  key: "error.selfpasskeyservice.delegated_token_not_allowed"
+                  defaultValue: "Delegated token not allowed"
+                description:
+                  key: "error.selfpasskeyservice.delegated_token_not_allowed_description"
+                  defaultValue: "Passkeys can only be managed with a token issued to the user directly"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+  /users/me/passkeys/{id}:
+    delete:
+      tags:
+        - Self
+      summary: Remove one of my passkeys
+      description: Removes one of the signed-in user's passkeys. The last passkey can be removed too.
+      security:
+        - OAuth2: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The passkey ID, as returned when listing passkeys.
+          schema:
+            type: string
+          example: "AdC-ff_z-Z1gY2s6e_2A-g"
+      responses:
+        "204":
+          description: Passkey removed
+        "401":
+          description: Unauthorized - missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AUTH-4010"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "Authentication is required to access this resource"
+        "403":
+          description: The token acts on the user's behalf
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SPK-1002"
+                message:
+                  key: "error.selfpasskeyservice.delegated_token_not_allowed"
+                  defaultValue: "Delegated token not allowed"
+                description:
+                  key: "error.selfpasskeyservice.delegated_token_not_allowed_description"
+                  defaultValue: "Passkeys can only be managed with a token issued to the user directly"
+        "404":
+          description: The user has no passkey with this ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "PSK-1010"
+                message:
+                  key: "error.passkeyservice.credential_not_found"
+                  defaultValue: "Passkey credential not found"
+                description:
+                  key: "error.passkeyservice.credential_not_found_description"
+                  defaultValue: "The specified credential was not found for the user"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
   /user-types:
     get:
       tags:
@@ -5384,6 +5736,83 @@ components:
           type: array
           items:
             type: string
+
+    SelfPasskey:
+      type: object
+      description: One of the user's passkeys.
+      required: [id]
+      properties:
+        id:
+          type: string
+          description: Base64url-encoded WebAuthn credential ID.
+          example: "AdC-ff_z-Z1gY2s6e_2A-g"
+        name:
+          type: string
+          description: The name the user gave the passkey. Left out when the passkey has no name.
+          example: "Work laptop"
+
+    SelfPasskeyListResponse:
+      type: object
+      required: [passkeys]
+      properties:
+        passkeys:
+          type: array
+          items:
+            $ref: '#/components/schemas/SelfPasskey'
+
+    SelfPasskeyRegistrationStartRequest:
+      type: object
+      properties:
+        relyingPartyId:
+          type: string
+          description: The domain the passkey belongs to. Optional when the application sets a passkey relying party ID.
+          example: "example.com"
+
+    SelfPasskeyRegistrationStartResponse:
+      type: object
+      properties:
+        publicKeyCredentialCreationOptions:
+          type: object
+          description: PublicKeyCredentialCreationOptions as per the WebAuthn standard, same as the Direct API.
+          additionalProperties: true
+        sessionToken:
+          type: string
+          description: Token to send with the finish request.
+          example: "c2Vzc2lvbl90b2tlbl8xMjM"
+
+    SelfPasskeyRegistrationFinishRequest:
+      type: object
+      required: [publicKeyCredential, sessionToken]
+      properties:
+        publicKeyCredential:
+          type: object
+          description: PublicKeyCredential the device created, as per the WebAuthn standard.
+          required: [id, type, response]
+          properties:
+            id:
+              type: string
+              description: Base64url-encoded credential ID.
+            type:
+              type: string
+              example: "public-key"
+            response:
+              type: object
+              required: [clientDataJSON, attestationObject]
+              properties:
+                clientDataJSON:
+                  type: string
+                  description: Base64url-encoded client data.
+                attestationObject:
+                  type: string
+                  description: Base64url-encoded attestation object.
+        sessionToken:
+          type: string
+          description: The session token from the start response.
+        name:
+          type: string
+          maxLength: 64
+          description: A name for the passkey, so the user can tell their passkeys apart.
+          example: "Work laptop"
 
     Error:
       type: object

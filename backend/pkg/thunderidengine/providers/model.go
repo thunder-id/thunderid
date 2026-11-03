@@ -913,6 +913,7 @@ type InboundClient struct {
 	AllowedAgentTypes         []string
 	SubjectAttribute          map[string]string
 	PasskeyAllowedOrigins     []string
+	PasskeyRelyingPartyID     string
 	// Attestation holds the optional platform attestation config that lets a mobile client prove
 	// its binary identity to initiate a flow directly, independent of any protocol profile.
 	Attestation *AttestationConfig
@@ -1541,6 +1542,7 @@ type InboundAuthProfile struct {
 	AllowedAgentTypes         []string            `json:"allowedAgentTypes,omitempty"          yaml:"allowedAgentTypes,omitempty"          jsonschema:"Allowed agent type handles. Optional. Agents may authenticate to this resource only when their agent type handle is listed here; when the list is empty no agent can authenticate. A list holding only * admits an agent of any agent type; * cannot be combined with other entries."`
 	SubjectAttribute          map[string]string   `json:"subjectAttribute,omitempty"           yaml:"subjectAttribute,omitempty"           jsonschema:"Per-user-type mapping of the schema attribute to use as the token subject (sub) claim, keyed by user type handle. The attribute must be unique, required, and string-typed in that user type's schema. When no entry applies, the user's ID is used as the subject."`
 	PasskeyAllowedOrigins     []string            `json:"passkeyAllowedOrigins,omitempty"      yaml:"passkeyAllowedOrigins,omitempty"      jsonschema:"Allowed origins for WebAuthn/passkey operations for this application. Optional. When set, overrides the server-level passkey allowed origins for flow-based passkey operations."`
+	PasskeyRelyingPartyID     string              `json:"passkeyRelyingPartyId,omitempty" yaml:"passkeyRelyingPartyId,omitempty" jsonschema:"Domain that passkeys for this application belong to (the WebAuthn relying party ID), such as example.com. Optional. Self-service passkey registration accepts this domain, and uses it when the request names none."`
 	Attestation               *AttestationConfig  `json:"attestation,omitempty"                yaml:"attestation,omitempty"                jsonschema:"Platform attestation configuration. Optional. Enables a mobile client to initiate flows directly by proving its binary identity (e.g. Google Play Integrity), regardless of protocol. The service account credentials are write-only and never returned in responses."`
 }
 
