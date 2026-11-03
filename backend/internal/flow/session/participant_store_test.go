@@ -194,7 +194,7 @@ func (s *ParticipantStoreTestSuite) TestBuildParticipantFromRow_BadFields() {
 // participantsBySessionIDsQuery matches the bulk participant query built for n session ids.
 func participantsBySessionIDsQuery(n int) interface{} {
 	return mock.MatchedBy(func(q model.DBQuery) bool {
-		return q.ID == "SSO-SESS-17" &&
+		return q.ID == "SEQ-SESS-17" &&
 			strings.Contains(q.Query, "SESSION_ID IN ("+placeholderList(n)+")") &&
 			strings.Contains(q.Query, "DEPLOYMENT_ID = $"+strconv.Itoa(n+1))
 	})
