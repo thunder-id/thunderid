@@ -831,15 +831,16 @@ func startServerInternal(port string, extraArgs ...string) error {
 
 // StartServerExpectingExit stops the running server and starts one that is expected to refuse its
 // configuration and exit. It returns nil once the process has exited, and an error if the server
-// stays up for the timeout, in which case it is stopped. Call RestartServer to run normally again.
-func StartServerExpectingExit(timeout time.Duration) error {
+// stays up for the timeout, in which case it is stopped. Any extraArgs are passed to the server.
+// Call RestartServer to run normally again.
+func StartServerExpectingExit(timeout time.Duration, extraArgs ...string) error {
 	ensureInitialized()
 	StopServer()
 	if err := waitForPortClosed(serverPort, 30*time.Second); err != nil {
 		return err
 	}
 
-	if err := startServerInternal(serverPort); err != nil {
+	if err := startServerInternal(serverPort, extraArgs...); err != nil {
 		return err
 	}
 	cmd := serverCmd
@@ -897,7 +898,9 @@ func RestartServerWithResourcesFile(resourcesFilePath string) error {
 	log.Printf("Restarting server with resources file: %s", resourcesFilePath)
 
 	StopServer()
-	time.Sleep(3 * time.Second)
+	if err := waitForPortClosed(serverPort, 10*time.Second); err != nil {
+		return err
+	}
 
 	if err := startServerInternal(serverPort, "-resources="+resourcesFilePath); err != nil {
 		return fmt.Errorf("failed to start server with resources file: %w", err)
@@ -948,11 +951,11 @@ func StopServer() {
 				log.Printf("Failed to send stop signal to PID %d: %v, forcing kill...", serverPid, err)
 				proc.Kill()
 			} else {
-				// We cannot call proc.Wait() for a process we did not fork,
-				// so we give the server a grace period and then ensure it is dead.
+				// We cannot call proc.Wait() for a process we did not fork, and its parent may not
+				// have reaped it, so a zombie would still look alive. The closed port is the signal
+				// that it has shut down; kill it only if the port stays open past the grace period.
 				// Check liveness before killing to avoid hitting a recycled PID.
-				time.Sleep(3 * time.Second)
-				if isProcessAlive(proc) {
+				if err := waitForPortClosed(serverPort, 3*time.Second); err != nil && isProcessAlive(proc) {
 					proc.Kill()
 				}
 			}
@@ -962,6 +965,7 @@ func StopServer() {
 		}
 	}
 
+	stoppedPid := serverPid
 	serverCmd = nil
 	serverPid = 0
 
@@ -970,11 +974,12 @@ func StopServer() {
 	// we just killed. The PID file is always updated by StartServer regardless of
 	// which process (parent or subprocess) called it.
 	if residualPid := readPidFile(); residualPid != 0 {
-		if proc, err := os.FindProcess(residualPid); err == nil && proc != nil {
-			_ = sendStopSignal(proc)
-			time.Sleep(2 * time.Second)
-			if isProcessAlive(proc) {
-				_ = proc.Kill()
+		if residualPid != stoppedPid {
+			if proc, err := os.FindProcess(residualPid); err == nil && proc != nil {
+				_ = sendStopSignal(proc)
+				if err := waitForPortClosed(serverPort, 2*time.Second); err != nil && isProcessAlive(proc) {
+					_ = proc.Kill()
+				}
 			}
 		}
 		removePidFile()
@@ -989,8 +994,10 @@ func RestartServer() error {
 	// Stop the current server if it exists
 	StopServer()
 
-	// Wait a moment for the port to be released
-	time.Sleep(3 * time.Second)
+	// Wait for the port to be released
+	if err := waitForPortClosed(serverPort, 10*time.Second); err != nil {
+		return fmt.Errorf("failed to restart server: %w", err)
+	}
 
 	// Start a new server instance
 	err := StartServer(serverPort, zipFilePattern)
