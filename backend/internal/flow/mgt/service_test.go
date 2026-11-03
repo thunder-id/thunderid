@@ -3496,7 +3496,7 @@ func (s *SharingVariablesTestSuite) TestGetFlowForOUSharedShowsOnlyWhatAppliesTo
 	s.Require().NotNil(view.Shared)
 	s.False(view.Shared.IsOwnedByOU)
 	s.True(view.Shared.IsReadOnly)
-	s.Equal(ownerOU, view.Shared.OUID)
+	s.Equal(childOU, view.Shared.OUID)
 
 	byID := variablesByID(view.Shared.Variables)
 	s.Len(byID, 3, "a variable no policy names for the unit is not listed")
@@ -3554,7 +3554,7 @@ func (s *SharingVariablesTestSuite) TestListFlowsForOU() {
 	s.True(list.Flows[1].IsReadOnly)
 	s.Equal(3, list.Flows[1].ActiveVersion, "a shared flow is listed as an owned one is")
 	s.Equal("t1", list.Flows[1].CreatedAt)
-	s.Equal(ownerOU, list.Flows[1].OUID, "the owner's, not the requested one")
+	s.Equal(childOU, list.Flows[1].OUID, "the requested unit's, not the owner's")
 }
 
 func (s *SharingVariablesTestSuite) TestListFlowsForOUFiltersAndPages() {
@@ -3642,6 +3642,8 @@ func (s *SharingVariablesTestSuite) TestListFlowsForOUListsOwnedThenSharedAcross
 	s.Equal("shared-1", list.Flows[1].ID)
 	s.False(*list.Flows[1].IsOwnedByOU)
 	s.True(list.Flows[1].IsReadOnly)
+	s.Equal(childOU, list.Flows[0].OUID)
+	s.Equal(childOU, list.Flows[1].OUID)
 }
 
 func (s *SharingVariablesTestSuite) policyWith(rules map[string]sharing.OverlayRule) {
