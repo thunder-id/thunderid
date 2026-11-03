@@ -372,7 +372,7 @@ overrides:
   defu: 6.1.5
   i18next: 25.6.0
   dompurify: '>=3.4.13'
-  follow-redirects@<1.16.1: '>=1.16.1'
+  follow-redirects@<1.16.2: '>=1.16.2'
   unhead: 2.1.13
   minimatch@>=5.0.0 <5.1.8: '>=5.1.8'
   minimatch@<3.1.4: '>=3.1.4'
@@ -396,7 +396,7 @@ overrides:
   tar: '>=7.5.16'
   launch-editor@<2.14.2: '>=2.14.2'
   '@babel/core': '>=7.29.6 <8'
-  joi: '>=18.2.6'
+  joi: '>=18.3.1'
   esbuild: '>=0.28.1'
   undici: ^6.28.1
   fast-xml-parser: '>=5.3.6'
@@ -7901,7 +7901,7 @@ packages:
     resolution: {integrity: sha512-YmKkfhOAi3wsB1PhJq5Scj3GXMn3WvtQ/JC0xoopuHoXSdmtdStOpFrYaT1kie2YgFBcIe64ROzMYRjCrYOdYw==}
     engines: {node: ^20.19.0 || >=22.12.0}
     peerDependencies:
-      vite: '>=8.0.16'
+      vite: 8.1.6
 
   '@vitejs/plugin-react@6.0.2':
     resolution: {integrity: sha512-DlSMqo4WhThw4vB8Mpn0Woe9J+Jfq1geJ61AKW0QEgLzGMNwtIMdxbDUzLxcun8W7NbJO0e2Jg/Nxm3cCSVzzg==}
@@ -7955,7 +7955,7 @@ packages:
     resolution: {integrity: sha512-v0xaezt+DKEmKfaxg133ldzADrwLGd7Ze1MfQQTYfvs8OqZIwbxyxaYURivwV7sWy5fqn3rH5uOrSp07bp44Ow==}
     peerDependencies:
       msw: ^2.4.9
-      vite: '>=8.0.16'
+      vite: 8.1.6
     peerDependenciesMeta:
       msw:
         optional: true
@@ -9918,8 +9918,8 @@ packages:
   focus-trap@7.8.0:
     resolution: {integrity: sha512-/yNdlIkpWbM0ptxno3ONTuf+2g318kh2ez3KSeZN5dZ8YC6AAmgeWz+GasYYiBJPFaYcSAPeu4GfhUaChzIJXA==}
 
-  follow-redirects@1.16.1:
-    resolution: {integrity: sha512-FNvFGzoMLWmE6Yj9spb/zjd7yiNCHiAW9/Tg9CXrQ8wuu32HtlJOwWO11OJafl5FfY3DxTdQ0vj42zU1kvv5jg==}
+  follow-redirects@1.16.2:
+    resolution: {integrity: sha512-/kVP2U8z596Ia0gwFrwyIeo74ta5aVmSeU1FfAUMAmcEP5EP7zydmag3SLiN64NaRKef3lxsq7i/g7ltJQDGow==}
     engines: {node: '>=4.0'}
     peerDependencies:
       debug: '*'
@@ -10822,8 +10822,8 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
-  joi@18.2.9:
-    resolution: {integrity: sha512-2mD929bUVKUhOLQQEVhlf6EZ0Mlo0DeRb5MO7cViR9AXLtBauuccEtB1py9Ocxpo/P7ucnh442iY/iOwrh3IQw==}
+  joi@18.3.1:
+    resolution: {integrity: sha512-mV9M4Llh4va3NT90p7KBtQhoZqjs8xLX7EWYE4y/GG3yLF6REbIBEHSUb0UX1JXRht2w5tiLSsvmpYc5akiqIw==}
     engines: {node: '>= 20'}
 
   jose@5.2.0:
@@ -14023,7 +14023,7 @@ packages:
       '@vitest/ui': 4.1.10
       happy-dom: '*'
       jsdom: '*'
-      vite: '>=8.0.16'
+      vite: 8.1.6
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
@@ -15980,7 +15980,7 @@ snapshots:
       clsx: 2.1.1
       eta: 2.2.0
       fs-extra: 11.3.5
-      joi: 18.2.9
+      joi: 18.3.1
       lodash: 4.18.1
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
@@ -16857,7 +16857,7 @@ snapshots:
       '@types/mdast': 4.0.4
       '@types/react': 19.2.14
       commander: 5.1.0
-      joi: 18.2.9
+      joi: 18.3.1
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
       react-helmet-async: '@slorber/react-helmet-async@1.3.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)'
@@ -16908,7 +16908,7 @@ snapshots:
       '@docusaurus/utils': 3.9.2(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(uglify-js@3.19.3)
       '@docusaurus/utils-common': 3.9.2(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(uglify-js@3.19.3)
       fs-extra: 11.3.5
-      joi: 18.2.9
+      joi: 18.3.1
       js-yaml: 4.3.2
       lodash: 4.18.1
       tslib: 2.8.1
@@ -22756,7 +22756,7 @@ snapshots:
     dependencies:
       tabbable: 6.4.0
 
-  follow-redirects@1.16.1(debug@4.4.3(supports-color@10.2.2)):
+  follow-redirects@1.16.2(debug@4.4.3(supports-color@10.2.2)):
     optionalDependencies:
       debug: 4.4.3(supports-color@10.2.2)
 
@@ -23335,7 +23335,7 @@ snapshots:
   http-proxy@1.18.1(debug@4.4.3(supports-color@10.2.2)):
     dependencies:
       eventemitter3: 4.0.7
-      follow-redirects: 1.16.1(debug@4.4.3(supports-color@10.2.2))
+      follow-redirects: 1.16.2(debug@4.4.3(supports-color@10.2.2))
       requires-port: 1.0.0
     transitivePeerDependencies:
       - debug
@@ -23754,7 +23754,7 @@ snapshots:
 
   jiti@2.7.0: {}
 
-  joi@18.2.9:
+  joi@18.3.1:
     dependencies:
       '@hapi/address': 5.1.1
       '@hapi/formula': 3.0.2

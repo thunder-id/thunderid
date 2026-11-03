@@ -116,8 +116,9 @@ overrides:
   # headers on cross-origin redirects. Enters the tree only through http-proxy@1.18.1 (docs dev server, via
   # @docusaurus/core > webpack-dev-server > http-proxy-middleware). Nothing blocks the real fix: http-proxy accepts
   # ^1.0.0, so this only keeps affected versions out. Added 2026-05-14, narrowed and raised 2026-10-21.
-  # Remove once http-proxy (or its replacement in webpack-dev-server) requires follow-redirects >=1.16.1.
-  follow-redirects@<1.16.1: '>=1.16.1'
+  # Raised 2026-11-03 for GHSA-mrwp-f3q8-3g9p (sensitiveHeaders arrays discarded across realms, fixed in 1.16.2).
+  # Remove once http-proxy (or its replacement in webpack-dev-server) requires follow-redirects >=1.16.2.
+  follow-redirects@<1.16.2: '>=1.16.2'
   unhead: 2.1.13
   minimatch@>=5.0.0 <5.1.8: '>=5.1.8'
   minimatch@<3.1.4: '>=3.1.4'
@@ -181,8 +182,9 @@ overrides:
   # require Babel 7 and break on the 8.x ESM export changes.
   '@babel/core': '>=7.29.6 <8'
   # JUSTIFICATION: Transitive dep via docusaurus. Fixes CVE-2026-48038 (GHSA-q7cg-457f-vx79) — uncaught RangeError DoS in joi on deeply nested input through recursive link() schemas,
-  # and GHSA-6h2x-m376-mqjq — quadratic regular-expression backtracking in Joi.string().isoDate().
-  joi: '>=18.2.6'
+  # and GHSA-6h2x-m376-mqjq — quadratic regular-expression backtracking in Joi.string().isoDate(),
+  # and GHSA-4528-x5fx-h6hg — quadratic-time split in string().email({ multiple: true }), fixed in 18.3.1.
+  joi: '>=18.3.1'
   # JUSTIFICATION: Fixes GHSA-gv7w-rqvm-qjhr — esbuild Deno module downloads native binaries without integrity verification, enabling RCE via NPM_CONFIG_REGISTRY.
   esbuild: '>=0.28.1'
   # JUSTIFICATION: Fixes GHSA-vxpw-j846-p89q (high DoS), GHSA-p88m-4jfj-68fv (HTTP header injection),
