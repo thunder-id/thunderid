@@ -4,19 +4,8 @@
 import {QueryErrorNotice} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
-import {
-  Box,
-  Chip,
-  DataGrid,
-  IconButton,
-  ListingTable,
-  Menu,
-  MenuItem,
-  Stack,
-  Tooltip,
-  Typography,
-} from '@wso2/oxygen-ui';
-import {EllipsisVertical, Eye, Pencil, Server, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Box, Chip, DataGrid, IconButton, ListingTable, Menu, MenuItem, Tooltip, Typography} from '@wso2/oxygen-ui';
+import {EllipsisVertical, Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -109,27 +98,29 @@ export default function ResourceServersList(): JSX.Element {
         flex: 1,
         minWidth: 200,
         renderCell: (params: DataGrid.GridRenderCellParams<ResourceServer>) => (
-          <ListingTable.CellIcon
-            icon={<Server size={20} />}
-            primary={
-              <Stack direction="row" spacing={1} alignItems="center">
-                <span>{params.row.name}</span>
-                {params.row.id === defaultId && (
-                  <Chip label={t('resourceServers:listing.default', 'Default')} size="small" variant="outlined" />
-                )}
-              </Stack>
-            }
-            secondary={
-              params.row.isReadOnly ? (
+          <Box sx={{display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
+            <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+              <Typography variant="body2" fontWeight={500}>
+                {params.row.name}
+              </Typography>
+              {params.row.id === defaultId && (
                 <Chip
-                  label={t('resourceServers:listing.systemResourceServer', 'System resource server')}
+                  label={t('resourceServers:listing.default', 'Default')}
                   size="small"
-                  sx={{mt: 0.25, height: 18, fontSize: '0.65rem', width: 'fit-content'}}
+                  color="primary"
+                  variant="outlined"
+                  sx={{height: 20, fontSize: '0.65rem'}}
                 />
-              ) : undefined
-            }
-            sx={{width: '100%'}}
-          />
+              )}
+            </Box>
+            {params.row.isReadOnly && (
+              <Chip
+                label={t('resourceServers:listing.systemResourceServer', 'System resource server')}
+                size="small"
+                sx={{mt: 0.25, height: 18, fontSize: '0.65rem', width: 'fit-content'}}
+              />
+            )}
+          </Box>
         ),
       },
       {
@@ -138,7 +129,13 @@ export default function ResourceServersList(): JSX.Element {
         flex: 0.8,
         minWidth: 120,
         renderCell: (params: DataGrid.GridRenderCellParams<ResourceServer>) => (
-          <Chip label={getResourceServerTypeLabel(params.row.type, t)} size="small" variant="outlined" />
+          <Chip
+            label={getResourceServerTypeLabel(params.row.type, t)}
+            size="small"
+            color="primary"
+            variant="outlined"
+            sx={{fontSize: '0.7rem'}}
+          />
         ),
       },
       {
@@ -171,9 +168,9 @@ export default function ResourceServersList(): JSX.Element {
             {params.row.isReadOnly ? (
               <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton
+                  aria-label={t('common:status.readOnly', 'Read only')}
                   size="small"
                   disableRipple
-                  aria-label={t('common:status.readOnly', 'Read only')}
                   sx={{cursor: 'default'}}
                 >
                   <Eye size={16} />
@@ -183,8 +180,8 @@ export default function ResourceServersList(): JSX.Element {
               <>
                 <Tooltip title={t('common:actions.edit', 'Edit')}>
                   <IconButton
-                    size="small"
                     aria-label={t('common:actions.edit', 'Edit')}
+                    size="small"
                     onClick={(e) => {
                       e.stopPropagation();
                       (async (): Promise<void> => {
@@ -199,9 +196,9 @@ export default function ResourceServersList(): JSX.Element {
                 </Tooltip>
                 <Tooltip title={t('common:actions.delete', 'Delete')}>
                   <IconButton
+                    aria-label={t('common:actions.delete', 'Delete')}
                     size="small"
                     color="error"
-                    aria-label={t('common:actions.delete', 'Delete')}
                     onClick={(e) => {
                       e.stopPropagation();
                       setDeleteTarget(params.row);
@@ -242,8 +239,8 @@ export default function ResourceServersList(): JSX.Element {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
+      <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
+        <ListingTable.Container disablePaper>
           <ListingTable.DataGrid
             rows={data?.resourceServers ?? []}
             columns={columns}
@@ -255,7 +252,6 @@ export default function ResourceServersList(): JSX.Element {
                 logger.error('Failed to navigate to resource server detail', {error: err});
               });
             }}
-            rowHeight={64}
             rowCount={data?.totalResults ?? 0}
             paginationMode="server"
             paginationModel={paginationModel}
