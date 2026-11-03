@@ -131,7 +131,7 @@ func (suite *ProvisioningExecutorTestSuite) expectProvisionedSignIn(entityID str
 
 // expectNoExistingUserFor mocks the existing-user lookup over attrs as finding nothing.
 func (suite *ProvisioningExecutorTestSuite) expectNoExistingUserFor(attrs map[string]interface{}) {
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 }
 
@@ -375,7 +375,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UserAlreadyExists() {
 	provMock.On(methodGetRequiredInputs, mock.Anything).Return(nodeInputs).Maybe()
 
 	userID := "user-existing"
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		"username": "existinguser",
 	}).Return(&userID, nil)
 
@@ -418,7 +418,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CreateUserFails() {
 		NodeInputs: []providers.Input{{Identifier: "username", Type: "string", Required: true}},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.Anything).
 		Return(nil, &tidcommon.InternalServerError)
@@ -448,7 +448,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CreateUserFails_Attribut
 		NodeInputs: []providers.Input{{Identifier: "username", Type: "string", Required: true}},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.Anything).
 		Return(nil, &user.ErrorAttributeConflict)
@@ -972,7 +972,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AllowRegistrationWithExi
 	attrs := map[string]interface{}{
 		"username": "existinguser",
 	}
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&userID, nil)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(&userID, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -1141,7 +1141,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_MissingInputs_MissingOUI
 		NodeInputs:  []providers.Input{{Identifier: "username", Type: "string", Required: true}},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"username": "newuser"}).
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{"username": "newuser"}).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything,
@@ -1175,7 +1175,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UserProvisioning_Delegat
 		NodeInputs: []providers.Input{{Identifier: "username", Type: "string", Required: true}},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	var received *providers.User
@@ -1460,7 +1460,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UnknownCategory_ReturnsE
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_DelegatesToAgentMgtProvider() {
 	suite.expectSchemaForAgentProvisioning()
 	suite.expectProvisionedSignIn(testNewAgentID)
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	var received *providers.Agent
@@ -1525,7 +1525,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 // create call in the attributes payload and is checked for an existing agent first.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_NameOnlyProvisionsWithNameAttribute() {
 	suite.expectSchemaForAgentProvisioning()
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	var received *providers.Agent
@@ -1748,7 +1748,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UserProvisioning_NoAttri
 // mapping wired to the wrong call would still hand the services a user principal.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_AssignsAsAnAgentPrincipal() {
 	suite.expectSchemaForAgentProvisioning()
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 	suite.mockAgentMgtProvider.On("CreateAgent", mock.Anything, mock.Anything).
 		Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
@@ -1807,7 +1807,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Redire
 		suite.Run(tt.name, func() {
 			suite.SetupTest()
 			suite.expectSchemaForAgentProvisioning()
-			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 				entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 			var received *providers.Agent
@@ -1880,7 +1880,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Separa
 // agent on its own behalf would give a caller who asked for delegation the opposite of it.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_RejectsAnUnreadableDelegatedValue() {
 	suite.expectSchemaForAgentProvisioning()
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	ctx := &providers.NodeContext{
@@ -1994,7 +1994,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 // Without delegation the redirect URI stays optional, so its absence must not hold up the create.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_RedirectURIOptionalWhenNotDelegated() {
 	suite.expectSchemaForAgentProvisioning()
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 	suite.mockAgentMgtProvider.On("CreateAgent", mock.Anything, mock.MatchedBy(isNotDelegated)).
 		Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
@@ -2020,7 +2020,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Redire
 // the flow collected before the choice changed.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_NotDelegatedIgnoresOnBehalfOfInputs() {
 	suite.expectSchemaForAgentProvisioning()
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	var received *providers.Agent
@@ -2081,7 +2081,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 		suite.Run(tt.name, func() {
 			suite.SetupTest()
 			suite.expectSchemaForAgentProvisioning()
-			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 				entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 			var receivedDelegated bool
@@ -2157,7 +2157,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Proper
 // A property that is not a boolean is refused rather than read as a mode.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_RejectsANonBooleanDelegatedProperty() {
 	suite.expectSchemaForAgentProvisioning()
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	execResp, err := suite.executor.Execute(&providers.NodeContext{
@@ -2225,7 +2225,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 		suite.Run(tt.name, func() {
 			suite.SetupTest()
 			suite.expectSchemaForAgentProvisioning()
-			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 				entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 			var received *providers.Agent
@@ -2280,7 +2280,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 // violation it can correct from a configuration problem it cannot.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_SurfacesServiceError() {
 	suite.expectSchemaForAgentProvisioning()
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 	svcErr := &tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -2334,7 +2334,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentAlreadyExists_Error
 		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
 		Return([]model.AttributeInfo{{Attribute: "username", Required: false}}, nil).Maybe()
 	existingID := "agent-existing"
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(&existingID, nil)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(&existingID, nil)
 
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
@@ -2703,7 +2703,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMa
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	createdUser := &providers.User{
@@ -2760,7 +2760,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedFromMappingDisabled_
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	createdUser := &providers.User{
@@ -2984,8 +2984,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_Success() {
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&existingUserID, nil)
-	suite.mockEntityProvider.On("GetEntityProfile", existingUserID).Return(existingUser, nil)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(&existingUserID, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, existingUserID).Return(existingUser, nil)
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything,
 		mock.MatchedBy(func(u *providers.User) bool {
 			return u.OUID == testOUID
@@ -3017,7 +3017,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_NotEnabled_Fails
 		NodeProperties: map[string]interface{}{},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&existingUserID, nil)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(&existingUserID, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -3051,8 +3051,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_SameOU_Fails() {
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&existingUserID, nil)
-	suite.mockEntityProvider.On("GetEntityProfile", existingUserID).Return(existingUser, nil)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(&existingUserID, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, existingUserID).Return(existingUser, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -3082,7 +3082,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_NoTargetOU_Fails
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&existingUserID, nil)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(&existingUserID, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -3132,7 +3132,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_RetryableProvisioningErr
 			provMock.On(methodGetRequiredInputs, mock.Anything).Return(nodeInputs).Maybe()
 
 			existingID := tt.existingUserID
-			suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 				"username": "existinguser",
 			}).Return(&existingID, nil)
 
@@ -3168,7 +3168,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_NotEnabled_Authn
 		NodeProperties: map[string]interface{}{},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&existingUserID, nil)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(&existingUserID, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -3211,7 +3211,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_NotEnabled_Regis
 	}
 	provMock.On(methodGetRequiredInputs, mock.Anything).Return(nodeInputs).Maybe()
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&existingUserID, nil)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(&existingUserID, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -3247,8 +3247,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_SameOU_AuthnFlow
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&existingUserID, nil)
-	suite.mockEntityProvider.On("GetEntityProfile", existingUserID).Return(existingUser, nil)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(&existingUserID, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, existingUserID).Return(existingUser, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -3297,8 +3297,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_SameOU_Registrat
 	}
 	provMock.On(methodGetRequiredInputs, mock.Anything).Return(nodeInputs).Maybe()
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&existingUserID, nil)
-	suite.mockEntityProvider.On("GetEntityProfile", existingUserID).Return(existingUser, nil)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(&existingUserID, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, existingUserID).Return(existingUser, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -3329,8 +3329,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_GetUserError() {
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&existingUserID, nil)
-	suite.mockEntityProvider.On("GetEntityProfile", existingUserID).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(&existingUserID, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, existingUserID).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "db error", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -4316,7 +4316,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_IdentifyEntity_Ambiguous
 		NodeInputs: []providers.Input{{Identifier: "username", Type: "string", Required: true}},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity",
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
 		map[string]interface{}{"username": "newuser"}).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeAmbiguousEntity, "ambiguous", ""))
 
@@ -4342,7 +4342,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UnmarshalAttributesError
 		NodeInputs: []providers.Input{{Identifier: "username", Type: "string", Required: true}},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"username": "newuser"}).
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{"username": "newuser"}).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.Anything).
 		Return(&providers.User{
@@ -4821,9 +4821,9 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_AmbiguousUser_No
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeAmbiguousEntity, "ambiguous", ""))
-	suite.mockEntityProvider.On("SearchEntities", attrs).
+	suite.mockEntityProvider.On("SearchEntities", mock.Anything, attrs).
 		Return([]*providers.Entity{
 			{ID: testExistingUserID, OUID: "ou-toyota"},
 			{ID: "other-user-id", OUID: "ou-honda"},
@@ -4858,14 +4858,14 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_AmbiguousUser_Ma
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeAmbiguousEntity, "ambiguous", ""))
-	suite.mockEntityProvider.On("SearchEntities", attrs).
+	suite.mockEntityProvider.On("SearchEntities", mock.Anything, attrs).
 		Return([]*providers.Entity{
 			{ID: testExistingUserID, OUID: testOUID},
 			{ID: "other-user-id", OUID: "ou-honda"},
 		}, nil)
-	suite.mockEntityProvider.On("GetEntityProfile", testExistingUserID).
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, testExistingUserID).
 		Return(&providers.Entity{ID: testExistingUserID, OUID: testOUID}, nil)
 
 	resp, err := suite.executor.Execute(ctx)
@@ -4891,7 +4891,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_AmbiguousUser_Cr
 		NodeProperties: map[string]interface{}{},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeAmbiguousEntity, "ambiguous", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -4920,9 +4920,9 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_AmbiguousUser_Se
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeAmbiguousEntity, "ambiguous", ""))
-	suite.mockEntityProvider.On("SearchEntities", attrs).
+	suite.mockEntityProvider.On("SearchEntities", mock.Anything, attrs).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "search failed", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -4949,7 +4949,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_SystemError_NoSe
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "db error", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -4995,7 +4995,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_NameIs
 // Description and logo are optional, so their absence must not hold up the create.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_DescriptionAndLogoOptional() {
 	suite.expectSchemaForAgentProvisioning()
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 	suite.mockAgentMgtProvider.On("CreateAgent", mock.Anything, mock.MatchedBy(isNotDelegated)).
 		Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
@@ -5020,7 +5020,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Descri
 // A collected lifespan end is passed to the agent service, which validates it.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_PassesValidUntil() {
 	suite.expectSchemaForAgentProvisioning()
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	var received *providers.Agent
@@ -5053,7 +5053,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Passes
 // that check lives in the resolver. A submitted value must therefore never reach the created agent.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_IgnoresSubmittedOwner() {
 	suite.expectSchemaForAgentProvisioning()
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	var received *providers.Agent
@@ -5087,7 +5087,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Ignore
 // What the resolver verified is what gets provisioned, even when a different owner is submitted.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_UsesResolvedOwner() {
 	suite.expectSchemaForAgentProvisioning()
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	var received *providers.Agent
@@ -5116,7 +5116,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_UsesRe
 
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_ConstantsWinOverRuntimeRecordFields() {
 	suite.expectSchemaForAgentProvisioning()
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	var received *providers.Agent
@@ -5371,7 +5371,7 @@ func (suite *ProvisioningExecutorTestSuite) linkedRegistrationCtx(holders ...*pr
 	if len(holders) == 0 {
 		holders = []*providers.Entity{{ID: testExistingUser123ID, OUID: testOUID}}
 	}
-	suite.mockEntityProvider.On("GetLinkedEntities", testFederatedIdpID, testFederatedSub).
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, testFederatedIdpID, testFederatedSub).
 		Return(holders, (*entityprovider.EntityProviderError)(nil)).Maybe()
 	return ctx
 }
@@ -5426,7 +5426,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_CrossOURegistr
 	ctx.NodeProperties = map[string]interface{}{common.NodePropertyAllowCrossOUProvisioning: true}
 	ctx.NodeInputs = []providers.Input{}
 	suite.expectSchemaForProvisioning()
-	suite.mockEntityProvider.On("GetEntityProfile", testExistingUser123ID).
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, testExistingUser123ID).
 		Return(&providers.Entity{ID: testExistingUser123ID, OUID: "ou-source"}, nil).Once()
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything,
 		mock.MatchedBy(func(u *providers.User) bool {
@@ -5450,7 +5450,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_CrossOURegistr
 func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_RegistrationHonorsResolvedUser() {
 	ctx := suite.linkedRegistrationCtx()
 	suite.mockEntityProvider.ExpectedCalls = nil
-	suite.mockEntityProvider.On("GetLinkedEntities", testFederatedIdpID, testFederatedSub).
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, testFederatedIdpID, testFederatedSub).
 		Return([]*providers.Entity{}, (*entityprovider.EntityProviderError)(nil)).Once()
 	ctx.NodeInputs = []providers.Input{}
 	ctx.RuntimeData[userAttributeUserID] = testExistingUser123ID
@@ -5612,7 +5612,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_OnboardingBind
 func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_RegistrationFallsBackWithoutHolderListing() {
 	ctx := suite.linkedRegistrationCtx()
 	suite.mockEntityProvider.ExpectedCalls = nil
-	suite.mockEntityProvider.On("GetLinkedEntities", testFederatedIdpID, testFederatedSub).
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, testFederatedIdpID, testFederatedSub).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeNotImplemented, "", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -5625,7 +5625,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_RegistrationFa
 func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_RegistrationHolderListingFails() {
 	ctx := suite.linkedRegistrationCtx()
 	suite.mockEntityProvider.ExpectedCalls = nil
-	suite.mockEntityProvider.On("GetLinkedEntities", testFederatedIdpID, testFederatedSub).
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, testFederatedIdpID, testFederatedSub).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "", ""))
 
 	_, err := suite.executor.Execute(ctx)

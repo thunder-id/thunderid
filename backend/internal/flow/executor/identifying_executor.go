@@ -87,7 +87,7 @@ func (i *identifyingExecutor) IdentifyEntity(ctx context.Context, filters map[st
 	logger.Debug(ctx, "Identifying entity with filters")
 
 	if entityID, ok := filters[userAttributeUserID].(string); ok && entityID != "" {
-		entity, epErr := i.entityProvider.GetEntityProfile(entityID)
+		entity, epErr := i.entityProvider.GetEntityProfile(ctx, entityID)
 		if epErr != nil {
 			if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 				execResp.Error = errForEntityCategory(ErrEntityNotFound, category)
@@ -108,7 +108,7 @@ func (i *identifyingExecutor) IdentifyEntity(ctx context.Context, filters map[st
 		}
 	}
 
-	entityID, err := i.entityProvider.IdentifyEntity(searchableFilter)
+	entityID, err := i.entityProvider.IdentifyEntity(ctx, searchableFilter)
 	if err != nil {
 		switch err.Code {
 		case entityprovider.ErrorCodeEntityNotFound:
@@ -341,7 +341,7 @@ func (i *identifyingExecutor) executeResolveLinkHolders(ctx *providers.NodeConte
 	// attribute-based resolve may have left with users who do not hold this link. The picks carried in
 	// the user inputs narrow them again each round.
 	federated := federatedIdentityFrom(ctx)
-	holders, epErr := i.entityProvider.GetLinkedEntities(federated.IdpID, federated.Sub)
+	holders, epErr := i.entityProvider.GetLinkedEntities(ctx.Context, federated.IdpID, federated.Sub)
 	if epErr != nil {
 		logger.Debug(ctx.Context, "Failed to retrieve the users linked to the federated identity",
 			log.String("errorCode", string(epErr.Code)))
@@ -451,7 +451,7 @@ func (i *identifyingExecutor) executeCheckStateFederated(ctx *providers.NodeCont
 	execResp *providers.ExecutorResponse, federated *core.ExternalIdentity) (*providers.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	holders, epErr := i.entityProvider.GetLinkedEntities(federated.IdpID, federated.Sub)
+	holders, epErr := i.entityProvider.GetLinkedEntities(ctx.Context, federated.IdpID, federated.Sub)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeNotImplemented {
 			execResp.Status = providers.ExecComplete
@@ -478,7 +478,7 @@ func (i *identifyingExecutor) executeIdentifyFederated(ctx *providers.NodeContex
 	execResp *providers.ExecutorResponse, federated *core.ExternalIdentity) (*providers.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	holders, epErr := i.entityProvider.GetLinkedEntities(federated.IdpID, federated.Sub)
+	holders, epErr := i.entityProvider.GetLinkedEntities(ctx.Context, federated.IdpID, federated.Sub)
 	if epErr != nil {
 		logger.Debug(ctx.Context, "Failed to retrieve the users linked to the federated identity",
 			log.String("errorCode", string(epErr.Code)))
@@ -561,7 +561,7 @@ func (i *identifyingExecutor) searchCandidates(ctx context.Context,
 		}
 	}
 
-	users, err := i.entityProvider.SearchEntities(searchableFilters)
+	users, err := i.entityProvider.SearchEntities(ctx, searchableFilters)
 	if err != nil {
 		if err.Code == entityprovider.ErrorCodeEntityNotFound {
 			logger.Debug(ctx, "No users found for the provided filters")

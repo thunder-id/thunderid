@@ -128,7 +128,7 @@ func (p *actorProvider) AuthenticateActor(
 
 // GetActor returns the backing entity record for the given actor ID.
 func (p *actorProvider) GetActor(actorID string) (*providers.Entity, *tidcommon.ServiceError) {
-	entity, epErr := p.entityProvider.GetEntityProfile(actorID)
+	entity, epErr := p.entityProvider.GetEntityProfile(context.Background(), actorID)
 	if epErr != nil {
 		return nil, mapEntityProviderError(epErr)
 	}
@@ -145,7 +145,7 @@ func (p *actorProvider) GetActor(actorID string) (*providers.Entity, *tidcommon.
 func (p *actorProvider) GetActorGroups(
 	actorID string,
 ) ([]providers.EntityGroup, *tidcommon.ServiceError) {
-	groups, epErr := p.entityProvider.GetTransitiveEntityGroups(actorID)
+	groups, epErr := p.entityProvider.GetTransitiveEntityGroups(context.Background(), actorID)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeNotImplemented {
 			return nil, nil
@@ -159,7 +159,7 @@ func (p *actorProvider) GetActorGroups(
 func (p *actorProvider) GetTransitiveGroupAncestors(
 	groupID string,
 ) ([]string, *tidcommon.ServiceError) {
-	ancestors, epErr := p.entityProvider.GetTransitiveGroupAncestors(groupID)
+	ancestors, epErr := p.entityProvider.GetTransitiveGroupAncestors(context.Background(), groupID)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeNotImplemented {
 			return nil, nil

@@ -309,7 +309,7 @@ func TestInitiateFlowSuccessScenarios(t *testing.T) {
 			} else {
 				mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).
 					Return(mockClient, nil)
-				mockEntityProvider.EXPECT().GetEntityProfile(appID).
+				mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).
 					Return(mockEntity, (*entityprovider.EntityProviderError)(nil))
 				mockFlowProvider.EXPECT().GetFlow(mock.Anything, "auth-graph-1").
 					Return(&providers.CompleteFlowDefinition{ID: "auth-graph-1"}, nil)
@@ -457,7 +457,7 @@ func TestInitiateFlowErrorScenarios(t *testing.T) {
 			) {
 				mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).
 					Return(&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-1"}, nil)
-				mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+				mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 					&providers.Entity{ID: appID, Category: providers.EntityCategoryApp},
 					(*entityprovider.EntityProviderError)(nil))
 
@@ -572,7 +572,7 @@ func TestInitiateFlowFallsBackToDefaultFlow(t *testing.T) {
 
 		mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).
 			Return(&inboundmodel.InboundClient{ID: appID, AuthFlowID: "stale-auth-graph"}, nil)
-		mockEntityProvider.EXPECT().GetEntityProfile(appID).
+		mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).
 			Return(&providers.Entity{ID: appID, Category: providers.EntityCategoryApp},
 				(*entityprovider.EntityProviderError)(nil))
 
@@ -732,7 +732,7 @@ func TestEncryptedPayloadStoredBeforeWrite(t *testing.T) {
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app").Return(
 		&inboundmodel.InboundClient{ID: "test-app", AuthFlowID: "auth-graph-1"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app").Return(
 		&providers.Entity{ID: "test-app", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 	mockFlowProvider.EXPECT().
@@ -814,7 +814,7 @@ func TestDecryptCalledForEncryptedStoredContext(t *testing.T) {
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 
@@ -1114,7 +1114,7 @@ func TestExecute_ContextDecryptionSuccess(t *testing.T) {
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 	challengeToken := "test-challenge-token"
@@ -1178,7 +1178,7 @@ func TestExecute_ExistingFlowWithoutChallengeToken(t *testing.T) {
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 
@@ -1273,7 +1273,7 @@ func TestExecute_ExistingFlowWithDifferentChallengeTokens(t *testing.T) {
 			mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 			mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 				&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-			mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+			mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 				&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp},
 				(*entityprovider.EntityProviderError)(nil))
 
@@ -1350,7 +1350,7 @@ func TestExecute_EngineError_InvalidChallengeToken_PreservesContext(t *testing.T
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 	mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -1421,7 +1421,7 @@ func TestExecute_EngineError_NonChallengeToken_RemovesContext(t *testing.T) {
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 
@@ -1484,7 +1484,7 @@ func TestExecute_EngineError_NewFlow_ContextNeverRemoved(t *testing.T) {
 		Return(providers.AuthUser{}, nil, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app").Return(
 		&inboundmodel.InboundClient{ID: "test-app", AuthFlowID: "auth-graph-1"}, nil).Times(3)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app").Return(
 		&providers.Entity{ID: "test-app", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 	mockFlowProvider.EXPECT().
@@ -1564,7 +1564,7 @@ func TestBuildApplication_EntityLoadError(t *testing.T) {
 	provider, mockInbound, mockEP := newBuildAppProvider(t)
 	mockInbound.EXPECT().GetInboundClientByEntityID(mock.Anything, "app-x").
 		Return(&inboundmodel.InboundClient{ID: "app-x"}, nil)
-	mockEP.EXPECT().GetEntityProfile("app-x").Return(
+	mockEP.EXPECT().GetEntityProfile(mock.Anything, "app-x").Return(
 		(*providers.Entity)(nil),
 		entityprovider.NewEntityProviderError("INTERNAL_ERROR", "boom", ""))
 
@@ -1581,7 +1581,7 @@ func TestBuildApplication_EntityNotFound_ReturnsAppWithoutEntityFields(t *testin
 			ID:               "app-x",
 			AllowedUserTypes: []string{"customer"},
 		}, nil)
-	mockEP.EXPECT().GetEntityProfile("app-x").Return(
+	mockEP.EXPECT().GetEntityProfile(mock.Anything, "app-x").Return(
 		(*providers.Entity)(nil),
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "missing", ""))
 
@@ -1605,7 +1605,7 @@ func TestBuildApplication_Success_WithMetadataAndClientID(t *testing.T) {
 			},
 		}, nil)
 	sysAttrs := []byte(`{"name":"Acme","clientId":"client-1"}`)
-	mockEP.EXPECT().GetEntityProfile("app-x").Return(
+	mockEP.EXPECT().GetEntityProfile(mock.Anything, "app-x").Return(
 		&providers.Entity{
 			ID:               "app-x",
 			Category:         providers.EntityCategoryApp,
@@ -1727,7 +1727,7 @@ func TestInitiateAndExecute_CustomExpiryUsed(t *testing.T) {
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-expiry"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().
 		GetFlow(mock.Anything, "auth-graph-expiry").
@@ -1780,7 +1780,7 @@ func (s *ServiceTestSuite) TestInitiationRefusesAHeldApplication() {
 
 		mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 			&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-held"}, nil)
-		mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+		mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 			&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 		mockFlowProvider.EXPECT().GetFlow(mock.Anything, "auth-graph-held").
 			Return(&providers.CompleteFlowDefinition{ID: "auth-graph-held"}, nil)
@@ -1837,7 +1837,7 @@ func TestInitiateAndExecute_ZeroExpiryUsesDefault(t *testing.T) {
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-defexp"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().
 		GetFlow(mock.Anything, "auth-graph-defexp").
@@ -1902,7 +1902,7 @@ func TestInitiateAndExecute_InitialInputsAndRuntimeData(t *testing.T) {
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-ia"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().
 		GetFlow(mock.Anything, "auth-graph-ia").
@@ -1963,7 +1963,7 @@ func TestInitiateAndExecute_FlowComplete_ContextNotStored(t *testing.T) {
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-complete"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().
 		GetFlow(mock.Anything, "auth-graph-complete").
@@ -2016,7 +2016,7 @@ func TestInitiateAndExecute_EngineError(t *testing.T) {
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-ee"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().
 		GetFlow(mock.Anything, "auth-graph-ee").
@@ -2067,7 +2067,7 @@ func TestInitiateAndExecute_StoreError_ReturnsError(t *testing.T) {
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-se"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().
 		GetFlow(mock.Anything, "auth-graph-se").
@@ -2280,7 +2280,7 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_IncompleteStoresContext() {
 		Return(providers.AuthUser{}, nil, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-new"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().
 		GetFlow(mock.Anything, "auth-graph-new").
@@ -2348,7 +2348,7 @@ func (s *ServiceTestSuite) TestExecute_ExistingFlow_CompleteRemovesContext() {
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp}, nil)
 	mockEngine.EXPECT().Execute(mock.Anything).
 		Return(FlowStep{Status: providers.FlowStatusComplete}, nil)
@@ -2974,7 +2974,7 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_BackendApp_ValidSecret_Allowed() 
 		Return(providers.AuthUser{}, nil, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app").Return(
 		&inboundmodel.InboundClient{ID: "test-app", AuthFlowID: "auth-graph-1"}, nil).Times(3)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app").Return(
 		&providers.Entity{ID: "test-app", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 	mockFlowProvider.EXPECT().
@@ -3090,7 +3090,7 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_EmbeddedApp_ValidSecret_Allowed()
 		Return(providers.AuthUser{}, nil, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app").Return(
 		&inboundmodel.InboundClient{ID: "test-app", AuthFlowID: "auth-graph-1"}, nil).Times(3)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app").Return(
 		&providers.Entity{ID: "test-app", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 	mockFlowProvider.EXPECT().
@@ -3183,7 +3183,7 @@ func (s *ServiceTestSuite) TestExecute_ContinuationFlow_AuthCodeApp_NotBlocked()
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app").Return(
 		&inboundmodel.InboundClient{ID: "test-app", AuthFlowID: "auth-graph-1"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app").Return(
 		&providers.Entity{ID: "test-app", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 
@@ -3663,7 +3663,7 @@ func (s *ServiceTestSuite) TestInitiateAndExecute_IgnoresConstantInitialInputs()
 
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
 		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-constant"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(appID).Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
 		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
 	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "auth-graph-constant").
 		Return(&providers.CompleteFlowDefinition{ID: "auth-graph-constant"}, nil)
@@ -3900,7 +3900,7 @@ func (s *ServiceTestSuite) TestExecuteRefusesAHeldApplicationOnAContinuingStep()
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile("test-app-id").Return(
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
 		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp},
 		(*entityprovider.EntityProviderError)(nil))
 	governance.EXPECT().EvaluateAccess(mock.Anything, "test-app-id", providers.AccessPlaneApplication,

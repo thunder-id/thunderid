@@ -167,7 +167,8 @@ func (s *ActorProviderTestSuite) TestAuthenticateActor_Delegates_Failure() {
 
 func (s *ActorProviderTestSuite) TestGetActor_Delegates() {
 	expected := &providers.Entity{ID: "app-1"}
-	s.mockEntity.On("GetEntityProfile", "app-1").Return(expected, (*entityprovider.EntityProviderError)(nil))
+	s.mockEntity.On("GetEntityProfile", mock.Anything, "app-1").
+		Return(expected, (*entityprovider.EntityProviderError)(nil))
 
 	entity, err := s.provider.GetActor("app-1")
 
@@ -188,7 +189,7 @@ func (s *ActorProviderTestSuite) TestGetActor_ErrorMapping() {
 	} {
 		s.Run(name, func() {
 			s.SetupTest()
-			s.mockEntity.On("GetEntityProfile", "app-1").
+			s.mockEntity.On("GetEntityProfile", mock.Anything, "app-1").
 				Return((*providers.Entity)(nil), entityprovider.NewEntityProviderError(tc.code, "", ""))
 
 			entity, err := s.provider.GetActor("app-1")
@@ -214,7 +215,7 @@ func (s *ActorProviderTestSuite) TestGetActor_AgentDisplayComesFromTheDisplayAtt
 				[]string{"default"}).Return(map[string]string{"default": tc.displayPath},
 				(*tidcommon.ServiceError)(nil)).Once()
 			provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, mockType)
-			s.mockEntity.On("GetEntityProfile", "agent-1").Return(&providers.Entity{
+			s.mockEntity.On("GetEntityProfile", mock.Anything, "agent-1").Return(&providers.Entity{
 				ID: "agent-1", Category: providers.EntityCategoryAgent, Type: "default",
 				Attributes: []byte(`{"name":"Ledger Agent"}`),
 			}, (*entityprovider.EntityProviderError)(nil)).Once()
@@ -229,7 +230,8 @@ func (s *ActorProviderTestSuite) TestGetActor_AgentDisplayComesFromTheDisplayAtt
 
 func (s *ActorProviderTestSuite) TestGetActorGroups_Delegates() {
 	expected := []providers.EntityGroup{{ID: "group-1"}}
-	s.mockEntity.On("GetTransitiveEntityGroups", "app-1").Return(expected, (*entityprovider.EntityProviderError)(nil))
+	s.mockEntity.On("GetTransitiveEntityGroups", mock.Anything, "app-1").
+		Return(expected, (*entityprovider.EntityProviderError)(nil))
 
 	groups, err := s.provider.GetActorGroups("app-1")
 
