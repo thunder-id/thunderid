@@ -41,7 +41,7 @@ curl -X POST https://localhost:8090/agents \
   }'
 ```
 
-`type` and `attributes.name` are required, and so is an organization unit, given as `ouId` or `ouHandle`, unless you pass `projectId` (see [Scope agents to a project](#scope-agents-to-a-project)); `owner` is optional, and so are the other attributes unless the [agent schema](../agent-schema) marks them required. `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
+`type` and `attributes.name` are required, and so is an organization unit, given as `ouId` or `ouHandle`, unless you pass `projectId` (see [Scope agents to a project](#scope-agents-to-a-project)); `owner` and `validUntil` are optional, and so are the other attributes unless the [agent schema](../agent-schema) marks them required. `validUntil` is when the agent's lifespan ends; see [Set an Agent's Lifespan](../agent-lifespan). `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
 
 </TabItem>
 </Tabs>
@@ -113,6 +113,10 @@ The **Advanced** tab gathers the agent's OAuth and operational settings:
 ## Agent schema
 
 The custom attributes every agent carries come from the agent schema, a single built-in schema shared by all agents. See [Agent Schema](../agent-schema) to view the default attributes and change what an agent holds.
+
+## Set a lifespan
+
+Give an agent an end date, its `validUntil`, to stop it authenticating and obtaining tokens automatically once its work is done. Set it on the agent's **Attributes** tab or through the API. Tokens issued to the agent or for it expire no later than the `validUntil` in force when they are issued; moving it earlier does not revoke tokens already issued. See [Set an Agent's Lifespan](../agent-lifespan).
 
 ## Suspend or unlock an agent
 
