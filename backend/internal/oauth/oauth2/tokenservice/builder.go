@@ -338,18 +338,17 @@ func (tb *tokenBuilder) BuildIDJAG(
 		return nil, capErr
 	}
 
-	claims := map[string]interface{}{
-		"aud":       tokenCtx.Audience,
-		"client_id": tokenCtx.ClientID,
-	}
+	claims := idjagIdentityClaims(tokenCtx.UserAttributes, tokenCtx.OAuthApp)
+	claims[constants.ClaimAud] = tokenCtx.Audience
+	claims[constants.ClaimClientID] = tokenCtx.ClientID
 	if len(tokenCtx.Scopes) > 0 {
-		claims["scope"] = JoinScopes(tokenCtx.Scopes)
+		claims[constants.ClaimScope] = JoinScopes(tokenCtx.Scopes)
 	}
 	// RFC 8707: a single resource is embedded as a string, multiple resources as an array.
 	if len(tokenCtx.Resources) == 1 {
-		claims["resource"] = tokenCtx.Resources[0]
+		claims[constants.ClaimResource] = tokenCtx.Resources[0]
 	} else if len(tokenCtx.Resources) > 1 {
-		claims["resource"] = tokenCtx.Resources
+		claims[constants.ClaimResource] = tokenCtx.Resources
 	}
 
 	token, iat, err := tb.jwtService.GenerateJWT(

@@ -2098,7 +2098,7 @@ components:
           type: array
           items:
             type: string
-          description: The user attributes to include in the ID token. Only claims requested by scopes AND listed here will be included.
+          description: The user attributes to include in the ID token. Only claims requested by scopes AND listed here will be included. Identity assertions (ID-JAG) the application requests also carry the ones the ID token holds, except roles and groups.
           example: ["email", "name", "given_name", "family_name"]
         responseType:
           type: string

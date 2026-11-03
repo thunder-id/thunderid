@@ -93,7 +93,7 @@ Applies only when the agent signs users in with the authorization code or CIBA g
 
 ### Tokens
 
-What the agent's tokens carry and how long they last, set independently for each audience: the **Agent** token it uses on its own, and the **User** token it holds when acting for a user. Without the authorization code or CIBA grant, the **User** token shows only the access token settings, since the other delegated grants issue no ID or refresh token. See [Agent Token](../authentication/agent-own-token) for the agent token and [Agent Access on Behalf of Users](../authentication/on-behalf-of-user) for the user token.
+What the agent's tokens carry and how long they last, set independently for each audience: the **Agent** token it uses on its own, and the **User** token it holds when acting for a user. Without the authorization code or CIBA grant, the **User** token shows only the access token settings, since the other delegated grants issue no ID or refresh token. See [Agent Token](../authentication/agent-own-token) for the agent token and [Agent Access on Behalf of Users](../authentication/on-behalf-of-user) for the user token. When the agent issues identity assertions, they carry the attributes selected for the **User** ID token too, except `roles` and `groups`. See [Issue Identity Assertions (ID-JAG)](../../protocols/oauth-oidc/identity-assertion-grant/issue-identity-assertions#identity-claims).
 
 ### Advanced
 

@@ -43,6 +43,13 @@ const (
 	issuanceAgentClientID     = "idjag_issuance_agent"
 	issuanceAgentClientSecret = "idjag_issuance_agent_secret"
 
+	idTokenAttrsClientID      = "idjag_id_token_attrs_client"
+	idTokenAttrsAppName       = "IDJAGIDTokenAttributesApp"
+	idTokenAttrsAgentClientID = "idjag_id_token_attrs_agent"
+	issuanceRoleName          = "idjag-issuance-role"
+	issuanceGroupName         = "idjag-issuance-group"
+	issuanceNonce             = "idjag-issuance-nonce"
+
 	tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange"
 	idJAGGrantProfile      = "urn:ietf:params:oauth:grant-profile:id-jag"
 	extraIDJAGClientID     = "idjag_extra_client"
@@ -365,6 +372,13 @@ func (ts *IDJAGIssuanceTestSuite) obtainSelfIssuedIDToken() string {
 // resulting self-issued ID token.
 func (ts *IDJAGIssuanceTestSuite) obtainIDToken(clientID, clientSecret string) string {
 	ts.T().Helper()
+	return ts.obtainIDTokenForScope(clientID, clientSecret, "openid email")
+}
+
+// obtainIDTokenForScope runs the full authorization code flow for the given client with the given scope
+// and a nonce, and returns the resulting self-issued ID token.
+func (ts *IDJAGIssuanceTestSuite) obtainIDTokenForScope(clientID, clientSecret, scope string) string {
+	ts.T().Helper()
 
 	verifier, err := testutils.GenerateCodeVerifier()
 	ts.Require().NoError(err)
@@ -374,7 +388,8 @@ func (ts *IDJAGIssuanceTestSuite) obtainIDToken(clientID, clientSecret string) s
 	params.Set("client_id", clientID)
 	params.Set("redirect_uri", issuanceRedirectURI)
 	params.Set("response_type", "code")
-	params.Set("scope", "openid email")
+	params.Set("scope", scope)
+	params.Set("nonce", issuanceNonce)
 	params.Set("state", "idjag-issuance-state")
 	params.Set("code_challenge", challenge)
 	params.Set("code_challenge_method", "S256")
@@ -900,6 +915,179 @@ func (ts *IDJAGIssuanceTestSuite) extraIDJAGAppDefinition() map[string]any {
 				"token": map[string]any{
 					"idJag": map[string]any{"enabled": true, "allowedAudiences": []string{allowedAudience}},
 				},
+			},
+		}},
+	}
+}
+
+// TestIDJAGIssuance_CarriesIDTokenAttributes covers an application whose ID token releases email, roles
+// and groups: the ID-JAG carries the email, and none of roles, groups or the claims the ID token adds.
+func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_CarriesIDTokenAttributes() {
+	ts.grantRoleAndGroup()
+	appID := ts.createApplication(ts.idTokenAttributesAppDefinition())
+	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
+
+	ts.assertIDJAGCarriesIDTokenAttributes(idTokenAttrsClientID, issuanceClientSecret)
+}
+
+// TestIDJAGIssuance_Agent_CarriesIDTokenAttributes covers the same rule for a delegated agent created
+// through /agents.
+func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_Agent_CarriesIDTokenAttributes() {
+	ts.grantRoleAndGroup()
+	ts.useDefaultAgentTypeInSuiteOU()
+	agentID := ts.create("/agents", ts.idTokenAttributesAgentDefinition())
+	ts.T().Cleanup(func() { _ = testutils.DeleteAgent(agentID) })
+
+	ts.assertIDJAGCarriesIDTokenAttributes(idTokenAttrsAgentClientID, issuanceAgentClientSecret)
+}
+
+// TestIDJAGIssuance_CarriesOnlyReleasedAttributes covers a sign-in without the email scope: the ID token
+// holds no email, so the ID-JAG holds none either, although the ID token configuration lists it.
+func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_CarriesOnlyReleasedAttributes() {
+	appID := ts.createApplication(ts.idTokenAttributesAppDefinition())
+	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
+
+	idToken := ts.obtainIDTokenForScope(idTokenAttrsClientID, issuanceClientSecret, "openid")
+	idTokenClaims, err := testutils.DecodeJWTPayloadMap(idToken)
+	ts.Require().NoError(err)
+	ts.Require().NotContains(idTokenClaims, "email", "the ID token should not carry email without the email scope")
+
+	claims := ts.issueIDJAGClaims(idTokenAttrsClientID, issuanceClientSecret, idToken, "")
+
+	ts.NotContains(claims, "email")
+}
+
+// TestIDJAGIssuance_ExchangeScopeDoesNotAddClaims covers an exchange request whose scope names email: the
+// scope lands in the ID-JAG's scope claim, but no email claim is added when the ID token holds none.
+func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_ExchangeScopeDoesNotAddClaims() {
+	appID := ts.createApplication(ts.idTokenAttributesAppDefinition())
+	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
+
+	idToken := ts.obtainIDTokenForScope(idTokenAttrsClientID, issuanceClientSecret, "openid")
+	idTokenClaims, err := testutils.DecodeJWTPayloadMap(idToken)
+	ts.Require().NoError(err)
+	ts.Require().NotContains(idTokenClaims, "email", "the ID token should not carry email without the email scope")
+
+	claims := ts.issueIDJAGClaims(idTokenAttrsClientID, issuanceClientSecret, idToken, "email")
+
+	ts.Equal("email", claims["scope"])
+	ts.NotContains(claims, "email")
+}
+
+// assertIDJAGCarriesIDTokenAttributes signs the user in to the client with the email and roles scopes,
+// exchanges the ID token for an ID-JAG, and checks which of the ID token's claims the ID-JAG carries.
+func (ts *IDJAGIssuanceTestSuite) assertIDJAGCarriesIDTokenAttributes(clientID, clientSecret string) {
+	ts.T().Helper()
+	idToken := ts.obtainIDTokenForScope(clientID, clientSecret, "openid email roles")
+	idTokenClaims, err := testutils.DecodeJWTPayloadMap(idToken)
+	ts.Require().NoError(err)
+	excluded := []string{"roles", "groups", "nonce", "auth_time"}
+	for _, name := range append([]string{"email"}, excluded...) {
+		ts.Require().Containsf(idTokenClaims, name, "the ID token should carry %s", name)
+	}
+
+	claims := ts.issueIDJAGClaims(clientID, clientSecret, idToken, "")
+
+	ts.Equal(issuanceTestEmail, claims["email"])
+	for _, name := range excluded {
+		ts.NotContainsf(claims, name, "the ID-JAG should not carry %s", name)
+	}
+}
+
+// issueIDJAGClaims exchanges idToken for an ID-JAG for the allowed audience, with scope on the exchange
+// request when it is not empty, and returns the ID-JAG's claims.
+func (ts *IDJAGIssuanceTestSuite) issueIDJAGClaims(clientID, clientSecret, idToken, scope string) map[string]any {
+	ts.T().Helper()
+	formData := url.Values{}
+	formData.Set("grant_type", tokenExchangeGrantType)
+	formData.Set("subject_token", idToken)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:id_token")
+	formData.Set("requested_token_type", "urn:ietf:params:oauth:token-type:id-jag")
+	formData.Set("audience", allowedAudience)
+	if scope != "" {
+		formData.Set("scope", scope)
+	}
+
+	resp, statusCode, err := ts.exchangeForIDJAG(formData.Encode(), "Basic "+basicAuth(clientID, clientSecret))
+	ts.Require().NoError(err)
+	ts.Require().Equalf(http.StatusOK, statusCode, "%s: %s", resp.Error, resp.ErrorDescription)
+
+	claims, err := testutils.DecodeJWTPayloadMap(resp.AccessToken)
+	ts.Require().NoError(err)
+	return claims
+}
+
+// grantRoleAndGroup gives the suite's user a role and a group membership until the test ends, so ID tokens
+// that release roles and groups carry them.
+func (ts *IDJAGIssuanceTestSuite) grantRoleAndGroup() {
+	ts.T().Helper()
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: issuanceRoleName, OUID: ts.ouID,
+		Assignments: []testutils.Assignment{{ID: ts.userID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "create test role")
+	ts.T().Cleanup(func() { _ = testutils.DeleteRole(roleID) })
+
+	groupID, err := testutils.CreateGroup(testutils.Group{
+		Name: issuanceGroupName, OUID: ts.ouID,
+		Members: []testutils.Member{{Id: ts.userID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "create test group")
+	ts.T().Cleanup(func() { _ = testutils.DeleteGroup(groupID) })
+}
+
+// idTokenAttributesTokenConfig returns client token settings whose ID token releases email, roles and
+// groups, with ID-JAG on.
+func idTokenAttributesTokenConfig() map[string]any {
+	return map[string]any{
+		"idToken": map[string]any{"userAttributes": []string{"email", "roles", "groups"}},
+		"idJag":   map[string]any{"enabled": true, "allowedAudiences": []string{allowedAudience}},
+	}
+}
+
+// idTokenAttributesAppDefinition returns an application whose ID token releases email, roles and groups,
+// with ID-JAG on.
+func (ts *IDJAGIssuanceTestSuite) idTokenAttributesAppDefinition() map[string]any {
+	return map[string]any{
+		"name": idTokenAttrsAppName, "description": "ID-JAG app whose ID token releases attributes",
+		"ouId": ts.ouID, "type": "fullstack", "authFlowId": ts.authFlowID,
+		"isRegistrationFlowEnabled": false,
+		"allowedUserTypes":          []string{"idjag-issuance-person"},
+		"inboundAuthConfig": []map[string]any{{
+			"type": "oauth2",
+			"config": map[string]any{
+				"clientId": idTokenAttrsClientID, "clientSecret": issuanceClientSecret,
+				"redirectUris":            []string{issuanceRedirectURI},
+				"grantTypes":              []string{"authorization_code", tokenExchangeGrantType},
+				"responseTypes":           []string{"code"},
+				"tokenEndpointAuthMethod": "client_secret_basic",
+				"scopes":                  []string{"openid", "email", "roles"},
+				"scopeClaims":             map[string]any{"roles": []string{"roles", "groups"}},
+				"token":                   idTokenAttributesTokenConfig(),
+			},
+		}},
+	}
+}
+
+// idTokenAttributesAgentDefinition returns a delegated agent whose ID token releases email, roles and
+// groups, with ID-JAG on.
+func (ts *IDJAGIssuanceTestSuite) idTokenAttributesAgentDefinition() map[string]any {
+	return map[string]any{
+		"ouId": ts.ouID, "type": "default", "attributes": map[string]any{"name": "IDJAG ID Token Attributes Agent"},
+		"delegated": true, "authFlowId": ts.authFlowID,
+		"allowedUserTypes": []string{"idjag-issuance-person"},
+		"inboundAuthConfig": []map[string]any{{
+			"type": "oauth2",
+			"config": map[string]any{
+				"clientId": idTokenAttrsAgentClientID, "clientSecret": issuanceAgentClientSecret,
+				"redirectUris":            []string{issuanceRedirectURI},
+				"grantTypes":              []string{"authorization_code", tokenExchangeGrantType},
+				"responseTypes":           []string{"code"},
+				"pkceRequired":            true,
+				"tokenEndpointAuthMethod": "client_secret_basic",
+				"scopes":                  []string{"openid", "email", "roles"},
+				"scopeClaims":             map[string]any{"roles": []string{"roles", "groups"}},
+				"token":                   idTokenAttributesTokenConfig(),
 			},
 		}},
 	}

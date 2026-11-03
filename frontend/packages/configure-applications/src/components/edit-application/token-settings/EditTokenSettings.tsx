@@ -998,6 +998,7 @@ export default function EditTokenSettings({
             accessTokenOnly={isAccessTokenOnly}
             showAccessTokenAttributes={showAccessTokenAttributes}
             accessTokenNote={accessTokenNote}
+            idJagEnabled={Boolean(oauth2Config?.token?.idJag?.enabled)}
             userAttributeSource={userAttributeSource}
             userAttributesError={userAttributesError}
             onRetryUserAttributes={refetchAllUserTypeAttributes}

@@ -3826,6 +3826,8 @@ const translations = {
     'edit.token.id_token.response_type_placeholder': 'Select response type',
     'edit.token.id_token.encryption_alg_placeholder': 'Select encryption algorithm',
     'edit.token.id_token.encryption_enc_placeholder': 'Select content encryption',
+    'edit.token.id_token.id_jag_note':
+      'Identity assertions (ID-JAG) this {{entity}} requests also include the allowed attributes below, except roles and groups, whenever the ID token carries them.',
     'edit.token.user_info.response_type_placeholder': 'Select response type',
     'edit.token.user_info.encryption_alg_placeholder': 'Select encryption algorithm',
     'edit.token.user_info.encryption_enc_placeholder': 'Select content encryption',
