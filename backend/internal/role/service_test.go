@@ -999,17 +999,72 @@ func (suite *RoleServiceTestSuite) TestGetRolesByNames_DedupesInputAndGroupsAmbi
 	suite.mockStore.On("GetRolesByNames", mock.Anything, []string{"admins"}).
 		Return([]Role{
 			{ID: "role-1", Name: "admins", OUID: "ou-1"},
-			{ID: "role-2", Name: "admins", OUID: "ou-2"},
+			{ID: "role-2", Name: "admins", OUID: "ou-1"},
 		}, nil)
 
-	result, err := suite.service.GetRolesByNames(context.Background(), []string{"admins", "admins"})
+	result, err := suite.service.GetRolesByNames(context.Background(), []string{"admins", "admins"}, "ou-1")
 
 	suite.Nil(err)
 	suite.Len(result["admins"], 2)
 }
 
+func (suite *RoleServiceTestSuite) TestGetRolesByNames_KeepsOwnedAndSharedRoles() {
+	suite.mockStore.On("GetRolesByNames", mock.Anything, []string{"admins"}).
+		Return([]Role{
+			{ID: "owned", Name: "admins", OUID: "ou-1"},
+			{ID: "shared", Name: "admins", OUID: "ou-root"},
+			{ID: "other", Name: "admins", OUID: "ou-2"},
+		}, nil)
+	suite.mockSharingService.EXPECT().ListVisibleResourceIDs(mock.Anything, RoleSharingType, "ou-1").
+		Return([]string{"shared"}, nil).Once()
+
+	result, err := suite.service.GetRolesByNames(context.Background(), []string{"admins"}, "ou-1")
+
+	suite.Require().Nil(err)
+	suite.Require().Len(result["admins"], 2)
+	suite.Equal("owned", result["admins"][0].ID)
+	suite.Equal("shared", result["admins"][1].ID)
+}
+
+func (suite *RoleServiceTestSuite) TestGetRolesByNames_OwnedOnlySkipsSharingLookup() {
+	suite.mockStore.On("GetRolesByNames", mock.Anything, []string{"admins"}).
+		Return([]Role{{ID: "owned", Name: "admins", OUID: "ou-1"}}, nil)
+
+	result, err := suite.service.GetRolesByNames(context.Background(), []string{"admins"}, "ou-1")
+
+	suite.Require().Nil(err)
+	suite.Require().Len(result["admins"], 1)
+	suite.mockSharingService.AssertNotCalled(suite.T(), "ListVisibleResourceIDs", mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
+func (suite *RoleServiceTestSuite) TestGetRolesByNames_UnknownOUHasNothingShared() {
+	suite.mockStore.On("GetRolesByNames", mock.Anything, []string{"admins"}).
+		Return([]Role{{ID: "other", Name: "admins", OUID: "ou-2"}}, nil)
+	suite.mockSharingService.EXPECT().ListVisibleResourceIDs(mock.Anything, RoleSharingType, "gone").
+		Return(nil, &oupkg.ErrorOrganizationUnitNotFound).Once()
+
+	result, err := suite.service.GetRolesByNames(context.Background(), []string{"admins"}, "gone")
+
+	suite.Require().Nil(err)
+	suite.Empty(result)
+}
+
+func (suite *RoleServiceTestSuite) TestGetRolesByNames_SharingError() {
+	suite.mockStore.On("GetRolesByNames", mock.Anything, []string{"admins"}).
+		Return([]Role{{ID: "other", Name: "admins", OUID: "ou-2"}}, nil)
+	suite.mockSharingService.EXPECT().ListVisibleResourceIDs(mock.Anything, RoleSharingType, "ou-1").
+		Return(nil, &tidcommon.InternalServerError).Once()
+
+	result, err := suite.service.GetRolesByNames(context.Background(), []string{"admins"}, "ou-1")
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.ServerErrorType, err.Type)
+}
+
 func (suite *RoleServiceTestSuite) TestGetRolesByNames_EmptyInputReturnsEmptyMap() {
-	result, err := suite.service.GetRolesByNames(context.Background(), nil)
+	result, err := suite.service.GetRolesByNames(context.Background(), nil, "ou-1")
 
 	suite.Nil(err)
 	suite.Empty(result)
@@ -1019,7 +1074,7 @@ func (suite *RoleServiceTestSuite) TestGetRolesByNames_StoreError() {
 	suite.mockStore.On("GetRolesByNames", mock.Anything, []string{"admins"}).
 		Return(nil, errors.New("database error"))
 
-	result, err := suite.service.GetRolesByNames(context.Background(), []string{"admins"})
+	result, err := suite.service.GetRolesByNames(context.Background(), []string{"admins"}, "ou-1")
 
 	suite.Nil(result)
 	suite.NotNil(err)

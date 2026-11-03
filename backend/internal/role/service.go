@@ -42,7 +42,7 @@ type RoleServiceInterface interface {
 		*RoleWithPermissionsAndAssignments, *tidcommon.ServiceError)
 	GetRoleWithPermissions(ctx context.Context, id string) (*RoleWithPermissions, *tidcommon.ServiceError)
 	GetRoleInOU(ctx context.Context, id, ouID string) (*RoleWithPermissions, *tidcommon.ServiceError)
-	GetRolesByNames(ctx context.Context, names []string) (map[string][]*Role, *tidcommon.ServiceError)
+	GetRolesByNames(ctx context.Context, names []string, ouID string) (map[string][]*Role, *tidcommon.ServiceError)
 	UpdateRoleWithPermissions(ctx context.Context, id string, role RoleUpdateDetail) (
 		*RoleWithPermissions, *tidcommon.ServiceError)
 	DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError
@@ -462,10 +462,11 @@ func (rs *roleService) GetRoleInOU(ctx context.Context, id, ouID string) (
 	return role, nil
 }
 
-// GetRolesByNames retrieves roles by a list of names, keyed by name. A name may resolve to more than
-// one role across organization units; the caller decides how to handle that ambiguity.
+// GetRolesByNames retrieves the roles with the given names that an organization unit owns or has shared
+// with it, keyed by name. A name may resolve to more than one of them; the caller decides how to handle
+// that ambiguity.
 func (rs *roleService) GetRolesByNames(
-	ctx context.Context, names []string,
+	ctx context.Context, names []string, ouID string,
 ) (map[string][]*Role, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
@@ -488,9 +489,23 @@ func (rs *roleService) GetRolesByNames(
 		return nil, &tidcommon.InternalServerError
 	}
 
+	shared := make(map[string]bool)
+	if slices.ContainsFunc(roles, func(r Role) bool { return r.OUID != ouID }) {
+		sharedIDs, svcErr := rs.sharingService.ListVisibleResourceIDs(ctx, RoleSharingType, ouID)
+		// An organization unit that does not exist has nothing shared with it.
+		if svcErr != nil && svcErr.Code != oupkg.ErrorOrganizationUnitNotFound.Code {
+			return nil, translateSharingError(svcErr)
+		}
+		for _, id := range sharedIDs {
+			shared[id] = true
+		}
+	}
+
 	result := make(map[string][]*Role, len(roles))
 	for i := range roles {
-		result[roles[i].Name] = append(result[roles[i].Name], &roles[i])
+		if roles[i].OUID == ouID || shared[roles[i].ID] {
+			result[roles[i].Name] = append(result[roles[i].Name], &roles[i])
+		}
 	}
 
 	return result, nil

@@ -353,14 +353,16 @@ vi.mock('../../components/AttributeMappingSection', () => ({
 // who never opens the section behaves.
 vi.mock('../../components/AuthorizationMappingSection', () => ({
   default: function StubAuthorizationMappingSection({
+    ouId = undefined,
     onRuleChange,
     onDirectChange,
   }: {
+    ouId?: string;
     onRuleChange: (c: unknown, v: boolean) => void;
     onDirectChange: (c: unknown, v: boolean) => void;
   }) {
     return (
-      <>
+      <div data-testid="authz-mapping-section" data-ou-id={ouId}>
         <button type="button" data-testid="clear-authz-mappings" onClick={() => onRuleChange(undefined, true)}>
           clear authorization mappings
         </button>
@@ -377,7 +379,7 @@ vi.mock('../../components/AuthorizationMappingSection', () => ({
         >
           report incomplete row
         </button>
-      </>
+      </div>
     );
   },
 }));
@@ -643,6 +645,13 @@ describe('ConnectionDetailPage', () => {
 
     await waitFor(() => expect(refetchMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument());
+  });
+
+  it("passes the connection's organization unit to the authorization mapping section", () => {
+    mockConn.data = {...CONNECTION, ouId: 'ou-1'};
+    render(<ConnectionDetailPage />);
+    fireEvent.click(screen.getByTestId('connection-tab-attributes'));
+    expect(screen.getByTestId('authz-mapping-section')).toHaveAttribute('data-ou-id', 'ou-1');
   });
 
   it('omits authorization mappings and account linking from the save payload once cleared, instead of reverting to the stored value', () => {

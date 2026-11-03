@@ -3978,7 +3978,9 @@ components:
         - type
       description: >
         A single local role, group, or permission a matching rule confers. The referenced role,
-        group, or permission must already exist; the connection is rejected otherwise.
+        group, or permission must already exist, a role must be owned by the connection's
+        organization unit or shared with it, and a group must be owned by it; the connection is
+        rejected otherwise.
       properties:
         type:
           type: string
@@ -4004,9 +4006,10 @@ components:
         - targetType
       description: >
         Feeds every value of a single external claim directly onto local roles, groups, or
-        permissions of targetType, using each value as the name (or permission string) to look up. A
-        value with no unambiguous match (none, or more than one, since role and group names are only
-        unique within an organization unit) confers nothing.
+        permissions of targetType, using each value as the name (or permission string) to look up.
+        Only the roles the connection's organization unit owns or has shared with it, and the groups
+        it owns, are matched. A value with no unambiguous match (none, or more than one, such as a
+        role it owns and a role shared with it under the same name) confers nothing.
       properties:
         claim:
           type: string
@@ -4023,8 +4026,8 @@ components:
           type: string
           enum: [role, group, permission]
           description: >
-            What every claim value resolves to. A value is matched by exact name against existing
-            roles or groups (regardless of organization unit); for "permission" it is validated
+            What every claim value resolves to. A value is matched by exact name against the roles
+            or groups the connection's organization unit can grant; for "permission" it is validated
             directly against resourceServerId's defined permissions, since a permission is a string
             rather than a separately named entity.
           example: "group"

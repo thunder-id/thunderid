@@ -67,9 +67,10 @@ type GroupServiceInterface interface {
 	// group, directly or through nesting. Nesting too deep to expand is refused rather than truncated.
 	GetTransitiveMemberEntities(ctx context.Context, groupID string) ([]string, *tidcommon.ServiceError)
 	GetGroupsByIDs(ctx context.Context, groupIDs []string) (map[string]*Group, *tidcommon.ServiceError)
-	// GetGroupsByNames returns every group matching each name, keyed by name. A name is not
-	// guaranteed unique: the caller decides how to handle more than one match for a name.
-	GetGroupsByNames(ctx context.Context, names []string) (map[string][]*Group, *tidcommon.ServiceError)
+	// GetGroupsByNames returns the groups an organization unit owns that match each name, keyed by name.
+	// A name is not guaranteed unique: the caller decides how to handle more than one match for a name.
+	GetGroupsByNames(
+		ctx context.Context, names []string, ouID string) (map[string][]*Group, *tidcommon.ServiceError)
 	AddGroupMembers(ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError)
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError)
 	// ValidateRemoveGroupMembers runs the checks RemoveGroupMembers runs before it changes anything.
@@ -1464,10 +1465,11 @@ func (gs *groupService) GetGroupsByIDs(
 	return result, nil
 }
 
-// GetGroupsByNames retrieves groups by a list of names, keyed by name. A name may resolve to more
-// than one group across organization units; the caller decides how to handle that ambiguity.
+// GetGroupsByNames retrieves the groups with the given names that an organization unit owns, keyed by
+// name, since groups are never shared. A name may resolve to more than one of them; the caller decides
+// how to handle that ambiguity.
 func (gs *groupService) GetGroupsByNames(
-	ctx context.Context, names []string,
+	ctx context.Context, names []string, ouID string,
 ) (map[string][]*Group, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
@@ -1492,6 +1494,9 @@ func (gs *groupService) GetGroupsByNames(
 
 	result := make(map[string][]*Group, len(groupDAOs))
 	for _, dao := range groupDAOs {
+		if dao.OUID != ouID {
+			continue
+		}
 		group := convertGroupDAOToGroup(GroupDAO{
 			ID:          dao.ID,
 			Name:        dao.Name,

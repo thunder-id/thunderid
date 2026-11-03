@@ -14,19 +14,24 @@ vi.mock('@thunderid/components', () => ({
 // The target pickers are out of scope for this component; these are mocked only so the always-present
 // Roles/Groups/Permissions grant fields and the resource server select don't need a real React Query
 // provider or network calls.
-vi.mock('../../api/useGetRolesForMapping', () => ({
-  default: () => ({
+const {useGetRolesForMapping, useGetGroupsForMapping, ROLES_PAGE} = vi.hoisted(() => {
+  const rolesPage = {
     data: {
       roles: [
         {id: 'role-1', name: 'Admins'},
         {id: 'role-2', name: 'Editors'},
       ],
+      totalResults: 2,
     },
-  }),
-}));
-vi.mock('../../api/useGetGroupsForMapping', () => ({
-  default: () => ({data: {groups: [{id: 'group-1', name: 'Engineering'}]}}),
-}));
+  };
+  return {
+    ROLES_PAGE: rolesPage,
+    useGetRolesForMapping: vi.fn(() => rolesPage),
+    useGetGroupsForMapping: vi.fn(() => ({data: {groups: [{id: 'group-1', name: 'Engineering'}], totalResults: 1}})),
+  };
+});
+vi.mock('../../api/useGetRolesForMapping', () => ({default: useGetRolesForMapping}));
+vi.mock('../../api/useGetGroupsForMapping', () => ({default: useGetGroupsForMapping}));
 vi.mock('@thunderid/configure-resource-servers', () => ({
   PermissionCatalog: () => <div data-testid="permission-catalog" />,
   removePermissions: () => [],
@@ -62,6 +67,7 @@ describe('AuthorizationMappingSection', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    useGetRolesForMapping.mockReturnValue(ROLES_PAGE);
   });
 
   it('defaults a new mapping to the simple (non-advanced) side, Role target type, no resource server picker', () => {
@@ -241,6 +247,14 @@ describe('AuthorizationMappingSection', () => {
       fireEvent.click(screen.getByRole('switch', {name: ADVANCED_TOGGLE}));
     }
 
+    it("offers only the roles and groups of the connection's organization unit", () => {
+      render(<AuthorizationMappingSection ouId="ou-1" onRuleChange={onRuleChange} onDirectChange={onDirectChange} />);
+      addAdvancedRow();
+
+      expect(useGetRolesForMapping).toHaveBeenCalledWith({limit: 100, ouId: 'ou-1'});
+      expect(useGetGroupsForMapping).toHaveBeenCalledWith({limit: 100, ouId: 'ou-1'});
+    });
+
     it('shows the Delimiter field only for value type String, hiding it for Number, Boolean, and Array', () => {
       render(<AuthorizationMappingSection onRuleChange={onRuleChange} onDirectChange={onDirectChange} />);
       addAdvancedRow();
@@ -377,6 +391,42 @@ describe('AuthorizationMappingSection', () => {
         ],
         true,
       );
+    });
+
+    it("marks a stored role missing from the organization unit's complete list as unavailable", () => {
+      render(
+        <AuthorizationMappingSection
+          onRuleChange={onRuleChange}
+          onDirectChange={onDirectChange}
+          initialRuleConfig={[
+            {
+              claim: 'groups',
+              values: [{operator: 'equals', value: 'engineering', targets: [{type: 'role', id: 'role-999'}]}],
+            },
+          ]}
+        />,
+      );
+
+      expect(screen.getByText('Unavailable: role-999')).toBeInTheDocument();
+    });
+
+    it('shows a stored role missing from a partial list by its id, without marking it unavailable', () => {
+      useGetRolesForMapping.mockReturnValue({data: {...ROLES_PAGE.data, totalResults: 250}});
+      render(
+        <AuthorizationMappingSection
+          onRuleChange={onRuleChange}
+          onDirectChange={onDirectChange}
+          initialRuleConfig={[
+            {
+              claim: 'groups',
+              values: [{operator: 'equals', value: 'engineering', targets: [{type: 'role', id: 'role-999'}]}],
+            },
+          ]}
+        />,
+      );
+
+      expect(screen.getByText('role-999')).toBeInTheDocument();
+      expect(screen.queryByText('Unavailable: role-999')).not.toBeInTheDocument();
     });
 
     it('renders the permission hierarchy picker for the Permissions grant area', () => {

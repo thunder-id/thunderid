@@ -52,6 +52,9 @@ import {
 } from '../utils/authorizationMapping';
 
 export interface AuthorizationMappingSectionProps {
+  /** The organization unit of the connection. Rules can grant only the roles it owns or has shared with it, and the
+   * groups it owns. */
+  ouId?: string;
   initialRuleConfig?: AuthorizationRuleMapping[];
   initialDirectConfig?: AuthorizationDirectMapping[];
   onRuleChange: (mappings: AuthorizationRuleMapping[] | undefined, valid: boolean) => void;
@@ -68,22 +71,61 @@ const PICKER_PAGE_SIZE = 100;
 interface PickerOption {
   id: string;
   name: string;
+  unavailable?: boolean;
+}
+
+/**
+ * Resolves stored target ids to picker entries. An id missing from the complete list is one the organization unit can
+ * no longer grant, such as a role no longer shared with it, so it is marked unavailable for the admin to remove. An id
+ * missing from a partial list (beyond PICKER_PAGE_SIZE, or still loading) keeps a plain entry, or the next onChange,
+ * which reports only what Autocomplete rendered, would silently drop it.
+ */
+function resolveSelected(
+  value: string[],
+  options: PickerOption[],
+  listComplete: boolean,
+  unavailableLabel: (id: string) => string,
+): PickerOption[] {
+  return value.map(
+    (id) =>
+      options.find((o) => o.id === id) ??
+      (listComplete ? {id, name: unavailableLabel(id), unavailable: true} : {id, name: id}),
+  );
+}
+
+function renderTargetChips(
+  tags: PickerOption[],
+  getTagProps: (args: {index: number}) => Record<string, unknown> & {key: string | number},
+): JSX.Element[] {
+  return tags.map((option, index) => {
+    const {key, ...tagProps} = getTagProps({index});
+    return <Chip key={key} {...tagProps} label={option.name} color={option.unavailable ? 'error' : 'default'} />;
+  });
 }
 
 function targetTypeLabel(t: (key: string) => string, targetType: AuthorizationTargetType): string {
   return t(`authorizationRules.target.type.${targetType}`);
 }
 
-function RolesField({value, onChange}: {value: string[]; onChange: (ids: string[]) => void}): JSX.Element {
+function RolesField({
+  ouId = undefined,
+  value,
+  onChange,
+}: {
+  ouId?: string;
+  value: string[];
+  onChange: (ids: string[]) => void;
+}): JSX.Element {
   const {t} = useTranslation('connections');
-  const {data} = useGetRolesForMapping({limit: PICKER_PAGE_SIZE});
+  const {data} = useGetRolesForMapping({limit: PICKER_PAGE_SIZE, ouId});
   const options: PickerOption[] = useMemo(() => (data?.roles ?? []).map((r) => ({id: r.id, name: r.name})), [data]);
-  // A stored id absent from this page (beyond PICKER_PAGE_SIZE, or the page still loading) still needs
-  // a selected entry, or the next onChange - which reports only what Autocomplete rendered - would
-  // silently drop it.
+  const listComplete = data !== undefined && data.totalResults <= options.length;
   const selected = useMemo(
-    () => value.map((id) => options.find((o) => o.id === id) ?? {id, name: id}),
-    [value, options],
+    () =>
+      resolveSelected(value, options, listComplete, (id) =>
+        t('authorizationRules.target.role.unavailable', 'Unavailable: {{id}}', {id}),
+      ),
+    [value, options, listComplete, t],
   );
 
   return (
@@ -95,6 +137,7 @@ function RolesField({value, onChange}: {value: string[]; onChange: (ids: string[
       getOptionLabel={(o) => o.name}
       isOptionEqualToValue={(o, v) => o.id === v.id}
       onChange={(_event, newValue) => onChange(newValue.map((o) => o.id))}
+      renderTags={renderTargetChips}
       renderInput={(params) => (
         <TextField
           {...params}
@@ -106,16 +149,25 @@ function RolesField({value, onChange}: {value: string[]; onChange: (ids: string[
   );
 }
 
-function GroupsField({value, onChange}: {value: string[]; onChange: (ids: string[]) => void}): JSX.Element {
+function GroupsField({
+  ouId = undefined,
+  value,
+  onChange,
+}: {
+  ouId?: string;
+  value: string[];
+  onChange: (ids: string[]) => void;
+}): JSX.Element {
   const {t} = useTranslation('connections');
-  const {data} = useGetGroupsForMapping({limit: PICKER_PAGE_SIZE});
+  const {data} = useGetGroupsForMapping({limit: PICKER_PAGE_SIZE, ouId});
   const options: PickerOption[] = useMemo(() => (data?.groups ?? []).map((g) => ({id: g.id, name: g.name})), [data]);
-  // A stored id absent from this page (beyond PICKER_PAGE_SIZE, or the page still loading) still needs
-  // a selected entry, or the next onChange - which reports only what Autocomplete rendered - would
-  // silently drop it.
+  const listComplete = data !== undefined && data.totalResults <= options.length;
   const selected = useMemo(
-    () => value.map((id) => options.find((o) => o.id === id) ?? {id, name: id}),
-    [value, options],
+    () =>
+      resolveSelected(value, options, listComplete, (id) =>
+        t('authorizationRules.target.group.unavailable', 'Unavailable: {{id}}', {id}),
+      ),
+    [value, options, listComplete, t],
   );
 
   return (
@@ -127,6 +179,7 @@ function GroupsField({value, onChange}: {value: string[]; onChange: (ids: string
       getOptionLabel={(o) => o.name}
       isOptionEqualToValue={(o, v) => o.id === v.id}
       onChange={(_event, newValue) => onChange(newValue.map((o) => o.id))}
+      renderTags={renderTargetChips}
       renderInput={(params) => (
         <TextField
           {...params}
@@ -238,6 +291,7 @@ function RuleValueFields({
 }
 
 function ValueRow({
+  ouId = undefined,
   claim,
   entry,
   valueType,
@@ -247,6 +301,7 @@ function ValueRow({
   onUpdateGrants,
   onRemoveValue,
 }: {
+  ouId?: string;
   claim: string;
   entry: KeyedAuthorizationValue;
   valueType: AuthorizationValueType;
@@ -287,11 +342,11 @@ function ValueRow({
       <Stack direction="column" spacing={1.5} sx={{mt: 0.5}}>
         <FormControl>
           <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.target.type.role')}</FormLabel>
-          <RolesField value={entry.roleIds} onChange={(roleIds) => onUpdateGrants({roleIds})} />
+          <RolesField ouId={ouId} value={entry.roleIds} onChange={(roleIds) => onUpdateGrants({roleIds})} />
         </FormControl>
         <FormControl>
           <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.target.type.group')}</FormLabel>
-          <GroupsField value={entry.groupIds} onChange={(groupIds) => onUpdateGrants({groupIds})} />
+          <GroupsField ouId={ouId} value={entry.groupIds} onChange={(groupIds) => onUpdateGrants({groupIds})} />
         </FormControl>
         <FormControl>
           <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.target.type.permission')}</FormLabel>
@@ -303,11 +358,13 @@ function ValueRow({
 }
 
 function MappingRow({
+  ouId = undefined,
   mapping,
   servers,
   onChange,
   onRemove,
 }: {
+  ouId?: string;
   mapping: KeyedAuthorizationMapping;
   servers: PickerOption[];
   onChange: (patch: Partial<KeyedAuthorizationMapping>) => void;
@@ -439,6 +496,7 @@ function MappingRow({
             {mapping.values.map((entry) => (
               <ValueRow
                 key={entry.key}
+                ouId={ouId}
                 claim={mapping.claim}
                 entry={entry}
                 valueType={mapping.valueType}
@@ -499,6 +557,7 @@ function MappingRow({
 }
 
 export default function AuthorizationMappingSection({
+  ouId = undefined,
   initialRuleConfig = undefined,
   initialDirectConfig = undefined,
   onRuleChange,
@@ -536,6 +595,7 @@ export default function AuthorizationMappingSection({
         {mappings.map((mapping) => (
           <MappingRow
             key={mapping.key}
+            ouId={ouId}
             mapping={mapping}
             servers={servers}
             onChange={(patch) => updateMapping(mapping.key, patch)}

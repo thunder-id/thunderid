@@ -121,6 +121,8 @@ Map attribute values this provider asserts, such as group membership, onto local
 
 Behavior:
 
+- A mapping grants only roles and groups from the organization unit that owns the connection: roles it owns or that are shared with it, and groups it owns. This holds in every organization unit the connection is shared into. A direct lookup matches only those names. An advanced rule offers only those roles and groups, and saving a rule that names any other is rejected.
+- An advanced rule's targets are checked when you save the connection, not at sign-in. A rule saved before this check existed that names a role or group outside the organization unit, or a role later no longer shared with it, keeps granting it until you change the rule. Such a target shows as **Unavailable**, and the connection can't be saved again until you remove it. A declarative connection file is checked the same way when the server starts, and the server doesn't start if a rule names a role or group the organization unit can't grant.
 - An advanced rule's targets can span roles, groups, and permissions across more than one resource server at once.
 - A mapped group also grants that group's ancestor groups, transitively, the same as a direct group assignment does.
 - Everything a mapping grants adds to whatever is already assigned directly; it never replaces it.

@@ -825,3 +825,62 @@ func (_c *IDPServiceInterfaceMock_UpdateIdentityProvider_Call) RunAndReturn(run 
 	_c.Call.Return(run)
 	return _c
 }
+
+// ValidateAuthorizationRuleMappingTargets provides a mock function for the type IDPServiceInterfaceMock
+func (_mock *IDPServiceInterfaceMock) ValidateAuthorizationRuleMappingTargets(ctx context.Context, idp1 *providers.IDPDTO) *common.ServiceError {
+	ret := _mock.Called(ctx, idp1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateAuthorizationRuleMappingTargets")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.IDPDTO) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, idp1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// IDPServiceInterfaceMock_ValidateAuthorizationRuleMappingTargets_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateAuthorizationRuleMappingTargets'
+type IDPServiceInterfaceMock_ValidateAuthorizationRuleMappingTargets_Call struct {
+	*mock.Call
+}
+
+// ValidateAuthorizationRuleMappingTargets is a helper method to define mock.On call
+//   - ctx context.Context
+//   - idp1 *providers.IDPDTO
+func (_e *IDPServiceInterfaceMock_Expecter) ValidateAuthorizationRuleMappingTargets(ctx any, idp1 any) *IDPServiceInterfaceMock_ValidateAuthorizationRuleMappingTargets_Call {
+	return &IDPServiceInterfaceMock_ValidateAuthorizationRuleMappingTargets_Call{Call: _e.mock.On("ValidateAuthorizationRuleMappingTargets", ctx, idp1)}
+}
+
+func (_c *IDPServiceInterfaceMock_ValidateAuthorizationRuleMappingTargets_Call) Run(run func(ctx context.Context, idp1 *providers.IDPDTO)) *IDPServiceInterfaceMock_ValidateAuthorizationRuleMappingTargets_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *providers.IDPDTO
+		if args[1] != nil {
+			arg1 = args[1].(*providers.IDPDTO)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *IDPServiceInterfaceMock_ValidateAuthorizationRuleMappingTargets_Call) Return(serviceError *common.ServiceError) *IDPServiceInterfaceMock_ValidateAuthorizationRuleMappingTargets_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *IDPServiceInterfaceMock_ValidateAuthorizationRuleMappingTargets_Call) RunAndReturn(run func(ctx context.Context, idp1 *providers.IDPDTO) *common.ServiceError) *IDPServiceInterfaceMock_ValidateAuthorizationRuleMappingTargets_Call {
+	_c.Call.Return(run)
+	return _c
+}

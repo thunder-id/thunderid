@@ -376,6 +376,33 @@ func (suite *CompositeModeSuite) TestIdentityProviderDeclarativeVisibility() {
 		"/connections?category=identity-provider", "connections", "decl-idp-1", "identity_provider")
 }
 
+// TestDeclarativeConnectionAuthorizationRuleTargetsInItsOU verifies a declarative connection whose rule targets a
+// role and a group its organization unit owns loads with that mapping. The loader refuses a target outside the unit,
+// which would stop the server from starting.
+func (suite *CompositeModeSuite) TestDeclarativeConnectionAuthorizationRuleTargetsInItsOU() {
+	client := testutils.GetHTTPClient()
+	resp, err := client.Get(fmt.Sprintf("%s/connections/google/decl-idp-1", testutils.TestServerURL))
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var connection struct {
+		AttributeConfiguration struct {
+			AuthorizationMapping struct {
+				Rules []testutils.AuthorizationRuleMapping `json:"rules"`
+			} `json:"authorizationMapping"`
+		} `json:"attributeConfiguration"`
+	}
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&connection))
+	rules := connection.AttributeConfiguration.AuthorizationMapping.Rules
+	suite.Require().Len(rules, 1)
+	suite.Require().Len(rules[0].Values, 1)
+	suite.ElementsMatch([]testutils.AuthorizationTarget{
+		{Type: testutils.AuthorizationTargetRole, ID: "decl-role-1"},
+		{Type: testutils.AuthorizationTargetGroup, ID: "decl-group-1"},
+	}, rules[0].Values[0].Targets)
+}
+
 // declarativeOUID reads the id the server reports for the declarative organization unit decl-ou-1.
 func (suite *CompositeModeSuite) declarativeOUID() string {
 	client := testutils.GetHTTPClient()
