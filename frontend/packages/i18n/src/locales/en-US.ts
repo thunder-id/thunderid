@@ -1413,6 +1413,7 @@ const translations = {
     'edit.page.validation.missingAllowedUserType': 'select at least one allowed user type',
     'edit.page.validation.missingCertificate': 'add a certificate',
     'edit.page.validation.invalidBackchannelLogoutUri': 'fix the back-channel logout URI',
+    'edit.page.validation.invalidIdentityAssertions': 'fix the identity assertions (ID-JAG) settings',
     'edit.page.validation.tokenSettings': 'fix the token settings',
     'edit.page.reset': 'Reset',
     'edit.page.save': 'Save',
@@ -1531,14 +1532,15 @@ const translations = {
     'edit.flows.allowedUserTypes.required': 'Select at least one user type that can sign up through this agent.',
     'edit.flows.delegationLock.message':
       'These settings are frozen for this agent. Turn on Delegated mode in the Advanced tab to unlock and start using them.',
+    'edit.flows.signInGrantLock.message':
+      'Sign-in flows apply only when this agent signs users in with the authorization code or CIBA grant type.',
 
     // Edit page - Advanced tab
     'edit.advanced.mode.title': 'Operating mode',
     'edit.advanced.delegationToggle.label': 'Delegated mode',
     'edit.advanced.mode.onOwnBehalf.description':
       'This agent authenticates with its own credentials without user interaction, using client credentials.',
-    'edit.advanced.mode.onBehalfOfUser.description':
-      'This agent acts on behalf of a signed-in user, using authorization code with PKCE.',
+    'edit.advanced.mode.onBehalfOfUser.description': 'This agent can act on behalf of a user.',
     'edit.advanced.agentSignIn.title': 'Agent sign-in',
     'edit.advanced.agentSignIn.description': 'Allow agents to sign in through this agent using the sign-in flow.',
     'edit.advanced.agentSignIn.toggle.label': 'Enable agent sign-in',
@@ -1578,6 +1580,9 @@ const translations = {
     'edit.tokens.audience.footnote': 'Attribute sets are configured independently for each audience.',
     'edit.tokens.delegationLock.message':
       'This agent does not receive tokens on behalf of a user. Turn on Delegated mode in the <advancedLink>Advanced tab</advancedLink> to configure them.',
+    'edit.tokens.user.tokenExchangeAttributes.note':
+      'Token exchange keeps only the selected attributes that the incoming token already carries.',
+    'edit.tokens.user.jwtBearerAttributes.note': 'Tokens from a redeemed ID-JAG carry no user attributes.',
     'edit.tokens.agent.attributes.title': 'Access token attributes',
     'edit.tokens.agent.attributes.description':
       'Extra attributes to add to the access token this agent receives for itself.',
@@ -1628,7 +1633,7 @@ const translations = {
     'errors.AGT-1042':
       'The subject attribute mapping must reference an attribute that is unique, required, and string typed in an allowed agent type.',
     'errors.AGT-1044':
-      'A delegated agent needs at least one grant type that lets it act for a signed-in user, such as authorization code.',
+      'A delegated agent needs at least one grant type that lets it act for a user, such as authorization code.',
   },
 
   // ============================================================================
@@ -2757,6 +2762,9 @@ const translations = {
     'create.form.idJagEnabled.hint':
       'Accept and exchange signed identity assertions from this issuer for access tokens.',
 
+    // Shared by the create form and the detail page
+    'idJag.acceptanceUnavailable': 'This server does not accept identity assertions from any issuer.',
+
     // Detail page
     'detail.back': 'Back to connections',
     'detail.loadError': 'Failed to load trusted issuer.',
@@ -2893,6 +2901,9 @@ const translations = {
     'authorizationDetails.addItem': '{{item}}, add',
     'authorizationDetails.addBackItem': '{{item}}, add back',
     'authorizationDetails.newItem': '{{label}}, add',
+    'client.hosts': 'Published by {{clientIdHost}}. Returns to {{redirectUriHost}}.',
+    'client.deviceWarning':
+      'This app runs on your device. Other programs on your device can use the same address, so continue only if you started this app.',
   },
 
   // ============================================================================
@@ -3706,8 +3717,12 @@ const translations = {
     // Token section
     'edit.token.seconds': 'seconds',
     'edit.token.labels.token_validity': 'Token validity',
+    'edit.token.labels.access_token_validity': 'Access token validity',
     'edit.token.loading_attributes': 'Loading user attributes...',
     'edit.token.no_user_attributes': 'No user attributes available. Configure allowed user types for this {{entity}}.',
+    'edit.token.no_user_attributes.allUserTypes':
+      'No user type defines any attributes yet. Add attributes to a user type to select them here.',
+    'edit.token.user_attributes_load_error': 'Failed to load the user attributes.',
     'edit.token.click_to_add': 'Click to add',
     'edit.token.click_to_remove': 'Click to remove',
     'edit.token.configure_attributes': 'Add or remove attributes',
@@ -3718,12 +3733,18 @@ const translations = {
     'edit.token.validity.error': 'Validity period must be at least 1 second',
     'edit.token.token_profile_card.title': 'Token attributes & response',
     'edit.token.token_profile_card.title.native': 'Token attributes',
+    'edit.token.token_profile_card.title.accessTokenOnly': 'Access token attributes',
+    'edit.token.token_profile_card.title.accessTokenWithoutAttributes': 'Access token',
     'edit.token.token_profile_card.description':
       'Choose the attributes in each token and the user info response, and how each is returned.',
     'edit.token.token_profile_card.description.noUserInfo':
       'Choose the attributes in each token issued to this {{entity}}, and how each is returned.',
     'edit.token.token_profile_card.description.native':
       'Choose the attributes included in the token issued to this {{entity}}.',
+    'edit.token.token_profile_card.description.accessTokenOnly':
+      'The user attributes in the access token issued to this {{entity}} on behalf of a user.',
+    'edit.token.token_profile_card.description.accessTokenWithoutAttributes':
+      'The access token issued to this {{entity}} on behalf of a user.',
     'edit.token.tabs.access_token': 'Access token',
     'edit.token.tabs.id_token': 'ID token',
     'edit.token.tabs.refresh_token': 'Refresh token',
@@ -3734,6 +3755,8 @@ const translations = {
     'edit.token.user_info.inherit_info': 'User info response will use the same attributes as the ID token',
     'edit.token.scopes_card.title': 'Scopes & user attribute mappings',
     'edit.token.scopes_card.description': 'Configure the OAuth2 scopes and the user attributes exposed for each scope',
+    'edit.token.scopes_card.description.scopesOnly':
+      'A custom scope listed here is kept as an OpenID Connect scope instead of being treated as a resource server permission. Its mapped attributes are not added to the access token.',
     'edit.token.scopes.title': 'Available scopes',
     'edit.token.scopes.hint': 'Toggle the OAuth2 scopes available to this {{entity}}.',
     'edit.token.scopes.active_label': 'Active',
@@ -3866,6 +3889,8 @@ const translations = {
     'edit.advanced.idJag.validityPeriod.error': 'Enter a value of at least 1 second.',
     'edit.advanced.idJag.validityPeriod.hint': 'How long an issued assertion stays valid. Default 300.',
     'edit.advanced.idJag.grantTypeHint': 'The token exchange grant type is enabled together with this feature.',
+    'edit.advanced.idJag.tokenExchangeUnavailable':
+      'This server does not allow the token exchange grant, so identity assertions cannot be issued.',
     'create.success': 'Application created successfully.',
     'create.error': 'Failed to create application. Please try again.',
     'create.flowGenerationError': 'Failed to generate the authentication flow. Please try again.',

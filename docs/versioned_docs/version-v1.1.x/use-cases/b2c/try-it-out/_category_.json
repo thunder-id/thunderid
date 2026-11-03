@@ -1,0 +1,10 @@
+{
+  "position": 3,
+  "label": "Try It Out",
+  "collapsible": true,
+  "collapsed": true,
+  "link": {
+    "type": "doc",
+    "id": "use-cases/b2c/try-it-out"
+  }
+}

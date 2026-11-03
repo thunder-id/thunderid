@@ -40,6 +40,8 @@ paths:
         Returns a paginated list of the configured connection instances across the
         identity-provider, notification-sender, authorization PDP and HTTP endpoint connection types,
         optionally filtered by functional category. Omit the category parameter to return all instances.
+
+        An `ouId` filter lists the connections the organization unit owns, then those shared into it, with `isOwnedByOU` telling them apart.
       parameters:
         - name: category
           in: query
@@ -48,6 +50,7 @@ paths:
           schema:
             type: string
             enum: [identity-provider, sms-provider, authorization-pdp, email-provider, http]
+        - $ref: '#/components/parameters/connectionFilterQueryParam'
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
       responses:
@@ -67,19 +70,26 @@ paths:
                     ouId: "01900000-0000-7000-8000-000000000001"
                     type: "google"
                     categories: ["identity-provider"]
+                    isOwnedByOU: true
                   - id: "a1b2c3d4-0000-0000-0000-000000000002"
                     name: "Corp OIDC"
                     description: "Corporate login"
                     ouId: "01900000-0000-7000-8000-000000000001"
                     type: "oidc"
                     categories: ["identity-provider"]
+                    isOwnedByOU: true
                   - id: "a1b2c3d4-0000-0000-0000-000000000003"
                     name: "Twilio SMS"
                     ouId: "01900000-0000-7000-8000-000000000001"
                     type: "twilio"
                     categories: ["sms-provider"]
+                    isOwnedByOU: true
                 links: []
-        "400": { $ref: '#/components/responses/BadRequest' }
+        "400":
+          description: 'The category is not recognized (CON-1001), the filter is not a single `ouId eq "<id>"` expression (CON-1039), or the limit or offset is invalid.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
@@ -2090,6 +2100,18 @@ components:
         type: string
         format: uuid
 
+    connectionFilterQueryParam:
+      in: query
+      name: filter
+      required: false
+      description: 'Filter connections by organization unit with `ouId eq "<id>"`, the only supported expression. It lists the connections the unit owns, then those shared into it.'
+      schema:
+        type: string
+      examples:
+        organization-unit:
+          summary: Connections owned by or shared into an organization unit
+          value: 'ouId eq "01900000-0000-7000-8000-000000000001"'
+
     limitQueryParam:
       in: query
       name: limit
@@ -2971,6 +2993,10 @@ components:
             type: string
             enum: [identity-provider, sms-provider, authorization-pdp, email-provider, http]
           example: ["identity-provider"]
+        isOwnedByOU:
+          type: boolean
+          description: 'Whether the listed organization unit owns the connection rather than being shared it. Without an `ouId` filter, every listed connection is owned.'
+          example: true
 
     ConnectionInstanceSummary:
       type: object

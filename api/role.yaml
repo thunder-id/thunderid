@@ -30,9 +30,13 @@ paths:
       tags:
         - Roles
       summary: List roles
+      description: |
+        Lists every role in the deployment. A `filter` naming an organization unit lists the roles that
+        unit owns, followed by the roles shared with it. Each role says whether the listed unit owns it.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
+        - $ref: '#/components/parameters/roleFilterQueryParam'
       responses:
         "200":
           description: List of roles
@@ -51,12 +55,14 @@ paths:
                     ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                     ouHandle: "default"
                     isReadOnly: false
+                    isOwnedByOU: true
                   - id: "257e528f-eb24-48b6-884d-20460e190957"
                     name: "hotel-manager"
                     description: "Hotel manager with full property access"
                     ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                     ouHandle: "default"
                     isReadOnly: true
+                    isOwnedByOU: true
                 links:
                   - href: "roles?offset=2&limit=2"
                     rel: "next"
@@ -97,6 +103,16 @@ paths:
                     description:
                       key: "error.roleservice.invalid_offset_parameter_description"
                       defaultValue: "The offset parameter must be a non-negative integer"
+                invalid-filter:
+                  summary: Invalid filter
+                  value:
+                    code: "ROL-1033"
+                    message:
+                      key: "error.roleservice.invalid_filter"
+                      defaultValue: "Invalid filter"
+                    description:
+                      key: "error.roleservice.invalid_filter_description"
+                      defaultValue: "The filter must be a single expression of the form ouId eq \"<id>\""
         "500":
           description: Internal server error
           content:
@@ -176,9 +192,11 @@ paths:
                 assignments:
                   - type: "user"
                     id: "7a4b1f8e-5c69-4b60-9232-2b0aaf65ef3c"
+                    ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                     display: "John Doe"
                   - type: "group"
                     id: "6b1e7b8d-7e19-41eb-8fa2-c0ee5bb67a94"
+                    ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                     display: "Front Desk Team"
         "400":
           description: Bad request
@@ -264,7 +282,7 @@ paths:
                   defaultValue: "Role name conflict"
                 description:
                   key: "error.roleservice.role_name_conflict_description"
-                  defaultValue: "A role with the same name exists under the same organization unit"
+                  defaultValue: "A role with the same name is owned by or shared with the organization unit"
         "500":
           description: Internal server error
           content:
@@ -285,7 +303,10 @@ paths:
       tags:
         - Roles
       summary: Get role details
-      description: Returns role metadata with permissions list
+      description: |
+        Returns role metadata with permissions list. With `ouId`, returns the role as that organization
+        unit sees it: the role itself when the unit owns it, and the shared role, read under the unit,
+        when the role is shared with it. A role not shared with the unit is not found.
       parameters:
         - in: path
           name: id
@@ -293,6 +314,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: '#/components/parameters/roleOUIdQueryParam'
       responses:
         "200":
           description: Role details
@@ -306,6 +328,7 @@ paths:
                 description: "Front desk agent role with booking and customer management permissions"
                 ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                 ouHandle: "default"
+                isOwnedByOU: true
                 permissions:
                   - resourceServerId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
                     permissions:
@@ -330,19 +353,32 @@ paths:
                   key: "error.roleservice.missing_role_id_description"
                   defaultValue: "Role ID is required"
         "404":
-          description: Role not found
+          description: Role not found, or not shared with the organization unit named in ouId
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "ROL-1003"
-                message:
-                  key: "error.roleservice.role_not_found"
-                  defaultValue: "Role not found"
-                description:
-                  key: "error.roleservice.role_not_found_description"
-                  defaultValue: "The role with the specified id does not exist"
+              examples:
+                role-not-found:
+                  summary: Role not found
+                  value:
+                    code: "ROL-1003"
+                    message:
+                      key: "error.roleservice.role_not_found"
+                      defaultValue: "Role not found"
+                    description:
+                      key: "error.roleservice.role_not_found_description"
+                      defaultValue: "The role with the specified id does not exist"
+                role-not-shared:
+                  summary: Role not shared to the organization unit
+                  value:
+                    code: "ROL-1026"
+                    message:
+                      key: "error.roleservice.role_not_shared_to_ou"
+                      defaultValue: "Role is not shared to the organization unit"
+                    description:
+                      key: "error.roleservice.role_not_shared_to_ou_description"
+                      defaultValue: "No sharing policy reaches the specified organization unit, so the role is not available there"
         "500":
           description: Internal server error
           content:
@@ -362,7 +398,15 @@ paths:
       tags:
         - Roles
       summary: Update role
-      description: Updates role name, description, organization unit, and permissions
+      description: |
+        Updates role name, description, organization unit, and permissions.
+
+        The `ouId` decides what the update is. The organization unit that owns the role updates it in
+        place. An organization unit the role is shared with cannot update it: a role's name,
+        description and permissions stay with its owner, so such an update is refused with ROL-1034.
+        A shared organization unit manages its own assignments of the role through
+        `/roles/{id}/assignments`. Any other organization unit is somewhere to move the role to, which
+        is refused while the role has sharing policies or assignments.
       parameters:
         - in: path
           name: id
@@ -488,6 +532,26 @@ paths:
                     description:
                       key: "error.roleservice.shared_role_cannot_move_description"
                       defaultValue: "The role is shared into other organization units. Delete its sharing policies before moving it to another organization unit"
+                assigned-role-moved:
+                  summary: Role with assignments moved to another organization unit
+                  value:
+                    code: "ROL-1032"
+                    message:
+                      key: "error.roleservice.role_with_assignments_cannot_move"
+                      defaultValue: "Role with assignments cannot be moved"
+                    description:
+                      key: "error.roleservice.role_with_assignments_cannot_move_description"
+                      defaultValue: "The role is assigned in its organization unit. Remove its assignments before moving it to another organization unit"
+                shared-role-updated:
+                  summary: Role updated in an organization unit it is shared with
+                  value:
+                    code: "ROL-1034"
+                    message:
+                      key: "error.roleservice.shared_role_not_editable"
+                      defaultValue: "Role cannot be edited in this organization unit"
+                    description:
+                      key: "error.roleservice.shared_role_not_editable_description"
+                      defaultValue: "A role's name, description and permissions can be changed only in the organization unit that owns it, not in one it is shared with"
         "403":
           description: Forbidden
           content:
@@ -529,7 +593,7 @@ paths:
                   defaultValue: "Role name conflict"
                 description:
                   key: "error.roleservice.role_name_conflict_description"
-                  defaultValue: "A role with the same name exists under the same organization unit"
+                  defaultValue: "A role with the same name is owned by or shared with the organization unit"
         "500":
           description: Internal server error
           content:
@@ -620,7 +684,10 @@ paths:
       tags:
         - Roles
       summary: Get role assignments
-      description: Returns user and group assignments for the role. Use type to filter by assignee type and include=display to get display names.
+      description: |
+        Returns the role's assignments in every organization unit, each naming the unit it was made in.
+        A `filter` naming an organization unit returns only the assignments made there. Use type to
+        filter by assignee type and include=display to get display names.
       parameters:
         - in: path
           name: id
@@ -629,6 +696,7 @@ paths:
             type: string
             format: uuid
         - $ref: '#/components/parameters/assigneeTypeQueryParam'
+        - $ref: '#/components/parameters/assignmentFilterQueryParam'
         - $ref: '#/components/parameters/includeQueryParam'
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -649,8 +717,10 @@ paths:
                     assignments:
                       - type: "user"
                         id: "7a4b1f8e-5c69-4b60-9232-2b0aaf65ef3c"
+                        ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                       - type: "group"
                         id: "8c2f8e9e-8f2a-4f5b-9c3d-4e5f6a7b8c9d"
+                        ouId: "b5f1c2d3-6e7f-4a8b-9c0d-1e2f3a4b5c6d"
                     links:
                       - href: "roles/3fa85f64-5717-4562-b3fc-2c963f66afa6/assignments?offset=2&limit=2"
                         rel: "next"
@@ -663,9 +733,11 @@ paths:
                     assignments:
                       - type: "user"
                         id: "7a4b1f8e-5c69-4b60-9232-2b0aaf65ef3c"
+                        ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                         display: "John Doe"
                       - type: "group"
                         id: "8c2f8e9e-8f2a-4f5b-9c3d-4e5f6a7b8c9d"
+                        ouId: "b5f1c2d3-6e7f-4a8b-9c0d-1e2f3a4b5c6d"
                         display: "Front Desk Team"
                     links:
                       - href: "roles/3fa85f64-5717-4562-b3fc-2c963f66afa6/assignments?offset=2&limit=2"
@@ -741,7 +813,12 @@ paths:
       tags:
         - Roles
       summary: Add assignments to a role
-      description: Adds one or more user or group assignments to the specified role
+      description: |
+        Adds one or more user or group assignments to the specified role in the organization unit named
+        in `ouId`, or in the role's owner when it is omitted. An organization unit the role is shared
+        with may assign it unless the role's sharing policies turn its assignments off there. Each
+        assignee must be available in that organization unit: a user, application or agent it owns or
+        that is shared with it, or a group it owns.
       parameters:
         - in: path
           name: id
@@ -756,6 +833,7 @@ paths:
             schema:
               $ref: '#/components/schemas/AssignmentsRequest'
             example:
+              ouId: "b5f1c2d3-6e7f-4a8b-9c0d-1e2f3a4b5c6d"
               assignments:
                 - type: "user"
                   id: "7a4b1f8e-5c69-4b60-9232-2b0aaf65ef3c"
@@ -801,6 +879,26 @@ paths:
                     description:
                       key: "error.roleservice.empty_assignments_list_description"
                       defaultValue: "At least one assignment must be provided"
+                assignee-not-in-ou:
+                  summary: Assignee not available in the organization unit
+                  value:
+                    code: "ROL-1030"
+                    message:
+                      key: "error.roleservice.assignee_not_in_ou"
+                      defaultValue: "Assignee is not available in the organization unit"
+                    description:
+                      key: "error.roleservice.assignee_not_in_ou_description"
+                      defaultValue: "A role can only be assigned to users, applications and agents owned by or shared with the organization unit the assignment is made in, and to groups owned by it"
+                assignments-turned-off:
+                  summary: Assignments turned off in the organization unit
+                  value:
+                    code: "ROL-1031"
+                    message:
+                      key: "error.roleservice.shared_role_field_not_editable"
+                      defaultValue: "Field cannot be changed in this organization unit"
+                    description:
+                      key: "error.roleservice.shared_role_field_not_editable_description"
+                      defaultValue: "An organization unit the role is shared with can only change what the role's sharing policies make editable there"
         "403":
           description: Forbidden
           content:
@@ -816,19 +914,32 @@ paths:
                   key: "error.sysauthz.grant_not_permitted_description"
                   defaultValue: "The operation would grant permissions that the caller does not hold"
         "404":
-          description: Role not found
+          description: Role not found, or not shared with the organization unit named in the body
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "ROL-1003"
-                message:
-                  key: "error.roleservice.role_not_found"
-                  defaultValue: "Role not found"
-                description:
-                  key: "error.roleservice.role_not_found_description"
-                  defaultValue: "The role with the specified id does not exist"
+              examples:
+                role-not-found:
+                  summary: Role not found
+                  value:
+                    code: "ROL-1003"
+                    message:
+                      key: "error.roleservice.role_not_found"
+                      defaultValue: "Role not found"
+                    description:
+                      key: "error.roleservice.role_not_found_description"
+                      defaultValue: "The role with the specified id does not exist"
+                role-not-shared:
+                  summary: Role not shared to the organization unit
+                  value:
+                    code: "ROL-1026"
+                    message:
+                      key: "error.roleservice.role_not_shared_to_ou"
+                      defaultValue: "Role is not shared to the organization unit"
+                    description:
+                      key: "error.roleservice.role_not_shared_to_ou_description"
+                      defaultValue: "No sharing policy reaches the specified organization unit, so the role is not available there"
         "500":
           description: Internal server error
           content:
@@ -914,19 +1025,32 @@ paths:
                   key: "error.sysauthz.grant_not_permitted_description"
                   defaultValue: "The operation would grant permissions that the caller does not hold"
         "404":
-          description: Role not found
+          description: Role not found, or not shared with the organization unit named in the body
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "ROL-1003"
-                message:
-                  key: "error.roleservice.role_not_found"
-                  defaultValue: "Role not found"
-                description:
-                  key: "error.roleservice.role_not_found_description"
-                  defaultValue: "The role with the specified id does not exist"
+              examples:
+                role-not-found:
+                  summary: Role not found
+                  value:
+                    code: "ROL-1003"
+                    message:
+                      key: "error.roleservice.role_not_found"
+                      defaultValue: "Role not found"
+                    description:
+                      key: "error.roleservice.role_not_found_description"
+                      defaultValue: "The role with the specified id does not exist"
+                role-not-shared:
+                  summary: Role not shared to the organization unit
+                  value:
+                    code: "ROL-1026"
+                    message:
+                      key: "error.roleservice.role_not_shared_to_ou"
+                      defaultValue: "Role is not shared to the organization unit"
+                    description:
+                      key: "error.roleservice.role_not_shared_to_ou_description"
+                      defaultValue: "No sharing policy reaches the specified organization unit, so the role is not available there"
         "500":
           description: Internal server error
           content:
@@ -1331,6 +1455,34 @@ components:
           - agent
       description: |
         Filter assignments by assignee type. When omitted, assignments of all types are returned.
+    roleFilterQueryParam:
+      in: query
+      name: filter
+      required: false
+      description: |
+        Lists the roles one organization unit owns, followed by the roles shared with it. The only
+        supported filter is `ouId eq "<organization unit ID>"`.
+      schema:
+        type: string
+      example: 'ouId eq "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"'
+    assignmentFilterQueryParam:
+      in: query
+      name: filter
+      required: false
+      description: |
+        Lists only the assignments made in one organization unit. The only supported filter is
+        `ouId eq "<organization unit ID>"`.
+      schema:
+        type: string
+      example: 'ouId eq "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"'
+    roleOUIdQueryParam:
+      in: query
+      name: ouId
+      required: false
+      description: Organization unit to read the role as.
+      schema:
+        type: string
+        format: uuid
     includeQueryParam:
       in: query
       name: include
@@ -1681,7 +1833,7 @@ components:
   schemas:
     Assignment:
       type: object
-      required: [id, type]
+      required: [id, type, ouId]
       properties:
         id:
           type: string
@@ -1695,6 +1847,11 @@ components:
             - app
             - agent
           description: "Type of entity being assigned (user, app, agent, or group)"
+        ouId:
+          type: string
+          format: uuid
+          readOnly: true
+          description: "ID of the organization unit the assignment was made in: the role's owner, or an organization unit the role is shared with"
         display:
           type: string
           readOnly: true
@@ -1757,7 +1914,11 @@ components:
         isReadOnly:
           type: boolean
           readOnly: true
-          description: "Indicates if the role is defined in declarative configuration and cannot be modified"
+          description: "Indicates if the role cannot be modified: it is defined in declarative configuration, or it is shared with the listed organization unit, which cannot change its name, description or permissions"
+        isOwnedByOU:
+          type: boolean
+          readOnly: true
+          description: "Whether the organization unit the role is listed under owns it. A role shared with that organization unit is listed under it with this set to false."
 
     Role:
       type: object
@@ -1782,6 +1943,10 @@ components:
           type: string
           readOnly: true
           description: "Handle of the organization unit this role belongs to"
+        isOwnedByOU:
+          type: boolean
+          readOnly: true
+          description: "Whether the organization unit the role is read as owns it. A role read as an organization unit it is shared with carries that unit's ouId and ouHandle, with this set to false."
         permissions:
           type: array
           items:
@@ -1837,7 +2002,7 @@ components:
         ouId:
           type: string
           format: uuid
-          description: "ID of the organization unit this role belongs to"
+          description: "The organization unit the update is made as: the owner, an organization unit the role is shared with, or one to move the role to"
         permissions:
           type: array
           items:
@@ -1848,6 +2013,10 @@ components:
       type: object
       required: [assignments]
       properties:
+        ouId:
+          type: string
+          format: uuid
+          description: "ID of the organization unit the assignments are made in or removed from: the role's owner when omitted, or an organization unit the role is shared with"
         assignments:
           type: array
           items:

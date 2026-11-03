@@ -1781,7 +1781,36 @@ func (v *flowValidator) validateVariables(
 		return v.variableError(firstVariablesNodeID,
 			"the VARIABLES nodes of a flow declare at least one variable in 'inputs'")
 	}
+	if err := v.validateOUResolverBeforeVariables(nodes); err != nil {
+		return err
+	}
 	return v.validateVariableReferences(nodes, declaredAt)
+}
+
+// validateOUResolverBeforeVariables checks that every route from the start to a VARIABLES node passes an organization
+// unit resolver. A VARIABLES node resolves the values of the unit the resolver picked, so a route that reaches it
+// without one would leave the flow with no unit to resolve for.
+func (v *flowValidator) validateOUResolverBeforeVariables(nodes []providers.NodeDefinition) *tidcommon.ServiceError {
+	var startID string
+	var resolvers []string
+	for i := range nodes {
+		switch {
+		case nodes[i].Type == string(common.NodeTypeStart) && startID == "":
+			startID = nodes[i].ID
+		case nodes[i].Executor != nil && nodes[i].Executor.Name == executormeta.ExecutorNameOUResolver:
+			resolvers = append(resolvers, nodes[i].ID)
+		}
+	}
+	adjacency := buildAdjacencyList(nodes)
+	reachable := v.reachableAvoiding(adjacency, startID, resolvers...)
+	for i := range nodes {
+		if nodes[i].Type == string(common.NodeTypeVariables) && reachable[nodes[i].ID] {
+			return v.variableError(nodes[i].ID, fmt.Sprintf(
+				"a route reaches it without passing an %s step, and the node resolves the values of the "+
+					"organization unit that step picks", executormeta.ExecutorNameOUResolver))
+		}
+	}
+	return nil
 }
 
 // validateVariablesNodeFormat checks that a VARIABLES node goes on to a next node and carries nothing a node that
@@ -1824,6 +1853,9 @@ func (v *flowValidator) validateConnectionVariable(
 	raw, err := core.DefaultRaw(def)
 	if err != nil {
 		return v.variableError("", fmt.Sprintf("variable %q: its default %s", def.Identifier, err.Error()))
+	}
+	if raw == "" {
+		return nil
 	}
 	reason, svcErr := v.checkConnection(ctx, def, raw)
 	if svcErr != nil {
@@ -1896,10 +1928,12 @@ func (v *flowValidator) validateVariableReferences(
 	return nil
 }
 
-// reachableAvoiding returns the nodes a route from start can reach without passing the avoided node.
-func (v *flowValidator) reachableAvoiding(adjacency map[string][]string, start, avoid string) map[string]bool {
+// reachableAvoiding returns the nodes a route from start can reach without passing any of the avoided nodes.
+func (v *flowValidator) reachableAvoiding(
+	adjacency map[string][]string, start string, avoid ...string,
+) map[string]bool {
 	visited := map[string]bool{}
-	if start == avoid {
+	if slices.Contains(avoid, start) {
 		return visited
 	}
 	visited[start] = true
@@ -1908,7 +1942,7 @@ func (v *flowValidator) reachableAvoiding(adjacency map[string][]string, start, 
 		current := queue[0]
 		queue = queue[1:]
 		for _, next := range adjacency[current] {
-			if next == avoid || visited[next] {
+			if slices.Contains(avoid, next) || visited[next] {
 				continue
 			}
 			visited[next] = true

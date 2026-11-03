@@ -89,7 +89,7 @@ export interface UpdateAgentRequest {
   description?: string;
   logoUrl?: string;
   owner?: string;
-  /** Whether the agent acts on behalf of a signed-in user. Not stored; it selects the grant rules checked on save. */
+  /** Whether the agent acts on behalf of a user. Not stored; it selects the grant rules checked on save. */
   delegated?: boolean;
   attributes?: Record<string, unknown>;
   allowedUserTypes?: string[];

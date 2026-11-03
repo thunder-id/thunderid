@@ -22,12 +22,15 @@ const roleAssignmentsFieldKey = "assignments"
 // roleSharingDeclaration is how a role participates in sharing: the framework asks it what roles
 // are called, which fields a policy may govern, and who owns one.
 type roleSharingDeclaration struct {
-	service RoleServiceInterface
+	service           RoleServiceInterface
+	assignmentService RoleAssignmentServiceInterface
 }
 
 // newRoleSharingDeclaration returns the declaration registered with the sharing framework.
-func newRoleSharingDeclaration(service RoleServiceInterface) *roleSharingDeclaration {
-	return &roleSharingDeclaration{service: service}
+func newRoleSharingDeclaration(
+	service RoleServiceInterface, assignmentService RoleAssignmentServiceInterface,
+) *roleSharingDeclaration {
+	return &roleSharingDeclaration{service: service, assignmentService: assignmentService}
 }
 
 // ResourceType identifies roles to the sharing framework.
@@ -56,4 +59,10 @@ func (d *roleSharingDeclaration) OwningOUID(
 		return "", svcErr
 	}
 	return role.OUID, nil
+}
+
+// DeleteOverlayValues removes the assignments an organization unit made for a role once the role is
+// no longer shared with it. Assignments live in the role's own table rather than the framework's.
+func (d *roleSharingDeclaration) DeleteOverlayValues(ctx context.Context, resourceID, ouID string) error {
+	return d.assignmentService.DeleteAssignmentsInOU(ctx, resourceID, ouID)
 }

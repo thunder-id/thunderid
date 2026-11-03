@@ -1,0 +1,82 @@
+---
+title: Share a Flow
+docType: guide
+sidebar_position: 7
+persona: iam
+description: Share a flow with the organization units beneath its owner, and let each of them set its own values for the variables the flow declares.
+---
+
+# Share a Flow
+
+A flow belongs to one organization unit, and that unit can share it with the organization units beneath it. A shared flow is not copied or forked. The owner declares the variables of the flow, and each organization unit the flow is shared with sets its own values for them, within terms the owner controls.
+
+## How Sharing Works
+
+1. **The owner creates the flow** with its variables, using `POST /flows`. The owner declares the variables on a `VARIABLES` node, and every route to it passes an `OUResolverExecutor` step, which picks the unit whose values the node resolves.
+2. **The owner shares the flow**, using `POST /flows/{flowId}/sharing-policies`. The policy names the organization units it reaches and, for each variable, whether each unit may set its own value, what the value is pinned to, and what the unit may choose from. This is the same [sharing policy](../../key-concepts/resource-sharing.mdx) that other resources use, with the same sections, reach rules, and resharing.
+3. **A child organization unit sees what it was given.** With the filter `ouId eq "<id>"` on its own unit, `GET /flows` lists the flow with `isOwnedByOU: false`. `GET /flows/{flowId}?ouId=<id>` returns the variables and nothing else of the definition. `GET /flows/{flowId}/overlay-rules` returns the terms.
+4. **The child sets its values**, using `PUT /flows/{flowId}/variables`. At run time the flow resolves each variable to the value of the unit, the value a policy fixed, or the value of the owner. Leaving a variable out of the `PUT` removes its override. The unit is the one the organization unit resolver picked, and no other: not the unit that owns the flow or the one that owns the application. A unit's values apply only when the application belongs to the unit or was shared with it. A unit that the application does not reach runs on the owner's values.
+
+## Remove a Variable
+
+When the owner updates a flow, or restores a version of it, that no longer declares a variable, the variable loses its sharing rules and the values organization units saved for it. Nothing is left that refers to a variable that no longer exists. The owner still cannot remove a variable that a `{{var(...)}}` placeholder uses.
+
+A change to a variable that the flow keeps, such as a new type or fewer options, is still refused with `409` when it breaks a sharing policy (`FLM-1041`) or a value an organization unit saved (`FLM-1042`).
+
+## Delete a Connection a Flow Uses
+
+A connection that a variable of a flow names cannot be deleted, as a connection that a node names cannot. <ProductName /> counts the flow as a user of the connection when the connection is the default of a variable, when a sharing policy of the flow gives it as the value or as one of the values to choose from, or when an organization unit the flow was shared with saved it as the value of a variable. A policy that only withholds the connection is not a use. Change or clear those values, then delete the connection.
+
+## Name the Organization Unit
+
+A call that depends on an organization unit names it. <ProductName /> takes nothing from the token of the caller, and does not yet limit which organization unit a caller may name.
+
+| Call | Where `ouId` goes |
+|---|---|
+| `POST /flows` | Required in the body, as for connections. |
+| `GET /flows` | The filter `filter=ouId eq "<id>"`. |
+| `GET /flows/{flowId}` | The query parameter `ouId`. Without it, the whole definition is returned. With it, the flow is as that organization unit sees it. |
+| `GET /flows/{flowId}/variables`, `GET /flows/{flowId}/overlay-rules` | Required query parameter. |
+| `PUT /flows/{flowId}/variables` | Required property of the body. |
+
+## What a Unit Sees of a Shared Flow
+
+A shared flow shows its variables and nothing more. The nodes, interceptors, layout, and version history stay with the owner in every endpoint. A shared flow is read only to the unit it is shared with, so the unit configures it only through its variables.
+
+| Endpoint | Owner | Unit the flow is shared with |
+|---|---|---|
+| `GET /flows` | Entry with `isOwnedByOU: true` | Same entry, with `isOwnedByOU: false` and `isReadOnly: true` |
+| `GET /flows/{flowId}` | Whole definition | Only the variables that apply to it, resolved for it |
+| `PUT /flows/{flowId}` | Allowed | `403` |
+| `/versions`, `/restore`, and `/usages` with `ouId` | Allowed | `404` for a read, `403` for a write |
+| `GET` and `PUT /flows/{flowId}/variables` | Allowed | Allowed, within the terms |
+| `/sharing-policies` | Allowed | Only to reshare what it may reshare |
+| `GET /flows/{flowId}/overlay-rules` | Allowed | For its own organization unit |
+
+## Choose the Right Read
+
+To render the variables in a UI or an SDK, use three reads, each with one job.
+
+| To get | Call |
+|---|---|
+| What to render and the value that applies to the unit: type, label, options, constraints, and `defaultValue`, resolved for the unit | `GET /flows/{flowId}` |
+| What the unit has set itself, in the shape `PUT` takes | `GET /flows/{flowId}/variables` |
+| What the unit may change, and the values fixed or offered to it | `GET /flows/{flowId}/overlay-rules` |
+
+The value in force for a variable is the override of the unit from `/variables`. When the unit has none, it is the `defaultValue` from `GET /flows/{flowId}`.
+
+## Values
+
+A variable holds one value of its own type: a boolean, a number, or a string, never null. In a sharing policy, a value is written in its raw string form, such as `"true"`, `"120"`, an option, or a connection ID. A variable always has a value in the flow, so a flow resolves for an organization unit that sets nothing.
+
+A connection value that a unit sets must be an existing connection of a kind the variable takes, and the unit must own it or have it shared with it. The same applies to the connections a sharing policy names: the unit that issues the policy must own each connection or have it shared with it, so a unit cannot pass on a connection it cannot use itself. <ProductName /> does not apply this check to the default of a variable, so a flow shared with a unit keeps running with the connection the owner chose.
+
+A connection variable can have an empty `defaultValue`, which means no connection is set. A unit that has not set its own connection then cannot run the flow, and the flow ends with an error that asks the user to contact their administrator. The error comes when the `VARIABLES` node resolves, after the unit is picked. Use this when each unit must bring its own connection instead of falling back on the owner's. A policy and a unit's own value still have to name a connection. The owner's own applications run the flow with the empty default too, so they stop with the same error.
+
+When the owner changes a sharing policy so that a unit can no longer change a variable, for example by pinning it, the value the unit saved for that variable is dropped. A later change to the flow, such as a lower maximum, is then not refused over a value the unit could not clear.
+
+A unit sees the value that applies to it: the value the sharing policy sets for it, or the `defaultValue` of the owner when the policy sets none. It does not see what the owner holds beyond that, such as options it may not choose or variables that no policy names for it. Its own override replaces that value, and you remove the override by leaving the variable out of a `PUT`.
+
+## Declare Sharing in a File
+
+A flow file can carry its sharing policies. See [Sharing Policies on Flows](../declarative-configurations/import-resources.mdx#sharing-policies-on-flows).

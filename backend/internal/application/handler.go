@@ -58,6 +58,7 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 
 	appDTO := model.ApplicationDTO{
 		OUID:        appRequest.OUID,
+		ProjectID:   appRequest.ProjectID,
 		Name:        appRequest.Name,
 		Description: appRequest.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
@@ -147,13 +148,20 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 // HandleApplicationListRequest handles the application request.
 func (ah *applicationHandler) HandleApplicationListRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	filters, err := filter.ParseEqualityFilterParam(r.URL.Query())
+	query := r.URL.Query()
+	filters, err := filter.ParseEqualityFilterParam(query)
 	if err != nil {
 		ah.handleError(ctx, w, r, &ErrorInvalidFilter)
 		return
 	}
 
-	listResponse, svcErr := ah.service.GetApplicationList(ctx, filters)
+	var listResponse *model.ApplicationListResponse
+	var svcErr *tidcommon.ServiceError
+	if query.Has(projectIDQueryParam) {
+		listResponse, svcErr = ah.service.GetApplicationListByProject(ctx, query.Get(projectIDQueryParam), filters)
+	} else {
+		listResponse, svcErr = ah.service.GetApplicationList(ctx, filters)
+	}
 	if svcErr != nil {
 		ah.handleError(ctx, w, r, svcErr)
 		return
@@ -329,6 +337,7 @@ func (ah *applicationHandler) HandleApplicationPutRequest(w http.ResponseWriter,
 	updateReqAppDTO := model.ApplicationDTO{
 		ID:          id,
 		OUID:        appRequest.OUID,
+		ProjectID:   appRequest.ProjectID,
 		Name:        appRequest.Name,
 		Description: appRequest.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{

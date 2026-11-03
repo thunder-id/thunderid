@@ -71,12 +71,12 @@ func (s *authzenService) EvaluateAccess(ctx context.Context, request AccessEvalu
 	}
 	request.Subject = resolvedSubject
 
-	suspended, svcErr := s.isSuspended(ctx, request.Subject.ID)
+	hold, svcErr := s.subjectHold(ctx, request.Subject.ID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	if suspended {
-		return &AccessEvaluationResponse{Decision: false, Context: buildSuspendedSubjectContext()}, nil
+	if hold != "" {
+		return &AccessEvaluationResponse{Decision: false, Context: buildHeldSubjectContext(hold)}, nil
 	}
 
 	resourceServerID, svcErr := s.resolveResourceServerID(ctx, request.Resource.Type)
@@ -130,7 +130,7 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 	responses := make([]AccessEvaluationResponse, len(request.Evaluations))
 	authzEvaluationIndexes := make([]int, 0, len(request.Evaluations))
 	groupIDsBySubject := make(map[string][]string)
-	suspendedBySubject := make(map[string]bool)
+	holdBySubject := make(map[string]providers.AccessRefusalReason)
 	resourceServerIDsByIdentifier := make(map[string]string)
 	resolvedSubjects := make(map[string]Subject)
 	validActions := make(map[string]struct{})
@@ -179,17 +179,17 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 		}
 		evaluation.Subject = resolvedSubject
 
-		suspended, ok := suspendedBySubject[evaluation.Subject.ID]
+		hold, ok := holdBySubject[evaluation.Subject.ID]
 		if !ok {
 			var svcErr *tidcommon.ServiceError
-			suspended, svcErr = s.isSuspended(ctx, evaluation.Subject.ID)
+			hold, svcErr = s.subjectHold(ctx, evaluation.Subject.ID)
 			if svcErr != nil {
 				return nil, svcErr
 			}
-			suspendedBySubject[evaluation.Subject.ID] = suspended
+			holdBySubject[evaluation.Subject.ID] = hold
 		}
-		if suspended {
-			responses[i] = AccessEvaluationResponse{Decision: false, Context: buildSuspendedSubjectContext()}
+		if hold != "" {
+			responses[i] = AccessEvaluationResponse{Decision: false, Context: buildHeldSubjectContext(hold)}
 			continue
 		}
 
@@ -271,11 +271,11 @@ func (s *authzenService) SearchActions(ctx context.Context, request AccessAction
 	}
 	request.Subject = resolvedSubject
 
-	suspended, svcErr := s.isSuspended(ctx, request.Subject.ID)
+	hold, svcErr := s.subjectHold(ctx, request.Subject.ID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	if suspended {
+	if hold != "" {
 		return &AccessSearchResponse{Results: []Action{}}, nil
 	}
 
@@ -500,17 +500,19 @@ func (s *authzenService) resolveSubject(ctx context.Context, subject Subject) (S
 	return subject, nil
 }
 
-// isSuspended reports whether governance holds the subject suspended. A lock is not a denial.
-func (s *authzenService) isSuspended(ctx context.Context, subjectID string) (bool, *tidcommon.ServiceError) {
-	suspended, svcErr := s.governance.IsSuspended(ctx, subjectID)
+// subjectHold reports the hold governance places on the subject, suspended or expired, or empty when
+// it has none. A lock is not a denial.
+func (s *authzenService) subjectHold(ctx context.Context,
+	subjectID string) (providers.AccessRefusalReason, *tidcommon.ServiceError) {
+	hold, svcErr := s.governance.AccessHold(ctx, subjectID)
 	if svcErr != nil {
-		return false, &tidcommon.InternalServerError
+		return "", &tidcommon.InternalServerError
 	}
-	if suspended {
-		s.logger.Debug(ctx, "Denied access evaluation for a suspended subject",
-			log.MaskedString(log.LoggerKeyUserID, subjectID))
+	if hold != "" {
+		s.logger.Debug(ctx, "Denied access evaluation for a held subject",
+			log.MaskedString(log.LoggerKeyUserID, subjectID), log.String("hold", string(hold)))
 	}
-	return suspended, nil
+	return hold, nil
 }
 
 // validateAction verifies that an action is registered on the resource server.
@@ -646,8 +648,13 @@ func buildDecisionContext(decision bool, context map[string]interface{}) map[str
 	}
 }
 
-// buildSuspendedSubjectContext returns the denial context for a suspended subject.
-func buildSuspendedSubjectContext() map[string]interface{} {
+// buildHeldSubjectContext returns the denial context for a subject governance holds.
+func buildHeldSubjectContext(hold providers.AccessRefusalReason) map[string]interface{} {
+	if hold == providers.AccessRefusalReasonExpired {
+		return map[string]interface{}{
+			"reason": "Subject's lifespan has ended",
+		}
+	}
 	return map[string]interface{}{
 		"reason": "Subject is suspended",
 	}

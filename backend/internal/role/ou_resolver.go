@@ -5,40 +5,38 @@ package role
 
 import (
 	"context"
+	"errors"
 
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 )
 
-// ouRoleResolverAdapter implements oupkg.OURoleResolver using the role store.
-// This adapter allows the OU package to query role data without directly
-// accessing the ROLE table, breaking the cross-DB access boundary.
+// ouRoleResolverAdapter implements oupkg.OURoleResolver using the role service, so the OU package
+// lists roles without depending on the role package.
 type ouRoleResolverAdapter struct {
-	store roleStoreInterface
+	service RoleServiceInterface
 }
 
-// newOURoleResolver creates a new OURoleResolver backed by the given role store.
-func newOURoleResolver(store roleStoreInterface) oupkg.OURoleResolver {
-	return &ouRoleResolverAdapter{store: store}
+// newOURoleResolver creates a new OURoleResolver backed by the given role service.
+func newOURoleResolver(service RoleServiceInterface) oupkg.OURoleResolver {
+	return &ouRoleResolverAdapter{service: service}
 }
 
-// GetRoleCountByOUID returns the count of roles belonging to the given organization unit.
-func (a *ouRoleResolverAdapter) GetRoleCountByOUID(ctx context.Context, ouID string) (int, error) {
-	return a.store.GetRoleListCountByOUID(ctx, ouID)
-}
-
-// GetRoleListByOUID returns a paginated list of roles belonging to the given organization unit.
+// GetRoleListByOUID returns one page of the roles an organization unit owns, followed by the ones
+// shared with it, and the total across every page.
 func (a *ouRoleResolverAdapter) GetRoleListByOUID(
 	ctx context.Context, ouID string, limit, offset int,
-) ([]oupkg.Role, error) {
-	roles, err := a.store.GetRoleListByOUID(ctx, ouID, limit, offset)
-	if err != nil {
-		return nil, err
+) ([]oupkg.Role, int, error) {
+	list, svcErr := a.service.GetRoleList(ctx, limit, offset, map[string]interface{}{"ouId": ouID})
+	if svcErr != nil {
+		return nil, 0, errors.New(svcErr.Error.DefaultValue)
 	}
 
-	result := make([]oupkg.Role, len(roles))
-	for i, r := range roles {
-		result[i] = oupkg.Role{ID: r.ID, Name: r.Name, Description: r.Description, IsReadOnly: r.IsReadOnly}
+	result := make([]oupkg.Role, len(list.Roles))
+	for i, r := range list.Roles {
+		result[i] = oupkg.Role{
+			ID: r.ID, Name: r.Name, Description: r.Description, IsReadOnly: r.IsReadOnly, IsOwnedByOU: r.IsOwnedByOU,
+		}
 	}
 
-	return result, nil
+	return result, list.TotalResults, nil
 }

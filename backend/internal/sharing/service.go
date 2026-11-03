@@ -92,12 +92,29 @@ type SharingServiceInterface interface {
 	ResolveOverlayRules(
 		ctx context.Context, rt ResourceType, resourceID, ouID string,
 	) (ResolvedOverlay, *tidcommon.ServiceError)
+	// ResolveFieldRules is ResolveFieldRule for several field keys at once. What the organization unit stands in
+	// with respect to the resource is worked out once for all of them, so a caller that needs many keys pays for
+	// one resolution rather than one for each. It answers by key, and refuses the whole call for a key the type does
+	// not declare.
+	ResolveFieldRules(
+		ctx context.Context, rt ResourceType, resourceID, ouID string, fieldKeys []string,
+	) (map[string]FieldRule, *tidcommon.ServiceError)
+	// ResolveFieldRule returns the effective rule one organization unit holds for one field key, which may be a
+	// dynamic member the type does not enumerate.
+	ResolveFieldRule(
+		ctx context.Context, rt ResourceType, resourceID, ouID, fieldKey string,
+	) (FieldRule, *tidcommon.ServiceError)
 	// ResolveOverlayValues returns the effective value per field for one organization unit: what it
 	// chose for itself where its rule let it choose, and what the rule carries where it did not.
 	ResolveOverlayValues(
 		ctx context.Context, rt ResourceType, resourceID, ouID string,
 	) (ResolvedValues, *tidcommon.ServiceError)
 
+	// ListOverlayValues returns the values every organization unit holds for a resource, by unit and then by field key.
+	// It reads what is stored and applies no rule, so a value a unit can no longer set is reported too.
+	ListOverlayValues(
+		ctx context.Context, rt ResourceType, resourceID string,
+	) (map[string]map[string][]string, *tidcommon.ServiceError)
 	// SetOverlayValue records one organization unit's own value for one field of a shared resource.
 	// Refused when the unit cannot see the resource, when its rule pins the field, or when the
 	// value reaches outside what that rule offers.
@@ -109,6 +126,15 @@ type SharingServiceInterface interface {
 	DeleteOverlayValue(
 		ctx context.Context, rt ResourceType, resourceID, ouID, fieldKey string,
 	) *tidcommon.ServiceError
+	// ReplaceOverlayValues sets the values an organization unit holds for the given fields, all in one transaction
+	// of the sharing store: a field named in values is set, and one that is not goes back to what its rule carries.
+	// Either every field is written or none is, whichever store holds the resource itself. A refusal names the field.
+	ReplaceOverlayValues(
+		ctx context.Context, rt ResourceType, resourceID, ouID string, fieldKeys []string, values map[string][]string,
+	) *OverlayReplaceError
+	// RemoveField drops everything held for one field of a resource: the rule each policy states for it and the
+	// value every organization unit holds for it. It is for a resource that stops declaring the field.
+	RemoveField(ctx context.Context, rt ResourceType, resourceID, fieldKey string) *tidcommon.ServiceError
 }
 
 // sharingService orchestrates policy storage, chain resolution and the resource type's own hooks. It
@@ -269,7 +295,12 @@ func (s *sharingService) createPolicy(
 	}
 
 	if err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		return s.store.CreatePolicy(txCtx, policy)
+		if err := s.store.CreatePolicy(txCtx, policy); err != nil {
+			return err
+		}
+		// A reshare can narrow what the units beneath it may do, which leaves values they saved for a field
+		// they may no longer change.
+		return s.dropObsoleteValues(txCtx, rt, resourceID)
 	}); err != nil {
 		// The check above and this insert are not atomic, so a concurrent create can take the one
 		// slot between them and leave this one rejected. Re-reading names the policy that won,
@@ -1251,7 +1282,11 @@ func (s *sharingService) UpdatePolicy(
 		// this policy no longer names, takes the resource away from units that had it, and that
 		// needs exactly the cleanup a delete needs. current is passed because it is the reach the
 		// edit moved away from.
-		return s.cleanUpLostVisibility(txCtx, current, before)
+		if err := s.cleanUpLostVisibility(txCtx, current, before); err != nil {
+			return err
+		}
+		// An edit that pins a field, or stops governing it, leaves the values units saved for it behind.
+		return s.dropObsoleteValues(txCtx, current.ResourceType, current.ResourceID)
 	}); err != nil {
 		if errors.Is(err, errPolicyNotFound) {
 			return Policy{}, &ErrorVersionMismatch
@@ -1532,7 +1567,11 @@ func (s *sharingService) DeletePolicy(ctx context.Context, policyID string) *tid
 		if err := s.store.DeletePolicy(txCtx, policyID); err != nil {
 			return err
 		}
-		return s.cleanUpLostVisibility(txCtx, policy, before)
+		if err := s.cleanUpLostVisibility(txCtx, policy, before); err != nil {
+			return err
+		}
+		// A deleted policy may have been what let a unit change a field.
+		return s.dropObsoleteValues(txCtx, policy.ResourceType, policy.ResourceID)
 	}); err != nil {
 		s.logger.Error(ctx, "Failed to delete sharing policy", log.Error(err))
 		return &tidcommon.InternalServerError
@@ -1540,6 +1579,74 @@ func (s *sharingService) DeletePolicy(ctx context.Context, policyID string) *tid
 
 	s.clearCaches(ctx)
 	return nil
+}
+
+// dropObsoleteValues deletes the values organization units saved for a field their rule no longer lets them hold: the
+// field was pinned, or no policy governs it any more. Such a value is not in effect, so it is read as if it were not
+// there, but it would still be there for the resource to check when it changes, and would come back in effect, with
+// whatever meaning it has by then, if the field were opened again. It runs inside the write that changed the rules,
+// so what it resolves is the state that write leaves.
+func (s *sharingService) dropObsoleteValues(ctx context.Context, rt ResourceType, resourceID string) error {
+	if decl, ok := s.registry.get(rt); ok {
+		if _, external := decl.(OverlayCleaner); external {
+			// A resource type that keeps its values in its own storage drops them there.
+			return nil
+		}
+	}
+	held, err := s.store.ListOverlayValuesForResource(ctx, rt, resourceID)
+	if err != nil {
+		return err
+	}
+	for ouID, byField := range held {
+		if len(byField) == 0 {
+			continue
+		}
+		scope, svcErr := s.overlayScopeFor(ctx, rt, resourceID, ouID)
+		if svcErr != nil {
+			if svcErr.Code != oupkg.ErrorOrganizationUnitNotFound.Code {
+				return fmt.Errorf("failed to resolve what %s may hold: code=%s", ouID, svcErr.Code)
+			}
+			// A unit that saved values can be deleted afterwards. It can hold nothing, so its values go, like those of
+			// any unit that lost the resource. Failing here instead would fail every later change to the policies of
+			// the resource, and its delete, at the same unit.
+			s.logger.Debug(ctx, "Dropping the values of an organization unit that no longer exists",
+				log.String("ouID", ouID))
+			if err := s.store.DeleteOverlayValuesForOU(ctx, rt, resourceID, ouID); err != nil {
+				return err
+			}
+			continue
+		}
+		for key := range byField {
+			holdable, err := s.holdsValueFor(ctx, rt, resourceID, key, scope)
+			if err != nil {
+				return err
+			}
+			if holdable {
+				continue
+			}
+			if err := s.store.DeleteOverlayValue(ctx, rt, resourceID, ouID, key); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// holdsValueFor reports whether the rule that governs a field lets an organization unit hold a value for it: the unit
+// sees the resource, a policy governs the field, and the rule lets the unit change it. A type's default is the
+// owner's standing, and a field no policy names is not one the unit may hold a value for.
+func (s *sharingService) holdsValueFor(
+	ctx context.Context, rt ResourceType, resourceID, key string, scope overlayScope,
+) (bool, error) {
+	f, declared := s.registry.field(rt, key)
+	if !declared || !scope.visible {
+		return false, nil
+	}
+	rule, source, svcErr := s.resolvedRule(ctx, rt, resourceID, key, f.Kind, scope)
+	if svcErr != nil {
+		return false, fmt.Errorf("failed to resolve the rule of %s: code=%s", key, svcErr.Code)
+	}
+	return source == SourcePolicy && rule.Editable, nil
 }
 
 // cleanUpLostVisibility clears the per-organization unit state of every unit that stopped being
@@ -1944,6 +2051,66 @@ func (s *sharingService) ResolveOverlayRules(
 	return out, nil
 }
 
+// ResolveFieldRule returns the effective rule one organization unit holds for one field key. It is not cached: it
+// answers for keys the cache does not hold, a dynamic member among them.
+func (s *sharingService) ResolveFieldRule(
+	ctx context.Context, rt ResourceType, resourceID, ouID, fieldKey string,
+) (FieldRule, *tidcommon.ServiceError) {
+	f, ok := s.registry.field(rt, fieldKey)
+	if !ok {
+		return FieldRule{}, withDetail(ErrorUnknownFieldKey, fieldKey)
+	}
+	scope, svcErr := s.overlayScopeFor(ctx, rt, resourceID, ouID)
+	if svcErr != nil {
+		return FieldRule{}, svcErr
+	}
+	out := FieldRule{OUID: ouID, Owned: scope.owned, Visible: scope.visible}
+	if !scope.visible {
+		return out, nil
+	}
+	rule, source, svcErr := s.resolvedRule(ctx, rt, resourceID, fieldKey, f.Kind, scope)
+	if svcErr != nil {
+		return FieldRule{}, svcErr
+	}
+	out.Rule, out.Source = rule, source
+	return out, nil
+}
+
+// ResolveFieldRules returns the effective rule one organization unit holds for each of the given field keys. It is not
+// cached, like ResolveFieldRule, and works out the standing of the organization unit once for all the keys.
+func (s *sharingService) ResolveFieldRules(
+	ctx context.Context, rt ResourceType, resourceID, ouID string, fieldKeys []string,
+) (map[string]FieldRule, *tidcommon.ServiceError) {
+	fields := make(map[string]FieldDeclaration, len(fieldKeys))
+	for _, key := range fieldKeys {
+		f, ok := s.registry.field(rt, key)
+		if !ok {
+			return nil, withDetail(ErrorUnknownFieldKey, key)
+		}
+		fields[key] = f
+	}
+	out := make(map[string]FieldRule, len(fieldKeys))
+	if len(fieldKeys) == 0 {
+		return out, nil
+	}
+	scope, svcErr := s.overlayScopeFor(ctx, rt, resourceID, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	for _, key := range fieldKeys {
+		rule := FieldRule{OUID: ouID, Owned: scope.owned, Visible: scope.visible}
+		if scope.visible {
+			resolved, source, svcErr := s.resolvedRule(ctx, rt, resourceID, key, fields[key].Kind, scope)
+			if svcErr != nil {
+				return nil, svcErr
+			}
+			rule.Rule, rule.Source = resolved, source
+		}
+		out[key] = rule
+	}
+	return out, nil
+}
+
 // resolveOverlayRules is the resolution itself, with no cache on either side of it.
 //
 // Writes go through this rather than through the cached entry point above: a hit inside a write
@@ -2189,6 +2356,22 @@ func (s *sharingService) valueKeys(rt ResourceType, stored map[string][]string) 
 	return keys
 }
 
+// ListOverlayValues returns the values every organization unit holds for a resource, by unit and then by field key.
+func (s *sharingService) ListOverlayValues(
+	ctx context.Context, rt ResourceType, resourceID string,
+) (map[string]map[string][]string, *tidcommon.ServiceError) {
+	if !s.ownsOverlayValues(ctx, rt) {
+		return nil, &tidcommon.InternalServerError
+	}
+	values, err := s.store.ListOverlayValuesForResource(ctx, rt, resourceID)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to list overlay values",
+			log.String("resourceType", string(rt)), log.String("resourceID", resourceID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return values, nil
+}
+
 // SetOverlayValue records one organization unit's own value for one field of a shared resource.
 func (s *sharingService) SetOverlayValue(
 	ctx context.Context, rt ResourceType, resourceID, ouID, fieldKey string, value []string,
@@ -2234,6 +2417,70 @@ func (s *sharingService) DeleteOverlayValue(
 			log.String("resourceType", string(rt)), log.String("resourceID", resourceID),
 			log.String("ouID", ouID), log.String("fieldKey", fieldKey), log.Error(err))
 		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// RemoveField drops everything held for one field of a resource: the rule each policy states for it and the value
+// every organization unit holds for it. Policies declared in files are not touched.
+func (s *sharingService) RemoveField(
+	ctx context.Context, rt ResourceType, resourceID, fieldKey string,
+) *tidcommon.ServiceError {
+	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		return s.store.DeleteField(txCtx, rt, resourceID, fieldKey)
+	})
+	// Cleared whether the transaction committed or rolled back, as readers in between may have cached either state.
+	s.clearCaches(ctx)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to remove a field of a shared resource",
+			log.String("resourceType", string(rt)), log.String("resourceID", resourceID),
+			log.String("fieldKey", fieldKey), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// ReplaceOverlayValues sets the values an organization unit holds for the given fields in one transaction of the
+// sharing store. Each field is written as SetOverlayValue and DeleteOverlayValue would write it, so the same rules
+// apply, and a refusal of any of them undoes the rest.
+func (s *sharingService) ReplaceOverlayValues(
+	ctx context.Context, rt ResourceType, resourceID, ouID string, fieldKeys []string, values map[string][]string,
+) *OverlayReplaceError {
+	var failure *OverlayReplaceError
+	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		stored, err := s.store.GetOverlayValues(txCtx, rt, resourceID, ouID)
+		if err != nil {
+			return err
+		}
+		for _, key := range fieldKeys {
+			if value, set := values[key]; set {
+				if svcErr := s.SetOverlayValue(txCtx, rt, resourceID, ouID, key, value); svcErr != nil {
+					failure = &OverlayReplaceError{FieldKey: key, Err: svcErr}
+					return errOverlayReplaceRefused
+				}
+				continue
+			}
+			// A value the unit chose before and has left out goes back to the rule. A field it can no longer
+			// change holds nothing of its own to drop.
+			if _, held := stored[key]; !held {
+				continue
+			}
+			if svcErr := s.DeleteOverlayValue(txCtx, rt, resourceID, ouID, key); svcErr != nil &&
+				svcErr.Code != ErrorFieldNotEditable.Code {
+				failure = &OverlayReplaceError{FieldKey: key, Err: svcErr}
+				return errOverlayReplaceRefused
+			}
+		}
+		return nil
+	})
+	if failure != nil {
+		return failure
+	}
+	if err != nil {
+		s.logger.Error(ctx, "Failed to replace the values an organization unit holds",
+			log.String("resourceType", string(rt)), log.String("resourceID", resourceID),
+			log.String("ouID", ouID), log.Error(err))
+		return &OverlayReplaceError{Err: &tidcommon.InternalServerError}
 	}
 	return nil
 }

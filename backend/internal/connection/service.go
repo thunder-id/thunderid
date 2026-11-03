@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -86,8 +87,10 @@ func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 // sender-backed services, optionally filtered to a single category (empty means no filter).
 // The merged list is sorted by type, then name (case-insensitive), then ID, so the listing —
 // and therefore pagination — is deterministic regardless of the underlying stores' iteration
-// order. Both backing services return full lists, so the page is sliced in memory.
-func (s *service) listInstances(ctx context.Context, category connectionCategory,
+// order. Both backing services return full lists, so the page is sliced in memory. With an
+// organization unit, the list is the connections it owns, in that order, followed by the ones
+// shared into it in ID order.
+func (s *service) listInstances(ctx context.Context, category connectionCategory, ouID string,
 	limit, offset int) (*connectionListResponse, *tidcommon.ServiceError) {
 	if svcErr := validatePaginationParams(limit, offset); svcErr != nil {
 		return nil, svcErr
@@ -208,6 +211,23 @@ func (s *service) listInstances(ctx context.Context, category connectionCategory
 		return instances[i].ID < instances[j].ID
 	})
 
+	extraQuery := ""
+	if category != "" {
+		extraQuery = "&category=" + string(category)
+	}
+	if ouID != "" {
+		return s.listInstancesInOU(ctx, instances, ouID, limit, offset,
+			sysutils.FilterQueryParam(map[string]interface{}{filter.AttributeOUID: ouID})+extraQuery)
+	}
+
+	return pageOfInstances(instances, limit, offset, extraQuery), nil
+}
+
+// pageOfInstances returns a page of every connection. With no organization unit to be relative to, each is reported
+// as owned.
+func pageOfInstances(
+	instances []connectionInstance, limit, offset int, extraQuery string,
+) *connectionListResponse {
 	total := len(instances)
 	page := make([]connectionInstance, 0)
 	if offset < total {
@@ -217,11 +237,73 @@ func (s *service) listInstances(ctx context.Context, category connectionCategory
 		}
 		page = instances[offset:end]
 	}
-
-	extraQuery := ""
-	if category != "" {
-		extraQuery = "&category=" + string(category)
+	for i := range page {
+		page[i].IsOwnedByOU = new(true)
 	}
+	return &connectionListResponse{
+		TotalResults: total,
+		StartIndex:   offset + 1,
+		Count:        len(page),
+		Connections:  page,
+		Links:        sysutils.BuildPaginationLinks("/connections", limit, offset, total, extraQuery),
+	}
+}
+
+// listInstancesInOU returns a page of the connections an organization unit owns, followed by the
+// ones shared into it. instances holds every connection, already in listing order.
+func (s *service) listInstancesInOU(ctx context.Context, instances []connectionInstance, ouID string,
+	limit, offset int, extraQuery string) (*connectionListResponse, *tidcommon.ServiceError) {
+	owned := make([]connectionInstance, 0)
+	others := make(map[string]connectionInstance)
+	for _, instance := range instances {
+		if instance.OUID == ouID {
+			owned = append(owned, instance)
+		} else {
+			others[instance.ID] = instance
+		}
+	}
+
+	sharedIDs := make([]string, 0)
+	if s.sharingService != nil {
+		visible, svcErr := s.sharingService.ListVisibleResourceIDs(ctx, ConnectionSharingType, ouID)
+		if svcErr != nil {
+			return nil, translateSharingError(svcErr)
+		}
+		for _, id := range visible {
+			if _, ok := others[id]; ok {
+				sharedIDs = append(sharedIDs, id)
+			}
+		}
+	}
+
+	ownedPage, sharedPage, err := sysutils.PaginateOwnedThenShared(
+		len(owned),
+		func(limit, offset int) ([]connectionInstance, error) { return owned[offset : offset+limit], nil },
+		sharedIDs,
+		func(ids []string) ([]connectionInstance, error) {
+			loaded := make([]connectionInstance, 0, len(ids))
+			for _, id := range ids {
+				loaded = append(loaded, others[id])
+			}
+			return loaded, nil
+		},
+		func(instance connectionInstance) string { return instance.ID },
+		limit, offset,
+	)
+	if err != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+
+	page := make([]connectionInstance, 0, len(ownedPage)+len(sharedPage))
+	for _, instance := range ownedPage {
+		instance.IsOwnedByOU = new(true)
+		page = append(page, instance)
+	}
+	for _, instance := range sharedPage {
+		instance.IsOwnedByOU = new(false)
+		page = append(page, instance)
+	}
+	total := len(owned) + len(sharedIDs)
 	return &connectionListResponse{
 		TotalResults: total,
 		StartIndex:   offset + 1,

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/application/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 )
 
@@ -29,8 +31,13 @@ func registerMCPTools(server *mcp.Server, appService ApplicationServiceInterface
 	}
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_applications",
-		Description: `List all registered applications.`,
+		Name: "list_applications",
+		Description: `List all registered applications.
+
+Behavior:
+- With ouId, lists the applications the organization unit owns, followed by the ones shared into it.
+- With projectId, lists the project's root organization unit, or ouId when it is in the project.
+  A project that does not exist, or an organization unit outside it, has no applications.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "List Applications",
 			ReadOnlyHint: true,
@@ -125,9 +132,20 @@ Prompt the user for any missing required placeholders.`,
 func (t *applicationTools) listApplications(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
-	_ any,
+	input model.ApplicationListInput,
 ) (*mcp.CallToolResult, model.ApplicationListOutput, error) {
-	listResponse, svcErr := t.appService.GetApplicationList(ctx, nil)
+	var filters map[string]interface{}
+	if input.OUID != "" {
+		filters = map[string]interface{}{filter.AttributeOUID: input.OUID}
+	}
+
+	var listResponse *model.ApplicationListResponse
+	var svcErr *tidcommon.ServiceError
+	if input.ProjectID != "" {
+		listResponse, svcErr = t.appService.GetApplicationListByProject(ctx, input.ProjectID, filters)
+	} else {
+		listResponse, svcErr = t.appService.GetApplicationList(ctx, filters)
+	}
 	if svcErr != nil {
 		return nil, model.ApplicationListOutput{},
 			fmt.Errorf("failed to list applications: %s", svcErr.ErrorDescription)

@@ -1,0 +1,63 @@
+---
+title: MCP Client Identity
+docType: concept
+persona: iam
+sidebar_position: 1
+description: Why an MCP client connecting over HTTP is an OAuth 2.1 client, the two ways it authenticates, and how to register one in {{ProductName}}.
+---
+
+# MCP Client Identity
+
+An MCP client that connects to a remote MCP server over HTTP acts as an OAuth 2.1 client. It cannot call a protected MCP server without credentials and a token, the same as any other client calling a protected API. An MCP client connecting to a server launched locally over stdio is outside the MCP authorization specification; it takes credentials from the environment instead.
+
+## Public vs. Confidential Clients
+
+An OAuth client is either public, unable to hold a secret in confidence, or confidential, able to authenticate with one. Most MCP clients, desktop AI hosts, CLI tools, and debug UIs among them, run entirely on the user's machine or in a context where a bundled secret could be extracted. That makes them public clients, and a public client requesting a token on a user's behalf must use PKCE (Proof Key for Code Exchange) to protect the authorization code from interception.
+
+## User-Delegated vs. Machine-to-Machine Clients
+
+An MCP client authenticates in one of two shapes:
+
+- **User-delegated**: a human is the subject. The client runs Authorization Code with PKCE, and the token it receives carries the signed-in user's access.
+- **Machine-to-machine**: the client itself is the subject, with no user involved. The client runs Client Credentials, and the token carries the client's own access.
+
+## Redirect URIs for Local Clients
+
+A user-delegated client needs a redirect URI to receive the authorization code. Local MCP clients complicate this in ways a typical web app redirect URI does not:
+
+- Redirect URIs match exactly, port included, with no wildcards.
+- Local clients typically use a loopback callback (`http://localhost:PORT/callback` or `127.0.0.1`), rather than a public HTTPS redirect URI.
+- Some clients pick a random port each time they start, so there is no fixed redirect URI to register ahead of time.
+
+That last case is why static registration alone does not cover every MCP client.
+
+## Static vs. Dynamic Registration
+
+Registering a client ahead of time, giving it a client ID and a fixed redirect URI before it ever connects, works when you know the client in advance. It does not work for an MCP server that any client might connect to: the server's operator cannot enumerate every client that will ever show up, and a client that picks a random callback port has no fixed redirect URI to register in the first place.
+
+[RFC 7591 Dynamic Client Registration](../../protocols/oauth-oidc/dynamic-client-registration) (DCR) solves this by letting a client register itself against a registration endpoint at connection time, supplying its own redirect URI and receiving a client ID back immediately. This is why DCR shows up so often in MCP deployments: the client population is open-ended in a way most OAuth deployments are not. See that page for the protocol details; this page covers only the choice between the two approaches.
+
+The MCP specification's current revision deprecates DCR in favor of Client ID Metadata Documents, keeping DCR only for backward compatibility, so treat it as the fallback path rather than the default going forward.
+
+## How <ProductName /> Fits
+
+<ProductName /> represents an MCP client as the **MCP Client** application type, configured as either user-delegated or machine-to-machine. There are exactly two ways to give a client OAuth credentials: register it yourself in the Console, or let it register itself the first time it connects.
+
+### Register in the Console vs. Dynamic Client Registration
+
+| | Register in the Console | Dynamic Client Registration |
+|---|---|---|
+| **How it works** | You create the application ahead of time and set its redirect URI. | The client registers itself against the DCR endpoint the first time it connects. |
+| **Best for** | A fixed set of known clients, such as MCP Inspector or your own agent. | Clients you cannot enumerate in advance, or that expect DCR, such as Claude Code. |
+| **What you control** | The client's name, redirect URI, and client type, set up front in the Console. | Whether Dynamic Client Registration is enabled, and whether it requires authentication. |
+
+### Which Should You Pick?
+
+Register the client in the Console when you know it ahead of time and can set its redirect URI yourself. You get a client ID before the client ever connects, and the client type step configures the correct grant type for you. Reach for Dynamic Client Registration when you cannot enumerate every client in advance, such as a third-party AI host, or when the client itself expects DCR and has no way to accept a pre-issued client ID, such as Claude Code.
+
+The choice is not exclusive at the deployment level. You can pre-register some clients in the Console while leaving Dynamic Client Registration enabled for others.
+
+## Related
+
+- [Register an MCP Client in the Console](./register-a-client): create an application for a known client.
+- [Enable Dynamic Client Registration](./dynamic-client-registration): let clients register themselves on first connect.

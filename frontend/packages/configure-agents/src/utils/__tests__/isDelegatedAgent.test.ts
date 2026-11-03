@@ -5,7 +5,9 @@ import {describe, expect, it} from 'vitest';
 import type {AgentInboundAuthConfig} from '../../models/agent';
 import isDelegatedAgent, {hasDelegationGrant} from '../isDelegatedAgent';
 
-const oauth = (grantTypes?: string[]): AgentInboundAuthConfig[] => [{type: 'oauth2', config: {grantTypes}}];
+const oauth = (grantTypes?: string[]): AgentInboundAuthConfig[] => [
+  {type: 'oauth2', config: {grantTypes} as AgentInboundAuthConfig['config']},
+];
 
 describe('isDelegatedAgent', () => {
   it('should be delegated when the agent holds the authorization code grant', () => {
@@ -21,6 +23,10 @@ describe('isDelegatedAgent', () => {
     expect(isDelegatedAgent(oauth(['client_credentials', 'urn:ietf:params:oauth:grant-type:token-exchange']))).toBe(
       true,
     );
+  });
+
+  it('should be delegated with JWT bearer alone, since the assertion it redeems always names a user', () => {
+    expect(isDelegatedAgent(oauth(['client_credentials', 'urn:ietf:params:oauth:grant-type:jwt-bearer']))).toBe(true);
   });
 
   it('should not be delegated with refresh token alone, which needs a grant to refresh', () => {
@@ -40,6 +46,7 @@ describe('hasDelegationGrant', () => {
     expect(hasDelegationGrant(['authorization_code'])).toBe(true);
     expect(hasDelegationGrant(['urn:openid:params:grant-type:ciba'])).toBe(true);
     expect(hasDelegationGrant(['urn:ietf:params:oauth:grant-type:token-exchange'])).toBe(true);
+    expect(hasDelegationGrant(['urn:ietf:params:oauth:grant-type:jwt-bearer'])).toBe(true);
     expect(hasDelegationGrant(['client_credentials', 'refresh_token'])).toBe(false);
     expect(hasDelegationGrant([])).toBe(false);
     expect(hasDelegationGrant(undefined)).toBe(false);

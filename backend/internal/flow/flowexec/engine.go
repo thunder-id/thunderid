@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 	"time"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -33,14 +34,24 @@ type flowEngineInterface interface {
 	Execute(ctx *EngineContext) (FlowStep, *tidcommon.ServiceError)
 }
 
+// variableValueProvider supplies the values the variables of a flow hold for an organization unit it was shared with,
+// where they differ from the owner's defaults, when the application driving the flow is owned by or shared with that
+// unit. An engine given none leaves every flow on the defaults its owner declared.
+type variableValueProvider interface {
+	GetEffectiveVariableValues(
+		ctx context.Context, flowID string, app providers.Application, ouID string,
+	) (map[string]string, *tidcommon.ServiceError)
+}
+
 // FlowEngine is the main engine implementation for orchestrating flow executions.
 type flowEngine struct {
-	executorRegistry  executor.ExecutorRegistryInterface
-	interceptorRunner InterceptorRunnerInterface
-	observabilitySvc  providers.ObservabilityProvider
-	flowProvider      providers.FlowProvider
-	graphBuilder      graphbuilder.GraphBuilderInterface
-	logger            *log.Logger
+	executorRegistry       executor.ExecutorRegistryInterface
+	interceptorRunner      InterceptorRunnerInterface
+	observabilitySvc       providers.ObservabilityProvider
+	flowProvider           providers.FlowProvider
+	graphBuilder           graphbuilder.GraphBuilderInterface
+	variableValuesProvider variableValueProvider
+	logger                 *log.Logger
 }
 
 // newFlowEngine creates a new flow engine with the given dependencies.
@@ -50,14 +61,16 @@ func newFlowEngine(
 	observabilitySvc providers.ObservabilityProvider,
 	flowProvider providers.FlowProvider,
 	graphBuilder graphbuilder.GraphBuilderInterface,
+	variableValuesProvider variableValueProvider,
 ) flowEngineInterface {
 	return &flowEngine{
-		executorRegistry:  executorRegistry,
-		interceptorRunner: interceptorRunner,
-		observabilitySvc:  observabilitySvc,
-		flowProvider:      flowProvider,
-		graphBuilder:      graphBuilder,
-		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowEngine")),
+		executorRegistry:       executorRegistry,
+		interceptorRunner:      interceptorRunner,
+		observabilitySvc:       observabilitySvc,
+		flowProvider:           flowProvider,
+		graphBuilder:           graphBuilder,
+		variableValuesProvider: variableValuesProvider,
+		logger:                 log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowEngine")),
 	}
 }
 
@@ -255,6 +268,9 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 	publishNodeExecutionStartedEvent(ctx, currentNode, fe.observabilitySvc)
 
 	nodeResp, nodeErr := currentNode.Execute(nodeCtx)
+	if nodeErr == nil {
+		nodeErr = fe.applyVariableValues(ctx, currentNode, nodeResp, logger)
+	}
 	executionEndTime := time.Now().UnixMilli()
 
 	if consumed := nodeCtx.GetConsumedInputs(); len(consumed) > 0 {
@@ -435,6 +451,55 @@ func (fe *flowEngine) runPostRequestInterceptorsOnExit(
 	}
 
 	return true, nil
+}
+
+// applyVariableValues makes a VARIABLES node resolve to the values its flow holds for the organization unit a prompt
+// picked, when the flow was shared with that unit. A flow resolves for no other unit: not the one that owns the flow
+// nor the one that owns the application. A flow the unit owns, or does not hold, runs on its own defaults. A connection
+// variable that is still without a connection then stops the flow.
+func (fe *flowEngine) applyVariableValues(
+	ctx *EngineContext, node core.NodeInterface, nodeResp *common.NodeResponse, logger *log.Logger,
+) *tidcommon.ServiceError {
+	if nodeResp == nil || node.GetType() != common.NodeTypeVariables {
+		return nil
+	}
+	if nodeResp.RuntimeData == nil {
+		nodeResp.RuntimeData = make(map[string]string)
+	}
+	if svcErr := fe.applyHeldValues(ctx, node, nodeResp, logger); svcErr != nil {
+		return svcErr
+	}
+	if unset := core.UnsetConnectionVariables(node, nodeResp.RuntimeData); len(unset) > 0 {
+		logger.Warn(ctx.Context, "The flow needs a connection that is not set for the organization unit",
+			log.String("flowID", ctx.Graph.GetID()), log.String("ouID", ctx.RuntimeData[common.RuntimeKeyOUID]),
+			log.String("variables", strings.Join(unset, ",")))
+		return &ErrorFlowConnectionNotSet
+	}
+	return nil
+}
+
+// applyHeldValues puts the values the organization unit a prompt picked holds in place of the defaults.
+func (fe *flowEngine) applyHeldValues(
+	ctx *EngineContext, node core.NodeInterface, nodeResp *common.NodeResponse, logger *log.Logger,
+) *tidcommon.ServiceError {
+	unit := ctx.RuntimeData[common.RuntimeKeyOUID]
+	if fe.variableValuesProvider == nil || ctx.Graph == nil || ctx.Graph.GetID() == "" || unit == "" {
+		return nil
+	}
+	raws, svcErr := fe.variableValuesProvider.GetEffectiveVariableValues(
+		ctx.Context, ctx.Graph.GetID(), ctx.Application, unit)
+	if svcErr != nil {
+		logger.Error(ctx.Context, "Failed to read the values of the variables for the organization unit",
+			log.String("flowID", ctx.Graph.GetID()), log.String("ouID", unit), log.String("code", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+	values, err := core.VariableRuntimeValues(node, raws)
+	if err != nil {
+		logger.Error(ctx.Context, "The value of a variable is not usable", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	maps.Copy(nodeResp.RuntimeData, values)
+	return nil
 }
 
 // trackPresentedOptionalInputs records the optional inputs presented in an incomplete view response

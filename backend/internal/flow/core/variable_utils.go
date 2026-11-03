@@ -78,6 +78,11 @@ func ValidateDefinitions(defs []providers.VariableDefinition) error {
 		if err != nil {
 			return fmt.Errorf("variable %q: its default %w", def.Identifier, err)
 		}
+		if def.Type == providers.InputTypeConnectionSelect && raw == "" {
+			// A connection variable may start with no connection, which stops the flow for an organization unit that
+			// has not set one.
+			continue
+		}
 		if err := validateRaw(def, raw); err != nil {
 			return fmt.Errorf("variable %q: its default %w", def.Identifier, err)
 		}
@@ -456,4 +461,23 @@ func resolveString(s string, values map[string]string) interface{} {
 		}
 		return encoded
 	})
+}
+
+// RawFromJSONValue turns a value read from JSON into the raw string form values are stored and compared in, for the
+// data type of the variable.
+func RawFromJSONValue(def providers.VariableDefinition, v interface{}) (string, error) {
+	if def.Type == providers.InputTypeSelect {
+		return rawFromScalar(v)
+	}
+	return rawFromJSONValue(dataTypeOf(def), v)
+}
+
+// ValidateRaw checks a raw value against what a variable allows.
+func ValidateRaw(def providers.VariableDefinition, raw string) error {
+	return validateRaw(def, raw)
+}
+
+// EncodeRuntime encodes a raw value as the JSON a runtime data entry holds, of the data type of the variable.
+func EncodeRuntime(def providers.VariableDefinition, raw string) (string, error) {
+	return (&variablesNode{}).encodeRuntime(dataTypeOf(def), raw)
 }

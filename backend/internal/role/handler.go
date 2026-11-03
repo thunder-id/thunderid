@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -47,7 +48,13 @@ func (rh *roleHandler) HandleRoleListRequest(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	roleList, svcErr := rh.roleService.GetRoleList(ctx, limit, offset)
+	filters, err := filter.ParseEqualityFilterParam(r.URL.Query())
+	if err != nil {
+		handleError(ctx, w, &ErrorInvalidFilter)
+		return
+	}
+
+	roleList, svcErr := rh.roleService.GetRoleList(ctx, limit, offset, filters)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -116,7 +123,7 @@ func (rh *roleHandler) HandleRoleGetRequest(w http.ResponseWriter, r *http.Reque
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, handlerLoggerComponentName))
 
 	id := r.PathValue("id")
-	serviceRole, svcErr := rh.roleService.GetRoleWithPermissions(ctx, id)
+	serviceRole, svcErr := rh.roleService.GetRoleInOU(ctx, id, r.URL.Query().Get("ouId"))
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -205,12 +212,25 @@ func (rh *roleHandler) HandleRoleAssignmentsGetRequest(w http.ResponseWriter, r 
 		return
 	}
 
+	// The assignments made in every organization unit are listed unless a filter names one.
+	filters, err := filter.ParseEqualityFilterParam(r.URL.Query())
+	if err != nil {
+		handleError(ctx, w, &ErrorInvalidFilter)
+		return
+	}
+	ouID, rest, err := filter.SplitOUIDFilter(filters)
+	if err != nil || len(rest) > 0 {
+		handleError(ctx, w, &ErrorInvalidFilter)
+		return
+	}
+
 	var serviceResponse *AssignmentList
 	if assigneeType != "" {
 		serviceResponse, svcErr = rh.assignmentService.GetRoleAssignmentsByType(
-			ctx, id, limit, offset, includeDisplay, assigneeType)
+			ctx, id, ouID, limit, offset, includeDisplay, assigneeType)
 	} else {
-		serviceResponse, svcErr = rh.assignmentService.GetRoleAssignments(ctx, id, limit, offset, includeDisplay)
+		serviceResponse, svcErr = rh.assignmentService.GetRoleAssignments(
+			ctx, id, ouID, limit, offset, includeDisplay)
 	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
@@ -258,7 +278,7 @@ func (rh *roleHandler) HandleRoleAddAssignmentsRequest(w http.ResponseWriter, r 
 	// Convert HTTP request to service request
 	serviceRequest := rh.toRoleAssignments(sanitizedRequest)
 
-	svcErr := rh.assignmentService.AddAssignments(ctx, id, serviceRequest)
+	svcErr := rh.assignmentService.AddAssignments(ctx, id, sanitizedRequest.OUID, serviceRequest)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -285,7 +305,7 @@ func (rh *roleHandler) HandleRoleRemoveAssignmentsRequest(w http.ResponseWriter,
 	// Convert HTTP request to service request
 	serviceRequest := rh.toRoleAssignments(sanitizedRequest)
 
-	svcErr := rh.assignmentService.RemoveAssignments(ctx, id, serviceRequest)
+	svcErr := rh.assignmentService.RemoveAssignments(ctx, id, sanitizedRequest.OUID, serviceRequest)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -310,7 +330,8 @@ func handleError(ctx context.Context, w http.ResponseWriter,
 			ErrorInvalidLimit.Code, ErrorInvalidOffset.Code,
 			ErrorEmptyAssignments.Code,
 			ErrorInvalidAssignmentID.Code,
-			ErrorSharedRoleCannotMove.Code:
+			ErrorSharedRoleCannotMove.Code, ErrorAssigneeNotInOU.Code, ErrorSharedRoleFieldNotEditable.Code,
+			ErrorRoleWithAssignmentsCannotMove.Code, ErrorInvalidFilter.Code, ErrorSharedRoleNotEditable.Code:
 			statusCode = http.StatusBadRequest
 		case tidcommon.ErrorUnauthorized.Code, sysauthz.ErrorGrantNotPermitted.Code:
 			statusCode = http.StatusForbidden
@@ -390,7 +411,7 @@ func (rh *roleHandler) sanitizeUpdateRoleRequest(request *UpdateRoleRequest) Upd
 
 // sanitizeAssignmentsRequest sanitizes the assignments request input.
 func (rh *roleHandler) sanitizeAssignmentsRequest(request *AssignmentsRequest) AssignmentsRequest {
-	sanitized := AssignmentsRequest{}
+	sanitized := AssignmentsRequest{OUID: sysutils.SanitizeString(request.OUID)}
 
 	if request.Assignments != nil {
 		sanitized.Assignments = make([]AssignmentRequest, len(request.Assignments))
@@ -437,7 +458,7 @@ func parsePaginationParams(query url.Values) (int, int, *tidcommon.ServiceError)
 func (rh *roleHandler) toRoleCreationDetail(req CreateRoleRequest) RoleCreationDetail {
 	serviceAssignments := make([]RoleAssignment, len(req.Assignments))
 	for i, a := range req.Assignments {
-		serviceAssignments[i] = RoleAssignment(a)
+		serviceAssignments[i] = RoleAssignment{ID: a.ID, Type: a.Type}
 	}
 
 	return RoleCreationDetail{
@@ -459,9 +480,11 @@ func (rh *roleHandler) toHTTPRoleResponse(role *RoleWithPermissions) *RoleRespon
 func (rh *roleHandler) toHTTPCreateRoleResponse(role *RoleWithPermissionsAndAssignments) *CreateRoleResponse {
 	httpAssignments := make([]AssignmentResponse, len(role.Assignments))
 	for i, sa := range role.Assignments {
+		// A role is created in its owner, so that is where these assignments are made.
 		httpAssignments[i] = AssignmentResponse{
 			ID:   sa.ID,
 			Type: sa.Type,
+			OUID: role.OUID,
 		}
 	}
 	permissions := role.Permissions
@@ -484,7 +507,7 @@ func (rh *roleHandler) toHTTPCreateRoleResponse(role *RoleWithPermissionsAndAssi
 func (rh *roleHandler) toRoleAssignments(req AssignmentsRequest) []RoleAssignment {
 	serviceAssignments := make([]RoleAssignment, len(req.Assignments))
 	for i, a := range req.Assignments {
-		serviceAssignments[i] = RoleAssignment(a)
+		serviceAssignments[i] = RoleAssignment{ID: a.ID, Type: a.Type}
 	}
 	return serviceAssignments
 }

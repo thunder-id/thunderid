@@ -34,11 +34,14 @@ paths:
       summary: List applications
       description: |
         Retrieve a list of all applications. An `ouId` filter lists the applications the organization
-        unit owns, followed by the applications shared into it.
+        unit owns, followed by the applications shared into it. A `projectId` lists the same for the
+        project's root organization unit, or for the organization unit in the `ouId` filter when it
+        belongs to the project.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
         - $ref: '#/components/parameters/applicationFilterQueryParam'
+        - $ref: '#/components/parameters/projectIdQueryParam'
       responses:
         "200":
           description: List of applications
@@ -78,14 +81,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "APP-1062"
-                message:
-                  key: "error.applicationservice.invalid_filter_parameter"
-                  defaultValue: "Invalid filter parameter"
-                description:
-                  key: "error.applicationservice.invalid_filter_parameter_description"
-                  defaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID"
+              examples:
+                invalid-filter:
+                  summary: Invalid filter parameter
+                  value:
+                    code: "APP-1062"
+                    message:
+                      key: "error.applicationservice.invalid_filter_parameter"
+                      defaultValue: "Invalid filter parameter"
+                    description:
+                      key: "error.applicationservice.invalid_filter_parameter_description"
+                      defaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID"
         "500":
           description: Internal server error
           content:
@@ -275,6 +281,26 @@ paths:
                     description:
                       key: "error.applicationservice.invalid_request_format_description"
                       defaultValue: "The request body is malformed or contains invalid data"
+                invalid-project:
+                  summary: The project does not exist
+                  value:
+                    code: "APP-1063"
+                    message:
+                      key: "error.applicationservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.applicationservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                ou-not-in-project:
+                  summary: The organization unit is outside the project
+                  value:
+                    code: "APP-1064"
+                    message:
+                      key: "error.applicationservice.ou_not_in_project"
+                      defaultValue: "Organization unit not in project"
+                    description:
+                      key: "error.applicationservice.ou_not_in_project_description"
+                      defaultValue: "The organization unit must be the project's root organization unit or one below it"
                 invalid-redirect-uri:
                   summary: Invalid redirect URI
                   value:
@@ -641,6 +667,26 @@ paths:
                     description:
                       key: "error.applicationservice.invalid_request_format_description"
                       defaultValue: "The request body is malformed or contains invalid data"
+                invalid-project:
+                  summary: The project does not exist
+                  value:
+                    code: "APP-1063"
+                    message:
+                      key: "error.applicationservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.applicationservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                ou-not-in-project:
+                  summary: The organization unit is outside the project
+                  value:
+                    code: "APP-1064"
+                    message:
+                      key: "error.applicationservice.ou_not_in_project"
+                      defaultValue: "Organization unit not in project"
+                    description:
+                      key: "error.applicationservice.ou_not_in_project_description"
+                      defaultValue: "The organization unit must be the project's root organization unit or one below it"
                 invalid-redirect-uri:
                   summary: Invalid redirect URI
                   value:
@@ -1124,6 +1170,18 @@ components:
         organization-unit:
           summary: Applications owned by or shared into an organization unit
           value: 'ouId eq "456e8400-e29b-41d4-a716-446655440001"'
+    projectIdQueryParam:
+      in: query
+      name: projectId
+      required: false
+      description: |
+        Lists the applications the project's root organization unit owns, followed by the
+        applications shared into it. With an `ouId` filter, lists that organization unit instead
+        when it is the project's root organization unit or one below it. A project that does not
+        exist, or an organization unit outside it, has no applications.
+      schema:
+        type: string
+      example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
     applicationIdPathParam:
       in: path
       name: id
@@ -1442,12 +1500,21 @@ components:
   schemas:
     ApplicationRequest:
       type: object
-      required: [name, ouId, type]
+      required: [name, type]
       properties:
         ouId:
           type: string
-          description: The ID of the organization unit this application belongs to.
+          description: |
+            The ID of the organization unit this application belongs to. Required unless
+            `projectId` is given.
           example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        projectId:
+          type: string
+          description: |
+            The ID of the project this application belongs to. Without `ouId`, the application is
+            placed in the project's root organization unit. With `ouId`, that organization unit
+            must be the project's root organization unit or one below it.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         name:
           type: string
           description: The name of the application.
@@ -1943,7 +2010,7 @@ components:
           readOnly: true
           description: |
             Whether the listed organization unit owns the application rather than being shared it.
-            Without an `ouId` filter, every listed application is owned.
+            Without an `ouId` filter or a `projectId`, every listed application is owned.
 
     ApplicationListResponse:
       type: object

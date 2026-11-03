@@ -2,34 +2,40 @@
 title: "Issue Identity Assertions (ID-JAG)"
 docType: guide
 sidebar_position: 1
-description: Configure a {{ProductName}} application to exchange a user's ID token for an Identity Assertion JWT Authorization Grant that external services accept.
+description: Configure a {{ProductName}} application or agent to exchange a user's ID token for an Identity Assertion JWT Authorization Grant that external services accept.
 ---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Issue Identity Assertions (ID-JAG)
 
-Configure your <ProductName /> application so it can exchange a signed-in user's ID token for an **Identity Assertion Authorization Grant (ID-JAG)**, a signed JWT that an external authorization server accepts as proof of the user's identity when issuing its own access token. This guide walks through the full flow: enabling ID-JAG issuance on the application, obtaining an ID token, exchanging it, and presenting the resulting assertion to an external server.
+Configure your <ProductName /> application or agent so it can exchange a signed-in user's ID token for an **Identity Assertion Authorization Grant (ID-JAG)**, a signed JWT that an external authorization server accepts as proof of the user's identity when issuing its own access token. This guide walks through the full flow: enabling ID-JAG issuance on the client, obtaining an ID token, exchanging it, and presenting the resulting assertion to an external server.
 
 ## When to Use This
 
-Use this when your application's users need to access an external, ID-JAG-aware service, such as an MCP server or a partner API, without signing in there a second time. The external authorization server trusts the assertion your application obtained from <ProductName /> and issues its own access token based on it.
+Use this when your application's or agent's users need to access an external, ID-JAG-aware service, such as an MCP server or a partner API, without signing in there a second time. The external authorization server trusts the assertion your application or agent obtained from <ProductName /> and issues its own access token based on it.
 
 ## Prerequisites
 
 - A running <ProductName /> deployment. See [Get Started](../../../../../getting-started/get-thunderid).
 - Console access.
-- [An application](../../../../applications/manage-applications) that supports the authorization code grant and uses a confidential client. Public clients cannot issue identity assertions. An application registered from a [Client ID Metadata Document](../../../../mcp/mcp-clients/client-id-metadata-document) can issue them only when its document declares the `private_key_jwt` authentication method. For such a client, token exchange serves only identity assertion requests.
+- ID-JAG issuance allowed on the deployment. It is on by default. If `oauth.id_jag.issuance.enabled` is `false`, no client can request an ID-JAG. The token exchange grant, `urn:ietf:params:oauth:grant-type:token-exchange`, must also be in `oauth.allowed_grant_types`. See the [server configuration](../../../../../deployment/configuration).
+- A client that signs the user in and uses a confidential client type. Public clients cannot issue identity assertions. Use one of the following:
+    - [An application](../../../../applications/manage-applications) that supports the authorization code grant. An application registered from a [Client ID Metadata Document](../../../../mcp/mcp-clients/client-id-metadata-document) can issue them only when its document declares the `private_key_jwt` authentication method. For such a client, token exchange serves only identity assertion requests.
+    - [An agent](../../../../agents/manage-agents) with Delegated mode on and a grant that signs the user in: authorization code or CIBA. The subject token for the exchange is the user's ID token issued to this agent, so an agent that holds only token exchange or JWT bearer cannot obtain one, because neither grant yields an ID token.
 
 ## How Issuance Works
 
-An application already signed in to <ProductName /> exchanges its ID token for an ID-JAG, then presents that ID-JAG to an external authorization server to obtain an access token for an external API.
+An application or agent that has signed a user in to <ProductName /> exchanges the user's ID token for an ID-JAG, then presents that ID-JAG to an external authorization server to obtain an access token for an external API.
 
 ```mermaid
 sequenceDiagram
-    participant App as Application (confidential client)
+    participant App as Application or agent (confidential client)
     participant TID as ThunderID
     participant EXT as External authorization server
 
-    App->>TID: Authorization code flow with openid scope
+    App->>TID: Sign the user in with openid scope
     TID-->>App: ID token
     App->>TID: POST /oauth2/token (token exchange, requested_token_type = id-jag)
     Note over TID: Validates subject token, client, and audience allow-list
@@ -40,6 +46,11 @@ sequenceDiagram
 
 ## Enable Identity Assertions
 
+If the deployment's discovery document does not list the token exchange grant, the Console shows a hint and does not let you turn on the **Identity assertions (ID-JAG)** toggle. You can still turn off one that is already on. The Console cannot detect `oauth.id_jag.issuance.enabled: false`, so it still lets you turn the toggle on in that case, and identity assertion requests then fail with `invalid_target`.
+
+<Tabs groupId="idjag-client">
+<TabItem value="application" label="Application" default>
+
 1. In the Console, navigate to **Applications**.
 2. Select the application.
 3. Open the **Advanced** tab.
@@ -48,18 +59,64 @@ sequenceDiagram
 6. Set **Assertion validity** in seconds. The default is `300`.
 
 :::note
-Turning on identity assertions also enables the token exchange grant type on the application. When you configure the application through the API, a declarative resource, or an import instead, include the `urn:ietf:params:oauth:grant-type:token-exchange` grant type and at least one allowed audience, with no blank values. <ProductName /> rejects an enabled configuration that lacks either with `400 Bad Request`.
+The toggle is disabled for public clients. Turn off **Public client** on the application first.
 :::
 
+</TabItem>
+<TabItem value="agent" label="Agent">
+
+1. In the Console, navigate to **Agents**.
+2. Select the agent.
+3. Open the **Advanced** tab.
+4. Under **Operating mode**, turn on **Delegated mode**. This adds the authorization code and refresh token grants. The agent needs a grant that signs the user in, authorization code or CIBA, so keep authorization code on or add **CIBA (Client-Initiated Backchannel Authentication)** in **Grant types**. With authorization code on, **Save** stays disabled until the agent has at least one entry under **Authorized redirect URIs** and at least one **Allowed user types** selection.
+5. Find the **Identity assertions (ID-JAG)** card, which appears after the grant settings only while Delegated mode is on, and turn on the toggle.
+6. Under **Allowed audiences**, add the identifiers of the external authorization servers this agent can request assertions for. Each assertion targets exactly one of these audiences, and the entries must exactly match the `audience` value your agent sends in the exchange request.
+7. Set **Assertion validity** in seconds. The default is `300`.
+
+Turning on identity assertions keeps the token exchange grant selected in **Grant types**, so you cannot remove it until you turn identity assertions off. Turning Delegated mode off also turns identity assertions off.
+
+To configure the agent through the API, update it with `PUT /agents/{id}`. The update replaces the agent, so start from the agent's current definition. Send `delegated: true`, and in the `oauth2` entry of `inboundAuthConfig`, include the token exchange grant and the `token.idJag` settings. Keep the grant that signs the user in:
+
+```json
+{
+  "delegated": true,
+  "inboundAuthConfig": [
+    {
+      "type": "oauth2",
+      "config": {
+        "grantTypes": [
+          "client_credentials",
+          "authorization_code",
+          "refresh_token",
+          "urn:ietf:params:oauth:grant-type:token-exchange"
+        ],
+        "token": {
+          "idJag": {
+            "enabled": true,
+            "allowedAudiences": ["https://external-as.example.com"],
+            "validityPeriod": 300
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+See the [Agents API Reference](../../../../../apis#tag/agents) for the full request.
+
+</TabItem>
+</Tabs>
+
 :::note
-The toggle is disabled for public clients. Turn off **Public client** on the application first.
+Turning on identity assertions also enables the token exchange grant type on the client. When you configure the client through the API, a declarative resource, or an import instead, include the `urn:ietf:params:oauth:grant-type:token-exchange` grant type and at least one allowed audience, with no blank values. <ProductName /> rejects an enabled configuration that lacks either with `400 Bad Request`.
 :::
 
 ## Get an ID Token
 
-Run the authorization code flow with the `openid` scope to obtain an ID token for the signed-in user.
+Run the authorization code flow with the `openid` scope to obtain an ID token for the signed-in user. An agent runs the same flow with its own client ID and client secret, through its authentication flow. An agent that uses authorization code always requires PKCE, so its authorization request must also send `code_challenge` with `code_challenge_method=S256`, and its token request must send the matching `code_verifier`. The authorize endpoint rejects the request with `invalid_request` otherwise. See [Agent Access on Behalf of Users](../../../../agents/authentication/on-behalf-of-user) for the agent sign-in call. An agent that holds the CIBA grant can instead request the ID token through [Backchannel Authentication (CIBA)](../../backchannel-authentication) with the `openid` scope.
 
-Export the `client_id`, `client_secret`, and registered redirect URI from your application's Console entry, since the following steps need them:
+Export the `client_id`, `client_secret`, and registered redirect URI from your application's or agent's Console entry, since the following steps need them:
 
 ```bash
 export CLIENT_ID=<your client id>
@@ -77,7 +134,7 @@ These examples authenticate the client with a client secret. A client that uses 
 https://thunderid.example.com/oauth2/authorize?response_type=code&client_id=$CLIENT_ID&redirect_uri=$REDIRECT_URI&scope=openid&state=xyz
 ```
 
-Replace `$CLIENT_ID` and `$REDIRECT_URI` with their real values before pasting this URL into a browser; shell variables do not expand there.
+Replace `$CLIENT_ID` and `$REDIRECT_URI` with their real values before pasting this URL into a browser; shell variables do not expand there. For an agent, append `&code_challenge=<code challenge>&code_challenge_method=S256` to the URL.
 
 2. After the user signs in (and consents, if consent is enabled for the application), <ProductName /> redirects the browser to `$REDIRECT_URI` with a `code` query parameter. Capture it from the callback URL and export it:
 
@@ -95,6 +152,8 @@ curl -X POST https://thunderid.example.com/oauth2/token \
   -d "code=$CODE" \
   -d "redirect_uri=$REDIRECT_URI"
 ```
+
+For an agent, add `-d "code_verifier=$CODE_VERIFIER"` to this request, using the verifier that produced the code challenge.
 
 4. Export the ID token from the response:
 
@@ -173,7 +232,7 @@ The payload carries the assertion's claims:
 - `iss`: the <ProductName /> issuer that signed the assertion.
 - `sub`: the local user id of the signed-in user.
 - `aud`: the single audience requested in the exchange.
-- `client_id`: the application that requested the assertion.
+- `client_id`: the application or agent that requested the assertion.
 - `exp`, `iat`, `nbf`, `jti`: standard timing and uniqueness claims.
 
 The assertion also carries a `scope` claim when the exchange request included a `scope` parameter, and a `resource` claim when it included one or more `resource` parameters, as a string for a single value or an array for several.
@@ -194,11 +253,11 @@ curl -X POST https://external-as.example.com/token \
 |---|---|---|
 | `grant_type` | Yes | `urn:ietf:params:oauth:grant-type:token-exchange` |
 | `requested_token_type` | Yes | `urn:ietf:params:oauth:token-type:id-jag` |
-| `subject_token` | Yes | An ID token issued by <ProductName /> to the requesting application. Access tokens, refresh tokens, external ID tokens, and ID-JAGs are rejected. |
+| `subject_token` | Yes | An ID token issued by <ProductName /> to the requesting application or agent. Access tokens, refresh tokens, external ID tokens, and ID-JAGs are rejected. |
 | `subject_token_type` | Yes | `urn:ietf:params:oauth:token-type:id_token` |
-| `audience` | Yes, exactly one | Identifier of the external authorization server. Must exactly match an entry in the application's allowed audiences (string equality, no wildcards or URL normalization). |
+| `audience` | Yes, exactly one | Identifier of the external authorization server. Must exactly match an entry in the client's allowed audiences (string equality, no wildcards or URL normalization). |
 | `resource` | No, repeatable | Absolute URI without a fragment. Embedded verbatim in the grant's `resource` claim. |
-| `scope` | No | Space-delimited. Embedded verbatim in the grant's `scope` claim. Not checked against the application's or subject token's scopes; the external server enforces its own policy. |
+| `scope` | No | Space-delimited. Embedded verbatim in the grant's `scope` claim. Not checked against the client's or subject token's scopes; the external server enforces its own policy. |
 
 ## Response
 
@@ -233,12 +292,13 @@ The header sets `typ` to `oauth-id-jag+jwt`.
 | `invalid_request` | Missing required parameter: subject_token (or subject_token_type) | Parameter absent |
 | `invalid_request` | ID-JAG requests require subject_token_type urn:ietf:params:oauth:token-type:id_token | Wrong subject token type |
 | `invalid_request` | subject_token must be an ID token issued to this client | Subject token is not a valid self-issued ID token |
-| `invalid_request` | subject_token audience does not match the authenticated client | ID token was issued to a different application |
-| `invalid_target` | The client is not permitted to request ID-JAGs | ID-JAG disabled on the application or no allowed audiences |
+| `invalid_request` | subject_token audience does not match the authenticated client | ID token was issued to a different client |
+| `invalid_target` | The client is not permitted to request ID-JAGs | ID-JAG issuance turned off for the deployment (`oauth.id_jag.issuance.enabled` is `false`), ID-JAG disabled on the client, or no allowed audiences |
 | `invalid_target` | The audience parameter is required for ID-JAG requests / Exactly one audience is required for ID-JAG requests / The requested audience is not permitted for this client | Audience missing, repeated, or not in the allow-list |
 | `invalid_target` | Invalid resource parameter: must be an absolute URI (or must not contain a fragment component) | Malformed resource |
 | `invalid_client` | ID-JAG requests require a confidential client | Public client |
-| `unauthorized_client` | The client is not authorized to use this grant type | Token exchange grant not enabled on the application |
+| `unauthorized_client` | The client is not authorized to use this grant type | Token exchange grant not enabled on the client |
+| `unsupported_grant_type` | Unsupported grant type | The token exchange grant is not in the deployment's `oauth.allowed_grant_types` |
 | `server_error` | Failed to process token request | Internal failure, including unavailable revocation status |
 
 ## Related Guides

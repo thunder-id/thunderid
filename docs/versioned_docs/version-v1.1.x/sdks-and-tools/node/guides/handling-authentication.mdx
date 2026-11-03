@@ -1,0 +1,137 @@
+---
+title: Handling Authentication
+docType: guide
+description: Set up sign-in and sign-out flows in a Node.js application using the {{ProductName}} Node.js SDK
+---
+
+# Handling Authentication
+
+This guide explains how to implement authentication in a Node.js server-side application using the <ProductName /> Node.js SDK. You will set up the client, redirect users to the identity provider for sign-in, handle the OAuth 2.0 callback, and implement sign-out.
+
+## Prerequisites
+
+- Node.js 18 or later
+- An application registered in <ProductName /> with the callback URL configured (for example, `http://localhost:3000/callback`)
+- The `@thunderid/node` package installed
+
+## 1. Initialize the Client
+
+Create a shared authentication client instance and initialize it with your application's configuration.
+
+```ts title="src/auth.ts" showLineNumbers
+import { ThunderIDNodeConfig } from '@thunderid/node'
+
+// auth is an instance of your framework client (e.g. from @thunderid/express)
+// initialized with this configuration
+const config: ThunderIDNodeConfig = {
+  clientId: '<your-client-id>',
+  serverOrigin: 'https://localhost:8090',
+  afterSignInUrl: 'http://localhost:3000/callback',
+  afterSignOutUrl: 'http://localhost:3000',
+  scope: ['openid', 'profile'],
+}
+
+export default config
+```
+
+:::note
+The SDK uses an in-memory cache as the default session store. For production deployments with multiple server instances, configure a shared external store by passing a custom `store` to `initialize`.
+:::
+
+## 2. Start the Sign-In Flow
+
+When the user navigates to the sign-in route, generate a session identifier, store it in a cookie, and redirect the user to the identity provider's authorization endpoint.
+
+```ts title="src/routes/sign-in.ts" showLineNumbers
+import {
+  CookieConfig,
+  generateSessionId,
+  getSessionCookieOptions,
+} from '@thunderid/node'
+import auth from '../auth'
+
+app.get('/sign-in', async (req, res) => {
+  let sessionId = req.cookies[CookieConfig.SESSION_COOKIE_NAME]
+
+  if (!sessionId) {
+    sessionId = generateSessionId()
+    res.cookie(
+      CookieConfig.SESSION_COOKIE_NAME,
+      sessionId,
+      getSessionCookieOptions({ maxAge: 3600 }),
+    )
+  }
+
+  await auth.signIn(
+    (authUrl) => res.redirect(authUrl),
+    sessionId,
+  )
+})
+```
+
+The `authURLCallback` function receives the authorization URL. Redirect the user to this URL to continue the sign-in flow at the identity provider.
+
+## 3. Handle the Callback
+
+After the user authenticates at the identity provider, the browser redirects to the callback URL with the authorization code, session state, and state parameter. Exchange these values for tokens.
+
+```ts title="src/routes/callback.ts" showLineNumbers
+import { CookieConfig, getSessionCookieOptions } from '@thunderid/node'
+import auth from '../auth'
+
+app.get('/callback', async (req, res) => {
+  const sessionId = req.cookies[CookieConfig.SESSION_COOKIE_NAME]
+
+  if (!sessionId) {
+    return res.redirect('/sign-in')
+  }
+
+  const { code, session_state, state } = req.query
+
+  await auth.signIn(
+    (authUrl) => res.redirect(authUrl),
+    sessionId,
+    code as string,
+    session_state as string,
+    state as string,
+  )
+
+  // Refresh the cookie with the full session expiry time
+  res.cookie(
+    CookieConfig.SESSION_COOKIE_NAME,
+    sessionId,
+    getSessionCookieOptions({ maxAge: 3600 }),
+  )
+
+  res.redirect('/dashboard')
+})
+```
+
+After a successful token exchange, the SDK stores the tokens internally. The session ID in the cookie links the browser session to the stored tokens.
+
+## 4. Implement Sign-Out
+
+To sign a user out, clear the session data and redirect the user to the identity provider's end session endpoint.
+
+```ts title="src/routes/sign-out.ts" showLineNumbers
+import { CookieConfig } from '@thunderid/node'
+import auth from '../auth'
+
+app.get('/sign-out', async (req, res) => {
+  const sessionId = req.cookies[CookieConfig.SESSION_COOKIE_NAME]
+
+  if (!sessionId) {
+    return res.redirect('/')
+  }
+
+  const signOutUrl = await auth.signOut(sessionId)
+
+  res.clearCookie(CookieConfig.SESSION_COOKIE_NAME)
+  res.redirect(signOutUrl)
+})
+```
+
+## Next Steps
+
+- [Protecting Routes](../protecting-routes): Restrict access to routes based on authentication state
+- [Accessing Protected APIs](../accessing-protected-apis): Use the access token to call downstream APIs

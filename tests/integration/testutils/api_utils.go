@@ -294,6 +294,15 @@ func DefaultOUID() (string, error) {
 	return ouID, nil
 }
 
+// WithOU appends the ouId query parameter, which makes a flow read answer for that organization unit, to a path or URL.
+func WithOU(rawURL, ouID string) string {
+	separator := "?"
+	if strings.Contains(rawURL, "?") {
+		separator = "&"
+	}
+	return rawURL + separator + "ouId=" + url.QueryEscape(ouID)
+}
+
 // FindBootstrapOUID resolves the long-lived `default` organization unit seeded at bootstrap.
 func FindBootstrapOUID() (string, error) {
 	req, err := http.NewRequest("GET", TestServerURL+"/organization-units?limit=100", nil)

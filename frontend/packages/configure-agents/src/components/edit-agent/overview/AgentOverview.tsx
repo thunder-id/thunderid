@@ -7,6 +7,7 @@ import {
   LangChainLogo,
   useExternalLinkConfirmation,
 } from '@thunderid/components';
+import {deriveOAuth2Flags} from '@thunderid/configure-applications';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
 import {useGetUsers} from '@thunderid/configure-users';
 import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
@@ -154,6 +155,9 @@ export default function AgentOverview({
   }, [usersData, agent.owner]);
 
   const isDelegated = hasDelegationGrant(oauth2Config?.grantTypes);
+  // Allowed user types apply only to users signing in through this agent, which takes the
+  // authorization code grant, the same rule as the Advanced tab's Allowed user types section.
+  const hasAuthorizationCodeGrant = Boolean(oauth2Config && deriveOAuth2Flags(oauth2Config).hasAuthorizationCodeGrant);
   const allowedUserTypes = (agent.allowedUserTypes ?? []).map((handle) =>
     getUserTypeLabel(userTypesData?.types ?? [], handle),
   );
@@ -288,7 +292,7 @@ export default function AgentOverview({
             sx={{height: 20, fontSize: '0.7rem'}}
           />
         </Stack>
-        {isDelegated && (
+        {hasAuthorizationCodeGrant && (
           <Stack
             direction="row"
             alignItems="center"

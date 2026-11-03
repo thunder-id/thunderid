@@ -16,18 +16,23 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"gopkg.in/yaml.v3"
 
+	"github.com/thunder-id/thunderid/internal/connection"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/interceptormock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
 const testFlowIDService = "test-flow-id"
@@ -43,6 +48,7 @@ type FlowMgtServiceTestSuite struct {
 	mockValidator           *FlowValidatorInterfaceMock
 	mockResolver            *notificationTemplateProviderMock
 	mockOU                  *ouProviderMock
+	mockSharing             *sharingmock.SharingServiceInterfaceMock
 }
 
 func TestFlowMgtServiceTestSuite(t *testing.T) {
@@ -93,9 +99,22 @@ func (s *FlowMgtServiceTestSuite) SetupTest() {
 	s.mockOU.EXPECT().ResolveOwner(mock.Anything, "ou-1", "", mock.Anything).Return("ou-1", nil).Maybe()
 	s.mockOU.EXPECT().ResolveOwnerForUpdate(mock.Anything, "ou-1", "", "ou-1", mock.Anything).
 		Return("ou-1", nil).Maybe()
+	s.mockOU.EXPECT().ResolveOwnerForUpdate(mock.Anything, "", "", "ou-1", mock.Anything).
+		Return("ou-1", nil).Maybe()
+	// A flow that was never shared has no policies, saved values or sharees, which is what most of these tests are
+	// about. The tests of sharing replace the mock with their own.
+	s.mockSharing = sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.mockSharing.EXPECT().ListPolicies(mock.Anything, FlowSharingType, mock.Anything).
+		Return([]sharing.Policy{}, nil).Maybe()
+	s.mockSharing.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, mock.Anything).
+		Return(map[string]map[string][]string{}, nil).Maybe()
+	s.mockSharing.EXPECT().DeletePoliciesForResource(mock.Anything, FlowSharingType, mock.Anything).
+		Return(nil).Maybe()
+	s.mockSharing.EXPECT().IsVisible(mock.Anything, FlowSharingType, mock.Anything, mock.Anything).
+		Return(false, nil).Maybe()
 	s.service = newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{}, nil, s.mockOU,
-		s.mockResolver, nil)
+		s.mockResolver, nil, s.mockSharing, nil)
 
 	// UpdateFlow / DeleteFlow / RestoreFlowVersion invalidate the store cache post-transaction.
 	// The mock is applied here so individual tests don't need to repeat the expectation.
@@ -1511,6 +1530,8 @@ func (s *FlowMgtServiceTestSuite) TestRestoreFlowVersion_Success() {
 	version := &FlowVersion{Version: 1}
 	restoredFlow := &providers.CompleteFlowDefinition{ActiveVersion: 2}
 	s.mockStore.EXPECT().GetFlowVersion(mock.Anything, testFlowIDService, 1).Return(version, nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).
+		Return(&providers.CompleteFlowDefinition{ID: testFlowIDService}, nil)
 	s.mockStore.EXPECT().RestoreFlowVersion(mock.Anything, testFlowIDService, 1).Return(restoredFlow, nil)
 	s.mockGraphBuilder.EXPECT().InvalidateCache(mock.Anything, testFlowIDService)
 
@@ -1555,6 +1576,8 @@ func (s *FlowMgtServiceTestSuite) TestRestoreFlowVersion_VersionNotFound() {
 func (s *FlowMgtServiceTestSuite) TestRestoreFlowVersion_StoreError() {
 	version := &FlowVersion{Version: 1}
 	s.mockStore.EXPECT().GetFlowVersion(mock.Anything, testFlowIDService, 1).Return(version, nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).
+		Return(&providers.CompleteFlowDefinition{ID: testFlowIDService}, nil)
 	s.mockStore.EXPECT().RestoreFlowVersion(mock.Anything, testFlowIDService, 1).Return(nil, errors.New("db error"))
 
 	result, err := s.service.RestoreFlowVersion(context.Background(), testFlowIDService, 1)
@@ -1671,7 +1694,8 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_Success() {
 	mockInterceptorRegistry := interceptormock.NewInterceptorRegistryInterfaceMock(s.T())
 	mockValidator := NewFlowValidatorInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		mockExecutorRegistry, mockInterceptorRegistry, mockValidator, nil, &stubTransactioner{}, nil, nil, nil, nil)
+		mockExecutorRegistry, mockInterceptorRegistry, mockValidator,
+		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil)
 
 	authFlowDef := &FlowDefinition{
 		Handle:   "auth-flow",
@@ -1713,7 +1737,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_Success() {
 	s.mockStore.On("CreateFlow", mock.Anything, mock.AnythingOfType("string"),
 		inferredRegFlow).Return(completeFlow, nil)
 
-	service.(*flowMgtService).tryInferRegistrationFlow(context.Background(), "auth-flow-id", authFlowDef)
+	service.tryInferRegistrationFlow(context.Background(), "auth-flow-id", authFlowDef)
 
 	s.mockInference.AssertExpectations(s.T())
 	s.mockStore.AssertExpectations(s.T())
@@ -1735,7 +1759,8 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_SkipsNonAuthFlow(
 	mockInterceptorRegistry := interceptormock.NewInterceptorRegistryInterfaceMock(s.T())
 	mockValidator := NewFlowValidatorInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		mockExecutorRegistry, mockInterceptorRegistry, mockValidator, nil, &stubTransactioner{}, nil, nil, nil, nil)
+		mockExecutorRegistry, mockInterceptorRegistry, mockValidator,
+		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil)
 
 	regFlowDef := &FlowDefinition{
 		Handle:   "reg-flow",
@@ -1744,7 +1769,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_SkipsNonAuthFlow(
 		Nodes:    []providers.NodeDefinition{},
 	}
 
-	service.(*flowMgtService).tryInferRegistrationFlow(context.Background(), "reg-flow-id", regFlowDef)
+	service.tryInferRegistrationFlow(context.Background(), "reg-flow-id", regFlowDef)
 
 	s.mockInference.AssertNotCalled(s.T(), "InferRegistrationFlow")
 	s.mockStore.AssertNotCalled(s.T(), "CreateFlow")
@@ -1765,7 +1790,8 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_HandlesInferenceE
 	mockInterceptorRegistry := interceptormock.NewInterceptorRegistryInterfaceMock(s.T())
 	mockValidator := NewFlowValidatorInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		mockExecutorRegistry, mockInterceptorRegistry, mockValidator, nil, &stubTransactioner{}, nil, nil, nil, nil)
+		mockExecutorRegistry, mockInterceptorRegistry, mockValidator,
+		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil)
 
 	authFlowDef := &FlowDefinition{
 		Handle:   "auth-flow",
@@ -1776,7 +1802,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_HandlesInferenceE
 
 	s.mockInference.On("InferRegistrationFlow", mock.Anything, authFlowDef).Return(nil, errors.New("inference failed"))
 
-	service.(*flowMgtService).tryInferRegistrationFlow(context.Background(), "auth-flow-id", authFlowDef)
+	service.tryInferRegistrationFlow(context.Background(), "auth-flow-id", authFlowDef)
 
 	s.mockInference.AssertExpectations(s.T())
 	s.mockStore.AssertNotCalled(s.T(), "CreateFlow")
@@ -1797,7 +1823,8 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_HandlesStoreError
 	mockInterceptorRegistry := interceptormock.NewInterceptorRegistryInterfaceMock(s.T())
 	mockValidator := NewFlowValidatorInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		mockExecutorRegistry, mockInterceptorRegistry, mockValidator, nil, &stubTransactioner{}, nil, nil, nil, nil)
+		mockExecutorRegistry, mockInterceptorRegistry, mockValidator,
+		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil)
 
 	authFlowDef := &FlowDefinition{
 		Handle:   "auth-flow",
@@ -1826,7 +1853,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_HandlesStoreError
 	s.mockStore.On("CreateFlow", mock.Anything, mock.AnythingOfType("string"),
 		inferredRegFlow).Return(nil, errors.New("store error"))
 
-	service.(*flowMgtService).tryInferRegistrationFlow(context.Background(), "auth-flow-id", authFlowDef)
+	service.tryInferRegistrationFlow(context.Background(), "auth-flow-id", authFlowDef)
 
 	s.mockInference.AssertExpectations(s.T())
 	s.mockStore.AssertExpectations(s.T())
@@ -1839,7 +1866,8 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_DisabledAutoInfer
 	mockInterceptorRegistry := interceptormock.NewInterceptorRegistryInterfaceMock(s.T())
 	mockValidator := NewFlowValidatorInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		mockExecutorRegistry, mockInterceptorRegistry, mockValidator, nil, &stubTransactioner{}, nil, nil, nil, nil)
+		mockExecutorRegistry, mockInterceptorRegistry, mockValidator,
+		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil)
 
 	authFlowDef := &FlowDefinition{
 		Handle:   "auth-flow",
@@ -1848,7 +1876,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_DisabledAutoInfer
 		Nodes:    []providers.NodeDefinition{},
 	}
 
-	service.(*flowMgtService).tryInferRegistrationFlow(context.Background(), "auth-flow-id", authFlowDef)
+	service.tryInferRegistrationFlow(context.Background(), "auth-flow-id", authFlowDef)
 
 	s.mockInference.AssertNotCalled(s.T(), "InferRegistrationFlow")
 	s.mockStore.AssertNotCalled(s.T(), "CreateFlow")
@@ -1869,7 +1897,8 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_SkipsPasskeyRegis
 	mockInterceptorRegistry := interceptormock.NewInterceptorRegistryInterfaceMock(s.T())
 	mockValidator := NewFlowValidatorInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		mockExecutorRegistry, mockInterceptorRegistry, mockValidator, nil, &stubTransactioner{}, nil, nil, nil, nil)
+		mockExecutorRegistry, mockInterceptorRegistry, mockValidator,
+		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil)
 
 	// Auth flow with PasskeyAuthExecutor in register_start and register_finish modes
 	authFlowDef := &FlowDefinition{
@@ -1906,7 +1935,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_SkipsPasskeyRegis
 		},
 	}
 
-	service.(*flowMgtService).tryInferRegistrationFlow(context.Background(), "auth-flow-id", authFlowDef)
+	service.tryInferRegistrationFlow(context.Background(), "auth-flow-id", authFlowDef)
 
 	// InferRegistrationFlow and CreateFlow should NOT be called because
 	// the auth flow already contains passkey registration modes
@@ -2096,6 +2125,131 @@ func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_FlowReferencesIDP(
 	s.Equal(resourcedependency.ResourceTypeFlow, usages[0].ResourceType)
 	s.Equal("Google Login", usages[0].DisplayName)
 	s.Equal(resourcedependency.BehaviorRestrict, usages[0].BehaviorOnDelete)
+}
+
+func connectionVariableFlow(id, defaultConnection string) *providers.CompleteFlowDefinition {
+	return &providers.CompleteFlowDefinition{
+		ID: id, Name: "Flow " + id, OUID: "ou-1",
+		Nodes: []providers.NodeDefinition{
+			{ID: "start", Type: "START", OnSuccess: "vars"},
+			{ID: "vars", Type: "VARIABLES", OnSuccess: "end", Inputs: []providers.VariableDefinition{{
+				Identifier: "social", Type: providers.InputTypeConnectionSelect, Category: "IDENTITY_PROVIDER",
+				DefaultValue: defaultConnection,
+			}}},
+			{ID: "end", Type: "END"},
+		},
+	}
+}
+
+func connectionPolicy(terms sharing.OverlayRule) sharing.Policy {
+	return sharing.Policy{
+		ID: "p1", InitiatingOUID: "ou-1", ChildUnits: &sharing.ChildUnits{Mode: sharing.ChildUnitsAll},
+		Rules: []sharing.StoredRule{{
+			FieldKey: sharingKey("social"), Grant: sharing.GrantRef{Section: sharing.SectionChildUnits},
+			Requested: terms, Resolved: terms,
+		}},
+	}
+}
+
+func (s *FlowMgtServiceTestSuite) connectionUsages() []resourcedependency.ResourceDependency {
+	usages, err := s.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeIDP, "idp-1")
+	s.Require().NoError(err)
+	return usages
+}
+
+// A flow that names a connection as the default of a variable depends on it, as one that names it in a node does.
+func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_FlowVariableDefaultNamesTheConnection() {
+	s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).Return([]*providers.CompleteFlowDefinition{
+		connectionVariableFlow("flow-1", "idp-1"), connectionVariableFlow("flow-2", "idp-2"),
+	}, nil)
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, "flow-2").Return([]sharing.Policy{}, nil)
+	sharingSvc.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, "flow-2").
+		Return(map[string]map[string][]string{}, nil)
+
+	usages := s.connectionUsages()
+
+	s.Require().Len(usages, 1)
+	s.Equal("flow-1", usages[0].ID)
+	s.Equal(resourcedependency.ResourceTypeFlow, usages[0].ResourceType)
+	s.Equal(resourcedependency.BehaviorRestrict, usages[0].BehaviorOnDelete)
+}
+
+// A connection a sharing policy of the flow gives as a value, or as one to choose from, is in use. One it withholds is
+// not.
+func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_PolicyValuesNameTheConnection() {
+	cases := map[string]struct {
+		terms sharing.OverlayRule
+		used  bool
+	}{
+		"as the value":         {sharing.OverlayRule{Editable: false, Value: strs("idp-1")}, true},
+		"as an allowed value":  {sharing.OverlayRule{Editable: true, AllowedValues: strs("idp-2", "idp-1")}, true},
+		"as an excluded value": {sharing.OverlayRule{Editable: true, ExcludedValues: strs("idp-1")}, false},
+		"another connection":   {sharing.OverlayRule{Editable: true, Value: strs("idp-2")}, false},
+		"no value in the rule": {sharing.OverlayRule{Editable: true}, false},
+	}
+	for name, tc := range cases {
+		s.Run(name, func() {
+			s.SetupTest()
+			sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+			s.withSharing(sharingSvc)
+			s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).
+				Return([]*providers.CompleteFlowDefinition{connectionVariableFlow("flow-1", "idp-9")}, nil)
+			sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, "flow-1").
+				Return([]sharing.Policy{connectionPolicy(tc.terms)}, nil)
+			sharingSvc.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, "flow-1").
+				Return(map[string]map[string][]string{}, nil).Maybe()
+
+			s.Equal(tc.used, len(s.connectionUsages()) == 1)
+		})
+	}
+}
+
+// A value an organization unit saved for the variable is in use, and the flow is listed once however it uses it.
+func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_SavedValueNamesTheConnection() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).
+		Return([]*providers.CompleteFlowDefinition{connectionVariableFlow("flow-1", "idp-9")}, nil)
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, "flow-1").
+		Return([]sharing.Policy{connectionPolicy(sharing.OverlayRule{Editable: true})}, nil)
+	sharingSvc.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, "flow-1").
+		Return(map[string]map[string][]string{
+			"ou-child": {sharingKey("social"): {"idp-1"}, sharingKey("other"): {"idp-1"}},
+		}, nil)
+
+	s.Len(s.connectionUsages(), 1)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_ListedOnceWhateverWaysTheFlowUsesTheConnection() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	flow := connectionVariableFlow("flow-1", "idp-1")
+	flow.Nodes[0].Properties = map[string]interface{}{"idpId": "idp-1"}
+	s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).
+		Return([]*providers.CompleteFlowDefinition{flow}, nil)
+
+	s.Len(s.connectionUsages(), 1)
+}
+
+// Usage that cannot be read is an error, so the delete is blocked rather than allowed on a guess.
+func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_FailsWhenWhatUnitsSavedCannotBeRead() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).
+		Return([]*providers.CompleteFlowDefinition{connectionVariableFlow("flow-1", "idp-9")}, nil)
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, "flow-1").
+		Return([]sharing.Policy{}, nil)
+	sharingSvc.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, "flow-1").
+		Return(nil, &tidcommon.InternalServerError)
+
+	usages, err := s.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeIDP, "idp-1")
+
+	s.Error(err)
+	s.Nil(usages)
 }
 
 func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_FlowReferencesNotificationSender() {
@@ -2458,7 +2612,7 @@ func (s *FlowMgtServiceTestSuite) TestGetReachableCallTargets_StoreErrorMapsToIn
 func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_OverriddenIDWins() {
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		nil, nil, nil, nil)
+		nil, nil, nil, nil, s.mockSharing, nil)
 
 	id, svcErr := svc.ResolveEffectiveFlowID(
 		context.Background(), "override-id", "ou-1", providers.FlowTypeAuthentication)
@@ -2471,7 +2625,7 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_OUFlowIDUsedWhenNoO
 	mockOU := newOuProviderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		nil, mockOU, nil, nil)
+		nil, mockOU, nil, nil, s.mockSharing, nil)
 
 	ou := ou.OrganizationUnit{AuthFlowID: "ou-auth-flow"}
 	mockOU.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").Return(ou, nil)
@@ -2487,7 +2641,7 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_ServerDefaultUsedWh
 	mockSC := newServerConfigProviderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		mockSC, mockOU, nil, nil)
+		mockSC, mockOU, nil, nil, s.mockSharing, nil)
 
 	mockOU.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").Return(ou.OrganizationUnit{}, nil)
 
@@ -2513,7 +2667,7 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_EmptyWhenNoDefaultC
 	mockSC := newServerConfigProviderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		mockSC, nil, nil, nil)
+		mockSC, nil, nil, nil, s.mockSharing, nil)
 
 	mockSC.EXPECT().GetMergedConfig(mock.Anything, "flow").Return(flowconfig.FlowSectionConfig{}, nil)
 
@@ -2528,7 +2682,7 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_OULookupErrorFallsT
 	mockSC := newServerConfigProviderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		mockSC, mockOU, nil, nil)
+		mockSC, mockOU, nil, nil, s.mockSharing, nil)
 
 	mockOU.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").
 		Return(ou.OrganizationUnit{}, &tidcommon.InternalServerError)
@@ -2564,9 +2718,9 @@ func (s *FlowMgtServiceTestSuite) TestOUFlowIDForType_AllTypes() {
 func (s *FlowMgtServiceTestSuite) TestGetFlowSectionConfig_NilServerConfigSvc() {
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		nil, nil, nil, nil)
+		nil, nil, nil, nil, s.mockSharing, nil)
 
-	cfg := svc.(*flowMgtService).getFlowSectionConfig(context.Background())
+	cfg := svc.getFlowSectionConfig(context.Background())
 
 	s.Equal(flowconfig.FlowSectionConfig{}, cfg)
 }
@@ -2575,11 +2729,11 @@ func (s *FlowMgtServiceTestSuite) TestGetFlowSectionConfig_ServerConfigError() {
 	mockSC := newServerConfigProviderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		mockSC, nil, nil, nil)
+		mockSC, nil, nil, nil, s.mockSharing, nil)
 
 	mockSC.EXPECT().GetMergedConfig(mock.Anything, "flow").Return(nil, &tidcommon.InternalServerError)
 
-	cfg := svc.(*flowMgtService).getFlowSectionConfig(context.Background())
+	cfg := svc.getFlowSectionConfig(context.Background())
 
 	s.Equal(flowconfig.FlowSectionConfig{}, cfg)
 }
@@ -2588,11 +2742,11 @@ func (s *FlowMgtServiceTestSuite) TestGetFlowSectionConfig_WrongType() {
 	mockSC := newServerConfigProviderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		mockSC, nil, nil, nil)
+		mockSC, nil, nil, nil, s.mockSharing, nil)
 
 	mockSC.EXPECT().GetMergedConfig(mock.Anything, "flow").Return("not-a-flow-section-config", nil)
 
-	cfg := svc.(*flowMgtService).getFlowSectionConfig(context.Background())
+	cfg := svc.getFlowSectionConfig(context.Background())
 
 	s.Equal(flowconfig.FlowSectionConfig{}, cfg)
 }
@@ -2603,7 +2757,7 @@ func (s *FlowMgtServiceTestSuite) TestResolveDefaultFlowHandle_AllFlowTypes() {
 	mockSC := newServerConfigProviderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		mockSC, nil, nil, nil)
+		mockSC, nil, nil, nil, s.mockSharing, nil)
 
 	section := flowconfig.FlowSectionConfig{
 		AuthFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "h-auth"},
@@ -2627,7 +2781,7 @@ func (s *FlowMgtServiceTestSuite) TestResolveDefaultFlowHandle_AllFlowTypes() {
 	}
 
 	for _, tc := range testCases {
-		handle := svc.(*flowMgtService).resolveDefaultFlowHandle(context.Background(), tc.flowType)
+		handle := svc.resolveDefaultFlowHandle(context.Background(), tc.flowType)
 		s.Equal(tc.expected, handle)
 	}
 }
@@ -2884,4 +3038,1798 @@ func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_ReportsAFailureToL
 
 	s.Nil(deps)
 	s.Error(err)
+}
+
+// ---- Sharing and connection variables ----
+
+func (s *FlowMgtServiceTestSuite) withSharing(sharingSvc *sharingmock.SharingServiceInterfaceMock) {
+	impl := s.service.(*flowMgtService)
+	impl.sharingSvc = sharingSvc
+}
+
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_AFlowSharedWithTheUnitInTheRequestIsReadOnlyThroughIt() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	sharingSvc.EXPECT().IsVisible(mock.Anything, FlowSharingType, testFlowIDService, "ou-child").Return(true, nil)
+	existing := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+	}
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existing, nil)
+
+	result, err := s.service.UpdateFlow(context.Background(), testFlowIDService, s.newFlowDef("ou-child"))
+
+	s.Nil(result)
+	s.Equal(&ErrorSharedFlowReadOnly, err)
+}
+
+// brokenPolicy is a policy that names a variable no flow of these tests declares.
+func brokenPolicy() sharing.Policy {
+	return sharing.Policy{
+		ID: "p1", InitiatingOUID: "ou-1", ChildUnits: &sharing.ChildUnits{Mode: sharing.ChildUnitsAll},
+		Rules: []sharing.StoredRule{{
+			FieldKey: sharingKey("gone"), Grant: sharing.GrantRef{Section: sharing.SectionChildUnits},
+			Requested: sharing.OverlayRule{Editable: true},
+		}},
+	}
+}
+
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_RefusesAChangeThatBreaksASharingPolicy() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, testFlowIDService).
+		Return([]sharing.Policy{brokenPolicy()}, nil)
+	existing := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+	}
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existing, nil)
+
+	result, err := s.service.UpdateFlow(context.Background(), testFlowIDService, s.newFlowDef(""))
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(ErrorFlowConflictsWithSharingPolicy.Code, err.Code)
+	s.Equal("p1", err.ErrorDescription.Params["policy"])
+}
+
+func (s *FlowMgtServiceTestSuite) TestRestoreFlowVersion_RefusesAVersionThatBreaksASharingPolicy() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, testFlowIDService).
+		Return([]sharing.Policy{brokenPolicy()}, nil)
+	s.mockStore.EXPECT().GetFlowVersion(mock.Anything, testFlowIDService, 1).
+		Return(&FlowVersion{Version: 1, Nodes: validFlowNodes()}, nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).
+		Return(&providers.CompleteFlowDefinition{ID: testFlowIDService}, nil)
+
+	result, err := s.service.RestoreFlowVersion(context.Background(), testFlowIDService, 1)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(ErrorFlowConflictsWithSharingPolicy.Code, err.Code)
+}
+
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_RefusesAChangeThatInvalidatesAValueAUnitSaved() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, testFlowIDService).
+		Return([]sharing.Policy{}, nil)
+	sharingSvc.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, testFlowIDService).
+		Return(map[string]map[string][]string{"ou-child": {sharingKey("gone"): {"x"}}}, nil)
+	existing := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+	}
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existing, nil)
+
+	result, err := s.service.UpdateFlow(context.Background(), testFlowIDService, s.newFlowDef(""))
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(ErrorFlowConflictsWithSavedValues.Code, err.Code)
+	s.Contains(err.ErrorDescription.Params["details"], "ou-child")
+}
+
+func (s *FlowMgtServiceTestSuite) TestRestoreFlowVersion_RefusesAVersionThatInvalidatesAValueAUnitSaved() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, testFlowIDService).
+		Return([]sharing.Policy{}, nil)
+	sharingSvc.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, testFlowIDService).
+		Return(map[string]map[string][]string{"ou-child": {sharingKey("gone"): {"x"}}}, nil)
+	s.mockStore.EXPECT().GetFlowVersion(mock.Anything, testFlowIDService, 1).
+		Return(&FlowVersion{Version: 1, Nodes: validFlowNodes()}, nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).
+		Return(&providers.CompleteFlowDefinition{ID: testFlowIDService}, nil)
+
+	result, err := s.service.RestoreFlowVersion(context.Background(), testFlowIDService, 1)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(ErrorFlowConflictsWithSavedValues.Code, err.Code)
+}
+
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_AnotherUnitTheFlowWasNotSharedWithIsAnOwnerChange() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	sharingSvc.EXPECT().IsVisible(mock.Anything, FlowSharingType, testFlowIDService, "ou-2").Return(false, nil)
+	existing := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+	}
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existing, nil)
+	s.mockOU.EXPECT().ResolveOwnerForUpdate(mock.Anything, "ou-2", "", "ou-1", mock.Anything).
+		Return("", &ErrorOUUpdateNotAllowed)
+
+	result, err := s.service.UpdateFlow(context.Background(), testFlowIDService, s.newFlowDef("ou-2"))
+
+	s.Nil(result)
+	s.Equal(&ErrorOUUpdateNotAllowed, err)
+}
+
+func variableNodes(identifiers ...string) []providers.NodeDefinition {
+	inputs := make([]providers.VariableDefinition, 0, len(identifiers))
+	for _, id := range identifiers {
+		inputs = append(inputs, providers.VariableDefinition{
+			Identifier: id, Type: providers.InputTypeText, DefaultValue: "x",
+		})
+	}
+	return []providers.NodeDefinition{
+		{ID: "start", Type: "START", OnSuccess: "vars"},
+		{ID: "vars", Type: "VARIABLES", OnSuccess: "end", Inputs: inputs},
+		{ID: "end", Type: "END"},
+	}
+}
+
+// A variable an update takes out of the flow takes its rules and every unit's saved value with it, and the ones it
+// keeps are left alone.
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_DropsTheSharingOfAVariableItRemoves() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	existing := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		Nodes: variableNodes("brand", "locale"),
+	}
+	flowDef := s.newFlowDef("ou-1")
+	flowDef.Nodes = variableNodes("locale")
+	sharingSvc.EXPECT().RemoveField(mock.Anything, FlowSharingType, testFlowIDService, sharingKey("brand")).
+		Return(nil).Once()
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, testFlowIDService).
+		Return([]sharing.Policy{}, nil)
+	sharingSvc.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, testFlowIDService).
+		Return(map[string]map[string][]string{}, nil)
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existing, nil)
+	s.mockStore.EXPECT().UpdateFlow(mock.Anything, testFlowIDService, flowDef).
+		Return(&providers.CompleteFlowDefinition{ActiveVersion: 2}, nil)
+	s.mockGraphBuilder.EXPECT().InvalidateCache(mock.Anything, testFlowIDService)
+
+	result, err := s.service.UpdateFlow(context.Background(), testFlowIDService, flowDef)
+
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// A failure to drop the sharing of a removed variable fails the update, which is then rolled back.
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_FailsWhenTheSharingOfARemovedVariableCannotBeDropped() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	existing := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		Nodes: variableNodes("brand"),
+	}
+	sharingSvc.EXPECT().RemoveField(mock.Anything, FlowSharingType, testFlowIDService, sharingKey("brand")).
+		Return(&tidcommon.InternalServerError)
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existing, nil)
+
+	result, err := s.service.UpdateFlow(context.Background(), testFlowIDService, s.newFlowDef("ou-1"))
+
+	s.Nil(result)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+// Restoring a version that lacks a variable of the current one drops that variable's sharing the same way.
+func (s *FlowMgtServiceTestSuite) TestRestoreFlowVersion_DropsTheSharingOfAVariableTheVersionLacks() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	current := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		Nodes: variableNodes("brand"),
+	}
+	sharingSvc.EXPECT().RemoveField(mock.Anything, FlowSharingType, testFlowIDService, sharingKey("brand")).
+		Return(nil).Once()
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, testFlowIDService).
+		Return([]sharing.Policy{}, nil)
+	sharingSvc.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, testFlowIDService).
+		Return(map[string]map[string][]string{}, nil)
+	s.mockStore.EXPECT().GetFlowVersion(mock.Anything, testFlowIDService, 1).
+		Return(&FlowVersion{Version: 1, Nodes: validFlowNodes()}, nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(current, nil)
+	s.mockStore.EXPECT().RestoreFlowVersion(mock.Anything, testFlowIDService, 1).
+		Return(&providers.CompleteFlowDefinition{ActiveVersion: 3}, nil)
+	s.mockGraphBuilder.EXPECT().InvalidateCache(mock.Anything, testFlowIDService)
+
+	result, err := s.service.RestoreFlowVersion(context.Background(), testFlowIDService, 1)
+
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+func documentPolicy(variable string) sharing.PolicyRequest {
+	return sharing.PolicyRequest{ChildUnits: &sharing.ChildUnitsRequest{
+		Mode:         sharing.ChildUnitsAll,
+		OverlayRules: map[string]sharing.OverlayRule{sharingKey(variable): {Editable: true}},
+	}}
+}
+
+func (s *FlowMgtServiceTestSuite) expectDocumentUpdate(
+	existing *providers.CompleteFlowDefinition, flowDef *FlowDefinition,
+) {
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existing, nil)
+	s.mockStore.EXPECT().UpdateFlow(mock.Anything, testFlowIDService, flowDef).
+		Return(&providers.CompleteFlowDefinition{ActiveVersion: 2}, nil)
+	s.mockGraphBuilder.EXPECT().InvalidateCache(mock.Anything, testFlowIDService)
+}
+
+// A document that states its policies is checked against its own definition, not against the policies the flow held:
+// the stored policy names a variable the document drops, and the document's policy replaces it.
+func (s *FlowMgtServiceTestSuite) TestUpdateFlowWithSharing_ChecksTheDocumentAgainstItself() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	existing := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		Nodes: variableNodes("brand", "locale"),
+	}
+	flowDef := s.newFlowDef("ou-1")
+	flowDef.Nodes = variableNodes("locale")
+	policies := []sharing.PolicyRequest{documentPolicy("locale")}
+	s.expectDocumentUpdate(existing, flowDef)
+	sharingSvc.EXPECT().RemoveField(mock.Anything, FlowSharingType, testFlowIDService, sharingKey("brand")).
+		Return(nil)
+	sharingSvc.EXPECT().ReplacePoliciesForResource(mock.Anything, FlowSharingType, testFlowIDService, "ou-1", policies).
+		Return(sharing.PolicyReplay{}, nil)
+	// Only what is left after the replace is checked, and it holds nothing that conflicts.
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, testFlowIDService).
+		Return([]sharing.Policy{}, nil).Once()
+	sharingSvc.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, testFlowIDService).
+		Return(map[string]map[string][]string{}, nil).Once()
+
+	result, err := s.service.UpdateFlowWithSharing(context.Background(), testFlowIDService, flowDef, policies)
+
+	s.Nil(err)
+	s.NotNil(result)
+}
+
+// A policy of the document that does not fit the new definition is refused before anything is replaced.
+func (s *FlowMgtServiceTestSuite) TestUpdateFlowWithSharing_RefusesAPolicyThatDoesNotFitTheDefinition() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	existing := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		Nodes: variableNodes("locale"),
+	}
+	flowDef := s.newFlowDef("ou-1")
+	flowDef.Nodes = variableNodes("locale")
+	s.expectDocumentUpdate(existing, flowDef)
+
+	result, err := s.service.UpdateFlowWithSharing(context.Background(), testFlowIDService, flowDef,
+		[]sharing.PolicyRequest{documentPolicy("gone")})
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidSharingPolicy.Code, err.Code)
+}
+
+// A refusal by the sharing framework names the policy of the document, and the update goes with it.
+func (s *FlowMgtServiceTestSuite) TestUpdateFlowWithSharing_NamesThePolicyTheFrameworkRefused() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	existing := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		Nodes: variableNodes("locale"),
+	}
+	flowDef := s.newFlowDef("ou-1")
+	flowDef.Nodes = variableNodes("locale")
+	policies := []sharing.PolicyRequest{documentPolicy("locale")}
+	s.expectDocumentUpdate(existing, flowDef)
+	sharingSvc.EXPECT().ReplacePoliciesForResource(mock.Anything, FlowSharingType, testFlowIDService, "ou-1", policies).
+		Return(sharing.PolicyReplay{}, &sharing.PolicyReplayError{
+			Index: 0, InitiatingOUID: "ou-9", Err: &sharing.ErrorInvalidRequestFormat})
+
+	result, err := s.service.UpdateFlowWithSharing(context.Background(), testFlowIDService, flowDef, policies)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(sharing.ErrorInvalidRequestFormat.Code, err.Code)
+	s.Contains(err.ErrorDescription.DefaultValue, "sharing policy 1 (organization unit ou-9)")
+}
+
+// A policy the document does not name is kept, so it is checked against the new definition after the replace.
+func (s *FlowMgtServiceTestSuite) TestUpdateFlowWithSharing_ChecksWhatIsLeftAfterTheReplace() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	existing := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		Nodes: variableNodes("locale"),
+	}
+	flowDef := s.newFlowDef("ou-1")
+	flowDef.Nodes = variableNodes("locale")
+	policies := []sharing.PolicyRequest{documentPolicy("locale")}
+	s.expectDocumentUpdate(existing, flowDef)
+	sharingSvc.EXPECT().ReplacePoliciesForResource(mock.Anything, FlowSharingType, testFlowIDService, "ou-1", policies).
+		Return(sharing.PolicyReplay{}, nil)
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, testFlowIDService).
+		Return([]sharing.Policy{brokenPolicy()}, nil)
+
+	result, err := s.service.UpdateFlowWithSharing(context.Background(), testFlowIDService, flowDef, policies)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(ErrorFlowConflictsWithSharingPolicy.Code, err.Code)
+}
+
+func (s *FlowMgtServiceTestSuite) TestDeleteFlow_RemovesItsSharingPolicies() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	existing := &providers.CompleteFlowDefinition{ID: testFlowIDService, Handle: "test-handle"}
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existing, nil)
+	s.mockStore.EXPECT().DeleteFlow(mock.Anything, testFlowIDService).Return(nil)
+	s.mockGraphBuilder.EXPECT().InvalidateCache(mock.Anything, testFlowIDService)
+	sharingSvc.EXPECT().DeletePoliciesForResource(mock.Anything, FlowSharingType, testFlowIDService).Return(nil)
+
+	s.Nil(s.service.DeleteFlow(context.Background(), testFlowIDService))
+}
+
+// ---------------------------------------------------------------------------
+// Sharing, overlay rules and variables
+// ---------------------------------------------------------------------------
+
+const (
+	ownerOU   = "ou-owner"
+	childOU   = "ou-child"
+	otherOU   = "ou-other"
+	flowIDVar = "flow-vars"
+)
+
+type SharingVariablesTestSuite struct {
+	suite.Suite
+	store   *flowStoreInterfaceMock
+	ous     *ouProviderMock
+	sharing *sharingmock.SharingServiceInterfaceMock
+	idps    *idpProviderMock
+	service *flowMgtService
+	flow    *providers.CompleteFlowDefinition
+}
+
+func TestSharingVariablesTestSuite(t *testing.T) {
+	suite.Run(t, new(SharingVariablesTestSuite))
+}
+
+func strs(values ...string) *[]string { return &values }
+
+func (s *SharingVariablesTestSuite) SetupTest() {
+	s.store = newFlowStoreInterfaceMock(s.T())
+	s.ous = newOuProviderMock(s.T())
+	s.sharing = sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.idps = newIdpProviderMock(s.T())
+
+	s.service = newFlowMgtService(s.store, nil, nil, nil, nil, nil, nil, &stubTransactioner{}, nil, s.ous, nil, nil,
+		s.sharing, s.idps)
+
+	s.flow = &providers.CompleteFlowDefinition{
+		ID: flowIDVar, Handle: "acme-login", Name: "Acme Login", FlowType: providers.FlowTypeAuthentication,
+		OUID: ownerOU,
+		Nodes: []providers.NodeDefinition{
+			{ID: "start", Type: "START", OnSuccess: "vars"},
+			{ID: "vars", Type: "VARIABLES", OnSuccess: "end", Inputs: []providers.VariableDefinition{
+				{Identifier: "supportEmail", Type: providers.InputTypeEmail, DefaultValue: "support@example.com"},
+				{Identifier: "otp", Type: providers.InputTypeNumber, DefaultValue: 120.0,
+					Min: ptr(30.0), Max: ptr(600.0)},
+				{Identifier: "mfa", Type: providers.InputTypeSelect, DefaultValue: "NONE",
+					Options: []interface{}{"NONE", "SMS_OTP", "EMAIL_OTP"}},
+				{Identifier: "social", Type: providers.InputTypeConnectionSelect, DefaultValue: "c-owner",
+					Category: "IDENTITY_PROVIDER", ConnectionTypes: []string{"google"}},
+			}},
+			{ID: "end", Type: "END"},
+		},
+	}
+	s.store.EXPECT().GetFlowByID(mock.Anything, flowIDVar).Return(s.flow, nil).Maybe()
+}
+
+func ptr[T any](v T) *T { return &v }
+
+var assertAnError = errors.New("boom")
+
+// shareWith has the framework answer that the child holds the flow, with the given rules per variable.
+func (s *SharingVariablesTestSuite) shareWith(rules map[string]sharing.OverlayRule) {
+	s.sharing.EXPECT().IsVisible(mock.Anything, FlowSharingType, flowIDVar, childOU).Return(true, nil).Maybe()
+	byKey := map[string]sharing.FieldRule{}
+	for _, def := range declaredVariables(s.flow) {
+		key := sharingKey(def.Identifier)
+		fieldRule := sharing.FieldRule{OUID: childOU, Visible: true}
+		if rule, ok := rules[key]; ok {
+			fieldRule.Source = sharing.SourcePolicy
+			fieldRule.Rule = rule
+		}
+		byKey[key] = fieldRule
+		s.sharing.EXPECT().ResolveFieldRule(mock.Anything, FlowSharingType, flowIDVar, childOU, key).
+			Return(fieldRule, nil).Maybe()
+	}
+	s.sharing.EXPECT().ResolveFieldRules(mock.Anything, FlowSharingType, flowIDVar, childOU, mock.Anything).
+		Return(byKey, nil).Maybe()
+}
+
+// ---- Access ----
+
+func (s *SharingVariablesTestSuite) TestGetFlowForOURequiresAnOrganizationUnit() {
+	_, svcErr := s.service.GetFlowForOU(context.Background(), flowIDVar, "")
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorMissingOUID.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestGetFlowForOUOwner() {
+	view, svcErr := s.service.GetFlowForOU(context.Background(), flowIDVar, ownerOU)
+
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(view.Owned)
+	s.Nil(view.Shared)
+	s.True(view.Owned.IsOwnedByOU)
+	s.Len(view.Owned.Nodes, 3)
+}
+
+func (s *SharingVariablesTestSuite) TestGetFlowForOUSharedShowsOnlyWhatAppliesToTheUnit() {
+	s.shareWith(map[string]sharing.OverlayRule{
+		sharingKey("supportEmail"): {Editable: true},
+		sharingKey("otp"):          {Editable: false, Value: strs("60")},
+		sharingKey("mfa"): {
+			Editable: true, AllowedValues: strs("SMS_OTP", "EMAIL_OTP"), Value: strs("EMAIL_OTP"),
+		},
+	})
+
+	view, svcErr := s.service.GetFlowForOU(context.Background(), flowIDVar, childOU)
+
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(view.Shared)
+	s.False(view.Shared.IsOwnedByOU)
+	s.True(view.Shared.IsReadOnly)
+	s.Equal(ownerOU, view.Shared.OUID)
+
+	byID := variablesByID(view.Shared.Variables)
+	s.Len(byID, 3, "a variable no policy names for the unit is not listed")
+	s.NotContains(byID, "social")
+	s.Equal("support@example.com", byID["supportEmail"].DefaultValue,
+		"no value from the policy keeps the owner's default")
+	s.Equal(60.0, byID["otp"].DefaultValue, "the value the policy pins, in the variable's own type")
+	s.Equal("EMAIL_OTP", byID["mfa"].DefaultValue)
+	s.Equal([]interface{}{"SMS_OTP", "EMAIL_OTP"}, byID["mfa"].Options, "only the options the unit may choose from")
+}
+
+func (s *SharingVariablesTestSuite) TestGetFlowForOUNotSharedIsNotFound() {
+	s.sharing.EXPECT().IsVisible(mock.Anything, FlowSharingType, flowIDVar, otherOU).Return(false, nil)
+
+	_, svcErr := s.service.GetFlowForOU(context.Background(), flowIDVar, otherOU)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowNotFound.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestCheckFlowAccess() {
+	s.shareWith(nil)
+
+	s.Nil(s.service.CheckFlowAccess(context.Background(), flowIDVar, "", true), "no unit named, nothing to check")
+	s.Nil(s.service.CheckFlowAccess(context.Background(), flowIDVar, ownerOU, true))
+
+	svcErr := s.service.CheckFlowAccess(context.Background(), flowIDVar, childOU, false)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowNotFound.Code, svcErr.Code, "a shared flow's definition is not there to read")
+
+	svcErr = s.service.CheckFlowAccess(context.Background(), flowIDVar, childOU, true)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorSharedFlowReadOnly.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestListFlowsForOU() {
+	owned := BasicFlowDefinition{ID: "f-owned", Handle: "owned", Name: "Owned", OUID: childOU, ActiveVersion: 2,
+		CreatedAt: "t1", UpdatedAt: "t2"}
+	shared := BasicFlowDefinition{ID: flowIDVar, Handle: "acme-login", Name: "Acme", OUID: ownerOU, ActiveVersion: 3,
+		CreatedAt: "t1", UpdatedAt: "t2"}
+	s.store.EXPECT().ListFlowsByOU(mock.Anything, childOU, defaultPageSize, 0, "").
+		Return([]BasicFlowDefinition{owned}, 1, nil)
+	s.sharing.EXPECT().ListVisibleResourceIDs(mock.Anything, FlowSharingType, childOU).Return([]string{flowIDVar}, nil)
+	s.store.EXPECT().ListFlowsByIDs(mock.Anything, []string{flowIDVar}, "").
+		Return([]BasicFlowDefinition{shared}, nil)
+
+	list, svcErr := s.service.ListFlowsForOU(context.Background(), childOU, "", 0, 0)
+
+	s.Require().Nil(svcErr)
+	s.Equal(2, list.TotalResults)
+	s.Require().Len(list.Flows, 2)
+	s.True(*list.Flows[0].IsOwnedByOU)
+	s.Equal(2, list.Flows[0].ActiveVersion)
+	s.False(*list.Flows[1].IsOwnedByOU)
+	s.True(list.Flows[1].IsReadOnly)
+	s.Equal(3, list.Flows[1].ActiveVersion, "a shared flow is listed as an owned one is")
+	s.Equal("t1", list.Flows[1].CreatedAt)
+	s.Equal(ownerOU, list.Flows[1].OUID, "the owner's, not the requested one")
+}
+
+func (s *SharingVariablesTestSuite) TestListFlowsForOUFiltersAndPages() {
+	s.store.EXPECT().ListFlowsByOU(mock.Anything, childOU, 2, 1, "AUTHENTICATION").Return([]BasicFlowDefinition{
+		{ID: "b", OUID: childOU}, {ID: "c", OUID: childOU},
+	}, 3, nil)
+	s.sharing.EXPECT().ListVisibleResourceIDs(mock.Anything, FlowSharingType, childOU).Return([]string{}, nil)
+
+	list, svcErr := s.service.ListFlowsForOU(
+		context.Background(), childOU, providers.FlowTypeAuthentication, 2, 1)
+
+	s.Require().Nil(svcErr)
+	s.Equal(3, list.TotalResults)
+	s.Equal(2, list.StartIndex)
+	s.Len(list.Flows, 2)
+	s.Equal("b", list.Flows[0].ID)
+	s.Require().Len(list.Links, 3)
+	s.Equal(`/flows?offset=0&limit=2&filter=ouId+eq+%22`+childOU+`%22&flowType=AUTHENTICATION`, list.Links[0].Href,
+		"the links keep the filter and the flow type")
+}
+
+func (s *SharingVariablesTestSuite) TestListFlowsForOUReportsAStoreFailure() {
+	s.store.EXPECT().ListFlowsByOU(mock.Anything, childOU, defaultPageSize, 0, "").
+		Return(nil, 0, errors.New("db down")).Once()
+	_, svcErr := s.service.ListFlowsForOU(context.Background(), childOU, "", 0, 0)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+
+	s.store.EXPECT().ListFlowsByOU(mock.Anything, childOU, defaultPageSize, 0, "").
+		Return([]BasicFlowDefinition{}, 0, nil).Once()
+	s.sharing.EXPECT().ListVisibleResourceIDs(mock.Anything, FlowSharingType, childOU).
+		Return([]string{flowIDVar}, nil).Once()
+	s.store.EXPECT().ListFlowsByIDs(mock.Anything, []string{flowIDVar}, "").
+		Return(nil, errors.New("db down")).Once()
+	_, svcErr = s.service.ListFlowsForOU(context.Background(), childOU, "", 0, 0)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestListFlowsForOUReadsOnlyThePageItNeeds() {
+	// A unit that owns more than a page lists no shared flow, and the shared ones are not read for a page they
+	// do not appear on.
+	s.store.EXPECT().ListFlowsByOU(mock.Anything, childOU, 2, 0, "").
+		Return([]BasicFlowDefinition{{ID: "a", OUID: childOU}, {ID: "b", OUID: childOU}}, 5, nil)
+	s.sharing.EXPECT().ListVisibleResourceIDs(mock.Anything, FlowSharingType, childOU).
+		Return([]string{flowIDVar}, nil)
+	s.store.EXPECT().ListFlowsByIDs(mock.Anything, []string{flowIDVar}, "").
+		Return([]BasicFlowDefinition{{ID: flowIDVar, OUID: ownerOU}}, nil)
+
+	list, svcErr := s.service.ListFlowsForOU(context.Background(), childOU, "", 2, 0)
+
+	s.Require().Nil(svcErr)
+	s.Equal(6, list.TotalResults)
+	s.Require().Len(list.Flows, 2)
+	s.Equal("a", list.Flows[0].ID)
+	s.Equal("b", list.Flows[1].ID)
+}
+
+func (s *SharingVariablesTestSuite) TestListFlowsForOUValidatesItsInput() {
+	_, svcErr := s.service.ListFlowsForOU(context.Background(), "", "", 0, 0)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorMissingOUID.Code, svcErr.Code)
+
+	_, svcErr = s.service.ListFlowsForOU(context.Background(), childOU, "NOPE", 0, 0)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidFlowType.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestListFlowsForOUListsOwnedThenSharedAcrossPages() {
+	// The owned flows are two, so the page that starts at the second holds the second, then a shared one.
+	s.store.EXPECT().ListFlowsByOU(mock.Anything, childOU, 2, 1, "").
+		Return([]BasicFlowDefinition{{ID: "mine-2", OUID: childOU}}, 2, nil)
+	s.sharing.EXPECT().ListVisibleResourceIDs(mock.Anything, FlowSharingType, childOU).
+		Return([]string{"gone", "shared-1", "shared-2"}, nil)
+	s.store.EXPECT().ListFlowsByIDs(mock.Anything, []string{"gone", "shared-1", "shared-2"}, "").
+		Return([]BasicFlowDefinition{{ID: "shared-2", OUID: ownerOU}, {ID: "shared-1", OUID: ownerOU}}, nil)
+
+	list, svcErr := s.service.ListFlowsForOU(context.Background(), childOU, "", 2, 1)
+
+	s.Require().Nil(svcErr)
+	s.Equal(4, list.TotalResults, "a shared flow that no longer exists is not counted")
+	s.Require().Len(list.Flows, 2)
+	s.Equal("mine-2", list.Flows[0].ID)
+	s.True(*list.Flows[0].IsOwnedByOU)
+	s.Equal("shared-1", list.Flows[1].ID)
+	s.False(*list.Flows[1].IsOwnedByOU)
+	s.True(list.Flows[1].IsReadOnly)
+}
+
+func (s *SharingVariablesTestSuite) policyWith(rules map[string]sharing.OverlayRule) {
+	policy := sharing.Policy{
+		ID: "policy-1", ResourceID: flowIDVar, InitiatingOUID: ownerOU,
+		ChildUnits: &sharing.ChildUnits{Mode: sharing.ChildUnitsAll},
+	}
+	for key, rule := range rules {
+		policy.Rules = append(policy.Rules, sharing.StoredRule{
+			FieldKey: key, Grant: sharing.GrantRef{Section: sharing.SectionChildUnits},
+			Requested: rule, Resolved: rule,
+		})
+	}
+	s.sharing.EXPECT().ListPolicies(mock.Anything, FlowSharingType, flowIDVar).
+		Return([]sharing.Policy{policy}, nil)
+}
+
+func (s *SharingVariablesTestSuite) TestAChangeToAFlowNoPolicyIsRecordedForIsNotChecked() {
+	s.sharing.EXPECT().ListPolicies(mock.Anything, FlowSharingType, flowIDVar).Return([]sharing.Policy{}, nil)
+
+	s.Nil(s.service.checkSharingPolicies(context.Background(), flowIDVar, nil))
+}
+
+func (s *SharingVariablesTestSuite) TestAChangeThatStillSatisfiesTheirPoliciesIsAccepted() {
+	s.policyWith(map[string]sharing.OverlayRule{
+		sharingKey("otp"): {Editable: true, Value: strs("60")},
+		sharingKey("mfa"): {Editable: true, AllowedValues: strs("SMS_OTP")},
+	})
+
+	s.Nil(s.service.checkSharingPolicies(context.Background(), flowIDVar, s.flow.Nodes))
+}
+
+func (s *SharingVariablesTestSuite) TestAChangeThatBreaksAPolicyIsRefusedNamingIt() {
+	changes := map[string]struct {
+		rules  map[string]sharing.OverlayRule
+		edit   func(nodes []providers.NodeDefinition)
+		reason string
+	}{
+		"a variable it names is removed": {
+			map[string]sharing.OverlayRule{sharingKey("otp"): {Editable: true}},
+			func(nodes []providers.NodeDefinition) {
+				nodes[1].Inputs = append(nodes[1].Inputs[:1], nodes[1].Inputs[2:]...)
+			},
+			"does not name a variable the flow declares",
+		},
+		"an option it offers is removed": {
+			map[string]sharing.OverlayRule{sharingKey("mfa"): {Editable: true, AllowedValues: strs("SMS_OTP")}},
+			func(nodes []providers.NodeDefinition) {
+				nodes[1].Inputs[2].Options = []interface{}{"NONE", "EMAIL_OTP"}
+			},
+			"SMS_OTP",
+		},
+		"a limit it states is tightened": {
+			map[string]sharing.OverlayRule{sharingKey("otp"): {Editable: true, Value: strs("500")}},
+			func(nodes []providers.NodeDefinition) { nodes[1].Inputs[1].Max = ptr(300.0) },
+			"500",
+		},
+		"a variable it names changes type": {
+			map[string]sharing.OverlayRule{sharingKey("otp"): {Editable: true, Value: strs("120")}},
+			func(nodes []providers.NodeDefinition) { nodes[1].Inputs[1].Type = providers.InputTypeBoolean },
+			"120",
+		},
+	}
+	for name, tc := range changes {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.policyWith(tc.rules)
+			nodes := append([]providers.NodeDefinition(nil), s.flow.Nodes...)
+			nodes[1].Inputs = append([]providers.VariableDefinition(nil), nodes[1].Inputs...)
+			tc.edit(nodes)
+
+			svcErr := s.service.checkSharingPolicies(context.Background(), flowIDVar, nodes)
+
+			s.Require().NotNil(svcErr)
+			s.Equal(ErrorFlowConflictsWithSharingPolicy.Code, svcErr.Code)
+			s.Equal("policy-1", svcErr.ErrorDescription.Params["policy"])
+			s.Contains(svcErr.ErrorDescription.Params["reason"], tc.reason)
+		})
+	}
+}
+
+func (s *SharingVariablesTestSuite) TestAFailureToReadThePoliciesIsNotAConflict() {
+	s.sharing.EXPECT().ListPolicies(mock.Anything, FlowSharingType, flowIDVar).
+		Return(nil, &tidcommon.InternalServerError)
+
+	svcErr := s.service.checkSharingPolicies(context.Background(), flowIDVar, s.flow.Nodes)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// ---- A change to the flow against the values organizations units saved ----
+
+// savedValues has the framework answer with what the organization units hold for the flow.
+func (s *SharingVariablesTestSuite) savedValues(held map[string]map[string][]string) {
+	s.sharing.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, flowIDVar).Return(held, nil)
+}
+
+func (s *SharingVariablesTestSuite) TestAChangeToAFlowNoUnitSavedValuesFor() {
+	s.savedValues(map[string]map[string][]string{})
+
+	s.Nil(s.service.checkSavedValues(context.Background(), flowIDVar, nil))
+}
+
+func (s *SharingVariablesTestSuite) TestAChangeThatKeepsTheSavedValuesValidIsAccepted() {
+	s.idps.EXPECT().GetIdentityProvider(mock.Anything, "c-owner").
+		Return(&providers.IDPDTO{ID: "c-owner", Type: providers.IDPTypeGoogle, OUID: ownerOU}, nil)
+	s.savedValues(map[string]map[string][]string{childOU: {
+		sharingKey("otp"):     {"60"},
+		sharingKey("mfa"):     {"SMS_OTP"},
+		sharingKey("social"):  {"c-owner"},
+		sharingKey("cleared"): {},
+	}})
+
+	s.Nil(s.service.checkSavedValues(context.Background(), flowIDVar, s.flow.Nodes),
+		"a field the unit cleared holds no value to check")
+}
+
+func (s *SharingVariablesTestSuite) TestAChangeThatInvalidatesASavedValueIsRefusedNamingTheUnitAndVariable() {
+	changes := map[string]struct {
+		key    string
+		value  string
+		edit   func(nodes []providers.NodeDefinition)
+		reason string
+	}{
+		"a variable is removed": {
+			sharingKey("otp"), "60",
+			func(nodes []providers.NodeDefinition) {
+				nodes[1].Inputs = append(nodes[1].Inputs[:1], nodes[1].Inputs[2:]...)
+			},
+			"no longer declared",
+		},
+		"an option is removed": {
+			sharingKey("mfa"), "SMS_OTP",
+			func(nodes []providers.NodeDefinition) {
+				nodes[1].Inputs[2].Options = []interface{}{"NONE", "EMAIL_OTP"}
+			},
+			"SMS_OTP",
+		},
+		"a limit is tightened": {
+			sharingKey("otp"), "500",
+			func(nodes []providers.NodeDefinition) { nodes[1].Inputs[1].Max = ptr(300.0) },
+			"500",
+		},
+		"a variable changes type": {
+			sharingKey("otp"), "120",
+			func(nodes []providers.NodeDefinition) { nodes[1].Inputs[1].Type = providers.InputTypeBoolean },
+			"120",
+		},
+	}
+	for name, tc := range changes {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.savedValues(map[string]map[string][]string{childOU: {tc.key: {tc.value}}})
+			nodes := append([]providers.NodeDefinition(nil), s.flow.Nodes...)
+			nodes[1].Inputs = append([]providers.VariableDefinition(nil), nodes[1].Inputs...)
+			tc.edit(nodes)
+
+			svcErr := s.service.checkSavedValues(context.Background(), flowIDVar, nodes)
+
+			s.Require().NotNil(svcErr)
+			s.Equal(ErrorFlowConflictsWithSavedValues.Code, svcErr.Code)
+			details := svcErr.ErrorDescription.Params["details"]
+			s.Contains(details, childOU)
+			s.Contains(details, tc.reason)
+		})
+	}
+}
+
+func (s *SharingVariablesTestSuite) TestAConnectionASavedValueNamesHasToStillBeUsable() {
+	s.idps.EXPECT().GetIdentityProvider(mock.Anything, "c-gone").Return(nil, &ErrorFlowNotFound)
+	s.savedValues(map[string]map[string][]string{childOU: {sharingKey("social"): {"c-gone"}}})
+
+	svcErr := s.service.checkSavedValues(context.Background(), flowIDVar, s.flow.Nodes)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowConflictsWithSavedValues.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.Params["details"], "not an existing connection")
+}
+
+func (s *SharingVariablesTestSuite) TestARefusalNamesOnlyTheFirstFewSavedValues() {
+	held := map[string]map[string][]string{}
+	for i := 0; i < maxReportedValueConflicts+2; i++ {
+		held[fmt.Sprintf("ou-%02d", i)] = map[string][]string{sharingKey("gone"): {"x"}}
+	}
+	s.savedValues(held)
+
+	svcErr := s.service.checkSavedValues(context.Background(), flowIDVar, s.flow.Nodes)
+
+	s.Require().NotNil(svcErr)
+	details := svcErr.ErrorDescription.Params["details"]
+	s.Contains(details, "ou-00")
+	s.NotContains(details, "ou-06")
+	s.Contains(details, "and 2 more")
+}
+
+func (s *SharingVariablesTestSuite) TestAFailureToReadTheSavedValuesIsNotAConflict() {
+	s.sharing.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, flowIDVar).
+		Return(nil, &tidcommon.InternalServerError)
+
+	svcErr := s.service.checkSavedValues(context.Background(), flowIDVar, s.flow.Nodes)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// ---- Sharing policies ----
+
+func (s *SharingVariablesTestSuite) TestCreateSharingPolicy() {
+	req := sharing.PolicyRequest{ChildUnits: &sharing.ChildUnitsRequest{
+		Mode: sharing.ChildUnitsAll,
+		OverlayRules: map[string]sharing.OverlayRule{
+			sharingKey("supportEmail"): {Editable: true},
+			sharingKey("otp"):          {Editable: true, AllowedValues: strs("60", "120")},
+			sharingKey("social"): {
+				Editable: true, AllowedValues: strs("c-owner"), ExcludedValues: strs("c-gone"),
+			},
+		},
+	}}
+	s.idps.EXPECT().GetIdentityProvider(mock.Anything, "c-owner").
+		Return(&providers.IDPDTO{ID: "c-owner", Type: providers.IDPTypeGoogle, OUID: ownerOU}, nil)
+	s.sharing.EXPECT().CreatePolicy(mock.Anything, FlowSharingType, flowIDVar, ownerOU, req).
+		Return(sharing.Policy{ID: "p1"}, nil)
+
+	policy, svcErr := s.service.CreateSharingPolicy(context.Background(), flowIDVar, req)
+
+	s.Require().Nil(svcErr)
+	s.Equal("p1", policy.ID)
+}
+
+func (s *SharingVariablesTestSuite) TestCreateSharingPolicyRefusesTermsThatDoNotFitTheFlow() {
+	rules := func(r map[string]sharing.OverlayRule) sharing.PolicyRequest {
+		return sharing.PolicyRequest{ChildUnits: &sharing.ChildUnitsRequest{
+			Mode: sharing.ChildUnitsSelected, Units: []sharing.ChildUnitRequest{
+				{OUID: childOU, Reach: sharing.ReachUnit, OverlayRules: r}},
+		}}
+	}
+	cases := map[string]struct {
+		rules  map[string]sharing.OverlayRule
+		reason string
+	}{
+		"a rule that is not a variable": {
+			map[string]sharing.OverlayRule{"nodes.start": {Editable: true}}, "does not name a variable"},
+		"a variable the flow does not declare": {
+			map[string]sharing.OverlayRule{"variables.nope": {Editable: true}}, "does not name a variable"},
+		"two values for one variable": {
+			map[string]sharing.OverlayRule{
+				sharingKey("mfa"): {Value: strs("SMS_OTP", "EMAIL_OTP")}}, "holds one value"},
+		"a value that is not valid": {
+			map[string]sharing.OverlayRule{sharingKey("otp"): {Value: strs("1000")}}, "above the maximum"},
+		"an allowed value that is not valid": {
+			map[string]sharing.OverlayRule{
+				sharingKey("mfa"): {AllowedValues: strs("PHONE_CALL")}}, "not one of the options"},
+	}
+	for name, tc := range cases {
+		s.Run(name, func() {
+			_, svcErr := s.service.CreateSharingPolicy(context.Background(), flowIDVar, rules(tc.rules))
+
+			s.Require().NotNil(svcErr)
+			s.Equal(ErrorInvalidSharingPolicy.Code, svcErr.Code)
+			s.Contains(svcErr.ErrorDescription.Params["reason"], tc.reason)
+		})
+	}
+}
+
+func (s *SharingVariablesTestSuite) TestCreateSharingPolicyChecksTheKindAndExistenceOfAConnection() {
+	req := sharing.PolicyRequest{
+		InitiatingOUID: childOU,
+		ChildUnits: &sharing.ChildUnitsRequest{
+			Mode: sharing.ChildUnitsAll,
+			OverlayRules: map[string]sharing.OverlayRule{
+				sharingKey("social"): {Editable: true, AllowedValues: strs("c-owner")},
+			},
+		},
+	}
+	s.idps.EXPECT().GetIdentityProvider(mock.Anything, "c-owner").
+		Return(&providers.IDPDTO{ID: "c-owner", Type: providers.IDPTypeGitHub, OUID: childOU}, nil)
+
+	_, svcErr := s.service.CreateSharingPolicy(context.Background(), flowIDVar, req)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidSharingPolicy.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.Params["reason"], "does not take")
+}
+
+// A flow declared in a file is not changed through the API, but the sharing of it is not frozen with it: a unit the
+// flow was shared with may still reshare it, and only the policies a file declares are protected.
+func (s *SharingVariablesTestSuite) TestAUnitMayReshareADeclarativeFlow() {
+	s.flow.IsReadOnly = true
+	req := sharing.PolicyRequest{
+		InitiatingOUID: childOU,
+		ChildUnits:     &sharing.ChildUnitsRequest{Mode: sharing.ChildUnitsAll},
+	}
+	s.sharing.EXPECT().CreatePolicy(mock.Anything, FlowSharingType, flowIDVar, ownerOU, req).
+		Return(sharing.Policy{ID: "p1"}, nil)
+
+	policy, svcErr := s.service.CreateSharingPolicy(context.Background(), flowIDVar, req)
+
+	s.Require().Nil(svcErr)
+	s.Equal("p1", policy.ID)
+}
+
+func (s *SharingVariablesTestSuite) TestAPolicyADeclarativeFlowDeclaresIsNotChangedThroughTheAPI() {
+	s.flow.IsReadOnly = true
+	declared := sharing.Policy{ID: "p1", ResourceType: FlowSharingType, ResourceID: flowIDVar, Declared: true}
+	s.sharing.EXPECT().GetPolicy(mock.Anything, "p1").Return(declared, nil).Twice()
+	s.sharing.EXPECT().UpdatePolicy(mock.Anything, "p1", mock.Anything).
+		Return(sharing.Policy{}, &sharing.ErrorPolicyDeclared)
+
+	_, svcErr := s.service.UpdateSharingPolicy(context.Background(), flowIDVar, "p1", sharing.PolicyRequest{})
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorSharingPolicyDeclared.Code, svcErr.Code)
+
+	svcErr = s.service.DeleteSharingPolicy(context.Background(), flowIDVar, "p1")
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorSharingPolicyDeclared.Code, svcErr.Code)
+}
+func (s *SharingVariablesTestSuite) TestTheFrameworksRefusalsKeepTheirMeaning() {
+	req := sharing.PolicyRequest{ChildUnits: &sharing.ChildUnitsRequest{Mode: sharing.ChildUnitsAll}}
+	for frameworkErr, expected := range map[string]tidcommon.ServiceError{
+		sharing.ErrorPolicyExists.Code:    ErrorSharingPolicyExists,
+		sharing.ErrorPolicyDeclared.Code:  ErrorSharingPolicyDeclared,
+		sharing.ErrorVersionMismatch.Code: ErrorSharingPolicyVersionMismatch,
+		sharing.ErrorRuleWidens.Code:      ErrorInvalidSharingPolicy,
+	} {
+		s.Run(frameworkErr, func() {
+			failure := tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: frameworkErr}
+			s.sharing.EXPECT().CreatePolicy(mock.Anything, FlowSharingType, flowIDVar, ownerOU, req).
+				Return(sharing.Policy{}, &failure).Once()
+
+			_, svcErr := s.service.CreateSharingPolicy(context.Background(), flowIDVar, req)
+
+			s.Require().NotNil(svcErr)
+			s.Equal(expected.Code, svcErr.Code)
+		})
+	}
+
+	s.sharing.EXPECT().CreatePolicy(mock.Anything, FlowSharingType, flowIDVar, ownerOU, req).
+		Return(sharing.Policy{}, &tidcommon.InternalServerError).Once()
+	_, svcErr := s.service.CreateSharingPolicy(context.Background(), flowIDVar, req)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestPoliciesAreReachedThroughTheirFlowOnly() {
+	s.sharing.EXPECT().GetPolicy(mock.Anything, "p-other").
+		Return(sharing.Policy{ID: "p-other", ResourceType: FlowSharingType, ResourceID: "another-flow"}, nil)
+	s.sharing.EXPECT().GetPolicy(mock.Anything, "p-app").
+		Return(sharing.Policy{ID: "p-app", ResourceType: "application", ResourceID: flowIDVar}, nil)
+	s.sharing.EXPECT().GetPolicy(mock.Anything, "p1").
+		Return(sharing.Policy{ID: "p1", ResourceType: FlowSharingType, ResourceID: flowIDVar}, nil)
+
+	_, svcErr := s.service.GetSharingPolicy(context.Background(), flowIDVar, "p-other")
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorSharingPolicyNotFound.Code, svcErr.Code)
+
+	_, svcErr = s.service.GetSharingPolicy(context.Background(), flowIDVar, "p-app")
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorSharingPolicyNotFound.Code, svcErr.Code)
+
+	policy, svcErr := s.service.GetSharingPolicy(context.Background(), flowIDVar, "p1")
+	s.Require().Nil(svcErr)
+	s.Equal("p1", policy.ID)
+}
+
+func (s *SharingVariablesTestSuite) TestListUpdateAndDeleteSharingPolicies() {
+	s.sharing.EXPECT().GetPolicyList(mock.Anything, FlowSharingType, flowIDVar, 10, 0).
+		Return(sharing.PolicyList{TotalResults: 1, Count: 1}, nil)
+	list, svcErr := s.service.ListSharingPolicies(context.Background(), flowIDVar, 10, 0)
+	s.Require().Nil(svcErr)
+	s.Equal(1, list.TotalResults)
+
+	stored := sharing.Policy{ID: "p1", ResourceType: FlowSharingType, ResourceID: flowIDVar, InitiatingOUID: ownerOU}
+	s.sharing.EXPECT().GetPolicy(mock.Anything, "p1").Return(stored, nil)
+	edit := sharing.PolicyRequest{Version: 1, ChildUnits: &sharing.ChildUnitsRequest{Mode: sharing.ChildUnitsAll}}
+	sent := edit
+	sent.InitiatingOUID = ownerOU
+	s.sharing.EXPECT().UpdatePolicy(mock.Anything, "p1", sent).Return(sharing.Policy{ID: "p1", Version: 2}, nil)
+	updated, svcErr := s.service.UpdateSharingPolicy(context.Background(), flowIDVar, "p1", edit)
+	s.Require().Nil(svcErr)
+	s.Equal(2, updated.Version)
+
+	s.sharing.EXPECT().DeletePolicy(mock.Anything, "p1").Return(nil)
+	s.Nil(s.service.DeleteSharingPolicy(context.Background(), flowIDVar, "p1"))
+}
+
+func (s *SharingVariablesTestSuite) TestDeletingAPolicyThatIsGoneSucceedsAndADeclaredOneIsRefused() {
+	s.sharing.EXPECT().GetPolicy(mock.Anything, "gone").Return(sharing.Policy{}, &sharing.ErrorPolicyNotFound)
+	s.Nil(s.service.DeleteSharingPolicy(context.Background(), flowIDVar, "gone"))
+
+	s.sharing.EXPECT().GetPolicy(mock.Anything, "declared").Return(sharing.Policy{
+		ID: "declared", ResourceType: FlowSharingType, ResourceID: flowIDVar, Declared: true}, nil)
+	svcErr := s.service.DeleteSharingPolicy(context.Background(), flowIDVar, "declared")
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorSharingPolicyDeclared.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestADeletedFlowTakesItsPoliciesWithIt() {
+	s.sharing.EXPECT().DeletePoliciesForResource(mock.Anything, FlowSharingType, flowIDVar).Return(nil)
+	s.Nil(s.service.removeSharing(context.Background(), flowIDVar))
+
+	s.sharing.EXPECT().DeletePoliciesForResource(mock.Anything, FlowSharingType, "f2").
+		Return(&tidcommon.InternalServerError)
+	svcErr := s.service.removeSharing(context.Background(), "f2")
+	s.Require().NotNil(svcErr, "the caller is told, so a retry can finish the clean up")
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestPolicyConnectionsMustBeVisibleToTheInitiatingUnit() {
+	decl := newFlowSharingDeclaration(s.store, s.sharing)
+	s.sharing.EXPECT().IsVisible(mock.Anything, connection.ConnectionSharingType, "c-seen", "child-ou").
+		Return(true, nil)
+	s.sharing.EXPECT().IsVisible(mock.Anything, connection.ConnectionSharingType, "c-unrelated", "child-ou").
+		Return(false, nil)
+
+	s.Nil(decl.ValidateMembers(context.Background(), flowIDVar, "variables.social", "child-ou",
+		[]string{"c-seen"}))
+
+	svcErr := decl.ValidateMembers(context.Background(), flowIDVar, "variables.social", "child-ou",
+		[]string{"c-seen", "c-unrelated"})
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidSharingPolicy.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestOnlyConnectionVariablesAreCheckedForVisibility() {
+	decl := newFlowSharingDeclaration(s.store, s.sharing)
+
+	s.Nil(decl.ValidateMembers(context.Background(), flowIDVar, "other.social", "child-ou", []string{"x"}))
+	s.Nil(decl.ValidateMembers(context.Background(), flowIDVar, "variables.mfa", "child-ou", []string{"SMS_OTP"}))
+	s.Nil(decl.ValidateMembers(context.Background(), flowIDVar, "variables.gone", "child-ou", []string{"x"}))
+}
+
+func (s *SharingVariablesTestSuite) TestVisibilityCheckFailuresAreNotRefusals() {
+	decl := newFlowSharingDeclaration(s.store, s.sharing)
+	s.sharing.EXPECT().IsVisible(mock.Anything, connection.ConnectionSharingType, "c1", "child-ou").
+		Return(false, &tidcommon.InternalServerError)
+	svcErr := decl.ValidateMembers(context.Background(), flowIDVar, "variables.social", "child-ou", []string{"c1"})
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+
+	s.store.EXPECT().GetFlowByID(mock.Anything, "missing").Return(nil, errFlowNotFound)
+	svcErr = decl.ValidateMembers(context.Background(), "missing", "variables.social", "child-ou", []string{"c1"})
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowNotFound.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestTheFlowDeclaresItsVariablesToTheFramework() {
+	decl := newFlowSharingDeclaration(s.store, s.sharing)
+
+	s.Equal(FlowSharingType, decl.ResourceType())
+	fields := decl.Fields()
+	s.Require().Len(fields, 1)
+	s.Equal("variables", fields[0].Key)
+	s.True(fields[0].DynamicKeys)
+	s.Require().NotNil(fields[0].Default)
+	s.True(fields[0].Default.Editable, "the owner may open any variable, and a policy narrows from there")
+
+	owner, svcErr := decl.OwningOUID(context.Background(), flowIDVar)
+	s.Require().Nil(svcErr)
+	s.Equal(ownerOU, owner)
+
+	s.store.EXPECT().GetFlowByID(mock.Anything, "missing").Return(nil, errFlowNotFound)
+	_, svcErr = decl.OwningOUID(context.Background(), "missing")
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowNotFound.Code, svcErr.Code)
+
+	s.store.EXPECT().GetFlowByID(mock.Anything, "broken").Return(nil, assertAnError)
+	_, svcErr = decl.OwningOUID(context.Background(), "broken")
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// ---- Overlay rules and variables ----
+
+func (s *SharingVariablesTestSuite) TestGetFlowOverlayRules() {
+	s.shareWith(map[string]sharing.OverlayRule{
+		sharingKey("supportEmail"): {Editable: true},
+		sharingKey("mfa"):          {Editable: false, Value: strs("SMS_OTP")},
+	})
+	s.sharing.EXPECT().ResolveOverlayRules(mock.Anything, FlowSharingType, flowIDVar, childOU).
+		Return(sharing.ResolvedOverlay{OUID: childOU, Visible: true, PolicyIDs: []string{"p1"}}, nil)
+
+	overlay, svcErr := s.service.GetFlowOverlayRules(context.Background(), flowIDVar, childOU)
+
+	s.Require().Nil(svcErr)
+	s.Equal([]string{"p1"}, overlay.PolicyIDs)
+	s.Len(overlay.Rules, 2, "a variable no policy names has no entry")
+	s.True(overlay.Rules[sharingKey("supportEmail")].Editable)
+	s.Equal([]string{"SMS_OTP"}, *overlay.Rules[sharingKey("mfa")].Value)
+}
+
+func (s *SharingVariablesTestSuite) TestGetFlowOverlayRulesOfTheOwnerNamesNothing() {
+	s.sharing.EXPECT().ResolveOverlayRules(mock.Anything, FlowSharingType, flowIDVar, ownerOU).
+		Return(sharing.ResolvedOverlay{OUID: ownerOU, Owned: true, Visible: true}, nil)
+	for _, def := range declaredVariables(s.flow) {
+		s.sharing.EXPECT().ResolveFieldRule(
+			mock.Anything, FlowSharingType, flowIDVar, ownerOU, sharingKey(def.Identifier)).
+			Return(sharing.FieldRule{OUID: ownerOU, Owned: true, Visible: true}, nil)
+	}
+
+	overlay, svcErr := s.service.GetFlowOverlayRules(context.Background(), flowIDVar, ownerOU)
+
+	s.Require().Nil(svcErr)
+	s.True(overlay.Owned)
+	s.Empty(overlay.Rules)
+}
+
+func (s *SharingVariablesTestSuite) TestGetFlowOverlayRulesForAUnitNoPolicyReaches() {
+	s.sharing.EXPECT().IsVisible(mock.Anything, FlowSharingType, flowIDVar, otherOU).Return(false, nil)
+
+	_, svcErr := s.service.GetFlowOverlayRules(context.Background(), flowIDVar, otherOU)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowNotFound.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) heldValues(values map[string][]string) {
+	resolved := sharing.ResolvedValues{OUID: childOU, Visible: true, Values: map[string]sharing.ResolvedValue{}}
+	for key, value := range values {
+		resolved.Values[key] = sharing.ResolvedValue{Value: value, Source: sharing.SourceOverlay, Editable: true}
+	}
+	s.sharing.EXPECT().ResolveOverlayValues(mock.Anything, FlowSharingType, flowIDVar, childOU).Return(resolved, nil)
+}
+
+func (s *SharingVariablesTestSuite) TestGetVariablesReturnsTheUnitsOwnOverridesInTheirOwnType() {
+	s.shareWith(map[string]sharing.OverlayRule{sharingKey("otp"): {Editable: true}})
+	s.sharing.EXPECT().ResolveOverlayValues(mock.Anything, FlowSharingType, flowIDVar, childOU).Return(
+		sharing.ResolvedValues{OUID: childOU, Visible: true, Values: map[string]sharing.ResolvedValue{
+			sharingKey("otp"):          {Value: []string{"90"}, Source: sharing.SourceOverlay, Editable: true},
+			sharingKey("mfa"):          {Value: []string{"SMS_OTP"}, Source: sharing.SourceRule},
+			sharingKey("supportEmail"): {Value: []string{"a@b.co"}, Source: sharing.SourceOverlay},
+		}}, nil)
+
+	resp, svcErr := s.service.GetVariables(context.Background(), flowIDVar, childOU)
+
+	s.Require().Nil(svcErr)
+	s.Equal(map[string]interface{}{"otp": 90.0, "supportEmail": "a@b.co"}, resp.Values,
+		"what a policy fixes is not an override")
+}
+
+func (s *SharingVariablesTestSuite) TestGetVariablesOfAUnitThatSetNothing() {
+	s.shareWith(nil)
+	s.heldValues(nil)
+
+	resp, svcErr := s.service.GetVariables(context.Background(), flowIDVar, childOU)
+
+	s.Require().Nil(svcErr)
+	s.NotNil(resp.Values)
+	s.Empty(resp.Values)
+}
+
+func (s *SharingVariablesTestSuite) TestSetVariablesStoresEachValueAndDropsTheOnesLeftOut() {
+	s.shareWith(map[string]sharing.OverlayRule{
+		sharingKey("supportEmail"): {Editable: true},
+		sharingKey("otp"):          {Editable: true, AllowedValues: strs("60", "90", "120")},
+		sharingKey("mfa"):          {Editable: true},
+	})
+	// What the unit held before: an email and an MFA choice. The request keeps the email and the otp, and leaves
+	// MFA out.
+	s.sharing.EXPECT().ResolveOverlayValues(mock.Anything, FlowSharingType, flowIDVar, childOU).Return(
+		sharing.ResolvedValues{OUID: childOU, Visible: true, Values: map[string]sharing.ResolvedValue{
+			sharingKey("supportEmail"): {Value: []string{"old@b.co"}, Source: sharing.SourceOverlay, Editable: true},
+			sharingKey("mfa"):          {Value: []string{"SMS_OTP"}, Source: sharing.SourceOverlay, Editable: true},
+		}}, nil).Once()
+	// One call replaces the values: the two the request names are set, and the rest of the variables, MFA among
+	// them, are named so that what the unit held for them goes back to the rule.
+	s.sharing.EXPECT().ReplaceOverlayValues(mock.Anything, FlowSharingType, flowIDVar, childOU,
+		[]string{sharingKey("supportEmail"), sharingKey("otp"), sharingKey("mfa"), sharingKey("social")},
+		map[string][]string{
+			sharingKey("supportEmail"): {"help@emea.example"},
+			sharingKey("otp"):          {"90"},
+		}).Return(nil)
+
+	resp, svcErr := s.service.SetVariables(context.Background(), flowIDVar, childOU, SetVariablesRequest{
+		Values: map[string]interface{}{"supportEmail": "help@emea.example", "otp": 90.0},
+	})
+
+	s.Require().Nil(svcErr)
+	s.NotNil(resp)
+}
+
+// The values are replaced in one call to the sharing store, so a refusal of any of them leaves the unit with what it
+// held, and the refusal names the variable.
+func (s *SharingVariablesTestSuite) TestSetVariablesReportsTheVariableTheFrameworkRefused() {
+	s.shareWith(map[string]sharing.OverlayRule{
+		sharingKey("supportEmail"): {Editable: true},
+		sharingKey("otp"):          {Editable: true, AllowedValues: strs("60", "90", "120")},
+	})
+	s.sharing.EXPECT().ReplaceOverlayValues(mock.Anything, FlowSharingType, flowIDVar, childOU, mock.Anything,
+		mock.Anything).Return(&sharing.OverlayReplaceError{
+		FieldKey: sharingKey("otp"), Err: &sharing.ErrorFieldNotEditable})
+
+	resp, svcErr := s.service.SetVariables(context.Background(), flowIDVar, childOU, SetVariablesRequest{
+		Values: map[string]interface{}{"supportEmail": "help@emea.example", "otp": 90.0},
+	})
+
+	s.Nil(resp)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorVariableNotEditable.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.Params["variable"], "otp")
+}
+
+func (s *SharingVariablesTestSuite) TestSetVariablesReportsAFailureOfTheStoreAsAServerError() {
+	s.shareWith(map[string]sharing.OverlayRule{sharingKey("supportEmail"): {Editable: true}})
+	s.sharing.EXPECT().ReplaceOverlayValues(mock.Anything, FlowSharingType, flowIDVar, childOU, mock.Anything,
+		mock.Anything).Return(&sharing.OverlayReplaceError{Err: &tidcommon.InternalServerError})
+
+	_, svcErr := s.service.SetVariables(context.Background(), flowIDVar, childOU, SetVariablesRequest{
+		Values: map[string]interface{}{"supportEmail": "help@emea.example"},
+	})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestSetVariablesChecksEveryValueBeforeWritingAny() {
+	s.shareWith(map[string]sharing.OverlayRule{
+		sharingKey("supportEmail"): {Editable: true},
+		sharingKey("otp"):          {Editable: true, AllowedValues: strs("60", "90")},
+		sharingKey("mfa"):          {Editable: false, Value: strs("SMS_OTP")},
+		sharingKey("social"):       {Editable: true},
+	})
+	type refusal struct {
+		name   string
+		values map[string]interface{}
+		code   string
+	}
+	cases := []refusal{
+		{"a variable the flow does not declare", map[string]interface{}{"nope": "x"}, ErrorUnknownVariable.Code},
+		{"a variable the unit may not set", map[string]interface{}{"mfa": "EMAIL_OTP"}, ErrorVariableNotEditable.Code},
+		{"a null", map[string]interface{}{"supportEmail": nil}, ErrorInvalidVariableValue.Code},
+		{"a value of the wrong type", map[string]interface{}{"otp": "ninety"}, ErrorInvalidVariableValue.Code},
+		{"a value the owner does not allow", map[string]interface{}{"otp": 120.0}, ErrorInvalidVariableValue.Code},
+		{"a value that is not valid", map[string]interface{}{"supportEmail": "not-an-email"},
+			ErrorInvalidVariableValue.Code},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			_, svcErr := s.service.SetVariables(
+				context.Background(), flowIDVar, childOU, SetVariablesRequest{Values: tc.values})
+
+			s.Require().NotNil(svcErr)
+			s.Equal(tc.code, svcErr.Code)
+		})
+	}
+}
+
+func (s *SharingVariablesTestSuite) TestSetVariablesRefusesAVariableNoPolicyNames() {
+	s.shareWith(nil)
+
+	_, svcErr := s.service.SetVariables(context.Background(), flowIDVar, childOU, SetVariablesRequest{
+		Values: map[string]interface{}{"supportEmail": "help@emea.example"}})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorUnknownVariable.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestSetVariablesChecksTheKindAndExistenceOfAConnection() {
+	s.shareWith(map[string]sharing.OverlayRule{sharingKey("social"): {Editable: true}})
+	s.idps.EXPECT().GetIdentityProvider(mock.Anything, "c-github").
+		Return(&providers.IDPDTO{ID: "c-github", Type: providers.IDPTypeGitHub, OUID: childOU}, nil)
+	s.idps.EXPECT().GetIdentityProvider(mock.Anything, "c-gone").Return(nil, &ErrorFlowNotFound)
+
+	for id, reason := range map[string]string{
+		"c-github": "does not take", "c-gone": "not an existing connection"} {
+		_, svcErr := s.service.SetVariables(context.Background(), flowIDVar, childOU,
+			SetVariablesRequest{Values: map[string]interface{}{"social": id}})
+
+		s.Require().NotNil(svcErr, id)
+		s.Equal(ErrorInvalidVariableValue.Code, svcErr.Code)
+		s.Contains(svcErr.ErrorDescription.Params["reason"], reason)
+	}
+}
+
+func (s *SharingVariablesTestSuite) expectConnection(id string) {
+	s.idps.EXPECT().GetIdentityProvider(mock.Anything, id).
+		Return(&providers.IDPDTO{ID: id, Type: providers.IDPTypeGoogle, OUID: otherOU}, nil)
+}
+
+// A unit sets a connection variable to one it owns or was shared, not to any connection that exists.
+func (s *SharingVariablesTestSuite) TestSetVariablesRefusesAConnectionTheUnitCannotUse() {
+	s.shareWith(map[string]sharing.OverlayRule{sharingKey("social"): {Editable: true}})
+	s.expectConnection("c-other")
+	s.sharing.EXPECT().IsVisible(mock.Anything, connection.ConnectionSharingType, "c-other", childOU).
+		Return(false, nil)
+
+	_, svcErr := s.service.SetVariables(context.Background(), flowIDVar, childOU,
+		SetVariablesRequest{Values: map[string]interface{}{"social": "c-other"}})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidVariableValue.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.Params["reason"], "neither owns nor was shared")
+}
+
+func (s *SharingVariablesTestSuite) TestSetVariablesAcceptsAConnectionTheUnitCanUse() {
+	s.shareWith(map[string]sharing.OverlayRule{sharingKey("social"): {Editable: true}})
+	s.expectConnection("c-shared")
+	s.sharing.EXPECT().IsVisible(mock.Anything, connection.ConnectionSharingType, "c-shared", childOU).
+		Return(true, nil)
+	s.sharing.EXPECT().ResolveOverlayValues(mock.Anything, FlowSharingType, flowIDVar, childOU).Return(
+		sharing.ResolvedValues{OUID: childOU, Visible: true}, nil).Once()
+	s.sharing.EXPECT().ReplaceOverlayValues(mock.Anything, FlowSharingType, flowIDVar, childOU, mock.Anything,
+		map[string][]string{sharingKey("social"): {"c-shared"}}).Return(nil)
+
+	resp, svcErr := s.service.SetVariables(context.Background(), flowIDVar, childOU,
+		SetVariablesRequest{Values: map[string]interface{}{"social": "c-shared"}})
+
+	s.Require().Nil(svcErr)
+	s.NotNil(resp)
+}
+
+func (s *SharingVariablesTestSuite) TestSetVariablesReportsAFailureToCheckWhetherAConnectionIsVisible() {
+	s.shareWith(map[string]sharing.OverlayRule{sharingKey("social"): {Editable: true}})
+	s.expectConnection("c-shared")
+	s.sharing.EXPECT().IsVisible(mock.Anything, connection.ConnectionSharingType, "c-shared", childOU).
+		Return(false, &tidcommon.InternalServerError)
+
+	_, svcErr := s.service.SetVariables(context.Background(), flowIDVar, childOU,
+		SetVariablesRequest{Values: map[string]interface{}{"social": "c-shared"}})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestSetVariablesOfAUnitTheFlowWasNotSharedWith() {
+	s.sharing.EXPECT().IsVisible(mock.Anything, FlowSharingType, flowIDVar, otherOU).Return(false, nil)
+
+	_, svcErr := s.service.SetVariables(context.Background(), flowIDVar, otherOU, SetVariablesRequest{
+		Values: map[string]interface{}{}})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowNotFound.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestEffectiveVariableValuesAreWhatIsNotTheOwnersDefault() {
+	s.shareWith(map[string]sharing.OverlayRule{
+		sharingKey("supportEmail"): {Editable: true},
+		sharingKey("otp"):          {Editable: true, Value: strs("60")},
+		sharingKey("mfa"):          {Editable: false, Value: strs("SMS_OTP")},
+	})
+	s.sharing.EXPECT().ResolveOverlayValues(mock.Anything, FlowSharingType, flowIDVar, childOU).Return(
+		sharing.ResolvedValues{OUID: childOU, Visible: true, Values: map[string]sharing.ResolvedValue{
+			sharingKey("supportEmail"): {
+				Value: []string{"help@emea.example"}, Source: sharing.SourceOverlay, Editable: true},
+		}}, nil)
+
+	values, svcErr := s.service.GetEffectiveVariableValues(context.Background(), flowIDVar, ownApp(childOU), childOU)
+
+	s.Require().Nil(svcErr)
+	s.Equal(map[string]string{
+		"supportEmail": "help@emea.example", // its own override
+		"otp":          "60",                // the value the policy starts it with
+		"mfa":          "SMS_OTP",           // the value the policy pins
+	}, values, "a variable no policy names, and one the unit left alone, stay at the owner's default")
+}
+
+// ownApp is an application owned by the unit, which holds values for its own applications without being shared them.
+func ownApp(ouID string) providers.Application {
+	return providers.Application{ID: "app-1", OUID: ouID}
+}
+
+// An application of another unit runs on the values of a unit it was shared with, which is how a user who signs in
+// under that unit gets its values.
+func (s *SharingVariablesTestSuite) TestEffectiveVariableValuesOfAUnitAnApplicationWasSharedWithAreItsOwn() {
+	s.shareWith(map[string]sharing.OverlayRule{sharingKey("otp"): {Editable: true, Value: strs("60")}})
+	s.sharing.EXPECT().IsVisible(mock.Anything, applicationSharingType, "app-1", childOU).Return(true, nil)
+	s.sharing.EXPECT().ResolveOverlayValues(mock.Anything, FlowSharingType, flowIDVar, childOU).
+		Return(sharing.ResolvedValues{OUID: childOU, Visible: true}, nil)
+
+	values, svcErr := s.service.GetEffectiveVariableValues(
+		context.Background(), flowIDVar, ownApp(ownerOU), childOU)
+
+	s.Require().Nil(svcErr)
+	s.Equal(map[string]string{"otp": "60"}, values)
+}
+
+func (s *SharingVariablesTestSuite) TestEffectiveVariableValuesIgnoreAUnitAnApplicationWasNotSharedWith() {
+	s.sharing.EXPECT().IsVisible(mock.Anything, applicationSharingType, "app-1", childOU).Return(false, nil)
+
+	values, svcErr := s.service.GetEffectiveVariableValues(
+		context.Background(), flowIDVar, ownApp(ownerOU), childOU)
+
+	s.Require().Nil(svcErr)
+	s.Empty(values, "naming a unit is not enough to run on its values")
+	s.sharing.AssertNotCalled(s.T(), "ResolveFieldRules", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything)
+}
+
+func (s *SharingVariablesTestSuite) TestEffectiveVariableValuesReportAFailureToTellIfTheApplicationIsShared() {
+	s.sharing.EXPECT().IsVisible(mock.Anything, applicationSharingType, "app-1", childOU).
+		Return(false, &tidcommon.InternalServerError)
+
+	_, svcErr := s.service.GetEffectiveVariableValues(context.Background(), flowIDVar, ownApp(ownerOU), childOU)
+
+	s.Require().NotNil(svcErr)
+}
+
+func (s *SharingVariablesTestSuite) TestEffectiveVariableValuesOfTheOwnerOrAStrangerAreEmpty() {
+	s.sharing.EXPECT().IsVisible(mock.Anything, FlowSharingType, flowIDVar, ownerOU).Return(true, nil)
+	values, svcErr := s.service.GetEffectiveVariableValues(context.Background(), flowIDVar, ownApp(ownerOU), ownerOU)
+	s.Require().Nil(svcErr)
+	s.Empty(values, "the owner holds the defaults")
+
+	// A unit the flow is not visible to is answered from the cached visibility, before anything is resolved.
+	s.sharing.EXPECT().IsVisible(mock.Anything, FlowSharingType, flowIDVar, otherOU).Return(false, nil)
+	values, svcErr = s.service.GetEffectiveVariableValues(context.Background(), flowIDVar, ownApp(otherOU), otherOU)
+	s.Require().Nil(svcErr)
+	s.Empty(values, "a flow that was not shared with the unit")
+
+	values, svcErr = s.service.GetEffectiveVariableValues(context.Background(), flowIDVar, ownApp(""), "")
+	s.Require().Nil(svcErr)
+	s.Empty(values, "no unit known yet")
+}
+
+func (s *SharingVariablesTestSuite) TestEffectiveVariableValuesResolveTheRulesOfAllVariablesTogether() {
+	s.shareWith(map[string]sharing.OverlayRule{sharingKey("otp"): {Editable: true, Value: strs("60")}})
+	// The values the unit saved are read, as a policy names a variable. The rules are asked for once, for every
+	// variable, and never one by one.
+	s.sharing.EXPECT().ResolveOverlayValues(mock.Anything, FlowSharingType, flowIDVar, childOU).
+		Return(sharing.ResolvedValues{OUID: childOU, Visible: true}, nil).Once()
+
+	values, svcErr := s.service.GetEffectiveVariableValues(context.Background(), flowIDVar, ownApp(childOU), childOU)
+
+	s.Require().Nil(svcErr)
+	s.Equal(map[string]string{"otp": "60"}, values)
+	s.sharing.AssertNotCalled(s.T(), "ResolveFieldRule", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything)
+	s.sharing.AssertNumberOfCalls(s.T(), "ResolveFieldRules", 1)
+}
+
+func (s *SharingVariablesTestSuite) TestEffectiveVariableValuesSkipTheSavedValuesWhenNoPolicyNamesAVariable() {
+	s.shareWith(map[string]sharing.OverlayRule{})
+
+	values, svcErr := s.service.GetEffectiveVariableValues(context.Background(), flowIDVar, ownApp(childOU), childOU)
+
+	s.Require().Nil(svcErr)
+	s.Empty(values)
+	s.sharing.AssertNotCalled(s.T(), "ResolveOverlayValues", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything)
+}
+
+func (s *SharingVariablesTestSuite) TestEffectiveVariableValuesReportAFailureToResolve() {
+	s.sharing.EXPECT().IsVisible(mock.Anything, FlowSharingType, flowIDVar, childOU).
+		Return(false, &tidcommon.InternalServerError).Once()
+	_, svcErr := s.service.GetEffectiveVariableValues(context.Background(), flowIDVar, ownApp(childOU), childOU)
+	s.Require().NotNil(svcErr)
+
+	s.sharing.EXPECT().IsVisible(mock.Anything, FlowSharingType, flowIDVar, childOU).Return(true, nil).Once()
+	s.sharing.EXPECT().ResolveFieldRules(mock.Anything, FlowSharingType, flowIDVar, childOU, mock.Anything).
+		Return(nil, &tidcommon.InternalServerError).Once()
+	_, svcErr = s.service.GetEffectiveVariableValues(context.Background(), flowIDVar, ownApp(childOU), childOU)
+	s.Require().NotNil(svcErr)
+}
+
+// ---- Existence ----
+
+// What an organization unit is told about a flow it neither owns nor was shared has to be what it is told about a flow
+// that does not exist, or the answers say which flows exist.
+func (s *SharingVariablesTestSuite) TestAFlowNoUnitCanSeeAnswersAsAMissingFlowDoes() {
+	s.sharing.EXPECT().IsVisible(mock.Anything, FlowSharingType, flowIDVar, otherOU).Return(false, nil)
+	s.store.EXPECT().GetFlowByID(mock.Anything, "f-missing").Return(nil, errFlowNotFound)
+	ctx := context.Background()
+
+	operations := map[string]func(flowID string) *tidcommon.ServiceError{
+		"GetFlowForOU": func(flowID string) *tidcommon.ServiceError {
+			_, svcErr := s.service.GetFlowForOU(ctx, flowID, otherOU)
+			return svcErr
+		},
+		"GetVariables": func(flowID string) *tidcommon.ServiceError {
+			_, svcErr := s.service.GetVariables(ctx, flowID, otherOU)
+			return svcErr
+		},
+		"SetVariables": func(flowID string) *tidcommon.ServiceError {
+			_, svcErr := s.service.SetVariables(ctx, flowID, otherOU, SetVariablesRequest{
+				Values: map[string]interface{}{}})
+			return svcErr
+		},
+		"GetFlowOverlayRules": func(flowID string) *tidcommon.ServiceError {
+			_, svcErr := s.service.GetFlowOverlayRules(ctx, flowID, otherOU)
+			return svcErr
+		},
+		"CheckFlowAccess read": func(flowID string) *tidcommon.ServiceError {
+			return s.service.CheckFlowAccess(ctx, flowID, otherOU, false)
+		},
+		"CheckFlowAccess write": func(flowID string) *tidcommon.ServiceError {
+			return s.service.CheckFlowAccess(ctx, flowID, otherOU, true)
+		},
+	}
+	for name, operation := range operations {
+		s.Run(name, func() {
+			unshared := operation(flowIDVar)
+			missing := operation("f-missing")
+
+			s.Require().NotNil(unshared)
+			s.Equal(&ErrorFlowNotFound, unshared)
+			s.Equal(missing, unshared, "an unshared flow answers as a missing one does")
+		})
+	}
+}
+
+// A flow that is already gone has nothing left but its policies, and a delete that finds them removes them.
+func (s *SharingVariablesTestSuite) TestPurgeOrphanedSharingRemovesWhatIsLeft() {
+	s.sharing.EXPECT().ListPolicies(mock.Anything, FlowSharingType, "gone").
+		Return([]sharing.Policy{{ID: "p1"}}, nil)
+	s.sharing.EXPECT().DeletePoliciesForResource(mock.Anything, FlowSharingType, "gone").Return(nil)
+
+	s.Nil(s.service.purgeOrphanedSharing(context.Background(), "gone"))
+}
+
+func (s *SharingVariablesTestSuite) TestPurgeOrphanedSharingWithNothingLeftDoesNothing() {
+	s.sharing.EXPECT().ListPolicies(mock.Anything, FlowSharingType, "gone").Return(nil, nil)
+
+	s.Nil(s.service.purgeOrphanedSharing(context.Background(), "gone"))
+}
+
+func (s *SharingVariablesTestSuite) TestPurgeOrphanedSharingReportsAFailureToRead() {
+	s.sharing.EXPECT().ListPolicies(mock.Anything, FlowSharingType, "gone").
+		Return(nil, &tidcommon.InternalServerError)
+
+	svcErr := s.service.purgeOrphanedSharing(context.Background(), "gone")
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A policy left behind by a delete that could not clean up is not hidden: the delete fails, and a retry finishes it.
+func (s *SharingVariablesTestSuite) TestDeleteFlowFailsWhenItsPoliciesCannotBeRemoved() {
+	graphs := newGraphBuilderInterfaceMock(s.T())
+	graphs.EXPECT().InvalidateCache(mock.Anything, flowIDVar).Return()
+	s.service.graphBuilder = graphs
+	s.store.EXPECT().DeleteFlow(mock.Anything, flowIDVar).Return(nil)
+	s.sharing.EXPECT().DeletePoliciesForResource(mock.Anything, FlowSharingType, flowIDVar).
+		Return(&tidcommon.InternalServerError)
+
+	svcErr := s.service.DeleteFlow(context.Background(), flowIDVar)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestDeleteFlowThatIsAlreadyGoneFinishesTheCleanUp() {
+	s.store.EXPECT().GetFlowByID(mock.Anything, "gone").Return(nil, errFlowNotFound)
+	s.sharing.EXPECT().ListPolicies(mock.Anything, FlowSharingType, "gone").
+		Return([]sharing.Policy{{ID: "p1"}}, nil)
+	s.sharing.EXPECT().DeletePoliciesForResource(mock.Anything, FlowSharingType, "gone").Return(nil)
+
+	s.Nil(s.service.DeleteFlow(context.Background(), "gone"))
+}
+
+// ---- Replaying policies from a document ----
+
+func (s *SharingVariablesTestSuite) TestValidateSharingPoliciesChecksTheTermsAgainstTheVariables() {
+	valid := sharing.PolicyRequest{ChildUnits: &sharing.ChildUnitsRequest{
+		Mode: sharing.ChildUnitsAll,
+		OverlayRules: map[string]sharing.OverlayRule{
+			"variables.mfa": {Editable: true, AllowedValues: strs("NONE", "SMS_OTP")},
+		}}}
+	s.Nil(s.service.ValidateSharingPolicies(context.Background(), flowIDVar, []sharing.PolicyRequest{valid}))
+
+	notAVariable := sharing.PolicyRequest{ChildUnits: &sharing.ChildUnitsRequest{
+		Mode: sharing.ChildUnitsAll,
+		OverlayRules: map[string]sharing.OverlayRule{
+			"variables.supportEmail.label": {Editable: true},
+		}}}
+	svcErr := s.service.ValidateSharingPolicies(context.Background(), flowIDVar,
+		[]sharing.PolicyRequest{valid, notAVariable})
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidSharingPolicy.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestValidateSharingPoliciesOfAFlowThatDoesNotExist() {
+	s.store.EXPECT().GetFlowByID(mock.Anything, "missing").Return(nil, errFlowNotFound)
+
+	svcErr := s.service.ValidateSharingPolicies(context.Background(), "missing", nil)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowNotFound.Code, svcErr.Code)
+}
+
+// ---- Declared in the flow's own document ----
+
+const declaredFlowDocument = `id: flow-vars
+handle: acme-login
+name: Acme Login
+flowType: AUTHENTICATION
+ouId: ou-owner
+nodes:
+  - id: start
+    type: START
+    onSuccess: vars
+  - id: vars
+    type: VARIABLES
+    onSuccess: end
+    inputs:
+      - identifier: mfa
+        type: SELECT
+        defaultValue: NONE
+        options: [NONE, SMS_OTP]
+  - id: end
+    type: END
+sharingPolicies:
+  - childUnits:
+      mode: all
+      overlayRules:
+        variables.mfa:
+          editable: true
+          allowedValues: [NONE]
+`
+
+func (s *SharingVariablesTestSuite) TestADocumentWithoutPoliciesDeclaresNone() {
+	declared, err := s.service.parseFlowSharing([]byte("id: flow-vars\nhandle: h\nname: n\nflowType: AUTHENTICATION\n"))
+
+	s.Require().NoError(err)
+	s.Equal("flow-vars", declared.ResourceID)
+	s.Empty(declared.Policies)
+}
+
+func (s *SharingVariablesTestSuite) TestADocumentDeclaresItsPoliciesAgainstTheUnitThatOwnsIt() {
+	s.ous.EXPECT().ResolveOwner(mock.Anything, ownerOU, "", mock.Anything).Return(ownerOU, nil)
+
+	declared, err := s.service.parseFlowSharing([]byte(declaredFlowDocument))
+
+	s.Require().NoError(err)
+	s.Equal("flow-vars", declared.ResourceID)
+	s.Equal("Acme Login", declared.ResourceName)
+	s.Equal(ownerOU, declared.OwningOUID)
+	s.Len(declared.Policies, 1)
+}
+
+func (s *SharingVariablesTestSuite) TestADocumentWithPoliciesNeedsAnOwner() {
+	_, err := s.service.parseFlowSharing([]byte(
+		"id: f\nname: n\nsharingPolicies:\n  - childUnits:\n      mode: all\n"))
+
+	s.Error(err)
+}
+
+func (s *SharingVariablesTestSuite) TestADocumentWhoseTermsDoNotFitItsVariablesFailsTheLoad() {
+	s.ous.EXPECT().ResolveOwner(mock.Anything, ownerOU, "", mock.Anything).Return(ownerOU, nil)
+	bad := declaredFlowDocumentWith("          allowedValues: [BOGUS]\n")
+
+	_, err := s.service.parseFlowSharing([]byte(bad))
+
+	s.Error(err)
+}
+
+func declaredFlowDocumentWith(rule string) string {
+	return declaredFlowDocument[:len(declaredFlowDocument)-len("          allowedValues: [NONE]\n")] + rule
+}
+
+// withFlowStore runs a test with the flows held by the given store mode.
+func (s *SharingVariablesTestSuite) withFlowStore(mode serverconst.StoreMode, run func()) {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime("test", &config.Config{
+		Flow: engineconfig.FlowConfig{Store: string(mode)},
+	}))
+	defer config.ResetServerRuntime()
+	run()
+}
+
+// A mutable store keeps its flows in the database, so there are no flow files to read policies from.
+func (s *SharingVariablesTestSuite) TestNoPoliciesAreLoadedWhenFlowsAreNotDeclared() {
+	s.withFlowStore(serverconst.StoreModeMutable, func() {
+		s.Nil(s.service.loadDeclarativeSharing())
+	})
+}
+
+// Flows are read from files in declarative and composite mode, and the policies their documents carry with them.
+func (s *SharingVariablesTestSuite) TestPoliciesAreLoadedWhenFlowsAreDeclared() {
+	for _, mode := range []serverconst.StoreMode{serverconst.StoreModeDeclarative, serverconst.StoreModeComposite} {
+		s.withFlowStore(mode, func() {
+			s.sharing.EXPECT().LoadDeclarativeResources(mock.Anything, mock.MatchedBy(
+				func(cfg sharing.DeclarativeLoaderConfig) bool {
+					return cfg.ResourceType == FlowSharingType && cfg.DirectoryName == "flows"
+				})).Return(nil).Once()
+
+			s.Nil(s.service.loadDeclarativeSharing())
+		})
+	}
+}
+
+func (s *SharingVariablesTestSuite) TestAFailureToLoadDeclaredPoliciesIsReported() {
+	s.withFlowStore(serverconst.StoreModeDeclarative, func() {
+		s.sharing.EXPECT().LoadDeclarativeResources(mock.Anything, mock.Anything).Return(assertAnError).Once()
+
+		s.Error(s.service.loadDeclarativeSharing())
+	})
+}
+
+func (s *SharingVariablesTestSuite) TestTheSharingConfigNamesTheFlowsDirectory() {
+	cfg := s.service.makeFlowSharingConfig()
+
+	s.Equal(FlowSharingType, cfg.ResourceType)
+	s.Equal("flows", cfg.DirectoryName)
+	s.NotNil(cfg.Parser)
+}
+
+// ---- Export ----
+
+func (s *SharingVariablesTestSuite) TestAnExportCarriesThePoliciesThatGovernTheFlow() {
+	flows := NewFlowMgtServiceInterfaceMock(s.T())
+	flows.EXPECT().GetFlow(mock.Anything, flowIDVar).Return(s.flow, nil)
+	request := sharing.PolicyRequest{ChildUnits: &sharing.ChildUnitsRequest{Mode: sharing.ChildUnitsAll}}
+	s.sharing.EXPECT().ExportPolicies(mock.Anything, FlowSharingType, flowIDVar).
+		Return([]sharing.ReplayablePolicy{{InitiatingOUID: ownerOU, Request: request}}, nil)
+	s.sharing.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, flowIDVar).
+		Return(map[string]map[string][]string{
+			childOU: {sharingKey("supportEmail"): {"help@child.example"}},
+			otherOU: {},
+		}, nil)
+	flows.EXPECT().GetVariables(mock.Anything, flowIDVar, childOU).
+		Return(&VariablesResponse{Values: map[string]interface{}{"supportEmail": "help@child.example"}}, nil)
+	exporter := newFlowGraphExporter(flows, s.sharing)
+
+	resource, name, svcErr := exporter.GetResourceByID(context.Background(), flowIDVar)
+
+	s.Require().Nil(svcErr)
+	s.Equal("Acme Login", name)
+	exported, ok := resource.(*flowDeclarativeResource)
+	s.Require().True(ok)
+	s.Equal([]sharing.PolicyRequest{request}, exported.SharingPolicies)
+	s.Equal([]FlowUnitValues{{OUID: childOU, Values: map[string]interface{}{"supportEmail": "help@child.example"}}},
+		exported.VariableValues, "a unit holding nothing is left out")
+
+	document, err := yaml.Marshal(exported)
+	s.Require().NoError(err)
+	var node yaml.Node
+	s.Require().NoError(yaml.Unmarshal(document, &node))
+	policies, values, err := ParseFlowSharing(node.Content[0])
+	s.Require().NoError(err)
+	s.Equal([]sharing.PolicyRequest{request}, policies, "an export reads back as the document it was written as")
+	s.Equal(exported.VariableValues, values)
+}
+
+func (s *SharingVariablesTestSuite) TestAnExportOfAFlowNoUnitSavedValuesForCarriesNone() {
+	flows := NewFlowMgtServiceInterfaceMock(s.T())
+	flows.EXPECT().GetFlow(mock.Anything, flowIDVar).Return(s.flow, nil)
+	s.sharing.EXPECT().ExportPolicies(mock.Anything, FlowSharingType, flowIDVar).
+		Return([]sharing.ReplayablePolicy{}, nil)
+	s.sharing.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, flowIDVar).
+		Return(map[string]map[string][]string{}, nil)
+
+	resource, _, svcErr := newFlowGraphExporter(flows, s.sharing).GetResourceByID(context.Background(), flowIDVar)
+
+	s.Require().Nil(svcErr)
+	s.Empty(resource.(*flowDeclarativeResource).VariableValues)
+}
+
+// The values are what a unit chose within its terms, so an export that cannot read them fails rather than thinning.
+func (s *SharingVariablesTestSuite) TestAnExportFailsWhenTheValuesCannotBeRead() {
+	flows := NewFlowMgtServiceInterfaceMock(s.T())
+	flows.EXPECT().GetFlow(mock.Anything, flowIDVar).Return(s.flow, nil).Times(2)
+	s.sharing.EXPECT().ExportPolicies(mock.Anything, FlowSharingType, flowIDVar).
+		Return([]sharing.ReplayablePolicy{}, nil).Times(2)
+	exporter := newFlowGraphExporter(flows, s.sharing)
+
+	s.sharing.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, flowIDVar).
+		Return(nil, &tidcommon.InternalServerError).Once()
+	_, _, svcErr := exporter.GetResourceByID(context.Background(), flowIDVar)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+
+	s.sharing.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, flowIDVar).
+		Return(map[string]map[string][]string{childOU: {sharingKey("supportEmail"): {"x"}}}, nil).Once()
+	flows.EXPECT().GetVariables(mock.Anything, flowIDVar, childOU).Return(nil, &tidcommon.InternalServerError)
+	_, _, svcErr = exporter.GetResourceByID(context.Background(), flowIDVar)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A document that silently lost its sharing would re-import as a flow nobody else can use, so the export fails.
+func (s *SharingVariablesTestSuite) TestAnExportFailsWhenItsPoliciesCannotBeRead() {
+	flows := NewFlowMgtServiceInterfaceMock(s.T())
+	flows.EXPECT().GetFlow(mock.Anything, flowIDVar).Return(s.flow, nil)
+	s.sharing.EXPECT().ExportPolicies(mock.Anything, FlowSharingType, flowIDVar).
+		Return(nil, &tidcommon.InternalServerError)
+	exporter := newFlowGraphExporter(flows, s.sharing)
+
+	_, _, svcErr := exporter.GetResourceByID(context.Background(), flowIDVar)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *SharingVariablesTestSuite) TestAFlowExportsAsItsBareDefinitionToo() {
+	exporter := newFlowGraphExporter(nil, nil)
+
+	flow, ok := flowOf(&providers.CompleteFlowDefinition{ID: "f"})
+	s.True(ok)
+	s.Equal("f", flow.ID)
+	_, ok = flowOf("not a flow")
+	s.False(ok)
+	s.NotNil(exporter)
 }

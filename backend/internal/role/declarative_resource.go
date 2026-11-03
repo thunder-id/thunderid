@@ -8,9 +8,13 @@ import (
 	"fmt"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/group"
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -59,7 +63,7 @@ func (e *roleExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcom
 	ids := []string{}
 
 	for {
-		roles, err := e.service.GetRoleList(ctx, limit, offset)
+		roles, err := e.service.GetRoleList(ctx, limit, offset, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -93,6 +97,8 @@ func (e *roleExporter) GetResourceByID(
 		return nil, "", err
 	}
 
+	// Every assignment is written with the organization unit it was made in, so it imports back
+	// there, after the sharing policies that let the role reach it.
 	assignments, err := e.getAllRoleAssignments(ctx, id)
 	if err != nil {
 		return nil, "", err
@@ -178,7 +184,7 @@ func (e *roleExporter) ViewResourceParts(_ context.Context, document *yaml.Node)
 		map[string]interface{}, error) {
 		assignments := make([]AssignmentResponse, len(role.Assignments))
 		for i, a := range role.Assignments {
-			assignments[i] = AssignmentResponse{ID: a.ID, Type: a.Type}
+			assignments[i] = AssignmentResponse{ID: a.ID, Type: a.Type, OUID: a.OUID}
 		}
 		return map[string]interface{}{rolePartAssignments: &AssignmentListResponse{
 			TotalResults: len(assignments),
@@ -222,6 +228,160 @@ func loadDeclarativeResources(
 	}
 
 	return nil
+}
+
+// placeDeclaredAssignments settles the organization unit each declared assignment is made in, and
+// refuses one the role cannot be assigned in. It runs once declared sharing policies have loaded,
+// since an assignment outside the role's owner needs a declared policy that reaches its organization
+// unit and leaves assignments editable there.
+//
+// An assignment naming no organization unit is made in the one owning its assignee. Applications and
+// agents load after roles, so such an assignee cannot be read yet: its assignment stays in the role's
+// owner, and whether it belongs in the organization unit it is assigned in is not checked (#6048).
+func placeDeclaredAssignments(
+	ctx context.Context, fileStore *fileBasedStore, entitySvc entity.EntityServiceInterface,
+	groupSvc group.GroupServiceInterface, sharingSvc sharing.SharingServiceInterface,
+) error {
+	list, err := fileStore.GenericFileBasedStore.List()
+	if err != nil {
+		return fmt.Errorf("failed to list declared roles: %w", err)
+	}
+	for _, item := range list {
+		role, ok := item.Data.(*RoleWithPermissionsAndAssignments)
+		if !ok || role == nil || len(role.Assignments) == 0 {
+			continue
+		}
+		if err := placeRoleAssignments(ctx, role, entitySvc, groupSvc, sharingSvc); err != nil {
+			return fmt.Errorf("role '%s': %w", role.ID, err)
+		}
+	}
+	return nil
+}
+
+// placeRoleAssignments places and checks one declared role's assignments. The role is the stored
+// declaration itself, so the organization units settled here are what its reads return.
+func placeRoleAssignments(
+	ctx context.Context, role *RoleWithPermissionsAndAssignments, entitySvc entity.EntityServiceInterface,
+	groupSvc group.GroupServiceInterface, sharingSvc sharing.SharingServiceInterface,
+) error {
+	var entityIDs, groupIDs []string
+	for _, a := range role.Assignments {
+		if a.Type == AssigneeTypeGroup {
+			groupIDs = append(groupIDs, a.ID)
+		} else {
+			entityIDs = append(entityIDs, a.ID)
+		}
+	}
+	entities := map[string]providers.Entity{}
+	if len(entityIDs) > 0 {
+		found, err := entitySvc.GetEntitiesByIDs(ctx, utils.UniqueStrings(entityIDs))
+		if err != nil {
+			return fmt.Errorf("failed to read the assignees: %w", err)
+		}
+		for _, e := range found {
+			entities[e.ID] = e
+		}
+	}
+	groups := map[string]*group.Group{}
+	if len(groupIDs) > 0 {
+		found, svcErr := groupSvc.GetGroupsByIDs(ctx, utils.UniqueStrings(groupIDs))
+		if svcErr != nil {
+			return fmt.Errorf("failed to read the group assignees: %s", svcErr.Error.DefaultValue)
+		}
+		groups = found
+	}
+	var declared map[string]sharing.Policy
+
+	for i := range role.Assignments {
+		a := &role.Assignments[i]
+		e, isEntity := entities[a.ID]
+		g, isGroup := groups[a.ID]
+		if a.OUID == "" {
+			switch {
+			case a.Type == AssigneeTypeGroup && isGroup:
+				a.OUID = g.OUID
+			case a.Type != AssigneeTypeGroup && isEntity:
+				a.OUID = e.OUID
+			default:
+				continue
+			}
+		}
+
+		if a.OUID != role.OUID {
+			overlay, svcErr := sharingSvc.ResolveOverlayRules(ctx, RoleSharingType, role.ID, a.OUID)
+			if svcErr != nil && svcErr.Code != oupkg.ErrorOrganizationUnitNotFound.Code {
+				return fmt.Errorf("failed to resolve the role's sharing in organization unit '%s': %s",
+					a.OUID, svcErr.Error.DefaultValue)
+			}
+			if svcErr != nil || !overlay.Visible {
+				return fmt.Errorf("assignment of '%s' is made in organization unit '%s', which the role "+
+					"is not owned by or shared with", a.ID, a.OUID)
+			}
+			if declared == nil {
+				policies, svcErr := sharingSvc.ListPolicies(ctx, RoleSharingType, role.ID)
+				if svcErr != nil {
+					return fmt.Errorf("failed to read the role's sharing policies: %s", svcErr.Error.DefaultValue)
+				}
+				declared = declaredPolicies(policies)
+			}
+			if !reachedThroughDeclaredPolicies(overlay.PolicyIDs, declared) {
+				return fmt.Errorf("assignment of '%s' is made in organization unit '%s', which the role "+
+					"reaches only through a sharing policy stored through the API, not one declared in a "+
+					"resource file", a.ID, a.OUID)
+			}
+			if !overlay.Rules[roleAssignmentsFieldKey].Editable {
+				return fmt.Errorf("assignment of '%s' is made in organization unit '%s', where the role's "+
+					"sharing policies turn assignments off", a.ID, a.OUID)
+			}
+		}
+
+		belongs := true
+		switch {
+		case a.Type == AssigneeTypeGroup && isGroup:
+			belongs = g.OUID == a.OUID
+		case a.Type != AssigneeTypeGroup && isEntity && e.OUID != a.OUID:
+			shared, svcErr := isEntitySharedWithOU(ctx, sharingSvc, e, a.OUID)
+			if svcErr != nil {
+				return fmt.Errorf("failed to check whether '%s' is shared with organization unit '%s': %s",
+					a.ID, a.OUID, svcErr.Error.DefaultValue)
+			}
+			belongs = shared
+		}
+		if !belongs {
+			return fmt.Errorf("assignee '%s' is not owned by or shared with organization unit '%s'",
+				a.ID, a.OUID)
+		}
+	}
+	return nil
+}
+
+// declaredPolicies indexes the role's declared sharing policies by id. A stored policy is left out,
+// since it can be withdrawn at runtime.
+func declaredPolicies(policies []sharing.Policy) map[string]sharing.Policy {
+	declared := make(map[string]sharing.Policy, len(policies))
+	for _, p := range policies {
+		if p.Declared {
+			declared[p.ID] = p
+		}
+	}
+	return declared
+}
+
+// reachedThroughDeclaredPolicies reports whether one of the policies reaching an organization unit
+// is declared, along with every policy it was reshared beneath. Losing the role removes an
+// organization unit's assignments, but not one a resource file declares, so a declared assignment is
+// made only where the role's reach cannot be withdrawn at runtime.
+func reachedThroughDeclaredPolicies(policyIDs []string, declared map[string]sharing.Policy) bool {
+	for _, id := range policyIDs {
+		p, ok := declared[id]
+		for ok && p.ParentPolicyID != "" {
+			p, ok = declared[p.ParentPolicyID]
+		}
+		if ok {
+			return true
+		}
+	}
+	return false
 }
 
 // parseToRoleWrapper wraps parseToRole to match the expected signature.
@@ -349,7 +509,7 @@ func (e *roleExporter) getAllRoleAssignments(
 	assignments := []RoleAssignment{}
 
 	for {
-		list, err := e.assignmentService.GetRoleAssignments(ctx, roleID, limit, offset, false)
+		list, err := e.assignmentService.GetRoleAssignments(ctx, roleID, "", limit, offset, false)
 		if err != nil {
 			return nil, err
 		}
@@ -358,6 +518,7 @@ func (e *roleExporter) getAllRoleAssignments(
 			assignments = append(assignments, RoleAssignment{
 				ID:   assignment.ID,
 				Type: assignment.Type,
+				OUID: assignment.OUID,
 			})
 		}
 

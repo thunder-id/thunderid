@@ -1,0 +1,88 @@
+---
+title: getSessionCookieOptions()
+docType: reference
+description: Build secure cookie options for session management with configurable SameSite, Secure, and Path settings.
+---
+
+# `getSessionCookieOptions()`
+
+`getSessionCookieOptions` merges the provided partial [`CookieOptions`](../cookie-options) with the default values from [`CookieConfig`](../cookie-config). Any property you omit falls back to its default.
+
+## Signature
+
+```ts
+getSessionCookieOptions(options: Partial<CookieOptions>): CookieOptions
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `options` | `Partial<CookieOptions>` | ✅ | Cookie options to apply. Unspecified properties use the defaults from `CookieConfig`. |
+
+## Returns
+
+`CookieOptions`: A complete cookie options object with all required fields populated.
+
+## Default Values
+
+| Property | Default |
+| :--- | :--- |
+| `httpOnly` | `true` |
+| `maxAge` | `3600` seconds (1 hour) |
+| `sameSite` | `'lax'` |
+| `secure` | `true` |
+
+## Usage
+
+### Use Defaults with a Custom Lifetime
+
+```ts showLineNumbers
+import { getSessionCookieOptions } from '@thunderid/node'
+
+// Override only maxAge; all other properties use defaults
+const options = getSessionCookieOptions({ maxAge: 86400 }) // 24 hours
+```
+
+### Override Multiple Options
+
+```ts showLineNumbers
+import { getSessionCookieOptions } from '@thunderid/node'
+
+const options = getSessionCookieOptions({
+  maxAge: 7200,
+  sameSite: 'strict',
+  secure: true,
+})
+```
+
+### Apply to a Response Cookie
+
+```ts title="src/routes/callback.ts" showLineNumbers
+import { CookieConfig, getSessionCookieOptions } from '@thunderid/node'
+
+app.get('/callback', async (req, res) => {
+  const sessionId = req.cookies[CookieConfig.SESSION_COOKIE_NAME]
+
+  await auth.signIn(
+    (authUrl) => res.redirect(authUrl),
+    sessionId,
+    req.query.code as string,
+    req.query.session_state as string,
+    req.query.state as string,
+  )
+
+  res.cookie(
+    CookieConfig.SESSION_COOKIE_NAME,
+    sessionId,
+    getSessionCookieOptions({ maxAge: 3600 }),
+  )
+
+  res.redirect('/dashboard')
+})
+```
+
+## Related
+
+- [`CookieOptions`](../cookie-options): Interface for cookie configuration
+- [`CookieConfig`](../cookie-config): Default constant values

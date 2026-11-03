@@ -1,0 +1,78 @@
+---
+title: React Router SDK Overview
+docType: concept
+displayed_sidebar: reactRouterSdkSidebar
+sidebar_position: 1
+sidebar_label: Overview
+description: Protect routes and handle OAuth callbacks in React Router v6 applications
+---
+
+# React Router SDK
+
+The <ProductName /> React Router SDK (`@thunderid/react-router`) provides drop-in components for protecting routes and handling OAuth 2.0 callbacks in React Router v6 applications. It works alongside `@thunderid/react` and requires no extra configuration beyond what `ThunderIDProvider` already provides.
+
+## Installation
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm install @thunderid/react-router
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn add @thunderid/react-router
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm add @thunderid/react-router
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun add @thunderid/react-router
+  </CodeBlock>
+</CodeGroup>
+
+### Peer Dependencies
+
+| Package | Version |
+|---------|---------|
+| `@thunderid/react` | `>=0.15.0` |
+| `react` | `>=16.8.0` |
+| `react-router` | `>=6.30.1` |
+
+## Quick Example
+
+```tsx title="src/App.tsx" showLineNumbers
+import { BrowserRouter, Routes, Route } from 'react-router'
+import { ThunderIDProvider } from '@thunderid/react'
+import { ProtectedRoute, CallbackRoute } from '@thunderid/react-router'
+
+function App() {
+  return (
+    <ThunderIDProvider
+      clientId="<your-client-id>"
+      baseUrl="https://localhost:8090"
+      afterSignInUrl="http://localhost:5173/callback"
+    >
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/callback" element={<CallbackRoute />} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute redirectTo="/signin">
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </BrowserRouter>
+    </ThunderIDProvider>
+  )
+}
+```
+
+## Components
+
+- **[`<ProtectedRoute />`](../apis/protected-route)**: Enforce authentication on a route. Redirects or shows a fallback when the user is not signed in.
+- **[`<CallbackRoute />`](../apis/callback-route)**: Handle the OAuth 2.0 authorization code callback, exchange it for tokens, and navigate to the original destination.

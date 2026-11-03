@@ -223,13 +223,20 @@ export default function HeroSection(): JSX.Element {
                 fontSize: {xs: '0.8125rem', sm: '0.875rem'},
                 color: 'text.primary',
                 textDecoration: 'none',
-                bgcolor: isLight ? 'rgba(255,255,255,0.7)' : 'rgba(13,17,23,0.6)',
+                // Keyed off Docusaurus's `data-theme`, which is set before first paint. The MUI color
+                // scheme only syncs after mount, so `isLight` would flash the light styles in dark mode.
+                bgcolor: 'rgba(255,255,255,0.7)',
                 border: '1px solid',
-                borderColor: isLight ? 'rgba(15,40,80,0.14)' : '#1f3350',
+                borderColor: 'rgba(15,40,80,0.14)',
+                '[data-theme="dark"] &': {bgcolor: 'rgba(13,17,23,0.6)', borderColor: '#1f3350'},
                 backdropFilter: 'blur(10px)',
                 transition: 'border-color 0.2s',
                 animation: 'fadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) 0s both',
-                '&:hover': {borderColor: theme.vars?.palette.primary.main, color: 'text.primary', textDecoration: 'none'},
+                '&:hover, [data-theme="dark"] &:hover': {
+                  borderColor: theme.vars?.palette.primary.main,
+                  color: 'text.primary',
+                  textDecoration: 'none',
+                },
               }}
             >
               <Box component="span" sx={{whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>

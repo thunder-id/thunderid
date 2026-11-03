@@ -6,6 +6,7 @@ package executor
 import (
 	"encoding/json"
 	"errors"
+	"maps"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
@@ -143,9 +144,28 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 		log.Int("roleCount", len(mappedRoleIDs)),
 		log.Int("permissionCount", len(requestedPerms)))
 
-	authzResp, svcErr := a.authzService.EvaluateAccessBatch(ctx.Context,
-		a.buildAccessEvaluationsRequest(
-			userID, entityCategory, groupIDs, mappedRoleIDs, requestedPerms, resourceServerID))
+	// Authorization details are passed as context; the policy engine decides only the permissions.
+	details, err := requestedAuthorizationDetails(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var evaluationContext map[string]interface{}
+	if len(details) > 0 {
+		requested := make([]json.RawMessage, 0, len(details))
+		for _, detail := range details {
+			requested = append(requested, detail.Requested)
+		}
+		encoded, err := json.Marshal(requested)
+		if err != nil {
+			logger.Error(ctx.Context, "Failed to encode the requested authorization details", log.Error(err))
+			return nil, errors.Join(errors.New("failed to encode requested authorization details"), err)
+		}
+		evaluationContext = map[string]interface{}{
+			providers.AccessEvaluationContextAuthorizationDetails: json.RawMessage(encoded)}
+	}
+	evaluationsRequest := a.buildAccessEvaluationsRequest(
+		userID, entityCategory, groupIDs, mappedRoleIDs, requestedPerms, resourceServerID, evaluationContext)
+	authzResp, svcErr := a.authzService.EvaluateAccessBatch(ctx.Context, evaluationsRequest)
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Authorization service call failed",
 			log.String("error", svcErr.Error.DefaultValue))
@@ -212,6 +232,7 @@ func (a *authorizationExecutor) buildAccessEvaluationsRequest(
 	roleIDs []string,
 	requestedPermissions []string,
 	resourceServerID string,
+	context map[string]interface{},
 ) providers.AccessEvaluationsRequest {
 	evaluations := make([]providers.AccessEvaluationRequest, 0, len(requestedPermissions))
 	for _, permission := range requestedPermissions {
@@ -224,6 +245,7 @@ func (a *authorizationExecutor) buildAccessEvaluationsRequest(
 			},
 			ResourceServer: providers.AccessEvaluationResourceServer{ID: resourceServerID},
 			Permission:     providers.Permission{Name: permission},
+			Context:        maps.Clone(context),
 		})
 	}
 	return providers.AccessEvaluationsRequest{Evaluations: evaluations}

@@ -1,0 +1,107 @@
+---
+title: UserProfile
+docType: reference
+description: Editable SwiftUI profile form that loads and saves the authenticated user's account information.
+---
+
+# `UserProfile`
+
+The `UserProfile` component renders an editable profile form. It loads the user's current profile from `/scim2/Me` when it appears, presents editable fields for `displayName` and `phoneNumbers`, and saves changes via `ThunderIDClient.updateUserProfile`.
+
+`UserProfile` requires `.thunderIDProvider(config:)` in its ancestor view hierarchy.
+
+## Usage
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct ProfileSheet: View {
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        UserProfile {
+            dismiss()
+        }
+        .padding()
+    }
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `onSaved` | `(() -> Void)?` | ❌ | Called after a successful profile save. |
+| `onError` | `(() -> Void)?` | ❌ | Called when a load or save operation fails. |
+
+## Example: Present as a Modal Sheet
+
+```swift
+struct HomeView: View {
+    @State private var showProfile = false
+
+    var body: some View {
+        Button("Edit Profile") {
+            showProfile = true
+        }
+        .sheet(isPresented: $showProfile) {
+            NavigationStack {
+                UserProfile(
+                    onSaved: { showProfile = false },
+                    onError: { print("Profile save failed") }
+                )
+                .navigationTitle("Edit Profile")
+                .padding()
+            }
+        }
+    }
+}
+```
+
+## Customization with `BaseUserProfile`
+
+`BaseUserProfile` is the unstyled builder variant. It manages the load and save operations and passes the current state to your content closure, giving you full control over the form layout.
+
+```swift
+import SwiftUI
+import ThunderID
+import ThunderIDSwiftUI
+
+struct CustomProfileView: View {
+    var body: some View {
+        BaseUserProfile(
+            onSaved: { print("Saved") },
+            onError: { print("Error") }
+        ) { profile, fields, isLoading, error, save in
+            VStack(spacing: 16) {
+                if let error {
+                    Text(error).foregroundStyle(.red)
+                }
+
+                if let displayName = fields["displayName"] {
+                    TextField("Display Name", text: displayName)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                Button(isLoading ? "Saving..." : "Save") {
+                    save()
+                }
+                .disabled(isLoading)
+            }
+        }
+    }
+}
+```
+
+### `BaseUserProfile` Content Closure Parameters
+
+The content closure receives:
+
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `profile` | `UserProfile?` | The loaded profile from `/scim2/Me`. `nil` before the first load completes. |
+| `fields` | `[String: Binding<String>]` | Bindings for the editable fields: `"displayName"` and `"phoneNumbers"`. |
+| `isLoading` | `Bool` | `true` while a load or save operation is in progress. |
+| `error` | `String?` | Error message from the last failed operation. `nil` on success. |
+| `save` | `() -> Void` | Call this to submit the edited field values. |

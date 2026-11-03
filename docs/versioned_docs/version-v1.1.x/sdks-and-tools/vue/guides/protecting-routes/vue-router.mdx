@@ -1,0 +1,136 @@
+---
+title: Vue Router
+docType: guide
+description: Protect Vue Router routes by adding navigation guards that redirect unauthenticated users to sign-in.
+---
+
+# Vue Router
+
+`@thunderid/vue` ships with `createThunderIDGuard`, a navigation-guard factory that integrates with [Vue Router](https://router.vuejs.org/). The guard checks the user's authentication state and redirects unauthenticated users to a fallback route. It also waits for the SDK to finish initializing on first load so that protected routes are not falsely treated as unauthenticated during the initial bootstrap.
+
+`createCallbackRoute` is a companion helper that returns a route record for the OAuth2 callback, useful when you want a dedicated `/callback` route instead of relying on the redirect landing on `/`.
+
+:::note Requires Vue Router
+These helpers expect `vue-router` to be installed as a peer dependency:
+
+<CodeGroup>
+<CodeBlock icon="npm" label="npm">
+```bash
+npm install vue-router
+```
+</CodeBlock>
+<CodeBlock icon="yarn" label="yarn">
+```bash
+yarn add vue-router
+```
+</CodeBlock>
+<CodeBlock icon="pnpm" label="pnpm">
+```bash
+pnpm add vue-router
+```
+</CodeBlock>
+</CodeGroup>
+:::
+
+## `beforeEnter` Route Guard
+
+Apply the guard to a single route using `beforeEnter`. This is the most common pattern when only a few routes need protection.
+
+```ts title="src/router/index.ts" showLineNumbers
+import { createRouter, createWebHistory } from 'vue-router'
+import { createThunderIDGuard, createCallbackRoute } from '@thunderid/vue'
+import Home from '../pages/Home.vue'
+import SignIn from '../pages/SignIn.vue'
+import Dashboard from '../pages/Dashboard.vue'
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    { path: '/', component: Home },
+    { path: '/signin', component: SignIn },
+    {
+      path: '/dashboard',
+      component: Dashboard,
+      beforeEnter: createThunderIDGuard({ redirectTo: '/signin' }),
+    },
+    createCallbackRoute({ path: '/callback' }),
+  ],
+})
+
+export default router
+```
+
+## Global Guard with `router.beforeEach`
+
+Apply the guard to every route at once using `router.beforeEach`. Combine this with per-route `meta` flags if you want to opt specific routes out of the check.
+
+```ts title="src/router/index.ts" showLineNumbers
+import { createRouter, createWebHistory } from 'vue-router'
+import { createThunderIDGuard } from '@thunderid/vue'
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    { path: '/', component: Home, meta: { public: true } },
+    { path: '/signin', component: SignIn, meta: { public: true } },
+    { path: '/dashboard', component: Dashboard },
+  ],
+})
+
+const requireAuth = createThunderIDGuard({ redirectTo: '/signin' })
+
+router.beforeEach((to, from, next) => {
+  if (to.meta.public) {
+    return next()
+  }
+  return requireAuth(to, from, next)
+})
+
+export default router
+```
+
+## Customizing the Guard
+
+The guard accepts the following options:
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `redirectTo` | `string` | `'/'` | Path to redirect unauthenticated users to |
+| `waitForInit` | `boolean` | `true` | Wait for the SDK to finish initializing before evaluating the auth state |
+| `initTimeout` | `number` | `10000` | Maximum time (in ms) to wait for SDK initialization before redirecting |
+
+For example, to reject immediately when the SDK is not yet initialized (without waiting):
+
+```ts title="src/router/index.ts" showLineNumbers
+const guard = createThunderIDGuard({
+  redirectTo: '/signin',
+  waitForInit: false,
+})
+```
+
+## Using the Callback Route Helper
+
+`createCallbackRoute` returns a route record that renders the SDK's built-in `<Callback>` component, which extracts OAuth parameters from the URL and finalises the sign-in.
+
+```ts title="src/router/index.ts" showLineNumbers
+import { createRouter, createWebHistory } from 'vue-router'
+import { createCallbackRoute } from '@thunderid/vue'
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    { path: '/', component: Home },
+    createCallbackRoute({
+      path: '/auth/callback',
+      name: 'oauth-callback',
+      onError: (error) => console.error('OAuth error:', error),
+    }),
+  ],
+})
+```
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `path` | `string` | `'/callback'` | URL path for the callback route |
+| `name` | `string` | - | Optional route name |
+| `onError` | `(error: Error) => void` | - | Handler invoked if the callback encounters an error |

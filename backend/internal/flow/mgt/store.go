@@ -38,6 +38,11 @@ var getDBProvider = provider.GetDBProvider
 // flowStoreInterface defines the interface for flow store operations.
 type flowStoreInterface interface {
 	ListFlows(ctx context.Context, limit, offset int, flowType string) ([]BasicFlowDefinition, int, error)
+	// ListFlowsByOU lists one page of the flows an organization unit owns, with how many it owns.
+	ListFlowsByOU(ctx context.Context, ouID string, limit, offset int, flowType string) (
+		[]BasicFlowDefinition, int, error)
+	// ListFlowsByIDs reads the flows with the given IDs, leaving out the ones that do not exist.
+	ListFlowsByIDs(ctx context.Context, ids []string, flowType string) ([]BasicFlowDefinition, error)
 	ListActiveFlowsWithNodes(ctx context.Context) ([]*providers.CompleteFlowDefinition, error)
 	CreateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (*providers.CompleteFlowDefinition, error)
 	GetFlowByID(ctx context.Context, flowID string) (*providers.CompleteFlowDefinition, error)
@@ -140,6 +145,86 @@ func (s *flowStore) ListFlows(ctx context.Context, limit, offset int, flowType s
 	}
 
 	return flows, totalCount, nil
+}
+
+// ListFlowsByOU lists one page of the flows an organization unit owns, with how many it owns. An empty flow type
+// lists every type.
+func (s *flowStore) ListFlowsByOU(ctx context.Context, ouID string, limit, offset int, flowType string) (
+	[]BasicFlowDefinition, int, error) {
+	var flows []BasicFlowDefinition
+	var totalCount int
+
+	err := s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
+		listQuery, countQuery := queryListFlowsByOU, queryCountFlowsByOU
+		listArgs := []interface{}{ouID, s.scope(ctx), limit, offset}
+		countArgs := []interface{}{ouID, s.scope(ctx)}
+		if flowType != "" {
+			listQuery, countQuery = queryListFlowsByOUWithType, queryCountFlowsByOUWithType
+			listArgs = []interface{}{ouID, flowType, s.scope(ctx), limit, offset}
+			countArgs = []interface{}{ouID, flowType, s.scope(ctx)}
+		}
+
+		countResults, err := dbClient.QueryContext(ctx, countQuery, countArgs...)
+		if err != nil {
+			return fmt.Errorf("failed to count the flows of an organization unit: %w", err)
+		}
+		totalCount, err = s.parseCountResult(countResults)
+		if err != nil {
+			return err
+		}
+
+		results, err := dbClient.QueryContext(ctx, listQuery, listArgs...)
+		if err != nil {
+			return fmt.Errorf("failed to list the flows of an organization unit: %w", err)
+		}
+		flows = make([]BasicFlowDefinition, 0, len(results))
+		for _, row := range results {
+			flow, err := s.buildBasicFlowDefinitionFromRow(row)
+			if err != nil {
+				return fmt.Errorf("failed to build flow: %w", err)
+			}
+			flows = append(flows, flow)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return flows, totalCount, nil
+}
+
+// flowIDsPerQuery bounds how many IDs one query names, as databases limit the parameters of a statement.
+const flowIDsPerQuery = 500
+
+// ListFlowsByIDs reads the flows with the given IDs, leaving out the ones that do not exist. An empty flow type reads
+// every type.
+func (s *flowStore) ListFlowsByIDs(ctx context.Context, ids []string, flowType string) (
+	[]BasicFlowDefinition, error) {
+	flows := make([]BasicFlowDefinition, 0, len(ids))
+	err := s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
+		for start := 0; start < len(ids); start += flowIDsPerQuery {
+			chunk := ids[start:min(start+flowIDsPerQuery, len(ids))]
+			query, args := buildListFlowsByIDsQuery(chunk, flowType, s.scope(ctx))
+			results, err := dbClient.QueryContext(ctx, query, args...)
+			if err != nil {
+				return fmt.Errorf("failed to list flows by ID: %w", err)
+			}
+			for _, row := range results {
+				flow, err := s.buildBasicFlowDefinitionFromRow(row)
+				if err != nil {
+					return fmt.Errorf("failed to build flow: %w", err)
+				}
+				flows = append(flows, flow)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return flows, nil
 }
 
 // ListActiveFlowsWithNodes retrieves every flow's active version, including its node definitions, in

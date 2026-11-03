@@ -220,4 +220,17 @@ var (
 				"can only be created from a declarative resource file or an import",
 		},
 	}
+	// ErrorInvalidFilter is returned when a connection listing carries a filter it cannot apply.
+	ErrorInvalidFilter = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1039",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_filter_parameter",
+			DefaultValue: "Invalid filter parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_filter_parameter_description",
+			DefaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID",
+		},
+	}
 )

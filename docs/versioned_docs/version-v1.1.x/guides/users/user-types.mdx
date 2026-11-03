@@ -1,0 +1,74 @@
+---
+title: User Types
+docType: guide
+sidebar_position: 1
+persona: iam
+description: Define user type schemas to control the attributes, validation rules, and registration settings for different categories of users.
+---
+
+# User Types
+
+Every user in <ProductName /> has a user type that represents a category of users in your organization. The user type determines:
+
+- Which attributes the user has in their profile and the data types of those attributes.
+- Which attributes must be unique across all users of that type.
+- Which attributes are credentials (stored securely and never returned in responses).
+- Whether users of this type can self-register through an application's registration flow.
+
+## User Types and Organization Units
+
+User types work alongside **Organization Units (OUs)** to model your real-world organization:
+
+- The **user type** defines what a user looks like; their attributes, constraints, and registration rules.
+- The **organization unit** defines where a user belongs; their place in your organizational hierarchy.
+
+Each user type belongs to a single OU. Users of that type can only exist under that OU or one of its descendants. Learn more in [Organization Units](../../organization-units/).
+
+<ProductName /> ships with one default user type. Learn more about its schema in [User Type Reference](../user-type-reference).
+
+| User Type | Description | Organization Unit | Self-Registration |
+|-----------|-------------|-------------------|-------------------|
+| **Person** | The general-purpose user type used by the default sign-in and registration flows. | Default | Allowed |
+
+
+## Create a User Type
+
+1. Navigate to **User Types** in the <ProductName /> Console and click **Create User Type**.
+2. Enter a **Name** for the user type. The name is used as the type identifier and must be unique.
+3. Select the **Organization Unit** this user type should belong to. A user of this type can only be created under this OU or one of its descendants in the hierarchy. See [Organization Units](../../organization-units/) for more information.
+4. Configure **Allow Self Registration**. When enabled, users of this type can sign up through the registration flow assigned to your application.
+5. Set the attributes that the user type should have, including data types and constraint modifiers. See [User Type Reference](../user-type-reference) for details on available settings and attribute options.
+6. Click **Create User Type**.
+
+:::note
+**Allow Self Registration** applies to every application that allows the user type. When first-time users sign in with a social identity provider, an application must allow exactly one user type with this setting enabled. The default **Person** type already has it enabled. See [Application Settings](../../applications/application-settings#control-who-can-register).
+:::
+
+## Update a User Type
+
+1. Navigate to **User Types** and open the user type you want to edit.
+2. Add, remove, or update attribute definitions.
+3. Click **Save**.
+
+:::warning
+Updating a user type schema replaces the entire attribute definition and does not retroactively validate existing users. New users created after the change must conform to the updated schema. Existing users keep their stored values until each user is next saved. See [Manage Users](../manage-users#update-a-user) for what happens to values that no longer fit the schema on the next save.
+
+Removing an attribute from the schema does not immediately update existing applications. Any application that lists the removed attribute in its access token, ID token, or userinfo settings continues to return it while users still hold a stored value. The next time you update and save the application, <ProductName /> removes the references to attributes that no longer exist in the schema. See [Application Settings](../../applications/application-settings#configure-what-goes-into-tokens) for the user attributes on the **Token** tab.
+:::
+
+## Delete a User Type
+
+1. Open the user type from the **User Types** list.
+2. Click **Delete** and confirm.
+
+:::warning
+Deletion fails if users of this type exist. Delete or reassign all users of this type before removing the schema.
+:::
+
+
+## Related Guides
+
+- [User Type Reference](../user-type-reference) - Schema settings, attribute types, and constraint modifiers
+- [Manage Users](../manage-users) - Create and manage users of each type
+- [Organization Units](../../organization-units) - Understand the OU structure that binds user types.
+- [Flows](../../flows/what-are-flows) - Configure registration flows for self-service sign-up

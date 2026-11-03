@@ -1,0 +1,100 @@
+---
+title: Embedded Sign-Up Flow (V1)
+docType: reference
+displayed_sidebar: javascriptSdkSidebar
+description: Embedded sign-up flow component for collecting user details and completing registration through the SDK.
+---
+
+# Embedded Sign-Up Flow (V1)
+
+`executeEmbeddedSignUpFlow` drives a step-by-step registration flow without a browser redirect.
+
+:::note
+For new integrations, prefer [`executeEmbeddedSignUpFlowV2`](../embedded-sign-up-flow-v2).
+:::
+
+## `executeEmbeddedSignUpFlow(config)`
+
+Execute a step in the embedded registration flow.
+
+```ts
+import { executeEmbeddedSignUpFlow, EmbeddedFlowType } from '@thunderid/javascript'
+
+const response = await executeEmbeddedSignUpFlow({
+  baseUrl: 'https://localhost:8090',
+  payload: {
+    flowType: EmbeddedFlowType.Registration,
+    // step-specific fields
+  },
+})
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `config.url` | `string` | ✅ | Full endpoint URL. Mutually exclusive with `baseUrl` |
+| `config.baseUrl` | `string` | ✅ | <ProductName /> base URL |
+| `config.payload` | `EmbeddedFlowExecuteRequestPayload` | ✅ | Flow step payload |
+| `config.payload.flowType` | `EmbeddedFlowType` | ✅ | Must be `EmbeddedFlowType.Registration` |
+| `config.payload.flowId` | `string` | ❌ | Flow ID from a previous step response |
+| `config.payload.selectedAuthenticator` | `object` | ❌ | Authenticator selection (for later steps) |
+
+## Response: `EmbeddedFlowExecuteResponse`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `flowId` | `string` | Flow identifier |
+| `flowStatus` | `EmbeddedFlowStatus` | `Incomplete` or `Complete` |
+| `type` | `EmbeddedFlowResponseType` | `View` (render UI) or `Redirection` |
+| `data` | `EmbeddedFlowComponent[]` | UI component tree to render for the current step |
+
+## Enums
+
+### `EmbeddedFlowType`
+
+| Value | Description |
+|-------|-------------|
+| `Authentication` | Sign-in flow |
+| `Registration` | Sign-up flow |
+| `Recovery` | Account recovery flow |
+| `UserOnboarding` | Post-sign-in onboarding flow |
+
+### `EmbeddedFlowStatus`
+
+| Value | Description |
+|-------|-------------|
+| `Incomplete` | More steps required |
+| `Complete` | Flow has finished |
+
+### `EmbeddedFlowResponseType`
+
+| Value | Description |
+|-------|-------------|
+| `View` | The `data` field contains a component tree to render |
+| `Redirection` | The user should be redirected to `data.redirectUrl` |
+
+### `EmbeddedFlowComponentType`
+
+| Value | Description |
+|-------|-------------|
+| `Button` | Interactive button |
+| `Checkbox` | Checkbox input |
+| `Divider` | Visual divider |
+| `Form` | Form container |
+| `Image` | Image element |
+| `Input` | Text/password/email input |
+| `Radio` | Radio button |
+| `Select` | Dropdown select |
+| `Typography` | Display text |
+
+## Error Response
+
+When a flow step fails, the function throws with an `EmbeddedFlowExecuteErrorResponse`:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `code` | `string` | Error code |
+| `message` | `string` | Short error message |
+| `description` | `string` | Detailed error description |
+| `flowType` | `EmbeddedFlowType` | The flow type that failed |

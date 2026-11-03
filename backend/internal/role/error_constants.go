@@ -62,7 +62,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.roleservice.role_name_conflict_description",
-			DefaultValue: "A role with the same name exists under the same organization unit",
+			DefaultValue: "A role with the same name is owned by or shared with the organization unit",
 		},
 	}
 	// ErrorOrganizationUnitNotFound is the error returned when organization unit is not found.
@@ -379,6 +379,80 @@ var (
 			Key: "error.roleservice.shared_role_cannot_move_description",
 			DefaultValue: "The role is shared into other organization units. Delete its sharing policies " +
 				"before moving it to another organization unit",
+		},
+	}
+	// ErrorAssigneeNotInOU is returned when an assignment names an assignee that the organization unit
+	// the assignment is made in neither owns nor has shared with it.
+	ErrorAssigneeNotInOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.assignee_not_in_ou",
+			DefaultValue: "Assignee is not available in the organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.assignee_not_in_ou_description",
+			DefaultValue: "A role can only be assigned to users, applications and agents owned by or shared with " +
+				"the organization unit the assignment is made in, and to groups owned by it",
+		},
+	}
+	// ErrorSharedRoleFieldNotEditable is returned when an organization unit a role is shared with
+	// changes something the role's sharing policies do not let it change.
+	ErrorSharedRoleFieldNotEditable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.shared_role_field_not_editable",
+			DefaultValue: "Field cannot be changed in this organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.shared_role_field_not_editable_description",
+			DefaultValue: "An organization unit the role is shared with can only change what the role's " +
+				"sharing policies make editable there",
+		},
+	}
+	// ErrorRoleWithAssignmentsCannotMove is returned when a role that still has assignments is moved
+	// to another organization unit.
+	ErrorRoleWithAssignmentsCannotMove = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1032",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.role_with_assignments_cannot_move",
+			DefaultValue: "Role with assignments cannot be moved",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.role_with_assignments_cannot_move_description",
+			DefaultValue: "The role is assigned in its organization unit. Remove its assignments before moving " +
+				"it to another organization unit",
+		},
+	}
+	// ErrorInvalidFilter is returned when a list filter is malformed or names an attribute that cannot
+	// be filtered on.
+	ErrorInvalidFilter = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1033",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.invalid_filter",
+			DefaultValue: "Invalid filter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.invalid_filter_description",
+			DefaultValue: `The filter must be a single expression of the form ouId eq "<id>"`,
+		},
+	}
+	// ErrorSharedRoleNotEditable is returned when a role is updated in an organization unit it is
+	// shared with.
+	ErrorSharedRoleNotEditable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1034",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.shared_role_not_editable",
+			DefaultValue: "Role cannot be edited in this organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.shared_role_not_editable_description",
+			DefaultValue: "A role's name, description and permissions can be changed only in the " +
+				"organization unit that owns it, not in one it is shared with",
 		},
 	}
 )

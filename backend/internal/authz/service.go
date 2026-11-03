@@ -332,6 +332,7 @@ func toEngineAccessEvaluationsRequest(request providers.AccessEvaluationsRequest
 				Name:       evaluation.Permission.Name,
 				Properties: evaluation.Permission.Properties,
 			},
+			OUID:    evaluation.OUID,
 			Context: evaluation.Context,
 		})
 	}

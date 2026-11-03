@@ -50,16 +50,16 @@ func (_m *roleAssignmentAdminProviderMock) EXPECT() *roleAssignmentAdminProvider
 }
 
 // RemoveAssignments provides a mock function for the type roleAssignmentAdminProviderMock
-func (_mock *roleAssignmentAdminProviderMock) RemoveAssignments(ctx context.Context, id string, assignments []role.RoleAssignment) *common.ServiceError {
-	ret := _mock.Called(ctx, id, assignments)
+func (_mock *roleAssignmentAdminProviderMock) RemoveAssignments(ctx context.Context, id string, ouID string, assignments []role.RoleAssignment) *common.ServiceError {
+	ret := _mock.Called(ctx, id, ouID, assignments)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RemoveAssignments")
 	}
 
 	var r0 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []role.RoleAssignment) *common.ServiceError); ok {
-		r0 = returnFunc(ctx, id, assignments)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, []role.RoleAssignment) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, id, ouID, assignments)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*common.ServiceError)
@@ -76,12 +76,13 @@ type roleAssignmentAdminProviderMock_RemoveAssignments_Call struct {
 // RemoveAssignments is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
+//   - ouID string
 //   - assignments []role.RoleAssignment
-func (_e *roleAssignmentAdminProviderMock_Expecter) RemoveAssignments(ctx any, id any, assignments any) *roleAssignmentAdminProviderMock_RemoveAssignments_Call {
-	return &roleAssignmentAdminProviderMock_RemoveAssignments_Call{Call: _e.mock.On("RemoveAssignments", ctx, id, assignments)}
+func (_e *roleAssignmentAdminProviderMock_Expecter) RemoveAssignments(ctx any, id any, ouID any, assignments any) *roleAssignmentAdminProviderMock_RemoveAssignments_Call {
+	return &roleAssignmentAdminProviderMock_RemoveAssignments_Call{Call: _e.mock.On("RemoveAssignments", ctx, id, ouID, assignments)}
 }
 
-func (_c *roleAssignmentAdminProviderMock_RemoveAssignments_Call) Run(run func(ctx context.Context, id string, assignments []role.RoleAssignment)) *roleAssignmentAdminProviderMock_RemoveAssignments_Call {
+func (_c *roleAssignmentAdminProviderMock_RemoveAssignments_Call) Run(run func(ctx context.Context, id string, ouID string, assignments []role.RoleAssignment)) *roleAssignmentAdminProviderMock_RemoveAssignments_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -91,14 +92,19 @@ func (_c *roleAssignmentAdminProviderMock_RemoveAssignments_Call) Run(run func(c
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 []role.RoleAssignment
+		var arg2 string
 		if args[2] != nil {
-			arg2 = args[2].([]role.RoleAssignment)
+			arg2 = args[2].(string)
+		}
+		var arg3 []role.RoleAssignment
+		if args[3] != nil {
+			arg3 = args[3].([]role.RoleAssignment)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -109,14 +115,14 @@ func (_c *roleAssignmentAdminProviderMock_RemoveAssignments_Call) Return(service
 	return _c
 }
 
-func (_c *roleAssignmentAdminProviderMock_RemoveAssignments_Call) RunAndReturn(run func(ctx context.Context, id string, assignments []role.RoleAssignment) *common.ServiceError) *roleAssignmentAdminProviderMock_RemoveAssignments_Call {
+func (_c *roleAssignmentAdminProviderMock_RemoveAssignments_Call) RunAndReturn(run func(ctx context.Context, id string, ouID string, assignments []role.RoleAssignment) *common.ServiceError) *roleAssignmentAdminProviderMock_RemoveAssignments_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ValidateRemoveAssignment provides a mock function for the type roleAssignmentAdminProviderMock
-func (_mock *roleAssignmentAdminProviderMock) ValidateRemoveAssignment(ctx context.Context, id string, assigneeID string) (*revocation.AccessRevocationTarget, *common.ServiceError) {
-	ret := _mock.Called(ctx, id, assigneeID)
+func (_mock *roleAssignmentAdminProviderMock) ValidateRemoveAssignment(ctx context.Context, id string, ouID string, assigneeID string) (*revocation.AccessRevocationTarget, *common.ServiceError) {
+	ret := _mock.Called(ctx, id, ouID, assigneeID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ValidateRemoveAssignment")
@@ -124,18 +130,18 @@ func (_mock *roleAssignmentAdminProviderMock) ValidateRemoveAssignment(ctx conte
 
 	var r0 *revocation.AccessRevocationTarget
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*revocation.AccessRevocationTarget, *common.ServiceError)); ok {
-		return returnFunc(ctx, id, assigneeID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (*revocation.AccessRevocationTarget, *common.ServiceError)); ok {
+		return returnFunc(ctx, id, ouID, assigneeID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *revocation.AccessRevocationTarget); ok {
-		r0 = returnFunc(ctx, id, assigneeID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) *revocation.AccessRevocationTarget); ok {
+		r0 = returnFunc(ctx, id, ouID, assigneeID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*revocation.AccessRevocationTarget)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, id, assigneeID)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, id, ouID, assigneeID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -152,12 +158,13 @@ type roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call struct {
 // ValidateRemoveAssignment is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
+//   - ouID string
 //   - assigneeID string
-func (_e *roleAssignmentAdminProviderMock_Expecter) ValidateRemoveAssignment(ctx any, id any, assigneeID any) *roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call {
-	return &roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call{Call: _e.mock.On("ValidateRemoveAssignment", ctx, id, assigneeID)}
+func (_e *roleAssignmentAdminProviderMock_Expecter) ValidateRemoveAssignment(ctx any, id any, ouID any, assigneeID any) *roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call {
+	return &roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call{Call: _e.mock.On("ValidateRemoveAssignment", ctx, id, ouID, assigneeID)}
 }
 
-func (_c *roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call) Run(run func(ctx context.Context, id string, assigneeID string)) *roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call {
+func (_c *roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call) Run(run func(ctx context.Context, id string, ouID string, assigneeID string)) *roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -171,10 +178,15 @@ func (_c *roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call) Run(run
 		if args[2] != nil {
 			arg2 = args[2].(string)
 		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -185,7 +197,7 @@ func (_c *roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call) Return(
 	return _c
 }
 
-func (_c *roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call) RunAndReturn(run func(ctx context.Context, id string, assigneeID string) (*revocation.AccessRevocationTarget, *common.ServiceError)) *roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call {
+func (_c *roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call) RunAndReturn(run func(ctx context.Context, id string, ouID string, assigneeID string) (*revocation.AccessRevocationTarget, *common.ServiceError)) *roleAssignmentAdminProviderMock_ValidateRemoveAssignment_Call {
 	_c.Call.Return(run)
 	return _c
 }

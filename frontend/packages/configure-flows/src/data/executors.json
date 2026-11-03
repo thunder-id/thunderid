@@ -716,6 +716,29 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
+      "header": "Authorization Detail Executor",
+      "label": "Check Intents",
+      "description": "Run the processor of each requested intent before consent",
+      "image": "assets/images/icons/magnifying-glass.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "AuthorizationDetailExecutor"
+        },
+        "onSuccess": "",
+        "onFailure": "",
+        "onIncomplete": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
       "header": "OU Resolver Executor",
       "label": "Resolve OU",
       "description": "Resolve the organization unit for the flow",

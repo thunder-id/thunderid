@@ -894,52 +894,65 @@ func (s *ServiceTestSuite) TestASuspensionAppliesWithLockingSwitchedOff() {
 	s.Equal(providers.AccessRefusalReasonSuspended, decision.Reason)
 }
 
-// IsSuspended reads without seeding, either store alone answers true, and a lock is not a suspension.
-// The strict port mock expects seedMissing false, so a seeding read fails the test.
-func (s *ServiceTestSuite) TestIsSuspendedReadsWithoutWriting() {
+// AccessHold reads without seeding. Either suspension store alone holds, a passed lifespan end holds as
+// expired, a suspension is reported before expiry, and a lock is not a hold. The strict port mock
+// expects seedMissing false, so a seeding read fails the test.
+func (s *ServiceTestSuite) TestAccessHoldReadsWithoutWriting() {
 	locked := s.activeEntity()
 	locked.AccessState.Lock.Account = &LockEntry{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension}
 	documentOnly := s.suspendedEntity()
 	documentOnly.State = providers.EntityStateActive
 	columnOnly := s.suspendedEntity()
 	columnOnly.AccessState.Suspend = nil
+	bounded := s.activeEntity()
+	bounded.ValidUntil = s.at(time.Hour)
+	expired := s.activeEntity()
+	expired.ValidUntil = s.at(-time.Hour)
+	unreadable := s.activeEntity()
+	unreadable.ValidUntilErr = errors.New("invalid validUntil")
+	suspendedAndExpired := s.suspendedEntity()
+	suspendedAndExpired.ValidUntil = expired.ValidUntil
 
 	for name, tc := range map[string]struct {
 		entity GovernedEntity
-		want   bool
+		want   providers.AccessRefusalReason
 	}{
-		"active":        {entity: s.activeEntity(), want: false},
-		"locked":        {entity: locked, want: false},
-		"document only": {entity: documentOnly, want: true},
-		"column only":   {entity: columnOnly, want: true},
+		"active":                {entity: s.activeEntity(), want: ""},
+		"locked":                {entity: locked, want: ""},
+		"lifespan ahead":        {entity: bounded, want: ""},
+		"document only":         {entity: documentOnly, want: providers.AccessRefusalReasonSuspended},
+		"column only":           {entity: columnOnly, want: providers.AccessRefusalReasonSuspended},
+		"lifespan ended":        {entity: expired, want: providers.AccessRefusalReasonExpired},
+		"unreadable lifespan":   {entity: unreadable, want: providers.AccessRefusalReasonExpired},
+		"suspended and expired": {entity: suspendedAndExpired, want: providers.AccessRefusalReasonSuspended},
 	} {
 		s.SetupTest()
 		s.port.On("GetGovernedEntity", mock.Anything, tc.entity.ID, false).Return(&tc.entity, nil).Once()
 
-		suspended, err := s.svc.IsSuspended(s.ctx, tc.entity.ID)
+		hold, err := s.svc.AccessHold(s.ctx, tc.entity.ID)
 		s.Require().Nil(err, name)
-		s.Equal(tc.want, suspended, name)
+		s.Equal(tc.want, hold, name)
 	}
 }
 
-func (s *ServiceTestSuite) TestIsSuspendedAdmitsAnUngovernedSubject() {
-	suspended, err := s.svc.IsSuspended(s.ctx, "")
+func (s *ServiceTestSuite) TestAccessHoldAdmitsAnUngovernedSubject() {
+	hold, err := s.svc.AccessHold(s.ctx, "")
 	s.Require().Nil(err)
-	s.False(suspended, "an empty subject must not be suspended")
+	s.Empty(hold, "an empty subject must have no hold")
 
 	s.port.On("GetGovernedEntity", mock.Anything, "e1", false).Return(nil, nil).Once()
-	suspended, err = s.svc.IsSuspended(s.ctx, "e1")
+	hold, err = s.svc.AccessHold(s.ctx, "e1")
 	s.Require().Nil(err)
-	s.False(suspended, "an identity with no local record must not be suspended")
+	s.Empty(hold, "an identity with no local record must have no hold")
 }
 
-func (s *ServiceTestSuite) TestIsSuspendedReportsAnUnreadableAuthority() {
+func (s *ServiceTestSuite) TestAccessHoldReportsAnUnreadableAuthority() {
 	s.port.On("GetGovernedEntity", mock.Anything, "e1", false).
 		Return(nil, errors.New("database unavailable")).Once()
 
-	suspended, err := s.svc.IsSuspended(s.ctx, "e1")
+	hold, err := s.svc.AccessHold(s.ctx, "e1")
 	s.requireServiceError(err, tidcommon.InternalServerError)
-	s.False(suspended)
+	s.Empty(hold)
 }
 
 // Suspend reads the entity, writes the suspension and does not clear lock state.
@@ -3143,4 +3156,135 @@ func (s *ServiceTestSuite) TestARecordedLockOnAMethodThatDoesNotLockIsIgnored() 
 
 	s.Require().Nil(err)
 	s.True(decision.Admitted)
+}
+
+// agentWithLifespan is an active agent whose lifespan ends at validUntil; zero does not end.
+func (s *ServiceTestSuite) agentWithLifespan(validUntil time.Time) GovernedEntity {
+	entity := s.activeEntity()
+	entity.ID = "agent-1"
+	entity.Category = providers.EntityCategoryAgent
+	entity.Type = "service"
+	if !validUntil.IsZero() {
+		entity.ValidUntil = validUntil.UTC().Format(time.RFC3339)
+	}
+	return entity
+}
+
+// A stored lifespan end the entity service did not normalize is refused rather than admitted with no
+// cap.
+func (s *ServiceTestSuite) TestAnUnparsableLifespanEndIsRefused() {
+	entity := s.agentWithLifespan(time.Time{})
+	entity.ValidUntil = "not-a-timestamp"
+	s.expectRead(entity)
+
+	decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, providers.AccessPlaneIssuance, "")
+	s.Require().Nil(err)
+	s.False(decision.Admitted)
+	s.True(decision.NotAfter.IsZero())
+}
+
+// A lifespan end the entity service could not read fails an access check rather than admitting.
+func (s *ServiceTestSuite) TestAnUnreadableLifespanEndFailsAnAccessCheck() {
+	entity := s.agentWithLifespan(time.Time{})
+	entity.ValidUntilErr = errors.New("invalid validUntil system attribute")
+	s.expectRead(entity)
+
+	decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, providers.AccessPlaneIssuance, "")
+	s.requireServiceError(err, tidcommon.InternalServerError)
+	s.False(decision.Admitted)
+}
+
+// A lifespan end the entity service could not read does not block a suspension, so an agent with a
+// corrupt lifespan can still be contained.
+func (s *ServiceTestSuite) TestAnUnreadableLifespanEndDoesNotBlockASuspension() {
+	entity := s.agentWithLifespan(time.Time{})
+	entity.ValidUntilErr = errors.New("invalid validUntil system attribute")
+	s.expectRead(entity)
+	s.port.On("SetSuspension", mock.Anything, entity.ID, s.now, "").Return(true, nil).Once()
+
+	s.Require().Nil(s.svc.Suspend(s.ctx, entity.ID, ""))
+}
+
+func (s *ServiceTestSuite) TestAnEndedLifespanRefusesAtEveryPlane() {
+	entity := s.agentWithLifespan(s.now.Add(-time.Minute))
+	s.expectRead(entity)
+	s.expectConfig(methodGranularityConfig())
+
+	for _, plane := range []providers.AccessPlane{
+		providers.AccessPlaneAuthentication, providers.AccessPlaneDispatch, providers.AccessPlaneRecovery,
+		providers.AccessPlaneSession, providers.AccessPlaneIssuance, providers.AccessPlaneApplication,
+	} {
+		decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, plane, testMethod)
+		s.Require().Nil(err)
+		s.False(decision.Admitted, "plane %s must refuse an expired identity", plane)
+		s.Equal(providers.AccessRefusalReasonExpired, decision.Reason)
+		s.True(decision.NotAfter.IsZero(), "a refusal carries no lifespan end")
+	}
+}
+
+// The lifespan ends at its instant, not a second later.
+func (s *ServiceTestSuite) TestALifespanEndsAtItsInstant() {
+	s.expectConfig(methodGranularityConfig())
+	for name, tc := range map[string]struct {
+		validUntil time.Time
+		admitted   bool
+	}{
+		"at the instant":     {validUntil: s.now, admitted: false},
+		"a second before it": {validUntil: s.now.Add(time.Second), admitted: true},
+	} {
+		entity := s.agentWithLifespan(tc.validUntil)
+		entity.ID = name
+		s.expectRead(entity)
+
+		decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, providers.AccessPlaneIssuance, "")
+		s.Require().Nil(err)
+		s.Equal(tc.admitted, decision.Admitted, name)
+	}
+}
+
+// An admitted decision carries the lifespan end, so the grant can cap the token at it.
+func (s *ServiceTestSuite) TestAnAdmittedDecisionCarriesTheLifespanEnd() {
+	validUntil := s.now.Add(5 * time.Minute)
+	bounded := s.agentWithLifespan(validUntil)
+	s.expectRead(bounded)
+	unbounded := s.agentWithLifespan(time.Time{})
+	unbounded.ID = "agent-unbounded"
+	s.expectRead(unbounded)
+
+	decision, err := s.svc.EvaluateAccess(s.ctx, bounded.ID, providers.AccessPlaneIssuance, "")
+	s.Require().Nil(err)
+	s.True(decision.Admitted)
+	s.Equal(validUntil, decision.NotAfter)
+
+	decision, err = s.svc.EvaluateAccess(s.ctx, unbounded.ID, providers.AccessPlaneIssuance, "")
+	s.Require().Nil(err)
+	s.True(decision.Admitted)
+	s.True(decision.NotAfter.IsZero(), "a lifespan that does not end caps nothing")
+}
+
+func (s *ServiceTestSuite) TestASuspensionIsReportedBeforeAnEndedLifespan() {
+	entity := s.agentWithLifespan(s.now.Add(-time.Minute))
+	entity.State = providers.EntityStateSuspended
+	s.expectRead(entity)
+	s.expectConfig(methodGranularityConfig())
+
+	decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, providers.AccessPlaneIssuance, "")
+	s.Require().Nil(err)
+	s.False(decision.Admitted)
+	s.Equal(providers.AccessRefusalReasonSuspended, decision.Reason)
+}
+
+// Wrong secrets sent for an expired agent are refused without counting, so they cannot lock it and
+// surface the lock only once the agent is reactivated.
+func (s *ServiceTestSuite) TestAFailureIsNotCountedWhileTheLifespanHasEnded() {
+	entity := s.agentWithLifespan(s.now.Add(-time.Minute))
+	s.expectRead(entity)
+	s.expectConfig(methodGranularityConfig())
+
+	decision, err := s.svc.RecordFailure(s.ctx, entity.ID, providers.AccessPlaneAuthentication, testMethod)
+	s.Require().Nil(err)
+	s.False(decision.Admitted)
+	s.Equal(providers.AccessRefusalReasonExpired, decision.Reason)
+	s.port.AssertNotCalled(s.T(), "IncrementFailure",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }

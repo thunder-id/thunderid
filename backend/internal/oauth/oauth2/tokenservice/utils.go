@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/idp"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -22,6 +23,7 @@ import (
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -647,9 +649,11 @@ func resolveClientEntityAttributes(
 	return filtered, nil
 }
 
-// resolveClientSystemAttributes returns the agent system attribute (owner) selected by
+// resolveClientSystemAttributes returns the agent system attributes (owner, sub_valid_until) selected by
 // ClientConfig.Attributes, read from Entity.SystemAttributes. Restricted to agent entities so an
 // application client can never surface these claims regardless of its stored allow-list.
+// sub_valid_until is the stored validUntil, kept in RFC 3339 and surfaced in Unix seconds, as the other
+// time claims are, and is left out when the lifespan does not end.
 func resolveClientSystemAttributes(
 	oauthApp *providers.OAuthClient,
 	entity *providers.Entity,
@@ -668,11 +672,35 @@ func resolveClientSystemAttributes(
 		if !constants.SurfaceableClientSystemClaims[name] {
 			continue
 		}
+		if name == constants.ClaimSubValidUntil {
+			// An unreadable end is refused at issuance, so it never reaches a token.
+			if end, bounded, err := authnprovidercm.ValidUntilOf(entity.SystemAttributes); err == nil && bounded {
+				filtered[name] = end.Unix()
+			}
+			continue
+		}
 		if val, ok := sysAttrs[name]; ok {
 			filtered[name] = val
 		}
 	}
 	return filtered, nil
+}
+
+// ouActorRoleProvider is implemented by an actor provider that can read the roles an actor holds
+// through the assignments made in one organization unit. The server's own provider does.
+type ouActorRoleProvider interface {
+	GetActorRolesInOU(actorID string, groupIDs []string, ouID string) ([]string, *tidcommon.ServiceError)
+}
+
+// actorRolesInOU returns the actor's roles from the assignments made in ouID. A provider that cannot
+// narrow its roles to an organization unit answers with the roles assigned anywhere, as before.
+func actorRolesInOU(
+	actorProvider providers.ActorProvider, actorID string, groupIDs []string, ouID string,
+) ([]string, *tidcommon.ServiceError) {
+	if p, ok := actorProvider.(ouActorRoleProvider); ok {
+		return p.GetActorRolesInOU(actorID, groupIDs, ouID)
+	}
+	return actorProvider.GetActorRoles(actorID, groupIDs)
 }
 
 // resolveClientGroupRoleClaims returns the client's groups and/or roles claims selected by
@@ -693,9 +721,17 @@ func resolveClientGroupRoleClaims(
 		return nil, nil
 	}
 
-	groups, svcErr := actorProvider.GetActorGroups(oauthApp.ID)
+	allGroups, svcErr := actorProvider.GetActorGroups(oauthApp.ID)
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to fetch groups for client %s: %s", oauthApp.ID, svcErr.Error)
+	}
+	// The client's groups and roles are those of its own organization unit. Groups of an organization
+	// unit it is shared with, and roles assigned to it there, are that unit's, not the client's.
+	groups := make([]providers.EntityGroup, 0, len(allGroups))
+	for _, g := range allGroups {
+		if g.OUID == oauthApp.OUID {
+			groups = append(groups, g)
+		}
 	}
 
 	claims := make(map[string]interface{})
@@ -717,7 +753,7 @@ func resolveClientGroupRoleClaims(
 				groupIDs = append(groupIDs, g.ID)
 			}
 		}
-		roles, roleErr := actorProvider.GetActorRoles(oauthApp.ID, groupIDs)
+		roles, roleErr := actorRolesInOU(actorProvider, oauthApp.ID, groupIDs, oauthApp.OUID)
 		if roleErr != nil {
 			return nil, fmt.Errorf("failed to fetch roles for client %s: %s", oauthApp.ID, roleErr.Error)
 		}

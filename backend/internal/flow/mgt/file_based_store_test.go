@@ -407,3 +407,54 @@ func (s *FileBasedStoreTestSuite) TestListFlows_CarriesTheOrganizationUnit() {
 	require.Len(s.T(), flows, 1)
 	assert.Equal(s.T(), "ou-1", flows[0].OUID)
 }
+
+func (s *FileBasedStoreTestSuite) createFlowOwnedBy(id, name, ouID string, flowType providers.FlowType) {
+	flowDef := s.createTestFlow(name)
+	flowDef.OUID = ouID
+	flowDef.FlowType = flowType
+	_, err := s.store.CreateFlow(context.Background(), id, flowDef)
+	require.NoError(s.T(), err)
+}
+
+func (s *FileBasedStoreTestSuite) TestListFlowsByOU_ListsOnlyThatUnitsFlowsAndPages() {
+	s.createFlowOwnedBy("flow-001", "a", "ou-1", providers.FlowTypeAuthentication)
+	s.createFlowOwnedBy("flow-002", "b", "ou-1", providers.FlowTypeRegistration)
+	s.createFlowOwnedBy("flow-003", "c", "ou-2", providers.FlowTypeAuthentication)
+
+	all, total, err := s.store.ListFlowsByOU(context.Background(), "ou-1", 10, 0, "")
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), 2, total)
+	assert.Len(s.T(), all, 2)
+
+	typed, total, err := s.store.ListFlowsByOU(
+		context.Background(), "ou-1", 10, 0, string(providers.FlowTypeRegistration))
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), 1, total)
+	require.Len(s.T(), typed, 1)
+	assert.Equal(s.T(), "flow-002", typed[0].ID)
+
+	page, total, err := s.store.ListFlowsByOU(context.Background(), "ou-1", 1, 1, "")
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), 2, total)
+	assert.Len(s.T(), page, 1)
+
+	beyond, total, err := s.store.ListFlowsByOU(context.Background(), "ou-1", 5, 9, "")
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), 2, total)
+	assert.Empty(s.T(), beyond)
+}
+
+func (s *FileBasedStoreTestSuite) TestListFlowsByIDs_ReadsTheNamedFlowsThatExist() {
+	s.createFlowOwnedBy("flow-001", "a", "ou-1", providers.FlowTypeAuthentication)
+	s.createFlowOwnedBy("flow-002", "b", "ou-1", providers.FlowTypeRegistration)
+
+	found, err := s.store.ListFlowsByIDs(context.Background(), []string{"flow-002", "missing"}, "")
+	require.NoError(s.T(), err)
+	require.Len(s.T(), found, 1)
+	assert.Equal(s.T(), "flow-002", found[0].ID)
+
+	none, err := s.store.ListFlowsByIDs(context.Background(), []string{"flow-002"},
+		string(providers.FlowTypeAuthentication))
+	require.NoError(s.T(), err)
+	assert.Empty(s.T(), none, "a flow of another type is left out")
+}

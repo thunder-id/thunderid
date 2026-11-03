@@ -559,6 +559,8 @@ Sets credentials (e.g., password) for an existing user. Typically used in regist
 
 After a successful federated authentication, these executors set the `entityState` runtime key from the account-linking result: `exists` when the federated identity resolves to a unique existing local user. A later node can branch on `{{ctx(entityState)}}`.
 
+To sign in a first-time federated user who has no local account, enable `allowAuthenticationWithoutLocalUser` on the executor and place a [Provisioning](#user-provisioning-and-attributes) executor downstream. The application must allow exactly one user type with self-registration enabled.
+
 <details>
 <summary>OAuth</summary>
 
@@ -577,7 +579,6 @@ Authenticates users via a generic OAuth 2.0 provider. After the OAuth redirect, 
 | `idpId` | Connection | Yes | The identity provider ID configured in <ProductName /> |
 | `allowAuthenticationWithoutLocalUser` | Allow Authentication Without Local User | No | Allow authentication when no local user exists (creates federated link) |
 | `allowRegistrationWithExistingUser` | Allow Registration With Existing User | No | Allow registration if the account already exists |
-| `allowCrossOUProvisioning` | Allow Cross-OU Provisioning | No | Allow creating user in a different OU from the default |
 
 **Input Configuration:**
 - `code` (required): the authorization code returned by the OAuth provider after redirect. Default: `code`. If not provided, the executor redirects to the OAuth provider to start the authorization flow and get a code.
@@ -591,8 +592,7 @@ Authenticates users via a generic OAuth 2.0 provider. After the OAuth redirect, 
   "properties": {
     "idpId": "<idp-id>",
     "allowAuthenticationWithoutLocalUser": false,
-    "allowRegistrationWithExistingUser": false,
-    "allowCrossOUProvisioning": false
+    "allowRegistrationWithExistingUser": false
   },
   "executor": {
     "name": "OAuthExecutor"
@@ -628,7 +628,6 @@ Authenticates users via a generic OIDC provider. After the OIDC redirect, <Produ
 | `idpId` | Connection | Yes | The identity provider ID configured in <ProductName /> |
 | `allowAuthenticationWithoutLocalUser` | Allow Authentication Without Local User | No | Allow authentication when no local user exists (creates federated link) |
 | `allowRegistrationWithExistingUser` | Allow Registration With Existing User | No | Allow registration if the account already exists |
-| `allowCrossOUProvisioning` | Allow Cross-OU Provisioning | No | Allow creating user in a different OU from the default |
 
 **Input Configuration:**
 - `code` (required): the authorization code returned by the OIDC provider after redirect. Default: `code`. If not provided, the executor redirects to the OIDC provider to start the authorization flow and get a code.
@@ -642,8 +641,7 @@ Authenticates users via a generic OIDC provider. After the OIDC redirect, <Produ
   "properties": {
     "idpId": "<idp-id>",
     "allowAuthenticationWithoutLocalUser": false,
-    "allowRegistrationWithExistingUser": false,
-    "allowCrossOUProvisioning": false
+    "allowRegistrationWithExistingUser": false
   },
   "executor": {
     "name": "OIDCAuthExecutor"
@@ -679,7 +677,6 @@ Authenticates users via Google OIDC. After the OAuth redirect, <ProductName /> e
 | `idpId` | Connection | Yes | The identity provider ID configured in <ProductName /> |
 | `allowAuthenticationWithoutLocalUser` | Allow Authentication Without Local User | No | Allow authentication when no local user exists (creates federated link) |
 | `allowRegistrationWithExistingUser` | Allow Registration With Existing User | No | Allow registration if the account already exists |
-| `allowCrossOUProvisioning` | Allow Cross-OU Provisioning | No | Allow creating user in a different OU from the default |
 
 **Input Configuration:**
 - `code` (required): the authorization code returned by Google after user consent. Default: `code`
@@ -693,8 +690,7 @@ Authenticates users via Google OIDC. After the OAuth redirect, <ProductName /> e
   "properties": {
     "idpId": "<idp-id>",
     "allowAuthenticationWithoutLocalUser": false,
-    "allowRegistrationWithExistingUser": false,
-    "allowCrossOUProvisioning": false
+    "allowRegistrationWithExistingUser": false
   },
   "executor": {
     "name": "GoogleOIDCAuthExecutor"
@@ -730,7 +726,6 @@ Authenticates users via GitHub OAuth 2.0. After the redirect, <ProductName /> ex
 | `idpId` | Connection | Yes | The identity provider ID configured in <ProductName /> |
 | `allowAuthenticationWithoutLocalUser` | Allow Authentication Without Local User | No | Allow authentication when no local user exists (creates federated link) |
 | `allowRegistrationWithExistingUser` | Allow Registration With Existing User | No | Allow registration if the account already exists |
-| `allowCrossOUProvisioning` | Allow Cross-OU Provisioning | No | Allow creating user in a different OU from the default |
 
 **Input Configuration:**
 - `code` (required): the authorization code returned by GitHub after user authorization. Default: `code`
@@ -744,8 +739,7 @@ Authenticates users via GitHub OAuth 2.0. After the redirect, <ProductName /> ex
   "properties": {
     "idpId": "<idp-id>",
     "allowAuthenticationWithoutLocalUser": false,
-    "allowRegistrationWithExistingUser": false,
-    "allowCrossOUProvisioning": false
+    "allowRegistrationWithExistingUser": false
   },
   "executor": {
     "name": "GithubOAuthExecutor"
@@ -1121,11 +1115,13 @@ Validates the magic link token the user received and authenticates them. Runs in
 
 Creates a new user record in the user store. This executor persists the user's identity during registration flows. The executor follows the user type schema: required attributes are determined by the user type resolved earlier in the flow.
 
-**When to use:** Registration flows, after the User Type Resolver has run.
+**When to use:** Registration flows, after the User Type Resolver has run. Also authentication flows, after a federated executor with `allowAuthenticationWithoutLocalUser` enabled, to create the local account for a first-time user.
 
-**Prerequisites:**
+**Prerequisites (registration and user onboarding flows):**
 - `userType` (required): must be present in runtime data. Set by User Type Resolver or by a previous operation. Defines which attributes are required for the new user.
 - `defaultOUID` or `ouId` (required): must be present in runtime data. Set by User Type Resolver or OU Resolver. Determines which OU the new user belongs to.
+
+**Authentication flows:** The executor uses `userType` and the OU ID from runtime data when they are present. The User Type Resolver does not set `userType` in authentication flows, so the executor falls back to the application's allowed user types. It takes the only one with self-registration enabled, and provisioning fails when none or more than one is eligible.
 
 **How attribute collection works:** The executor fetches required and optional attributes from the user type schema. Attributes already present in user inputs or federated accounts are considered satisfied. Only missing required attributes are prompted. Optional attributes are only prompted if `includeOptional` is enabled in node properties.
 
@@ -1174,6 +1170,7 @@ Creates a new user record in the user store. This executor persists the user's i
 
 **Failure conditions:**
 - `userType` or OU ID not available (User Type Resolver did not run)
+- In authentication flows, none or more than one of the application's allowed user types has self-registration enabled
 - User already exists with a conflicting unique attribute (in registration flows, prompts for a different value)
 - Required attribute validation failure
 - User store error
@@ -1399,7 +1396,7 @@ Determines the user type and default OU for the flow. The resolved values are us
 | Flow type | Behavior |
 |---|---|
 | Registration | Resolves from the application's allowed user types, checking self-registration eligibility. Auto-selects if only one eligible type; prompts with a SELECT input if multiple are available. |
-| Authentication | Validates that the application has at least one allowed user type configured; completes without further action. |
+| Authentication | Validates that the application has at least one allowed user type, but does not select one. A downstream Provisioning executor uses the application's allowed user types. |
 | User Onboarding | Lists all user types in the system, optionally filtered by node properties or by a prior resolved OU. |
 
 **Executor properties:**
@@ -2248,7 +2245,7 @@ GET /oauth2/authorize
   &nonce=xyz789
 ```
 
-ACR filtering only takes effect when the flow contains a [`LOGIN_OPTIONS` PROMPT node](#login-options-variant) with `authMethodMapping` configured. Without it, `acr_values` have no effect on the flow.
+ACR filtering only takes effect when the flow contains a [`LOGIN_OPTIONS` PROMPT node](#prompt-node) with `authMethodMapping` configured. Without it, `acr_values` have no effect on the flow.
 
 **Using `acr_values` with the `LOGIN_OPTIONS` node**
 

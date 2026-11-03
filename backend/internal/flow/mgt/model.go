@@ -45,6 +45,45 @@ type BasicFlowDefinition struct {
 	UpdatedAt     string             `json:"updatedAt"     jsonschema:"Last update timestamp."`
 	IsReadOnly    bool               `json:"isReadOnly"    jsonschema:"Whether the flow is immutable (declarative)."`
 	OUID          string             `json:"ouId"          jsonschema:"Organization unit that owns the flow."`
+	IsOwnedByOU   *bool              `json:"isOwnedByOU,omitempty" jsonschema:"With an organization unit in the request: whether it owns the flow. False means the flow was shared with it."`
+}
+
+// OwnedFlow is a flow as the organization unit that owns it sees it: the whole definition.
+type OwnedFlow struct {
+	*providers.CompleteFlowDefinition
+	IsOwnedByOU bool `json:"isOwnedByOU"`
+}
+
+// SharedFlow is a flow as an organization unit it was shared with sees it: its identity and the variables that apply
+// to that organization unit, each resolved for it, and nothing else of the definition.
+type SharedFlow struct {
+	ID          string                         `json:"id"`
+	Handle      string                         `json:"handle"`
+	Name        string                         `json:"name"`
+	FlowType    providers.FlowType             `json:"flowType"`
+	OUID        string                         `json:"ouId"`
+	IsOwnedByOU bool                           `json:"isOwnedByOU"`
+	IsReadOnly  bool                           `json:"isReadOnly"`
+	Variables   []providers.VariableDefinition `json:"variables"`
+}
+
+// FlowView is a flow as one organization unit sees it. Exactly one of the two is set.
+type FlowView struct {
+	Owned  *OwnedFlow
+	Shared *SharedFlow
+}
+
+// VariablesResponse is the values an organization unit has set for the variables of a flow, keyed by identifier, in
+// the variable's own type. A variable it has not set is absent.
+type VariablesResponse struct {
+	Values map[string]interface{} `json:"values"`
+}
+
+// SetVariablesRequest sets the values an organization unit holds for the variables of a flow. It replaces what the
+// organization unit held: a variable left out returns to its default, or to the value a sharing policy fixes for it.
+type SetVariablesRequest struct {
+	OUID   string                 `json:"ouId"`
+	Values map[string]interface{} `json:"values"`
 }
 
 // FlowListResponse represents a paginated list of flow definitions.

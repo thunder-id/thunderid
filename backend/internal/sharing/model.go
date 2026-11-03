@@ -652,6 +652,24 @@ const (
 	SourceDefault = "default"
 )
 
+// FieldRule is the rule one organization unit holds for one field key of a shared resource.
+//
+// It answers for a single key, which is what a dynamic member needs: ResolvedOverlay reports the fields a type
+// declares, and a member such as "variables.brand" is not one of them.
+type FieldRule struct {
+	// OUID is the organization unit the rule was resolved for.
+	OUID string
+	// Owned reports whether the organization unit owns the resource rather than being shared it.
+	Owned bool
+	// Visible reports whether the organization unit can see the resource at all. When false there is no rule.
+	Visible bool
+	// Source records whether a policy or the type's declared default governs the field. It is empty when nothing
+	// does, in which case Rule is the zero rule.
+	Source string
+	// Rule is the effective rule.
+	Rule OverlayRule
+}
+
 // ResolvedValue is what one organization unit effectively holds for one field of a shared resource.
 type ResolvedValue struct {
 	// Value is the effective member set, after the governing rule's bound and carve-outs.
@@ -884,6 +902,13 @@ type SkippedPolicy struct {
 	Index            int
 	InitiatingOUID   string
 	DeclaredPolicyID string
+}
+
+// OverlayReplaceError is the refusal of one field of a replacement of the values an organization unit holds, carrying
+// which field it was so the caller can say so.
+type OverlayReplaceError struct {
+	FieldKey string
+	Err      *tidcommon.ServiceError
 }
 
 // PolicyReplayError is a refusal of one of the document's policies, carrying where in the document

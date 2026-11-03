@@ -1,0 +1,116 @@
+---
+title: Configure an SMS Provider
+docType: guide
+persona: iam
+description: Connect a messaging provider from the {{ProductName}} Console to deliver One-Time Passwords and other SMS messages.
+---
+
+# Configure an SMS Provider
+
+<ProductName /> sends SMS messages, such as One-Time Passwords (OTPs), through an SMS connection. An SMS connection links <ProductName /> to a messaging provider that delivers SMS to end users.
+
+Three messaging providers are supported:
+
+- **Twilio**: requires an Account SID, Auth Token, and Sender ID
+- **Vonage**: requires an API Key, API Secret, and Sender ID
+- **Custom**: connects to any SMS gateway via an HTTP webhook
+
+## Prerequisites
+
+- A <ProductName /> instance running and accessible
+- You can sign in to the <ProductName /> Console
+- An active account with your chosen messaging provider
+
+## Add an SMS Provider
+
+### Twilio
+
+1. From [Twilio](https://www.twilio.com), retrieve your **Account SID**, **Auth Token**, and the phone number or messaging service SID to use as the sender.
+2. Sign in to the <ProductName /> Console and navigate to **Connections**.
+3. Click the **Twilio** card. If the card shows **Not configured**, this opens a form to create the connection. If it already shows **Configured**, this opens the existing connection instead.
+4. Enter the following fields, then click **Create connection**:
+
+   | Field | Description |
+   | :--- | :--- |
+   | **Account SID** | Twilio Account SID, starting with `AC` followed by 32 hex characters. |
+   | **Auth token** | Twilio auth token used to authenticate API requests. |
+   | **Sender ID** | The Twilio phone number or messaging service SID used as the sender. |
+
+### Vonage
+
+1. From [Vonage API Dashboard](https://dashboard.nexmo.com), retrieve your **API Key**, **API Secret**, and sender name or virtual number.
+2. Sign in to the <ProductName /> Console and navigate to **Connections**.
+3. Click the **Vonage** card. If the card shows **Not configured**, this opens a form to create the connection. If it already shows **Configured**, this opens the existing connection instead.
+4. Enter the following fields, then click **Create connection**:
+
+   | Field | Description |
+   | :--- | :--- |
+   | **API key** | Vonage API key from your Vonage dashboard. |
+   | **API secret** | Vonage API secret used to authenticate API requests. |
+   | **Sender ID** | Phone number or alphanumeric sender ID messages are sent from. |
+
+:::note
+Vonage requires the recipient phone number in E.164 format without a leading `+` or `00`. <ProductName /> strips these prefixes automatically before sending.
+:::
+
+### Custom Provider
+
+Use the **SMS gateway** connection to connect <ProductName /> to any SMS gateway that accepts HTTP requests.
+
+1. Sign in to the <ProductName /> Console and navigate to **Connections**.
+2. Click the **Add custom connection** card.
+3. On the **Connection type** step, click **SMS gateway**, then click **Continue**.
+4. Enter a **Connection name**, then click **Continue**.
+5. Enter the following fields, then click **Create connection**:
+
+   | Field | Required | Description |
+   | :--- | :---: | :--- |
+   | **Gateway URL** | Yes | HTTP endpoint <ProductName /> calls to send an SMS. |
+   | **HTTP method** | No | Method used to call the gateway URL: `POST` or `GET`. Defaults to `POST`. |
+   | **Content type** | No | Format of the request body sent to the gateway: `JSON` or `FORM`. Defaults to `JSON`. |
+   | **HTTP headers** | No | Headers sent with every request, one name and value per row. A row is saved only when both parts are filled in. |
+
+#### Customize the Gateway Request Body
+
+<ProductName /> does not assemble a request payload for the gateway. It sends the rendered SMS template as the request body exactly as written. The template defines both the payload shape and the field names your gateway expects.
+
+To change the request body, edit the SMS template for the scenario your flow uses, such as `sms_otp.yaml` for the `OTP` scenario. Templates load at startup, so restart the server after editing one.
+
+For a connection with `contentType` set to `JSON`, write the template body as the JSON object your gateway accepts:
+
+```yaml
+body: '{"to":"{{ctx(mobile_number)}}","body":"Your verification code is {{ctx(otpCode)}}."}'
+```
+
+For `FORM`, write one `key=value` pair per line:
+
+```yaml
+body: |
+  to={{ctx(mobile_number)}}
+  message=Your verification code is {{ctx(otpCode)}}
+```
+
+Keep the template's `contentType` set to `text/plain`. With `text/html`, <ProductName /> escapes HTML characters in substituted values, which breaks JSON quoting.
+
+## Update an SMS Provider
+
+1. Open the connection from the Connections page.
+2. On the **General** tab, edit the fields under **Credentials**.
+3. Stored secrets, such as **Auth token** or **API secret**, are write-only: the field stays locked until you click **Update**. Leave it unchanged to keep the stored secret.
+4. Click **Save changes** in the bar at the bottom of the page. You can click **Discard** instead to abandon your edits.
+
+:::note
+A connection's vendor cannot be changed after creation. To switch providers, delete the existing connection and create a new one for the new vendor.
+:::
+
+## Remove an SMS Provider
+
+1. Open the connection from the Connections page.
+2. On the **General** tab, go to **Danger zone** and click **Delete connection**.
+3. Confirm the deletion in the dialog.
+
+If another resource still references this SMS provider, the dialog lists the resources and blocks the deletion until you remove or update them.
+
+## Next Steps
+
+- [Build a Flow](../../flows/build-a-flow): Add an SMS OTP step to a sign-in or registration flow

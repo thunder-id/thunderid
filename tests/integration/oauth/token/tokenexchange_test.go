@@ -479,6 +479,33 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_BasicSuccess() {
 	ts.assertAudienceEquals(claims, "https://resource.example.com")
 }
 
+// TestTokenExchange_ServedWithIDJAGIssuanceOff verifies that switching ID-JAG issuance off for the
+// deployment leaves ordinary token exchange working.
+func (ts *TokenExchangeTestSuite) TestTokenExchange_ServedWithIDJAGIssuanceOff() {
+	t := ts.T()
+	restore, err := testutils.RestartWithOAuthConfig(func(oauth map[string]interface{}) {
+		oauth["id_jag"] = map[string]interface{}{"issuance": map[string]interface{}{"enabled": false}}
+	})
+	t.Cleanup(func() {
+		if restoreErr := restore(); restoreErr != nil {
+			t.Errorf("restore the oauth config: %v", restoreErr)
+		}
+	})
+	ts.Require().NoError(err, "restart the server with ID-JAG issuance off")
+
+	formData := url.Values{}
+	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	formData.Set("subject_token", ts.assertionToken)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
+	formData.Set("resource", "https://resource.example.com")
+
+	resp, statusCode, err := ts.exchangeToken(formData.Encode(),
+		"Basic "+basicAuth(tokenExchangeClientID, tokenExchangeClientSecret))
+	ts.Require().NoError(err)
+	ts.Equalf(http.StatusOK, statusCode, "%s: %s", resp.Error, resp.ErrorDescription)
+	ts.Equal("urn:ietf:params:oauth:token-type:access_token", resp.IssuedTokenType)
+}
+
 // An assertion is redeemable exactly once. The first exchange succeeds and spends it; presenting the
 // same assertion again is refused even though it is still signed, unexpired and otherwise valid.
 //

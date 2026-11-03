@@ -298,6 +298,11 @@ oauth:
     max_iat_age: {{ .Values.configuration.oauth.clientAssertion.maxIatAge }}
   cimd:
     enabled: {{ .Values.configuration.oauth.cimd.enabled }}
+  id_jag:
+    issuance:
+      enabled: {{ .Values.configuration.oauth.idJag.issuance.enabled }}
+    acceptance:
+      enabled: {{ .Values.configuration.oauth.idJag.acceptance.enabled }}
   authorization_details:
     processor_timeout: {{ .Values.configuration.oauth.authorizationDetails.processorTimeout }}
     type_metadata_enabled: {{ .Values.configuration.oauth.authorizationDetails.typeMetadataEnabled }}
@@ -386,9 +391,6 @@ openid4vci:
   {{- if .Values.configuration.openid4vci.store }}
   store: {{ include "thunderid.validateStoreMode" (dict "value" .Values.configuration.openid4vci.store "field" "configuration.openid4vci.store") | quote }}
   {{- end }}
-
-scim:
-  urn_prefix: {{ .Values.configuration.scim.urnPrefix | quote }}
 
 {{- /* Values copied from a v1.0.0 chart carry an email block with an empty host, which never enabled email. */}}
 {{- $legacyEmail := default dict (default dict .Values.configuration).email }}

@@ -28,6 +28,10 @@ Under **Access** on the General tab, you can configure which users can register 
 | **Application URL** | The homepage URL of your application. |
 | **Authorized Redirect URIs** | The URLs <ProductName /> sends users back to after authentication. Register every URI your application uses.
 
+:::note
+When first-time users sign in with a social identity provider, your application must allow exactly one user type with **Allow Self Registration** enabled. Sign-in fails if none or more than one of the allowed user types has this setting enabled. Existing users are unaffected. See [Connect an IdP to an Application](../../identity-providers/connect-idp-to-application).
+:::
+
 ## Use Wildcard Redirect URIs
 
 <ProductName /> supports wildcard patterns in redirect URIs, so you can register a single pattern that covers a range of valid callback URLs instead of listing every exact URI.
@@ -75,7 +79,7 @@ On the **Token** tab, configure what your application's tokens carry and how lon
 - **User**: the tokens issued when a user signs in. Available when the application supports a user sign-in grant, such as `authorization_code`.
 - **Application**: the access token the application receives for itself through the `client_credentials` grant.
 
-Each sub-tab stays read-only until its grant type is enabled on the Advanced Settings tab.
+Each sub-tab stays read-only until its grant type is enabled on the Advanced tab.
 
 ### User Tokens
 
@@ -120,7 +124,7 @@ Client secrets are only present on confidential clients: Full-stack App and Back
 If you need to invalidate the current client secret, open the General tab and click **Regenerate Client Secret** in the **Danger Zone**.
 
 :::warning
-The current client secret is immediately invalidated. Any running clients using the old secret will lose access. Update your application configuration right away.
+The current client secret is immediately invalidated. Any running clients using the old secret will lose access. Refresh tokens issued before the rotation are rejected, so their users must sign in again. Update your application configuration right away.
 :::
 
 ## Review OAuth 2.0 Configuration
@@ -129,7 +133,7 @@ The current client secret is immediately invalidated. Any running clients using 
 This section applies to OAuth 2.0 / OIDC applications only.
 :::
 
-The **Advanced Settings** tab shows the OAuth 2.0 settings configured at creation.
+The **Advanced** tab shows the OAuth 2.0 settings configured at creation.
 | Setting | Description |
 |---------|-------------|
 | **Grant Types** | The OAuth 2.0 flows this application can use. Supported values: `authorization_code`, `refresh_token`, `client_credentials`, `urn:ietf:params:oauth:grant-type:token-exchange`, `urn:ietf:params:oauth:grant-type:jwt-bearer`. Whether this application can initiate flows directly via `POST /flow/execute` depends on its [application type](../manage-applications#application-types) and, for Full-stack, Custom, and MCP Client applications, its grant configuration. See [Direct Initiation Restriction](../../key-concepts/authentication/integration-models.mdx#app-native) for the full rule. |

@@ -1,0 +1,40 @@
+---
+title: Identity Sources
+docType: use-case
+description: How federation, user stores, and data ownership decisions shape a B2C identity deployment.
+sidebar_position: 8
+---
+
+
+# Identity Sources and Data
+
+Where consumer identities come from and where they live shape almost everything else about the system. Federation decides who can bring an existing identity to your app. User stores decide who owns the canonical record once they arrive.
+
+## Identity Federation
+
+External identity providers, both social and enterprise, let users bring an identity they already have to your app instead of managing a separate credential. Done well, federation creates one user record per real person regardless of how many sign-in methods they end up using. Most consumer apps adopt at least one social provider (Google, GitHub, and similar), and prosumer apps add enterprise sign-in through OpenID Connect.
+
+Federation requires a few specific decisions:
+
+- Should a user record be created the first time someone signs in through a provider (just-in-time provisioning), or
+  only after an invitation?
+- Should multiple federated identities link to one user, and what is the linking signal: verified email, explicit
+  linking, or both?
+- Should signing out of your app end that user's <ProductName /> session immediately, so a returning visit requires
+  federating in again?
+
+Each of these is configurable independently.
+
+Federation can also drive authorization, not just sign-in. An administrator can map attribute values a provider asserts, such as group membership, to local roles, groups, or permissions, so a user's access follows their standing at the provider without being administered a second time inside <ProductName />. This also covers users with no local record at all, seeding a new hire's starting access at account creation, and delegating the decision to an external policy engine when your organization already has one. See [Federated Attribute Mapping](../../../key-concepts/authorization#federated-attribute-mapping) for the full pattern.
+
+## User Stores
+
+Where consumer identities live affects sign-in performance, recovery options, federation behavior, and migration paths. Most consumer apps run a directly-managed user directory inside the identity product. The other option is no local record at all, relying entirely on federation for identity.
+
+The choice comes down to who owns the canonical record. A directly-managed directory gives you the most features and the simplest operational model: profile attributes, credentials, and recovery state all live in one place. Relying entirely on federation removes that local record, at the cost of depending on the federated provider staying available and accurate for every sign-in.
+
+## Continue Designing Your Architecture
+
+Review the other architecture decisions that shape your B2C application.
+
+<B2CArchitectureDecisions currentDecision="identity-sources" />

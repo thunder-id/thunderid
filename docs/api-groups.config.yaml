@@ -88,7 +88,6 @@ fileGroupNames:
   registration.yaml: ~           # Passkeys (registration) claimed by Authentication
   resource.yaml: ~               # all tags claimed by Access Control
   role.yaml: ~                   # Roles claimed by Access Control
-  scim.yaml: ~                   # SCIM tags claimed by SCIM Provisioning
   user.yaml: ~                   # all tags claimed by Identities
   openid4vci.yaml: Verifiable Credentials
   openid4vp.yaml: Verifiable Credentials
@@ -167,17 +166,6 @@ explicitSubGroups:
       - Gateway values
       - Configuration Versions
 
-  # ── SCIM Provisioning ─────────────────────────────────────────────────────────
-  - name: SCIM Provisioning
-    tags:
-      - SCIM Service Provider Config
-      - SCIM Schemas
-      - SCIM Resource Types
-      - SCIM Users
-      - SCIM Me
-      - SCIM Groups
-      - SCIM Unimplemented
-
 # Defines the display order of all sidebar groups (explicit and auto-derived).
 # Groups not listed here are appended alphabetically after all ordered entries.
 # To reorder: move entries in this list. To include a new group in the order:
@@ -193,5 +181,4 @@ groupOrder:
   - Verifiable Credentials
   - Branding & Localization
   - System
-  - SCIM Provisioning
   - Other

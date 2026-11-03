@@ -5,79 +5,64 @@ package role
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 )
 
-func TestOURoleResolver_GetRoleCountByOUID(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		store := newRoleStoreInterfaceMock(t)
-		store.On("GetRoleListCountByOUID", context.Background(), "ou-1").
-			Return(3, nil).Once()
-
-		resolver := newOURoleResolver(store)
-		count, err := resolver.GetRoleCountByOUID(context.Background(), "ou-1")
-
-		require.NoError(t, err)
-		require.Equal(t, 3, count)
-	})
-
-	t.Run("store error", func(t *testing.T) {
-		store := newRoleStoreInterfaceMock(t)
-		store.On("GetRoleListCountByOUID", context.Background(), "ou-1").
-			Return(0, errors.New("db error")).Once()
-
-		resolver := newOURoleResolver(store)
-		count, err := resolver.GetRoleCountByOUID(context.Background(), "ou-1")
-
-		require.Error(t, err)
-		require.Equal(t, 0, count)
-	})
-}
-
 func TestOURoleResolver_GetRoleListByOUID(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		store := newRoleStoreInterfaceMock(t)
-		store.On("GetRoleListByOUID", context.Background(), "ou-1", 10, 0).
-			Return([]Role{
-				{ID: "r1", Name: "Admin", Description: "Admin role", IsReadOnly: false},
-				{ID: "r2", Name: "Viewer", Description: "Viewer role", IsReadOnly: true},
-			}, nil).Once()
+	ouFilter := map[string]interface{}{"ouId": "ou-1"}
 
-		resolver := newOURoleResolver(store)
-		roles, err := resolver.GetRoleListByOUID(context.Background(), "ou-1", 10, 0)
+	t.Run("owned roles come first, then shared ones", func(t *testing.T) {
+		service := NewRoleServiceInterfaceMock(t)
+		service.On("GetRoleList", context.Background(), 10, 0, ouFilter).
+			Return(&RoleList{
+				TotalResults: 7,
+				Roles: []Role{
+					{ID: "r1", Name: "Admin", Description: "Admin role", IsOwnedByOU: true},
+					{ID: "r2", Name: "Viewer", Description: "Viewer role", IsReadOnly: true, IsOwnedByOU: true},
+					{ID: "r3", Name: "Shared", IsReadOnly: true, IsOwnedByOU: false},
+				},
+			}, (*tidcommon.ServiceError)(nil)).Once()
+
+		resolver := newOURoleResolver(service)
+		roles, total, err := resolver.GetRoleListByOUID(context.Background(), "ou-1", 10, 0)
 
 		require.NoError(t, err)
-		require.Len(t, roles, 2)
-		require.Equal(t, oupkg.Role{ID: "r1", Name: "Admin", Description: "Admin role", IsReadOnly: false}, roles[0])
-		require.Equal(t, oupkg.Role{ID: "r2", Name: "Viewer", Description: "Viewer role", IsReadOnly: true}, roles[1])
+		require.Equal(t, 7, total)
+		require.Equal(t, []oupkg.Role{
+			{ID: "r1", Name: "Admin", Description: "Admin role", IsOwnedByOU: true},
+			{ID: "r2", Name: "Viewer", Description: "Viewer role", IsReadOnly: true, IsOwnedByOU: true},
+			{ID: "r3", Name: "Shared", IsReadOnly: true, IsOwnedByOU: false},
+		}, roles)
 	})
 
-	t.Run("store error", func(t *testing.T) {
-		store := newRoleStoreInterfaceMock(t)
-		store.On("GetRoleListByOUID", context.Background(), "ou-1", 10, 0).
-			Return([]Role(nil), errors.New("db error")).Once()
+	t.Run("service error", func(t *testing.T) {
+		service := NewRoleServiceInterfaceMock(t)
+		service.On("GetRoleList", context.Background(), 10, 0, ouFilter).
+			Return((*RoleList)(nil), &tidcommon.InternalServerError).Once()
 
-		resolver := newOURoleResolver(store)
-		roles, err := resolver.GetRoleListByOUID(context.Background(), "ou-1", 10, 0)
+		resolver := newOURoleResolver(service)
+		roles, _, err := resolver.GetRoleListByOUID(context.Background(), "ou-1", 10, 0)
 
 		require.Error(t, err)
 		require.Nil(t, roles)
 	})
 
 	t.Run("empty results", func(t *testing.T) {
-		store := newRoleStoreInterfaceMock(t)
-		store.On("GetRoleListByOUID", context.Background(), "ou-1", 10, 0).
-			Return([]Role{}, nil).Once()
+		service := NewRoleServiceInterfaceMock(t)
+		service.On("GetRoleList", context.Background(), 10, 0, ouFilter).
+			Return(&RoleList{Roles: []Role{}}, (*tidcommon.ServiceError)(nil)).Once()
 
-		resolver := newOURoleResolver(store)
-		roles, err := resolver.GetRoleListByOUID(context.Background(), "ou-1", 10, 0)
+		resolver := newOURoleResolver(service)
+		roles, total, err := resolver.GetRoleListByOUID(context.Background(), "ou-1", 10, 0)
 
 		require.NoError(t, err)
+		require.Zero(t, total)
 		require.NotNil(t, roles)
 		require.Empty(t, roles)
 	})

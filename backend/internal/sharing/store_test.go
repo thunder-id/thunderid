@@ -582,6 +582,45 @@ func (s *StoreTestSuite) TestGetOverlayValuesReportsUndecodableJSON() {
 	s.Contains(err.Error(), "failed to decode overlay value")
 }
 
+func (s *StoreTestSuite) TestListOverlayValuesForResourceGroupsThemByUnit() {
+	s.clientAvailable()
+	s.client.On("QueryContext", mock.Anything, queryListOverlayValuesForResource,
+		string(testType), testResource, storeDeploymentID).
+		Return([]map[string]interface{}{
+			{"ou_id": rootOU, "field_key": "assignments", "value": `["a"]`},
+			{"ou_id": rootOU, "field_key": "permissions", "value": `["b","c"]`},
+			{"ou_id": childOU, "field_key": "assignments", "value": `[]`},
+		}, nil).Once()
+
+	got, err := s.store.ListOverlayValuesForResource(context.Background(), testType, testResource)
+
+	s.Require().NoError(err)
+	s.Equal(map[string]map[string][]string{
+		rootOU:  {"assignments": {"a"}, "permissions": {"b", "c"}},
+		childOU: {"assignments": {}},
+	}, got)
+}
+
+func (s *StoreTestSuite) TestListOverlayValuesForResourceReportsFailures() {
+	s.clientAvailable()
+	s.client.On("QueryContext", mock.Anything, queryListOverlayValuesForResource,
+		string(testType), testResource, storeDeploymentID).
+		Return([]map[string]interface{}{{"ou_id": rootOU, "field_key": "x", "value": "not json"}}, nil).Once()
+
+	_, err := s.store.ListOverlayValuesForResource(context.Background(), testType, testResource)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "failed to decode overlay value")
+
+	s.clientAvailable()
+	s.client.On("QueryContext", mock.Anything, queryListOverlayValuesForResource,
+		string(testType), testResource, storeDeploymentID).
+		Return(nil, errors.New("down")).Once()
+
+	_, err = s.store.ListOverlayValuesForResource(context.Background(), testType, testResource)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "failed to list overlay values")
+}
+
 // Each write wraps its own failure, so a partly written policy names the part that failed.
 func (s *StoreTestSuite) TestWriteFailuresAreWrappedWithTheirPart() {
 	failure := errors.New("constraint violation")
@@ -751,6 +790,33 @@ func (s *StoreTestSuite) TestOverlayDeletesAreScoped() {
 	ctx := context.Background()
 	s.Require().NoError(s.store.DeleteOverlayValue(ctx, testType, testResource, rootOU, "assignments"))
 	s.Require().NoError(s.store.DeleteOverlayValuesForOU(ctx, testType, testResource, rootOU))
+}
+
+// Removing a field deletes the values and the rules of that field of that resource, never another's.
+func (s *StoreTestSuite) TestDeleteFieldIsScopedToTheResourceAndTheField() {
+	s.clientAvailable()
+	s.client.On("ExecuteContext", mock.Anything, queryDeleteOverlayValuesForField,
+		string(testType), testResource, "variables.brand", storeDeploymentID).
+		Return(int64(2), nil).Once()
+	s.client.On("ExecuteContext", mock.Anything, queryDeleteOverlayRulesForField,
+		"variables.brand", storeDeploymentID, string(testType), testResource).
+		Return(int64(1), nil).Once()
+
+	s.Require().NoError(s.store.DeleteField(context.Background(), testType, testResource, "variables.brand"))
+}
+
+// A failure to delete the values or the rules of a field is reported, not swallowed.
+func (s *StoreTestSuite) TestDeleteFieldReportsEitherFailure() {
+	failure := errors.New("exec error")
+
+	s.clientAvailable()
+	s.expectExecError(queryDeleteOverlayValuesForField, 4, failure)
+	s.Error(s.store.DeleteField(context.Background(), testType, testResource, "f"))
+
+	s.clientAvailable()
+	s.client.On("ExecuteContext", s.anyArgs(queryDeleteOverlayValuesForField, 4)...).Return(int64(0), nil).Once()
+	s.expectExecError(queryDeleteOverlayRulesForField, 4, failure)
+	s.Error(s.store.DeleteField(context.Background(), testType, testResource, "f"))
 }
 
 // A listing hydrates every row, and one bad row fails the whole listing rather than returning a

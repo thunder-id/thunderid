@@ -1,0 +1,39 @@
+---
+title: CookieConfig
+docType: reference
+description: Session cookie name constants and defaults for the Node.js SDK's cookie-based session management.
+---
+
+# `CookieConfig`
+
+`CookieConfig` is a constants class that exposes the default values used for session cookie configuration in the <ProductName /> Node.js SDK. Use these constants when setting cookies for session management or when passing options to [`getSessionCookieOptions`](../get-session-cookie-options).
+
+## Usage
+
+```ts title="src/routes/callback.ts" showLineNumbers
+import { CookieConfig } from '@thunderid/node'
+
+// Use the default session cookie name
+res.cookie(CookieConfig.SESSION_COOKIE_NAME, sessionId, {
+  httpOnly: CookieConfig.DEFAULT_HTTP_ONLY,
+  maxAge: CookieConfig.DEFAULT_MAX_AGE * 1000, // convert to milliseconds
+  sameSite: CookieConfig.DEFAULT_SAME_SITE,
+  secure: CookieConfig.DEFAULT_SECURE,
+})
+```
+
+## Constants
+
+| Constant | Type | Value | Description |
+| :--- | :--- | :--- | :--- |
+| `SESSION_COOKIE_NAME` | `string` | `__<vendor>__session` | The name of the session cookie. The vendor prefix is injected automatically. |
+| `TEMP_SESSION_COOKIE_NAME` | `string` | `__<vendor>__temp.session` | The name of the temporary session cookie used during the authorization flow. |
+| `DEFAULT_MAX_AGE` | `number` | `3600` | Default cookie lifetime in seconds (1 hour). |
+| `DEFAULT_HTTP_ONLY` | `boolean` | `true` | Whether the cookie is inaccessible to JavaScript. |
+| `DEFAULT_SAME_SITE` | `'lax' \| 'strict' \| 'none'` | `'lax'` | Default `SameSite` attribute for cross-origin request behavior. |
+| `DEFAULT_SECURE` | `boolean` | `true` | Whether the cookie requires an HTTPS connection. |
+
+## Related
+
+- [`CookieOptions`](../cookie-options): Interface describing cookie option fields
+- [`getSessionCookieOptions()`](../get-session-cookie-options): Helper to build cookie options using these defaults

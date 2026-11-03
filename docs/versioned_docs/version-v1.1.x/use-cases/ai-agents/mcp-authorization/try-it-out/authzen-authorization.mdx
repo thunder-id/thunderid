@@ -1,0 +1,92 @@
+---
+title: AuthZEN-Based MCP Authorization
+docType: use-case
+description: Enable AuthZEN mode for the Wayfinder MCP server and request runtime authorization decisions from {{ProductName}}.
+sidebar_position: 2
+---
+
+# AuthZEN-Based MCP Authorization
+
+In this walkthrough, `john.doe` signs in to MCP Inspector through <ProductName /> and calls a protected Wayfinder MCP tool. Instead of trusting only the scopes in the access token, the Wayfinder MCP server asks the <ProductName /> PDP for a runtime AuthZEN decision before it invokes the tool handler.
+
+:::note Prerequisites
+Complete [Set Up Your Environment](../../../try-it-out/setup) before starting this walkthrough.
+:::
+
+## Walk Through the Use Case
+
+### 1. Verify the Direct Auth Secret
+
+Confirm that `server.security.direct_auth_secret` is set in the <ProductName /> deployment configuration. The local sample uses `wayfinder-direct-auth-secret`.
+
+This secret authenticates the Wayfinder Server when it calls the protected AuthZEN API. It does not replace the signed-in user. The user or agent from the incoming MCP token remains the evaluation subject.
+
+### 2. Enable AuthZEN Mode
+
+Update `samples/apps/wayfinder-sample/backend/.env`:
+
+```env
+AUTHORIZATION_MODE=authzen
+THUNDERID_DIRECT_AUTH_SECRET=wayfinder-direct-auth-secret
+```
+
+Restart the Wayfinder Server after changing the mode.
+
+### 3. Launch MCP Inspector
+
+```bash
+npx @modelcontextprotocol/inspector
+```
+
+Inspector opens in your browser at `http://localhost:6274`.
+
+### 4. Connect to the Wayfinder MCP Server
+
+In the Inspector UI:
+
+- **Transport type:** Streamable HTTP
+- **URL:** `http://localhost:8787/mcp`
+- **OAuth:** enabled
+
+Open Inspector's **Auth** panel and enter the pre-registered client:
+
+- **Client ID:** `EXTERNAL-MCP-CLIENT`
+- Leave the client secret empty.
+
+Click **Connect**. Inspector discovers <ProductName /> through the Wayfinder MCP server's protected-resource metadata and starts the authorization-code + PKCE flow.
+
+### 5. Sign In as John Doe
+
+Sign in as `john.doe` / `john.doe`.
+
+Approve the consent screen. The OAuth flow and consent screen are the same as the scope-based walkthrough.
+
+### 6. Call a Tool John Is Not Allowed to Use
+
+In Inspector's **Tools** tab, call `recommend_bookings`.
+
+`john.doe` has the `Booking User` role, but not the `Recommender` role. The Wayfinder MCP server validates John's token, builds an AuthZEN request, and asks the PDP whether John can perform `booking:recommend` on the Wayfinder MCP resource server.
+
+The PDP denies the request, and the tool does not run.
+
+The Wayfinder Server logs the decision:
+
+```text
+[authzen] DENY subject=wayfinder-john-doe resource=http://localhost:8787/mcp action=booking:recommend
+```
+
+## Try a Variant
+
+- **Grant the Recommender role to John.** Assign the `Recommender` role to `john.doe`, reconnect Inspector, and call `recommend_bookings` again. The PDP now allows the same action for the same user.
+- **Revoke the Recommender role from John.** Remove the `Recommender` role from `john.doe` and call `recommend_bookings` again. The MCP server asks the PDP for a new decision on each protected tool call, so the PDP denies the action after the role change. In scope-based mode, an already-issued token can continue to carry the old permission until the token expires or the user reconnects.
+- **Use the Wayfinder Concierge agent.** Ask the in-product Concierge for recommendations. The Concierge agent has the `Recommender` role, so the backend logs an allow decision for the agent subject:
+
+  ```text
+  [authzen] ALLOW subject=wayfinder-concierge resource=http://localhost:8787/mcp action=booking:recommend
+  ```
+
+## Going Deeper
+
+- Want the default token-scope walkthrough? See [Scope-Based MCP Authorization](../connect-via-inspector).
+- Curious how the AuthZEN PDP call maps to <ProductName /> concepts? See [Identity Concepts](../../identity-concepts#authzen-authorization-mode).
+- Prefer to configure AuthZEN mode manually? See [Configure It Yourself](../../configure-it-yourself#configure-the-direct-auth-secret).

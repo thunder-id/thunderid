@@ -17,6 +17,7 @@ import (
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
@@ -24,15 +25,20 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// maxCallbackBodyBytes bounds the callback request body, which is read before the caller is checked.
+const maxCallbackBodyBytes = 1 << 20 // 1 MiB
+
 // flowCallbackRequest is the request body sent by the Gate UI to the flow callback endpoint.
 // Assertion carries the terminal flow outcome, either an authentication assertion or a signed error
 // assertion; the grant-type handler tells them apart from the assertion's own claims. Type identifies
 // which handler processes it. When absent it defaults to authorization_code, preserving existing
-// behavior for the auth code flow.
+// behavior for the auth code flow. SessionData is the SSO sessions the caller collected from the flow's
+// responses; the authorization code keeps them when the client requested the device_sso scope.
 type flowCallbackRequest struct {
-	AuthID    string `json:"authId"`
-	Assertion string `json:"assertion"`
-	Type      string `json:"type,omitempty"`
+	AuthID      string                    `json:"authId"`
+	Assertion   string                    `json:"assertion"`
+	Type        string                    `json:"type,omitempty"`
+	SessionData []oauth2model.SessionData `json:"sessionData,omitempty"`
 }
 
 // callbackDispatcher dispatches flow assertion callbacks to the appropriate grant-type handler.
@@ -78,6 +84,7 @@ func Initialize(
 func (d *callbackDispatcher) handleFlowCallback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxCallbackBodyBytes)
 	req, err := utils.DecodeJSONBody[flowCallbackRequest](r)
 	if err != nil {
 		utils.WriteJSONError(ctx, w, oauth2const.ErrorInvalidRequest, "Invalid request body",
@@ -103,7 +110,8 @@ func (d *callbackDispatcher) handleFlowCallback(w http.ResponseWriter, r *http.R
 
 	switch callbackType {
 	case string(providers.GrantTypeAuthorizationCode):
-		redirectURI, authErr := d.authZService.HandleAuthorizationCallback(ctx, req.AuthID, req.Assertion)
+		redirectURI, authErr := d.authZService.HandleAuthorizationCallback(ctx, req.AuthID, req.Assertion,
+			req.SessionData)
 		if authErr != nil {
 			if authErr.SendErrorToClient {
 				d.writeRedirectWithError(ctx, w, authErr)

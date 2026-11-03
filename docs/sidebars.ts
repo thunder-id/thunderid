@@ -810,6 +810,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'guides/flows/share-a-flow',
+              label: 'Share a Flow',
+            },
+            {
+              type: 'doc',
               id: 'guides/flows/advanced-configurations',
               label: 'Advanced Configurations',
             },

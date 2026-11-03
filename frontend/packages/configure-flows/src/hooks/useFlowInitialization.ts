@@ -281,7 +281,10 @@ const useFlowInitialization = (props: UseFlowInitializationProps): UseFlowInitia
                   components: resolveComponentMetadata(resources, node.data['components'] as Element[]),
                 }
               : (node.data ?? {}),
-            deletable: node.type !== StepTypes.End && node.type !== StaticStepTypes.Start,
+            deletable:
+              node.type !== StepTypes.End &&
+              node.type !== StaticStepTypes.Start &&
+              node.type !== StaticStepTypes.Variables,
             id: node.id,
             position: node.position,
             type: node.type,

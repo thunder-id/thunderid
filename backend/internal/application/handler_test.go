@@ -455,6 +455,86 @@ func (suite *HandlerTestSuite) TestHandleApplicationListRequest_InvalidFilter() 
 	}
 }
 
+func (suite *HandlerTestSuite) TestHandleApplicationListRequest_WithProject() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	mockService.On("GetApplicationListByProject", mock.Anything, "project-1", mock.Anything).
+		Return(&model.ApplicationListResponse{Applications: []model.BasicApplicationResponse{}}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/applications?projectId=project-1", nil)
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationListRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationListRequest_ProjectWithFilter() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	mockService.On("GetApplicationListByProject", mock.Anything, "project-1",
+		map[string]interface{}{"ouId": "ou-1"}).
+		Return(&model.ApplicationListResponse{Applications: []model.BasicApplicationResponse{}}, nil)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/applications?projectId=project-1&filter="+url.QueryEscape(`ouId eq "ou-1"`), nil)
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationListRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_PassesTheProject() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	mockService.On("CreateApplication", mock.Anything, mock.MatchedBy(func(app *model.ApplicationDTO) bool {
+		return app.ProjectID == "project-1" && app.OUID == ""
+	})).Return(nil, &ErrorInvalidProject)
+
+	body, _ := json.Marshal(model.ApplicationRequest{ProjectID: "project-1", Name: "TestApp"})
+	req := httptest.NewRequest(http.MethodPost, "/applications", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationPostRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
+	var errResp apierror.ErrorResponse
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Equal(suite.T(), ErrorInvalidProject.Code, errResp.Code)
+	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_PassesTheProject() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	mockService.On("UpdateApplication", mock.Anything, "test-app-id",
+		mock.MatchedBy(func(app *model.ApplicationDTO) bool {
+			return app.ProjectID == "project-1" && app.OUID == ""
+		})).Return(nil, &ErrorInvalidProject)
+
+	body, _ := json.Marshal(model.ApplicationRequest{ProjectID: "project-1", Name: "UpdatedApp"})
+	req := httptest.NewRequest(http.MethodPut, "/applications/test-app-id", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "test-app-id")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationPutRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
+	var errResp apierror.ErrorResponse
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Equal(suite.T(), ErrorInvalidProject.Code, errResp.Code)
+	mockService.AssertExpectations(suite.T())
+}
+
 func (suite *HandlerTestSuite) TestHandleApplicationListRequest_ServiceError() {
 	mockService := NewApplicationServiceInterfaceMock(suite.T())
 	handler := newApplicationHandler(mockService)

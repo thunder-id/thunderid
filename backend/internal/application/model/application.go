@@ -17,6 +17,7 @@ type ApplicationDTO struct {
 	ID          string          `json:"id,omitempty" jsonschema:"Application ID. Auto-generated unique identifier."`
 	OUID        string          `json:"ouId,omitempty" jsonschema:"Organization unit ID. The OU this application belongs to."`
 	OUHandle    string          `json:"ouHandle,omitempty" jsonschema:"Organization unit handle. Resolved to an ID by the service layer."`
+	ProjectID   string          `json:"projectId,omitempty" jsonschema:"Project ID. Places the application in the project's root organization unit, or checks that the given ouId or ouHandle is that unit or one below it."`
 	Name        string          `json:"name" jsonschema:"Application name."`
 	Description string          `json:"description,omitempty" jsonschema:"Optional description of the application's purpose or functionality."`
 	Type        ApplicationType `json:"type,omitempty" jsonschema:"Application type. Canonical platform/client class: browser, fullstack, mobile, m2m, mcp, or custom. Required at creation and immutable."`
@@ -83,6 +84,7 @@ type ApplicationProcessedDTO struct {
 // ApplicationRequest represents the request structure for creating or updating an application.
 type ApplicationRequest struct {
 	OUID        string          `json:"ouId,omitempty" yaml:"ouId,omitempty"`
+	ProjectID   string          `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 	Name        string          `json:"name" yaml:"name" native:"required,min=1,max=100"`
 	Description string          `json:"description" yaml:"description"`
 	Type        ApplicationType `json:"type,omitempty" yaml:"type,omitempty"`

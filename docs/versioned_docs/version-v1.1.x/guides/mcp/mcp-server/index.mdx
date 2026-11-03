@@ -1,0 +1,58 @@
+---
+title: MCP Server Authorization
+docType: concept
+persona: iam
+sidebar_position: 1
+description: Why an MCP server is an OAuth 2.1 resource server, how it enforces scopes at the tool boundary, and how {{ProductName}} fits.
+---
+
+# MCP Server Authorization
+
+An MCP server reached over HTTP is an OAuth 2.1 resource server. It holds no authorization policy of its own. It enforces decisions made by the authorization server that issued the token.
+
+## What the Server Must Publish
+
+A protected MCP server publishes [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) protected-resource metadata naming its authorization server. When a client connects without a valid token, the server rejects the request with a `401` and a `WWW-Authenticate` header pointing at that metadata, so the client can discover where to get one.
+
+## Scope Granularity Is a Design Decision
+
+A scope is the unit an access token carries and a tool checks. How finely you divide scopes is a trade-off, not a fixed rule:
+
+- **One scope per tool**: the most precise. A caller granted `send-message` cannot use `delete-conversation`, even if both live on the same server.
+- **One scope per tool group**: a common middle ground, where related tools such as `read-*` operations share one scope.
+- **One scope per server**: the simplest to manage, but coarse. Any caller with access to the server can use every tool it exposes.
+
+The enforcement logic at the tool boundary is identical regardless of which granularity you choose. Only the scope vocabulary the server checks against changes.
+
+## Enforcement at the Tool Boundary
+
+The server checks the required scope before it invokes a tool's handler, not after. That ordering matters: a caller whose token is missing a scope fails cleanly at the protocol layer, before any part of the handler runs, instead of the handler starting and producing a partial side effect that then has to be checked or rolled back. Servers commonly extend this further by filtering the tool list itself to what the caller's scopes allow, so a tool the caller cannot use never appears as an option.
+
+## Token Validation
+
+A server validates a token one of two ways:
+
+- **Offline JWT validation**: the server fetches the authorization server's JWKS, finds the signing key by `kid`, and checks the signature, issuer, audience, and expiry locally, with no callback to the authorization server on each request. This is the common case for MCP servers, since it keeps every tool call fast.
+- **Token introspection**: the server calls the authorization server on each request to ask whether a token is still valid. This applies when tokens must be revocable before they expire, at the cost of a network call per request.
+
+## Audience Binding
+
+When several MCP servers share one authorization server, a token issued for one of them must not work against another, even though both trust the same issuer. Binding the token to a specific audience or resource identifier at issuance is what makes that guarantee hold. Without it, a token obtained for a low-risk server could be replayed against a more sensitive one.
+
+## Runtime Policy Decisions
+
+Scopes alone answer whether a caller may use a tool at all, not whether a specific call with specific arguments should be allowed, such as whether this transfer amount from this account is permitted. Some deployments address that by asking an external policy decision point (PDP) per tool call instead of relying only on the token's scopes. [AuthZEN](https://openid.github.io/authzen/) is the standard for that interaction: the server acts as a policy enforcement point and sends the subject, resource, action, and call-specific context to a PDP, which returns an allow or deny decision computed at request time.
+
+## How <ProductName /> Fits
+
+Register your MCP server as a resource server in <ProductName />, and define one permission per tool: the permission's handle becomes the scope your server checks. Bundle those permissions into roles, and assign the roles to the clients or users that should hold them. <ProductName /> issues access tokens carrying only the scopes a role actually grants, bound to the resource server's identifier as the audience.
+
+Your MCP server validates tokens offline against <ProductName />'s JWKS endpoint. For decisions that depend on call arguments rather than just on who is calling, your server can call <ProductName />'s AuthZEN policy decision point instead of relying on scopes alone.
+
+## Related
+
+- [Secure Your MCP Server](./secure-your-mcp-server): configure a resource server, tool permissions, and token validation in <ProductName />.
+- [Connect a Python MCP Server](../../../getting-started/connect-your-mcp/python): a runnable quickstart with a sample MCP server.
+- [Manage Resource Servers](../../resource-servers): general resource server, resource, and permission management.
+- [JWKS](../../protocols/oauth-oidc/jwks): the endpoint your server validates tokens against.
+- [Policy Decision Point](../../protocols/authzen/pdp): the AuthZEN PDP endpoints for runtime tool authorization.

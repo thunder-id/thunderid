@@ -275,6 +275,30 @@ func walkProperties(schema *jsonschema.Schema, prefix string,
 	return nil
 }
 
+// titlesOf returns each field's schema title, keyed by its dot-separated path.
+func titlesOf(root *jsonschema.Schema) map[string]string {
+	titles := map[string]string{}
+	_ = walkProperties(root, "", func(path, _ string, property *jsonschema.Schema) error {
+		if property.Title != "" {
+			titles[path] = property.Title
+		}
+		return nil
+	})
+	return titles
+}
+
+// itemOptionsOf returns the item enum of each list field, keyed by its dot-separated path.
+func itemOptionsOf(root *jsonschema.Schema) map[string][]any {
+	options := map[string][]any{}
+	_ = walkProperties(root, "", func(path, _ string, property *jsonschema.Schema) error {
+		if property.Items != nil && len(property.Items.Enum) > 0 {
+			options[path] = property.Items.Enum
+		}
+		return nil
+	})
+	return options
+}
+
 // SchemaFieldPaths returns the dot-separated path of every property of a registered schema.
 func SchemaFieldPaths(raw json.RawMessage) map[string]bool {
 	paths := map[string]bool{FieldType: true}
@@ -287,6 +311,34 @@ func SchemaFieldPaths(raw json.RawMessage) map[string]bool {
 		return nil
 	})
 	return paths
+}
+
+// propertyOrderOf returns each object's property names in declared order, read from the raw JSON
+// since a decoded schema does not keep it.
+func propertyOrderOf(raw json.RawMessage) map[string][]string {
+	order := map[string][]string{}
+	collectPropertyOrder(raw, "", order)
+	return order
+}
+
+// collectPropertyOrder records the declared property order of each object in the schema, keyed by path.
+func collectPropertyOrder(schema json.RawMessage, prefix string, order map[string][]string) {
+	_, members, ok := objectMembers(schema)
+	if !ok {
+		return
+	}
+	names, properties, ok := objectMembers(members["properties"])
+	if !ok {
+		return
+	}
+	order[prefix] = names
+	for _, name := range names {
+		path := name
+		if prefix != "" {
+			path = prefix + "." + name
+		}
+		collectPropertyOrder(properties[name], path, order)
+	}
 }
 
 // objectMembers returns a JSON object's member names in order and their values.

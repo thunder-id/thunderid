@@ -19,6 +19,7 @@ import {
   isCimdGrantAllowed,
   isGrantLockedByIdJag,
   isIdJagEnabled,
+  isIdJagIssuanceUnavailable,
   isOAuthTokenMode,
 } from '../oauth2Rules';
 
@@ -367,6 +368,26 @@ describe('isIdJagEnabled', () => {
     expect(isIdJagEnabled(baseConfig({token: idJagToken(false)}))).toBe(false);
     expect(isIdJagEnabled(baseConfig())).toBe(false);
     expect(isIdJagEnabled(undefined)).toBe(false);
+  });
+});
+
+describe('isIdJagIssuanceUnavailable', () => {
+  it('should be true when discovery lists grant types without token exchange', () => {
+    expect(isIdJagIssuanceUnavailable([OAuth2GrantTypes.AUTHORIZATION_CODE, OAuth2GrantTypes.JWT_BEARER])).toBe(true);
+  });
+
+  it('should be true when discovery lists no grant types', () => {
+    expect(isIdJagIssuanceUnavailable([])).toBe(true);
+  });
+
+  it('should be false when discovery lists the token exchange grant', () => {
+    expect(isIdJagIssuanceUnavailable([OAuth2GrantTypes.AUTHORIZATION_CODE, OAuth2GrantTypes.TOKEN_EXCHANGE])).toBe(
+      false,
+    );
+  });
+
+  it('should be false when discovery has not loaded', () => {
+    expect(isIdJagIssuanceUnavailable(undefined)).toBe(false);
   });
 });
 

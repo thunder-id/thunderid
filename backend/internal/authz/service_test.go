@@ -194,6 +194,31 @@ func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessPassesPropertiesTo
 	suite.True(response.Decision)
 }
 
+// The organization unit an evaluation names reaches the engine, which counts only the subject's
+// role assignments made there.
+func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessBatchPassesTheOUToEngine() {
+	suite.mockEngine.On("EvaluateAccessBatch", mock.Anything,
+		mock.MatchedBy(func(req engine.AccessEvaluationsRequest) bool {
+			return len(req.Evaluations) == 1 && req.Evaluations[0].OUID == "ou-owner"
+		})).
+		Return(&engine.AccessEvaluationsResponse{
+			Evaluations: []engine.AccessEvaluationResponse{{Decision: true}},
+		}, nil)
+
+	response, err := suite.service.EvaluateAccessBatch(context.Background(), providers.AccessEvaluationsRequest{
+		Evaluations: []providers.AccessEvaluationRequest{{
+			Subject:        providers.Subject{Category: "app", ID: "app1"},
+			ResourceServer: providers.AccessEvaluationResourceServer{ID: "document"},
+			Permission:     providers.Permission{Name: "read"},
+			OUID:           "ou-owner",
+		}},
+	})
+
+	suite.Nil(err)
+	suite.Require().Len(response.Evaluations, 1)
+	suite.True(response.Evaluations[0].Decision)
+}
+
 func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessBatchEmpty() {
 	response, err := suite.service.EvaluateAccessBatch(context.Background(), providers.AccessEvaluationsRequest{})
 

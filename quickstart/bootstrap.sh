@@ -63,10 +63,11 @@ user_password_secret_name() {
 # export_console_urls exports the console redirect URIs the bootstrap resources are templated with:
 # CP_CONSOLE_URL for the CP_CONSOLE application on auth-dp, and ADMIN_CONSOLE_URL for the
 # ADMIN_CONSOLE application on the Data Plane and the Control Plane. Call it before the first
-# plane's setup runs, since auth-dp's bootstrap already needs CP_CONSOLE_URL.
+# plane's setup runs, since auth-dp's bootstrap already needs CP_CONSOLE_URL. A value already in
+# the environment is kept, which is how build.sh's dev run points the consoles at their dev servers.
 export_console_urls() {
-    export CP_CONSOLE_URL="https://localhost:$CP_PORT/console"
-    export ADMIN_CONSOLE_URL="https://localhost:$DP_PORT/console"
+    export CP_CONSOLE_URL="${CP_CONSOLE_URL:-https://localhost:$CP_PORT/console}"
+    export ADMIN_CONSOLE_URL="${ADMIN_CONSOLE_URL:-https://localhost:$DP_PORT/console}"
 }
 
 # export_dp_ca_certificate exports DP_CA_CERTIFICATE, the managed Data Plane's certificate, which

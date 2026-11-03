@@ -1,0 +1,71 @@
+---
+title: createRouteMatcher()
+docType: reference
+description: Build a route-matching function from glob patterns to protect paths in Nuxt server middleware.
+---
+
+# `createRouteMatcher()`
+
+`createRouteMatcher` takes an array of route patterns and returns a predicate function. Call the predicate with a path string to check whether it matches any of the patterns. It is primarily used in global middleware to apply auth guards to a set of routes without adding `definePageMeta` to every page.
+
+## Signature
+
+```ts
+createRouteMatcher(patterns: string[]): (path: string) => boolean
+```
+
+## Import
+
+```ts
+import { createRouteMatcher } from '@thunderid/nuxt/utils'
+```
+
+## Usage
+
+### Global Auth Middleware
+
+```ts title="middleware/auth.global.ts" showLineNumbers
+import { defineThunderIDMiddleware } from '@thunderid/nuxt'
+import { createRouteMatcher } from '@thunderid/nuxt/utils'
+
+const isProtected = createRouteMatcher([
+  '/dashboard',
+  '/dashboard/**',
+  '/account/**',
+  '/settings/**',
+])
+
+export default defineNuxtRouteMiddleware((to) => {
+  if (isProtected(to.path)) {
+    return defineThunderIDMiddleware()
+  }
+})
+```
+
+### Protecting API Routes
+
+```ts title="server/middleware/auth.ts" showLineNumbers
+import { createRouteMatcher } from '@thunderid/nuxt/utils'
+import { requireServerSession } from '@thunderid/nuxt/server'
+
+const isApiProtected = createRouteMatcher(['/api/account/**', '/api/orders/**'])
+
+export default defineEventHandler(async (event) => {
+  if (isApiProtected(event.path)) {
+    await requireServerSession(event)
+  }
+})
+```
+
+## Pattern Syntax
+
+| Pattern | Matches |
+| :--- | :--- |
+| `'/dashboard'` | Exactly `/dashboard` |
+| `'/admin/*'` | Any single path segment under `/admin/` (e.g., `/admin/users` but not `/admin/users/1`) |
+| `'/admin/**'` | Any path under `/admin/`, including nested segments |
+| `'/api/(users\|posts)'` | Explicit alternation (regex groups are preserved) |
+
+## Return Value
+
+Returns `(path: string) => boolean`. The function returns `true` if the given path matches any of the provided patterns, and `false` otherwise.

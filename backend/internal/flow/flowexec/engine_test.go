@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/mock"
@@ -18,6 +19,7 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
@@ -1915,7 +1917,7 @@ func (s *EngineTestSuite) TestNewFlowEngine() {
 	mockFlowProvider := NewFlowProviderMock(t)
 	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
 
-	engine := newFlowEngine(mockRegistry, mockInterceptorRunner, mockObs, mockFlowProvider, mockGraphBuilder)
+	engine := newFlowEngine(mockRegistry, mockInterceptorRunner, mockObs, mockFlowProvider, mockGraphBuilder, nil)
 	s.NotNil(engine)
 }
 
@@ -4876,4 +4878,163 @@ func assertEventData(t *testing.T, evt *providers.Event, want map[string]interfa
 			t.Errorf("event data %q = %v, want %v", key, got, wantValue)
 		}
 	}
+}
+
+func (s *EngineTestSuite) variablesNodeAndResponse() (core.NodeInterface, *common.NodeResponse) {
+	factory, _ := core.Initialize(cache.Initialize(engineconfig.CacheConfig{}, "test-deployment"))
+	properties, err := core.PropertiesFor([]providers.VariableDefinition{
+		{Identifier: "supportEmail", Type: providers.InputTypeEmail, DefaultValue: "support@example.com"},
+		{Identifier: "otp", Type: providers.InputTypeNumber, DefaultValue: 120.0},
+	})
+	s.Require().NoError(err)
+	node, err := factory.CreateNode("vars", string(common.NodeTypeVariables), properties, false, false)
+	s.Require().NoError(err)
+	resp, svcErr := node.Execute(&providers.NodeContext{Context: context.Background(), ExecutionID: "e"})
+	s.Require().Nil(svcErr)
+	return node, resp
+}
+
+func (s *EngineTestSuite) unsetConnectionNodeAndResponse() (core.NodeInterface, *common.NodeResponse) {
+	factory, _ := core.Initialize(cache.Initialize(engineconfig.CacheConfig{}, "test-deployment"))
+	properties, err := core.PropertiesFor([]providers.VariableDefinition{
+		{Identifier: "social", Type: providers.InputTypeConnectionSelect, Category: "IDENTITY_PROVIDER",
+			DefaultValue: ""},
+	})
+	s.Require().NoError(err)
+	node, err := factory.CreateNode("vars", string(common.NodeTypeVariables), properties, false, false)
+	s.Require().NoError(err)
+	resp, svcErr := node.Execute(&providers.NodeContext{Context: context.Background(), ExecutionID: "e"})
+	s.Require().Nil(svcErr)
+	return node, resp
+}
+
+func (s *EngineTestSuite) TestApplyVariableValues_StopsWhenAConnectionIsStillNotSet() {
+	t := s.T()
+	graph := coremock.NewGraphInterfaceMock(t)
+	graph.On("GetID").Return("flow-1")
+	app := providers.Application{ID: "app-1", OUID: "ou-parent"}
+
+	s.Run("the unit set none", func() {
+		node, resp := s.unsetConnectionNodeAndResponse()
+		values := newVariableValueProviderMock(t)
+		values.EXPECT().GetEffectiveVariableValues(mock.Anything, "flow-1", app, "ou-child").
+			Return(map[string]string{}, nil)
+		fe := &flowEngine{variableValuesProvider: values, logger: log.GetLogger()}
+		ctx := &EngineContext{Context: context.Background(), Graph: graph, Application: app,
+			RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-child"}}
+
+		s.Equal(&ErrorFlowConnectionNotSet, fe.applyVariableValues(ctx, node, resp, fe.logger))
+	})
+
+	s.Run("an engine with no values to apply", func() {
+		node, resp := s.unsetConnectionNodeAndResponse()
+		fe := &flowEngine{logger: log.GetLogger()}
+		ctx := &EngineContext{Context: context.Background(), Graph: graph, Application: app,
+			RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-child"}}
+
+		s.Equal(&ErrorFlowConnectionNotSet, fe.applyVariableValues(ctx, node, resp, fe.logger))
+	})
+
+	s.Run("the unit set its own", func() {
+		node, resp := s.unsetConnectionNodeAndResponse()
+		values := newVariableValueProviderMock(t)
+		values.EXPECT().GetEffectiveVariableValues(mock.Anything, "flow-1", app, "ou-child").
+			Return(map[string]string{"social": "c-child"}, nil)
+		fe := &flowEngine{variableValuesProvider: values, logger: log.GetLogger()}
+		ctx := &EngineContext{Context: context.Background(), Graph: graph, Application: app,
+			RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-child"}}
+
+		s.Nil(fe.applyVariableValues(ctx, node, resp, fe.logger))
+		s.Equal(`"c-child"`, resp.RuntimeData["var.social"])
+	})
+}
+
+func (s *EngineTestSuite) TestApplyVariableValues_UsesTheValuesOfTheUnitAPromptPicked() {
+	t := s.T()
+	node, resp := s.variablesNodeAndResponse()
+	graph := coremock.NewGraphInterfaceMock(t)
+	graph.On("GetID").Return("flow-1")
+	app := providers.Application{ID: "app-1", OUID: "ou-parent"}
+	values := newVariableValueProviderMock(t)
+	values.EXPECT().GetEffectiveVariableValues(mock.Anything, "flow-1", app, "ou-picked").
+		Return(map[string]string{"otp": "60"}, nil)
+	fe := &flowEngine{variableValuesProvider: values, logger: log.GetLogger()}
+	ctx := &EngineContext{Context: context.Background(), Graph: graph, Application: app,
+		RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-picked"}}
+
+	svcErr := fe.applyVariableValues(ctx, node, resp, fe.logger)
+
+	s.Nil(svcErr)
+	s.Equal("60", resp.RuntimeData["var.otp"])
+	s.Equal(`"support@example.com"`, resp.RuntimeData["var.supportEmail"])
+}
+
+func (s *EngineTestSuite) TestApplyVariableValues_LeavesTheDefaultsWhenThereIsNothingToApply() {
+	t := s.T()
+	node, resp := s.variablesNodeAndResponse()
+	graph := coremock.NewGraphInterfaceMock(t)
+	graph.On("GetID").Return("flow-1").Maybe()
+	app := providers.Application{ID: "app-1", OUID: "ou-owner"}
+
+	cases := map[string]struct {
+		engine *flowEngine
+		picked string
+	}{
+		"no provider": {&flowEngine{logger: log.GetLogger()}, "ou-child"},
+		// The owner of the application is not a unit to resolve for: the mock has no expectation, so the test fails
+		// if the values are asked for.
+		"no unit picked": {
+			&flowEngine{variableValuesProvider: newVariableValueProviderMock(t), logger: log.GetLogger()}, "",
+		},
+	}
+	for name, tc := range cases {
+		s.Run(name, func() {
+			ctx := &EngineContext{Context: context.Background(), Graph: graph, Application: app,
+				RuntimeData: map[string]string{common.RuntimeKeyOUID: tc.picked}}
+
+			s.Nil(tc.engine.applyVariableValues(ctx, node, resp, tc.engine.logger))
+			s.Equal("120", resp.RuntimeData["var.otp"])
+		})
+	}
+}
+
+func (s *EngineTestSuite) TestApplyVariableValues_IgnoresOtherNodes() {
+	t := s.T()
+	other := coremock.NewNodeInterfaceMock(t)
+	other.On("GetType").Return(common.NodeTypeTaskExecution)
+	// The mock has no expectation, so the test fails if the values are asked for.
+	fe := &flowEngine{variableValuesProvider: newVariableValueProviderMock(t), logger: log.GetLogger()}
+	ctx := &EngineContext{Context: context.Background(), Application: providers.Application{OUID: "ou-child"},
+		RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-child"}}
+
+	s.Nil(fe.applyVariableValues(ctx, other, &common.NodeResponse{}, fe.logger))
+}
+
+func (s *EngineTestSuite) TestApplyVariableValues_FailsWhenTheValuesCannotBeRead() {
+	t := s.T()
+	node, resp := s.variablesNodeAndResponse()
+	graph := coremock.NewGraphInterfaceMock(t)
+	graph.On("GetID").Return("flow-1")
+	app := providers.Application{ID: "app-1", OUID: "ou-parent"}
+	values := newVariableValueProviderMock(t)
+	values.EXPECT().GetEffectiveVariableValues(mock.Anything, "flow-1", app, "ou-picked").
+		Return(nil, &tidcommon.InternalServerError)
+	fe := &flowEngine{variableValuesProvider: values, logger: log.GetLogger()}
+	ctx := &EngineContext{Context: context.Background(), Graph: graph, Application: app,
+		RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-picked"}}
+
+	svcErr := fe.applyVariableValues(ctx, node, resp, fe.logger)
+
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+	s.Equal("120", resp.RuntimeData["var.otp"],
+		"the owner's default is not used in place of a value that cannot be read")
+}
+
+func (s *EngineTestSuite) TestNewFlowEngine_UsesTheVariableValuesItIsGiven() {
+	values := newVariableValueProviderMock(s.T())
+	engine := newFlowEngine(nil, nil, nil, NewFlowProviderMock(s.T()), nil, values).(*flowEngine)
+	s.Same(values, engine.variableValuesProvider)
+
+	s.Nil(newFlowEngine(nil, nil, nil, NewFlowProviderMock(s.T()), nil, nil).(*flowEngine).variableValuesProvider,
+		"an engine given none leaves every flow on the owner's defaults")
 }

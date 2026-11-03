@@ -6,6 +6,8 @@ package model
 
 import (
 	"encoding/json"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // TokenRequest represents the OAuth2 token request.
@@ -44,6 +46,7 @@ type TokenResponse struct {
 	IssuedTokenType string `json:"issued_token_type,omitempty"`
 	// AuthorizationDetails carries the granted RFC 9396 authorization details.
 	AuthorizationDetails json.RawMessage `json:"authorization_details,omitempty"`
+	DeviceSecret         string          `json:"device_secret,omitempty"`
 }
 
 // TokenDTO represents the data transfer object for tokens.
@@ -99,4 +102,19 @@ type TokenResponseDTO struct {
 	// SessionID is the SSO session id (sid) of the grant, when it has one, so the refresh token issued
 	// alongside is stamped with it. Access tokens never carry it. Never returned to the client.
 	SessionID string
+	// DeviceSecret is the token carrying the SSO sessions the code kept, returned on a code exchange.
+	DeviceSecret TokenDTO
+	// IssuesRefreshToken marks a response whose grant path issues a refresh token although its grant
+	// type does not otherwise, subject to the client allowing the refresh token grant.
+	IssuesRefreshToken bool
+	// RefreshableAuthorizationDetails holds the granted details the refresh token keeps: those of reusable types
+	// still on the version they were granted on. It is never returned to the client.
+	RefreshableAuthorizationDetails []providers.AuthorizationDetail
+}
+
+// SessionData is one SSO session a client holds: the handle that resumes it, keyed by the identifier of
+// the flow it belongs to.
+type SessionData struct {
+	FlowIdentifier string `json:"flowIdentifier"`
+	SessionHandle  string `json:"sessionHandle"`
 }

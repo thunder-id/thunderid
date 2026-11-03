@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -32,10 +33,12 @@ const loggerComponentName = "RoleMgtService"
 
 // RoleServiceInterface defines the interface for the role service.
 type RoleServiceInterface interface {
-	GetRoleList(ctx context.Context, limit, offset int) (*RoleList, *tidcommon.ServiceError)
+	GetRoleList(ctx context.Context, limit, offset int, filters map[string]interface{}) (
+		*RoleList, *tidcommon.ServiceError)
 	CreateRole(ctx context.Context, role RoleCreationDetail) (
 		*RoleWithPermissionsAndAssignments, *tidcommon.ServiceError)
 	GetRoleWithPermissions(ctx context.Context, id string) (*RoleWithPermissions, *tidcommon.ServiceError)
+	GetRoleInOU(ctx context.Context, id, ouID string) (*RoleWithPermissions, *tidcommon.ServiceError)
 	GetRolesByNames(ctx context.Context, names []string) (map[string][]*Role, *tidcommon.ServiceError)
 	UpdateRoleWithPermissions(ctx context.Context, id string, role RoleUpdateDetail) (
 		*RoleWithPermissions, *tidcommon.ServiceError)
@@ -52,8 +55,10 @@ type RoleServiceInterface interface {
 	ValidateGroupMembershipRemoval(ctx context.Context, groupID, memberID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	IsRoleDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
+	// GetAuthorizedPermissionsByResourceServer counts only the assignments made in assignmentOUID
+	// when one is given, and assignments made anywhere otherwise.
 	GetAuthorizedPermissionsByResourceServer(
-		ctx context.Context, entityID string, groups, roleIDs []string, resourceServerID string,
+		ctx context.Context, entityID string, groups, roleIDs []string, assignmentOUID, resourceServerID string,
 		requestedPermissions []string,
 	) ([]string, *tidcommon.ServiceError)
 	// GetAllPermissions returns every permission the entity and/or groups hold, keyed by resource
@@ -61,7 +66,11 @@ type RoleServiceInterface interface {
 	GetAllPermissions(
 		ctx context.Context, entityID string, groupIDs []string,
 	) (security.PermissionSet, *tidcommon.ServiceError)
-	GetUserRoles(ctx context.Context, entityID string, groupIDs []string) ([]string, *tidcommon.ServiceError)
+	// GetUserRoles returns the names of the roles assigned to the entity directly or through its
+	// groups, counting only the assignments made in assignmentOUID when one is given.
+	GetUserRoles(
+		ctx context.Context, entityID string, groupIDs []string, assignmentOUID string,
+	) ([]string, *tidcommon.ServiceError)
 	ResolveRoleOUHandle(
 		ctx context.Context, role *RoleWithPermissionsAndAssignments,
 	) *tidcommon.ServiceError
@@ -120,30 +129,51 @@ func newRoleService(
 	}
 }
 
-// GetRoleList retrieves a list of roles.
-func (rs *roleService) GetRoleList(ctx context.Context, limit, offset int) (*RoleList, *tidcommon.ServiceError) {
+// GetRoleList retrieves a list of roles. An organization unit filter lists the roles that unit
+// owns, followed by the ones shared with it.
+func (rs *roleService) GetRoleList(
+	ctx context.Context, limit, offset int, filters map[string]interface{},
+) (*RoleList, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	if err := validatePaginationParams(limit, offset); err != nil {
 		return nil, err
 	}
 
-	totalCount, err := rs.roleStore.GetRoleListCount(ctx)
-	if err != nil {
-		if errors.Is(err, errResultLimitExceededInCompositeMode) {
-			return nil, &ResultLimitExceededInCompositeMode
-		}
-		logger.Error(ctx, "Failed to get role count", log.Error(err))
-		return nil, &tidcommon.InternalServerError
+	ouID, rest, err := filter.SplitOUIDFilter(filters)
+	if err != nil || len(rest) > 0 {
+		return nil, &ErrorInvalidFilter
 	}
 
-	roles, err := rs.roleStore.GetRoleList(ctx, limit, offset)
-	if err != nil {
-		if errors.Is(err, errResultLimitExceededInCompositeMode) {
-			return nil, &ResultLimitExceededInCompositeMode
+	var roles []Role
+	var totalCount int
+	if ouID != "" {
+		var svcErr *tidcommon.ServiceError
+		roles, totalCount, svcErr = rs.listRolesInOU(ctx, ouID, limit, offset)
+		if svcErr != nil {
+			return nil, svcErr
 		}
-		logger.Error(ctx, "Failed to list roles", log.Error(err))
-		return nil, &tidcommon.InternalServerError
+	} else {
+		totalCount, err = rs.roleStore.GetRoleListCount(ctx)
+		if err != nil {
+			if errors.Is(err, errResultLimitExceededInCompositeMode) {
+				return nil, &ResultLimitExceededInCompositeMode
+			}
+			logger.Error(ctx, "Failed to get role count", log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+
+		roles, err = rs.roleStore.GetRoleList(ctx, limit, offset)
+		if err != nil {
+			if errors.Is(err, errResultLimitExceededInCompositeMode) {
+				return nil, &ResultLimitExceededInCompositeMode
+			}
+			logger.Error(ctx, "Failed to list roles", log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		for i := range roles {
+			roles[i].IsOwnedByOU = true
+		}
 	}
 
 	if len(roles) > 0 {
@@ -172,10 +202,64 @@ func (rs *roleService) GetRoleList(ctx context.Context, limit, offset int) (*Rol
 		Roles:        roles,
 		StartIndex:   offset + 1,
 		Count:        len(roles),
-		Links:        utils.BuildPaginationLinks("/roles", limit, offset, totalCount, ""),
+		Links:        utils.BuildPaginationLinks("/roles", limit, offset, totalCount, utils.FilterQueryParam(filters)),
 	}
 
 	return response, nil
+}
+
+// listRolesInOU lists the roles an organization unit owns, followed by the ones shared with it, and
+// returns the total across every page.
+func (rs *roleService) listRolesInOU(
+	ctx context.Context, ouID string, limit, offset int,
+) ([]Role, int, *tidcommon.ServiceError) {
+	ownedCount, err := rs.roleStore.GetRoleListCountByOUID(ctx, ouID)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, 0, &ResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to count roles in organization unit", log.String("ouID", ouID), log.Error(err))
+		return nil, 0, &tidcommon.InternalServerError
+	}
+
+	sharedIDs, svcErr := rs.sharingService.ListVisibleResourceIDs(ctx, RoleSharingType, ouID)
+	if svcErr != nil {
+		// An organization unit that does not exist has nothing shared with it.
+		if svcErr.Code != oupkg.ErrorOrganizationUnitNotFound.Code {
+			return nil, 0, translateSharingError(svcErr)
+		}
+		sharedIDs = nil
+	}
+
+	owned, shared, err := utils.PaginateOwnedThenShared(
+		ownedCount,
+		func(limit, offset int) ([]Role, error) {
+			return rs.roleStore.GetRoleListByOUID(ctx, ouID, limit, offset)
+		},
+		sharedIDs,
+		func(ids []string) ([]Role, error) { return rs.roleStore.GetRolesByIDs(ctx, ids) },
+		func(r Role) string { return r.ID },
+		limit, offset,
+	)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, 0, &ResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to list roles in organization unit", log.String("ouID", ouID), log.Error(err))
+		return nil, 0, &tidcommon.InternalServerError
+	}
+
+	for i := range owned {
+		owned[i].IsOwnedByOU = true
+	}
+	// A shared role is listed under the organization unit it is shared with, where only what its
+	// sharing policies make editable can change.
+	for i := range shared {
+		shared[i].OUID = ouID
+		shared[i].IsOwnedByOU = false
+		shared[i].IsReadOnly = true
+	}
+	return slices.Concat(owned, shared), ownedCount + len(sharedIDs), nil
 }
 
 // CreateRole creates a new role.
@@ -224,26 +308,21 @@ func (rs *roleService) CreateRole(
 
 	// Validate assignment IDs (existence + category check) before normalization.
 	if len(role.Assignments) > 0 {
-		if err := rs.validateAssignmentIDs(ctx, role.Assignments); err != nil {
+		// A role is created in its owner, so that is where its assignees must be available.
+		if err := validateAssignmentIDs(ctx, role.Assignments, role.OUID, rs.entityService, rs.groupService,
+			rs.sharingService, loggerComponentName); err != nil {
 			return nil, err
 		}
 	}
 
 	role.Assignments = normalizeAssignments(role.Assignments)
 
-	// Check if role name already exists in the organization unit
-	nameExists, err := rs.roleStore.CheckRoleNameExists(ctx, role.OUID, role.Name)
-	if err != nil {
-		logger.Error(ctx, "Failed to check role name existence", log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-	if nameExists {
-		logger.Debug(ctx, "Role name already exists in organization unit",
-			log.String("name", role.Name), log.String("ouID", role.OUID))
-		return nil, &ErrorRoleNameConflict
+	if svcErr := rs.requireRoleNameAvailable(ctx, role.OUID, role.Name, ""); svcErr != nil {
+		return nil, svcErr
 	}
 
 	id := role.ID
+	var err error
 	if id == "" {
 		id, err = utils.GenerateUUIDv7()
 		if err != nil {
@@ -316,9 +395,45 @@ func (rs *roleService) GetRoleWithPermissions(ctx context.Context, id string) (
 		role.OUHandle = ou.Handle
 	}
 
+	role.IsOwnedByOU = true
+
 	logger.Debug(ctx, "Successfully retrieved role",
 		log.String("id", role.ID), log.String("name", role.Name))
 	return &role, nil
+}
+
+// GetRoleInOU retrieves a role as an organization unit sees it: the role itself in the organization
+// unit that owns it, and the same role under an organization unit it is shared with. A role carries
+// nothing a shared organization unit sets for itself: its assignments there are read separately.
+func (rs *roleService) GetRoleInOU(ctx context.Context, id, ouID string) (
+	*RoleWithPermissions, *tidcommon.ServiceError) {
+	role, svcErr := rs.GetRoleWithPermissions(ctx, id)
+	if svcErr != nil || ouID == "" || role.OUID == ouID {
+		return role, svcErr
+	}
+
+	visible, svcErr := rs.sharingService.IsVisible(ctx, RoleSharingType, id, ouID)
+	if svcErr != nil {
+		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+			return nil, &ErrorRoleNotSharedToOU
+		}
+		return nil, translateSharingError(svcErr)
+	}
+	if !visible {
+		return nil, &ErrorRoleNotSharedToOU
+	}
+
+	role.OUID = ouID
+	role.OUHandle = ""
+	role.IsOwnedByOU = false
+	ou, svcErr := rs.ouService.GetOrganizationUnit(ctx, ouID)
+	if svcErr != nil {
+		rs.logger.Warn(ctx, "Failed to resolve OU handle for shared role, skipping",
+			log.String("id", id), log.Any("error", svcErr))
+	} else {
+		role.OUHandle = ou.Handle
+	}
+	return role, nil
 }
 
 // GetRolesByNames retrieves roles by a list of names, keyed by name. A name may resolve to more than
@@ -369,6 +484,17 @@ func (rs *roleService) UpdateRoleWithPermissions(
 		return nil, err
 	}
 
+	// A role's name, description and permissions stay with the organization unit that owns it, so an
+	// update naming one it is shared with is refused. Any other organization unit is somewhere to
+	// move the role to.
+	ownerOUID, sharedWith, svcErr := rs.resolveUpdateTarget(ctx, id, role.OUID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if sharedWith {
+		return nil, &ErrorSharedRoleNotEditable
+	}
+
 	// Validate permissions exist in resource management system
 	if err := rs.validatePermissions(ctx, role.Permissions); err != nil {
 		return nil, err
@@ -379,16 +505,6 @@ func (rs *roleService) UpdateRoleWithPermissions(
 		ctx, toPermissionSet(role.Permissions),
 	); svcErr != nil {
 		return nil, svcErr
-	}
-
-	existing, err := rs.roleStore.GetRole(ctx, id)
-	if err != nil {
-		if errors.Is(err, ErrRoleNotFound) {
-			logger.Debug(ctx, "Role not found", log.String("id", id))
-			return nil, &ErrorRoleNotFound
-		}
-		logger.Error(ctx, "Failed to retrieve role", log.String("id", id), log.Error(err))
-		return nil, &tidcommon.InternalServerError
 	}
 
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
@@ -407,30 +523,15 @@ func (rs *roleService) UpdateRoleWithPermissions(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	// Check if role name already exists in the organization unit (excluding the current role)
-	nameExists, err := rs.roleStore.CheckRoleNameExistsExcludingID(ctx, role.OUID, role.Name, id)
-	if err != nil {
-		logger.Error(ctx, "Failed to check role name existence", log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-	if nameExists {
-		logger.Debug(ctx, "Role name already exists in organization unit",
-			log.String("name", role.Name), log.String("ouID", role.OUID))
-		return nil, &ErrorRoleNameConflict
+	if svcErr := rs.requireRoleNameAvailable(ctx, role.OUID, role.Name, id); svcErr != nil {
+		return nil, svcErr
 	}
 
-	// A shared role stays in its organization unit: its policies were issued against that unit.
-	if role.OUID != existing.OUID {
-		policies, svcErr := rs.sharingService.ListPolicies(ctx, RoleSharingType, id)
-		if svcErr != nil {
-			return nil, translateSharingError(svcErr)
-		}
-		if len(policies) > 0 {
-			return nil, &ErrorSharedRoleCannotMove
-		}
+	if svcErr := rs.requireRoleMovable(ctx, id, ownerOUID, role.OUID); svcErr != nil {
+		return nil, svcErr
 	}
 
-	err = rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
+	err := rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		return rs.roleStore.UpdateRole(txCtx, id, role)
 	})
 
@@ -446,6 +547,7 @@ func (rs *roleService) UpdateRoleWithPermissions(
 		Description: role.Description,
 		OUID:        role.OUID,
 		OUHandle:    ou.Handle,
+		IsOwnedByOU: true,
 		Permissions: role.Permissions,
 	}, nil
 }
@@ -580,7 +682,7 @@ func (rs *roleService) ValidateGroupMembershipRemoval(ctx context.Context, group
 // GetAuthorizedPermissionsByResourceServer checks which requested permissions are authorized for the entity
 // based on roles, scoped to a resource server when provided.
 func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
-	ctx context.Context, entityID string, groups, roleIDs []string, resourceServerID string,
+	ctx context.Context, entityID string, groups, roleIDs []string, assignmentOUID, resourceServerID string,
 	requestedPermissions []string,
 ) ([]string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
@@ -613,7 +715,7 @@ func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
 
 	// Get authorized permissions from store
 	authorizedPermissions, err := rs.roleStore.GetAuthorizedPermissionsByResourceServer(
-		ctx, entityID, groups, roleIDs, resourceServerID, requestedPermissions)
+		ctx, entityID, groups, roleIDs, assignmentOUID, resourceServerID, requestedPermissions)
 	if err != nil {
 		logger.Error(ctx, "Failed to get authorized permissions",
 			log.MaskedString(log.LoggerKeyUserID, entityID),
@@ -672,7 +774,7 @@ func (rs *roleService) GetAllPermissions(
 
 // GetUserRoles retrieves the names of roles assigned to an entity directly and/or through group membership.
 func (rs *roleService) GetUserRoles(
-	ctx context.Context, entityID string, groupIDs []string,
+	ctx context.Context, entityID string, groupIDs []string, assignmentOUID string,
 ) ([]string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Getting entity roles",
@@ -686,7 +788,7 @@ func (rs *roleService) GetUserRoles(
 		return []string{}, nil
 	}
 
-	roles, err := rs.roleStore.GetUserRoles(ctx, entityID, groupIDs)
+	roles, err := rs.roleStore.GetUserRoles(ctx, entityID, groupIDs, assignmentOUID)
 	if err != nil {
 		logger.Error(ctx, "Failed to get entity roles",
 			log.MaskedString("entityID", entityID), log.Error(err))
@@ -783,14 +885,6 @@ func (rs *roleService) validateAssignmentsRequest(assignments []RoleAssignment) 
 	return nil
 }
 
-// validateAssignmentIDs validates assignment IDs before normalization.
-// For user/app assignments it checks existence and verifies the claimed type matches the actual
-// entity category. For group assignments it checks existence via the group service.
-func (rs *roleService) validateAssignmentIDs(
-	ctx context.Context, assignments []RoleAssignment) *tidcommon.ServiceError {
-	return validateAssignmentIDs(ctx, assignments, rs.entityService, rs.groupService, loggerComponentName)
-}
-
 // validatePaginationParams validates pagination parameters.
 func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 	if limit < 1 || limit > serverconst.MaxPageSize {
@@ -872,7 +966,7 @@ func (rs *roleService) roleAccessChangeTarget(ctx context.Context, id string,
 func (rs *roleService) roleAssigneeIDs(ctx context.Context, id string) ([]string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
-	total, err := rs.roleStore.GetRoleAssignmentsCount(ctx, id)
+	total, err := rs.roleStore.GetRoleAssignmentsCount(ctx, id, "")
 	if err != nil {
 		if errors.Is(err, errResultLimitExceededInCompositeMode) {
 			return nil, &ResultLimitExceededInCompositeMode
@@ -884,7 +978,7 @@ func (rs *roleService) roleAssigneeIDs(ctx context.Context, id string) ([]string
 	entityIDs := []string{}
 	seen := map[string]struct{}{}
 	for offset := 0; offset < total; offset += serverconst.MaxPageSize {
-		assignments, err := rs.roleStore.GetRoleAssignments(ctx, id, serverconst.MaxPageSize, offset)
+		assignments, err := rs.roleStore.GetRoleAssignments(ctx, id, "", serverconst.MaxPageSize, offset)
 		if err != nil {
 			if errors.Is(err, errResultLimitExceededInCompositeMode) {
 				return nil, &ResultLimitExceededInCompositeMode
@@ -1137,6 +1231,114 @@ func (rs *roleService) requireOwnPolicy(
 		return sharing.Policy{}, &ErrorSharingPolicyNotFound
 	}
 	return policy, nil
+}
+
+// requireRoleMovable refuses to move a role from the organization unit owning it while that unit
+// has shared it or assigned it: its policies were issued against that unit, and its assignees were
+// checked against it.
+func (rs *roleService) requireRoleMovable(
+	ctx context.Context, roleID, fromOUID, toOUID string,
+) *tidcommon.ServiceError {
+	if fromOUID == toOUID {
+		return nil
+	}
+	policies, svcErr := rs.sharingService.ListPolicies(ctx, RoleSharingType, roleID)
+	if svcErr != nil {
+		return translateSharingError(svcErr)
+	}
+	if len(policies) > 0 {
+		return &ErrorSharedRoleCannotMove
+	}
+	assignments, err := rs.roleStore.GetRoleAssignmentsCount(ctx, roleID, "")
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return &ResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to count the assignments of the role being moved",
+			log.String("id", roleID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if assignments > 0 {
+		return &ErrorRoleWithAssignmentsCannotMove
+	}
+	return nil
+}
+
+// requireRoleNameAvailable refuses a name already taken in an organization unit, by a role the unit
+// owns or one shared with it, since both are listed there. excludeID is the role being updated, which
+// is never among the ones shared with the unit: the unit either owns it or is where it moves.
+func (rs *roleService) requireRoleNameAvailable(
+	ctx context.Context, ouID, name, excludeID string,
+) *tidcommon.ServiceError {
+	var owned bool
+	var err error
+	if excludeID == "" {
+		owned, err = rs.roleStore.CheckRoleNameExists(ctx, ouID, name)
+	} else {
+		owned, err = rs.roleStore.CheckRoleNameExistsExcludingID(ctx, ouID, name, excludeID)
+	}
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to check role name existence", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if owned {
+		rs.logger.Debug(ctx, "Role name already exists in organization unit",
+			log.String("name", name), log.String("ouID", ouID))
+		return &ErrorRoleNameConflict
+	}
+
+	sharedIDs, svcErr := rs.sharingService.ListVisibleResourceIDs(ctx, RoleSharingType, ouID)
+	if svcErr != nil {
+		return translateSharingError(svcErr)
+	}
+	if len(sharedIDs) == 0 {
+		return nil
+	}
+	shared, err := rs.roleStore.GetRolesByIDs(ctx, sharedIDs)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return &ResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to read the roles shared with the organization unit",
+			log.String("ouID", ouID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	for _, r := range shared {
+		if r.Name == name {
+			rs.logger.Debug(ctx, "Role name taken by a role shared with the organization unit",
+				log.String("name", name), log.String("ouID", ouID))
+			return &ErrorRoleNameConflict
+		}
+	}
+	return nil
+}
+
+// resolveUpdateTarget returns the organization unit owning a role, and whether the organization unit
+// an update names is one the role is shared with rather than its owner or somewhere to move it.
+func (rs *roleService) resolveUpdateTarget(
+	ctx context.Context, roleID, ouID string,
+) (string, bool, *tidcommon.ServiceError) {
+	stored, err := rs.roleStore.GetRole(ctx, roleID)
+	if err != nil {
+		if errors.Is(err, ErrRoleNotFound) {
+			return "", false, &ErrorRoleNotFound
+		}
+		rs.logger.Error(ctx, "Failed to read the role being updated", log.String("id", roleID), log.Error(err))
+		return "", false, &tidcommon.InternalServerError
+	}
+	if stored.OUID == ouID {
+		return stored.OUID, false, nil
+	}
+	visible, svcErr := rs.sharingService.IsVisible(ctx, RoleSharingType, roleID, ouID)
+	if svcErr != nil {
+		// An organization unit that does not exist is not one the role is shared with. The move
+		// that follows reports it.
+		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+			return stored.OUID, false, nil
+		}
+		return "", false, translateSharingError(svcErr)
+	}
+	return stored.OUID, visible, nil
 }
 
 // translateSharingError maps a sharing framework error into this service's own codes.

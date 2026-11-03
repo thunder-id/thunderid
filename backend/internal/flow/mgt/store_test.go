@@ -6,6 +6,7 @@ package flowmgt
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -1559,4 +1560,103 @@ func (s *FlowStoreTestSuite) TestCreateFlow_StoresTheOwner() {
 
 	s.NoError(err)
 	s.Equal("ou-1", flow.OUID)
+}
+
+func flowRow(id, flowType string) map[string]interface{} {
+	return map[string]interface{}{
+		colFlowID: id, colHandle: "handle-" + id, colName: "Flow " + id, colFlowType: flowType,
+		colActiveVersion: int64(1), colOUID: "ou-1", colCreatedAt: "2025-01-01T00:00:00Z",
+		colUpdatedAt: "2025-01-01T00:00:00Z",
+	}
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsByOUReadsOnlyThePageOfThatUnit() {
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlowsByOU, "ou-1", "test-deployment").
+		Return([]map[string]interface{}{{colCount: int64(3)}}, nil).Once()
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryListFlowsByOU, "ou-1", "test-deployment", 2, 1).
+		Return([]map[string]interface{}{flowRow("flow-2", "AUTHENTICATION"),
+			flowRow("flow-3", "REGISTRATION")}, nil).Once()
+
+	flows, count, err := s.store.ListFlowsByOU(context.Background(), "ou-1", 2, 1, "")
+
+	s.NoError(err)
+	s.Equal(3, count)
+	s.Require().Len(flows, 2)
+	s.Equal("flow-2", flows[0].ID)
+	s.Equal("ou-1", flows[0].OUID)
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsByOUOfOneType() {
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlowsByOUWithType, "ou-1", "AUTHENTICATION",
+		"test-deployment").Return([]map[string]interface{}{{colCount: int64(1)}}, nil).Once()
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryListFlowsByOUWithType, "ou-1", "AUTHENTICATION",
+		"test-deployment", 10, 0).
+		Return([]map[string]interface{}{flowRow("flow-1", "AUTHENTICATION")}, nil).Once()
+
+	flows, count, err := s.store.ListFlowsByOU(context.Background(), "ou-1", 10, 0, "AUTHENTICATION")
+
+	s.NoError(err)
+	s.Equal(1, count)
+	s.Len(flows, 1)
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsByOUReportsEitherQueryFailing() {
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil).Twice()
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlowsByOU, "ou-1", "test-deployment").
+		Return(nil, errors.New("count failed")).Once()
+	_, _, err := s.store.ListFlowsByOU(context.Background(), "ou-1", 10, 0, "")
+	s.ErrorContains(err, "failed to count the flows of an organization unit")
+
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlowsByOU, "ou-1", "test-deployment").
+		Return([]map[string]interface{}{{colCount: int64(1)}}, nil).Once()
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryListFlowsByOU, "ou-1", "test-deployment", 10, 0).
+		Return(nil, errors.New("list failed")).Once()
+	_, _, err = s.store.ListFlowsByOU(context.Background(), "ou-1", 10, 0, "")
+	s.ErrorContains(err, "failed to list the flows of an organization unit")
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsByIDsNamesTheIDsAndTheType() {
+	query, args := buildListFlowsByIDsQuery([]string{"a", "b"}, "REGISTRATION", "dep")
+
+	s.Equal([]interface{}{"dep", "REGISTRATION", "a", "b"}, args)
+	s.Contains(query.PostgresQuery, "WHERE DEPLOYMENT_ID = $1 AND FLOW_TYPE = $2 AND ID IN ($3, $4)")
+	s.Contains(query.SQLiteQuery, "WHERE DEPLOYMENT_ID = ? AND FLOW_TYPE = ? AND ID IN (?, ?)")
+
+	query, args = buildListFlowsByIDsQuery([]string{"a"}, "", "dep")
+	s.Equal([]interface{}{"dep", "a"}, args)
+	s.Contains(query.PostgresQuery, "WHERE DEPLOYMENT_ID = $1 AND ID IN ($2)")
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsByIDsReadsInChunks() {
+	ids := make([]string, flowIDsPerQuery+1)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("flow-%d", i)
+	}
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	for _, chunk := range [][]string{ids[:flowIDsPerQuery], ids[flowIDsPerQuery:]} {
+		query, args := buildListFlowsByIDsQuery(chunk, "", "test-deployment")
+		s.mockDBClient.EXPECT().QueryContext(mock.Anything, query, args...).
+			Return([]map[string]interface{}{flowRow(chunk[0], "AUTHENTICATION")}, nil).Once()
+	}
+
+	flows, err := s.store.ListFlowsByIDs(context.Background(), ids, "")
+
+	s.NoError(err)
+	s.Require().Len(flows, 2, "more IDs than one query takes are read in two")
+	s.Equal("flow-0", flows[0].ID)
+	s.Equal(fmt.Sprintf("flow-%d", flowIDsPerQuery), flows[1].ID)
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsByIDsReportsAFailure() {
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	query, args := buildListFlowsByIDsQuery([]string{"a"}, "", "test-deployment")
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, query, args...).
+		Return(nil, errors.New("query failed")).Once()
+
+	flows, err := s.store.ListFlowsByIDs(context.Background(), []string{"a"}, "")
+
+	s.ErrorContains(err, "failed to list flows by ID")
+	s.Nil(flows)
 }

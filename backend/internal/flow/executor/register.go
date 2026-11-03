@@ -253,6 +253,7 @@ type ExecutorDependencies struct {
 	ObservabilitySvc       providers.ObservabilityProvider
 	IdentityGovernance     providers.IdentityGovernanceProvider
 	ArtifactLifetime       artifactLifetimeResolver
+	AuthzDetailProvider    providers.AuthorizationDetailProvider
 	tokenLeeway            time.Duration
 }
 
@@ -316,6 +317,10 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			reg.RegisterExecutor(ExecutorNameAuthorization, newAuthorizationExecutor(
 				deps.FlowFactory, deps.AuthZService, deps.EntityProvider, deps.AuthnProvider,
 				deps.ResourceService))
+		},
+		ExecutorNameAuthorizationDetail: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameAuthorizationDetail, newAuthorizationDetailExecutor(
+				deps.FlowFactory, deps.AuthzDetailProvider, deps.AuthnProvider))
 		},
 		ExecutorNameHTTPRequest: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameHTTPRequest, newHTTPRequestExecutor(deps.FlowFactory, deps.OUService,
@@ -565,9 +570,9 @@ type roleAdminProvider interface {
 
 // roleAssignmentAdminProvider is the assignment seam the access change validator and role executor consume.
 type roleAssignmentAdminProvider interface {
-	ValidateRemoveAssignment(ctx context.Context, id, assigneeID string) (
+	ValidateRemoveAssignment(ctx context.Context, id, ouID, assigneeID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
-	RemoveAssignments(ctx context.Context, id string, assignments []role.RoleAssignment) *tidcommon.ServiceError
+	RemoveAssignments(ctx context.Context, id, ouID string, assignments []role.RoleAssignment) *tidcommon.ServiceError
 }
 
 // groupAdminProvider is the group seam the group executor consumes.

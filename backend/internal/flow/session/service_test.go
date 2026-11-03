@@ -79,6 +79,12 @@ func liveStoreSession() *Session {
 	}
 }
 
+func (suite *ServiceTestSuite) TestAbsoluteTimeout() {
+	svc, _ := suite.newService()
+
+	suite.Equal(DefaultTimeouts().Absolute, svc.AbsoluteTimeout())
+}
+
 // --- Resolve ---
 
 func (suite *ServiceTestSuite) TestResolve_Hit() {

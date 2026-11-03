@@ -1007,6 +1007,9 @@ func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext
 			{Type: providers.OAuthInboundAuthType, OAuthConfig: oauthConfig},
 		},
 	}
+	if validUntil := collectedValue(nodeCtx, validUntilKey); validUntil != "" {
+		agent.ValidUntil = &validUntil
+	}
 	// The callback URIs, login flow and user type belong to a delegated agent, and all three are
 	// required with delegation, so leftovers from an earlier choice are not applied to one that acts
 	// on its own behalf. The service validates all three.

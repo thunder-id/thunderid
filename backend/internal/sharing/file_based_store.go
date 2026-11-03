@@ -195,6 +195,13 @@ func (f *fileBasedStore) GetOverlayValues(
 	return nil, errFileStoreReadOnly
 }
 
+// ListOverlayValuesForResource is refused: an organization unit's own values are database rows.
+func (f *fileBasedStore) ListOverlayValuesForResource(
+	_ context.Context, _ ResourceType, _ string,
+) (map[string]map[string][]string, error) {
+	return nil, errFileStoreReadOnly
+}
+
 // SetOverlayValue is refused: an organization unit's own values are database rows.
 func (f *fileBasedStore) SetOverlayValue(
 	_ context.Context, _ ResourceType, _, _, _ string, _ []string,
@@ -209,6 +216,11 @@ func (f *fileBasedStore) DeleteOverlayValue(_ context.Context, _ ResourceType, _
 
 // DeleteOverlayValuesForOU is refused: an organization unit's own values are database rows.
 func (f *fileBasedStore) DeleteOverlayValuesForOU(_ context.Context, _ ResourceType, _, _ string) error {
+	return errFileStoreReadOnly
+}
+
+// DeleteField is refused: the rules and values of a field are database rows.
+func (f *fileBasedStore) DeleteField(_ context.Context, _ ResourceType, _, _ string) error {
 	return errFileStoreReadOnly
 }
 

@@ -1,0 +1,34 @@
+# Integrate {{productName}} Authentication in iOS Application
+
+## Context
+I have an iOS application (Swift, SwiftUI) and I want to integrate {{productName}}'s authentication system using the {{productName}} iOS SDK, with sign-in and sign-up forms rendered natively in the app (app-native authentication).
+
+## Requirements
+- Use the `ThunderIDSwiftUI` Swift package for authentication
+- Use app-native authentication through the Flow Execution API (no OAuth 2.0 client ID, no redirect URI)
+- Implement sign-in and sign-up with the prebuilt `SignIn`/`SignUp` views
+- Guard content with the `SignedIn`/`SignedOut` views
+- Display the signed-in user's profile information
+- Implement sign-out with the prebuilt `SignOutButton` view
+
+## Configuration
+- **Application ID**: {{applicationId}}
+- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **SDK**: ThunderIDSwiftUI (Swift Package Manager) — package URL `https://github.com/thunder-id/ios-sdks`, no CocoaPods support yet
+
+## IMPORTANT Configuration Rules
+- Apply the `.thunderIDProvider(config:)` modifier to the root view in your app's entry point (the type conforming to `App`), configured with `ThunderIDConfig(baseUrl, scopes, applicationId)`
+- Access authentication state via an injected `ThunderIDState` `@EnvironmentObject`, not a separate hook or singleton
+- Required scopes: at minimum `"openid"`
+- Use `applicationId`, NOT a client ID or redirect URI — this SDK only supports app-native authentication
+
+## Implementation Steps
+1. Create a new Xcode project using the iOS > App template with SwiftUI and Swift
+2. Add the `ThunderIDSwiftUI` package via File > Add Package Dependencies, using package URL `https://github.com/thunder-id/ios-sdks` and the latest release tag from https://github.com/thunder-id/ios-sdks/releases
+3. Apply `.thunderIDProvider(config:)` to your root view, configured with `baseUrl`, `scopes`, and `applicationId`
+4. Build a root view that checks `state.isInitialized` and renders a `SignedIn`/fallback split
+5. Build an auth view using the `SignIn` view, passing the `applicationId`
+6. Build a home view that reads `state.user` to display the signed-in user's name and email, with a `SignOutButton`
+7. Run the app on an iOS 16+ simulator or device
+
+Please provide complete, working code with proper configuration for {{productName}} authentication using the {{productName}} iOS SDK for SwiftUI.

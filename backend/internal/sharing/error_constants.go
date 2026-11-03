@@ -493,6 +493,10 @@ var (
 // because it names which of the document's policies was refused and why.
 var errReplayRefused = errors.New("sharing policy replay refused")
 
+// errOverlayReplaceRefused rolls back a replacement of the values an organization unit holds, when one field of it is
+// refused. The refusal itself travels out separately.
+var errOverlayReplaceRefused = errors.New("overlay replacement refused")
+
 // errPolicyPurgeRefused rolls back a resource's policy purge. The refusal itself travels out
 // separately, so the caller sees which policy could not be removed.
 var errPolicyPurgeRefused = errors.New("sharing policy purge refused")

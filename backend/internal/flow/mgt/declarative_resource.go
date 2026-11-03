@@ -6,11 +6,14 @@ package flowmgt
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	"github.com/thunder-id/thunderid/internal/sharing"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -25,17 +28,51 @@ const (
 
 // flowGraphExporter implements declarativeresource.ResourceExporter for flow graphs.
 type flowGraphExporter struct {
-	service FlowMgtServiceInterface
+	service    FlowMgtServiceInterface
+	sharingSvc sharing.SharingServiceInterface
+}
+
+// FlowUnitValues are the values one organization unit saved for the variables of a flow, as a document carries them,
+// keyed by the identifier of each variable.
+type FlowUnitValues struct {
+	OUID   string                 `yaml:"ouId" json:"ouId"`
+	Values map[string]interface{} `yaml:"values" json:"values"`
+}
+
+// flowDeclarativeResource is a flow as an export writes it, with the sharing policies that govern it and the values
+// the organization units it is shared with saved carried alongside.
+type flowDeclarativeResource struct {
+	providers.CompleteFlowDefinition `yaml:",inline"`
+
+	SharingPolicies []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty" json:"sharingPolicies,omitempty"`
+	VariableValues  []FlowUnitValues        `yaml:"variableValues,omitempty" json:"variableValues,omitempty"`
+}
+
+// flowOf reads the flow out of either shape the export pipeline hands around: the document this package writes, and
+// the bare flow.
+func flowOf(resource interface{}) (*providers.CompleteFlowDefinition, bool) {
+	switch v := resource.(type) {
+	case *flowDeclarativeResource:
+		return &v.CompleteFlowDefinition, true
+	case *providers.CompleteFlowDefinition:
+		return v, true
+	default:
+		return nil, false
+	}
 }
 
 // newFlowGraphExporter creates a new flow graph exporter.
-func newFlowGraphExporter(service FlowMgtServiceInterface) *flowGraphExporter {
-	return &flowGraphExporter{service: service}
+func newFlowGraphExporter(
+	service FlowMgtServiceInterface, sharingSvc sharing.SharingServiceInterface,
+) *flowGraphExporter {
+	return &flowGraphExporter{service: service, sharingSvc: sharingSvc}
 }
 
 // NewFlowGraphExporterForTest creates a new flow graph exporter for testing purposes.
-func NewFlowGraphExporterForTest(service FlowMgtServiceInterface) *flowGraphExporter {
-	return newFlowGraphExporter(service)
+func NewFlowGraphExporterForTest(
+	service FlowMgtServiceInterface, sharingSvc sharing.SharingServiceInterface,
+) *flowGraphExporter {
+	return newFlowGraphExporter(service, sharingSvc)
 }
 
 // GetResourceType returns the resource type for flow graphs.
@@ -61,7 +98,8 @@ func (e *flowGraphExporter) GetAllResourceIDs(ctx context.Context) ([]string, *t
 	return ids, nil
 }
 
-// GetResourceByID retrieves a flow graph by its ID.
+// GetResourceByID retrieves a flow graph by its ID, with the sharing policies recorded for it and the values the
+// organization units it is shared with saved.
 func (e *flowGraphExporter) GetResourceByID(ctx context.Context, id string) (
 	interface{}, string, *tidcommon.ServiceError,
 ) {
@@ -69,14 +107,60 @@ func (e *flowGraphExporter) GetResourceByID(ctx context.Context, id string) (
 	if err != nil {
 		return nil, "", err
 	}
-	return flow, flow.Name, nil
+	exported := &flowDeclarativeResource{CompleteFlowDefinition: *flow}
+	// A document that silently lost its sharing would re-import as a flow nobody else can use, so this fails the
+	// export rather than thinning it.
+	replayable, sharingErr := e.sharingSvc.ExportPolicies(ctx, FlowSharingType, id)
+	if sharingErr != nil {
+		return nil, "", translateSharingError(sharingErr)
+	}
+	for _, r := range replayable {
+		exported.SharingPolicies = append(exported.SharingPolicies, r.Request)
+	}
+
+	// The values are what a unit chose within the terms of those policies, so a document that left them out would
+	// import as a flow every unit has to be set up for again.
+	exported.VariableValues, sharingErr = e.unitValues(ctx, id)
+	if sharingErr != nil {
+		return nil, "", sharingErr
+	}
+	return exported, flow.Name, nil
+}
+
+// unitValues reads the values each organization unit saved for a flow, in the order of the units.
+func (e *flowGraphExporter) unitValues(ctx context.Context, flowID string) (
+	[]FlowUnitValues, *tidcommon.ServiceError,
+) {
+	held, sharingErr := e.sharingSvc.ListOverlayValues(ctx, FlowSharingType, flowID)
+	if sharingErr != nil {
+		return nil, translateSharingError(sharingErr)
+	}
+	ouIDs := make([]string, 0, len(held))
+	for ouID, byField := range held {
+		if len(byField) > 0 {
+			ouIDs = append(ouIDs, ouID)
+		}
+	}
+	slices.Sort(ouIDs)
+
+	var out []FlowUnitValues
+	for _, ouID := range ouIDs {
+		saved, svcErr := e.service.GetVariables(ctx, flowID, ouID)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		if len(saved.Values) > 0 {
+			out = append(out, FlowUnitValues{OUID: ouID, Values: saved.Values})
+		}
+	}
+	return out, nil
 }
 
 // ValidateResource validates a flow graph resource.
 func (e *flowGraphExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
-	flow, ok := resource.(*providers.CompleteFlowDefinition)
+	flow, ok := flowOf(resource)
 	if !ok {
 		return "", declarativeresource.CreateTypeError(resourceTypeFlow, id)
 	}
@@ -185,4 +269,71 @@ func validateFlowGraphWrapper(v FlowValidatorInterface, ouSvc ouProvider) func(i
 
 		return nil
 	}
+}
+
+// ParseFlowSharing decodes the sharing policies a flow document carries and the values the organization units saved.
+// Used by the runtime import service, which applies them once the flow itself is written.
+func ParseFlowSharing(node *yaml.Node) ([]sharing.PolicyRequest, []FlowUnitValues, error) {
+	var doc flowDeclarativeResource
+	if err := node.Decode(&doc); err != nil {
+		return nil, nil, fmt.Errorf("failed to parse flow document: %w", err)
+	}
+	return doc.SharingPolicies, doc.VariableValues, nil
+}
+
+// makeFlowSharingConfig creates the loader config the sharing framework reads a flow's declared policies with. It names
+// the flows directory, because a policy is carried inside the flow that declares it rather than in a document of its
+// own.
+func (s *flowMgtService) makeFlowSharingConfig() sharing.DeclarativeLoaderConfig {
+	return sharing.DeclarativeLoaderConfig{
+		ResourceType:  FlowSharingType,
+		DirectoryName: "flows",
+		Parser:        s.parseFlowSharing,
+	}
+}
+
+// parseFlowSharing reads the sharing half of one flow document. The organization unit is resolved here because a
+// document may name it by handle, and the terms are checked against the variables the document declares.
+func (s *flowMgtService) parseFlowSharing(data []byte) (*sharing.DeclaredResourcePolicies, error) {
+	var doc flowDeclarativeResource
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("failed to parse flow YAML: %w", err)
+	}
+	// Most documents declare no policy, and checking one that has nothing to declare would be a second pass for an
+	// answer already known.
+	if len(doc.SharingPolicies) == 0 {
+		return &sharing.DeclaredResourcePolicies{ResourceID: doc.ID}, nil
+	}
+
+	ctx := security.WithRuntimeContext(context.Background())
+	if doc.OUID == "" && doc.OUHandle == "" {
+		return nil, fmt.Errorf("flow resource %q needs an organization unit, give its ouId or ouHandle", doc.ID)
+	}
+	ouID, svcErr := s.ouSvc.ResolveOwner(ctx, doc.OUID, doc.OUHandle, flowOwnerErrors)
+	if svcErr != nil {
+		return nil, fmt.Errorf("organization unit of flow resource %q could not be resolved: %s",
+			doc.ID, svcErr.ErrorDescription.DefaultValue)
+	}
+	doc.OUID = ouID
+	for _, policy := range doc.SharingPolicies {
+		if svcErr := s.validatePolicyVariables(ctx, &doc.CompleteFlowDefinition, policy); svcErr != nil {
+			return nil, fmt.Errorf("error validating the sharing policies of flow '%s': %s",
+				doc.Name, svcErr.ErrorDescription.DefaultValue)
+		}
+	}
+	return &sharing.DeclaredResourcePolicies{
+		ResourceID:   doc.ID,
+		ResourceName: doc.Name,
+		OwningOUID:   doc.OUID,
+		Policies:     doc.SharingPolicies,
+	}, nil
+}
+
+// loadDeclarativeSharing seeds the sharing policies the flow files declare. It runs under the same condition as the
+// flows themselves.
+func (s *flowMgtService) loadDeclarativeSharing() error {
+	if mode := getFlowStoreMode(); mode != serverconst.StoreModeComposite && mode != serverconst.StoreModeDeclarative {
+		return nil
+	}
+	return s.sharingSvc.LoadDeclarativeResources(context.Background(), s.makeFlowSharingConfig())
 }

@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package authz
@@ -502,10 +502,12 @@ func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_MissingClientID
 	result, err := createAuthorizationCode(authorizeServiceCfgFromRuntime(), authRequestCtx, clms, authTime)
 
 	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "client_id or redirect_uri is missing")
+	assert.Contains(suite.T(), err.Error(), "client_id is missing")
 	assert.Equal(suite.T(), AuthorizationCode{}, result)
 }
 
+// TestGetAuthorizationCode_MissingRedirectURI covers a code not delivered by redirect, as a silent
+// authorization with an SSO session mints: it is created without one.
 func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_MissingRedirectURI() {
 	authRequestCtx := &authRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
@@ -519,9 +521,9 @@ func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_MissingRedirect
 
 	result, err := createAuthorizationCode(authorizeServiceCfgFromRuntime(), authRequestCtx, clms, authTime)
 
-	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "client_id or redirect_uri is missing")
-	assert.Equal(suite.T(), AuthorizationCode{}, result)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "test-client", result.ClientID)
+	assert.Empty(suite.T(), result.RedirectURI)
 }
 
 func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_EmptyUserID() {

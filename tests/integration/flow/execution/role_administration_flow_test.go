@@ -4,6 +4,9 @@
 package execution
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -17,8 +20,9 @@ import (
 const roleAssignmentRemovalFlowHandle = "default-role-assignment-removal-flow"
 
 const (
-	roleTargetInput     = "targetRoleId"
-	assigneeTargetInput = "targetAssigneeId"
+	roleTargetInput           = "targetRoleId"
+	assigneeTargetInput       = "targetAssigneeId"
+	assignmentOUIDTargetInput = "targetAssignmentOuId"
 )
 
 const (
@@ -40,6 +44,11 @@ var (
 		secret:   "role_admin_flow_other_secret", // #nosec G101 -- test fixture, not a credential
 		audience: roleFlowResourceID,
 	}
+	roleFlowChildClient = machineClient{
+		id:       "role_admin_flow_child_client",
+		secret:   "role_admin_flow_child_secret", // #nosec G101 -- test fixture, not a credential
+		audience: roleFlowResourceID,
+	}
 )
 
 const (
@@ -52,11 +61,13 @@ const (
 	// Held only by the second principal, through a role the first was never given.
 	scopeNotAssigned   = "fishing-license"
 	scopeGroupAssignee = "hunting-license"
+	// Held only through an assignment made in an organization unit the role is shared with.
+	scopeSharedOU = "boating-permit"
 )
 
 var allRoleFlowScopes = []string{
 	scopeRevocation, scopeRegrant, scopeEmptyRole, scopeUntouched, scopeProtected, scopeOtherAssignee,
-	scopeNotAssigned, scopeGroupAssignee,
+	scopeNotAssigned, scopeGroupAssignee, scopeSharedOU,
 }
 
 var roleAdminFlowTestOU = testutils.OrganizationUnit{
@@ -323,6 +334,103 @@ func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_GroupAs
 	members, err := testutils.GetGroupMembers(groupID)
 	ts.Require().NoError(err, "Failed to read the group's members")
 	ts.Len(members, 1, "Unassigning the group must not change its membership")
+}
+
+// An assignment made in an organization unit the role is shared with is removed where it was made, and
+// only when the flow names that unit: without it the flow looks in the role's owner and finds nothing.
+func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_RemovesAnAssignmentMadeInASharedOU() {
+	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle:      "role_admin_flow_child_ou",
+		Name:        "Child OU for Role Administration Flows",
+		Description: "Organization unit a role is shared with, for role administration flow testing",
+		Parent:      &ts.ouID,
+	})
+	ts.Require().NoError(err, "Failed to create the child organization unit")
+	defer func() {
+		if err := testutils.DeleteOrganizationUnit(childOUID); err != nil {
+			ts.T().Logf("Failed to delete the child organization unit: %v", err)
+		}
+	}()
+
+	childAppID, err := testutils.CreateApplication(testutils.Application{
+		Name:        "Role Flow Child Machine Client",
+		Description: "Principal owned by the organization unit the role is shared with",
+		OUID:        childOUID,
+		InboundAuthConfig: []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                roleFlowChildClient.id,
+					"clientSecret":            roleFlowChildClient.secret,
+					"grantTypes":              []string{"client_credentials"},
+					"tokenEndpointAuthMethod": "client_secret_basic",
+				},
+			},
+		},
+	})
+	ts.Require().NoError(err, "Failed to create the child application")
+	defer func() {
+		if err := testutils.DeleteApplication(childAppID); err != nil {
+			ts.T().Logf("Failed to delete the child application: %v", err)
+		}
+	}()
+
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name:        "Role Flow Shared OU Administrator",
+		Description: "Role created for flow execution testing",
+		OUID:        ts.ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.resourceServerID, Permissions: []string{scopeSharedOU}},
+		},
+	})
+	ts.Require().NoError(err, "Failed to create test role")
+	defer func() {
+		if err := testutils.DeleteRole(roleID); err != nil {
+			ts.T().Logf("Failed to delete test role %s: %v", roleID, err)
+		}
+	}()
+	ts.postRoleJSON(roleID, "sharing-policies", http.StatusCreated, map[string]interface{}{
+		"childUnits": map[string]interface{}{
+			"mode": "selected", "units": []map[string]string{{"ouId": childOUID, "reach": "unit"}},
+		},
+	})
+	ts.postRoleJSON(roleID, "assignments/add", http.StatusNoContent, map[string]interface{}{
+		"ouId": childOUID, "assignments": []map[string]string{{"id": childAppID, "type": "app"}},
+	})
+
+	token := grantedToken(&ts.Suite, roleFlowChildClient, scopeSharedOU)
+
+	step := ts.executeRoleFlow(roleID, childAppID)
+
+	ts.NotEqual("COMPLETE", step.FlowStatus, "Without the organization unit the flow looks in the role's owner")
+	ts.Require().NotNil(step.Error, "The refusal must be reported in the error envelope")
+	ts.Equal(errCodeRoleAssignmentNotFound, step.Error.Code)
+	ts.True(tokenIsActive(&ts.Suite, roleFlowChildClient, token), "A refused unassignment must not revoke")
+	ts.Equal(1, ts.assignmentCount(roleID), "A refused unassignment must leave the assignment")
+
+	step = executeAsAdmin(&ts.Suite, ts.flowID, map[string]string{
+		roleTargetInput: roleID, assigneeTargetInput: childAppID, assignmentOUIDTargetInput: childOUID,
+	})
+
+	ts.Equal("COMPLETE", step.FlowStatus, "The flow must complete")
+	ts.False(tokenIsActive(&ts.Suite, roleFlowChildClient, token), "The token carrying the lost scope must be rejected")
+	ts.Equal(0, ts.assignmentCount(roleID), "The assignment made in the shared organization unit must be removed")
+}
+
+// postRoleJSON posts body to a path beneath the role and requires the given status.
+func (ts *RoleAdministrationFlowTestSuite) postRoleJSON(roleID, path string, status int, body interface{}) {
+	ts.T().Helper()
+
+	payload, err := json.Marshal(body)
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost,
+		fmt.Sprintf("%s/roles/%s/%s", testutils.TestServerURL, roleID, path), bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(status, resp.StatusCode, "POST /roles/%s/%s", roleID, path)
 }
 
 func (ts *RoleAdministrationFlowTestSuite) createRoleAssignedToApp(

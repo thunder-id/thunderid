@@ -48,7 +48,10 @@ func (f *fakeAuthZENPDPService) DeleteAuthZENPDPConnection(context.Context, stri
 	return nil
 }
 
-func (f *fakeFlowService) DeleteFlow(context.Context, string) *tidcommon.ServiceError { return nil }
+func (f *fakeFlowService) DeleteFlow(_ context.Context, id string) *tidcommon.ServiceError {
+	f.deleted = append(f.deleted, id)
+	return nil
+}
 
 func (f *fakeThemeService) DeleteTheme(context.Context, string) *tidcommon.ServiceError { return nil }
 

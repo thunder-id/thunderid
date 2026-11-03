@@ -28,6 +28,7 @@ info:
     
     ## Variables
     A step can use a variable declared on a `VARIABLES` node as `{{var(identifier)}}` in the string values of its `properties`.
+    A `VARIABLES` node needs an `OUResolverExecutor` step before it on every route, and resolves the values of the unit that step picks.
 
     ## Representation Modes
     - **Verbose Mode**: Includes full UI metadata (components, layouts, labels) for visual flow composer and runtime rendering
@@ -57,6 +58,10 @@ tags:
     description: CRUD operations for flow definitions.
   - name: Flow Versioning
     description: Operations for listing and activating flow versions.
+  - name: Flow Sharing
+    description: Share a flow with child organization units, and see what was shared.
+  - name: Flow Variables
+    description: Read and override the variables of a flow for an organization unit.
 
 security:
   - OAuth2: [system]
@@ -96,6 +101,7 @@ paths:
             type: integer
             minimum: 0
             default: 0
+        - $ref: '#/components/parameters/FlowFilter'
       responses:
         '200':
           description: List of flows retrieved successfully
@@ -103,6 +109,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FlowListResponse'
+              example:
+                totalResults: 2
+                startIndex: 1
+                count: 2
+                flows:
+                  - id: 0193b0a1-1001-7000-8000-000000000042
+                    handle: acme-login
+                    name: Acme Login Flow
+                    flowType: AUTHENTICATION
+                    ouId: 0193b0a1-2001-7000-8000-000000000001
+                    isOwnedByOU: false
+                    isReadOnly: true
+                    activeVersion: 2
+                    createdAt: '2026-08-20T09:00:00Z'
+                    updatedAt: '2026-09-30T16:05:42Z'
+                  - id: 0193b0a1-1001-7000-8000-000000000077
+                    handle: emea-registration
+                    name: EMEA Registration Flow
+                    flowType: REGISTRATION
+                    ouId: 0193b0a1-2001-7000-8000-000000000002
+                    isOwnedByOU: true
+                    isReadOnly: false
+                    activeVersion: 3
+                    createdAt: '2026-09-02T08:15:00Z'
+                    updatedAt: '2026-10-11T12:40:10Z'
+                links: []
         '400':
           description: Invalid query parameters
           content:
@@ -141,6 +173,102 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/FlowDefinitionCreateRequest'
+            examples:
+              acmeLogin:
+                summary: A login flow in the parent organization unit, with variables
+                value:
+                  handle: acme-login
+                  name: Acme Login Flow
+                  flowType: AUTHENTICATION
+                  ouId: 0193b0a1-2001-7000-8000-000000000001
+                  nodes:
+                    - id: start
+                      type: START
+                      onSuccess: resolve_ou
+                    - id: resolve_ou
+                      type: TASK_EXECUTION
+                      executor:
+                        name: OUResolverExecutor
+                      properties:
+                        resolveFrom: prompt
+                        parentOuId: 0193b0a1-2001-7000-8000-000000000001
+                      onSuccess: resolve_variables
+                    - id: resolve_variables
+                      type: VARIABLES
+                      inputs:
+                        - identifier: supportEmail
+                          type: EMAIL_INPUT
+                          label: Support email
+                          description: Shown to users who cannot sign in
+                          defaultValue: support@example.com
+                        - identifier: otpValiditySeconds
+                          type: NUMBER_INPUT
+                          label: OTP validity in seconds
+                          defaultValue: 120
+                          min: 30
+                          max: 600
+                        - identifier: mfaMode
+                          type: SELECT
+                          label: Second factor
+                          options:
+                            - NONE
+                            - SMS_OTP
+                            - EMAIL_OTP
+                          defaultValue: NONE
+                        - identifier: showRegistrationLink
+                          type: BOOLEAN_INPUT
+                          label: Show the sign-up link
+                          defaultValue: true
+                        - identifier: socialLogin
+                          type: CONNECTION_SELECT
+                          label: Social sign-in provider
+                          category: IDENTITY_PROVIDER
+                          connectionTypes:
+                            - google
+                            - github
+                          defaultValue: 019e201d-5634-7533-a971-538b66914721
+                      onSuccess: prompt_credentials
+                    - id: prompt_credentials
+                      type: PROMPT
+                      meta:
+                        components:
+                          - type: TEXT
+                            id: heading
+                            label: Sign in
+                            variant: HEADING_1
+                          - type: TEXT
+                            id: help
+                            label: Trouble signing in? Write to {{var(supportEmail)}}
+                            variant: BODY_1
+                      prompts:
+                        - inputs:
+                            - ref: input_username
+                              identifier: username
+                              type: TEXT_INPUT
+                              required: true
+                            - ref: input_password
+                              identifier: password
+                              type: PASSWORD_INPUT
+                              required: true
+                          action:
+                            ref: action_signin
+                            nextNode: basic_auth
+                    - id: basic_auth
+                      type: TASK_EXECUTION
+                      executor:
+                        name: CredentialsAuthExecutor
+                      onSuccess: send_otp
+                      onFailure: prompt_credentials
+                    - id: send_otp
+                      type: TASK_EXECUTION
+                      properties:
+                        validitySeconds: '{{var(otpValiditySeconds)}}'
+                        channel: '{{var(mfaMode)}}'
+                      executor:
+                        name: SMSOTPAuthExecutor
+                      onSuccess: end
+                    - id: end
+                      type: END
       responses:
         '201':
           description: Flow created successfully
@@ -187,13 +315,117 @@ paths:
           description: Unique identifier of the flow
           schema:
             type: string
+        - name: ouId
+          in: query
+          required: false
+          description: The organization unit to see the flow as. A flow it owns comes back whole, one shared with it comes back as its variables only. Leave it out for the whole definition.
+          schema:
+            type: string
+          example: 0193b0a1-2001-7000-8000-000000000002
       responses:
         '200':
           description: Flow retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FlowDefinitionResponse'
+                oneOf:
+                  - $ref: '#/components/schemas/FlowDefinitionResponse'
+                  - $ref: '#/components/schemas/SharedFlowResponse'
+              examples:
+                owned:
+                  summary: A flow the requested organization unit owns (the whole definition)
+                  value:
+                    id: 0193b0a1-1001-7000-8000-000000000042
+                    handle: acme-login
+                    name: Acme Login Flow
+                    flowType: AUTHENTICATION
+                    ouId: 0193b0a1-2001-7000-8000-000000000001
+                    isOwnedByOU: true
+                    isReadOnly: false
+                    activeVersion: 3
+                    createdAt: '2026-09-02T08:15:00Z'
+                    updatedAt: '2026-10-11T12:40:10Z'
+                    nodes:
+                      - id: start
+                        type: START
+                        onSuccess: resolve_ou
+                      - id: resolve_ou
+                        type: TASK_EXECUTION
+                        executor:
+                          name: OUResolverExecutor
+                        properties:
+                          resolveFrom: prompt
+                          parentOuId: 0193b0a1-2001-7000-8000-000000000001
+                        onSuccess: resolve_variables
+                      - id: resolve_variables
+                        type: VARIABLES
+                        inputs:
+                          - identifier: supportEmail
+                            type: EMAIL_INPUT
+                            label: Support email
+                            description: Shown to users who cannot sign in
+                            defaultValue: support@example.com
+                          - identifier: mfaMode
+                            type: SELECT
+                            label: Second factor
+                            options:
+                              - NONE
+                              - SMS_OTP
+                              - EMAIL_OTP
+                            defaultValue: NONE
+                        onSuccess: prompt_credentials
+                      - id: prompt_credentials
+                        type: PROMPT
+                        meta:
+                          components:
+                            - type: TEXT
+                              id: help
+                              label: Trouble signing in? Write to {{var(supportEmail)}}
+                              variant: BODY_1
+                        prompts:
+                          - inputs:
+                              - ref: input_username
+                                identifier: username
+                                type: TEXT_INPUT
+                                required: true
+                              - ref: input_password
+                                identifier: password
+                                type: PASSWORD_INPUT
+                                required: true
+                            action:
+                              ref: action_signin
+                              nextNode: basic_auth
+                      - id: basic_auth
+                        type: TASK_EXECUTION
+                        executor:
+                          name: CredentialsAuthExecutor
+                        onSuccess: end
+                        onFailure: prompt_credentials
+                      - id: end
+                        type: END
+                shared:
+                  summary: A flow shared with the requested organization unit (the variables only)
+                  value:
+                    id: 0193b0a1-1001-7000-8000-000000000042
+                    handle: acme-login
+                    name: Acme Login Flow
+                    flowType: AUTHENTICATION
+                    ouId: 0193b0a1-2001-7000-8000-000000000001
+                    isOwnedByOU: false
+                    isReadOnly: true
+                    variables:
+                      - identifier: supportEmail
+                        type: EMAIL_INPUT
+                        label: Support email
+                        description: Shown to users who cannot sign in
+                        defaultValue: support@example.com
+                      - identifier: mfaMode
+                        type: SELECT
+                        label: Second factor
+                        options:
+                          - SMS_OTP
+                          - EMAIL_OTP
+                        defaultValue: EMAIL_OTP
         '404':
           description: Flow not found
           content:
@@ -277,7 +509,46 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: The caller does not act for the organization unit that owns the flow, as is the case for a flow that was only shared with it, so it cannot be changed (FLM-1039)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FLM-1039
+                message:
+                  key: error.flowmgtservice.shared_flow_read_only
+                  defaultValue: Shared flow cannot be modified
+                description:
+                  key: error.flowmgtservice.shared_flow_read_only_description
+                  defaultValue: The flow is owned by another organization unit and can only be configured through its variables
+        '409':
+          description: The new definition breaks a sharing policy of a variable it keeps (FLM-1041) or invalidates a value an organization unit saved (FLM-1042)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                sharing-policy:
+                  summary: A variable that is kept no longer fits a sharing policy
+                  value:
+                    code: FLM-1041
+                    message:
+                      key: error.flowmgtservice.flow_conflicts_with_sharing_policy
+                      defaultValue: Flow conflicts with a sharing policy
+                    description:
+                      key: error.flowmgtservice.flow_conflicts_with_sharing_policy_description
+                      defaultValue: The change breaks a sharing policy of the flow. Update or delete the policy first
+                saved-values:
+                  summary: A value an organization unit saved is no longer valid
+                  value:
+                    code: FLM-1042
+                    message:
+                      key: error.flowmgtservice.flow_conflicts_with_saved_values
+                      defaultValue: Flow conflicts with saved values
+                    description:
+                      key: error.flowmgtservice.flow_conflicts_with_saved_values_description
+                      defaultValue: The change invalidates values that organization units saved for the variables. Ask them to change those values, or update or delete the sharing policy that reaches them, first
         '500':
           description: Internal server error
           content:
@@ -298,6 +569,7 @@ paths:
           description: Unique identifier of the flow to delete
           schema:
             type: string
+        - $ref: '#/components/parameters/OptionalOuId'
       responses:
         '204':
           description: Flow deleted successfully
@@ -331,7 +603,17 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: The caller may not delete the flow. With `ouId` naming an organization unit the flow was only shared with, FLM-1039.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Flow not found (FLM-1003), or with `ouId`, not owned by that organization unit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Internal server error
           content:
@@ -354,6 +636,7 @@ paths:
           description: Unique identifier of the flow
           schema:
             type: string
+        - $ref: '#/components/parameters/OptionalOuId'
       responses:
         '200':
           description: Flow version history retrieved successfully
@@ -408,6 +691,7 @@ paths:
           description: Unique identifier of the flow
           schema:
             type: string
+        - $ref: '#/components/parameters/OptionalOuId'
       responses:
         '200':
           description: Resources that reference this flow
@@ -476,6 +760,7 @@ paths:
           schema:
             type: integer
             minimum: 1
+        - $ref: '#/components/parameters/OptionalOuId'
       responses:
         '200':
           description: Flow version retrieved successfully
@@ -524,6 +809,7 @@ paths:
           description: Unique identifier of the flow
           schema:
             type: string
+        - $ref: '#/components/parameters/OptionalOuId'
       requestBody:
         required: true
         content:
@@ -569,8 +855,411 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: The version breaks a sharing policy of a variable it keeps (FLM-1041) or invalidates a value an organization unit saved (FLM-1042)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                sharing-policy:
+                  summary: A variable that is kept no longer fits a sharing policy
+                  value:
+                    code: FLM-1041
+                    message:
+                      key: error.flowmgtservice.flow_conflicts_with_sharing_policy
+                      defaultValue: Flow conflicts with a sharing policy
+                    description:
+                      key: error.flowmgtservice.flow_conflicts_with_sharing_policy_description
+                      defaultValue: The change breaks a sharing policy of the flow. Update or delete the policy first
+                saved-values:
+                  summary: A value an organization unit saved is no longer valid
+                  value:
+                    code: FLM-1042
+                    message:
+                      key: error.flowmgtservice.flow_conflicts_with_saved_values
+                      defaultValue: Flow conflicts with saved values
+                    description:
+                      key: error.flowmgtservice.flow_conflicts_with_saved_values_description
+                      defaultValue: The change invalidates values that organization units saved for the variables. Ask them to change those values, or update or delete the sharing policy that reaches them, first
         '500':
           description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /flows/{flowId}/sharing-policies:
+    parameters:
+      - $ref: '#/components/parameters/FlowId'
+    post:
+      tags:
+        - Flow Sharing
+      summary: Share a flow with child organization units
+      operationId: createFlowSharingPolicy
+      description: 'Records how the flow is shared: the organization units it reaches and, per variable (`variables.<identifier>`), the terms each holds it on. There is one policy per flow per initiating organization unit.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SharingPolicyRequest'
+            examples:
+              allChildren:
+                summary: Every unit beneath the owner, on common terms
+                value:
+                  childUnits:
+                    mode: all
+                    excludedOuIds:
+                      - 0193b0a1-2001-7000-8000-0000000000ff
+                    overlayRules:
+                      variables.supportEmail:
+                        editable: true
+                      variables.otpValiditySeconds:
+                        editable: true
+                        allowedValues:
+                          - '60'
+                          - '120'
+                          - '300'
+                      variables.mfaMode:
+                        editable: false
+                        value:
+                          - SMS_OTP
+                      variables.showRegistrationLink:
+                        editable: true
+                        value:
+                          - 'false'
+                      variables.socialLogin:
+                        editable: true
+                        allowedValues:
+                          - 019e201d-5634-7533-a971-538b66914721
+                          - 019e3a5e-2ff3-7bfb-ae19-27aada871b80
+              selectedChild:
+                summary: One child, on its own terms, free to pass the flow on
+                value:
+                  childUnits:
+                    mode: selected
+                    units:
+                      - ouId: 0193b0a1-2001-7000-8000-000000000002
+                        reach: unit
+                        overlayRules:
+                          variables.supportEmail:
+                            editable: true
+                          variables.mfaMode:
+                            editable: false
+                            value:
+                              - SMS_OTP
+              reshare:
+                summary: A child that received the flow passes it to one of its own children, narrowing it
+                value:
+                  initiatingOuId: 0193b0a1-2001-7000-8000-000000000002
+                  childUnits:
+                    mode: selected
+                    units:
+                      - ouId: 0193b0a1-2001-7000-8000-000000000011
+                        reach: subtree
+                        overlayRules:
+                          variables.otpValiditySeconds:
+                            editable: false
+                            value:
+                              - '60'
+      responses:
+        '201':
+          description: Sharing policy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicy'
+        '400':
+          description: 'Invalid policy (FLM-1034), or a policy reaching every unit or every other tree, which only a resource file or an import may create (FLM-1043).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Flow not found (FLM-1003)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The issuing organization unit already has a policy for this flow (FLM-1031). Edit it instead.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags:
+        - Flow Sharing
+      summary: List how a flow is shared
+      operationId: listFlowSharingPolicies
+      description: 'Lists the flow''s sharing policies, for the owner and for a unit that re-shared it. A unit the flow was shared with reads its own terms from `GET /flows/{flowId}/overlay-rules`.'
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: One page of policies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicyListResponse'
+        '400':
+          description: The limit or offset is invalid (FLM-1006, FLM-1007)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Flow not found (FLM-1003)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /flows/{flowId}/sharing-policies/{policyId}:
+    parameters:
+      - $ref: '#/components/parameters/FlowId'
+      - $ref: '#/components/parameters/PolicyId'
+    get:
+      tags:
+        - Flow Sharing
+      summary: Get a sharing policy of a flow
+      operationId: getFlowSharingPolicy
+      responses:
+        '200':
+          description: The policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Flow or policy not found (FLM-1003, FLM-1030)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Flow Sharing
+      summary: Replace a sharing policy of a flow
+      operationId: updateFlowSharingPolicy
+      description: 'Replaces the policy''s sections, with the `version` the caller read, and refuses any other version. A unit the policy no longer reaches loses the flow and the values it held.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SharingPolicyUpdateRequest'
+      responses:
+        '200':
+          description: The updated policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicy'
+        '400':
+          description: Invalid policy (FLM-1034)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Flow or policy not found (FLM-1003, FLM-1030)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The policy changed since it was read (FLM-1032)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Flow Sharing
+      summary: Remove a sharing policy of a flow
+      operationId: deleteFlowSharingPolicy
+      description: 'Removes the policy and what depended on it, including policies issued by units it reached. Deleting a policy that is already gone succeeds.'
+      responses:
+        '204':
+          description: Policy removed
+        '400':
+          description: The policy is declared in a resource file and cannot be removed here (FLM-1033)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /flows/{flowId}/overlay-rules:
+    parameters:
+      - $ref: '#/components/parameters/FlowId'
+    get:
+      tags:
+        - Flow Sharing
+      summary: See what was shared with an organization unit
+      operationId: getFlowOverlayRules
+      description: 'Returns, for the organization unit in `ouId`, whether it owns or can see the flow and the effective rule for each variable. It is the same `ResolvedOverlay` answer as `GET /applications/{id}/overlay-rules`, and a unit no policy reaches gets `404`.'
+      parameters:
+        - name: ouId
+          in: query
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: 0193b0a1-2001-7000-8000-000000000002
+      responses:
+        '200':
+          description: The resolved overlay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolvedOverlay'
+              examples:
+                shared:
+                  summary: An organization unit the flow was shared with
+                  value:
+                    ouId: 0193b0a1-2001-7000-8000-000000000002
+                    owned: false
+                    visible: true
+                    policyIds:
+                      - 0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10
+                    rules:
+                      variables.supportEmail:
+                        editable: true
+                      variables.otpValiditySeconds:
+                        editable: true
+                        allowedValues:
+                          - '60'
+                          - '120'
+                          - '300'
+                      variables.mfaMode:
+                        editable: false
+                        value:
+                          - SMS_OTP
+                owner:
+                  summary: The organization unit that owns the flow
+                  value:
+                    ouId: 0193b0a1-2001-7000-8000-000000000001
+                    owned: true
+                    visible: true
+                    policyIds: []
+                    rules: {}
+        '400':
+          description: The `ouId` is missing (FLM-1038)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The flow does not exist, or no policy reaches the organization unit. The two answer alike (FLM-1003)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /flows/{flowId}/variables:
+    parameters:
+      - $ref: '#/components/parameters/FlowId'
+    get:
+      tags:
+        - Flow Variables
+      summary: Get the variables of a flow for an organization unit
+      operationId: getFlowVariables
+      parameters:
+        - $ref: '#/components/parameters/OuId'
+      description: 'Returns the values the organization unit in `ouId` has set for the flow''s variables, in the shape `PUT` takes. The value in force is this override, or else the `defaultValue` from `GET /flows/{flowId}`.'
+      responses:
+        '200':
+          description: The flow's variables
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VariablesResponse'
+        '400':
+          description: The `ouId` is missing (FLM-1038)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The flow does not exist, or is neither owned by nor shared with the organization unit. The two answer alike (FLM-1003)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Flow Variables
+      summary: Override the variables of a flow for an organization unit
+      operationId: setFlowVariables
+      description: 'Sets the values the organization unit named in the `ouId` of the body holds for the flow''s variables, replacing what it held, so a variable left out returns to its default. Every value is validated before any is written (FLM-1035, FLM-1036, FLM-1037), and a connection must be one the unit owns or was shared.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetVariablesRequest'
+      responses:
+        '200':
+          description: The flow's variables after the change
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VariablesResponse'
+        '400':
+          description: The `ouId` is missing (FLM-1038), a variable the flow does not declare, or that no policy names for the unit (FLM-1035), or a value that is not valid (FLM-1036)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FLM-1036
+                message:
+                  key: error.flowmgtservice.invalid_variable_value
+                  defaultValue: Invalid variable value
+                description:
+                  key: error.flowmgtservice.invalid_variable_value_description
+                  defaultValue: The value of 'otpValiditySeconds' is not among the values the flow's owner allows
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The organization unit may not set the variable (FLM-1037)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: The flow does not exist, or is neither owned by nor shared with the organization unit. The two answer alike (FLM-1003)
           content:
             application/json:
               schema:
@@ -590,6 +1279,70 @@ components:
           tokenUrl: https://localhost:8090/oauth2/token
           scopes:
             system: Access to system management APIs
+
+  parameters:
+    FlowId:
+      name: flowId
+      in: path
+      required: true
+      description: Unique identifier of the flow
+      schema:
+        type: string
+      example: 0193b0a1-1001-7000-8000-000000000042
+    PolicyId:
+      name: policyId
+      in: path
+      required: true
+      description: Unique identifier of the sharing policy
+      schema:
+        type: string
+      example: 0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10
+    OuId:
+      name: ouId
+      in: query
+      required: true
+      description: The organization unit to act for. It decides how the flow is seen (owned or shared) and whose values are read or written.
+      schema:
+        type: string
+      example: 0193b0a1-2001-7000-8000-000000000002
+    FlowFilter:
+      name: filter
+      in: query
+      required: false
+      description: 'Filter flows by organization unit with `ouId eq "<id>"`, the only supported expression. A list shows the flows the unit owns, then the flows shared with it.'
+      schema:
+        type: string
+      examples:
+        organization-unit:
+          summary: Flows owned by or shared with an organization unit
+          value: 'ouId eq "0193b0a1-2001-7000-8000-000000000002"'
+    OptionalOuId:
+      name: ouId
+      in: query
+      required: false
+      description: The organization unit the call is made for. When given, only the organization unit that owns the flow may read its definition and change it. Leave it out for a call that is not made for an organization unit.
+      schema:
+        type: string
+      example: 0193b0a1-2001-7000-8000-000000000001
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of records to return.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 30
+    Offset:
+      name: offset
+      in: query
+      required: false
+      description: Number of records to skip.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
 
   responses:
     Unauthorized:
@@ -749,6 +1502,7 @@ components:
         links:
           - href: "/flows?offset=3&limit=3"
             rel: "next"
+      description: One page of the flows the requested organization unit owns or has been shared.
 
     FlowVersionListResponse:
       type: object
@@ -863,6 +1617,9 @@ components:
           type: boolean
           description: Whether this flow is immutable (declarative resource — cannot be modified or deleted)
           example: false
+        isOwnedByOU:
+          type: boolean
+          description: With an `ouId` filter or query parameter, whether that organization unit owns the flow. `false` means it was shared with it. An unfiltered list says `true`.
         ouId:
           type: string
           description: |
@@ -876,6 +1633,7 @@ components:
           type: string
           format: date-time
           description: Timestamp when the flow was last modified
+      description: 'A flow in a listing. A flow shared with the requested organization unit is listed as one it owns is, with `isOwnedByOU` false and `isReadOnly` true.'
 
     FlowDefinitionUpdateRequest:
       type: object
@@ -1174,6 +1932,11 @@ components:
           type: boolean
           description: Whether this flow is immutable (declarative resource — cannot be modified or deleted)
           example: false
+        isOwnedByOU:
+          type: boolean
+          enum:
+            - true
+          description: With `ouId` in the request, always `true`, as the organization unit owns the flow.
         ouId:
           type: string
           description: |
@@ -1204,6 +1967,7 @@ components:
         nodes: *authFlowNodes
         createdAt: "2024-06-15T10:20:30Z"
         updatedAt: "2024-06-20T14:25:35Z"
+      description: 'A flow as the organization unit that owns it sees it: the whole definition, the variables included.'
 
     FlowVersionResponse:
       type: object
@@ -1690,3 +2454,487 @@ components:
         defaultValue:
           type: string
           description: Default message in English (fallback).
+
+    SharedFlowResponse:
+      type: object
+      description: 'A flow as an organization unit it was shared with sees it. It holds the variables that apply to that unit and nothing else of the definition: no nodes, no interceptors, no layout, no versions and no timestamps. What it shows of each variable is resolved for the unit from the owner''s flow and the sharing policy, so the unit sees only what applies to it. The unit''s own overrides are read from `GET /flows/{flowId}/variables`.'
+      required:
+        - id
+        - handle
+        - name
+        - flowType
+        - ouId
+        - isOwnedByOU
+        - isReadOnly
+        - variables
+      properties:
+        id:
+          type: string
+          example: 0193b0a1-1001-7000-8000-000000000042
+        handle:
+          type: string
+          example: acme-login
+        name:
+          type: string
+          example: Acme Login Flow
+        flowType:
+          type: string
+          enum:
+            - AUTHENTICATION
+            - REGISTRATION
+          example: AUTHENTICATION
+        ouId:
+          type: string
+          description: ID of the organization unit that owns the flow, not the one in the request's `ouId`.
+          example: 0193b0a1-2001-7000-8000-000000000001
+        isOwnedByOU:
+          type: boolean
+          enum:
+            - false
+          description: Always `false`, as the flow is owned by another organization unit and was shared with the organization unit in the request's `ouId`.
+        isReadOnly:
+          type: boolean
+          enum:
+            - true
+          description: 'Always true: a shared flow cannot be changed or deleted by the organization unit it is shared with.'
+        variables:
+          type: array
+          description: The variables the sharing policy names for the organization unit, each resolved for it. `defaultValue` is the value the policy sets for the unit, or the owner's `defaultValue` when the policy sets none, and a `SELECT` lists only the `options` the unit may choose from. A variable no policy names for the unit is not listed, and nothing the owner holds beyond this is shown.
+          items:
+            $ref: '#/components/schemas/VariableDefinition'
+
+    SharingPolicyRequest:
+      type: object
+      additionalProperties: false
+      description: 'One organization unit''s decision about this flow: a `childUnits` and `otherTreeRoots` section, at least one, each reaching a whole group or naming units, never both.'
+      anyOf:
+        - required:
+            - childUnits
+        - required:
+            - otherTreeRoots
+      properties:
+        initiatingOuId:
+          type: string
+          description: 'The organization unit whose decision this is. Omitted means the flow''s owner. A unit other than the owner may only issue a `childUnits` policy where the flow reached it and stopped.'
+          example: acme-root
+        childUnits:
+          $ref: '#/components/schemas/ChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/OtherTreeRootsSelected'
+        version:
+          type: integer
+          description: 'The policy version the caller believes it is editing. Required on an edit, ignored on a create.'
+          example: 1
+
+    SharingPolicyUpdateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+      description: 'A replacement for a policy''s sections. It names no `initiatingOuId`, and a section that already reaches a whole group keeps that reach but cannot be introduced by editing.'
+      anyOf:
+        - required:
+            - allUnits
+        - required:
+            - childUnits
+        - required:
+            - otherTreeRoots
+      properties:
+        allUnits:
+          $ref: '#/components/schemas/AllUnits'
+        childUnits:
+          $ref: '#/components/schemas/ChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/OtherTreeRoots'
+        version:
+          type: integer
+          description: 'The policy version the caller believes it is editing. An edit against any other version is refused.'
+          example: 1
+
+    AllUnits:
+      type: object
+      additionalProperties: false
+      description: 'Every organization unit in the deployment, at any depth, including later ones. It stands alone, and only a resource file or an import may create it.'
+      properties:
+        excludedOuIds:
+          type: array
+          description: 'Organization units withheld from the section, each taking everything beneath it out of reach as well. Any organization unit may be excluded.'
+          items:
+            type: string
+          example:
+            - acme-trial-customers
+        overlayRules:
+          type: object
+          description: 'The terms the organization units reached hold the flow on, keyed by field. For a flow the field is a variable: `variables.<identifier>`. A variable no rule names is not editable by the organization unit and keeps the owner''s default.'
+          additionalProperties:
+            $ref: '#/components/schemas/OverlayRule'
+          example:
+            variables.supportEmail:
+              editable: true
+            variables.mfaMode:
+              editable: false
+              value:
+                - SMS_OTP
+
+    ChildUnits:
+      description: 'The organization units beneath the issuer, in one of the two shapes below, chosen by `mode`.'
+      oneOf:
+        - $ref: '#/components/schemas/ChildUnitsAll'
+        - $ref: '#/components/schemas/ChildUnitsSelected'
+      discriminator:
+        propertyName: mode
+        mapping:
+          all: '#/components/schemas/ChildUnitsAll'
+          selected: '#/components/schemas/ChildUnitsSelected'
+
+    ChildUnitsAll:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+      description: Everything beneath the issuing organization unit, at any depth, including units created later.
+      properties:
+        mode:
+          type: string
+          enum:
+            - all
+        excludedOuIds:
+          type: array
+          description: 'Organization units withheld from the section, with everything beneath each. Only units directly beneath the issuer may be excluded.'
+          items:
+            type: string
+          example:
+            - acme-trial-customers
+        overlayRules:
+          type: object
+          description: 'The terms the organization units reached hold the flow on, keyed by field. For a flow the field is a variable: `variables.<identifier>`. A variable no rule names is not editable by the organization unit and keeps the owner''s default.'
+          additionalProperties:
+            $ref: '#/components/schemas/OverlayRule'
+          example:
+            variables.supportEmail:
+              editable: true
+            variables.mfaMode:
+              editable: false
+              value:
+                - SMS_OTP
+
+    ChildUnitsSelected:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - units
+      description: 'Named organization units directly beneath the issuer. It takes no `excludedOuIds`: leave a unit out of `units` to withhold it.'
+      properties:
+        mode:
+          type: string
+          enum:
+            - selected
+        units:
+          type: array
+          minItems: 1
+          description: The organization units reached. An organization unit is listed only once in a policy.
+          items:
+            $ref: '#/components/schemas/ChildUnit'
+
+    ChildUnit:
+      type: object
+      additionalProperties: false
+      required:
+        - ouId
+        - reach
+      properties:
+        ouId:
+          type: string
+          description: A direct child of the issuing organization unit.
+          example: acme-customer-a
+        reach:
+          type: string
+          enum:
+            - unit
+            - subtree
+          description: 'How far the flow carries from the named unit: `unit` reaches it alone, leaving it free to pass the flow on, and `subtree` reaches it and everything below.'
+          example: unit
+        overlayRules:
+          type: object
+          description: 'The terms the organization units reached hold the flow on, keyed by field. For a flow the field is a variable: `variables.<identifier>`. A variable no rule names is not editable by the organization unit and keeps the owner''s default.'
+          additionalProperties:
+            $ref: '#/components/schemas/OverlayRule'
+          example:
+            variables.supportEmail:
+              editable: true
+            variables.mfaMode:
+              editable: false
+              value:
+                - SMS_OTP
+
+    OtherTreeRoots:
+      description: 'The roots of other trees. A create may send the named shape only, while a policy that reaches every other tree keeps that reach on an edit.'
+      oneOf:
+        - $ref: '#/components/schemas/OtherTreeRootsSelected'
+        - $ref: '#/components/schemas/OtherTreeRootsAll'
+      discriminator:
+        propertyName: mode
+        mapping:
+          selected: '#/components/schemas/OtherTreeRootsSelected'
+          all: '#/components/schemas/OtherTreeRootsAll'
+
+    OtherTreeRootsSelected:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - units
+      description: 'Named root organization units of other trees, and nothing below them. Owner only, and below a root it also needs `resource_sharing.allow_child_ou_cross_tree_sharing`.'
+      properties:
+        mode:
+          type: string
+          enum:
+            - selected
+        units:
+          type: array
+          minItems: 1
+          description: The root organization units reached. An organization unit is listed only once in a policy.
+          items:
+            $ref: '#/components/schemas/RootUnit'
+
+    OtherTreeRootsAll:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+      description: 'The root of every other tree, including later ones. Only a resource file or an import may introduce it.'
+      properties:
+        mode:
+          type: string
+          enum:
+            - all
+        excludedOuIds:
+          type: array
+          description: Root organization units withheld from the section, and with them their trees.
+          items:
+            type: string
+          example:
+            - partner-root
+        overlayRules:
+          type: object
+          description: 'The terms the organization units reached hold the flow on, keyed by field. For a flow the field is a variable: `variables.<identifier>`. A variable no rule names is not editable by the organization unit and keeps the owner''s default.'
+          additionalProperties:
+            $ref: '#/components/schemas/OverlayRule'
+          example:
+            variables.supportEmail:
+              editable: true
+            variables.mfaMode:
+              editable: false
+              value:
+                - SMS_OTP
+
+    RootUnit:
+      type: object
+      additionalProperties: false
+      required:
+        - ouId
+      properties:
+        ouId:
+          type: string
+          description: The root organization unit of another tree.
+          example: partner-root
+        overlayRules:
+          type: object
+          description: 'The terms the organization units reached hold the flow on, keyed by field. For a flow the field is a variable: `variables.<identifier>`. A variable no rule names is not editable by the organization unit and keeps the owner''s default.'
+          additionalProperties:
+            $ref: '#/components/schemas/OverlayRule'
+          example:
+            variables.supportEmail:
+              editable: true
+            variables.mfaMode:
+              editable: false
+              value:
+                - SMS_OTP
+
+    SharingPolicy:
+      type: object
+      description: 'A recorded sharing policy, with its sections in the shape a request states them, so an edit can copy them with `version` into a `SharingPolicyUpdateRequest`. Other fields are set by the server.'
+      properties:
+        id:
+          type: string
+          description: The policy's own identifier.
+          example: 0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10
+        initiatingOuId:
+          type: string
+          description: 'The organization unit whose decision this policy is. The owning unit belongs to the flow and is not repeated.'
+          example: acme-root
+        stage:
+          type: string
+          enum:
+            - share
+            - reshare
+          description: '`share` when the owner issued it, `reshare` when a sharee did.'
+        parentPolicyId:
+          type: string
+          description: The policy that made this one's issuer able to see the flow. Empty for an owner-issued policy.
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: Indicates if the policy is defined in declarative configuration and cannot be modified.
+        version:
+          type: integer
+          description: Bumped on every edit, and carried back on the next one.
+          example: 1
+        allUnits:
+          $ref: '#/components/schemas/AllUnits'
+        childUnits:
+          $ref: '#/components/schemas/ChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/OtherTreeRoots'
+
+    SharingPolicyListResponse:
+      type: object
+      properties:
+        totalResults:
+          type: integer
+          description: How many policies the flow has, not how many this page holds.
+          example: 2
+        startIndex:
+          type: integer
+          description: The one-based position of the first policy in this page.
+          example: 1
+        count:
+          type: integer
+          description: How many policies this page holds.
+          example: 2
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharingPolicy'
+        links:
+          type: array
+          description: Links to the first, previous, next and last pages, where they exist.
+          items:
+            $ref: '#/components/schemas/Link'
+          example:
+            - href: /flows/0193b0a1-1001-7000-8000-000000000042/sharing-policies?offset=30&limit=30
+              rel: next
+
+    ResolvedOverlay:
+      type: object
+      description: 'What one organization unit may do with the flow: whether it owns it or was shared it, which policies reached it, and the effective rule for each variable a policy named.'
+      properties:
+        ouId:
+          type: string
+          example: acme-customer-a
+        owned:
+          type: boolean
+          description: Whether the organization unit owns the flow rather than being shared it.
+        visible:
+          type: boolean
+          description: 'Whether the organization unit can see the flow at all, which decides whether it may be named as the accessing unit on a token request.'
+        policyIds:
+          type: array
+          description: Every policy that contributed, so an answer is traceable to its inputs.
+          items:
+            type: string
+        rules:
+          type: object
+          description: 'The effective rule per variable, keyed `variables.<identifier>`, after every policy that reached the organization unit has been combined and each narrowed by the unit above it. A variable no policy named has no entry: the organization unit cannot edit it and it keeps the owner''s default.'
+          additionalProperties:
+            $ref: '#/components/schemas/OverlayRule'
+      example:
+        ouId: 0193b0a1-2001-7000-8000-000000000002
+        owned: false
+        visible: true
+        policyIds:
+          - 0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10
+        rules:
+          variables.supportEmail:
+            editable: true
+          variables.otpValiditySeconds:
+            editable: true
+            allowedValues:
+              - '60'
+              - '120'
+              - '300'
+          variables.mfaMode:
+            editable: false
+            value:
+              - SMS_OTP
+
+    OverlayRule:
+      type: object
+      description: What an organization unit may do with one variable of a flow.
+      properties:
+        editable:
+          type: boolean
+          default: false
+          description: Whether the organization unit may set its own value for the variable.
+        value:
+          type: array
+          items:
+            type: string
+          description: 'The value the organization unit starts with, or is pinned to when `editable` is false. A variable holds one value, written in its raw string form: `"true"`, `"120"`, an option, or a connection id.'
+          example:
+            - SMS_OTP
+        allowedValues:
+          type: array
+          items:
+            type: string
+          description: The values the organization unit may choose from. Absent means anything the variable accepts. Empty permits nothing.
+          example:
+            - '60'
+            - '120'
+            - '300'
+        excludedValues:
+          type: array
+          items:
+            type: string
+          description: Values taken out of `value` and `allowedValues`, last.
+
+    VariablesResponse:
+      type: object
+      description: 'The values an organization unit has set for the flow''s variables: its overrides, keyed by variable identifier. The organization unit is the one named in the request.'
+      required:
+        - values
+      properties:
+        values:
+          type: object
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: number
+              - type: boolean
+          description: The unit's own overrides, in the variable's own type. A variable the unit has not set is absent, and the value from `GET /flows/{flowId}` applies to it. An empty object means the unit has set nothing.
+          example:
+            supportEmail: help@emea.acme.example
+            showRegistrationLink: true
+            socialLogin: 019e3a5e-2ff3-7bfb-ae19-27aada871b80
+      example:
+        values:
+          supportEmail: help@emea.acme.example
+          showRegistrationLink: true
+          socialLogin: 019e3a5e-2ff3-7bfb-ae19-27aada871b80
+
+    SetVariablesRequest:
+      type: object
+      required:
+        - ouId
+        - values
+      properties:
+        ouId:
+          type: string
+          description: The organization unit whose values are set. The flow has to be owned by, or shared with, it.
+          example: 0193b0a1-2001-7000-8000-000000000002
+        values:
+          type: object
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: number
+              - type: boolean
+          description: 'The value of each variable to set, keyed by identifier, in the variable''s own type: a string, a number or a boolean. A value is never null.'
+      description: The organization unit and the values to set for its variables, keyed by identifier, in the same shape as the `values` that `GET /flows/{flowId}/variables` returns. Each is stored as the unit's own override. A value is never null.
+      example:
+        ouId: 0193b0a1-2001-7000-8000-000000000002
+        values:
+          supportEmail: help@emea.acme.example
+          showRegistrationLink: true
+          socialLogin: 019e3a5e-2ff3-7bfb-ae19-27aada871b80

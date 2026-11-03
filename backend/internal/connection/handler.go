@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -228,7 +229,8 @@ func parsePaginationParams(query url.Values) (int, int, *tidcommon.ServiceError)
 
 // handleListConnections handles GET /connections, returning a paginated flat list of configured
 // connection instances across both IdP- and sender-backed services, optionally filtered by
-// the category query parameter.
+// the category query parameter. An ouId filter lists the connections that organization unit owns,
+// followed by the ones shared into it.
 func (h *handler) handleListConnections(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	category, ok := parseConnectionCategory(r.URL.Query().Get("category"))
@@ -236,12 +238,22 @@ func (h *handler) handleListConnections(w http.ResponseWriter, r *http.Request) 
 		writeServiceError(ctx, w, &ErrorInvalidConnectionCategory)
 		return
 	}
+	filters, err := filter.ParseEqualityFilterParam(r.URL.Query())
+	if err != nil {
+		writeServiceError(ctx, w, &ErrorInvalidFilter)
+		return
+	}
+	ouID, rest, err := filter.SplitOUIDFilter(filters)
+	if err != nil || len(rest) > 0 {
+		writeServiceError(ctx, w, &ErrorInvalidFilter)
+		return
+	}
 	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
 	if svcErr != nil {
 		writeServiceError(ctx, w, svcErr)
 		return
 	}
-	resp, svcErr := h.svc.listInstances(ctx, category, limit, offset)
+	resp, svcErr := h.svc.listInstances(ctx, category, ouID, limit, offset)
 	if svcErr != nil {
 		writeServiceError(ctx, w, svcErr)
 		return

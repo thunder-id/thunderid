@@ -12,6 +12,16 @@ const (
 	agentBasePath = "/agents"
 )
 
+// projectIDQueryParam is the query parameter that lists the agents of one project.
+const projectIDQueryParam = "projectId"
+
+// Error codes the project service returns when it resolves the organization unit of a project. They
+// are matched by value, since the Data Plane must not link the Control Plane only project package.
+const (
+	projectNotFoundErrorCode = "PRJ-1002"
+	ouNotInProjectErrorCode  = "PRJ-1013"
+)
+
 // Field keys stored in the entity SystemAttributes JSON blob.
 const (
 	fieldDescription  = "description"
@@ -43,3 +53,14 @@ var defaultDelegatedGrantTypes = []providers.GrantType{
 	providers.GrantTypeAuthorizationCode,
 	providers.GrantTypeRefreshToken,
 }
+
+// lifespanFailureClass is the failure class AGENT_LIFESPAN_UPDATE_FAILED reports.
+type lifespanFailureClass string
+
+// Failure classes reported by AGENT_LIFESPAN_UPDATE_FAILED.
+const (
+	lifespanFailureNotAuthorized   lifespanFailureClass = "not_authorized"
+	lifespanFailureInvalidLifespan lifespanFailureClass = "invalid_lifespan"
+	lifespanFailureReadOnly        lifespanFailureClass = "read_only"
+	lifespanFailureOperationFailed lifespanFailureClass = "operation_failed"
+)

@@ -22,6 +22,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/authzenpdpmock"
@@ -749,4 +750,74 @@ func (s *SharingTestSuite) TestParseConnectionSharingPolicies() {
 
 	s.Require().NoError(err)
 	s.Len(policies, 1)
+}
+
+// listConnections stubs every kind of connection with an identity provider per entry and nothing else.
+func (s *SharingTestSuite) listConnections(idps []idp.BasicIDPDTO) {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).Return(idps, (*tidcommon.ServiceError)(nil)).Maybe()
+	s.mockNotif.On("ListSendersByType", mock.Anything, mock.Anything).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil)).Maybe()
+	s.mockPDP.On("ListAuthZENPDPs", mock.Anything).
+		Return([]authzenpdp.AuthZENPDPConnection{}, (*tidcommon.ServiceError)(nil)).Maybe()
+	s.mockHTTP.On("ListHTTPConnections", mock.Anything).
+		Return([]httpconnection.HTTPConnection{}, (*tidcommon.ServiceError)(nil)).Maybe()
+}
+
+func (s *SharingTestSuite) TestListInstancesInAnOrganizationUnitListsOwnedThenShared() {
+	s.listConnections([]idp.BasicIDPDTO{
+		{ID: "shared-2", Name: "A", Type: providers.IDPTypeGoogle, OUID: "owner-ou"},
+		{ID: "mine-b", Name: "B", Type: providers.IDPTypeGoogle, OUID: "ou-1"},
+		{ID: "shared-1", Name: "Z", Type: providers.IDPTypeGoogle, OUID: "owner-ou"},
+		{ID: "mine-a", Name: "A", Type: providers.IDPTypeGoogle, OUID: "ou-1"},
+		{ID: "elsewhere", Name: "E", Type: providers.IDPTypeGoogle, OUID: "other-ou"},
+	})
+	s.mockSharing.On("ListVisibleResourceIDs", mock.Anything, ConnectionSharingType, "ou-1").
+		Return([]string{"gone", "shared-1", "shared-2"}, (*tidcommon.ServiceError)(nil))
+
+	got, svcErr := s.svc.listInstances(context.Background(), "", "ou-1", 3, 1)
+
+	s.Require().Nil(svcErr)
+	s.Equal(4, got.TotalResults, "a shared connection that no longer exists is not counted")
+	s.Equal(2, got.StartIndex)
+	s.Require().Len(got.Connections, 3)
+	s.Equal("mine-b", got.Connections[0].ID, "owned in listing order: mine-a is on the first page")
+	s.True(*got.Connections[0].IsOwnedByOU)
+	s.Equal("shared-1", got.Connections[1].ID, "then shared in ID order")
+	s.False(*got.Connections[1].IsOwnedByOU)
+	s.Equal("owner-ou", got.Connections[1].OUID, "the owner's, not the one listed")
+	s.Equal("shared-2", got.Connections[2].ID)
+	s.Require().NotEmpty(got.Links)
+	s.Contains(got.Links[0].Href, "filter=ouId+eq+%22ou-1%22", "the links keep the filter")
+}
+
+func (s *SharingTestSuite) TestListInstancesInAnOrganizationUnitKeepsTheCategory() {
+	s.listConnections([]idp.BasicIDPDTO{{ID: "mine", Type: providers.IDPTypeGoogle, OUID: "ou-1"}})
+	s.mockSharing.On("ListVisibleResourceIDs", mock.Anything, ConnectionSharingType, "ou-1").
+		Return([]string{}, (*tidcommon.ServiceError)(nil))
+
+	got, svcErr := s.svc.listInstances(context.Background(), categoryIdentityProvider, "ou-1", 1, 0)
+
+	s.Require().Nil(svcErr)
+	s.Require().Len(got.Connections, 1)
+	s.Equal("mine", got.Connections[0].ID)
+}
+
+func (s *SharingTestSuite) TestListInstancesWithoutAnOrganizationUnitMarksEveryConnectionOwned() {
+	s.listConnections([]idp.BasicIDPDTO{{ID: "a", Type: providers.IDPTypeGoogle, OUID: "ou-1"}})
+
+	got, svcErr := s.svc.listInstances(context.Background(), "", "", serverconst.DefaultPageSize, 0)
+
+	s.Require().Nil(svcErr)
+	s.Require().Len(got.Connections, 1)
+	s.True(*got.Connections[0].IsOwnedByOU)
+}
+
+func (s *SharingTestSuite) TestListInstancesInAnOrganizationUnitFailsWhenSharingCannotBeRead() {
+	s.listConnections([]idp.BasicIDPDTO{})
+	s.mockSharing.On("ListVisibleResourceIDs", mock.Anything, ConnectionSharingType, "ou-1").
+		Return(([]string)(nil), &tidcommon.InternalServerError)
+
+	_, svcErr := s.svc.listInstances(context.Background(), "", "ou-1", serverconst.DefaultPageSize, 0)
+
+	s.Require().NotNil(svcErr)
 }

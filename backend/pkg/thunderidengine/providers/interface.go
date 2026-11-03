@@ -184,18 +184,24 @@ type IDPProvider interface {
 // record user consent decisions during runtime authentication flows.
 type ConsentProvider interface {
 	// ResolveConsent checks whether the user has provided required consents for the given
-	// application, attribute set, and authorized permission set. Returns nil if all required
-	// consents are active; otherwise returns ConsentPromptData describing which purposes /
-	// elements still need user consent. When forceReprompt is true, consent is re-prompted for
-	// all required claims regardless of existing active consent.
+	// application, attribute set, authorized permission set, and authorization details. Returns nil
+	// if all required consents are active; otherwise returns ConsentPromptData describing which
+	// purposes / elements still need user consent. When forceReprompt is true, consent is re-prompted
+	// for all required claims and details regardless of existing active consent. Returning nil grants
+	// every requested authorization detail, so a provider must prompt for or refuse any detail no
+	// earlier approval covers.
 	ResolveConsent(ctx context.Context, ouID, appID, appName, userID string,
 		essentialAttributes, optionalAttributes, authorizedPermissions []string,
+		authorizationDetails []AuthorizationDetail,
 		availableAttributes *AttributesResponse, forceReprompt bool,
 		runtimeMetadata map[string][]string) (
 		*ConsentPromptData, *common.ServiceError)
 
 	// RecordConsent records the user's consent decisions and returns the persisted consent record.
-	// If the user denied any essential attribute, ErrorEssentialConsentDenied is returned.
+	// If the user denied any essential attribute, ErrorEssentialConsentDenied is returned. The returned
+	// record's GrantedAuthorizationDetails must hold every authorization detail the decision grants: the
+	// covered details when the prompt is approved, and the prompted details the user approved, with
+	// their changes. Each is matched to the requested detail by ID, and only its Value is used.
 	RecordConsent(ctx context.Context, ouID, appID, userID string,
 		decisions *ConsentDecisions, sessionToken string, validityPeriod int64,
 		runtimeMetadata map[string][]string) (
@@ -206,15 +212,26 @@ type ConsentProvider interface {
 type AuthorizationDetailProvider interface {
 	// ValidateAuthorizationDetails validates the authorization_details a client requested.
 	ValidateAuthorizationDetails(ctx context.Context, raw string) (json.RawMessage, *common.ServiceError)
-	// PrepareAuthorizationDetails stamps validated details with identifiers and type versions for a flow.
+	// PrepareAuthorizationDetails validates details, as ValidateAuthorizationDetails does, and stamps them with
+	// identifiers and type versions for a flow.
 	PrepareAuthorizationDetails(ctx context.Context, validated json.RawMessage) (
 		[]AuthorizationDetail, *common.ServiceError)
 	// ProcessAuthorizationDetails runs the type processors on the details and returns those admitted, each with
-	// Admitted set: consent refuses a detail of a type that declares a processor unless it is admitted. A
-	// detail is returned with any value the processor filled in or lowered. It fails with a client error when
-	// every detail is refused. client is the requesting application or agent, and clientID its OAuth client_id.
+	// Admitted set: the consent executor refuses a detail of a type that declares a processor unless it is
+	// admitted. A detail is returned with any value the processor filled in or lowered. It fails with a client
+	// error when every detail is refused. client is the requesting application or agent, and clientID its OAuth
+	// client_id.
 	ProcessAuthorizationDetails(ctx context.Context, details []AuthorizationDetail, client EntityReference,
 		clientID string, subject EntityReference, resourceServer string) ([]AuthorizationDetail, *common.ServiceError)
+	// RefreshableAuthorizationDetails returns the granted details a refresh token may carry. It must drop
+	// the details of types that do not allow reuse and of types that changed since the grant.
+	RefreshableAuthorizationDetails(ctx context.Context, granted []AuthorizationDetail) (
+		[]AuthorizationDetail, *common.ServiceError)
+	// ModifyAuthorizationDetails checks a token request's authorization_details against a grant and returns
+	// the details to issue. A request may only narrow granted details within their field policies, and
+	// must never widen them.
+	ModifyAuthorizationDetails(ctx context.Context, granted []AuthorizationDetail,
+		raw string) (json.RawMessage, *common.ServiceError)
 }
 
 // AuthorizationDetailTypeProvider provides the registered RFC 9396 authorization details types.

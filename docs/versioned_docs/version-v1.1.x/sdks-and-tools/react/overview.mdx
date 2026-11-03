@@ -1,0 +1,89 @@
+---
+title: React SDK Overview
+docType: concept
+sidebar_position: 1
+sidebar_label: Overview
+description: React SDK for authentication with hooks, context providers, pre-built components, and route protection.
+---
+
+# React SDK
+
+The <ProductName /> React SDK (`@thunderid/react`) provides a comprehensive set of components, hooks, and utilities to integrate <ProductName /> authentication and user management into your React applications.
+
+## Installation
+
+Install the <ProductName /> React SDK using your preferred package manager:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm install @thunderid/react
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn add @thunderid/react
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm add @thunderid/react
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun add @thunderid/react
+  </CodeBlock>
+</CodeGroup>
+
+## Getting Started
+
+To get started quickly, check out our [React Quickstart Guide](../../../getting-started/connect-your-application/react) for step-by-step instructions.
+
+:::warning Use the redirect-based sign-in flow
+Browser SPAs should sign in using the redirect-based OAuth2 `authorization_code` + PKCE flow. Use
+the [`<SignInButton />`](../apis/components/sign-in-button) component.
+
+**Initiating a sign-in flow directly in the browser**, the embedded `<SignIn />` component or
+`useThunderID().signIn({ applicationId })` used standalone, is **not supported** for browser SPAs.
+See
+[Register an application](../../../guides/applications/manage-applications).
+:::
+
+## Features
+
+### Contexts
+
+The SDK provides a powerful context provider that manages authentication state across your application.
+
+- **[`<ThunderIDProvider />`](../apis/contexts/thunderid-provider)** - Root provider component that wraps your application and manages authentication state
+
+### Components
+
+Pre-built, customizable components for common authentication flows and user management.
+
+#### Action Components
+- **[`<SignInButton />`](../apis/components/sign-in-button)** - Trigger sign-in flow
+- **[`<SignOutButton />`](../apis/components/sign-out-button)** - Sign out the current user
+- **[`<SignUpButton />`](../apis/components/sign-up-button)** - Trigger sign-up flow
+
+#### Control Components
+- **[`<SignedIn />`](../apis/components/signed-in)** - Conditionally render content for authenticated users
+- **[`<SignedOut />`](../apis/components/signed-out)** - Conditionally render content for unauthenticated users
+- **[`<Loading />`](../apis/components/loading)** - Display loading state during authentication
+
+#### User Self-care Components
+- **[`<UserDropdown />`](../apis/components/user-dropdown)** - User menu with profile and settings
+- **[`<UserProfile />`](../apis/components/user-profile)** - Complete user profile management interface
+- **[`<User />`](../apis/components/user)** - Display user information
+
+### Hooks
+
+React hooks for programmatic access to authentication and user data.
+
+- **[`useThunderID()`](../apis/hooks/use-thunderid)** - Access the main <ProductName /> SDK instance
+
+## Customization
+
+All components in the <ProductName /> React SDK are fully customizable. You can:
+
+- Override default styles using CSS classes or inline styles
+- Customize component behavior through props
+- Build custom components using the provided hooks
+- Extend functionality with middleware and plugins

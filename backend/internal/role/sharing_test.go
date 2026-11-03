@@ -5,6 +5,7 @@ package role
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -20,8 +21,9 @@ const testOwnerOU = "ou-owner"
 
 type RoleSharingTestSuite struct {
 	suite.Suite
-	mockService *RoleServiceInterfaceMock
-	ctx         context.Context
+	mockService           *RoleServiceInterfaceMock
+	mockAssignmentService *RoleAssignmentServiceInterfaceMock
+	ctx                   context.Context
 }
 
 func TestRoleSharingTestSuite(t *testing.T) {
@@ -30,6 +32,7 @@ func TestRoleSharingTestSuite(t *testing.T) {
 
 func (suite *RoleSharingTestSuite) SetupTest() {
 	suite.mockService = NewRoleServiceInterfaceMock(suite.T())
+	suite.mockAssignmentService = NewRoleAssignmentServiceInterfaceMock(suite.T())
 	suite.ctx = context.Background()
 }
 
@@ -37,7 +40,7 @@ func (suite *RoleSharingTestSuite) SetupTest() {
 // policy says otherwise, so a policy need not mention them to allow them. A policy only switches
 // them on or off.
 func (suite *RoleSharingTestSuite) TestDeclaration_NamesRolesAndDeclaresAssignments() {
-	decl := newRoleSharingDeclaration(suite.mockService)
+	decl := newRoleSharingDeclaration(suite.mockService, suite.mockAssignmentService)
 
 	suite.Equal(RoleSharingType, decl.ResourceType())
 	suite.Equal([]sharing.FieldDeclaration{{
@@ -49,7 +52,7 @@ func (suite *RoleSharingTestSuite) TestDeclaration_NamesRolesAndDeclaresAssignme
 }
 
 func (suite *RoleSharingTestSuite) TestDeclaration_OwningOUID() {
-	decl := newRoleSharingDeclaration(suite.mockService)
+	decl := newRoleSharingDeclaration(suite.mockService, suite.mockAssignmentService)
 
 	suite.mockService.EXPECT().GetRoleWithPermissions(mock.MatchedBy(security.IsRuntimeContext), "role1").
 		Return(&RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil).Once()
@@ -68,4 +71,15 @@ func (suite *RoleSharingTestSuite) TestDeclaration_OwningOUID() {
 	_, svcErr = decl.OwningOUID(suite.ctx, "broken")
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// Once a role is no longer shared with an organization unit, the assignments made there go.
+func (suite *RoleSharingTestSuite) TestDeclaration_DeleteOverlayValuesDropsTheOUsAssignments() {
+	decl := newRoleSharingDeclaration(suite.mockService, suite.mockAssignmentService)
+	suite.mockAssignmentService.EXPECT().DeleteAssignmentsInOU(mock.Anything, "role1", "ou-child").Return(nil).Once()
+	suite.NoError(decl.DeleteOverlayValues(suite.ctx, "role1", "ou-child"))
+
+	suite.mockAssignmentService.EXPECT().DeleteAssignmentsInOU(mock.Anything, "role1", "ou-gone").
+		Return(errors.New("store down")).Once()
+	suite.Error(decl.DeleteOverlayValues(suite.ctx, "role1", "ou-gone"))
 }

@@ -103,6 +103,12 @@ export const FlowNodeType = {
    * at the configured target when the callee completes.
    */
   CALL: 'CALL',
+
+  /**
+   * Node that declares the variables a flow reads, which a flow shared with an organization unit lets that unit
+   * override. The editor shows it as a placeholder and keeps what it declares as it is.
+   */
+  VARIABLES: 'VARIABLES',
 } as const;
 
 /**

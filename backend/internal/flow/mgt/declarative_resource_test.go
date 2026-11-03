@@ -21,6 +21,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
 type DeclarativeResourceTestSuite struct {
@@ -210,7 +211,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateFlowGraphWrapper_Insufficient
 // TestFlowGraphExporter_GetResourceType tests resource type
 func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_GetResourceType() {
 	mockService := NewFlowMgtServiceInterfaceMock(s.T())
-	exporter := newFlowGraphExporter(mockService)
+	exporter := newFlowGraphExporter(mockService, exportSharing(s.T()))
 
 	assert.Equal(s.T(), "flow", exporter.GetResourceType())
 }
@@ -218,7 +219,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_GetResourceType() {
 // TestFlowGraphExporter_GetParameterizerType tests parameterizer type
 func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_GetParameterizerType() {
 	mockService := NewFlowMgtServiceInterfaceMock(s.T())
-	exporter := newFlowGraphExporter(mockService)
+	exporter := newFlowGraphExporter(mockService, exportSharing(s.T()))
 
 	assert.Equal(s.T(), "Flow", exporter.GetParameterizerType())
 }
@@ -226,7 +227,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_GetParameterizerTyp
 // TestFlowGraphExporter_GetResourceRules tests resource rules
 func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_GetResourceRules() {
 	mockService := NewFlowMgtServiceInterfaceMock(s.T())
-	exporter := newFlowGraphExporter(mockService)
+	exporter := newFlowGraphExporter(mockService, exportSharing(s.T()))
 
 	rules := exporter.GetResourceRules()
 	assert.NotNil(s.T(), rules)
@@ -250,7 +251,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_GetAllResourceIDs()
 	// Use providers.FlowType to match the service interface type
 	mockService.EXPECT().ListFlows(mock.Anything, 10000, 0, providers.FlowType("")).Return(listResponse, nil)
 
-	exporter := newFlowGraphExporter(mockService)
+	exporter := newFlowGraphExporter(mockService, exportSharing(s.T()))
 	ids, err := exporter.GetAllResourceIDs(context.Background())
 
 	assert.Nil(s.T(), err)
@@ -270,7 +271,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_GetAllResourceIDs_E
 
 	mockService.EXPECT().ListFlows(mock.Anything, 10000, 0, providers.FlowType("")).Return(nil, expectedError)
 
-	exporter := newFlowGraphExporter(mockService)
+	exporter := newFlowGraphExporter(mockService, exportSharing(s.T()))
 	ids, err := exporter.GetAllResourceIDs(context.Background())
 
 	assert.Nil(s.T(), ids)
@@ -288,7 +289,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_GetAllResourceIDs_E
 
 	mockService.EXPECT().ListFlows(mock.Anything, 10000, 0, providers.FlowType("")).Return(listResponse, nil)
 
-	exporter := newFlowGraphExporter(mockService)
+	exporter := newFlowGraphExporter(mockService, exportSharing(s.T()))
 	ids, err := exporter.GetAllResourceIDs(context.Background())
 
 	assert.Nil(s.T(), err)
@@ -306,11 +307,11 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_GetResourceByID() {
 
 	mockService.EXPECT().GetFlow(mock.Anything, "flow-001").Return(flow, nil)
 
-	exporter := newFlowGraphExporter(mockService)
+	exporter := newFlowGraphExporter(mockService, exportSharing(s.T()))
 	resource, name, err := exporter.GetResourceByID(context.Background(), "flow-001")
 
 	assert.Nil(s.T(), err)
-	assert.Equal(s.T(), flow, resource)
+	assert.Equal(s.T(), &flowDeclarativeResource{CompleteFlowDefinition: *flow}, resource)
 	assert.Equal(s.T(), "Auth Flow", name)
 }
 
@@ -325,7 +326,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_GetResourceByID_Err
 
 	mockService.EXPECT().GetFlow(mock.Anything, "flow-001").Return(nil, expectedError)
 
-	exporter := newFlowGraphExporter(mockService)
+	exporter := newFlowGraphExporter(mockService, exportSharing(s.T()))
 	resource, name, err := exporter.GetResourceByID(context.Background(), "flow-001")
 
 	assert.Nil(s.T(), resource)
@@ -336,7 +337,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_GetResourceByID_Err
 // TestFlowGraphExporter_ValidateResource tests resource validation
 func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_ValidateResource() {
 	mockService := NewFlowMgtServiceInterfaceMock(s.T())
-	exporter := newFlowGraphExporter(mockService)
+	exporter := newFlowGraphExporter(mockService, exportSharing(s.T()))
 
 	flow := &providers.CompleteFlowDefinition{
 		ID:   "flow-001",
@@ -353,7 +354,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_ValidateResource() 
 // TestFlowGraphExporter_ValidateResource_InvalidType tests validation with invalid type
 func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_ValidateResource_InvalidType() {
 	mockService := NewFlowMgtServiceInterfaceMock(s.T())
-	exporter := newFlowGraphExporter(mockService)
+	exporter := newFlowGraphExporter(mockService, exportSharing(s.T()))
 
 	logger := log.GetLogger()
 	_, exportErr := exporter.ValidateResource(context.Background(), "not a flow", "invalid", logger)
@@ -367,7 +368,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_ValidateResource_In
 // TestFlowGraphExporter_ValidateResource_EmptyName tests validation with empty name
 func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_ValidateResource_EmptyName() {
 	mockService := NewFlowMgtServiceInterfaceMock(s.T())
-	exporter := newFlowGraphExporter(mockService)
+	exporter := newFlowGraphExporter(mockService, exportSharing(s.T()))
 
 	flow := &providers.CompleteFlowDefinition{
 		ID:   "flow-001",
@@ -597,7 +598,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporterIntegration() {
 	mockService.EXPECT().ListFlows(mock.Anything, 10000, 0, providers.FlowType("")).Return(listResponse, nil)
 	mockService.EXPECT().GetFlow(mock.Anything, "flow-001").Return(flow, nil)
 
-	exporter := newFlowGraphExporter(mockService)
+	exporter := newFlowGraphExporter(mockService, exportSharing(s.T()))
 
 	// Get all IDs
 	ids, err := exporter.GetAllResourceIDs(context.Background())
@@ -607,7 +608,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporterIntegration() {
 	// Get resource by ID
 	resource, name, err := exporter.GetResourceByID(context.Background(), ids[0])
 	assert.Nil(s.T(), err)
-	assert.Equal(s.T(), flow, resource)
+	assert.Equal(s.T(), &flowDeclarativeResource{CompleteFlowDefinition: *flow}, resource)
 	assert.Equal(s.T(), "Authentication Flow", name)
 
 	// Validate resource
@@ -981,14 +982,15 @@ func (s *DeclarativeResourceTestSuite) TestFlowExport_WithComplexMeta() {
 
 	mockService.EXPECT().GetFlow(mock.Anything, "test-flow-001").Return(complexFlow, nil)
 
-	exporter := newFlowGraphExporter(mockService)
+	exporter := newFlowGraphExporter(mockService, exportSharing(s.T()))
 	resource, name, err := exporter.GetResourceByID(context.Background(), "test-flow-001")
 
 	require.Nil(s.T(), err)
 	assert.Equal(s.T(), "Test Flow with Complex Meta", name)
 
-	flow, ok := resource.(*providers.CompleteFlowDefinition)
+	exported, ok := resource.(*flowDeclarativeResource)
 	require.True(s.T(), ok)
+	flow := &exported.CompleteFlowDefinition
 
 	// Verify meta is preserved
 	assert.NotNil(s.T(), flow.Nodes[0].Meta)
@@ -1574,4 +1576,15 @@ meta: '{"key": "value with spaces", "multiline": "line1\nline2"}'
 
 func TestDeclarativeResourceTestSuite(t *testing.T) {
 	suite.Run(t, new(DeclarativeResourceTestSuite))
+}
+
+// exportSharing is a sharing service whose flows were never shared, so an export carries no policies and no values.
+func exportSharing(t interface {
+	mock.TestingT
+	Cleanup(func())
+}) *sharingmock.SharingServiceInterfaceMock {
+	m := sharingmock.NewSharingServiceInterfaceMock(t)
+	m.EXPECT().ExportPolicies(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	m.EXPECT().ListOverlayValues(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	return m
 }

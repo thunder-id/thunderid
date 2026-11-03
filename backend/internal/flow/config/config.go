@@ -5,6 +5,7 @@
 package flowconfig
 
 import (
+	"net/url"
 	"time"
 
 	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
@@ -15,7 +16,8 @@ import (
 // Config holds configuration values required by flow services.
 type Config struct {
 	Flow engineconfig.FlowConfig
-	// SecureCookies marks SSO cookies Secure; it is derived from the deployment's HTTP-only setting.
+	// SecureCookies marks SSO cookies Secure; it is derived from the deployment's HTTP-only setting and
+	// public URL scheme.
 	SecureCookies bool
 	// Session holds the SSO session lifetime configuration used for both server-side timeouts and the
 	// cookie lifetime. It is sourced from the server-config "session" section at the composition root,
@@ -68,7 +70,17 @@ func FromServerRuntime() Config {
 	runtime := config.GetServerRuntime()
 	return Config{
 		Flow:          runtime.Config.Flow,
-		SecureCookies: !runtime.Config.Server.HTTPOnly,
+		SecureCookies: secureCookies(runtime.Config.Server),
 		TokenLeeway:   time.Duration(runtime.Config.JWT.Leeway) * time.Second,
 	}
+}
+
+// secureCookies reports whether SSO cookies must be marked Secure. They are Secure when the server
+// serves TLS itself, or when its public URL is HTTPS, as behind a proxy that terminates TLS.
+func secureCookies(server engineconfig.ServerConfig) bool {
+	if !server.HTTPOnly {
+		return true
+	}
+	publicURL, err := url.Parse(server.PublicURL)
+	return err == nil && publicURL.Scheme == "https"
 }

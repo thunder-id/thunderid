@@ -17,3 +17,8 @@ sharingPolicies:
           reach: unit
         - ouId: decl-m2m-child-b
           reach: unit
+# decl-user-1 lives in decl-ou-1 and is shared into decl-m2m-root, so it may be assigned there.
+assignments:
+  - id: decl-user-1
+    type: user
+    ouId: decl-m2m-root

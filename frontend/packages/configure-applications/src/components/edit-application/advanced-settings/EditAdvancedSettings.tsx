@@ -165,6 +165,7 @@ export default function EditAdvancedSettings({
         />
         {oauth2Config && (
           <IdentityAssertionsSection
+            key={sectionResetKey}
             oauth2Config={oauth2Config}
             onTokenConfigChange={handleTokenConfigChange}
             disabled={application.isReadOnly}

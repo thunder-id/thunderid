@@ -169,12 +169,14 @@ type GroupListResponse struct {
 	Links        []utils.Link `json:"links"`
 }
 
-// Role represents a role with basic information for OU endpoints.
+// Role represents a role with basic information for OU endpoints. IsOwnedByOU reports whether the
+// organization unit owns the role rather than being shared it.
 type Role struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	IsReadOnly  bool   `json:"isReadOnly"`
+	IsOwnedByOU bool   `json:"isOwnedByOU"`
 }
 
 // RoleListResponse represents the response for listing roles in an organization unit.
@@ -189,6 +191,7 @@ type RoleListResponse struct {
 // OURoleResolver provides access to role data for an organization unit
 // without requiring direct import of the role package.
 type OURoleResolver interface {
-	GetRoleCountByOUID(ctx context.Context, ouID string) (int, error)
-	GetRoleListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Role, error)
+	// GetRoleListByOUID returns one page of the roles an organization unit owns, followed by the ones
+	// shared with it, and the total across every page.
+	GetRoleListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Role, int, error)
 }

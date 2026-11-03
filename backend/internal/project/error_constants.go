@@ -179,4 +179,19 @@ var (
 			DefaultValue: "The root organization unit already belongs to another project",
 		},
 	}
+
+	// ErrorOUNotInProject is the error returned when an organization unit is neither the project's root
+	// organization unit nor one below it.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "PRJ-1013",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.projectservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.projectservice.ou_not_in_project_description",
+			DefaultValue: "The organization unit must be the project's root organization unit or one below it",
+		},
+	}
 )

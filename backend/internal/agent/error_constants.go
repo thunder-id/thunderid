@@ -4,6 +4,8 @@
 package agent
 
 import (
+	"errors"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -516,4 +518,65 @@ var (
 			DefaultValue: "A delegated agent needs at least one of these grant types: {{param(grantTypes)}}",
 		},
 	}
+
+	// ErrorInvalidLifespan is returned when validUntil is not a valid RFC 3339 instant.
+	ErrorInvalidLifespan = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1045",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_lifespan",
+			DefaultValue: "Invalid lifespan",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_lifespan_description",
+			DefaultValue: "validUntil must be an RFC 3339 date and time, or null for an agent that does not expire",
+		},
+	}
+
+	// ErrorLifespanNotInFuture is returned when validUntil is not later than the current time.
+	ErrorLifespanNotInFuture = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1046",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.lifespan_not_in_future",
+			DefaultValue: "Lifespan must end in the future",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.lifespan_not_in_future_description",
+			DefaultValue: "validUntil must be later than the current time",
+		},
+	}
+
+	// ErrorInvalidProject is returned when an agent names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1047",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+
+	// ErrorOUNotInProject is returned when an agent names an organization unit outside the project
+	// it names.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1048",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.ou_not_in_project_description",
+			DefaultValue: "The organization unit must be the project's root organization unit or one below it",
+		},
+	}
 )
+
+// errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339
+// date and time.
+var errInvalidDeclarativeLifespan = errors.New("validUntil must be an RFC 3339 date and time")

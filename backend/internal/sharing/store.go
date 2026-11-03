@@ -56,12 +56,20 @@ type sharingPolicyStoreInterface interface {
 
 	// GetOverlayValues returns one organization unit's own values for a resource, by field.
 	GetOverlayValues(ctx context.Context, rt ResourceType, resourceID, ouID string) (map[string][]string, error)
+	// ListOverlayValuesForResource returns the values every organization unit holds for a resource, by unit and then
+	// by field.
+	ListOverlayValuesForResource(
+		ctx context.Context, rt ResourceType, resourceID string,
+	) (map[string]map[string][]string, error)
 	// SetOverlayValue records one organization unit's value for one field.
 	SetOverlayValue(ctx context.Context, rt ResourceType, resourceID, ouID, fieldKey string, value []string) error
 	// DeleteOverlayValue removes one organization unit's value for one field.
 	DeleteOverlayValue(ctx context.Context, rt ResourceType, resourceID, ouID, fieldKey string) error
 	// DeleteOverlayValuesForOU removes every value one organization unit holds for a resource.
 	DeleteOverlayValuesForOU(ctx context.Context, rt ResourceType, resourceID, ouID string) error
+	// DeleteField removes what is held for one field of a resource: the rule each policy states for it and the value
+	// every organization unit holds for it.
+	DeleteField(ctx context.Context, rt ResourceType, resourceID, fieldKey string) error
 }
 
 // sharingStore is the database-backed implementation of sharingPolicyStoreInterface.
@@ -435,6 +443,35 @@ func (s *sharingStore) GetOverlayValues(
 	return out, nil
 }
 
+// ListOverlayValuesForResource returns the values every organization unit holds for a resource, by unit and then by
+// field.
+func (s *sharingStore) ListOverlayValuesForResource(
+	ctx context.Context, rt ResourceType, resourceID string,
+) (map[string]map[string][]string, error) {
+	dbClient, err := s.client()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := dbClient.QueryContext(ctx, queryListOverlayValuesForResource,
+		string(rt), resourceID, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list overlay values: %w", err)
+	}
+	out := make(map[string]map[string][]string)
+	for _, row := range rows {
+		var members []string
+		if err := json.Unmarshal([]byte(utils.ConvertInterfaceValueToString(row["value"])), &members); err != nil {
+			return nil, fmt.Errorf("failed to decode overlay value: %w", err)
+		}
+		ouID := utils.ConvertInterfaceValueToString(row["ou_id"])
+		if out[ouID] == nil {
+			out[ouID] = make(map[string][]string)
+		}
+		out[ouID][utils.ConvertInterfaceValueToString(row["field_key"])] = members
+	}
+	return out, nil
+}
+
 // SetOverlayValue records one organization unit's value for one field.
 func (s *sharingStore) SetOverlayValue(
 	ctx context.Context, rt ResourceType, resourceID, ouID, fieldKey string, value []string,
@@ -480,6 +517,25 @@ func (s *sharingStore) DeleteOverlayValuesForOU(
 	if _, err := dbClient.ExecuteContext(ctx, queryDeleteOverlayValuesForOU,
 		string(rt), resourceID, ouID, s.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to delete overlay values: %w", err)
+	}
+	return nil
+}
+
+// DeleteField removes what is held for one field of a resource: the rule each policy states for it and the value every
+// organization unit holds for it.
+func (s *sharingStore) DeleteField(ctx context.Context, rt ResourceType, resourceID, fieldKey string) error {
+	dbClient, err := s.client()
+	if err != nil {
+		return err
+	}
+	scope := s.scope(ctx)
+	if _, err := dbClient.ExecuteContext(ctx, queryDeleteOverlayValuesForField,
+		string(rt), resourceID, fieldKey, scope); err != nil {
+		return fmt.Errorf("failed to delete overlay values of a field: %w", err)
+	}
+	if _, err := dbClient.ExecuteContext(ctx, queryDeleteOverlayRulesForField,
+		fieldKey, scope, string(rt), resourceID); err != nil {
+		return fmt.Errorf("failed to delete overlay rules of a field: %w", err)
 	}
 	return nil
 }

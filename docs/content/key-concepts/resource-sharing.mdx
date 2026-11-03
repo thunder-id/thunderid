@@ -157,7 +157,7 @@ sharingPolicies:
 
 Sharing says which organization units reach a resource. Overlay rules say on what terms. A rule governs one field of the resource and decides whether the organization unit that reaches it may write that field, and which values it may choose.
 
-Which fields a resource exposes depends on the resource type. A resource server exposes `resources`, the permission tree a reached organization unit may use. A resource type that exposes no field takes no overlay rules.
+Which fields a resource exposes depends on the resource type. A resource server exposes `resources`, the permission tree a reached organization unit may use. A flow exposes one field for each variable it declares, keyed `variables.<identifier>`, so a rule decides whether a reached organization unit may set that variable and which values it may choose. A resource type that exposes no field takes no overlay rules.
 
 Each rule takes these fields:
 

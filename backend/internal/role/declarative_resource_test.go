@@ -8,15 +8,19 @@ import (
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
@@ -73,10 +77,10 @@ func (suite *RoleExporterTestSuite) TestGetAllResourceIDs_SinglePage() {
 		TotalResults: 2,
 	}
 
-	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 0).Return(
+	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 0, mock.Anything).Return(
 		roleList, nil,
 	)
-	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 2).Return(
+	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 2, mock.Anything).Return(
 		&RoleList{Roles: []Role{}, TotalResults: 2}, nil,
 	)
 	suite.mockService.On("IsRoleDeclarative", suite.ctx, "role1").Return(false, nil)
@@ -110,9 +114,9 @@ func (suite *RoleExporterTestSuite) TestGetAllResourceIDs_MultiplePages() {
 		TotalResults: 2,
 	}
 
-	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 0).Return(page1, nil)
-	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 1).Return(page2, nil)
-	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 2).Return(emptyPage, nil)
+	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 0, mock.Anything).Return(page1, nil)
+	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 1, mock.Anything).Return(page2, nil)
+	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 2, mock.Anything).Return(emptyPage, nil)
 	suite.mockService.On("IsRoleDeclarative", suite.ctx, "role1").Return(false, nil)
 	suite.mockService.On("IsRoleDeclarative", suite.ctx, "role2").Return(false, nil)
 
@@ -133,10 +137,10 @@ func (suite *RoleExporterTestSuite) TestGetAllResourceIDs_ExcludesDeclarativeRol
 		TotalResults: 2,
 	}
 
-	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 0).Return(
+	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 0, mock.Anything).Return(
 		roleList, nil,
 	)
-	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 2).Return(
+	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 2, mock.Anything).Return(
 		&RoleList{Roles: []Role{}, TotalResults: 2}, nil,
 	)
 	suite.mockService.On("IsRoleDeclarative", suite.ctx, "role1").Return(false, nil)
@@ -155,7 +159,7 @@ func (suite *RoleExporterTestSuite) TestGetAllResourceIDs_ExcludesDeclarativeRol
 // Test GetAllResourceIDs - error on GetRoleList
 func (suite *RoleExporterTestSuite) TestGetAllResourceIDs_ErrorOnGetRoleList() {
 	serviceErr := &tidcommon.ServiceError{Code: "500"}
-	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 0).Return(nil, serviceErr)
+	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 0, mock.Anything).Return(nil, serviceErr)
 
 	ids, err := suite.exporter.GetAllResourceIDs(suite.ctx)
 
@@ -174,7 +178,7 @@ func (suite *RoleExporterTestSuite) TestGetAllResourceIDs_ErrorOnIsRoleDeclarati
 	}
 	serviceErr := &tidcommon.ServiceError{Code: "500"}
 
-	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 0).Return(roleList, nil)
+	suite.mockService.On("GetRoleList", suite.ctx, serverconst.MaxPageSize, 0, mock.Anything).Return(roleList, nil)
 	suite.mockService.On("IsRoleDeclarative", suite.ctx, "role1").Return(false, serviceErr)
 
 	ids, err := suite.exporter.GetAllResourceIDs(suite.ctx)
@@ -199,17 +203,18 @@ func (suite *RoleExporterTestSuite) TestGetResourceByID_Success() {
 	suite.mockService.On("GetRoleWithPermissions", suite.ctx, "role1").Return(
 		roleWithPerms, nil,
 	)
+	// Assignments are read across every organization unit and keep the one they were made in.
 	suite.mockAssignmentService.On(
-		"GetRoleAssignments", suite.ctx, "role1", serverconst.MaxPageSize, 0, false,
+		"GetRoleAssignments", suite.ctx, "role1", "", serverconst.MaxPageSize, 0, false,
 	).Return(&AssignmentList{
 		Assignments: []RoleAssignmentWithDisplay{
-			{ID: "user1", Type: assigneeTypeEntity},
-			{ID: "group1", Type: AssigneeTypeGroup},
+			{ID: "user1", Type: AssigneeTypeUser, OUID: "ou1"},
+			{ID: "group1", Type: AssigneeTypeGroup, OUID: "ou-child"},
 		},
 		TotalResults: 2,
 	}, nil)
 	suite.mockAssignmentService.On(
-		"GetRoleAssignments", suite.ctx, "role1", serverconst.MaxPageSize, 2, false,
+		"GetRoleAssignments", suite.ctx, "role1", "", serverconst.MaxPageSize, 2, false,
 	).Return(&AssignmentList{
 		Assignments:  []RoleAssignmentWithDisplay{},
 		TotalResults: 2,
@@ -224,7 +229,10 @@ func (suite *RoleExporterTestSuite) TestGetResourceByID_Success() {
 	role, ok := resource.(*roleDeclarativeResource)
 	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), "role1", role.ID)
-	assert.Len(suite.T(), role.Assignments, 2)
+	assert.Equal(suite.T(), []RoleAssignment{
+		{ID: "user1", Type: AssigneeTypeUser, OUID: "ou1"},
+		{ID: "group1", Type: AssigneeTypeGroup, OUID: "ou-child"},
+	}, role.Assignments)
 }
 
 // exportingPolicies rebuilds the exporter around a sharing service that answers the role's policies.
@@ -245,7 +253,7 @@ func (suite *RoleExporterTestSuite) TestGetResourceByID_ExportsTheSharingPolicie
 	}
 	suite.exportingPolicies([]sharing.ReplayablePolicy{{InitiatingOUID: "ou1", Request: request}}, nil)
 	suite.mockAssignmentService.On(
-		"GetRoleAssignments", suite.ctx, "role1", serverconst.MaxPageSize, 0, false,
+		"GetRoleAssignments", suite.ctx, "role1", mock.Anything, serverconst.MaxPageSize, 0, false,
 	).Return(&AssignmentList{Assignments: []RoleAssignmentWithDisplay{}}, nil)
 
 	resource, _, err := suite.exporter.GetResourceByID(suite.ctx, "role1")
@@ -261,7 +269,7 @@ func (suite *RoleExporterTestSuite) TestGetResourceByID_ExportsTheSharingPolicie
 func (suite *RoleExporterTestSuite) TestGetResourceByID_SharingFailureFailsTheExport() {
 	suite.exportingPolicies(nil, &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "SHR-5000"})
 	suite.mockAssignmentService.On(
-		"GetRoleAssignments", suite.ctx, "role1", serverconst.MaxPageSize, 0, false,
+		"GetRoleAssignments", suite.ctx, "role1", mock.Anything, serverconst.MaxPageSize, 0, false,
 	).Return(&AssignmentList{Assignments: []RoleAssignmentWithDisplay{}}, nil)
 
 	resource, name, err := suite.exporter.GetResourceByID(suite.ctx, "role1")
@@ -585,4 +593,164 @@ sharingPolicies:
     childUnits: { mode: all }
 `))
 	suite.ErrorContains(err, `organization unit with handle "nowhere" not found`)
+}
+
+// PlaceDeclaredAssignmentsTestSuite covers how declared assignments are placed and checked once
+// declared sharing policies have loaded.
+type PlaceDeclaredAssignmentsTestSuite struct {
+	suite.Suite
+	entities *entitymock.EntityServiceInterfaceMock
+	groups   *groupmock.GroupServiceInterfaceMock
+	sharing  *sharingmock.SharingServiceInterfaceMock
+}
+
+func TestPlaceDeclaredAssignmentsTestSuite(t *testing.T) {
+	suite.Run(t, new(PlaceDeclaredAssignmentsTestSuite))
+}
+
+func (suite *PlaceDeclaredAssignmentsTestSuite) SetupTest() {
+	suite.entities = entitymock.NewEntityServiceInterfaceMock(suite.T())
+	suite.groups = groupmock.NewGroupServiceInterfaceMock(suite.T())
+	suite.sharing = sharingmock.NewSharingServiceInterfaceMock(suite.T())
+}
+
+func (suite *PlaceDeclaredAssignmentsTestSuite) place(role *RoleWithPermissionsAndAssignments) error {
+	return placeRoleAssignments(context.Background(), role, suite.entities, suite.groups, suite.sharing)
+}
+
+// sharedWith stubs the role as shared with ouID by its declared owner policy, with its assignments
+// open or turned off there.
+func (suite *PlaceDeclaredAssignmentsTestSuite) sharedWith(ouID string, visible, open bool) {
+	suite.reachedBy(ouID, visible, open, []string{"role1-policy-owner"},
+		sharing.Policy{ID: "role1-policy-owner", Declared: true})
+}
+
+// reachedBy stubs the role as reaching ouID through the named policies, out of all the role's
+// policies.
+func (suite *PlaceDeclaredAssignmentsTestSuite) reachedBy(
+	ouID string, visible, open bool, policyIDs []string, policies ...sharing.Policy,
+) {
+	suite.sharing.EXPECT().ResolveOverlayRules(mock.Anything, RoleSharingType, "role1", ouID).
+		Return(sharing.ResolvedOverlay{
+			OUID: ouID, Visible: visible, PolicyIDs: policyIDs,
+			Rules: map[string]sharing.OverlayRule{roleAssignmentsFieldKey: {Editable: open}},
+		}, nil)
+	suite.sharing.EXPECT().ListPolicies(mock.Anything, RoleSharingType, "role1").Return(policies, nil).Maybe()
+}
+
+// An assignment naming no organization unit is made where its assignee lives. One whose assignee has
+// not loaded yet stays unplaced, and is read as made in the role's owner.
+func (suite *PlaceDeclaredAssignmentsTestSuite) TestAssignmentsTakeTheAssigneesOU() {
+	role := &RoleWithPermissionsAndAssignments{ID: "role1", OUID: "ou-owner", Assignments: []RoleAssignment{
+		{ID: "user1", Type: assigneeTypeEntity},
+		{ID: "grp1", Type: AssigneeTypeGroup},
+		{ID: "app-not-loaded", Type: assigneeTypeEntity},
+	}}
+	suite.entities.On("GetEntitiesByIDs", mock.Anything, []string{"user1", "app-not-loaded"}).Return(
+		[]providers.Entity{{ID: "user1", Category: providers.EntityCategoryUser, OUID: "ou-child"}}, nil)
+	suite.groups.On("GetGroupsByIDs", mock.Anything, []string{"grp1"}).
+		Return(map[string]*group.Group{"grp1": {ID: "grp1", OUID: "ou-owner"}}, nil)
+	suite.sharedWith("ou-child", true, true)
+
+	suite.Require().NoError(suite.place(role))
+
+	suite.Equal([]RoleAssignment{
+		{ID: "user1", Type: assigneeTypeEntity, OUID: "ou-child"},
+		{ID: "grp1", Type: AssigneeTypeGroup, OUID: "ou-owner"},
+		{ID: "app-not-loaded", Type: assigneeTypeEntity},
+	}, role.Assignments)
+	suite.Equal("ou-owner", declaredAssignments(*role, "", "")[2].OUID)
+}
+
+// An assignment in an organization unit the role is not shared with, or where its policies turn
+// assignments off, fails the load.
+func (suite *PlaceDeclaredAssignmentsTestSuite) TestAssignmentOutsideTheRolesReachIsRefused() {
+	for name, open := range map[string]bool{"not shared": false, "assignments off": true} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			role := &RoleWithPermissionsAndAssignments{ID: "role1", OUID: "ou-owner", Assignments: []RoleAssignment{
+				{ID: "app-not-loaded", Type: assigneeTypeEntity, OUID: "ou-other"},
+			}}
+			suite.entities.On("GetEntitiesByIDs", mock.Anything, []string{"app-not-loaded"}).
+				Return([]providers.Entity{}, nil)
+			// "not shared" stubs an organization unit the role does not reach; "assignments off" one it
+			// reaches with its assignments turned off.
+			suite.sharedWith("ou-other", open, false)
+
+			err := suite.place(role)
+
+			suite.Require().Error(err)
+			suite.Contains(err.Error(), "ou-other")
+		})
+	}
+}
+
+// A stored policy can be withdrawn at runtime, and losing the role does not remove a declared
+// assignment, so a declared assignment is made only where declared policies alone reach.
+func (suite *PlaceDeclaredAssignmentsTestSuite) TestAssignmentNeedsADeclaredReach() {
+	owner := sharing.Policy{ID: "owner", Declared: true}
+	storedReshare := sharing.Policy{ID: "stored-reshare", ParentPolicyID: "owner"}
+	declaredReshare := sharing.Policy{ID: "declared-reshare", ParentPolicyID: "owner", Declared: true}
+	beneathStored := sharing.Policy{ID: "beneath-stored", ParentPolicyID: "stored-reshare", Declared: true}
+	for _, tc := range []struct {
+		name      string
+		reachedBy []string
+		accepted  bool
+	}{
+		{"a declared policy", []string{"owner"}, true},
+		{"a declared reshare beneath a declared policy", []string{"declared-reshare"}, true},
+		{"a stored and a declared policy", []string{"stored-reshare", "owner"}, true},
+		{"only a stored reshare", []string{"stored-reshare"}, false},
+		{"a declared reshare beneath a stored one", []string{"beneath-stored"}, false},
+		{"a policy the role does not list", []string{"unknown"}, false},
+	} {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			role := &RoleWithPermissionsAndAssignments{ID: "role1", OUID: "ou-owner", Assignments: []RoleAssignment{
+				{ID: "app-not-loaded", Type: assigneeTypeEntity, OUID: "ou-team"},
+			}}
+			suite.entities.On("GetEntitiesByIDs", mock.Anything, []string{"app-not-loaded"}).
+				Return([]providers.Entity{}, nil)
+			suite.reachedBy("ou-team", true, true, tc.reachedBy, owner, storedReshare, declaredReshare, beneathStored)
+
+			err := suite.place(role)
+
+			if tc.accepted {
+				suite.NoError(err)
+				return
+			}
+			suite.Require().Error(err)
+			suite.Contains(err.Error(), "only through a sharing policy stored through the API")
+		})
+	}
+}
+
+// An assignee that has loaded must be owned by or shared with the organization unit it is assigned in.
+func (suite *PlaceDeclaredAssignmentsTestSuite) TestAssigneeOutsideTheOUIsRefused() {
+	role := &RoleWithPermissionsAndAssignments{ID: "role1", OUID: "ou-owner", Assignments: []RoleAssignment{
+		{ID: "user1", Type: assigneeTypeEntity, OUID: "ou-owner"},
+	}}
+	user := providers.Entity{ID: "user1", Category: providers.EntityCategoryUser, OUID: "ou-child"}
+	suite.entities.On("GetEntitiesByIDs", mock.Anything, []string{"user1"}).Return([]providers.Entity{user}, nil)
+	suite.sharing.EXPECT().IsVisible(mock.Anything, sharing.ResourceType("user"), "user1", "ou-owner").
+		Return(false, nil)
+
+	err := suite.place(role)
+
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "not owned by or shared with")
+}
+
+// A user shared with the organization unit may be assigned there.
+func (suite *PlaceDeclaredAssignmentsTestSuite) TestSharedAssigneeIsAccepted() {
+	role := &RoleWithPermissionsAndAssignments{ID: "role1", OUID: "ou-owner", Assignments: []RoleAssignment{
+		{ID: "user1", Type: assigneeTypeEntity, OUID: "ou-child"},
+	}}
+	user := providers.Entity{ID: "user1", Category: providers.EntityCategoryUser, OUID: "ou-owner"}
+	suite.entities.On("GetEntitiesByIDs", mock.Anything, []string{"user1"}).Return([]providers.Entity{user}, nil)
+	suite.sharedWith("ou-child", true, true)
+	suite.sharing.EXPECT().IsVisible(mock.Anything, sharing.ResourceType("user"), "user1", "ou-child").
+		Return(true, nil)
+
+	suite.NoError(suite.place(role))
 }

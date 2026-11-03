@@ -5,6 +5,7 @@ package connection
 
 import (
 	"net/http"
+	"net/url"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -20,6 +21,7 @@ const (
 	errMissingOUIDParameter        = "CON-1037"
 	errDeploymentWideSharing       = "CON-1038"
 	errIDPNotFound                 = "IDP-1001"
+	errInvalidFilter               = "CON-1039"
 )
 
 // sharedVendor is a vendor whose connections can be shared, with the body that creates one.
@@ -380,5 +382,61 @@ func (s *ConnectionAPITestSuite) TestDeleteOnAnotherVendorKeepsSharingPolicies()
 			s.Equal(http.StatusOK, status, "the connection's sharing survived a delete on /connections/%s: %v",
 				vendor, body)
 		})
+	}
+}
+
+// listedIn lists the connections of an organization unit through the ouId filter and returns each entry by id.
+func (s *ConnectionAPITestSuite) listedIn(ouID string) map[string]map[string]interface{} {
+	s.T().Helper()
+	status, body := s.sharingRequest(http.MethodGet,
+		"/connections?limit=100&filter="+url.QueryEscape(`ouId eq "`+ouID+`"`), nil)
+	s.Require().Equal(http.StatusOK, status, "body: %v", body)
+	byID := map[string]map[string]interface{}{}
+	for _, item := range body["connections"].([]interface{}) {
+		entry := item.(map[string]interface{})
+		byID[entry["id"].(string)] = entry
+	}
+	return byID
+}
+
+func (s *ConnectionAPITestSuite) TestTheOUFilterListsOwnedConnectionsThenSharedOnes() {
+	childOUID := s.createChildOU("conn-filter-child")
+	created := s.createConnection("google", googleRequestIn("Filter Owner", ""))
+	defer s.deleteConnection("google", created.ID)
+
+	owned := s.listedIn(s.ouID)
+	s.Require().Contains(owned, created.ID, "the owner lists the connection it owns")
+	s.Equal(true, owned[created.ID]["isOwnedByOU"])
+	s.NotContains(s.listedIn(childOUID), created.ID, "nothing was shared with the child yet")
+
+	base := "/connections/google/" + created.ID + "/sharing-policies"
+	status, policy := s.sharingRequest(http.MethodPost, base,
+		map[string]interface{}{"childUnits": allChildUnitsSection()})
+	s.Require().Equal(http.StatusCreated, status, "body: %v", policy)
+	defer func() { _, _ = s.sharingRequest(http.MethodDelete, base+"/"+policy["id"].(string), nil) }()
+
+	shared := s.listedIn(childOUID)
+	s.Require().Contains(shared, created.ID, "the connection shared with the child is listed for it")
+	s.Equal(false, shared[created.ID]["isOwnedByOU"])
+	s.Equal(s.ouID, shared[created.ID]["ouId"], "the owner's, not the one listed")
+
+	status, body := s.sharingRequest(http.MethodGet, "/connections?limit=100", nil)
+	s.Require().Equal(http.StatusOK, status)
+	for _, item := range body["connections"].([]interface{}) {
+		s.Equal(true, item.(map[string]interface{})["isOwnedByOU"], "an unfiltered list is of owned connections")
+	}
+}
+
+func (s *ConnectionAPITestSuite) TestAConnectionFilterItCannotApplyIsRefused() {
+	for _, expr := range []string{
+		"ouId eq " + s.ouID,
+		`ouId eq ""`,
+		`ouId sw "` + s.ouID + `"`,
+		`name eq "x"`,
+		`ouId eq "` + s.ouID + `" and name eq "x"`,
+	} {
+		status, body := s.sharingRequest(http.MethodGet, "/connections?filter="+url.QueryEscape(expr), nil)
+		s.Equal(http.StatusBadRequest, status, expr)
+		s.Equal(errInvalidFilter, body["code"], expr)
 	}
 }

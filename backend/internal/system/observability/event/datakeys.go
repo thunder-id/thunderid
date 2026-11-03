@@ -67,6 +67,10 @@ var DataKey = struct {
 	LockPermanent string
 	UnlockAt      string
 
+	// Lifespan Keys
+	ValidUntil         string
+	PreviousValidUntil string
+
 	// Session & Delivery Keys
 	SessionID  string
 	HTTPStatus string
@@ -132,6 +136,10 @@ var DataKey = struct {
 	LockCount:     "lock_count",
 	LockPermanent: "lock_permanent",
 	UnlockAt:      "unlock_at",
+
+	// Lifespan Keys
+	ValidUntil:         "valid_until",
+	PreviousValidUntil: "previous_valid_until",
 
 	// Session & Delivery Keys
 	SessionID:  "session_id",

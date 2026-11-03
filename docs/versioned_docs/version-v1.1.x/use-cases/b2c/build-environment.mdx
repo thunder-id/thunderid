@@ -1,0 +1,48 @@
+---
+title: Set Up Your Environment
+docType: use-case
+sidebar_position: 1
+description: Get {{ProductName}} and the Wayfinder sample running before you build anything.
+---
+
+# Set Up Your Environment
+
+Before you build anything, get <ProductName /> and the Wayfinder sample running. Every page after this uses them.
+
+:::note Building your own app?
+This tutorial builds the **Wayfinder sample** by hand, so you can see exactly what each concept creates. The names and identifiers here (`wayfinder`, the `Traveler` role, John Doe) are Wayfinder's; swap in your own as you go.
+:::
+
+<Stepper stepNode="h2" as="h2">
+
+## Run <ProductName />
+
+Get <ProductName /> running locally. Follow [Get <ProductName />](../../../getting-started/get-thunderid) for download, setup, and start commands.
+
+## Configure the Server
+
+Add the Wayfinder origin to the server's CORS (cross-origin resource sharing) allowlist, so the browser lets your app call <ProductName /> from a different origin. Create or update `config/resources/server_configs/cors.yaml`, or use `PUT /server-config/cors` after startup.
+
+:::note Running from source with make run
+In development, `make run` (or `.\build.ps1 run` on Windows) seeds the Console and Gate origins automatically, so you only need to add the sample app's origin here. Distributions started with `start.sh` are not seeded; configure all origins manually.
+:::
+
+```yaml
+name: cors
+value:
+  allowedOrigins:
+    # ...existing entries...
+    - "{{WayFinderSampleUrl}}"
+```
+
+Restart <ProductName /> after editing the declarative resource.
+
+## Get the Wayfinder Sample
+
+Download the latest Wayfinder sample distribution. It ships with a `thunderid-config/` directory containing a declarative YAML bundle and a `thunderid.env` file with the environment variables it references.
+
+<SampleDownload sample="sample-app-wayfinder" />
+
+</Stepper>
+
+With that running, you're ready to build. Each page from here creates one piece of the setup, starting with [your users](../build-users).

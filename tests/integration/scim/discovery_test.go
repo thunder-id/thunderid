@@ -26,6 +26,7 @@ type SCIMDiscoveryTestSuite struct {
 }
 
 func TestSCIMDiscoveryTestSuite(t *testing.T) {
+	t.Skip(scimDisabledReason)
 	suite.Run(t, new(SCIMDiscoveryTestSuite))
 }
 

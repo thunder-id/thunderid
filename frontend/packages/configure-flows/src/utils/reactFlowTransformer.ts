@@ -55,6 +55,7 @@ interface FlowNode {
     inputs?: FlowInput[];
     [key: string]: unknown;
   };
+  inputs?: Record<string, unknown>[];
   onSuccess?: string;
   onFailure?: string;
   onIncomplete?: string;
@@ -142,6 +143,7 @@ const STEP_TO_NODE_TYPE_MAP: Record<string, string> = {
   [StepTypes.Call]: 'CALL',
   [StaticStepTypes.Start]: 'START',
   [StaticStepTypes.UserOnboard]: 'END',
+  [StaticStepTypes.Variables]: 'VARIABLES',
 };
 
 /**
@@ -632,6 +634,19 @@ function transformNode(canvasNode: Node<StepData>, edges: Edge[]): FlowNode {
     // Add decision properties if present (for conditions)
     if (stepData?.properties && Object.keys(stepData.properties).length > 0) {
       flowNode.properties = stepData.properties;
+    }
+  }
+
+  // Handle VARIABLES nodes: the declarations go back as they were read
+  if (canvasNode.type === StaticStepTypes.Variables) {
+    const declarations = stepData?.['inputs'];
+    if (Array.isArray(declarations)) {
+      flowNode.inputs = declarations as Record<string, unknown>[];
+    }
+
+    const nextNode = findNextNode(canvasNode, edges);
+    if (nextNode) {
+      flowNode.onSuccess = nextNode;
     }
   }
 

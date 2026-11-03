@@ -126,9 +126,16 @@ paths:
           description: >-
             Resource indicator per RFC 8707 (absolute URI, no fragment). Only one value is
             supported; requests with multiple resource values are rejected with invalid_target.
-            When omitted from a permission-bearing request, the configured
-            defaultResourceServer is used. OIDC-only and scopeless requests use the
+            When omitted from a request carrying permission scopes or authorization details, the
+            configured defaultResourceServer is used. OIDC-only and scopeless requests use the
             client_id audience.
+        - name: authorization_details
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >-
+            RFC 9396 authorization details: a JSON array of objects, each naming a registered `type`. Each object is validated against its type (its schema and limits; a member the type does not declare is refused, the RFC 9396 common fields included), and an invalid one is refused with `invalid_authorization_details`. Details carry no resource server: the access token audience comes from `resource`, or the default resource server when it is omitted, as for permission scopes.
         - name: acr_values
           in: query
           required: false
@@ -175,6 +182,13 @@ paths:
         failure is propagated to the waiting request (authorization code: an error redirect; CIBA: the
         request is denied or marked failed). The two are distinguished by the assertion's own claims,
         so callers submit both in the same field.
+
+        The caller also posts, in `sessionData`, the SSO sessions the flow's responses returned, from
+        every response of the flow and not only the last one. When the authorization request asked for
+        the `device_sso` scope, the code keeps the posted sessions, up to ten, and the code exchange
+        returns them in `device_secret`. They are kept as posted; a token exchange that presents them
+        checks they are the user's. An entry with a missing field, or a field longer than 128
+        characters, is ignored and does not fail the sign-in. The request body is limited to 1 MiB.
       tags:
         - Authorization
       requestBody:
@@ -186,6 +200,9 @@ paths:
             example:
               authId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
               assertion: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+              sessionData:
+                - flowIdentifier: "f51bdb0f22d906bb"
+                  sessionHandle: "<session_handle>"
       responses:
         "200":
           description: Authorization code issued. The redirect_uri includes the code and state.
@@ -196,7 +213,7 @@ paths:
               example:
                 redirect_uri: "https://client.example.com/callback?code=SplxlOBeZQQYbYS6WxSbIA&state=xyz&iss=https%3A%2F%2Fserver.example.com"
         "400":
-          description: Bad Request, missing authId or assertion.
+          description: Bad Request, a body that is not JSON or is over 1 MiB, or a missing authId or assertion.
           content:
             application/json:
               schema:
@@ -211,6 +228,8 @@ paths:
         An access token issued for a user through the `authorization_code`, `urn:openid:params:grant-type:ciba` or `urn:ietf:params:oauth:grant-type:jwt-bearer` grant keeps that user in `sub` and adds an on-behalf-of `act` claim naming the client that obtained it. Token exchange adds the same claim when no `actor_token` is given, and a refreshed access token keeps the claim its refresh token was issued with. Agent clients always receive the claim; application clients receive it when `includeActClaim` is enabled on the client. The `act.sub` value is the agent or application resource id rather than the client id, and the claim is present on the access token only, never on the ID token.
 
         Token exchange additionally supports requesting an Identity Assertion Authorization Grant (ID-JAG) by setting `requested_token_type` to `urn:ietf:params:oauth:token-type:id-jag`, with `subject_token_type` set to `urn:ietf:params:oauth:token-type:id_token` and a single required `audience` value matching one of the client's configured `allowedAudiences`. The `resource` parameter is optional and, when present, is embedded in the issued ID-JAG for the resource authorization server to process. Requires the client to be confidential and to have ID-JAG issuance enabled (`token.idJag.enabled`) on its OAuth configuration. The response has `issued_token_type=urn:ietf:params:oauth:token-type:id-jag` and `token_type=N_A`, since the issued value is a JWT authorization grant rather than an access token.
+
+        Token exchange also signs a user in to another application with an SSO session they already hold (back-channel SSO). The `subject_token` is the `device_secret` a code exchange returned, with `subject_token_type` set to `urn:ietf:params:oauth:token-type:jwt`; its `sso-session+jwt` type header selects this path. The calling client's authentication flow runs silently on the session it carries for that client's login flow, as `prompt=none` does at the authorization endpoint, so it only succeeds for a client whose login flow is one of the sessions'. The response carries the tokens the authorization code grant would give: an access token, an ID token when `openid` is in `scope`, and a refresh token when the client allows the `refresh_token` grant; all belong to the same session. `scope` and a single `resource` select what is requested, `actor_token` is not accepted, and `requested_token_type` may only be an access token. Public clients may use it. A flow that cannot complete without the user, or a session that has ended or belongs to another flow, is answered with `interaction_required`; a session of another user than the device secret's `sub` with `invalid_grant`.
 
         The `urn:ietf:params:oauth:grant-type:jwt-bearer` grant presents an ID-JAG assertion (obtained from a trusted external IdP) via the required `assertion` parameter, and exchanges it for a ThunderID access token. Optional `scope` and `resource` parameters further narrow the granted scopes and audience; `resource` must be a subset of the assertion's own `resource` claim when the assertion carries one. No refresh token is issued for this grant.
       tags:
@@ -245,7 +264,9 @@ paths:
                 scope: "openid profile email"
                 id_token: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
         "400":
-          description: Bad Request — invalid grant, missing parameters, or unsupported grant type.
+          description: >-
+            Bad Request — invalid grant, missing parameters, or unsupported grant type; or
+            interaction_required when a device secret cannot sign the user in without them.
           content:
             application/json:
               schema:
@@ -273,13 +294,17 @@ paths:
 
         RFC 8707 resource indicators bind the request to a single resource server before user
         authorization. A valid `resource` binds the request to that resource server; when omitted from
-        a permission-bearing request the configured `defaultResourceServer` is used, and a
-        permission-bearing request with no resource and no default is rejected with `invalid_target`.
+        a request carrying permission scopes or authorization details the configured
+        `defaultResourceServer` is used, and such a request with no resource and no default is
+        rejected with `invalid_target`.
         OIDC-only requests without a resource remain valid and keep the `client_id` audience. Multiple
         `resource` values, including duplicates, are rejected with `invalid_target`. The resulting
         access token has the bound resource server identifier as its sole `aud`, and its permissions
         are limited to those defined by that resource server. A `resource` optionally supplied when
         polling the token endpoint must exactly match the bound resource server.
+
+        RFC 9396 `authorization_details` may be sent here, as RFC 9396 section 3 allows for
+        backchannel authentication requests. See the `authorization_details` field.
       tags:
         - Backchannel Authentication
       requestBody:
@@ -311,7 +336,7 @@ paths:
         "400":
           description: >-
             Bad Request — invalid_request, invalid_scope, invalid_target, unknown_user_id,
-            invalid_binding_message, or unauthorized_client.
+            invalid_binding_message, invalid_authorization_details, or unauthorized_client.
           content:
             application/json:
               schema:
@@ -936,6 +961,18 @@ components:
         type:
           type: string
           description: OAuth grant type of the request. Defaults to the authorization code flow when absent.
+        sessionData:
+          type: array
+          description: The SSO sessions the flow's responses returned, as the flow execution API's `sessionData` has them. The code keeps them, up to ten, for the `device_sso` scope. An entry with a missing field, or a field longer than 128 characters, is ignored.
+          items:
+            type: object
+            properties:
+              flowIdentifier:
+                type: string
+                description: Identifies the flow the session belongs to.
+              sessionHandle:
+                type: string
+                description: The session handle.
 
     AuthCallbackResponse:
       type: object
@@ -987,7 +1024,9 @@ components:
           description: The subject token for token exchange (RFC 8693).
         subject_token_type:
           type: string
-          description: The type URI of the subject token.
+          description: >-
+            The type URI of the subject token. A device secret (`device_secret` from a code exchange)
+            is sent as `urn:ietf:params:oauth:token-type:jwt`.
         actor_token:
           type: string
           description: The actor token for token exchange (RFC 8693).
@@ -1032,7 +1071,7 @@ components:
         authorization_details:
           type: string
           description: >-
-            RFC 9396 authorization details as a JSON array. On `client_credentials` it is a new request: every requested type must have a processor, the token carries only the details the processors approve, and a request whose details are all refused fails with `invalid_authorization_details`. The `authorization_code`, `urn:openid:params:grant-type:ciba` and `refresh_token` grants ignore it. Other grants refuse it with `invalid_authorization_details`.
+            RFC 9396 authorization details as a JSON array. On the `authorization_code`, `urn:openid:params:grant-type:ciba` and `refresh_token` grants it modifies the grant (RFC 9396 section 6): each entry is a whole detail object that must be an allowed modification of a distinct granted detail of its type, and the access token carries only the entries. An entry may leave out the fields the processor supplied, which are taken from the granted detail. When the request leaves out `authorization_details`, the token response carries the whole grant, including any values the user changed at consent, which a later request (for example on refresh) may narrow. On `client_credentials` it is a new request: every requested type must have a processor, the token carries only the details the processors approve, and a request whose details are all refused fails with `invalid_authorization_details`. Other grants refuse it with `invalid_authorization_details`.
 
     TokenResponse:
       type: object
@@ -1070,6 +1109,19 @@ components:
             additionalProperties: true
           description: >-
             The RFC 9396 authorization details the access token carries, when the grant has any.
+        device_secret:
+          type: string
+          description: >-
+            The SSO sessions the callback posted for the authorization code (authorization code grant
+            only). Returned only when the authorization request asked for the `device_sso` scope and the
+            callback posted sessions, so a sign-in that reused an existing session, which returns none
+            to post, gets none. A JWT signed by the server and typed `sso-session+jwt`. Its `aud` is
+            this server, since it is presented back here as a token exchange `subject_token`; its `sub`
+            is the resource ID of the user who signed in, not the application's token subject, so it
+            is the same for every application; its `exp` the session absolute timeout from now, and its
+            `session_data` claim lists the sessions as `flow_identifier` and `session_handle` pairs, as
+            the flow execution API's `sessionData` does. The handles resume the sessions, so keep it as
+            secret as a credential.
 
     PARRequest:
       type: object
@@ -1100,6 +1152,10 @@ components:
           description: >-
             Resource indicator per RFC 8707 (absolute URI). Only one value is supported; multiple
             resource values are rejected with invalid_target.
+        authorization_details:
+          type: string
+          description: >-
+            RFC 9396 authorization details: a JSON array of objects, each naming a registered `type`. Each object is validated against its type (its schema and limits; a member the type does not declare is refused, the RFC 9396 common fields included), and an invalid one is refused with `invalid_authorization_details`. Details carry no resource server: the access token audience comes from `resource`, or the default resource server when it is omitted, as for permission scopes.
         acr_values:
           type: string
         claims:
@@ -1517,9 +1573,9 @@ components:
           description: >-
             Resource indicator per RFC 8707 (absolute URI, no fragment). Only one value is
             supported; requests with multiple resource values, including duplicates, are rejected
-            with invalid_target. When omitted from a permission-bearing request, the configured
-            defaultResourceServer is used; a permission-bearing request with no resource and no
-            default is rejected with invalid_target. OIDC-only requests use the client_id audience.
+            with invalid_target. When omitted from a request carrying permission scopes or
+            authorization details, the configured defaultResourceServer is used; such a request with
+            no resource and no default is rejected with invalid_target. OIDC-only requests use the client_id audience.
         binding_message:
           type: string
           description: >-
@@ -1531,6 +1587,10 @@ components:
         acr_values:
           type: string
           description: Space-separated list of requested Authentication Context Class Reference values.
+        authorization_details:
+          type: string
+          description: >-
+            RFC 9396 authorization details: a JSON array of objects, each naming a registered `type`. Each object is validated against its type (its schema and limits; a member the type does not declare is refused, the RFC 9396 common fields included), and an invalid one is refused with `invalid_authorization_details`. Details carry no resource server: the access token audience comes from `resource`, or the default resource server when it is omitted, as for permission scopes. The details are validated before the user is notified. The user's login flow processes them and asks the user to approve them, as on the authorization code path, so the flow needs the consent step, preceded by the authorization detail step when a requested type declares a processor. The token response to the poll carries the approved details, and the polling token request may modify them. When the user's flow refuses them, the poll returns `access_denied` with the generic denial description; the processor's reason is not returned on CIBA.
     BackchannelAuthResponse:
       type: object
       required:

@@ -80,6 +80,61 @@ func (n *variablesNode) Execute(ctx *providers.NodeContext) (*common.NodeRespons
 	}, nil
 }
 
+// VariableRuntimeValues resolves every variable a VARIABLES node declares into the runtime data entries a flow reads
+// them from: the value the organization unit holds in raws where it holds one, and the declared default otherwise. So
+// a flow shared with an organization unit runs on what that unit holds for its variables, and resolving again for
+// another unit starts from the defaults and not from what the first one held. A node that is not a VARIABLES node
+// declares none.
+func VariableRuntimeValues(node NodeInterface, raws map[string]string) (map[string]string, error) {
+	n, ok := node.(*variablesNode)
+	if !ok {
+		return nil, nil
+	}
+	defs, err := n.definitions()
+	if err != nil {
+		return nil, err
+	}
+	values, err := n.runtimeValues(defs)
+	if err != nil {
+		return nil, err
+	}
+	for _, def := range defs {
+		raw, set := raws[def.Identifier]
+		if !set {
+			continue
+		}
+		enc, err := n.encodeRuntime(dataTypeOf(def), raw)
+		if err != nil {
+			return nil, fmt.Errorf("variable %q: its value %w", def.Identifier, err)
+		}
+		values[runtimeKey(def.Identifier)] = enc
+	}
+	return values, nil
+}
+
+// UnsetConnectionVariables lists the connection variables a VARIABLES node has resolved to no connection, in the order
+// the node declares them. A node that is not a VARIABLES node has none.
+func UnsetConnectionVariables(node NodeInterface, runtimeData map[string]string) []string {
+	n, ok := node.(*variablesNode)
+	if !ok {
+		return nil
+	}
+	defs, err := n.definitions()
+	if err != nil {
+		return nil
+	}
+	var unset []string
+	for _, def := range defs {
+		if def.Type != providers.InputTypeConnectionSelect {
+			continue
+		}
+		if enc, set := runtimeData[runtimeKey(def.Identifier)]; !set || enc == `""` {
+			unset = append(unset, def.Identifier)
+		}
+	}
+	return unset
+}
+
 // GetOnSuccess returns the ID of the node the flow goes on to.
 func (n *variablesNode) GetOnSuccess() string {
 	return n.onSuccess

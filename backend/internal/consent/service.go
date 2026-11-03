@@ -100,8 +100,9 @@ func (c *consentService) ListPurposes(
 // Purpose-name prefixes identify the namespace a consent purpose belongs to. A purpose name is the
 // prefix concatenated with the application ID.
 const (
-	AttributePurposeNamePrefix  = "attributes:"
-	PermissionPurposeNamePrefix = "permissions:"
+	AttributePurposeNamePrefix           = "attributes:"
+	PermissionPurposeNamePrefix          = "permissions:"
+	AuthorizationDetailPurposeNamePrefix = "authorization_details:"
 )
 
 // AttributePurposeName returns the canonical name identifying the attribute consent purpose of an
@@ -114,6 +115,11 @@ func AttributePurposeName(appID string) string {
 // application.
 func PermissionPurposeName(appID string) string {
 	return PermissionPurposeNamePrefix + appID
+}
+
+// AuthorizationDetailPurposeName returns the authorization details consent purpose name of an application.
+func AuthorizationDetailPurposeName(appID string) string {
+	return AuthorizationDetailPurposeNamePrefix + appID
 }
 
 // buildAttributePurpose constructs the attribute consent purpose from an application's configured

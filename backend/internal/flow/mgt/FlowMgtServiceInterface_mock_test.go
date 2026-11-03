@@ -9,6 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -48,6 +49,77 @@ type FlowMgtServiceInterfaceMock_Expecter struct {
 
 func (_m *FlowMgtServiceInterfaceMock) EXPECT() *FlowMgtServiceInterfaceMock_Expecter {
 	return &FlowMgtServiceInterfaceMock_Expecter{mock: &_m.Mock}
+}
+
+// CheckFlowAccess provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) CheckFlowAccess(ctx context.Context, flowID string, ouID string, write bool) *common.ServiceError {
+	ret := _mock.Called(ctx, flowID, ouID, write)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CheckFlowAccess")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, bool) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, flowID, ouID, write)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// FlowMgtServiceInterfaceMock_CheckFlowAccess_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckFlowAccess'
+type FlowMgtServiceInterfaceMock_CheckFlowAccess_Call struct {
+	*mock.Call
+}
+
+// CheckFlowAccess is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+//   - ouID string
+//   - write bool
+func (_e *FlowMgtServiceInterfaceMock_Expecter) CheckFlowAccess(ctx any, flowID any, ouID any, write any) *FlowMgtServiceInterfaceMock_CheckFlowAccess_Call {
+	return &FlowMgtServiceInterfaceMock_CheckFlowAccess_Call{Call: _e.mock.On("CheckFlowAccess", ctx, flowID, ouID, write)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_CheckFlowAccess_Call) Run(run func(ctx context.Context, flowID string, ouID string, write bool)) *FlowMgtServiceInterfaceMock_CheckFlowAccess_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 bool
+		if args[3] != nil {
+			arg3 = args[3].(bool)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_CheckFlowAccess_Call) Return(serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_CheckFlowAccess_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_CheckFlowAccess_Call) RunAndReturn(run func(ctx context.Context, flowID string, ouID string, write bool) *common.ServiceError) *FlowMgtServiceInterfaceMock_CheckFlowAccess_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // CreateFlow provides a mock function for the type FlowMgtServiceInterfaceMock
@@ -120,6 +192,80 @@ func (_c *FlowMgtServiceInterfaceMock_CreateFlow_Call) RunAndReturn(run func(ctx
 	return _c
 }
 
+// CreateSharingPolicy provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) CreateSharingPolicy(ctx context.Context, flowID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError) {
+	ret := _mock.Called(ctx, flowID, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateSharingPolicy")
+	}
+
+	var r0 sharing.Policy
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)); ok {
+		return returnFunc(ctx, flowID, req)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, sharing.PolicyRequest) sharing.Policy); ok {
+		r0 = returnFunc(ctx, flowID, req)
+	} else {
+		r0 = ret.Get(0).(sharing.Policy)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, sharing.PolicyRequest) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, flowID, req)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowMgtServiceInterfaceMock_CreateSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateSharingPolicy'
+type FlowMgtServiceInterfaceMock_CreateSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// CreateSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+//   - req sharing.PolicyRequest
+func (_e *FlowMgtServiceInterfaceMock_Expecter) CreateSharingPolicy(ctx any, flowID any, req any) *FlowMgtServiceInterfaceMock_CreateSharingPolicy_Call {
+	return &FlowMgtServiceInterfaceMock_CreateSharingPolicy_Call{Call: _e.mock.On("CreateSharingPolicy", ctx, flowID, req)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_CreateSharingPolicy_Call) Run(run func(ctx context.Context, flowID string, req sharing.PolicyRequest)) *FlowMgtServiceInterfaceMock_CreateSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 sharing.PolicyRequest
+		if args[2] != nil {
+			arg2 = args[2].(sharing.PolicyRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_CreateSharingPolicy_Call) Return(policy sharing.Policy, serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_CreateSharingPolicy_Call {
+	_c.Call.Return(policy, serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_CreateSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, flowID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)) *FlowMgtServiceInterfaceMock_CreateSharingPolicy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DeleteFlow provides a mock function for the type FlowMgtServiceInterfaceMock
 func (_mock *FlowMgtServiceInterfaceMock) DeleteFlow(ctx context.Context, flowID string) *common.ServiceError {
 	ret := _mock.Called(ctx, flowID)
@@ -175,6 +321,153 @@ func (_c *FlowMgtServiceInterfaceMock_DeleteFlow_Call) Return(serviceError *comm
 }
 
 func (_c *FlowMgtServiceInterfaceMock_DeleteFlow_Call) RunAndReturn(run func(ctx context.Context, flowID string) *common.ServiceError) *FlowMgtServiceInterfaceMock_DeleteFlow_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteSharingPolicy provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) DeleteSharingPolicy(ctx context.Context, flowID string, policyID string) *common.ServiceError {
+	ret := _mock.Called(ctx, flowID, policyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteSharingPolicy")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, flowID, policyID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// FlowMgtServiceInterfaceMock_DeleteSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteSharingPolicy'
+type FlowMgtServiceInterfaceMock_DeleteSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// DeleteSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+//   - policyID string
+func (_e *FlowMgtServiceInterfaceMock_Expecter) DeleteSharingPolicy(ctx any, flowID any, policyID any) *FlowMgtServiceInterfaceMock_DeleteSharingPolicy_Call {
+	return &FlowMgtServiceInterfaceMock_DeleteSharingPolicy_Call{Call: _e.mock.On("DeleteSharingPolicy", ctx, flowID, policyID)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_DeleteSharingPolicy_Call) Run(run func(ctx context.Context, flowID string, policyID string)) *FlowMgtServiceInterfaceMock_DeleteSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_DeleteSharingPolicy_Call) Return(serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_DeleteSharingPolicy_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_DeleteSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, flowID string, policyID string) *common.ServiceError) *FlowMgtServiceInterfaceMock_DeleteSharingPolicy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetEffectiveVariableValues provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) GetEffectiveVariableValues(ctx context.Context, flowID string, app providers.Application, ouID string) (map[string]string, *common.ServiceError) {
+	ret := _mock.Called(ctx, flowID, app, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEffectiveVariableValues")
+	}
+
+	var r0 map[string]string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.Application, string) (map[string]string, *common.ServiceError)); ok {
+		return returnFunc(ctx, flowID, app, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.Application, string) map[string]string); ok {
+		r0 = returnFunc(ctx, flowID, app, ouID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, providers.Application, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, flowID, app, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowMgtServiceInterfaceMock_GetEffectiveVariableValues_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEffectiveVariableValues'
+type FlowMgtServiceInterfaceMock_GetEffectiveVariableValues_Call struct {
+	*mock.Call
+}
+
+// GetEffectiveVariableValues is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+//   - app providers.Application
+//   - ouID string
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetEffectiveVariableValues(ctx any, flowID any, app any, ouID any) *FlowMgtServiceInterfaceMock_GetEffectiveVariableValues_Call {
+	return &FlowMgtServiceInterfaceMock_GetEffectiveVariableValues_Call{Call: _e.mock.On("GetEffectiveVariableValues", ctx, flowID, app, ouID)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetEffectiveVariableValues_Call) Run(run func(ctx context.Context, flowID string, app providers.Application, ouID string)) *FlowMgtServiceInterfaceMock_GetEffectiveVariableValues_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 providers.Application
+		if args[2] != nil {
+			arg2 = args[2].(providers.Application)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetEffectiveVariableValues_Call) Return(stringToString map[string]string, serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_GetEffectiveVariableValues_Call {
+	_c.Call.Return(stringToString, serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetEffectiveVariableValues_Call) RunAndReturn(run func(ctx context.Context, flowID string, app providers.Application, ouID string) (map[string]string, *common.ServiceError)) *FlowMgtServiceInterfaceMock_GetEffectiveVariableValues_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -321,6 +614,156 @@ func (_c *FlowMgtServiceInterfaceMock_GetFlowByHandle_Call) Return(completeFlowD
 }
 
 func (_c *FlowMgtServiceInterfaceMock_GetFlowByHandle_Call) RunAndReturn(run func(ctx context.Context, handle string, flowType providers.FlowType) (*providers.CompleteFlowDefinition, *common.ServiceError)) *FlowMgtServiceInterfaceMock_GetFlowByHandle_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetFlowForOU provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) GetFlowForOU(ctx context.Context, flowID string, ouID string) (*FlowView, *common.ServiceError) {
+	ret := _mock.Called(ctx, flowID, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetFlowForOU")
+	}
+
+	var r0 *FlowView
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*FlowView, *common.ServiceError)); ok {
+		return returnFunc(ctx, flowID, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *FlowView); ok {
+		r0 = returnFunc(ctx, flowID, ouID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*FlowView)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, flowID, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowMgtServiceInterfaceMock_GetFlowForOU_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFlowForOU'
+type FlowMgtServiceInterfaceMock_GetFlowForOU_Call struct {
+	*mock.Call
+}
+
+// GetFlowForOU is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+//   - ouID string
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetFlowForOU(ctx any, flowID any, ouID any) *FlowMgtServiceInterfaceMock_GetFlowForOU_Call {
+	return &FlowMgtServiceInterfaceMock_GetFlowForOU_Call{Call: _e.mock.On("GetFlowForOU", ctx, flowID, ouID)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetFlowForOU_Call) Run(run func(ctx context.Context, flowID string, ouID string)) *FlowMgtServiceInterfaceMock_GetFlowForOU_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetFlowForOU_Call) Return(flowView *FlowView, serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_GetFlowForOU_Call {
+	_c.Call.Return(flowView, serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetFlowForOU_Call) RunAndReturn(run func(ctx context.Context, flowID string, ouID string) (*FlowView, *common.ServiceError)) *FlowMgtServiceInterfaceMock_GetFlowForOU_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetFlowOverlayRules provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) GetFlowOverlayRules(ctx context.Context, flowID string, ouID string) (sharing.ResolvedOverlay, *common.ServiceError) {
+	ret := _mock.Called(ctx, flowID, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetFlowOverlayRules")
+	}
+
+	var r0 sharing.ResolvedOverlay
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (sharing.ResolvedOverlay, *common.ServiceError)); ok {
+		return returnFunc(ctx, flowID, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) sharing.ResolvedOverlay); ok {
+		r0 = returnFunc(ctx, flowID, ouID)
+	} else {
+		r0 = ret.Get(0).(sharing.ResolvedOverlay)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, flowID, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowMgtServiceInterfaceMock_GetFlowOverlayRules_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFlowOverlayRules'
+type FlowMgtServiceInterfaceMock_GetFlowOverlayRules_Call struct {
+	*mock.Call
+}
+
+// GetFlowOverlayRules is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+//   - ouID string
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetFlowOverlayRules(ctx any, flowID any, ouID any) *FlowMgtServiceInterfaceMock_GetFlowOverlayRules_Call {
+	return &FlowMgtServiceInterfaceMock_GetFlowOverlayRules_Call{Call: _e.mock.On("GetFlowOverlayRules", ctx, flowID, ouID)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetFlowOverlayRules_Call) Run(run func(ctx context.Context, flowID string, ouID string)) *FlowMgtServiceInterfaceMock_GetFlowOverlayRules_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetFlowOverlayRules_Call) Return(resolvedOverlay sharing.ResolvedOverlay, serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_GetFlowOverlayRules_Call {
+	_c.Call.Return(resolvedOverlay, serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetFlowOverlayRules_Call) RunAndReturn(run func(ctx context.Context, flowID string, ouID string) (sharing.ResolvedOverlay, *common.ServiceError)) *FlowMgtServiceInterfaceMock_GetFlowOverlayRules_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -685,6 +1128,80 @@ func (_c *FlowMgtServiceInterfaceMock_GetResourceDependencies_Call) RunAndReturn
 	return _c
 }
 
+// GetSharingPolicy provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) GetSharingPolicy(ctx context.Context, flowID string, policyID string) (sharing.Policy, *common.ServiceError) {
+	ret := _mock.Called(ctx, flowID, policyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetSharingPolicy")
+	}
+
+	var r0 sharing.Policy
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (sharing.Policy, *common.ServiceError)); ok {
+		return returnFunc(ctx, flowID, policyID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) sharing.Policy); ok {
+		r0 = returnFunc(ctx, flowID, policyID)
+	} else {
+		r0 = ret.Get(0).(sharing.Policy)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, flowID, policyID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowMgtServiceInterfaceMock_GetSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetSharingPolicy'
+type FlowMgtServiceInterfaceMock_GetSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// GetSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+//   - policyID string
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetSharingPolicy(ctx any, flowID any, policyID any) *FlowMgtServiceInterfaceMock_GetSharingPolicy_Call {
+	return &FlowMgtServiceInterfaceMock_GetSharingPolicy_Call{Call: _e.mock.On("GetSharingPolicy", ctx, flowID, policyID)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetSharingPolicy_Call) Run(run func(ctx context.Context, flowID string, policyID string)) *FlowMgtServiceInterfaceMock_GetSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetSharingPolicy_Call) Return(policy sharing.Policy, serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_GetSharingPolicy_Call {
+	_c.Call.Return(policy, serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, flowID string, policyID string) (sharing.Policy, *common.ServiceError)) *FlowMgtServiceInterfaceMock_GetSharingPolicy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetSystemFlow provides a mock function for the type FlowMgtServiceInterfaceMock
 func (_mock *FlowMgtServiceInterfaceMock) GetSystemFlow(ctx context.Context, handle string) (*providers.CompleteFlowDefinition, *common.ServiceError) {
 	ret := _mock.Called(ctx, handle)
@@ -751,6 +1268,82 @@ func (_c *FlowMgtServiceInterfaceMock_GetSystemFlow_Call) Return(completeFlowDef
 }
 
 func (_c *FlowMgtServiceInterfaceMock_GetSystemFlow_Call) RunAndReturn(run func(ctx context.Context, handle string) (*providers.CompleteFlowDefinition, *common.ServiceError)) *FlowMgtServiceInterfaceMock_GetSystemFlow_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetVariables provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) GetVariables(ctx context.Context, flowID string, ouID string) (*VariablesResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, flowID, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetVariables")
+	}
+
+	var r0 *VariablesResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*VariablesResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, flowID, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *VariablesResponse); ok {
+		r0 = returnFunc(ctx, flowID, ouID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*VariablesResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, flowID, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowMgtServiceInterfaceMock_GetVariables_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetVariables'
+type FlowMgtServiceInterfaceMock_GetVariables_Call struct {
+	*mock.Call
+}
+
+// GetVariables is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+//   - ouID string
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetVariables(ctx any, flowID any, ouID any) *FlowMgtServiceInterfaceMock_GetVariables_Call {
+	return &FlowMgtServiceInterfaceMock_GetVariables_Call{Call: _e.mock.On("GetVariables", ctx, flowID, ouID)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetVariables_Call) Run(run func(ctx context.Context, flowID string, ouID string)) *FlowMgtServiceInterfaceMock_GetVariables_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetVariables_Call) Return(variablesResponse *VariablesResponse, serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_GetVariables_Call {
+	_c.Call.Return(variablesResponse, serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetVariables_Call) RunAndReturn(run func(ctx context.Context, flowID string, ouID string) (*VariablesResponse, *common.ServiceError)) *FlowMgtServiceInterfaceMock_GetVariables_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -977,6 +1570,174 @@ func (_c *FlowMgtServiceInterfaceMock_ListFlows_Call) Return(flowListResponse *F
 }
 
 func (_c *FlowMgtServiceInterfaceMock_ListFlows_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int, flowType providers.FlowType) (*FlowListResponse, *common.ServiceError)) *FlowMgtServiceInterfaceMock_ListFlows_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListFlowsForOU provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) ListFlowsForOU(ctx context.Context, ouID string, flowType providers.FlowType, limit int, offset int) (*FlowListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, ouID, flowType, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListFlowsForOU")
+	}
+
+	var r0 *FlowListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.FlowType, int, int) (*FlowListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, ouID, flowType, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.FlowType, int, int) *FlowListResponse); ok {
+		r0 = returnFunc(ctx, ouID, flowType, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*FlowListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, providers.FlowType, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, ouID, flowType, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowMgtServiceInterfaceMock_ListFlowsForOU_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListFlowsForOU'
+type FlowMgtServiceInterfaceMock_ListFlowsForOU_Call struct {
+	*mock.Call
+}
+
+// ListFlowsForOU is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ouID string
+//   - flowType providers.FlowType
+//   - limit int
+//   - offset int
+func (_e *FlowMgtServiceInterfaceMock_Expecter) ListFlowsForOU(ctx any, ouID any, flowType any, limit any, offset any) *FlowMgtServiceInterfaceMock_ListFlowsForOU_Call {
+	return &FlowMgtServiceInterfaceMock_ListFlowsForOU_Call{Call: _e.mock.On("ListFlowsForOU", ctx, ouID, flowType, limit, offset)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_ListFlowsForOU_Call) Run(run func(ctx context.Context, ouID string, flowType providers.FlowType, limit int, offset int)) *FlowMgtServiceInterfaceMock_ListFlowsForOU_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 providers.FlowType
+		if args[2] != nil {
+			arg2 = args[2].(providers.FlowType)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_ListFlowsForOU_Call) Return(flowListResponse *FlowListResponse, serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_ListFlowsForOU_Call {
+	_c.Call.Return(flowListResponse, serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_ListFlowsForOU_Call) RunAndReturn(run func(ctx context.Context, ouID string, flowType providers.FlowType, limit int, offset int) (*FlowListResponse, *common.ServiceError)) *FlowMgtServiceInterfaceMock_ListFlowsForOU_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListSharingPolicies provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) ListSharingPolicies(ctx context.Context, flowID string, limit int, offset int) (sharing.PolicyList, *common.ServiceError) {
+	ret := _mock.Called(ctx, flowID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListSharingPolicies")
+	}
+
+	var r0 sharing.PolicyList
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (sharing.PolicyList, *common.ServiceError)); ok {
+		return returnFunc(ctx, flowID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) sharing.PolicyList); ok {
+		r0 = returnFunc(ctx, flowID, limit, offset)
+	} else {
+		r0 = ret.Get(0).(sharing.PolicyList)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, flowID, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowMgtServiceInterfaceMock_ListSharingPolicies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListSharingPolicies'
+type FlowMgtServiceInterfaceMock_ListSharingPolicies_Call struct {
+	*mock.Call
+}
+
+// ListSharingPolicies is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+//   - limit int
+//   - offset int
+func (_e *FlowMgtServiceInterfaceMock_Expecter) ListSharingPolicies(ctx any, flowID any, limit any, offset any) *FlowMgtServiceInterfaceMock_ListSharingPolicies_Call {
+	return &FlowMgtServiceInterfaceMock_ListSharingPolicies_Call{Call: _e.mock.On("ListSharingPolicies", ctx, flowID, limit, offset)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_ListSharingPolicies_Call) Run(run func(ctx context.Context, flowID string, limit int, offset int)) *FlowMgtServiceInterfaceMock_ListSharingPolicies_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_ListSharingPolicies_Call) Return(policyList sharing.PolicyList, serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_ListSharingPolicies_Call {
+	_c.Call.Return(policyList, serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_ListSharingPolicies_Call) RunAndReturn(run func(ctx context.Context, flowID string, limit int, offset int) (sharing.PolicyList, *common.ServiceError)) *FlowMgtServiceInterfaceMock_ListSharingPolicies_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1236,6 +1997,88 @@ func (_c *FlowMgtServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(r
 	return _c
 }
 
+// SetVariables provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) SetVariables(ctx context.Context, flowID string, ouID string, req SetVariablesRequest) (*VariablesResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, flowID, ouID, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetVariables")
+	}
+
+	var r0 *VariablesResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, SetVariablesRequest) (*VariablesResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, flowID, ouID, req)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, SetVariablesRequest) *VariablesResponse); ok {
+		r0 = returnFunc(ctx, flowID, ouID, req)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*VariablesResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, SetVariablesRequest) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, flowID, ouID, req)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowMgtServiceInterfaceMock_SetVariables_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetVariables'
+type FlowMgtServiceInterfaceMock_SetVariables_Call struct {
+	*mock.Call
+}
+
+// SetVariables is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+//   - ouID string
+//   - req SetVariablesRequest
+func (_e *FlowMgtServiceInterfaceMock_Expecter) SetVariables(ctx any, flowID any, ouID any, req any) *FlowMgtServiceInterfaceMock_SetVariables_Call {
+	return &FlowMgtServiceInterfaceMock_SetVariables_Call{Call: _e.mock.On("SetVariables", ctx, flowID, ouID, req)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_SetVariables_Call) Run(run func(ctx context.Context, flowID string, ouID string, req SetVariablesRequest)) *FlowMgtServiceInterfaceMock_SetVariables_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 SetVariablesRequest
+		if args[3] != nil {
+			arg3 = args[3].(SetVariablesRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_SetVariables_Call) Return(variablesResponse *VariablesResponse, serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_SetVariables_Call {
+	_c.Call.Return(variablesResponse, serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_SetVariables_Call) RunAndReturn(run func(ctx context.Context, flowID string, ouID string, req SetVariablesRequest) (*VariablesResponse, *common.ServiceError)) *FlowMgtServiceInterfaceMock_SetVariables_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateFlow provides a mock function for the type FlowMgtServiceInterfaceMock
 func (_mock *FlowMgtServiceInterfaceMock) UpdateFlow(ctx context.Context, flowID string, flowDef *FlowDefinition) (*providers.CompleteFlowDefinition, *common.ServiceError) {
 	ret := _mock.Called(ctx, flowID, flowDef)
@@ -1308,6 +2151,233 @@ func (_c *FlowMgtServiceInterfaceMock_UpdateFlow_Call) Return(completeFlowDefini
 }
 
 func (_c *FlowMgtServiceInterfaceMock_UpdateFlow_Call) RunAndReturn(run func(ctx context.Context, flowID string, flowDef *FlowDefinition) (*providers.CompleteFlowDefinition, *common.ServiceError)) *FlowMgtServiceInterfaceMock_UpdateFlow_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateFlowWithSharing provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) UpdateFlowWithSharing(ctx context.Context, flowID string, flowDef *FlowDefinition, policies []sharing.PolicyRequest) (*providers.CompleteFlowDefinition, *common.ServiceError) {
+	ret := _mock.Called(ctx, flowID, flowDef, policies)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateFlowWithSharing")
+	}
+
+	var r0 *providers.CompleteFlowDefinition
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *FlowDefinition, []sharing.PolicyRequest) (*providers.CompleteFlowDefinition, *common.ServiceError)); ok {
+		return returnFunc(ctx, flowID, flowDef, policies)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *FlowDefinition, []sharing.PolicyRequest) *providers.CompleteFlowDefinition); ok {
+		r0 = returnFunc(ctx, flowID, flowDef, policies)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.CompleteFlowDefinition)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *FlowDefinition, []sharing.PolicyRequest) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, flowID, flowDef, policies)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowMgtServiceInterfaceMock_UpdateFlowWithSharing_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateFlowWithSharing'
+type FlowMgtServiceInterfaceMock_UpdateFlowWithSharing_Call struct {
+	*mock.Call
+}
+
+// UpdateFlowWithSharing is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+//   - flowDef *FlowDefinition
+//   - policies []sharing.PolicyRequest
+func (_e *FlowMgtServiceInterfaceMock_Expecter) UpdateFlowWithSharing(ctx any, flowID any, flowDef any, policies any) *FlowMgtServiceInterfaceMock_UpdateFlowWithSharing_Call {
+	return &FlowMgtServiceInterfaceMock_UpdateFlowWithSharing_Call{Call: _e.mock.On("UpdateFlowWithSharing", ctx, flowID, flowDef, policies)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_UpdateFlowWithSharing_Call) Run(run func(ctx context.Context, flowID string, flowDef *FlowDefinition, policies []sharing.PolicyRequest)) *FlowMgtServiceInterfaceMock_UpdateFlowWithSharing_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 *FlowDefinition
+		if args[2] != nil {
+			arg2 = args[2].(*FlowDefinition)
+		}
+		var arg3 []sharing.PolicyRequest
+		if args[3] != nil {
+			arg3 = args[3].([]sharing.PolicyRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_UpdateFlowWithSharing_Call) Return(completeFlowDefinition *providers.CompleteFlowDefinition, serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_UpdateFlowWithSharing_Call {
+	_c.Call.Return(completeFlowDefinition, serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_UpdateFlowWithSharing_Call) RunAndReturn(run func(ctx context.Context, flowID string, flowDef *FlowDefinition, policies []sharing.PolicyRequest) (*providers.CompleteFlowDefinition, *common.ServiceError)) *FlowMgtServiceInterfaceMock_UpdateFlowWithSharing_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateSharingPolicy provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) UpdateSharingPolicy(ctx context.Context, flowID string, policyID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError) {
+	ret := _mock.Called(ctx, flowID, policyID, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateSharingPolicy")
+	}
+
+	var r0 sharing.Policy
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)); ok {
+		return returnFunc(ctx, flowID, policyID, req)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, sharing.PolicyRequest) sharing.Policy); ok {
+		r0 = returnFunc(ctx, flowID, policyID, req)
+	} else {
+		r0 = ret.Get(0).(sharing.Policy)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, sharing.PolicyRequest) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, flowID, policyID, req)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowMgtServiceInterfaceMock_UpdateSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateSharingPolicy'
+type FlowMgtServiceInterfaceMock_UpdateSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// UpdateSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+//   - policyID string
+//   - req sharing.PolicyRequest
+func (_e *FlowMgtServiceInterfaceMock_Expecter) UpdateSharingPolicy(ctx any, flowID any, policyID any, req any) *FlowMgtServiceInterfaceMock_UpdateSharingPolicy_Call {
+	return &FlowMgtServiceInterfaceMock_UpdateSharingPolicy_Call{Call: _e.mock.On("UpdateSharingPolicy", ctx, flowID, policyID, req)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_UpdateSharingPolicy_Call) Run(run func(ctx context.Context, flowID string, policyID string, req sharing.PolicyRequest)) *FlowMgtServiceInterfaceMock_UpdateSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 sharing.PolicyRequest
+		if args[3] != nil {
+			arg3 = args[3].(sharing.PolicyRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_UpdateSharingPolicy_Call) Return(policy sharing.Policy, serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_UpdateSharingPolicy_Call {
+	_c.Call.Return(policy, serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_UpdateSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, flowID string, policyID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)) *FlowMgtServiceInterfaceMock_UpdateSharingPolicy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateSharingPolicies provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) ValidateSharingPolicies(ctx context.Context, flowID string, policies []sharing.PolicyRequest) *common.ServiceError {
+	ret := _mock.Called(ctx, flowID, policies)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateSharingPolicies")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []sharing.PolicyRequest) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, flowID, policies)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// FlowMgtServiceInterfaceMock_ValidateSharingPolicies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateSharingPolicies'
+type FlowMgtServiceInterfaceMock_ValidateSharingPolicies_Call struct {
+	*mock.Call
+}
+
+// ValidateSharingPolicies is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+//   - policies []sharing.PolicyRequest
+func (_e *FlowMgtServiceInterfaceMock_Expecter) ValidateSharingPolicies(ctx any, flowID any, policies any) *FlowMgtServiceInterfaceMock_ValidateSharingPolicies_Call {
+	return &FlowMgtServiceInterfaceMock_ValidateSharingPolicies_Call{Call: _e.mock.On("ValidateSharingPolicies", ctx, flowID, policies)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_ValidateSharingPolicies_Call) Run(run func(ctx context.Context, flowID string, policies []sharing.PolicyRequest)) *FlowMgtServiceInterfaceMock_ValidateSharingPolicies_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []sharing.PolicyRequest
+		if args[2] != nil {
+			arg2 = args[2].([]sharing.PolicyRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_ValidateSharingPolicies_Call) Return(serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_ValidateSharingPolicies_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_ValidateSharingPolicies_Call) RunAndReturn(run func(ctx context.Context, flowID string, policies []sharing.PolicyRequest) *common.ServiceError) *FlowMgtServiceInterfaceMock_ValidateSharingPolicies_Call {
 	_c.Call.Return(run)
 	return _c
 }

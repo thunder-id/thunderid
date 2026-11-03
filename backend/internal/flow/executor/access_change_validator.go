@@ -40,8 +40,11 @@ var accessChangesByMode = map[string]accessChange{
 		inputs: []providers.Input{
 			requiredTextInput(revocationInputRole), requiredTextInput(revocationInputAssignee),
 		},
+		// The organization unit the assignment was made in; the role's owner when it is absent.
+		optionalArgs:  []string{revocationInputAssignmentOU},
 		targetInput:   revocationInputRole,
 		assigneeInput: revocationInputAssignee,
+		argInputs:     []string{revocationInputAssignmentOU},
 		notAllowed:    ErrRoleAssignmentRemovalNotAllowed,
 		validate:      (*accessChangeValidator).validateRoleAssignmentRemoval,
 	},
@@ -243,7 +246,7 @@ func (e *accessChangeValidator) validateRoleAssignmentRemoval(ctx context.Contex
 		return nil, nil, errors.New("role service is not configured")
 	}
 	target, svcErr := e.assignments.ValidateRemoveAssignment(ctx, inputs[revocationInputRole],
-		inputs[revocationInputAssignee])
+		inputs[revocationInputAssignmentOU], inputs[revocationInputAssignee])
 	return target, svcErr, nil
 }
 

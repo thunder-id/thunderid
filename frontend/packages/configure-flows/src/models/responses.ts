@@ -227,6 +227,10 @@ export interface FlowNode {
    */
   executor?: FlowExecutor;
   /**
+   * Variable declarations of a VARIABLES node, kept as they are.
+   */
+  inputs?: Record<string, unknown>[];
+  /**
    * Next node ID on successful execution
    */
   onSuccess?: string;

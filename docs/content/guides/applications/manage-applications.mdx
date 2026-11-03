@@ -140,6 +140,15 @@ To delete an application:
 Deleting an application is permanent. Any client using the application's Client ID will immediately lose the ability to authenticate. Issued tokens remain valid until they expire.
 :::
 
+## Scope Applications to a Project
+
+A project on the control plane is backed by one root organization unit. When you manage applications through the REST API on the control plane, pass a project ID to work within a project.
+
+- **List**: `GET /applications?projectId=<project-id>` returns the applications that the project's root organization unit owns, followed by the ones shared into it. To list an organization unit below the root instead, add `filter=ouId eq "<ou-id>"`. A project that does not exist, or an organization unit outside the project, returns an empty list.
+- **Create or update**: set `projectId` in the request body of `POST /applications` or `PUT /applications/{id}`. Without `ouId`, the application belongs to the project's root organization unit. With `ouId`, that organization unit must be the project's root organization unit or one below it. An organization unit outside the project fails the request with `APP-1064`, and one that does not exist fails it with `APP-1018`. A project that does not exist fails the request with `APP-1063`.
+
+A data plane has no projects. It rejects a `projectId` in a create or update request with `APP-1063`, and returns an empty list for `GET /applications?projectId=<project-id>`.
+
 ## Next Steps
 
 - [Application Settings](../application-settings) - Configure OAuth 2.0, tokens, flows, and consent for your application

@@ -276,6 +276,80 @@ The importer handles the policies of a document as follows:
 - An export writes the sharing policies of each connection into its document, so importing the export recreates the same sharing.
 - Connection files loaded at startup declare their policies the same way.
 
+### Sharing Policies on Flows
+
+A `flow` document can carry a `sharingPolicies` list that shares the flow with other organization units. Each entry has the same fields as a [sharing policy](../../key-concepts/resource-sharing.mdx) on any other resource. A flow document must name its owner with `ouId` or `ouHandle`. A shared flow stays in its owner's organization unit. The organization units it reaches cannot change its definition, but they can set the values of the variables the owner opens to them.
+
+The overlay rules of a flow policy govern variables. The key of a rule is `variables.` followed by the identifier of a variable that the flow declares on a `VARIABLES` node. Each rule takes the fields `editable`, `value`, `allowedValues`, and `excludedValues`, as described in [Overlay Rules](../../key-concepts/resource-sharing.mdx#overlay-rules). A variable holds one value, so `value` lists at most one entry.
+
+```yaml
+resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000042
+handle: acme-login
+name: Acme Login Flow
+flowType: AUTHENTICATION
+ouHandle: default
+nodes:
+  - id: start
+    type: START
+    onSuccess: resolve_ou
+  - id: resolve_ou
+    type: TASK_EXECUTION
+    executor:
+      name: OUResolverExecutor
+    properties:
+      resolveFrom: prompt
+      parentOuId: 0193b0a1-2001-7000-8000-000000000001
+    onSuccess: resolve_variables
+  - id: resolve_variables
+    type: VARIABLES
+    inputs:
+      - identifier: supportEmail
+        type: EMAIL_INPUT
+        label: Support email
+        defaultValue: support@example.com
+      - identifier: mfaMode
+        type: SELECT
+        label: Second factor
+        options:
+          - NONE
+          - SMS_OTP
+          - EMAIL_OTP
+        defaultValue: NONE
+    onSuccess: end
+  - id: end
+    type: END
+sharingPolicies:
+  - childUnits:
+      mode: all
+      overlayRules:
+        variables.supportEmail:
+          editable: true
+        variables.mfaMode:
+          editable: true
+          allowedValues:
+            - NONE
+            - SMS_OTP
+variableValues:
+  - ouId: 0193b0a1-2001-7000-8000-000000000007
+    values:
+      supportEmail: help@acme-emea.example
+      mfaMode: SMS_OTP
+```
+
+A document can also carry `variableValues`, the values that the organization units the flow is shared with saved for its variables. Each entry names a unit with `ouId` and gives the values by variable identifier, as `PUT /flows/{flowId}/variables` takes them. An export writes them, so a flow keeps its overrides when you import it into another deployment, such as a data plane that a control plane applies versions to.
+
+The importer handles the policies and values of a document as follows:
+
+- When the import creates the flow, it writes the flow first and then records the policies against the organization unit that owns the flow, whether the document names that unit with `ouId` or `ouHandle`. If <ProductName /> refuses a policy, the item fails and the import removes the flow, so that a retry is not blocked by a flow that is left behind.
+- When the import updates a flow, it writes the new definition and the policies in one transaction. If <ProductName /> refuses the document, the flow keeps its previous definition and policies. A policy the flow already has from that organization unit is updated, and a policy that the document does not name is kept.
+- It checks the terms of each policy against the variables the new definition declares. A rule must name a declared variable, and every value in it must be valid for the type and constraints of that variable. A value that names a connection must name an existing connection of a kind the variable takes.
+- On an update that carries `sharingPolicies`, it does not check the new definition against the policies and saved values the flow held before. It checks the policies that remain after the replace, so a document whose definition and policies agree is accepted. For example, you can remove a variable, or an option of a variable, and the matching terms of its policy in the same document.
+- After the policies, it sets the values of each unit in `variableValues`, checked as they would be if the unit set them through the API. A unit may set only what its rules let it, and a connection must be one the unit can see. A unit the document does not name keeps its own values. If <ProductName /> refuses a value, the item fails. When the import created the flow, it removes the flow. When the import updated the flow, the new definition and policies stay.
+- A dry run validates the flow and records no policy or value.
+- An export writes the sharing policies and the saved values of each flow into its document, so importing the export recreates the same sharing and the same overrides.
+- Flow files loaded at startup declare their policies the same way. <ProductName /> loads them when it loads flows from files, which is when the flow store is in the `declarative` or `composite` mode. A file loaded at startup does not apply `variableValues`, so import the document to set the values.
+
 ### Dry-Run Behavior
 
 When `dryRun` is `true`, the importer validates documents and reports what would be created or updated, but does not write any changes to runtime stores. Handle resolution is mostly skipped in dry-run mode: the importer accepts handle fields, such as the flow handles of an application, without attempting to look up their target resources. The exception is `ouHandle`, which is resolved for every resource type that has one, so a handle that does not match an organization unit fails the dry run as it would a real import. Use dry-run to validate YAML structure before applying it.

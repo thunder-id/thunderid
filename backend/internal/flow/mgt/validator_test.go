@@ -2515,10 +2515,19 @@ func taskUsing(id, next, variable string) providers.NodeDefinition {
 	}
 }
 
-// linearFlow is START -> a -> b -> c -> END with the given steps in place of a, b and c.
+// ouResolver is the step that picks the organization unit a VARIABLES node resolves the values of.
+func ouResolver(id, next string) providers.NodeDefinition {
+	return providers.NodeDefinition{
+		ID: id, Type: "TASK_EXECUTION", OnSuccess: next,
+		Executor: &providers.ExecutorDefinition{Name: "OUResolverExecutor"},
+	}
+}
+
+// linearFlow is START -> OU resolver -> a -> b -> c -> END with the given steps in place of a, b and c.
 func linearFlow(steps ...providers.NodeDefinition) *FlowDefinition {
-	nodes := make([]providers.NodeDefinition, 0, len(steps)+2)
-	nodes = append(nodes, providers.NodeDefinition{ID: "start", Type: "START", OnSuccess: steps[0].ID})
+	nodes := make([]providers.NodeDefinition, 0, len(steps)+3)
+	nodes = append(nodes, providers.NodeDefinition{ID: "start", Type: "START", OnSuccess: "ou"})
+	nodes = append(nodes, ouResolver("ou", steps[0].ID))
 	nodes = append(nodes, steps...)
 	nodes = append(nodes, providers.NodeDefinition{ID: endNode, Type: "END"})
 	return &FlowDefinition{Nodes: nodes}
@@ -2577,7 +2586,8 @@ func (s *ValidatorVariablesTestSuite) TestValidateVariables() {
 	})
 	s.Run("a step that one route reaches around the node", func() {
 		flow := &FlowDefinition{Nodes: []providers.NodeDefinition{
-			{ID: "start", Type: "START", OnSuccess: "choose"},
+			{ID: "start", Type: "START", OnSuccess: "ou"},
+			ouResolver("ou", "choose"),
 			{
 				ID: "choose", Type: "PROMPT",
 				Prompts: []providers.PromptDefinition{
@@ -2593,7 +2603,8 @@ func (s *ValidatorVariablesTestSuite) TestValidateVariables() {
 	})
 	s.Run("a step on every branch after the node", func() {
 		flow := &FlowDefinition{Nodes: []providers.NodeDefinition{
-			{ID: "start", Type: "START", OnSuccess: "vars"},
+			{ID: "start", Type: "START", OnSuccess: "ou"},
+			ouResolver("ou", "vars"),
 			variablesNode("vars", "choose", booleanVariable("allowSignup")),
 			{
 				ID: "choose", Type: "PROMPT",
@@ -2622,6 +2633,36 @@ func (s *ValidatorVariablesTestSuite) TestValidateVariables() {
 			variablesNode("b", "end", booleanVariable("second")),
 		)
 		s.Contains(s.reasonOf(v.validateVariables(ctx, later)), "without passing that node")
+	})
+	s.Run("a VARIABLES node needs an organization unit resolver before it", func() {
+		bare := &FlowDefinition{Nodes: []providers.NodeDefinition{
+			{ID: "start", Type: "START", OnSuccess: "vars"},
+			variablesNode("vars", "end", booleanVariable("allowSignup")),
+			{ID: "end", Type: "END"},
+		}}
+		s.Contains(s.reasonOf(v.validateVariables(ctx, bare)), "OUResolverExecutor")
+
+		after := linearFlow(
+			variablesNode("vars", "again", booleanVariable("allowSignup")), ouResolver("again", "end"))
+		after.Nodes[0].OnSuccess = "vars"
+		s.Contains(s.reasonOf(v.validateVariables(ctx, after)), "OUResolverExecutor",
+			"a resolver after the node does not count")
+	})
+	s.Run("one route around the organization unit resolver is enough to refuse", func() {
+		flow := &FlowDefinition{Nodes: []providers.NodeDefinition{
+			{ID: "start", Type: "START", OnSuccess: "choose"},
+			{
+				ID: "choose", Type: "PROMPT",
+				Prompts: []providers.PromptDefinition{
+					{Action: &providers.ActionDefinition{Ref: "a", NextNode: "ou"}},
+					{Action: &providers.ActionDefinition{Ref: "b", NextNode: "vars"}},
+				},
+			},
+			ouResolver("ou", "vars"),
+			variablesNode("vars", "end", booleanVariable("allowSignup")),
+			{ID: "end", Type: "END"},
+		}}
+		s.Contains(s.reasonOf(v.validateVariables(ctx, flow)), "OUResolverExecutor")
 	})
 	s.Run("two nodes declaring the same variable", func() {
 		flow := linearFlow(
@@ -2721,6 +2762,12 @@ func (s *ValidatorVariablesTestSuite) TestValidateVariablesConnectionInputs() {
 		"c-1": {ID: "c-1", Type: providers.IDPTypeGoogle},
 	}}
 	v := &flowValidator{idpProvider: reader}
+	s.Run("a default of no connection needs no connection to check", func() {
+		blank := connection("IDENTITY_PROVIDER", "google")
+		blank.DefaultValue = ""
+		s.Nil(v.validateVariables(ctx, flowWith(blank)))
+	})
+
 	s.Run("the default is a connection of a kind the variable takes", func() {
 		s.Nil(v.validateVariables(ctx, flowWith(connection("IDENTITY_PROVIDER", "google"))))
 		s.Contains(s.reasonOf(v.validateVariables(ctx, flowWith(connection("IDENTITY_PROVIDER", "github")))),

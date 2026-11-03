@@ -47,6 +47,10 @@ func toProviderAgent(resp *model.AgentCompleteResponse) *providers.Agent {
 	if resp == nil {
 		return nil
 	}
+	var validUntil *string
+	if resp.ValidUntil != "" {
+		validUntil = &resp.ValidUntil
+	}
 	return &providers.Agent{
 		ID:          resp.ID,
 		OUID:        resp.OUID,
@@ -56,6 +60,7 @@ func toProviderAgent(resp *model.AgentCompleteResponse) *providers.Agent {
 		LogoURL:     resp.LogoURL,
 		Owner:       resp.Owner,
 		Attributes:  resp.Attributes,
+		ValidUntil:  validUntil,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                resp.AuthFlowID,
 			AuthFlowHandle:            resp.AuthFlowHandle,

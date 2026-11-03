@@ -312,3 +312,18 @@ var ErrorFlowApplicationNotUsable = tidcommon.ServiceError{
 		DefaultValue: "The flow cannot be executed for the requested application",
 	},
 }
+
+// ErrorFlowConnectionNotSet is returned when a flow needs a connection that was never set for the organization unit of
+// the application driving it.
+var ErrorFlowConnectionNotSet = tidcommon.ServiceError{
+	Code: "FES-1022",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.connection_not_set",
+		DefaultValue: "Flow not available",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.connection_not_set_description",
+		DefaultValue: "The flow is not available for this organization yet. Contact your administrator",
+	},
+}

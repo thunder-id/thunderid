@@ -1,0 +1,137 @@
+---
+title: Secure Your MCP Server
+docType: guide
+persona: iam
+sidebar_position: 2
+description: Turn your MCP server into an OAuth 2.1 resource server protected by {{ProductName}}, with a scope per tool and offline token validation, in any language.
+---
+
+# Secure Your MCP Server
+
+For the generic pattern behind this guide, MCP servers as OAuth resource servers, scope granularity, and token validation, see [MCP Server Authorization](..).
+
+Turn your MCP server, reached over HTTP, into an OAuth 2.1 resource server protected by <ProductName />, whatever language it is written in. Register the server as a resource server, define a scope per tool, grant those scopes through a role, and validate tokens at the tool boundary before any tool runs.
+
+:::tip Runnable Example
+This guide covers the pattern, not a specific stack. For a complete, working implementation using FastMCP, see [Secure Your MCP Server (Python)](../../../../getting-started/connect-your-mcp/python).
+:::
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../../../getting-started/get-thunderid).
+- You can sign in to the <ProductName /> Console.
+- An MCP server you control, able to validate JWTs offline and publish RFC 9728 protected-resource metadata, through your language's MCP SDK or your own middleware.
+- The list of tools your MCP server exposes, since you define one permission per tool.
+
+## How It Works
+
+Your MCP server becomes an OAuth 2.1 resource server. When a client connects without a token, the server responds with a `401` and RFC 9728 protected-resource metadata that points the client at <ProductName /> as its authorization server. The client runs an OAuth 2.1 flow, typically Authorization Code with PKCE, and gets back a JWT scoped to whichever tool permissions the signing-in user's or client's roles actually grant. On the next request, the server validates that JWT offline against <ProductName />'s JWKS endpoint, with no callback to <ProductName /> per request, and enforces the scope each tool requires before it runs.
+
+<McpOAuthFlowDiagram />
+
+<Stepper stepNode="h2" as="h2">
+
+## Step 1: Register the MCP Server as a Resource Server
+
+In the Console:
+
+1. Navigate to **Resource Servers** and click **Add resource server**.
+2. On the **Type** step, select **MCP**.
+3. On the **Name** step, enter an **MCP Server Name** and an **Identifier**. Set the identifier to the MCP server's own URL, for example `https://mcp.example.com`: it becomes the access token audience for [Resource Indicators](../../../protocols/oauth-oidc/resource-indicators) (RFC 8707).
+4. On the **Permission Delimiter** step, choose the character that separates parts of a permission string, for example the default colon (`:`). If your deployment has multiple organization units, select one first, then click **Create MCP server**.
+
+:::note
+The delimiter cannot be changed after creation, so plan it before you click **Create MCP server**.
+:::
+
+## Step 2: Define Tool Permissions
+
+On the **Capabilities** tab of the resource server you just created, add one tool permission per MCP tool:
+
+1. Click **Add tool permission**. Once the panel has at least one capability, add more by clicking the **+** icon in the panel header and selecting **Add tool permission** from the menu instead.
+2. Enter a **Name** for the tool. <ProductName /> derives the **Handle** from the name automatically: it lowercases the words and joins them with a hyphen, or with an underscore if you chose a hyphen as the resource server's permission delimiter, to avoid a handle that collides with it.
+3. Confirm the handle before clicking **Add**. For a top-level tool permission, the handle *is* the permission, with no resource server prefix, so it becomes the exact scope string your server must check for that tool.
+4. Repeat for every tool the MCP server exposes.
+
+For example, a tool named `Send Message` produces the handle `send-message` and the permission `send-message`. If your server's scope check instead looks for `send_message` or `sendMessage`, the mismatch means the token never satisfies it, and the tool never appears to a caller, the same way it would not appear if the caller held no matching permission at all.
+
+The same panel also lets you add resource permissions, for MCP resources rather than tools, following the same name-to-handle pattern.
+
+## Step 3: Grant the Permissions Through a Role
+
+Registering a tool permission in the previous step only defines it. <ProductName /> puts a scope into an access token only when the signing-in user or client actually holds the matching permission through a role, and a scope they do not hold is not rejected, it is silently dropped from the issued token. A missing scope does not make its tool error: the tool simply does not appear, which looks identical to the tool never having existed. This is the most common reason a freshly registered tool does not show up for a test user, so create and assign the role before you try to connect a client.
+
+1. Navigate to **Roles** and click **Add Role**.
+2. Enter a name and, if prompted, select an organization unit.
+3. On the **Permissions** step, expand your MCP server's entry and, under **Tools**, select the permissions this role should grant.
+4. Create the role.
+5. Open the role, select the **Assignments** tab, and click **Add**.
+6. On the **Users**, **Groups**, **Applications**, or **Agents** tab, depending on who should hold this role, select the principals and click **Add Selected**.
+
+:::warning
+A user or client that authenticates without this role gets a token missing every tool-scoped permission, even though the resource server correctly lists them as capabilities. If a tool disappears for one caller but not another, check role assignments before you check your server's scope-checking code.
+:::
+
+## Step 4: Point Clients at <ProductName />
+
+Your MCP server's SDK, or your own middleware, publishes the RFC 9728 protected-resource metadata that names <ProductName /> as its authorization server. When it rejects an unauthenticated request, it returns a `401` with a `WWW-Authenticate` header pointing at that metadata:
+
+```text
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"
+```
+
+Fetching that URL returns the metadata document:
+
+```json
+{
+  "resource": "https://mcp.example.com",
+  "authorization_servers": ["https://your-thunderid-instance.example.com/"],
+  "scopes_supported": ["send-message", "list-conversations"],
+  "bearer_methods_supported": ["header"]
+}
+```
+
+The client resolves the `authorization_servers` entry against <ProductName />'s own [Server Metadata](../../../protocols/oauth-oidc/server-metadata) document to discover the authorization, token, and JWKS endpoints, then runs an OAuth flow to get a token. How the client itself gets OAuth credentials, as a pre-registered application or through Dynamic Client Registration, is covered in [MCP Client Identity](../../mcp-clients).
+
+## Step 5: Validate Tokens at the Tool Boundary
+
+<ProductName /> issues the token. Enforcing it is your MCP server's job, on every request:
+
+1. **Validate the JWT offline.** Fetch <ProductName />'s [JWKS](../../../protocols/oauth-oidc/jwks) endpoint, find the signing key by `kid`, and verify the signature, `iss`, and `exp`. Most JWT libraries handle this given a `jwks_uri`. Cache the response and refresh it once on an unknown `kid`, not on every request.
+2. **Check the audience.** The `aud` claim must equal the resource server identifier you registered in Step 1. [Resource Indicators](../../../protocols/oauth-oidc/resource-indicators) is what binds a token to that specific identifier, so a token issued for a different resource server on the same <ProductName /> deployment fails this check even though its signature is valid.
+3. **Enforce the per-tool scope before the tool runs.** Compare the `scope` claim against the permission handle you defined for that tool in Step 2. Prefer excluding a tool the token cannot satisfy from what the client sees over letting the client call it and failing at that point: a missing scope should make a tool disappear from the tool list, the same way it disappears when a role never granted it.
+
+A validated access token's payload looks like this:
+
+```json
+{
+  "sub": "0197c3f0-6b16-7908-9bc9-d848c00db406",
+  "iss": "https://your-thunderid-instance.example.com",
+  "aud": "https://mcp.example.com",
+  "scope": "send-message list-conversations",
+  "exp": 1782000000
+}
+```
+
+See [Token Formats](../../../protocols/oauth-oidc/token-formats) for how <ProductName /> signs access tokens, and [Claims & Scopes](../../../protocols/oauth-oidc/claims-and-scopes) for how requested scopes become the scopes a token actually carries.
+
+</Stepper>
+
+## Consent
+
+If your MCP client also requests OIDC scopes, such as `profile` or `email`, to identify the user it is acting for, what it receives can be narrower than what it asked for. <ProductName /> triggers its consent flow based on the user attributes the MCP client's application is configured to require, not simply on the scopes present in the request: the signing-in user can deny individual attributes, and any attribute they deny does not reach the ID token or UserInfo response, even though the client requested a scope that would normally include it.
+
+This is a separate mechanism from the role-based scope filtering in Step 3. A tool scope is dropped because the user's role does not grant it, silently and with no prompt. An attribute is dropped because the user chose not to share it, in an interactive prompt. See [Consent](../../../consent) for how to configure attribute consent for an application.
+
+## Fine-Grained Authorization with AuthZEN
+
+Scopes are coarse-grained: a `transfer` scope says the caller may use the `transfer` tool at all, not that they may transfer this specific amount from that specific account. When a tool needs a decision that depends on the call's arguments, not just on who is calling, scopes alone are not enough.
+
+For those cases, have your MCP server call <ProductName /> as an AuthZEN policy decision point (PDP) before it runs the tool handler, instead of relying only on the token's scope. Your server authenticates to the PDP with its own server-level secret, separate from the caller's token, and sends the subject (from the validated token), the resource, the action, and any request context specific to that call. <ProductName /> evaluates the request against resource servers, resources, actions, roles, and role assignments, and returns an allow or deny decision computed at request time, not baked into the token. See [AuthZEN](../../../protocols/authzen) for the protocol and [Policy Decision Point](../../../protocols/authzen/pdp) for the PDP endpoints, and walk through a working example in [AuthZEN-Based MCP Authorization](../../../../use-cases/ai-agents/mcp-authorization/try-it-out/authzen-authorization).
+
+## Next Steps
+
+- [Secure Your MCP Server (Python)](../../../../getting-started/connect-your-mcp/python): a complete, runnable version of this guide using FastMCP.
+- [MCP Client Identity](../../mcp-clients): register the clients that connect to your MCP server, or let them self-register through Dynamic Client Registration.
+- [Securing MCP](../../../../use-cases/ai-agents/mcp-authorization/overview): the broader pattern for securing MCP servers and governing MCP clients.

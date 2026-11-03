@@ -3,6 +3,7 @@
 
 import type {ReactElement} from 'react';
 import Start from './start/Start';
+import Variables from './variables/Variables';
 import {StaticStepTypes} from '../../../models/steps';
 
 /**
@@ -13,6 +14,10 @@ export interface CommonStaticStepFactoryPropsInterface {
    * The resource properties.
    */
   type: StaticStepTypes;
+  /**
+   * The id of the node, which the handles of a step that has none of its own are named after.
+   */
+  id?: string;
 }
 
 /**
@@ -21,9 +26,13 @@ export interface CommonStaticStepFactoryPropsInterface {
  * @param props - Props injected to the component.
  * @returns The CommonStaticStepFactory component.
  */
-export function CommonStaticStepFactory({type}: CommonStaticStepFactoryPropsInterface): ReactElement | null {
+export function CommonStaticStepFactory({type, id = ''}: CommonStaticStepFactoryPropsInterface): ReactElement | null {
   if (type === StaticStepTypes.Start) {
     return <Start />;
+  }
+
+  if (type === StaticStepTypes.Variables) {
+    return <Variables id={id} />;
   }
 
   return null;

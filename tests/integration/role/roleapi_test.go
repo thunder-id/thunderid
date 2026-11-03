@@ -5,10 +5,13 @@ package role
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -2263,13 +2266,373 @@ func (suite *RoleAPITestSuite) TestSharingPolicy_SharedRoleCannotMove() {
 	resp.Body.Close()
 
 	_, err = suite.updateRole(role.ID, UpdateRoleRequest{
-		Name: role.Name, OUID: declSharedChildA, Permissions: []ResourcePermissions{}})
+		Name: role.Name, OUID: testOUID, Permissions: []ResourcePermissions{}})
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "ROL-1029")
 
 	_, err = suite.updateRole(role.ID, UpdateRoleRequest{
 		Name: role.Name, Description: "Renamed in place", OUID: declSharedRootOU, Permissions: []ResourcePermissions{}})
 	suite.NoError(err, "a shared role can still be edited where it is")
+}
+
+// personIn creates a user owned by an organization unit, of a user type of its own there, and
+// returns the user's ID with a function deleting both.
+func (suite *RoleAPITestSuite) personIn(ouID, username string) (string, func()) {
+	suite.T().Helper()
+	userType := testUserType
+	userType.Handle = username + "-type"
+	userType.DisplayName = username
+	userType.OUID = ouID
+	typeID, err := testutils.CreateUserType(userType)
+	suite.Require().NoError(err)
+	userID, err := testutils.CreateUser(testutils.User{
+		Type: userType.Handle,
+		OUID: ouID,
+		Attributes: json.RawMessage(fmt.Sprintf(
+			`{"email": "%s@example.com", "password": "TestPassword123!"}`, username)),
+	})
+	suite.Require().NoError(err)
+	return userID, func() {
+		suite.NoError(testutils.DeleteUser(userID))
+		suite.NoError(testutils.DeleteUserType(typeID))
+	}
+}
+
+// assignmentsIn lists a role's assignments, narrowed to one organization unit when ouID is set.
+func (suite *RoleAPITestSuite) assignmentsIn(roleID, ouID string) []map[string]interface{} {
+	suite.T().Helper()
+	path := rolesBasePath + "/" + roleID + "/assignments?limit=100"
+	if ouID != "" {
+		path += "&filter=" + url.QueryEscape(`ouId eq "`+ouID+`"`)
+	}
+	resp := suite.doRoleRequest(http.MethodGet, path, nil)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	body := suite.decodeBody(resp)
+	resp.Body.Close()
+	items, _ := body["assignments"].([]interface{})
+	out := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		out = append(out, item.(map[string]interface{}))
+	}
+	return out
+}
+
+// postAssignments adds or removes assignments and returns the status and error code.
+func (suite *RoleAPITestSuite) postAssignments(roleID, action string, request AssignmentsRequest) (int, string) {
+	suite.T().Helper()
+	resp := suite.doRoleRequest(http.MethodPost, rolesBasePath+"/"+roleID+"/assignments/"+action,
+		mustMarshal(suite.T(), request))
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent {
+		return resp.StatusCode, ""
+	}
+	return resp.StatusCode, decodeErrorCode(suite.T(), resp)
+}
+
+// An organization unit filter lists the roles shared with that unit under it, and leaves out a
+// unit the role does not reach.
+func (suite *RoleAPITestSuite) TestRoleList_OUFilterListsSharedRoles() {
+	list := func(ouID string) map[string]RoleSummary {
+		resp := suite.doRoleRequest(http.MethodGet,
+			rolesBasePath+"?limit=100&filter="+url.QueryEscape(`ouId eq "`+ouID+`"`), nil)
+		suite.Require().Equal(http.StatusOK, resp.StatusCode)
+		defer resp.Body.Close()
+		var page RoleListResponse
+		suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&page))
+		roles := map[string]RoleSummary{}
+		for _, r := range page.Roles {
+			roles[r.ID] = r
+		}
+		return roles
+	}
+
+	owned, ok := list(declSharedRootOU)[declSharedRoleID]
+	suite.Require().True(ok, "the owner lists its own role")
+	suite.True(owned.IsOwnedByOU)
+	suite.Equal(declSharedRootOU, owned.OUID)
+
+	shared, ok := list(declSharedChildA)[declSharedRoleID]
+	suite.Require().True(ok, "a unit the role is shared with lists it")
+	suite.False(shared.IsOwnedByOU)
+	suite.True(shared.IsReadOnly)
+	suite.Equal(declSharedChildA, shared.OUID)
+
+	_, ok = list(declSharedChildC)[declSharedRoleID]
+	suite.False(ok, "a unit the role is not shared with does not list it")
+
+	resp := suite.doRoleRequest(http.MethodGet,
+		rolesBasePath+"?filter="+url.QueryEscape(`name eq "x"`), nil)
+	suite.Equal(http.StatusBadRequest, resp.StatusCode)
+	suite.Equal("ROL-1033", decodeErrorCode(suite.T(), resp))
+	resp.Body.Close()
+}
+
+// A declared assignment naming an organization unit is made there. decl-user-1 lives in decl-ou-1 and
+// is shared into decl-m2m-root, where the shared role's file assigns it.
+func (suite *RoleAPITestSuite) TestDeclaredAssignment_InItsNamedOU() {
+	assignments := suite.assignmentsIn(declSharedRoleID, declSharedRootOU)
+	suite.Require().Len(assignments, 1)
+	suite.Equal("decl-user-1", assignments[0]["id"])
+	suite.Equal(declSharedRootOU, assignments[0]["ouId"])
+
+	suite.Empty(suite.assignmentsIn(declSharedRoleID, "decl-ou-1"),
+		"the assignment is not made in the organization unit owning the assignee")
+}
+
+// An organization unit's role listing carries the roles shared with it after its own, by id and by
+// handle path.
+func (suite *RoleAPITestSuite) TestListRolesByOU_IncludesSharedRoles() {
+	find := func(path string) *OURole {
+		response, err := suite.listOURoles(path, 0, 100)
+		suite.Require().NoError(err, "listing roles via %s should succeed", path)
+		for i := range response.Roles {
+			if response.Roles[i].ID == declSharedRoleID {
+				return &response.Roles[i]
+			}
+		}
+		return nil
+	}
+
+	for _, path := range []string{
+		"/organization-units/" + declSharedRootOU + "/roles",
+		"/organization-units/tree/" + declSharedRootOU + "/roles",
+	} {
+		owned := find(path)
+		suite.Require().NotNilf(owned, "%s must list the role its unit owns", path)
+		suite.True(owned.IsOwnedByOU)
+	}
+
+	for _, path := range []string{
+		"/organization-units/" + declSharedChildA + "/roles",
+		"/organization-units/tree/" + declSharedRootOU + "/" + declSharedChildA + "/roles",
+	} {
+		shared := find(path)
+		suite.Require().NotNilf(shared, "%s must list the role shared with its unit", path)
+		suite.False(shared.IsOwnedByOU)
+		suite.True(shared.IsReadOnly)
+	}
+
+	suite.Nil(find("/organization-units/"+declSharedChildC+"/roles"),
+		"a unit the role is not shared with does not list it")
+}
+
+// A role shared with an organization unit is listed there, so a role created or renamed there cannot
+// take its name. A unit the role is not shared with can.
+func (suite *RoleAPITestSuite) TestRoleName_TakenByASharedRole() {
+	const sharedName = "Declarative Shared Role"
+	permissions := []ResourcePermissions{
+		{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+	}
+
+	resp := suite.doRoleRequest(http.MethodPost, rolesBasePath, mustMarshal(suite.T(), CreateRoleRequest{
+		Name: sharedName, OUID: declSharedChildA, Permissions: permissions,
+	}))
+	suite.Equal(http.StatusConflict, resp.StatusCode, "the name of a role shared with the unit is taken there")
+	suite.Equal("ROL-1004", decodeErrorCode(suite.T(), resp))
+	resp.Body.Close()
+
+	unshared, err := suite.createRole(CreateRoleRequest{
+		Name: sharedName, OUID: declSharedChildC, Permissions: permissions,
+	})
+	suite.Require().NoError(err, "a unit the role is not shared with may use the name")
+	suite.deleteRole(unshared.ID)
+
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "Shared Name Rename Target", OUID: declSharedChildA, Permissions: permissions,
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	resp = suite.doRoleRequest(http.MethodPut, rolesBasePath+"/"+role.ID, mustMarshal(suite.T(), UpdateRoleRequest{
+		Name: sharedName, OUID: declSharedChildA, Permissions: permissions,
+	}))
+	suite.Equal(http.StatusConflict, resp.StatusCode, "a role cannot be renamed to a shared role's name")
+	suite.Equal("ROL-1004", decodeErrorCode(suite.T(), resp))
+	resp.Body.Close()
+}
+
+// The ouId query parameter reads a role as an organization unit sees it.
+func (suite *RoleAPITestSuite) TestGetRole_InOU() {
+	get := func(ouID string) (*http.Response, map[string]interface{}) {
+		resp := suite.doRoleRequest(http.MethodGet, rolesBasePath+"/"+declSharedRoleID+"?ouId="+ouID, nil)
+		if resp.StatusCode != http.StatusOK {
+			return resp, nil
+		}
+		body := suite.decodeBody(resp)
+		resp.Body.Close()
+		return resp, body
+	}
+
+	resp, body := get(declSharedChildA)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	suite.Equal(declSharedChildA, body["ouId"])
+	suite.Equal(false, body["isOwnedByOU"])
+	suite.Equal("Declarative Shared Role", body["name"])
+
+	resp, body = get(declSharedRootOU)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	suite.Equal(declSharedRootOU, body["ouId"])
+	suite.Equal(true, body["isOwnedByOU"])
+
+	resp, _ = get(declSharedChildC)
+	suite.Equal(http.StatusNotFound, resp.StatusCode)
+	suite.Equal("ROL-1026", decodeErrorCode(suite.T(), resp))
+	resp.Body.Close()
+}
+
+// An organization unit a role is shared with assigns it to its own members, the assignments are
+// listed under that unit, and they go when the role stops being shared there.
+func (suite *RoleAPITestSuite) TestAssignments_InSharedOU() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "API Role Assigned In Child", OUID: declSharedRootOU, Permissions: []ResourcePermissions{}})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	resp := suite.createAssignmentsPolicy(role.ID, nil)
+	suite.Require().Equal(http.StatusCreated, resp.StatusCode)
+	policyID := suite.decodeBody(resp)["id"].(string)
+	resp.Body.Close()
+
+	childUserID, cleanup := suite.personIn(declSharedChildC, "role-child-c-member")
+	defer cleanup()
+	member := []Assignment{{ID: childUserID, Type: AssigneeTypeUser}}
+
+	status, code := suite.postAssignments(role.ID, "add", AssignmentsRequest{OUID: declSharedChildC, Assignments: member})
+	suite.Require().Equal(http.StatusNoContent, status, code)
+
+	// The owner cannot assign a member of another unit that is not shared with it.
+	status, code = suite.postAssignments(role.ID, "add", AssignmentsRequest{Assignments: member})
+	suite.Equal(http.StatusBadRequest, status)
+	suite.Equal("ROL-1030", code)
+
+	// A unit the role is not shared with cannot assign it at all.
+	status, code = suite.postAssignments(role.ID, "add", AssignmentsRequest{OUID: declSharedChildA, Assignments: member})
+	suite.Equal(http.StatusNotFound, status)
+	suite.Equal("ROL-1026", code)
+
+	inChild := suite.assignmentsIn(role.ID, declSharedChildC)
+	suite.Require().Len(inChild, 1)
+	suite.Equal(childUserID, inChild[0]["id"])
+	suite.Equal(declSharedChildC, inChild[0]["ouId"])
+	suite.Empty(suite.assignmentsIn(role.ID, declSharedRootOU), "nothing was assigned in the owner")
+	suite.Len(suite.assignmentsIn(role.ID, ""), 1, "every unit's assignments are listed without a filter")
+
+	// Withdrawing the share takes the unit's assignments with it.
+	resp = suite.doRoleRequest(http.MethodDelete, sharingPolicyPath(role.ID, policyID), nil)
+	suite.Require().Equal(http.StatusNoContent, resp.StatusCode)
+	resp.Body.Close()
+	suite.Empty(suite.assignmentsIn(role.ID, declSharedChildC))
+}
+
+// An edit that takes the role away from a unit takes the unit's assignments with it, while a unit
+// the edited policy still reaches keeps its own.
+func (suite *RoleAPITestSuite) TestAssignments_PolicyEditDropsTheLostUnitsAssignments() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "API Role Narrowed Share", OUID: declSharedRootOU, Permissions: []ResourcePermissions{}})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	resp := suite.doRoleRequest(http.MethodPost, sharingPolicyPath(role.ID), mustMarshal(suite.T(),
+		map[string]interface{}{"childUnits": map[string]interface{}{"mode": "selected",
+			"units": []map[string]string{
+				{"ouId": declSharedChildA, "reach": "unit"}, {"ouId": declSharedChildC, "reach": "unit"},
+			}}}))
+	suite.Require().Equal(http.StatusCreated, resp.StatusCode)
+	policy := suite.decodeBody(resp)
+	resp.Body.Close()
+
+	for _, ouID := range []string{declSharedChildA, declSharedChildC} {
+		userID, cleanup := suite.personIn(ouID, "narrowed-share-"+ouID)
+		defer cleanup()
+		status, code := suite.postAssignments(role.ID, "add", AssignmentsRequest{
+			OUID: ouID, Assignments: []Assignment{{ID: userID, Type: AssigneeTypeUser}}})
+		suite.Require().Equal(http.StatusNoContent, status, code)
+	}
+
+	resp = suite.doRoleRequest(http.MethodPut, sharingPolicyPath(role.ID, policy["id"].(string)),
+		mustMarshal(suite.T(), map[string]interface{}{"version": policy["version"],
+			"childUnits": map[string]interface{}{"mode": "selected",
+				"units": []map[string]string{{"ouId": declSharedChildA, "reach": "unit"}}}}))
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	suite.Empty(suite.assignmentsIn(role.ID, declSharedChildC), "child C lost the role and its assignments")
+	suite.Len(suite.assignmentsIn(role.ID, declSharedChildA), 1, "child A still holds the role and keeps them")
+}
+
+// Where a policy turns a role's assignments off, the unit cannot add any but may still remove one.
+func (suite *RoleAPITestSuite) TestAssignments_TurnedOffInSharedOU() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "API Role Closed In Child", OUID: declSharedRootOU, Permissions: []ResourcePermissions{}})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	resp := suite.createAssignmentsPolicy(role.ID, map[string]interface{}{"assignments": map[string]interface{}{
+		"editable": false,
+	}})
+	suite.Require().Equal(http.StatusCreated, resp.StatusCode)
+	resp.Body.Close()
+
+	childUserID, cleanup := suite.personIn(declSharedChildC, "role-child-c-closed")
+	defer cleanup()
+	request := AssignmentsRequest{OUID: declSharedChildC, Assignments: []Assignment{
+		{ID: childUserID, Type: AssigneeTypeUser},
+	}}
+
+	status, code := suite.postAssignments(role.ID, "add", request)
+	suite.Equal(http.StatusBadRequest, status)
+	suite.Equal("ROL-1031", code)
+
+	status, code = suite.postAssignments(role.ID, "remove", request)
+	suite.Equal(http.StatusNoContent, status, code)
+}
+
+// An organization unit a role is shared with cannot update it, even sending it back unchanged: the
+// role's name, description and permissions stay with its owner.
+func (suite *RoleAPITestSuite) TestUpdateRole_InSharedOU() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "API Role Edited In Child", OUID: declSharedRootOU, Permissions: []ResourcePermissions{}})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	resp := suite.createAssignmentsPolicy(role.ID, nil)
+	suite.Require().Equal(http.StatusCreated, resp.StatusCode)
+	resp.Body.Close()
+
+	for _, name := range []string{role.Name, "Renamed In Child"} {
+		_, err = suite.updateRole(role.ID, UpdateRoleRequest{
+			Name: name, OUID: declSharedChildC, Permissions: []ResourcePermissions{}})
+		suite.Require().Error(err)
+		suite.Contains(err.Error(), "ROL-1034")
+	}
+
+	owner, err := suite.getRole(role.ID)
+	suite.Require().NoError(err)
+	suite.Equal(role.Name, owner.Name)
+	suite.Equal(declSharedRootOU, owner.OUID)
+}
+
+// A role still assigned in its organization unit is not moved: its assignees were checked there.
+func (suite *RoleAPITestSuite) TestUpdateRole_AssignedRoleCannotMove() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "API Assigned Role", OUID: declSharedRootOU, Permissions: []ResourcePermissions{}})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	rootUserID, cleanup := suite.personIn(declSharedRootOU, "role-root-member")
+	defer cleanup()
+	request := AssignmentsRequest{Assignments: []Assignment{{ID: rootUserID, Type: AssigneeTypeUser}}}
+	suite.Require().NoError(suite.addAssignments(role.ID, request))
+
+	move := UpdateRoleRequest{Name: role.Name, OUID: testOUID, Permissions: []ResourcePermissions{}}
+	_, err = suite.updateRole(role.ID, move)
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "ROL-1032")
+
+	suite.Require().NoError(suite.removeAssignments(role.ID, request))
+	moved, err := suite.updateRole(role.ID, move)
+	suite.Require().NoError(err)
+	suite.Equal(testOUID, moved.OUID)
 }
 
 // Every sharing path answers its own preflight, so a browser can call it with credentials.
@@ -2500,8 +2863,13 @@ func (suite *RoleAPITestSuite) TestGetRoleAssignments_DeclarativeRoleByType() {
 	suite.Require().Equal(1, userAssignments.TotalResults, "the declared user assignment must be listed")
 	suite.Equal(declUserID, userAssignments.Assignments[0].ID)
 
+	// A role is assigned to groups its organization unit owns, so the added group lives in decl-ou-1.
+	addedGroupID, err := testutils.CreateGroup(testutils.Group{Name: "decl-role-added-group", OUID: "decl-ou-1"})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.DeleteGroup(addedGroupID)) }()
+
 	assignmentsRequest := AssignmentsRequest{
-		Assignments: []Assignment{{ID: testGroupID, Type: AssigneeTypeGroup}},
+		Assignments: []Assignment{{ID: addedGroupID, Type: AssigneeTypeGroup}},
 	}
 	suite.Require().NoError(suite.addAssignments(declRoleID, assignmentsRequest))
 	defer func() {
@@ -2518,7 +2886,7 @@ func (suite *RoleAPITestSuite) TestGetRoleAssignments_DeclarativeRoleByType() {
 		groupIDs = append(groupIDs, a.ID)
 	}
 	suite.Contains(groupIDs, declGroupID, "the file-declared group assignment must survive the merge")
-	suite.Contains(groupIDs, testGroupID, "the database-backed group assignment must be included")
+	suite.Contains(groupIDs, addedGroupID, "the database-backed group assignment must be included")
 
 	// Adding a group must not change what the user filter returns.
 	userAssignments, err = suite.getRoleAssignmentsByType(declRoleID, 0, 30, "user")
@@ -2543,18 +2911,10 @@ func (suite *RoleAPITestSuite) TestAccessEvaluation_DeclarativeRolePermissions()
 		"a permission the declarative role does not carry must be denied")
 
 	// A user assigned at runtime: the role definition lives in the file store while the assignment
-	// lives in the database, so neither store can resolve this on its own.
-	user := testUser1
-	user.OUID = testOUID
-	user.Attributes = json.RawMessage(`{
-		"email": "declrolepermuser@example.com",
-		"given_name": "Decl",
-		"family_name": "PermUser",
-		"password": "TestPassword123!"
-	}`)
-	runtimeUserID, err := testutils.CreateUser(user)
-	suite.Require().NoError(err)
-	defer func() { suite.NoError(testutils.DeleteUser(runtimeUserID)) }()
+	// lives in the database, so neither store can resolve this on its own. The user lives in the
+	// role's organization unit, where the role is assigned.
+	runtimeUserID, cleanup := suite.personIn("decl-ou-1", "declrolepermuser")
+	defer cleanup()
 
 	assignmentsRequest := AssignmentsRequest{
 		Assignments: []Assignment{{ID: runtimeUserID, Type: AssigneeTypeUser}},
@@ -3050,4 +3410,369 @@ func decodeErrorCode(t *testing.T, resp *http.Response) string {
 		t.Fatalf("failed to decode error response %q: %v", string(body), err)
 	}
 	return errResp.Code
+}
+
+// The declared role decl-shared-role is owned by decl-m2m-root, shared with children A and B, and
+// grants test-resource:read on decl-rs-1.
+const (
+	sharedRoleResourceServerID = "decl-rs-1"
+	sharedRoleResourceServer   = "https://localhost:8090/decl-rs-1"
+	sharedRolePermission       = "test-resource:read"
+)
+
+// A declared role shared with an organization unit can be assigned from there to the unit's own
+// users, groups, agents and applications, and to the users and applications shared with it.
+func (suite *RoleAPITestSuite) TestSharedRole_AssignedToEveryKindOfAssigneeInTheOU() {
+	ownUser, cleanupOwnUser := suite.personIn(declSharedChildA, "shared-role-own-user")
+	defer cleanupOwnUser()
+	sharedUser, cleanupSharedUser := suite.personIn(declSharedRootOU, "shared-role-shared-user")
+	defer cleanupSharedUser()
+	suite.shareWithChildA("/users/" + sharedUser)
+
+	groupID, err := testutils.CreateGroup(testutils.Group{Name: "Shared Role Child A Group", OUID: declSharedChildA})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.DeleteGroup(groupID)) }()
+
+	agentID, err := testutils.CreateAgent(testutils.Agent{
+		Type: "default", OUID: declSharedChildA, Attributes: map[string]interface{}{"name": "shared-role-agent"},
+	})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.DeleteAgent(agentID)) }()
+
+	ownApp := suite.appIn(declSharedChildA, "shared-role-own-app")
+	sharedApp := suite.appIn(declSharedRootOU, "shared-role-shared-app")
+	suite.shareWithChildA("/applications/" + sharedApp)
+
+	request := AssignmentsRequest{OUID: declSharedChildA, Assignments: []Assignment{
+		{ID: ownUser, Type: AssigneeTypeUser},
+		{ID: sharedUser, Type: AssigneeTypeUser},
+		{ID: groupID, Type: AssigneeTypeGroup},
+		{ID: agentID, Type: AssigneeTypeAgent},
+		{ID: ownApp, Type: AssigneeTypeApp},
+		{ID: sharedApp, Type: AssigneeTypeApp},
+	}}
+	status, code := suite.postAssignments(declSharedRoleID, "add", request)
+	suite.Require().Equal(http.StatusNoContent, status, code)
+	defer func() {
+		status, code := suite.postAssignments(declSharedRoleID, "remove", request)
+		suite.Equal(http.StatusNoContent, status, code)
+	}()
+
+	listed := map[string]string{}
+	for _, a := range suite.assignmentsIn(declSharedRoleID, declSharedChildA) {
+		suite.Equal(declSharedChildA, a["ouId"])
+		listed[a["id"].(string)] = a["type"].(string)
+	}
+	suite.Equal(map[string]string{
+		ownUser: "user", sharedUser: "user", groupID: "group", agentID: "agent", ownApp: "app", sharedApp: "app",
+	}, listed)
+
+	// A user that is neither owned by nor shared with the unit cannot be assigned there.
+	outsider, cleanupOutsider := suite.personIn(declSharedChildC, "shared-role-outsider")
+	defer cleanupOutsider()
+	status, code = suite.postAssignments(declSharedRoleID, "add", AssignmentsRequest{
+		OUID: declSharedChildA, Assignments: []Assignment{{ID: outsider, Type: AssigneeTypeUser}}})
+	suite.Equal(http.StatusBadRequest, status)
+	suite.Equal("ROL-1030", code)
+}
+
+// A user assigned a shared role in the organization unit it is shared with holds the role's
+// permissions in access evaluation, and loses them when the assignment is removed.
+func (suite *RoleAPITestSuite) TestSharedRole_AssignmentGrantsItsPermissionsToAUser() {
+	userID, cleanup := suite.personIn(declSharedChildA, "shared-role-authz-user")
+	defer cleanup()
+	suite.False(suite.evaluateAccess(userID, sharedRoleResourceServer, sharedRolePermission))
+
+	request := AssignmentsRequest{OUID: declSharedChildA, Assignments: []Assignment{{ID: userID, Type: AssigneeTypeUser}}}
+	status, code := suite.postAssignments(declSharedRoleID, "add", request)
+	suite.Require().Equal(http.StatusNoContent, status, code)
+
+	suite.True(suite.evaluateAccess(userID, sharedRoleResourceServer, sharedRolePermission))
+
+	status, code = suite.postAssignments(declSharedRoleID, "remove", request)
+	suite.Require().Equal(http.StatusNoContent, status, code)
+	suite.False(suite.evaluateAccess(userID, sharedRoleResourceServer, sharedRolePermission))
+}
+
+// An application assigned a shared role in its own organization unit gets the role's permissions in
+// its client credentials token, at the bare endpoint and when it names its own unit.
+func (suite *RoleAPITestSuite) TestSharedRole_AssignmentGrantsItsPermissionsToAnAppsToken() {
+	appID := suite.appIn(declSharedChildA, "shared-role-token-app")
+	clientID, secret := "shared-role-token-app-client", "shared-role-token-app-secret"
+	suite.NotContains(suite.clientCredentialsScopes("", clientID, secret), sharedRolePermission)
+
+	request := AssignmentsRequest{OUID: declSharedChildA, Assignments: []Assignment{{ID: appID, Type: AssigneeTypeApp}}}
+	status, code := suite.postAssignments(declSharedRoleID, "add", request)
+	suite.Require().Equal(http.StatusNoContent, status, code)
+	defer func() {
+		status, code := suite.postAssignments(declSharedRoleID, "remove", request)
+		suite.Equal(http.StatusNoContent, status, code)
+	}()
+
+	suite.Contains(suite.clientCredentialsScopes("", clientID, secret), sharedRolePermission)
+	suite.Contains(suite.clientCredentialsScopes(declSharedChildA, clientID, secret), sharedRolePermission)
+}
+
+// A token an application shared with an organization unit requests for that unit carries only what
+// the application holds in its owner. Its assignments made in the unit, of a role shared there or a
+// role the unit owns, are not considered.
+func (suite *RoleAPITestSuite) TestSharedRole_SharedAppsAssignmentsInTheOUAreNotInItsToken() {
+	appID := suite.appIn(declSharedRootOU, "shared-role-shared-token-app")
+	clientID, secret := "shared-role-shared-token-app-client", "shared-role-shared-token-app-secret"
+	suite.shareWithChildA("/applications/" + appID)
+
+	childRole, err := suite.createRole(CreateRoleRequest{
+		Name: "Child A Own Role", OUID: declSharedChildA, Permissions: []ResourcePermissions{
+			{ResourceServerID: sharedRoleResourceServerID, Permissions: []string{sharedRolePermission}},
+		}})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(childRole.ID)
+
+	inChild := AssignmentsRequest{OUID: declSharedChildA, Assignments: []Assignment{{ID: appID, Type: AssigneeTypeApp}}}
+	for _, roleID := range []string{declSharedRoleID, childRole.ID} {
+		status, code := suite.postAssignments(roleID, "add", inChild)
+		suite.Require().Equal(http.StatusNoContent, status, code)
+	}
+	defer func() {
+		status, code := suite.postAssignments(declSharedRoleID, "remove", inChild)
+		suite.Equal(http.StatusNoContent, status, code)
+	}()
+
+	suite.NotContains(suite.clientCredentialsScopes(declSharedChildA, clientID, secret), sharedRolePermission,
+		"assignments the unit made do not reach the shared application's token")
+
+	// The same role assigned in the application's owner is what its token carries.
+	inOwner := AssignmentsRequest{Assignments: []Assignment{{ID: appID, Type: AssigneeTypeApp}}}
+	status, code := suite.postAssignments(declSharedRoleID, "add", inOwner)
+	suite.Require().Equal(http.StatusNoContent, status, code)
+	defer func() {
+		status, code := suite.postAssignments(declSharedRoleID, "remove", inOwner)
+		suite.Equal(http.StatusNoContent, status, code)
+	}()
+
+	suite.Contains(suite.clientCredentialsScopes(declSharedChildA, clientID, secret), sharedRolePermission)
+}
+
+// A declared role assigned through the API to an application in the application's own organization
+// unit is named in the application's roles claim, although the role lives in a file and the
+// assignment in the database.
+func (suite *RoleAPITestSuite) TestSharedRole_DeclaredRoleAssignedThroughTheAPIIsInTheRolesClaim() {
+	appID := suite.claimsAppIn(declSharedChildA, "shared-role-claims-app")
+	request := AssignmentsRequest{OUID: declSharedChildA, Assignments: []Assignment{{ID: appID, Type: AssigneeTypeApp}}}
+	status, code := suite.postAssignments(declSharedRoleID, "add", request)
+	suite.Require().Equal(http.StatusNoContent, status, code)
+	defer func() {
+		status, code := suite.postAssignments(declSharedRoleID, "remove", request)
+		suite.Equal(http.StatusNoContent, status, code)
+	}()
+
+	_, claims := suite.clientCredentialsToken("", "shared-role-claims-app-client", "shared-role-claims-app-secret",
+		sharedRoleResourceServer, sharedRolePermission)
+	suite.Equal([]interface{}{"Declarative Shared Role"}, claims["roles"])
+}
+
+// A shared application's token for an organization unit it is shared with carries what it holds in
+// its owner: roles assigned to it there (a) and to its owner's groups (d), and those groups. Neither
+// what the unit assigned it directly (b) nor what a group of the unit holding it was assigned (c)
+// reaches the token, in its scopes or in its roles and groups claims.
+func (suite *RoleAPITestSuite) TestSharedRole_SharedAppsTokenCarriesOnlyItsOwnersRoles() {
+	const identifier = "https://localhost:8090/shared-app-scopes-rs"
+	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name: "Shared App Scopes", Identifier: identifier, OUID: declSharedRootOU,
+	}, []testutils.Action{
+		{Name: "A", Handle: "a"}, {Name: "B", Handle: "b"}, {Name: "C", Handle: "c"}, {Name: "D", Handle: "d"},
+	})
+	suite.Require().NoError(err)
+	// Deferred first so it runs last, once the roles holding its permissions are gone.
+	defer func() { suite.NoError(testutils.DeleteResourceServerWithChildren(rsID)) }()
+	var roleIDs []string
+	defer func() {
+		for _, id := range roleIDs {
+			suite.deleteRole(id)
+		}
+	}()
+
+	appID := suite.claimsAppIn(declSharedRootOU, "shared-app-scopes-app")
+	clientID, secret := "shared-app-scopes-app-client", "shared-app-scopes-app-secret"
+	suite.shareWithChildA("/applications/" + appID)
+
+	roleWith := func(ouID, permission string) string {
+		role, err := suite.createRole(CreateRoleRequest{
+			Name: "Shared App Scope " + permission, OUID: ouID,
+			Permissions: []ResourcePermissions{{ResourceServerID: rsID, Permissions: []string{permission}}},
+		})
+		suite.Require().NoError(err)
+		roleIDs = append(roleIDs, role.ID)
+		return role.ID
+	}
+	assign := func(roleID, ouID string, assignee Assignment) {
+		status, code := suite.postAssignments(roleID, "add",
+			AssignmentsRequest{OUID: ouID, Assignments: []Assignment{assignee}})
+		suite.Require().Equal(http.StatusNoContent, status, code)
+	}
+	groupIn := func(ouID, name string) string {
+		groupID, err := testutils.CreateGroup(testutils.Group{
+			Name: name, OUID: ouID, Members: []testutils.Member{{Id: appID, Type: "app"}},
+		})
+		suite.Require().NoError(err)
+		suite.T().Cleanup(func() { suite.NoError(testutils.DeleteGroup(groupID)) })
+		return groupID
+	}
+
+	// a: assigned to the application in its owner.
+	assign(roleWith(declSharedRootOU, "a"), "", Assignment{ID: appID, Type: AssigneeTypeApp})
+	// b: assigned to the application in child A, which it is shared with.
+	assign(roleWith(declSharedChildA, "b"), declSharedChildA, Assignment{ID: appID, Type: AssigneeTypeApp})
+	// c: assigned to a group of child A that holds the application.
+	childGroup := groupIn(declSharedChildA, "Shared App Child Group")
+	assign(roleWith(declSharedChildA, "c"), declSharedChildA, Assignment{ID: childGroup, Type: AssigneeTypeGroup})
+	// d: assigned to a group of the owner that holds the application.
+	ownerGroup := groupIn(declSharedRootOU, "Shared App Owner Group")
+	assign(roleWith(declSharedRootOU, "d"), "", Assignment{ID: ownerGroup, Type: AssigneeTypeGroup})
+
+	for _, ouID := range []string{declSharedChildA, ""} {
+		scopes, claims := suite.clientCredentialsToken(ouID, clientID, secret, identifier, "a", "b", "c", "d")
+		suite.ElementsMatch([]string{"a", "d"}, scopes, "token for %q", ouID)
+		suite.ElementsMatch([]interface{}{"Shared App Scope a", "Shared App Scope d"}, claims["roles"],
+			"token for %q", ouID)
+		suite.Equal([]interface{}{"Shared App Owner Group"}, claims["groups"], "token for %q", ouID)
+	}
+}
+
+// An organization unit a declared role is shared with cannot update it, even sending it back
+// unchanged: its name, description and permissions stay with the owner and its resource file.
+func (suite *RoleAPITestSuite) TestSharedRole_UpdateInTheOUCannotEditItsCore() {
+	declared, err := suite.getRole(declSharedRoleID)
+	suite.Require().NoError(err)
+
+	unchanged := UpdateRoleRequest{
+		Name: declared.Name, Description: declared.Description, OUID: declSharedChildA,
+		Permissions: declared.Permissions,
+	}
+
+	for name, edit := range map[string]func(*UpdateRoleRequest){
+		"nothing":     func(*UpdateRoleRequest) {},
+		"name":        func(r *UpdateRoleRequest) { r.Name = "Renamed In Child A" },
+		"description": func(r *UpdateRoleRequest) { r.Description = "Described in child A" },
+		"permissions": func(r *UpdateRoleRequest) { r.Permissions = []ResourcePermissions{} },
+	} {
+		suite.Run(name, func() {
+			request := unchanged
+			edit(&request)
+			_, err := suite.updateRole(declSharedRoleID, request)
+			suite.Require().Error(err)
+			suite.Contains(err.Error(), "ROL-1034")
+		})
+	}
+
+	owner, err := suite.getRole(declSharedRoleID)
+	suite.Require().NoError(err)
+	suite.Equal(declared.Name, owner.Name)
+	suite.Equal(declared.Description, owner.Description)
+	suite.Equal(declared.Permissions, owner.Permissions)
+	suite.Equal(declSharedRootOU, owner.OUID)
+}
+
+// appIn creates an application with a client credentials client in ouID, named after name, and
+// removes it when the test ends. Its client id and secret are name followed by -client and -secret.
+func (suite *RoleAPITestSuite) appIn(ouID, name string) string {
+	suite.T().Helper()
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name: name, Description: "Application for shared role assignment testing", OUID: ouID,
+		ClientID: name + "-client", ClientSecret: name + "-secret",
+	})
+	suite.Require().NoError(err)
+	suite.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
+	return appID
+}
+
+// claimsAppIn creates, in ouID, an application with a client credentials client whose access token
+// carries its roles and groups, and removes it when the test ends. Its client id and secret are name
+// followed by -client and -secret.
+func (suite *RoleAPITestSuite) claimsAppIn(ouID, name string) string {
+	suite.T().Helper()
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name: name, Description: "Application whose token carries its roles and groups", OUID: ouID,
+		InboundAuthConfig: []map[string]interface{}{{"type": "oauth2", "config": map[string]interface{}{
+			"clientId": name + "-client", "clientSecret": name + "-secret",
+			"grantTypes": []string{"client_credentials"},
+			"token": map[string]interface{}{"accessToken": map[string]interface{}{
+				"clientConfig": map[string]interface{}{"attributes": []string{"roles", "groups"}},
+			}},
+		}}},
+	})
+	suite.Require().NoError(err)
+	suite.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
+	return appID
+}
+
+// shareWithChildA shares the resource at path with decl-m2m-child-a.
+func (suite *RoleAPITestSuite) shareWithChildA(path string) {
+	suite.T().Helper()
+	resp := suite.doRoleRequest(http.MethodPost, path+"/sharing-policies", mustMarshal(suite.T(),
+		map[string]interface{}{"childUnits": map[string]interface{}{
+			"mode": "selected", "units": []map[string]string{{"ouId": declSharedChildA, "reach": "unit"}},
+		}}))
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	suite.Require().Equal(http.StatusCreated, resp.StatusCode, "sharing %s: %s", path, string(body))
+}
+
+// clientCredentialsScopes requests a client credentials token for decl-rs-1 asking for the shared
+// role's permission, at the bare endpoint or, when ouID is set, for that organization unit, and
+// returns the scopes granted.
+func (suite *RoleAPITestSuite) clientCredentialsScopes(ouID, clientID, secret string) []string {
+	suite.T().Helper()
+	return suite.grantedScopes(ouID, clientID, secret, sharedRoleResourceServer, sharedRolePermission)
+}
+
+// grantedScopes requests a client credentials token for one resource server asking for scopes, at
+// the bare endpoint or, when ouID is set, for that organization unit, and returns the scopes granted.
+func (suite *RoleAPITestSuite) grantedScopes(ouID, clientID, secret, resource string, scopes ...string) []string {
+	suite.T().Helper()
+	granted, _ := suite.clientCredentialsToken(ouID, clientID, secret, resource, scopes...)
+	return granted
+}
+
+// clientCredentialsToken requests a client credentials token as grantedScopes does, and returns the
+// scopes granted and the access token's claims.
+func (suite *RoleAPITestSuite) clientCredentialsToken(
+	ouID, clientID, secret, resource string, scopes ...string,
+) ([]string, map[string]interface{}) {
+	suite.T().Helper()
+	form := url.Values{}
+	form.Set("grant_type", "client_credentials")
+	form.Set("resource", resource)
+	form.Set("scope", strings.Join(scopes, " "))
+
+	endpoint := testServerURL + "/oauth2/token"
+	if ouID != "" {
+		endpoint = testServerURL + "/ou/" + ouID + "/oauth2/token"
+	}
+	req, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	suite.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(clientID, secret)
+
+	// The request authenticates as the client, so no admin bearer may be added to it.
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode, "token request: %s", string(body))
+
+	var token struct {
+		AccessToken string `json:"access_token"`
+		Scope       string `json:"scope"`
+	}
+	suite.Require().NoError(json.Unmarshal(body, &token))
+
+	parts := strings.Split(token.AccessToken, ".")
+	suite.Require().Len(parts, 3, "the access token is a JWT")
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	suite.Require().NoError(err)
+	claims := map[string]interface{}{}
+	suite.Require().NoError(json.Unmarshal(payload, &claims))
+	return strings.Fields(token.Scope), claims
 }

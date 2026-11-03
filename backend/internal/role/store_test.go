@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -16,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
@@ -445,7 +447,7 @@ func (suite *RoleStoreTestSuite) TestCreateRole() {
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRolePermission, "role1", "rs1",
 					"perm2", testDeploymentID).Return(int64(1), nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRoleAssignment, "role1",
-					assigneeTypeEntity, "user1", testDeploymentID).Return(int64(1), nil)
+					"ou1", assigneeTypeEntity, "user1", testDeploymentID).Return(int64(1), nil)
 			},
 			shouldErr: false,
 		},
@@ -539,7 +541,7 @@ func (suite *RoleStoreTestSuite) TestCreateRole() {
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRole, "role1", "ou1", "Test Role",
 					"Test Description", testDeploymentID).Return(int64(1), nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRoleAssignment, "role1",
-					assigneeTypeEntity, "user1", testDeploymentID).
+					"ou1", assigneeTypeEntity, "user1", testDeploymentID).
 					Return(int64(0), assignError)
 			},
 			shouldErr: true,
@@ -891,11 +893,11 @@ func (suite *RoleStoreTestSuite) TestGetRoleAssignments_Success() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleAssignments, "role1", 10, 0, testDeploymentID).
 		Return([]map[string]interface{}{
-			{"assignee_id": "user1", "assignee_type": "entity"},
-			{"assignee_id": "group1", "assignee_type": "group"},
+			{"assignee_id": "user1", "assignee_type": "entity", "assignment_ou_id": "ou1"},
+			{"assignee_id": "group1", "assignee_type": "group", "assignment_ou_id": "ou1"},
 		}, nil)
 
-	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", 10, 0)
+	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 10, 0)
 
 	suite.NoError(err)
 	suite.Len(assignments, 2)
@@ -910,7 +912,7 @@ func (suite *RoleStoreTestSuite) TestGetRoleAssignmentsCount_Success() {
 			{"total": int64(5)},
 		}, nil)
 
-	count, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1")
+	count, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1", "")
 
 	suite.NoError(err)
 	suite.Equal(5, count)
@@ -1164,12 +1166,12 @@ func (suite *RoleStoreTestSuite) TestAddAssignments() {
 			name:   "Success",
 			roleID: "role1",
 			assignments: []RoleAssignment{
-				{ID: testUserID1, Type: assigneeTypeEntity},
+				{ID: testUserID1, Type: assigneeTypeEntity, OUID: "ou1"},
 			},
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRoleAssignment, "role1",
-					assigneeTypeEntity, testUserID1, testDeploymentID).Return(int64(1), nil)
+					"ou1", assigneeTypeEntity, testUserID1, testDeploymentID).Return(int64(1), nil)
 			},
 			shouldErr: false,
 		},
@@ -1177,13 +1179,13 @@ func (suite *RoleStoreTestSuite) TestAddAssignments() {
 			name:   "ExecError",
 			roleID: "role1",
 			assignments: []RoleAssignment{
-				{ID: testUserID1, Type: assigneeTypeEntity},
+				{ID: testUserID1, Type: assigneeTypeEntity, OUID: "ou1"},
 			},
 			setupMocks: func() {
 				execError := errors.New("insert failed")
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRoleAssignment, "role1",
-					assigneeTypeEntity, testUserID1, testDeploymentID).Return(int64(0), execError)
+					"ou1", assigneeTypeEntity, testUserID1, testDeploymentID).Return(int64(0), execError)
 			},
 			shouldErr:    true,
 			errorMessage: "failed to add assignment to role",
@@ -1238,12 +1240,12 @@ func (suite *RoleStoreTestSuite) TestRemoveAssignments() {
 			name:   "Success",
 			roleID: "role1",
 			assignments: []RoleAssignment{
-				{ID: "user1", Type: assigneeTypeEntity},
+				{ID: "user1", Type: assigneeTypeEntity, OUID: "ou1"},
 			},
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRoleAssignmentsByIDs, "role1",
-					assigneeTypeEntity, "user1", testDeploymentID).Return(int64(1), nil)
+					"ou1", assigneeTypeEntity, "user1", testDeploymentID).Return(int64(1), nil)
 			},
 			shouldErr: false,
 		},
@@ -1251,13 +1253,13 @@ func (suite *RoleStoreTestSuite) TestRemoveAssignments() {
 			name:   "ExecError",
 			roleID: "role1",
 			assignments: []RoleAssignment{
-				{ID: "user1", Type: assigneeTypeEntity},
+				{ID: "user1", Type: assigneeTypeEntity, OUID: "ou1"},
 			},
 			setupMocks: func() {
 				execError := errors.New("delete failed")
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRoleAssignmentsByIDs, "role1",
-					assigneeTypeEntity, "user1", testDeploymentID).Return(int64(0), execError)
+					"ou1", assigneeTypeEntity, "user1", testDeploymentID).Return(int64(0), execError)
 			},
 			shouldErr:    true,
 			errorMessage: "failed to remove assignment from role",
@@ -1494,11 +1496,50 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_Success() {
 			}, nil)
 
 	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), userID, groupIDs, nil, "", requestedPermissions)
+		context.Background(), userID, groupIDs, nil, "", "", requestedPermissions)
 
 	suite.NoError(err)
 	suite.Len(permissions, 1)
 	suite.Equal("perm1", permissions[0])
+}
+
+// An organization unit restricts both the entity's own assignments and its groups' to the ones made
+// there.
+func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_RestrictedToAnOU() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything,
+		mock.MatchedBy(func(q dbmodel.DBQuery) bool {
+			return strings.Contains(q.PostgresQuery, "ra.ASSIGNEE_ID = $2 AND ra.ASSIGNMENT_OU_ID = $3)") &&
+				strings.Contains(q.PostgresQuery, "ra.ASSIGNEE_ID IN ($4) AND ra.ASSIGNMENT_OU_ID = $5)") &&
+				strings.Count(q.SQLiteQuery, "ra.ASSIGNMENT_OU_ID = ?") == 2
+		}),
+		testDeploymentID, testUserID1, "ou-1", "group1", "ou-1", "perm1").
+		Return([]map[string]interface{}{{"permission": "perm1"}}, nil)
+
+	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), testUserID1, []string{"group1"}, nil, "ou-1", "", []string{"perm1"})
+
+	suite.NoError(err)
+	suite.Equal([]string{"perm1"}, permissions)
+}
+
+// An organization unit restricts the role names read for an entity and its groups to the assignments
+// made there.
+func (suite *RoleStoreTestSuite) TestGetUserRoles_RestrictedToAnOU() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything,
+		mock.MatchedBy(func(q dbmodel.DBQuery) bool {
+			return strings.Contains(q.PostgresQuery, "ra.ASSIGNEE_ID = $2 AND ra.ASSIGNMENT_OU_ID = $3)") &&
+				strings.Contains(q.PostgresQuery, "ra.ASSIGNEE_ID IN ($4) AND ra.ASSIGNMENT_OU_ID = $5)") &&
+				strings.Count(q.SQLiteQuery, "ra.ASSIGNMENT_OU_ID = ?") == 2
+		}),
+		testDeploymentID, testUserID1, "ou-1", "group1", "ou-1").
+		Return([]map[string]interface{}{{"name": "Admin"}}, nil)
+
+	roles, err := suite.store.GetUserRoles(context.Background(), testUserID1, []string{"group1"}, "ou-1")
+
+	suite.NoError(err)
+	suite.Equal([]string{"Admin"}, roles)
 }
 
 func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_NilGroupsHandled() {
@@ -1510,7 +1551,7 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_NilGroupsHandled()
 		Return([]map[string]interface{}{{"permission": "perm1"}}, nil)
 
 	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), userID, nil, nil, "", requestedPermissions)
+		context.Background(), userID, nil, nil, "", "", requestedPermissions)
 
 	suite.NoError(err)
 	suite.Len(permissions, 1)
@@ -1527,7 +1568,7 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_QueryError() {
 		mock.Anything, mock.Anything, mock.Anything).Return(nil, queryError)
 
 	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), userID, groupIDs, nil, "", requestedPermissions)
+		context.Background(), userID, groupIDs, nil, "", "", requestedPermissions)
 
 	suite.Error(err)
 	suite.Nil(permissions)
@@ -1543,7 +1584,7 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_DBClientError() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(nil, dbError)
 
 	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), userID, groupIDs, nil, "", requestedPermissions)
+		context.Background(), userID, groupIDs, nil, "", "", requestedPermissions)
 
 	suite.Error(err)
 	suite.Nil(permissions)
@@ -1832,7 +1873,7 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_EmptyGroupIDs() {
 		Return([]map[string]interface{}{{"permission": "perm1"}}, nil)
 
 	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), userID, []string{}, nil, "", requestedPermissions)
+		context.Background(), userID, []string{}, nil, "", "", requestedPermissions)
 
 	suite.NoError(err)
 	suite.Len(permissions, 1)
@@ -1847,7 +1888,7 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_EmptyUserID() {
 		Return([]map[string]interface{}{{"permission": "perm1"}}, nil)
 
 	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), "", groupIDs, nil, "", requestedPermissions)
+		context.Background(), "", groupIDs, nil, "", "", requestedPermissions)
 
 	suite.NoError(err)
 	suite.Len(permissions, 1)
@@ -1867,7 +1908,7 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_MultipleGroups() {
 		}, nil)
 
 	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), userID, groupIDs, nil, "", requestedPermissions)
+		context.Background(), userID, groupIDs, nil, "", "", requestedPermissions)
 
 	suite.NoError(err)
 	suite.Len(permissions, 2)
@@ -1882,7 +1923,7 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_InvalidPermissionT
 		}, nil)
 
 	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), "user1", []string{"group1"}, nil, "", []string{"perm1"})
+		context.Background(), "user1", []string{"group1"}, nil, "", "", []string{"perm1"})
 
 	suite.NoError(err)
 	suite.Len(permissions, 0) // Non-string permissions are skipped
@@ -1894,10 +1935,10 @@ func (suite *RoleStoreTestSuite) TestGetRoleAssignments_InvalidAssigneeID() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleAssignments, "role1", 10, 0, testDeploymentID).
 		Return([]map[string]interface{}{
-			{"assignee_id": 123, "assignee_type": "user"}, // Invalid type
+			{"assignee_id": 123, "assignee_type": "user", "assignment_ou_id": "ou1"}, // Invalid type
 		}, nil)
 
-	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", 10, 0)
+	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 10, 0)
 
 	suite.Error(err)
 	suite.Nil(assignments)
@@ -1907,10 +1948,10 @@ func (suite *RoleStoreTestSuite) TestGetRoleAssignments_InvalidAssigneeType() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleAssignments, "role1", 10, 0, testDeploymentID).
 		Return([]map[string]interface{}{
-			{"assignee_id": "user1", "assignee_type": 456}, // Invalid type
+			{"assignee_id": "user1", "assignee_type": 456, "assignment_ou_id": "ou1"}, // Invalid type
 		}, nil)
 
-	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", 10, 0)
+	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 10, 0)
 
 	suite.Error(err)
 	suite.Nil(assignments)
@@ -1922,7 +1963,7 @@ func (suite *RoleStoreTestSuite) TestGetRoleAssignments_QueryError() {
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleAssignments, "role1", 10, 0, testDeploymentID).
 		Return(nil, queryError)
 
-	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", 10, 0)
+	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 10, 0)
 
 	suite.Error(err)
 	suite.Nil(assignments)
@@ -1934,7 +1975,7 @@ func (suite *RoleStoreTestSuite) TestGetRoleAssignmentsCount_QueryError() {
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleAssignmentsCount, "role1", testDeploymentID).
 		Return(nil, queryError)
 
-	count, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1")
+	count, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1", "")
 
 	suite.Error(err)
 	suite.Equal(0, count)
@@ -1943,7 +1984,7 @@ func (suite *RoleStoreTestSuite) TestGetRoleAssignments_DBClientError() {
 	dbError := errors.New("db client error")
 	suite.mockDBProvider.On("GetConfigDBClient").Return(nil, dbError)
 
-	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", 10, 0)
+	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 10, 0)
 
 	suite.Error(err)
 	suite.Nil(assignments)
@@ -1953,7 +1994,7 @@ func (suite *RoleStoreTestSuite) TestGetRoleAssignmentsCount_DBClientError() {
 	dbError := errors.New("db client error")
 	suite.mockDBProvider.On("GetConfigDBClient").Return(nil, dbError)
 
-	count, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1")
+	count, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1", "")
 
 	suite.Error(err)
 	suite.Equal(0, count)
@@ -1972,7 +2013,7 @@ func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_Success() {
 			{"role_id": "role-b"},
 		}, nil)
 
-	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, []string{"group1"})
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, []string{"group1"}, "")
 
 	suite.NoError(err)
 	suite.Equal([]string{"role-a", "role-b"}, roleIDs)
@@ -1987,7 +2028,7 @@ func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_EntityOnly() {
 		nil,
 	)
 
-	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, nil)
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, nil, "")
 
 	suite.NoError(err)
 	suite.Equal([]string{"role-a"}, roleIDs)
@@ -2002,7 +2043,7 @@ func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_GroupsOnly() {
 		nil,
 	)
 
-	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), "", []string{"group1", "group2"})
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), "", []string{"group1", "group2"}, "")
 
 	suite.NoError(err)
 	suite.Equal([]string{"role-c"}, roleIDs)
@@ -2010,7 +2051,7 @@ func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_GroupsOnly() {
 
 func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_EmptyEntityAndGroups_ReturnsEmpty() {
 	// Neither entity nor groups → short-circuits without hitting the DB.
-	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), "", nil)
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), "", nil, "")
 
 	suite.NoError(err)
 	suite.Empty(roleIDs)
@@ -2024,7 +2065,7 @@ func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_QueryError() {
 		"QueryContext", mock.Anything, mock.Anything, testDeploymentID, testUserID1,
 	).Return(nil, queryError)
 
-	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, nil)
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, nil, "")
 
 	suite.Error(err)
 	suite.Nil(roleIDs)
@@ -2035,7 +2076,7 @@ func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_DBClientError() {
 	dbError := errors.New("db client error")
 	suite.mockDBProvider.On("GetConfigDBClient").Return(nil, dbError)
 
-	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, nil)
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, nil, "")
 
 	suite.Error(err)
 	suite.Nil(roleIDs)
@@ -2056,7 +2097,7 @@ func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_IgnoresMalformedRows() {
 		}, nil,
 	)
 
-	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, nil)
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, nil, "")
 
 	suite.NoError(err)
 	suite.Equal([]string{"role-a", "role-c"}, roleIDs)
@@ -2086,6 +2127,125 @@ func (suite *RoleStoreTestSuite) TestDeleteAssignmentsByAssignee() {
 		suite.Error(err)
 		suite.Equal(int64(0), deleted)
 	})
+}
+
+// Naming an organization unit narrows each assignment read to the assignments made there.
+func (suite *RoleStoreTestSuite) TestAssignmentReadsInOU() {
+	row := []map[string]interface{}{
+		{"assignee_id": "user1", "assignee_type": "entity", "assignment_ou_id": "ou-child"},
+	}
+	total := []map[string]interface{}{{"total": int64(4)}}
+
+	suite.Run("list", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleAssignmentsInOU,
+			"role1", "ou-child", 10, 0, testDeploymentID).Return(row, nil).Once()
+
+		assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", "ou-child", 10, 0)
+
+		suite.Require().NoError(err)
+		suite.Equal([]RoleAssignment{{ID: "user1", Type: assigneeTypeEntity, OUID: "ou-child"}}, assignments)
+	})
+	suite.Run("list by type", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleAssignmentsByTypeInOU,
+			"role1", "entity", "ou-child", 10, 0, testDeploymentID).Return(row, nil).Once()
+
+		assignments, err := suite.store.GetRoleAssignmentsByType(
+			context.Background(), "role1", "ou-child", 10, 0, "entity")
+
+		suite.Require().NoError(err)
+		suite.Len(assignments, 1)
+	})
+	suite.Run("count", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleAssignmentsCountInOU,
+			"role1", "ou-child", testDeploymentID).Return(total, nil).Once()
+
+		count, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1", "ou-child")
+
+		suite.Require().NoError(err)
+		suite.Equal(4, count)
+	})
+	suite.Run("count by type", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleAssignmentsCountByTypeInOU,
+			"role1", "group", "ou-child", testDeploymentID).Return(total, nil).Once()
+
+		count, err := suite.store.GetRoleAssignmentsCountByType(context.Background(), "role1", "ou-child", "group")
+
+		suite.Require().NoError(err)
+		suite.Equal(4, count)
+	})
+}
+
+func (suite *RoleStoreTestSuite) TestDeleteAssignmentsInOU() {
+	suite.Run("success", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRoleAssignmentsInOU,
+			"role1", "ou-child", testDeploymentID).Return(int64(2), nil).Once()
+
+		suite.NoError(suite.store.DeleteAssignmentsInOU(context.Background(), "role1", "ou-child"))
+	})
+	suite.Run("db error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRoleAssignmentsInOU,
+			"role1", "ou-child", testDeploymentID).Return(int64(0), errors.New("db error")).Once()
+
+		suite.Error(suite.store.DeleteAssignmentsInOU(context.Background(), "role1", "ou-child"))
+	})
+	suite.Run("db client error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("no client")).Once()
+
+		suite.Error(suite.store.DeleteAssignmentsInOU(context.Background(), "role1", "ou-child"))
+	})
+}
+
+func (suite *RoleStoreTestSuite) TestGetRolesByIDs() {
+	suite.Run("no ids reads nothing", func() {
+		roles, err := suite.store.GetRolesByIDs(context.Background(), nil)
+
+		suite.NoError(err)
+		suite.Empty(roles)
+	})
+	suite.Run("success", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything,
+			mock.MatchedBy(func(q dbmodel.DBQuery) bool { return q.ID == "RLQ-ROLE_MGT-35" }),
+			"role1", "role2", testDeploymentID).
+			Return([]map[string]interface{}{
+				{"id": "role1", "ou_id": "ou1", "name": "Admin", "description": ""},
+			}, nil).Once()
+
+		roles, err := suite.store.GetRolesByIDs(context.Background(), []string{"role1", "role2"})
+
+		suite.Require().NoError(err)
+		suite.Require().Len(roles, 1)
+		suite.Equal("role1", roles[0].ID)
+		suite.Equal("ou1", roles[0].OUID)
+	})
+	suite.Run("query error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, mock.Anything, "role3", testDeploymentID).
+			Return(nil, errors.New("db error")).Once()
+
+		_, err := suite.store.GetRolesByIDs(context.Background(), []string{"role3"})
+
+		suite.Error(err)
+	})
+}
+
+func (suite *RoleStoreTestSuite) TestBuildGetRolesByIDsQuery() {
+	query, args, err := buildGetRolesByIDsQuery([]string{"a", "b"}, testDeploymentID)
+
+	suite.Require().NoError(err)
+	suite.Equal("RLQ-ROLE_MGT-35", query.ID)
+	suite.Contains(query.PostgresQuery, "WHERE ID IN ($1,$2) AND DEPLOYMENT_ID = $3")
+	suite.Contains(query.SQLiteQuery, "WHERE ID IN (?,?) AND DEPLOYMENT_ID = ?")
+	suite.Equal([]interface{}{"a", "b", testDeploymentID}, args)
+
+	_, _, err = buildGetRolesByIDsQuery(nil, testDeploymentID)
+	suite.Error(err)
 }
 
 func (suite *RoleStoreTestSuite) TestGetReferencedPermissions() {

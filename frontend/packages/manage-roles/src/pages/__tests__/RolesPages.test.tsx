@@ -4,7 +4,7 @@
 import {fireEvent, render, screen} from '@testing-library/react';
 import type {JSX, ReactNode} from 'react';
 import {MemoryRouter, Route, Routes, useLocation} from 'react-router';
-import {describe, expect, it, vi} from 'vitest';
+import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {RolesListPage, RoleCreateDialog, RoleDetailsPage} from '../../index';
 
 vi.mock('@thunderid/react', () => ({
@@ -38,21 +38,27 @@ vi.mock('@thunderid/react', () => ({
   RoleAssignments: ({
     administrationMode,
     editable,
+    ouId = 'every unit',
     roleId,
   }: {
     administrationMode: string;
     editable: boolean;
+    ouId?: string;
     roleId: string;
   }): JSX.Element => (
     <p>
-      assignments of {roleId} {editable ? 'editable' : 'read only'} through {administrationMode}
+      assignments of {roleId} {editable ? 'editable' : 'read only'} through {administrationMode} from {ouId}
     </p>
   ),
   RolePermissions: ({roleId}: {roleId: string}): JSX.Element => <p>permissions of {roleId}</p>,
 }));
 
+const {roleLoaded} = vi.hoisted(() => ({roleLoaded: {value: true}}));
+
 vi.mock('../../api/useGetRole', () => ({
-  default: (id: string) => ({data: {description: 'Can sign in', id, name: 'Viewer'}}),
+  default: (id: string) => ({
+    data: roleLoaded.value ? {description: 'Can sign in', id, name: 'Viewer', ouId: 'ou-1'} : undefined,
+  }),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -109,11 +115,26 @@ describe('RoleCreateDialog', () => {
 });
 
 describe('RoleDetailsPage', () => {
+  beforeEach(() => {
+    roleLoaded.value = true;
+  });
+
   it('shows the role, its permissions and its assignments', () => {
     renderAt('/roles/r-1', <RoleDetailsPage editable />);
     expect(screen.getByRole('heading', {name: 'Viewer'})).toBeTruthy();
     expect(screen.getByText('permissions of r-1')).toBeTruthy();
-    expect(screen.getByText('assignments of r-1 editable through flow')).toBeTruthy();
+    expect(screen.getByText('assignments of r-1 editable through flow from ou-1')).toBeTruthy();
     expect(screen.getByRole('link', {name: 'Back'}).getAttribute('href')).toBe('/roles');
+  });
+
+  it('offers assigning only once the role and its organization unit are loaded', () => {
+    roleLoaded.value = false;
+    renderAt('/roles/r-1', <RoleDetailsPage editable />);
+    expect(screen.getByText('assignments of r-1 read only through flow from every unit')).toBeTruthy();
+  });
+
+  it('keeps the assignments read only when admins may not assign', () => {
+    renderAt('/roles/r-1', <RoleDetailsPage />);
+    expect(screen.getByText('assignments of r-1 read only through flow from ou-1')).toBeTruthy();
   });
 });

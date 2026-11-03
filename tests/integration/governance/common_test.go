@@ -585,13 +585,14 @@ func runAdministrationFlowAs(t *testing.T, token, handle string, inputs map[stri
 
 // newRootOperator creates a user in the fixture holding the system permission and signs it in to the
 // Console, so a test that regresses into governing its own operator holds a throwaway account rather
-// than the administrator every other suite runs as. The role is deleted when t ends.
+// than the administrator every other suite runs as. The role is deleted when t ends. It is created in
+// the fixture's organization unit, since a role is assigned only to users that unit owns or is shared.
 func newRootOperator(t *testing.T, users *userFixture) (userID, username, password, accessToken string) {
 	t.Helper()
 	userID, username, password = users.newUser(t, "root", nil)
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: "Governance Root " + users.suffix,
-		OUID: bootstrapOUID,
+		OUID: users.ouID,
 		Permissions: []testutils.ResourcePermissions{
 			{ResourceServerID: systemResourceServerID, Permissions: []string{"system"}},
 		},

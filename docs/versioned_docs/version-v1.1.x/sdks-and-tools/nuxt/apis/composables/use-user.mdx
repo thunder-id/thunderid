@@ -1,0 +1,46 @@
+---
+title: useUser()
+docType: reference
+description: Access the authenticated user object from any Nuxt component or page using the useUser() composable.
+---
+
+# `useUser()`
+
+The `useUser` composable returns the currently authenticated user object as a reactive computed ref. It is auto-imported and available everywhere without an explicit import.
+
+## Usage
+
+```vue title="pages/profile.vue" showLineNumbers
+<script setup lang="ts">
+const user = useUser()
+</script>
+
+<template>
+  <div v-if="user">
+    <h1>{{ user.displayName }}</h1>
+    <p>{{ user.email }}</p>
+  </div>
+  <p v-else>Not signed in.</p>
+</template>
+```
+
+## Return Value
+
+`useUser()` returns a `ComputedRef<User | null>`. The value is `null` when no user is authenticated.
+
+### `User` Object
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `sub` | `string` | The user's unique subject identifier |
+| `displayName` | `string \| null` | The user's display name |
+| `email` | `string \| null` | The user's email address |
+| `firstName` | `string \| null` | The user's first name |
+| `lastName` | `string \| null` | The user's last name |
+| `profileUrl` | `string \| null` | URL to the user's profile picture |
+
+## Notes
+
+- This composable is re-exported from `@thunderid/vue` and behaves identically in Nuxt.
+- On an SSR-rendered page, the user value is hydrated from the server session and available on first render without a client-side fetch.
+- Use [`useThunderID()`](../use-thunderid) if you also need access to auth methods (`signIn`, `signOut`, etc.).

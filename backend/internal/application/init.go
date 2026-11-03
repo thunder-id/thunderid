@@ -27,6 +27,8 @@ import (
 //
 // valueCapturer is optional. Given one, the service hands it every application it creates or changes,
 // so the values the application's export refers to are kept where a reference finds them.
+//
+// projectResolver is nil on a deployment that serves no projects, where a project is never found.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
@@ -40,10 +42,11 @@ func Initialize(
 	sharingService sharing.SharingServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
+	projectResolver projectOUResolver,
 ) (ApplicationServiceInterface, declarativeresource.ResourceExporter, error) {
 	appService := newApplicationService(
 		inboundClient, entityService, ouService, i18nService, cryptoSvc, serverConfigSvc, artifactLifetime,
-		valueCapturer, sharingService, governance,
+		valueCapturer, sharingService, governance, projectResolver,
 	)
 
 	// Registered before declarative resources load, because loading seeds the sharing policies those

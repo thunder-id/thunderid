@@ -1,0 +1,133 @@
+---
+title: JavaScript SDK Overview
+docType: concept
+displayed_sidebar: javascriptSdkSidebar
+sidebar_position: 1
+sidebar_label: Overview
+description: JavaScript SDK for identity and authentication in browser environments and Node.js server applications.
+---
+
+# JavaScript SDK
+
+The <ProductName /> JavaScript SDK (`@thunderid/javascript`) is the framework-agnostic core library that powers platform-specific SDKs such as `@thunderid/browser`, `@thunderid/react`, and `@thunderid/express`. Use it directly when building custom integrations, writing platform adapters, or working in environments without a dedicated <ProductName /> SDK.
+
+## Installation
+
+Install the <ProductName /> JavaScript SDK using your preferred package manager:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm install @thunderid/javascript
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn add @thunderid/javascript
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm add @thunderid/javascript
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun add @thunderid/javascript
+  </CodeBlock>
+</CodeGroup>
+
+## When to Use This SDK
+
+| Use case | Recommended SDK |
+|----------|----------------|
+| React applications | [`@thunderid/react`](../../react/overview) |
+| Vanilla JavaScript browser apps | [`@thunderid/browser`](../../browser/overview) |
+| Express.js middleware | `@thunderid/express` |
+| Custom platform adapter | `@thunderid/javascript` (this SDK) |
+| Building a new framework SDK | `@thunderid/javascript` (this SDK) |
+
+## Quick Example
+
+Extend `ThunderIDJavaScriptClient` to build a platform-specific client:
+
+```ts title="src/my-client.ts" showLineNumbers
+import ThunderIDJavaScriptClient from '@thunderid/javascript'
+
+class MyCustomClient extends ThunderIDJavaScriptClient {
+  async signIn(options = {}) {
+    await this.loadOpenIDProviderConfiguration()
+    const url = await this.getSignInUrl(options)
+    window.location.href = url
+  }
+
+  async handleCallback() {
+    const params = new URLSearchParams(window.location.search)
+    return this.requestAccessToken(
+      params.get('code')!,
+      params.get('session_state') ?? '',
+      params.get('state')!,
+    )
+  }
+}
+
+const auth = new MyCustomClient()
+
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  afterSignInUrl: window.location.origin,
+})
+```
+
+## Features
+
+### Core APIs
+
+- **[`ThunderIDJavaScriptClient`](../apis/thunderid-javascript-client)**: Base class for all platform SDKs. Handles OIDC discovery, PKCE, token exchange, session storage, JWT decoding, and agent/OBO authentication.
+- **[Configuration](../apis/configuration)**: Full reference for all initialization options including auth, token validation, discovery, and preferences.
+- **[`HttpClient`](../apis/http-client)**: Abstract HTTP client base with handler lifecycle, request/response callbacks, and parallel request support.
+- **[`StorageManager`](../apis/storage-manager)**: Typed storage layer for config, OIDC metadata, session, and temporary PKCE data.
+
+### Auth Flow Functions
+
+Standalone functions for driving authentication flows step-by-step without browser redirects.
+
+:::warning Browser SPAs: use the redirect-based sign-in flow
+Initiating a **sign-in** flow directly from a **browser SPA** via `POST /flow/execute` (passing
+`applicationId` and `flowType`) is **not supported**.
+
+Browser SPAs must use the redirect-based OAuth2 `authorization_code` + PKCE flow instead. See
+[Register an application](../../../guides/applications/manage-applications) and the
+[Browser SDK overview](../../browser/overview). Calling these functions to *continue* a
+flow with an `executionId` (as the hosted sign-in pages do) and initiating the flow from server-side
+(confidential client) code are unaffected.
+:::
+
+#### V2 Flows
+- **[Sign-In Flow](../apis/flows/embedded-sign-in-flow-v2)**: `executeEmbeddedSignInFlowV2`
+- **[Sign-Up Flow](../apis/flows/embedded-sign-up-flow-v2)**: `executeEmbeddedSignUpFlowV2`
+- **[Recovery Flow](../apis/flows/embedded-recovery-flow-v2)**: `executeEmbeddedRecoveryFlowV2`
+- **[User Onboarding Flow](../apis/flows/embedded-onboarding-flow-v2)**: `executeEmbeddedUserOnboardingFlowV2`
+- **[Flow Meta](../apis/flows/flow-meta-v2)**: `getFlowMetaV2`, aggregated app/org branding, theme, and i18n metadata
+
+#### V1 Flows
+- **[Embedded Sign-In Flow](../apis/flows/embedded-sign-in-flow)**: `initializeEmbeddedSignInFlow` / `executeEmbeddedSignInFlow`
+- **[Embedded Sign-Up Flow](../apis/flows/embedded-sign-up-flow)**: `executeEmbeddedSignUpFlow`
+
+### User & Profile
+
+- **[User Profile](../apis/user/user-profile)**: `getUserInfo`
+
+### Branding & Theme
+
+- **[Branding](../apis/branding)**: `getBrandingPreference`, `transformBrandingPreferenceToTheme`
+- **[Theme](../apis/theme)**: `createTheme`, `DEFAULT_THEME`
+
+### Internationalization
+
+- **[Internationalization](../apis/i18n)**: `getDefaultI18nBundles`, `normalizeTranslations`, `TranslationBundleConstants`. Built-in support for 9 locales.
+
+### Errors
+
+- **[Errors](../apis/errors)**: `ThunderIDError`, `ThunderIDAPIError`, `ThunderIDRuntimeError`, `ThunderIDAuthException`
+
+### Utilities
+
+- **[Utilities](../apis/utilities)**: Encoding, auth helpers, URL utilities, data manipulation, V2 flow template literals, BEM styling, and structured logging.

@@ -1,0 +1,72 @@
+---
+title: Self Sign-Up
+docType: use-case
+description: Run a self sign-up flow with a test user using email and password to verify your registration setup.
+sidebar_position: 3
+---
+
+# Self Sign-Up
+
+In this walkthrough, Emma signs up for Wayfinder with her email and a password, and arrives at the dashboard ready to
+make her first booking. <ProductName /> creates a `Customer` user record from her input and attaches the `Traveler` role
+so she has booking permissions from her first session.
+
+:::note Prerequisites
+Complete [Set Up Your Environment](../../build-environment) before starting this walkthrough.
+:::
+
+:::info Background
+[Understand It](../../overview) covers the requirements story behind this use case.
+:::
+
+## Pick Your Pattern
+
+<PatternPicker>
+<Pattern value="redirect" label="Redirect-based" description="Hosted screens, simplest to add" icon="external-link" default>
+
+In the redirect-based pattern, the consumer app sends the user to <ProductName /> for the entire sign-up experience and
+returns them as a signed-in user with tokens attached. The Wayfinder web frontend is configured exactly this way. The
+**Sign in** button triggers an OIDC redirect to <ProductName />, where a new user picks **Sign up**, completes the form,
+and is returned to Wayfinder with an access token.
+
+**Try the Use Case**
+
+1. Open <WayFinderSampleUrl />. The Wayfinder home page loads.
+2. Select **Sign in**. The browser navigates to <ProductName />.
+3. Select **Sign up**. The browser navigates to the <ProductName /> sign-up page.
+4. Fill in Emma's details: username `emma.wilson`, email `emma.wilson@example.com`, given name `Emma`, family name
+   `Wilson`, and a password. Then submit.
+5. <ProductName /> runs the sign-up flow: it creates a `Customer` user and assigns the `Traveler` role.
+6. The browser returns to Wayfinder. Emma arrives at the dashboard, ready to make her first booking.
+
+**Try a Variant**
+
+- Add Google as a federated sign-up option. See the architecture mapping in [Understand It](../../overview#how-it-works).
+
+</Pattern>
+
+<Pattern value="app-native-steps" label="App-native step-by-step" description="Custom UI, step-by-step control" icon="list-ordered">
+
+Coming soon. See the [App-native pattern](../../integration-patterns#app-native) for what to expect.
+
+</Pattern>
+
+<Pattern value="app-native-managed" label="App-native managed" description="Custom UI, managed outcomes" icon="wand">
+
+Coming soon. See the [App-native pattern](../../integration-patterns#app-native) for what to expect.
+
+</Pattern>
+
+<Pattern value="direct-api" label="Direct API" description="Direct API calls, no journey" icon="terminal">
+
+Coming soon. See the [Direct API pattern](../../integration-patterns#direct-api) for what to expect.
+
+</Pattern>
+</PatternPicker>
+
+## Going Deeper
+
+- Want to understand how user records and roles come together? See [User Types](../../build-users#user-types),
+  [Roles](../../build-access#roles), and [Flows](../../build-flows#flows) in the Build It tutorial.
+- Prefer to build the registration flow manually? See
+  [Build the Sign-In Flows](../../build-flows#build-the-registration-flow) in the Build It tutorial.

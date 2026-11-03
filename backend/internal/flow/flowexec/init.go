@@ -33,12 +33,13 @@ func Initialize(
 	serverConfigSvc serverConfigProvider,
 	ssoTransport session.HandleTransportInterface,
 	governance providers.IdentityGovernanceProvider,
+	variableValuesProvider variableValueProvider,
 	cfg flowconfig.Config,
 ) (FlowExecServiceInterface, error) {
 	flowStore := newFlowStore(storeProvider)
 	interceptorRunner := newInterceptorRunner(interceptorRegistry)
 	flowEngine := newFlowEngine(executorRegistry, interceptorRunner, observabilitySvc,
-		flowProvider, graphBuilder)
+		flowProvider, graphBuilder, variableValuesProvider)
 	// Bound the SSO handle's lifetime to the session's configured absolute timeout (same fallback as
 	// the session executor's timeouts).
 	sessionTimeouts := session.NewTimeouts(cfg.Session.IdleTimeoutSeconds, cfg.Session.AbsoluteTimeoutSeconds,

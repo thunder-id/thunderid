@@ -94,7 +94,7 @@ The idle timeout must not exceed the absolute timeout.
 
 - `HttpOnly`, so client-side scripts cannot read it.
 - `SameSite=Lax`.
-- `Secure`, when the server runs over TLS.
+- `Secure`, when the server runs over TLS or `server.public_url` uses `https`, as behind a proxy that terminates TLS.
 
 The cookie lifetime matches the absolute session timeout.
 

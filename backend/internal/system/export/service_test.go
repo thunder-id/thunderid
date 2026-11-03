@@ -105,7 +105,7 @@ func (suite *ExportServiceTestSuite) SetupTest() {
 		application.NewApplicationExporterForTest(suite.appServiceMock, sharingWithNoPolicies(suite.T())),
 		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil, nil),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
-		flowmgt.NewFlowGraphExporterForTest(suite.mockFlowService),
+		flowmgt.NewFlowGraphExporterForTest(suite.mockFlowService, sharingWithNoPolicies(suite.T())),
 	}
 
 	// Create parameterizer instance
@@ -2877,6 +2877,7 @@ func sharingWithNoPolicies(t interface {
 }) *sharingmock.SharingServiceInterfaceMock {
 	m := sharingmock.NewSharingServiceInterfaceMock(t)
 	m.EXPECT().ExportPolicies(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	m.EXPECT().ListOverlayValues(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	return m
 }
 

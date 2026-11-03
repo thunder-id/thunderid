@@ -142,7 +142,14 @@ export default function FlowComponentRenderer({
       // is disabled; denying stays available.
       return (
         <>
-          <ConsentAdapter consentData={consentData} formValues={values} onInputChange={onInputChange} />
+          <ConsentAdapter
+            consentData={consentData}
+            formValues={values}
+            onInputChange={onInputChange}
+            clientIdHost={additionalData?.['clientIdHost'] as string | undefined}
+            redirectUriHost={additionalData?.['redirectUriHost'] as string | undefined}
+            redirectUriLoopback={additionalData?.['redirectUriLoopback'] === 'true'}
+          />
           <BlockAdapter
             component={component}
             index={index}

@@ -1,0 +1,45 @@
+# Integrate {{productName}} Authentication in a Node.js Application
+
+## Context
+I have a Node.js application and I want to integrate {{productName}} authentication using the @thunderid/node SDK and the built-in http module — no framework required.
+
+## Requirements
+- Use @thunderid/node SDK with the built-in Node.js http module
+- Initialize ThunderIDNodeClient with clientId, clientSecret, baseUrl, afterSignInUrl, afterSignOutUrl
+- Implement /login route to start the sign-in flow (redirects to {{productName}})
+- Implement /callback route to handle the OAuth authorization code exchange
+- Implement /logout route to sign out and clear the session cookie
+- Protect the /profile route using isSignedIn() and display user info with getUser()
+- Manage sessions using a session ID stored in an HttpOnly cookie
+- Keep code minimal and fully runnable with CommonJS require()
+
+## Configuration
+- **Client ID**: {{clientId}}
+- **Client Secret**: `<your-client-secret>`
+- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **App URL**: http://localhost:3000
+- **Callback Route**: /callback
+- **SDK**: @thunderid/node
+
+## Important Rules
+- Use CommonJS syntax (require) in index.js
+- Initialize ThunderIDNodeClient with auth.initialize({...}) before starting the server
+- signIn() works in two phases: first call redirects the user (authUrlCallback), second call (with code+state) exchanges the token
+- Store the session ID in a cookie named 'tid_session' with HttpOnly and SameSite=Lax flags
+- Use randomUUID() from the built-in 'crypto' module to generate session IDs
+- Use isSignedIn(sessionId) to guard protected routes
+- Use getUser(sessionId) to retrieve the authenticated user profile
+- Use signOut(sessionId) to get the OIDC end-session URL, then clear the local cookie and redirect
+
+## Implementation Steps
+1. Create a new project: mkdir my-node-service && cd my-node-service && npm init -y
+2. Install @thunderid/node: npm install @thunderid/node
+3. Create index.js with ThunderIDNodeClient initialization
+4. Add /login route: generate session ID cookie and redirect to {{productName}} auth URL
+5. Add /callback route: exchange authorization code for tokens using signIn()
+6. Add /logout route: call signOut() to get end-session URL, clear cookie, redirect
+7. Add / route: show sign-in or profile link based on isSignedIn()
+8. Add /profile route: guard with isSignedIn(), display user info from getUser()
+9. Start the server: node index.js
+
+Please provide a complete, working index.js file with all routes and the ThunderIDNodeClient wired up correctly.
