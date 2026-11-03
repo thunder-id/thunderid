@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {decodeKeyValuePairs, encodeKeyValuePairs} from '@thunderid/components';
 import {fireEvent, render, screen} from '@thunderid/test-utils';
 import {type ComponentProps, useState} from 'react';
 import {getI18n} from 'react-i18next';
@@ -12,7 +13,6 @@ import {
   authPropertyField,
   MASKED_SECRET,
 } from '../../utils/connectionFormMapping';
-import {decodeKeyValuePairs, encodeKeyValuePairs} from '../../utils/keyValuePairs';
 import AuthenticationSection from '../AuthenticationSection';
 
 vi.mock('@thunderid/contexts', async (importOriginal) => ({

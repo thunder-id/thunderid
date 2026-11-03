@@ -34,6 +34,7 @@ export default function ExportPage(): JSX.Element {
       translations: ['*'],
       layouts: ['*'],
       resourceServers: ['*'],
+      authorizationDetailTypes: ['*'],
       roles: ['*'],
       groups: ['*'],
       agents: ['*'],

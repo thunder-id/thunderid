@@ -230,6 +230,9 @@ vi.mock('@dnd-kit/react', () => ({
       {typeof children === 'function' ? children(dragOverlaySource.current) : children}
     </div>
   ),
+  // Imported by @thunderid/configure-resource-servers, which @thunderid/configure-connections loads.
+  useDraggable: () => ({ref: vi.fn(), handleRef: vi.fn(), isDragging: false}),
+  useDroppable: () => ({ref: vi.fn(), isDropTarget: false}),
 }));
 
 // Mock @dnd-kit/helpers

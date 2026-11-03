@@ -18,6 +18,7 @@ export const ALLOWED_RESOURCE_TYPES = [
   'user_type',
   'agent_type',
   'resource_server',
+  'authorization_detail_type',
   'role',
   'agent',
   'presentation_definition',

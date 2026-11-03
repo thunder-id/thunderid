@@ -116,6 +116,15 @@ vi.mock('@thunderid/configure-resource-servers', () => ({
   ResourceServersListPage: () => <div data-testid="resource-servers-list-page">Resource Servers List Page</div>,
   ResourceServerEditPage: () => <div data-testid="resource-server-edit-page">Resource Server Edit Page</div>,
   CreateResourceServerPage: () => <div data-testid="create-resource-server-page">Create Resource Server Page</div>,
+  AuthorizationDetailTypesListPage: () => (
+    <div data-testid="authorization-detail-types-list-page">Authorization Detail Types List Page</div>
+  ),
+  AuthorizationDetailTypeEditPage: () => (
+    <div data-testid="authorization-detail-type-edit-page">Authorization Detail Type Edit Page</div>
+  ),
+  CreateAuthorizationDetailTypePage: () => (
+    <div data-testid="create-authorization-detail-type-page">Create Authorization Detail Type Page</div>
+  ),
 }));
 
 vi.mock('../layouts/DashboardLayout', async () => {
@@ -207,6 +216,30 @@ describe('App', () => {
     render(<App />);
     await waitFor(() => {
       expect(screen.getByTestId('create-resource-server-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads AuthorizationDetailTypesListPage lazily at /authorization-detail-types', async () => {
+    window.history.pushState({}, '', '/authorization-detail-types');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('authorization-detail-types-list-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads AuthorizationDetailTypeEditPage lazily at /authorization-detail-types/:id', async () => {
+    window.history.pushState({}, '', '/authorization-detail-types/type-123');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('authorization-detail-type-edit-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads CreateAuthorizationDetailTypePage lazily at /authorization-detail-types/create', async () => {
+    window.history.pushState({}, '', '/authorization-detail-types/create');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('create-authorization-detail-type-page')).toBeInTheDocument();
     });
   });
 
