@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -632,9 +633,9 @@ func (p *provisioningExecutor) HasRequiredInputs(ctx *providers.NodeContext,
 // and prompt metadata for schema attrs, but schema-absent node inputs are ignored.
 //
 // Missing inputs are ordered as: required non-credentials -> optional non-credentials ->
-// required credentials -> optional credentials. maxPerPrompt caps the forwarded
-// prompt batch after this list is built. includeOptional only affects optional
-// non-credential attrs.
+// required credentials -> optional credentials and then each group sorted by attribute name.
+// maxPerPrompt caps the forwarded prompt batch after this list is built.
+// includeOptional only affects optional non-credential attrs.
 func (p *provisioningExecutor) hasRequiredInputs(ctx *providers.NodeContext,
 	category entitytype.TypeCategory, execResp *providers.ExecutorResponse) bool {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
@@ -712,7 +713,12 @@ func (p *provisioningExecutor) buildMissingInputs(
 	presentedOptionalInputs := core.GetPresentedOptionalInputs(ctx.RuntimeData)
 	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 
-	for _, attr := range schemaAttrs {
+	sortedAttrs := slices.Clone(schemaAttrs)
+	slices.SortFunc(sortedAttrs, func(a, b entitytype.AttributeInfo) int {
+		return strings.Compare(a.Attribute, b.Attribute)
+	})
+
+	for _, attr := range sortedAttrs {
 		if p.isAttrSatisfied(ctx, extIdentity, attr) {
 			continue
 		}
