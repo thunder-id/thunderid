@@ -343,6 +343,31 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlowSuccess() {
 	}
 }
 
+func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlowDynamicInputsOrder() {
+	expected := []string{"email", "family_name", "given_name"}
+
+	// The schema attributes were returned in random order, so repeat to make a lucky pass unlikely.
+	for i := 0; i < 10; i++ {
+		flowStep, err := common.InitiateRegistrationFlow(ts.testAppID, false, nil, "")
+		ts.Require().NoError(err, "Failed to initiate registration flow")
+
+		inputs := map[string]string{
+			"username": common.GenerateUniqueUsername("orderuser"),
+			"password": "testpassword123",
+		}
+		step, err := common.CompleteFlow(flowStep.ExecutionID, inputs, "action_credentials",
+			flowStep.ChallengeToken)
+		ts.Require().NoError(err, "Failed to submit the credentials")
+		ts.Require().Equal("INCOMPLETE", step.FlowStatus, "Expected the schema attributes prompt")
+
+		identifiers := make([]string, 0, len(step.Data.Inputs))
+		for _, input := range step.Data.Inputs {
+			identifiers = append(identifiers, input.Identifier)
+		}
+		ts.Require().Equal(expected, identifiers, "Dynamic inputs should be ordered by attribute name")
+	}
+}
+
 func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlowDuplicateUser() {
 	// Create a test user first
 	testUser := testutils.User{
