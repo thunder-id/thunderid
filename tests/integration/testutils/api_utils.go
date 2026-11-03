@@ -749,6 +749,13 @@ func CreateApplication(app Application) (string, error) {
 	// Add the application type (explicit, or defaulted to full-stack above).
 	appData["type"] = appType
 
+	if len(app.PasskeyAllowedOrigins) > 0 {
+		appData["passkeyAllowedOrigins"] = app.PasskeyAllowedOrigins
+	}
+	if app.PasskeyRelyingPartyID != "" {
+		appData["passkeyRelyingPartyId"] = app.PasskeyRelyingPartyID
+	}
+
 	// Add client-level attestation config if provided
 	if app.Attestation != nil {
 		appData["attestation"] = app.Attestation

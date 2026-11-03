@@ -73,6 +73,7 @@ type StoredCredential struct {
 	StorageAlgo       cryptolib.CredAlgorithm  `json:"storageAlgo"`
 	StorageAlgoParams cryptolib.CredParameters `json:"storageAlgoParams"`
 	Value             string                   `json:"value"`
+	Metadata          map[string]string        `json:"metadata,omitempty"`
 }
 
 // DeclarativeLoaderConfig configures declarative resource loading for a specific entity category.
