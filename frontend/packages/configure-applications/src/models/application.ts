@@ -346,7 +346,8 @@ export interface Application {
   isReadOnly?: boolean;
 
   /**
-   * Effective access status, derived by the server at read time. Read-only; never LOCKED.
+   * Effective access status, derived by the server at read time. Read-only; never LOCKED, and never
+   * EXPIRED, as applications have no lifespan.
    */
-  status?: {value: Exclude<AccessStatusReport['value'], 'LOCKED'>};
+  status?: {value: Exclude<AccessStatusReport['value'], 'LOCKED' | 'EXPIRED'>};
 }

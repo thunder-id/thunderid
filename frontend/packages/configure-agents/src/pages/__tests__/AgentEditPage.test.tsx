@@ -147,6 +147,15 @@ vi.mock('../../components/edit-agent/attributes/EditAgentAttributes', () => ({
         <button type="button" onClick={() => onFieldChange('attributes', {department: 'sales'})}>
           Edit an attribute
         </button>
+        <button type="button" onClick={() => onFieldChange('validUntil', new Date(Date.now() - 60_000).toISOString())}>
+          Stage a past lifespan end
+        </button>
+        <button
+          type="button"
+          onClick={() => onFieldChange('validUntil', new Date(Date.now() + 86_400_000).toISOString())}
+        >
+          Stage a future lifespan end
+        </button>
       </div>
     );
   },
@@ -1262,6 +1271,30 @@ describe('AgentEditPage', () => {
       await user.click(screen.getByRole('tab', {name: /Advanced/i}));
       expect(screen.getByDisplayValue('https://agent.example.com/bcl')).toBeInTheDocument();
       expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+    });
+
+    describe('lifespan', () => {
+      it('should keep Save disabled for a staged past end after its tab is left', async () => {
+        const user = userEvent.setup();
+        render(<AgentEditPage />);
+
+        await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+        await user.click(screen.getByText('Stage a past lifespan end'));
+        await user.click(screen.getByRole('tab', {name: 'Overview'}));
+
+        expect(screen.getByText('Before saving, choose a lifespan end in the future.')).toBeInTheDocument();
+        expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+      });
+
+      it('should enable Save for a staged future end', async () => {
+        const user = userEvent.setup();
+        render(<AgentEditPage />);
+
+        await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+        await user.click(screen.getByText('Stage a future lifespan end'));
+
+        expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+      });
     });
 
     describe('identity assertions (ID-JAG)', () => {
