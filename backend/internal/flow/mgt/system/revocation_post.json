@@ -1,0 +1,26 @@
+{
+  "id": "019a1f40-6a1c-7000-8000-5e5713d00010",
+  "handle": "system-revocation-post",
+  "name": "Revocation, after the change",
+  "flowType": "SYSTEM",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "START",
+      "onSuccess": "advance_cutoff"
+    },
+    {
+      "id": "advance_cutoff",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "CriteriaRevocationExecutor",
+        "mode": "advance_cutoff"
+      },
+      "onSuccess": "end"
+    },
+    {
+      "id": "end",
+      "type": "END"
+    }
+  ]
+}

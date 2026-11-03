@@ -1,20 +1,20 @@
 {
-  "id": "019a1f40-6a1c-7000-8000-5e5713d00002",
-  "handle": "system-application-secret-rotate",
-  "name": "Application client secret rotation",
+  "id": "019a1f40-6a1c-7000-8000-5e5713d00001",
+  "handle": "system-application-delete-pre",
+  "name": "Application deletion, before the change",
   "flowType": "SYSTEM",
   "nodes": [
     {
       "id": "start",
       "type": "START",
-      "onSuccess": "validate_secret_regeneration"
+      "onSuccess": "validate_application_deletion"
     },
     {
-      "id": "validate_secret_regeneration",
+      "id": "validate_application_deletion",
       "type": "TASK_EXECUTION",
       "executor": {
         "name": "ApplicationActionValidator",
-        "mode": "revoke_before_action"
+        "mode": "revoke_all"
       },
       "onSuccess": "revoke_tokens"
     },
@@ -24,6 +24,14 @@
       "executor": {
         "name": "CriteriaRevocationExecutor",
         "mode": "revoke"
+      },
+      "onSuccess": "revoke_sessions"
+    },
+    {
+      "id": "revoke_sessions",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "SessionRevocationExecutor"
       },
       "onSuccess": "end"
     },

@@ -206,3 +206,23 @@ type InterceptorResponse struct {
 	ChallengeToken string       `json:"challengeToken,omitempty"`
 	FieldErrors    []FieldError `json:"fieldErrors,omitempty"`
 }
+
+// SystemFlowContext is a request to run a system flow.
+type SystemFlowContext struct {
+	// Handle names the system flow.
+	Handle string
+	// Inputs are the flow's user inputs.
+	Inputs map[string]string
+	// RuntimeData seeds what the flow's steps share. It must be what an earlier run of a pre flow
+	// returned, unchanged: the post flow that follows a change reads the revocation plan from it.
+	RuntimeData map[string]string
+}
+
+// SystemFlowResult is the outcome of a system flow that ran to completion.
+type SystemFlowResult struct {
+	// ExecutionID identifies the run in the logs.
+	ExecutionID string
+	// RuntimeData is what the run's steps shared, for the caller to hand to the flow that runs after the
+	// change.
+	RuntimeData map[string]string
+}
