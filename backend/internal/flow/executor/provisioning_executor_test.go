@@ -3017,6 +3017,46 @@ func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_Ordering_NonCr
 	assert.Equal(suite.T(), []string{attributeEmail, "nickname", attributePassword, attributePin}, identifiers)
 }
 
+func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_Ordering_SortedByAttributeWithinGroup() {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: "phone", DisplayName: "Phone", Required: true},
+			{Attribute: "nickname", DisplayName: "Nickname", Required: false},
+			{Attribute: attributePin, DisplayName: "PIN", Required: true, Credential: true},
+			{Attribute: attributeEmail, DisplayName: "Email", Required: true},
+			{Attribute: "address", DisplayName: "Address", Required: false},
+			{Attribute: attributePassword, DisplayName: "Password", Required: true, Credential: true},
+			{Attribute: "firstName", DisplayName: "First Name", Required: true},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		UserInputs:  map[string]string{},
+		RuntimeData: map[string]string{userTypeKey: testUserType},
+		NodeProperties: map[string]interface{}{
+			propertyKeyDynamicInputsIncludeOptional: true,
+			propertyKeyMaxDynamicInputsPerPrompt:    2,
+		},
+	}
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	suite.executor.HasRequiredInputs(ctx, execResp)
+
+	identifiers := make([]string, 0, len(execResp.Inputs))
+	for _, inp := range execResp.Inputs {
+		identifiers = append(identifiers, inp.Identifier)
+	}
+	assert.Equal(suite.T(), []string{attributeEmail, "firstName", "phone", "address", "nickname",
+		attributePassword, attributePin}, identifiers)
+
+	fwdInputs, ok := execResp.ForwardedData[common.ForwardedDataKeyInputs].([]providers.Input)
+	assert.True(suite.T(), ok)
+	assert.Len(suite.T(), fwdInputs, 2)
+	assert.Equal(suite.T(), attributeEmail, fwdInputs[0].Identifier)
+	assert.Equal(suite.T(), "firstName", fwdInputs[1].Identifier)
+}
+
 func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_MaxPerPrompt_CapsForwardedPromptBatchOnly() {
 	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
 		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
