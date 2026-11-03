@@ -468,6 +468,35 @@ describe('TokenUserAttributesSection', () => {
     });
   });
 
+  describe('ID-JAG note', () => {
+    const oauthProps = {
+      ...baseProps,
+      accessTokenAttributes: ['email'],
+      idTokenAttributes: ['email'],
+      userInfoAttributes: [],
+      onTabChange: vi.fn(),
+    };
+    const idJagNote = /Identity assertions \(ID-JAG\) this agent requests also include the allowed attributes below/i;
+
+    it('tells on the ID token tab that the attributes also go into ID-JAGs when ID-JAG is on', () => {
+      render(<TokenUserAttributesSection {...oauthProps} activeTab="id" entityLabel="agent" idJagEnabled />);
+
+      expect(screen.getByText(idJagNote)).toBeInTheDocument();
+    });
+
+    it('does not show the note when ID-JAG is off', () => {
+      render(<TokenUserAttributesSection {...oauthProps} activeTab="id" entityLabel="agent" />);
+
+      expect(screen.queryByText(idJagNote)).not.toBeInTheDocument();
+    });
+
+    it('does not show the note on the access token tab', () => {
+      render(<TokenUserAttributesSection {...oauthProps} activeTab="access" entityLabel="agent" idJagEnabled />);
+
+      expect(screen.queryByText(idJagNote)).not.toBeInTheDocument();
+    });
+  });
+
   describe('ID token response format', () => {
     it('renders response type select in ID Token tab', () => {
       render(

@@ -2628,7 +2628,7 @@ components:
           type: array
           items:
             type: string
-          description: User attributes to embed in the ID token payload.
+          description: User attributes to embed in the ID token payload. Identity assertions (ID-JAG) the agent requests also carry the ones the ID token holds, except roles and groups.
           example: ["email", "name", "given_name", "family_name"]
         responseType:
           type: string
