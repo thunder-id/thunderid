@@ -2884,6 +2884,8 @@ const translations = {
     title: 'Consent required',
     message: 'The application is requesting access to your information',
     requestedPermissions: 'Requested permissions',
+    'permissions.reviewPermissions': 'Review the permissions being requested',
+    'permissions.subtreeNotice': 'Granting a resource includes current and future permissions beneath it.',
     allow: 'Allow',
     deny: 'Deny',
     learnMore: 'Learn more',
@@ -5859,7 +5861,7 @@ const translations = {
     'delete.error': 'Failed to delete resource server. Please try again.',
     'create.steps.type': 'Type',
     'create.steps.name': 'Details',
-    'create.steps.separator': 'Permission delimiter',
+    'create.steps.separator': 'Permission settings',
     'create.steps.organizationUnit': 'Organization',
     'create.type.title': 'What type of resource server are you adding?',
     'create.type.subtitle': 'Select the type that best describes this resource server.',
@@ -5937,9 +5939,9 @@ const translations = {
       'Enter an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
     'create.name.makeDefaultLabel': 'Make this the default resource server',
     'create.setDefaultError': 'Resource server created, but it could not be made the default.',
-    'create.separator.title': 'Choose your permission delimiter',
+    'create.separator.title': 'Configure permission settings',
     'create.separator.subtitle':
-      'The delimiter character joins parts of a permission string. This cannot be changed after creation.',
+      'Choose how permissions are matched and separated. Both settings are fixed after creation.',
     'create.separator.label': 'Permission delimiter',
     'create.separator.hint': 'Choose the character that separates parts of a permission string.',
     'create.separator.invalid': 'Select a valid delimiter: . _ : - /',
@@ -6024,6 +6026,18 @@ const translations = {
     'permissionCatalog.loadError': 'Failed to load permissions for this resource server.',
     'permissionCatalog.loadServersError': 'Failed to load resource servers.',
     'permissionCatalog.serverNotFound': 'Resource server not found',
+    'create.separator.hierarchyLabel': 'Use hierarchy-aware matching',
+    'create.separator.hierarchyHint':
+      'When enabled, granting a permission also grants its descendants, including permissions added later.',
+    'edit.advanced.permissionMatching.title': 'Permissions',
+    'edit.advanced.permissionMatching.description': 'Permission settings for this resource server.',
+    'edit.advanced.permissionMatching.label': 'Permission matching',
+    'edit.advanced.permissionMatching.hierarchical': 'Hierarchical',
+    'edit.advanced.permissionMatching.exact': 'Exact',
+    'edit.advanced.permissionMatching.hierarchicalHint':
+      'Granting a permission also grants its current and future descendants.',
+    'edit.advanced.permissionMatching.exactHint': 'Each permission is granted on its own.',
+    'edit.advanced.delimiter.label': 'Permission delimiter',
 
     // Backend error code translations (per resource server service error envelope).
     'errors.RES-1001': 'The request body is malformed or contains invalid data.',

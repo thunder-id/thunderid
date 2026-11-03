@@ -1260,3 +1260,42 @@ func TestAuthorizationExecutor_ExtractMappedPermissions_AbsentOrInvalid(t *testi
 		RuntimeData: map[string]string{common.RuntimeKeyMappedPermissions: "not-json"},
 	}, executor.logger))
 }
+
+func TestAuthorizationExecutor_Execute_ExactMappedPermissions(t *testing.T) {
+	cases := []struct{ name, held, requested, expected string }{
+		{"parent does not grant child", "reservations", "reservations:create", ""},
+		{"child does not answer parent", "reservations:create", "reservations", ""},
+		{"literal child", "reservations:create", "reservations:create", "reservations:create"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			authz := authzmock.NewAuthorizationProviderMock(t)
+			entities := entityprovidermock.NewEntityProviderInterfaceMock(t)
+			authn := managermock.NewAuthnProviderManagerMock(t)
+			resources := resourcemock.NewResourceServiceInterfaceMock(t)
+			resources.On("GetResourceServerByIdentifier", mock.Anything, "rs-1").Return(
+				&providers.ResourceServer{ID: "rs-1", HierarchicalPermissions: true, Delimiter: ":"}, nil).Once()
+			executor := createTestAuthzExecutorWithResource(t, authz, entities, authn, resources)
+			authUser := newAuthzAuthenticatedAuthUser()
+			authn.On("GetEntityReference", mock.Anything, mock.Anything).
+				Return(authUser, &providers.EntityReference{EntityID: testUser123ID}, nil)
+			entities.On("GetTransitiveEntityGroups", testUser123ID).Return([]providers.EntityGroup{}, nil)
+			authz.On("EvaluateAccessBatch", mock.Anything, mock.Anything).Return(
+				&providers.AccessEvaluationsResponse{
+					Evaluations: []providers.AccessEvaluationResponse{{Decision: false}},
+				}, nil)
+			runtimeData := seedMappedAuthorizationTargets(t, []providers.AuthorizationTarget{{
+				Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: tc.held,
+			}})
+			runtimeData[requestedPermissionsKey] = tc.requested
+			runtimeData[common.RuntimeKeyResourceServerIdentifier] = "rs-1"
+			resp, err := executor.Execute(&providers.NodeContext{
+				ExecutionID: "mapped-exact", FlowType: providers.FlowTypeAuthentication,
+				AuthUser: authUser, RuntimeData: runtimeData,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, providers.ExecComplete, resp.Status)
+			assert.Equal(t, tc.expected, resp.RuntimeData[authorizedPermissionsKey])
+		})
+	}
+}

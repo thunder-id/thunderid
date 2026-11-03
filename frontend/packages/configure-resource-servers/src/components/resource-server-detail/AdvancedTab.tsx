@@ -46,8 +46,55 @@ export default function AdvancedTab({
     pdpConnectionId &&
     !(pdpConnections.data ?? []).some((connection) => connection.id === pdpConnectionId);
 
+  const permissionMatchingHint = resourceServer.hierarchicalPermissions
+    ? t(
+        'resourceServers:edit.advanced.permissionMatching.hierarchicalHint',
+        'Granting a permission also grants its current and future descendants.',
+      )
+    : t('resourceServers:edit.advanced.permissionMatching.exactHint', 'Each permission is granted on its own.');
+
   return (
     <Stack spacing={3}>
+      <SettingsCard
+        title={t('resourceServers:edit.advanced.permissionMatching.title', 'Permissions')}
+        description={t(
+          'resourceServers:edit.advanced.permissionMatching.description',
+          'Permission settings for this resource server.',
+        )}
+      >
+        <Stack spacing={2}>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="resource-server-permission-matching">
+              {t('resourceServers:edit.advanced.permissionMatching.label', 'Permission matching')}
+            </FormLabel>
+            <TextField
+              id="resource-server-permission-matching"
+              value={
+                resourceServer.hierarchicalPermissions
+                  ? t('resourceServers:edit.advanced.permissionMatching.hierarchical', 'Hierarchical')
+                  : t('resourceServers:edit.advanced.permissionMatching.exact', 'Exact')
+              }
+              fullWidth
+              size="small"
+              disabled
+            />
+            <FormHelperText sx={{ml: 0}}>{permissionMatchingHint}</FormHelperText>
+          </FormControl>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="resource-server-delimiter">
+              {t('resourceServers:edit.advanced.delimiter.label', 'Permission delimiter')}
+            </FormLabel>
+            <TextField
+              id="resource-server-delimiter"
+              value={resourceServer.delimiter ?? ''}
+              fullWidth
+              size="small"
+              disabled
+              slotProps={{input: {sx: {fontFamily: 'monospace'}}}}
+            />
+          </FormControl>
+        </Stack>
+      </SettingsCard>
       <SettingsCard
         title={t('resourceServers:edit.advanced.identifier.title', 'Configurations')}
         description={

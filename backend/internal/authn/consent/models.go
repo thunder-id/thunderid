@@ -34,4 +34,7 @@ type consentSessionPurpose struct {
 	Optional []string `json:"optional"`
 	// Details holds the authorization details prompted for, so the recorded values are the ones shown
 	Details []providers.AuthorizationDetail `json:"details,omitempty"`
+	// PermissionDelimiter is the delimiter this purpose's permissions nest on, empty when they do
+	// not nest. It is what tells a submitted decision which prompted permissions a branch carries.
+	PermissionDelimiter string `json:"permissionDelimiter,omitempty"`
 }

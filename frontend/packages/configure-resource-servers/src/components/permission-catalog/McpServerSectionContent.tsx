@@ -133,9 +133,10 @@ export default function McpServerSectionContent({
           selected={selected}
           readOnly={readOnly}
           delimiter={delimiter}
-          onChange={onChange}
+          hierarchical={server.hierarchicalPermissions ?? false}
           collectSubtree={collectSubtree}
           getCachedSubtree={getCachedSubtree}
+          onChange={onChange}
         />
       ))}
     </>

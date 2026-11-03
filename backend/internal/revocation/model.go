@@ -53,6 +53,8 @@ const (
 	CriterionTypeConsent          CriterionType = "consent.id"
 	// CriterionTypeEntityScope names the per-principal scope dimension.
 	CriterionTypeEntityScope CriterionType = "entity.scope"
+	// CriterionTypeEntityScopeSubtree revokes a frozen permission subtree for one principal.
+	CriterionTypeEntityScopeSubtree CriterionType = "entity.scope.subtree"
 	// CriterionTypeScope names the deployment-wide scope dimension.
 	CriterionTypeScope CriterionType = "scope"
 	// CriterionTypeCredentialVersion names the credential-version dimension. The value is a version
@@ -137,4 +139,6 @@ type AudienceScope struct {
 	// Audience is the resource server identifier.
 	Audience string
 	Scope    string
+	// SubtreeDelimiter marks a subtree rule; empty preserves exact matching.
+	SubtreeDelimiter string
 }

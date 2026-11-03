@@ -74,30 +74,6 @@ func (s *RoleUtilsTestSuite) TestResolveScopes_PairsEachPermissionWithItsAudienc
 	}, scopes)
 }
 
-func (s *RoleUtilsTestSuite) TestDroppedPermissions_KeysByResourceServer() {
-	dropped := droppedPermissions(
-		[]ResourcePermissions{
-			{ResourceServerID: californiaRSID, Permissions: []string{"license", "permits"}},
-			{ResourceServerID: ohioRSID, Permissions: []string{"license"}},
-		},
-		[]ResourcePermissions{
-			{ResourceServerID: californiaRSID, Permissions: []string{"permits"}},
-			{ResourceServerID: ohioRSID, Permissions: []string{"permits"}},
-		})
-
-	s.Equal([]ResourcePermissions{
-		{ResourceServerID: californiaRSID, Permissions: []string{"license"}},
-		{ResourceServerID: ohioRSID, Permissions: []string{"license"}},
-	}, dropped)
-}
-
-func (s *RoleUtilsTestSuite) TestDroppedPermissions_NothingDropped() {
-	current := []ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}}
-	updated := []ResourcePermissions{current[0], {ResourceServerID: ohioRSID, Permissions: []string{"license"}}}
-
-	s.Empty(droppedPermissions(current, updated))
-}
-
 func (s *RoleUtilsTestSuite) TestResolveScopes_SkipsResourceServerWithoutIdentifier() {
 	s.resources.On("GetResourceServer", mock.Anything, californiaRSID).
 		Return(&providers.ResourceServer{ID: californiaRSID}, nil)

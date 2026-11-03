@@ -76,17 +76,31 @@ const criteriaRevokedQueryID = "RVQ-RCS-02"
 // non-empty value; an empty slice would render a query that matches nothing and is rejected upstream.
 func buildCriteriaRevokedQuery(criteria []Criterion, establishedAt, now time.Time,
 	deploymentID string) (dbmodel.DBQuery, []interface{}) {
-	args := make([]interface{}, 0, 3+2*len(criteria))
-	args = append(args, deploymentID, now, establishedAt)
-
-	// $1 deployment id, $2 now, $3 established at; criterion pairs start at $4.
-	paramIndex := 4
-	pairs := make([]string, 0, len(criteria))
+	args := []interface{}{deploymentID, now, establishedAt}
+	types := []CriterionType{}
+	values := map[CriterionType][]string{}
+	seen := map[Criterion]bool{}
 	for _, criterion := range criteria {
-		pairs = append(pairs,
-			fmt.Sprintf("(CRITERION_TYPE = $%d AND CRITERION_VALUE = $%d)", paramIndex, paramIndex+1))
-		args = append(args, string(criterion.Type), criterion.Value)
-		paramIndex += 2
+		if seen[criterion] {
+			continue
+		}
+		seen[criterion] = true
+		if _, ok := values[criterion.Type]; !ok {
+			types = append(types, criterion.Type)
+		}
+		values[criterion.Type] = append(values[criterion.Type], criterion.Value)
+	}
+	pairs := make([]string, 0, len(types))
+	for _, kind := range types {
+		typeIndex := len(args) + 1
+		args = append(args, string(kind))
+		placeholders := make([]string, 0, len(values[kind]))
+		for _, value := range values[kind] {
+			placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)+1))
+			args = append(args, value)
+		}
+		pairs = append(pairs, fmt.Sprintf("(CRITERION_TYPE = $%d AND CRITERION_VALUE IN (%s))",
+			typeIndex, strings.Join(placeholders, ", ")))
 	}
 
 	query := fmt.Sprintf(`SELECT 1 FROM "REVOCATION_CRITERIA" `+

@@ -350,7 +350,7 @@ func isSupportedCriterionType(criterionType CriterionType) bool {
 	case CriterionTypeTokenFamily, CriterionTypeSubject, CriterionTypeApplicationID,
 		CriterionTypeApplicationKey, CriterionTypeOrganizationUnit, CriterionTypeRole,
 		CriterionTypeGroup, CriterionTypeConsent, CriterionTypeCredentialVersion,
-		CriterionTypeEntityScope, CriterionTypeScope:
+		CriterionTypeEntityScope, CriterionTypeEntityScopeSubtree, CriterionTypeScope:
 		return true
 	default:
 		return false

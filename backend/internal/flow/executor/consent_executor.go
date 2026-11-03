@@ -155,11 +155,12 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 		}
 	}
 
-	// Resolve consent to determine if any required consents are missing and need to be prompted
+	// Resolve missing consent using the authorization step's resource-server binding.
 	promptData, svcErr := e.consentEnforcer.ResolveConsent(
 		ctx.Context, ouID, appID, appName, entityRef.EntityID,
 		essentialAttributes, optionalAttributes, authorizedPermissions, authorizationDetails,
-		availableAttributes, forceReprompt, core.BuildProviderMetadata(ctx).RuntimeMetadata)
+		availableAttributes, forceReprompt, core.BuildProviderMetadata(ctx).RuntimeMetadata,
+		ctx.RuntimeData[common.RuntimeKeyPermissionDelimiter], ctx.RuntimeData[common.RuntimeKeyResourceServerID])
 	if svcErr != nil {
 		if detailsErr := undecidedAuthorizationDetailsError(svcErr); detailsErr != nil {
 			return authorizationDetailsFailed(execResp, detailsErr), nil

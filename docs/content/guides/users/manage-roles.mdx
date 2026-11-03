@@ -25,7 +25,7 @@ Before creating a role, you need:
 
 ## Permission Requirements
 
-<ProductName /> prevents you from granting permissions you do not hold yourself. This applies whether the recipient is another principal or your own account.
+<ProductName /> checks whether your grants cover the permissions you assign, including assignments to yourself.
 
 You can perform the following operations only if you already hold every permission involved:
 
@@ -37,7 +37,12 @@ You can perform the following operations only if you already hold every permissi
 
 Permissions are compared per resource server. A permission you hold on one resource server does not satisfy a requirement on a different resource server, even when the two permission strings are identical.
 
-The comparison respects the permission hierarchy. If you hold `system:user`, you can grant `system:user:view`, because the parent permission covers its children. The reverse does not apply: holding `system:user:view` does not let you grant `system:user`.
+For custom servers, administrative checks use the configured delimiter when hierarchy is enabled
+and `:` otherwise. Runtime permission matching is configured separately in
+[Resource Servers](../resource-servers.mdx#granting-a-permission-and-what-is-beneath-it).
+
+System management permissions retain colon-based hierarchy. Holding `system:user` permits granting
+`system:user:view`; holding only `system:user:view` does not permit granting `system:user`.
 
 Holders of the root `system` permission are exempt, since that permission already authorizes every system operation.
 

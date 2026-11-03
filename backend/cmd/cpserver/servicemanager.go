@@ -280,7 +280,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// injected the guard fails closed, so this must not be skipped: granting a permission is
 	// authoring, which this plane does, and without the resolver every such grant is refused.
 	ouAuthzService.SetPermissionResolver(
-		role.NewEffectivePermissionResolver(roleService, groupService, entityService))
+		role.NewEffectivePermissionResolver(roleService, groupService, entityService, resourceService))
 
 	idpService, err := idp.Initialize(
 		cacheManager, entityTypeService, roleService, groupService, resourceService, ouService)

@@ -70,17 +70,18 @@ type CriterionType = sharedrevocation.CriterionType
 // Criterion dimensions, re-exported from the revocation package so OAuth callers need not import it
 // directly. See that package for what each dimension matches.
 const (
-	CriterionTypeTokenFamily       = sharedrevocation.CriterionTypeTokenFamily
-	CriterionTypeSubject           = sharedrevocation.CriterionTypeSubject
-	CriterionTypeApplicationID     = sharedrevocation.CriterionTypeApplicationID
-	CriterionTypeApplicationKey    = sharedrevocation.CriterionTypeApplicationKey
-	CriterionTypeOrganizationUnit  = sharedrevocation.CriterionTypeOrganizationUnit
-	CriterionTypeRole              = sharedrevocation.CriterionTypeRole
-	CriterionTypeGroup             = sharedrevocation.CriterionTypeGroup
-	CriterionTypeConsent           = sharedrevocation.CriterionTypeConsent
-	CriterionTypeCredentialVersion = sharedrevocation.CriterionTypeCredentialVersion
-	CriterionTypeEntityScope       = sharedrevocation.CriterionTypeEntityScope
-	CriterionTypeScope             = sharedrevocation.CriterionTypeScope
+	CriterionTypeTokenFamily        = sharedrevocation.CriterionTypeTokenFamily
+	CriterionTypeSubject            = sharedrevocation.CriterionTypeSubject
+	CriterionTypeApplicationID      = sharedrevocation.CriterionTypeApplicationID
+	CriterionTypeApplicationKey     = sharedrevocation.CriterionTypeApplicationKey
+	CriterionTypeOrganizationUnit   = sharedrevocation.CriterionTypeOrganizationUnit
+	CriterionTypeRole               = sharedrevocation.CriterionTypeRole
+	CriterionTypeGroup              = sharedrevocation.CriterionTypeGroup
+	CriterionTypeConsent            = sharedrevocation.CriterionTypeConsent
+	CriterionTypeCredentialVersion  = sharedrevocation.CriterionTypeCredentialVersion
+	CriterionTypeEntityScope        = sharedrevocation.CriterionTypeEntityScope
+	CriterionTypeEntityScopeSubtree = sharedrevocation.CriterionTypeEntityScopeSubtree
+	CriterionTypeScope              = sharedrevocation.CriterionTypeScope
 )
 
 // RevocationMode controls whether a criterion applies permanently or only to artifacts established
@@ -104,7 +105,8 @@ type CriteriaRevocation = sharedrevocation.CriteriaRevocation
 
 // ScopeCriteria returns the criteria that revoke the scopes a token carries on each of its audiences.
 func ScopeCriteria(subject string, audiences, scopes []string) []Criterion {
-	return sharedrevocation.ScopeCriteria(subject, audiences, scopes)
+	return append(sharedrevocation.ScopeCriteria(subject, audiences, scopes),
+		sharedrevocation.SubtreeScopeCriteria(subject, audiences, scopes)...)
 }
 
 // TokenAudiences reads the audiences of a token carrying scopes, failing closed when the claim is malformed.

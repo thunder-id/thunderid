@@ -3,7 +3,11 @@
 
 package security
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/thunder-id/thunderid/internal/system/constants"
+)
 
 // publicPaths defines the list of public paths using glob patterns.
 // - "*": Matches a single path segment (e.g., /a/*/b).
@@ -442,6 +446,51 @@ func HasSystemPermission(permissions []string) bool {
 	return false
 }
 
+// DefaultPermissionDelimiter is the fixed delimiter used to build and match system permissions.
+const DefaultPermissionDelimiter = ":"
+
+// PermissionCovers reports whether held equals required or is its delimiter-separated ancestor.
+// Coverage never works upwards. An empty delimiter permits only exact matches.
+func PermissionCovers(held, required, delimiter string) bool {
+	if held == "" || required == "" {
+		return false
+	}
+	if held == required {
+		return true
+	}
+	if delimiter == "" {
+		return false
+	}
+	return strings.HasPrefix(required, held+delimiter)
+}
+
+// AnyPermissionCovers reports whether any of held authorizes required.
+func AnyPermissionCovers(held []string, required, delimiter string) bool {
+	for _, p := range held {
+		if PermissionCovers(p, required, delimiter) {
+			return true
+		}
+	}
+	return false
+}
+
+// AncestorPermissions returns the permissions of the resources a permission sits under, nearest
+// ancestor first. A top-level permission has none.
+func AncestorPermissions(permission, delimiter string) []string {
+	if permission == "" || delimiter == "" {
+		return nil
+	}
+	segments := strings.Split(permission, delimiter)
+	if len(segments) < 2 {
+		return nil
+	}
+	ancestors := make([]string, 0, len(segments)-1)
+	for i := len(segments) - 1; i > 0; i-- {
+		ancestors = append(ancestors, strings.Join(segments[:i], delimiter))
+	}
+	return ancestors
+}
+
 // HasSufficientPermission returns true if any permission in userPermissions satisfies
 // the required permission using hierarchical scope matching.
 //
@@ -450,16 +499,13 @@ func HasSystemPermission(permissions []string) bool {
 //   - Exact match: "system:ou:view" satisfies "system:ou:view"
 //   - Parent scope: "system:ou" satisfies "system:ou:view" (parent covers all children)
 //   - Root scope: "system" satisfies any "system:*" permission
+//
+// System permissions always use DefaultPermissionDelimiter.
 func HasSufficientPermission(userPermissions []string, required string) bool {
 	if required == "" {
 		return true
 	}
-	for _, p := range userPermissions {
-		if p == required || strings.HasPrefix(required, p+":") {
-			return true
-		}
-	}
-	return false
+	return AnyPermissionCovers(userPermissions, required, DefaultPermissionDelimiter)
 }
 
 // ---- Permission set coverage ----
@@ -467,17 +513,11 @@ func HasSufficientPermission(userPermissions []string, required string) bool {
 // PermissionSet maps a resource server ID to the permissions granted on that resource server.
 type PermissionSet map[string][]string
 
-// Covers reports whether actor holds every permission in required, and answers "may this caller
-// confer these permissions on someone else?".
-//
-// Coverage is evaluated per resource server: a permission held on one never satisfies a
-// requirement on another. Within a resource server, matching is hierarchical, so "system:user"
-// covers "system:user:view" but not the reverse. Coverage is a partial order, not an ordering:
-// two sets can each hold what the other lacks.
-//
-// An empty required set is covered. A required permission that is empty, or keyed under an empty
-// resource server ID, is never covered, since approving a malformed grant would be unsafe.
-func Covers(actor, required PermissionSet) bool {
+// Covers reports whether actor may grant every required permission on the same resource server.
+// Custom permissions use their resolved administrative delimiter. System permissions on the
+// built-in System resource server retain fixed colon coverage. Empty required sets are covered;
+// empty permission names and resource-server IDs are refused.
+func Covers(actor, required PermissionSet, delimiters map[string]string) bool {
 	for resourceServerID, requiredPerms := range required {
 		if len(requiredPerms) == 0 {
 			continue
@@ -490,7 +530,12 @@ func Covers(actor, required PermissionSet) bool {
 			if requiredPerm == "" {
 				return false
 			}
-			if !HasSufficientPermission(heldPerms, requiredPerm) {
+			delimiter := delimiters[resourceServerID]
+			if resourceServerID == constants.SystemResourceServerID &&
+				PermissionCovers(GetSystemRootPermission(), requiredPerm, DefaultPermissionDelimiter) {
+				delimiter = DefaultPermissionDelimiter
+			}
+			if !AnyPermissionCovers(heldPerms, requiredPerm, delimiter) {
 				return false
 			}
 		}

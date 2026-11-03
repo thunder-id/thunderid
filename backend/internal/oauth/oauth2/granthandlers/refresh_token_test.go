@@ -1022,7 +1022,8 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestValidateAndApplyScopes_NoSco
 	refreshTokenScopes := []string{"read", "write", "delete"}
 	logger := log.GetLogger()
 
-	result, errResp := suite.handler.validateAndApplyScopes(context.Background(), "", refreshTokenScopes, logger)
+	result, errResp := suite.handler.validateAndApplyScopes(
+		context.Background(), "", refreshTokenScopes, nil, ":", logger)
 
 	assert.Nil(suite.T(), errResp)
 	assert.Equal(suite.T(), refreshTokenScopes, result)
@@ -1037,6 +1038,8 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestValidateAndApplyScopes_Reque
 		context.Background(),
 		"read write",
 		refreshTokenScopes,
+		nil,
+		":",
 		logger)
 
 	assert.Nil(suite.T(), errResp)
@@ -1054,6 +1057,8 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestValidateAndApplyScopes_SomeR
 		context.Background(),
 		"read write delete admin",
 		refreshTokenScopes,
+		nil,
+		":",
 		logger)
 
 	assert.NotNil(suite.T(), errResp)
@@ -1069,6 +1074,8 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestValidateAndApplyScopes_NoMat
 		context.Background(),
 		"admin delete",
 		refreshTokenScopes,
+		nil,
+		":",
 		logger)
 
 	assert.NotNil(suite.T(), errResp)
@@ -3097,3 +3104,118 @@ var testPaymentDetails = []providers.AuthorizationDetail{{Type: "payment_initiat
 
 // testPaymentValues is testPaymentDetails as tokens carry them.
 const testPaymentValues = `[{"type":"payment_initiation","id":"d1"}]`
+
+// A grant of a resource lets a refresh narrow to something beneath it, so a client asking for less
+// than it holds is answered rather than refused.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NarrowsToAScopeBeneathTheGrant() {
+	suite.resetAuthzMocks()
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(&tokenservice.RefreshTokenClaims{
+			ClientID:  testRefreshTokenClientID,
+			Sub:       testRefreshTokenUserID,
+			Audiences: []string{testRefreshTokenAudience},
+			Scopes:    []string{"reservations"},
+			GrantType: "authorization_code",
+			Iat:       int64(suite.validClaims["iat"].(float64)),
+		}, nil)
+
+	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRefreshTokenAudience).
+		Return(&providers.ResourceServer{
+			ID: testRefreshTokenAudience, Identifier: testRefreshTokenAudience, Delimiter: ":",
+			HierarchicalPermissions: true,
+		}, nil)
+	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
+	suite.mockResourceService = rsvc
+	suite.rebuildHandlerWithConfig()
+
+	suite.mockActorProvider.On("GetActorGroups", testRefreshTokenUserID).
+		Return([]providers.EntityGroup{}, nil)
+	mockEvaluateAccessBatch(suite.mockAuthzService, testRefreshTokenUserID, "", testRefreshTokenAudience,
+		[]string{"reservations:view"}, []string{"reservations:view"})
+
+	var grantedScopes []string
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			grantedScopes = ctx.Scopes
+			return true
+		})).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	response, err := suite.handler.HandleGrant(context.Background(), &model.TokenRequest{
+		GrantType:    string(providers.GrantTypeRefreshToken),
+		ClientID:     testRefreshTokenClientID,
+		RefreshToken: suite.validRefreshToken,
+		Scope:        "reservations:view",
+	}, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.Require().NotNil(response)
+	assert.Equal(suite.T(), []string{"reservations:view"}, grantedScopes)
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RefusesScopeExpansion() {
+	for _, tc := range []struct {
+		name         string
+		granted      string
+		requested    string
+		hierarchical bool
+	}{
+		{"upward", "reservations:view", "reservations", true},
+		{"exact matching", "reservations", "reservations:view", false},
+	} {
+		suite.Run(tc.name, func() {
+			suite.resetAuthzMocks()
+			suite.mockTokenValidator.
+				On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+				Return(&tokenservice.RefreshTokenClaims{
+					ClientID: testRefreshTokenClientID, Sub: testRefreshTokenUserID,
+					Audiences: []string{testRefreshTokenAudience}, Scopes: []string{tc.granted},
+					GrantType: "authorization_code", Iat: int64(suite.validClaims["iat"].(float64)),
+				}, nil).Once()
+			rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+			rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRefreshTokenAudience).
+				Return(&providers.ResourceServer{
+					ID: testRefreshTokenAudience, Identifier: testRefreshTokenAudience, Delimiter: ":",
+					HierarchicalPermissions: tc.hierarchical,
+				}, nil)
+			suite.mockResourceService = rsvc
+			suite.rebuildHandlerWithConfig()
+			response, err := suite.handler.HandleGrant(context.Background(), &model.TokenRequest{
+				GrantType: string(providers.GrantTypeRefreshToken), ClientID: testRefreshTokenClientID,
+				RefreshToken: suite.validRefreshToken, Scope: tc.requested,
+			}, suite.oauthApp)
+			suite.Nil(response)
+			suite.Require().NotNil(err)
+			suite.Equal(constants.ErrorInvalidScope, err.Error)
+		})
+	}
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestValidateAndApplyScopes_CustomOIDCBoundary() {
+	claims := map[string][]string{"reservations:history": {"email"}}
+	for _, tc := range []struct {
+		name, requested string
+		granted         []string
+		invalid         bool
+	}{
+		{"unheld OIDC child", "reservations:history", []string{"reservations"}, true},
+		{"explicit OIDC grant", "reservations:history", []string{"reservations", "reservations:history"}, false},
+		{"permission narrowing", "reservations:view", []string{"reservations"}, false},
+	} {
+		suite.Run(tc.name, func() {
+			scopes, errResp := suite.handler.validateAndApplyScopes(context.Background(),
+				tc.requested, tc.granted, claims, ":", log.GetLogger())
+			if tc.invalid {
+				suite.Require().NotNil(errResp)
+				suite.Equal(constants.ErrorInvalidScope, errResp.Error)
+				suite.Nil(scopes)
+			} else {
+				suite.Require().Nil(errResp)
+				suite.Equal([]string{tc.requested}, scopes)
+			}
+		})
+	}
+}
