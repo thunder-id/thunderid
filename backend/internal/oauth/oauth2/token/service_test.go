@@ -388,6 +388,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_DPoPProof_VerifyFail
 
 	assert.NotNil(suite.T(), errResp)
 	assert.Equal(suite.T(), constants.ErrorInvalidDPoPProof, errResp.Error)
+	assert.Equal(suite.T(), "Invalid DPoP proof", errResp.ErrorDescription)
 }
 
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_NoDPoPProof_VerifierNotInvoked() {

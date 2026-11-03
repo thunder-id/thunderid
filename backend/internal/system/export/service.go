@@ -378,7 +378,7 @@ func (es *exportService) exportResourcesWithExporter(
 			exportErrors = append(exportErrors, declarativeresource.ExportError{
 				ResourceType: resourceType,
 				ResourceID:   resourceID,
-				Error:        err.Error(),
+				Error:        "The resource could not be exported",
 				Code:         "TemplateGenerationError",
 			})
 			continue

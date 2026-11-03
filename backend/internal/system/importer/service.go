@@ -390,15 +390,13 @@ func (s *importService) ImportResources(
 		resolvedContent, err := resolveTemplate(request.Content, request.Variables)
 		if err != nil {
 			log.GetLogger().Warn(ctx, "Import template resolution failed", log.String("error", err.Error()))
-			return nil, tidcommon.CustomServiceError(ErrorTemplateResolutionFailed,
-				tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
+			return nil, &ErrorTemplateResolutionFailed
 		}
 
 		docs, err = parseDocuments(resolvedContent)
 		if err != nil {
 			log.GetLogger().Warn(ctx, "Import YAML parsing failed", log.String("error", err.Error()))
-			return nil, tidcommon.CustomServiceError(ErrorInvalidYAMLContent,
-				tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
+			return nil, &ErrorInvalidYAMLContent
 		}
 	}
 
@@ -506,8 +504,6 @@ func documentName(doc parsedDocument) string {
 func (s *importService) DeleteResource(
 	ctx context.Context, request *DeleteResourceRequest,
 ) (*DeleteResourceResponse, *tidcommon.ServiceError) {
-	_ = ctx
-
 	if request == nil || request.ResourceType == "" || request.ResourceKey == "" {
 		return nil, tidcommon.CustomServiceError(
 			ErrorInvalidImportRequest,
@@ -518,7 +514,7 @@ func (s *importService) DeleteResource(
 		)
 	}
 
-	deletedFile, svcErr := deleteFileBackedResource(request.ResourceType, request.ResourceKey)
+	deletedFile, svcErr := deleteFileBackedResource(ctx, request.ResourceType, request.ResourceKey)
 	if svcErr != nil {
 		return nil, svcErr
 	}
