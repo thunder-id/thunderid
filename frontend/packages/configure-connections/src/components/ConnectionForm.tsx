@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {KeyValuePairsField, MaskedSecretField} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {
   Alert,
@@ -21,8 +22,6 @@ import {
 import {type JSX, type ReactNode, useMemo, useState} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import AuthenticationSection from './AuthenticationSection';
-import KeyValuePairsField from './KeyValuePairsField';
-import MaskedSecretField from './MaskedSecretField';
 import ReadOnlyCopyField from './ReadOnlyCopyField';
 import useConnectionMeta from '../api/useConnectionMeta';
 import {fieldsForMode, type ConnectionFieldDef, type ConnectionFieldOption} from '../config/connectionFormFields';

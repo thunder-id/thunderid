@@ -2,29 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  AUTHENTICATION_METHOD_FIELD_NAMES,
+  AuthenticationMethods,
   decodeKeyValuePairs,
   encodeKeyValuePairs,
   isCompleteKeyValuePair,
   type KeyValuePair,
+  MASKED_SECRET,
+  outboundAuthenticationFromFormValues,
+  outboundAuthenticationToFormValues,
   parseKeyValuePairs,
-  serializeKeyValuePairs,
-} from './keyValuePairs';
+} from '@thunderid/components';
 import type {ConnectionFieldDef} from '../config/connectionFormFields';
-import {
-  AUTHENTICATION_METHOD_FIELD_NAMES,
-  AuthenticationMethods,
-  type AuthenticationMethod,
-} from '../models/authentication-methods';
-import type {
-  ConnectionRequest,
-  ConnectionResponse,
-  OutboundAuthConfig,
-  OutboundAuthentication,
-  OutboundAuthMethod,
-} from '../models/connection';
+import type {ConnectionRequest, ConnectionResponse, OutboundAuthConfig, OutboundAuthMethod} from '../models/connection';
 
-/** The placeholder value the API returns for stored secrets. */
-export const MASKED_SECRET = '******';
+export {MASKED_SECRET, outboundAuthenticationFromFormValues};
 
 function matchesRequiredWhenValue(
   values: ConnectionFormValues,
@@ -225,10 +217,7 @@ export function responseToFormValues(
       continue;
     }
     if (field.name === 'apiKeyHeaders' || field.name === 'httpHeaders') {
-      const properties = response.authentication?.type === 'api_key' ? response.authentication.properties : undefined;
-      values[field.name] = serializeKeyValuePairs(
-        Object.entries(properties ?? {}).map(([name, value]) => ({name, value})),
-      );
+      values[field.name] = outboundAuthenticationToFormValues(response.authentication).httpHeaders;
       continue;
     }
     if (field.name === 'smsHttpHeaders') {
@@ -236,7 +225,7 @@ export function responseToFormValues(
       continue;
     }
     if (field.name === 'authenticationScheme') {
-      values[field.name] = response.authentication?.type?.toUpperCase() ?? AuthenticationMethods.NONE;
+      values[field.name] = outboundAuthenticationToFormValues(response.authentication).authenticationScheme;
       continue;
     }
     if (field.name === 'redirectUri') {
@@ -265,34 +254,6 @@ export function responseToFormValues(
   return fields.some((field) => field.name === 'apiKeyHeaders')
     ? values
     : {...values, ...authenticationToFormValues(response, authenticationMethods)};
-}
-
-/** Convert flat authentication form values into the structured outbound-authentication API contract. */
-export function outboundAuthenticationFromFormValues(values: ConnectionFormValues): OutboundAuthentication {
-  const scheme = (values['authenticationScheme'] as AuthenticationMethod | undefined) ?? AuthenticationMethods.NONE;
-  if (scheme === AuthenticationMethods.BEARER) {
-    return {type: 'bearer', properties: {token: (values['bearerToken'] ?? '').trim()}};
-  }
-  if (scheme === AuthenticationMethods.BASIC) {
-    return {
-      type: 'basic',
-      properties: {
-        username: (values['basicUsername'] ?? '').trim(),
-        password: (values['basicPassword'] ?? '').trim(),
-      },
-    };
-  }
-  if (scheme === AuthenticationMethods.API_KEY) {
-    const headers = parseKeyValuePairs(values['httpHeaders'] ?? '');
-    if (headers.length === 0) {
-      return {type: 'none'};
-    }
-    return {
-      type: 'api_key',
-      properties: Object.fromEntries(headers.map(({name, value}) => [name, value])),
-    };
-  }
-  return {type: 'none'};
 }
 
 /**

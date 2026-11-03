@@ -151,6 +151,7 @@ describe('DashboardLayout', () => {
     expect(screen.getByText('navigation:pages.applications')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.connections')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.flows')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.authorizationDetailTypes')).toBeInTheDocument();
   });
 
   it.each([false, true])('keeps navigation icon sizes consistent when collapseSidebar is %s', (collapseSidebar) => {

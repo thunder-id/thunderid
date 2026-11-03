@@ -1,9 +1,9 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {KeyValueFormat} from '@thunderid/components';
 import {EMAIL_REGEX} from '@thunderid/utils';
 import {type ConnectionType, ConnectionTypes} from '../models/connection';
-import type {KeyValueFormat} from '../utils/keyValuePairs';
 
 export type ConnectionFieldKind =
   | 'text'

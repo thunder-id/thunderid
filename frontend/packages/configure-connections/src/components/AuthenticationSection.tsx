@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {KeyValuePairsField, MaskedSecretField} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {I18N_KEY_PATTERN, isI18nTemplatePattern} from '@thunderid/utils';
 import {
@@ -17,8 +18,6 @@ import {
 } from '@wso2/oxygen-ui';
 import {type JSX, type ReactNode, useCallback, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
-import KeyValuePairsField from './KeyValuePairsField';
-import MaskedSecretField from './MaskedSecretField';
 import type {OutboundAuthField, OutboundAuthMethod} from '../models/connection';
 import {
   AUTH_ADDITIONAL_PROPERTIES_FIELD,

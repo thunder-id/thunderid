@@ -5,8 +5,7 @@ import {fireEvent, render, screen} from '@testing-library/react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import DiscardChangesDialog from '../DiscardChangesDialog';
 
-vi.mock('react-i18next', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('react-i18next')>()),
+vi.mock('react-i18next', () => ({
   useTranslation: () => ({t: (key: string, fallback?: string) => fallback ?? key}),
 }));
 
@@ -23,6 +22,23 @@ describe('DiscardChangesDialog', () => {
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('Discard unsaved changes?')).toBeInTheDocument();
+    expect(screen.getByText('You have unsaved changes. If you leave now, they will be lost.')).toBeInTheDocument();
+  });
+
+  it('shows the description the caller gives in place of the generic one', () => {
+    render(
+      <DiscardChangesDialog
+        open
+        onClose={onClose}
+        onConfirm={onConfirm}
+        description="You have unsaved changes to this flow."
+      />,
+    );
+
+    expect(screen.getByText('You have unsaved changes to this flow.')).toBeInTheDocument();
+    expect(
+      screen.queryByText('You have unsaved changes. If you leave now, they will be lost.'),
+    ).not.toBeInTheDocument();
   });
 
   it('does not render content when closed', () => {
