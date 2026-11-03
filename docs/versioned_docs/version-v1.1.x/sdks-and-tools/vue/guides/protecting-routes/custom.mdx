@@ -1,0 +1,110 @@
+---
+title: Custom Implementation
+docType: guide
+description: Build custom route protection in Vue using the useThunderID() composable and SDK authentication primitives.
+---
+
+# Custom Implementation
+
+If you prefer full control over how app routes are secured, you can build a custom solution using the primitives provided by the <ProductName /> Vue SDK. This helps when you need to run custom application logic before enabling or disabling a route.
+
+## Basic Custom Route Guard With `<SignedIn />`
+
+The simplest approach is to wrap the protected page content with the `<SignedIn />` component and render a fallback for unauthenticated users:
+
+```vue title="src/pages/Contact.vue" showLineNumbers
+<script setup>
+import { SignedIn, SignedOut } from '@thunderid/vue'
+import ContactDetails from '../components/ContactDetails.vue'
+</script>
+
+<template>
+  <SignedIn>
+    <ContactDetails />
+  </SignedIn>
+  <SignedOut>
+    <p>You must sign in to view this page.</p>
+  </SignedOut>
+</template>
+```
+
+## Custom Composable Using `useThunderID`
+
+For more advanced control, such as role-based protection or a redirect, use `useThunderID()` together with Vue Router's `useRouter`:
+
+```ts title="src/composables/useRequireAuth.ts" showLineNumbers
+import { watchEffect } from 'vue'
+import { useRouter } from 'vue-router'
+import { useThunderID } from '@thunderid/vue'
+
+export interface RequireAuthOptions {
+  redirectTo?: string
+  requireRole?: string
+}
+
+export function useRequireAuth(options: RequireAuthOptions = {}) {
+  const { redirectTo = '/signin', requireRole } = options
+  const { isInitialized, isSignedIn, user } = useThunderID()
+  const router = useRouter()
+
+  watchEffect(() => {
+    if (!isInitialized.value) return
+
+    if (!isSignedIn.value) {
+      router.replace(redirectTo)
+      return
+    }
+
+    if (requireRole && !user.value?.roles?.includes(requireRole)) {
+      router.replace('/forbidden')
+    }
+  })
+}
+```
+
+Then use it inside any protected page:
+
+```vue title="src/pages/AdminDashboard.vue" showLineNumbers
+<script setup>
+import { useRequireAuth } from '../composables/useRequireAuth'
+
+useRequireAuth({ redirectTo: '/signin', requireRole: 'admin' })
+</script>
+
+<template>
+  <h1>Admin Dashboard</h1>
+  <!-- ... -->
+</template>
+```
+
+## Custom Navigation Guard
+
+You can also build a Vue Router navigation guard from scratch using the SDK's `inject` key directly. This is essentially what `createThunderIDGuard` does internally, and you can fork it to add custom logic.
+
+```ts title="src/router/guards.ts" showLineNumbers
+import { inject } from 'vue'
+import type { NavigationGuard } from 'vue-router'
+import { THUNDERID_KEY } from '@thunderid/vue'
+import type { ThunderIDContext } from '@thunderid/vue'
+
+export const requireAuth: NavigationGuard = async (to, from, next) => {
+  const ctx = inject<ThunderIDContext>(THUNDERID_KEY)
+
+  if (!ctx) {
+    return next({ path: '/signin' })
+  }
+
+  // Wait for initialization
+  while (!ctx.isInitialized.value) {
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+  }
+
+  if (!ctx.isSignedIn.value) {
+    return next({ path: '/signin', query: { redirect: to.fullPath } })
+  }
+
+  // Add any custom role / permission checks here
+
+  return next()
+}
+```

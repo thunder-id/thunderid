@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"gopkg.in/yaml.v3"
 
 	entitypkg "github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/sharing"
@@ -506,6 +507,34 @@ func TestAUsersSharingPoliciesAreExported(t *testing.T) {
 	user := c.exportUser(t)
 
 	assert.Equal(t, []sharing.PolicyRequest{share, reshare}, user.SharingPolicies)
+}
+
+// The roles a share mandates travel with the user's export, in the shape an import replays.
+func (suite *DeclarativeResourceTestSuite) TestAUsersMandatedRolesAreExported() {
+	c := newCredentialExport(suite.T(), "alice")
+	c.typeDeclaresCredentials()
+	roles := []string{"role-a"}
+	share := sharing.PolicyRequest{ChildUnits: &sharing.ChildUnitsRequest{
+		Mode: sharing.ChildUnitsSelected,
+		Units: []sharing.ChildUnitRequest{{OUID: "ou-eu", Reach: sharing.ReachUnit,
+			OverlayRules: map[string]sharing.OverlayRule{RolesFieldKey: {Value: &roles}}}},
+	}}
+	c.sharingAnswers(suite.T(), []sharing.ReplayablePolicy{{InitiatingOUID: "ou-1", Request: share}}, nil)
+
+	doc, err := yaml.Marshal(c.exportUser(suite.T()))
+	suite.Require().NoError(err)
+	var reimported userDeclarativeResource
+	suite.Require().NoError(yaml.Unmarshal(doc, &reimported))
+
+	suite.Assert().Contains(string(doc), "editable: false")
+	suite.Require().Len(reimported.SharingPolicies, 1)
+	units := reimported.SharingPolicies[0].ChildUnits.Units
+	suite.Require().Len(units, 1)
+	suite.Assert().Equal(sharing.ReachUnit, units[0].Reach)
+	rule := units[0].OverlayRules[RolesFieldKey]
+	suite.Assert().False(rule.Editable)
+	suite.Require().NotNil(rule.Value)
+	suite.Assert().Equal(roles, *rule.Value)
 }
 
 // A user shared nowhere is exported with no sharing section.

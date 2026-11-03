@@ -594,11 +594,6 @@ configuration:
     # Leave empty to inherit the global declarativeResources.enabled setting.
     store: ""
 
-  # SCIM 2.0 provisioning configuration.
-  scim:
-    # URN prefix of the per-user-type SCIM extension schemas. A trailing colon is added if missing.
-    urnPrefix: "urn:thunderid:params:scim:schemas:"
-
   # Account access (automatic lock) policy for the user and agent categories, the deployment base of
   # the accountAccess server-config section. The values are the product defaults; a key removed here
   # is not rendered, so the product default applies.

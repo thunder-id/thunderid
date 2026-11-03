@@ -1,0 +1,78 @@
+---
+title: SignOutButton
+docType: reference
+description: Jetpack Compose button that signs the user out and refreshes authentication state in Android apps.
+---
+
+# `SignOutButton`
+
+The `SignOutButton` composable renders a pre-styled button that calls `ThunderIDClient.signOut()`, then calls `ThunderIDState.refresh()` to update the reactive auth state. It disables itself automatically while the sign-out operation is in progress.
+
+`SignOutButton` requires `ThunderIDProvider` in its ancestor composable hierarchy.
+
+## Usage
+
+```kotlin
+import dev.thunderid.compose.components.actions.SignOutButton
+
+@Composable
+fun HomeView() {
+    Column {
+        Text("You are signed in.")
+        SignOutButton()
+    }
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `modifier` | `Modifier` | ❌ | Compose modifier applied to the button. |
+| `onSignOutComplete` | `(() -> Unit)?` | ❌ | Called after sign-out completes and `ThunderIDState` has been refreshed. |
+
+## Example: Handle Sign-Out Completion
+
+```kotlin
+SignOutButton(
+    onSignOutComplete = {
+        // Navigate to the landing screen or perform cleanup
+        println("User has signed out")
+    }
+)
+```
+
+## Customization with `BaseSignOutButton`
+
+`BaseSignOutButton` is the unstyled variant. Use it to implement your own sign-out UI while delegating the actual sign-out logic to `thunder.client.signOut()`.
+
+```kotlin
+import dev.thunderid.compose.components.actions.BaseSignOutButton
+import dev.thunderid.compose.LocalThunderID
+
+@Composable
+fun CustomSignOutButton() {
+    val thunder = LocalThunderID.current
+    val scope = rememberCoroutineScope()
+
+    BaseSignOutButton(
+        label = "Log Out",
+        isLoading = thunder.isLoading,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        scope.launch {
+            runCatching { thunder.client.signOut() }
+            thunder.refresh()
+        }
+    }
+}
+```
+
+### `BaseSignOutButton` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `label` | `String` | ✅ | The button label text. |
+| `isLoading` | `Boolean` | ❌ | When `true`, the button is disabled. Defaults to `false`. |
+| `modifier` | `Modifier` | ❌ | Compose modifier. |
+| `onClick` | `() -> Unit` | ✅ | Called when the button is tapped. |

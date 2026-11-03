@@ -406,6 +406,12 @@ func IsValidURI(uri string) bool {
 	return true
 }
 
+// IsLoopbackRedirectHost reports whether a redirect URI host is one of the loopback hosts an http
+// redirect URI may name: localhost, 127.0.0.1 or ::1.
+func IsLoopbackRedirectHost(host string) bool {
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
 // IsValidLogoURI checks if the provided URI is valid for use as a logo URL.
 // It enforces a scheme allowlist: http/https require a non-empty host, data/blob/emoji/avatar
 // schemes are always accepted, and relative paths (no scheme, non-empty path) are accepted.

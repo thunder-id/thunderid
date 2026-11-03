@@ -368,8 +368,7 @@ func isCIMDRedirectURI(raw string, clientIDURL *url.URL) bool {
 	case schemeHTTPS:
 		return strings.EqualFold(u.Host, clientIDURL.Host)
 	case "http":
-		host := u.Hostname()
-		return host == "localhost" || host == "127.0.0.1" || host == "::1"
+		return sysutils.IsLoopbackRedirectHost(u.Hostname())
 	}
 	return false
 }

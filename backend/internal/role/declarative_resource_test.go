@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/sharing"
@@ -233,6 +234,35 @@ func (suite *RoleExporterTestSuite) TestGetResourceByID_Success() {
 		{ID: "user1", Type: AssigneeTypeUser, OUID: "ou1"},
 		{ID: "group1", Type: AssigneeTypeGroup, OUID: "ou-child"},
 	}, role.Assignments)
+}
+
+// A mandated assignment follows its sharing policy, so the export leaves it out and an import of the
+// document writes back only the direct assignments.
+func (suite *RoleExporterTestSuite) TestGetResourceByID_LeavesMandatedAssignmentsOut() {
+	suite.exportingPolicies(nil, nil)
+	suite.mockAssignmentService.On(
+		"GetRoleAssignments", suite.ctx, "role1", "", serverconst.MaxPageSize, 0, false,
+	).Return(&AssignmentList{Assignments: []RoleAssignmentWithDisplay{
+		{ID: "user1", Type: AssigneeTypeUser, OUID: "ou-child"},
+		{ID: "user1", Type: AssigneeTypeUser, OUID: "ou-child", PolicyID: "policy-1"},
+		{ID: "user2", Type: AssigneeTypeUser, OUID: "ou-child", PolicyID: "policy-2"},
+	}, TotalResults: 3}, nil)
+	suite.mockAssignmentService.On(
+		"GetRoleAssignments", suite.ctx, "role1", "", serverconst.MaxPageSize, 3, false,
+	).Return(&AssignmentList{Assignments: []RoleAssignmentWithDisplay{}, TotalResults: 3}, nil)
+
+	resource, _, err := suite.exporter.GetResourceByID(suite.ctx, "role1")
+
+	suite.Require().Nil(err)
+	role, ok := resource.(*roleDeclarativeResource)
+	suite.Require().True(ok)
+	suite.Equal([]RoleAssignment{{ID: "user1", Type: AssigneeTypeUser, OUID: "ou-child"}}, role.Assignments)
+
+	document, marshalErr := yaml.Marshal(role)
+	suite.Require().NoError(marshalErr)
+	var imported roleDeclarativeResource
+	suite.Require().NoError(yaml.Unmarshal(document, &imported))
+	suite.Equal(role.Assignments, imported.Assignments)
 }
 
 // exportingPolicies rebuilds the exporter around a sharing service that answers the role's policies.

@@ -1,0 +1,251 @@
+---
+toc_progress: quickstart
+title: Nuxt Quickstart
+docType: quickstart
+sidebar_position: 3
+persona: app
+description: Add {{ProductName}} authentication to a Nuxt 3 application using the @thunderid/nuxt module.
+---
+
+import {
+  Boxes,
+  Package,
+  LogIn,
+  BookOpen,
+  Clock,
+  Server,
+  Hexagon,
+  FileCode,
+} from '@wso2/oxygen-ui-icons-react';
+
+# Nuxt Quickstart
+
+Use this guide to add <ProductName /> authentication to a Nuxt 3 application using the `@thunderid/nuxt` module.
+
+<SdkQuickstartDownload packageId="nuxt" sample="quickstarts/nuxt" icon={<NuxtLogo size={22} />} promptFlow="embedded" />
+
+<TutorialHero>
+
+## What You Will Learn
+
+<TutorialHeroItem icon={<Boxes />}>Create a new Nuxt 3 app</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>Register the <code>@thunderid/nuxt</code> module</TutorialHeroItem>
+<TutorialHeroItem icon={<LogIn />}>Add working sign-in and sign-out</TutorialHeroItem>
+<TutorialHeroItem icon={<BookOpen />}>Wrap your app with <ProductName />Root</TutorialHeroItem>
+
+## Prerequisites
+
+<TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
+<TutorialHeroItem icon={<Hexagon />}>Node.js 18.0 or later installed on your system</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>npm, yarn, or pnpm</TutorialHeroItem>
+<TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
+
+</TutorialHero>
+
+<Stepper stepNode="h2" as="h2">
+
+## Run <ProductName />
+
+Start a local <ProductName /> instance. Pick the method that works best for you:
+
+<RunThunderID />
+
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
+
+## Create an Application
+
+1. Sign in to the Console.
+
+    :::info Test User
+    If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+    :::
+
+2. Navigate to **Applications**.
+3. Click **Add Application**.
+4. From the **Choose a type** page, select **Nuxt**.
+5. Enter a name (e.g. `My Nuxt App`).
+6. Select how you want to sign in users (e.g., email/password, social login, etc.).
+7. Select Theme settings.
+8. Set **Sign-In Approach** to **Bring Your Own UI**.
+9. Click **Create**.
+
+:::note Note
+Copy the **Application ID** from the **General** tab, under **Quick Copy**. Also copy the **Client Secret** from the window that pops up when the application is created; if lost, you can regenerate it from the application's **Credentials** tab.
+:::
+
+## Create a Nuxt App
+
+Create a new Nuxt 3 app:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm create nuxt@latest my-nuxt-app
+    cd my-nuxt-app
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm create nuxt@latest my-nuxt-app
+    cd my-nuxt-app
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn create nuxt my-nuxt-app
+    cd my-nuxt-app
+  </CodeBlock>
+</CodeGroup>
+
+## Install @thunderid/nuxt
+
+Install the <ProductName /> Nuxt module:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm install @thunderid/nuxt
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm add @thunderid/nuxt
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn add @thunderid/nuxt
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun add @thunderid/nuxt
+  </CodeBlock>
+</CodeGroup>
+
+## Register the Module
+
+Add `@thunderid/nuxt` to your `nuxt.config.ts`:
+
+```typescript title="nuxt.config.ts" {5} showLineNumbers
+// https://nuxt.com/docs/api/configuration/nuxt-config
+export default defineNuxtConfig({
+  compatibilityDate: '2025-07-15',
+  devtools: { enabled: true },
+  modules: ['@thunderid/nuxt'],
+})
+```
+
+That's all the `nuxt.config.ts` change needed. The module reads all configuration from environment variables.
+
+## Set Environment Variables
+
+Create a `.env` file in your project root with the following:
+
+:::warning Configuration
+Replace `<your-application-id>` and `<your-client-secret>` with the values from your <ProductName /> application.
+
+Generate a random string for `THUNDERID_SESSION_SECRET` (at least 32 characters):
+
+```bash
+openssl rand -base64 32
+```
+:::
+
+```dotenv title=".env" showLineNumbers
+NUXT_PUBLIC_THUNDERID_BASE_URL=https://localhost:8090
+NUXT_PUBLIC_THUNDERID_APPLICATION_ID=<your-application-id>
+NUXT_PUBLIC_THUNDERID_SIGN_IN_URL=/signin
+NUXT_PUBLIC_THUNDERID_SIGN_UP_URL=/signup
+THUNDERID_CLIENT_SECRET=<your-client-secret>
+THUNDERID_SESSION_SECRET=<a-random-secret-for-session-signing>
+# DANGER: Disables ALL TLS verification. Only for local development with self-signed certs. NEVER use in production.
+NODE_TLS_REJECT_UNAUTHORIZED=0
+```
+
+## Wrap Your App with <ProductName />Root
+
+The `<ThunderIDRoot>` component mounts the full authentication provider tree. Wrap your application content with it in `app.vue`:
+
+```vue title="app.vue" {2-4} showLineNumbers
+<template>
+  <ThunderIDRoot>
+    <NuxtPage />
+  </ThunderIDRoot>
+</template>
+```
+
+:::info Auto-imports
+The `@thunderid/nuxt` module auto-registers all components (under the `ThunderID` prefix, e.g. `<SignedIn>`) and auto-imports all composables. You do **not** need to import them manually.
+:::
+
+## Add Sign-In and Sign-Up Pages
+
+The `<SignIn />` and `<SignUp />` components render the sign-in and sign-up forms natively, using the Flow Execution API. Create the routes configured above as `NUXT_PUBLIC_THUNDERID_SIGN_IN_URL` and `NUXT_PUBLIC_THUNDERID_SIGN_UP_URL`:
+
+```vue title="app/pages/signin.vue" showLineNumbers
+<template>
+  <main>
+    <SignIn />
+  </main>
+</template>
+```
+
+```vue title="app/pages/signup.vue" showLineNumbers
+<template>
+  <main>
+    <SignUp after-sign-up-url="/" />
+  </main>
+</template>
+```
+
+## Build with <ProductName /> Components
+
+Update your home page with <ProductName /> authentication components:
+
+```vue title="app/pages/index.vue" {3-8} showLineNumbers
+<template>
+  <main>
+    <SignedIn>
+      <UserDropdown />
+    </SignedIn>
+    <SignedOut>
+      <SignInButton>Sign In</SignInButton>
+    </SignedOut>
+  </main>
+</template>
+```
+
+:::info
+`<SignInButton />` navigates to the local `NUXT_PUBLIC_THUNDERID_SIGN_IN_URL` route you created above, rather than redirecting to a <ProductName />-hosted page.
+:::
+
+## Run Your App
+
+Start the development server:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm run dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm run dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn dev
+  </CodeBlock>
+</CodeGroup>
+
+:::note Test credentials
+You'll need a user to sign in with. If you haven't created one yet, open <ConsoleUrl />, navigate to **Users**, and add a test user with an email and password.
+:::
+
+:::tip Success
+Visit your app at 🌐 [http://localhost:3000](http://localhost:3000)
+
+You should see the `<SignInButton />` button. Click it, you'll land on your application's own `/signin` page. Login with your test user, then return to your application with the user dropdown displayed.
+:::
+
+</Stepper>
+
+## What's Next
+
+<NextSteps>
+  <NextStepsCard title="Upgrade the Sign-In Flow" href="../../../guides/flows/what-are-flows" description="Add MFA, passkeys, or social login to your flow: no app code changes required." cta="Flow Designer" />
+  <NextStepsCard title="Nuxt SDK Reference" href="../../../sdks-and-tools/nuxt/overview" description="Explore the full API reference for the Nuxt SDK." cta="API Reference" />
+</NextSteps>

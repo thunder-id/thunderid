@@ -1,0 +1,56 @@
+---
+title: getValidAccessToken()
+docType: reference
+description: Retrieve a valid access token from the server session, refreshing it automatically when it has expired.
+---
+
+# `getValidAccessToken()`
+
+`getValidAccessToken` returns a valid access token for the current session. If the stored access token is expired or about to expire, it automatically uses the refresh token to obtain a new one and updates the session cookie.
+
+## Signature
+
+```ts
+getValidAccessToken(event: H3Event): Promise<string>
+```
+
+## Import
+
+```ts
+import { getValidAccessToken } from '@thunderid/nuxt/server'
+```
+
+## Usage
+
+### Calling a Protected External API
+
+```ts title="server/api/data.get.ts" showLineNumbers
+import { getValidAccessToken } from '@thunderid/nuxt/server'
+
+export default defineEventHandler(async (event) => {
+  const accessToken = await getValidAccessToken(event)
+
+  const result = await $fetch('https://api.example.com/data', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  return result
+})
+```
+
+## Return Value
+
+Returns a `Promise<string>` containing a valid access token.
+
+## Error Behavior
+
+Throws a `ThunderIDError` with code `ErrorCode.TokenRefreshFailed` if:
+- No session exists on the request
+- The refresh token is missing or invalid
+- The token refresh request fails
+
+## Notes
+
+- If the access token is still valid, no network request is made.
+- If a refresh occurs, the updated session is written back to the response cookie so the client remains in sync.
+- To access session metadata alongside the token, call [`requireServerSession()`](../require-server-session) first and use `getValidAccessToken` only when you need to forward the token to an external API.

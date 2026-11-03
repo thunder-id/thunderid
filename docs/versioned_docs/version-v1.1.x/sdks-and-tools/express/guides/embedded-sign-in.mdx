@@ -1,0 +1,126 @@
+---
+title: Embedded Sign-In
+docType: guide
+description: Drive the Express embedded sign-in flow with handleFlow() for JSON-based multi-step authentication.
+---
+
+# Embedded Sign-In
+
+Use embedded sign-in when your application needs to advance the sign-in flow through JSON requests.
+Use it when you do not want to rely on a browser redirect for every interaction.
+
+## Prerequisites
+
+- `express`
+- `cookie-parser`
+- `express.json()`
+- `mode: 'embedded'` in your Express SDK configuration
+
+## Middleware and Route Setup
+
+```js title="index.js" showLineNumbers
+const express = require('express');
+const cookieParser = require('cookie-parser');
+const {thunderID, handleFlow, handleSignIn, handleSignOut} = require('@thunderid/express');
+
+const app = express();
+
+app.use(cookieParser());
+app.use(express.json());
+app.use(
+  thunderID({
+    baseUrl: 'https://localhost:8090',
+    clientId: '<your-client-id>',
+    clientSecret: '<your-client-secret>',
+    mode: 'embedded',
+    afterSignInUrl: 'http://localhost:3000/login',
+    afterSignOutUrl: 'http://localhost:3000/logout',
+  }),
+);
+
+app.post('/flow/sign-in', handleFlow());
+app.get('/login', handleSignIn());
+app.get('/logout', handleSignOut());
+```
+
+## Request Lifecycle
+
+### Start the Flow
+
+Send the first request without an `executionId`:
+
+```json
+{
+  "applicationId": "app-id",
+  "flowType": "SIGN_IN"
+}
+```
+
+If `flowType` is omitted, the handler uses `'SIGN_IN'`.
+
+### Continue the Flow
+
+When the SDK returns `executionId`, `challengeToken`, and `authId`, send them back with the next user inputs:
+
+```json
+{
+  "executionId": "...",
+  "challengeToken": "...",
+  "authId": "...",
+  "inputs": {
+    "...": "..."
+  }
+}
+```
+
+## Response Lifecycle
+
+### Continue rendering UI
+
+If the flow still needs more steps, `handleFlow()` returns:
+
+```json
+{
+  "authId": "...",
+  "challengeToken": "...",
+  "components": [],
+  "executionId": "...",
+  "flowStatus": "..."
+}
+```
+
+Render the returned `components`, collect input, and post the next request.
+
+### Complete Sign-In
+
+If the flow completes, `handleFlow()` returns:
+
+```json
+{
+  "done": true,
+  "redirectUrl": "/login?code=..."
+}
+```
+
+Navigate to `redirectUrl`. That request is handled by `handleSignIn()`, which exchanges the code and sets the session cookie.
+
+## How `GET /login` and `POST /flow/sign-in` Work Together
+
+- `POST /flow/sign-in` advances the embedded interaction and eventually returns a redirect URL
+- `GET /login` completes the OAuth callback after the embedded flow returns the authorization code redirect
+
+Both routes are required for the embedded sign-in flow shown in the current SDK source.
+
+## Failure Cases
+
+`handleFlow()` returns `500` JSON responses when:
+
+- the SDK is not initialized because `thunderID()` was not mounted first
+- `baseUrl` is missing from the config
+- flow execution fails at runtime
+
+## Related APIs
+
+- [`handleFlow()`](../../apis/middleware/handle-flow)
+- [`handleSignIn()`](../../apis/middleware/handle-sign-in)
+- [`ExpressClientConfig`](../../apis/configuration/express-client-config)

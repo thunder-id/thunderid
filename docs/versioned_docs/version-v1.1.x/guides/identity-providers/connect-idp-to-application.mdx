@@ -1,0 +1,111 @@
+---
+title: Connect an IdP to an Application
+docType: guide
+sidebar_position: 6
+persona: iam
+description: Wire a configured identity provider into an application's authentication flow to enable social login.
+---
+
+# Connect an IdP to an Application
+
+Connect a configured identity provider (IdP) to an application's sign-in flow to offer federated sign-in.
+
+## How It Works
+
+Applications in <ProductName /> do not reference IdPs directly. The connection runs through authentication flows:
+
+1. A configured IdP holds the credentials and endpoint URLs for the external provider.
+2. An authentication flow contains a social login executor that references that IdP.
+3. The application runs that flow during sign-in, which triggers the IdP's authorization redirect.
+
+## Prerequisites
+
+- You have configured an identity provider connection. See:
+  - [Add a Google Identity Provider](../add-google)
+  - [Add a GitHub Identity Provider](../add-github)
+  - [Add an OIDC Identity Provider](../add-oidc-provider)
+  - [Add an OAuth 2.0 Identity Provider](../add-oauth-provider)
+- You have created an application. See [Manage Applications](../../applications/manage-applications).
+
+:::note Just-in-time provisioning for first-time users
+The **Continue with Google Login** and **Continue with GitHub Login** widgets enable **Allow Authentication Without Local User** and add the Provisioning steps required to create a local account.
+
+For a generic OAuth 2.0 or OIDC connection, enable **Allow Authentication Without Local User** on the executor and add the **Provisioning** widget manually. Without this configuration, the external identity must map to an existing local user. See [Federated Authentication](../../flows/advanced-configurations#federated-authentication).
+:::
+
+:::note Configure a user type for first-time social sign-in
+Your application must allow exactly one user type with **Allow Self Registration** enabled. Sign-in fails if none or more than one of the allowed user types has this setting enabled.
+
+Under the application's **Access** settings, select the user type you want to assign to first-time users. If you select other user types, ensure only one has **Allow Self Registration** enabled under **User Types**. Existing users are unaffected.
+
+A **User Type Resolver** step selects the user type when several are eligible, but only in registration flows, where it prompts the user to choose. In authentication flows it does not resolve a type, so adding it to a sign-in flow does not lift this requirement.
+:::
+
+<Stepper stepNode="h2" as="h2">
+
+## Step 1: Open the Flow Designer
+
+1. Sign in to the <ProductName /> Console.
+2. Navigate to **Flows**.
+3. Open the authentication flow assigned to your application, or click **+ Create New Flow** to create a new one.
+
+## Step 2: Add the Social Login Option
+
+Follow the instructions for your connection type.
+
+### Google or GitHub
+
+1. In the left panel, expand **Widgets**.
+2. Click **+** on **Continue with Google Login** or **Continue with GitHub Login**.
+
+The widget adds a button to an existing View or creates a View when the flow has none. It also adds the provider executor, Provisioning steps for first-time users, and an Auth Assertion Generator, then connects the generated steps.
+
+If you have exactly one matching connection, <ProductName /> assigns it automatically. If you have multiple matching connections, click the provider executor and select the required **Connection**.
+
+### OAuth 2.0 or OIDC
+
+1. In the left panel, expand **Executors**.
+2. Click **+** on **OAuth** or **OIDC Auth**.
+3. Click the executor node to open its configuration panel.
+4. Select the required **Connection**. <ProductName /> assigns it automatically when exactly one matching connection exists.
+5. To create local accounts for first-time users:
+   1. Enable **Allow Authentication Without Local User**.
+   2. Add the **Provisioning** widget to the flow.
+
+## Step 3: Complete a Generic OAuth 2.0 or OIDC Flow
+
+Skip this step if you added the Google or GitHub widget.
+
+1. Add a **Button** component to the sign-in View and connect its output to the OAuth or OIDC executor.
+2. If you enabled **Allow Authentication Without Local User**, add the **Provisioning** widget.
+3. Add an **Auth Assertion Generator** executor.
+4. Connect the success path from the OAuth or OIDC executor to **Provisioning**, when present, and then to **Auth Assertion Generator**.
+5. Connect **Auth Assertion Generator** to **END**.
+
+Route failure outputs to an error View if you want to display the failure reason. An unconnected failure output terminates the flow with an unhandled error. Use an executor's incomplete output only when that executor requests more input. See [Always Wire Failure Outputs](../../flows/build-a-flow#always-wire-failure-outputs).
+
+## Step 4: Save the Flow
+
+Click **Save** in the top-right corner.
+
+## Step 5: Assign the Flow to Your Application
+
+1. Navigate to **Applications** and open the application you want to configure.
+2. Open the **Flows** tab.
+3. Under **Sign-in Flow**, select the flow.
+4. Save the application.
+
+## Step 6: Verify the Integration
+
+1. Start a sign-in request from your application.
+2. On the sign-in page, confirm the social login button for your provider appears.
+3. Click the button and complete the authorization flow with the external provider.
+4. Confirm you are redirected back to your application and authenticated successfully.
+
+</Stepper>
+
+## Next Steps
+
+- [Application Settings](../../applications/application-settings): Configure tokens, flows, and consent for your application.
+- [Build a Sign-In Flow](../../flows/build-a-flow): Learn more about customizing authentication flows.
+- [Manage Identity Providers](../manage-identity-providers): Update or remove identity providers.

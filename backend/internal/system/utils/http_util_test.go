@@ -145,6 +145,25 @@ func (suite *HTTPUtilTestSuite) TestParseURL() {
 	}
 }
 
+func (suite *HTTPUtilTestSuite) TestIsLoopbackRedirectHost() {
+	testCases := []struct {
+		host     string
+		expected bool
+	}{
+		{host: "localhost", expected: true},
+		{host: "127.0.0.1", expected: true},
+		{host: "::1", expected: true},
+		{host: "[::1]", expected: false},
+		{host: "127.0.0.2", expected: false},
+		{host: "localhost.example.com", expected: false},
+		{host: "client.example.com", expected: false},
+		{host: "", expected: false},
+	}
+	for _, tc := range testCases {
+		suite.Equal(tc.expected, IsLoopbackRedirectHost(tc.host), tc.host)
+	}
+}
+
 func (suite *HTTPUtilTestSuite) TestIsValidLogoURI() {
 	testCases := []struct {
 		name     string

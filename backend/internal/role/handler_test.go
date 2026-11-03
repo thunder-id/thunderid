@@ -147,6 +147,29 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleAssignmentsGetRequest_OUFilter(
 	}
 }
 
+// An assignment a sharing policy mandates is read-only, and a direct one omits the flag.
+func (suite *RoleHandlerTestSuite) TestHandleRoleAssignmentsGetRequest_MarksMandatedAssignmentsReadOnly() {
+	suite.mockAssignmentService.On("GetRoleAssignments", mock.Anything, "role1", "", 30, 0, false).
+		Return(&AssignmentList{TotalResults: 2, StartIndex: 1, Count: 2, Assignments: []RoleAssignmentWithDisplay{
+			{ID: "user1", Type: AssigneeTypeUser, OUID: "ou-child"},
+			{ID: "user1", Type: AssigneeTypeUser, OUID: "ou-child", PolicyID: "policy-1"},
+		}}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/roles/role1/assignments", nil)
+	req.SetPathValue("id", "role1")
+	w := httptest.NewRecorder()
+	suite.handler.HandleRoleAssignmentsGetRequest(w, req)
+
+	suite.Require().Equal(http.StatusOK, w.Code)
+	var body struct {
+		Assignments []map[string]interface{} `json:"assignments"`
+	}
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+	suite.Require().Len(body.Assignments, 2)
+	suite.Equal(false, body.Assignments[0]["isReadOnly"])
+	suite.Equal(true, body.Assignments[1]["isReadOnly"])
+}
+
 // The body's ouId names the organization unit the assignments are made in or taken from.
 func (suite *RoleHandlerTestSuite) TestHandleRoleAssignmentsRequest_InOU() {
 	body := `{"ouId":"ou-child","assignments":[{"id":"user1","type":"user"}]}`

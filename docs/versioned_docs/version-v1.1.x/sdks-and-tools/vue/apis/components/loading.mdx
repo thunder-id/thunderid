@@ -1,0 +1,68 @@
+---
+title: <Loading />
+docType: reference
+description: Display loading content while authentication status is being determined in your Vue application.
+---
+
+# `<Loading />`
+
+The `Loading` component renders its default slot while the authentication state is being determined.
+It checks the current authentication state and displays a loading indicator or custom content during the initial authentication check. Once authentication is complete, it renders an optional `#fallback` slot or nothing by default.
+This makes it ideal for providing user feedback during the initial app load or authentication verification.
+
+## Usage
+
+You can use the `Loading` component to wrap any content that should be visible during authentication state checks.
+
+### Basic Usage
+
+Use `Loading` to show content while authentication is being verified.
+
+```vue title="src/App.vue" showLineNumbers
+<script setup>
+import { Loading } from '@thunderid/vue'
+</script>
+
+<template>
+  <Loading>
+    <div>Checking authentication...</div>
+  </Loading>
+</template>
+```
+
+:::note
+Once the authentication state is determined, nothing will be rendered unless you provide a `#fallback` slot.
+:::
+
+### Fallback Slot
+
+Show your main application content once loading is complete using the `#fallback` slot:
+
+```vue title="src/App.vue" showLineNumbers
+<script setup>
+import { Loading, SignedIn, SignedOut } from '@thunderid/vue'
+import Dashboard from './components/Dashboard.vue'
+import LandingPage from './components/LandingPage.vue'
+</script>
+
+<template>
+  <Loading>
+    <div>Checking authentication...</div>
+    <template #fallback>
+      <SignedIn>
+        <Dashboard />
+      </SignedIn>
+      <SignedOut>
+        <LandingPage />
+      </SignedOut>
+    </template>
+  </Loading>
+</template>
+```
+
+## Slots
+
+| Slot | Description |
+| :--- | :--- |
+| `default` | Content to render during authentication loading |
+| `fallback` | Content to render once authentication is determined |

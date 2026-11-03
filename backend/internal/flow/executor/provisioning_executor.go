@@ -1062,8 +1062,12 @@ func agentDelegation(ctx *providers.NodeContext) (bool, *tidcommon.ServiceError)
 }
 
 // collectedValue reads a value the flow collected for key, preferring what an executor resolved
-// over what the caller submitted. Submitted values are unfiltered, so a resolved one wins.
+// over what the caller submitted. Submitted values are unfiltered, so a resolved one wins. A constant
+// input of the node is read first.
 func collectedValue(ctx *providers.NodeContext, key string) string {
+	if isConstantNodeInput(ctx, key) && ctx.UserInputs[key] != "" {
+		return ctx.UserInputs[key]
+	}
 	if val, ok := ctx.RuntimeData[key]; ok && val != "" {
 		return val
 	}

@@ -500,3 +500,21 @@ var errOverlayReplaceRefused = errors.New("overlay replacement refused")
 // errPolicyPurgeRefused rolls back a resource's policy purge. The refusal itself travels out
 // separately, so the caller sees which policy could not be removed.
 var errPolicyPurgeRefused = errors.New("sharing policy purge refused")
+
+// ResourceTypeError carries a resource type's error out of the sharing change it rolls back.
+type ResourceTypeError struct {
+	svcErr *tidcommon.ServiceError
+}
+
+// NewResourceTypeError wraps a resource type's error so a capability can stop a sharing change with it.
+func NewResourceTypeError(svcErr *tidcommon.ServiceError) error {
+	if svcErr == nil {
+		return nil
+	}
+	return &ResourceTypeError{svcErr: svcErr}
+}
+
+// Error names the resource type's error code.
+func (e *ResourceTypeError) Error() string {
+	return "resource type stopped the sharing change: code=" + e.svcErr.Code
+}

@@ -515,6 +515,10 @@ func (e *roleExporter) getAllRoleAssignments(
 		}
 
 		for _, assignment := range list.Assignments {
+			// A mandated assignment follows its sharing policy and would import back as a direct one.
+			if assignment.PolicyID != "" {
+				continue
+			}
 			assignments = append(assignments, RoleAssignment{
 				ID:   assignment.ID,
 				Type: assignment.Type,

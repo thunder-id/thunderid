@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -50,6 +52,11 @@ type RoleAssignmentServiceInterface interface {
 		roleIDs []string) *tidcommon.ServiceError
 	// DeleteAssignmentsInOU removes every assignment of the role made in the organization unit.
 	DeleteAssignmentsInOU(ctx context.Context, id, ouID string) error
+	// ApplyMandatedAssignments syncs a sharing policy's mandated assignments to desired (unit to role IDs).
+	ApplyMandatedAssignments(ctx context.Context, policyID string, assignee RoleAssignment,
+		desired map[string][]string) *tidcommon.ServiceError
+	// RemoveMandatedAssignments removes every assignment a sharing policy mandates.
+	RemoveMandatedAssignments(ctx context.Context, policyID string) *tidcommon.ServiceError
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
@@ -78,7 +85,7 @@ func newRoleAssignmentService(
 	transactioner providers.Transactioner,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	sharingService sharing.SharingServiceInterface,
-) RoleAssignmentServiceInterface {
+) *roleAssignmentService {
 	return &roleAssignmentService{
 		roleStore:         roleStore,
 		entityService:     entityService,
@@ -317,13 +324,25 @@ func (as *roleAssignmentService) ValidateRemoveAssignment(ctx context.Context, i
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	mandated, svcErr := as.mandatedAssignments(ctx, id, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	keptByMandate := mandatesAssignee(mandated, assigneeID)
 	if assignment == nil {
+		if keptByMandate {
+			return nil, &ErrorAssignmentMandated
+		}
 		return nil, &ErrorRoleAssignmentNotFound
 	}
 	if _, svcErr := as.prepareAssignments(
 		ctx, id, ouID, []RoleAssignment{{ID: assignment.ID, Type: assignment.Type}}, false,
 	); svcErr != nil {
 		return nil, svcErr
+	}
+	// The assignee keeps the role through the mandate, so removing the direct assignment revokes nothing.
+	if keptByMandate {
+		return &revocation.AccessRevocationTarget{AssigneeType: string(assignment.Type)}, nil
 	}
 
 	scopes, svcErr := resolveScopes(ctx, as.resourceService, role.Permissions)
@@ -361,6 +380,11 @@ func (as *roleAssignmentService) modifyAssignments(
 	normalized, svcErr := as.prepareAssignments(ctx, id, ouID, assignments, adding)
 	if svcErr != nil {
 		return svcErr
+	}
+	if !adding {
+		if svcErr := as.requireDirectRemoval(ctx, id, normalized); svcErr != nil {
+			return svcErr
+		}
 	}
 
 	var capturedSvcErr *tidcommon.ServiceError
@@ -568,6 +592,80 @@ func (as *roleAssignmentService) requireAssignableInOU(
 	return nil
 }
 
+// requireDirectRemoval refuses a removal naming an assignee who holds the role in the unit only through a mandate.
+func (as *roleAssignmentService) requireDirectRemoval(
+	ctx context.Context, id string, normalized []RoleAssignment,
+) *tidcommon.ServiceError {
+	ouID := normalized[0].OUID
+	mandated, svcErr := as.mandatedAssignments(ctx, id, ouID)
+	if svcErr != nil {
+		return svcErr
+	}
+	var held []string
+	for _, a := range normalized {
+		if mandatesAssignee(mandated, a.ID) {
+			held = append(held, a.ID)
+		}
+	}
+	if len(held) == 0 {
+		return nil
+	}
+
+	direct, svcErr := as.directAssignees(ctx, id, ouID)
+	if svcErr != nil {
+		return svcErr
+	}
+	for _, assigneeID := range held {
+		if !direct[assigneeID] {
+			return &ErrorAssignmentMandated
+		}
+	}
+	return nil
+}
+
+// mandatesAssignee reports whether the mandated assignments include the assignee, named by ID as removals name it.
+func mandatesAssignee(mandated []RoleAssignment, assigneeID string) bool {
+	return slices.ContainsFunc(mandated, func(m RoleAssignment) bool { return m.ID == assigneeID })
+}
+
+// mandatedAssignments lists the assignments sharing policies mandate for the role in the organization unit.
+func (as *roleAssignmentService) mandatedAssignments(
+	ctx context.Context, id, ouID string,
+) ([]RoleAssignment, *tidcommon.ServiceError) {
+	mandated, err := as.roleStore.ListMandatedAssignmentsForRole(ctx, id, ouID)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to list the mandated assignments of the role", log.String("id", id),
+			log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return mandated, nil
+}
+
+// directAssignees returns the IDs of the assignees holding a direct assignment of the role in the organization unit.
+func (as *roleAssignmentService) directAssignees(
+	ctx context.Context, id, ouID string,
+) (map[string]bool, *tidcommon.ServiceError) {
+	direct := make(map[string]bool)
+	for offset := 0; ; offset += serverconst.MaxPageSize {
+		page, err := as.roleStore.GetRoleAssignments(ctx, id, ouID, serverconst.MaxPageSize, offset)
+		if err != nil {
+			if errors.Is(err, errResultLimitExceededInCompositeMode) {
+				return nil, &ResultLimitExceededInCompositeMode
+			}
+			as.logger.Error(ctx, "Failed to get role assignments", log.String("id", id), log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		for _, a := range page {
+			if a.PolicyID == "" {
+				direct[a.ID] = true
+			}
+		}
+		if len(page) < serverconst.MaxPageSize {
+			return direct, nil
+		}
+	}
+}
+
 // validateAssignmentsRequest validates the assignments request.
 // Accepts public types 'user', 'app', 'agent', 'group'.
 func (as *roleAssignmentService) validateAssignmentsRequest(
@@ -749,7 +847,7 @@ func (as *roleAssignmentService) resolveAssignments(
 	// Build the result slice, skipping orphaned entity assignments.
 	result := make([]RoleAssignmentWithDisplay, 0, len(assignments))
 	for _, a := range assignments {
-		ra := RoleAssignmentWithDisplay{ID: a.ID, OUID: a.OUID}
+		ra := RoleAssignmentWithDisplay{ID: a.ID, OUID: a.OUID, PolicyID: a.PolicyID}
 		switch a.Type {
 		case assigneeTypeEntity:
 			e, ok := entityMap[a.ID]
@@ -797,7 +895,7 @@ func (as *roleAssignmentService) directAssignment(ctx context.Context, id, ouID,
 			return nil, svcErr
 		}
 		for i := range page.Assignments {
-			if page.Assignments[i].ID == assigneeID {
+			if page.Assignments[i].ID == assigneeID && page.Assignments[i].PolicyID == "" {
 				return &page.Assignments[i], nil
 			}
 		}
@@ -836,6 +934,202 @@ func normalizeAssignments(assignments []RoleAssignment) []RoleAssignment {
 // DeleteAssignmentsInOU removes every assignment of the role made in the organization unit.
 func (as *roleAssignmentService) DeleteAssignmentsInOU(ctx context.Context, id, ouID string) error {
 	return as.roleStore.DeleteAssignmentsInOU(ctx, id, ouID)
+}
+
+// ApplyMandatedAssignments syncs a policy's mandated rows to desired, regardless of the roles' assignments rule.
+func (as *roleAssignmentService) ApplyMandatedAssignments(ctx context.Context, policyID string,
+	assignee RoleAssignment, desired map[string][]string) *tidcommon.ServiceError {
+	if svcErr := as.validateAssignmentsRequest([]RoleAssignment{assignee}); svcErr != nil {
+		return svcErr
+	}
+	wanted := make(map[string][]string, len(desired))
+	for ouID, roleIDs := range desired {
+		if len(roleIDs) > 0 {
+			wanted[ouID] = utils.UniqueStrings(roleIDs)
+		}
+	}
+	// Roles that load only from resource files cannot hold assignments made at runtime.
+	if isDeclarativeModeEnabled() {
+		if len(wanted) > 0 {
+			return &ErrorMandatedRolesNotSupported
+		}
+		return nil
+	}
+
+	normalized := normalizeAssignments([]RoleAssignment{assignee})[0]
+	var refusal *tidcommon.ServiceError
+	if err := as.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		for _, ouID := range slices.Sorted(maps.Keys(wanted)) {
+			for _, roleID := range wanted[ouID] {
+				if svcErr := as.requireRoleInOU(txCtx, roleID, ouID); svcErr != nil {
+					refusal = svcErr
+					return errMandateRefused
+				}
+			}
+		}
+		svcErr, err := as.syncMandatedAssignments(txCtx, policyID, normalized, wanted)
+		if svcErr != nil {
+			refusal = svcErr
+			return errMandateRefused
+		}
+		return err
+	}); err != nil {
+		if refusal != nil {
+			return refusal
+		}
+		as.logger.Error(ctx, "Failed to apply mandated role assignments", log.String("policyID", policyID),
+			log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// RemoveMandatedAssignments removes every assignment a sharing policy mandates.
+func (as *roleAssignmentService) RemoveMandatedAssignments(
+	ctx context.Context, policyID string) *tidcommon.ServiceError {
+	// Roles that load only from resource files hold no mandated assignments.
+	if isDeclarativeModeEnabled() {
+		return nil
+	}
+	if err := as.roleStore.DeleteMandatedAssignments(ctx, policyID, MandatedFilter{}); err != nil {
+		as.logger.Error(ctx, "Failed to remove mandated role assignments", log.String("policyID", policyID),
+			log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// reconcileMandatedAssignments drops, with a warning, the mandates whose policy is gone or role no longer reaches.
+func (as *roleAssignmentService) reconcileMandatedAssignments(ctx context.Context) error {
+	// Roles that load only from resource files hold no mandated assignments.
+	if isDeclarativeModeEnabled() {
+		return nil
+	}
+	units, err := as.roleStore.ListMandatedRoleUnits(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list mandated role assignments: %w", err)
+	}
+
+	policyExists := make(map[string]bool)
+	roleReaches := make(map[[2]string]bool)
+	for _, u := range units {
+		exists, checked := policyExists[u.PolicyID]
+		if !checked {
+			_, svcErr := as.sharingService.GetPolicy(ctx, u.PolicyID)
+			if svcErr != nil && svcErr.Code != sharing.ErrorPolicyNotFound.Code {
+				return fmt.Errorf("failed to read sharing policy %s: %s", u.PolicyID, svcErr.Code)
+			}
+			exists = svcErr == nil
+			policyExists[u.PolicyID] = exists
+		}
+
+		message := "Removing mandated role assignments: the sharing policy no longer exists"
+		if exists {
+			key := [2]string{u.RoleID, u.OUID}
+			reaches, checked := roleReaches[key]
+			if !checked {
+				svcErr := as.requireRoleInOU(ctx, u.RoleID, u.OUID)
+				if svcErr != nil && svcErr.Type != tidcommon.ClientErrorType {
+					return fmt.Errorf("failed to check role %s reaches organization unit %s: %s",
+						u.RoleID, u.OUID, svcErr.Code)
+				}
+				reaches = svcErr == nil
+				roleReaches[key] = reaches
+			}
+			if reaches {
+				continue
+			}
+			message = "Removing mandated role assignments: the role no longer reaches the organization unit " +
+				"(it is unshared from it or the unit is gone), but the sharing policy still names the role " +
+				"and must be edited"
+		}
+
+		as.logger.Warn(ctx, message,
+			log.String("policyID", u.PolicyID), log.String("roleID", u.RoleID), log.String("ouID", u.OUID))
+		if err := as.roleStore.DeleteMandatedAssignments(
+			ctx, u.PolicyID, MandatedFilter{OUID: u.OUID, RoleID: u.RoleID}); err != nil {
+			return fmt.Errorf("failed to remove the mandated assignments of sharing policy %s: %w", u.PolicyID, err)
+		}
+	}
+	return nil
+}
+
+// requireRoleInOU refuses to mandate a role in an organization unit that neither owns it nor is shared it.
+func (as *roleAssignmentService) requireRoleInOU(ctx context.Context, roleID, ouID string) *tidcommon.ServiceError {
+	role, err := as.roleStore.GetRole(ctx, roleID)
+	if err != nil {
+		if errors.Is(err, ErrRoleNotFound) {
+			return &ErrorMandatedRoleNotInOU
+		}
+		as.logger.Error(ctx, "Failed to retrieve role", log.String("id", roleID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if role.OUID == ouID {
+		return nil
+	}
+	visible, svcErr := as.sharingService.IsVisible(ctx, RoleSharingType, roleID, ouID)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ClientErrorType {
+			return &ErrorMandatedRoleNotInOU
+		}
+		return &tidcommon.InternalServerError
+	}
+	if !visible {
+		return &ErrorMandatedRoleNotInOU
+	}
+	return nil
+}
+
+// syncMandatedAssignments rewrites the policy's rows per unit, first refusing a new role the caller may not grant.
+func (as *roleAssignmentService) syncMandatedAssignments(
+	ctx context.Context, policyID string, assignee RoleAssignment, wanted map[string][]string,
+) (*tidcommon.ServiceError, error) {
+	existing, err := as.roleStore.ListMandatedAssignments(ctx, policyID)
+	if err != nil {
+		return nil, err
+	}
+	held := make(map[string][]string)
+	for _, m := range existing {
+		held[m.Assignment.OUID] = append(held[m.Assignment.OUID], m.RoleID)
+	}
+
+	ouIDs := utils.UniqueStrings(slices.Concat(slices.Collect(maps.Keys(wanted)), slices.Collect(maps.Keys(held))))
+	slices.Sort(ouIDs)
+	added := make(map[string][]string, len(ouIDs))
+	var granted []string
+	for _, ouID := range ouIDs {
+		added[ouID] = slices.DeleteFunc(slices.Clone(wanted[ouID]), func(r string) bool {
+			return slices.Contains(held[ouID], r)
+		})
+		for _, roleID := range added[ouID] {
+			if slices.Contains(granted, roleID) {
+				continue
+			}
+			// Mandating a role conveys its permissions as a direct assignment does; removals are never checked.
+			if svcErr := as.authzService.CanGrantMembership(ctx, sysauthz.PrincipalTypeRole, roleID); svcErr != nil {
+				return svcErr, nil
+			}
+			granted = append(granted, roleID)
+		}
+	}
+
+	for _, ouID := range ouIDs {
+		toAdd := added[ouID]
+		// The store removes a policy's assignments one organization unit at a time, so dropping any role
+		// rewrites the unit.
+		if slices.ContainsFunc(held[ouID], func(r string) bool { return !slices.Contains(wanted[ouID], r) }) {
+			if err := as.roleStore.DeleteMandatedAssignments(ctx, policyID, MandatedFilter{OUID: ouID}); err != nil {
+				return nil, err
+			}
+			toAdd = wanted[ouID]
+		}
+		for _, roleID := range toAdd {
+			if err := as.roleStore.AddMandatedAssignments(ctx, policyID, roleID, ouID, assignee); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return nil, nil
 }
 
 // GetResourceDependencies implements resourcedependency.Provider. Role assignments are cleaned up

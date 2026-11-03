@@ -1,0 +1,73 @@
+---
+title: <UserProfile />
+docType: reference
+description: Complete user profile management interface for viewing and editing account details in Vue apps.
+---
+
+# `<UserProfile />`
+
+The `UserProfile` component renders a complete user profile management interface where users can view and edit their personal information.
+
+## Usage
+
+### Basic Usage
+
+```vue title="src/ProfilePage.vue" showLineNumbers
+<script setup>
+import { UserProfile } from '@thunderid/vue'
+</script>
+
+<template>
+  <div>
+    <h1>My Profile</h1>
+    <UserProfile />
+  </div>
+</template>
+```
+
+### Compact Variant without Card
+
+Render the profile inline (no card wrapper) with tighter spacing, useful when embedding in a modal or dropdown:
+
+```vue title="src/ProfilePage.vue" showLineNumbers
+<script setup>
+import { UserProfile } from '@thunderid/vue'
+</script>
+
+<template>
+  <UserProfile
+    :card-layout="false"
+    compact
+    title="Account Details"
+  />
+</template>
+```
+
+### Hide or Show Specific Fields
+
+Limit which fields are displayed:
+
+```vue title="src/ProfilePage.vue" showLineNumbers
+<script setup>
+import { UserProfile } from '@thunderid/vue'
+</script>
+
+<template>
+  <UserProfile :hide-fields="['phoneNumbers']" />
+</template>
+```
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `title` | `string` | ❌ | Card header title. Defaults to `'Profile'`. |
+| `cardLayout` | `boolean` | ❌ | Whether to render inside a Card wrapper. Defaults to `true`. |
+| `cardVariant` | `'elevated' \| 'outlined' \| 'flat'` | ❌ | Shadow/border style of the card wrapper. Defaults to `'elevated'`. |
+| `compact` | `boolean` | ❌ | Tighter spacing, useful inside modals or dropdowns. Defaults to `false`. |
+| `editable` | `boolean` | ❌ | Whether fields can be edited inline. Defaults to `true`. |
+| `showAvatar` | `boolean` | ❌ | Whether to render the avatar hero section. Defaults to `true`. |
+| `avatarSize` | `'sm' \| 'md' \| 'lg'` | ❌ | Avatar circle size. Defaults to `'lg'`. |
+| `showFields` | `string[]` | ❌ | Fields to show. Empty means show all. |
+| `hideFields` | `string[]` | ❌ | Fields to hide by name |
+| `className` | `string` | ❌ | Extra CSS class added to the root element |

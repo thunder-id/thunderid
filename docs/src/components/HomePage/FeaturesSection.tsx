@@ -953,7 +953,7 @@ const FEATURES: Feature[] = [
     id: 'proto',
     category: 'trust',
     title: 'Standard protocols',
-    description: 'OAuth 2.1, OpenID Connect, SAML, and SCIM',
+    description: 'OAuth 2.1, OpenID Connect, and SAML',
     area: '8 / 1 / 9 / 2',
   },
   {

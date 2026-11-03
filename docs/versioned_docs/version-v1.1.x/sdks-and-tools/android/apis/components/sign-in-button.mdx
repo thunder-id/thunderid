@@ -1,0 +1,62 @@
+---
+title: SignInButton
+docType: reference
+description: Composable button that triggers the sign-in flow in a Jetpack Compose Android application.
+---
+
+# `SignInButton`
+
+The `SignInButton` composable renders a pre-styled button that calls an `onClick` lambda when tapped. It does not initiate the sign-in flow itself. Your `onClick` handler opens the sign-in UI (e.g., showing a `SignIn` form or launching the redirect URL).
+
+`SignInButton` requires `ThunderIDProvider` in its ancestor composable hierarchy.
+
+## Usage
+
+```kotlin
+import dev.thunderid.compose.components.actions.SignInButton
+
+@Composable
+fun LandingView() {
+    var showSignIn by remember { mutableStateOf(false) }
+
+    SignInButton(onClick = { showSignIn = true })
+
+    if (showSignIn) {
+        SignIn(applicationId = "<your-application-id>")
+    }
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `onClick` | `() -> Unit` | ✅ | Called when the button is tapped. |
+| `modifier` | `Modifier` | ❌ | Compose modifier. |
+
+## Customization with `BaseSignInButton`
+
+`BaseSignInButton` is the unstyled variant for fully custom sign-in button UI.
+
+```kotlin
+import dev.thunderid.compose.components.actions.BaseSignInButton
+
+@Composable
+fun CustomSignInButton(onClick: () -> Unit) {
+    BaseSignInButton(
+        label = "Log In",
+        isLoading = false,
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick
+    )
+}
+```
+
+### `BaseSignInButton` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `label` | `String` | ✅ | The button label text. |
+| `isLoading` | `Boolean` | ❌ | When `true`, the button is disabled. Defaults to `false`. |
+| `modifier` | `Modifier` | ❌ | Compose modifier. |
+| `onClick` | `() -> Unit` | ✅ | Called when the button is tapped. |

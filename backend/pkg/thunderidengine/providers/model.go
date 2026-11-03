@@ -314,12 +314,14 @@ func (nd *NodeDefinition) UnmarshalYAML(value *yaml.Node) error {
 
 // InputDefinition represents an input parameter for a node.
 type InputDefinition struct {
-	Ref        string                     `json:"ref,omitempty"        yaml:"ref,omitempty"        jsonschema:"Reference ID for the input."`
-	Type       string                     `json:"type"                 yaml:"type"                 jsonschema:"Input type (e.g., 'text', 'password', 'email')."`
-	Identifier string                     `json:"identifier"           yaml:"identifier"           jsonschema:"Field identifier or name."`
-	Required   bool                       `json:"required"             yaml:"required"             jsonschema:"Whether this input is mandatory."`
-	OneTimeUse bool                       `json:"oneTimeUse,omitempty" yaml:"oneTimeUse,omitempty" jsonschema:"When true, the input is removed from the flow context after being consumed."`
-	Validation []ValidationRuleDefinition `json:"validation,omitempty" yaml:"validation,omitempty" jsonschema:"Server-enforced validation rules applied to the submitted value."`
+	Ref          string                     `json:"ref,omitempty"        yaml:"ref,omitempty"        jsonschema:"Reference ID for the input."`
+	Type         string                     `json:"type"                 yaml:"type"                 jsonschema:"Input type (e.g., 'text', 'password', 'email')."`
+	Identifier   string                     `json:"identifier"           yaml:"identifier"           jsonschema:"Field identifier or name."`
+	Required     bool                       `json:"required"             yaml:"required"             jsonschema:"Whether this input is mandatory."`
+	OneTimeUse   bool                       `json:"oneTimeUse,omitempty" yaml:"oneTimeUse,omitempty" jsonschema:"When true, the input is removed from the flow context after being consumed."`
+	DefaultValue string                     `json:"defaultValue,omitempty" yaml:"defaultValue,omitempty" jsonschema:"Value the flow supplies for the input when it has none. On a prompt input the person still sees it, prefilled. For a constant input, the fixed value."`
+	Constant     bool                       `json:"constant,omitempty"   yaml:"constant,omitempty"   jsonschema:"When true, DefaultValue always replaces any existing value for this input. Supported on executor inputs only and requires a non-empty DefaultValue."`
+	Validation   []ValidationRuleDefinition `json:"validation,omitempty" yaml:"validation,omitempty" jsonschema:"Server-enforced validation rules applied to the submitted value."`
 }
 
 // VariableDefinition declares one variable of a flow. It is described in the vocabulary of a prompt's inputs: an
@@ -802,6 +804,10 @@ type Agent struct {
 	// Delegated marks an agent that acts on behalf of a user. It selects the OAuth grant types applied
 	// and checked when the agent is created and is not stored.
 	Delegated bool `json:"delegated,omitempty"`
+
+	// ProjectID places the agent in the project's root organization unit, or checks that the
+	// organization unit named belongs to the project. It is not stored.
+	ProjectID string `json:"projectId,omitempty"`
 
 	// The service-level model carries the full internal profile.
 	InboundAuthProfile
@@ -1344,11 +1350,20 @@ type Input struct {
 	Validation  []ValidationRule `json:"validation,omitempty"`
 	// OneTimeUse indicates that the input can only be consumed once
 	OneTimeUse bool `json:"oneTimeUse,omitempty"`
+	// DefaultValue is written to the flow context for a missing input and returned with a prompted input.
+	DefaultValue string `json:"defaultValue,omitempty"`
+	// Constant makes DefaultValue replace an existing value instead of only filling a missing one. Executor inputs only.
+	Constant bool `json:"-"`
 }
 
 // IsSensitive checks whether this input's type is considered sensitive.
 func (i Input) IsSensitive() bool {
 	return slices.Contains(sensitiveInputTypes, i.Type)
+}
+
+// IsSensitive checks whether this input definition's type is considered sensitive.
+func (d InputDefinition) IsSensitive() bool {
+	return slices.Contains(sensitiveInputTypes, d.Type)
 }
 
 // ValidationRule defines a single constraint on a flow input. CompiledRegex is

@@ -1,0 +1,57 @@
+---
+title: Set Up the Playground
+docType: use-case
+sidebar_position: 3
+description: Run the agent identity playground against your own {{ProductName}} instance to see the real token behind each posture.
+---
+
+# Set Up the Playground
+
+The agent identity playground produces the tokens the following pages describe. It is one application with a tab
+per posture. Each tab runs the real OAuth calls against your own <ProductName /> instance, then decodes what
+comes back. Nothing in it is recorded or mocked.
+
+Its cast is a travel one. A **Concierge** agent recommends and books trips, and a customer named **John Doe**
+signs in when a posture needs a person. The same cast appears on every tab, so the only thing that changes
+between them is who the token names and what it may reach.
+
+:::note This is not the sample application
+The playground has no chat widget and no MCP server, only the identity pieces and the claims they produce. For
+the agent running inside a working application, see [See It in a Sample App](../try-it-out).
+:::
+
+## Run It
+
+The playground needs Node 22 or later and nothing else. It uses built-in modules only, so there is no install
+step.
+
+<RepoLink path="/tree/main/samples/apps/agentid-playground">Get the playground from the repository</RepoLink>,
+then start it:
+
+```bash
+npm start
+```
+
+It serves at `http://localhost:8082`. Start it whether or not <ProductName /> is running: every tab checks its
+own prerequisites and reports what is missing.
+
+## Import the Resources
+
+Each tab offers the resource file it needs, and the overview page offers the combined file if you would rather
+create everything at once. Apply it through the <ProductName /> Console at <ConsoleUrl />. See
+[Import Resources](../../../guides/declarative-configurations/import-resources) for how the import works.
+
+Every identifier in the file is prefixed `agent-identity-`, and the resource servers use their own identifiers
+under `travel.example`, so importing it does not collide with anything already in your instance. Import is an
+upsert by identifier, which makes re-importing safe.
+
+## What Each Tab Shows
+
+| Tab | What it shows |
+| --- | --- |
+| Acts as itself | The Concierge gets a token for itself and calls the booking API. See [Nothing Limits What the Agent May Do](../solve-access). |
+| Acts for a customer | John signs in, and the Concierge books on their behalf. See [The Token Cannot Say the Agent Acted for a User](../solve-acts-for-user). |
+| Delegates to agents | The Concierge passes a flight search to a second agent, which trades for its own token narrowed to `booking:read` and recording both agents that handled the request. See [Agent-to-Agent Delegation](../../../guides/agents/authentication/agent-to-agent). |
+
+Every tab is self-contained, so you can work through any one of them without visiting the others first. Nothing
+is cached, so reload at any point to run the checks again.

@@ -1,0 +1,136 @@
+---
+title: Claims & Scopes
+docType: reference
+sidebar_position: 3
+description: How OpenID Connect scopes map to claims in {{ProductName}}, including standard OIDC scopes, custom scope-to-claim mapping, and the claims request parameter.
+---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Claims & Scopes
+
+A **scope** is what a client *asks for*. A **claim** is what <ProductName /> *returns*. The mapping between the two is what controls which user attributes end up in your ID Token and your UserInfo response.
+
+<ProductName /> implements three layers:
+
+1. **Standard OIDC scopes** ([OIDC Core §5.4](https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims)): `openid`, `profile`, `email`, `phone`, `address`, with fixed claim sets defined by the spec. A client created without a mapping of its own starts with these.
+2. **Application-defined scope-to-claim mappings** (`scopeClaims`): request a scope, get a configurable bundle of claims. The mapping is the single authority on which OIDC scopes a client can obtain, and on the user attributes each one exposes.
+3. **The `claims` request parameter** ([OIDC Core §5.5](https://openid.net/specs/openid-connect-core-1_0.html#ClaimsParameter)): request specific claims directly, claim-by-claim.
+
+## Standard OIDC Scopes
+
+| Scope | Claims returned |
+|---|---|
+| `openid` | `sub` (always included on any OIDC request) |
+| `profile` | `name`, `family_name`, `given_name`, `middle_name`, `nickname`, `preferred_username`, `profile`, `picture`, `website`, `gender`, `birthdate`, `zoneinfo`, `locale`, `updated_at` |
+| `email` | `email`, `email_verified` |
+| `phone` | `phone_number`, `phone_number_verified` |
+| `address` | `address` (structured JSON object) |
+
+The actual values come from the authenticated user's attributes. Claims are omitted when the user has no value for them.
+
+These defaults are written into a client's `scopeClaims` mapping at creation when it declares no mapping of its own, and they remain the fallback at runtime: a standard scope the mapping does not define still returns the claims listed above. Edit an entry to change what the scope returns, or map it to an empty list to stop it returning anything.
+
+`openid` is the exception: it carries no user attributes of its own, its `sub` comes from the token subject, and it is always granted. It needs no mapping entry.
+
+The attributes a mapping can reference come from the schemas of the client's allowed user types, plus the runtime-computed `groups`, `roles`, `ouId`, `ouName`, `ouHandle`, and `userType`. Anything else is removed when the client is saved. A client with no allowed user types has no schema to draw on, so the scopes it is seeded with start empty: the scope names are there, but no attributes are mapped to them until user types are configured. A mapping you send yourself is still stored as sent.
+
+## Custom Scope-to-Claim Mapping (`scopeClaims`)
+
+Each application can define its own scope-to-claim bundles. Asking for the scope returns the listed claims in both the ID Token and the UserInfo response.
+
+```json
+{
+  "scopeClaims": {
+    "profile": ["given_name", "family_name", "picture"],
+    "email": ["email", "email_verified"],
+    "roles": ["roles", "groups"]
+  }
+}
+```
+
+| Behavior | Detail |
+|---|---|
+| Replaces the standard mapping | Yes, `profile` here returns only the three listed claims, not the full OIDC `profile` set |
+| Custom scope names | Allowed, `roles` here is an application-defined scope |
+| Standard scope not in `scopeClaims` | Granted on its standard claims, the built-in mapping is the fallback |
+| Custom scope not in `scopeClaims` | Not granted, there is no fallback to inherit |
+| Bypasses resource-server filtering | Yes, see "Filtering rules" below |
+
+**A standard scope cannot be switched off by removing it.** Deleting `profile` from the mapping returns it to the standard claim set, it does not stop the client granting it. To stop a standard scope releasing anything, map it to an empty list (`"profile": []`), which is honored as sent.
+
+**Create and update differ.** On create, omitting `scopeClaims` seeds the standard scopes, while sending one stores exactly what you sent, so `{"profile": [...]}` yields a client whose stored mapping is only `profile`. On update the mapping is replaced by what you send, and omitting the field clears it. In both cases the standard scopes remain available at runtime through the fallback.
+
+**Declarative resource files are never seeded.** A client loaded from a file under the declarative resources directory is stored exactly as written, so its mapping stays empty until you declare one. The runtime fallback still applies, so the standard scopes work as documented above; declare a mapping only where you want to narrow one.
+
+**Attribute lists follow the mapping.** On create, `token.idToken.userAttributes` is derived from the mapping only when you omit it; send a list and it is stored as sent. `userInfo.userAttributes` inherits the ID token list when you omit it, so both end up covering the mapping by default. The list is a second gate: a claim reaches a token only when the scope releases it **and** the list allows it. So a client created with a narrow mapping has a correspondingly narrow list, and the standard claims a fallback scope resolves to are filtered out until you add them to the list. In the Console, mapping an attribute to a scope adds it to both lists for you; the lists themselves sit under **Token Attributes (Advanced)**, where they exist for attributes you want reachable through the `claims` request parameter without tying them to a scope.
+
+## `claims` Request Parameter
+
+Sometimes you want exactly one claim, not a whole scope's bundle. Pass a JSON object on the authorization request:
+
+```http
+GET /oauth2/authorize
+  ?response_type=code
+  &client_id=$CLIENT_ID
+  &scope=openid
+  &claims={"id_token":{"email":{"essential":true}},"userinfo":{"phone_number":null}}
+```
+
+| Sub-object | Targets |
+|---|---|
+| `claims.id_token` | Claims to include in the ID Token |
+| `claims.userinfo` | Claims to include in the UserInfo response |
+
+Inside each sub-object, claim names map to either `null` (request without constraint) or an object such as `{ "essential": true }` (request and mark as required).
+
+<ProductName /> advertises `claims_parameter_supported: true` in [Server Metadata](../server-metadata).
+
+## Filtering Rules
+
+How the request-time scope list becomes the issued-token scope list:
+
+| Scope category | Filtered by resource indicators? | Notes |
+|---|---|---|
+| `openid`, `profile`, `email`, `phone`, `address` | ❌ Not by resource indicators | OpenID Connect standard scopes are reserved. <ProductName /> keeps only the ones the application's `scopeClaims` mapping defines, plus `openid`, which is always granted. |
+| Custom scopes covered by `scopeClaims` | ❌ Not by resource indicators | The application owns these scopes. |
+| Permissions owned by a targeted resource server (see [Resource Indicators](../resource-indicators)) | ✅ Kept | RS-defined |
+| Permissions owned by a different resource server | ❌ Dropped silently | RS-defined |
+| Permissions not allowed on the application | ❌ Rejected | Request fails with `invalid_scope` |
+
+## Try It in <ProductName />
+
+<Tabs groupId="client-registration">
+<TabItem value="console" label="Console" default>
+
+1. Open **Applications** or **Agents** in the <ProductName /> Console and select your client.
+2. Open the **Token** tab to add or remove scopes and to map the user attributes each one exposes. Mapping an attribute allow-lists it for the ID Token and UserInfo automatically, so there is nothing else to configure.
+3. Save.
+
+</TabItem>
+<TabItem value="dcr" label="Dynamic Client Registration">
+
+```http
+POST /oauth2/dcr/register
+Content-Type: application/json
+
+{
+  "client_name": "My App",
+  "redirect_uris": ["https://app.example.com/callback"],
+  "grant_types": ["authorization_code"],
+  "response_types": ["code"],
+  "scope": "openid profile email"
+}
+```
+
+The `scopeClaims` mapping is configured on the application object itself. A registration request is seeded with the standard scopes, so a scope outside that set is granted only once you map it there.
+
+</TabItem>
+</Tabs>
+
+## Related Guides
+
+- [OpenID Connect](../openid-connect), the spec that defines standard scopes and the `claims` parameter
+- [UserInfo](../userinfo), receives the same claim set as the ID Token
+- [Resource Indicators](../resource-indicators), how scopes are filtered by targeted resource servers
+- [Token Formats](../token-formats), `userAttributes` selection on access and ID tokens

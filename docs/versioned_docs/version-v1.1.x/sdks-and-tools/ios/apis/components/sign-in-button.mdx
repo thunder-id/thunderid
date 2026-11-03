@@ -1,0 +1,82 @@
+---
+title: SignInButton
+docType: reference
+description: SwiftUI button that triggers the sign-in flow using the ThunderID iOS SDK authentication client.
+---
+
+# `SignInButton`
+
+The `SignInButton` component renders a pre-styled button that you can use to trigger your sign-in flow. It reads loading state from `ThunderIDState` and disables itself automatically while an operation is in progress.
+
+`SignInButton` requires `.thunderIDProvider(config:)` in its ancestor view hierarchy.
+
+## Usage
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct LandingView: View {
+    var body: some View {
+        SignInButton()
+    }
+}
+```
+
+By default the button displays the localized label for `signIn.button`. Pass `onTap` to run code when the button is tapped, for example, to navigate to a sign-in screen.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `onTap` | `(() -> Void)?` | ❌ | Called when the button is tapped. Use this to present a sign-in sheet or navigate to an auth view. |
+
+## Example: Present a Sign-In Sheet
+
+```swift
+struct LandingView: View {
+    @State private var showSignIn = false
+
+    var body: some View {
+        SignInButton {
+            showSignIn = true
+        }
+        .sheet(isPresented: $showSignIn) {
+            SignIn(applicationId: "<your-application-id>")
+                .padding()
+        }
+    }
+}
+```
+
+## Customization with `BaseSignInButton`
+
+`BaseSignInButton` is the unstyled variant. Use it when you want to match your own design system without any default styling.
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct CustomSignInButton: View {
+    @State private var showSignIn = false
+
+    var body: some View {
+        BaseSignInButton(label: "Sign In", isLoading: false) {
+            showSignIn = true
+        }
+        .buttonStyle(.borderedProminent)
+        .sheet(isPresented: $showSignIn) {
+            SignIn(applicationId: "<your-application-id>")
+                .padding()
+        }
+    }
+}
+```
+
+### `BaseSignInButton` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `label` | `String` | ✅ | The button label text. |
+| `isLoading` | `Bool` | ❌ | When `true`, the button is disabled. Defaults to `false`. |
+| `action` | `() -> Void` | ✅ | Called when the button is tapped. |

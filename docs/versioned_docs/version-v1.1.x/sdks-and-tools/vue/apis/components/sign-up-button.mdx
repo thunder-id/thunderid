@@ -1,0 +1,129 @@
+---
+title: <SignUpButton />
+docType: reference
+description: Trigger the sign-up registration flow from a pre-styled button component in Vue applications.
+---
+
+# `<SignUpButton />`
+
+The `SignUpButton` component triggers the sign-up (registration) flow when clicked. It automatically handles loading state and error handling, and supports custom UI via a scoped default slot. If a `signUpUrl` is configured on the [`<ThunderIDProvider />`](../../providers/thunderid-provider), the button navigates to that URL instead of triggering the embedded flow.
+
+## Usage
+
+You can use `SignUpButton` in two main ways: as a simple button or with a scoped slot for more control over the UI and behavior.
+
+### Basic Usage
+
+Use `SignUpButton` as a simple button to trigger sign-up.
+
+```vue title="src/LandingPage.vue" showLineNumbers
+<script setup>
+import { SignUpButton } from '@thunderid/vue'
+</script>
+
+<template>
+  <SignUpButton />
+</template>
+```
+
+:::note
+You can simply use the `SignUpButton` component without any slot content (`<SignUpButton />`) to render a default button with the text "Sign Up".
+:::
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `class` | `string` | ❌ | CSS class applied to the rendered button |
+| `style` | `string \| object` | ❌ | Inline styles applied to the rendered button |
+
+## Events
+
+| Event | Payload | Description |
+| :--- | :--- | :--- |
+| `click` | `MouseEvent` | Emitted after the sign-up flow is triggered |
+| `error` | `unknown` | Emitted when the sign-up flow throws an error |
+
+## Slot Props
+
+The default slot receives the following scoped slot props:
+
+| Prop | Type | Description |
+| :--- | :--- | :--- |
+| `isLoading` | `boolean` | `true` while the sign-up flow is in progress |
+
+## Customization
+
+The `SignUpButton` component is designed for easy customization to fit your application's design system.
+
+### CSS Classes and Styling
+
+You can use the `class` attribute to apply custom CSS classes to the button.
+
+```vue title="src/LandingPage.vue" {6} showLineNumbers
+<script setup>
+import { SignUpButton } from '@thunderid/vue'
+</script>
+
+<template>
+  <SignUpButton class="custom-sign-up-button">
+    Sign Up
+  </SignUpButton>
+</template>
+```
+
+#### Default CSS Classes
+
+The button includes a default vendor-prefixed class for targeting:
+
+- `.thunderid-sign-up-button`: Main sign-up button element
+
+### CSS Custom Properties (CSS Variables)
+
+You can theme the button and other SDK components using CSS variables:
+
+```css title="src/style.css" showLineNumbers
+:root {
+  --thunderid-primary-color: #007bff;
+  --thunderid-primary-hover: #0056b3;
+  --thunderid-border-radius: 8px;
+  --thunderid-font-family: 'Inter', sans-serif;
+  --thunderid-button-padding: 12px 24px;
+}
+```
+
+### Scoped Slot for Custom UI
+
+You can customize the button UI using a scoped slot. This exposes the `isLoading` state directly, giving you the flexibility to use any library like Tailwind CSS, shadcn-vue, Vuetify, etc.
+
+```vue title="src/LandingPage.vue" {7-25} showLineNumbers
+<script setup>
+import { SignUpButton } from '@thunderid/vue'
+</script>
+
+<template>
+  <SignUpButton>
+    <template #default="{ isLoading }">
+      <button
+        :disabled="isLoading"
+        class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition disabled:opacity-50 flex items-center gap-2"
+      >
+        <svg
+          class="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+        >
+          <path d="M12 4v16m8-8H4" />
+        </svg>
+        {{ isLoading ? 'Signing up...' : 'Sign Up' }}
+      </button>
+    </template>
+  </SignUpButton>
+</template>
+```
+
+## Error Handling
+
+If sign-up fails, an `error` event is emitted with the error payload and a `ThunderIDRuntimeError` is thrown with a descriptive message.

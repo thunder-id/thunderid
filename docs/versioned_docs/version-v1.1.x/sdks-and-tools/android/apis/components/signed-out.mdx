@@ -1,0 +1,51 @@
+---
+title: SignedOut
+docType: reference
+description: Conditionally render Jetpack Compose content only when no user is currently signed in to the app.
+---
+
+# `SignedOut`
+
+The `SignedOut` composable conditionally renders its content only when the user is **not** authenticated. It is the counterpart to [`SignedIn`](../signed-in).
+
+`SignedOut` requires `ThunderIDProvider` in its ancestor composable hierarchy.
+
+## Usage
+
+```kotlin
+import dev.thunderid.compose.components.guards.SignedOut
+
+@Composable
+fun ContentView() {
+    SignedOut {
+        Text("Please sign in to continue.")
+    }
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `fallback` | `(@Composable () -> Unit)?` | ❌ | The composable to render when the user is authenticated. Defaults to nothing. |
+| `content` | `@Composable () -> Unit` | ✅ | The composable to render when the user is not authenticated. |
+
+## Example: Show a Banner for Guests
+
+```kotlin
+SignedOut {
+    Banner("Sign in to unlock all features")
+}
+```
+
+## Example: Route Between Screens
+
+Use `SignedOut` alongside `SignedIn` to implement bidirectional routing:
+
+```kotlin
+SignedIn(fallback = {
+    SignedOut { AuthView() }
+}) {
+    HomeView()
+}
+```

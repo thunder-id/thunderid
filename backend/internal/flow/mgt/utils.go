@@ -5,6 +5,7 @@ package flowmgt
 
 import (
 	"regexp"
+	"strconv"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -18,6 +19,21 @@ var handleFormatRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0
 // isValidHandleFormat validates that the handle follows the required format.
 func isValidHandleFormat(handle string) bool {
 	return handleFormatRegex.MatchString(handle)
+}
+
+// isValidDefaultForType checks that a default value can be read as the given input type.
+// Types without a value format accept any default.
+func isValidDefaultForType(inputType, value string) bool {
+	switch inputType {
+	case providers.InputTypeBoolean:
+		_, err := strconv.ParseBool(value)
+		return err == nil
+	case providers.InputTypeNumber:
+		_, err := strconv.ParseFloat(value, 64)
+		return err == nil
+	default:
+		return true
+	}
 }
 
 // isValidFlowType checks if the provided flow type is valid.

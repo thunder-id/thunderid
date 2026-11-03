@@ -82,8 +82,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/runtimestore"
-	"github.com/thunder-id/thunderid/internal/scim"
-	scimconfig "github.com/thunder-id/thunderid/internal/scim/config"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/cache"
@@ -309,15 +307,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	httpConnectionService, err := httpconnection.Initialize(runtime.Config.HTTPConnection, ouService)
 	fatalOnError(ctx, logger, err, "Failed to initialize HTTPConnectionService")
 
-	// Initialize SCIM service.
-	scim.Initialize(
-		mux,
-		userService,
-		entityTypeService,
-		groupService,
-		scimconfig.FromServerRuntime(),
-	)
-
 	roleService, roleAssignmentService, ouRoleResolver, roleExporter, err := role.Initialize(
 		mux, entityService, groupService, ouService, resourceService, entityTypeService, ouAuthzService,
 		sharingService)
@@ -328,6 +317,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	ouService.SetOUUserResolver(ouUserResolver)
 	ouService.SetOUGroupResolver(ouGroupResolver)
 	ouService.SetOURoleResolver(ouRoleResolver)
+
+	// Two-phase initialization: user shares mandate roles through the role assignment service, which is built after
+	// users. The declared shares' mandates wait for it.
+	err = userService.SetRoleAssignmentService(ctx, roleAssignmentService)
+	fatalOnError(ctx, logger, err, "Failed to apply the roles declared user sharing policies mandate")
 
 	// Adapt the OU service to the runtime provider contract. The OAuth and flow layers depend only
 	// on providers.OrganizationUnitProvider and never see the management model.
@@ -524,7 +518,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,
 		roleService, ouAuthzService, governanceService, nil, entityTypeService,
-		dbprovider.GetDBProvider(), observabilitySvc)
+		dbprovider.GetDBProvider(), observabilitySvc, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
 

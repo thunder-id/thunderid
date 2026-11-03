@@ -22,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -72,6 +73,14 @@ type UserServiceInterface interface {
 		limit, offset int) (*AccessibleOrganizationUnitListResponse, *tidcommon.ServiceError)
 }
 
+// ConfigurableUserService extends UserServiceInterface with the role assignment service injected at startup. It is
+// separate from the main interface so consumers don't see the startup-only method.
+type ConfigurableUserService interface {
+	UserServiceInterface
+	// SetRoleAssignmentService injects the role service user shares mandate through, applying the declared mandates.
+	SetRoleAssignmentService(ctx context.Context, roleAssignments role.RoleAssignmentServiceInterface) error
+}
+
 // userService is the default implementation of the UserServiceInterface.
 type userService struct {
 	authzService       sysauthz.SystemAuthorizationServiceInterface
@@ -83,6 +92,7 @@ type userService struct {
 	dependencyRegistry resourcedependency.Registry
 	valueCapturer      declarativeresource.ValueCapturer
 	sharingService     sharing.SharingServiceInterface
+	sharingDeclaration *userSharingDeclaration
 }
 
 // newUserService creates a new instance of userService with injected dependencies.
@@ -94,8 +104,8 @@ func newUserService(
 	governance identitygovernance.IdentityGovernanceServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	sharingService sharing.SharingServiceInterface,
-) UserServiceInterface {
-	return &userService{
+) *userService {
+	us := &userService{
 		authzService:      authzService,
 		entityService:     entityService,
 		governance:        governance,
@@ -105,6 +115,8 @@ func newUserService(
 		valueCapturer:     valueCapturer,
 		sharingService:    sharingService,
 	}
+	us.sharingDeclaration = newUserSharingDeclaration(us, sharingService)
+	return us
 }
 
 // GetUserList retrieves a list of users with pagination and filtering. An organization unit filter
@@ -984,6 +996,13 @@ func (us *userService) SetDependencyRegistry(r resourcedependency.Registry) {
 	us.dependencyRegistry = r
 }
 
+// SetRoleAssignmentService injects the role assignment service that user shares mandate roles through.
+func (us *userService) SetRoleAssignmentService(
+	ctx context.Context, roleAssignments role.RoleAssignmentServiceInterface,
+) error {
+	return us.sharingDeclaration.setRoleAssignments(ctx, roleAssignments)
+}
+
 // GetUserUsages returns the resources that reference this user, such as agents that list the user
 // as their owner. It is informational — it drives the pre-delete confirmation dialog and does not
 // gate deletion on the server.
@@ -1309,6 +1328,12 @@ func (us *userService) checkUserAccess(
 	return nil
 }
 
+// mandatedRoleRefusals are the refusals this package's sharing hooks raise, which keep their own codes.
+var mandatedRoleRefusals = []string{
+	ErrorRolesNotOnNamedUnit.Code, ErrorRolesRuleNotFixed.Code,
+	role.ErrorMandatedRoleNotInOU.Code, role.ErrorMandatedRolesNotSupported.Code, sysauthz.ErrorGrantNotPermitted.Code,
+}
+
 // sharingErrors answers the sharing framework's client errors in this service's own codes.
 var sharingErrors = sharing.ErrorTranslation{
 	PolicyNotFound:  ErrorSharingPolicyNotFound,
@@ -1320,8 +1345,11 @@ var sharingErrors = sharing.ErrorTranslation{
 	InvalidPolicy:   ErrorInvalidSharingPolicy,
 }
 
-// translateSharingError maps a sharing framework error into this service's own codes.
+// translateSharingError maps a sharing framework error into this service's own codes, except a mandate refusal.
 func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	if svcErr != nil && slices.Contains(mandatedRoleRefusals, svcErr.Code) {
+		return svcErr
+	}
 	return sharingErrors.Translate(svcErr)
 }
 
@@ -1534,9 +1562,7 @@ func (us *userService) DeleteSharingPolicy(ctx context.Context, userID, policyID
 	return translateSharingError(us.sharingService.DeletePolicy(ctx, policyID))
 }
 
-// ResolveSharingOverlay answers which of the user's templated fields one organization unit may
-// override, and on what terms. A user declares no templated fields yet, so the rules are empty. The
-// owner may ask about any organization unit; any other unit may ask about itself.
+// ResolveSharingOverlay answers the rules, such as mandated roles, one organization unit holds the user on.
 func (us *userService) ResolveSharingOverlay(
 	ctx context.Context, userID, ouID string,
 ) (sharing.ResolvedOverlay, *tidcommon.ServiceError) {

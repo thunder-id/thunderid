@@ -52,6 +52,7 @@ type ProjectAPITestSuite struct {
 	projects []string
 	childOUs []string
 	apps     []string
+	agents   []string
 }
 
 func TestProjectAPITestSuite(t *testing.T) {
@@ -68,13 +69,16 @@ func (ts *ProjectAPITestSuite) TearDownTest() {
 	for _, id := range ts.apps {
 		_ = testutils.DeleteApplication(id)
 	}
+	for _, id := range ts.agents {
+		_ = testutils.DeleteAgent(id)
+	}
 	for _, id := range ts.childOUs {
 		_ = testutils.DeleteOrganizationUnit(id)
 	}
 	for _, id := range ts.projects {
 		ts.do(http.MethodDelete, "/projects/"+id, "")
 	}
-	ts.projects, ts.childOUs, ts.apps = nil, nil, nil
+	ts.projects, ts.childOUs, ts.apps, ts.agents = nil, nil, nil, nil
 }
 
 func (ts *ProjectAPITestSuite) handle(name string) string {

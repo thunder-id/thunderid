@@ -12,6 +12,8 @@ Register an MCP client from its Client ID Metadata Document (CIMD) when its vend
 
 <ProductName /> reads the document only when you register or re-fetch the client. When a user signs in, the client authenticates like any other application.
 
+If the application's sign-in flow asks the user for consent, the consent screen also shows the host that publishes the client and the host that the client returns to. A host with non-ASCII characters appears in its ASCII form, usually with punycode labels that start with `xn--`, so it cannot pass for a host that looks the same. When the client returns to `localhost`, `127.0.0.1`, or `::1`, the screen warns the user that other programs on their device can use the same address and tells them to continue only if they started the application.
+
 ## Prerequisites
 
 - <ProductName /> is running. See [Get Started](../../../../getting-started/get-thunderid).

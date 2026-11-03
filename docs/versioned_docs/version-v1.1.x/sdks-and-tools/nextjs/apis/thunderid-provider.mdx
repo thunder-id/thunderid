@@ -1,0 +1,64 @@
+---
+title: <ThunderIDProvider />
+docType: reference
+displayed_sidebar: nextjsSdkSidebar
+description: Server-side provider component that initializes authentication context for Next.js App Router pages.
+---
+
+# `<ThunderIDProvider />`
+
+The `ThunderIDProvider` is a React Server Component that initializes <ProductName /> authentication and wraps your application layout. It manages server-side session state and provides authentication context to all child components.
+
+## Usage
+
+Import `ThunderIDProvider` from `@thunderid/nextjs/server` and wrap your root layout:
+
+```tsx title="app/layout.tsx" showLineNumbers
+import { ThunderIDProvider } from '@thunderid/nextjs/server'
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en">
+      <body>
+        <ThunderIDProvider>
+          {children}
+        </ThunderIDProvider>
+      </body>
+    </html>
+  )
+}
+```
+
+:::note
+Import from `@thunderid/nextjs/server`, not from `@thunderid/nextjs`. The provider is a Server Component that reads session cookies and initializes auth state on the server.
+:::
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | - | **Required.** Your application tree |
+| `sessionCookieExpiryTime` | `number` | `86400` | Session cookie lifetime in seconds. Also configurable via the `THUNDERID_SESSION_COOKIE_EXPIRY_TIME` environment variable |
+
+## How It Works
+
+1. Reads the session cookie from the incoming request
+2. Verifies the session token signature and checks whether it has expired
+3. Initializes the `ThunderIDNextClient` with your configuration (from environment variables)
+4. Passes authentication state (user, session, tokens) to the client-side React context
+5. Wraps children with the client-side `ThunderIDProvider` from `@thunderid/react`
+
+## Configuration
+
+The provider reads configuration from environment variables automatically. No props are required beyond `children`:
+
+| Environment Variable | Description |
+|---------------------|-------------|
+| `NEXT_PUBLIC_THUNDERID_BASE_URL` | Your <ProductName /> instance URL |
+| `NEXT_PUBLIC_THUNDERID_CLIENT_ID` | The Client ID from your application |
+| `THUNDERID_CLIENT_SECRET` | The Client Secret (server-side only) |
+| `THUNDERID_SECRET` | Secret for signing session cookies |

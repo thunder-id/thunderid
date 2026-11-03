@@ -1,0 +1,78 @@
+---
+title: Login
+docType: use-case
+description: Walk a sign-in through the Wayfinder sample with John Doe as the user.
+sidebar_position: 2
+---
+
+# Login
+
+In this walkthrough, John Doe signs in to Wayfinder from his laptop and arrives at the dashboard with his upcoming trips
+visible. The app receives an access token bound to the `wayfinder` resource server, carrying the three booking
+permissions attached to his `Traveler` role.
+
+:::note Prerequisites
+Complete [Set Up Your Environment](../../build-environment) before starting this walkthrough.
+:::
+
+:::info Background
+[Understand It](../../overview) covers the requirements story behind this use case.
+:::
+
+## Pick Your Pattern
+
+[Integration Patterns](../../integration-patterns) lays out the patterns for adding identity to a consumer app. Select
+yours to see the walkthrough.
+
+<PatternPicker>
+<Pattern value="redirect" label="Redirect-based" description="Hosted screens, simplest to add" icon="external-link" default>
+
+In the redirect-based pattern, the consumer app sends the user to <ProductName /> for the entire sign-in experience and
+returns them as a signed-in user with tokens attached. The Wayfinder web frontend is configured exactly this way.
+Selecting **Sign in** triggers an OIDC redirect, and <ProductName /> shows the sign-in page. The browser then returns to
+the app with an authorization code that the app exchanges for tokens.
+
+**Try the Use Case**
+
+1. Open <WayFinderSampleUrl />. Wayfinder's home page loads.
+2. Select **Sign in**. The browser navigates to <ProductName />.
+3. Sign in as John (`john.doe` / `john.doe`). <ProductName /> runs the authentication flow and grants John's `booking:*`
+   permissions into the access token.
+4. The browser returns to Wayfinder, the dashboard loads, and John's bookings render because the Wayfinder API accepted
+   the token's `booking:read` permission.
+
+**Try a Variant**
+
+- Add Google as a sign-in option on the flow and verify that a **Sign in with Google** button appears on the
+  <ProductName /> page.
+- Restrict the application's allowed scopes so the token only carries `booking:read`. Attempt a booking and confirm the
+  API rejects it.
+
+</Pattern>
+
+<Pattern value="app-native-steps" label="App-native step-by-step" description="Custom UI, step-by-step control" icon="list-ordered">
+
+Coming soon. See the [App-native pattern](../../integration-patterns#app-native) for what to expect.
+
+</Pattern>
+
+<Pattern value="app-native-managed" label="App-native managed" description="Custom UI, managed outcomes" icon="wand">
+
+Coming soon. See the [App-native pattern](../../integration-patterns#app-native) for what to expect.
+
+</Pattern>
+
+<Pattern value="direct-api" label="Direct API" description="Direct API calls, no journey" icon="terminal">
+
+Coming soon. See the [Direct API pattern](../../integration-patterns#direct-api) for what to expect.
+
+</Pattern>
+</PatternPicker>
+
+## Going Deeper
+
+- Want to understand how the access token gets its booking permissions? See
+  [Resources and Permissions](../../build-access#resources-and-permissions) and
+  [Roles](../../build-access#roles) in the Build It tutorial.
+- Prefer to set up the application and `Traveler` role manually? See
+  [Register the Application](../../build-application) and [Roles](../../build-access#roles) in the Build It tutorial.

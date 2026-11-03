@@ -575,8 +575,12 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 		return svcErr
 	}
 
-	var capturedSvcErr *tidcommon.ServiceError
+	var capturedSvcErr, refusal *tidcommon.ServiceError
 	err = rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if refusal = rs.requireRoleNotMandated(txCtx, id); refusal != nil {
+			return errors.New("rollback for a mandated role")
+		}
+
 		// The sharing policies recorded against the role go with it.
 		if svcErr := rs.sharingService.DeletePoliciesForResource(txCtx, RoleSharingType, id); svcErr != nil {
 			capturedSvcErr = svcErr
@@ -591,6 +595,9 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 		}
 		return rs.roleStore.DeleteRole(txCtx, id)
 	})
+	if refusal != nil {
+		return refusal
+	}
 	if capturedSvcErr != nil {
 		return translateSharingError(capturedSvcErr)
 	}
@@ -613,7 +620,24 @@ func (rs *roleService) ValidateDeleteRole(ctx context.Context, id string) (
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := rs.requireRoleNotMandated(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
 	return rs.roleAccessChangeTarget(ctx, id, role.Permissions)
+}
+
+// requireRoleNotMandated refuses to delete a role a user sharing policy still mandates.
+func (rs *roleService) requireRoleNotMandated(ctx context.Context, id string) *tidcommon.ServiceError {
+	mandated, err := rs.roleStore.ListMandatedAssignmentsForRole(ctx, id, "")
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to list the mandated assignments of the role",
+			log.String("id", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if len(mandated) > 0 {
+		return &ErrorMandatedRoleCannotBeDeleted
+	}
+	return nil
 }
 
 // ValidateUpdateRolePermissions runs the checks UpdateRoleWithPermissions runs on the new permissions.
@@ -1341,7 +1365,11 @@ func (rs *roleService) resolveUpdateTarget(
 	return stored.OUID, visible, nil
 }
 
-// translateSharingError maps a sharing framework error into this service's own codes.
+// translateSharingError maps a sharing framework error into this service's own codes. A refusal this
+// package raised through the framework is already one of them.
 func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	if svcErr != nil && svcErr.Code == ErrorRoleMandatedInOU.Code {
+		return svcErr
+	}
 	return sharingErrors.Translate(svcErr)
 }

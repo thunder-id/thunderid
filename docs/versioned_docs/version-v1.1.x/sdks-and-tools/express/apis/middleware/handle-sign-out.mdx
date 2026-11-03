@@ -1,0 +1,85 @@
+---
+title: handleSignOut()
+docType: reference
+description: Handle sign-out redirects and post-logout completion with the handleSignOut() Express middleware.
+---
+
+# `handleSignOut()`
+
+The `handleSignOut()` function returns an Express route handler for the sign-out path.
+
+## Signature
+
+```ts
+handleSignOut(): express.RequestHandler
+```
+
+## Import
+
+```js
+const {handleSignOut} = require('@thunderid/express');
+```
+
+## Prerequisites
+
+- Mount [`thunderID()`](../thunderid) before this handler
+- Mount `cookie-parser` before this handler so the SDK can read `req.cookies`
+- Register this handler on the route that matches your `afterSignOutUrl`
+
+## Usage
+
+```js title="index.js" showLineNumbers
+const express = require('express');
+const cookieParser = require('cookie-parser');
+const {thunderID, handleSignOut} = require('@thunderid/express');
+
+const app = express();
+
+app.use(cookieParser());
+app.use(
+  thunderID({
+    baseUrl: 'https://localhost:8090',
+    clientId: '<your-client-id>',
+    clientSecret: '<your-client-secret>',
+    afterSignOutUrl: 'http://localhost:3000/logout',
+  }),
+);
+
+app.get('/logout', handleSignOut());
+```
+
+## Runtime Behavior
+
+The handler supports two sign-out stages:
+
+1. Normal sign-out request:
+   - reads the session ID from `req.cookies[SESSION_COOKIE_NAME]`
+   - requests the sign-out URL from the SDK
+   - clears the session cookie
+   - redirects the browser to the identity provider's end-session endpoint
+2. Post-logout completion request:
+   - if the request query contains `state=sign_out_success`, the handler calls `onSignOut`
+
+## Default Callbacks
+
+| Callback | Default behavior |
+| :--- | :--- |
+| `onSignOut` | Calls `res.end()` |
+| `onError` | Logs the error message and returns `500` with an empty response body |
+
+## Failure Behavior
+
+- If `thunderID()` has not been mounted first, the handler logs an error and returns `500`
+- If the request does not contain the session cookie, the handler calls `onError` with a `ThunderIDRuntimeError`
+- If sign-out URL generation fails, the handler calls `onError`
+
+## Notes
+
+- The missing-cookie error path uses the runtime error code `EXPRESS-AUTH_MW-LOGOUT-NF01`
+- The handler clears the session cookie by setting it to `null` with `maxAge: 0`
+
+## Related APIs
+
+- [`thunderID()`](../thunderid)
+- [`CookieConfig`](../../constants/cookie-config)
+- [`Redirect Flow`](../../../guides/redirect-flow)

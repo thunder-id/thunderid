@@ -1,0 +1,159 @@
+---
+title: Embedded Sign-In Flow (V1)
+docType: reference
+displayed_sidebar: javascriptSdkSidebar
+description: Embedded sign-in flow component for the JavaScript SDK, driving multi-step authentication UIs.
+---
+
+# Embedded Sign-In Flow (V1)
+
+These functions implement app-native (embedded) sign-in for the V1 flow protocol. They allow you to drive the authentication sequence step-by-step without a browser redirect to the identity provider. Used internally by `ThunderIDJavaScriptClient.getAgentToken()`.
+
+:::note
+For new integrations, prefer the [V2 flow functions](../embedded-sign-in-flow-v2), which offer a richer response model and better error handling.
+:::
+
+## `initializeEmbeddedSignInFlow(config)`
+
+Send an OAuth 2.0 authorization request directly to the <ProductName /> authorize endpoint and receive the first authentication step.
+
+```ts
+import { initializeEmbeddedSignInFlow } from '@thunderid/javascript'
+
+const response = await initializeEmbeddedSignInFlow({
+  url: 'https://localhost:8090/oauth2/authorize',
+  payload: {
+    response_type: 'code',
+    client_id: '<your-client-id>',
+    redirect_uri: 'http://localhost:3000',
+    scope: 'openid profile',
+    state: '<random-state>',
+    code_challenge: '<pkce-code-challenge>',
+    code_challenge_method: 'S256',
+    response_mode: 'direct',
+  },
+})
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `config.url` | `string` | ✅ | Full authorization endpoint URL (use instead of `baseUrl`) |
+| `config.baseUrl` | `string` | ✅ | <ProductName /> base URL. Mutually exclusive with `url` |
+| `config.payload` | `Record<string, string>` | ✅ | Authorization request parameters |
+| `config.payload.response_type` | `string` | ✅ | Must be `'code'` |
+| `config.payload.client_id` | `string` | ✅ | Application client ID |
+| `config.payload.redirect_uri` | `string` | ✅ | Redirect URI registered with the application |
+| `config.payload.scope` | `string` | ✅ | Space-separated scopes |
+| `config.payload.state` | `string` | ✅ | Random state for CSRF protection |
+| `config.payload.code_challenge` | `string` | No | PKCE code challenge |
+| `config.payload.code_challenge_method` | `string` | No | PKCE method (e.g., `'S256'`) |
+| `config.payload.response_mode` | `string` | No | Set to `'direct'` for embedded flows |
+
+### Response: `EmbeddedSignInFlowInitiateResponse`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `flowId` | `string` | Unique ID for this authentication flow |
+| `flowStatus` | `EmbeddedSignInFlowStatus` | Current status of the flow |
+| `flowType` | `string` | Flow type identifier |
+| `nextStep` | `EmbeddedSignInFlowNextStep` | The next required authentication step |
+| `links` | `EmbeddedSignInFlowLink[]` | Hypermedia links for the flow |
+
+#### `EmbeddedSignInFlowNextStep`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `stepType` | `EmbeddedSignInFlowStepType` | Type of the next step |
+| `authenticators` | `EmbeddedSignInFlowAuthenticator[]` | Available authenticators for this step |
+| `messages` | `object[]` | Messages to display to the user |
+
+#### `EmbeddedSignInFlowAuthenticator`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `authenticator` | `string` | Authenticator name (e.g., `'BasicAuthenticator'`) |
+| `authenticatorId` | `string` | Unique authenticator identifier |
+| `idp` | `string` | Identity provider name |
+| `metadata` | `object` | Authenticator-specific metadata |
+| `requiredParams` | `string[]` | Parameters the authenticator requires (e.g., `['username', 'password']`) |
+
+## `executeEmbeddedSignInFlow(config)`
+
+Submit the response for a flow step (e.g., credentials) and advance the flow.
+
+```ts
+import { executeEmbeddedSignInFlow } from '@thunderid/javascript'
+
+const response = await executeEmbeddedSignInFlow({
+  baseUrl: 'https://localhost:8090',
+  payload: {
+    flowId: response.flowId,
+    selectedAuthenticator: {
+      authenticatorId: 'BasicAuthenticator-1',
+      params: {
+        username: 'user@example.com',
+        password: 'password123',
+      },
+    },
+  },
+})
+
+if (response.flowStatus === EmbeddedSignInFlowStatus.SuccessCompleted) {
+  // Exchange the authorization code for tokens
+  const { code, state, session_state } = response.authData
+}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `config.url` | `string` | ✅ | Flow execution endpoint URL |
+| `config.baseUrl` | `string` | ✅ | <ProductName /> base URL. Mutually exclusive with `url` |
+| `config.payload` | `object` | ✅ | Flow step payload |
+| `config.payload.flowId` | `string` | ✅ | Flow ID from `initializeEmbeddedSignInFlow()` |
+| `config.payload.selectedAuthenticator` | `object` | ✅ | Authenticator selection and credentials |
+| `config.payload.selectedAuthenticator.authenticatorId` | `string` | ✅ | ID of the chosen authenticator |
+| `config.payload.selectedAuthenticator.params` | `Record<string, string>` | ✅ | Authenticator-specific input parameters |
+
+### Response: `EmbeddedSignInFlowHandleResponse`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `flowStatus` | `EmbeddedSignInFlowStatus` | Final or intermediate status |
+| `authData` | `Record<string, string>` | On success: authorization code, state, session_state |
+
+## Enums
+
+### `EmbeddedSignInFlowStatus`
+
+| Value | Description |
+|-------|-------------|
+| `Incomplete` | Flow has more steps to complete |
+| `SuccessCompleted` | Authentication succeeded: `authData` contains the authorization code |
+| `FailCompleted` | Authentication failed definitively |
+| `FailIncomplete` | A step failed but the flow can continue (e.g., wrong credentials) |
+
+### `EmbeddedSignInFlowStepType`
+
+| Value | Description |
+|-------|-------------|
+| `AUTHENTICATOR_PROMPT` | User must provide credentials for an authenticator |
+| `MULTI_OPTIONS_PROMPT` | User must choose between multiple authenticators |
+
+### `EmbeddedSignInFlowAuthenticatorParamType`
+
+| Value | Description |
+|-------|-------------|
+| `USER_PROMPT` | Parameter requires user input |
+| `INIT_PARAM` | Parameter is provided at flow initialization |
+
+### `EmbeddedSignInFlowAuthenticatorPromptType`
+
+| Value | Description |
+|-------|-------------|
+| `USER_PROMPT` | Standard credential prompt |
+| `INTERNAL_PROMPT` | Handled internally by the authenticator |
+| `REDIRECTION_PROMPT` | Authenticator requires a redirect |

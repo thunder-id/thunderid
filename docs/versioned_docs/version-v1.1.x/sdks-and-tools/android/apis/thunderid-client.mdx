@@ -1,0 +1,289 @@
+---
+title: ThunderIDClient
+docType: reference
+description: Core authentication client for the Android SDK, with methods for sign-in, token refresh, and user data.
+---
+
+# `ThunderIDClient`
+
+`ThunderIDClient` is the core authentication client in the `dev.thunderid:android` library. It manages the full authentication lifecycle: initialization, sign-in (both app-native and redirect-based), session, token management, and user profile operations.
+
+When you use the `dev.thunderid:compose` library, a `ThunderIDClient` instance is created and managed automatically. You can access it via `LocalThunderID.current.client` from any composable.
+
+## Usage
+
+```kotlin
+import dev.thunderid.android.ThunderIDClient
+import dev.thunderid.android.ThunderIDConfig
+
+val client = ThunderIDClient()
+
+client.initialize(
+    config = ThunderIDConfig(
+        baseUrl = "https://localhost:8090",
+        clientId = "<your-client-id>",
+        scopes = listOf("openid", "profile", "email"),
+        afterSignInUrl = "dev.thunderid.app://callback",
+        afterSignOutUrl = "dev.thunderid.app://logout"
+    )
+)
+```
+
+:::note
+When using `dev.thunderid:compose`, you do not need to create a `ThunderIDClient` directly. Wrap your UI in `ThunderIDProvider(config = ...)` and access the client through `LocalThunderID.current.client`.
+:::
+
+## Initialization
+
+### `initialize(config, storage)`
+
+Initializes the SDK. You must call this before calling any other method.
+
+```kotlin
+suspend fun initialize(config: ThunderIDConfig, storage: StorageAdapter? = null): Boolean
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `config` | `ThunderIDConfig` | ✅ | SDK configuration. See [Configuration](../configuration). |
+| `storage` | `StorageAdapter?` | ❌ | Custom token storage backend. Defaults to `EncryptedStorageAdapter`. |
+
+**Returns:** `true` when initialization succeeds.
+
+**Throws:** `IAMException` with code `ALREADY_INITIALIZED` if the SDK is already initialized, or `INVALID_CONFIGURATION` if `baseUrl` is empty or does not use HTTPS.
+
+### `reInitialize(baseUrl, clientId)`
+
+Updates the base URL or client ID and reinitializes the SDK without creating a new instance.
+
+```kotlin
+suspend fun reInitialize(baseUrl: String? = null, clientId: String? = null): Boolean
+```
+
+**Throws:** `IAMException` with code `SDK_NOT_INITIALIZED` if `initialize()` has not been called first.
+
+### `getConfiguration()`
+
+Returns the current SDK configuration.
+
+```kotlin
+fun getConfiguration(): ThunderIDConfig
+```
+
+**Throws:** `IAMException` with code `SDK_NOT_INITIALIZED` if the SDK has not been initialized.
+
+## App-Native Authentication
+
+These methods drive the Flow Execution API loop for embedded (in-app) sign-in without leaving your application.
+
+### `signIn(payload, request)`
+
+Submits a step in the sign-in flow. Call this in a loop: first with an empty payload to initiate the flow, then with user inputs and the action ID to advance each step until `flowStatus` is `COMPLETE`.
+
+```kotlin
+suspend fun signIn(
+    payload: EmbeddedSignInPayload,
+    request: EmbeddedFlowRequestConfig
+): EmbeddedFlowResponse
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `payload` | `EmbeddedSignInPayload` | ✅ | Flow step payload. Set `flowId` to `null` on the first call to initiate. |
+| `request` | `EmbeddedFlowRequestConfig` | ✅ | Flow configuration including the application ID and flow type. |
+
+**Returns:** `EmbeddedFlowResponse` with `flowStatus` of `PROMPT_ONLY` (more steps needed), `COMPLETE` (tokens issued), or `ERROR`.
+
+:::note
+The `SignIn` and `SignUp` composables manage this loop for you. Use `signIn(payload, request)` directly only when building a fully custom sign-in UI.
+:::
+
+### `signUp(payload, request)`
+
+Submits a step in the registration flow. Same loop pattern as `signIn`.
+
+```kotlin
+suspend fun signUp(
+    payload: EmbeddedSignInPayload? = null,
+    request: EmbeddedFlowRequestConfig? = null
+): EmbeddedFlowResponse
+```
+
+## Redirect-Based Authentication
+
+These methods implement the OAuth 2.0 Authorization Code flow with PKCE for apps that redirect to a browser.
+
+### `buildSignInUrl(options)`
+
+Builds the OAuth 2.0 authorization URL to open in a `CustomTabsIntent` or browser.
+
+```kotlin
+fun buildSignInUrl(options: SignInOptions? = null): String
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `options` | `SignInOptions?` | ❌ | Optional sign-in hints: `prompt`, `loginHint`, `fidp`. |
+
+**Returns:** The authorization URL string with PKCE `code_challenge` and `code_challenge_method=S256` parameters.
+
+**Throws:** `IAMException` with code `INVALID_CONFIGURATION` if `clientId` is not set.
+
+### `handleRedirectCallback(url)`
+
+Exchanges the authorization code from the callback URL for tokens and returns the signed-in user.
+
+```kotlin
+suspend fun handleRedirectCallback(url: String): User
+```
+
+**Throws:** `IAMException` with code `INVALID_GRANT` if the URL does not contain a valid authorization code, or if the PKCE verifier is missing (call `buildSignInUrl` first).
+
+## Session
+
+### `isSignedIn()`
+
+Returns `true` if an access token is present in the token store.
+
+```kotlin
+suspend fun isSignedIn(): Boolean
+```
+
+### `signOut(options)`
+
+Revokes the refresh token, clears the local session, and returns the post-logout redirect URL.
+
+```kotlin
+suspend fun signOut(options: SignOutOptions? = null): String
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `options` | `SignOutOptions?` | ❌ | Optional: `idTokenHint` for server-side logout. |
+
+**Returns:** The `afterSignOutUrl` from your configuration, or `"/"` if not set.
+
+### `clearSession()`
+
+Clears the local session without revoking the refresh token on the server.
+
+```kotlin
+fun clearSession()
+```
+
+### `isLoading()`
+
+Returns `true` while a sign-in or sign-out operation is in progress.
+
+```kotlin
+fun isLoading(): Boolean
+```
+
+## Token Management
+
+### `getAccessToken()`
+
+Returns the current access token, automatically refreshing it if expired.
+
+```kotlin
+suspend fun getAccessToken(): String
+```
+
+**Throws:** `IAMException` with code `SESSION_EXPIRED` if the refresh token is also expired.
+
+### `decodeJwtToken(token)`
+
+Decodes a JWT string into a `Map<String, Any?>`.
+
+```kotlin
+fun decodeJwtToken(token: String): Map<String, Any?>
+```
+
+**Throws:** `IAMException` with code `INVALID_INPUT` if the token is not a valid JWT.
+
+Example: decode access token claims:
+
+```kotlin
+val token = client.getAccessToken()
+val claims = client.decodeJwtToken(token)
+val sub = claims["sub"] as? String
+```
+
+### `exchangeToken(config)`
+
+Performs an OAuth 2.0 token exchange (RFC 8693). Useful for Security Token Service (STS) scenarios.
+
+```kotlin
+suspend fun exchangeToken(config: TokenExchangeRequestConfig): TokenResponse
+```
+
+## User and Profile
+
+### `getUser()`
+
+Returns the authenticated user. Reads claims from the access token JWT if available; otherwise calls `/oauth2/userinfo`.
+
+```kotlin
+suspend fun getUser(): User
+```
+
+**Returns:** A `User` with `sub`, `username`, `email`, `displayName`, `profilePicture`, and raw `claims`.
+
+### `getUserProfile()`
+
+Fetches the full user profile from `/scim2/Me`.
+
+```kotlin
+suspend fun getUserProfile(): UserProfile
+```
+
+### `updateUserProfile(payload, userId)`
+
+Updates the user profile via `/scim2/Me` (or `/scim2/Users/<userId>` if `userId` is provided).
+
+```kotlin
+suspend fun updateUserProfile(payload: Map<String, Any>, userId: String? = null): User
+```
+
+## Error Handling
+
+All suspending methods throw `IAMException` on failure. Catch it to handle errors:
+
+```kotlin
+try {
+    val user = client.getUser()
+} catch (e: IAMException) {
+    println("[${e.code}] ${e.message}")
+} catch (e: Exception) {
+    println("Unexpected error: $e")
+}
+```
+
+### Error Codes
+
+| Code | Description |
+| :--- | :--- |
+| `SDK_NOT_INITIALIZED` | A method was called before `initialize()` |
+| `ALREADY_INITIALIZED` | `initialize()` was called more than once |
+| `INVALID_CONFIGURATION` | Missing or invalid configuration value |
+| `INVALID_REDIRECT_URI` | The redirect URI is not registered |
+| `AUTHENTICATION_FAILED` | Credentials are incorrect |
+| `USER_ACCOUNT_LOCKED` | The user account is locked |
+| `USER_ACCOUNT_DISABLED` | The user account is disabled |
+| `SESSION_EXPIRED` | The session has expired and cannot be refreshed |
+| `MFA_REQUIRED` | Multi-factor authentication is required |
+| `MFA_FAILED` | Multi-factor authentication failed |
+| `INVALID_GRANT` | The authorization code or token is invalid |
+| `CONSENT_REQUIRED` | User consent is required |
+| `USER_ALREADY_EXISTS` | Registration failed because the user already exists |
+| `INVALID_INPUT` | Input validation failed |
+| `INVITATION_CODE_INVALID` | The invitation code is not valid |
+| `INVITATION_CODE_EXPIRED` | The invitation code has expired |
+| `REGISTRATION_DISABLED` | Registration is disabled for this application |
+| `RECOVERY_FAILED` | Password recovery failed |
+| `CONFIRMATION_CODE_INVALID` | The confirmation code is not valid |
+| `CONFIRMATION_CODE_EXPIRED` | The confirmation code has expired |
+| `NETWORK_ERROR` | A network request failed |
+| `REQUEST_TIMEOUT` | The request timed out |
+| `SERVER_ERROR` | The server returned an error response |
+| `UNKNOWN_ERROR` | An unexpected error occurred |

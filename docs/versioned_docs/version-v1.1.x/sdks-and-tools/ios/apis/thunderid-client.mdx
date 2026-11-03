@@ -1,0 +1,293 @@
+---
+title: ThunderIDClient
+docType: reference
+description: Core authentication client for the iOS SDK, with methods for sign-in, token refresh, and user data.
+---
+
+# `ThunderIDClient`
+
+`ThunderIDClient` is the core authentication client in the `ThunderID` package. It manages the full authentication lifecycle: initialization, sign-in (both app-native and redirect-based), session, token management, and user profile operations.
+
+When you use the `ThunderIDSwiftUI` package, a `ThunderIDClient` instance is created and managed automatically. You can access it via `ThunderIDState.client` from any view.
+
+## Usage
+
+```swift
+import ThunderID
+
+let client = ThunderIDClient()
+
+try await client.initialize(config: ThunderIDConfig(
+    baseUrl: "https://localhost:8090",
+    clientId: "<your-client-id>",
+    scopes: ["openid", "profile", "email"],
+    afterSignInUrl: "io.thunderid.b2c://callback",
+    afterSignOutUrl: "io.thunderid.b2c://logout"
+))
+```
+
+:::note
+When using `ThunderIDSwiftUI`, you do not need to create a `ThunderIDClient` directly. Apply `.thunderIDProvider(config:)` to your root view and access the client through `@EnvironmentObject var state: ThunderIDState`.
+:::
+
+## Initialization
+
+### `initialize(config:storage:)`
+
+Initializes the SDK. You must call this before calling any other method.
+
+```swift
+func initialize(config: ThunderIDConfig, storage: StorageAdapter? = nil) async throws -> Bool
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `config` | `ThunderIDConfig` | ✅ | SDK configuration. See [Configuration](../configuration). |
+| `storage` | `StorageAdapter?` | ❌ | Custom token storage backend. Defaults to `KeychainStorageAdapter`. |
+
+**Returns:** `true` when initialization succeeds.
+
+**Throws:** `IAMError` with code `.alreadyInitialized` if the SDK is already initialized, or `.invalidConfiguration` if `baseUrl` is empty or does not use HTTPS.
+
+### `reInitialize(baseUrl:clientId:)`
+
+Updates the base URL or client ID and reinitializes the SDK without creating a new instance.
+
+```swift
+func reInitialize(baseUrl: String? = nil, clientId: String? = nil) async throws -> Bool
+```
+
+**Throws:** `IAMError` with code `.sdkNotInitialized` if `initialize()` has not been called first.
+
+### `getConfiguration()`
+
+Returns the current SDK configuration.
+
+```swift
+func getConfiguration() throws -> ThunderIDConfig
+```
+
+**Throws:** `IAMError` with code `.sdkNotInitialized` if the SDK has not been initialized.
+
+## App-Native Authentication
+
+These methods drive the Flow Execution API loop for embedded (in-app) sign-in without leaving your application.
+
+### `signIn(payload:request:sessionId:)`
+
+Submits a step in the sign-in flow. Call this in a loop: first with an empty payload to initiate the flow, then with user inputs and the action ID to advance each step until `flowStatus` is `.complete`.
+
+```swift
+func signIn(
+    payload: EmbeddedSignInPayload,
+    request: EmbeddedFlowRequestConfig,
+    sessionId: String? = nil
+) async throws -> EmbeddedFlowResponse
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `payload` | `EmbeddedSignInPayload` | ✅ | Flow step payload. Set `flowId` to `nil` on the first call to initiate. |
+| `request` | `EmbeddedFlowRequestConfig` | ✅ | Flow configuration including the application ID and flow type. |
+| `sessionId` | `String?` | ❌ | Session identifier for multi-session support. |
+
+**Returns:** `EmbeddedFlowResponse` with `flowStatus` of `.promptOnly` (more steps needed), `.complete` (tokens issued), or `.error`.
+
+:::note
+The `SignIn` and `SignUp` SwiftUI components manage this loop for you. Use `signIn(payload:request:sessionId:)` directly only when building a fully custom sign-in UI.
+:::
+
+### `signUp(payload:request:)`
+
+Submits a step in the registration flow. Same loop pattern as `signIn`.
+
+```swift
+func signUp(
+    payload: EmbeddedSignInPayload? = nil,
+    request: EmbeddedFlowRequestConfig? = nil
+) async throws -> EmbeddedFlowResponse
+```
+
+## Redirect-Based Authentication
+
+These methods implement the OAuth 2.0 Authorization Code flow with PKCE for apps that redirect to a browser.
+
+### `buildSignInURL(options:)`
+
+Builds the OAuth 2.0 authorization URL to open in `ASWebAuthenticationSession` or `SFSafariViewController`.
+
+```swift
+func buildSignInURL(options: SignInOptions? = nil) throws -> URL
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `options` | `SignInOptions?` | ❌ | Optional sign-in hints: `prompt`, `loginHint`, `fidp`. |
+
+**Returns:** The authorization URL with PKCE `code_challenge` and `code_challenge_method=S256` parameters.
+
+**Throws:** `IAMError` with code `.invalidConfiguration` if `clientId` is not set.
+
+### `handleRedirectCallback(url:)`
+
+Exchanges the authorization code from the callback URL for tokens and returns the signed-in user.
+
+```swift
+func handleRedirectCallback(url: URL) async throws -> User
+```
+
+**Throws:** `IAMError` with code `.invalidGrant` if the URL does not contain a valid authorization code, or if the PKCE verifier is missing (call `buildSignInURL` first).
+
+## Session
+
+### `isSignedIn(sessionId:)`
+
+Returns `true` if an access token is present in the token store.
+
+```swift
+func isSignedIn(sessionId: String? = nil) async throws -> Bool
+```
+
+### `signOut(options:sessionId:)`
+
+Revokes the refresh token, clears the local session, and returns the post-logout redirect URL.
+
+```swift
+func signOut(options: SignOutOptions? = nil, sessionId: String? = nil) async throws -> String
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `options` | `SignOutOptions?` | ❌ | Optional: `idTokenHint` for server-side logout. |
+| `sessionId` | `String?` | ❌ | Session identifier for multi-session support. |
+
+**Returns:** The `afterSignOutUrl` from your configuration, or `"/"` if not set.
+
+### `clearSession(sessionId:)`
+
+Clears the local session without revoking the refresh token on the server.
+
+```swift
+func clearSession(sessionId: String? = nil)
+```
+
+### `isLoading()`
+
+Returns `true` while a sign-in or sign-out operation is in progress.
+
+```swift
+func isLoading() -> Bool
+```
+
+## Token Management
+
+### `getAccessToken(sessionId:)`
+
+Returns the current access token, automatically refreshing it if expired.
+
+```swift
+func getAccessToken(sessionId: String? = nil) async throws -> String
+```
+
+**Throws:** `IAMError` with code `.sessionExpired` if the refresh token is also expired.
+
+### `decodeJwtToken(_:)`
+
+Decodes a JWT string into any `Decodable` type.
+
+```swift
+func decodeJwtToken<R: Decodable>(_ token: String) throws -> R
+```
+
+**Throws:** `IAMError` with code `.invalidInput` if the token is not a valid JWT.
+
+Example: decode access token claims into a dictionary:
+
+```swift
+let claims: [String: AnyCodable] = try client.decodeJwtToken(accessToken)
+let sub = claims["sub"]?.value as? String
+```
+
+### `exchangeToken(config:sessionId:)`
+
+Performs an OAuth 2.0 token exchange (RFC 8693). Useful for Security Token Service (STS) scenarios.
+
+```swift
+func exchangeToken(
+    config: TokenExchangeRequestConfig,
+    sessionId: String? = nil
+) async throws -> TokenResponse
+```
+
+## User and Profile
+
+### `getUser(options:)`
+
+Returns the authenticated user. Reads claims from the access token JWT if available; otherwise calls `/oauth2/userinfo`.
+
+```swift
+func getUser(options: [String: Any]? = nil) async throws -> User
+```
+
+**Returns:** A `User` with `sub`, `username`, `email`, `displayName`, `profilePicture`, and raw `claims`.
+
+### `getUserProfile(options:)`
+
+Fetches the full user profile from `/scim2/Me`.
+
+```swift
+func getUserProfile(options: [String: Any]? = nil) async throws -> UserProfile
+```
+
+**Returns:** A `UserProfile` with `id` and a `claims` dictionary containing all SCIM attributes.
+
+### `updateUserProfile(payload:userId:)`
+
+Updates the user profile via `/scim2/Me` (or `/scim2/Users/<userId>` if `userId` is provided).
+
+```swift
+func updateUserProfile(payload: [String: Any], userId: String? = nil) async throws -> User
+```
+
+## Error Handling
+
+All throwing methods raise an `IAMError` on failure. Catch it to handle errors:
+
+```swift
+do {
+    let user = try await client.getUser()
+} catch let error as IAMError {
+    print("[\(error.code.rawValue)] \(error.message)")
+} catch {
+    print("Unexpected error: \(error)")
+}
+```
+
+### Error Codes
+
+| Code | Value | Description |
+| :--- | :--- | :--- |
+| `.sdkNotInitialized` | `SDK_NOT_INITIALIZED` | A method was called before `initialize()` |
+| `.alreadyInitialized` | `ALREADY_INITIALIZED` | `initialize()` was called more than once |
+| `.invalidConfiguration` | `INVALID_CONFIGURATION` | Missing or invalid configuration value |
+| `.invalidRedirectUri` | `INVALID_REDIRECT_URI` | The redirect URI is not registered |
+| `.authenticationFailed` | `AUTHENTICATION_FAILED` | Credentials are incorrect |
+| `.userAccountLocked` | `USER_ACCOUNT_LOCKED` | The user account is locked |
+| `.userAccountDisabled` | `USER_ACCOUNT_DISABLED` | The user account is disabled |
+| `.sessionExpired` | `SESSION_EXPIRED` | The session has expired and cannot be refreshed |
+| `.mfaRequired` | `MFA_REQUIRED` | Multi-factor authentication is required |
+| `.mfaFailed` | `MFA_FAILED` | Multi-factor authentication failed |
+| `.invalidGrant` | `INVALID_GRANT` | The authorization code or token is invalid |
+| `.consentRequired` | `CONSENT_REQUIRED` | User consent is required |
+| `.userAlreadyExists` | `USER_ALREADY_EXISTS` | Registration failed because the user already exists |
+| `.invalidInput` | `INVALID_INPUT` | Input validation failed |
+| `.invitationCodeInvalid` | `INVITATION_CODE_INVALID` | The invitation code is not valid |
+| `.invitationCodeExpired` | `INVITATION_CODE_EXPIRED` | The invitation code has expired |
+| `.registrationDisabled` | `REGISTRATION_DISABLED` | Registration is disabled for this application |
+| `.recoveryFailed` | `RECOVERY_FAILED` | Password recovery failed |
+| `.confirmationCodeInvalid` | `CONFIRMATION_CODE_INVALID` | The confirmation code is not valid |
+| `.confirmationCodeExpired` | `CONFIRMATION_CODE_EXPIRED` | The confirmation code has expired |
+| `.networkError` | `NETWORK_ERROR` | A network request failed |
+| `.requestTimeout` | `REQUEST_TIMEOUT` | The request timed out |
+| `.serverError` | `SERVER_ERROR` | The server returned an error response |
+| `.unknownError` | `UNKNOWN_ERROR` | An unexpected error occurred |

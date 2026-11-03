@@ -29,6 +29,27 @@ Field behavior:
 
 If the export has no template variables, `environment_variables` is an empty string.
 
+## Template Variable Names
+
+Each parameterized field becomes a template variable named after its resource and the field, in uppercase. The `clientId` field of an application named `My App` becomes `MY_APP_CLIENT_ID`.
+
+<ProductName /> normalizes the resource name so that the generated name is valid in a template placeholder:
+
+- Every character that is not a letter or a digit becomes an underscore, and consecutive underscores collapse into one.
+- A trailing underscore is removed, so a name ending in a separator produces the same variable name as the name without it.
+- A name that starts with a digit gets a leading underscore.
+
+Normalization applies to generated variable names only. Exported file names and the `name` field inside the exported YAML keep the original resource name.
+
+| Resource name | Variable name for `clientId` |
+| --- | --- |
+| `My App` | `MY_APP_CLIENT_ID` |
+| `My-App` | `MY_APP_CLIENT_ID` |
+| `My App-` | `MY_APP_CLIENT_ID` |
+| `2FA App` | `_2FA_APP_CLIENT_ID` |
+
+Because normalization maps several names onto the same prefix, two resources in one export can compete for the same variable name. In that case, the second resource gets a numeric suffix. Exporting both `Wayfinder-Concierge` and `Wayfinder_Concierge` produces `WAYFINDER_CONCIERGE_CLIENT_ID` and `WAYFINDER_CONCIERGE_2_CLIENT_ID`, so each resource keeps its own value in the environment file. Resource types share one namespace, so an application and a connection with the same name also get distinct variable names.
+
 ## Internal API Model Reference
 
 The API reference schema also defines an internal `ExportResponse` model (see `ExportResponse.envFile`, backed by the `EnvironmentFile` schema/struct):

@@ -32,9 +32,11 @@ import SessionSignOutProperties from './execution-properties/SessionSignOutPrope
 import SmsProperties from './execution-properties/SmsProperties';
 import SsoCheckProperties from './execution-properties/SsoCheckProperties';
 import UserTypeResolverProperties from './execution-properties/UserTypeResolverProperties';
+import useResourceFieldError from '../../../hooks/useResourceFieldError';
 import type {FlowNodeInput} from '../../../models/responses';
 import {ExecutionTypes} from '../../../models/steps';
 import type {StepData} from '../../../models/steps';
+import {getExecutorInputs} from '../../../utils/executorInputs';
 import type {CommonResourcePropertiesPropsInterface} from '../CommonResourceProperties';
 
 /**
@@ -55,10 +57,7 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     return stepData?.action?.executor?.name;
   }, [resource]);
 
-  const currentInputs = useMemo((): FlowNodeInput[] => {
-    const stepData = resource?.data as StepData | undefined;
-    return (stepData?.action?.executor as {inputs?: FlowNodeInput[]} | undefined)?.inputs ?? [];
-  }, [resource]);
+  const currentInputs = useMemo((): FlowNodeInput[] => (resource ? getExecutorInputs(resource) : []), [resource]);
 
   const handleInputsChange = useCallback(
     (inputs: FlowNodeInput[]) => {
@@ -66,6 +65,8 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     },
     [onChange, resource],
   );
+
+  const inputsError: string = useResourceFieldError(resource?.id, 'data.action.executor.inputs');
 
   if (!executorName) {
     return null;
@@ -170,7 +171,9 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
   return (
     <Stack gap={2}>
       {executorSpecificProperties}
-      {showInputsEditor && <ExecutorInputsEditor inputs={currentInputs} onChange={handleInputsChange} />}
+      {showInputsEditor && (
+        <ExecutorInputsEditor inputs={currentInputs} onChange={handleInputsChange} errorMessage={inputsError} />
+      )}
     </Stack>
   );
 }

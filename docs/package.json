@@ -72,7 +72,6 @@
     "prism-react-renderer": "2.3.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "react-github-btn": "1.4.0",
     "react-i18next": "catalog:",
     "react-router": "catalog:"
   },

@@ -1,0 +1,62 @@
+---
+title: <SignedIn />
+docType: reference
+description: Conditionally render React content only when a user is currently signed in to the application.
+---
+
+# `<SignedIn />`
+
+The `SignedIn` component conditionally renders its children only when the user is authenticated with <ProductName />.
+It checks the current authentication state and displays protected UI content for signed-in users, while rendering optional `fallback` content (or nothing by default) when the user is not authenticated.
+This makes it ideal for guarding routes or UI sections that require authentication.
+
+## Usage
+
+You can use the `SignedIn` component to wrap any content that should only be visible to authenticated users.
+
+### Basic Usage
+
+Use `SignedIn` to show content only when signed in.
+
+```jsx title="src/App.jsx" showLineNumbers
+import { SignedIn } from '@thunderid/react'
+
+function App() {
+  return (
+    <SignedIn>
+      <p>Welcome! You are signed in.</p>
+    </SignedIn>
+  )
+}
+
+export default App
+```
+
+:::note
+If the user is not signed in, nothing will be rendered unless you provide a `fallback` prop.
+:::
+
+### Fallback Prop
+
+Show alternative content when the user is not signed in:
+
+```jsx title="src/App.jsx" showLineNumbers
+import { SignedIn } from '@thunderid/react'
+
+function App() {
+  return (
+    <SignedIn fallback={<p>Please sign in to continue</p>}>
+      <p>Welcome! You are signed in.</p>
+    </SignedIn>
+  )
+}
+
+export default App
+```
+
+## Props
+
+| Prop      | Type       | Required | Description                                 |
+|-----------|------------|:--------:|---------------------------------------------|
+| `children`| ReactNode  |   ✅     | Content to render when the user is signed in |
+| `fallback`| ReactNode  |   ❌     | Content to render when not signed in         |

@@ -939,10 +939,26 @@ func isComplete(step FlowStep) bool {
 	return step.Status == providers.FlowStatusComplete
 }
 
-// prepareContext prepares the flow context by merging any data.
+// withoutConstantInputs returns the submitted inputs without the ones the flow holds constant.
+func withoutConstantInputs(graph core.GraphInterface, inputs map[string]string) map[string]string {
+	if graph == nil || len(inputs) == 0 {
+		return inputs
+	}
+
+	accepted := make(map[string]string, len(inputs))
+	for identifier, value := range inputs {
+		if !graph.IsConstantInput(identifier) {
+			accepted[identifier] = value
+		}
+	}
+	return accepted
+}
+
+// prepareContext prepares the flow context by merging any data. Inputs the flow holds constant are left
+// out, so no way of starting or continuing a flow can set one.
 func prepareContext(ctx *EngineContext, action string, inputs map[string]string) {
 	// Append any inputs present to the context
-	if len(inputs) > 0 {
+	if inputs = withoutConstantInputs(ctx.Graph, inputs); len(inputs) > 0 {
 		ctx.UserInputs = sysutils.MergeStringMaps(ctx.UserInputs, inputs)
 	}
 
@@ -1039,7 +1055,7 @@ func (s *flowExecService) InitiateFlow(ctx context.Context,
 //
 // InitialInputs are placed directly into UserInputs before execution so executor nodes that
 // read from ctx.UserInputs (e.g. the identifying executor) can resolve data without requiring
-// an interactive input step from the user.
+// an interactive input step from the user. An input the flow holds constant is left out.
 func (s *flowExecService) InitiateAndExecute(ctx context.Context,
 	initContext *FlowInitContext) (*FlowStep, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowExecService"))

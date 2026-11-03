@@ -1,0 +1,88 @@
+---
+title: Configuration
+docType: reference
+displayed_sidebar: nextjsSdkSidebar
+description: Configuration options for the Next.js SDK, including client credentials, session settings, and redirect URLs.
+---
+
+# Configuration
+
+The <ProductName /> Next.js SDK reads configuration primarily from environment variables. This keeps secrets out of your source code and follows Next.js conventions.
+
+## Environment Variables
+
+Create a `.env` file in your project root:
+
+```dotenv title=".env"
+NEXT_PUBLIC_THUNDERID_BASE_URL=https://localhost:8090
+NEXT_PUBLIC_THUNDERID_CLIENT_ID=<your-client-id>
+THUNDERID_CLIENT_SECRET=<your-client-secret>
+THUNDERID_SECRET=<a-random-secret-for-session-signing>
+```
+
+### Required Variables
+
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_THUNDERID_BASE_URL` | Your <ProductName /> instance URL. The `NEXT_PUBLIC_` prefix makes this available to client components |
+| `NEXT_PUBLIC_THUNDERID_CLIENT_ID` | The Client ID from your <ProductName /> application |
+| `THUNDERID_CLIENT_SECRET` | The Client Secret from your <ProductName /> application. Server-side only, never exposed to the browser |
+| `THUNDERID_SECRET` | A random string (at least 32 characters) used to sign session cookies with HMAC-SHA256. Required in production; a development fallback is used when not set |
+
+### Optional Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `THUNDERID_SESSION_COOKIE_EXPIRY_TIME` | `86400` | Session cookie lifetime in seconds (24 hours by default) |
+
+## Session Cookies
+
+The SDK stores authentication state in signed, HttpOnly cookies:
+
+| Cookie | Purpose | Lifetime |
+|--------|---------|----------|
+| Session cookie | Stores access token, refresh token, user ID, and scopes | Configured via `THUNDERID_SESSION_COOKIE_EXPIRY_TIME` |
+| Temporary session cookie | Holds state during the OAuth flow | 15 minutes |
+
+### Cookie Security Settings
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `httpOnly` | `true` | Prevents client-side JavaScript access |
+| `secure` | `true` (production) | Requires HTTPS in production |
+| `sameSite` | `lax` | Protects against CSRF while allowing navigation |
+| `path` | `/` | Available to all routes |
+
+## Application Configuration
+
+Beyond environment variables, you can pass additional configuration to the `ThunderIDProvider`:
+
+```tsx title="app/layout.tsx" showLineNumbers
+import { ThunderIDProvider } from '@thunderid/nextjs/server'
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en">
+      <body>
+        <ThunderIDProvider sessionCookieExpiryTime={3600}>
+          {children}
+        </ThunderIDProvider>
+      </body>
+    </html>
+  )
+}
+```
+
+## Key Differences from the React SDK
+
+| Aspect | React SDK | Next.js SDK |
+|--------|-----------|-------------|
+| **Token storage** | Browser storage (sessionStorage, localStorage) | HttpOnly cookies (server-managed) |
+| **Client type** | Public client (no secret) | Confidential client (with secret) |
+| **PKCE** | Required | Not required (confidential client) |
+| **Token refresh** | Client-initiated | Automatic in middleware |
+| **Configuration** | Props on `ThunderIDProvider` | Environment variables |

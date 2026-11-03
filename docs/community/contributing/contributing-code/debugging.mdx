@@ -16,9 +16,13 @@ This guide covers setting up a local debugging environment for <ProductName />'s
 
 | Component | Description | Port |
 |-----------|-------------|------|
-| Backend | Go-based API server | 8090 |
+| Backend (Data Plane) | Go-based API server | 8090 |
+| auth-dp | Data Plane that signs operators into the Control Plane console (`make run`) | 8091 |
+| Control Plane | Go-based management server (`make run`) | 8095 |
 | Gate App | React-based authentication gateway | 5190 |
 | Console App | React-based developer console | 5191 |
+| Admin Console App | React-based admin console | 5192 |
+| Control Plane Console App | React-based Control Plane console | 5193 |
 | React SDK Sample | Sample app demonstrating OAuth integration | 3000 |
 
 This guide focuses on local development and debugging with SQLite for database storage.

@@ -1,0 +1,68 @@
+---
+title: Agent Token
+docType: guide
+sidebar_position: 5
+persona: iam
+description: Let an agent obtain its own access token in {{ProductName}} with the client credentials grant, and control the scopes, audience, and claims the token carries.
+---
+
+# Agent Token
+
+When an agent works on its own behalf, with no user involved, it holds an **agent token**: an access token whose subject is the agent itself, so every call it makes is made as that agent and is traceable to it. (When the agent instead acts for a user, it holds a user token; see [Agent Access on Behalf of Users](../on-behalf-of-user).) The `client_credentials` grant, enabled by default on a newly registered agent, is the grant an agent uses to obtain a token for itself directly. A token exchange can also produce a token whose subject is the agent; see [Agent-to-Agent Delegation](../agent-to-agent).
+
+## Choose what the agent token carries
+
+In the Console, on the **Tokens** tab, under **Issued to**, select **Agent** (the token the agent gets acting on its own; it is the default view). There, select the **Access Token Attributes** to embed and set the **Token Validity** period. Set the token's default audience on the **Advanced** tab. Through the API, configure these in the agent's OAuth token settings; see the [Agents API Reference](../../../../apis#tag/agents).
+
+## Get the agent token
+
+```bash
+curl -X POST https://localhost:8090/oauth2/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -u '<CLIENT_ID>:<CLIENT_SECRET>' \
+  -d 'grant_type=client_credentials' \
+  -d 'resource=https://api.example.com/invoices' \
+  -d 'scope=invoices:read invoices:write'
+```
+
+`resource` (RFC 8707) confines the token's audience and scopes to a single resource. Use it whenever the agent reaches more than one API, so a token minted for one resource cannot be replayed against another.
+
+The scopes issued are the intersection of the scopes requested, what the target resource server defines, and what the agent has been granted (see [Groups and roles](../../manage-agents#groups-and-roles)). A requested scope that falls outside that intersection, including `openid`, is dropped from the issued token rather than rejected. Check the token's `scope` claim to see what it actually carries.
+
+A request with no `scope` and no `resource` is not bound to a resource server: its audience is the agent's configured default audience, or its client ID when no default audience is set.
+
+With `private_key_jwt`, drop the `-u` secret and send `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer` with a signed `client_assertion` whose `aud` is the <ProductName /> issuer identifier, not the token endpoint URL. See [Client Authentication Methods](../../../protocols/oauth-oidc/client-authentication-methods) and [Client Credentials](../../../protocols/oauth-oidc/client-credentials).
+
+## Claims in the agent token
+
+Every agent access token is a signed JWT (`typ: at+jwt`). A `client_credentials` token carries:
+
+| Claim | Value |
+|---|---|
+| `sub` | The agent's resource ID. |
+| `iss` | The <ProductName /> instance URL. |
+| `aud` | The resolved resource server, or the agent's default audience (its client ID when none is set) for a scopeless request with no `resource`. |
+| `scope` | The scopes authorized through the agent's roles and groups. |
+| `client_id` | The agent's client ID. |
+| `grant_type` | `client_credentials`. |
+| `exp`, `iat`, `nbf`, `jti` | Standard JWT lifetime and identity claims. |
+
+There is no `act` claim, because the agent acts as itself and not for anyone else. The attributes and claims selected on the **Tokens** tab (the agent's schema attributes, its system attributes `name` and `owner`, the OU claims `ouId`, `ouName`, and `ouHandle`, and its `groups` and `roles`) are added only when selected.
+
+## Call a protected API with the agent token
+
+Send the token as a Bearer token. The resource verifies the token's signature with the keys from `https://localhost:8090/oauth2/jwks`, checks the `iss`, `aud`, and `exp` claims, then authorizes the request against `scope`. To identify the caller, the resource reads `sub` (the agent itself) and `client_id` (the OAuth client that obtained the token); there is no `act` claim, because the agent acts as itself.
+
+```bash
+curl https://api.example.com/invoices -H 'Authorization: Bearer <ACCESS_TOKEN>'
+```
+
+## Troubleshooting
+
+| Error | Likely cause |
+|---|---|
+| `invalid_client` | Wrong client ID or secret; with `private_key_jwt`, an invalid client assertion (wrong signing key, unknown `kid`, wrong `aud`, or expired); or the agent has no OAuth configuration. |
+| `unauthorized_client` | The agent is not registered for the requested grant type, or it authenticated with a method other than the one it is registered for. |
+| `invalid_request` | Both a client secret and a client assertion were sent. Use only the method the agent is configured for. |
+| `invalid_target` | The `resource` value does not match a registered resource server. |
+| A `403` from the API after the token is accepted | The token's scope or audience does not satisfy the resource server's policy. |

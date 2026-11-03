@@ -133,6 +133,26 @@ func extensionMaxAttemptsValue(value interface{}) (int, bool) {
 	return int(n), true
 }
 
+// ToValidationRules converts rule definitions to runtime ValidationRule values and pre-compiles their
+// regex patterns. Returns nil for an empty input.
+func ToValidationRules(defs []providers.ValidationRuleDefinition) ([]providers.ValidationRule, error) {
+	if len(defs) == 0 {
+		return nil, nil
+	}
+	rules := make([]providers.ValidationRule, len(defs))
+	for i, d := range defs {
+		rules[i] = providers.ValidationRule{
+			Type:    providers.ValidationType(d.Type),
+			Value:   d.Value,
+			Message: d.Message,
+		}
+	}
+	if err := PrepareValidationRules(rules); err != nil {
+		return nil, err
+	}
+	return rules, nil
+}
+
 // FieldError represents a single validation rule failure for a specific input field.
 type FieldError struct {
 	Identifier string `json:"identifier"`

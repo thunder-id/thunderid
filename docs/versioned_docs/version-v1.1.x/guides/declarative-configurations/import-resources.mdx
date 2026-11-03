@@ -1,0 +1,193 @@
+---
+title: Import Resources
+docType: reference
+description: Import declarative YAML resources into runtime stores and control mutability with declarative read-only mode.
+---
+
+# Import Resources
+
+<ProductName /> provides the `POST /import` API to import declarative YAML content into runtime stores.
+
+:::note
+Declarative resource attributes use camelCase (for example `ouId`, `authFlowId`, `clientId`), matching the REST API.
+:::
+
+:::note
+An application resource requires a `type` attribute (`browser`, `fullstack`, `mobile`, `m2m`, or `custom`). The type is set on creation and does not change on a later import. See [Application Types](../applications/manage-applications.mdx#application-types).
+:::
+
+Use this API when you want to:
+
+- Bootstrap resources from a YAML bundle.
+- Apply declarative updates in CI/CD.
+- Test resource definitions before applying them.
+
+## Authentication and authorization
+
+Use an access token with the **system** scope.
+
+Send the token in the `Authorization` header:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+## Endpoint Summary
+
+- `POST /import`: Imports one or more YAML documents into runtime stores.
+- `POST /import/delete`: Deletes a file-backed declarative resource file by type and key.
+
+## Request Model
+
+`POST /import` accepts the following payload:
+
+```json
+{
+  "content": "# YAML content with one or more documents",
+  "variables": {
+    "CLIENT_ID": "my-client-id"
+  },
+  "dryRun": false,
+  "options": {
+    "upsert": true,
+    "continueOnError": true,
+    "target": "runtime"
+  }
+}
+```
+
+### Options Behavior
+
+- `options.upsert`:
+  - Omitted: defaults to `true`.
+  - `true`: updates existing resources when supported.
+  - `false`: skips update behavior and attempts create semantics.
+- `options.continueOnError`:
+  - Omitted: defaults to `true`.
+  - `true`: continues processing remaining documents after an item failure.
+  - `false`: stops at the first failed item.
+- `options.target`:
+  - Omitted: defaults to `runtime`.
+  - `runtime` is currently supported.
+
+## Response Model
+
+A successful import returns summary metrics and per-document outcomes.
+
+```json
+{
+  "summary": {
+    "totalDocuments": 2,
+    "imported": 2,
+    "failed": 0,
+    "importedAt": "2026-04-23T12:10:52Z"
+  },
+  "results": [
+    {
+      "resourceType": "connection",
+      "resourceId": "550e8400-e29b-41d4-a716-446655440000",
+      "resourceName": "Google",
+      "operation": "create",
+      "status": "success"
+    },
+    {
+      "resourceType": "flow",
+      "resourceId": "660e8400-e29b-41d4-a716-446655440001",
+      "resourceName": "Default Login Flow",
+      "operation": "update",
+      "status": "success"
+    }
+  ]
+}
+```
+
+## Example: Import with Variables
+
+```bash
+curl -X POST "https://localhost:8090/import" \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "resource_type: application\nname: Console\ntype: browser\nauthFlowId: {{.AUTH_FLOW_ID}}\n",
+    "variables": {
+      "AUTH_FLOW_ID": "edc013d0-e893-4dc0-990c-3e1d203e005b"
+    },
+    "dryRun": false,
+    "options": {
+      "upsert": true,
+      "continueOnError": true,
+      "target": "runtime"
+    }
+  }'
+```
+
+## Cross-Resource References by Handle
+
+Instead of embedding environment-specific resource identifiers in YAML files, you can reference organization units and flows by their human-readable handles. The importer resolves each handle to its resource identifier at import time, making the same YAML portable across environments.
+
+The following handle fields are supported:
+
+| Resource type | Handle field | Resolves to |
+|---|---|---|
+| Application | `ouHandle` | `ouId` |
+| Application | `authFlowHandle` | `authFlowId` |
+| Application | `registrationFlowHandle` | `registrationFlowId` |
+| Application | `recoveryFlowHandle` | `recoveryFlowId` |
+| User type | `ouHandle` | `ouId` |
+
+If you provide both a handle field and the corresponding ID field, the ID takes precedence and the handle is ignored.
+
+If a handle cannot be resolved (because the target resource does not exist or the required adapter is not configured), the import item fails with a descriptive error message. When `continueOnError` is `true`, the importer continues processing the remaining documents.
+
+### Example: Application with Handle References
+
+```yaml
+resource_type: application
+name: My App
+type: fullstack
+ouHandle: default
+authFlowHandle: default-basic-flow
+registrationFlowHandle: default-registration-flow
+isRegistrationFlowEnabled: true
+```
+
+### Dry-Run Behavior
+
+When `dryRun` is `true`, the importer validates documents and reports what would be created or updated, but does not write any changes to runtime stores. Handle resolution is also skipped in dry-run mode: the importer accepts handle fields without attempting to look up their target resources. Use dry-run to validate YAML structure before applying it.
+
+## Delete File-Backed Declarative Resource
+
+`POST /import/delete` removes a declarative file-backed resource by `resourceType` and `resourceKey`.
+
+```json
+{
+  "resourceType": "application",
+  "resourceKey": "my-console-app"
+}
+```
+
+Example response:
+
+```json
+{
+  "resourceType": "application",
+  "resourceKey": "my-console-app",
+  "deletedFile": "applications/my-console-app.yaml"
+}
+```
+
+## Expected Side Effects
+
+When import runs with `dryRun=false`, <ProductName /> persists resource changes in runtime stores.
+
+When `POST /import/delete` succeeds, <ProductName /> removes the matching declarative YAML file from `config/resources`.
+
+## Error Handling
+
+Typical failures include:
+
+- Invalid request payload (`IMP-1001`).
+- Invalid YAML content (`IMP-1002`).
+- Template resolution failures (`IMP-1003`).
+- Adapter not configured for a resource type (`IMP-1004`).
+- Internal server error (`SSE-5000`).

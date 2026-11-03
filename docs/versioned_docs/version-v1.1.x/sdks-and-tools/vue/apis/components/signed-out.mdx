@@ -1,0 +1,67 @@
+---
+title: <SignedOut />
+docType: reference
+description: Conditionally render Vue template content only when no user is currently signed in to the application.
+---
+
+# `<SignedOut />`
+
+The `SignedOut` component conditionally renders its default slot only when the user is not authenticated with <ProductName />.
+It checks the current authentication state and displays content for unauthenticated users, while rendering an optional `#fallback` slot (or nothing by default) when the user is authenticated.
+This makes it ideal for showing sign-in prompts, public landing pages, or content that should only be visible to guests.
+
+## Usage
+
+You can use the `SignedOut` component to wrap any content that should only be visible to unauthenticated users.
+
+### Basic Usage
+
+Use `SignedOut` to show content only when not signed in.
+
+```vue title="src/App.vue" showLineNumbers
+<script setup>
+import { SignedOut, SignInButton } from '@thunderid/vue'
+</script>
+
+<template>
+  <SignedOut>
+    <div>
+      <h1>Welcome!</h1>
+      <SignInButton />
+    </div>
+  </SignedOut>
+</template>
+```
+
+:::note
+If the user is signed in, nothing will be rendered unless you provide a `#fallback` slot.
+:::
+
+### Fallback Slot
+
+Show alternative content when the user is signed in using the `#fallback` slot:
+
+```vue title="src/App.vue" showLineNumbers
+<script setup>
+import { SignedOut } from '@thunderid/vue'
+</script>
+
+<template>
+  <SignedOut>
+    <div>
+      <h1>Welcome!</h1>
+      <p>Please sign in to continue</p>
+    </div>
+    <template #fallback>
+      <p>You are already signed in</p>
+    </template>
+  </SignedOut>
+</template>
+```
+
+## Slots
+
+| Slot | Description |
+| :--- | :--- |
+| `default` | Content to render when the user is signed out |
+| `fallback` | Content to render when the user is signed in |

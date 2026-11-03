@@ -71,6 +71,13 @@ const (
 	DataConsentPrompt = "consentPrompt"
 	// DataStepTimeout is the key used for the step expiry timestamp in the flow response.
 	DataStepTimeout = "stepTimeout"
+	// DataClientIDHost is the key used for the client ID host shown with the consent prompt.
+	DataClientIDHost = "clientIdHost"
+	// DataRedirectURIHost is the key used for the redirect URI host shown with the consent prompt.
+	DataRedirectURIHost = "redirectUriHost"
+	// DataRedirectURILoopback is the key used for whether the redirect URI host shown with the consent
+	// prompt is a loopback host, so the client runs on the user's device.
+	DataRedirectURILoopback = "redirectUriLoopback"
 	// DataInviteLink is the key used for the invite link in the flow response additional data.
 	DataInviteLink = "inviteLink"
 	// DataCallbackType is the OAuth grant type surfaced on the terminal flow response's additional data.
@@ -204,6 +211,12 @@ const (
 	RuntimeKeyRequiredOptionalAttributes = "required_optional_attributes"
 	// RuntimeKeyRequiredLocales holds the space-separated locales requested for claims.
 	RuntimeKeyRequiredLocales = "required_locales"
+	// RuntimeKeyClientIDHost holds the host of the client ID of a client registered from a Client ID
+	// Metadata Document, set by the authorization request so that consent shows it.
+	RuntimeKeyClientIDHost = "client_id_host"
+	// RuntimeKeyRedirectURIHost holds the host of the redirect URI of a client registered from a Client ID
+	// Metadata Document, set by the authorization request so that consent shows it.
+	RuntimeKeyRedirectURIHost = "redirect_uri_host"
 	// RuntimeKeyConsentID holds the consent record ID after consent has been recorded.
 	RuntimeKeyConsentID = "consent_id"
 	// RuntimeKeyStepTimeout holds the expiry timestamp for the current flow step.

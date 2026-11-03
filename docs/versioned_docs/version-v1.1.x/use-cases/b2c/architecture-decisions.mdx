@@ -1,0 +1,82 @@
+---
+title: Design Decisions & Alternatives
+docType: use-case
+description: The reasoning behind the consumer access pattern, and what to choose instead when your constraints differ.
+sidebar_position: 6
+---
+
+# Design Decisions & Alternatives
+
+You have now seen the [consumer access pattern](../overview), how [you build it, concept by concept](../build-users),
+and [run it in Wayfinder](../try-it-out). This page is the reasoning behind that shape: the boundaries it assumes, and
+what to pick instead when your product does not fit those assumptions.
+
+The decisions fall into four groups:
+
+- Which system renders identity screens.
+- Which system owns customer records.
+- Which tokens and permissions backend APIs trust.
+- Which operational controls your team needs before production.
+
+## Decision Map
+
+<B2CArchitectureDecisions prioritizeIntegration />
+
+## Choose the Screen and Journey Boundary
+
+The first decision is where identity screens live and how much journey logic the application owns.
+
+- Use a [redirect-based pattern](../integration-patterns#redirect-based) when hosted identity screens fit your product
+  and you want the application to avoid handling credentials.
+- Use a [native application pattern](../integration-patterns#app-native) when the screens must stay inside your
+  application but journey order, branching, and policy should remain server-controlled.
+- Use [direct APIs](../integration-patterns#direct-api) only when you need a narrow primitive and accept responsibility
+  for composing the journey yourself.
+
+This decision affects every later step. A hosted redirect path changes your application less. A native application path
+gives you more interface control. A direct API path gives you the most responsibility.
+
+## Choose the Customer Identity Source
+
+Decide whether customers exist primarily in the identity platform, arrive from external providers, or use a mix.
+
+- Use a managed user directory when the identity layer should own credentials, recovery, and profile attributes.
+- Add social providers when customers should sign in with accounts they already use.
+- Add enterprise OIDC providers when a consumer-facing product also serves prosumer or partner users.
+- Use account linking when one person may sign in through more than one method.
+
+See [Identity Sources](../identity-sources) for the full decision.
+
+## Choose the API Access Model
+
+Decide how backend services will know what the signed-in customer can do.
+
+- Use resource servers to group backend APIs that share a permission model.
+- Use permissions for API actions such as `booking:read` or `booking:create`.
+- Use roles to assign reusable access levels to customers or staff.
+- Use scopes and audiences so APIs can validate whether an access token is meant for them.
+
+See [Tokens and APIs](../tokens-and-apis) for session, token, and API protection choices.
+
+## Choose the Operating Model
+
+Consumer identity becomes part of the production path. Plan how your team will change, observe, and support it.
+
+- Use identity-as-code when configuration must move through development, staging, and production with review.
+- Plan audit and event retention for sign-in, sign-up, recovery, consent, and administrative actions.
+- Connect identity events to analytics, support, CRM, security monitoring, or notification systems when those teams need
+  the signals.
+- Decide whether internal staff are managed centrally or through delegated operational roles.
+
+See [Run & Observe](../operations) for audit, retention, and delegated administration choices.
+
+## Expected Outcome
+
+With these decisions made, consumer access stops being a set of screens bolted onto the application and becomes a
+single coherent system: one place that owns registration, sign-in, recovery, and profile; tokens that carry
+permissions your APIs can check without re-deriving who the customer is; and an operating model your team can review
+and promote like the rest of the codebase.
+
+If a decision on this page does not fit your product, revisit that decision, then recheck the decisions and
+implementation walkthrough steps that depend on it. Unrelated architecture, the product concept mapping, and the rest
+of the implementation still apply.

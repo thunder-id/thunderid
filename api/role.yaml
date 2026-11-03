@@ -664,6 +664,20 @@ paths:
                 description:
                   key: "error.roleservice.role_not_found_description"
                   defaultValue: "The role with the specified id does not exist"
+        "409":
+          description: A user share still mandates the role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "ROL-1039"
+                message:
+                  key: "error.roleservice.mandated_role_cannot_be_deleted"
+                  defaultValue: "Role is mandated by a user share"
+                description:
+                  key: "error.roleservice.mandated_role_cannot_be_deleted_description"
+                  defaultValue: "A user sharing policy still mandates the role. Remove the role from those policies before deleting it"
         "500":
           description: Internal server error
           content:
@@ -718,9 +732,11 @@ paths:
                       - type: "user"
                         id: "7a4b1f8e-5c69-4b60-9232-2b0aaf65ef3c"
                         ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
+                        isReadOnly: false
                       - type: "group"
                         id: "8c2f8e9e-8f2a-4f5b-9c3d-4e5f6a7b8c9d"
                         ouId: "b5f1c2d3-6e7f-4a8b-9c0d-1e2f3a4b5c6d"
+                        isReadOnly: false
                     links:
                       - href: "roles/3fa85f64-5717-4562-b3fc-2c963f66afa6/assignments?offset=2&limit=2"
                         rel: "next"
@@ -735,10 +751,12 @@ paths:
                         id: "7a4b1f8e-5c69-4b60-9232-2b0aaf65ef3c"
                         ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                         display: "John Doe"
+                        isReadOnly: false
                       - type: "group"
                         id: "8c2f8e9e-8f2a-4f5b-9c3d-4e5f6a7b8c9d"
                         ouId: "b5f1c2d3-6e7f-4a8b-9c0d-1e2f3a4b5c6d"
                         display: "Front Desk Team"
+                        isReadOnly: false
                     links:
                       - href: "roles/3fa85f64-5717-4562-b3fc-2c963f66afa6/assignments?offset=2&limit=2"
                         rel: "next"
@@ -960,7 +978,12 @@ paths:
       tags:
         - Roles
       summary: Remove assignments from a role
-      description: Removes one or more user or group assignments from the specified role
+      description: |
+        Removes one or more user or group assignments from the specified role.
+
+        An assignment that a user share mandates goes only when the user share stops naming the
+        role. A direct assignment of the same role to the same user in the same organization unit
+        is separate and can still be removed.
       parameters:
         - in: path
           name: id
@@ -1010,6 +1033,16 @@ paths:
                     description:
                       key: "error.roleservice.empty_assignments_list_description"
                       defaultValue: "At least one assignment must be provided"
+                assignment-mandated:
+                  summary: The assignment exists only because a user share mandates it
+                  value:
+                    code: "ROL-1036"
+                    message:
+                      key: "error.roleservice.assignment_mandated"
+                      defaultValue: "Assignment is mandated by a sharing policy"
+                    description:
+                      key: "error.roleservice.assignment_mandated_description"
+                      defaultValue: "The assignment goes away only when the sharing policy that mandates it stops naming the role"
         "403":
           description: Forbidden
           content:
@@ -1344,6 +1377,8 @@ paths:
           $ref: '#/components/responses/RoleSharingPolicyDeleteBadRequest'
         "404":
           $ref: '#/components/responses/RoleNotFound'
+        "409":
+          $ref: '#/components/responses/RoleSharingPolicyDeleteConflict'
         "500":
           $ref: '#/components/responses/RoleSharingServerError'
 
@@ -1787,8 +1822,8 @@ components:
 
     RoleSharingPolicyConflict:
       description: |
-        The organization unit already holds a policy for this role, or the policy moved
-        since it was read.
+        The organization unit already holds a policy for this role, the policy moved since it
+        was read, or the edit would unshare the role from a unit where a user share mandates it.
       content:
         application/json:
           schema:
@@ -1814,6 +1849,34 @@ components:
                 description:
                   key: "error.roleservice.sharing_policy_version_mismatch_description"
                   defaultValue: "The sharing policy changed since it was read; read it again and retry the edit"
+            roleMandatedInOU:
+              summary: An edit that would unshare the role from a unit a user share mandates it in
+              value:
+                code: "ROL-1037"
+                message:
+                  key: "error.roleservice.role_mandated_in_ou"
+                  defaultValue: "Role is mandated in an organization unit"
+                description:
+                  key: "error.roleservice.role_mandated_in_ou_description"
+                  defaultValue: "The change would stop sharing the role with an organization unit where a user sharing policy mandates it. Remove the role from that policy first"
+
+    RoleSharingPolicyDeleteConflict:
+      description: The delete would unshare the role from a unit where a user share mandates it.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            roleMandatedInOU:
+              summary: A delete that would unshare the role from a unit a user share mandates it in
+              value:
+                code: "ROL-1037"
+                message:
+                  key: "error.roleservice.role_mandated_in_ou"
+                  defaultValue: "Role is mandated in an organization unit"
+                description:
+                  key: "error.roleservice.role_mandated_in_ou_description"
+                  defaultValue: "The change would stop sharing the role with an organization unit where a user sharing policy mandates it. Remove the role from that policy first"
 
     RoleSharingServerError:
       description: Internal server error
@@ -1856,6 +1919,10 @@ components:
           type: string
           readOnly: true
           description: "Display name of the user or group (only included when include=display query parameter is used). For users, resolved from the schema-configured display attribute; falls back to the user ID if the attribute is not configured, the path does not exist, or the value is empty. For groups, the group name is used."
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: "True on an assignment the organization unit cannot remove because a user share mandates it"
 
     AssignmentInput:
       type: object
