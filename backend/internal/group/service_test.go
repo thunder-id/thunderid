@@ -3500,20 +3500,36 @@ func TestGetGroupsByNames_DedupesInputAndGroupsAmbiguousMatches(t *testing.T) {
 	storeMock.On("GetGroupsByNames", mock.Anything, []string{"engineering"}).
 		Return([]GroupBasicDAO{
 			{ID: "grp-1", Name: "engineering", OUID: "ou-1"},
+			{ID: "grp-2", Name: "engineering", OUID: "ou-1"},
+		}, nil).Once()
+
+	service := &groupService{groupStore: storeMock}
+
+	result, err := service.GetGroupsByNames(context.Background(), []string{"engineering", "engineering"}, "ou-1")
+	require.Nil(t, err)
+	require.Len(t, result["engineering"], 2)
+}
+
+func TestGetGroupsByNames_KeepsOnlyGroupsTheOUOwns(t *testing.T) {
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroupsByNames", mock.Anything, []string{"engineering"}).
+		Return([]GroupBasicDAO{
+			{ID: "grp-1", Name: "engineering", OUID: "ou-1"},
 			{ID: "grp-2", Name: "engineering", OUID: "ou-2"},
 		}, nil).Once()
 
 	service := &groupService{groupStore: storeMock}
 
-	result, err := service.GetGroupsByNames(context.Background(), []string{"engineering", "engineering"})
+	result, err := service.GetGroupsByNames(context.Background(), []string{"engineering"}, "ou-1")
 	require.Nil(t, err)
-	require.Len(t, result["engineering"], 2)
+	require.Len(t, result["engineering"], 1)
+	require.Equal(t, "grp-1", result["engineering"][0].ID)
 }
 
 func TestGetGroupsByNames_EmptyInputReturnsEmptyMap(t *testing.T) {
 	service := &groupService{groupStore: newGroupStoreInterfaceMock(t)}
 
-	result, err := service.GetGroupsByNames(context.Background(), nil)
+	result, err := service.GetGroupsByNames(context.Background(), nil, "ou-1")
 	require.Nil(t, err)
 	require.Empty(t, result)
 }
@@ -3525,7 +3541,7 @@ func TestGetGroupsByNames_StoreError(t *testing.T) {
 
 	service := &groupService{groupStore: storeMock}
 
-	result, err := service.GetGroupsByNames(context.Background(), []string{"engineering"})
+	result, err := service.GetGroupsByNames(context.Background(), []string{"engineering"}, "ou-1")
 	require.Nil(t, result)
 	require.NotNil(t, err)
 	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)

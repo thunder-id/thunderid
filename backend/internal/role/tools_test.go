@@ -197,7 +197,7 @@ func (s *RoleToolsTestSuite) TestListRoles() {
 			}
 			s.Contains(s.errorText(s.call("list_roles", args)), "returns every match")
 		}
-		s.roles.AssertNotCalled(s.T(), "GetRolesByNames", mock.Anything, mock.Anything)
+		s.roles.AssertNotCalled(s.T(), "GetRolesByNames", mock.Anything, mock.Anything, mock.Anything)
 	})
 
 	s.Run("a limit over the page size is refused", func() {
@@ -482,7 +482,7 @@ func (s *RoleToolsTestSuite) TestCreateRole_PointsToAnExistingRole() {
 		s.connect(true)
 		s.roles.On("CreateRole", mock.Anything, mock.Anything).Return(
 			(*RoleWithPermissionsAndAssignments)(nil), &ErrorRoleNameConflict).Once()
-		s.roles.On("GetRolesByNames", mock.Anything, []string{"Support"}).Return(map[string][]*Role{
+		s.roles.On("GetRolesByNames", mock.Anything, []string{"Support"}, mock.Anything).Return(map[string][]*Role{
 			"Support": {{ID: "other", OUID: "ou-9"}, {ID: "role-7", OUID: "ou-1"}}},
 			(*tidcommon.ServiceError)(nil)).Once()
 		text := s.errorText(s.call("create_role", map[string]any{"name": "Support", "ouId": "ou-1"}))

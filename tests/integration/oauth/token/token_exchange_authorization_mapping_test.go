@@ -137,6 +137,7 @@ func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) SetupSuite() {
 	idpID, err := testutils.CreateIDP(testutils.IDP{
 		Name:        "Token Exchange Authorization Mapping IdP",
 		Description: "Mock external issuer for token exchange authorization mapping tests",
+		OUID:        ts.ouID,
 		Type:        "OIDC",
 		Properties: []testutils.IDPProperty{
 			{Name: "issuer", Value: ts.mockIDP.GetURL()},

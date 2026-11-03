@@ -135,6 +135,7 @@ func (ts *IDJAGAuthorizationRuleMappingTestSuite) SetupSuite() {
 	idpID, err := testutils.CreateIDP(testutils.IDP{
 		Name:        "ID-JAG Authorization Mapping IdP",
 		Description: "Mock external issuer for ID-JAG authorization mapping tests",
+		OUID:        ts.ouID,
 		Type:        "OIDC",
 		Properties: []testutils.IDPProperty{
 			{Name: "issuer", Value: ts.mockIssuer.GetURL()},
