@@ -13,7 +13,7 @@ name: 👷🛠️ PR Builder
 # pull_request runs) once queue pressure is resolved.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened]
   merge_group:
   workflow_dispatch:
 
@@ -39,17 +39,36 @@ jobs:
   # nothing expensive starts until these ~20s of checks pass.
   preflight:
     name: 🛡️ Preflight Checks
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') || github.run_attempt > 1)) || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: write
     outputs:
+      enabled: ${{ steps.gate.outputs.enabled }}
       docs-changed: ${{ steps.filter.outputs.docs }}
       powershell-changed: ${{ steps.filter.outputs.powershell }}
     steps:
+      # A re-run started by the PR Builder Trigger workflow carries the labels of the
+      # original event, so the label is read from the pull request itself.
+      - name: 🏷️ Check Trigger Label
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          elif gh pr view "$PR_NUMBER" -R "${{ github.repository }}" --json labels -q '.labels[].name' | grep -qx 'trigger-pr-builder'; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::The trigger-pr-builder label is not on the pull request. Skipping the build."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: 📥 Checkout Code
+        if: steps.gate.outputs.enabled == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -57,7 +76,7 @@ jobs:
       # Diff-based steps need a base/head pair from the pull_request or
       # merge_group payload, which a manual dispatch does not carry.
       - name: 🔍 Detect Docs and PowerShell Changes
-        if: ${{ github.event_name != 'workflow_dispatch' }}
+        if: ${{ steps.gate.outputs.enabled == 'true' && github.event_name != 'workflow_dispatch' }}
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
@@ -76,12 +95,14 @@ jobs:
       # This job only audits the lockfile, so it must not cache a pnpm store:
       # an empty store published here is what every later job restored.
       - name: ⚙️ Set up Node.js and pnpm
+        if: steps.gate.outputs.enabled == 'true'
         uses: ./.github/actions/setup-pnpm
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache-store: 'false'
 
       - name: 🔍 Run pnpm audit
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           echo "🔍 Running pnpm audit for all workspace dependencies..."
           # CVE ignores are managed via auditConfig.ignoreCves in pnpm-workspace.yaml
@@ -89,7 +110,7 @@ jobs:
           pnpm audit --ignore-registry-errors --audit-level=high
 
       - name: 🔎 Dependency Review
-        if: ${{ github.event_name != 'workflow_dispatch' }}
+        if: ${{ steps.gate.outputs.enabled == 'true' && github.event_name != 'workflow_dispatch' }}
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
@@ -124,7 +145,7 @@ jobs:
   verify-mocks:
     name: 🔍 Verify Mock Files
     needs: [preflight]
-    if: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    if: ${{ (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -161,7 +182,7 @@ jobs:
   lint:
     name: 🧹 Lint Code
     needs: [preflight]
-    if: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    if: ${{ (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -208,7 +229,7 @@ jobs:
   build:
     name: 🛠️ Build Product
     needs: [preflight]
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -297,7 +318,7 @@ jobs:
   test-backend-unit:
     name: 🧪 Backend Unit Tests
     needs: [preflight]
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -347,7 +368,7 @@ jobs:
   test-frontend-packages:
     name: 🧪 Frontend Packages Tests
     needs: [preflight]
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     # Checkout, turbo cache and artifact upload need nothing beyond read access; the
     # artifact action authenticates with its own token rather than the GITHUB_TOKEN.
@@ -416,7 +437,7 @@ jobs:
   test-frontend-gate-app:
     name: 🧪 Gate App Tests with Coverage
     needs: [preflight]
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -471,7 +492,7 @@ jobs:
   test-frontend-console-app-shards:
     name: 🧪 Console App Tests (shard ${{ matrix.shard }})
     needs: [preflight]
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -528,13 +549,13 @@ jobs:
           if-no-files-found: error
 
   # Keeps the console suite reporting as one check and one coverage artifact
-  # regardless of how many shards run. Uses always() with an explicit result
+  # regardless of how many shards run. Uses !cancelled() with an explicit result
   # check so a failing shard fails this job too: a skipped required check counts
   # as passing for branch protection, which would let a red shard through.
   test-frontend-console-app:
     name: 🧪 Console App Tests with Coverage
-    needs: [test-frontend-console-app-shards]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group') }}
+    needs: [preflight, test-frontend-console-app-shards]
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -575,7 +596,7 @@ jobs:
   upload-frontend-coverage:
     name: 📊 Upload Frontend Coverage
     needs: [test-frontend-gate-app, test-frontend-console-app, test-frontend-packages]
-    if: always() && (needs.test-frontend-gate-app.result == 'success' && needs.test-frontend-console-app.result == 'success' && needs.test-frontend-packages.result == 'success')
+    if: ${{ !cancelled() && (needs.test-frontend-gate-app.result == 'success' && needs.test-frontend-console-app.result == 'success' && needs.test-frontend-packages.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -653,7 +674,7 @@ jobs:
     # without a second copy of them here. The enforcement logic lives in
     # .github/actions/patch-coverage-gate.
     needs: [build, test-backend-unit, test-integration, test-frontend-console-app, test-frontend-gate-app, upload-frontend-coverage]
-    if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.build.result == 'success' && needs.test-backend-unit.result == 'success' && needs.test-integration.result == 'success' && needs.test-frontend-console-app.result == 'success' && needs.test-frontend-gate-app.result == 'success' && needs.upload-frontend-coverage.result == 'success' }}
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.build.result == 'success' && needs.test-backend-unit.result == 'success' && needs.test-integration.result == 'success' && needs.test-frontend-console-app.result == 'success' && needs.test-frontend-gate-app.result == 'success' && needs.upload-frontend-coverage.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -719,7 +740,7 @@ jobs:
   build_samples:
     name: 🛠️ Build Sample Apps
     needs: [preflight]
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -760,7 +781,7 @@ jobs:
   cli-lint-unit:
     name: 🔍 CLI Lint and Unit Tests
     needs: [preflight]
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -787,8 +808,8 @@ jobs:
   # reports without paying for this.
   cli-e2e:
     name: 🎭 CLI E2E (${{ matrix.os }})
-    needs: [cli-lint-unit]
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    needs: [preflight, cli-lint-unit]
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -832,7 +853,7 @@ jobs:
   cli-compatibility:
     name: 🔗 CLI Against This Build
     needs: [preflight, build, build_samples]
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -897,7 +918,7 @@ jobs:
   test-integration:
     name: 🧪 Integration Tests (${{ matrix.database }})
     needs: [build, build_samples]
-    if: ${{ always() && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -996,7 +1017,7 @@ jobs:
     # all-in-one server) beside it and the suites in tests/integration/controlplane. Its coverage joins the all-in-one server's in the integration
     # patch coverage check, which is how code only a Control Plane runs gets measured at all.
     needs: [build]
-    if: ${{ always() && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -1056,7 +1077,7 @@ jobs:
     # and it is skipped when those did not succeed rather than reporting on data
     # it does not have.
     needs: [build, test-integration, test-integration-cp]
-    if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.build.result == 'success' && needs.test-integration.result == 'success' && needs.test-integration-cp.result == 'success' }}
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.build.result == 'success' && needs.test-integration.result == 'success' && needs.test-integration-cp.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -1081,8 +1102,8 @@ jobs:
 
   test-integration-status:
     name: ✅ Integration Tests Status
-    needs: [test-integration, test-integration-cp]
-    if: ${{ always() && (github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder'))) }}
+    needs: [preflight, test-integration, test-integration-cp]
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (needs.preflight.outputs.enabled == 'true')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1098,7 +1119,7 @@ jobs:
   test-e2e:
     name: 🎭 Playwright E2E Tests
     needs: [build, build_samples]
-    if: ${{ always() && needs.build.result == 'success' && needs.build_samples.result == 'success' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build_samples.result == 'success' }}
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.60.0-noble
@@ -1683,8 +1704,9 @@ jobs:
     name: 🗑️ Cleanup Stale Turbo Cache
     runs-on: ubuntu-latest
     # Skip on fork PRs — GITHUB_TOKEN is always read-only there regardless of permissions declared here.
-    if: always() && github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository && needs.preflight.outputs.enabled == 'true'
     needs:
+      - preflight
       - build
       - test-frontend-packages
       - test-frontend-gate-app
