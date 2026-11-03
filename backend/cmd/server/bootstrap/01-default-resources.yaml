@@ -7212,6 +7212,9 @@ translations:
     forms.personal_agent_details.actions.submit.label: Register Agent
     forms.personal_agent_credentials.title: Agent Registered Successfully
     forms.personal_agent_credentials.message: Copy these values now. When no key was given, the client secret is shown only once and cannot be retrieved later.
+    forms.personal_agent_details.jwks_subtitle: The agent acts only for you. Describe it, tell us where to send you back after you approve it, and give the URI that serves its public keys.
+    forms.personal_agent_details.fields.jwks_uri.required_placeholder: The URI that serves the agent's public keys
+    forms.personal_agent_credentials.jwks_message: Copy the client ID to configure your agent. It should sign its requests with the keys at its JWKS URI.
   recovery:
     forms.username.title: Password Recovery
     forms.username.subtitle: Enter your username to start the password recovery
