@@ -18,14 +18,14 @@ import (
 )
 
 const (
-	authzenServerURL = testutils.TestServerURL
-
 	authzenOUHandle                 = "authzen-test-ou"
 	authzenUserTypeName             = "authzen-person"
 	authzenResourceIdentifier       = "authzen-booking-api"
 	authzenBookingApprovePermission = "booking:approve"
 	authzenOtherResourceIdentifier  = "authzen-invoice-api"
 )
+
+var authzenServerURL = testutils.TestServerURL
 
 type AuthZENAPITestSuite struct {
 	suite.Suite

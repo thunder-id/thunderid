@@ -17,7 +17,6 @@ import (
 )
 
 const (
-	testServerURL = "https://localhost:8095"
 	agentBasePath = "/agents"
 
 	// Handles of the two isolated auth flows used by the flow-handle resolution tests.
@@ -26,6 +25,8 @@ const (
 
 	jwtBearerGrant = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 )
+
+var testServerURL = testutils.TestServerURL
 
 var (
 	testOU = testutils.OrganizationUnit{

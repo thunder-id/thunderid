@@ -17,7 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const testServerURL = testutils.TestServerURL
+var testServerURL = testutils.TestServerURL
 
 // maxRequestPathLength mirrors the maximum request path length the server matches against the API
 // permission map. The server-side constant is unexported and lives in a separate module, so the

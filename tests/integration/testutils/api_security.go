@@ -159,7 +159,7 @@ func GetHTTPClientForUser(username, password string) (*http.Client, error) {
 
 	tokenResp, err := ObtainAccessTokenWithPassword(
 		"CONSOLE",
-		"https://localhost:8095/console",
+		TestServerURL+"/console",
 		"openid",
 		username,
 		password,
@@ -190,7 +190,7 @@ func ObtainAdminAccessToken() error {
 	var err error
 	adminTokenState, err = ObtainAccessTokenWithPassword(
 		"CONSOLE",
-		"https://localhost:8095/console",
+		TestServerURL+"/console",
 		"system",
 		adminUsername,
 		adminPassword,

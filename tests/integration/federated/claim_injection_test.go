@@ -84,8 +84,8 @@ func otpAfterFederationFlow(handle, idpID, senderID string) testutils.Flow {
 // ends.
 func (s *FederatedMappingSuite) startSMSMock() (*testutils.MockNotificationServer, string) {
 	s.T().Helper()
-	mock := testutils.NewMockNotificationServer(0)
-	s.Require().NoError(mock.Start(), "failed to start the notification mock")
+	mock, err := testutils.NewMockNotificationServer()
+	s.Require().NoError(err, "failed to start the notification mock")
 	s.T().Cleanup(func() { _ = mock.Stop() })
 
 	senderID, err := testutils.CreateNotificationSender(testutils.NotificationSender{

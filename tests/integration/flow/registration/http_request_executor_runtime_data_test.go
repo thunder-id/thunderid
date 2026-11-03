@@ -4,19 +4,12 @@
 package registration
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-)
-
-const (
-	mockGoogleRuntimeDataPort       = 8093
-	mockNotificationRuntimeDataPort = 8097
-	mockHTTPRuntimeDataPort         = 9092
 )
 
 var (
@@ -184,7 +177,7 @@ var (
 				"id":   "http_request",
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
-					"url":    "http://localhost:9092/api/notifications",
+					"url":    common.MockHTTPBaseURL + "/api/notifications",
 					"method": "POST",
 					"headers": map[string]interface{}{
 						"X-App-Id":    "{{ctx(applicationId)}}",
@@ -309,18 +302,14 @@ func TestHTTPRequestRuntimeDataRegistrationFlowTestSuite(t *testing.T) {
 func (ts *HTTPRequestRuntimeDataRegistrationFlowTestSuite) SetupSuite() {
 	ts.config = &common.TestSuiteConfig{}
 
-	ts.mockHTTPServer = testutils.NewMockHTTPServer(mockHTTPRuntimeDataPort)
-	err := ts.mockHTTPServer.Start()
-	ts.Require().NoError(err, "Failed to start mock HTTP server")
-	time.Sleep(100 * time.Millisecond)
+	var err error
+	ts.mockHTTPServer, err = testutils.NewMockHTTPServer()
+	ts.Require().NoError(err, "Failed to create mock HTTP server")
 
-	ts.mockNotificationServer = testutils.NewMockNotificationServer(mockNotificationRuntimeDataPort)
-	err = ts.mockNotificationServer.Start()
-	ts.Require().NoError(err, "Failed to start mock notification server")
-	time.Sleep(100 * time.Millisecond)
+	ts.mockNotificationServer, err = testutils.NewMockNotificationServer()
+	ts.Require().NoError(err, "Failed to create mock notification server")
 
-	mockGoogleServer, err := testutils.NewMockGoogleOIDCServer(mockGoogleRuntimeDataPort,
-		"runtime_data_client", "runtime_data_secret")
+	mockGoogleServer, err := testutils.NewMockGoogleOIDCServer("runtime_data_client", "runtime_data_secret")
 	ts.Require().NoError(err, "Failed to create mock Google server")
 	ts.mockGoogleServer = mockGoogleServer
 
@@ -334,9 +323,6 @@ func (ts *HTTPRequestRuntimeDataRegistrationFlowTestSuite) SetupSuite() {
 		Picture:       "https://example.com/runtime-data-picture.jpg",
 		Locale:        "en",
 	})
-
-	err = ts.mockGoogleServer.Start()
-	ts.Require().NoError(err, "Failed to start mock Google server")
 
 	ouID, err := testutils.CreateOrganizationUnit(httpRequestRuntimeDataOU)
 	ts.Require().NoError(err, "Failed to create test organization unit")
@@ -412,9 +398,8 @@ func (ts *HTTPRequestRuntimeDataRegistrationFlowTestSuite) SetupSuite() {
 	nodes := httpRequestRuntimeDataFlow.Nodes.([]map[string]interface{})
 	nodes[3]["properties"].(map[string]interface{})["idpId"] = idpID
 	nodes[6]["properties"].(map[string]interface{})["senderId"] = senderID
-	nodes[9]["properties"].(map[string]interface{})["url"] = fmt.Sprintf("http://localhost:%d/api/notifications",
-		mockHTTPRuntimeDataPort)
 	httpRequestRuntimeDataFlow.Nodes = nodes
+	common.UseMockHTTPServer(httpRequestRuntimeDataFlow, ts.mockHTTPServer)
 
 	flowID, err := testutils.CreateFlow(httpRequestRuntimeDataFlow)
 	ts.Require().NoError(err, "Failed to create runtime data registration flow")

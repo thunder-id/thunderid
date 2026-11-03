@@ -19,17 +19,20 @@ import (
 )
 
 const (
-	testServerURL = "https://localhost:8095"
-
 	clientIDOwner                             = "revoke_owner_client"
 	secretOwner                               = "revoke_owner_secret"
 	clientIDOther                             = "revoke_other_client"
 	secretOther                               = "revoke_other_secret"
 	revocationDefaultResourceServerIdentifier = "https://revocation-default.example.com"
-	revokeEndpoint                            = testServerURL + "/oauth2/revoke"
-	tokenEndpoint                             = testServerURL + "/oauth2/token"
-	introspectEndpoint                        = testServerURL + "/oauth2/introspect"
 )
+
+var introspectEndpoint = testServerURL + "/oauth2/introspect"
+
+var tokenEndpoint = testServerURL + "/oauth2/token"
+
+var revokeEndpoint = testServerURL + "/oauth2/revoke"
+
+var testServerURL = testutils.TestServerURL
 
 // RevocationTestSuite exercises the RFC 7009 POST /oauth2/revoke endpoint end-to-end:
 // real client authentication, real signed tokens, and the runtime persistent database.

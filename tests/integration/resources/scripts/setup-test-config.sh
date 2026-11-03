@@ -53,6 +53,8 @@ if [ "$DB_TYPE" = "postgres" ]; then
       username: dbuser
       password: dbpassword
       sslmode: disable
+      # Without idle connections every query opens a new one, which dominates the run time.
+      max_idle_conns: 2
 
   runtime_transient:
     type: postgres
@@ -63,6 +65,7 @@ if [ "$DB_TYPE" = "postgres" ]; then
       username: dbuser
       password: dbpassword
       sslmode: disable
+      max_idle_conns: 2
 
   entity:
     type: postgres
@@ -73,6 +76,7 @@ if [ "$DB_TYPE" = "postgres" ]; then
       username: dbuser
       password: dbpassword
       sslmode: disable
+      max_idle_conns: 2
 
   runtime_persistent:
     type: postgres
@@ -83,6 +87,7 @@ if [ "$DB_TYPE" = "postgres" ]; then
       username: dbuser
       password: dbpassword
       sslmode: disable
+      max_idle_conns: 2
 EOF
 elif [ "$DB_TYPE" = "redis" ]; then
   cat >> tests/integration/resources/deployment.yaml <<EOF
@@ -90,7 +95,7 @@ elif [ "$DB_TYPE" = "redis" ]; then
     type: sqlite
     sqlite:
       path: "database/configdb.db"
-      options: "cache=shared&_pragma=foreign_keys(1)"
+      options: "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
 
   runtime_transient:
     type: redis
@@ -103,13 +108,13 @@ elif [ "$DB_TYPE" = "redis" ]; then
     type: sqlite
     sqlite:
       path: "database/entitydb.db"
-      options: "cache=shared&_pragma=foreign_keys(1)"
+      options: "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
 
   runtime_persistent:
     type: sqlite
     sqlite:
       path: "database/runtime_persistent.db"
-      options: "cache=shared&_pragma=foreign_keys(1)"
+      options: "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
 EOF
 else
   cat >> tests/integration/resources/deployment.yaml <<EOF
@@ -117,25 +122,25 @@ else
     type: sqlite
     sqlite:
       path: "database/configdb.db"
-      options: "cache=shared&_pragma=foreign_keys(1)"
+      options: "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
 
   runtime_transient:
     type: sqlite
     sqlite:
       path: "database/runtime_transient.db"
-      options: "cache=shared&_pragma=foreign_keys(1)"
+      options: "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
 
   entity:
     type: sqlite
     sqlite:
       path: "database/entitydb.db"
-      options: "cache=shared&_pragma=foreign_keys(1)"
+      options: "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
 
   runtime_persistent:
     type: sqlite
     sqlite:
       path: "database/runtime_persistent.db"
-      options: "cache=shared&_pragma=foreign_keys(1)"
+      options: "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
 EOF
 fi
 

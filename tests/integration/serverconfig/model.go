@@ -10,12 +10,6 @@ import (
 )
 
 const (
-	testServerURL   = testutils.TestServerURL
-	serverConfigURL = testServerURL + "/server-config"
-	corsConfigURL   = serverConfigURL + "/cors"
-
-	defaultResourceServerConfigURL = serverConfigURL + "/defaultResourceServer"
-
 	systemResourceServerID = "01900000-0000-7000-8000-000000000020"
 
 	// sampleOrigin / otherOrigin are valid origins used to exercise the writable layer's read/write and
@@ -28,6 +22,14 @@ const (
 	// (resources/declarative_resources/server_configs/cors.yaml); it must match that file.
 	declarativeOrigin = "https://declarative.example.com"
 )
+
+var defaultResourceServerConfigURL = serverConfigURL + "/defaultResourceServer"
+
+var corsConfigURL = serverConfigURL + "/cors"
+
+var serverConfigURL = testServerURL + "/server-config"
+
+var testServerURL = testutils.TestServerURL
 
 // i18nMessage mirrors the i18n message structure returned in API error responses.
 type i18nMessage struct {

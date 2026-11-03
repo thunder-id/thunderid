@@ -13,10 +13,6 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const (
-	mockPromptActionsNotificationServerPort = 8098
-)
-
 var (
 	promptActionsFlow = testutils.Flow{
 		Name:     "Prompt Actions Auth Flow",
@@ -283,13 +279,11 @@ func (ts *PromptActionsAndMFAFlowTestSuite) SetupSuite() {
 	}
 	promptActionsEntityTypeID = schemaID
 
-	// Start mock notification server
-	ts.mockServer = testutils.NewMockNotificationServer(mockPromptActionsNotificationServerPort)
-	err = ts.mockServer.Start()
+	// Create mock notification server
+	ts.mockServer, err = testutils.NewMockNotificationServer()
 	if err != nil {
-		ts.T().Fatalf("Failed to start mock notification server: %v", err)
+		ts.T().Fatalf("Failed to create mock notification server: %v", err)
 	}
-	time.Sleep(100 * time.Millisecond)
 	ts.T().Log("Mock notification server started successfully")
 
 	// Create test users with the created OU

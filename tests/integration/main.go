@@ -12,15 +12,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thunder-id/thunderid/tests/integration/mockservices"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
-	serverPort = "8095"
-
 	// controlPlanePackages holds the suites that run against the Control Plane binary rather than
 	// the all-in-one server. Each run tests only its own plane's suites.
 	controlPlanePackages = "./controlplane/..."
+
+	// serverStartTimeout bounds the wait for the server to answer after it starts.
+	serverStartTimeout = 2 * time.Minute
 
 	// managementTokenLifetime outlasts any run, since a token from the trusted issuer is never
 	// refreshed.
@@ -28,6 +30,9 @@ const (
 )
 
 var (
+	// serverPort is the port of this run's server. Each test group has its own.
+	serverPort = testutils.ServerPort()
+
 	zipFilePattern string
 	testRun        string
 	testPackage    string
@@ -37,6 +42,20 @@ var (
 
 func main() {
 	parseFlags()
+	controlPlane = os.Getenv("INTEGRATION_PLANE") == "control"
+
+	// The external services the tests stand in for run once for the whole run, shared by every group.
+	if testutils.TestGroup() == "" {
+		stopMockServices, err := mockservices.Start()
+		if err != nil {
+			fmt.Printf("Failed to start the mock services: %v\n", err)
+			os.Exit(1)
+		}
+		defer stopMockServices()
+	}
+	if shouldRunGroups() {
+		os.Exit(runGroups())
+	}
 	initTests()
 
 	// The Control Plane run also boots the all-in-one server as the Data Plane the Control Plane
@@ -71,6 +90,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	if group := testutils.TestGroup(); group != "" {
+		err = testutils.ConfigureTestGroup(group, serverPort)
+		if err != nil {
+			fmt.Printf("Failed to configure test group %s: %v\n", group, err)
+			os.Exit(1)
+		}
+	}
+
 	// Step 3: Copy declarative resource fixtures for composite mode testing. The Control Plane
 	// suite configures no composite store, so it has no use for them.
 	if !controlPlane {
@@ -99,7 +126,7 @@ func main() {
 
 	// A Control Plane issues no tokens, so the identity provider it trusts must be up before it
 	// serves a request.
-	var issuer *testutils.MockOIDCServer
+	var issuer *testutils.TrustedIssuer
 	if controlPlane {
 		issuer, err = testutils.StartTrustedIssuer()
 		if err != nil {
@@ -129,9 +156,15 @@ func main() {
 		defer testutils.StopDataPlane()
 	}
 
-	// Wait for the server to start
+	// Wait for the server to start. Test groups start their servers at the same time, so allow for a
+	// slow start on a busy machine.
 	fmt.Println("Waiting for the server to start...")
-	time.Sleep(5 * time.Second)
+	if err := testutils.WaitForServerReady(serverStartTimeout); err != nil {
+		fmt.Printf("Server did not start: %v\n", err)
+		testutils.StopServer()
+		testutils.StopDataPlane()
+		os.Exit(1)
+	}
 
 	// Step 7: Obtain admin access token once for all test packages
 	fmt.Println("Obtaining admin access token...")
@@ -168,7 +201,7 @@ func parseFlags() {
 // useTrustedIssuerTokens makes the trusted issuer's tokens the ones the Control Plane suites send:
 // one carrying the system scope for every test client, one without it for the test that it is
 // refused, and one for a user the issuer's user endpoint does not know.
-func useTrustedIssuerTokens(issuer *testutils.MockOIDCServer) error {
+func useTrustedIssuerTokens(issuer *testutils.TrustedIssuer) error {
 	admin, err := testutils.IssueManagementToken(issuer, "system", managementTokenLifetime)
 	if err != nil {
 		return err
@@ -192,7 +225,6 @@ func useTrustedIssuerTokens(issuer *testutils.MockOIDCServer) error {
 }
 
 func initTests() {
-	controlPlane = os.Getenv("INTEGRATION_PLANE") == "control"
 	if controlPlane {
 		fmt.Println("Plane: control")
 		testutils.UseControlPlane()
@@ -218,25 +250,48 @@ func initTests() {
 }
 
 func runTests() error {
-	// Clean the test cache to avoid getting results from previous runs.
-	// This is important to avoid false positives in test results as the
-	// server and integration test suite are two separate applications.
+	if group := testutils.TestGroup(); group != "" {
+		return runGroupTests(group)
+	}
+
+	if err := cleanTestCache(); err != nil {
+		return err
+	}
+
+	var filter []string
+	if testRun != "" {
+		filter = []string{"-run", testRun}
+		fmt.Printf("Test filter: -run %s\n", testRun)
+	}
+	packages, err := packagesToTest()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Test package: %s\n", strings.Join(packages, " "))
+
+	return goTestCommand(filter, packages).Run()
+}
+
+// cleanTestCache cleans the test cache to avoid getting results from previous runs.
+// This is important to avoid false positives in test results as the
+// server and integration test suite are two separate applications.
+func cleanTestCache() error {
 	cmd := exec.Command("go", "clean", "-testcache")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-	if err != nil {
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to clean test cache: %w", err)
 	}
+	return nil
+}
 
-	// Determine command and build args
-	_, err = exec.LookPath("gotestsum")
-	useGotestsum := err == nil
-
+// goTestCommand builds the go test run of the given packages against this run's server, with
+// gotestsum when it is installed.
+func goTestCommand(filter []string, packages []string) *exec.Cmd {
 	var cmdName string
 	var args []string
 
-	if useGotestsum {
+	if _, err := exec.LookPath("gotestsum"); err == nil {
 		fmt.Println("Running integration tests using gotestsum...")
 		cmdName = "gotestsum"
 		args = append(args, "--format", "testname", "--", "-p=1")
@@ -245,20 +300,10 @@ func runTests() error {
 		cmdName = "go"
 		args = append(args, "test", "-p=1", "-v")
 	}
-
-	// Add test filters if provided
-	if testRun != "" {
-		args = append(args, "-run", testRun)
-		fmt.Printf("Test filter: -run %s\n", testRun)
-	}
-	packages, err := packagesToTest()
-	if err != nil {
-		return err
-	}
+	args = append(args, filter...)
 	args = append(args, packages...)
-	fmt.Printf("Test package: %s\n", strings.Join(packages, " "))
 
-	cmd = exec.Command(cmdName, args...)
+	cmd := exec.Command(cmdName, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -270,8 +315,7 @@ func runTests() error {
 		"ZIP_PATTERN="+zipFilePattern,
 		"SERVER_PID="+strconv.Itoa(testutils.GetServerPID()),
 	)
-
-	return cmd.Run()
+	return cmd
 }
 
 // packagesToTest resolves the default of every package to the suites of the plane under test. A

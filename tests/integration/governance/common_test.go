@@ -25,7 +25,6 @@ import (
 )
 
 const (
-	testServerURL          = testutils.TestServerURL
 	administrationFlowType = "ADMINISTRATION"
 
 	// subjectInput is the input an administration flow names its target with.
@@ -42,6 +41,8 @@ const (
 	// shippedUserLockThreshold is the user lock threshold in default.json's account_access section.
 	shippedUserLockThreshold = 5
 )
+
+var testServerURL = testutils.TestServerURL
 
 // The shipped administration flows, addressed by handle so the tests do not depend on a seeded id.
 // Applications have no unlock flow because an application never locks.
@@ -68,10 +69,11 @@ const (
 // The console the root operator signs in to, and the bootstrap organization unit and system resource
 // server the root permission lives in.
 const (
-	boundaryConsoleURI     = "https://localhost:8095/console"
 	bootstrapOUID          = "01900000-0000-7000-8000-000000000001"
 	systemResourceServerID = "01900000-0000-7000-8000-000000000020"
 )
+
+var boundaryConsoleURI = testutils.TestServerURL + "/console"
 
 // suspensionCutoffLeeway is jwt.leeway as every suite in this package runs it, shorter than the shipped
 // 30 seconds so the waits past a suspension's cutoff stay short, yet long enough for a release and a

@@ -1,13 +1,12 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package testutils
+package mockservices
 
 import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -16,10 +15,10 @@ import (
 	"time"
 )
 
-// MockGithubOAuthServer provides a mock GitHub OAuth server for testing
-type MockGithubOAuthServer struct {
-	server        *http.Server
-	port          int
+// GithubOAuthServer provides a mock GitHub OAuth server for testing
+type GithubOAuthServer struct {
+	handler       http.Handler
+	baseURL       string
 	mutex         sync.RWMutex
 	authCodes     map[string]*GithubAuthCodeData
 	accessTokens  map[string]*GithubTokenData
@@ -93,10 +92,10 @@ type GithubEmail struct {
 	Visibility string `json:"visibility,omitempty"`
 }
 
-// NewMockGithubOAuthServer creates a new mock GitHub OAuth server
-func NewMockGithubOAuthServer(port int, clientID, clientSecret string) *MockGithubOAuthServer {
-	return &MockGithubOAuthServer{
-		port:         port,
+// NewGithubOAuthServer creates a new mock GitHub OAuth server
+func NewGithubOAuthServer(baseURL, clientID, clientSecret string) *GithubOAuthServer {
+	m := &GithubOAuthServer{
+		baseURL:      baseURL,
 		authCodes:    make(map[string]*GithubAuthCodeData),
 		accessTokens: make(map[string]*GithubTokenData),
 		users:        make(map[string]*GithubUserInfo),
@@ -104,10 +103,12 @@ func NewMockGithubOAuthServer(port int, clientID, clientSecret string) *MockGith
 		clientID:     clientID,
 		clientSecret: clientSecret,
 	}
+	m.handler = m.routes()
+	return m
 }
 
-// Start starts the mock GitHub OAuth server
-func (m *MockGithubOAuthServer) Start() error {
+// routes maps the mock's endpoints.
+func (m *GithubOAuthServer) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	// OAuth authorization endpoint
@@ -125,58 +126,38 @@ func (m *MockGithubOAuthServer) Start() error {
 	// Token check endpoint
 	mux.HandleFunc("/applications/", m.handleApplications)
 
-	m.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", m.port),
-		Handler: mux,
-	}
-
-	go func() {
-		log.Printf("Starting mock GitHub OAuth server on port %d", m.port)
-		if err := m.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("Mock GitHub OAuth server error: %v", err)
-		}
-	}()
-
-	return nil
-}
-
-// Stop stops the mock GitHub OAuth server
-func (m *MockGithubOAuthServer) Stop() error {
-	if m.server != nil {
-		return m.server.Close()
-	}
-	return nil
+	return mux
 }
 
 // GetURL returns the base URL of the mock server
-func (m *MockGithubOAuthServer) GetURL() string {
-	return fmt.Sprintf("http://localhost:%d", m.port)
+func (m *GithubOAuthServer) GetURL() string {
+	return m.baseURL
 }
 
 // GetAuthorizeURL returns the authorization endpoint URL
-func (m *MockGithubOAuthServer) GetAuthorizeURL() string {
+func (m *GithubOAuthServer) GetAuthorizeURL() string {
 	return fmt.Sprintf("%s/login/oauth/authorize", m.GetURL())
 }
 
 // GetAccessTokenURL returns the access token endpoint URL
-func (m *MockGithubOAuthServer) GetAccessTokenURL() string {
+func (m *GithubOAuthServer) GetAccessTokenURL() string {
 	return fmt.Sprintf("%s/login/oauth/access_token", m.GetURL())
 }
 
 // GetAPIURL returns the API base URL
-func (m *MockGithubOAuthServer) GetAPIURL() string {
+func (m *GithubOAuthServer) GetAPIURL() string {
 	return m.GetURL()
 }
 
 // SetAuthorizeFunc sets a custom authorization function for testing
-func (m *MockGithubOAuthServer) SetAuthorizeFunc(fn func(login string) (string, error)) {
+func (m *GithubOAuthServer) SetAuthorizeFunc(fn func(login string) (string, error)) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.authorizeFunc = fn
 }
 
 // AddUser adds a test user to the mock server
-func (m *MockGithubOAuthServer) AddUser(user *GithubUserInfo, emails []*GithubEmail) {
+func (m *GithubOAuthServer) AddUser(user *GithubUserInfo, emails []*GithubEmail) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.users[user.Login] = user
@@ -186,7 +167,7 @@ func (m *MockGithubOAuthServer) AddUser(user *GithubUserInfo, emails []*GithubEm
 }
 
 // handleAuthorize handles the OAuth authorization endpoint
-func (m *MockGithubOAuthServer) handleAuthorize(w http.ResponseWriter, r *http.Request) {
+func (m *GithubOAuthServer) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -288,7 +269,7 @@ func (m *MockGithubOAuthServer) handleAuthorize(w http.ResponseWriter, r *http.R
 }
 
 // handleAccessToken handles the OAuth access token endpoint
-func (m *MockGithubOAuthServer) handleAccessToken(w http.ResponseWriter, r *http.Request) {
+func (m *GithubOAuthServer) handleAccessToken(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -388,7 +369,7 @@ func (m *MockGithubOAuthServer) handleAccessToken(w http.ResponseWriter, r *http
 }
 
 // handleUser handles the user API endpoint
-func (m *MockGithubOAuthServer) handleUser(w http.ResponseWriter, r *http.Request) {
+func (m *GithubOAuthServer) handleUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -460,7 +441,7 @@ func (m *MockGithubOAuthServer) handleUser(w http.ResponseWriter, r *http.Reques
 }
 
 // handleUserEmails handles the user emails API endpoint
-func (m *MockGithubOAuthServer) handleUserEmails(w http.ResponseWriter, r *http.Request) {
+func (m *GithubOAuthServer) handleUserEmails(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -545,7 +526,7 @@ func (m *MockGithubOAuthServer) handleUserEmails(w http.ResponseWriter, r *http.
 }
 
 // handleApplications handles the applications API endpoint
-func (m *MockGithubOAuthServer) handleApplications(w http.ResponseWriter, r *http.Request) {
+func (m *GithubOAuthServer) handleApplications(w http.ResponseWriter, r *http.Request) {
 	// Extract path to check which endpoint is being called
 	path := r.URL.Path
 
@@ -565,7 +546,7 @@ func (m *MockGithubOAuthServer) handleApplications(w http.ResponseWriter, r *htt
 }
 
 // handleCheckToken handles checking a token
-func (m *MockGithubOAuthServer) handleCheckToken(w http.ResponseWriter, r *http.Request) {
+func (m *GithubOAuthServer) handleCheckToken(w http.ResponseWriter, r *http.Request) {
 	// Validate basic auth
 	username, password, ok := r.BasicAuth()
 	if !ok || username != m.clientID || password != m.clientSecret {
@@ -628,7 +609,7 @@ func (m *MockGithubOAuthServer) handleCheckToken(w http.ResponseWriter, r *http.
 }
 
 // handleDeleteToken handles deleting a token
-func (m *MockGithubOAuthServer) handleDeleteToken(w http.ResponseWriter, r *http.Request) {
+func (m *GithubOAuthServer) handleDeleteToken(w http.ResponseWriter, r *http.Request) {
 	// Validate basic auth
 	username, password, ok := r.BasicAuth()
 	if !ok || username != m.clientID || password != m.clientSecret {

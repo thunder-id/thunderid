@@ -18,9 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const (
-	testServerURL = "https://localhost:8095"
-)
+var testServerURL = testutils.TestServerURL
 
 var (
 	testOU = testutils.OrganizationUnit{

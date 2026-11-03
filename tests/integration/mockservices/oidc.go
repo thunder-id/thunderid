@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package testutils
+package mockservices
 
 import (
 	"crypto"
@@ -84,10 +84,9 @@ type OIDCTokenData struct {
 	ExpiresAt    time.Time
 }
 
-// MockOIDCServer provides a base mock OIDC server
-type MockOIDCServer struct {
-	server        *http.Server
-	port          int
+// OIDCServer provides a base mock OIDC server
+type OIDCServer struct {
+	handler       http.Handler
 	mutex         sync.RWMutex
 	privateKey    *rsa.PrivateKey
 	authCodes     map[string]*OIDCAuthCodeData
@@ -115,35 +114,34 @@ type MockOIDCServer struct {
 	usersPath     string
 }
 
-// NewMockOIDCServer creates a new mock OIDC server
-func NewMockOIDCServer(port int, clientID, clientSecret string) (*MockOIDCServer, error) {
+// NewOIDCServer creates a new mock OIDC server
+func NewOIDCServer(baseURL, clientID, clientSecret string) (*OIDCServer, error) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate RSA key: %w", err)
 	}
 
-	issuer := fmt.Sprintf("http://localhost:%d", port)
-
-	return &MockOIDCServer{
-		port:          port,
+	m := &OIDCServer{
 		privateKey:    privateKey,
 		authCodes:     make(map[string]*OIDCAuthCodeData),
 		accessTokens:  make(map[string]*OIDCTokenData),
 		users:         make(map[string]*OIDCUserInfo),
 		clientID:      clientID,
 		clientSecret:  clientSecret,
-		issuer:        issuer,
+		issuer:        baseURL,
 		discoveryPath: "/.well-known/openid-configuration",
 		authorizePath: "/authorize",
 		tokenPath:     "/token",
 		userInfoPath:  "/userinfo",
 		jwksPath:      "/jwks",
 		usersPath:     "/users",
-	}, nil
+	}
+	m.handler = m.routes()
+	return m, nil
 }
 
-// Start starts the mock OIDC server
-func (m *MockOIDCServer) Start() error {
+// routes maps the mock's endpoints.
+func (m *OIDCServer) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc(m.discoveryPath, m.handleDiscovery)
@@ -153,60 +151,41 @@ func (m *MockOIDCServer) Start() error {
 	mux.HandleFunc(m.jwksPath, m.handleJWKS)
 	mux.HandleFunc(m.usersPath+"/", m.handleUser)
 
-	m.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", m.port),
-		Handler: mux,
-	}
-
-	go func() {
-		if err := m.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("Mock OIDC server error: %v\n", err)
-		}
-	}()
-
-	return nil
-}
-
-// Stop stops the mock OIDC server
-func (m *MockOIDCServer) Stop() error {
-	if m.server != nil {
-		return m.server.Close()
-	}
-	return nil
+	return mux
 }
 
 // GetURL returns the base URL
-func (m *MockOIDCServer) GetURL() string {
+func (m *OIDCServer) GetURL() string {
 	return m.issuer
 }
 
 // GetDiscoveryURL returns the discovery endpoint URL
-func (m *MockOIDCServer) GetDiscoveryURL() string {
+func (m *OIDCServer) GetDiscoveryURL() string {
 	return m.issuer + m.discoveryPath
 }
 
 // GetAuthorizeURL returns the authorization endpoint URL
-func (m *MockOIDCServer) GetAuthorizeURL() string {
+func (m *OIDCServer) GetAuthorizeURL() string {
 	return m.issuer + m.authorizePath
 }
 
 // GetTokenURL returns the token endpoint URL
-func (m *MockOIDCServer) GetTokenURL() string {
+func (m *OIDCServer) GetTokenURL() string {
 	return m.issuer + m.tokenPath
 }
 
 // GetUserInfoURL returns the userinfo endpoint URL
-func (m *MockOIDCServer) GetUserInfoURL() string {
+func (m *OIDCServer) GetUserInfoURL() string {
 	return m.issuer + m.userInfoPath
 }
 
 // GetJWKSURL returns the JWKS endpoint URL
-func (m *MockOIDCServer) GetJWKSURL() string {
+func (m *OIDCServer) GetJWKSURL() string {
 	return m.issuer + m.jwksPath
 }
 
 // SetAuthorizeFunc sets a custom authorization function
-func (m *MockOIDCServer) SetAuthorizeFunc(fn func(userID string) (string, error)) {
+func (m *OIDCServer) SetAuthorizeFunc(fn func(userID string) (string, error)) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.authorizeFunc = fn
@@ -218,21 +197,21 @@ func (m *MockOIDCServer) SetAuthorizeFunc(fn func(userID string) (string, error)
 // SetIDTokenOverride replaces the ID token the token endpoint issues. Returning an error makes the
 // endpoint fail; returning a string serves it verbatim, so a test can mint an expired, unsigned or
 // structurally broken token with SignJWT and have the server hand it over.
-func (m *MockOIDCServer) SetIDTokenOverride(fn func(user *OIDCUserInfo, nonce string) (string, error)) {
+func (m *OIDCServer) SetIDTokenOverride(fn func(user *OIDCUserInfo, nonce string) (string, error)) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.idTokenOverride = fn
 }
 
 // SetTokenResponseOverride replaces the whole token response with the given status and body.
-func (m *MockOIDCServer) SetTokenResponseOverride(fn func() (int, string)) {
+func (m *OIDCServer) SetTokenResponseOverride(fn func() (int, string)) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.tokenOverride = fn
 }
 
 // SetUserInfoResponseOverride replaces the whole userinfo response with the given status and body.
-func (m *MockOIDCServer) SetUserInfoResponseOverride(fn func() (int, string)) {
+func (m *OIDCServer) SetUserInfoResponseOverride(fn func() (int, string)) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.userInfoOverride = fn
@@ -240,7 +219,7 @@ func (m *MockOIDCServer) SetUserInfoResponseOverride(fn func() (int, string)) {
 
 // SetJWKSOverride replaces the JWKS document, so a test can serve a malformed key set, one missing the
 // signing key, or a rotated one.
-func (m *MockOIDCServer) SetJWKSOverride(fn func() (int, string)) {
+func (m *OIDCServer) SetJWKSOverride(fn func() (int, string)) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.jwksOverride = fn
@@ -248,7 +227,7 @@ func (m *MockOIDCServer) SetJWKSOverride(fn func() (int, string)) {
 
 // ClearOverrides restores normal behaviour on every endpoint. A suite shares one mock across its tests,
 // so this runs between them rather than leaving one scenario's injected failure to break the next.
-func (m *MockOIDCServer) ClearOverrides() {
+func (m *OIDCServer) ClearOverrides() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.idTokenOverride = nil
@@ -270,7 +249,7 @@ func writeOIDCOverride(w http.ResponseWriter, fn func() (int, string)) bool {
 }
 
 // AddUser adds a user to the mock server
-func (m *MockOIDCServer) AddUser(user *OIDCUserInfo) {
+func (m *OIDCServer) AddUser(user *OIDCUserInfo) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.users[user.Sub] = user
@@ -278,7 +257,7 @@ func (m *MockOIDCServer) AddUser(user *OIDCUserInfo) {
 
 // SignJWT signs an arbitrary JWT with the server's RSA private key. Header
 // defaults: alg=RS256, kid=oidc-key-1 (matching the JWKS endpoint).
-func (m *MockOIDCServer) SignJWT(header, claims map[string]interface{}) (string, error) {
+func (m *OIDCServer) SignJWT(header, claims map[string]interface{}) (string, error) {
 	if _, ok := header["alg"]; !ok {
 		header["alg"] = "RS256"
 	}
@@ -310,7 +289,7 @@ func (m *MockOIDCServer) SignJWT(header, claims map[string]interface{}) (string,
 }
 
 // handleDiscovery handles OIDC discovery endpoint
-func (m *MockOIDCServer) handleDiscovery(w http.ResponseWriter, r *http.Request) {
+func (m *OIDCServer) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -342,7 +321,7 @@ func (m *MockOIDCServer) handleDiscovery(w http.ResponseWriter, r *http.Request)
 }
 
 // handleAuthorize handles authorization endpoint
-func (m *MockOIDCServer) handleAuthorize(w http.ResponseWriter, r *http.Request) {
+func (m *OIDCServer) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -438,7 +417,7 @@ func (m *MockOIDCServer) handleAuthorize(w http.ResponseWriter, r *http.Request)
 }
 
 // handleToken handles token endpoint
-func (m *MockOIDCServer) handleToken(w http.ResponseWriter, r *http.Request) {
+func (m *OIDCServer) handleToken(w http.ResponseWriter, r *http.Request) {
 	m.mutex.RLock()
 	override := m.tokenOverride
 	m.mutex.RUnlock()
@@ -565,7 +544,7 @@ func (m *MockOIDCServer) handleToken(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUserInfo handles userinfo endpoint
-func (m *MockOIDCServer) handleUserInfo(w http.ResponseWriter, r *http.Request) {
+func (m *OIDCServer) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	m.mutex.RLock()
 	override := m.userInfoOverride
 	m.mutex.RUnlock()
@@ -657,7 +636,7 @@ func (m *MockOIDCServer) handleUserInfo(w http.ResponseWriter, r *http.Request) 
 }
 
 // handleJWKS handles JWKS endpoint
-func (m *MockOIDCServer) handleJWKS(w http.ResponseWriter, r *http.Request) {
+func (m *OIDCServer) handleJWKS(w http.ResponseWriter, r *http.Request) {
 	m.mutex.RLock()
 	override := m.jwksOverride
 	m.mutex.RUnlock()
@@ -691,7 +670,7 @@ func (m *MockOIDCServer) handleJWKS(w http.ResponseWriter, r *http.Request) {
 }
 
 // generateIDToken generates a signed ID token
-func (m *MockOIDCServer) generateIDToken(user *OIDCUserInfo, nonce, accessToken string) (string, error) {
+func (m *OIDCServer) generateIDToken(user *OIDCUserInfo, nonce, accessToken string) (string, error) {
 	now := time.Now()
 	claims := map[string]interface{}{
 		"iss": m.issuer,
@@ -804,7 +783,7 @@ func containsOIDC(slice []string, val string) bool {
 
 // issueClientToken answers a client credentials grant with an access token the client may present to
 // the user endpoint.
-func (m *MockOIDCServer) issueClientToken(w http.ResponseWriter, scopes []string) {
+func (m *OIDCServer) issueClientToken(w http.ResponseWriter, scopes []string) {
 	accessToken := generateOIDCRandomString(32)
 	m.mutex.Lock()
 	m.accessTokens[accessToken] = &OIDCTokenData{
@@ -826,7 +805,7 @@ func (m *MockOIDCServer) issueClientToken(w http.ResponseWriter, scopes []string
 
 // handleUser answers GET /users/{id} the way the ThunderID users API does, for a bearer token this
 // server issued: the user's id and attributes, with the username among them.
-func (m *MockOIDCServer) handleUser(w http.ResponseWriter, r *http.Request) {
+func (m *OIDCServer) handleUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

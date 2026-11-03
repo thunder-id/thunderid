@@ -39,9 +39,6 @@ const (
 	// cibaMaxBindingMessageLength mirrors ciba.cibaMaxBindingMessageLength (the maximum number of
 	// characters allowed in a binding_message).
 	cibaMaxBindingMessageLength = 256
-	// cibaMockNotificationServerPort is the port for this suite's mock notification server. It must
-	// not collide with other integration suites (the SMS auth suite uses 8098).
-	cibaMockNotificationServerPort = 8099
 
 	cibaClientID     = "ciba_test_client_123"
 	cibaClientSecret = "ciba_test_secret_123"
@@ -108,9 +105,8 @@ func (ts *CIBATestSuite) SetupSuite() {
 
 	// Mock notification server captures the CIBA notification (which carries the invite link with
 	// the executionId). It is a plain HTTP server; the sender below is pointed at it via the API.
-	ts.mockServer = testutils.NewMockNotificationServer(cibaMockNotificationServerPort)
-	ts.Require().NoError(ts.mockServer.Start(), "Failed to start mock notification server")
-	time.Sleep(100 * time.Millisecond)
+	ts.mockServer, err = testutils.NewMockNotificationServer()
+	ts.Require().NoError(err, "Failed to create mock notification server")
 
 	// A custom notification sender that POSTs rendered messages to the mock server. This is a DB
 	// resource created via the API, so no server restart is required.

@@ -1,0 +1,88 @@
+# Integration test groups.
+#
+# Each group runs against its own server and databases, and the groups run at the same time. The
+# suites of a group run one after another, so a suite that restarts the server or changes its
+# configuration affects only its own group. Every suite not listed here runs in the default group.
+#
+# A group lists whole packages, or individual suites of a package by their top-level test function.
+# Groups are balanced by run time: move packages or suites between them when one runs long.
+groups:
+  - name: g1
+    packages:
+      - application
+      - consent
+      - openid4vp
+      - mcp
+      - usertype
+      - inboundclient
+    suites:
+      governance:
+        - TestExistingAccessTestSuite
+        - TestLockoutTestSuite
+        - TestRecoveryReleaseTestSuite
+        - TestDisclosureTestSuite
+        - TestAuthenticationMethodTestSuite
+        - TestLockGranularityTestSuite
+        - TestAccountAccessDeclarativeLockTestSuite
+        - TestHoldTestSuite
+        - TestAgentLockTestSuite
+
+  - name: g2
+    packages:
+      - federated
+      - flow/registration
+      - oauth/idjag
+      - oauth/ciba
+      - openid4vci
+      - flow/mgt
+      - oauth/attributecache
+      - export
+      - agenttype
+      - flow/flowmeta
+      - oauth/discovery
+      - managementapikey
+      - healthcheck
+      - oauth/jwks
+
+  - name: g3
+    packages:
+      - gateway
+      - agent
+      - oauth/introspect
+      - authorizationdetail
+      - role
+      - authzen
+      - projects
+      - design
+      - oauth/revocation
+      - notification
+      - serverconfig
+
+  - name: g4
+    packages:
+      - flow/authentication
+      - oauth/sso
+      - user
+      - connection
+      - oauth/dpop
+      - resource
+      - oauth/userinfo
+      - ou
+      - oauth/par
+      - i18n
+      - cors
+      - scim
+
+  - name: g5
+    packages:
+      - oauth/token
+      - flow/execution
+      - observability
+      - oauth/authz
+      - authn
+      - importexport
+      - group
+      - oauth/wildcard
+      - composite
+      - variablestore
+      - notificationtemplate

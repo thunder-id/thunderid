@@ -5,10 +5,14 @@ package testutils
 
 import (
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"time"
+
+	"github.com/thunder-id/thunderid/tests/integration/mockservices"
 )
 
 // The Control Plane suite runs the Control Plane binary inside the distribution build_backend
@@ -70,28 +74,52 @@ func InstallControlPlaneBinary() error {
 	return os.Chmod(dest, 0o755)
 }
 
+// TrustedIssuer is the identity provider the Control Plane trusts for management tokens. The Control
+// Plane is configured with its URL, so it answers on its own port rather than on the shared OIDC
+// mock service.
+type TrustedIssuer struct {
+	*mockservices.OIDCServer
+	server *http.Server
+}
+
+// tokenSigner is an identity provider that signs tokens as its issuer.
+type tokenSigner interface {
+	GetURL() string
+	SignJWT(header, claims map[string]interface{}) (string, error)
+}
+
 // StartTrustedIssuer starts the identity provider the Control Plane trusts for management tokens.
-func StartTrustedIssuer() (*MockOIDCServer, error) {
-	issuer, err := NewMockOIDCServer(TrustedIssuerPort, TrustedIssuerLookupClientID, TrustedIssuerLookupClientSecret)
+func StartTrustedIssuer() (*TrustedIssuer, error) {
+	issuer, err := mockservices.NewOIDCServer(fmt.Sprintf("http://localhost:%d", TrustedIssuerPort),
+		TrustedIssuerLookupClientID, TrustedIssuerLookupClientSecret)
 	if err != nil {
 		return nil, err
 	}
 	// The administrator the management tokens name, so the Control Plane can put a name to them.
 	issuer.AddUser(&OIDCUserInfo{Sub: TrustedIssuerAdminSubject, Name: TrustedIssuerAdminName})
-	if err := issuer.Start(); err != nil {
-		return nil, err
+
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", TrustedIssuerPort))
+	if err != nil {
+		return nil, fmt.Errorf("failed to start the trusted issuer: %w", err)
 	}
-	return issuer, nil
+	server := &http.Server{Handler: issuer}
+	go func() { _ = server.Serve(listener) }()
+	return &TrustedIssuer{OIDCServer: issuer, server: server}, nil
+}
+
+// Stop stops the trusted issuer.
+func (t *TrustedIssuer) Stop() error {
+	return t.server.Close()
 }
 
 // IssueManagementToken signs an access token for the Control Plane, as an external identity
 // provider would issue one to an administrator.
-func IssueManagementToken(issuer *MockOIDCServer, scope string, validFor time.Duration) (string, error) {
+func IssueManagementToken(issuer tokenSigner, scope string, validFor time.Duration) (string, error) {
 	return IssueManagementTokenFor(issuer, TrustedIssuerAdminSubject, scope, validFor)
 }
 
 // IssueManagementTokenFor signs an access token for the Control Plane naming the given user.
-func IssueManagementTokenFor(issuer *MockOIDCServer, subject, scope string,
+func IssueManagementTokenFor(issuer tokenSigner, subject, scope string,
 	validFor time.Duration) (string, error) {
 	now := time.Now()
 	claims := map[string]interface{}{

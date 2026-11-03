@@ -80,8 +80,7 @@ const (
 	roleAuthzAssigneeUsername = "authz-role-assignee"
 	roleAuthzAssigneePassword = "Assignee@123"
 
-	roleAuthzClientID    = "CONSOLE"
-	roleAuthzRedirectURI = "https://localhost:8095/console"
+	roleAuthzClientID = "CONSOLE"
 
 	// The permissions the scoped administrator holds and requests in its token. Deliberately
 	// excludes both the root "system" permission and "system:user".
@@ -100,6 +99,8 @@ const (
 	// operation would confer a permission it does not itself hold.
 	errCodeGrantNotPermitted = "SAZ-4030"
 )
+
+var roleAuthzRedirectURI = testutils.TestServerURL + "/console"
 
 func TestRoleAuthzTestSuite(t *testing.T) {
 	suite.Run(t, new(RoleAuthzTestSuite))

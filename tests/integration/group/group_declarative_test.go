@@ -19,9 +19,10 @@ import (
 // file-based store alongside runtime groups in the database: reads merge both stores, while every
 // write against a declarative group must be rejected as immutable. The fixture IDs live in model.go.
 const (
-	declGroupClientID    = "CONSOLE"
-	declGroupRedirectURI = "https://localhost:8095/console"
+	declGroupClientID = "CONSOLE"
 )
+
+var declGroupRedirectURI = testutils.TestServerURL + "/console"
 
 type GroupDeclarativeAPITestSuite struct {
 	suite.Suite
