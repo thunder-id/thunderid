@@ -543,9 +543,6 @@ importers:
       react-dom:
         specifier: 19.2.3
         version: 19.2.3(react@19.2.3)
-      react-github-btn:
-        specifier: 1.4.0
-        version: 1.4.0(react@19.2.3)
       react-i18next:
         specifier: 'catalog:'
         version: 16.0.1(i18next@25.6.0(typescript@5.9.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.9.3)
@@ -11633,9 +11630,6 @@ packages:
   get-tsconfig@4.14.0:
     resolution: {integrity: sha512-yTb+8DXzDREzgvYmh6s9vHsSVCHeC0G3PI5bEXNBHtmshPnO+S5O7qgLEOn0I5QvMy6kpZN8K1NKGyilLb93wA==}
 
-  github-buttons@2.32.0:
-    resolution: {integrity: sha512-DbKam2n7JGbccpbAoQ7UHhxH2XYlumCakTM4Ln7v8A9TzMaaEgKV6S7A+Suyx3EVBE1DPEqA6QSgyCoGJamymg==}
-
   github-slugger@1.5.0:
     resolution: {integrity: sha512-wIh+gKBI9Nshz2o46B0B3f5k/W+WI9ZAv6y5Dn5WJ5SK1t0TnDimB4WE5rmTD05ZAIn8HALCZVmCsvj0w0v0lw==}
 
@@ -14094,11 +14088,6 @@ packages:
 
   react-fast-compare@3.2.2:
     resolution: {integrity: sha512-nsO+KSNgo1SbJqJEYRE9ERzo7YtYbou/OqjSQKxV7jcKox7+usiUVZOAC+XnDOABXggQTno0Y1CpVnuWEc1boQ==}
-
-  react-github-btn@1.4.0:
-    resolution: {integrity: sha512-lV4FYClAfjWnBfv0iNlJUGhamDgIq6TayD0kPZED6VzHWdpcHmPfsYOZ/CFwLfPv4Zp+F4m8QKTj0oy2HjiGXg==}
-    peerDependencies:
-      react: '>=16.3.0'
 
   react-hook-form@7.65.0:
     resolution: {integrity: sha512-xtOzDz063WcXvGWaHgLNrNzlsdFgtUWcb32E6WFaGTd7kPZG3EeDusjdZfUsPwKCKVXy1ZlntifaHZ4l8pAsmw==}
@@ -24454,8 +24443,6 @@ snapshots:
     dependencies:
       resolve-pkg-maps: 1.0.0
 
-  github-buttons@2.32.0: {}
-
   github-slugger@1.5.0: {}
 
   glob-parent@5.1.2:
@@ -27376,11 +27363,6 @@ snapshots:
       react: 19.2.3
 
   react-fast-compare@3.2.2: {}
-
-  react-github-btn@1.4.0(react@19.2.3):
-    dependencies:
-      github-buttons: 2.32.0
-      react: 19.2.3
 
   react-hook-form@7.65.0(react@19.2.3):
     dependencies:

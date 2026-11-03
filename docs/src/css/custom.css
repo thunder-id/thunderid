@@ -718,33 +718,6 @@ html[data-page='home'][data-theme='dark'] .navbar .navbar__github--link::before 
   margin-left: 0.75rem;
 }
 
-/* GitHub star button (react-github-btn) */
-.navbar__github-star {
-  display: flex;
-  align-items: center;
-  margin: 0 0.5rem;
-  line-height: 0;
-}
-
-.navbar__github-star > span,
-.navbar__github-star > span > span {
-  display: inline-flex;
-  align-items: center;
-}
-
-/* Mobile drawer variant */
-.navbar__github-star--mobile {
-  margin-left: 0;
-  padding: 0.375rem 0.75rem;
-}
-
-/* Hide the Github star button in the mobile top navbar */
-@media (max-width: 996px) {
-  .navbar__github-star:not(.navbar__github-star--mobile) {
-    display: none;
-  }
-}
-
 /* Color mode toggle styling */
 .navbar .clean-btn[class*='toggleButton'] {
   display: flex;
