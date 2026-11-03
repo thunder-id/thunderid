@@ -73,6 +73,9 @@ var errNoEntityStateProvider = errors.New("identity governance requires an entit
 // errNoServerConfigService is returned when the service is built without a server-config service.
 var errNoServerConfigService = errors.New("identity governance requires a server-config service")
 
+// errNoDBProvider is returned when the service is built without a database provider.
+var errNoDBProvider = errors.New("identity governance requires a database provider")
+
 // errDeclarativeAccountAccessLocked is returned when a write targets a declaratively set section.
 var errDeclarativeAccountAccessLocked = errors.New(
 	"accountAccess is set declaratively and cannot be overridden")
