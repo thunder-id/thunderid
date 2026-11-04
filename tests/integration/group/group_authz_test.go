@@ -84,8 +84,6 @@ type GroupAuthzTestSuite struct {
 }
 
 const (
-	groupAuthzServerURL = "https://localhost:8095"
-
 	groupAuthzOU1Handle = "authz-group-ou1"
 	groupAuthzOU2Handle = "authz-group-ou2"
 
@@ -94,8 +92,7 @@ const (
 	groupMgrRoleName  = "Group Admin (group-authz-test)"
 	entityTypeOU1Name = "authz-mgr-schema-ou1"
 
-	groupAuthzDevelopClientID    = "CONSOLE"
-	groupAuthzDevelopRedirectURI = "https://localhost:8095/console"
+	groupAuthzDevelopClientID = "CONSOLE"
 
 	memberSchemaOU2Name = "authz-member-schema-ou2"
 
@@ -114,6 +111,10 @@ const (
 	emptyOUMgrPassword   = "EmptyOUMgr@123"
 	groupAuthzScopedRSID = "https://authz-test.example.com/group"
 )
+
+var groupAuthzDevelopRedirectURI = testutils.TestServerURL + "/console"
+
+var groupAuthzServerURL = testutils.TestServerURL
 
 func TestGroupAuthzTestSuite(t *testing.T) {
 	suite.Run(t, new(GroupAuthzTestSuite))
@@ -749,8 +750,11 @@ func (ts *GroupAuthzTestSuite) TestAddMemberFromOtherOU() {
 	resp := ts.doGroup(http.MethodPost, "/groups/"+ts.targetGroupOU1ID+"/members/add", payload)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
+	ts.Require().Equal(http.StatusBadRequest, resp.StatusCode,
 		"group-manager must not add a user from OU2 to a group in OU1")
+	var errResp ErrorResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&errResp))
+	ts.Equal("GRP-1019", errResp.Code, "a user OU1 neither owns nor has shared with it is outside its boundary")
 }
 
 // TestAddMemberFromOwnOU verifies the group-manager can add a user from OU1 to a group in OU1.

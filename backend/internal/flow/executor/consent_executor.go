@@ -6,6 +6,7 @@ package executor
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,10 +16,12 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	consentauthn "github.com/thunder-id/thunderid/internal/authn/consent"
+	authzdetail "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // consentExecutor handles consent collection during identity journeys.
@@ -140,13 +143,27 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 	availableAttributes := e.buildAugmentedAvailableAttributes(availableAttrResp, entityRef)
 	appName := ctx.Application.Name
 	forceReprompt := ctx.RuntimeData[common.RuntimeKeyForceConsentReprompt] == "true"
+	authorizationDetails, err := requestedAuthorizationDetails(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read the requested authorization details: %w", err)
+	}
+	// Details that skipped the processor their type declares are refused whatever the consent provider decides.
+	for _, detail := range authorizationDetails {
+		if !detail.Admitted {
+			logger.Debug(ctx.Context, "Authorization details reached consent without their processor")
+			return authorizationDetailsFailed(execResp, &ErrAuthorizationDetailsNotChecked), nil
+		}
+	}
 
 	// Resolve consent to determine if any required consents are missing and need to be prompted
 	promptData, svcErr := e.consentEnforcer.ResolveConsent(
 		ctx.Context, ouID, appID, appName, entityRef.EntityID,
-		essentialAttributes, optionalAttributes, authorizedPermissions,
+		essentialAttributes, optionalAttributes, authorizedPermissions, authorizationDetails,
 		availableAttributes, forceReprompt, core.BuildProviderMetadata(ctx).RuntimeMetadata)
 	if svcErr != nil {
+		if detailsErr := undecidedAuthorizationDetailsError(svcErr); detailsErr != nil {
+			return authorizationDetailsFailed(execResp, detailsErr), nil
+		}
 		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx.Context, "Client error while resolving user consent", log.Any("error", svcErr))
 			execResp.Status = providers.ExecFailure
@@ -160,6 +177,9 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 
 	// All consents are active — nothing to prompt
 	if promptData == nil {
+		if err := setConsentedAuthorizationDetails(execResp, authorizationDetails); err != nil {
+			return nil, err
+		}
 		logger.Debug(ctx.Context, "All required consents are active; completing consent executor")
 		execResp.Status = providers.ExecComplete
 		return execResp, nil
@@ -174,6 +194,7 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 
 	execResp.ForwardedData[common.ForwardedDataKeyConsentPrompt] = promptData.Purposes
 	execResp.AdditionalData[common.DataConsentPrompt] = string(promptJSON)
+	e.addClientHosts(ctx, execResp)
 
 	// Store the session token in RuntimeData for validation during consent recording
 	if promptData.SessionToken != "" {
@@ -196,6 +217,20 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 		log.Int("purposeCount", len(promptData.Purposes)))
 	execResp.Status = providers.ExecUserInputRequired
 	return execResp, nil
+}
+
+// addClientHosts adds the client ID and redirect URI hosts the authorization request supplied to the
+// consent prompt, with whether the redirect URI host is a loopback host.
+func (e *consentExecutor) addClientHosts(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) {
+	clientIDHost := ctx.RuntimeData[common.RuntimeKeyClientIDHost]
+	redirectURIHost := ctx.RuntimeData[common.RuntimeKeyRedirectURIHost]
+	if clientIDHost == "" || redirectURIHost == "" {
+		return
+	}
+	execResp.AdditionalData[common.DataClientIDHost] = clientIDHost
+	execResp.AdditionalData[common.DataRedirectURIHost] = redirectURIHost
+	execResp.AdditionalData[common.DataRedirectURILoopback] =
+		strconv.FormatBool(sysutils.IsLoopbackRedirectHost(redirectURIHost))
 }
 
 // handleConsentDecisions processes the user's consent decisions.
@@ -235,6 +270,11 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 		logger.Debug(ctx.Context, "Consent prompt timed out. Completing without recording consent")
 		execResp.RuntimeData[common.RuntimeKeyConsentedAttributes] = ""
 		execResp.RuntimeData[common.RuntimeKeyConsentedPermissions] = ""
+		if ctx.RuntimeData[common.RuntimeKeyRequestedAuthorizationDetails] != "" {
+			if err := setConsentedAuthorizationDetails(execResp, []providers.AuthorizationDetail{}); err != nil {
+				return nil, err
+			}
+		}
 		execResp.Status = providers.ExecComplete
 		return execResp, nil
 	}
@@ -265,6 +305,13 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 	consentRecord, svcErr := e.consentEnforcer.RecordConsent(ctx.Context, ouID, appID, userID,
 		&decisions, sessionToken, validityPeriod, core.BuildProviderMetadata(ctx).RuntimeMetadata)
 	if svcErr != nil {
+		if detailsErr := undecidedAuthorizationDetailsError(svcErr); detailsErr != nil {
+			return authorizationDetailsFailed(execResp, detailsErr), nil
+		}
+		if svcErr.Code == consentauthn.ErrorAuthorizationDetailModificationRefused.Code {
+			logger.Debug(ctx.Context, "Authorization details change refused")
+			return authorizationDetailsFailed(execResp, &ErrAuthorizationDetailsChangeRefused), nil
+		}
 		// Essential consent denied: the consent record was persisted but the user denied
 		// a required attribute, so the flow cannot proceed
 		if svcErr.Code == consentauthn.ErrorEssentialConsentDenied.Code {
@@ -295,8 +342,18 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 		return execResp, nil
 	}
 
-	// Store the consent ID in RuntimeData for downstream usage
-	execResp.RuntimeData[common.RuntimeKeyConsentID] = consentRecord.ID
+	// Store the consent ID in RuntimeData for downstream usage. Empty when nothing was recorded.
+	if consentRecord.ID != "" {
+		execResp.RuntimeData[common.RuntimeKeyConsentID] = consentRecord.ID
+	}
+
+	grantedDetails, err := e.decideAuthorizationDetails(ctx, consentRecord)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decide the authorization details: %w", err)
+	}
+	if err := setConsentedAuthorizationDetails(execResp, grantedDetails); err != nil {
+		return nil, err
+	}
 
 	// Derive approved attribute and permission names from the full (merged) consent record so
 	// downstream executors can easily restrict to only consented values without needing to
@@ -326,6 +383,9 @@ func (e *consentExecutor) getRequiredAttributes(ctx *providers.NodeContext) (
 		essentialAttributes = strings.Fields(essentialAttrsStr)
 	}
 	if optionalAttrsStr, exists := ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes]; exists {
+		requiredAttributesProvided = true
+		optionalAttributes = strings.Fields(optionalAttrsStr)
+	} else if optionalAttrsStr, exists := ctx.SharedRuntimeData[common.RuntimeKeyRequiredOptionalAttributes]; exists {
 		requiredAttributesProvided = true
 		optionalAttributes = strings.Fields(optionalAttrsStr)
 	}
@@ -414,4 +474,61 @@ func buildAttributePurposeName(appID string) string {
 
 func buildPermissionsPurposeName(appID string) string {
 	return "permissions:" + appID
+}
+
+// undecidedAuthorizationDetailsError returns the flow error for a service error that means the authorization
+// details cannot be decided in this flow, or nil for any other error.
+func undecidedAuthorizationDetailsError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	if svcErr.Code == authzdetail.ErrorAuthorizationDetailTypeChanged.Code {
+		return &ErrAuthorizationDetailsUnavailable
+	}
+	return nil
+}
+
+// authorizationDetailsFailed fails the step with err as a denial rather than a server error.
+func authorizationDetailsFailed(execResp *providers.ExecutorResponse,
+	err *tidcommon.ServiceError) *providers.ExecutorResponse {
+	execResp.Status = providers.ExecFailure
+	execResp.Error = err
+	return execResp
+}
+
+// decideAuthorizationDetails returns the granted authorization details in request order, as the consent
+// enforcer decided them: those an earlier approval covers when the prompt is approved, and those the user
+// approved on the prompt. Only the value is taken from the enforcer; the rest comes from the request.
+func (e *consentExecutor) decideAuthorizationDetails(ctx *providers.NodeContext,
+	record *providers.Consent) ([]providers.AuthorizationDetail, error) {
+	details, err := requestedAuthorizationDetails(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if details == nil {
+		return nil, nil
+	}
+	decided := make(map[string]providers.AuthorizationDetail, len(record.GrantedAuthorizationDetails))
+	for _, detail := range record.GrantedAuthorizationDetails {
+		decided[detail.ID] = detail
+	}
+	granted := []providers.AuthorizationDetail{}
+	for _, detail := range details {
+		if decision, ok := decided[detail.ID]; ok {
+			detail.Value = decision.Value
+			granted = append(granted, detail)
+		}
+	}
+	return granted, nil
+}
+
+// setConsentedAuthorizationDetails records the granted authorization details for the assertion.
+func setConsentedAuthorizationDetails(execResp *providers.ExecutorResponse,
+	granted []providers.AuthorizationDetail) error {
+	if granted == nil {
+		return nil
+	}
+	encoded, err := json.Marshal(granted)
+	if err != nil {
+		return fmt.Errorf("failed to encode the granted authorization details: %w", err)
+	}
+	execResp.RuntimeData[common.RuntimeKeyConsentedAuthorizationDetails] = string(encoded)
+	return nil
 }

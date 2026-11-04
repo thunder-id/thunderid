@@ -49,3 +49,33 @@ func (s *FlowConfigTestSuite) TestFromServerRuntime() {
 	s.Zero(result.Session.IdleTimeoutSeconds)
 	s.Zero(result.Session.AbsoluteTimeoutSeconds)
 }
+
+func (s *FlowConfigTestSuite) TestFromServerRuntimeSecureCookies() {
+	cases := []struct {
+		name      string
+		httpOnly  bool
+		publicURL string
+		want      bool
+	}{
+		{name: "TLS server", httpOnly: false, want: true},
+		{name: "TLS server with HTTP public URL", httpOnly: false, publicURL: "http://id.example.com", want: true},
+		{name: "HTTP-only server without public URL", httpOnly: true, want: false},
+		{name: "HTTP-only server with HTTP public URL", httpOnly: true, publicURL: "http://id.example.com",
+			want: false},
+		{name: "HTTP-only server behind TLS proxy", httpOnly: true, publicURL: "https://id.example.com",
+			want: true},
+		{name: "HTTP-only server with uppercase HTTPS public URL", httpOnly: true,
+			publicURL: "HTTPS://id.example.com", want: true},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			config.ResetServerRuntime()
+			cfg := &config.Config{
+				Server: engineconfig.ServerConfig{HTTPOnly: tc.httpOnly, PublicURL: tc.publicURL},
+			}
+			s.Require().NoError(config.InitializeServerRuntime("/tmp/test-flow-config", cfg))
+
+			s.Equal(tc.want, FromServerRuntime().SecureCookies)
+		})
+	}
+}

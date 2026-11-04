@@ -1,0 +1,84 @@
+---
+title: protect()
+docType: reference
+description: Block unauthenticated requests before a route handler runs using the protect() Express middleware.
+---
+
+# `protect()`
+
+The `protect()` function returns Express middleware that blocks unauthenticated requests.
+
+## Signature
+
+```ts
+protect(
+  onUnauthenticated?: (res: express.Response) => void,
+): (req: express.Request, res: express.Response, next: express.NextFunction) => Promise<void>
+```
+
+## Import
+
+```js
+const {protect} = require('@thunderid/express');
+```
+
+## Prerequisites
+
+- Mount [`thunderID()`](../thunderid) before this middleware
+- Mount `cookie-parser` before this middleware so the SDK can read `req.cookies`
+
+## Usage
+
+### Default 401 Response
+
+```js title="index.js" showLineNumbers
+const {protect} = require('@thunderid/express');
+
+app.get('/protected', protect(), (_req, res) => {
+  res.send('Protected content');
+});
+```
+
+### Custom unauthenticated behavior
+
+```js title="index.js" showLineNumbers
+const {protect} = require('@thunderid/express');
+
+app.get(
+  '/protected',
+  protect((res) => res.redirect('/login')),
+  (_req, res) => {
+    res.send('Protected content');
+  },
+);
+```
+
+## Runtime Behavior
+
+For each request, the middleware:
+
+1. reads `req.thunderIDAuth`
+2. reads the session ID from `req.cookies[SESSION_COOKIE_NAME]`
+3. calls `client.isSignedIn(sessionId)`
+4. either continues to the next handler or rejects the request
+
+## Default Behavior
+
+If no `onUnauthenticated` callback is provided, the middleware returns `401` with an empty response body.
+
+## Failure Behavior
+
+- If the SDK client is missing or the session cookie is missing, the middleware rejects the request
+- If the session ID is invalid, the middleware rejects the request
+- In both cases, it uses your `onUnauthenticated` callback when provided, or the default `401` response otherwise
+
+## Notes
+
+- `protect()` checks authentication state for the session cookie value, not for the presence of user data on the request
+- A common pattern is to redirect to `/login` for browser routes and use the default `401` response for API routes
+
+## Related APIs
+
+- [`thunderID()`](../thunderid)
+- [`handleSignIn()`](../handle-sign-in)
+- [`Redirect Flow`](../../../guides/redirect-flow)

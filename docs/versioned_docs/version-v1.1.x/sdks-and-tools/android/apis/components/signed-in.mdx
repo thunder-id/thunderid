@@ -1,0 +1,67 @@
+---
+title: SignedIn
+docType: reference
+description: Conditionally render Jetpack Compose content only when a user is currently signed in to the app.
+---
+
+# `SignedIn`
+
+The `SignedIn` composable conditionally renders its content only when the user is authenticated. It reads the current sign-in state from `LocalThunderID` and displays protected UI for signed-in users, while rendering optional fallback content (or nothing) when the user is not authenticated.
+
+`SignedIn` requires `ThunderIDProvider` in its ancestor composable hierarchy.
+
+## Usage
+
+```kotlin
+import dev.thunderid.compose.components.guards.SignedIn
+
+@Composable
+fun ContentView() {
+    SignedIn {
+        Text("You are signed in.")
+    }
+}
+```
+
+When the user is not signed in, nothing is rendered unless you provide a `fallback` lambda.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `fallback` | `(@Composable () -> Unit)?` | ❌ | The composable to render when the user is not authenticated. Defaults to nothing. |
+| `content` | `@Composable () -> Unit` | ✅ | The composable to render when the user is authenticated. |
+
+## Providing a Fallback
+
+Show alternative content when the user is not signed in:
+
+```kotlin
+SignedIn(
+    fallback = { AuthView() }
+) {
+    HomeView()
+}
+```
+
+## Example: Route Between Screens
+
+Use `SignedIn` and `SignedOut` together to implement your app's root navigation:
+
+```kotlin
+@Composable
+fun RootView() {
+    val thunder = LocalThunderID.current
+
+    when {
+        !thunder.isInitialized || thunder.isLoading -> {
+            CircularProgressIndicator()
+        }
+        else -> {
+            SignedIn(fallback = { AuthView() }) {
+                HomeView()
+            }
+        }
+    }
+}
+```

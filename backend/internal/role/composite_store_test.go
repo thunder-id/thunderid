@@ -118,12 +118,13 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_Deduplicat
 		{ID: "group2", Type: AssigneeTypeGroup},
 	}
 
-	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(2, nil)
-	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(2, nil)
-	suite.mockDBStore.On("GetRoleAssignments", mock.Anything, "role1", 2, 0).Return(dbAssignments, nil)
-	suite.mockFileStore.On("GetRoleAssignments", mock.Anything, "role1", 2, 0).Return(fileAssignments, nil)
+	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(2, nil)
+	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(2, nil)
+	suite.mockDBStore.On("GetRoleAssignments", mock.Anything, "role1", mock.Anything, 2, 0).Return(dbAssignments, nil)
+	suite.mockFileStore.On("GetRoleAssignments", mock.Anything, "role1", mock.Anything, 2, 0).
+		Return(fileAssignments, nil)
 
-	count, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1")
+	count, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1", "")
 
 	suite.NoError(err)
 	suite.Equal(3, count)
@@ -139,12 +140,13 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignments_Pagination() {
 		{ID: "group2", Type: AssigneeTypeGroup},
 	}
 
-	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(2, nil)
-	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(2, nil)
-	suite.mockDBStore.On("GetRoleAssignments", mock.Anything, "role1", 2, 0).Return(dbAssignments, nil)
-	suite.mockFileStore.On("GetRoleAssignments", mock.Anything, "role1", 2, 0).Return(fileAssignments, nil)
+	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(2, nil)
+	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(2, nil)
+	suite.mockDBStore.On("GetRoleAssignments", mock.Anything, "role1", mock.Anything, 2, 0).Return(dbAssignments, nil)
+	suite.mockFileStore.On("GetRoleAssignments", mock.Anything, "role1", mock.Anything, 2, 0).
+		Return(fileAssignments, nil)
 
-	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", 1, 2)
+	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 1, 2)
 
 	suite.NoError(err)
 	suite.Len(assignments, 1)
@@ -245,11 +247,45 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleList_FileRolesListError() {
 	suite.Equal(testErr, err)
 }
 
+func (suite *CompositeRoleStoreTestSuite) TestHasAssigneeAssignments_FoundInDBStore() {
+	suite.mockDBStore.On("HasAssigneeAssignments", mock.Anything, "group", "grp1").
+		Return(true, nil)
+
+	found, err := suite.store.HasAssigneeAssignments(context.Background(), "group", "grp1")
+
+	suite.NoError(err)
+	suite.True(found)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "HasAssigneeAssignments",
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestHasAssigneeAssignments_FoundInFileStore() {
+	suite.mockDBStore.On("HasAssigneeAssignments", mock.Anything, "group", "grp1").
+		Return(false, nil)
+	suite.mockFileStore.On("HasAssigneeAssignments", mock.Anything, "group", "grp1").
+		Return(true, nil)
+
+	found, err := suite.store.HasAssigneeAssignments(context.Background(), "group", "grp1")
+
+	suite.NoError(err)
+	suite.True(found)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestHasAssigneeAssignments_DBStoreError() {
+	testErr := errors.New("test error")
+	suite.mockDBStore.On("HasAssigneeAssignments", mock.Anything, "group", "grp1").
+		Return(false, testErr)
+
+	_, err := suite.store.HasAssigneeAssignments(context.Background(), "group", "grp1")
+
+	suite.Equal(testErr, err)
+}
+
 func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_DBStoreError() {
 	testErr := errors.New("test error")
-	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(0, testErr)
+	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(0, testErr)
 
-	_, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1")
+	_, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1", "")
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -257,10 +293,10 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_DBStoreErr
 
 func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_FileStoreCountError() {
 	testErr := errors.New("test error")
-	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(2, nil)
-	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(0, testErr)
+	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(2, nil)
+	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(0, testErr)
 
-	_, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1")
+	_, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1", "")
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -268,11 +304,11 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_FileStoreC
 
 func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_DBAssignmentsListError() {
 	testErr := errors.New("test error")
-	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(2, nil)
-	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(2, nil)
-	suite.mockDBStore.On("GetRoleAssignments", mock.Anything, "role1", 2, 0).Return(nil, testErr)
+	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(2, nil)
+	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(2, nil)
+	suite.mockDBStore.On("GetRoleAssignments", mock.Anything, "role1", mock.Anything, 2, 0).Return(nil, testErr)
 
-	_, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1")
+	_, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1", "")
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -281,12 +317,12 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_DBAssignme
 func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_FileAssignmentsListError() {
 	testErr := errors.New("test error")
 	dbAssignments := []RoleAssignment{{ID: "user1", Type: assigneeTypeEntity}}
-	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(1, nil)
-	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(2, nil)
-	suite.mockDBStore.On("GetRoleAssignments", mock.Anything, "role1", 1, 0).Return(dbAssignments, nil)
-	suite.mockFileStore.On("GetRoleAssignments", mock.Anything, "role1", 2, 0).Return(nil, testErr)
+	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(1, nil)
+	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(2, nil)
+	suite.mockDBStore.On("GetRoleAssignments", mock.Anything, "role1", mock.Anything, 1, 0).Return(dbAssignments, nil)
+	suite.mockFileStore.On("GetRoleAssignments", mock.Anything, "role1", mock.Anything, 2, 0).Return(nil, testErr)
 
-	_, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1")
+	_, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1", "")
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -294,9 +330,9 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_FileAssign
 
 func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignments_DBStoreError() {
 	testErr := errors.New("test error")
-	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(0, testErr)
+	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(0, testErr)
 
-	_, err := suite.store.GetRoleAssignments(context.Background(), "role1", 10, 0)
+	_, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 10, 0)
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -304,10 +340,10 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignments_DBStoreError() 
 
 func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignments_FileStoreCountError() {
 	testErr := errors.New("test error")
-	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(2, nil)
-	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(0, testErr)
+	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(2, nil)
+	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(0, testErr)
 
-	_, err := suite.store.GetRoleAssignments(context.Background(), "role1", 10, 0)
+	_, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 10, 0)
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -315,11 +351,11 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignments_FileStoreCountE
 
 func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignments_DBAssignmentsListError() {
 	testErr := errors.New("test error")
-	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(2, nil)
-	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(2, nil)
-	suite.mockDBStore.On("GetRoleAssignments", mock.Anything, "role1", 2, 0).Return(nil, testErr)
+	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(2, nil)
+	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(2, nil)
+	suite.mockDBStore.On("GetRoleAssignments", mock.Anything, "role1", mock.Anything, 2, 0).Return(nil, testErr)
 
-	_, err := suite.store.GetRoleAssignments(context.Background(), "role1", 10, 0)
+	_, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 10, 0)
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
@@ -328,12 +364,12 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignments_DBAssignmentsLi
 func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignments_FileAssignmentsListError() {
 	testErr := errors.New("test error")
 	dbAssignments := []RoleAssignment{{ID: "user1", Type: assigneeTypeEntity}}
-	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(1, nil)
-	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(2, nil)
-	suite.mockDBStore.On("GetRoleAssignments", mock.Anything, "role1", 1, 0).Return(dbAssignments, nil)
-	suite.mockFileStore.On("GetRoleAssignments", mock.Anything, "role1", 2, 0).Return(nil, testErr)
+	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(1, nil)
+	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(2, nil)
+	suite.mockDBStore.On("GetRoleAssignments", mock.Anything, "role1", mock.Anything, 1, 0).Return(dbAssignments, nil)
+	suite.mockFileStore.On("GetRoleAssignments", mock.Anything, "role1", mock.Anything, 2, 0).Return(nil, testErr)
 
-	_, err := suite.store.GetRoleAssignments(context.Background(), "role1", 10, 0)
+	_, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 10, 0)
 
 	suite.Error(err)
 	suite.Equal(testErr, err)

@@ -169,6 +169,35 @@ func (s *inMemoryStore) CompareFieldAndSwap(_ context.Context, namespace provide
 	return true, nil
 }
 
+// CompareFieldAndSwapBeforeExpiry updates a value only when its JSON field matches and the
+// supplied application-level expiry has not passed.
+func (s *inMemoryStore) CompareFieldAndSwapBeforeExpiry(_ context.Context,
+	namespace providers.RuntimeStoreNamespace, key, field, expected string, expiresAt time.Time,
+	newValue []byte,
+) (bool, error) {
+	fk := s.getFormattedKey(namespace, key)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	e, ok := s.data[fk]
+	if !ok || e.isExpired() || !time.Now().Before(expiresAt) {
+		return false, nil
+	}
+
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(e.value, &doc); err != nil {
+		return false, fmt.Errorf("failed to unmarshal stored value: %w", err)
+	}
+	var current string
+	if err := json.Unmarshal(doc[field], &current); err != nil || current != expected {
+		return false, nil
+	}
+
+	s.data[fk] = &entry{value: newValue, expiresAt: e.expiresAt}
+	return true, nil
+}
+
 // ExtendTTL extends the TTL of an existing entry in the in-memory store.
 func (s *inMemoryStore) ExtendTTL(_ context.Context, namespace providers.RuntimeStoreNamespace,
 	key string, ttlSeconds int64) error {

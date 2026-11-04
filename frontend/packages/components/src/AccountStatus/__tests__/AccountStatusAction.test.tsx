@@ -224,6 +224,12 @@ describe('AccountStatusAction', () => {
       ]);
     });
 
+    it('offers only Suspend on an expired agent', () => {
+      renderAction('EXPIRED', 'agent');
+
+      expect(openMenu()).toEqual([expect.stringMatching(/^Suspend/)]);
+    });
+
     it('renders nothing while the flows are still resolving', () => {
       withFlows({}, true);
       const {container} = renderAction('ACTIVE');

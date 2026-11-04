@@ -1,11 +1,13 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import {Box, ButtonBase, Container, Typography} from '@wso2/oxygen-ui';
-import {type JSX, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState} from 'react';
+import {type JSX, type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {BRAND_GRADIENT, DISPLAY_FONT, EASE, useHomeTokens, HOME_MAX_WIDTH} from './homeTheme';
 import {Reveal, Section, SectionHeading, TextLink} from './shared';
 import useScrollAnimation from '../../hooks/useScrollAnimation';
+import type {DocusaurusProductConfig} from '@site/docusaurus.product.config';
 import {useDocsUrl} from '@site/src/hooks/useDocsUrl';
 
 /* ─── Code samples ───────────────────────────────────────────────────────────
@@ -47,74 +49,76 @@ interface Panel {
   code: string[];
 }
 
-const PANELS: Panel[] = [
-  {
-    tab: 'Applications',
-    file: 'app.js',
-    title: 'Add sign-in to any app',
-    text: 'Drop in the official SDK for React, Next.js, Vue, Nuxt, Express, Node.js, iOS, Android, or Flutter and ship secure auth today.',
-    link: {label: 'Browse quickstarts', href: '/sdks-and-tools'},
-    code: [
-      "{k|import} { ThunderIDClient } {k|from} {s|'@thunderid/browser'};",
-      '',
-      '{k|const} auth = {k|new} {f|ThunderIDClient}({',
-      "  {p|baseUrl}: {s|'https://localhost:8090'},",
-      "  {p|clientId}: {s|'<your-client-id>'},",
-      '  {p|redirectUrl}: window.location.origin,',
-      '});',
-      '',
-      "document.{f|querySelector}({s|'#login'}).onclick = () => auth.{f|signIn}();",
-    ],
-  },
-  {
-    tab: 'AI agents',
-    file: 'agent-token.sh',
-    title: 'Give agents their own identity',
-    text: 'Issue scoped, short-lived tokens to agents and machines with standard OAuth grants, with no shared secrets in prompts.',
-    link: {label: 'Secure your first agent', href: '/docs/next/getting-started/connect-your-agent'},
-    code: [
-      '{c|# Standard OAuth 2.0 client-credentials grant}',
-      '{f|curl} -X POST https://localhost:8090/oauth2/token \\',
-      '  -u {s|"$AGENT_ID:$AGENT_SECRET"} \\',
-      '  -d {s|"grant_type=client_credentials"} \\',
-      '  -d {s|"scope=orders:read"}',
-      '',
-      '{c|# { "access_token": "eyJ…", "expires_in": 3600 }}',
-    ],
-  },
-  {
-    tab: 'Flows',
-    file: 'login-flow.yaml',
-    title: 'Compose identity flows',
-    text: 'Model every step, from password and social login to MFA and recovery, as a declarative flow you can review in a pull request.',
-    link: {label: 'Explore flows', href: '/docs/next/guides/flows/what-are-flows'},
-    code: [
-      '{p|flow}: login',
-      '{p|steps}:',
-      '  - {p|id}: identify',
-      '    {p|type}: username_password',
-      '  - {p|id}: mfa',
-      '    {p|type}: totp',
-      '    {p|when}: risk.score > {n|0.6}',
-      '  - {p|id}: done',
-      '    {p|type}: issue_tokens',
-    ],
-  },
-  {
-    tab: 'Deploy',
-    file: 'terminal',
-    title: 'Run it anywhere',
-    text: 'Start ThunderID with one command, then ship the same config to Docker, Kubernetes, or Helm with a GitOps workflow.',
-    link: {label: 'Get ThunderID', href: '/docs/next/getting-started/get-thunderid'},
-    code: [
-      '{c|# run ThunderID locally}',
-      '{f|npx} thunderid',
-      '',
-      '{c|# or deploy with Docker, Kubernetes, or Helm}',
-      '{c|# see Get ThunderID for all platforms}',
-    ],
-  },
-];
+function buildPanels(productName: string): Panel[] {
+  return [
+    {
+      tab: 'Applications',
+      file: 'app.js',
+      title: 'Add sign-in to any app',
+      text: 'Drop in the official SDK for React, Next.js, Vue, Nuxt, Express, Node.js, iOS, Android, or Flutter and ship secure auth today.',
+      link: {label: 'Browse quickstarts', href: '/sdks-and-tools'},
+      code: [
+        "{k|import} { ThunderIDClient } {k|from} {s|'@thunderid/browser'};",
+        '',
+        '{k|const} auth = {k|new} {f|ThunderIDClient}({',
+        "  {p|baseUrl}: {s|'https://localhost:8090'},",
+        "  {p|clientId}: {s|'<your-client-id>'},",
+        '  {p|redirectUrl}: window.location.origin,',
+        '});',
+        '',
+        "document.{f|querySelector}({s|'#login'}).onclick = () => auth.{f|signIn}();",
+      ],
+    },
+    {
+      tab: 'AI agents',
+      file: 'agent-token.sh',
+      title: 'Give agents their own identity',
+      text: 'Issue scoped, short-lived tokens to agents and machines with standard OAuth grants, with no shared secrets in prompts.',
+      link: {label: 'Secure your first agent', href: '/docs/next/getting-started/connect-your-agent'},
+      code: [
+        '{c|# Standard OAuth 2.0 client-credentials grant}',
+        '{f|curl} -X POST https://localhost:8090/oauth2/token \\',
+        '  -u {s|"$AGENT_ID:$AGENT_SECRET"} \\',
+        '  -d {s|"grant_type=client_credentials"} \\',
+        '  -d {s|"scope=orders:read"}',
+        '',
+        '{c|# { "access_token": "eyJ…", "expires_in": 3600 }}',
+      ],
+    },
+    {
+      tab: 'Flows',
+      file: 'login-flow.yaml',
+      title: 'Compose identity flows',
+      text: 'Model every step, from password and social login to MFA and recovery, as a declarative flow you can review in a pull request.',
+      link: {label: 'Explore flows', href: '/docs/next/guides/flows/what-are-flows'},
+      code: [
+        '{p|flow}: login',
+        '{p|steps}:',
+        '  - {p|id}: identify',
+        '    {p|type}: username_password',
+        '  - {p|id}: mfa',
+        '    {p|type}: totp',
+        '    {p|when}: risk.score > {n|0.6}',
+        '  - {p|id}: done',
+        '    {p|type}: issue_tokens',
+      ],
+    },
+    {
+      tab: 'Deploy',
+      file: 'terminal',
+      title: 'Run it anywhere',
+      text: `Start ${productName} with one command, then ship the same config to Docker, Kubernetes, or Helm with a GitOps workflow.`,
+      link: {label: `Get ${productName}`, href: '/docs/next/getting-started/get-thunderid'},
+      code: [
+        `{c|# run ${productName} locally}`,
+        '{f|npx} thunderid',
+        '',
+        '{c|# or deploy with Docker, Kubernetes, or Helm}',
+        `{c|# see Get ${productName} for all platforms}`,
+      ],
+    },
+  ];
+}
 
 const STATS = [
   {value: 10, prefix: '', suffix: '+', label: 'Official SDKs, from React to Flutter'},
@@ -222,6 +226,9 @@ function Stat({stat, delay}: {stat: (typeof STATS)[number]; delay: number}): JSX
 export default function DevelopersSection(): JSX.Element {
   const t = useHomeTokens();
   const docsUrl = useDocsUrl();
+  const {siteConfig} = useDocusaurusContext();
+  const productName = (siteConfig.customFields?.product as DocusaurusProductConfig).project.name;
+  const panels = useMemo(() => buildPanels(productName), [productName]);
   const [active, setActive] = useState(0);
   const [userPicked, setUserPicked] = useState(false);
   const [hovering, setHovering] = useState(false);
@@ -244,10 +251,10 @@ export default function DevelopersSection(): JSX.Element {
   useEffect(() => {
     if (userPicked || hovering || prefersReducedMotion()) return undefined;
     const id = window.setInterval(() => {
-      if (document.visibilityState === 'visible') setActive((a) => (a + 1) % PANELS.length);
+      if (document.visibilityState === 'visible') setActive((a) => (a + 1) % panels.length);
     }, ROTATE_MS);
     return () => window.clearInterval(id);
-  }, [userPicked, hovering]);
+  }, [userPicked, hovering, panels.length]);
 
   const pick = (i: number, focus = false): void => {
     setUserPicked(true);
@@ -258,10 +265,10 @@ export default function DevelopersSection(): JSX.Element {
   const onKeyDown = (e: KeyboardEvent): void => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
     e.preventDefault();
-    pick((active + (e.key === 'ArrowRight' ? 1 : -1) + PANELS.length) % PANELS.length, true);
+    pick((active + (e.key === 'ArrowRight' ? 1 : -1) + panels.length) % panels.length, true);
   };
 
-  const panel = PANELS[active];
+  const panel = panels[active];
   const tokenStyles = TOKEN_STYLES[t.isDark ? 'dark' : 'light'];
   const code = t.isDark
     ? {
@@ -347,7 +354,7 @@ export default function DevelopersSection(): JSX.Element {
                 transition: `transform 0.35s ${EASE}, width 0.35s ${EASE}`,
               }}
             />
-            {PANELS.map((p, i) => (
+            {panels.map((p, i) => (
               <ButtonBase
                 key={p.tab}
                 ref={(el: HTMLButtonElement | null) => {

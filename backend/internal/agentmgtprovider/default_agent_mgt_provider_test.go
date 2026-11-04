@@ -296,6 +296,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentMapsEveryResponseF
 		Owner:       testAgentOwner,
 		Attributes:  []byte(`{"k":"v"}`),
 	}
+	full.ValidUntil = "2030-01-01T00:00:00Z"
 	full.AuthFlowID = "auth-flow"
 	full.AuthFlowHandle = "auth-handle"
 	full.RegistrationFlowID = "reg-flow"
@@ -346,4 +347,6 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentMapsEveryResponseF
 	suite.Equal(full.SubjectAttribute, resp.SubjectAttribute)
 	suite.Equal(full.PasskeyAllowedOrigins, resp.PasskeyAllowedOrigins)
 	suite.Equal(attestation, resp.Attestation)
+	suite.Require().NotNil(resp.ValidUntil)
+	suite.Equal(full.ValidUntil, *resp.ValidUntil)
 }

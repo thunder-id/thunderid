@@ -148,6 +148,11 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 			}
 			evaluationsRequest := tokenservice.BuildAccessEvaluationsRequest(
 				oauthApp.ID, oauthApp.EntityCategory.String(), groupIDs, nil, scopes, targetRS.ID, evaluationContext)
+			// Only the roles the application holds in its own organization unit count, not those an
+			// organization unit it is shared with assigned it, even when the token is for that unit.
+			for i := range evaluationsRequest.Evaluations {
+				evaluationsRequest.Evaluations[i].OUID = oauthApp.OUID
+			}
 			authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx, evaluationsRequest)
 			if svcErr != nil {
 				logger.Error(ctx, "Failed to get authorized permissions for app",
@@ -196,10 +201,7 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		AuthorizationDetails: authorizationDetails,
 	})
 	if err != nil {
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate token",
-		}
+		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")
 	}
 
 	// The client was granted access, so its last login is stamped. A failed stamp is logged by the

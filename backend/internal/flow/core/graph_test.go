@@ -58,6 +58,55 @@ func (s *GraphTestSuite) TestAddNodeSuccess() {
 	s.Equal("node-1", retrievedNode.GetID())
 }
 
+func (s *GraphTestSuite) addExecutorNode(id string, inputs ...providers.Input) {
+	node, err := s.factory.CreateNode(id, string(common.NodeTypeTaskExecution),
+		map[string]interface{}{}, false, false)
+	s.Require().NoError(err)
+	node.(ExecutorBackedNodeInterface).SetInputs(inputs)
+	s.Require().NoError(s.graph.AddNode(node))
+}
+
+func (s *GraphTestSuite) addPromptNode(id string, inputs ...providers.Input) {
+	node, err := s.factory.CreateNode(id, string(common.NodeTypePrompt),
+		map[string]interface{}{}, false, false)
+	s.Require().NoError(err)
+	node.(PromptNodeInterface).SetPrompts([]common.Prompt{{Inputs: inputs}})
+	s.Require().NoError(s.graph.AddNode(node))
+}
+
+func (s *GraphTestSuite) TestIsConstantInput_ConstantOnExecutorNode() {
+	s.addExecutorNode("exec", providers.Input{Identifier: "userType", DefaultValue: "employee", Constant: true})
+
+	s.True(s.graph.IsConstantInput("userType"))
+	s.False(s.graph.IsConstantInput("email"))
+}
+
+func (s *GraphTestSuite) TestIsConstantInput_OrdinaryInputIsNotConstant() {
+	s.addExecutorNode("exec", providers.Input{Identifier: "email", DefaultValue: "a@b.c"})
+	s.addPromptNode("prompt", providers.Input{Identifier: "username"})
+
+	s.False(s.graph.IsConstantInput("email"))
+	s.False(s.graph.IsConstantInput("username"))
+}
+
+func (s *GraphTestSuite) TestIsConstantInput_AskedAsOrdinaryInputElsewhere() {
+	s.addExecutorNode("exec", providers.Input{Identifier: "userType", DefaultValue: "employee", Constant: true})
+	s.addPromptNode("prompt", providers.Input{Identifier: "userType"})
+
+	s.False(s.graph.IsConstantInput("userType"))
+}
+
+func (s *GraphTestSuite) TestIsConstantInput_AskedAsOrdinaryInputOnAnotherExecutor() {
+	s.addExecutorNode("fixed", providers.Input{Identifier: "userType", DefaultValue: "employee", Constant: true})
+	s.addExecutorNode("asked", providers.Input{Identifier: "userType"})
+
+	s.False(s.graph.IsConstantInput("userType"))
+}
+
+func (s *GraphTestSuite) TestIsConstantInput_EmptyGraph() {
+	s.False(s.graph.IsConstantInput("userType"))
+}
+
 func (s *GraphTestSuite) TestAddNodeNil() {
 	err := s.graph.AddNode(nil)
 	s.Error(err)

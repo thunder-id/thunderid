@@ -5,6 +5,7 @@ package notification
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 
 	notificationconfig "github.com/thunder-id/thunderid/internal/notification/config"
@@ -35,7 +36,7 @@ func (*serverConfigHandler) Decode(raw json.RawMessage) (any, error) {
 }
 
 // Validate refuses a write over a declarative default sender.
-func (*serverConfigHandler) Validate(_, readOnly, _ any) error {
+func (*serverConfigHandler) Validate(_ context.Context, _, readOnly, _ any) error {
 	if ro, ok := readOnly.(notificationconfig.NotificationSectionConfig); ok && ro.DefaultEmailSenderID != "" {
 		return errDeclarativeSenderLocked
 	}

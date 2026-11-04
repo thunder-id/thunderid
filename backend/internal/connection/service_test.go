@@ -195,7 +195,7 @@ func (s *ServiceTestSuite) TestListInstancesAllCategories() {
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
 		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
 
-	got, svcErr := s.svc.listInstances(context.Background(), "", serverconst.DefaultPageSize, 0)
+	got, svcErr := s.svc.listInstances(context.Background(), "", "", serverconst.DefaultPageSize, 0)
 	s.Nil(svcErr)
 	s.Require().Len(got.Connections, 3) // unknown IdP type skipped; senders are already message-only
 	s.Equal(3, got.TotalResults)
@@ -224,7 +224,7 @@ func (s *ServiceTestSuite) TestListInstancesIDJagEnabled() {
 		{ID: "3", Name: "Plain", Type: providers.IDPTypeOIDC},
 	}, (*tidcommon.ServiceError)(nil))
 
-	got, svcErr := s.svc.listInstances(context.Background(), categoryIdentityProvider,
+	got, svcErr := s.svc.listInstances(context.Background(), categoryIdentityProvider, "",
 		serverconst.DefaultPageSize, 0)
 	s.Nil(svcErr)
 	s.Require().Len(got.Connections, 3)
@@ -248,7 +248,7 @@ func (s *ServiceTestSuite) TestListInstancesPaginates() {
 		{ID: "3", Name: "C", Type: providers.IDPTypeGoogle},
 	}, (*tidcommon.ServiceError)(nil))
 
-	got, svcErr := s.svc.listInstances(context.Background(), categoryIdentityProvider, 1, 1)
+	got, svcErr := s.svc.listInstances(context.Background(), categoryIdentityProvider, "", 1, 1)
 	s.Nil(svcErr)
 	s.Equal(3, got.TotalResults)
 	s.Equal(2, got.StartIndex)
@@ -272,7 +272,7 @@ func (s *ServiceTestSuite) TestListInstancesOffsetPastEnd() {
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
 		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
 
-	got, svcErr := s.svc.listInstances(context.Background(), "", serverconst.DefaultPageSize, 10)
+	got, svcErr := s.svc.listInstances(context.Background(), "", "", serverconst.DefaultPageSize, 10)
 	s.Nil(svcErr)
 	s.Equal(1, got.TotalResults)
 	s.Equal(11, got.StartIndex)
@@ -286,7 +286,7 @@ func (s *ServiceTestSuite) TestListInstancesInvalidPagination() {
 		{0, 0}, {-1, 0}, {serverconst.MaxPageSize + 1, 0}, {10, -1},
 	}
 	for _, tc := range cases {
-		_, svcErr := s.svc.listInstances(context.Background(), "", tc.limit, tc.offset)
+		_, svcErr := s.svc.listInstances(context.Background(), "", "", tc.limit, tc.offset)
 		s.Require().NotNil(svcErr, "limit=%d offset=%d", tc.limit, tc.offset)
 	}
 	s.mockIDP.AssertNotCalled(s.T(), "GetIdentityProviderList", mock.Anything)
@@ -298,7 +298,7 @@ func (s *ServiceTestSuite) TestListInstancesIdentityProviderSkipsSenders() {
 		{ID: "1", Name: "G", Type: providers.IDPTypeGoogle},
 	}, (*tidcommon.ServiceError)(nil))
 
-	got, svcErr := s.svc.listInstances(context.Background(), categoryIdentityProvider,
+	got, svcErr := s.svc.listInstances(context.Background(), categoryIdentityProvider, "",
 		serverconst.DefaultPageSize, 0)
 	s.Nil(svcErr)
 	s.Len(got.Connections, 1)
@@ -312,7 +312,7 @@ func (s *ServiceTestSuite) TestListInstancesSMSSkipsIdPs() {
 				Provider: ncommon.NotificationProviderTypeTwilio},
 		}, (*tidcommon.ServiceError)(nil))
 
-	got, svcErr := s.svc.listInstances(context.Background(), categorySMSProvider,
+	got, svcErr := s.svc.listInstances(context.Background(), categorySMSProvider, "",
 		serverconst.DefaultPageSize, 0)
 	s.Nil(svcErr)
 	s.Require().Len(got.Connections, 1)
@@ -329,7 +329,7 @@ func (s *ServiceTestSuite) TestListInstancesSkipsUnregisteredSenderProvider() {
 				Provider: ncommon.NotificationProviderType("unregistered-provider")},
 		}, (*tidcommon.ServiceError)(nil))
 
-	got, svcErr := s.svc.listInstances(context.Background(), categorySMSProvider,
+	got, svcErr := s.svc.listInstances(context.Background(), categorySMSProvider, "",
 		serverconst.DefaultPageSize, 0)
 	s.Nil(svcErr)
 	s.Require().Len(got.Connections, 1)
@@ -346,7 +346,7 @@ func (s *ServiceTestSuite) TestListInstancesSortsByIDWhenTypeAndNameTie() {
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
 		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
 
-	got, svcErr := s.svc.listInstances(context.Background(), "", serverconst.DefaultPageSize, 0)
+	got, svcErr := s.svc.listInstances(context.Background(), "", "", serverconst.DefaultPageSize, 0)
 	s.Nil(svcErr)
 	s.Require().Len(got.Connections, 2)
 	s.Equal("1", got.Connections[0].ID)
@@ -357,7 +357,7 @@ func (s *ServiceTestSuite) TestListInstancesError() {
 	s.mockIDP.On("GetIdentityProviderList", mock.Anything).
 		Return(([]idp.BasicIDPDTO)(nil), &tidcommon.InternalServerError)
 
-	_, svcErr := s.svc.listInstances(context.Background(), "", serverconst.DefaultPageSize, 0)
+	_, svcErr := s.svc.listInstances(context.Background(), "", "", serverconst.DefaultPageSize, 0)
 	s.NotNil(svcErr)
 }
 
@@ -914,7 +914,8 @@ func (s *ServiceTestSuite) TestListInstancesCarriesOU() {
 		{ID: "2", Name: "Unowned", Type: providers.IDPTypeOIDC},
 	}, (*tidcommon.ServiceError)(nil))
 
-	got, svcErr := s.svc.listInstances(context.Background(), categoryIdentityProvider, serverconst.DefaultPageSize, 0)
+	got, svcErr := s.svc.listInstances(
+		context.Background(), categoryIdentityProvider, "", serverconst.DefaultPageSize, 0)
 
 	s.Nil(svcErr)
 	s.Require().Len(got.Connections, 2)
@@ -949,7 +950,7 @@ func (s *ServiceTestSuite) TestListInstancesCarriesOwnerOfSenderPDPAndHTTP() {
 	for _, category := range []connectionCategory{
 		categorySMSProvider, categoryEmailProvider, categoryAuthorizationPDP, categoryHTTP,
 	} {
-		got, svcErr := s.svc.listInstances(context.Background(), category, serverconst.DefaultPageSize, 0)
+		got, svcErr := s.svc.listInstances(context.Background(), category, "", serverconst.DefaultPageSize, 0)
 		s.Nil(svcErr)
 		for _, c := range got.Connections {
 			owners[c.ID] = c.OUID

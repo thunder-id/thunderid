@@ -149,6 +149,20 @@ var ErrorRecoveryFlowDisabled = tidcommon.ServiceError{
 	},
 }
 
+// ErrorDeviceGrantFlowDisabled defines the error response when Device Grant is not configured.
+var ErrorDeviceGrantFlowDisabled = tidcommon.ServiceError{
+	Code: "FES-1024",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.device_grant_not_allowed",
+		DefaultValue: "Device Grant not allowed",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.device_grant_not_allowed_description",
+		DefaultValue: "Device Grant flow is not configured for the application",
+	},
+}
+
 // ErrorDirectFlowInitiationNotPermitted defines the error for applications that do not allow
 // direct flow initiation via the HTTP endpoint (e.g. authorization_code grant type apps).
 var ErrorDirectFlowInitiationNotPermitted = tidcommon.ServiceError{
@@ -310,5 +324,20 @@ var ErrorFlowApplicationNotUsable = tidcommon.ServiceError{
 	ErrorDescription: tidcommon.I18nMessage{
 		Key:          "error.flowexecservice.application_not_usable_description",
 		DefaultValue: "The flow cannot be executed for the requested application",
+	},
+}
+
+// ErrorFlowConnectionNotSet is returned when a flow needs a connection that was never set for the organization unit of
+// the application driving it.
+var ErrorFlowConnectionNotSet = tidcommon.ServiceError{
+	Code: "FES-1022",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.connection_not_set",
+		DefaultValue: "Flow not available",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.connection_not_set_description",
+		DefaultValue: "The flow is not available for this organization yet. Contact your administrator",
 	},
 }

@@ -94,4 +94,16 @@ describe('AccessStatusIndicator', () => {
     render(<AccessStatusIndicator status={report('LOCKED')} tabIndex={-1} />);
     expect(screen.getByRole('img', {name: 'Locked'})).toHaveAttribute('tabindex', '-1');
   });
+
+  it('labels an expired identity as expired', () => {
+    render(<AccessStatusIndicator status={report('EXPIRED')} category="agent" />);
+
+    expect(screen.getByRole('img', {name: 'Expired'})).toBeInTheDocument();
+  });
+
+  it('shows the hint it is given in place of the status text', async () => {
+    render(<AccessStatusIndicator status={report('ACTIVE')} category="agent" hint="Expires in 3 months" />);
+
+    expect(await hintOnFocus()).toBe('Expires in 3 months');
+  });
 });

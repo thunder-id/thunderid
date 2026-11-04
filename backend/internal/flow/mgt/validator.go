@@ -5,6 +5,7 @@ package flowmgt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -55,6 +56,7 @@ type idpProvider interface {
 // flowValidator is responsible for validating flow definitions,
 // including metadata, structure, node configurations, and registry-dependent checks.
 type flowValidator struct {
+	flowStore              flowStoreInterface
 	executorRegistry       core.ExecutorMetadataProvider
 	interceptorRegistry    interceptor.InterceptorRegistryInterface
 	graphBuilder           graphbuilder.GraphBuilderInterface
@@ -130,12 +132,21 @@ func (v *flowValidator) validateFlow(ctx context.Context, flowDef *FlowDefinitio
 	if err := v.validateFlowTypeBasedConstraints(flowDef.FlowType, flowDef.Nodes); err != nil {
 		return err
 	}
+	if flowDef.FlowType == providers.FlowTypeDeviceGrant {
+		if svcErr := v.validateDeviceGrantCallTargetTypes(ctx, flowDef.Nodes); svcErr != nil {
+			return svcErr
+		}
+	}
 
 	if err := v.validateNodes(flowDef.Nodes, nodeIndex, flowDef.FlowType); err != nil {
 		return err
 	}
 
 	if err := v.validateVariables(ctx, flowDef); err != nil {
+		return err
+	}
+
+	if err := v.validateConstantInputsNotPrompted(flowDef.Nodes); err != nil {
 		return err
 	}
 
@@ -218,6 +229,7 @@ func (v *flowValidator) validateMetadata(
 // requiredExecutorsByFlowType maps flow type → executor names that must appear at least once.
 var requiredExecutorsByFlowType = map[providers.FlowType][]string{
 	providers.FlowTypeAuthentication: {executormeta.ExecutorNameAuthAssert},
+	providers.FlowTypeDeviceGrant:    {executormeta.ExecutorNameDeviceCode},
 	providers.FlowTypeRegistration: {
 		executormeta.ExecutorNameProvisioning, executormeta.ExecutorNameUserTypeResolver,
 	},
@@ -267,6 +279,11 @@ func (v *flowValidator) validateFlowTypeBasedConstraints(
 	if svcErr := v.validateModeFlowTypes(flowType, nodes); svcErr != nil {
 		return svcErr
 	}
+	if flowType == providers.FlowTypeDeviceGrant {
+		if svcErr := validateDeviceGrantAuthenticationCall(nodes); svcErr != nil {
+			return svcErr
+		}
+	}
 	return v.validateCompanionExecutors(nodes)
 }
 
@@ -294,6 +311,104 @@ func (v *flowValidator) validateModeFlowTypes(
 				"flowType":     string(flowType),
 			},
 		})
+	}
+	return nil
+}
+
+// validateDeviceGrantCallTargetTypes requires Device Grant CALL nodes to target Authentication flows.
+func (v *flowValidator) validateDeviceGrantCallTargetTypes(
+	ctx context.Context, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	if v.flowStore == nil {
+		return nil
+	}
+	for _, node := range nodes {
+		if node.Type != string(common.NodeTypeCall) || node.Flow == nil || node.Flow.Ref == "" {
+			continue
+		}
+		target, err := v.flowStore.GetFlowByID(ctx, node.Flow.Ref)
+		if err != nil {
+			if errors.Is(err, errFlowNotFound) {
+				return &ErrorFlowNotFound
+			}
+			v.logger.Error(ctx, "Failed to resolve Device Grant call target flow",
+				log.String("flowID", node.Flow.Ref), log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+		if target == nil {
+			return &ErrorFlowNotFound
+		}
+		if target.FlowType != providers.FlowTypeAuthentication {
+			return tidcommon.CustomServiceError(ErrorInvalidNodeConfig, tidcommon.I18nMessage{
+				Key:          "error.flowmgtservice.device_grant_authentication_call_invalid_description",
+				DefaultValue: "Device Grant flow CALL nodes must target an Authentication flow",
+			})
+		}
+	}
+	return nil
+}
+
+// validateDeviceGrantAuthenticationCall requires the Device Grant flow to call the requesting
+// application's Authentication flow only after successful user-code verification.
+func validateDeviceGrantAuthenticationCall(nodes []providers.NodeDefinition) *tidcommon.ServiceError {
+	authCalls := make(map[string]bool)
+	startID := ""
+	for _, node := range nodes {
+		if node.Type == string(common.NodeTypeStart) {
+			startID = node.ID
+		}
+		if node.Type != string(common.NodeTypeCall) || node.Flow == nil {
+			continue
+		}
+		authCalls[node.ID] = true
+	}
+	if len(authCalls) == 0 {
+		return tidcommon.CustomServiceError(ErrorInvalidNodeConfig, tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.device_grant_authentication_call_missing_description",
+			DefaultValue: "Device Grant flows require a Call node configured for the requesting application's " +
+				"Authentication flow",
+		})
+	}
+
+	// Follow only paths where the device code has not been verified. The executor's
+	// onSuccess edge is the only path that establishes a verified request.
+	adjacency := buildAdjacencyList(nodes)
+	for _, node := range nodes {
+		if node.Type != string(common.NodeTypeTaskExecution) || node.Executor == nil ||
+			node.Executor.Name != executormeta.ExecutorNameDeviceCode {
+			continue
+		}
+		adjacency[node.ID] = nil
+		if node.OnIncomplete != "" {
+			adjacency[node.ID] = append(adjacency[node.ID], node.OnIncomplete)
+		}
+		if node.OnFailure != "" {
+			adjacency[node.ID] = append(adjacency[node.ID], node.OnFailure)
+		}
+		if node.Condition != nil && node.Condition.OnSkip != "" {
+			adjacency[node.ID] = append(adjacency[node.ID], node.Condition.OnSkip)
+		}
+	}
+
+	visited := map[string]bool{startID: true}
+	queue := []string{startID}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		if authCalls[current] {
+			return tidcommon.CustomServiceError(ErrorInvalidNodeConfig, tidcommon.I18nMessage{
+				Key: "error.flowmgtservice.device_grant_authentication_call_before_verification_description",
+				DefaultValue: "Device Grant Call node '{{param(nodeID)}}' must run only after successful " +
+					"user-code verification",
+				Params: map[string]string{"nodeID": current},
+			})
+		}
+		for _, next := range adjacency[current] {
+			if !visited[next] {
+				visited[next] = true
+				queue = append(queue, next)
+			}
+		}
 	}
 	return nil
 }
@@ -829,7 +944,7 @@ func (v *flowValidator) validateTaskExecutionNode(
 				})
 		}
 	}
-	return nil
+	return v.validateExecutorInputDefaults(node.ID, node.Executor.Inputs)
 }
 
 // validatePromptNode validates a PROMPT node by dispatching to the appropriate sub-validator.
@@ -881,21 +996,166 @@ func (v *flowValidator) validateInteractivePromptNode(node *providers.NodeDefini
 	return nil
 }
 
-// validateInputDefinitions validates input definitions for valid types and validation rules.
+// validateInputDefinitions validates prompt input definitions: no constants, valid types, validation rules
+// and defaults, including that a default satisfies the input's validation rules.
 func (v *flowValidator) validateInputDefinitions(
 	nodeID string, inputs []providers.InputDefinition,
 ) *tidcommon.ServiceError {
 	for _, input := range inputs {
-		if input.Type != "" && !providers.ValidInputTypes[input.Type] {
+		if input.Constant {
 			return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
-				Key:          "error.flowmgtservice.invalid_input_type_description",
-				DefaultValue: "Node '{{param(nodeID)}}': input '{{param(inputID)}}' has invalid type '{{param(type)}}'",
-				Params:       map[string]string{"nodeID": nodeID, "inputID": input.Identifier, "type": input.Type},
+				Key: "error.flowmgtservice.constant_input_not_allowed_on_prompt_description",
+				DefaultValue: "Node '{{param(nodeID)}}': prompt input '{{param(inputID)}}' cannot be constant. " +
+					"Set the constant on the executor input that uses the value",
+				Params: map[string]string{"nodeID": nodeID, "inputID": input.Identifier},
 			})
+		}
+		if err := v.validateInputType(nodeID, input); err != nil {
+			return err
 		}
 		if err := v.validateValidationRules(nodeID, input.Identifier, input.Validation); err != nil {
 			return err
 		}
+		if input.DefaultValue != "" {
+			if err := v.validateInputDefault(nodeID, input); err != nil {
+				return err
+			}
+		}
+	}
+	return v.validateDefaultsAgainstRules(nodeID, inputs)
+}
+
+// validateDefaultsAgainstRules rejects a default that fails one of its input's validation rules, since
+// the person would get a field error for a value they never typed. Rules are enforced on prompt inputs
+// only, so executor inputs are not checked.
+func (v *flowValidator) validateDefaultsAgainstRules(
+	nodeID string, inputs []providers.InputDefinition,
+) *tidcommon.ServiceError {
+	for _, input := range inputs {
+		if input.DefaultValue == "" || len(input.Validation) == 0 {
+			continue
+		}
+
+		rules, err := common.ToValidationRules(input.Validation)
+		if err != nil {
+			continue
+		}
+
+		for _, rule := range rules {
+			if !core.SatisfiesValidationRule(rule, input.DefaultValue) {
+				return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
+					Key: "error.flowmgtservice.input_default_fails_validation_rule_description",
+					DefaultValue: "Node '{{param(nodeID)}}': defaultValue of input '{{param(inputID)}}' " +
+						"does not satisfy its '{{param(ruleType)}}' validation rule",
+					Params: map[string]string{
+						"nodeID": nodeID, "inputID": input.Identifier, "ruleType": string(rule.Type),
+					},
+				})
+			}
+		}
+	}
+	return nil
+}
+
+// validateConstantInputsNotPrompted rejects a prompt that asks for an input an executor node anywhere in
+// the flow holds constant, since the value the person enters would be replaced by the constant.
+func (v *flowValidator) validateConstantInputsNotPrompted(
+	nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	constantNodes := make(map[string]string)
+	for _, node := range nodes {
+		if node.Executor == nil {
+			continue
+		}
+		for _, input := range node.Executor.Inputs {
+			if input.Constant {
+				constantNodes[input.Identifier] = node.ID
+			}
+		}
+	}
+	if len(constantNodes) == 0 {
+		return nil
+	}
+
+	for _, node := range nodes {
+		for _, prompt := range node.Prompts {
+			for _, input := range prompt.Inputs {
+				if constantNodeID, held := constantNodes[input.Identifier]; held {
+					return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
+						Key: "error.flowmgtservice.prompt_input_held_constant_description",
+						DefaultValue: "Node '{{param(nodeID)}}': prompt input '{{param(inputID)}}' is a constant " +
+							"input of node '{{param(constantNodeID)}}'. " +
+							"Remove it from the prompt or remove the constant",
+						Params: map[string]string{
+							"nodeID": node.ID, "inputID": input.Identifier, "constantNodeID": constantNodeID,
+						},
+					})
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// validateInputType validates that an input's type, when set, is a known input type.
+func (v *flowValidator) validateInputType(nodeID string, input providers.InputDefinition) *tidcommon.ServiceError {
+	if input.Type != "" && !providers.ValidInputTypes[input.Type] {
+		return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_input_type_description",
+			DefaultValue: "Node '{{param(nodeID)}}': input '{{param(inputID)}}' has invalid type '{{param(type)}}'",
+			Params:       map[string]string{"nodeID": nodeID, "inputID": input.Identifier, "type": input.Type},
+		})
+	}
+	return nil
+}
+
+// validateExecutorInputDefaults validates the type, default and constant settings of executor inputs.
+// Inputs that set neither a default nor a constant are not checked.
+func (v *flowValidator) validateExecutorInputDefaults(
+	nodeID string, inputs []providers.InputDefinition,
+) *tidcommon.ServiceError {
+	for _, input := range inputs {
+		if input.DefaultValue == "" && !input.Constant {
+			continue
+		}
+		if err := v.validateInputType(nodeID, input); err != nil {
+			return err
+		}
+		if err := v.validateInputDefault(nodeID, input); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateInputDefault validates the default and constant settings of an input that sets either. The
+// input's type must already be known to be valid.
+func (v *flowValidator) validateInputDefault(
+	nodeID string, input providers.InputDefinition,
+) *tidcommon.ServiceError {
+	if input.DefaultValue == "" {
+		return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.constant_input_missing_default_description",
+			DefaultValue: "Node '{{param(nodeID)}}': constant input '{{param(inputID)}}' " +
+				"must have a non-empty defaultValue",
+			Params: map[string]string{"nodeID": nodeID, "inputID": input.Identifier},
+		})
+	}
+	if input.IsSensitive() {
+		return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.input_default_not_allowed_for_sensitive_type_description",
+			DefaultValue: "Node '{{param(nodeID)}}': input '{{param(inputID)}}' of type '{{param(type)}}' " +
+				"cannot set defaultValue or constant",
+			Params: map[string]string{"nodeID": nodeID, "inputID": input.Identifier, "type": input.Type},
+		})
+	}
+	if !isValidDefaultForType(input.Type, input.DefaultValue) {
+		return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.input_default_invalid_for_type_description",
+			DefaultValue: "Node '{{param(nodeID)}}': defaultValue of input '{{param(inputID)}}' " +
+				"is not a valid '{{param(type)}}' value",
+			Params: map[string]string{"nodeID": nodeID, "inputID": input.Identifier, "type": input.Type},
+		})
 	}
 	return nil
 }
@@ -1781,7 +2041,36 @@ func (v *flowValidator) validateVariables(
 		return v.variableError(firstVariablesNodeID,
 			"the VARIABLES nodes of a flow declare at least one variable in 'inputs'")
 	}
+	if err := v.validateOUResolverBeforeVariables(nodes); err != nil {
+		return err
+	}
 	return v.validateVariableReferences(nodes, declaredAt)
+}
+
+// validateOUResolverBeforeVariables checks that every route from the start to a VARIABLES node passes an organization
+// unit resolver. A VARIABLES node resolves the values of the unit the resolver picked, so a route that reaches it
+// without one would leave the flow with no unit to resolve for.
+func (v *flowValidator) validateOUResolverBeforeVariables(nodes []providers.NodeDefinition) *tidcommon.ServiceError {
+	var startID string
+	var resolvers []string
+	for i := range nodes {
+		switch {
+		case nodes[i].Type == string(common.NodeTypeStart) && startID == "":
+			startID = nodes[i].ID
+		case nodes[i].Executor != nil && nodes[i].Executor.Name == executormeta.ExecutorNameOUResolver:
+			resolvers = append(resolvers, nodes[i].ID)
+		}
+	}
+	adjacency := buildAdjacencyList(nodes)
+	reachable := v.reachableAvoiding(adjacency, startID, resolvers...)
+	for i := range nodes {
+		if nodes[i].Type == string(common.NodeTypeVariables) && reachable[nodes[i].ID] {
+			return v.variableError(nodes[i].ID, fmt.Sprintf(
+				"a route reaches it without passing an %s step, and the node resolves the values of the "+
+					"organization unit that step picks", executormeta.ExecutorNameOUResolver))
+		}
+	}
+	return nil
 }
 
 // validateVariablesNodeFormat checks that a VARIABLES node goes on to a next node and carries nothing a node that
@@ -1824,6 +2113,9 @@ func (v *flowValidator) validateConnectionVariable(
 	raw, err := core.DefaultRaw(def)
 	if err != nil {
 		return v.variableError("", fmt.Sprintf("variable %q: its default %s", def.Identifier, err.Error()))
+	}
+	if raw == "" {
+		return nil
 	}
 	reason, svcErr := v.checkConnection(ctx, def, raw)
 	if svcErr != nil {
@@ -1896,10 +2188,12 @@ func (v *flowValidator) validateVariableReferences(
 	return nil
 }
 
-// reachableAvoiding returns the nodes a route from start can reach without passing the avoided node.
-func (v *flowValidator) reachableAvoiding(adjacency map[string][]string, start, avoid string) map[string]bool {
+// reachableAvoiding returns the nodes a route from start can reach without passing any of the avoided nodes.
+func (v *flowValidator) reachableAvoiding(
+	adjacency map[string][]string, start string, avoid ...string,
+) map[string]bool {
 	visited := map[string]bool{}
-	if start == avoid {
+	if slices.Contains(avoid, start) {
 		return visited
 	}
 	visited[start] = true
@@ -1908,7 +2202,7 @@ func (v *flowValidator) reachableAvoiding(adjacency map[string][]string, start, 
 		current := queue[0]
 		queue = queue[1:]
 		for _, next := range adjacency[current] {
-			if next == avoid || visited[next] {
+			if slices.Contains(avoid, next) || visited[next] {
 				continue
 			}
 			visited[next] = true

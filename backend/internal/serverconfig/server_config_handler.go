@@ -3,7 +3,10 @@
 
 package serverconfig
 
-import "encoding/json"
+import (
+	"context"
+	"encoding/json"
+)
 
 // ServerConfigHandlerInterface decodes, validates, and merges the value of one server-config section.
 // Each supported section registers an implementation at service construction, so the section-specific
@@ -17,7 +20,7 @@ type ServerConfigHandlerInterface interface {
 	// Validate reports whether incoming is a valid value for the section. The current readOnly
 	// (declarative) and writable (db) layers are provided so a section can validate against existing
 	// state; both are nil when validating a declarative resource at load time.
-	Validate(incoming, readOnly, writable any) error
+	Validate(ctx context.Context, incoming, readOnly, writable any) error
 	// Merge composes the readOnly and writable layers into the effective value.
 	Merge(readOnly, writable any) any
 }

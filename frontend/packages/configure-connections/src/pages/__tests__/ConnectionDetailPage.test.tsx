@@ -219,8 +219,11 @@ vi.mock('@thunderid/contexts', async (importOriginal) => ({
 }));
 vi.mock('@thunderid/components', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/components')>()),
-  SettingsCard: ({title, children}: {title: string; children: ReactNode}) => (
-    <section aria-label={title}>{children}</section>
+  SettingsCard: ({title, description, children}: {title: string; description: ReactNode; children: ReactNode}) => (
+    <section aria-label={title}>
+      {description && <p>{description}</p>}
+      {children}
+    </section>
   ),
   UnsavedChangesBar: ({
     onSave,
@@ -752,6 +755,17 @@ describe('ConnectionDetailPage', () => {
       senderId: '+15005550006',
     });
     expect('attributeConfiguration' in payload).toBe(false);
+  });
+
+  it('SMS vendor: describes what deleting an SMS provider affects instead of logins', () => {
+    mockParams.type = 'twilio';
+    mockParams.id = 'tw1';
+    mockConn.data = TWILIO_CONNECTION;
+    render(<ConnectionDetailPage />);
+
+    fireEvent.click(screen.getByTestId('connection-tab-advanced'));
+    expect(screen.getByText(/It cannot be deleted while a flow sends SMS through it/)).toBeInTheDocument();
+    expect(screen.queryByText(/stop accepting logins/)).not.toBeInTheDocument();
   });
 
   it('AuthZEN PDP: shows subject mapping in its own tab and saves it with the connection', () => {
@@ -1509,5 +1523,17 @@ describe('ConnectionDetailPage default email sender', () => {
     fireEvent.click(screen.getByTestId('connection-tab-advanced'));
     fireEvent.click(screen.getByTestId('connection-delete-button'));
     expect(screen.queryByTestId('connection-delete-default-sender-warning')).not.toBeInTheDocument();
+  });
+
+  it('names the product in the configuration description', () => {
+    render(<ConnectionDetailPage />);
+    expect(screen.getByText('Provide the details ThunderID needs to connect to this service.')).toBeInTheDocument();
+  });
+
+  it('describes what deleting an email provider affects instead of logins', () => {
+    render(<ConnectionDetailPage />);
+    fireEvent.click(screen.getByTestId('connection-tab-advanced'));
+    expect(screen.getByText(/It cannot be deleted while a flow sends email through it/)).toBeInTheDocument();
+    expect(screen.queryByText(/stop accepting logins/)).not.toBeInTheDocument();
   });
 });

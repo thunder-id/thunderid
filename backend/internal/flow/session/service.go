@@ -31,6 +31,9 @@ type Service interface {
 	// session, a session from a different flow, or one established at an incompatible flow version.
 	Resolve(ctx context.Context, handle, flowID string, flowVersion int, now time.Time) (*Session, error)
 
+	// AbsoluteTimeout returns the longest a session lasts from its start.
+	AbsoluteTimeout() time.Duration
+
 	// FindCheckpoint returns the resolved session's snapshot for the checkpoint, or (nil, nil) when
 	// the session holds none. Callers deciding only whether a checkpoint is available compare the
 	// result against nil; the SSO-Check node forwards it to the paired Session node so the load path
@@ -51,6 +54,12 @@ type Service interface {
 	// in.TokenFamilyID is set: a token family with no persisted mapping would be unrevocable, so that
 	// failure aborts the load. It errors when a row it has to read no longer exists.
 	LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (*Session, *SessionContext, error)
+
+	// RecordActivity counts a use of the session outside the flow engine as activity: it refreshes the
+	// last-active timestamp and slides the idle deadline under the same activity-refresh throttle as a
+	// checkpoint load. The absolute deadline is unchanged, and an expired, terminated or unknown session
+	// is left as it is without an error.
+	RecordActivity(ctx context.Context, sessionID string) error
 
 	// Terminate ends the session referenced by handle: it revokes the token families of every
 	// participating application (when a revoker is wired) and hard-deletes the session along with its
@@ -143,6 +152,11 @@ type service struct {
 }
 
 var _ Service = (*service)(nil)
+
+// AbsoluteTimeout implements Service.
+func (s *service) AbsoluteTimeout() time.Duration {
+	return s.timeouts.Absolute
+}
 
 // Resolve implements Service.
 func (s *service) Resolve(ctx context.Context, handle, flowID string, flowVersion int,
@@ -314,6 +328,19 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 	return sess, snapshot, nil
 }
 
+// RecordActivity implements Service.
+func (s *service) RecordActivity(ctx context.Context, sessionID string) error {
+	if sessionID == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	if err := s.store.SlideIdleDeadline(ctx, sessionID, now, now.Add(s.timeouts.Idle),
+		now.Add(-s.timeouts.ActivityRefresh)); err != nil {
+		return fmt.Errorf("failed to record SSO session activity: %w", err)
+	}
+	return nil
+}
+
 // Terminate implements Service.
 func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Session, error) {
 	if handle == "" {
@@ -333,9 +360,9 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 	}
 	// Hard-delete the session and its derived state (checkpoint contexts and participants) in one
 	// transaction. Sign-out ends SSO reuse outright and nothing references the session afterwards, so the
-	// row is removed rather than tombstoned. DeleteSession removes the session row (SSO_SESSION), Delete
+	// row is removed rather than tombstoned. DeleteSession removes the session row (SESSION), Delete
 	// its checkpoint contexts (SSO_SESSION_CONTEXT), and DeleteBySessionID its participants
-	// (SSO_SESSION_PARTICIPANT). Repeated calls are idempotent: once the row is gone, GetByHandle
+	// (SESSION_PARTICIPANT). Repeated calls are idempotent: once the row is gone, GetByHandle
 	// returns nil above. Token families are revoked first, in the same transaction, so a crash can
 	// never orphan live tokens for a deleted session.
 	//

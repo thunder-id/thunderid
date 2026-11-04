@@ -82,6 +82,9 @@ func (f *flowFactory) CreateGraph(id string, _type providers.FlowType, version i
 		version: version,
 		nodes:   make(map[string]NodeInterface),
 		edges:   make(map[string][]string),
+
+		constantInputs: make(map[string]struct{}),
+		plainInputs:    make(map[string]struct{}),
 	}
 }
 

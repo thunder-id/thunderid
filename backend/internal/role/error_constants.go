@@ -62,7 +62,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.roleservice.role_name_conflict_description",
-			DefaultValue: "A role with the same name exists under the same organization unit",
+			DefaultValue: "A role with the same name is owned by or shared with the organization unit",
 		},
 	}
 	// ErrorOrganizationUnitNotFound is the error returned when organization unit is not found.
@@ -381,6 +381,155 @@ var (
 				"before moving it to another organization unit",
 		},
 	}
+	// ErrorAssigneeNotInOU is returned when an assignment names an assignee that the organization unit
+	// the assignment is made in neither owns nor has shared with it.
+	ErrorAssigneeNotInOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.assignee_not_in_ou",
+			DefaultValue: "Assignee is not available in the organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.assignee_not_in_ou_description",
+			DefaultValue: "A role can only be assigned to users, applications and agents owned by or shared with " +
+				"the organization unit the assignment is made in, and to groups owned by it",
+		},
+	}
+	// ErrorSharedRoleFieldNotEditable is returned when an organization unit a role is shared with
+	// changes something the role's sharing policies do not let it change.
+	ErrorSharedRoleFieldNotEditable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.shared_role_field_not_editable",
+			DefaultValue: "Field cannot be changed in this organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.shared_role_field_not_editable_description",
+			DefaultValue: "An organization unit the role is shared with can only change what the role's " +
+				"sharing policies make editable there",
+		},
+	}
+	// ErrorRoleWithAssignmentsCannotMove is returned when a role that still has assignments is moved
+	// to another organization unit.
+	ErrorRoleWithAssignmentsCannotMove = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1032",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.role_with_assignments_cannot_move",
+			DefaultValue: "Role with assignments cannot be moved",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.role_with_assignments_cannot_move_description",
+			DefaultValue: "The role is assigned in its organization unit. Remove its assignments before moving " +
+				"it to another organization unit",
+		},
+	}
+	// ErrorInvalidFilter is returned when a list filter is malformed or names an attribute that cannot
+	// be filtered on.
+	ErrorInvalidFilter = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1033",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.invalid_filter",
+			DefaultValue: "Invalid filter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.invalid_filter_description",
+			DefaultValue: `The filter must be a single expression of the form ouId eq "<id>"`,
+		},
+	}
+	// ErrorSharedRoleNotEditable is returned when a role is updated in an organization unit it is
+	// shared with.
+	ErrorSharedRoleNotEditable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1034",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.shared_role_not_editable",
+			DefaultValue: "Role cannot be edited in this organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.shared_role_not_editable_description",
+			DefaultValue: "A role's name, description and permissions can be changed only in the " +
+				"organization unit that owns it, not in one it is shared with",
+		},
+	}
+	// ErrorMandatedRoleNotInOU is returned when a sharing policy mandates a role in an organization unit
+	// that neither owns the role nor has it shared with it.
+	ErrorMandatedRoleNotInOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1035",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.mandated_role_not_in_ou",
+			DefaultValue: "Role is not available in the organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.mandated_role_not_in_ou_description",
+			DefaultValue: "A sharing policy can only mandate a role in an organization unit that owns the role " +
+				"or has it shared with it",
+		},
+	}
+	// ErrorAssignmentMandated is returned when a removal names an assignment that exists only because a
+	// sharing policy mandates it.
+	ErrorAssignmentMandated = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1036",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.assignment_mandated",
+			DefaultValue: "Assignment is mandated by a sharing policy",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.assignment_mandated_description",
+			DefaultValue: "The assignment goes away only when the sharing policy that mandates it stops " +
+				"naming the role",
+		},
+	}
+	// ErrorRoleMandatedInOU is returned when a change to a role's sharing would take the role away from
+	// an organization unit a sharing policy mandates it in.
+	ErrorRoleMandatedInOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1037",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.role_mandated_in_ou",
+			DefaultValue: "Role is mandated in an organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.role_mandated_in_ou_description",
+			DefaultValue: "The change would stop sharing the role with an organization unit where a user " +
+				"sharing policy mandates it. Remove the role from that policy first",
+		},
+	}
+	// ErrorMandatedRolesNotSupported is returned when a sharing policy mandates roles while roles load
+	// only from declarative resource files, which cannot hold assignments made at runtime.
+	ErrorMandatedRolesNotSupported = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1038",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.mandated_roles_not_supported",
+			DefaultValue: "Mandated roles are not supported",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.mandated_roles_not_supported_description",
+			DefaultValue: "Roles load only from declarative resource files, so a sharing policy cannot mandate " +
+				"them. Use the mutable or composite role store",
+		},
+	}
+	// ErrorMandatedRoleCannotBeDeleted is returned when a role a user sharing policy still mandates is
+	// deleted.
+	ErrorMandatedRoleCannotBeDeleted = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1039",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.mandated_role_cannot_be_deleted",
+			DefaultValue: "Role is mandated by a user share",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.mandated_role_cannot_be_deleted_description",
+			DefaultValue: "A user sharing policy still mandates the role. Remove the role from those policies " +
+				"before deleting it",
+		},
+	}
 )
 
 // Internal error constants for role management operations.
@@ -396,6 +545,18 @@ var (
 
 	// errResultLimitExceededInCompositeMode is the internal sentinel error for composite mode limit exceeded.
 	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
+
+	// errMandateRefused rolls back the write of a sharing policy's mandated assignments it refused.
+	errMandateRefused = errors.New("mandated role assignment refused")
+
+	// errEmptyPolicyID is returned when a mandated assignment operation has no policy ID, which would
+	// otherwise address the direct assignments.
+	errEmptyPolicyID = errors.New("sharing policy ID must not be empty")
+
+	// errMandatedRoleWithoutOU is returned when a mandated assignment filter names a role but no organization
+	// unit, which would otherwise address every unit of the policy.
+	errMandatedRoleWithoutOU = errors.New(
+		"a mandated assignment filter naming a role must name an organization unit")
 )
 
 // sharingErrors answers the sharing framework's client errors in this service's own codes.

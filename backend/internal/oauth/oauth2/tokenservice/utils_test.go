@@ -54,6 +54,23 @@ func (suite *UtilsTestSuite) TestReservedAccessTokenClaimNames_IncludesAuthoriza
 	assert.True(suite.T(), builderOwnedClaimNames()[constants.ClaimAuthorizationDetails])
 }
 
+func (suite *UtilsTestSuite) TestIDJAGIdentityClaims_WithoutIDTokenConfiguration() {
+	attrs := map[string]interface{}{"email": "user@example.com"}
+	tests := []struct {
+		name     string
+		oauthApp *providers.OAuthClient
+	}{
+		{"no client", nil},
+		{"no token configuration", &providers.OAuthClient{}},
+		{"no ID token configuration", &providers.OAuthClient{Token: &providers.OAuthTokenConfig{}}},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			assert.Empty(suite.T(), idjagIdentityClaims(attrs, tc.oauthApp))
+		})
+	}
+}
+
 func (suite *UtilsTestSuite) TestJoinScopes_WithMultipleScopes() {
 	scopes := []string{"read", "write", "admin"}
 	result := JoinScopes(scopes)
@@ -1043,6 +1060,71 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentSystemAttributes_Hap
 	assert.NotContains(suite.T(), claims, "description")
 }
 
+// sub_valid_until surfaces the stored validUntil, kept in RFC 3339, in Unix seconds like exp and iat, and
+// only when the lifespan ends: an unbounded agent, or an end that does not parse, carries no claim.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_SubValidUntil() {
+	tests := []struct {
+		name      string
+		sysAttrs  string
+		wantClaim interface{}
+	}{
+		{"bounded", `{"validUntil":"2027-01-27T14:00:00+05:30"}`, int64(1801038600)},
+		{"unbounded sentinel", `{"validUntil":"9999-12-31T23:59:59Z"}`, nil},
+		{"not stored", `{"owner":"user-123"}`, nil},
+		{"unreadable", `{"validUntil":"2027-01-27"}`, nil},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			actors := actorprovidermock.NewActorProviderMock(suite.T())
+			actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+				ID:               testBCCAppID,
+				Category:         providers.EntityCategoryAgent,
+				SystemAttributes: []byte(tc.sysAttrs),
+			}, (*tidcommon.ServiceError)(nil))
+
+			claims, err := BuildClientAttributes(newOAuthAppForOwnAttributes([]string{"sub_valid_until"}), actors)
+
+			assert.NoError(suite.T(), err)
+			if tc.wantClaim == nil {
+				assert.NotContains(suite.T(), claims, "sub_valid_until")
+				return
+			}
+			assert.Equal(suite.T(), tc.wantClaim, claims["sub_valid_until"])
+		})
+	}
+}
+
+// The claim is opt-in: an agent with a lifespan that did not select it carries no sub_valid_until.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_SubValidUntilOnlyWhenSelected() {
+	actors := actorprovidermock.NewActorProviderMock(suite.T())
+	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+		ID:               testBCCAppID,
+		Category:         providers.EntityCategoryAgent,
+		SystemAttributes: []byte(`{"owner":"user-123","validUntil":"2027-01-27T08:30:00Z"}`),
+	}, (*tidcommon.ServiceError)(nil))
+
+	claims, err := BuildClientAttributes(newOAuthAppForOwnAttributes([]string{"owner"}), actors)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "user-123", claims["owner"])
+	assert.NotContains(suite.T(), claims, "sub_valid_until")
+}
+
+// Only an agent has a lifespan to surface; an application client never carries the claim.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_SubValidUntilNotForApplications() {
+	actors := actorprovidermock.NewActorProviderMock(suite.T())
+	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+		ID:               testBCCAppID,
+		Category:         providers.EntityCategoryApp,
+		SystemAttributes: []byte(`{"validUntil":"2027-01-27T08:30:00Z"}`),
+	}, (*tidcommon.ServiceError)(nil))
+
+	claims, err := BuildClientAttributes(newOAuthAppForOwnAttributes([]string{"sub_valid_until"}), actors)
+
+	assert.NoError(suite.T(), err)
+	assert.NotContains(suite.T(), claims, "sub_valid_until")
+}
+
 func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsAndRoles_Resolved() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
 	actors.On("GetActorGroups", testBCCAppID).Return([]providers.EntityGroup{
@@ -1059,6 +1141,33 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsAndRoles_Resolved()
 	assert.ElementsMatch(suite.T(), []string{"engineering", "admins"}, claims["groups"])
 	assert.ElementsMatch(suite.T(), []string{"admin", "editor"}, claims["roles"])
 	actors.AssertNotCalled(suite.T(), "GetActor")
+}
+
+// A client's groups and roles are those of its own organization unit. A group of an organization
+// unit it is shared with is left out, and its roles are read from assignments made in its own.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsAndRoles_OwnOUOnly() {
+	base := actorprovidermock.NewActorProviderMock(suite.T())
+	base.On("GetActorGroups", testBCCAppID).Return([]providers.EntityGroup{
+		{ID: "g-own", Name: "owners", OUID: "ou-owner"},
+		{ID: "g-sharee", Name: "sharee-team", OUID: "ou-child"},
+	}, (*tidcommon.ServiceError)(nil))
+	inOU := newOuActorRoleProviderMock(suite.T())
+	inOU.On("GetActorRolesInOU", testBCCAppID, []string{"g-own"}, "ou-owner").
+		Return([]string{"owner-role"}, (*tidcommon.ServiceError)(nil))
+	// The server's own provider reads roles in an organization unit as well.
+	actors := struct {
+		*actorprovidermock.ActorProviderMock
+		*ouActorRoleProviderMock
+	}{base, inOU}
+
+	app := newOAuthAppForOwnAttributes([]string{"groups", "roles"})
+	app.OUID = "ou-owner"
+	claims, err := BuildClientAttributes(app, actors)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []string{"owners"}, claims["groups"])
+	assert.Equal(suite.T(), []string{"owner-role"}, claims["roles"])
+	base.AssertNotCalled(suite.T(), "GetActorRoles")
 }
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsOnly_DoesNotResolveRoles() {

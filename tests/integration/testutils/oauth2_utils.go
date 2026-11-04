@@ -376,9 +376,19 @@ func CompleteAuthorization(authID, assertion string) (*AuthorizationResponse, er
 // client carrying its cookies.
 func CompleteAuthorizationWithClient(client *http.Client, authID, assertion string) (
 	*AuthorizationResponse, error) {
+	return CompleteAuthorizationWithSessionData(client, authID, assertion, nil)
+}
+
+// CompleteAuthorizationWithSessionData is CompleteAuthorizationWithClient that also posts the SSO sessions
+// the caller collected from the flow's responses.
+func CompleteAuthorizationWithSessionData(client *http.Client, authID, assertion string,
+	sessionData []FlowSessionData) (*AuthorizationResponse, error) {
 	authzData := map[string]interface{}{
 		"authId":    authID,
 		"assertion": assertion,
+	}
+	if len(sessionData) > 0 {
+		authzData["sessionData"] = sessionData
 	}
 
 	authzJSON, err := json.Marshal(authzData)

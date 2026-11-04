@@ -87,6 +87,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     logo: <ResourceAvatar transparent variant="rounded" size={AVATAR_SIZE} fallback={<MessageSquare size={28} />} />,
     categories: ['sms'],
     presentation: 'branded',
+    deleteDescriptionKey: 'connections:detail.dangerZone.delete.smsDescription',
   },
   {
     key: 'vonage',
@@ -97,6 +98,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     logo: <ResourceAvatar transparent variant="rounded" size={AVATAR_SIZE} fallback={<Send size={28} />} />,
     categories: ['sms'],
     presentation: 'branded',
+    deleteDescriptionKey: 'connections:detail.dangerZone.delete.smsDescription',
   },
   {
     key: 'sms-gateway',
@@ -115,6 +117,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     presentation: 'custom',
     supportsAuthentication: true,
     generalSettingsCardCopy: 'configuration',
+    deleteDescriptionKey: 'connections:detail.dangerZone.delete.smsDescription',
   },
   {
     key: 'authzen-pdp',
@@ -127,6 +130,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     supportsAuthentication: true,
     supportsSubjectMapping: true,
     generalSettingsCardCopy: 'configuration',
+    deleteDescriptionKey: 'connections:detail.dangerZone.delete.pdpDescription',
   },
   {
     key: 'email-smtp',
@@ -137,6 +141,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     categories: ['email'],
     presentation: 'custom',
     generalSettingsCardCopy: 'configuration',
+    deleteDescriptionKey: 'connections:detail.dangerZone.delete.emailDescription',
   },
   {
     key: 'http',
@@ -149,6 +154,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     reentersCredentialsOnOriginChange: true,
     showsUsages: true,
     generalSettingsCardCopy: 'configuration',
+    deleteDescriptionKey: 'connections:detail.dangerZone.delete.httpDescription',
   },
 ];
 

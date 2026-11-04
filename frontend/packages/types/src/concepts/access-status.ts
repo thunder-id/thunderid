@@ -2,18 +2,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Effective access status, with precedence `SUSPENDED` > `LOCKED` > `ACTIVE`. Applications are never `LOCKED`.
+ * Effective access status, with precedence `SUSPENDED` > `EXPIRED` > `LOCKED` > `ACTIVE`. Applications are never
+ * `LOCKED`. `EXPIRED` means the identity's lifespan has ended.
  *
  * @public
  */
-export type AccessStatus = 'ACTIVE' | 'LOCKED' | 'SUSPENDED';
+export type AccessStatus = 'ACTIVE' | 'LOCKED' | 'SUSPENDED' | 'EXPIRED';
 
 /**
  * What put an identity into the status it reports. Reported on a management read only.
  *
  * @public
  */
-export type AccessHoldReason = 'FAILED_ATTEMPTS' | 'SUSPENSION_RELEASE_LOCK' | 'ADMINISTRATIVE_SUSPENSION';
+export type AccessHoldReason =
+  | 'FAILED_ATTEMPTS'
+  | 'SUSPENSION_RELEASE_LOCK'
+  | 'ADMINISTRATIVE_SUSPENSION'
+  | 'LIFESPAN_ENDED';
 
 /**
  * One live automatic lock: the authentication method it holds, and when it lifts.
@@ -42,7 +47,7 @@ export interface AccessStatusDetails {
    */
   reason?: AccessHoldReason;
   /**
-   * When an administrative hold was placed. Absent for an automatic lock.
+   * When an administrative hold was placed, or when the lifespan ended. Absent for an automatic lock.
    */
   since?: string;
   /**

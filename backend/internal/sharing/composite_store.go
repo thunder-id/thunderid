@@ -186,6 +186,13 @@ func (c *compositeStore) GetOverlayValues(
 	return c.dbStore.GetOverlayValues(ctx, rt, resourceID, ouID)
 }
 
+// ListOverlayValuesForResource reads the values every organization unit holds, which are always database rows.
+func (c *compositeStore) ListOverlayValuesForResource(
+	ctx context.Context, rt ResourceType, resourceID string,
+) (map[string]map[string][]string, error) {
+	return c.dbStore.ListOverlayValuesForResource(ctx, rt, resourceID)
+}
+
 // SetOverlayValue records one organization unit's value for one field.
 func (c *compositeStore) SetOverlayValue(
 	ctx context.Context, rt ResourceType, resourceID, ouID, fieldKey string, value []string,
@@ -205,6 +212,12 @@ func (c *compositeStore) DeleteOverlayValuesForOU(
 	ctx context.Context, rt ResourceType, resourceID, ouID string,
 ) error {
 	return c.dbStore.DeleteOverlayValuesForOU(ctx, rt, resourceID, ouID)
+}
+
+// DeleteField removes what is held for one field of a resource. Declared policies are files, so only the database
+// holds anything to remove.
+func (c *compositeStore) DeleteField(ctx context.Context, rt ResourceType, resourceID, fieldKey string) error {
+	return c.dbStore.DeleteField(ctx, rt, resourceID, fieldKey)
 }
 
 // appendUnsuperseded adds the declared policies whose organization unit holds no stored policy for

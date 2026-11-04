@@ -33,9 +33,11 @@ func GetFlowSecret(appID string) string {
 	return flowSecretRegistry[appID]
 }
 
-const (
-	TestServerURL = "https://localhost:8095"
+// TestServerURL is the server under test. Each test group runs its own server, on the port the
+// runner passes in SERVER_PORT.
+var TestServerURL = "https://localhost:" + ServerPort()
 
+const (
 	// SystemResourceIdentifier is the identifier of the bootstrapped System resource server
 	// (backend/cmd/server/bootstrap/01-default-resources.yaml). The CONSOLE app binds its tokens
 	// to this resource server via the RFC 8707 resource parameter, mirroring the console runtime
@@ -292,6 +294,15 @@ func DefaultOUID() (string, error) {
 	}
 	defaultOUIDCache = ouID
 	return ouID, nil
+}
+
+// WithOU appends the ouId query parameter, which makes a flow read answer for that organization unit, to a path or URL.
+func WithOU(rawURL, ouID string) string {
+	separator := "?"
+	if strings.Contains(rawURL, "?") {
+		separator = "&"
+	}
+	return rawURL + separator + "ouId=" + url.QueryEscape(ouID)
 }
 
 // FindBootstrapOUID resolves the long-lived `default` organization unit seeded at bootstrap.
@@ -703,6 +714,7 @@ func CreateApplication(app Application) (string, error) {
 		"isRegistrationFlowEnabled": app.IsRegistrationFlowEnabled,
 		"isRecoveryFlowEnabled":     app.IsRecoveryFlowEnabled,
 		"authFlowId":                app.AuthFlowID,
+		"deviceGrantFlowId":         app.DeviceGrantFlowID,
 		"registrationFlowId":        app.RegistrationFlowID,
 		"recoveryFlowId":            app.RecoveryFlowID,
 	}

@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -296,7 +297,8 @@ func lockEnforcementFor(cfg accountAccessValue, category providers.EntityCategor
 }
 
 // accessReadFor derives what a management read reports for one entity at now. An unreadable document
-// reports suspended.
+// reports suspended. An ended lifespan reports EXPIRED over everything but a suspension, and a lifespan
+// end that does not parse reports expired, as the access checks refuse it.
 func accessReadFor(entity *providers.Entity, enforcement lockEnforcement, now time.Time) AccessRead {
 	var stored RuntimeAttributes
 	if len(entity.RuntimeAttributes) > 0 {
@@ -307,14 +309,31 @@ func accessReadFor(entity *providers.Entity, enforcement lockEnforcement, now ti
 			}}
 		}
 	}
+	status := reportFor(entity.State, stored.AccessState, now, enforcement)
+	if status.Value != providers.AccessStatusSuspended {
+		validUntil, bounded, err := authnprovidercm.ValidUntilOf(entity.SystemAttributes)
+		if err != nil || (bounded && !isLockLive(validUntil.Format(time.RFC3339), now)) {
+			status = expiredReport(validUntil)
+		}
+	}
 	return AccessRead{
-		Status:      reportFor(entity.State, stored.AccessState, now, enforcement),
+		Status:      status,
 		LastLoginAt: stored.AccessState.LastLoginAt,
 	}
 }
 
+// expiredReport builds the EXPIRED report. Since is the lifespan end, omitted when it is unknown.
+func expiredReport(validUntil time.Time) providers.AccessStatusReport {
+	details := providers.AccessStatusDetails{Reason: providers.AccessHoldReasonLifespanEnded}
+	if !validUntil.IsZero() {
+		details.Since = validUntil.UTC().Format(time.RFC3339)
+	}
+	return providers.AccessStatusReport{Value: providers.AccessStatusExpired, Details: &details}
+}
+
 // reportFor derives the status a management read reports, and what produced it. Precedence is
-// SUSPENDED, then LOCKED, then ACTIVE. Method locks that enforcement no longer applies are skipped.
+// SUSPENDED, then LOCKED, then ACTIVE; accessReadFor places EXPIRED after SUSPENDED. Method locks that
+// enforcement no longer applies are skipped.
 func reportFor(state providers.EntityState, accessState AccessState, now time.Time,
 	enforcement lockEnforcement) providers.AccessStatusReport {
 	if isSuspended(state, accessState) {

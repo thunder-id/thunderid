@@ -94,7 +94,7 @@ func (w *passkeyService) StartRegistration(
 		return nil, svcErr
 	}
 
-	if svcErr := w.refuseSuspendedEnrolment(ctx, req.UserID, logger); svcErr != nil {
+	if svcErr := w.refuseHeldEnrolment(ctx, req.UserID, logger); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -224,7 +224,7 @@ func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyReg
 		return nil, svcErr
 	}
 
-	if svcErr := w.refuseSuspendedEnrolment(ctx, userID, logger); svcErr != nil {
+	if svcErr := w.refuseHeldEnrolment(ctx, userID, logger); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -515,17 +515,23 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 	}, nil
 }
 
-// refuseSuspendedEnrolment refuses a passkey enrolment for a suspended identity.
-func (w *passkeyService) refuseSuspendedEnrolment(ctx context.Context, userID string,
+// refuseHeldEnrolment refuses a passkey enrolment for an identity that is suspended or whose lifespan
+// has ended.
+func (w *passkeyService) refuseHeldEnrolment(ctx context.Context, userID string,
 	logger *log.Logger) *tidcommon.ServiceError {
-	suspended, svcErr := w.governance.IsSuspended(ctx, userID)
+	hold, svcErr := w.governance.AccessHold(ctx, userID)
 	if svcErr != nil {
 		return &tidcommon.InternalServerError
 	}
-	if suspended {
+	switch hold {
+	case providers.AccessRefusalReasonSuspended:
 		logger.Debug(ctx, "Refused a passkey enrolment for a suspended identity",
 			log.MaskedString("userID", userID))
 		return &common.ErrorAccountSuspended
+	case providers.AccessRefusalReasonExpired:
+		logger.Debug(ctx, "Refused a passkey enrolment for an identity whose lifespan has ended",
+			log.MaskedString("userID", userID))
+		return &common.ErrorAccountExpired
 	}
 	return nil
 }

@@ -533,6 +533,82 @@ func (_c *ApplicationServiceInterfaceMock_GetApplicationList_Call) RunAndReturn(
 	return _c
 }
 
+// GetApplicationListByProject provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) GetApplicationListByProject(ctx context.Context, projectID string, filters map[string]interface{}) (*model.ApplicationListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID, filters)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetApplicationListByProject")
+	}
+
+	var r0 *model.ApplicationListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}) (*model.ApplicationListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID, filters)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}) *model.ApplicationListResponse); ok {
+		r0 = returnFunc(ctx, projectID, filters)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.ApplicationListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, map[string]interface{}) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID, filters)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_GetApplicationListByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetApplicationListByProject'
+type ApplicationServiceInterfaceMock_GetApplicationListByProject_Call struct {
+	*mock.Call
+}
+
+// GetApplicationListByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - filters map[string]interface{}
+func (_e *ApplicationServiceInterfaceMock_Expecter) GetApplicationListByProject(ctx any, projectID any, filters any) *ApplicationServiceInterfaceMock_GetApplicationListByProject_Call {
+	return &ApplicationServiceInterfaceMock_GetApplicationListByProject_Call{Call: _e.mock.On("GetApplicationListByProject", ctx, projectID, filters)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetApplicationListByProject_Call) Run(run func(ctx context.Context, projectID string, filters map[string]interface{})) *ApplicationServiceInterfaceMock_GetApplicationListByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 map[string]interface{}
+		if args[2] != nil {
+			arg2 = args[2].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetApplicationListByProject_Call) Return(applicationListResponse *model.ApplicationListResponse, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_GetApplicationListByProject_Call {
+	_c.Call.Return(applicationListResponse, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetApplicationListByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, filters map[string]interface{}) (*model.ApplicationListResponse, *common.ServiceError)) *ApplicationServiceInterfaceMock_GetApplicationListByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetOAuthApplication provides a mock function for the type ApplicationServiceInterfaceMock
 func (_mock *ApplicationServiceInterfaceMock) GetOAuthApplication(ctx context.Context, clientID string) (*providers.OAuthClient, *common.ServiceError) {
 	ret := _mock.Called(ctx, clientID)

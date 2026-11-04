@@ -1,8 +1,8 @@
 # CIMD Client Registration Specification
 
 - **Status:** Draft
-- **Version:** 0.2
-- **Related documents:** [MCP authorization specification 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization), [OAuth Client ID Metadata Document](https://datatracker.ietf.org/doc/draft-ietf-oauth-client-id-metadata-document/)
+- **Version:** 0.3
+- **Related documents:** [MCP authorization specification 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization), [MCP authorization security considerations 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/security-considerations), [OAuth Client ID Metadata Document](https://datatracker.ietf.org/doc/draft-ietf-oauth-client-id-metadata-document/)
 
 ## Summary
 
@@ -102,7 +102,7 @@ The MCP authorization specification says an authorization server SHOULD fetch th
 - **Redirect URIs** match as they do for any application: exactly, or by pattern when the deployment enables `oauth.allow_wildcard_redirect_uri`. CIMD adds no matching rule of its own. A native client that declares a port-less loopback redirect URI but binds an ephemeral port, as Claude Code does, therefore cannot sign in. Wildcard patterns do not cover it either: they apply to host labels and paths, not the port, and a CIMD application's redirect URIs come from its document. Supporting such clients is future work, through port-agnostic loopback matching (RFC 8252, section 7.3) or port wildcards.
 - **Confidential clients** authenticate through the existing `private_key_jwt` client authentication, exactly as a DCR client with the same key source. Keys at a JWKS URI are retrieved at the token endpoint, because vendors rotate them, under the same address restriction as document retrieval.
 - **Refresh tokens** follow the deployment's refresh token settings, as for any application. The defaults rotate them and revoke the presented one, which is what the MCP authorization specification requires for public clients.
-- **Consent** shows the application name, the Client Identifier URL host and the redirect URI host, and warns when the redirect URI is a loopback address, because any local program can claim to be a loopback client.
+- **Consent** shows the application name, the Client Identifier URL host and the redirect URI host, and warns when the redirect URI host is `localhost`, `127.0.0.1` or `::1`, the loopback hosts the document rules allow, because any local program can claim to be a loopback client. The [MCP authorization security considerations](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/security-considerations#localhost-redirect-uri-risks) (2026-07-28) require an authorization server that supports CIMD to clearly display the redirect URI hostname during authorization, and recommend a warning for `localhost` redirect URIs. The authorization request records both hosts, in lowercase ASCII, for a CIMD application in the flow, and the consent step sends them to Gate with the warning flag, so a program that opens the browser cannot change them. An internationalized host is recorded in the ASCII form it resolves as, usually punycode, or in plain punycode when it is not a valid internationalized name, so a host that looks like another one cannot pass for it. When a host has no ASCII form, because it is not valid UTF-8, neither host nor the device warning is shown. They belong to the request, so a client that joins another client's SSO session shows its own hosts, never those of the client that started the session. Other applications show neither host. The hosts appear only on the consent screen: when there is none, because the application's flow has no consent step, the user already consented, or the request has `prompt=none`, nothing is shown, so those authorizations do not yet meet the MCP requirement. Whether to show the hosts on those paths is not decided.
 
 ### Data model
 
@@ -172,13 +172,15 @@ A rejected document shows the rule it broke, next to the URL.
 
 ![Re-fetch dialog](assets/cimd-refetch-changes.png)
 
-**Consent.** The consent screen in Gate adds the client and redirect hosts, and the device warning:
+**Consent.** For a CIMD application, the consent screen in Gate adds the client and redirect hosts above what the application requests, and the device warning when the redirect URI host is a loopback host:
 
 ```text
 +--------------------------------------------------------------+
 | Visual Studio Code wants to access your account              |
 | Published by vscode.dev. Returns to 127.0.0.1.               |
-| ! This app runs on your device.                              |
+| ! This app runs on your device. Other programs on your       |
+|   device can use the same address, so continue only if you   |
+|   started this app.                                          |
 |                                      [ Deny ]  [ Allow ]     |
 +--------------------------------------------------------------+
 ```
@@ -221,7 +223,7 @@ When CIMD is enabled, discovery publishes `client_id_metadata_document_supported
 - **AC2.1:** Given a registered CIMD application, when its client authorizes with a stored redirect URI, then ThunderID completes the flow without retrieving the document.
 - **AC2.2:** Given a Client Identifier URL that no application holds, or one that differs from a registered URL by any byte, when it is submitted as a `client_id`, then ThunderID rejects it as an unknown client.
 - **AC2.3:** Given a stored `http://localhost/callback`, when the client requests `http://localhost:3118/callback`, then it is rejected, as for any application.
-- **AC2.4:** Given consent is shown for a loopback redirect URI, then it shows the client host, the redirect host and the device warning.
+- **AC2.4:** Given consent is shown for a CIMD application with a loopback redirect URI, then it shows the client host, the redirect host and the device warning; given its redirect URI is `https`, then it shows both hosts without the warning; given its Client Identifier URL host is internationalized, then it shows that host, and an `https` redirect host, in ASCII form; and given consent is shown for any other application, then it shows neither host.
 
 ### R3. Authenticate and refresh
 
@@ -248,3 +250,4 @@ When CIMD is enabled, discovery publishes `client_id_metadata_document_supported
 |---|---|---|
 | 0.1 | 2026-09-28 | Initial specification. |
 | 0.2 | 2026-10-22 | Confidential clients can hold the token exchange and JWT bearer grants an administrator adds for ID-JAG, token exchange serves them only for ID-JAG requests, inline key sets must hold only public keys, preview drops grants the deployment does not allow, and the Console offers only the grants the document rules permit and keeps them on re-fetch (#5918). Records that `oauth.cimd.enabled` does not yet stop CIMD clients (#6078). |
+| 0.3 | 2026-11-02 | Consent shows a CIMD application's client ID host and redirect URI host in ASCII form, sent by the server through the flow, and warns when the redirect URI host is a loopback host. Nothing is shown when there is no consent screen (#5930). |

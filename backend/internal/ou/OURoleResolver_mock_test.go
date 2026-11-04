@@ -46,74 +46,8 @@ func (_m *OURoleResolverMock) EXPECT() *OURoleResolverMock_Expecter {
 	return &OURoleResolverMock_Expecter{mock: &_m.Mock}
 }
 
-// GetRoleCountByOUID provides a mock function for the type OURoleResolverMock
-func (_mock *OURoleResolverMock) GetRoleCountByOUID(ctx context.Context, ouID string) (int, error) {
-	ret := _mock.Called(ctx, ouID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetRoleCountByOUID")
-	}
-
-	var r0 int
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int, error)); ok {
-		return returnFunc(ctx, ouID)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int); ok {
-		r0 = returnFunc(ctx, ouID)
-	} else {
-		r0 = ret.Get(0).(int)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, ouID)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// OURoleResolverMock_GetRoleCountByOUID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRoleCountByOUID'
-type OURoleResolverMock_GetRoleCountByOUID_Call struct {
-	*mock.Call
-}
-
-// GetRoleCountByOUID is a helper method to define mock.On call
-//   - ctx context.Context
-//   - ouID string
-func (_e *OURoleResolverMock_Expecter) GetRoleCountByOUID(ctx any, ouID any) *OURoleResolverMock_GetRoleCountByOUID_Call {
-	return &OURoleResolverMock_GetRoleCountByOUID_Call{Call: _e.mock.On("GetRoleCountByOUID", ctx, ouID)}
-}
-
-func (_c *OURoleResolverMock_GetRoleCountByOUID_Call) Run(run func(ctx context.Context, ouID string)) *OURoleResolverMock_GetRoleCountByOUID_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *OURoleResolverMock_GetRoleCountByOUID_Call) Return(n int, err error) *OURoleResolverMock_GetRoleCountByOUID_Call {
-	_c.Call.Return(n, err)
-	return _c
-}
-
-func (_c *OURoleResolverMock_GetRoleCountByOUID_Call) RunAndReturn(run func(ctx context.Context, ouID string) (int, error)) *OURoleResolverMock_GetRoleCountByOUID_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // GetRoleListByOUID provides a mock function for the type OURoleResolverMock
-func (_mock *OURoleResolverMock) GetRoleListByOUID(ctx context.Context, ouID string, limit int, offset int) ([]Role, error) {
+func (_mock *OURoleResolverMock) GetRoleListByOUID(ctx context.Context, ouID string, limit int, offset int) ([]Role, int, error) {
 	ret := _mock.Called(ctx, ouID, limit, offset)
 
 	if len(ret) == 0 {
@@ -121,8 +55,9 @@ func (_mock *OURoleResolverMock) GetRoleListByOUID(ctx context.Context, ouID str
 	}
 
 	var r0 []Role
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) ([]Role, error)); ok {
+	var r1 int
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) ([]Role, int, error)); ok {
 		return returnFunc(ctx, ouID, limit, offset)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) []Role); ok {
@@ -132,12 +67,17 @@ func (_mock *OURoleResolverMock) GetRoleListByOUID(ctx context.Context, ouID str
 			r0 = ret.Get(0).([]Role)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) int); ok {
 		r1 = returnFunc(ctx, ouID, limit, offset)
 	} else {
-		r1 = ret.Error(1)
+		r1 = ret.Get(1).(int)
 	}
-	return r0, r1
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, int, int) error); ok {
+		r2 = returnFunc(ctx, ouID, limit, offset)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
 }
 
 // OURoleResolverMock_GetRoleListByOUID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRoleListByOUID'
@@ -182,12 +122,12 @@ func (_c *OURoleResolverMock_GetRoleListByOUID_Call) Run(run func(ctx context.Co
 	return _c
 }
 
-func (_c *OURoleResolverMock_GetRoleListByOUID_Call) Return(roles []Role, err error) *OURoleResolverMock_GetRoleListByOUID_Call {
-	_c.Call.Return(roles, err)
+func (_c *OURoleResolverMock_GetRoleListByOUID_Call) Return(roles []Role, n int, err error) *OURoleResolverMock_GetRoleListByOUID_Call {
+	_c.Call.Return(roles, n, err)
 	return _c
 }
 
-func (_c *OURoleResolverMock_GetRoleListByOUID_Call) RunAndReturn(run func(ctx context.Context, ouID string, limit int, offset int) ([]Role, error)) *OURoleResolverMock_GetRoleListByOUID_Call {
+func (_c *OURoleResolverMock_GetRoleListByOUID_Call) RunAndReturn(run func(ctx context.Context, ouID string, limit int, offset int) ([]Role, int, error)) *OURoleResolverMock_GetRoleListByOUID_Call {
 	_c.Call.Return(run)
 	return _c
 }

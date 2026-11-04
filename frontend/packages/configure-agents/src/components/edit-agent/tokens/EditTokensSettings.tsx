@@ -3,11 +3,13 @@
 
 import {
   type Application,
+  OAuth2GrantTypes,
   TokenAudienceSelector,
   type TokenAudienceOption,
   EditTokenSettings,
+  hasUserAccess,
 } from '@thunderid/configure-applications';
-import {Alert, Link, Stack} from '@wso2/oxygen-ui';
+import {Alert, Link, Stack, Typography} from '@wso2/oxygen-ui';
 import {Lock} from '@wso2/oxygen-ui-icons-react';
 import {useEffect, useState, type JSX} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
@@ -43,7 +45,20 @@ export default function EditTokensSettings({
   const [userTabHasError, setUserTabHasError] = useState(false);
   const [agentTabHasError, setAgentTabHasError] = useState(false);
 
-  const isUnlocked = hasDelegationGrant(oauth2Config?.grantTypes);
+  const grantTypes = oauth2Config?.grantTypes ?? [];
+  const isUnlocked = hasDelegationGrant(grantTypes);
+  // Only authorization code and CIBA sign a user in through this agent, so only they issue ID and
+  // refresh tokens and read attributes from the user's profile. hasUserAccess also counts the
+  // password grant, which an agent cannot hold. Token exchange and JWT bearer issue an access token
+  // alone: token exchange keeps the selected attributes the incoming token carries, and JWT bearer
+  // adds none, since it does not resolve the assertion's subject to a local user.
+  const isAccessTokenOnly = !hasUserAccess(grantTypes);
+  const hasTokenExchange = grantTypes.includes(OAuth2GrantTypes.TOKEN_EXCHANGE);
+  const hasJwtBearer = grantTypes.includes(OAuth2GrantTypes.JWT_BEARER);
+  // A token exchange user comes from the incoming token and can be of any user type, while the
+  // allowed user types field only appears with authorization code, so the attributes come from
+  // every user type's schema.
+  const listsAllUserTypes = isAccessTokenOnly && hasTokenExchange;
 
   // The user audience is not mounted without Delegated mode, so its last reported error state must
   // not keep blocking the save bar.
@@ -53,6 +68,37 @@ export default function EditTokensSettings({
 
   const appLikeAgent = {...agent, isReadOnly: agent.isReadOnly ?? false} as unknown as Application;
   const appHandleFieldChange = onFieldChange as unknown as (field: keyof Application, value: unknown) => void;
+
+  // One line per grant, rather than translated sentences joined into one string.
+  const accessTokenNotes: {key: string; text: string}[] = [];
+  if (isAccessTokenOnly && hasTokenExchange) {
+    accessTokenNotes.push({
+      key: 'tokenExchange',
+      text: t(
+        'agents:edit.tokens.user.tokenExchangeAttributes.note',
+        'Token exchange keeps only the selected attributes that the incoming token already carries.',
+      ),
+    });
+  }
+  if (isAccessTokenOnly && hasJwtBearer) {
+    accessTokenNotes.push({
+      key: 'jwtBearer',
+      text: t(
+        'agents:edit.tokens.user.jwtBearerAttributes.note',
+        'Tokens from a redeemed ID-JAG carry no user attributes.',
+      ),
+    });
+  }
+  const accessTokenNote =
+    accessTokenNotes.length > 0 ? (
+      <>
+        {accessTokenNotes.map((note) => (
+          <Typography key={note.key} variant="body2">
+            {note.text}
+          </Typography>
+        ))}
+      </>
+    ) : undefined;
 
   const audienceOptions: TokenAudienceOption[] = [
     {
@@ -113,6 +159,10 @@ export default function EditTokensSettings({
             actorSub={agent.id}
             certificateLocation="Credentials"
             sectionResetKey={sectionResetKey}
+            accessTokenOnly={isAccessTokenOnly}
+            showAccessTokenAttributes={!isAccessTokenOnly || hasTokenExchange}
+            accessTokenNote={accessTokenNote}
+            userAttributeSource={listsAllUserTypes ? 'allUserTypes' : 'allowedUserTypes'}
           />
         </Stack>
       )}

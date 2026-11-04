@@ -158,6 +158,7 @@ spec:
               mountPath: /opt/thunderid/config/secrets/user-lookup
               readOnly: true
             {{- end }}
+            {{- include "thunderid.redisTLSVolumeMounts" . | nindent 12 }}
             - name: gate-config-volume
               mountPath: /opt/thunderid/apps/gate/config.js
               subPath: gate-config.js
@@ -206,6 +207,7 @@ spec:
                 path: client_secret
         {{- end }}
         {{- end }}
+        {{- include "thunderid.redisTLSVolumes" . | nindent 8 }}
         - name: gate-config-volume
           configMap:
             name: {{ include "thunderid.fullname" . }}-config-map

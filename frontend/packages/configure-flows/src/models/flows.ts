@@ -50,6 +50,11 @@ export const FlowType = {
    * Administration flows orchestrate authenticated administrative operations
    */
   ADMINISTRATION: 'ADMINISTRATION',
+
+  /**
+   * Device Grant flows handle browser authorization for input-constrained devices.
+   */
+  DEVICE_GRANT: 'DEVICE_GRANT',
 } as const;
 
 /**
@@ -103,6 +108,12 @@ export const FlowNodeType = {
    * at the configured target when the callee completes.
    */
   CALL: 'CALL',
+
+  /**
+   * Node that declares the variables a flow reads, which a flow shared with an organization unit lets that unit
+   * override. The editor shows it as a placeholder and keeps what it declares as it is.
+   */
+  VARIABLES: 'VARIABLES',
 } as const;
 
 /**

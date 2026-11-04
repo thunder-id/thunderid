@@ -75,6 +75,7 @@ export {
 } from './components/flow/adapters/ConsentAdapter';
 export type {AuthorizationDetailValueProps} from './components/flow/adapters/ConsentAdapter';
 export {default as DividerAdapter} from './components/flow/adapters/DividerAdapter';
+export {default as getResourceSelectAdapter} from './components/flow/adapters/getResourceSelectAdapter';
 export {default as IconAdapter} from './components/flow/adapters/IconAdapter';
 export {default as ImageAdapter} from './components/flow/adapters/ImageAdapter';
 export {default as OtpInputAdapter} from './components/flow/adapters/OtpInputAdapter';

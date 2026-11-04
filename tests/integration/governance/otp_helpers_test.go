@@ -35,8 +35,8 @@ func newMobile() string {
 func newSMSSender(t *testing.T, name string) (*testutils.MockNotificationServer, string) {
 	t.Helper()
 
-	server := testutils.NewMockNotificationServer(0)
-	require.NoError(t, server.Start(), "failed to start the mock SMS provider")
+	server, err := testutils.NewMockNotificationServer()
+	require.NoError(t, err, "failed to start the mock SMS provider")
 	t.Cleanup(func() {
 		if err := server.Stop(); err != nil {
 			t.Logf("teardown: failed to stop the mock SMS provider: %v", err)

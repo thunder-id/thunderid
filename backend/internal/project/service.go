@@ -36,6 +36,7 @@ type ProjectServiceInterface interface {
 	GetProjectList(ctx context.Context, limit, offset int) (*ProjectListResponse, *tidcommon.ServiceError)
 	UpdateProject(ctx context.Context, id string, request ProjectRequest) (*Project, *tidcommon.ServiceError)
 	DeleteProject(ctx context.Context, id string) *tidcommon.ServiceError
+	ResolveProjectOU(ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError)
 	ProjectExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 	ImportProject(ctx context.Context, id, rootOUID, handle, displayName, description string, upsert bool) (
 		bool, *tidcommon.ServiceError)
@@ -87,6 +88,30 @@ func (s *projectService) GetProject(ctx context.Context, id string) (*Project, *
 		return nil, s.mapStoreError(ctx, err, "Failed to get project")
 	}
 	return s.buildProject(ctx, project)
+}
+
+// ResolveProjectOU returns the organization unit that a resource scoped to the project belongs to: the
+// project's root organization unit when ouID is empty, or ouID when it is the root organization unit or
+// one below it. It returns ErrorProjectNotFound when the project does not exist, ErrorOUNotInProject
+// when the organization unit is outside the project, and the organization unit service's error when
+// the organization unit does not exist.
+func (s *projectService) ResolveProjectOU(
+	ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError) {
+	project, err := s.store.GetProject(ctx, projectID)
+	if err != nil {
+		return "", s.mapStoreError(ctx, err, "Failed to get project")
+	}
+	if ouID == "" {
+		return project.RootOUID, nil
+	}
+	inProject, svcErr := s.ouService.IsParent(ctx, project.RootOUID, ouID)
+	if svcErr != nil {
+		return "", svcErr
+	}
+	if !inProject {
+		return "", &ErrorOUNotInProject
+	}
+	return ouID, nil
 }
 
 // GetProjectList returns a page of projects, oldest first.

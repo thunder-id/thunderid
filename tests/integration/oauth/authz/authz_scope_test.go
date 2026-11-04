@@ -4,6 +4,7 @@
 package authz
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -512,6 +513,66 @@ func (ts *OAuthAuthzScopeTestSuite) testOAuthAuthzFlow_WithAuthorizedScopes(user
 	ts.Require().Contains(scopes, "openid", "Token should contain openid scope")
 	ts.Require().Contains(scopes, "read", "Token should contain read scope")
 	ts.Require().Contains(scopes, "write", "Token should contain write scope")
+}
+
+// TestOAuthAuthzFlow_SharedRoleAssignedInChildOU covers a role the suite's organization unit owns and
+// shares with a child unit. Assigned there to a user of the child, it gives that user its permissions
+// when the user logs in.
+func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_SharedRoleAssignedInChildOU() {
+	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "oauth-scope-authz-child-ou", Name: "OAuth Scope Authorization Child OU", Parent: &scopeTestOUID,
+	})
+	ts.Require().NoError(err)
+	defer func() { ts.NoError(testutils.DeleteOrganizationUnit(childOUID)) }()
+
+	userID, err := testutils.CreateUser(testutils.User{
+		OUID: childOUID,
+		Type: "authz-test-person",
+		Attributes: json.RawMessage(`{
+			"username": "oauth_shared_role_user",
+			"password": "SecurePass123!",
+			"email": "oauth_shared_role@test.com"
+		}`),
+	})
+	ts.Require().NoError(err)
+	defer func() { ts.NoError(testutils.DeleteUser(userID)) }()
+
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: "OAuth_SharedDocumentEditor", OUID: scopeTestOUID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: scopeTestResourceServer, Permissions: []string{"read", "write"}},
+		},
+	})
+	ts.Require().NoError(err)
+	defer func() { ts.NoError(testutils.DeleteRole(roleID)) }()
+
+	ts.Equal(http.StatusCreated, ts.postJSON("/roles/"+roleID+"/sharing-policies", map[string]interface{}{
+		"childUnits": map[string]interface{}{
+			"mode": "selected", "units": []map[string]string{{"ouId": childOUID, "reach": "unit"}},
+		},
+	}))
+
+	scopes, _ := ts.obtainScopesAndAudience("oauth_shared_role_user", scopeTestResourceServerIdentifier)
+	ts.NotContains(scopes, "read", "the role is shared with the child but not yet assigned there")
+
+	ts.Equal(http.StatusNoContent, ts.postJSON("/roles/"+roleID+"/assignments/add", map[string]interface{}{
+		"ouId":        childOUID,
+		"assignments": []map[string]string{{"id": userID, "type": "user"}},
+	}))
+
+	scopes, _ = ts.obtainScopesAndAudience("oauth_shared_role_user", scopeTestResourceServerIdentifier)
+	ts.Contains(scopes, "read")
+	ts.Contains(scopes, "write")
+}
+
+// postJSON posts body to a management path and returns the status.
+func (ts *OAuthAuthzScopeTestSuite) postJSON(path string, body interface{}) int {
+	raw, err := json.Marshal(body)
+	ts.Require().NoError(err)
+	resp, err := ts.client.Post(testutils.TestServerURL+path, "application/json", bytes.NewReader(raw))
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	return resp.StatusCode
 }
 
 // TestOAuthAuthzFlow_WithNoAuthorizedScopes tests OAuth flow when user has no custom scopes

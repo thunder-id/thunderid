@@ -20,6 +20,13 @@ func TestModelTestSuite(t *testing.T) {
 	suite.Run(t, new(ModelTestSuite))
 }
 
+func (s *ModelTestSuite) TestRuntimeDataOrShared() {
+	s.Equal("local", RuntimeDataOrShared(map[string]string{"key": "local"},
+		map[string]string{"key": "shared"}, "key"))
+	s.Equal("shared", RuntimeDataOrShared(nil, map[string]string{"key": "shared"}, "key"))
+	s.Empty(RuntimeDataOrShared(nil, nil, "missing"))
+}
+
 func (s *ModelTestSuite) TestNodeExecutionRecord_GetDuration() {
 	tests := []struct {
 		name      string
@@ -368,4 +375,29 @@ func (s *ModelTestSuite) TestParseExtensionProperties_MaxAttemptsBounds() {
 		s.Empty(invalid, "%v", value)
 		s.NotZero(props.MaxAttempts)
 	}
+}
+
+func (s *ModelTestSuite) TestToValidationRules() {
+	rules, err := ToValidationRules([]providers.ValidationRuleDefinition{
+		{Type: "regex", Value: "^[0-9]+$", Message: "digits"},
+		{Type: "maxLength", Value: float64(5)},
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(rules, 2)
+	s.Equal(providers.ValidationTypeRegex, rules[0].Type)
+	s.Equal("digits", rules[0].Message)
+	s.Require().NotNil(rules[0].CompiledRegex)
+	s.True(rules[0].CompiledRegex.MatchString("123"))
+	s.Equal(providers.ValidationTypeMaxLength, rules[1].Type)
+	s.Nil(rules[1].CompiledRegex)
+}
+
+func (s *ModelTestSuite) TestToValidationRules_EmptyAndInvalid() {
+	rules, err := ToValidationRules(nil)
+	s.NoError(err)
+	s.Nil(rules)
+
+	_, err = ToValidationRules([]providers.ValidationRuleDefinition{{Type: "regex", Value: "("}})
+	s.Error(err)
 }

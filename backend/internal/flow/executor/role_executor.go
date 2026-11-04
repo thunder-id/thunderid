@@ -33,9 +33,9 @@ var roleActionsByMode = map[string]roleAction{
 			if plan.AssigneeID == "" || plan.AssigneeType == "" {
 				return nil, errors.New("trusted revocation plan has no target assignee")
 			}
-			return e.assignments.RemoveAssignments(ctx, plan.TargetID, []role.RoleAssignment{
-				{ID: plan.AssigneeID, Type: role.AssigneeType(plan.AssigneeType)},
-			}), nil
+			assignee := role.RoleAssignment{ID: plan.AssigneeID, Type: role.AssigneeType(plan.AssigneeType)}
+			return e.assignments.RemoveAssignments(ctx, plan.TargetID,
+				plan.ActionArgs[revocationInputAssignmentOU], []role.RoleAssignment{assignee}), nil
 		},
 	},
 	ExecutorModeRoleDeletion: {

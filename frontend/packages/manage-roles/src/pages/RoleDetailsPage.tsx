@@ -51,7 +51,13 @@ export default function RoleDetailsPage({
         </Typography>
         {role?.description && <Typography color="text.secondary">{role.description}</Typography>}
         <RolePermissions roleId={id} />
-        <RoleAssignments roleId={id} editable={editable} administrationMode={administrationMode} />
+        {/* Assigning waits for the role, so the candidates are only ever listed from its organization unit. */}
+        <RoleAssignments
+          roleId={id}
+          ouId={role?.ouId}
+          editable={editable && role !== undefined}
+          administrationMode={administrationMode}
+        />
       </Stack>
     </Stack>
   );

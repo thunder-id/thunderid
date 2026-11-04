@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -17,6 +18,7 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -27,6 +29,7 @@ type TokenBuilderInterface interface {
 	BuildIDToken(ctx context.Context, tokenCtx *IDTokenBuildContext) (*oauth2model.TokenDTO, error)
 	BuildIDJAG(ctx context.Context, tokenCtx *IDJAGBuildContext) (*oauth2model.TokenDTO, error)
 	BuildLogoutToken(ctx context.Context, tokenCtx *LogoutTokenBuildContext) (*oauth2model.TokenDTO, error)
+	BuildDeviceSecret(ctx context.Context, tokenCtx *DeviceSecretBuildContext) (*oauth2model.TokenDTO, error)
 }
 
 // TokenBuilder implements TokenBuilderInterface.
@@ -38,6 +41,20 @@ type tokenBuilder struct {
 	// actorProvider resolves the token subject's entity so its category can be recorded on the token
 	// DTO. Optional: a nil provider leaves the category empty rather than failing issuance.
 	actorProvider providers.ActorProvider
+	// governance decides, for every token built, whether the entities it is issued to or for may be
+	// issued tokens now, and how long the token may live. Optional: nil admits every entity and caps
+	// nothing.
+	governance providers.IdentityGovernanceProvider
+}
+
+// issuanceDecisionsKey keys the issuance decisions memoized for one token request.
+type issuanceDecisionsKey struct{}
+
+// WithIssuanceDecisions returns ctx with a memo of the issuance decisions taken while serving one token
+// request, so an entity that several of its tokens name, such as the client and the subject of an
+// access, refresh, and ID token, is checked once. The memo is not safe for concurrent use.
+func WithIssuanceDecisions(ctx context.Context) context.Context {
+	return context.WithValue(ctx, issuanceDecisionsKey{}, map[string]providers.AccessDecision{})
 }
 
 // newTokenBuilder creates a new TokenBuilder instance.
@@ -47,6 +64,7 @@ func newTokenBuilder(
 	jweService jwe.JWEServiceInterface,
 	resolver *jwksresolver.Resolver,
 	actorProvider providers.ActorProvider,
+	governance providers.IdentityGovernanceProvider,
 ) TokenBuilderInterface {
 	return &tokenBuilder{
 		cfg:           cfg,
@@ -54,6 +72,7 @@ func newTokenBuilder(
 		jweService:    jweService,
 		jwksResolver:  resolver,
 		actorProvider: actorProvider,
+		governance:    governance,
 	}
 }
 
@@ -67,6 +86,11 @@ func (tb *tokenBuilder) BuildAccessToken(
 	}
 
 	tokenConfig := ResolveTokenConfig(tb.cfg, tokenCtx.OAuthApp, TokenTypeAccess, tokenCtx.ValidityPeriod)
+	validityPeriod, capErr := tb.admitAndCap(ctx, tokenConfig.ValidityPeriod,
+		accessTokenParties(tokenCtx, tokenConfig.Issuer)...)
+	if capErr != nil {
+		return nil, capErr
+	}
 
 	jwtClaims, claimsErr := tb.buildAccessTokenClaims(tokenCtx)
 	if claimsErr != nil {
@@ -80,7 +104,7 @@ func (tb *tokenBuilder) BuildAccessToken(
 
 	tokenDTO := &oauth2model.TokenDTO{
 		TokenType:            tokenType,
-		ExpiresIn:            tokenConfig.ValidityPeriod,
+		ExpiresIn:            validityPeriod,
 		Scopes:               tokenCtx.Scopes,
 		ClientID:             tokenCtx.ClientID,
 		UserAttributes:       tokenCtx.SubjectAttributes,
@@ -102,7 +126,7 @@ func (tb *tokenBuilder) BuildAccessToken(
 		ctx,
 		tokenCtx.Subject,
 		tokenConfig.Issuer,
-		tokenConfig.ValidityPeriod,
+		validityPeriod,
 		jwtClaims,
 		jwt.TokenTypeAccessToken,
 		"",
@@ -168,6 +192,11 @@ func (tb *tokenBuilder) resolveActorIdentity(tokenCtx *AccessTokenBuildContext, 
 		return ""
 	}
 
+	// A grant that resolved the actor itself (token exchange, for a mapped actor_token sub) says so.
+	if tokenCtx.ActorClaims != nil && tokenCtx.ActorClaims.EntityID != "" {
+		return tokenCtx.ActorClaims.EntityID
+	}
+
 	// Grants that name the authenticated client as the actor (authorization_code, CIBA, refresh, and
 	// token exchange without an actor_token) already hold a resource ID, so no lookup is needed.
 	if tokenCtx.OAuthApp != nil && actorSub == tokenCtx.OAuthApp.ID {
@@ -194,6 +223,99 @@ func (tb *tokenBuilder) lookupCategory(entityID string) string {
 	return string(entity.Category)
 }
 
+// admitAndCap asks the identity governance authority, at the issuance plane, whether a token may be
+// issued now for each entity it is issued to or for, and returns validityPeriod capped at the earliest
+// lifespan end among them. A refused entity fails issuance with ErrIssuanceRefused, without saying why;
+// an authority fault fails it as a server error. An ID that names no local entity, such as an external
+// token's sub, is admitted by the authority. Every token is built through here, so no grant can issue a
+// token that outlives an entity it names.
+func (tb *tokenBuilder) admitAndCap(ctx context.Context, validityPeriod int64,
+	entityIDs ...string) (int64, error) {
+	if tb.governance == nil {
+		return validityPeriod, nil
+	}
+	var notAfter time.Time
+	seen := make(map[string]bool, len(entityIDs))
+	for _, entityID := range entityIDs {
+		if entityID == "" || seen[entityID] {
+			continue
+		}
+		seen[entityID] = true
+
+		decision, svcErr := tb.evaluateIssuance(ctx, entityID)
+		if svcErr != nil {
+			return 0, fmt.Errorf("failed to evaluate issuance for an entity involved in the token: %s",
+				svcErr.Error.DefaultValue)
+		}
+		if !decision.Admitted {
+			return 0, ErrIssuanceRefused
+		}
+		if !decision.NotAfter.IsZero() && (notAfter.IsZero() || decision.NotAfter.Before(notAfter)) {
+			notAfter = decision.NotAfter
+		}
+	}
+	return capAtLifespan(validityPeriod, notAfter)
+}
+
+// evaluateIssuance returns the issuance decision for entityID, served from the request's memo when
+// WithIssuanceDecisions set one up and the entity was already checked. A fault is not memoized.
+func (tb *tokenBuilder) evaluateIssuance(ctx context.Context,
+	entityID string) (providers.AccessDecision, *tidcommon.ServiceError) {
+	memo, _ := ctx.Value(issuanceDecisionsKey{}).(map[string]providers.AccessDecision)
+	if decision, ok := memo[entityID]; ok {
+		return decision, nil
+	}
+	decision, svcErr := tb.governance.EvaluateAccess(ctx, entityID, providers.AccessPlaneIssuance, "")
+	if svcErr == nil && memo != nil {
+		memo[entityID] = decision
+	}
+	return decision, svcErr
+}
+
+// capAtLifespan returns validityPeriod shortened so the token expires no later than notAfter, and
+// ErrIssuanceRefused when that instant has already been reached. A zero notAfter caps nothing. The JWT
+// is stamped a moment after this check, possibly in the next second, so one second is held back to
+// keep exp at or before notAfter.
+func capAtLifespan(validityPeriod int64, notAfter time.Time) (int64, error) {
+	if notAfter.IsZero() {
+		return validityPeriod, nil
+	}
+	remaining := notAfter.Unix() - time.Now().Unix() - 1
+	if remaining <= 0 {
+		return 0, ErrIssuanceRefused
+	}
+	return min(validityPeriod, remaining), nil
+}
+
+// accessTokenParties returns the entities an access token is issued to or for: the client, the
+// subject, the actor, and every actor nested under it in the token's act claim. The subject and the
+// actor are checked only when the grant resolved them to a local entity, and a nested actor only when
+// this server recorded it, since an external issuer's sub names no local account even when it equals a
+// local entity's ID. A client acting as the actor is already checked as the client.
+func accessTokenParties(tokenCtx *AccessTokenBuildContext, serverIssuer string) []string {
+	parties := []string{clientEntityID(tokenCtx.OAuthApp), tokenCtx.SubjectEntityID}
+	if tokenCtx.ActorClaims == nil {
+		return parties
+	}
+	parties = append(parties, tokenCtx.ActorClaims.EntityID)
+	for act := tokenCtx.ActorClaims.NestedAct; act != nil; {
+		sub, _ := act["sub"].(string)
+		if iss, _ := act["iss"].(string); iss == "" || iss == serverIssuer {
+			parties = append(parties, sub)
+		}
+		act, _ = act["act"].(map[string]interface{})
+	}
+	return parties
+}
+
+// clientEntityID returns the resource ID of the client a token is issued to, empty when unknown.
+func clientEntityID(oauthApp *providers.OAuthClient) string {
+	if oauthApp == nil {
+		return ""
+	}
+	return oauthApp.ID
+}
+
 // BuildIDJAG builds an Identity Assertion Authorization Grant (ID-JAG) JWT targeted at an external
 // resource authorization server (draft-ietf-oauth-identity-assertion-authz-grant). The token carries
 // typ=oauth-id-jag+jwt and is signed with the server's own key. token_type is "N_A" because the
@@ -211,19 +333,22 @@ func (tb *tokenBuilder) BuildIDJAG(
 		tokenCtx.OAuthApp.Token.IDJAG.ValidityPeriod > 0 {
 		validityPeriod = tokenCtx.OAuthApp.Token.IDJAG.ValidityPeriod
 	}
-
-	claims := map[string]interface{}{
-		"aud":       tokenCtx.Audience,
-		"client_id": tokenCtx.ClientID,
+	validityPeriod, capErr := tb.admitAndCap(ctx, validityPeriod, clientEntityID(tokenCtx.OAuthApp), tokenCtx.Subject)
+	if capErr != nil {
+		return nil, capErr
 	}
+
+	claims := idjagIdentityClaims(tokenCtx.UserAttributes, tokenCtx.OAuthApp)
+	claims[constants.ClaimAud] = tokenCtx.Audience
+	claims[constants.ClaimClientID] = tokenCtx.ClientID
 	if len(tokenCtx.Scopes) > 0 {
-		claims["scope"] = JoinScopes(tokenCtx.Scopes)
+		claims[constants.ClaimScope] = JoinScopes(tokenCtx.Scopes)
 	}
 	// RFC 8707: a single resource is embedded as a string, multiple resources as an array.
 	if len(tokenCtx.Resources) == 1 {
-		claims["resource"] = tokenCtx.Resources[0]
+		claims[constants.ClaimResource] = tokenCtx.Resources[0]
 	} else if len(tokenCtx.Resources) > 1 {
-		claims["resource"] = tokenCtx.Resources
+		claims[constants.ClaimResource] = tokenCtx.Resources
 	}
 
 	token, iat, err := tb.jwtService.GenerateJWT(
@@ -402,6 +527,11 @@ func (tb *tokenBuilder) BuildRefreshToken(
 			return nil, fmt.Errorf("refresh token grant has reached its expiry")
 		}
 	}
+	validityPeriod, capErr := tb.admitAndCap(ctx, validityPeriod, clientEntityID(tokenCtx.OAuthApp),
+		tokenCtx.SubjectEntityID, tokenCtx.ActorSub)
+	if capErr != nil {
+		return nil, capErr
+	}
 
 	claims, claimsErr := tb.buildRefreshTokenClaims(tokenCtx)
 	if claimsErr != nil {
@@ -487,6 +617,20 @@ func (tb *tokenBuilder) buildRefreshTokenClaims(ctx *RefreshTokenBuildContext) (
 		claims[constants.ClaimSessionID] = ctx.SessionID
 	}
 
+	// The refresh token carries only the granted values and the type versions they were approved on.
+	if len(ctx.AuthorizationDetails) > 0 {
+		values, err := authzdetailcommon.EncodeDetailValues(ctx.AuthorizationDetails)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode authorization details: %w", err)
+		}
+		versions := make(map[string]grantedTypeVersion, len(ctx.AuthorizationDetails))
+		for _, detail := range ctx.AuthorizationDetails {
+			versions[detail.Type] = grantedTypeVersion{TypeID: detail.TypeID, Version: detail.TypeVersion}
+		}
+		claims[constants.ClaimRefreshAuthorizationDetails] = values
+		claims[constants.ClaimRefreshAuthorizationDetailVersions] = versions
+	}
+
 	return claims, nil
 }
 
@@ -500,11 +644,16 @@ func (tb *tokenBuilder) BuildIDToken(
 	}
 
 	tokenConfig := ResolveTokenConfig(tb.cfg, tokenCtx.OAuthApp, TokenTypeID, 0)
+	validityPeriod, capErr := tb.admitAndCap(ctx, tokenConfig.ValidityPeriod, clientEntityID(tokenCtx.OAuthApp),
+		tokenCtx.SubjectEntityID)
+	if capErr != nil {
+		return nil, capErr
+	}
 
 	jwtClaims := tb.buildIDTokenClaims(tokenCtx)
 
 	tokenDTO := &oauth2model.TokenDTO{
-		ExpiresIn: tokenConfig.ValidityPeriod,
+		ExpiresIn: validityPeriod,
 		Scopes:    tokenCtx.Scopes,
 		ClientID:  tokenCtx.Audience,
 		Subject:   tokenCtx.Subject,
@@ -517,7 +666,7 @@ func (tb *tokenBuilder) BuildIDToken(
 		ctx,
 		tokenCtx.Subject,
 		tokenConfig.Issuer,
-		tokenConfig.ValidityPeriod,
+		validityPeriod,
 		jwtClaims,
 		jwt.TokenTypeJWT,
 		tokenConfig.SigningAlg,
@@ -579,6 +728,50 @@ func (tb *tokenBuilder) BuildLogoutToken(
 		ClientID:  client.ClientID,
 		Subject:   tokenCtx.SubjectID,
 		Audiences: []string{client.ClientID},
+	}, nil
+}
+
+// BuildDeviceSecret builds the token that carries the SSO sessions of a sign-in to the client on a code
+// exchange: each session's flow identifier and handle, for the subject who signed in. It is signed with
+// the client's ID token signing algorithm and addressed to this server, which accepts it back as a token
+// exchange subject token.
+func (tb *tokenBuilder) BuildDeviceSecret(
+	ctx context.Context,
+	tokenCtx *DeviceSecretBuildContext,
+) (*oauth2model.TokenDTO, error) {
+	if tokenCtx == nil || tokenCtx.OAuthApp == nil || tokenCtx.OAuthApp.ClientID == "" {
+		return nil, fmt.Errorf("device secret needs a client with a client id")
+	}
+	if tokenCtx.SubjectID == "" || len(tokenCtx.SessionData) == 0 || tokenCtx.ValidityPeriod <= 0 {
+		return nil, fmt.Errorf("device secret needs a subject, a session and a validity period")
+	}
+	client := tokenCtx.OAuthApp
+	tokenConfig := ResolveTokenConfig(tb.cfg, client, TokenTypeID, 0)
+
+	sessionData := make([]map[string]string, 0, len(tokenCtx.SessionData))
+	for _, entry := range tokenCtx.SessionData {
+		sessionData = append(sessionData, map[string]string{
+			claimFlowIdentifier: entry.FlowIdentifier,
+			claimSessionHandle:  entry.SessionHandle,
+		})
+	}
+	// iss, iat, exp, nbf and jti come from the JWT service.
+	claims := map[string]interface{}{
+		constants.ClaimAud: tokenConfig.Issuer,
+		claimSessionData:   sessionData,
+	}
+	token, iat, svcErr := tb.jwtService.GenerateJWT(ctx, tokenCtx.SubjectID, tokenConfig.Issuer,
+		tokenCtx.ValidityPeriod, claims, jwt.TokenTypeDeviceSecret, tokenConfig.SigningAlg)
+	if svcErr != nil {
+		return nil, fmt.Errorf("failed to generate device secret: %v", svcErr.Error)
+	}
+	return &oauth2model.TokenDTO{
+		Token:     token,
+		IssuedAt:  iat,
+		ExpiresIn: tokenCtx.ValidityPeriod,
+		ClientID:  client.ClientID,
+		Subject:   tokenCtx.SubjectID,
+		Audiences: []string{tokenConfig.Issuer},
 	}, nil
 }
 

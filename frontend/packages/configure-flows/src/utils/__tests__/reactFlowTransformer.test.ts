@@ -4,10 +4,8 @@
 import type {Node, Edge} from '@xyflow/react';
 import {describe, it, expect, vi} from 'vitest';
 import VisualFlowConstants from '../../constants/VisualFlowConstants';
-import {ElementTypes, ElementCategories, ActionEventTypes, ButtonTypes} from '../../models/elements';
-import type {Element} from '../../models/elements';
-import type {StepData} from '../../models/steps';
-import {StepTypes, StaticStepTypes} from '../../models/steps';
+import {ElementTypes, ElementCategories, ActionEventTypes, ButtonTypes, type Element} from '../../models/elements';
+import {StepTypes, StaticStepTypes, type StepData} from '../../models/steps';
 import {
   transformReactFlow,
   validateFlowGraph,
@@ -285,6 +283,128 @@ describe('reactFlowTransformer', () => {
         expect(result.nodes[0].prompts?.[0].action).toEqual({
           ref: 'button-1',
           nextNode: 'next-node',
+        });
+      });
+
+      describe('Prompt input defaults', () => {
+        const promptNode = (inputs: Record<string, unknown>[]) => {
+          const components = [
+            {
+              id: 'block-1',
+              type: 'BLOCK',
+              category: ElementCategories.Block,
+              components: [
+                ...inputs,
+                {
+                  id: 'button-1',
+                  type: ElementTypes.Action,
+                  category: ElementCategories.Action,
+                  action: {onSuccess: 'next-node'},
+                },
+              ],
+            },
+          ] as unknown as Element[];
+          const canvasData: ReactFlowCanvasData = {
+            nodes: [createNode('view-1', StepTypes.View, {x: 0, y: 0}, {components})],
+            edges: [createEdge('edge-1', 'view-1', 'next-node', 'button-1_NEXT')],
+          };
+
+          return transformReactFlow(canvasData).nodes[0];
+        };
+
+        const field = (type: string, extra: Record<string, unknown>) => ({
+          id: 'field-1',
+          type,
+          category: ElementCategories.Field,
+          name: 'department',
+          ...extra,
+        });
+
+        it('should write the value of an input as the default of its prompt input and keep it in the meta', () => {
+          const node = promptNode([field(ElementTypes.TextInput, {value: 'Computer Science'})]);
+
+          expect(node.prompts?.[0].inputs?.[0]).toEqual({
+            ref: 'field-1',
+            type: ElementTypes.TextInput,
+            identifier: 'department',
+            required: false,
+            defaultValue: 'Computer Science',
+          });
+          const block = node.meta?.components?.[0] as {components: Record<string, unknown>[]};
+          expect(block.components[0]).toMatchObject({id: 'field-1', value: 'Computer Science'});
+        });
+
+        it.each([
+          [ElementTypes.Checkbox, 'true'],
+          [ElementTypes.Select, 'Gold'],
+        ])('should keep the default of a %s input', (type, value) => {
+          const node = promptNode([field(type, {value})]);
+
+          expect(node.prompts?.[0].inputs?.[0]).toHaveProperty('defaultValue', value);
+        });
+
+        it('should not write a default when the value is empty', () => {
+          const node = promptNode([field(ElementTypes.TextInput, {value: ''})]);
+
+          expect(node.prompts?.[0].inputs?.[0]).not.toHaveProperty('defaultValue');
+        });
+
+        it.each([ElementTypes.PasswordInput, ElementTypes.OtpInput])(
+          'should not write a default for a %s input',
+          (type) => {
+            const node = promptNode([field(type, {value: 'secret'})]);
+
+            expect(node.prompts?.[0].inputs?.[0]).not.toHaveProperty('defaultValue');
+          },
+        );
+
+        it('should not carry the default into the executor inputs derived from the prompt', () => {
+          const canvasData: ReactFlowCanvasData = {
+            nodes: [
+              createNode(
+                'view-1',
+                StepTypes.View,
+                {x: 0, y: 0},
+                {components: [field(ElementTypes.TextInput, {value: 'Computer Science'})] as unknown as Element[]},
+              ),
+              createNode('exec-1', StepTypes.Execution, {x: 100, y: 0}, {action: {executor: {name: 'TestExecutor'}}}),
+            ],
+            edges: [createEdge('edge-1', 'view-1', 'exec-1')],
+          };
+
+          const execNode = transformReactFlow(canvasData).nodes.find((n) => n.type === 'TASK_EXECUTION');
+
+          expect(execNode?.executor?.inputs?.[0]).not.toHaveProperty('defaultValue');
+        });
+
+        it('should not carry the default into the executor inputs derived from the action that routes there', () => {
+          const components = [
+            {
+              id: 'block-1',
+              type: 'BLOCK',
+              category: ElementCategories.Block,
+              components: [
+                field(ElementTypes.TextInput, {value: 'Computer Science'}),
+                {id: 'button-1', type: ElementTypes.Action, category: ElementCategories.Action, action: {}},
+              ],
+            },
+          ] as unknown as Element[];
+          const canvasData: ReactFlowCanvasData = {
+            nodes: [
+              createNode('view-1', StepTypes.View, {x: 0, y: 0}, {components}),
+              createNode('exec-1', StepTypes.Execution, {x: 100, y: 0}, {action: {executor: {name: 'TestExecutor'}}}),
+            ],
+            edges: [createEdge('edge-1', 'view-1', 'exec-1', 'button-1_NEXT')],
+          };
+
+          const nodes = transformReactFlow(canvasData).nodes;
+          const viewNode = nodes.find((n) => n.id === 'view-1');
+          const execNode = nodes.find((n) => n.type === 'TASK_EXECUTION');
+
+          expect(viewNode?.prompts?.[0].action?.nextNode).toBe('exec-1');
+          expect(viewNode?.prompts?.[0].inputs?.[0]).toHaveProperty('defaultValue', 'Computer Science');
+          expect(execNode?.executor?.inputs?.[0]).toMatchObject({identifier: 'department'});
+          expect(execNode?.executor?.inputs?.[0]).not.toHaveProperty('defaultValue');
         });
       });
 
@@ -821,6 +941,88 @@ describe('reactFlowTransformer', () => {
         expect(execNode?.executor?.inputs?.[0].identifier).toBe('username');
       });
 
+      describe('Constant inputs', () => {
+        const usernameComponents: Element[] = [
+          {
+            id: 'input-1',
+            type: ElementTypes.TextInput,
+            category: ElementCategories.Field,
+            name: 'username',
+          } as unknown as Element,
+        ];
+        const localeConstant = {
+          ref: 'input-locale',
+          type: 'TEXT_INPUT',
+          identifier: 'locale',
+          required: false,
+          defaultValue: 'en-US',
+          constant: true,
+        };
+
+        const transformWithExecutorInputs = (executorName: string, inputs: unknown[], withPrompt = true) =>
+          transformReactFlow({
+            nodes: [
+              ...(withPrompt
+                ? [createNode('view-1', StepTypes.View, {x: 0, y: 0}, {components: usernameComponents})]
+                : []),
+              createNode(
+                'exec-1',
+                StepTypes.Execution,
+                {x: 100, y: 0},
+                {action: {executor: {name: executorName, inputs}}},
+              ),
+            ],
+            edges: withPrompt ? [createEdge('edge-1', 'view-1', 'exec-1')] : [],
+          } as unknown as ReactFlowCanvasData).nodes.find((n) => n.id === 'exec-1');
+
+        it('should keep the inputs of an executor that configures non-constant inputs', () => {
+          const configured = {ref: 'input-custom', type: 'TEXT_INPUT', identifier: 'custom', required: true};
+
+          const execNode = transformWithExecutorInputs('TestExecutor', [configured, localeConstant]);
+
+          expect(execNode?.executor?.inputs).toEqual([configured, localeConstant]);
+        });
+
+        it('should add the constants to the inputs derived from the preceding prompt', () => {
+          const execNode = transformWithExecutorInputs('TestExecutor', [localeConstant]);
+
+          expect(execNode?.executor?.inputs?.map((input) => input.identifier)).toEqual(['username', 'locale']);
+          expect(execNode?.executor?.inputs?.[1]).toEqual(localeConstant);
+        });
+
+        it('should let a constant replace a derived input with the same identifier', () => {
+          const usernameConstant = {
+            ...localeConstant,
+            ref: 'input-username',
+            identifier: 'username',
+            defaultValue: 'admin',
+          };
+
+          const execNode = transformWithExecutorInputs('TestExecutor', [usernameConstant]);
+
+          expect(execNode?.executor?.inputs).toEqual([usernameConstant]);
+        });
+
+        it('should keep the constants when there is no preceding prompt to derive inputs from', () => {
+          const execNode = transformWithExecutorInputs('TestExecutor', [localeConstant], false);
+
+          expect(execNode?.executor?.inputs).toEqual([localeConstant]);
+        });
+
+        it('should keep the constants of an OAuth executor next to its code input', () => {
+          const execNode = transformWithExecutorInputs('GoogleOIDCAuthExecutor', [localeConstant], false);
+
+          expect(execNode?.executor?.inputs?.map((input) => input.identifier)).toEqual(['code', 'locale']);
+          expect(execNode?.executor?.inputs?.[1]).toEqual(localeConstant);
+        });
+
+        it('should keep the constants of the consent executor next to its decisions input', () => {
+          const execNode = transformWithExecutorInputs('ConsentExecutor', [localeConstant], false);
+
+          expect(execNode?.executor?.inputs?.map((input) => input.identifier)).toEqual(['consent_decisions', 'locale']);
+        });
+      });
+
       it('should collect only the inputs of the chooser option that routes to the executor', () => {
         const optionBlock = (id: string, fields: [string, string][], buttonId: string): Element =>
           ({
@@ -1303,7 +1505,10 @@ describe('reactFlowTransformer', () => {
         expect(actionButton?.['eventType']).toBe(ActionEventTypes.Submit);
       });
 
-      it('should serialize a SELECT field as an input and promote the single button to SUBMIT', () => {
+      it.each([
+        {label: 'SELECT', id: 'select-1', type: ElementTypes.Select, name: 'country'},
+        {label: 'USER_SELECT', id: 'user-select-1', type: ElementTypes.UserSelect, name: 'owner'},
+      ])('should serialize a $label field as an input and promote the single button to SUBMIT', ({id, name, type}) => {
         const components: Element[] = [
           {
             id: 'block-1',
@@ -1311,10 +1516,10 @@ describe('reactFlowTransformer', () => {
             category: ElementCategories.Block,
             components: [
               {
-                id: 'select-1',
-                type: ElementTypes.Select,
+                id,
+                type,
                 category: ElementCategories.Field,
-                name: 'country',
+                name,
                 required: true,
               },
               {
@@ -1337,16 +1542,16 @@ describe('reactFlowTransformer', () => {
 
         expect(result.nodes[0].prompts?.[0].inputs).toEqual([
           {
-            ref: 'select-1',
-            type: ElementTypes.Select,
-            identifier: 'country',
+            ref: id,
+            type,
+            identifier: name,
             required: true,
           },
         ]);
 
         const block = result.nodes[0].meta?.components?.[0] ?? {};
         const blockChildren = block['components'] as Record<string, unknown>[];
-        expect(blockChildren.find((c) => c['type'] === ElementTypes.Select)?.['ref']).toBe('country');
+        expect(blockChildren.find((c) => c['type'] === type)?.['ref']).toBe(name);
         expect(blockChildren.find((c) => c['type'] === ElementTypes.Action)?.['eventType']).toBe(
           ActionEventTypes.Submit,
         );
@@ -2198,22 +2403,7 @@ describe('reactFlowTransformer', () => {
       expect(result.nodes[0].flow).toEqual({ref: 'referenced-flow-id'});
     });
 
-    it('should fall back to data.action.flow.ref when data.flow is absent', () => {
-      const canvasData: ReactFlowCanvasData = {
-        nodes: [
-          createNode('call-1', StepTypes.Call, {x: 0, y: 0}, {
-            action: {type: 'CALL', flow: {ref: 'flow-from-action'}},
-          } as unknown as StepData),
-        ],
-        edges: [],
-      };
-
-      const result = transformReactFlow(canvasData);
-
-      expect(result.nodes[0].flow).toEqual({ref: 'flow-from-action'});
-    });
-
-    it('should omit flow when neither data.flow nor data.action.flow provides a ref', () => {
+    it('should omit flow when data.flow has no ref', () => {
       const canvasData: ReactFlowCanvasData = {
         nodes: [createNode('call-1', StepTypes.Call)],
         edges: [],

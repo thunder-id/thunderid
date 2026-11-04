@@ -14,7 +14,14 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const sessionConfigURL = testutils.TestServerURL + "/server-config/session"
+var sessionConfigURL = testutils.TestServerURL + "/server-config/session"
+
+const (
+	// A second application bound to the suite's SSO authentication flow, so it shares the per-flow
+	// session that the main application keeps alive by refreshing tokens.
+	refreshPeerClientID     = "sso_refresh_peer_client"
+	refreshPeerClientSecret = "sso_refresh_peer_secret" //nolint:gosec // test credential
+)
 
 // SSO session timeouts are read once, when the session service is constructed, so changing them
 // requires a server restart rather than only a configuration write. Every test here therefore
@@ -186,4 +193,29 @@ func (ts *SSOLogoutTestSuite) TestSSOSession_AbsoluteTimeoutForcesReauthenticati
 
 	ts.False(ts.sessionSurvives(client, "absolute_timeout_state_3"),
 		"a session past its absolute timeout must not skip authentication even when recently used")
+}
+
+// An application that keeps a user signed in by refreshing tokens is using the SSO session, so a
+// refresh inside the idle window must slide the idle deadline. Another application on the same flow
+// then still signs the user in silently after the original idle deadline has passed.
+func (ts *SSOLogoutTestSuite) TestSSOSession_TokenRefreshExtendsIdleTimeout() {
+	// A generous absolute timeout isolates the idle deadline as the only thing that can expire.
+	ts.applySessionTimeouts(6, 600, 1)
+	ts.createParticipantApplication("SSORefreshPeerApp", refreshPeerClientID, refreshPeerClientSecret)
+
+	client := ts.newSessionClient()
+	token := ts.loginTokens(client, ssoReuseUsername, "refresh_idle_state_1")
+	ts.Require().NotEmpty(token.RefreshToken, "a refresh token should be issued to the main application")
+
+	// Refresh inside the idle window and past the activity-refresh throttle.
+	time.Sleep(3 * time.Second)
+	_, err := testutils.RefreshAccessToken(clientID, clientSecret, token.RefreshToken)
+	ts.Require().NoError(err, "the refresh token grant should succeed")
+
+	// Now past the original idle deadline (about 7s since login) but inside the one the refresh moved
+	// (about 4s since the refresh), so only the refresh can have kept the session alive.
+	time.Sleep(4 * time.Second)
+
+	ts.True(ts.ssoSatisfies(client, refreshPeerClientID, "refresh_idle_state_2"),
+		"a token refresh must keep the SSO session alive for another application")
 }

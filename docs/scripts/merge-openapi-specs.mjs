@@ -34,6 +34,9 @@ const OUTPUT_FILE = join(STATIC_DIR, versionPath, 'combined.yaml');
 
 const GROUP_CONFIG_PATH = join(__dirname, '..', 'api-groups.config.yaml');
 
+// Spec files of APIs the server does not register.
+const SKIP_FILES = new Set(['scim.yaml']);
+
 function loadGroupConfig(configPath) {
   const config = parse(readFileSync(configPath, 'utf8'));
   return {
@@ -51,7 +54,7 @@ function mergeOpenAPISpecs() {
 
   // Dynamically read all YAML files from the API directory
   const API_FILES = readdirSync(API_DIR)
-    .filter((file) => file.endsWith('.yaml') && file !== 'combined.yaml')
+    .filter((file) => file.endsWith('.yaml') && file !== 'combined.yaml' && !SKIP_FILES.has(file))
     .sort();
 
   if (API_FILES.length === 0) {
@@ -143,30 +146,12 @@ function mergeOpenAPISpecs() {
 
     // Merge components
     if (spec.components) {
-      if (spec.components.schemas) {
-        combined.components.schemas = {
-          ...combined.components.schemas,
-          ...spec.components.schemas,
+      Object.entries(spec.components).forEach(([section, entries]) => {
+        combined.components[section] = {
+          ...combined.components[section],
+          ...entries,
         };
-      }
-      if (spec.components.securitySchemes) {
-        combined.components.securitySchemes = {
-          ...combined.components.securitySchemes,
-          ...spec.components.securitySchemes,
-        };
-      }
-      if (spec.components.responses) {
-        combined.components.responses = {
-          ...combined.components.responses,
-          ...spec.components.responses,
-        };
-      }
-      if (spec.components.parameters) {
-        combined.components.parameters = {
-          ...combined.components.parameters,
-          ...spec.components.parameters,
-        };
-      }
+      });
     }
   });
 

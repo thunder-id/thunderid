@@ -53,6 +53,7 @@ func (s *OAuthConfigTestSuite) TestFromServerRuntime() {
 			Hostname: "localhost",
 			Port:     3000,
 		},
+		Crypto: config.CryptoConfig{Encryption: engineconfig.EncryptionConfig{Key: "test-device-code-hash-key"}},
 	}
 	err := config.InitializeServerRuntime("/tmp/test-oauth-config", cfg)
 	s.Require().NoError(err)

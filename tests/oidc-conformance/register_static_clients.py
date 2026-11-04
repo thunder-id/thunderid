@@ -94,6 +94,12 @@ def ensure_sso_flow(http, base_url, flow_path):
             print(f">>> Reusing existing flow '{definition['handle']}' (id={flow['id']})")
             return flow["id"]
 
+    # A flow has to name the organization unit that owns it. Give it the default unit, the
+    # one the bootstrap flows belong to.
+    ou = http.get(f"{base_url}/organization-units/tree/default")
+    ou.raise_for_status()
+    definition["ouId"] = ou.json()["id"]
+
     created = http.post(f"{base_url}/flows", json=definition)
     if created.status_code not in (200, 201):
         sys.exit(

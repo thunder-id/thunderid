@@ -4,13 +4,15 @@
 import {OAuth2GrantTypes} from '@thunderid/configure-applications';
 
 /**
- * The grant types that let an agent act on behalf of a signed-in user. An agent holding any of
- * them is delegated, the same rule the server applies when it checks an agent's grants.
+ * The grant types that let an agent act on behalf of a user. An agent holding any of them is
+ * delegated, the same rule the server applies when it checks an agent's grants. The JWT bearer
+ * grant counts because the assertion an agent redeems with it (an ID-JAG) always names a user.
  */
 export const DELEGATION_GRANTS: string[] = [
   OAuth2GrantTypes.AUTHORIZATION_CODE,
   OAuth2GrantTypes.CIBA,
   OAuth2GrantTypes.TOKEN_EXCHANGE,
+  OAuth2GrantTypes.JWT_BEARER,
 ];
 
 /** The grant types turning Delegated mode on gives the agent, as the server does when none are asked for. */
@@ -25,4 +27,5 @@ export const DELEGATED_ONLY_GRANTS: string[] = [
   OAuth2GrantTypes.CIBA,
   OAuth2GrantTypes.REFRESH_TOKEN,
   OAuth2GrantTypes.TOKEN_EXCHANGE,
+  OAuth2GrantTypes.JWT_BEARER,
 ];

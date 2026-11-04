@@ -362,6 +362,15 @@ configuration:
           key: ""
         db: 0             # Redis logical database index (0-15)
         key_prefix: ""   # Prefix for all Redis keys, e.g. "thunderid:"
+        # TLS settings for the Redis connection. Required for TLS-only Redis endpoints.
+        tls:
+          enabled: false
+          # Existing Secret holding ca.crt (and tls.crt / tls.key when clientAuth is true).
+          # It is mounted into the server and setup pods. Leave empty to trust the system CA pool.
+          secretName: ""
+          clientAuth: false          # Present tls.crt / tls.key from the Secret (mutual TLS)
+          serverName: ""             # Expected server name; defaults to the host in address
+          insecureSkipVerify: false  # Skip server certificate verification (not for production)
     entity:
       # WARNING: Use sqlite only if you are running a single pod.
       type: "postgres" # postgres or sqlite
@@ -434,6 +443,15 @@ configuration:
       password: ""
       db: 0
       keyPrefix: "thunderid"
+      # TLS settings for the Redis connection. Required for TLS-only Redis endpoints.
+      tls:
+        enabled: false
+        # Existing Secret holding ca.crt (and tls.crt / tls.key when clientAuth is true).
+        # It is mounted into the server and setup pods. Leave empty to trust the system CA pool.
+        secretName: ""
+        clientAuth: false          # Present tls.crt / tls.key from the Secret (mutual TLS)
+        serverName: ""             # Expected server name; defaults to the host in address
+        insecureSkipVerify: false  # Skip server certificate verification (not for production)
 
   # Token Configuration
   jwt:
@@ -472,6 +490,14 @@ configuration:
     # MCP clients should register through Dynamic Client Registration instead.
     cimd:
       enabled: true
+    # Deployment-wide switches for issuing and accepting Identity Assertion JWT Authorization Grants (ID-JAG),
+    # applied on top of each application's and trusted issuer's own setting. Issuance also needs the token
+    # exchange grant, and acceptance the jwt-bearer grant, in allowedGrantTypes.
+    idJag:
+      issuance:
+        enabled: true
+      acceptance:
+        enabled: true
     # RFC 9396 rich authorization requests. processorTimeout bounds one call to an authorization details
     # type's processor, in seconds (at most 30). typeMetadataEnabled serves the type metadata endpoint and
     # advertises it in the authorization server metadata.
@@ -586,11 +612,6 @@ configuration:
     # Leave empty to inherit the global declarativeResources.enabled setting.
     store: ""
 
-  # SCIM 2.0 provisioning configuration.
-  scim:
-    # URN prefix of the per-user-type SCIM extension schemas. A trailing colon is added if missing.
-    urnPrefix: "urn:thunderid:params:scim:schemas:"
-
   # Account access (automatic lock) policy for the user and agent categories, the deployment base of
   # the accountAccess server-config section. The values are the product defaults; a key removed here
   # is not rendered, so the product default applies.
@@ -684,6 +705,14 @@ configuration:
   # organization_unit, identity_provider, application, server_config, resource,
   # authorization_detail_type, http_connection, notification_template.
   stores: {}
+
+  # Notification template content-length limits (in characters). Unset keys use the server defaults
+  # (subject 1000, email body 50000, SMS body 4096). A negative value fails startup.
+  # notification:
+  #   template:
+  #     maxSubjectLength: 1000
+  #     maxEmailBodyLength: 50000
+  #     maxSmsBodyLength: 4096
 
 
 # Persistence configuration for SQLite databases

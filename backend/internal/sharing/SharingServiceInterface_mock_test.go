@@ -805,6 +805,82 @@ func (_c *SharingServiceInterfaceMock_IsVisible_Call) RunAndReturn(run func(ctx 
 	return _c
 }
 
+// ListOverlayValues provides a mock function for the type SharingServiceInterfaceMock
+func (_mock *SharingServiceInterfaceMock) ListOverlayValues(ctx context.Context, rt ResourceType, resourceID string) (map[string]map[string][]string, *common.ServiceError) {
+	ret := _mock.Called(ctx, rt, resourceID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListOverlayValues")
+	}
+
+	var r0 map[string]map[string][]string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string) (map[string]map[string][]string, *common.ServiceError)); ok {
+		return returnFunc(ctx, rt, resourceID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string) map[string]map[string][]string); ok {
+		r0 = returnFunc(ctx, rt, resourceID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]map[string][]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ResourceType, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, rt, resourceID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// SharingServiceInterfaceMock_ListOverlayValues_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListOverlayValues'
+type SharingServiceInterfaceMock_ListOverlayValues_Call struct {
+	*mock.Call
+}
+
+// ListOverlayValues is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+func (_e *SharingServiceInterfaceMock_Expecter) ListOverlayValues(ctx any, rt any, resourceID any) *SharingServiceInterfaceMock_ListOverlayValues_Call {
+	return &SharingServiceInterfaceMock_ListOverlayValues_Call{Call: _e.mock.On("ListOverlayValues", ctx, rt, resourceID)}
+}
+
+func (_c *SharingServiceInterfaceMock_ListOverlayValues_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string)) *SharingServiceInterfaceMock_ListOverlayValues_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ListOverlayValues_Call) Return(stringToStringToStrings map[string]map[string][]string, serviceError *common.ServiceError) *SharingServiceInterfaceMock_ListOverlayValues_Call {
+	_c.Call.Return(stringToStringToStrings, serviceError)
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ListOverlayValues_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string) (map[string]map[string][]string, *common.ServiceError)) *SharingServiceInterfaceMock_ListOverlayValues_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListPolicies provides a mock function for the type SharingServiceInterfaceMock
 func (_mock *SharingServiceInterfaceMock) ListPolicies(ctx context.Context, rt ResourceType, resourceID string) ([]Policy, *common.ServiceError) {
 	ret := _mock.Called(ctx, rt, resourceID)
@@ -1130,6 +1206,160 @@ func (_c *SharingServiceInterfaceMock_RegisterResourceType_Call) RunAndReturn(ru
 	return _c
 }
 
+// RemoveField provides a mock function for the type SharingServiceInterfaceMock
+func (_mock *SharingServiceInterfaceMock) RemoveField(ctx context.Context, rt ResourceType, resourceID string, fieldKey string) *common.ServiceError {
+	ret := _mock.Called(ctx, rt, resourceID, fieldKey)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveField")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, rt, resourceID, fieldKey)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// SharingServiceInterfaceMock_RemoveField_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveField'
+type SharingServiceInterfaceMock_RemoveField_Call struct {
+	*mock.Call
+}
+
+// RemoveField is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+//   - fieldKey string
+func (_e *SharingServiceInterfaceMock_Expecter) RemoveField(ctx any, rt any, resourceID any, fieldKey any) *SharingServiceInterfaceMock_RemoveField_Call {
+	return &SharingServiceInterfaceMock_RemoveField_Call{Call: _e.mock.On("RemoveField", ctx, rt, resourceID, fieldKey)}
+}
+
+func (_c *SharingServiceInterfaceMock_RemoveField_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string, fieldKey string)) *SharingServiceInterfaceMock_RemoveField_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_RemoveField_Call) Return(serviceError *common.ServiceError) *SharingServiceInterfaceMock_RemoveField_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_RemoveField_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string, fieldKey string) *common.ServiceError) *SharingServiceInterfaceMock_RemoveField_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ReplaceOverlayValues provides a mock function for the type SharingServiceInterfaceMock
+func (_mock *SharingServiceInterfaceMock) ReplaceOverlayValues(ctx context.Context, rt ResourceType, resourceID string, ouID string, fieldKeys []string, values map[string][]string) *OverlayReplaceError {
+	ret := _mock.Called(ctx, rt, resourceID, ouID, fieldKeys, values)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ReplaceOverlayValues")
+	}
+
+	var r0 *OverlayReplaceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, string, []string, map[string][]string) *OverlayReplaceError); ok {
+		r0 = returnFunc(ctx, rt, resourceID, ouID, fieldKeys, values)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*OverlayReplaceError)
+		}
+	}
+	return r0
+}
+
+// SharingServiceInterfaceMock_ReplaceOverlayValues_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReplaceOverlayValues'
+type SharingServiceInterfaceMock_ReplaceOverlayValues_Call struct {
+	*mock.Call
+}
+
+// ReplaceOverlayValues is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+//   - ouID string
+//   - fieldKeys []string
+//   - values map[string][]string
+func (_e *SharingServiceInterfaceMock_Expecter) ReplaceOverlayValues(ctx any, rt any, resourceID any, ouID any, fieldKeys any, values any) *SharingServiceInterfaceMock_ReplaceOverlayValues_Call {
+	return &SharingServiceInterfaceMock_ReplaceOverlayValues_Call{Call: _e.mock.On("ReplaceOverlayValues", ctx, rt, resourceID, ouID, fieldKeys, values)}
+}
+
+func (_c *SharingServiceInterfaceMock_ReplaceOverlayValues_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string, ouID string, fieldKeys []string, values map[string][]string)) *SharingServiceInterfaceMock_ReplaceOverlayValues_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		var arg4 []string
+		if args[4] != nil {
+			arg4 = args[4].([]string)
+		}
+		var arg5 map[string][]string
+		if args[5] != nil {
+			arg5 = args[5].(map[string][]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+			arg5,
+		)
+	})
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ReplaceOverlayValues_Call) Return(overlayReplaceError *OverlayReplaceError) *SharingServiceInterfaceMock_ReplaceOverlayValues_Call {
+	_c.Call.Return(overlayReplaceError)
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ReplaceOverlayValues_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string, ouID string, fieldKeys []string, values map[string][]string) *OverlayReplaceError) *SharingServiceInterfaceMock_ReplaceOverlayValues_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ReplacePoliciesForResource provides a mock function for the type SharingServiceInterfaceMock
 func (_mock *SharingServiceInterfaceMock) ReplacePoliciesForResource(ctx context.Context, rt ResourceType, resourceID string, owningOUID string, requests []PolicyRequest) (PolicyReplay, *PolicyReplayError) {
 	ret := _mock.Called(ctx, rt, resourceID, owningOUID, requests)
@@ -1212,6 +1442,180 @@ func (_c *SharingServiceInterfaceMock_ReplacePoliciesForResource_Call) Return(po
 }
 
 func (_c *SharingServiceInterfaceMock_ReplacePoliciesForResource_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string, owningOUID string, requests []PolicyRequest) (PolicyReplay, *PolicyReplayError)) *SharingServiceInterfaceMock_ReplacePoliciesForResource_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ResolveFieldRule provides a mock function for the type SharingServiceInterfaceMock
+func (_mock *SharingServiceInterfaceMock) ResolveFieldRule(ctx context.Context, rt ResourceType, resourceID string, ouID string, fieldKey string) (FieldRule, *common.ServiceError) {
+	ret := _mock.Called(ctx, rt, resourceID, ouID, fieldKey)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveFieldRule")
+	}
+
+	var r0 FieldRule
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, string, string) (FieldRule, *common.ServiceError)); ok {
+		return returnFunc(ctx, rt, resourceID, ouID, fieldKey)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, string, string) FieldRule); ok {
+		r0 = returnFunc(ctx, rt, resourceID, ouID, fieldKey)
+	} else {
+		r0 = ret.Get(0).(FieldRule)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ResourceType, string, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, rt, resourceID, ouID, fieldKey)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// SharingServiceInterfaceMock_ResolveFieldRule_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveFieldRule'
+type SharingServiceInterfaceMock_ResolveFieldRule_Call struct {
+	*mock.Call
+}
+
+// ResolveFieldRule is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+//   - ouID string
+//   - fieldKey string
+func (_e *SharingServiceInterfaceMock_Expecter) ResolveFieldRule(ctx any, rt any, resourceID any, ouID any, fieldKey any) *SharingServiceInterfaceMock_ResolveFieldRule_Call {
+	return &SharingServiceInterfaceMock_ResolveFieldRule_Call{Call: _e.mock.On("ResolveFieldRule", ctx, rt, resourceID, ouID, fieldKey)}
+}
+
+func (_c *SharingServiceInterfaceMock_ResolveFieldRule_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string, ouID string, fieldKey string)) *SharingServiceInterfaceMock_ResolveFieldRule_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ResolveFieldRule_Call) Return(fieldRule FieldRule, serviceError *common.ServiceError) *SharingServiceInterfaceMock_ResolveFieldRule_Call {
+	_c.Call.Return(fieldRule, serviceError)
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ResolveFieldRule_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string, ouID string, fieldKey string) (FieldRule, *common.ServiceError)) *SharingServiceInterfaceMock_ResolveFieldRule_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ResolveFieldRules provides a mock function for the type SharingServiceInterfaceMock
+func (_mock *SharingServiceInterfaceMock) ResolveFieldRules(ctx context.Context, rt ResourceType, resourceID string, ouID string, fieldKeys []string) (map[string]FieldRule, *common.ServiceError) {
+	ret := _mock.Called(ctx, rt, resourceID, ouID, fieldKeys)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveFieldRules")
+	}
+
+	var r0 map[string]FieldRule
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, string, []string) (map[string]FieldRule, *common.ServiceError)); ok {
+		return returnFunc(ctx, rt, resourceID, ouID, fieldKeys)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, string, []string) map[string]FieldRule); ok {
+		r0 = returnFunc(ctx, rt, resourceID, ouID, fieldKeys)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]FieldRule)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ResourceType, string, string, []string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, rt, resourceID, ouID, fieldKeys)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// SharingServiceInterfaceMock_ResolveFieldRules_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveFieldRules'
+type SharingServiceInterfaceMock_ResolveFieldRules_Call struct {
+	*mock.Call
+}
+
+// ResolveFieldRules is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+//   - ouID string
+//   - fieldKeys []string
+func (_e *SharingServiceInterfaceMock_Expecter) ResolveFieldRules(ctx any, rt any, resourceID any, ouID any, fieldKeys any) *SharingServiceInterfaceMock_ResolveFieldRules_Call {
+	return &SharingServiceInterfaceMock_ResolveFieldRules_Call{Call: _e.mock.On("ResolveFieldRules", ctx, rt, resourceID, ouID, fieldKeys)}
+}
+
+func (_c *SharingServiceInterfaceMock_ResolveFieldRules_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string, ouID string, fieldKeys []string)) *SharingServiceInterfaceMock_ResolveFieldRules_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		var arg4 []string
+		if args[4] != nil {
+			arg4 = args[4].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ResolveFieldRules_Call) Return(stringToFieldRule map[string]FieldRule, serviceError *common.ServiceError) *SharingServiceInterfaceMock_ResolveFieldRules_Call {
+	_c.Call.Return(stringToFieldRule, serviceError)
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ResolveFieldRules_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string, ouID string, fieldKeys []string) (map[string]FieldRule, *common.ServiceError)) *SharingServiceInterfaceMock_ResolveFieldRules_Call {
 	_c.Call.Return(run)
 	return _c
 }

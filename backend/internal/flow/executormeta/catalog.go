@@ -35,6 +35,9 @@ var catalog = map[string]providers.ExecutorMeta{
 		},
 	},
 	ExecutorNameAuthorization: {},
+	ExecutorNameAuthorizationDetail: {
+		SupportedFlowTypes: []providers.FlowType{"AUTHENTICATION"},
+	},
 	ExecutorNameClientSecret: {
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
 	},
@@ -46,6 +49,9 @@ var catalog = map[string]providers.ExecutorMeta{
 	},
 	ExecutorNameCredentialSetter: {},
 	ExecutorNameCredentialsAuth:  {},
+	ExecutorNameDeviceCode: {
+		SupportedFlowTypes: []providers.FlowType{providers.FlowTypeDeviceGrant},
+	},
 	ExecutorNameCriteriaRevocation: {
 		DefaultMode:        ExecutorModeRevoke,
 		SupportedModes:     []string{ExecutorModeAdvanceCutoff, ExecutorModeRevoke},
@@ -175,7 +181,7 @@ var catalog = map[string]providers.ExecutorMeta{
 	ExecutorNamePreDelete: {
 		DefaultMode:        "revoke_all",
 		SupportedModes:     []string{"revoke_all"},
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "SYSTEM"},
 	},
 	ExecutorNamePreSuspend: {
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
@@ -243,7 +249,7 @@ var catalog = map[string]providers.ExecutorMeta{
 			ExecutorModeRoleDeletion,
 			ExecutorModeRolePermissionRemoval,
 		},
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "SYSTEM"},
 	},
 	ExecutorNameRole: {
 		SupportedModes: []string{

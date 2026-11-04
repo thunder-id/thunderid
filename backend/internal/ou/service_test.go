@@ -2553,7 +2553,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 			},
 			resolverSetup: func(rr *OURoleResolverMock) {
 				rr.On("GetRoleListByOUID", mock.Anything, "ou-1", 5, 0).
-					Return([]Role(nil), errors.New("boom")).Once()
+					Return([]Role(nil), 0, errors.New("boom")).Once()
 			},
 			wantErr: &tidcommon.InternalServerError,
 		},
@@ -2566,13 +2566,14 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 			},
 			resolverSetup: func(rr *OURoleResolverMock) {
 				rr.On("GetRoleListByOUID", mock.Anything, "ou-1", 5, 0).
-					Return([]Role{{ID: "r1", Name: "Admin"}}, nil).Once()
-				rr.On("GetRoleCountByOUID", mock.Anything, "ou-1").
-					Return(1, nil).Once()
+					Return([]Role{{ID: "r1", Name: "Admin", IsOwnedByOU: true}, {ID: "r2", Name: "Shared"}}, 2, nil).
+					Once()
 			},
 			assert: func(resp *RoleListResponse) {
-				suite.Require().Equal(1, resp.TotalResults)
+				suite.Require().Equal(2, resp.TotalResults)
 				suite.Require().Equal("Admin", resp.Roles[0].Name)
+				suite.Require().True(resp.Roles[0].IsOwnedByOU)
+				suite.Require().False(resp.Roles[1].IsOwnedByOU, "a role shared with the unit is listed after its own")
 			},
 		},
 	}
@@ -2666,9 +2667,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 
 		roleRes := new(OURoleResolverMock)
 		roleRes.On("GetRoleListByOUID", mock.Anything, "ou-1", 2, 2).
-			Return([]Role{{ID: "r1", Name: "Admin"}, {ID: "r2", Name: "Editor"}}, nil).Once()
-		roleRes.On("GetRoleCountByOUID", mock.Anything, "ou-1").
-			Return(5, nil).Once()
+			Return([]Role{{ID: "r1", Name: "Admin"}, {ID: "r2", Name: "Editor"}}, 5, nil).Once()
 
 		service := suite.newServiceWithRoleResolver(store, newAllowAllAuthz(suite.T()), roleRes)
 		resp, err := service.GetOrganizationUnitRolesByPath(context.Background(), "plain-llamas-lead", 2, 2)

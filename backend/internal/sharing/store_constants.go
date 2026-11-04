@@ -157,6 +157,30 @@ var (
 			WHERE INITIATING_OU_ID = $1 AND DEPLOYMENT_ID = $2
 			ORDER BY CREATED_AT, ID`,
 	}
+
+	// queryListOverlayValuesForResource returns the values every organization unit holds for the fields of one
+	// resource.
+	queryListOverlayValuesForResource = dbmodel.DBQuery{
+		ID: "SHQ-SHARING_MGT-23",
+		Query: `SELECT OU_ID, FIELD_KEY, VALUE FROM "RESOURCE_OVERLAY_VALUE"
+			WHERE RESOURCE_TYPE = $1 AND RESOURCE_ID = $2 AND DEPLOYMENT_ID = $3`,
+	}
+
+	// queryDeleteOverlayValuesForField removes the value every organization unit holds for one field of a resource.
+	queryDeleteOverlayValuesForField = dbmodel.DBQuery{
+		ID: "SHQ-SHARING_MGT-24",
+		Query: `DELETE FROM "RESOURCE_OVERLAY_VALUE"
+			WHERE RESOURCE_TYPE = $1 AND RESOURCE_ID = $2 AND FIELD_KEY = $3 AND DEPLOYMENT_ID = $4`,
+	}
+
+	// queryDeleteOverlayRulesForField removes the rule every policy of a resource states for one field.
+	queryDeleteOverlayRulesForField = dbmodel.DBQuery{
+		ID: "SHQ-SHARING_MGT-25",
+		Query: `DELETE FROM "RESOURCE_SHARING_POLICY_OVERLAY_RULE"
+			WHERE FIELD_KEY = $1 AND DEPLOYMENT_ID = $2 AND POLICY_ID IN (
+				SELECT ID FROM "RESOURCE_SHARING_POLICY"
+				WHERE RESOURCE_TYPE = $3 AND RESOURCE_ID = $4 AND DEPLOYMENT_ID = $2)`,
+	}
 )
 
 // buildRelevantPoliciesQuery returns every policy of resourceType that could plausibly cover any

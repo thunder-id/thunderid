@@ -1,0 +1,33 @@
+---
+title: Run & Observe
+docType: use-case
+description: Operational patterns for deploying, managing, monitoring, and integrating the identity system in B2C applications.
+sidebar_position: 10
+---
+
+
+# Run & Observe
+
+Beyond the user-facing decisions, the identity product is a system you operate alongside the rest of your stack. These patterns cover how it is configured, deployed, watched, and connected to the wider business.
+
+## Identity-as-Code
+
+Identity configuration spans many resources, such as user types, applications, roles, flows, federated providers, and branding, and it grows over time as the product evolves. Managing it by hand works for a single environment but breaks down as soon as you have separate dev, staging, and production tenants, or as soon as more than one person changes things. Identity-as-Code treats that configuration as versioned source files the team reviews, tests, and promotes: declarative configuration files describe every identity resource, environment-specific values are supplied separately, and changes flow from dev to staging to production through the same review path as the rest of your codebase.
+
+## Centralized vs. Delegated Administration
+
+As your customer base grows, you decide who can invite and provision staff: a small central team, or the staff themselves. Wayfinder's [Onboard Internal Users](../try-it-out/onboard-internal-users) walkthrough shows the delegated option: a staff member with the `OpsAdmin` role invites Support and DestinationsAdmin staff directly from the console, so a platform engineer does not have to create every staff account by hand. Centralizing keeps every change behind one team's review; delegating reduces that team's workload but means the permission behind the delegated role needs to be scoped as tightly as your onboarding flow requires, not granted more broadly than necessary.
+
+## Audit and Event Retention
+
+Every sign-up, sign-in, recovery, and consent change is a row worth keeping. <ProductName /> records identity events so teams can investigate a specific sign-in failure or reconstruct an account's history. Decide how long each class of event needs to be retained: operational events for day-to-day support, and compliance-relevant events such as consent changes for as long as your regulatory obligations require.
+
+## Connect to Other Systems
+
+Identity is not an isolated system; it belongs to the business. New sign-ups should land in your CRM; password resets should trigger security event logs; failed sign-ins should surface in your monitoring. <ProductName /> flows can call out to your own systems mid-journey, for example to validate a sign-up against a fraud service before letting it complete, or to push a new customer record to a CRM after registration.
+
+## Continue Designing Your Architecture
+
+Review the other architecture decisions that shape your B2C application.
+
+<B2CArchitectureDecisions currentDecision="operations" />

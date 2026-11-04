@@ -39,7 +39,6 @@ const (
 	consumptionTestPassword  = "IDJAGConsTest123!"
 	consumptionTestEmail     = "idjag_cons@example.com"
 	consumptionRedirectURI   = "https://localhost:3001"
-	idJagMockOIDCPort        = 8096
 	mockExternalSubject      = "external-idjag-subject"
 	consumptionRSIdentifier  = "https://idjag-consumption-rs.example.com"
 )
@@ -139,10 +138,8 @@ func (ts *IDJAGConsumptionTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create test user")
 	ts.userID = userID
 
-	mockOIDCServer, err := testutils.NewMockOIDCServer(idJagMockOIDCPort, "mock-idjag-client", "mock-idjag-secret")
+	mockOIDCServer, err := testutils.NewMockOIDCServer("mock-idjag-client", "mock-idjag-secret")
 	ts.Require().NoError(err, "create mock OIDC server")
-	err = mockOIDCServer.Start()
-	ts.Require().NoError(err, "start mock OIDC server")
 	ts.mockOIDCServer = mockOIDCServer
 
 	idpID, err := testutils.CreateIDP(testutils.IDP{
@@ -167,7 +164,7 @@ func (ts *IDJAGConsumptionTestSuite) SetupSuite() {
 		Description: "Self-referencing IdP for ID-JAG round-trip test",
 		Type:        "OIDC",
 		Properties: []testutils.IDPProperty{
-			{Name: "issuer", Value: "https://localhost:8095"},
+			{Name: "issuer", Value: testutils.TestServerURL},
 			{Name: "jwks_endpoint", Value: jwksProxy.URL()},
 			{Name: "id_jag_enabled", Value: "true"},
 		},
@@ -213,7 +210,7 @@ func (ts *IDJAGConsumptionTestSuite) SetupSuite() {
 				"token": map[string]any{
 					"idJag": map[string]any{
 						"enabled":          true,
-						"allowedAudiences": []string{"https://localhost:8095"},
+						"allowedAudiences": []string{testutils.TestServerURL},
 					},
 				},
 			},
@@ -335,7 +332,7 @@ func (ts *IDJAGConsumptionTestSuite) buildIDJAGAssertion(
 	claims := map[string]interface{}{
 		"iss":       ts.mockOIDCServer.GetURL(),
 		"sub":       mockExternalSubject,
-		"aud":       "https://localhost:8095",
+		"aud":       testutils.TestServerURL,
 		"client_id": consumptionClientID,
 		"exp":       now.Add(5 * time.Minute).Unix(),
 		"iat":       now.Unix(),
@@ -736,7 +733,7 @@ func (ts *IDJAGConsumptionTestSuite) TestIDJAG_FullRoundtrip() {
 	formData.Set("subject_token", idToken)
 	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:id_token")
 	formData.Set("requested_token_type", "urn:ietf:params:oauth:token-type:id-jag")
-	formData.Set("audience", "https://localhost:8095")
+	formData.Set("audience", testutils.TestServerURL)
 
 	exchangeReq, err := http.NewRequest("POST", testutils.TestServerURL+"/oauth2/token",
 		strings.NewReader(formData.Encode()))
@@ -769,7 +766,7 @@ func (ts *IDJAGConsumptionTestSuite) TestIDJAG_FullRoundtrip() {
 	consClaims, err := testutils.DecodeJWT(consResp.AccessToken)
 	ts.Require().NoError(err)
 	ts.NotEmpty(consClaims.Sub)
-	ts.Equal("https://localhost:8095", consClaims.Additional["idp"])
+	ts.Equal(testutils.TestServerURL, consClaims.Additional["idp"])
 	ts.Equal("urn:ietf:params:oauth:grant-type:jwt-bearer", consClaims.Additional["grant_type"])
 }
 
@@ -917,4 +914,52 @@ func (ts *IDJAGConsumptionTestSuite) TestIDJAG_DPoPBoundAccessToken() {
 	cnf, ok := claims.Additional["cnf"].(map[string]interface{})
 	ts.Require().True(ok, "access token should contain cnf claim")
 	ts.NotEmpty(cnf["jkt"], "cnf.jkt should be present for DPoP-bound token")
+}
+
+// TestIDJAGConsumption_AcceptanceSwitchedOff verifies that oauth.id_jag.acceptance.enabled: false stops
+// serving the jwt-bearer grant and advertising it, before the assertion is validated: the refused
+// assertion is accepted once the switch is back on.
+func (ts *IDJAGConsumptionTestSuite) TestIDJAGConsumption_AcceptanceSwitchedOff() {
+	assertion := ts.buildIDJAGAssertion()
+	restore := restartWithOAuthConfig(ts.T(), switchIDJAGRoleOff("acceptance"))
+
+	resp, statusCode, err := ts.consumeIDJAG(assertion, nil, consumptionClientID, consumptionClientSecret)
+	ts.Require().NoError(err)
+	ts.Equal(http.StatusBadRequest, statusCode)
+	ts.Equal("unsupported_grant_type", resp.Error)
+	ts.Equal("Unsupported grant type", resp.ErrorDescription)
+
+	for _, path := range []string{"/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"} {
+		ts.Run(path, func() {
+			metadata := ts.fetchGrantMetadata(path)
+			ts.Contains(metadata.GrantTypesSupported, "authorization_code")
+			ts.NotContains(metadata.GrantTypesSupported, jwtBearerGrantType)
+			ts.NotContains(metadata.AuthorizationGrantProfilesSupported, idJAGGrantProfile)
+		})
+	}
+
+	ts.Require().NoError(restore(), "restore the oauth config")
+	resp, statusCode, err = ts.consumeIDJAG(assertion, nil, consumptionClientID, consumptionClientSecret)
+	ts.Require().NoError(err)
+	ts.Equalf(http.StatusOK, statusCode, "%s: %s", resp.Error, resp.ErrorDescription)
+}
+
+// discoveryGrantMetadata is the part of the server metadata that says which grants and grant profiles
+// are served.
+type discoveryGrantMetadata struct {
+	GrantTypesSupported                 []string `json:"grant_types_supported"`
+	AuthorizationGrantProfilesSupported []string `json:"authorization_grant_profiles_supported"`
+}
+
+// fetchGrantMetadata reads the grant fields of the server metadata document at path.
+func (ts *IDJAGConsumptionTestSuite) fetchGrantMetadata(path string) discoveryGrantMetadata {
+	ts.T().Helper()
+	resp, err := testutils.GetRawHTTPClient().Get(testutils.TestServerURL + path)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var metadata discoveryGrantMetadata
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&metadata))
+	return metadata
 }

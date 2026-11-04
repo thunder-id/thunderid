@@ -20,10 +20,91 @@ const (
 	// the server-config flow section rather than from an application binding.
 	onboardingFlowHandle = "user_onboarding_flow_test"
 
+	onboardingDynamicTypeName   = "onboarding-dynamic-person"
+	onboardingDynamicFlowHandle = "user_onboarding_dynamic_inputs_test"
+
 	errCodeOUNotFound            = "FET-1030"
 	errCodeUserTypeNotAllowed    = "FET-1054"
 	errCodeUserTypeNotValidForOU = "FET-1058"
 )
+
+// onboardingDynamicFlow has no inputs of its own on the details prompt, so every field it shows is a
+// schema attribute the provisioning node injects at the placeholder.
+var onboardingDynamicFlow = testutils.Flow{
+	Name:     "User Onboarding Dynamic Inputs Test Flow",
+	FlowType: "USER_ONBOARDING",
+	Handle:   onboardingDynamicFlowHandle,
+	Nodes: []map[string]interface{}{
+		{"id": "start", "type": "START", "onSuccess": "ou_resolver"},
+		{
+			"id":           "ou_resolver",
+			"type":         "TASK_EXECUTION",
+			"executor":     map[string]interface{}{"name": "OUResolverExecutor"},
+			"properties":   map[string]interface{}{"resolveFrom": "promptAll"},
+			"onSuccess":    "user_type_resolver",
+			"onIncomplete": "prompt_ou",
+		},
+		{
+			"id":   "prompt_ou",
+			"type": "PROMPT",
+			"prompts": []map[string]interface{}{
+				{
+					"inputs": []map[string]interface{}{
+						{"ref": "ou_selection_input", "identifier": "ouId", "type": "OU_SELECT", "required": true},
+					},
+					"action": map[string]interface{}{"ref": "action_ou", "nextNode": "ou_resolver"},
+				},
+			},
+		},
+		{
+			"id":           "user_type_resolver",
+			"type":         "TASK_EXECUTION",
+			"executor":     map[string]interface{}{"name": "UserTypeResolver"},
+			"properties":   map[string]interface{}{"allowedUserTypes": []string{onboardingDynamicTypeName}},
+			"onSuccess":    "provisioning",
+			"onIncomplete": "prompt_usertype",
+		},
+		{
+			"id":   "prompt_usertype",
+			"type": "PROMPT",
+			"prompts": []map[string]interface{}{
+				{
+					"inputs": []map[string]interface{}{
+						{"ref": "usertype_input", "identifier": "userType", "type": "SELECT", "required": true},
+					},
+					"action": map[string]interface{}{"ref": "action_usertype", "nextNode": "user_type_resolver"},
+				},
+			},
+		},
+		{
+			"id":           "provisioning",
+			"type":         "TASK_EXECUTION",
+			"executor":     map[string]interface{}{"name": "ProvisioningExecutor"},
+			"onSuccess":    "end",
+			"onIncomplete": "prompt_dynamic",
+		},
+		{
+			"id":   "prompt_dynamic",
+			"type": "PROMPT",
+			"meta": map[string]interface{}{
+				"components": []map[string]interface{}{
+					{"type": "BLOCK", "id": "block_dynamic_user_inputs", "components": []map[string]interface{}{
+						{"type": "DYNAMIC_INPUT_PLACEHOLDER", "id": "dynamic_inputs"},
+						{"type": "ACTION", "id": "action_details", "label": "Continue", "variant": "PRIMARY",
+							"eventType": "SUBMIT"},
+					}},
+				},
+			},
+			"prompts": []map[string]interface{}{
+				{
+					"inputs": []map[string]interface{}{},
+					"action": map[string]interface{}{"ref": "action_details", "nextNode": "provisioning"},
+				},
+			},
+		},
+		{"id": "end", "type": "END"},
+	},
+}
 
 type UserOnboardingTestSuite struct {
 	suite.Suite
@@ -33,6 +114,7 @@ type UserOnboardingTestSuite struct {
 	childOUID     string
 	rootTypeID    string
 	childTypeID   string
+	dynamicTypeID string
 	rootTypeName  string
 	childTypeName string
 	flowID        string
@@ -133,6 +215,21 @@ func onboardingFlowNodes(allowedUserTypes []string) []map[string]interface{} {
 						"type":       "TEXT_INPUT",
 						"required":   true,
 					},
+					{
+						"ref":          "input_department",
+						"identifier":   "department",
+						"type":         "TEXT_INPUT",
+						"required":     false,
+						"defaultValue": "Computer Science",
+					},
+					{
+						"ref":          "input_faculty",
+						"identifier":   "faculty",
+						"type":         "TEXT_INPUT",
+						"required":     false,
+						"defaultValue": "Engineering",
+						"constant":     true,
+					},
 				},
 			},
 			"onSuccess":    "end",
@@ -183,6 +280,12 @@ func onboardingUserTypeSchema(handle, ouID string) testutils.UserType {
 			"email": map[string]interface{}{
 				"type": "string",
 			},
+			"department": map[string]interface{}{
+				"type": "string",
+			},
+			"faculty": map[string]interface{}{
+				"type": "string",
+			},
 		},
 	}
 }
@@ -227,6 +330,23 @@ func (ts *UserOnboardingTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create user onboarding flow")
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, ts.flowID)
 
+	ts.dynamicTypeID, err = testutils.CreateUserType(testutils.UserType{
+		Handle:      onboardingDynamicTypeName,
+		DisplayName: "Onboarding dynamic person",
+		OUID:        rootOUID,
+		Schema: map[string]interface{}{
+			"username":    map[string]interface{}{"type": "string", "required": true},
+			"email":       map[string]interface{}{"type": "string", "required": true},
+			"given_name":  map[string]interface{}{"type": "string", "required": true},
+			"family_name": map[string]interface{}{"type": "string", "required": true},
+		},
+	})
+	ts.Require().NoError(err, "Failed to create dynamic inputs user type")
+
+	dynamicFlowID, err := testutils.CreateFlow(onboardingDynamicFlow)
+	ts.Require().NoError(err, "Failed to create dynamic inputs onboarding flow")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, dynamicFlowID)
+
 	// The onboarding flow is reached by its default handle, so the flow section has to name it.
 	ts.setOnboardingDefaultHandle(onboardingFlowHandle)
 }
@@ -242,7 +362,7 @@ func (ts *UserOnboardingTestSuite) TearDownSuite() {
 			ts.T().Logf("Failed to delete test flow during teardown: %v", err)
 		}
 	}
-	for _, typeID := range []string{ts.childTypeID, ts.rootTypeID} {
+	for _, typeID := range []string{ts.dynamicTypeID, ts.childTypeID, ts.rootTypeID} {
 		if typeID == "" {
 			continue
 		}
@@ -433,4 +553,144 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_UserTypeNotValidForSelectedOUR
 	ts.Require().NotNil(step.Error, "A user type invalid for the selected OU must be reported")
 	ts.Equal(errCodeUserTypeNotValidForOU, step.Error.Code,
 		"A user type attached below the selected OU must be refused for it")
+}
+
+// userAttribute reads one attribute of a provisioned user.
+func (ts *UserOnboardingTestSuite) userAttribute(user *testutils.User, name string) string {
+	ts.T().Helper()
+
+	var attributes map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(user.Attributes, &attributes), "Failed to read the user attributes")
+	value, _ := attributes[name].(string)
+	return value
+}
+
+// The provisioning node carries a default for the department and a constant for the faculty, so the
+// flow asks for neither and the new user still ends up with both.
+func (ts *UserOnboardingTestSuite) TestOnboarding_DefaultAndConstantAreAppliedWithoutPrompting() {
+	step := ts.initiateOnboarding(nil)
+	step, err := common.CompleteFlow(step.ExecutionID,
+		map[string]string{"ouId": ts.rootOUID}, "action_ou", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OU selection")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "username"),
+		"The flow should move on to collecting user details")
+	ts.False(common.HasInput(step.Data.Inputs, "department"), "A default must not be prompted for")
+	ts.False(common.HasInput(step.Data.Inputs, "faculty"), "A constant must not be prompted for")
+
+	username := common.GenerateUniqueUsername("onboard_defaults")
+	completed, err := common.CompleteFlow(step.ExecutionID, map[string]string{
+		"username": username,
+		"email":    username + "@onboarding.test",
+	}, "action_details", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit user details")
+	ts.Require().Equal("COMPLETE", completed.FlowStatus, "Onboarding should provision the user")
+
+	user := ts.findOnboardedUser(username)
+	ts.Equal("Computer Science", ts.userAttribute(user, "department"), "The default must be applied")
+	ts.Equal("Engineering", ts.userAttribute(user, "faculty"), "The constant must be applied")
+}
+
+// A value the flow already holds wins over a default, but never over a constant.
+func (ts *UserOnboardingTestSuite) TestOnboarding_SuppliedValueBeatsDefaultButNotConstant() {
+	step := ts.initiateOnboarding(map[string]string{"department": "Mathematics", "faculty": "Arts"})
+	step, err := common.CompleteFlow(step.ExecutionID,
+		map[string]string{"ouId": ts.rootOUID}, "action_ou", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OU selection")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "username"),
+		"The flow should move on to collecting user details")
+
+	username := common.GenerateUniqueUsername("onboard_supplied")
+	completed, err := common.CompleteFlow(step.ExecutionID, map[string]string{
+		"username": username,
+		"email":    username + "@onboarding.test",
+	}, "action_details", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit user details")
+	ts.Require().Equal("COMPLETE", completed.FlowStatus, "Onboarding should provision the user")
+
+	user := ts.findOnboardedUser(username)
+	ts.Equal("Mathematics", ts.userAttribute(user, "department"), "The supplied value must beat the default")
+	ts.Equal("Engineering", ts.userAttribute(user, "faculty"), "The constant must beat the supplied value")
+}
+
+// constantUserTypeFlowNodes builds the onboarding flow without the user type prompt, with provisioning
+// holding the user type constant.
+func constantUserTypeFlowNodes(allowedUserTypes []string, constantUserType string) []map[string]interface{} {
+	nodes := make([]map[string]interface{}, 0)
+	for _, node := range onboardingFlowNodes(allowedUserTypes) {
+		switch node["id"] {
+		case "prompt_usertype":
+			continue
+		case "user_type_resolver":
+			delete(node, "onIncomplete")
+		case "provisioning":
+			executor := node["executor"].(map[string]interface{})
+			executor["inputs"] = append(executor["inputs"].([]map[string]interface{}), map[string]interface{}{
+				"identifier":   "userType",
+				"type":         "TEXT_INPUT",
+				"required":     false,
+				"defaultValue": constantUserType,
+				"constant":     true,
+			})
+		}
+		nodes = append(nodes, node)
+	}
+	return nodes
+}
+
+// The resolver runs before provisioning and would refuse a user type not valid for the root OU.
+func (ts *UserOnboardingTestSuite) TestOnboarding_SubmittedConstantNeverReachesAnEarlierNode() {
+	handle := "user_onboarding_constant_test"
+	flowID, err := testutils.CreateFlow(testutils.Flow{
+		Name:     "User Onboarding Constant Test Flow",
+		FlowType: "USER_ONBOARDING",
+		Handle:   handle,
+		Nodes:    constantUserTypeFlowNodes([]string{ts.rootTypeName, ts.childTypeName}, ts.rootTypeName),
+	})
+	ts.Require().NoError(err, "Failed to create the constant user type flow")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, flowID)
+	ts.setOnboardingDefaultHandle(handle)
+
+	step := ts.initiateOnboarding(map[string]string{
+		"ouId":     ts.rootOUID,
+		"userType": ts.childTypeName,
+	})
+	ts.Require().Nil(step.Error, "The submitted user type must not reach the user type resolver")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "username"),
+		"The flow should move on to collecting user details")
+
+	username := common.GenerateUniqueUsername("onboard_constant")
+	completed, err := common.CompleteFlow(step.ExecutionID, map[string]string{
+		"username": username,
+		"email":    username + "@onboarding.test",
+	}, "action_details", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit user details")
+	ts.Require().Equal("COMPLETE", completed.FlowStatus, "Onboarding should provision the user")
+
+	user := ts.findOnboardedUser(username)
+	ts.Equal(ts.rootTypeName, user.Type, "The user type must come from the resolver, not the submission")
+}
+
+// The attributes the provisioning node asks for come from the user type schema, so they must reach
+// the onboarding form in a stable order rather than the order the schema happens to be read in.
+func (ts *UserOnboardingTestSuite) TestOnboarding_DynamicInputsOrderedByAttribute() {
+	ts.setOnboardingDefaultHandle(onboardingDynamicFlowHandle)
+
+	expected := []string{"email", "family_name", "given_name", "username"}
+
+	// The order used to be random, so repeat to make a lucky pass unlikely.
+	for i := 0; i < 6; i++ {
+		step := ts.initiateOnboarding(nil)
+		ts.Require().Equal("INCOMPLETE", step.FlowStatus, "Onboarding should pause to select an OU")
+
+		step, err := common.CompleteFlow(step.ExecutionID,
+			map[string]string{"ouId": ts.rootOUID}, "action_ou", step.ChallengeToken)
+		ts.Require().NoError(err, "Failed to submit the OU selection")
+		ts.Require().Equal("INCOMPLETE", step.FlowStatus, "The flow should ask for the schema attributes")
+
+		identifiers := make([]string, 0, len(step.Data.Inputs))
+		for _, input := range step.Data.Inputs {
+			identifiers = append(identifiers, input.Identifier)
+		}
+		ts.Require().Equal(expected, identifiers, "Dynamic inputs should be ordered by attribute name")
+	}
 }

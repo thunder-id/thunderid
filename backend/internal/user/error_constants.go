@@ -450,6 +450,33 @@ var (
 				"before moving it to another organization unit",
 		},
 	}
+	// ErrorRolesNotOnNamedUnit is returned when roles are mandated off a named child unit of reach unit.
+	ErrorRolesNotOnNamedUnit = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1039",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.roles_not_on_named_unit",
+			DefaultValue: "Roles can be mandated only on named child units",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.userservice.roles_not_on_named_unit_description",
+			DefaultValue: "Set the roles rule on a unit listed under childUnits in selected mode with reach unit, " +
+				"not on a subtree or on a section that reaches every unit",
+		},
+	}
+	// ErrorRolesRuleNotFixed is returned when a sharing policy's roles rule does not pin a list of roles.
+	ErrorRolesRuleNotFixed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1040",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.roles_rule_not_fixed",
+			DefaultValue: "Invalid roles rule",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.roles_rule_not_fixed_description",
+			DefaultValue: "A roles rule must list at least one role in value, without excludedValues",
+		},
+	}
 )
 
 // Error variables

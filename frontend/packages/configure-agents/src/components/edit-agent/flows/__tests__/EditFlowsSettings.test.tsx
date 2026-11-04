@@ -79,10 +79,27 @@ describe('EditFlowsSettings', () => {
     expect(screen.queryByText(/These settings are frozen for this agent/)).not.toBeInTheDocument();
   });
 
+  it('keeps flows editable when the agent signs users in through CIBA alone', () => {
+    render(
+      <EditFlowsSettings
+        agent={baseAgent}
+        editedAgent={{}}
+        oauth2Config={{grantTypes: ['client_credentials', 'urn:openid:params:grant-type:ciba'], responseTypes: []}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    expect(screen.getByTestId('auth-flow')).toHaveAttribute('data-readonly', 'false');
+    expect(screen.queryByText(/These settings are frozen for this agent/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sign-in flows apply only/)).not.toBeInTheDocument();
+  });
+
+  // Token exchange cannot start a flow and a JWT bearer agent never signs a user in here, so either
+  // grant turns Delegated mode on without making the sign-in flows apply.
   it.each([
-    ['CIBA', 'urn:openid:params:grant-type:ciba'],
     ['token exchange', 'urn:ietf:params:oauth:grant-type:token-exchange'],
-  ])('keeps flows editable when the agent is delegated through %s alone', (_name, grant) => {
+    ['JWT bearer', 'urn:ietf:params:oauth:grant-type:jwt-bearer'],
+  ])('should lock the flows, naming the sign-in grants, for an agent delegated through %s alone', (_name, grant) => {
     render(
       <EditFlowsSettings
         agent={baseAgent}
@@ -92,7 +109,13 @@ describe('EditFlowsSettings', () => {
       />,
     );
 
-    expect(screen.getByTestId('auth-flow')).toHaveAttribute('data-readonly', 'false');
+    expect(screen.getByTestId('auth-flow')).toHaveAttribute('data-readonly', 'true');
+    expect(screen.getByTestId('registration-flow')).toHaveAttribute('data-readonly', 'true');
+    expect(
+      screen.getByText(
+        'Sign-in flows apply only when this agent signs users in with the authorization code or CIBA grant type.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/These settings are frozen for this agent/)).not.toBeInTheDocument();
   });
 
@@ -109,6 +132,7 @@ describe('EditFlowsSettings', () => {
     expect(screen.getByTestId('auth-flow')).toHaveAttribute('data-readonly', 'true');
     expect(screen.getByTestId('registration-flow')).toHaveAttribute('data-readonly', 'true');
     expect(screen.getByText(/These settings are frozen for this agent/)).toBeInTheDocument();
+    expect(screen.queryByText(/Sign-in flows apply only/)).not.toBeInTheDocument();
   });
 
   it('stays read-only when the agent is already read-only, even with Delegated mode on', () => {

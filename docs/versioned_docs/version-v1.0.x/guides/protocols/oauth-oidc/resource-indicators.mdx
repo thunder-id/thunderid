@@ -58,8 +58,7 @@ The issued access token carries the resource identifier as its `aud`:
 | No `resource` | Permission-bearing requests use `defaultResourceServer` and return `invalid_target` if it is unset. OIDC-only and scopeless requests use the application's `token.accessToken.defaultAudience`, or `client_id` when it is unset |
 | CIBA | The request binds to a resource server at `/oauth2/bc-authorize`, before user authorization. A `resource` supplied at token-endpoint polling must equal that binding, or the poll is rejected with `invalid_target` |
 | Scope filtering | Requested scopes are filtered to those defined on the targeted resource server. Scopes not owned by that resource server are silently dropped |
-| OIDC standard scopes | `openid`, `profile`, `email`, `phone`, `address` are **not** filtered by resource indicators |
-| Custom scope_claims | Scopes covered by an application's `scopeClaims` mapping also pass through unchanged |
+| OIDC scopes | `openid`, `profile`, `email`, `phone`, `address`, and any scope the application's `scopeClaims` mapping defines are **not** filtered by resource indicators |
 
 ### `aud` Claim Behavior
 

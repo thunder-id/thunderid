@@ -26,6 +26,12 @@ type GovernedEntity struct {
 	Revision int64
 	// AccessState is the parsed access-state document.
 	AccessState AccessState
+	// ValidUntil is the UTC RFC 3339 instant the entity's lifespan ends, from its system attributes.
+	// Empty when it does not end.
+	ValidUntil string
+	// ValidUntilErr is set when the stored lifespan end does not read. An access check fails on it, so a
+	// corrupt value never admits; a lifecycle operation such as a suspension ignores it.
+	ValidUntilErr error
 }
 
 // RuntimeAttributes is the runtime attribute document governance reads and writes.
@@ -42,17 +48,6 @@ type AccessState struct {
 	Suspend *SuspendState `json:"suspend"`
 	// LastLoginAt is when access was last granted. A lock clear keeps it.
 	LastLoginAt string `json:"lastLoginAt"`
-}
-
-// observedFor returns the entry recorded for a method, whether or not it is currently locked.
-func (a AccessState) observedFor(method providers.AuthenticationMethod) LockEntry {
-	if method == AuthenticationMethodAccount {
-		if a.Lock.Account == nil {
-			return LockEntry{}
-		}
-		return *a.Lock.Account
-	}
-	return a.Lock.AuthenticationMethods[method]
 }
 
 // LockState holds the account-wide entry and the per-method entries. A live account entry holds under

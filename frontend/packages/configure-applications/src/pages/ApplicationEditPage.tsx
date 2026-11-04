@@ -10,6 +10,7 @@ import {
   ResourceAvatar,
   UnsavedChangesBar,
 } from '@thunderid/components';
+import {FlowType, useGetFlows} from '@thunderid/configure-flows';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
 import {useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
@@ -154,6 +155,16 @@ export default function ApplicationEditPage() {
 
   const [activeTabKey, setActiveTabKey] = useState('overview');
   const [editedApp, setEditedApp] = useState<Partial<Application>>({});
+  const draftInboundAuthConfig = editedApp.inboundAuthConfig ?? application?.inboundAuthConfig;
+  const deviceGrantEnabled = draftInboundAuthConfig?.some(
+    ({type, config: authConfig}) => type === 'oauth2' && authConfig.grantTypes?.includes(OAuth2GrantTypes.DEVICE_CODE),
+  );
+  const {data: deviceGrantFlowList, isLoading: isLoadingDeviceGrantFlows} = useGetFlows({
+    flowType: FlowType.DEVICE_GRANT,
+    limit: 100,
+    fetchAllPages: true,
+    enabled: Boolean(deviceGrantEnabled && !editedApp.deviceGrantFlowId && !application?.deviceGrantFlowId),
+  });
   // Bumped on Save/Reset to force AccessSection/McpAccessSection/UrlsSection to remount with a
   // clean form — they keep local state (redirect URI list, react-hook-form defaults) that a
   // `setEditedApp({})` alone wouldn't reset.
@@ -199,6 +210,31 @@ export default function ApplicationEditPage() {
     },
     [updateApplication],
   );
+
+  useEffect(() => {
+    const defaultDeviceGrantFlow = deviceGrantFlowList?.flows.find(
+      (flow) => flow.handle === 'default-device-grant-flow',
+    );
+
+    if (
+      !deviceGrantEnabled ||
+      editedApp.deviceGrantFlowId ||
+      application?.deviceGrantFlowId ||
+      !defaultDeviceGrantFlow ||
+      application?.isReadOnly
+    ) {
+      return;
+    }
+
+    handleFieldChange('deviceGrantFlowId', defaultDeviceGrantFlow.id);
+  }, [
+    application?.deviceGrantFlowId,
+    application?.isReadOnly,
+    deviceGrantEnabled,
+    deviceGrantFlowList,
+    editedApp.deviceGrantFlowId,
+    handleFieldChange,
+  ]);
 
   const commitName = useCallback(
     (value: string): void => {
@@ -354,6 +390,8 @@ export default function ApplicationEditPage() {
   // MCP clients validate their redirect URIs via McpConnectTab, so that check is skipped there. The
   // certificate check applies to every client with a Credentials tab, which a CIMD MCP client lacks.
   const grantTypes = oauth2Config?.grantTypes ?? [];
+  const deviceGrantFlowId = editedApp.deviceGrantFlowId ?? application.deviceGrantFlowId;
+  const isMissingDeviceGrantFlow = Boolean(deviceGrantEnabled && !deviceGrantFlowId);
   const hasAuthorizationCodeGrant = grantTypes.includes(OAuth2GrantTypes.AUTHORIZATION_CODE);
   const hasValidRedirectUri = (oauth2Config?.redirectUris ?? []).some((uri) => isValidRedirectUriFormat(uri));
   const isMissingRedirectUri = !isMcpClient && hasAuthorizationCodeGrant && !hasValidRedirectUri;
@@ -375,6 +413,19 @@ export default function ApplicationEditPage() {
   }
   if (isMissingCertificate) {
     validationIssues.push(t('applications:edit.page.validation.missingCertificate', 'A certificate is required.'));
+  }
+  if (isMissingDeviceGrantFlow) {
+    validationIssues.push(
+      isLoadingDeviceGrantFlows
+        ? t(
+            'applications:edit.page.validation.loadingDeviceGrantFlow',
+            'The default Device Grant flow is loading. Please wait before saving.',
+          )
+        : t(
+            'applications:edit.page.validation.missingDeviceGrantFlow',
+            'Select a Device Grant flow in the Flows tab before saving.',
+          ),
+    );
   }
   if (isInvalidBackchannelLogoutUri) {
     validationIssues.push(
@@ -861,6 +912,7 @@ export default function ApplicationEditPage() {
             accessSettingsInvalid ||
             credentialsSettingsInvalid ||
             isMissingRedirectUri ||
+            isMissingDeviceGrantFlow ||
             isInvalidBackchannelLogoutUri ||
             isMissingCertificate ||
             application.isReadOnly === true

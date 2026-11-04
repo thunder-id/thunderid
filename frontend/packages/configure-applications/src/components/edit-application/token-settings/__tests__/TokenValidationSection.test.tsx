@@ -223,6 +223,52 @@ describe('TokenValidationSection', () => {
     });
   });
 
+  describe('Rendering with tokenType="oauth" and accessTokenOnly', () => {
+    it('should show only the access token validity, labelled as such, without tabs', () => {
+      render(
+        <TestWrapper defaultValues={{accessTokenValidity: 1800}}>
+          {({control, errors}) => (
+            <TokenValidationSection control={control} errors={errors} tokenType="oauth" accessTokenOnly />
+          )}
+        </TestWrapper>,
+      );
+
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/Access token validity/)).toHaveValue(1800);
+      expect(document.getElementById('idTokenValidity-input')).not.toBeInTheDocument();
+      expect(document.getElementById('refreshTokenValidity-input')).not.toBeInTheDocument();
+    });
+
+    it('should keep the card title and description', () => {
+      render(
+        <TestWrapper>
+          {({control, errors}) => (
+            <TokenValidationSection control={control} errors={errors} tokenType="oauth" accessTokenOnly />
+          )}
+        </TestWrapper>,
+      );
+
+      expect(screen.getByTestId('card-title')).toHaveTextContent('Token validity');
+      expect(screen.getByTestId('card-description')).toHaveTextContent(
+        'Configure how long tokens remain valid before expiration',
+      );
+    });
+
+    it('should show all three tabs when accessTokenOnly is off', () => {
+      render(
+        <TestWrapper>
+          {({control, errors}) => <TokenValidationSection control={control} errors={errors} tokenType="oauth" />}
+        </TestWrapper>,
+      );
+
+      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+        'Access token',
+        'ID token',
+        'Refresh token',
+      ]);
+    });
+  });
+
   describe('User Interaction', () => {
     it('should allow user to type a new validity value', async () => {
       const user = userEvent.setup();

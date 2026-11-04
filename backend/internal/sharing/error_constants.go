@@ -493,6 +493,28 @@ var (
 // because it names which of the document's policies was refused and why.
 var errReplayRefused = errors.New("sharing policy replay refused")
 
+// errOverlayReplaceRefused rolls back a replacement of the values an organization unit holds, when one field of it is
+// refused. The refusal itself travels out separately.
+var errOverlayReplaceRefused = errors.New("overlay replacement refused")
+
 // errPolicyPurgeRefused rolls back a resource's policy purge. The refusal itself travels out
 // separately, so the caller sees which policy could not be removed.
 var errPolicyPurgeRefused = errors.New("sharing policy purge refused")
+
+// ResourceTypeError carries a resource type's error out of the sharing change it rolls back.
+type ResourceTypeError struct {
+	svcErr *tidcommon.ServiceError
+}
+
+// NewResourceTypeError wraps a resource type's error so a capability can stop a sharing change with it.
+func NewResourceTypeError(svcErr *tidcommon.ServiceError) error {
+	if svcErr == nil {
+		return nil
+	}
+	return &ResourceTypeError{svcErr: svcErr}
+}
+
+// Error names the resource type's error code.
+func (e *ResourceTypeError) Error() string {
+	return "resource type stopped the sharing change: code=" + e.svcErr.Code
+}

@@ -1,0 +1,334 @@
+---
+toc_progress: quickstart
+title: Android Quickstart
+docType: quickstart
+sidebar_position: 8.5
+persona: app
+description: Add {{ProductName}} authentication to an Android application using the `com.github.thunder-id:android-sdks`.
+---
+
+import {
+  Boxes,
+  Package,
+  LogIn,
+  BookOpen,
+  Clock,
+  Hexagon,
+  FileCode,
+} from '@wso2/oxygen-ui-icons-react';
+
+# Android Quickstart
+
+Use this guide to add <ProductName /> authentication to an Android application using the `com.github.thunder-id:android-sdks`.
+
+<SdkQuickstartDownload packageId="android" sample="quickstarts/android" icon={<AndroidLogo size={22} />} promptFlow="redirect-based" />
+
+<TutorialHero>
+
+## What You Will Learn
+
+<TutorialHeroItem icon={<Boxes />}>Create a new Android Studio project</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>Install the <code>com.github.thunder-id:android-sdks</code> Gradle dependency</TutorialHeroItem>
+<TutorialHeroItem icon={<LogIn />}>Add working sign-in and sign-out using Jetpack Compose components</TutorialHeroItem>
+<TutorialHeroItem icon={<BookOpen />}>Display the signed-in user's name</TutorialHeroItem>
+
+## Prerequisites
+
+<TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
+<TutorialHeroItem icon={<Hexagon />}>Android Studio, installed and up to date</TutorialHeroItem>
+<TutorialHeroItem icon={<FileCode />}>API 26 (Android 8.0) deployment target</TutorialHeroItem>
+
+</TutorialHero>
+
+<Stepper stepNode="h2" as="h2">
+
+## Run <ProductName />
+
+Start a local <ProductName /> instance. Pick the method that works best for you:
+
+<RunThunderID />
+
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
+
+## Create an Application
+
+1. Sign in to the Console.
+
+    :::info Test User
+    If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+    :::
+
+2. Navigate to **Applications**.
+3. Click **Add Application**.
+4. From the **Choose a type** page, select **Android**.
+5. Enter a name (e.g. `My Android App`).
+6. Select how you want to sign in users (e.g., email/password, social login, etc.).
+7. Select Theme settings.
+8. Leave **Sign-In Approach** set to **Bring Your Own UI** (the default for Android applications).
+9. Click **Create**.
+
+:::warning
+Copy the **Application ID** from the **General** tab, under **Quick Copy**. You'll need it when configuring the SDK.
+:::
+
+10. Open the **Advanced Settings** tab, turn on **Dev Mode** under **Platform Attestation**, then click **Save**.
+
+:::warning Platform attestation
+Mobile applications prove their binary identity before starting a sign-in flow. If platform attestation is not configured and **Dev Mode** is off, sign-in fails with `FES-1016`, `Attestation not configured`. Dev Mode is a bypass for local development; configure platform attestation for production.
+:::
+
+## Create an Android App
+
+In Android Studio, create a new project using the **Empty Activity** template with **Kotlin** as the language and **Jetpack Compose** enabled.
+
+:::note
+If you already have an existing Android project, skip this step.
+:::
+
+## Install the <ProductName /> Compose SDK
+
+Add the [JitPack](https://jitpack.io) repository to your `settings.gradle.kts`:
+
+```kotlin title="settings.gradle.kts" showLineNumbers
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven("https://jitpack.io")
+    }
+}
+```
+
+Then add the dependency to your app's `build.gradle.kts`, using the [latest release tag](https://github.com/thunder-id/android-sdks/releases) of the `android-sdks` repository:
+
+```kotlin title="build.gradle.kts" showLineNumbers
+dependencies {
+    implementation("com.github.thunder-id:android-sdks:<latest-release-tag>")
+}
+```
+
+:::note
+If you use Groovy-based Gradle scripts (`build.gradle`) instead of the Kotlin DSL, add the dependency inside your existing `dependencies` block as:
+
+```groovy
+dependencies {
+    implementation 'com.github.thunder-id:android-sdks:<latest-release-tag>'
+}
+```
+:::
+
+Set `minSdk` to 26, which the SDK requires:
+
+```kotlin title="build.gradle.kts" showLineNumbers
+android {
+    defaultConfig {
+        minSdk = 26
+    }
+}
+```
+
+Declare the internet permission in `AndroidManifest.xml`:
+
+```xml title="AndroidManifest.xml" showLineNumbers
+<uses-permission android:name="android.permission.INTERNET" />
+```
+
+## Initialize the SDK
+
+Open your `MainActivity` and wrap the content you pass to `setContent` with the `ThunderIDProvider` composable. This provides `ThunderIDState` to all child composables through `LocalThunderID`.
+
+```kotlin title="MainActivity.kt" showLineNumbers
+package dev.thunderid.quickstart
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.material3.MaterialTheme
+import dev.thunderid.android.EncryptedStorageAdapter
+import dev.thunderid.android.ThunderIDConfig
+import dev.thunderid.compose.ThunderIDProvider
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        setContent {
+            MaterialTheme {
+                ThunderIDProvider(
+                    config = ThunderIDConfig(
+                        baseUrl = "https://localhost:8090",
+                        scopes = listOf("openid", "profile", "email"),
+                        applicationId = "<your-application-id>",
+                        storage = EncryptedStorageAdapter(applicationContext),
+                        allowInsecureConnections = true
+                    )
+                ) {
+                    ContentView()
+                }
+            }
+        }
+    }
+}
+```
+
+:::warning Configuration
+Replace `<your-application-id>` with the **Application ID** from your <ProductName /> application settings.
+
+To reach a local instance from an emulator or device, forward the port as shown in [Run the App](#run-the-app).
+:::
+
+### Configuration Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `baseUrl` | Your <ProductName /> instance URL. Must use HTTPS. |
+| `scopes` | OAuth 2.0 scopes to request. Include `"openid"` at minimum. |
+| `applicationId` | The Application ID used for the app-native sign-in and sign-up flows |
+| `storage` | Required on Android. Without it the SDK fails to initialize with `A StorageAdapter is required on Android`. |
+| `allowInsecureConnections` | Accepts the self-signed certificate a local instance serves. For local development only. Remove it before you build for production, so certificate validation stays on. |
+
+## Add Sign-In and Sign-Out
+
+The <ProductName /> Android SDK provides `SignedIn` and `SignedOut` guard composables for conditional rendering, a `SignIn` composable for the embedded sign-in flow, and a `SignOutButton` for sign-out.
+
+Create `ContentView.kt`:
+
+```kotlin title="ContentView.kt" showLineNumbers
+package dev.thunderid.quickstart
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import dev.thunderid.compose.LocalThunderID
+import dev.thunderid.compose.components.guards.SignedIn
+
+@Composable
+fun ContentView() {
+    val thunder = LocalThunderID.current
+
+    if (!thunder.isInitialized) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+    } else {
+        SignedIn(fallback = { AuthView() }) {
+            HomeView()
+        }
+    }
+}
+```
+
+Create `AuthView.kt` to display the sign-in form:
+
+```kotlin title="AuthView.kt" showLineNumbers
+package dev.thunderid.quickstart
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import dev.thunderid.compose.components.presentation.auth.SignIn
+
+@Composable
+fun AuthView() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(text = "Welcome", style = MaterialTheme.typography.headlineMedium)
+        SignIn(
+            applicationId = "<your-application-id>",
+            modifier = Modifier.padding(top = 24.dp),
+        )
+    }
+}
+```
+
+## Display User Profile Information
+
+Create `HomeView.kt` to show the authenticated user's name and a sign-out button:
+
+```kotlin title="HomeView.kt" showLineNumbers
+package dev.thunderid.quickstart
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import dev.thunderid.compose.LocalThunderID
+import dev.thunderid.compose.components.actions.SignOutButton
+
+@Composable
+fun HomeView() {
+    val thunder = LocalThunderID.current
+    val user = thunder.user
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = "Welcome, ${user?.displayName ?: user?.email ?: "User"}!",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+        user?.email?.let {
+            Text(text = it, style = MaterialTheme.typography.bodyMedium)
+        }
+        SignOutButton(modifier = Modifier.padding(top = 24.dp))
+    }
+}
+```
+
+## Run the App
+
+In Android Studio, select an API 26+ emulator or device and press **Run** (▶).
+
+:::note Reaching a local instance
+An emulator's `localhost` is the emulator itself. Forward the port with `adb` from the Android SDK's `platform-tools`, which maps the device's `localhost:8090` to the same port on your development machine:
+
+```bash
+adb reverse tcp:8090 tcp:8090
+```
+
+Re-run this after each emulator restart. It also works for a device connected over USB.
+
+The emulator also exposes your machine's loopback interface as `10.0.2.2`, but apps targeting API 37 or later cannot reach it without additional permissions.
+:::
+
+:::note Test credentials
+You'll need a user to sign in with. If you haven't created one yet, open <ConsoleUrl />, navigate to **Users**, and add a test user with an email and password.
+:::
+
+:::tip Success
+You should see the sign-in form. Enter your test user credentials and tap **Submit**. After successful authentication, the home screen displays the user's name and a **Sign Out** button.
+:::
+
+</Stepper>
+
+## What's Next
+
+<NextSteps>
+  <NextStepsCard title="Upgrade the sign-in flow" href="../../../guides/flows/what-are-flows" description="Add MFA, passkeys, or social login to your flow, no app code changes required." cta="Flow Designer" />
+  <NextStepsCard title="Android SDK Reference" href="../../../sdks-and-tools/android/overview" description="Explore the full API reference for the Android SDK." cta="API Reference" />
+</NextSteps>

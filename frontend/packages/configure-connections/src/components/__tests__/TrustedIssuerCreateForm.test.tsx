@@ -8,8 +8,16 @@ import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import TrustedIssuerCreateForm from '../TrustedIssuerCreateForm';
 
-const {mockMutate, mockReset} = vi.hoisted(() => ({mockMutate: vi.fn(), mockReset: vi.fn()}));
+const {mockMutate, mockReset, mockUseAuthorizationServerMetadata} = vi.hoisted(() => ({
+  mockMutate: vi.fn(),
+  mockReset: vi.fn(),
+  mockUseAuthorizationServerMetadata: vi.fn(),
+}));
 const mutationState = {isPending: false, isError: false};
+
+vi.mock('../../api/useAuthorizationServerMetadata', () => ({
+  default: mockUseAuthorizationServerMetadata,
+}));
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual('react-router');
@@ -25,6 +33,13 @@ vi.mock('../../api/useCreateTrustedIssuer', () => ({
 
 const {useNavigate} = await import('react-router');
 
+const ACCEPTANCE_UNAVAILABLE_HINT = 'This server does not accept identity assertions from any issuer.';
+
+// Stands in for the runtime's authorization server metadata query (data undefined while loading or failed).
+const mockServerMetadata = (data: Record<string, string[]> | undefined): void => {
+  mockUseAuthorizationServerMetadata.mockReturnValue({data});
+};
+
 describe('TrustedIssuerCreateForm', () => {
   let mockNavigate: ReturnType<typeof vi.fn>;
   let onNameConflict: ReturnType<typeof vi.fn<() => void>>;
@@ -39,6 +54,7 @@ describe('TrustedIssuerCreateForm', () => {
     mutationState.isPending = false;
     mutationState.isError = false;
     vi.mocked(useNavigate).mockReturnValue(mockNavigate as unknown as NavigateFunction);
+    mockServerMetadata(undefined);
   });
 
   it('should render the form with the ID-JAG switch off and token exchange switch on by default', () => {
@@ -245,6 +261,72 @@ describe('TrustedIssuerCreateForm', () => {
     await user.click(screen.getByTestId('trusted-issuer-create-submit'));
 
     expect(mockMutate).toHaveBeenCalledWith(expect.objectContaining({idJagEnabled: true}), expect.any(Object));
+  });
+
+  it('should not let ID-JAG be turned on and explain why when the server does not accept identity assertions', async () => {
+    // A disabled switch has pointer-events: none, so the check is skipped to force the click through.
+    const user = userEvent.setup({pointerEventsCheck: 0});
+    mockServerMetadata({grant_types_supported: ['authorization_code']});
+
+    render(<TrustedIssuerCreateForm name="Beta AD" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
+
+    const idJagSwitch = screen.getByRole('switch', {name: /id-jag/i});
+    expect(idJagSwitch).toBeDisabled();
+    expect(screen.getByText(ACCEPTANCE_UNAVAILABLE_HINT)).toBeInTheDocument();
+
+    await user.click(idJagSwitch);
+    expect(idJagSwitch).not.toBeChecked();
+
+    await user.type(screen.getByLabelText(/^Issuer URI/), 'https://beta.example.com');
+    await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://beta.example.com/keys');
+    await user.click(screen.getByTestId('trusted-issuer-create-submit'));
+
+    expect(mockMutate).toHaveBeenCalledWith(expect.objectContaining({idJagEnabled: false}), expect.any(Object));
+  });
+
+  it('should still let ID-JAG be turned off when it was turned on before the runtime metadata showed it unavailable', async () => {
+    const user = userEvent.setup();
+    const {rerender} = render(
+      <TrustedIssuerCreateForm name="Beta AD" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />,
+    );
+
+    await user.click(screen.getByRole('switch', {name: /id-jag/i}));
+    mockServerMetadata({grant_types_supported: ['authorization_code']});
+    rerender(<TrustedIssuerCreateForm name="Beta AD" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
+
+    const idJagSwitch = screen.getByRole('switch', {name: /id-jag/i});
+    expect(idJagSwitch).toBeChecked();
+    expect(idJagSwitch).not.toBeDisabled();
+
+    await user.click(idJagSwitch);
+
+    expect(idJagSwitch).not.toBeChecked();
+    expect(idJagSwitch).toBeDisabled();
+  });
+
+  it('should let ID-JAG be turned on with no hint when the server accepts identity assertions', async () => {
+    const user = userEvent.setup();
+    mockServerMetadata({
+      grant_types_supported: ['authorization_code', 'urn:ietf:params:oauth:grant-type:jwt-bearer'],
+      authorization_grant_profiles_supported: ['urn:ietf:params:oauth:grant-profile:id-jag'],
+    });
+
+    render(<TrustedIssuerCreateForm name="Beta AD" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
+
+    const idJagSwitch = screen.getByRole('switch', {name: /id-jag/i});
+    expect(idJagSwitch).not.toBeDisabled();
+    expect(screen.queryByText(ACCEPTANCE_UNAVAILABLE_HINT)).not.toBeInTheDocument();
+
+    await user.click(idJagSwitch);
+
+    expect(idJagSwitch).toBeChecked();
+  });
+
+  it('should let ID-JAG be turned on with no hint while the runtime metadata is loading', () => {
+    render(<TrustedIssuerCreateForm name="Beta AD" ouId="ou-1" onNameConflict={onNameConflict} onBack={onBack} />);
+
+    expect(screen.getByRole('switch', {name: /id-jag/i})).not.toBeDisabled();
+    expect(screen.queryByText(ACCEPTANCE_UNAVAILABLE_HINT)).not.toBeInTheDocument();
   });
 
   it('should not render a client id field', () => {

@@ -1,0 +1,47 @@
+---
+title: Onboard Internal Users
+docType: use-case
+description: Invite staff members through the ThunderID console and verify they can sign in with their credentials.
+sidebar_position: 6
+---
+
+# Onboard Internal Users
+
+In this walkthrough, you sign in to the <ProductName /> Console as your admin user and invite two new staff members: Sam
+Rivera onto the support team and Maya Patel onto the destinations team. Each invitee receives an email, opens the link,
+fills in a few additional attributes, and gets onboarded.
+
+Onboarding internal users happens entirely in the <ProductName /> Console, so this walkthrough applies regardless of
+which solution pattern the app uses.
+
+:::note Prerequisites
+Complete [Set Up Your Environment](../../build-environment) before starting this walkthrough.
+:::
+
+:::info Background
+[Understand It](../../overview) covers the requirements story behind this use case.
+:::
+
+## Try the Use Case
+
+The Wayfinder onboarding flow prompts the admin to pick the staff role (Support or DestinationsAdmin), then collects the
+invitee's email and sends the invitation. When the invitee accepts, the matching role is attached automatically: no
+separate role-assignment step.
+
+1. Sign in to the <ProductName /> Console at <ConsoleUrl /> as your admin user.
+2. Navigate to **Users** and select **Add User**.
+3. Select `Staff` as the user type.
+4. Pick **Support** as the role, enter Sam Rivera's email (`sam.rivera@example.com`), and click **Send invitation**.
+   <ProductName /> emails Sam an invite link.
+5. Open the email in Sam's inbox and open the link. The browser opens a **Complete Your Profile** page.
+6. Fill in the additional attributes (username `sam.rivera`, display name `Sam Rivera`, a password) and submit. Sam's
+   account is now active with the `Support` role attached.
+7. Repeat the flow for Maya Patel (email `maya.patel@example.com`, username `maya.patel`), picking **DestinationsAdmin**
+   as the role.
+
+## Going Deeper
+
+- Want to understand how the staff user type and roles fit together? See
+  [User Types](../../build-users#user-types) and [Roles](../../build-access#roles) in the Build It tutorial.
+- Prefer to build the user onboarding side of the model manually? See
+  [Onboard Internal Staff](../../build-onboarding) in the Build It tutorial.

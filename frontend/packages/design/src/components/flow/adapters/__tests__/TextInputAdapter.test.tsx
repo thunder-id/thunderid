@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import {screen} from '@testing-library/react';
+import {screen, within} from '@testing-library/react';
 import {TEST_CN_PREFIX} from '@thunderid/test-utils';
 import {describe, it, expect, vi} from 'vitest';
 import type {FlowFieldProps} from '../../../../models/flow';
@@ -61,5 +61,23 @@ describe('TextInputAdapter', () => {
     const noRefProps = {...baseProps, component: {...baseProps.component, ref: undefined}};
     const {container} = renderWithProviders(<TextInputAdapter {...noRefProps} />);
     expect(container.innerHTML).toBe('');
+  });
+
+  it('shows the hint under the field', () => {
+    const hintProps = {...baseProps, component: {...baseProps.component, hint: 'Separate several URIs with commas.'}};
+    const {container} = renderWithProviders(<TextInputAdapter {...hintProps} />);
+    expect(within(container).getByText('Separate several URIs with commas.')).toBeTruthy();
+  });
+
+  it('shows a validation message instead of the hint once the field is touched', () => {
+    const errorProps = {
+      ...baseProps,
+      component: {...baseProps.component, hint: 'Separate several URIs with commas.'},
+      touched: {username: true},
+      fieldErrors: {username: 'Enter a valid URI.'},
+    };
+    const {container} = renderWithProviders(<TextInputAdapter {...errorProps} />);
+    expect(within(container).getByText('Enter a valid URI.')).toBeTruthy();
+    expect(within(container).queryByText('Separate several URIs with commas.')).toBeNull();
   });
 });

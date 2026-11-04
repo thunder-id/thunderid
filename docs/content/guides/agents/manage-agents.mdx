@@ -34,15 +34,14 @@ Creating an agent gives that agent its own identity in <ProductName />, with its
 curl -X POST https://localhost:8090/agents \
   -H 'Content-Type: application/json' \
   -d '{
-    "name": "Invoice Reconciler",
     "type": "default",
     "ouId": "<organization-unit-id>",
     "owner": "<owner-user-id>",
-    "attributes": { }
+    "attributes": { "name": "Invoice Reconciler" }
   }'
 ```
 
-`ouId`, `type`, and `name` are required; `owner` and `attributes` are optional. `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
+`type` and `attributes.name` are required, and so is an organization unit, given as `ouId` or `ouHandle`, unless you pass `projectId` (see [Scope agents to a project](#scope-agents-to-a-project)); `owner` and `validUntil` are optional, and so are the other attributes unless the [agent schema](../agent-schema) marks them required. `validUntil` is when the agent's lifespan ends; see [Set an Agent's Lifespan](../agent-lifespan). `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
 
 </TabItem>
 </Tabs>
@@ -57,7 +56,7 @@ That profile is configured on the **Credentials**, **Flows**, **Tokens**, and **
 
 In the Console, open the agent from the list. The name and description are editable inline in the header, and changes across tabs are saved together from the unsaved-changes bar.
 
-Through the API, update an agent with `PUT /agents/<AGENT_ID>`, sending only the fields being changed. See the [Agents API Reference](../../../apis#tag/agents) for the full request and response.
+Through the API, update an agent with `PUT /agents/<AGENT_ID>`. The request replaces the agent, so send `type` and every field to keep, not only the ones being changed. Leaving out the OAuth profile fields removes the agent's OAuth profile. See the [Agents API Reference](../../../apis#tag/agents) for the full request and response.
 
 ### Identifiers and owner
 
@@ -90,29 +89,34 @@ The credential the agent authenticates with, either a client secret or a signed 
 
 ### Flows
 
-Available once the agent is extended to act for users. Pick the authentication and registration flows that decide how users authenticate through the agent. The flows themselves are built in the flow builder, [Login and Registration Flows](../../flows/build-a-flow); this tab only selects which one the agent uses. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
+Applies only when the agent signs users in with the authorization code or CIBA grant. An agent that holds only token exchange or JWT bearer never starts a sign-in, so these settings stay frozen. Pick the authentication and registration flows that decide how users authenticate through the agent. The flows themselves are built in the flow builder, [Login and Registration Flows](../../flows/build-a-flow); this tab only selects which one the agent uses. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
 
 ### Tokens
 
-What the agent's tokens carry and how long they last, set independently for each audience: the **Agent** token it uses on its own, and the **User** token it holds for a signed-in user. See [Agent Token](../authentication/agent-own-token) for the agent token and [Agent Access on Behalf of Users](../authentication/on-behalf-of-user) for the user token.
+What the agent's tokens carry and how long they last, set independently for each audience: the **Agent** token it uses on its own, and the **User** token it holds when acting for a user. Without the authorization code or CIBA grant, the **User** token shows only the access token settings, since the other delegated grants issue no ID or refresh token. See [Agent Token](../authentication/agent-own-token) for the agent token and [Agent Access on Behalf of Users](../authentication/on-behalf-of-user) for the user token. When the agent issues identity assertions, they carry the attributes selected for the **User** ID token too, except `roles` and `groups`. See [Issue Identity Assertions (ID-JAG)](../../protocols/oauth-oidc/identity-assertion-grant/issue-identity-assertions#identity-claims).
 
 ### Advanced
 
 The **Advanced** tab gathers the agent's OAuth and operational settings:
 
-- **Operating mode** has a **Delegated mode** toggle that sets whether the agent acts only on its own or is extended to also act for a signed-in user. On its own it uses its own credentials (`client_credentials`); with Delegated mode on, it additionally signs users in (`authorization_code` with PKCE). See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
+- **Operating mode** has a **Delegated mode** toggle that sets whether the agent acts only on its own or is extended to also act for a signed-in user. On its own it uses its own credentials (`client_credentials`); with Delegated mode on, it can also act for a user, and turning it on adds the authorization code (`authorization_code` with PKCE) and refresh token grants by default. Turning it off removes every grant that depends on it and turns off identity assertions. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
 - **Owner** is changed here; see [Identifiers and owner](#identifiers-and-owner) for what it means.
-- **Allowed user types** restricts self-service registration to the selected user types. If none are selected, users cannot register through the agent; existing users can still sign in. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
+- **Allowed user types** restricts self-service registration to the selected user types. Once the authorization code grant is on, you must select at least one user type before **Save** is enabled. Users of the selected types can register through the agent. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
 - **Agent sign-in** controls whether other agents can sign in to this agent. Turn it on to let agents sign in, and leave it off to block every agent. This setting does not affect users. 
-- **Grant types** are the OAuth grants the agent may use. Acting on its own (`client_credentials`) and handing a task to another agent (token exchange) are available in either operating mode; signing users in (`authorization_code`), keeping that access without a new sign-in (`refresh_token`), and out-of-band approval (CIBA) become available once the agent is extended to act for users. See [Agent Token](../authentication/agent-own-token) and [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
+- **Grant types** are the OAuth grants the agent may use. Acting on its own (`client_credentials`) is always on. The other grants stay locked until the agent is extended to act for users: signing users in (`authorization_code`), keeping that access without a new sign-in (`refresh_token`), out-of-band approval (CIBA), handing a task to another agent (**Token exchange**), and redeeming an ID-JAG from an external identity provider (**JWT bearer**). See [Agent Token](../authentication/agent-own-token) and [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
 - **Authorized redirect URIs** are the callback URLs allowed for the `authorization_code` grant. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
 - **Client authentication method** is how the agent authenticates to the token endpoint, with a client secret or a private key JWT. See [Agent Authentication](../authentication).
-- **Security** covers **Require PKCE** and **Require Pushed Authorization Requests (PAR)**, which apply to the `authorization_code` grant. Require PKCE turns on automatically when Delegated mode is on and cannot be turned off here; PAR is optional.
+- **Security** covers **Require PKCE** and **Require Pushed Authorization Requests (PAR)**, which apply to the `authorization_code` grant. Require PKCE turns on automatically when the `authorization_code` grant is on and cannot be turned off here; PAR is optional.
 - **Default audience** is the `aud` the agent's own token carries when a request names no `resource` and no scopes. See [Agent Token](../authentication/agent-own-token).
+- **Identity assertions (ID-JAG)** lets the agent issue an Identity Assertion JWT Authorization Grant for the signed-in user that an external authorization server accepts. The card appears after the grant settings, only while Delegated mode is on. Set the **Allowed audiences** and the **Assertion validity**. Turning it on also enables the token exchange grant, which you cannot remove while identity assertions are on. See [Issue Identity Assertions (ID-JAG)](../../protocols/oauth-oidc/identity-assertion-grant/issue-identity-assertions).
 
 ## Agent schema
 
 The custom attributes every agent carries come from the agent schema, a single built-in schema shared by all agents. See [Agent Schema](../agent-schema) to view the default attributes and change what an agent holds.
+
+## Set a lifespan
+
+Give an agent an end date, its `validUntil`, to stop it authenticating and obtaining tokens automatically once its work is done. Set it on the agent's **Attributes** tab or through the API. Tokens issued to the agent or for it expire no later than the `validUntil` in force when they are issued; moving it earlier does not revoke tokens already issued. See [Set an Agent's Lifespan](../agent-lifespan).
 
 ## Suspend or unlock an agent
 
@@ -133,3 +137,15 @@ For what each operation does, see [Suspend and Restore Accounts](../../account-p
 :::warning
 Deletion is permanent and revokes the agent's credentials. Tokens the agent was already issued stay valid until they expire, so keep agent token lifetimes short.
 :::
+
+## Scope agents to a project
+
+A project on the control plane is backed by one root organization unit. When you manage agents through the REST API on the control plane, pass a project ID to work within a project.
+
+- **List**: `GET /agents?projectId=<project-id>` returns the agents that the project's root organization unit owns, followed by the ones shared into it. To list an organization unit below the root instead, add `filter=ouId eq "<ou-id>"`. That is the only filter accepted with `projectId`; any other filter fails with `AGT-1020`. A project that does not exist, or an organization unit outside the project, returns an empty list.
+- **Create**: set `projectId` in the request body of `POST /agents`. Without `ouId` or `ouHandle`, the agent belongs to the project's root organization unit. With either one, that organization unit must be the project's root organization unit or one below it.
+- **Update**: set `projectId` in the request body of `PUT /agents/<AGENT_ID>` to check that the agent stays in the project. The request still replaces the whole agent, as described in [Manage an agent](#manage-an-agent). The organization unit checked is the one the request names with `ouId` or `ouHandle`, or the agent's current one when the request names none. A project ID never moves the agent on its own.
+
+A project that does not exist fails a create or update with `AGT-1047`, and an organization unit outside the project fails it with `AGT-1048`. An organization unit that does not exist, or a create request with none of `ouId`, `ouHandle`, and `projectId`, fails with `AGT-1005`.
+
+A data plane has no projects. It rejects a `projectId` in a create or update request with `AGT-1047`, and returns an empty list for `GET /agents?projectId=<project-id>`.

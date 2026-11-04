@@ -47,8 +47,8 @@ func (ts *LastLoginTestSuite) SetupSuite() {
 		}
 	})
 
-	ts.smsServer = testutils.NewMockNotificationServer(0)
-	ts.Require().NoError(ts.smsServer.Start(), "failed to start the mock notification server")
+	ts.smsServer, err = testutils.NewMockNotificationServer()
+	ts.Require().NoError(err, "failed to create the mock notification server")
 	t.Cleanup(func() {
 		if err := ts.smsServer.Stop(); err != nil {
 			t.Logf("teardown: failed to stop the mock SMS server: %v", err)

@@ -41,6 +41,7 @@ type SCIMFilterTestSuite struct {
 }
 
 func TestSCIMFilterTestSuite(t *testing.T) {
+	t.Skip(scimDisabledReason)
 	suite.Run(t, new(SCIMFilterTestSuite))
 }
 

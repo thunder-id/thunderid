@@ -33,3 +33,9 @@ var (
 	// request-validation failure.
 	ErrAuthorizationMappingUnavailable = errors.New("authorization mapping resolution unavailable")
 )
+
+// ErrIssuanceRefused indicates the token builder refused issuance because an entity the token is
+// issued to or for may not be issued tokens now: the identity governance authority does not admit it,
+// or its lifespan ends within the second the builder holds back. Grant handlers map it to
+// invalid_grant.
+var ErrIssuanceRefused = errors.New("an entity involved in the token may not be issued tokens")

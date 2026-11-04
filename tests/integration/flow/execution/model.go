@@ -10,7 +10,7 @@ package execution
 import "github.com/thunder-id/thunderid/tests/integration/testutils"
 
 // testServerURL is the base URL every request in this package is issued against.
-const testServerURL = testutils.TestServerURL
+var testServerURL = testutils.TestServerURL
 
 // flowConfigSection names the flow section of the server configuration.
 const flowConfigSection = "flow"

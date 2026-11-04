@@ -1,0 +1,72 @@
+---
+title: SignedOut
+docType: reference
+description: Conditionally render SwiftUI content only when no user is currently signed in to the application.
+---
+
+# `SignedOut`
+
+The `SignedOut` component conditionally renders its content only when the user is **not** authenticated. It reads the current sign-in state from `ThunderIDState` and displays content for unauthenticated users, while rendering optional fallback content (or nothing) when the user is signed in.
+
+`SignedOut` requires `.thunderIDProvider(config:)` in its ancestor view hierarchy.
+
+## Usage
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct ContentView: View {
+    var body: some View {
+        SignedOut {
+            Text("Please sign in to continue.")
+        }
+    }
+}
+```
+
+When the user is signed in, nothing is rendered unless you provide a `fallback` closure.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `content` | `@ViewBuilder () -> Content` | ✅ | The view to render when the user is not authenticated. |
+| `fallback` | `@ViewBuilder () -> Fallback` | ❌ | The view to render when the user is authenticated. Defaults to `EmptyView`. |
+
+## Providing a Fallback
+
+Show alternative content when the user is signed in:
+
+```swift
+SignedOut {
+    SignIn(applicationId: "<your-application-id>")
+} fallback: {
+    HomeView()
+}
+```
+
+## Example: Conditionally Show a Sign-In Prompt
+
+Use `SignedOut` to show a call to action only to unauthenticated users:
+
+```swift
+struct LandingView: View {
+    var body: some View {
+        VStack(spacing: 24) {
+            Text("Welcome to My App")
+                .font(.largeTitle)
+
+            SignedOut {
+                SignInButton()
+            }
+
+            SignedIn {
+                NavigationLink("Go to Home") {
+                    HomeView()
+                }
+            }
+        }
+    }
+}
+```

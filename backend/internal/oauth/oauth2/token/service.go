@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/oauth/scope"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -165,19 +166,10 @@ func (ts *tokenService) ProcessTokenRequest(
 	}
 
 	// Delegate to the grant handler for token generation.
+	ctx = tokenservice.WithIssuanceDecisions(ctx)
 	tokenRespDTO, tokenError := grantHandler.HandleGrant(ctx, tokenRequest, oauthApp)
 	if tokenError != nil {
-		if tokenError.Error != "" {
-			code := 400
-			if tokenError.Error == constants.ErrorServerError {
-				code = 500
-			}
-			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
-				code, tokenError.ErrorDescription, startTime)
-			if tokenError.Error == constants.ErrorServerError {
-				tokenError.ErrorDescription = "Failed to process token request"
-			}
-		}
+		ts.publishGrantError(ctx, oauthApp, clientID, grantTypeStr, scopeStr, tokenError, startTime)
 		return nil, tokenError
 	}
 	if tokenRespDTO == nil {
@@ -190,7 +182,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	}
 
 	// Issue refresh token if applicable.
-	if grantType.IssuesRefreshToken() &&
+	if (grantType.IssuesRefreshToken() || tokenRespDTO.IssuesRefreshToken) &&
 		oauthApp.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
 		logger.Debug(ctx, "Issuing refresh token for the token request",
 			log.String("client_id", clientID), log.String("grant_type", grantTypeStr))
@@ -231,11 +223,7 @@ func (ts *tokenService) ProcessTokenRequest(
 			0,
 		)
 		if refreshTokenError != nil && refreshTokenError.Error != "" {
-			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
-				500, refreshTokenError.ErrorDescription, startTime)
-			if refreshTokenError.Error == constants.ErrorServerError {
-				refreshTokenError.ErrorDescription = "Failed to process token request"
-			}
+			ts.publishGrantError(ctx, oauthApp, clientID, grantTypeStr, scopeStr, refreshTokenError, startTime)
 			return nil, refreshTokenError
 		}
 	}
@@ -250,6 +238,7 @@ func (ts *tokenService) ProcessTokenRequest(
 		Scope:                scopes,
 		IDToken:              tokenRespDTO.IDToken.Token,
 		AuthorizationDetails: tokenRespDTO.AccessToken.AuthorizationDetails,
+		DeviceSecret:         tokenRespDTO.DeviceSecret.Token,
 	}
 
 	// For token exchange, determine the issued_token_type from the request.
@@ -299,9 +288,10 @@ func (ts *tokenService) verifyDPoPProof(ctx *context.Context, oauthApp *provider
 		HTU:   ts.expectedHTU(*ctx),
 	})
 	if err != nil {
+		log.GetLogger().Debug(*ctx, "DPoP proof verification failed", log.Error(err))
 		return &model.ErrorResponse{
 			Error:            constants.ErrorInvalidDPoPProof,
-			ErrorDescription: err.Error(),
+			ErrorDescription: "Invalid DPoP proof",
 		}
 	}
 	*ctx = dpop.WithJkt(*ctx, result.JKT)
@@ -397,6 +387,25 @@ func (ts *tokenService) publishTokenIssuedEvent(
 	addSubjectData(evt, &tokenRespDTO.AccessToken)
 
 	ts.observabilitySvc.PublishEvent(ctx, evt)
+}
+
+// publishGrantError publishes a failed issuance for an error a grant handler returns, as a server error
+// when the handler reports one, and hides a server error's description from the client. An error
+// without a code publishes nothing.
+func (ts *tokenService) publishGrantError(ctx context.Context, oauthApp *providers.OAuthClient,
+	clientID, grantType, scope string, errResp *model.ErrorResponse, startTime int64) {
+	if errResp.Error == "" {
+		return
+	}
+	code := 400
+	if errResp.Error == constants.ErrorServerError {
+		code = 500
+	}
+	publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantType, scope,
+		code, errResp.ErrorDescription, startTime)
+	if errResp.Error == constants.ErrorServerError {
+		errResp.ErrorDescription = "Failed to process token request"
+	}
 }
 
 // publishTokenIssuanceFailedEvent is a package-level helper shared by tokenService and tokenHandler.

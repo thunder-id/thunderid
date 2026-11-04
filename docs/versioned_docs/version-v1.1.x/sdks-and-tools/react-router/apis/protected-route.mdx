@@ -1,0 +1,153 @@
+---
+title: <ProtectedRoute />
+docType: reference
+displayed_sidebar: reactRouterSdkSidebar
+description: Guard routes in React Router v6 by redirecting unauthenticated users or rendering a fallback element.
+---
+
+# `<ProtectedRoute />`
+
+The `ProtectedRoute` component wraps a route's element and enforces authentication. When the user is not signed in it either redirects to a specified URL or renders a fallback element. While authentication state is being resolved it shows a loading state.
+
+:::note
+`ProtectedRoute` must be rendered inside a `ThunderIDProvider`. It also requires React Router's router context: place it within a `BrowserRouter`, `HashRouter`, or similar.
+:::
+
+## Usage
+
+### Basic Usage
+
+```tsx title="src/App.tsx" showLineNumbers
+import { BrowserRouter, Routes, Route } from 'react-router'
+import { ThunderIDProvider } from '@thunderid/react'
+import { ProtectedRoute } from '@thunderid/react-router'
+import Dashboard from './pages/Dashboard'
+
+function App() {
+  return (
+    <ThunderIDProvider clientId="<your-client-id>" baseUrl="https://localhost:8090">
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute redirectTo="/signin">
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </BrowserRouter>
+    </ThunderIDProvider>
+  )
+}
+```
+
+### Custom Fallback
+
+Render a custom element instead of redirecting when the user is not authenticated:
+
+```tsx title="src/App.tsx"
+<ProtectedRoute
+  fallback={
+    <div>
+      <h2>Sign in required</h2>
+      <p>You must be signed in to view this page.</p>
+    </div>
+  }
+>
+  <Dashboard />
+</ProtectedRoute>
+```
+
+### Custom Loading State
+
+Replace the default `null` loading state with a spinner or skeleton:
+
+```tsx title="src/App.tsx"
+<ProtectedRoute
+  redirectTo="/signin"
+  loader={<div className="spinner">Loading...</div>}
+>
+  <Dashboard />
+</ProtectedRoute>
+```
+
+### Custom Sign-In Logic
+
+Override the default sign-in behavior with `onSignIn`. Receives the `defaultSignIn` function so you can add pre/post logic or use your own flow:
+
+```tsx title="src/App.tsx"
+<ProtectedRoute
+  redirectTo="/signin"
+  onSignIn={(defaultSignIn, signInOptions) => {
+    console.log('Redirecting to sign in')
+    defaultSignIn(signInOptions)
+  }}
+  signInOptions={{ fidp: 'GoogleOIDCAuthenticator' }}
+>
+  <Dashboard />
+</ProtectedRoute>
+```
+
+### Protecting Multiple Routes with a Shared Layout
+
+```tsx title="src/App.tsx" showLineNumbers
+import { ProtectedRoute } from '@thunderid/react-router'
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/signin" element={<SignIn />} />
+        <Route path="/app" element={<AppLayout />}>
+          <Route
+            path="dashboard"
+            element={
+              <ProtectedRoute redirectTo="/signin">
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="settings"
+            element={
+              <ProtectedRoute redirectTo="/signin">
+                <Settings />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  )
+}
+```
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `children` | `ReactElement` | ✅ | The element to render when the user is authenticated |
+| `redirectTo` | `string` | ❌ | Path to redirect unauthenticated users to. Either `redirectTo` or `fallback` must be provided |
+| `fallback` | `ReactElement` | ❌ | Element to render when the user is not authenticated. Either `redirectTo` or `fallback` must be provided |
+| `loader` | `ReactNode` | ❌ | Element to render while authentication state is being resolved. Defaults to `null` |
+| `onSignIn` | `(defaultSignIn: (options?: Record<string, any>) => void, signInOptions?: Record<string, any>) => void` | ❌ | Override the default sign-in trigger. Called with the built-in `defaultSignIn` function and the `signInOptions` value |
+| `signInOptions` | `Record<string, any>` | ❌ | Additional parameters forwarded to the authorization request (e.g., `prompt`, `fidp`, `login_hint`, `max_age`, `ui_locales`) |
+
+:::note
+You must provide either `redirectTo` or `fallback`. If neither is provided, a `ThunderIDRuntimeError` is thrown.
+:::
+
+## Error Handling
+
+`ProtectedRoute` throws a `ThunderIDRuntimeError` if neither `redirectTo` nor `fallback` is provided.
+
+```jsx
+// This will throw — one of redirectTo or fallback is required
+<ProtectedRoute>
+  <Dashboard />
+</ProtectedRoute>
+```

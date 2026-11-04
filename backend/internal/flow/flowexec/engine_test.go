@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/mock"
@@ -18,6 +19,7 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
@@ -749,7 +751,8 @@ func (s *EngineTestSuite) TestSwitchContextToCallee_DropsCallerPausedPrompt() {
 		CurrentPromptInputs: []providers.Input{{Identifier: "given_name", Required: true}},
 	}
 
-	_, svcErr := fe.switchContextToCallee(ctx, &common.NodeResponse{}, mockCalleeGraph, log.GetLogger())
+	_, svcErr := fe.switchContextToCallee(ctx, &common.NodeResponse{}, mockCalleeGraph,
+		providers.FlowTypeAuthentication, 1, log.GetLogger())
 	s.Nil(svcErr)
 
 	s.Empty(ctx.CurrentPromptNodeID)
@@ -1403,6 +1406,28 @@ func (s *EngineTestSuite) TestHandleDisplayOnlyPromptResponse_ForwardToEndNode()
 	s.Equal("response_value", flowStep.Data.AdditionalData["response_key"])
 }
 
+func (s *EngineTestSuite) TestHandleDisplayOnlyPromptResponse_DeviceGrantPromptCompletesFlow() {
+	t := s.T()
+	prompt := coremock.NewPromptNodeInterfaceMock(t)
+	prompt.On("GetNextNode").Return("end")
+	end := coremock.NewNodeInterfaceMock(t)
+	end.On("GetType").Return(common.NodeTypeEnd)
+	graph := coremock.NewGraphInterfaceMock(t)
+	graph.On("GetNode", "end").Return(end, true)
+	ctx := &EngineContext{CurrentNode: prompt, Graph: graph, FlowType: providers.FlowTypeDeviceGrant}
+	step := &FlowStep{Data: FlowData{}}
+	meta := map[string]interface{}{"components": []interface{}{"failure message"}}
+
+	next, continueExecution, err := (&flowEngine{}).handleDisplayOnlyPromptResponse(ctx,
+		&common.NodeResponse{Status: common.NodeStatusComplete, Meta: meta}, step, log.GetLogger())
+
+	s.Nil(err)
+	s.Nil(next)
+	s.True(continueExecution)
+	s.Equal(providers.FlowStatusComplete, step.Status)
+	s.Equal(meta, step.Data.Meta)
+}
+
 func (s *EngineTestSuite) TestHandleDisplayOnlyPromptResponse_UnknownNextNode() {
 	t := s.T()
 	mockObservability := observabilitymock.NewObservabilityServiceInterfaceMock(t)
@@ -1915,7 +1940,7 @@ func (s *EngineTestSuite) TestNewFlowEngine() {
 	mockFlowProvider := NewFlowProviderMock(t)
 	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
 
-	engine := newFlowEngine(mockRegistry, mockInterceptorRunner, mockObs, mockFlowProvider, mockGraphBuilder)
+	engine := newFlowEngine(mockRegistry, mockInterceptorRunner, mockObs, mockFlowProvider, mockGraphBuilder, nil)
 	s.NotNil(engine)
 }
 
@@ -4180,6 +4205,62 @@ func (s *EngineTestSuite) TestHandleCallResponse_Success() {
 	s.Equal(mockStartNode, ctx.CurrentNode)
 }
 
+func (s *EngineTestSuite) TestHandleCallResponse_FixedAuthenticationFlowUsesDeviceContext() {
+	t := s.T()
+	flowProvider := NewFlowProviderMock(t)
+	flow := &providers.CompleteFlowDefinition{ID: "app-auth-flow", FlowType: providers.FlowTypeAuthentication,
+		ActiveVersion: 2}
+	flowProvider.EXPECT().GetFlow(mock.Anything, "app-auth-flow").Return(flow, nil)
+	graphBuilder := NewGraphBuilderInterfaceMock(t)
+	calleeGraph := coremock.NewGraphInterfaceMock(t)
+	startNode := coremock.NewNodeInterfaceMock(t)
+	graphBuilder.EXPECT().GetGraph(mock.Anything, flow).Return(calleeGraph, nil)
+	calleeGraph.EXPECT().GetType().Return(providers.FlowTypeAuthentication)
+	calleeGraph.EXPECT().GetStartNode().Return(startNode, nil)
+	callNode := coremock.NewCallNodeInterfaceMock(t)
+	callNode.EXPECT().GetID().Return("call-app")
+	callNode.EXPECT().GetOnSuccess().Return("end")
+	callerGraph := coremock.NewGraphInterfaceMock(t)
+	callerGraph.EXPECT().GetNode("call-app").Return(callNode, true)
+	endNode := coremock.NewNodeInterfaceMock(t)
+	callerGraph.EXPECT().GetNode("end").Return(endNode, true)
+	ctx := &EngineContext{Context: context.Background(), FlowType: providers.FlowTypeDeviceGrant,
+		AppID: "verified-app", Application: providers.Application{ID: "verified-app",
+			InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "app-auth-flow"}},
+		Graph: callerGraph, CurrentNode: callNode, sharedRuntimeData: map[string]string{
+			common.RuntimeKeyAuthorizationRequestID:     "device-request",
+			common.RuntimeKeyCallbackType:               string(providers.GrantTypeDeviceCode),
+			common.RuntimeKeyRequestedPermissions:       "booking:read",
+			common.RuntimeKeyResourceServerIdentifier:   "https://api.example.com",
+			common.RuntimeKeyRequiredOptionalAttributes: "email",
+		}}
+	engine := &flowEngine{logger: log.GetLogger(),
+		flowProvider: flowProvider, graphBuilder: graphBuilder}
+	next, err := engine.handleCallResponse(ctx, &common.NodeResponse{
+		Status: common.NodeStatusCall, CallTargetFlowID: "app-auth-flow",
+	}, log.GetLogger())
+	s.Nil(err)
+	s.Equal(startNode, next)
+	s.Equal("verified-app", ctx.AppID)
+	s.Equal("app-auth-flow", ctx.Application.AuthFlowID)
+	s.Equal(2, ctx.SSOFlowVersion)
+	s.Empty(ctx.RuntimeData)
+	s.Equal("device-request", ctx.sharedRuntimeData[common.RuntimeKeyAuthorizationRequestID])
+	s.Equal(string(providers.GrantTypeDeviceCode), ctx.sharedRuntimeData[common.RuntimeKeyCallbackType])
+	s.Equal("booking:read", ctx.sharedRuntimeData[common.RuntimeKeyRequestedPermissions])
+	s.Equal("https://api.example.com", ctx.sharedRuntimeData[common.RuntimeKeyResourceServerIdentifier])
+	s.Equal("email", ctx.sharedRuntimeData[common.RuntimeKeyRequiredOptionalAttributes])
+	s.Equal(1, ctx.frameDepth())
+	returned, err := engine.handleCalleeReturn(ctx, log.GetLogger())
+	s.Nil(err)
+	s.Equal(endNode, returned)
+	s.Equal(callerGraph, ctx.Graph)
+	s.Equal(providers.FlowTypeDeviceGrant, ctx.FlowType)
+	s.Empty(ctx.RuntimeData)
+	s.Equal("device-request", ctx.sharedRuntimeData[common.RuntimeKeyAuthorizationRequestID])
+	s.Zero(ctx.SSOFlowVersion)
+}
+
 func (s *EngineTestSuite) TestSharedRuntimeDataSurvivesAdministrationFlowCallAndReturn() {
 	t := s.T()
 	callerGraph := coremock.NewGraphInterfaceMock(t)
@@ -4404,6 +4485,34 @@ func (s *EngineTestSuite) TestHandleCalleeFailure_WithOnFailure() {
 	s.NotNil(ctx.CurrentNodeResponse)
 	s.Equal(common.NodeStatusForward, ctx.CurrentNodeResponse.Status)
 	s.Equal(callerErr, ctx.CurrentNodeResponse.Error)
+}
+
+func (s *EngineTestSuite) TestHandleCalleeFailure_DeviceGrantRoutesToConfiguredFailureNode() {
+	t := s.T()
+	callerGraph := coremock.NewGraphInterfaceMock(t)
+	callNode := coremock.NewCallNodeInterfaceMock(t)
+	failurePrompt := coremock.NewNodeInterfaceMock(t)
+	callerGraph.On("GetNode", "call-app").Return(callNode, true)
+	callNode.On("GetOnFailure").Return("failure-prompt")
+	callerGraph.On("GetNode", "failure-prompt").Return(failurePrompt, true)
+	ctx := &EngineContext{Context: context.Background(), Graph: callerGraph,
+		FlowType: providers.FlowTypeDeviceGrant, RuntimeData: map[string]string{
+			common.RuntimeKeyAuthorizationRequestID: "device-request",
+			common.RuntimeKeyCallbackType:           string(providers.GrantTypeDeviceCode),
+		}}
+	ctx.pushFrame("call-app")
+	ctx.Graph = coremock.NewGraphInterfaceMock(t)
+	ctx.FlowType = providers.FlowTypeAuthentication
+	step := &FlowStep{}
+	denied := &tidcommon.ServiceError{Code: "consent-denied"}
+
+	next, continueExecution, err := (&flowEngine{}).handleCalleeFailure(ctx,
+		&common.NodeResponse{Status: common.NodeStatusFailure, Error: denied}, step, log.GetLogger())
+
+	s.Nil(err)
+	s.True(continueExecution)
+	s.Equal(failurePrompt, next)
+	s.Nil(step.Error)
 }
 
 func (s *EngineTestSuite) TestHandleCalleeFailure_CallNodeNotFound() {
@@ -4876,4 +4985,163 @@ func assertEventData(t *testing.T, evt *providers.Event, want map[string]interfa
 			t.Errorf("event data %q = %v, want %v", key, got, wantValue)
 		}
 	}
+}
+
+func (s *EngineTestSuite) variablesNodeAndResponse() (core.NodeInterface, *common.NodeResponse) {
+	factory, _ := core.Initialize(cache.Initialize(engineconfig.CacheConfig{}, "test-deployment"))
+	properties, err := core.PropertiesFor([]providers.VariableDefinition{
+		{Identifier: "supportEmail", Type: providers.InputTypeEmail, DefaultValue: "support@example.com"},
+		{Identifier: "otp", Type: providers.InputTypeNumber, DefaultValue: 120.0},
+	})
+	s.Require().NoError(err)
+	node, err := factory.CreateNode("vars", string(common.NodeTypeVariables), properties, false, false)
+	s.Require().NoError(err)
+	resp, svcErr := node.Execute(&providers.NodeContext{Context: context.Background(), ExecutionID: "e"})
+	s.Require().Nil(svcErr)
+	return node, resp
+}
+
+func (s *EngineTestSuite) unsetConnectionNodeAndResponse() (core.NodeInterface, *common.NodeResponse) {
+	factory, _ := core.Initialize(cache.Initialize(engineconfig.CacheConfig{}, "test-deployment"))
+	properties, err := core.PropertiesFor([]providers.VariableDefinition{
+		{Identifier: "social", Type: providers.InputTypeConnectionSelect, Category: "IDENTITY_PROVIDER",
+			DefaultValue: ""},
+	})
+	s.Require().NoError(err)
+	node, err := factory.CreateNode("vars", string(common.NodeTypeVariables), properties, false, false)
+	s.Require().NoError(err)
+	resp, svcErr := node.Execute(&providers.NodeContext{Context: context.Background(), ExecutionID: "e"})
+	s.Require().Nil(svcErr)
+	return node, resp
+}
+
+func (s *EngineTestSuite) TestApplyVariableValues_StopsWhenAConnectionIsStillNotSet() {
+	t := s.T()
+	graph := coremock.NewGraphInterfaceMock(t)
+	graph.On("GetID").Return("flow-1")
+	app := providers.Application{ID: "app-1", OUID: "ou-parent"}
+
+	s.Run("the unit set none", func() {
+		node, resp := s.unsetConnectionNodeAndResponse()
+		values := newVariableValueProviderMock(t)
+		values.EXPECT().GetEffectiveVariableValues(mock.Anything, "flow-1", app, "ou-child").
+			Return(map[string]string{}, nil)
+		fe := &flowEngine{variableValuesProvider: values, logger: log.GetLogger()}
+		ctx := &EngineContext{Context: context.Background(), Graph: graph, Application: app,
+			RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-child"}}
+
+		s.Equal(&ErrorFlowConnectionNotSet, fe.applyVariableValues(ctx, node, resp, fe.logger))
+	})
+
+	s.Run("an engine with no values to apply", func() {
+		node, resp := s.unsetConnectionNodeAndResponse()
+		fe := &flowEngine{logger: log.GetLogger()}
+		ctx := &EngineContext{Context: context.Background(), Graph: graph, Application: app,
+			RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-child"}}
+
+		s.Equal(&ErrorFlowConnectionNotSet, fe.applyVariableValues(ctx, node, resp, fe.logger))
+	})
+
+	s.Run("the unit set its own", func() {
+		node, resp := s.unsetConnectionNodeAndResponse()
+		values := newVariableValueProviderMock(t)
+		values.EXPECT().GetEffectiveVariableValues(mock.Anything, "flow-1", app, "ou-child").
+			Return(map[string]string{"social": "c-child"}, nil)
+		fe := &flowEngine{variableValuesProvider: values, logger: log.GetLogger()}
+		ctx := &EngineContext{Context: context.Background(), Graph: graph, Application: app,
+			RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-child"}}
+
+		s.Nil(fe.applyVariableValues(ctx, node, resp, fe.logger))
+		s.Equal(`"c-child"`, resp.RuntimeData["var.social"])
+	})
+}
+
+func (s *EngineTestSuite) TestApplyVariableValues_UsesTheValuesOfTheUnitAPromptPicked() {
+	t := s.T()
+	node, resp := s.variablesNodeAndResponse()
+	graph := coremock.NewGraphInterfaceMock(t)
+	graph.On("GetID").Return("flow-1")
+	app := providers.Application{ID: "app-1", OUID: "ou-parent"}
+	values := newVariableValueProviderMock(t)
+	values.EXPECT().GetEffectiveVariableValues(mock.Anything, "flow-1", app, "ou-picked").
+		Return(map[string]string{"otp": "60"}, nil)
+	fe := &flowEngine{variableValuesProvider: values, logger: log.GetLogger()}
+	ctx := &EngineContext{Context: context.Background(), Graph: graph, Application: app,
+		RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-picked"}}
+
+	svcErr := fe.applyVariableValues(ctx, node, resp, fe.logger)
+
+	s.Nil(svcErr)
+	s.Equal("60", resp.RuntimeData["var.otp"])
+	s.Equal(`"support@example.com"`, resp.RuntimeData["var.supportEmail"])
+}
+
+func (s *EngineTestSuite) TestApplyVariableValues_LeavesTheDefaultsWhenThereIsNothingToApply() {
+	t := s.T()
+	node, resp := s.variablesNodeAndResponse()
+	graph := coremock.NewGraphInterfaceMock(t)
+	graph.On("GetID").Return("flow-1").Maybe()
+	app := providers.Application{ID: "app-1", OUID: "ou-owner"}
+
+	cases := map[string]struct {
+		engine *flowEngine
+		picked string
+	}{
+		"no provider": {&flowEngine{logger: log.GetLogger()}, "ou-child"},
+		// The owner of the application is not a unit to resolve for: the mock has no expectation, so the test fails
+		// if the values are asked for.
+		"no unit picked": {
+			&flowEngine{variableValuesProvider: newVariableValueProviderMock(t), logger: log.GetLogger()}, "",
+		},
+	}
+	for name, tc := range cases {
+		s.Run(name, func() {
+			ctx := &EngineContext{Context: context.Background(), Graph: graph, Application: app,
+				RuntimeData: map[string]string{common.RuntimeKeyOUID: tc.picked}}
+
+			s.Nil(tc.engine.applyVariableValues(ctx, node, resp, tc.engine.logger))
+			s.Equal("120", resp.RuntimeData["var.otp"])
+		})
+	}
+}
+
+func (s *EngineTestSuite) TestApplyVariableValues_IgnoresOtherNodes() {
+	t := s.T()
+	other := coremock.NewNodeInterfaceMock(t)
+	other.On("GetType").Return(common.NodeTypeTaskExecution)
+	// The mock has no expectation, so the test fails if the values are asked for.
+	fe := &flowEngine{variableValuesProvider: newVariableValueProviderMock(t), logger: log.GetLogger()}
+	ctx := &EngineContext{Context: context.Background(), Application: providers.Application{OUID: "ou-child"},
+		RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-child"}}
+
+	s.Nil(fe.applyVariableValues(ctx, other, &common.NodeResponse{}, fe.logger))
+}
+
+func (s *EngineTestSuite) TestApplyVariableValues_FailsWhenTheValuesCannotBeRead() {
+	t := s.T()
+	node, resp := s.variablesNodeAndResponse()
+	graph := coremock.NewGraphInterfaceMock(t)
+	graph.On("GetID").Return("flow-1")
+	app := providers.Application{ID: "app-1", OUID: "ou-parent"}
+	values := newVariableValueProviderMock(t)
+	values.EXPECT().GetEffectiveVariableValues(mock.Anything, "flow-1", app, "ou-picked").
+		Return(nil, &tidcommon.InternalServerError)
+	fe := &flowEngine{variableValuesProvider: values, logger: log.GetLogger()}
+	ctx := &EngineContext{Context: context.Background(), Graph: graph, Application: app,
+		RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-picked"}}
+
+	svcErr := fe.applyVariableValues(ctx, node, resp, fe.logger)
+
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+	s.Equal("120", resp.RuntimeData["var.otp"],
+		"the owner's default is not used in place of a value that cannot be read")
+}
+
+func (s *EngineTestSuite) TestNewFlowEngine_UsesTheVariableValuesItIsGiven() {
+	values := newVariableValueProviderMock(s.T())
+	engine := newFlowEngine(nil, nil, nil, NewFlowProviderMock(s.T()), nil, values).(*flowEngine)
+	s.Same(values, engine.variableValuesProvider)
+
+	s.Nil(newFlowEngine(nil, nil, nil, NewFlowProviderMock(s.T()), nil, nil).(*flowEngine).variableValuesProvider,
+		"an engine given none leaves every flow on the owner's defaults")
 }

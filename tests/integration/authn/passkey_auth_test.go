@@ -23,10 +23,11 @@ const (
 	passkeyAuthFinishEndpoint     = "/auth/passkey/finish"
 	testRelyingPartyID            = "localhost"
 	testRelyingPartyName          = "ThunderID Test"
-	// testPasskeyOrigin must be one of the origins under passkey.allowed_origins in the test
-	// deployment.yaml, since the direct passkey APIs take their allowed origins from server config.
-	testPasskeyOrigin = "https://localhost:8095"
 )
+
+// testPasskeyOrigin must be one of the origins under passkey.allowed_origins in the test
+// deployment.yaml, since the direct passkey APIs take their allowed origins from server config.
+var testPasskeyOrigin = testutils.TestServerURL
 
 var (
 	passkeyTestOU = testutils.OrganizationUnit{

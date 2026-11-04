@@ -24,6 +24,12 @@ const ConnectionConstants = {
    * Fallback avatar rendered for the SMS Gateway vendor.
    */
   SMS_GATEWAY_AVATAR_FALLBACK: 'avatar:shape=rounded,variant=anonymous_entity,content=pentagon,colors=0',
+
+  /**
+   * Authorization grant profile the server's discovery document lists in
+   * `authorization_grant_profiles_supported` while it accepts identity assertions (ID-JAG).
+   */
+  ID_JAG_GRANT_PROFILE: 'urn:ietf:params:oauth:grant-profile:id-jag',
 } as const;
 
 export default ConnectionConstants;

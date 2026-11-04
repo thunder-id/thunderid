@@ -8,10 +8,11 @@ import {describe, it, expect, beforeEach, vi} from 'vitest';
 import type {TrustedIssuer} from '../../models/trusted-issuer';
 import TrustedIssuerDetailPage from '../TrustedIssuerDetailPage';
 
-const {mockMutate, mockRefetch, mockDeleteMutate} = vi.hoisted(() => ({
+const {mockMutate, mockRefetch, mockDeleteMutate, mockUseAuthorizationServerMetadata} = vi.hoisted(() => ({
   mockMutate: vi.fn(),
   mockRefetch: vi.fn(),
   mockDeleteMutate: vi.fn(),
+  mockUseAuthorizationServerMetadata: vi.fn(),
 }));
 
 const TRUSTED_ISSUER: TrustedIssuer = {
@@ -22,6 +23,10 @@ const TRUSTED_ISSUER: TrustedIssuer = {
   jwksEndpoint: 'https://acme.okta.com/keys',
   idJagEnabled: true,
 };
+
+vi.mock('../../api/useAuthorizationServerMetadata', () => ({
+  default: mockUseAuthorizationServerMetadata,
+}));
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual('react-router');
@@ -63,6 +68,29 @@ vi.mock('../../components/ConnectionDeleteDialog', () => ({
 const {useNavigate, useParams} = await import('react-router');
 const {default: useTrustedIssuer} = await import('../../api/useTrustedIssuer');
 
+const ID_JAG_TITLE = 'Identity Assertion JWT Authorization Grant (ID-JAG)';
+const ID_JAG_ENABLED_NOTE = 'Identity assertions from this issuer are accepted via the ID-JAG protocol.';
+const ACCEPTANCE_UNAVAILABLE_HINT = 'This server does not accept identity assertions from any issuer.';
+const ACCEPTING_METADATA = {
+  grant_types_supported: ['authorization_code', 'urn:ietf:params:oauth:grant-type:jwt-bearer'],
+  authorization_grant_profiles_supported: ['urn:ietf:params:oauth:grant-profile:id-jag'],
+};
+const NOT_ACCEPTING_METADATA = {grant_types_supported: ['authorization_code']};
+
+// Stands in for the runtime's authorization server metadata query (data undefined while loading or failed).
+const mockServerMetadata = (data: Record<string, string[]> | undefined): void => {
+  mockUseAuthorizationServerMetadata.mockReturnValue({data});
+};
+
+const mockIdJagEnabled = (idJagEnabled: boolean): void => {
+  vi.mocked(useTrustedIssuer).mockReturnValue({
+    data: {...TRUSTED_ISSUER, idJagEnabled},
+    isLoading: false,
+    isError: false,
+    refetch: mockRefetch,
+  } as unknown as ReturnType<typeof useTrustedIssuer>);
+};
+
 describe('TrustedIssuerDetailPage', () => {
   let mockNavigate: ReturnType<typeof vi.fn>;
 
@@ -79,6 +107,7 @@ describe('TrustedIssuerDetailPage', () => {
       isError: false,
       refetch: mockRefetch,
     } as unknown as ReturnType<typeof useTrustedIssuer>);
+    mockServerMetadata(undefined);
   });
 
   it('should not render a client id field', () => {
@@ -126,6 +155,108 @@ describe('TrustedIssuerDetailPage', () => {
     expect(
       screen.queryByText('Identity assertions from this issuer are accepted via the ID-JAG protocol.'),
     ).not.toBeInTheDocument();
+  });
+
+  describe('ID-JAG acceptance availability', () => {
+    it('should not let ID-JAG be turned on and explain why when the server does not accept identity assertions', async () => {
+      const user = userEvent.setup();
+      mockIdJagEnabled(false);
+      mockServerMetadata(NOT_ACCEPTING_METADATA);
+
+      render(<TrustedIssuerDetailPage />);
+
+      const idJagSwitch = screen.getByRole('switch', {name: ID_JAG_TITLE});
+      expect(idJagSwitch).not.toBeChecked();
+      expect(idJagSwitch).toBeDisabled();
+      // The reason is visible in the card body, not only in the disabled switch's tooltip.
+      expect(screen.getByText(ACCEPTANCE_UNAVAILABLE_HINT)).toBeInTheDocument();
+
+      await user.hover(idJagSwitch.closest('.MuiSwitch-root')!.parentElement!);
+
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(ACCEPTANCE_UNAVAILABLE_HINT);
+      expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+    });
+
+    it('should not change the setting when the disabled switch is clicked', async () => {
+      // A disabled switch has pointer-events: none, so the check is skipped to force the click through.
+      const user = userEvent.setup({pointerEventsCheck: 0});
+      mockIdJagEnabled(false);
+      mockServerMetadata(NOT_ACCEPTING_METADATA);
+
+      render(<TrustedIssuerDetailPage />);
+
+      const idJagSwitch = screen.getByRole('switch', {name: ID_JAG_TITLE});
+      await user.click(idJagSwitch);
+
+      expect(idJagSwitch).not.toBeChecked();
+      expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+    });
+
+    it('should let an issuer that already accepts ID-JAG turn it off and save', async () => {
+      const user = userEvent.setup();
+      mockIdJagEnabled(true);
+      mockServerMetadata(NOT_ACCEPTING_METADATA);
+
+      render(<TrustedIssuerDetailPage />);
+
+      const idJagSwitch = screen.getByRole('switch', {name: ID_JAG_TITLE});
+      expect(idJagSwitch).toBeChecked();
+      expect(idJagSwitch).not.toBeDisabled();
+
+      await user.click(idJagSwitch);
+
+      expect(idJagSwitch).not.toBeChecked();
+      expect(idJagSwitch).toBeDisabled();
+      // The pointer still rests on the switch, so its tooltip is open too; this is the card body copy.
+      expect(screen.getByText(ACCEPTANCE_UNAVAILABLE_HINT, {selector: 'p'})).toBeInTheDocument();
+
+      await user.click(await screen.findByText('Save changes'));
+
+      expect(mockMutate).toHaveBeenCalledWith(expect.objectContaining({idJagEnabled: false}), expect.any(Object));
+    });
+
+    it('should show the hint instead of the enabled note while the server does not accept identity assertions', () => {
+      mockIdJagEnabled(true);
+      mockServerMetadata(NOT_ACCEPTING_METADATA);
+
+      render(<TrustedIssuerDetailPage />);
+
+      expect(screen.getByText(ACCEPTANCE_UNAVAILABLE_HINT)).toBeInTheDocument();
+      expect(screen.queryByText(ID_JAG_ENABLED_NOTE)).not.toBeInTheDocument();
+    });
+
+    it('should let ID-JAG be turned on with no hint when the server accepts identity assertions', async () => {
+      const user = userEvent.setup();
+      mockIdJagEnabled(false);
+      mockServerMetadata(ACCEPTING_METADATA);
+
+      render(<TrustedIssuerDetailPage />);
+
+      const idJagSwitch = screen.getByRole('switch', {name: ID_JAG_TITLE});
+      expect(idJagSwitch).not.toBeDisabled();
+      expect(screen.queryByText(ACCEPTANCE_UNAVAILABLE_HINT)).not.toBeInTheDocument();
+
+      await user.click(idJagSwitch);
+
+      expect(idJagSwitch).toBeChecked();
+      expect(screen.getByText(ID_JAG_ENABLED_NOTE)).toBeInTheDocument();
+      expect(await screen.findByText('You have unsaved changes')).toBeInTheDocument();
+    });
+
+    it('should let ID-JAG be turned on with no hint while the runtime metadata is loading', async () => {
+      const user = userEvent.setup();
+      mockIdJagEnabled(false);
+
+      render(<TrustedIssuerDetailPage />);
+
+      const idJagSwitch = screen.getByRole('switch', {name: ID_JAG_TITLE});
+      expect(idJagSwitch).not.toBeDisabled();
+
+      await user.click(idJagSwitch);
+
+      expect(idJagSwitch).toBeChecked();
+      expect(screen.queryByText(ACCEPTANCE_UNAVAILABLE_HINT)).not.toBeInTheDocument();
+    });
   });
 
   it('should show the unsaved changes bar and save the updated name', async () => {

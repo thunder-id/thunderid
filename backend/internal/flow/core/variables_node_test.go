@@ -104,6 +104,95 @@ func (s *VariablesNodeTestSuite) TestFailsWhenADefaultIsNotReadable() {
 	s.NotNil(err)
 }
 
+const testIdentityProviderCategory = "IDENTITY_PROVIDER"
+
+func (s *VariablesNodeTestSuite) TestVariableRuntimeValuesReplaceTheDefaultsTheUnitHoldsValuesFor() {
+	node := s.newNode([]providers.VariableDefinition{
+		{Identifier: "supportEmail", Type: providers.InputTypeEmail, DefaultValue: "support@example.com"},
+		{Identifier: "otp", Type: providers.InputTypeNumber, DefaultValue: 120.0},
+		{Identifier: "showLink", Type: providers.InputTypeBoolean, DefaultValue: true},
+		{Identifier: "mfa", Type: providers.InputTypeSelect, DefaultValue: "NONE",
+			Options: []interface{}{"NONE", "SMS_OTP"}},
+	})
+
+	values, err := VariableRuntimeValues(node, map[string]string{
+		"supportEmail": "help@emea.example", "otp": "90", "showLink": "false", "mfa": "SMS_OTP",
+	})
+
+	s.Require().NoError(err)
+	s.Equal(`"help@emea.example"`, values["var.supportEmail"])
+	s.Equal("90", values["var.otp"])
+	s.Equal("false", values["var.showLink"])
+	s.Equal(`"SMS_OTP"`, values["var.mfa"])
+}
+
+func (s *VariablesNodeTestSuite) TestVariableRuntimeValuesLeaveTheRestAtTheirDefaults() {
+	node := s.newNode([]providers.VariableDefinition{
+		{Identifier: "supportEmail", Type: providers.InputTypeEmail, DefaultValue: "support@example.com"},
+		{Identifier: "otp", Type: providers.InputTypeNumber, DefaultValue: 120.0},
+	})
+
+	values, err := VariableRuntimeValues(node, map[string]string{"otp": "60", "undeclared": "x"})
+
+	s.Require().NoError(err)
+	s.Equal(`"support@example.com"`, values["var.supportEmail"])
+	s.Equal("60", values["var.otp"])
+	s.NotContains(values, "var.undeclared")
+}
+
+func (s *VariablesNodeTestSuite) TestVariableRuntimeValuesStartFromTheDefaultsForEveryUnit() {
+	node := s.newNode([]providers.VariableDefinition{
+		{Identifier: "otp", Type: providers.InputTypeNumber, DefaultValue: 120.0},
+	})
+
+	first, err := VariableRuntimeValues(node, map[string]string{"otp": "60"})
+	s.Require().NoError(err)
+	second, err := VariableRuntimeValues(node, nil)
+	s.Require().NoError(err)
+
+	s.Equal("60", first["var.otp"])
+	s.Equal("120", second["var.otp"], "what one unit held does not carry over to the next")
+}
+
+func (s *VariablesNodeTestSuite) TestVariableRuntimeValuesRefuseAValueOfTheWrongType() {
+	node := s.newNode([]providers.VariableDefinition{
+		{Identifier: "otp", Type: providers.InputTypeNumber, DefaultValue: 120.0},
+	})
+
+	_, err := VariableRuntimeValues(node, map[string]string{"otp": "many"})
+
+	s.Error(err)
+}
+
+func (s *VariablesNodeTestSuite) TestVariableRuntimeValuesIgnoreOtherNodes() {
+	values, err := VariableRuntimeValues(&node{}, map[string]string{"a": "1"})
+	s.NoError(err)
+	s.Empty(values)
+}
+
+func (s *VariablesNodeTestSuite) TestUnsetConnectionVariablesNamesTheConnectionsStillWithoutOne() {
+	node := s.newNode([]providers.VariableDefinition{
+		{Identifier: "social", Type: providers.InputTypeConnectionSelect, Category: testIdentityProviderCategory,
+			DefaultValue: ""},
+		{Identifier: "other", Type: providers.InputTypeConnectionSelect, Category: testIdentityProviderCategory,
+			DefaultValue: "c-owner"},
+		{Identifier: "brand", Type: providers.InputTypeText, DefaultValue: ""},
+	})
+	resp, err := node.Execute(s.nodeContext())
+	s.Require().Nil(err)
+
+	s.Equal([]string{"social"}, UnsetConnectionVariables(node, resp.RuntimeData))
+
+	held, runErr := VariableRuntimeValues(node, map[string]string{"social": "c-child"})
+	s.Require().NoError(runErr)
+	s.Empty(UnsetConnectionVariables(node, held), "a unit's own connection sets it")
+}
+
+func (s *VariablesNodeTestSuite) TestUnsetConnectionVariablesIgnoresOtherNodes() {
+	s.Empty(UnsetConnectionVariables(newVariablesNode("x", nil, false, false), map[string]string{}))
+	s.Empty(UnsetConnectionVariables(&node{}, map[string]string{}))
+}
+
 func (s *VariablesNodeTestSuite) TestCloneKeepsTheOnSuccess() {
 	node := s.newNode(nil)
 
@@ -216,11 +305,19 @@ func (s *VariablesNodeTestSuite) TestValidateDefinitions() {
 			d.DefaultValue = "conn-1"
 		}, "names the category"},
 		{"category on text", func(d *providers.VariableDefinition) {
-			d.Category = "IDENTITY_PROVIDER"
+			d.Category = testIdentityProviderCategory
 		}, "connection input only"},
+		{"connection that starts with no connection", func(d *providers.VariableDefinition) {
+			d.Type = providers.InputTypeConnectionSelect
+			d.Category = testIdentityProviderCategory
+			d.DefaultValue = ""
+		}, ""},
+		{"blank text default is still a text default", func(d *providers.VariableDefinition) {
+			d.DefaultValue = ""
+		}, ""},
 		{"valid connection", func(d *providers.VariableDefinition) {
 			d.Type = providers.InputTypeConnectionSelect
-			d.Category = "IDENTITY_PROVIDER"
+			d.Category = testIdentityProviderCategory
 			d.ConnectionTypes = []string{"google"}
 			d.DefaultValue = "conn-1"
 		}, ""},

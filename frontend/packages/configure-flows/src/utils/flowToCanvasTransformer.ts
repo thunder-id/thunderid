@@ -4,6 +4,7 @@
 import type {Edge, Node} from '@xyflow/react';
 import {MarkerType} from '@xyflow/react';
 import {toElementType} from './inputTypeMapping';
+import {canCarryDefault} from './promptInputDefault';
 import VisualFlowConstants from '../constants/VisualFlowConstants';
 import executors from '../data/executors.json';
 import type {Element} from '../models/elements';
@@ -58,6 +59,7 @@ const NODE_TO_STEP_TYPE_MAP: Record<string, string> = {
   END: StepTypes.End,
   CALL: StepTypes.Call,
   START: StaticStepTypes.Start,
+  VARIABLES: StaticStepTypes.Variables,
 };
 
 /**
@@ -249,10 +251,31 @@ function getNodeActions(apiNode: FlowNode): FlowNodeAction[] | undefined {
 }
 
 /**
+ * Gets the default of each prompt input of a node, keyed by the input ref, which is the id of its component.
+ */
+function getPromptDefaults(apiNode: FlowNode): Record<string, string> {
+  const defaults: Record<string, string> = {};
+  apiNode.prompts?.forEach((prompt) => {
+    prompt.inputs?.forEach((input) => {
+      if (input.ref && input.defaultValue) {
+        defaults[input.ref] = input.defaultValue;
+      }
+    });
+  });
+  return defaults;
+}
+
+/**
  * Recursively restores components from the API format to canvas format.
  * This handles nested components (like forms containing inputs and buttons).
+ * A prompt input default becomes the value of its component, so a flow written through the API keeps its
+ * defaults when it is saved again.
  */
-function restoreComponents(components: unknown[] | undefined, nodeActions: FlowNodeAction[] | undefined): Element[] {
+function restoreComponents(
+  components: unknown[] | undefined,
+  nodeActions: FlowNodeAction[] | undefined,
+  promptDefaults: Record<string, string> = {},
+): Element[] {
   if (!components || components.length === 0) {
     return [];
   }
@@ -268,6 +291,11 @@ function restoreComponents(components: unknown[] | undefined, nodeActions: FlowN
       restoredComponent = normalizeInputProperties(restoredComponent);
     }
 
+    const promptDefault = promptDefaults[restoredComponent['id'] as string];
+    if (promptDefault && canCarryDefault(restoredComponent['type'] as string)) {
+      restoredComponent = {...restoredComponent, value: promptDefault};
+    }
+
     // Restore action for ACTION elements
     if (component['type'] === ElementTypes.Action || component['type'] === ElementTypes.Resend) {
       restoredComponent = restoreButtonAction(restoredComponent, nodeActions);
@@ -277,7 +305,7 @@ function restoreComponents(components: unknown[] | undefined, nodeActions: FlowN
     if (restoredComponent['components'] && Array.isArray(restoredComponent['components'])) {
       restoredComponent = {
         ...restoredComponent,
-        components: restoreComponents(restoredComponent['components'] as unknown[], nodeActions),
+        components: restoreComponents(restoredComponent['components'] as unknown[], nodeActions, promptDefaults),
       };
     }
 
@@ -305,7 +333,8 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
           height: apiNode.layout.size.height,
         }
       : undefined,
-    deletable: stepType !== StaticStepTypes.Start && stepType !== StepTypes.End,
+    deletable:
+      stepType !== StaticStepTypes.Start && stepType !== StaticStepTypes.Variables && stepType !== StepTypes.End,
     data: {},
   };
 
@@ -317,11 +346,20 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
     canvasNode.deletable = false;
   }
 
+  // Handle VARIABLES nodes: a placeholder on the canvas that carries the declarations so a save writes them back
+  if (stepType === StaticStepTypes.Variables) {
+    canvasNode.data = {
+      displayOnly: true,
+      inputs: apiNode.inputs ?? [],
+    };
+    canvasNode.deletable = false;
+  }
+
   // Handle PROMPT/VIEW nodes with UI components
   if (stepType === StepTypes.View && apiNode.meta?.components) {
     // Get actions from prompts
     const nodeActions = getNodeActions(apiNode);
-    const restoredComponents = restoreComponents(apiNode.meta.components, nodeActions);
+    const restoredComponents = restoreComponents(apiNode.meta.components, nodeActions, getPromptDefaults(apiNode));
 
     canvasNode.data = {
       components: restoredComponents,
@@ -413,6 +451,21 @@ function generateEdgesFromNodes(apiNodes: FlowNode[]): Edge[] {
     if (stepType === StaticStepTypes.Start && node.onSuccess && nodeIds.has(node.onSuccess)) {
       edges.push({
         id: `${node.id}-${node.onSuccess}`,
+        source: node.id,
+        sourceHandle: `${node.id}${VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX}`,
+        target: node.onSuccess,
+        type: 'smoothstep',
+        animated: false,
+        markerEnd: {
+          type: MarkerType.Arrow,
+        },
+      });
+    }
+
+    // Handle VARIABLES node -> next step connection
+    if (stepType === StaticStepTypes.Variables && node.onSuccess && nodeIds.has(node.onSuccess)) {
+      edges.push({
+        id: `${node.id}-to-${node.onSuccess}`,
         source: node.id,
         sourceHandle: `${node.id}${VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX}`,
         target: node.onSuccess,

@@ -4,6 +4,8 @@
 package notificationtemplate
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -60,6 +62,22 @@ func (s *ChannelTestSuite) TestEmailRulesValidate() {
 	s.Require().Equal(ErrorInvalidColorScheme.Code,
 		h.validate(templateDAO{Content: TemplateContent{Subject: "s", Body: "b"},
 			Design: &TemplateDesign{ColorScheme: "teal"}}).Code)
+
+	// Subject and body are length-bounded; at-limit passes, over-limit is rejected and the error
+	// reports the configured limit via the maxLength param.
+	subjectLimit := templateConfig().SubjectLengthLimit()
+	emailBodyLimit := templateConfig().EmailBodyLengthLimit()
+	s.Require().Nil(h.validate(templateDAO{Content: TemplateContent{
+		Subject: strings.Repeat("s", subjectLimit),
+		Body:    strings.Repeat("b", emailBodyLimit)}}))
+	subjErr := h.validate(templateDAO{Content: TemplateContent{
+		Subject: strings.Repeat("s", subjectLimit+1), Body: "b"}})
+	s.Require().Equal(ErrorSubjectTooLong.Code, subjErr.Code)
+	s.Require().Equal(strconv.Itoa(subjectLimit), subjErr.ErrorDescription.Params["maxLength"])
+	bodyErr := h.validate(templateDAO{Content: TemplateContent{
+		Subject: "s", Body: strings.Repeat("b", emailBodyLimit+1)}})
+	s.Require().Equal(ErrorBodyTooLong.Code, bodyErr.Code)
+	s.Require().Equal(strconv.Itoa(emailBodyLimit), bodyErr.ErrorDescription.Params["maxLength"])
 }
 
 func (s *ChannelTestSuite) TestEmailRulesNormalize() {
@@ -93,6 +111,15 @@ func (s *ChannelTestSuite) TestSMSRulesStrict() {
 	s.Require().Equal(ErrorDesignNotAllowed.Code,
 		h.validate(templateDAO{Content: TemplateContent{Body: "b"},
 			Design: &TemplateDesign{ColorScheme: colorSchemeDark}}).Code)
+
+	// Body is length-bounded; at-limit passes, over-limit is rejected and reports the limit.
+	smsBodyLimit := templateConfig().SMSBodyLengthLimit()
+	s.Require().Nil(h.validate(templateDAO{Content: TemplateContent{
+		Body: strings.Repeat("b", smsBodyLimit)}}))
+	smsBodyErr := h.validate(templateDAO{Content: TemplateContent{
+		Body: strings.Repeat("b", smsBodyLimit+1)}})
+	s.Require().Equal(ErrorBodyTooLong.Code, smsBodyErr.Code)
+	s.Require().Equal(strconv.Itoa(smsBodyLimit), smsBodyErr.ErrorDescription.Params["maxLength"])
 
 	// Normalize drops any subject and design.
 	got := h.normalize(templateDAO{Content: TemplateContent{Subject: "s", Body: "b"}})

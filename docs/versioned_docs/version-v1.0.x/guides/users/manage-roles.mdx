@@ -23,6 +23,30 @@ Before creating a role, you need:
 - An organization unit to scope the role. See [Organization Units](../../organization-units).
 - At least one resource server with defined permissions. See [Resource Servers](../../resource-servers).
 
+## Permission Requirements
+
+<ProductName /> prevents you from granting permissions you do not hold yourself. This applies whether the recipient is another principal or your own account.
+
+You can perform the following operations only if you already hold every permission involved:
+
+| Operation | Requirement |
+|-----------|-------------|
+| Create a role with permissions | You hold every permission in the new role. |
+| Update a role's permissions | You hold every permission in the updated set. |
+| Add or remove a role assignment | You hold every permission the role grants. |
+
+Permissions are compared per resource server. A permission you hold on one resource server does not satisfy a requirement on a different resource server, even when the two permission strings are identical.
+
+The comparison respects the permission hierarchy. If you hold `system:user`, you can grant `system:user:view`, because the parent permission covers its children. The reverse does not apply: holding `system:user:view` does not let you grant `system:user`.
+
+Holders of the root `system` permission are exempt, since that permission already authorizes every system operation.
+
+If an operation would grant more than you hold, the API returns `403 Forbidden` with the error code `SAZ-4030`, and no change is made.
+
+:::note
+Because you must hold a permission to grant it, an administrator whose job is to manage role assignments needs to hold the permissions they distribute. Grant such an administrator the union of the permissions they are expected to assign.
+:::
+
 ## Create a Role
 
 1. Navigate to **Roles** in the <ProductName /> Console and click **Create Role**.

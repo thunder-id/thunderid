@@ -1,0 +1,216 @@
+---
+title: Multi-Tenant SaaS Identity (B2B)
+docType: use-case
+description: Identify when to use for B2B SaaS identity and review the supported use case scope.
+sidebar_position: 1
+---
+
+import { B2BSaaSIdentityJourneyRoadmap } from '@site/src/components/B2BIdentityJourney';
+
+# Multi-Tenant SaaS Identity for B2B
+
+Build B2B SaaS identity where each customer gets its own secure workspace, policies, users, roles, federation, and lifecycle controls.
+
+<div className="uc-b2b-intro-panel">
+  <div className="uc-b2b-intro-kicker">When to use this pattern</div>
+  <div className="uc-b2b-intro-text">
+    Use this pattern when each customer needs a secure workspace with its own users, roles, policies, federation, branding, and lifecycle controls.
+  </div>
+</div>
+
+## How the Model Works
+
+- **SaaS provider**: Owns the platform and manages all customer organizations.
+- **Customer organization**: Each customer gets a workspace (organization) with its own users, roles, policies, and branding.
+- **Organization admin**: The first user, who manages members, invites, and settings.
+- **Members**: Users invited to the workspace, assigned roles and access.
+- **Policies and federation**: Each workspace can set its own login policies, enable SSO/federation, and configure recovery and governance.
+
+
+## B2B SaaS Identity Journey
+
+From a B2B application owner perspective, you need to solve the full customer lifecycle, from sign-up to secure sign-in, security, governance, and growth reporting. <ProductName /> provides capabilities for each stage.
+
+<B2BSaaSIdentityJourneyRoadmap />
+
+### Organization Onboarding (Sign-Up)
+
+As a first step, you need a secure and seamless way to subscribe new customer companies to your application. You need one onboarding journey that creates a user identity, creates an organization workspace, and assigns initial ownership without manual intervention.
+
+Beyond creating accounts, you often need to integrate sign-up with business operations. Sign-up should support multiple methods so users can choose how to register. During sign-up, you should synchronize new organization data with your billing system, CRM, and other internal tools so teams always get accurate customer information. You should also validate prerequisites before completing sign-up, such as billing validity and required legal agreement acceptance.
+
+For example, a user signs up with Google or GitHub on behalf of a company and provides an organization workspace name. During sign-up, you collect payment details for a free trial so you can charge usage when the trial ends. Billing credential validation happens before completion. After successful sign-up, you publish a sign-up event to Salesforce and Pardot to synchronize customer data for growth tracking and marketing.
+
+#### How <ProductName /> Helps
+
+- Supports multiple sign-up options:
+  - Email and password
+  - Email and one-time passcode (OTP)
+  - Social sign-up with providers such as Google and GitHub
+- Provisions the organization workspace during registration and assigns the first user as workspace owner in the same journey.
+- Exposes organization lifecycle events so you can synchronize onboarding data with CRM, marketing automation, billing, and other operational systems.
+- Supports external API calls during sign-up when your journey requires prerequisite checks before onboarding completes.
+- Provides low-code and no-code GUI-based journey building.
+
+### Collaboration
+
+As the next step, you want each customer organization to collaborate safely inside its own workspace. You expect organization admins to invite members quickly while your platform keeps invitation handling consistent and secure. You also need predictable invitation lifecycle behavior, including resend control, expiry handling, and seamless onboarding for invited users who do not yet have an account.
+
+For example, an admin invites a teammate by email, the teammate accepts the invitation, completes user registration, and joins the correct workspace.
+
+#### How <ProductName /> Helps
+
+- Supports organization-scoped member invitations by email.
+- Manages invitation lifecycle operations such as resend and expiry.
+- Lets you build invited-user onboarding journeys with low-code and no-code GUI capabilities.
+- Preserves workspace boundaries so invitations and access grants stay scoped to the correct organization.
+
+### Organizational Identity Management
+
+As customer organizations grow, you need identity operations that evolve from basic onboarding to enterprise federation. You expect each organization to adopt the identity model that matches its security posture and operational maturity. You also need continuity across identity methods so users can sign in through enterprise identity providers without creating fragmented identities in your platform.
+
+For example, a customer starts with direct user onboarding and later enables Microsoft Entra ID federation with just-in-time (JIT) provisioning or account linking.
+
+#### How <ProductName /> Helps
+
+- Supports direct organization user onboarding.
+- Supports bring-your-own-identity-provider (BYOIdP) integration through OIDC.
+- Supports enterprise federation patterns.
+- Supports JIT provisioning to create users during sign-in.
+- Supports account linking to keep user identities consistent across authentication methods.
+
+These options let customer organizations adopt stronger identity controls over time without requiring your platform team to rebuild identity workflows.
+
+### Identity Recovery
+
+When users lose access, you need a recovery journey that restores access quickly and securely. You expect recovery options that reduce support load while enforcing organization security requirements. You also need recovery methods that work across different contexts, including users with limited email access or mobile-first users.
+
+For example, a user who cannot remember credentials completes account recovery by using email OTP.
+
+#### How <ProductName /> Helps
+
+<ProductName /> supports multiple recovery options:
+
+- Email magic links
+- Email OTP
+- SMS OTP
+
+You can map these options to your journey design and security policy requirements. These built-in capabilities reduce lockout friction and improve recovery success without custom recovery service development.
+
+### Organization Workspace Authorization and Subscription Controls
+
+As your business introduces paid plans, you need authorization and entitlement controls per workspace. You expect feature access, API limits, and privileged operations to align with subscription level and organization role. You also need policy-driven control for resource sharing across workspaces while preserving tenant isolation.
+
+For example, when a workspace upgrades from a free plan to a premium plan, users gain access to additional features and administrative capabilities.
+
+#### How <ProductName /> Helps
+
+- Supports grouping APIs and granting API access to organization workspaces with policy-based controls.
+- Supports role-based access control (RBAC) for workspace users.
+- Lets you map subscription changes to policy-driven API availability.
+- Lets you map user capability changes through role management.
+- Supports policy-based resource and configuration sharing models while preserving workspace boundaries.
+
+### Delegated Administration
+
+As your customer base scales, you want organizations to manage day-to-day administration independently. You expect delegation controls that reduce dependency on your support team while keeping administration secure and auditable. You also need clear boundaries so delegated admins can perform only approved actions within their organization workspace context.
+
+For example, a customer assigns a workspace admin to manage user access while platform-level controls remain with your central team.
+
+#### How <ProductName /> Helps
+
+- Supports fine-grained delegated administration with organization-scoped roles and permission controls.
+- Lets organization admins assign administrative roles and manage routine identity operations within workspace boundaries.
+- Provides audit visibility for administrative actions to support compliance and traceability.
+
+### Branding Customization
+
+As a B2B product owner, you want identity journeys to match both your platform brand and each customer brand. You expect each workspace to express organization identity without losing platform consistency. You also need control over what customers can customize and what remains centrally managed.
+
+For example, one customer sets a custom logo and color theme for workspace sign-in screens.
+
+#### How <ProductName /> Helps
+
+- Supports branding customization for registration, sign-in, and recovery pages at workspace scope.
+- Supports configurable elements such as logos, colors, and themes while preserving global experience standards.
+- Supports organization-specific subdomains to provide branded access points.
+
+### Organizational Sign in
+
+As your customer portfolio diversifies, you need flexibility for both global sign-in and organization-specific sign-in requirements. You expect users to see only sign-in methods that match organization policy. You also need a model that supports simple and advanced organization-specific behavior without duplicating application logic.
+
+For example, one organization allows only enterprise single sign-on (SSO), while another allows email and social sign-in.
+
+#### How <ProductName /> Helps
+
+- Supports global sign-in flows.
+- Supports organization-aware sign-in controls.
+- Lets you adapt available sign-in options based on each organization's configured identity capabilities and policy.
+
+### Organization Discovery Mechanisms
+
+Before sign-in, you need reliable organization discovery so users land in the correct organization context. You may need routing by organization name, user identifier, or email domain. You may also need custom discovery logic for industry, regional, or product segmentation requirements.
+
+For example, a user enters a work email address and your platform routes the user to the correct organization workspace.
+
+#### How <ProductName /> Helps
+
+- Supports discovery by organization identifier.
+- Supports discovery by email domain mapping.
+
+These discovery options reduce sign-in confusion and improve first-attempt success.
+
+### Privacy and Compliance
+
+As a B2B application owner, you need identity journeys that align with privacy regulations and customer policy requirements. You expect consent and data handling controls that support compliance across organization boundaries. You also need flexibility because different organizations can require different consent behavior based on legal and governance needs.
+
+For example, a customer requires explicit user consent before optional profile data processing.
+
+#### How <ProductName /> Helps
+
+- Supports privacy and consent capabilities for regulation-aware identity flows in multi-tenant environments.
+- Lets you design consent steps that align with policy expectations and keep enforcement consistent across workspaces.
+
+These capabilities reduce compliance risk while preserving a predictable user experience.
+
+### Platform Monitoring and Governance
+
+To operate a B2B SaaS platform, you need continuous visibility into usage, risk, and growth at workspace and platform levels. You expect actionable metrics that support customer health monitoring and governance decisions. You also need governance actions so platform administrators can intervene when a workspace shows risk signals or policy violations.
+
+For example, platform admins review failed sign-in trends and deactivate a workspace after repeated suspicious activity.
+
+#### How <ProductName /> Helps
+
+<ProductName /> supports monitoring dashboards with key indicators such as:
+
+- Monthly active users
+- Inactive users
+- Locked users
+- Failed sign-in attempts
+- Workspace registration counts
+- Workspace growth trends
+
+These insights support operational planning, risk detection, and growth analysis.
+
+<ProductName /> also supports governance workflows such as viewing workspace metadata, monitoring workspace activity indicators, and deactivating workspaces when intervention is required. Service provider organizations can view workspace-level breakdowns, and workspace admins can view insights for their own organization workspace.
+
+### Troubleshooting
+
+When a customer reports an access issue, you need fast diagnostics at workspace scope. You expect support teams to identify root causes quickly without searching across unrelated organization data. You also need troubleshooting signals that connect identity events, configuration context, and failure patterns.
+
+For example, support engineers inspect workspace logs to diagnose repeated sign-in failures after an identity provider change.
+
+#### How <ProductName /> Helps
+
+- Supports organization-level logging and diagnostics for authentication and access investigation.
+- Helps teams confirm misconfigurations, identify failure points, and validate corrective actions.
+
+This support reduces mean time to resolution and improves customer outcomes.
+
+### AI Agents
+
+As AI adoption grows, you may want to improve customer experience with AI agents in B2B SaaS use cases. Managing AI agent identity and lifecycle securely becomes an important requirement.
+
+#### How <ProductName /> Helps
+
+<ProductName /> will soon support capabilities to help you secure B2B AI agents.

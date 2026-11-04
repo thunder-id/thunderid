@@ -18,10 +18,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 const (
@@ -1479,8 +1481,8 @@ func TestHandleSharingPolicyPostRequest_PassesTheWireShapeToTheService(t *testin
 	require.Equal(t, http.StatusCreated, rr.Code)
 }
 
-// Overlay rules decode and reach the service, on a section and on a named unit. The refusal is the
-// framework's, since a user declares no field for them to govern.
+// Overlay rules decode and reach the service, on a section and on a named unit. The refusal is the service's, which
+// the handler answers as it gets it.
 func TestHandleSharingPolicyPostRequest_PassesOverlayRulesToTheService(t *testing.T) {
 	var recorded sharing.PolicyRequest
 	mockSvc := NewUserServiceInterfaceMock(t)
@@ -1504,6 +1506,55 @@ func TestHandleSharingPolicyPostRequest_PassesOverlayRulesToTheService(t *testin
 	require.Contains(t, recorded.ChildUnits.OverlayRules, "roles")
 	require.Len(t, recorded.ChildUnits.Units, 1)
 	require.Contains(t, recorded.ChildUnits.Units[0].OverlayRules, "roles")
+}
+
+// A refusal of the roles a share mandates is answered with its own code and a client status, on create and update.
+func TestHandleSharingPolicyWrite_MandatedRoleRefusals(t *testing.T) {
+	cases := []struct {
+		refusal tidcommon.ServiceError
+		status  int
+	}{
+		{ErrorRolesNotOnNamedUnit, http.StatusBadRequest},
+		{ErrorRolesRuleNotFixed, http.StatusBadRequest},
+		{role.ErrorMandatedRoleNotInOU, http.StatusBadRequest},
+		{role.ErrorMandatedRolesNotSupported, http.StatusBadRequest},
+		{sysauthz.ErrorGrantNotPermitted, http.StatusForbidden},
+	}
+	body := `{"childUnits":{"mode":"selected","units":[` +
+		`{"ouId":"ou-1","reach":"unit","overlayRules":{"roles":{"editable":false,"value":["role-a"]}}}]}}`
+	for _, tc := range cases {
+		t.Run(tc.refusal.Code, func(t *testing.T) {
+			mockSvc := NewUserServiceInterfaceMock(t)
+			mockSvc.On("CreateSharingPolicy", mock.Anything, "user-1", mock.Anything).
+				Return(sharing.Policy{}, &tc.refusal).Once()
+			mockSvc.On("UpdateSharingPolicy", mock.Anything, "user-1", "policy-1", mock.Anything).
+				Return(sharing.Policy{}, &tc.refusal).Once()
+			handler := newUserHandler(mockSvc)
+
+			create := httptest.NewRequest(http.MethodPost, "/users/user-1/sharing-policies", strings.NewReader(body))
+			create.SetPathValue("id", "user-1")
+			update := httptest.NewRequest(http.MethodPut, "/users/user-1/sharing-policies/policy-1",
+				strings.NewReader(body))
+			update.SetPathValue("id", "user-1")
+			update.SetPathValue("policyId", "policy-1")
+
+			for _, write := range []struct {
+				req    *http.Request
+				handle func(http.ResponseWriter, *http.Request)
+			}{
+				{create, handler.HandleSharingPolicyPostRequest},
+				{update, handler.HandleSharingPolicyPutRequest},
+			} {
+				rr := httptest.NewRecorder()
+				write.handle(rr, write.req)
+
+				require.Equal(t, tc.status, rr.Code)
+				var errResp apierror.ErrorResponse
+				require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+				require.Equal(t, tc.refusal.Code, errResp.Code)
+			}
+		})
+	}
 }
 
 func TestHandleSharingPolicyPutRequest_RefusesAChangeOfIssuer(t *testing.T) {

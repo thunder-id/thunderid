@@ -236,4 +236,53 @@ var (
 				"control plane captures it, is not YAML until its values are filled in.",
 		},
 	}
+	// ErrorPromoteToItself is returned when a promotion names the same gateway as source and target.
+	ErrorPromoteToItself = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1036",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.promote_to_itself",
+			DefaultValue: "The source and target are the same gateway",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.promote_to_itself.description",
+			DefaultValue: "Promote from one gateway to another.",
+		},
+	}
+	// ErrorSourceRunsNothing is returned when a promotion's source gateway runs no version yet.
+	ErrorSourceRunsNothing = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1037",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.source_runs_nothing",
+			DefaultValue: "The source gateway runs no version yet",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.source_runs_nothing.description",
+			DefaultValue: "Deploy a version to the source gateway before promoting it.",
+		},
+	}
+	// ErrorResourceNotDeployed names a resource no master of the gateway records.
+	ErrorResourceNotDeployed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.resource_not_deployed",
+			DefaultValue: "No apply to this gateway has recorded the resource",
+		},
+	}
+	// ErrorOriginTooLong is returned when an apply names where its version came from with a label
+	// longer than a master records.
+	ErrorOriginTooLong = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1035",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.origin_too_long",
+			DefaultValue: "The origin is too long",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.origin_too_long.description",
+			DefaultValue: "Name where the version came from in at most 255 characters.",
+		},
+	}
 )

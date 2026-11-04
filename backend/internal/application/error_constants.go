@@ -837,4 +837,57 @@ var (
 			DefaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID",
 		},
 	}
+	// ErrorInvalidProject is returned when an application names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1063",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+	// ErrorOUNotInProject is returned when an application names an organization unit outside the project
+	// it names.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1064",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.ou_not_in_project_description",
+			DefaultValue: "The organization unit must be the project's root organization unit or one below it",
+		},
+	}
+	// ErrorDeviceGrantFlowRequired is returned when Device Code is enabled without an assigned flow.
+	ErrorDeviceGrantFlowRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1065",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.device_grant_flow_required",
+			DefaultValue: "Device Grant flow is required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.device_grant_flow_required_description",
+			DefaultValue: "Assign a Device Grant flow before enabling the Device Code grant type",
+		},
+	}
+	// ErrorInvalidDeviceGrantFlowID is returned when an invalid Device Grant flow is assigned.
+	ErrorInvalidDeviceGrantFlowID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1066",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_device_grant_flow_id",
+			DefaultValue: "Invalid Device Grant flow ID",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_device_grant_flow_id_description",
+			DefaultValue: "The Device Grant flow must call this application's configured Authentication flow",
+		},
+	}
 )

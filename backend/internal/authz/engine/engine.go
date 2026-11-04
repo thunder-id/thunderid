@@ -64,6 +64,8 @@ type AccessEvaluationRequest struct {
 	ResourceServer ResourceServer
 	Permission     Permission
 	Context        map[string]interface{}
+	// OUID, when set, evaluates the subject's role assignments in this organization unit only.
+	OUID string
 }
 
 // AccessEvaluationResponse represents a single fine-grained access evaluation response.

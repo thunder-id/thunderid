@@ -1,0 +1,70 @@
+---
+title: ThunderIDNodeConfig
+docType: reference
+description: Configuration type for ThunderIDNodeClient initialization, including client credentials and session settings.
+---
+
+# `ThunderIDNodeConfig`
+
+`ThunderIDNodeConfig` is the configuration type for the <ProductName /> Node.js SDK. The type extends the base `Config` from `@thunderid/javascript` and adds a Node.js-specific option for controlling session cookie lifetime.
+
+## Usage
+
+Pass a `ThunderIDNodeConfig` object to the `initialize` method of your client:
+
+```ts title="src/auth.ts" showLineNumbers
+import { ThunderIDNodeConfig } from '@thunderid/node'
+
+const config: ThunderIDNodeConfig = {
+  clientId: '<your-client-id>',
+  serverOrigin: 'https://localhost:8090',
+  afterSignInUrl: 'http://localhost:3000/callback',
+  afterSignOutUrl: 'http://localhost:3000',
+  sessionCookieExpiryTime: 28800, // 8 hours
+}
+```
+
+## Properties
+
+### Node.js-Specific Properties
+
+| Property | Type | Required | Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `sessionCookie` | `SessionCookieConfig` | ❌ | - | Session cookie settings (expiry, httpOnly, sameSite, secure). |
+| `sessionCookie.expiryTime` | `number` | ❌ | `86400` (24 hours) | Session cookie lifetime in seconds. Determines how long the session cookie remains valid after sign-in. |
+
+#### Resolution Order for `sessionCookie.expiryTime`
+
+The SDK resolves the session cookie expiry time in the following order, using the first defined value:
+
+1. The `sessionCookie.expiryTime` property in the configuration object.
+2. The `THUNDERID_SESSION_COOKIE_EXPIRY_TIME` environment variable.
+3. The built-in default of `86400` seconds (24 hours).
+
+### Inherited Base Properties
+
+`ThunderIDNodeConfig` inherits all properties from the base `Config` type in `@thunderid/javascript`. The following table lists the most commonly used inherited properties:
+
+| Property | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `clientId` | `string` | ✅ | The client ID of your application registered in <ProductName />. |
+| `serverOrigin` | `string` | ✅ | The base URL of the <ProductName /> instance (for example, `https://localhost:8090`). |
+| `afterSignInUrl` | `string` | ❌ | The URL to redirect to after a successful sign-in. |
+| `afterSignOutUrl` | `string` | ❌ | The URL to redirect to after sign-out. |
+| `clientSecret` | `string` | ❌ | The client secret. Required for confidential clients only. |
+| `scope` | `string[]` | ❌ | The OAuth 2.0 scopes to request. Defaults to `['openid', 'profile']`. |
+
+## Example
+
+```ts showLineNumbers
+import { ThunderIDNodeConfig } from '@thunderid/node'
+
+const config: ThunderIDNodeConfig = {
+  clientId: '<your-client-id>',
+  serverOrigin: 'https://localhost:8090',
+  afterSignInUrl: 'http://localhost:3000/callback',
+  afterSignOutUrl: 'http://localhost:3000',
+  scope: ['openid', 'profile'],
+  sessionCookieExpiryTime: 3600, // 1 hour
+}
+```

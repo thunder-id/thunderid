@@ -49,7 +49,13 @@ func (h *agentHandler) HandleAgentListRequest(w http.ResponseWriter, r *http.Req
 
 	includeDisplay := r.URL.Query().Get(sysutils.QueryParamInclude) == sysutils.IncludeValueDisplay
 
-	resp, svcErr := h.service.GetAgentList(ctx, limit, offset, filters, includeDisplay)
+	var resp *model.AgentListResponse
+	if query := r.URL.Query(); query.Has(projectIDQueryParam) {
+		resp, svcErr = h.service.GetAgentListByProject(ctx, query.Get(projectIDQueryParam), limit, offset,
+			filters, includeDisplay)
+	} else {
+		resp, svcErr = h.service.GetAgentList(ctx, limit, offset, filters, includeDisplay)
+	}
 	if svcErr != nil {
 		writeServiceError(ctx, w, svcErr)
 		return
@@ -85,6 +91,8 @@ func (h *agentHandler) HandleAgentPostRequest(w http.ResponseWriter, r *http.Req
 		Owner:       req.Owner,
 		Delegated:   req.Delegated,
 		Attributes:  req.Attributes,
+		ValidUntil:  req.ValidUntil,
+		ProjectID:   req.ProjectID,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                req.AuthFlowID,
 			RegistrationFlowID:        req.RegistrationFlowID,

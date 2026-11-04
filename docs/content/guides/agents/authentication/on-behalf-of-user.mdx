@@ -17,9 +17,9 @@ An agent can hold an access token that represents a user instead of itself. The 
 
 By default an agent acts only on its own. Extending it lets the same agent also act for a signed-in user, without giving up acting on its own. In the Console, extend the agent as follows:
 
-1. On the **Advanced** tab, under **Operating mode**, turn on the **Delegated mode** toggle. The agent keeps acting on its own (`client_credentials`) and gains the ability to sign a user in and act for them (`authorization_code` with PKCE).
+1. On the **Advanced** tab, under **Operating mode**, turn on the **Delegated mode** toggle. The agent keeps acting on its own (`client_credentials`) and gains the ability to act for a user. Turning the toggle on adds the authorization code (`authorization_code` with PKCE) and refresh token grants by default.
 2. Still on the **Advanced** tab, add the **Authorized redirect URIs** for the sign-in callback, and set **Allowed user types** to the user types allowed to register through the agent.
-3. On the **Flows** tab, pick the **Authentication** and **Registration** flows that decide how users authenticate (enterprise SSO, social login, passkeys, OTP, and where step-up applies).
+3. On the **Flows** tab, pick the **Authentication** and **Registration** flows that decide how users authenticate (enterprise SSO, social login, passkeys, OTP, and where step-up applies). The tab applies only when the agent signs users in with the authorization code or CIBA grant.
 
 :::note
 Flows are designed in the flow builder, not here. See [Login and Registration Flows](../../../flows/build-a-flow) to build them; this page only selects which flow the agent uses.
@@ -31,9 +31,11 @@ Through the API, send `delegated: true` on the agent and add the grants for the 
 
 Once the agent is extended to act for users, the **User** token becomes editable on the **Tokens** tab (under **Issued to**, alongside the Agent token). Open it to choose which of the user's attributes the access token carries and to set the validity periods for the access, ID, and refresh tokens. The agent's actor (`act`) claim is shown here too. The access token validity you set here also applies to the access tokens the agent receives by redeeming an ID-JAG with the JWT bearer grant. Through the API, configure these in the agent's OAuth token settings; see the [Agents API Reference](../../../../apis#tag/agents).
 
+All of these settings appear when the agent signs users in with the authorization code or CIBA grant. Token exchange and JWT bearer issue only an access token, so an agent whose delegated grants are only token exchange, JWT bearer, or both sees the access token validity and the scope mapping, plus, with token exchange, the attributes to keep from the incoming token. Tokens from a redeemed ID-JAG carry no user attributes.
+
 ## Get a token for the user
 
-An agent gets a token that represents the user in one of three ways: by signing a present user in, by asking an absent user to approve out of band, or by exchanging a user token that already exists. Choose the method that fits.
+An agent gets a token that represents the user in one of three ways: by signing a present user in, by asking an absent user to approve out of band, or by exchanging a user token that already exists. Choose the method that fits. An agent can also receive one by redeeming an ID-JAG from an external identity provider; see [Use identity assertions](#use-identity-assertions).
 
 <DelegationMethodSelector />
 
@@ -147,6 +149,10 @@ An agent that acts for a user can also renew that access without a new sign-in, 
 - **API:** add `refresh_token` to the agent's `grantTypes`.
 
 The exchange call, and the rules for narrowing scope and preserving the resource binding, are the same as for any client. See [Refresh Token](../../../protocols/oauth-oidc/refresh-token) for the request and its rules. The reissued token keeps the agent as the actor.
+
+## Use identity assertions
+
+An agent that acts for a user can also take part in an Identity Assertion JWT Authorization Grant (ID-JAG) exchange. To let the agent obtain an ID-JAG for the signed-in user that an external service accepts, see [Issue Identity Assertions (ID-JAG)](../../../protocols/oauth-oidc/identity-assertion-grant/issue-identity-assertions). To let the agent redeem an ID-JAG issued by an external identity provider with the JWT bearer grant, see [Accept Identity Assertions from an External IdP](../../../protocols/oauth-oidc/identity-assertion-grant/accept-identity-assertions).
 
 ## What the token carries
 

@@ -23,6 +23,16 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
+// DeviceVerificationResult contains trusted request data returned after a Device Grant user code check.
+type DeviceVerificationResult struct {
+	InvalidCode                bool
+	ApplicationID              string
+	AuthID                     string
+	RequestedPermissions       string
+	ResourceServerIdentifier   string
+	RequiredOptionalAttributes string
+}
+
 // LanguageTranslationsResponse represents all translations for a language, organized by namespace.
 type LanguageTranslationsResponse struct {
 	Language     string                       `json:"language"`
@@ -314,12 +324,14 @@ func (nd *NodeDefinition) UnmarshalYAML(value *yaml.Node) error {
 
 // InputDefinition represents an input parameter for a node.
 type InputDefinition struct {
-	Ref        string                     `json:"ref,omitempty"        yaml:"ref,omitempty"        jsonschema:"Reference ID for the input."`
-	Type       string                     `json:"type"                 yaml:"type"                 jsonschema:"Input type (e.g., 'text', 'password', 'email')."`
-	Identifier string                     `json:"identifier"           yaml:"identifier"           jsonschema:"Field identifier or name."`
-	Required   bool                       `json:"required"             yaml:"required"             jsonschema:"Whether this input is mandatory."`
-	OneTimeUse bool                       `json:"oneTimeUse,omitempty" yaml:"oneTimeUse,omitempty" jsonschema:"When true, the input is removed from the flow context after being consumed."`
-	Validation []ValidationRuleDefinition `json:"validation,omitempty" yaml:"validation,omitempty" jsonschema:"Server-enforced validation rules applied to the submitted value."`
+	Ref          string                     `json:"ref,omitempty"        yaml:"ref,omitempty"        jsonschema:"Reference ID for the input."`
+	Type         string                     `json:"type"                 yaml:"type"                 jsonschema:"Input type (e.g., 'text', 'password', 'email')."`
+	Identifier   string                     `json:"identifier"           yaml:"identifier"           jsonschema:"Field identifier or name."`
+	Required     bool                       `json:"required"             yaml:"required"             jsonschema:"Whether this input is mandatory."`
+	OneTimeUse   bool                       `json:"oneTimeUse,omitempty" yaml:"oneTimeUse,omitempty" jsonschema:"When true, the input is removed from the flow context after being consumed."`
+	DefaultValue string                     `json:"defaultValue,omitempty" yaml:"defaultValue,omitempty" jsonschema:"Value the flow supplies for the input when it has none. On a prompt input the person still sees it, prefilled. For a constant input, the fixed value."`
+	Constant     bool                       `json:"constant,omitempty"   yaml:"constant,omitempty"   jsonschema:"When true, DefaultValue always replaces any existing value for this input. Supported on executor inputs only and requires a non-empty DefaultValue."`
+	Validation   []ValidationRuleDefinition `json:"validation,omitempty" yaml:"validation,omitempty" jsonschema:"Server-enforced validation rules applied to the submitted value."`
 }
 
 // VariableDefinition declares one variable of a flow. It is described in the vocabulary of a prompt's inputs: an
@@ -632,7 +644,7 @@ func (c *AccessTokenSubConfig) ValidityPeriodOrZero() int64 {
 // IDTokenConfig is the ID token configuration.
 type IDTokenConfig struct {
 	ValidityPeriod int64               `json:"validityPeriod,omitempty" yaml:"validityPeriod,omitempty" jsonschema:"ID token validity period in seconds."`
-	UserAttributes []string            `json:"userAttributes,omitempty" yaml:"userAttributes,omitempty" jsonschema:"User attributes to embed in the ID token."`
+	UserAttributes []string            `json:"userAttributes,omitempty" yaml:"userAttributes,omitempty" jsonschema:"User attributes to embed in the ID token. Identity assertions (ID-JAG) also carry the ones the ID token holds, except roles and groups."`
 	ResponseType   IDTokenResponseType `json:"responseType,omitempty"   yaml:"responseType,omitempty"   jsonschema:"ID token response type (JWT, JWE, NESTED_JWT). Defaults to JWT."`
 	SigningAlg     string              `json:"signingAlg,omitempty"     yaml:"signingAlg,omitempty"     jsonschema:"JWS algorithm used to sign the ID token. Defaults to the server's preferred signing key algorithm."`
 	EncryptionAlg  string              `json:"encryptionAlg,omitempty"  yaml:"encryptionAlg,omitempty"  jsonschema:"JWE key-management algorithm. Required when responseType is JWE or NESTED_JWT."`
@@ -753,10 +765,13 @@ type AccessStatusReport struct {
 }
 
 // AccessDecision is the result of an access check. A refusal's Reason names the hold; a refusal that
-// names none answers as a wrong credential.
+// names none answers as a wrong credential. NotAfter, on an admitted decision, is the latest instant a
+// token issued now for the entity may expire: its lifespan end. It is zero when the lifespan does not
+// end.
 type AccessDecision struct {
 	Admitted bool
 	Reason   AccessRefusalReason
+	NotAfter time.Time
 }
 
 // User represents a user in the system. Status is derived at read time and read-only. LastLoginAt is
@@ -792,10 +807,17 @@ type Agent struct {
 	LogoURL     string          `json:"logoUrl,omitempty"`
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
+	// ValidUntil is the RFC 3339 instant the agent's lifespan ends; nil registers an agent that does
+	// not expire.
+	ValidUntil *string `json:"validUntil,omitempty"`
 
 	// Delegated marks an agent that acts on behalf of a user. It selects the OAuth grant types applied
 	// and checked when the agent is created and is not stored.
 	Delegated bool `json:"delegated,omitempty"`
+
+	// ProjectID places the agent in the project's root organization unit, or checks that the
+	// organization unit named belongs to the project. It is not stored.
+	ProjectID string `json:"projectId,omitempty"`
 
 	// The service-level model carries the full internal profile.
 	InboundAuthProfile
@@ -806,6 +828,7 @@ type Agent struct {
 type InboundClient struct {
 	ID                        string
 	AuthFlowID                string
+	DeviceGrantFlowID         string
 	RegistrationFlowID        string
 	IsRegistrationFlowEnabled bool
 	RecoveryFlowID            string
@@ -1125,12 +1148,34 @@ type ConsentPurposePrompt struct {
 	PurposeID string `json:"purposeId"`
 	// Description is a human-readable description of the consent purpose
 	Description string `json:"description,omitempty"`
-	// Type discriminates between attribute and permission consent purposes.
+	// Type discriminates between attribute, permission and authorization details consent purposes.
 	Type string `json:"type,omitempty"`
 	// Essential is the list of mandatory elements that require user consent
 	Essential []PromptElement `json:"essential"`
 	// Optional is the list of elements the user can opt in or out of
 	Optional []PromptElement `json:"optional"`
+}
+
+// ConsentDetailRowOriginServer is the ConsentDetailRow origin of a field value the type's processor supplied.
+const ConsentDetailRowOriginServer = "server"
+
+// ConsentDetailRow is one field of an authorization details object presented for consent.
+type ConsentDetailRow struct {
+	// Path is the dot-separated location of the field within the detail object.
+	Path string `json:"path"`
+	// Label is the display label declared by the type, defaulting to the path.
+	Label string `json:"label"`
+	// Value is the field value as it appears in the detail.
+	Value json.RawMessage `json:"value"`
+	// Modification is the change the user may make to the field before approving, if any.
+	Modification string `json:"modification,omitempty"`
+	// As is the ordering the modification compares the field by, if any.
+	As string `json:"as,omitempty"`
+	// Origin is ConsentDetailRowOriginServer when the value was supplied by the type's processor rather than the
+	// client.
+	Origin string `json:"origin,omitempty"`
+	// Options lists the values the user may add to a list field, when the schema restricts them.
+	Options json.RawMessage `json:"options,omitempty"`
 }
 
 // AuthorizationDetailType is a registered RFC 9396 authorization details type.
@@ -1140,8 +1185,8 @@ type AuthorizationDetailType struct {
 	Type        string
 	Name        string
 	Description string
-	// Version starts at 1 and increments when the schema or the consent template changes, or the processor is
-	// added or removed. An approval holds only for the version it was given on.
+	// Version starts at 1 and increments when the schema, the consent template or Reuse changes, or the processor
+	// is added or removed. An approval holds only for the version it was given on.
 	Version int
 	// Schema is the JSON Schema 2020-12 schema, with field policies, that details of the type conform to.
 	Schema          json.RawMessage
@@ -1180,10 +1225,16 @@ type AuthorizationDetail struct {
 // PromptElement represents a single element within a consent purpose prompt. Parent carries
 // rollup linkage for permission elements (zero value, omitted on the wire, for attribute elements).
 type PromptElement struct {
-	// Name is the canonical element name (attribute name or permission string)
+	// Name is the canonical element name (attribute name, permission string or authorization detail ID)
 	Name string `json:"name"`
 	// Parent is the canonical name of the rollup parent, if any
 	Parent string `json:"parent,omitempty"`
+	// DetailType is the type of an authorization detail element.
+	DetailType string `json:"detailType,omitempty"`
+	// Summary is the rendered consent sentence of an authorization detail element.
+	Summary string `json:"summary,omitempty"`
+	// Rows are the fields of an authorization detail element.
+	Rows []ConsentDetailRow `json:"rows,omitempty"`
 }
 
 // ConsentDecisions holds the user's consent decisions.
@@ -1216,6 +1267,9 @@ type ElementDecision struct {
 	Name string `json:"name"`
 	// Approved indicates whether the user approved sharing this element
 	Approved bool `json:"approved"`
+	// Modified holds the user's changes to an authorization detail's fields, keyed by field path, as the type's
+	// field policies allow.
+	Modified map[string]json.RawMessage `json:"modified,omitempty"`
 }
 
 // Consent represents a consent record in the system, containing all relevant details and status.
@@ -1238,6 +1292,8 @@ type Consent struct {
 	CreatedTime int64
 	// UpdatedTime is the Unix timestamp when the consent was last updated
 	UpdatedTime int64
+	// GrantedAuthorizationDetails holds the authorization details the recorded decision grants.
+	GrantedAuthorizationDetails []AuthorizationDetail
 }
 
 // ExecutorSupportedProperties describes the properties that an executor supports, including whether each property is required.
@@ -1305,11 +1361,20 @@ type Input struct {
 	Validation  []ValidationRule `json:"validation,omitempty"`
 	// OneTimeUse indicates that the input can only be consumed once
 	OneTimeUse bool `json:"oneTimeUse,omitempty"`
+	// DefaultValue is written to the flow context for a missing input and returned with a prompted input.
+	DefaultValue string `json:"defaultValue,omitempty"`
+	// Constant makes DefaultValue replace an existing value instead of only filling a missing one. Executor inputs only.
+	Constant bool `json:"-"`
 }
 
 // IsSensitive checks whether this input's type is considered sensitive.
 func (i Input) IsSensitive() bool {
 	return slices.Contains(sensitiveInputTypes, i.Type)
+}
+
+// IsSensitive checks whether this input definition's type is considered sensitive.
+func (d InputDefinition) IsSensitive() bool {
+	return slices.Contains(sensitiveInputTypes, d.Type)
 }
 
 // ValidationRule defines a single constraint on a flow input. CompiledRegex is
@@ -1365,6 +1430,8 @@ func (a *Application) OAuthClientID() string {
 // InboundAuthProfile is the wire field block embedded in entity DTOs (requests and responses).
 type InboundAuthProfile struct {
 	AuthFlowID                string              `json:"authFlowId,omitempty"             yaml:"authFlowId,omitempty"             jsonschema:"Authentication flow ID. Optional. Specifies which login flow to use (e.g., MFA, passwordless). If omitted, the default authentication flow is used."`
+	DeviceGrantFlowID         string              `json:"deviceGrantFlowId,omitempty"      yaml:"deviceGrantFlowId,omitempty"      jsonschema:"Device Grant flow ID. Optional. Specifies the flow used to approve device authorization requests."`
+	DeviceGrantFlowHandle     string              `json:"deviceGrantFlowHandle,omitempty"  yaml:"deviceGrantFlowHandle,omitempty"  jsonschema:"Device Grant flow handle. Optional. Alternative to deviceGrantFlowId — resolved to an ID at import time."`
 	AuthFlowHandle            string              `json:"authFlowHandle,omitempty"         yaml:"authFlowHandle,omitempty"         jsonschema:"Authentication flow handle. Optional. Alternative to authFlowId — resolved to an ID at import time."`
 	RegistrationFlowID        string              `json:"registrationFlowId,omitempty"     yaml:"registrationFlowId,omitempty"     jsonschema:"Registration flow ID. Optional. Specifies the user registration/signup flow."`
 	RegistrationFlowHandle    string              `json:"registrationFlowHandle,omitempty" yaml:"registrationFlowHandle,omitempty" jsonschema:"Registration flow handle. Optional. Alternative to registrationFlowId — resolved to an ID at import time."`
@@ -1574,6 +1641,9 @@ type AccessEvaluationRequest struct {
 	ResourceServer AccessEvaluationResourceServer `json:"resourceServer"`
 	Permission     Permission                     `json:"permission"`
 	Context        map[string]interface{}         `json:"context,omitempty"`
+	// OUID, when set, evaluates the subject's role assignments, direct and through its groups, in
+	// this organization unit only. Without it, assignments made in any organization unit count.
+	OUID string `json:"ouId,omitempty"`
 }
 
 // AccessEvaluationResponse represents a single fine-grained access evaluation response.
@@ -1587,7 +1657,9 @@ type AccessEvaluationsRequest struct {
 	Evaluations []AccessEvaluationRequest `json:"evaluations"`
 }
 
-// AccessEvaluationContextAuthorizationDetails is the evaluation context key for requested authorization details.
+// AccessEvaluationContextAuthorizationDetails is the evaluation context key for authorization details. Its value
+// is a JSON array (json.RawMessage) of the requested details during a flow and of the granted details at the token
+// endpoint.
 const AccessEvaluationContextAuthorizationDetails = "authorization_details"
 
 // AccessEvaluationsResponse represents a batched fine-grained access evaluation response.

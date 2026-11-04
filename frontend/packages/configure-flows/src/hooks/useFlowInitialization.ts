@@ -27,6 +27,8 @@ export interface UseFlowInitializationProps {
   flowId?: string;
   /** Existing flow data if editing. */
   existingFlowData?: FlowDefinitionResponse;
+  /** Initial flow data for a new, unsaved flow. */
+  initialFlowData?: FlowDefinitionResponse;
   /** Whether the existing flow data is still loading. */
   isLoadingExistingFlow: boolean;
   /** Function to set nodes in the flow. */
@@ -71,6 +73,7 @@ const useFlowInitialization = (props: UseFlowInitializationProps): UseFlowInitia
     resources,
     flowId,
     existingFlowData,
+    initialFlowData,
     isLoadingExistingFlow,
     setNodes,
     setEdges,
@@ -256,17 +259,19 @@ const useFlowInitialization = (props: UseFlowInitializationProps): UseFlowInitia
    * Effect that updates the flow with the existing flow data or default template.
    */
   useLayoutEffect(() => {
+    const flowData = existingFlowData ?? initialFlowData;
+
     // Skip if we're still loading the existing flow data
     if (flowId && isLoadingExistingFlow) {
       return;
     }
 
-    // If we have an existing flow, transform and load it
-    if (flowId && existingFlowData) {
-      const canvasData = transformFlowToCanvas(existingFlowData);
+    // Load an existing flow or the supplied unsaved draft
+    if (flowData) {
+      const canvasData = transformFlowToCanvas(flowData);
 
       // Check if any nodes lack layout data (position at origin indicates missing layout)
-      const nodesWithoutLayout = existingFlowData.nodes.filter((node: FlowNode) => !node.layout?.position);
+      const nodesWithoutLayout = flowData.nodes.filter((node: FlowNode) => !node.layout?.position);
       const flowNeedsAutoLayout = nodesWithoutLayout.length > 1;
       onNeedsAutoLayout(flowNeedsAutoLayout);
 
@@ -281,7 +286,10 @@ const useFlowInitialization = (props: UseFlowInitializationProps): UseFlowInitia
                   components: resolveComponentMetadata(resources, node.data['components'] as Element[]),
                 }
               : (node.data ?? {}),
-            deletable: node.type !== StepTypes.End && node.type !== StaticStepTypes.Start,
+            deletable:
+              node.type !== StepTypes.End &&
+              node.type !== StaticStepTypes.Start &&
+              node.type !== StaticStepTypes.Variables,
             id: node.id,
             position: node.position,
             type: node.type,
@@ -311,6 +319,7 @@ const useFlowInitialization = (props: UseFlowInitializationProps): UseFlowInitia
   }, [
     flowId,
     existingFlowData,
+    initialFlowData,
     isLoadingExistingFlow,
     resources,
     setNodes,

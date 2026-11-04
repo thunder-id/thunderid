@@ -14,6 +14,7 @@ import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-type
 import {
   getBackchannelLogoutUriServerError,
   hasUserAccess,
+  isIdJagEnabled,
   validateBackchannelLogoutUri,
 } from '@thunderid/configure-applications';
 import {dropNonConformingOptionalAttributes} from '@thunderid/configure-users';
@@ -52,7 +53,7 @@ import AgentConstants from '../constants/agent-constants';
 import AgentQueryKeys from '../constants/agent-query-keys';
 import useAgentRoutes from '../hooks/useAgentRoutes';
 import type {Agent, OAuthAgentConfig} from '../models/agent';
-import isDelegatedAgent from '../utils/isDelegatedAgent';
+import isDelegatedAgent, {hasDelegationGrant} from '../utils/isDelegatedAgent';
 
 interface TabPanelProps {
   children?: ReactNode;
@@ -130,6 +131,8 @@ export default function AgentEditPage(): JSX.Element {
   );
   const hasAnyOtherValidationError = Object.values(validationErrorSources).some(Boolean);
   const [backchannelLogoutUriInvalid, setBackchannelLogoutUriInvalid] = useState(false);
+  const [identityAssertionsInvalid, setIdentityAssertionsInvalid] = useState(false);
+  const [lifespanInvalid, setLifespanInvalid] = useState(false);
 
   const handleBack = async () => {
     await navigate(routes.agents.list());
@@ -170,6 +173,7 @@ export default function AgentEditPage(): JSX.Element {
       });
       setEditedAgent({});
       await refetch();
+      setLifespanInvalid(false);
       setSectionResetKey((key) => key + 1);
     } catch (err) {
       logger.error('Failed to update agent', {error: err});
@@ -255,12 +259,27 @@ export default function AgentEditPage(): JSX.Element {
     hasUserAccess(oauth2Config?.grantTypes) &&
     (backchannelLogoutUriInvalid ||
       !validateBackchannelLogoutUri(oauth2Config?.backchannelLogoutUri, oauth2Config?.publicClient ?? false).valid);
+  // The Identity assertions card shows only in Delegated mode, so a hidden config never blocks
+  // saving. An enabled config needs an allowed audience, checked here from state, and the card also
+  // reports a validity period it has not committed because it is invalid.
+  const isInvalidIdentityAssertions =
+    hasDelegationGrant(oauth2Config?.grantTypes) &&
+    isIdJagEnabled(oauth2Config) &&
+    (identityAssertionsInvalid || (oauth2Config?.token?.idJag?.allowedAudiences ?? []).length === 0);
+  // The Lifespan card reports a draft it could not parse only while it is shown, so a staged end that
+  // has passed is checked here from state, and keeps blocking saving after the card's tab is left.
+  const isInvalidLifespan =
+    lifespanInvalid ||
+    // eslint-disable-next-line react-hooks/purity -- Date.now() is intentional for checking the end is still ahead
+    (typeof editedAgent.validUntil === 'string' && new Date(editedAgent.validUntil).getTime() <= Date.now());
   const hasAnyValidationError =
     hasAnyOtherValidationError ||
     isMissingRedirectUri ||
     isMissingAllowedUserType ||
     isMissingCertificate ||
-    isInvalidBackchannelLogoutUri;
+    isInvalidBackchannelLogoutUri ||
+    isInvalidIdentityAssertions ||
+    isInvalidLifespan;
 
   // ResourceAvatar opens its picker on any avatar click while onSelect is set, so a read-only
   // agent has to withhold the callback rather than rely on `editable` alone.
@@ -284,6 +303,14 @@ export default function AgentEditPage(): JSX.Element {
     validationIssues.push(
       t('agents:edit.page.validation.invalidBackchannelLogoutUri', 'fix the back-channel logout URI'),
     );
+  }
+  if (isInvalidIdentityAssertions) {
+    validationIssues.push(
+      t('agents:edit.page.validation.invalidIdentityAssertions', 'fix the identity assertions (ID-JAG) settings'),
+    );
+  }
+  if (isInvalidLifespan) {
+    validationIssues.push(t('agents:edit.page.validation.invalidLifespan', 'choose a lifespan end in the future'));
   }
   if (hasAnyOtherValidationError) {
     validationIssues.push(t('agents:edit.page.validation.tokenSettings', 'fix the token settings'));
@@ -329,6 +356,7 @@ export default function AgentEditPage(): JSX.Element {
           agent={agent}
           editedAgent={editedAgent}
           onFieldChange={handleFieldChange}
+          onLifespanValidationChange={setLifespanInvalid}
         />
       ),
     },
@@ -399,6 +427,7 @@ export default function AgentEditPage(): JSX.Element {
         oauth2Config={oauth2Config}
         onFieldChange={handleFieldChange}
         onBackchannelLogoutUriValidationChange={setBackchannelLogoutUriInvalid}
+        onIdentityAssertionsValidationChange={setIdentityAssertionsInvalid}
         onDeleteSuccess={() => {
           void handleBack();
         }}
@@ -568,6 +597,7 @@ export default function AgentEditPage(): JSX.Element {
               updateAgent.reset(); // a save error is stale once the form resets
             }
             setEditedAgent({});
+            setLifespanInvalid(false);
             setSectionResetKey((key) => key + 1);
           }}
           onSave={() => {

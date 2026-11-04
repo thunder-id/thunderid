@@ -1,0 +1,108 @@
+---
+title: Register an MCP Client in the Console
+docType: guide
+persona: iam
+sidebar_position: 2
+description: Register an MCP client application in the Console and choose between the user-delegated and machine-to-machine client types.
+---
+
+# Register an MCP Client in the Console
+
+Register an MCP client in the Console when you know its redirect URI ahead of time, such as MCP Inspector or a client you built yourself. This gives you a stable Client ID before the client ever connects.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../../../getting-started/get-thunderid).
+- You can sign in to the <ProductName /> Console.
+- The redirect URI your MCP client uses for its OAuth callback, if it acts on behalf of a user.
+
+<Stepper stepNode="h2" as="h2">
+
+## Step 1: Start the Application Wizard
+
+1. Sign in to the <ProductName /> Console.
+2. Navigate to **Applications** and click **Add Application**.
+3. Select **MCP Client**.
+4. Enter a name for the client.
+5. If prompted, select an organization unit.
+
+## Step 2: Choose the Client Type
+
+The **Client type** step is the most important choice on this page: it decides how the client obtains tokens and whether it acts for a signed-in user.
+
+### On Behalf of a User
+
+Select **On behalf of a user** for an MCP client running inside a host app, such as an IDE, desktop app, or chat client, that a person signs in to interactively. MCP Inspector is this type.
+
+This option configures the Authorization Code flow with PKCE and registers the client as a public client with no client secret. PKCE is locked on: the form shows it as read-only because a user-delegated MCP client always requires it. Selecting this type also embeds the redirect URI editor directly in this step, so add at least one redirect URI here before continuing.
+
+### Machine-to-Machine
+
+Select **On its own behalf** for a client that authenticates with its own credentials and has no signed-in user, such as an autonomous agent or a background service calling MCP servers directly.
+
+This option configures the Client Credentials flow and registers the client as a confidential client. <ProductName /> issues a client secret, and no redirect URI is collected because this client type never redirects a user anywhere.
+
+## Step 3: Finish
+
+Click **Finish**. <ProductName /> creates the application and opens its detail page directly, with no separate completion screen. Open the **General** tab: its **Connection** card shows the **Client ID**. For a machine-to-machine client, generate the **Client Secret** here, since <ProductName /> does not display it automatically after creation (see [Where Credentials Live](#where-credentials-live)).
+
+</Stepper>
+
+## Redirect URI Rules
+
+For a user-delegated client, each redirect URI must satisfy one of two rules:
+
+- A loopback address over `http:`: the host must be `localhost`, `127.0.0.1`, or `[::1]`, with an optional port (for example, `http://localhost:6274/oauth/callback`).
+- Any address over `https:`.
+
+Any other scheme is rejected, including plain `http://` on a non-loopback host. Wildcards (`*`) are rejected anywhere in the URI. The backend's create-time validation independently rejects a wildcard in a redirect URI's port unconditionally, and rejects a wildcard host unless the deployment has explicitly opted in to wildcard redirect URIs, so a wildcard MCP redirect URI is never accepted through the Console.
+
+Ports must match exactly. If your client picks a random callback port each time it starts, such as a local CLI tool that binds to an ephemeral port, you cannot register that exact port ahead of time. [Dynamic Client Registration](../dynamic-client-registration) exists for this case: the client registers its own redirect URI, including whatever port it happened to bind, at connection time instead of you pre-registering it.
+
+## Where Credentials Live
+
+The application's **General** tab holds a **Connection** card with:
+
+- **Application ID**: the <ProductName /> application identifier.
+- **Client ID**: the OAuth 2.1 client ID, for both client types.
+- **Client Secret**: shown only for the machine-to-machine type, since that is the only confidential MCP client type. The field displays a masked placeholder, never the actual value. Click **Generate** to issue a new secret, which <ProductName /> shows once in a dialog. Copy it immediately: closing the dialog without copying means generating another one, which invalidates the previous secret for any client already using it.
+
+## Access Control
+
+For a user-delegated client, the **General** tab also shows an **Access** card:
+
+- **Allowed User Types**: which user types can sign up through this client. Leave it empty if users should not be able to sign up through it.
+- **Client URI**: an optional public homepage for the client.
+- **Authorized redirect URIs**: the same redirect URIs configured during creation, editable here. At least one is required, and each one follows the [redirect URI rules](#redirect-uri-rules) above.
+
+A machine-to-machine client has no signed-in user, so the Console does not show this card for it.
+
+## Browser-Based Clients Need a CORS Origin
+
+If your MCP client runs in a browser, such as a web-based inspector or dashboard, and calls <ProductName /> cross-origin, its origin must be explicitly allowed. This is a deployment-wide CORS setting, not a per-application one, so it is configured separately from the steps above.
+
+Add the origin to `config/resources/server_configs/cors.yaml` in your <ProductName /> distribution:
+
+```yaml
+name: cors
+value:
+  allowedOrigins:
+    - "http://localhost:6274"
+```
+
+If the file already exists, append to the existing `allowedOrigins` list instead of replacing it. You can also update this at runtime with `PUT /server-config/cors`. Restart <ProductName /> after editing the file.
+
+## Manage the Client
+
+To update a client's configuration, open it from the **Applications** list, change the relevant setting on the **General** tab, and click **Save**. Changes take effect immediately for new authentication requests; active sessions and issued tokens are unaffected until they expire.
+
+To rotate credentials for a machine-to-machine client, click **Generate** next to **Client Secret** on the **General** tab. This immediately invalidates the previous secret.
+
+To delete a client, open it from the **Applications** list and click **Delete Application** in the danger zone. This is permanent: any caller using the client's Client ID immediately loses the ability to authenticate, though issued tokens remain valid until they expire.
+
+## Next Steps
+
+- [Dynamic Client Registration](../dynamic-client-registration): Let clients register themselves instead of pre-registering them here.
+- [Secure Your MCP Server](../../mcp-server/secure-your-mcp-server): Protect the MCP server this client connects to.
+- [Manage Applications](../../../applications/manage-applications): General application management, covering all application types.
+- [Connect a Python MCP Server](../../../../getting-started/connect-your-mcp/python): A runnable quickstart that registers an MCP Inspector client this way, end to end.

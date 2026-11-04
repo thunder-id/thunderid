@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package utils
@@ -406,6 +406,12 @@ func IsValidURI(uri string) bool {
 	return true
 }
 
+// IsLoopbackRedirectHost reports whether a redirect URI host is one of the loopback hosts an http
+// redirect URI may name: localhost, 127.0.0.1 or ::1.
+func IsLoopbackRedirectHost(host string) bool {
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
 // IsValidLogoURI checks if the provided URI is valid for use as a logo URL.
 // It enforces a scheme allowlist: http/https require a non-empty host, data/blob/emoji/avatar
 // schemes are always accepted, and relative paths (no scheme, non-empty path) are accepted.
@@ -585,13 +591,14 @@ func FilterSensitiveHeaders(h map[string][]string) map[string][]string {
 // so they never reach the flow-context store or a {{request(query.*)}} placeholder. The query-param
 // counterpart of sensitiveHeaders.
 var sensitiveQueryParams = map[string]bool{
-	constants.ClientSecretParamName:        true,
-	constants.ClientAssertionParamName:     true,
-	constants.ClientAssertionTypeParamName: true,
+	constants.ClientSecretParamName:         true,
+	constants.ClientAssertionParamName:      true,
+	constants.ClientAssertionTypeParamName:  true,
+	constants.AuthorizationDetailsParamName: true,
 }
 
-// IsSensitiveQueryParam reports whether a request query parameter carries client credentials and
-// must not be exposed through a captured InitiatorRequest.QueryParams.
+// IsSensitiveQueryParam reports whether a request query parameter carries client credentials or
+// raw authorization details and must not be exposed through a captured InitiatorRequest.QueryParams.
 func IsSensitiveQueryParam(name string) bool {
 	return sensitiveQueryParams[name]
 }

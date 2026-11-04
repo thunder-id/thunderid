@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
@@ -199,7 +200,7 @@ func TestCompositeGetAllPermissionsForAssignees(t *testing.T) {
 			Return([]ResourcePermissions{
 				{ResourceServerID: testRSSystem, Permissions: []string{"system:user"}},
 			}, nil).Once()
-		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}).Return([]string{}, nil).Once()
+		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}, "").Return([]string{}, nil).Once()
 
 		result, err := store.GetAllPermissionsForAssignees(ctx, "user1", []string{})
 
@@ -216,7 +217,7 @@ func TestCompositeGetAllPermissionsForAssignees(t *testing.T) {
 			Return([]ResourcePermissions{}, nil).Once()
 		fileStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
 			Return([]ResourcePermissions{}, nil).Once()
-		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}).
+		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}, "").
 			Return([]string{"declarativeRole"}, nil).Once()
 		fileStore.EXPECT().IsRoleExist(ctx, "declarativeRole").Return(true, nil).Once()
 		fileStore.EXPECT().GetRole(ctx, "declarativeRole").Return(RoleWithPermissions{
@@ -240,7 +241,7 @@ func TestCompositeGetAllPermissionsForAssignees(t *testing.T) {
 			Return([]ResourcePermissions{}, nil).Once()
 		fileStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
 			Return([]ResourcePermissions{}, nil).Once()
-		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}).Return([]string{"dbRole"}, nil).Once()
+		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}, "").Return([]string{"dbRole"}, nil).Once()
 		fileStore.EXPECT().IsRoleExist(ctx, "dbRole").Return(false, nil).Once()
 
 		result, err := store.GetAllPermissionsForAssignees(ctx, "user1", []string{})
@@ -255,7 +256,7 @@ func TestCompositeGetAllPermissionsForAssignees(t *testing.T) {
 			Return([]ResourcePermissions{}, nil).Once()
 		fileStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
 			Return([]ResourcePermissions{}, nil).Once()
-		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}).Return([]string{"gone"}, nil).Once()
+		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}, "").Return([]string{"gone"}, nil).Once()
 		fileStore.EXPECT().IsRoleExist(ctx, "gone").Return(true, nil).Once()
 		fileStore.EXPECT().GetRole(ctx, "gone").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
 
@@ -273,7 +274,7 @@ func TestCompositeGetAllPermissionsForAssignees(t *testing.T) {
 			Return([]ResourcePermissions{}, nil).Once()
 		fileStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
 			Return([]ResourcePermissions{}, nil).Once()
-		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}).Return([]string{"r1"}, nil).Once()
+		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}, "").Return([]string{"r1"}, nil).Once()
 		fileStore.EXPECT().IsRoleExist(ctx, "r1").Return(true, nil).Once()
 		fileStore.EXPECT().GetRole(ctx, "r1").
 			Return(RoleWithPermissions{}, errors.New("disk failure")).Once()
@@ -384,7 +385,7 @@ func TestRoleAssignmentGuard(t *testing.T) {
 			authzService:  newRefusingRoleAuthz(t),
 		}
 
-		svcErr := svc.AddAssignments(ctx, "librarianRole", assignments)
+		svcErr := svc.AddAssignments(ctx, "librarianRole", "", assignments)
 
 		require.NotNil(t, svcErr)
 		assert.Equal(t, sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
@@ -401,7 +402,7 @@ func TestRoleAssignmentGuard(t *testing.T) {
 			authzService:  newRefusingRoleAuthz(t),
 		}
 
-		svcErr := svc.RemoveAssignments(ctx, "librarianRole", assignments)
+		svcErr := svc.RemoveAssignments(ctx, "librarianRole", "", assignments)
 
 		require.NotNil(t, svcErr)
 		assert.Equal(t, sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
@@ -420,7 +421,7 @@ func TestRoleAssignmentGuard(t *testing.T) {
 			authzService:  newRefusingRoleAuthz(t),
 		}
 
-		svcErr := svc.AddAssignments(ctx, "librarianRole", assignments)
+		svcErr := svc.AddAssignments(ctx, "librarianRole", "", assignments)
 
 		require.NotNil(t, svcErr)
 		entitySvc.AssertNotCalled(t, "GetEntitiesByIDs", mock.Anything, mock.Anything)
@@ -464,7 +465,7 @@ func TestCrossStoreAllPermissions_CorruptRoleFailsClosed(t *testing.T) {
 		Return([]ResourcePermissions{}, nil).Once()
 	fileStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
 		Return([]ResourcePermissions{}, nil).Once()
-	dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}).Return([]string{"corrupt"}, nil).Once()
+	dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}, "").Return([]string{"corrupt"}, nil).Once()
 	fileStore.EXPECT().IsRoleExist(ctx, "corrupt").Return(true, nil).Once()
 	fileStore.EXPECT().GetRole(ctx, "corrupt").
 		Return(RoleWithPermissions{}, ErrRoleDataCorrupted).Once()
@@ -487,7 +488,7 @@ func TestCrossStoreAllPermissions_RemovedRoleIsStillSkipped(t *testing.T) {
 		Return([]ResourcePermissions{}, nil).Once()
 	fileStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
 		Return([]ResourcePermissions{}, nil).Once()
-	dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}).Return([]string{"gone"}, nil).Once()
+	dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}, "").Return([]string{"gone"}, nil).Once()
 	fileStore.EXPECT().IsRoleExist(ctx, "gone").Return(true, nil).Once()
 	fileStore.EXPECT().GetRole(ctx, "gone").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
 
@@ -518,11 +519,13 @@ func TestModifyAssignments_RechecksInsideTransaction(t *testing.T) {
 			return &sysauthz.ErrorGrantNotPermitted
 		})
 
-	store.EXPECT().IsRoleExist(ctx, "role1").Return(true, nil).Once()
+	store.EXPECT().GetRole(ctx, "role1").Return(RoleWithPermissions{ID: "role1", OUID: "ou1"}, nil).Once()
 	store.EXPECT().AddAssignments(mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	groupSvc := groupmock.NewGroupServiceInterfaceMock(t)
 	groupSvc.EXPECT().ValidateGroupIDs(ctx, []string{"grp1"}).Return(nil).Once()
+	groupSvc.EXPECT().GetGroupsByIDs(ctx, []string{"grp1"}).
+		Return(map[string]*group.Group{"grp1": {ID: "grp1", OUID: "ou1"}}, nil).Once()
 
 	svc := &roleAssignmentService{
 		roleStore:     store,
@@ -530,7 +533,7 @@ func TestModifyAssignments_RechecksInsideTransaction(t *testing.T) {
 		transactioner: txr,
 		authzService:  authz,
 	}
-	svcErr := svc.AddAssignments(ctx, "role1", []RoleAssignment{{ID: "grp1", Type: AssigneeTypeGroup}})
+	svcErr := svc.AddAssignments(ctx, "role1", "", []RoleAssignment{{ID: "grp1", Type: AssigneeTypeGroup}})
 
 	require.NotNil(t, svcErr)
 	assert.Equal(t, sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code,

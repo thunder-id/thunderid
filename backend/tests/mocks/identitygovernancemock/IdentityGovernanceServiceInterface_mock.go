@@ -49,6 +49,74 @@ func (_m *IdentityGovernanceServiceInterfaceMock) EXPECT() *IdentityGovernanceSe
 	return &IdentityGovernanceServiceInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// AccessHold provides a mock function for the type IdentityGovernanceServiceInterfaceMock
+func (_mock *IdentityGovernanceServiceInterfaceMock) AccessHold(ctx context.Context, entityID string) (providers.AccessRefusalReason, *common.ServiceError) {
+	ret := _mock.Called(ctx, entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AccessHold")
+	}
+
+	var r0 providers.AccessRefusalReason
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (providers.AccessRefusalReason, *common.ServiceError)); ok {
+		return returnFunc(ctx, entityID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) providers.AccessRefusalReason); ok {
+		r0 = returnFunc(ctx, entityID)
+	} else {
+		r0 = ret.Get(0).(providers.AccessRefusalReason)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, entityID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// IdentityGovernanceServiceInterfaceMock_AccessHold_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AccessHold'
+type IdentityGovernanceServiceInterfaceMock_AccessHold_Call struct {
+	*mock.Call
+}
+
+// AccessHold is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+func (_e *IdentityGovernanceServiceInterfaceMock_Expecter) AccessHold(ctx any, entityID any) *IdentityGovernanceServiceInterfaceMock_AccessHold_Call {
+	return &IdentityGovernanceServiceInterfaceMock_AccessHold_Call{Call: _e.mock.On("AccessHold", ctx, entityID)}
+}
+
+func (_c *IdentityGovernanceServiceInterfaceMock_AccessHold_Call) Run(run func(ctx context.Context, entityID string)) *IdentityGovernanceServiceInterfaceMock_AccessHold_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *IdentityGovernanceServiceInterfaceMock_AccessHold_Call) Return(accessRefusalReason providers.AccessRefusalReason, serviceError *common.ServiceError) *IdentityGovernanceServiceInterfaceMock_AccessHold_Call {
+	_c.Call.Return(accessRefusalReason, serviceError)
+	return _c
+}
+
+func (_c *IdentityGovernanceServiceInterfaceMock_AccessHold_Call) RunAndReturn(run func(ctx context.Context, entityID string) (providers.AccessRefusalReason, *common.ServiceError)) *IdentityGovernanceServiceInterfaceMock_AccessHold_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // AdmitAuthenticationStep provides a mock function for the type IdentityGovernanceServiceInterfaceMock
 func (_mock *IdentityGovernanceServiceInterfaceMock) AdmitAuthenticationStep(ctx context.Context, entityID string, method providers.AuthenticationMethod) (providers.AccessDecision, *common.ServiceError) {
 	ret := _mock.Called(ctx, entityID, method)
@@ -267,74 +335,6 @@ func (_c *IdentityGovernanceServiceInterfaceMock_EvaluateAccess_Call) Return(acc
 }
 
 func (_c *IdentityGovernanceServiceInterfaceMock_EvaluateAccess_Call) RunAndReturn(run func(ctx context.Context, entityID string, plane providers.AccessPlane, method providers.AuthenticationMethod) (providers.AccessDecision, *common.ServiceError)) *IdentityGovernanceServiceInterfaceMock_EvaluateAccess_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// IsSuspended provides a mock function for the type IdentityGovernanceServiceInterfaceMock
-func (_mock *IdentityGovernanceServiceInterfaceMock) IsSuspended(ctx context.Context, entityID string) (bool, *common.ServiceError) {
-	ret := _mock.Called(ctx, entityID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for IsSuspended")
-	}
-
-	var r0 bool
-	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *common.ServiceError)); ok {
-		return returnFunc(ctx, entityID)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
-		r0 = returnFunc(ctx, entityID)
-	} else {
-		r0 = ret.Get(0).(bool)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, entityID)
-	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*common.ServiceError)
-		}
-	}
-	return r0, r1
-}
-
-// IdentityGovernanceServiceInterfaceMock_IsSuspended_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsSuspended'
-type IdentityGovernanceServiceInterfaceMock_IsSuspended_Call struct {
-	*mock.Call
-}
-
-// IsSuspended is a helper method to define mock.On call
-//   - ctx context.Context
-//   - entityID string
-func (_e *IdentityGovernanceServiceInterfaceMock_Expecter) IsSuspended(ctx any, entityID any) *IdentityGovernanceServiceInterfaceMock_IsSuspended_Call {
-	return &IdentityGovernanceServiceInterfaceMock_IsSuspended_Call{Call: _e.mock.On("IsSuspended", ctx, entityID)}
-}
-
-func (_c *IdentityGovernanceServiceInterfaceMock_IsSuspended_Call) Run(run func(ctx context.Context, entityID string)) *IdentityGovernanceServiceInterfaceMock_IsSuspended_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *IdentityGovernanceServiceInterfaceMock_IsSuspended_Call) Return(b bool, serviceError *common.ServiceError) *IdentityGovernanceServiceInterfaceMock_IsSuspended_Call {
-	_c.Call.Return(b, serviceError)
-	return _c
-}
-
-func (_c *IdentityGovernanceServiceInterfaceMock_IsSuspended_Call) RunAndReturn(run func(ctx context.Context, entityID string) (bool, *common.ServiceError)) *IdentityGovernanceServiceInterfaceMock_IsSuspended_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -356,6 +356,10 @@ var requestScopedSnapshotDenyList = map[string]struct{}{
 	common.RuntimeKeyRequiredLocales:             {},
 	common.RuntimeKeyClientID:                    {},
 	common.RuntimeKeyAuthorizationRequestID:      {},
+	// The client and redirect hosts name the establishing client; a replayed copy would show them for
+	// another client at its consent.
+	common.RuntimeKeyClientIDHost:    {},
+	common.RuntimeKeyRedirectURIHost: {},
 	// The token family id is minted fresh per flow execution, so it must not ride a reused snapshot.
 	common.RuntimeKeyTokenFamilyID: {},
 	// The SSO session id is resolved fresh per flow execution; a replayed copy could name another session.
@@ -367,6 +371,10 @@ var requestScopedSnapshotDenyList = map[string]struct{}{
 	common.RuntimeKeyForceReauth:    {},
 	common.RuntimeKeyMaxAge:         {},
 	common.RuntimeKeySilentAuthOnly: {},
+	// Authorization details and the consent prompt belong to the establishing authorization request.
+	common.RuntimeKeyRequestedAuthorizationDetails: {},
+	common.RuntimeKeyConsentedAuthorizationDetails: {},
+	common.RuntimeKeyConsentSessionToken:           {},
 	// applicationId has no shared constant (set as a raw literal in enrichRuntimeData).
 	"applicationId": {},
 	// failureReasonJSON is the engine's pending error for the next prompt in this execution (raw

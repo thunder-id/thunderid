@@ -98,6 +98,8 @@ export default function TranslationJsonEditor({
     if (!lastEmitted || !recordsEqual(values, lastEmitted)) {
       setJsonText(JSON.stringify(values, null, 2));
       setJsonError(false);
+      // Forget the last edit so a later matching update is not mistaken for its echo.
+      setLastEmitted(null);
     }
   }
 

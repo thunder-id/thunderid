@@ -11,7 +11,18 @@ vi.mock('../start/Start', () => ({
   default: () => <div data-testid="start-component">Start Component</div>,
 }));
 
+// Mock the Variables component
+vi.mock('../variables/Variables', () => ({
+  default: ({id}: {id: string}) => <div data-testid="variables-component">{id}</div>,
+}));
+
 describe('CommonStaticStepFactory', () => {
+  it('should render the Variables placeholder with the id of its node', () => {
+    render(<CommonStaticStepFactory type={StaticStepTypes.Variables} id="vars" />);
+
+    expect(screen.getByTestId('variables-component')).toHaveTextContent('vars');
+  });
+
   it('should render Start component when type is StaticStepTypes.Start', () => {
     render(<CommonStaticStepFactory type={StaticStepTypes.Start} />);
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import {render, screen} from '@thunderid/test-utils';
+import {act, render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import TranslationsEditPage from '@/pages/TranslationsEditPage';
 
@@ -24,8 +24,9 @@ vi.mock('@wso2/oxygen-ui', async () => {
   };
 });
 
-const {mockMutateAsync, mockUseGetTranslations, mockUseUpdateTranslation} = vi.hoisted(() => ({
+const {mockMutateAsync, mockRefetch, mockUseGetTranslations, mockUseUpdateTranslation} = vi.hoisted(() => ({
   mockMutateAsync: vi.fn(),
+  mockRefetch: vi.fn(),
   mockUseGetTranslations: vi.fn(),
   mockUseUpdateTranslation: vi.fn(),
 }));
@@ -138,6 +139,7 @@ describe('TranslationsEditPage', () => {
     mockUseGetTranslations.mockReturnValue({
       data: sampleTranslations,
       isLoading: false,
+      refetch: mockRefetch.mockResolvedValue({}),
     });
     mockUseUpdateTranslation.mockReturnValue({
       mutateAsync: mockMutateAsync.mockResolvedValue(undefined),
@@ -303,6 +305,42 @@ describe('TranslationsEditPage', () => {
       await user.click(screen.getByText('Save changes'));
 
       expect(screen.queryByText('Save changes')).not.toBeInTheDocument();
+    });
+
+    it('keeps local changes until the saved translations are refetched', async () => {
+      let resolveRefetch: (value: unknown) => void = () => undefined;
+      mockRefetch.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveRefetch = resolve;
+        }),
+      );
+      const user = userEvent.setup();
+      render(<TranslationsEditPage />);
+
+      await user.click(screen.getByText('change field'));
+      await user.click(screen.getByText('Save changes'));
+
+      expect(mockRefetch).toHaveBeenCalled();
+      expect(screen.getByText('Saving...')).toBeInTheDocument();
+
+      await act(async () => {
+        resolveRefetch({});
+        await Promise.resolve();
+      });
+
+      expect(screen.queryByText('Saving...')).not.toBeInTheDocument();
+      expect(screen.getByText('All translations saved.')).toBeInTheDocument();
+    });
+
+    it('does not refetch when a save request fails', async () => {
+      mockMutateAsync.mockRejectedValueOnce(new Error('Network error'));
+      const user = userEvent.setup();
+      render(<TranslationsEditPage />);
+
+      await user.click(screen.getByText('change field'));
+      await user.click(screen.getByText('Save changes'));
+
+      expect(mockRefetch).not.toHaveBeenCalled();
     });
 
     it('shows the resolved error inline on the page when at least one save request fails', async () => {

@@ -1,0 +1,119 @@
+---
+title: Roles
+docType: guide
+sidebar_position: 5
+persona: iam
+description: Create and manage roles to grant permissions to users, groups, applications, and agents.
+---
+
+# Roles
+
+A role in <ProductName /> is a named set of permissions that you assign to users, groups, applications, or agents. Roles connect the permissions defined in your [resource servers](../../resource-servers) to the principals that need access to them.
+
+Each role:
+
+- Belongs to an **Organization Unit (OU)**, which defines the organizational scope of the role.
+- Contains a set of **permissions** drawn from one or more resource servers.
+- Has zero or more **assignments**: the users, groups, applications, or agents that hold the role.
+
+## Prerequisites
+
+Before creating a role, you need:
+
+- An organization unit to scope the role. See [Organization Units](../../organization-units).
+- At least one resource server with defined permissions. See [Resource Servers](../../resource-servers).
+
+## Permission Requirements
+
+<ProductName /> prevents you from granting permissions you do not hold yourself. This applies whether the recipient is another principal or your own account.
+
+You can perform the following operations only if you already hold every permission involved:
+
+| Operation | Requirement |
+|-----------|-------------|
+| Create a role with permissions | You hold every permission in the new role. |
+| Update a role's permissions | You hold every permission in the updated set. |
+| Add or remove a role assignment | You hold every permission the role grants. |
+
+Permissions are compared per resource server. A permission you hold on one resource server does not satisfy a requirement on a different resource server, even when the two permission strings are identical.
+
+The comparison respects the permission hierarchy. If you hold `system:user`, you can grant `system:user:view`, because the parent permission covers its children. The reverse does not apply: holding `system:user:view` does not let you grant `system:user`.
+
+Holders of the root `system` permission are exempt, since that permission already authorizes every system operation.
+
+If an operation would grant more than you hold, the API returns `403 Forbidden` with the error code `SAZ-4030`, and no change is made.
+
+:::note
+Because you must hold a permission to grant it, an administrator whose job is to manage role assignments needs to hold the permissions they distribute. Grant such an administrator the union of the permissions they are expected to assign.
+:::
+
+## Create a Role
+
+1. Navigate to **Roles** in the <ProductName /> Console and click **Create Role**.
+2. Enter a **Name** for the role. The name must be unique within the selected organization unit.
+3. Optionally enter a **Description**.
+4. Select the **Organization Unit** the role belongs to.
+5. Select the **Permissions** to include by choosing a resource server and its actions.
+6. Optionally add **Assignments** to immediately assign the role to users, groups, applications, or agents.
+7. Click **Create**.
+
+## List Roles
+
+Navigate to **Roles** in the <ProductName /> Console to view all roles. The list shows each role's name, description, and organization unit.
+
+Roles created from declarative configuration are marked as read-only and cannot be modified or deleted.
+
+## Update a Role
+
+1. Open the role from the **Roles** list.
+2. Update the **Name**, **Description**, or **Permissions**.
+3. Click **Save**.
+
+:::warning
+The update replaces the full set of permissions. Include every permission the role should keep: any permission omitted from the request is removed.
+:::
+
+## Delete a Role
+
+1. Open the role from the **Roles** list.
+2. Click **Delete** and confirm.
+
+:::warning
+Deletion fails if the role has active assignments. Remove all assignments before deleting the role.
+:::
+
+## Manage Role Assignments
+
+A role assignment grants the role's permissions to a principal. Principals can be users, groups, applications, or agents. When you assign a role to a group, all members of that group inherit the role's permissions.
+
+| Assignee Type | Description |
+|---------------|-------------|
+| `user` | A user account. |
+| `group` | A group. All current and future members inherit the role's permissions. |
+| `app` | An application principal. |
+| `agent` | An agent principal. |
+
+### View Assignments
+
+Open the role from the **Roles** list and select the **Assignments** tab to see all current assignments organized by type.
+
+### Add Assignments
+
+1. Open the role from the **Roles** list.
+2. Select the **Assignments** tab.
+3. Click **Add Assignments**.
+4. Search for and select the users, groups, applications, or agents you want to assign.
+5. Click **Add**.
+
+### Remove Assignments
+
+1. Open the role from the **Roles** list.
+2. Select the **Assignments** tab.
+3. Click **Remove** next to the assignment you want to delete and confirm.
+
+## Related Guides
+
+- [Resource Servers](../../resource-servers) - Define the permissions that roles reference
+- [Groups](../manage-groups) - Assign roles to groups to grant permissions to all their members
+- [Users](../manage-users) - Assign roles directly to individual users
+- [Organization Units](../../organization-units) - Each role is scoped to an organization unit

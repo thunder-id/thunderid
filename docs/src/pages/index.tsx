@@ -5,6 +5,7 @@ import Head from '@docusaurus/Head';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 import type {ReactNode} from 'react';
+import AdoptersSection from '@site/src/components/HomePage/AdoptersSection';
 import CommunitySection from '@site/src/components/HomePage/CommunitySection';
 import DevelopersSection from '@site/src/components/HomePage/DevelopersSection';
 import EventBanner from '@site/src/components/HomePage/EventBanner';
@@ -31,6 +32,7 @@ export default function Homepage(): ReactNode {
         <UseCasesSection />
         <DevelopersSection />
         <FeaturesSection />
+        <AdoptersSection />
         <CommunitySection />
         <FooterSection />
       </div>

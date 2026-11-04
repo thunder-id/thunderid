@@ -32,6 +32,7 @@ type frame struct {
 	forwardedData       map[string]interface{}
 	additionalData      map[string]string
 	resumeCallNodeID    string
+	ssoFlowVersion      int
 }
 
 // EngineContext holds the overall context used by the flow engine during execution.
@@ -126,6 +127,7 @@ func (e *EngineContext) pushFrame(resumeCallNodeID string) {
 		forwardedData:       e.ForwardedData,
 		additionalData:      e.AdditionalData,
 		resumeCallNodeID:    resumeCallNodeID,
+		ssoFlowVersion:      e.SSOFlowVersion,
 	}
 	e.frameStack = append(e.frameStack, f)
 }
@@ -148,6 +150,7 @@ func (e *EngineContext) popFrame() *frame {
 	e.RuntimeData = top.runtimeData
 	e.ForwardedData = top.forwardedData
 	e.AdditionalData = top.additionalData
+	e.SSOFlowVersion = top.ssoFlowVersion
 	e.clearPausedPromptInputs()
 	return top
 }
@@ -317,20 +320,6 @@ type FlowInitContext struct {
 	InitialInputs    map[string]string
 	ExpirySeconds    int64
 	InitiatorRequest *providers.InitiatorRequest
-}
-
-// SystemFlowContext is a request to run a system flow.
-type SystemFlowContext struct {
-	// Handle names the system flow.
-	Handle string
-	// Inputs are the flow's user inputs.
-	Inputs map[string]string
-}
-
-// SystemFlowResult is the outcome of a system flow that ran to completion.
-type SystemFlowResult struct {
-	// ExecutionID identifies the run in the logs.
-	ExecutionID string
 }
 
 // FlowContextDB represents the database row for a flow context.

@@ -1,0 +1,85 @@
+---
+title: See It in a Sample App
+docType: use-case
+description: Meet the Wayfinder cast and architecture, set the sample up by importing a bundle or configuring it by hand, then walk through each consumer access journey.
+sidebar_position: 0
+---
+
+# See It in a Sample App
+
+Wayfinder is the reference implementation for [secure consumer access](../overview): a customer-facing travel application that
+runs each journey in this section against <ProductName />.
+
+## Cast
+
+These sample users appear throughout the walkthroughs, one per journey.
+
+<WayfinderCast />
+
+## Architecture
+
+The Wayfinder sample has three main parts: a consumer web application, a booking API, and <ProductName /> as the
+identity platform. The diagram shows where identity journeys run and where tokens are used after sign-in.
+
+<WayfinderArchitecture />
+
+## Import the Bundle
+
+The fastest way to create the resources the walkthroughs need. First, [set up your environment](../build-environment); then apply the bundle through the <ProductName /> Console, which creates everything the walkthroughs share.
+
+Prefer to build each resource by hand and understand it as you go? Work through the [Build It](../build-index) tutorial instead.
+
+1. Sign in to the <ProductName /> Console at <ConsoleUrl />.
+2. On first sign-in, a welcome screen appears with an **Open** button. (Later, reach the same screen from the user profile menu in the top-right corner of the Console.)
+3. Click **Open** and select your `thunderid-config/redirect/thunderid-config.yaml` file from the sample distribution.
+4. Select your `thunderid-config/redirect/thunderid.env` file to provide the environment variables referenced in the YAML.
+5. The Console imports the files and reports the resources it created when the import completes.
+
+## Run the Sample
+
+From the extracted sample directory, install dependencies:
+
+```bash
+npm install
+```
+
+Then start all services:
+
+```bash
+npm run dev
+```
+
+The sample opens at <WayFinderSampleUrl />.
+
+## Walkthroughs
+
+After the sample is running, pick the journey you want to inspect:
+
+<NextSteps>
+  <NextStepsCard
+    title="Sign In"
+    description="John Doe signs in to Wayfinder and arrives at the dashboard."
+    href="./add-login"
+  />
+  <NextStepsCard
+    title="Self Sign-Up"
+    description="Emma Wilson signs up with email and password."
+    href="./self-sign-up"
+  />
+  <NextStepsCard title="View Profile" description="John views and updates his profile." href="./profile-section" />
+  <NextStepsCard
+    title="Account Recovery"
+    description="John resets a forgotten password through an email link."
+    href="./account-recovery"
+  />
+  <NextStepsCard
+    title="Onboard Internal Users"
+    description="Alex invites staff members from the console."
+    href="./onboard-internal-users"
+  />
+</NextSteps>
+
+## Next Steps
+
+- Go back to [Build It](../build-index) to build the same setup by hand, learning each concept as you go.
+- Review the [Design Decisions & Alternatives](../architecture-decisions) behind the pattern.

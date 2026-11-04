@@ -67,6 +67,42 @@ func (c *compositeFlowStore) ListFlows(ctx context.Context, limit, offset int, f
 	return paginatedResult, total, nil
 }
 
+// ListFlowsByOU lists the flows an organization unit owns in both stores, merged and deduplicated, then applies
+// pagination to the merged result. Only the flows of one organization unit are read from each store.
+func (c *compositeFlowStore) ListFlowsByOU(ctx context.Context, ouID string, limit, offset int, flowType string) (
+	[]BasicFlowDefinition, int, error) {
+	const unlimitedSentinel = 10000
+
+	dbFlows, _, err := c.dbStore.ListFlowsByOU(ctx, ouID, unlimitedSentinel, 0, flowType)
+	if err != nil {
+		return nil, 0, err
+	}
+	fileFlows, _, err := c.fileStore.ListFlowsByOU(ctx, ouID, unlimitedSentinel, 0, flowType)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	merged := mergeAndDeduplicateFlows(dbFlows, fileFlows)
+	total := len(merged)
+	start := min(offset, total)
+	return merged[start:min(start+limit, total)], total, nil
+}
+
+// ListFlowsByIDs reads the flows with the given IDs from both stores, merged and deduplicated with the database
+// store taking precedence.
+func (c *compositeFlowStore) ListFlowsByIDs(ctx context.Context, ids []string, flowType string) (
+	[]BasicFlowDefinition, error) {
+	dbFlows, err := c.dbStore.ListFlowsByIDs(ctx, ids, flowType)
+	if err != nil {
+		return nil, err
+	}
+	fileFlows, err := c.fileStore.ListFlowsByIDs(ctx, ids, flowType)
+	if err != nil {
+		return nil, err
+	}
+	return mergeAndDeduplicateFlows(dbFlows, fileFlows), nil
+}
+
 // ListActiveFlowsWithNodes retrieves active flows with their nodes from both stores, deduplicating
 // by ID with the database store taking precedence (mirroring ListFlows).
 func (c *compositeFlowStore) ListActiveFlowsWithNodes(ctx context.Context) (

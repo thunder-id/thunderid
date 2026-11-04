@@ -74,15 +74,17 @@ type SCIMAuthzTestSuite struct {
 }
 
 const (
-	scimAuthzDevelopClientID    = "CONSOLE"
-	scimAuthzDevelopRedirectURI = "https://localhost:8095/console"
+	scimAuthzDevelopClientID = "CONSOLE"
 
 	scimAuthzMgrUsername = "scim-authz-manager"
 	scimAuthzMgrPassword = "ScimAuthzMgr@123"
 	scimAuthzMgrRoleName = "SCIM Authz Manager (scim-authz-test)"
 )
 
+var scimAuthzDevelopRedirectURI = testutils.TestServerURL + "/console"
+
 func TestSCIMAuthzTestSuite(t *testing.T) {
+	t.Skip(scimDisabledReason)
 	suite.Run(t, new(SCIMAuthzTestSuite))
 }
 

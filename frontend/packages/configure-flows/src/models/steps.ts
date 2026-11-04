@@ -80,6 +80,7 @@ export const StepTypes = {
 export const StaticStepTypes = {
   UserOnboard: 'USER_ONBOARD',
   Start: 'START',
+  Variables: 'VARIABLES',
 } as const;
 
 export const ExecutionTypes = {

@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -17,9 +19,14 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/internal/sharing"
 )
 
-const testFlowIDHandler = "test-flow-id"
+const (
+	testFlowIDHandler = "test-flow-id"
+	testOUIDHandler   = "test-ou-id"
+)
 
 type FlowMgtHandlerTestSuite struct {
 	suite.Suite
@@ -706,4 +713,393 @@ func (s *FlowMgtHandlerTestSuite) TestCreateFlow_OwnedByTheOUInTheBody() {
 	var response providers.CompleteFlowDefinition
 	s.NoError(json.Unmarshal(w.Body.Bytes(), &response))
 	s.Equal("ou-child", response.OUID)
+}
+
+func boolPtr(v bool) *bool { return &v }
+
+// With an organization unit in the request, the list and the flow are as that unit sees them.
+
+func (s *FlowMgtHandlerTestSuite) TestListFlows_ForAnOrganizationUnit() {
+	expectedList := &FlowListResponse{Flows: []BasicFlowDefinition{}, Count: 0}
+	s.mockService.EXPECT().ListFlowsForOU(
+		mock.Anything, testOUIDHandler, providers.FlowTypeAuthentication, 30, 0).
+		Return(expectedList, nil)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/flows?filter="+url.QueryEscape(`ouId eq "`+testOUIDHandler+`"`)+"&flowType=AUTHENTICATION", nil)
+	w := httptest.NewRecorder()
+
+	s.handler.listFlows(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestListFlows_AFlowSharedWithTheUnitIsListedAsAnOwnedOneIs() {
+	list := &FlowListResponse{Count: 2, Flows: []BasicFlowDefinition{
+		{ID: "owned", Handle: "o", Name: "Owned", ActiveVersion: 2, CreatedAt: "t", UpdatedAt: "t", OUID: "ou-a",
+			IsOwnedByOU: boolPtr(true)},
+		{ID: "shared", Handle: "s", Name: "Shared", ActiveVersion: 3, CreatedAt: "t", UpdatedAt: "t", OUID: "ou-b",
+			IsOwnedByOU: boolPtr(false), IsReadOnly: true},
+	}}
+	s.mockService.EXPECT().ListFlowsForOU(mock.Anything, testOUIDHandler, providers.FlowType(""), 30, 0).
+		Return(list, nil)
+
+	req := httptest.NewRequest(
+		http.MethodGet, "/flows?filter="+url.QueryEscape(`ouId eq "`+testOUIDHandler+`"`), nil)
+	w := httptest.NewRecorder()
+
+	s.handler.listFlows(w, req)
+
+	var response struct {
+		Flows []map[string]interface{} `json:"flows"`
+	}
+	s.NoError(json.Unmarshal(w.Body.Bytes(), &response))
+	s.Equal(float64(2), response.Flows[0]["activeVersion"])
+	s.Equal(float64(3), response.Flows[1]["activeVersion"])
+	s.Contains(response.Flows[1], "createdAt")
+	s.Equal(true, response.Flows[0]["isOwnedByOU"])
+	s.Equal(false, response.Flows[1]["isOwnedByOU"])
+	s.Equal(true, response.Flows[1]["isReadOnly"])
+}
+
+func (s *FlowMgtHandlerTestSuite) TestListFlows_WithoutAnOrganizationUnitEntriesAreAsTheyAlwaysWere() {
+	list := &FlowListResponse{Count: 1, Flows: []BasicFlowDefinition{{ID: "f", Handle: "h", Name: "F"}}}
+	s.mockService.EXPECT().ListFlows(mock.Anything, 30, 0, providers.FlowType("")).Return(list, nil)
+
+	w := httptest.NewRecorder()
+	s.handler.listFlows(w, httptest.NewRequest(http.MethodGet, "/flows", nil))
+
+	var response struct {
+		Flows []map[string]interface{} `json:"flows"`
+	}
+	s.NoError(json.Unmarshal(w.Body.Bytes(), &response))
+	s.Contains(response.Flows[0], "activeVersion")
+	s.Contains(response.Flows[0], "createdAt")
+	s.NotContains(response.Flows[0], "isOwnedByOU")
+}
+
+func (s *FlowMgtHandlerTestSuite) TestGetFlow_AsTheOwnerSeesIt() {
+	flow := &providers.CompleteFlowDefinition{ID: testFlowIDHandler, Handle: "h", Name: "F"}
+	s.mockService.EXPECT().GetFlowForOU(mock.Anything, testFlowIDHandler, testOUIDHandler).
+		Return(&FlowView{Owned: &OwnedFlow{CompleteFlowDefinition: flow, IsOwnedByOU: true}}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/flows/"+testFlowIDHandler+"?ouId="+testOUIDHandler, nil)
+	req.SetPathValue(pathParamFlowID, testFlowIDHandler)
+	w := httptest.NewRecorder()
+
+	s.handler.getFlow(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+	var response map[string]interface{}
+	s.NoError(json.Unmarshal(w.Body.Bytes(), &response))
+	s.Equal(testFlowIDHandler, response["id"])
+	s.Equal(true, response["isOwnedByOU"])
+}
+
+func (s *FlowMgtHandlerTestSuite) TestGetFlow_SharedFlowShowsItsVariablesOnly() {
+	shared := &SharedFlow{
+		ID: testFlowIDHandler, Handle: "test-handle", Name: "Test Flow", FlowType: providers.FlowTypeAuthentication,
+		OUID: "owner-ou", IsOwnedByOU: false, IsReadOnly: true,
+		Variables: []providers.VariableDefinition{
+			{Identifier: "supportEmail", Type: providers.InputTypeEmail, DefaultValue: "a@b.co"},
+		},
+	}
+	s.mockService.EXPECT().GetFlowForOU(mock.Anything, testFlowIDHandler, testOUIDHandler).
+		Return(&FlowView{Shared: shared}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/flows/"+testFlowIDHandler+"?ouId="+testOUIDHandler, nil)
+	req.SetPathValue(pathParamFlowID, testFlowIDHandler)
+	w := httptest.NewRecorder()
+
+	s.handler.getFlow(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+	var response map[string]interface{}
+	s.NoError(json.Unmarshal(w.Body.Bytes(), &response))
+	s.Equal(false, response["isOwnedByOU"])
+	s.Equal(true, response["isReadOnly"])
+	s.NotContains(response, "nodes")
+	s.Len(response["variables"], 1)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestGetFlow_NotSharedWithTheUnitIsNotFound() {
+	s.mockService.EXPECT().GetFlowForOU(mock.Anything, testFlowIDHandler, testOUIDHandler).
+		Return(nil, &ErrorFlowNotFound)
+
+	req := httptest.NewRequest(http.MethodGet, "/flows/"+testFlowIDHandler+"?ouId="+testOUIDHandler, nil)
+	req.SetPathValue(pathParamFlowID, testFlowIDHandler)
+	w := httptest.NewRecorder()
+
+	s.handler.getFlow(w, req)
+
+	s.Equal(http.StatusNotFound, w.Code)
+}
+
+// Without an organization unit the whole definition comes back. The filter is a list parameter, and a single flow
+// does not read it.
+func (s *FlowMgtHandlerTestSuite) TestGetFlow_WithoutAnOrganizationUnitIsTheWholeDefinition() {
+	s.mockService.EXPECT().GetFlow(mock.Anything, testFlowIDHandler).
+		Return(&providers.CompleteFlowDefinition{ID: testFlowIDHandler}, nil).Twice()
+
+	for _, target := range []string{
+		"/flows/" + testFlowIDHandler,
+		"/flows/" + testFlowIDHandler + "?filter=" + url.QueryEscape(`ouId eq "`+testOUIDHandler+`"`),
+	} {
+		req := httptest.NewRequest(http.MethodGet, target, nil)
+		req.SetPathValue(pathParamFlowID, testFlowIDHandler)
+		w := httptest.NewRecorder()
+
+		s.handler.getFlow(w, req)
+
+		s.Equal(http.StatusOK, w.Code, target)
+	}
+}
+
+func (s *FlowMgtHandlerTestSuite) TestListFlows_RefusesAFilterItCannotApply() {
+	for _, filterExpr := range []string{
+		"ouId eq " + testOUIDHandler,
+		`ouId eq ""`,
+		`ouId eq 5`,
+		`ouId sw "ou"`,
+		`handle eq "h"`,
+		`ouId eq "` + testOUIDHandler + `" and handle eq "h"`,
+	} {
+		w := httptest.NewRecorder()
+
+		s.handler.listFlows(w, httptest.NewRequest(http.MethodGet, "/flows?filter="+url.QueryEscape(filterExpr), nil))
+
+		s.Equal(http.StatusBadRequest, w.Code, filterExpr)
+		s.Contains(w.Body.String(), ErrorInvalidFilter.Code, filterExpr)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Sharing, overlay rules and variables
+// ---------------------------------------------------------------------------
+
+func (s *FlowMgtHandlerTestSuite) request(method, target, body string) (*httptest.ResponseRecorder, *http.Request) {
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	req.SetPathValue(pathParamFlowID, testFlowIDHandler)
+	req.SetPathValue(pathParamPolicyID, "p1")
+	return httptest.NewRecorder(), req
+}
+
+const allChildrenBody = `{"childUnits":{"mode":"all","overlayRules":{"variables.supportEmail":{"editable":true}}}}`
+
+func (s *FlowMgtHandlerTestSuite) TestCreateSharingPolicy() {
+	s.mockService.EXPECT().CreateSharingPolicy(mock.Anything, testFlowIDHandler, mock.MatchedBy(
+		func(req sharing.PolicyRequest) bool {
+			return req.ChildUnits != nil && req.ChildUnits.OverlayRules["variables.supportEmail"].Editable
+		})).Return(sharing.Policy{ID: "p1"}, nil)
+	w, r := s.request(http.MethodPost, "/flows/f/sharing-policies", allChildrenBody)
+
+	s.handler.createSharingPolicy(w, r)
+
+	s.Equal(http.StatusCreated, w.Code)
+	var resp map[string]interface{}
+	s.NoError(json.Unmarshal(w.Body.Bytes(), &resp))
+	s.Equal("p1", resp["id"])
+}
+
+func (s *FlowMgtHandlerTestSuite) TestCreateSharingPolicyRefusesWhatItCannotRead() {
+	for name, body := range map[string]string{
+		"not json":                 `{`,
+		"a field it does not know": `{"childUnits":{"mode":"all","excludedOuId":["x"]}}`,
+	} {
+		s.Run(name, func() {
+			w, r := s.request(http.MethodPost, "/flows/f/sharing-policies", body)
+
+			s.handler.createSharingPolicy(w, r)
+
+			s.Equal(http.StatusBadRequest, w.Code)
+		})
+	}
+}
+
+func (s *FlowMgtHandlerTestSuite) TestCreateSharingPolicyLeavesDeploymentWideReachToResourceFiles() {
+	for name, body := range map[string]string{
+		"every unit":       `{"allUnits":{"overlayRules":{"variables.supportEmail":{"editable":true}}}}`,
+		"every other tree": `{"otherTreeRoots":{"mode":"all"}}`,
+	} {
+		s.Run(name, func() {
+			w, r := s.request(http.MethodPost, "/flows/f/sharing-policies", body)
+
+			s.handler.createSharingPolicy(w, r)
+
+			s.Equal(http.StatusBadRequest, w.Code)
+			s.Contains(w.Body.String(), ErrorDeploymentWideSharingNotAllowed.Code)
+		})
+	}
+}
+
+func (s *FlowMgtHandlerTestSuite) TestSharingErrorsKeepTheirStatus() {
+	for svcErr, status := range map[*tidcommon.ServiceError]int{
+		&ErrorFlowNotFound:                   http.StatusNotFound,
+		&ErrorSharingPolicyExists:            http.StatusConflict,
+		&ErrorSharingPolicyVersionMismatch:   http.StatusConflict,
+		&ErrorInvalidSharingPolicy:           http.StatusBadRequest,
+		&ErrorFlowConflictsWithSharingPolicy: http.StatusConflict,
+		&ErrorFlowConflictsWithSavedValues:   http.StatusConflict,
+		&tidcommon.InternalServerError:       http.StatusInternalServerError,
+	} {
+		s.mockService.EXPECT().CreateSharingPolicy(mock.Anything, testFlowIDHandler, mock.Anything).
+			Return(sharing.Policy{}, svcErr).Once()
+		w, r := s.request(http.MethodPost, "/flows/f/sharing-policies", allChildrenBody)
+
+		s.handler.createSharingPolicy(w, r)
+
+		s.Equal(status, w.Code, svcErr.Code)
+	}
+}
+
+func (s *FlowMgtHandlerTestSuite) TestListSharingPolicies() {
+	s.mockService.EXPECT().ListSharingPolicies(mock.Anything, testFlowIDHandler, 30, 0).
+		Return(sharing.PolicyList{
+			TotalResults: 1, StartIndex: 1, Count: 1, Policies: []sharing.Policy{{ID: "p1"}},
+		}, nil).Once()
+	w, r := s.request(http.MethodGet, "/flows/f/sharing-policies", "")
+
+	s.handler.listSharingPolicies(w, r)
+
+	s.Equal(http.StatusOK, w.Code)
+	s.Contains(w.Body.String(), `"policies"`)
+
+	w, r = s.request(http.MethodGet, "/flows/f/sharing-policies?limit=zero", "")
+	s.handler.listSharingPolicies(w, r)
+	s.Equal(http.StatusBadRequest, w.Code)
+
+	s.mockService.EXPECT().ListSharingPolicies(mock.Anything, testFlowIDHandler, 30, 0).
+		Return(sharing.PolicyList{}, &ErrorFlowNotFound)
+	w, r = s.request(http.MethodGet, "/flows/f/sharing-policies", "")
+	s.handler.listSharingPolicies(w, r)
+	s.Equal(http.StatusNotFound, w.Code)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestGetUpdateAndDeleteASharingPolicy() {
+	s.mockService.EXPECT().GetSharingPolicy(mock.Anything, testFlowIDHandler, "p1").
+		Return(sharing.Policy{ID: "p1"}, nil).Once()
+	w, r := s.request(http.MethodGet, "/flows/f/sharing-policies/p1", "")
+	s.handler.getSharingPolicy(w, r)
+	s.Equal(http.StatusOK, w.Code)
+
+	s.mockService.EXPECT().GetSharingPolicy(mock.Anything, testFlowIDHandler, "p1").
+		Return(sharing.Policy{}, &ErrorSharingPolicyNotFound).Once()
+	w, r = s.request(http.MethodGet, "/flows/f/sharing-policies/p1", "")
+	s.handler.getSharingPolicy(w, r)
+	s.Equal(http.StatusNotFound, w.Code)
+
+	s.mockService.EXPECT().UpdateSharingPolicy(mock.Anything, testFlowIDHandler, "p1", mock.MatchedBy(
+		func(req sharing.PolicyRequest) bool { return req.Version == 3 })).
+		Return(sharing.Policy{ID: "p1", Version: 4}, nil)
+	w, r = s.request(http.MethodPut, "/flows/f/sharing-policies/p1", `{"version":3,"childUnits":{"mode":"all"}}`)
+	s.handler.updateSharingPolicy(w, r)
+	s.Equal(http.StatusOK, w.Code)
+
+	w, r = s.request(http.MethodPut, "/flows/f/sharing-policies/p1", `{"version":`)
+	s.handler.updateSharingPolicy(w, r)
+	s.Equal(http.StatusBadRequest, w.Code)
+
+	s.mockService.EXPECT().DeleteSharingPolicy(mock.Anything, testFlowIDHandler, "p1").Return(nil).Once()
+	w, r = s.request(http.MethodDelete, "/flows/f/sharing-policies/p1", "")
+	s.handler.deleteSharingPolicy(w, r)
+	s.Equal(http.StatusNoContent, w.Code)
+
+	s.mockService.EXPECT().DeleteSharingPolicy(mock.Anything, testFlowIDHandler, "p1").
+		Return(&ErrorSharingPolicyDeclared).Once()
+	w, r = s.request(http.MethodDelete, "/flows/f/sharing-policies/p1", "")
+	s.handler.deleteSharingPolicy(w, r)
+	s.Equal(http.StatusBadRequest, w.Code)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestOverlayRules() {
+	s.mockService.EXPECT().GetFlowOverlayRules(mock.Anything, testFlowIDHandler, testOUIDHandler).
+		Return(sharing.ResolvedOverlay{OUID: testOUIDHandler, Visible: true}, nil).Once()
+	w, r := s.request(http.MethodGet, "/flows/f/overlay-rules?ouId="+testOUIDHandler, "")
+	s.handler.getOverlayRules(w, r)
+	s.Equal(http.StatusOK, w.Code)
+	var resp map[string]interface{}
+	s.NoError(json.Unmarshal(w.Body.Bytes(), &resp))
+	s.Equal(true, resp["visible"])
+	s.Equal(map[string]interface{}{}, resp["rules"], "no entry for what no policy names, and never null")
+
+	s.mockService.EXPECT().GetFlowOverlayRules(mock.Anything, testFlowIDHandler, "").
+		Return(sharing.ResolvedOverlay{}, &ErrorMissingOUID)
+	w, r = s.request(http.MethodGet, "/flows/f/overlay-rules", "")
+	s.handler.getOverlayRules(w, r)
+	s.Equal(http.StatusBadRequest, w.Code)
+
+	s.mockService.EXPECT().GetFlowOverlayRules(mock.Anything, testFlowIDHandler, "x").
+		Return(sharing.ResolvedOverlay{}, &ErrorFlowNotFound)
+	w, r = s.request(http.MethodGet, "/flows/f/overlay-rules?ouId=x", "")
+	s.handler.getOverlayRules(w, r)
+	s.Equal(http.StatusNotFound, w.Code)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestGetAndSetVariables() {
+	s.mockService.EXPECT().GetVariables(mock.Anything, testFlowIDHandler, testOUIDHandler).
+		Return(&VariablesResponse{Values: map[string]interface{}{"otp": 90.0}}, nil)
+	w, r := s.request(http.MethodGet, "/flows/f/variables?ouId="+testOUIDHandler, "")
+	s.handler.getVariables(w, r)
+	s.Equal(http.StatusOK, w.Code)
+	s.JSONEq(`{"values":{"otp":90}}`, w.Body.String())
+
+	s.mockService.EXPECT().SetVariables(mock.Anything, testFlowIDHandler, testOUIDHandler, mock.MatchedBy(
+		func(req SetVariablesRequest) bool { return req.Values["supportEmail"] == "help@emea.example" })).
+		Return(&VariablesResponse{Values: map[string]interface{}{"supportEmail": "help@emea.example"}}, nil)
+	w, r = s.request(http.MethodPut, "/flows/f/variables",
+		`{"ouId":"`+testOUIDHandler+`","values":{"supportEmail":"help@emea.example"}}`)
+	s.handler.setVariables(w, r)
+	s.Equal(http.StatusOK, w.Code)
+
+	for name, body := range map[string]string{
+		"not json": `{`, "no values": `{}`, "an unknown field": `{"values":{},"x":1}`,
+	} {
+		w, r = s.request(http.MethodPut, "/flows/f/variables", body)
+		s.handler.setVariables(w, r)
+		s.Equal(http.StatusBadRequest, w.Code, name)
+	}
+
+	s.mockService.EXPECT().SetVariables(mock.Anything, testFlowIDHandler, "x", mock.Anything).
+		Return(nil, variableNotEditable("mfa"))
+	w, r = s.request(http.MethodPut, "/flows/f/variables", `{"ouId":"x","values":{"mfa":"SMS_OTP"}}`)
+	s.handler.setVariables(w, r)
+	s.Equal(http.StatusForbidden, w.Code)
+
+	// The unit is named in the body, so one in the query is not read.
+	s.mockService.EXPECT().SetVariables(mock.Anything, testFlowIDHandler, "", mock.Anything).
+		Return(nil, &ErrorMissingOUID)
+	w, r = s.request(http.MethodPut, "/flows/f/variables?ouId="+testOUIDHandler, `{"values":{}}`)
+	s.handler.setVariables(w, r)
+	s.Equal(http.StatusBadRequest, w.Code)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestAFlowSharedWithTheUnitCannotBeChangedThroughIt() {
+	s.mockService.EXPECT().CheckFlowAccess(mock.Anything, testFlowIDHandler, testOUIDHandler, true).
+		Return(&ErrorSharedFlowReadOnly)
+	w, r := s.request(http.MethodDelete, "/flows/f?ouId="+testOUIDHandler, "")
+
+	s.handler.deleteFlow(w, r)
+
+	s.Equal(http.StatusForbidden, w.Code)
+	s.Contains(w.Body.String(), ErrorSharedFlowReadOnly.Code)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestADefinitionIsNotShownToAUnitItWasOnlySharedWith() {
+	s.mockService.EXPECT().CheckFlowAccess(mock.Anything, testFlowIDHandler, testOUIDHandler, false).
+		Return(&ErrorFlowNotFound)
+	w, r := s.request(http.MethodGet, "/flows/f/versions?ouId="+testOUIDHandler, "")
+
+	s.handler.listFlowVersions(w, r)
+
+	s.Equal(http.StatusNotFound, w.Code)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestACallerOutsideTheUnitIsForbidden() {
+	s.mockService.EXPECT().GetFlowOverlayRules(mock.Anything, testFlowIDHandler, "x").
+		Return(sharing.ResolvedOverlay{}, &tidcommon.ErrorUnauthorized)
+	w, r := s.request(http.MethodGet, "/flows/f/overlay-rules?ouId=x", "")
+
+	s.handler.getOverlayRules(w, r)
+
+	s.Equal(http.StatusForbidden, w.Code)
 }

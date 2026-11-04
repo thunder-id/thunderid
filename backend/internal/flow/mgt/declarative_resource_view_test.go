@@ -41,7 +41,7 @@ func TestViewResourceShowsAnExportedFlowAsItsRead(t *testing.T) {
 	exported, err := yaml.Marshal(flow)
 	require.NoError(t, err)
 
-	view, err := newFlowGraphExporter(nil).ViewResource(context.Background(),
+	view, err := newFlowGraphExporter(nil, nil).ViewResource(context.Background(),
 		viewDocument(t, "resource_type: flow\n"+string(exported)))
 
 	require.NoError(t, err)
@@ -50,7 +50,7 @@ func TestViewResourceShowsAnExportedFlowAsItsRead(t *testing.T) {
 
 // A document that is not a flow is refused.
 func TestViewResourceRefusesAnUnreadableDocument(t *testing.T) {
-	exporter := newFlowGraphExporter(nil)
+	exporter := newFlowGraphExporter(nil, nil)
 
 	_, err := exporter.ViewResource(context.Background(), viewDocument(t, "name: [not, a, name]"))
 	assert.Error(t, err)

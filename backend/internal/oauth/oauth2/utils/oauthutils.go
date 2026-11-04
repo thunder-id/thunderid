@@ -32,6 +32,26 @@ func ValidateAuthorizationDetails(ctx context.Context,
 	return details, nil
 }
 
+// PrepareAuthorizationDetails prepares a request's validated authorization_details for a flow and encodes them
+// for its runtime data. A refusal is mapped to an OAuth error; a failure to encode is returned as an error.
+// Absent details yield no details and an empty encoding.
+func PrepareAuthorizationDetails(ctx context.Context,
+	authzDetails providers.AuthorizationDetailProvider,
+	raw json.RawMessage) ([]providers.AuthorizationDetail, string, *model.ErrorResponse, error) {
+	if len(raw) == 0 {
+		return nil, "", nil, nil
+	}
+	details, svcErr := authzDetails.PrepareAuthorizationDetails(ctx, raw)
+	if svcErr != nil {
+		return nil, "", AuthorizationDetailsErrorResponse(svcErr), nil
+	}
+	encoded, err := json.Marshal(details)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	return details, string(encoded), nil, nil
+}
+
 // AuthorizationDetailsErrorResponse maps an authorization details error to an OAuth error response.
 func AuthorizationDetailsErrorResponse(svcErr *tidcommon.ServiceError) *model.ErrorResponse {
 	if svcErr.Type != tidcommon.ClientErrorType {
@@ -208,11 +228,11 @@ func ResolveScopeClaims(scope string, scopeClaimsMapping map[string][]string) []
 }
 
 // DefaultScopeClaims returns the standard OIDC scope-to-claims mapping a client starts with when
-// created without one. openid is left out: it is always granted and carries no user attributes.
+// created without one. openid and device_sso are left out: neither releases user attributes.
 func DefaultScopeClaims() map[string][]string {
 	defaults := make(map[string][]string, len(constants.StandardOIDCScopes))
 	for scope, def := range constants.StandardOIDCScopes {
-		if scope == constants.ScopeOpenID {
+		if scope == constants.ScopeOpenID || scope == constants.ScopeDeviceSSO {
 			continue
 		}
 		claims := make([]string, len(def.Claims))

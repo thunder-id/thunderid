@@ -5,12 +5,12 @@ import {useConfig} from '@thunderid/contexts';
 import {getCspNonce} from '@thunderid/design';
 import {ThunderIDProvider} from '@thunderid/react';
 import type {ThunderIDProviderProps} from '@thunderid/react';
-import type {JSX, ComponentType} from 'react';
+import {useState, type JSX, type ComponentType} from 'react';
 
 export default function withConfig<P extends object>(WrappedComponent: ComponentType<P>) {
   return function WithConfig(props: P): JSX.Element {
     const {getServerUrl, config} = useConfig();
-    const applicationId = new URL(window.location.href).searchParams.get('applicationId');
+    const [applicationId] = useState(() => new URL(window.location.href).searchParams.get('applicationId'));
 
     const sdkProps = (config.sdk ?? {}) as Partial<ThunderIDProviderProps>;
 

@@ -30,6 +30,10 @@ type authorizationCodeGrantHandler struct {
 	attributeCache     attributecache.AttributeCacheServiceInterface
 	resourceService    providers.ResourceServerProvider
 	enforcementService revocation.EnforcementServiceInterface
+	// deviceSecretValidity is how long a device secret stays usable, as long as an SSO session can last.
+	// It is zero when the deployment has no SSO session service, and then no device secret is returned.
+	deviceSecretValidity time.Duration
+	authzDetails         providers.AuthorizationDetailProvider
 }
 
 // newAuthorizationCodeGrantHandler creates a new instance of AuthorizationCodeGrantHandler.
@@ -39,13 +43,17 @@ func newAuthorizationCodeGrantHandler(
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
 	enforcementService revocation.EnforcementServiceInterface,
-) GrantHandlerInterface {
+	deviceSecretValidity time.Duration,
+	authzDetails providers.AuthorizationDetailProvider,
+) *authorizationCodeGrantHandler {
 	return &authorizationCodeGrantHandler{
-		authzService:       authzService,
-		tokenBuilder:       tokenBuilder,
-		attributeCache:     attributeCache,
-		resourceService:    resourceService,
-		enforcementService: enforcementService,
+		authzService:         authzService,
+		tokenBuilder:         tokenBuilder,
+		attributeCache:       attributeCache,
+		resourceService:      resourceService,
+		enforcementService:   enforcementService,
+		deviceSecretValidity: deviceSecretValidity,
+		authzDetails:         authzDetails,
 	}
 }
 
@@ -110,6 +118,21 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		return nil, errResp
 	}
 
+	tokenResponse, errResp := h.issueTokens(ctx, tokenRequest, oauthApp, authCode,
+		providers.GrantTypeAuthorizationCode, logger)
+	if errResp != nil {
+		return nil, errResp
+	}
+	tokenResponse.DeviceSecret = h.buildDeviceSecret(ctx, authCode, oauthApp, logger)
+
+	return tokenResponse, nil
+}
+
+// issueTokens issues the access token, and the ID token when openid was granted, for an authorization
+// code that has been validated, as the grant type given.
+func (h *authorizationCodeGrantHandler) issueTokens(ctx context.Context, tokenRequest *model.TokenRequest,
+	oauthApp *providers.OAuthClient, authCode *authz.AuthorizationCode, grantType providers.GrantType,
+	logger *log.Logger) (*model.TokenResponseDTO, *model.ErrorResponse) {
 	// Parse authorized scopes
 	authorizedScopes := tokenservice.ParseScopes(authCode.Scopes)
 
@@ -140,7 +163,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
 		strings.Join(authorizedScopes, " "), oauthApp.ScopeClaims)
 	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
-		ctx, h.resourceService, effectiveResources, nonOidcScopes, false)
+		ctx, h.resourceService, effectiveResources, nonOidcScopes, len(authCode.AuthorizationDetails) > 0)
 	if errResp != nil {
 		return nil, errResp
 	}
@@ -173,71 +196,101 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		return nil, errResp
 	}
 
+	authorizationDetails, errResp := modifyGrantedAuthorizationDetails(ctx, h.authzDetails,
+		authCode.AuthorizationDetails, tokenRequest.AuthorizationDetails)
+	if errResp != nil {
+		return nil, errResp
+	}
+
 	// Generate access token using tokenBuilder (attributes will be filtered in BuildAccessToken)
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
-		Subject:           authCode.AuthorizedUserID,
-		Audiences:         accessTokenAudiences,
-		ClientID:          tokenRequest.ClientID,
-		Scopes:            accessTokenScopes,
-		SubjectAttributes: tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
-		AttributeCacheID:  authCode.AttributeCacheID,
-		GrantType:         string(providers.GrantTypeAuthorizationCode),
-		OAuthApp:          oauthApp,
-		ClaimsRequest:     authCode.ClaimsRequest,
-		ClaimsLocales:     authCode.ClaimsLocales,
-		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
-		DPoPJkt:           dpop.GetJkt(ctx),
-		TokenFamilyID:     authCode.TokenFamilyID,
-		SubjectEntityID:   authCode.SubjectID,
-		SubjectCategory:   authCode.SubjectCategory,
+		Subject:              authCode.AuthorizedUserID,
+		Audiences:            accessTokenAudiences,
+		ClientID:             tokenRequest.ClientID,
+		Scopes:               accessTokenScopes,
+		SubjectAttributes:    tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
+		AttributeCacheID:     authCode.AttributeCacheID,
+		GrantType:            string(grantType),
+		OAuthApp:             oauthApp,
+		ClaimsRequest:        authCode.ClaimsRequest,
+		ClaimsLocales:        authCode.ClaimsLocales,
+		ValidityPeriod:       userSubConfig.ValidityPeriodOrZero(),
+		DPoPJkt:              dpop.GetJkt(ctx),
+		TokenFamilyID:        authCode.TokenFamilyID,
+		SubjectEntityID:      authCode.SubjectID,
+		SubjectCategory:      authCode.SubjectCategory,
+		AuthorizationDetails: authorizationDetails,
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
 	}
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, accessTokenCtx)
 	if err != nil {
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate token",
-		}
+		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")
 	}
 
 	// The refresh token preserves this single audience for continuity.
 	accessToken.OriginalAudiences = accessTokenAudiences
 
+	// A one-off detail is not carried on the refresh token.
+	refreshableDetails, errResp := refreshableAuthorizationDetails(ctx, h.authzDetails,
+		authCode.AuthorizationDetails)
+	if errResp != nil {
+		return nil, errResp
+	}
+
 	// Build token response
 	tokenResponse := &model.TokenResponseDTO{
-		AccessToken:   *accessToken,
-		CorrelationID: authCode.CorrelationID,
-		SessionID:     authCode.SessionID,
+		AccessToken:                     *accessToken,
+		CorrelationID:                   authCode.CorrelationID,
+		SessionID:                       authCode.SessionID,
+		RefreshableAuthorizationDetails: refreshableDetails,
 	}
 
 	// Generate ID token if 'openid' scope is present
 	if slices.Contains(accessTokenScopes, constants.ScopeOpenID) {
 		idToken, err := h.tokenBuilder.BuildIDToken(ctx, &tokenservice.IDTokenBuildContext{
-			Subject:        authCode.AuthorizedUserID,
-			Audience:       tokenRequest.ClientID,
-			Scopes:         accessTokenScopes,
-			UserAttributes: attrs,
-			AuthTime:       resolveAuthTime(authCode),
-			OAuthApp:       oauthApp,
-			ClaimsRequest:  authCode.ClaimsRequest,
-			Nonce:          authCode.Nonce,
-			CompletedACR:   authCode.CompletedACR,
-			SessionID:      authCode.SessionID,
+			Subject:         authCode.AuthorizedUserID,
+			Audience:        tokenRequest.ClientID,
+			Scopes:          accessTokenScopes,
+			UserAttributes:  attrs,
+			AuthTime:        resolveAuthTime(authCode),
+			OAuthApp:        oauthApp,
+			ClaimsRequest:   authCode.ClaimsRequest,
+			Nonce:           authCode.Nonce,
+			CompletedACR:    authCode.CompletedACR,
+			SessionID:       authCode.SessionID,
+			SubjectEntityID: accessToken.SubjectID,
 		})
 		if err != nil {
-			logger.Error(ctx, "Failed to generate ID token", log.Error(err))
-			return nil, &model.ErrorResponse{
-				Error:            constants.ErrorServerError,
-				ErrorDescription: "Failed to generate token",
-			}
+			return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")
 		}
 		tokenResponse.IDToken = *idToken
 	}
-
 	return tokenResponse, nil
+}
+
+// buildDeviceSecret returns the device secret carrying the SSO sessions kept with the code. It returns an
+// empty token when the code keeps none, and a failure to build it is logged rather than failing the
+// exchange, since the code has already been spent.
+func (h *authorizationCodeGrantHandler) buildDeviceSecret(ctx context.Context, authCode *authz.AuthorizationCode,
+	oauthApp *providers.OAuthClient, logger *log.Logger) model.TokenDTO {
+	if h.deviceSecretValidity == 0 || len(authCode.SessionData) == 0 {
+		return model.TokenDTO{}
+	}
+	token, err := h.tokenBuilder.BuildDeviceSecret(ctx, &tokenservice.DeviceSecretBuildContext{
+		OAuthApp:    oauthApp,
+		SubjectID:   authCode.SubjectID,
+		SessionData: authCode.SessionData,
+		// Each session's own deadline is checked when it is exchanged.
+		ValidityPeriod: int64(h.deviceSecretValidity.Seconds()),
+	})
+	if err != nil {
+		logger.Error(ctx, "Failed to build the device secret", log.Error(err))
+		return model.TokenDTO{}
+	}
+	return *token
 }
 
 func (h *authorizationCodeGrantHandler) retrieveAndValidateAuthCode(

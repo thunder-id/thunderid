@@ -1949,6 +1949,184 @@
   },
   {
     "resourceType": "TEMPLATE",
+    "category": "DEVICE_AUTHORIZATION",
+    "type": "DEVICE_GRANT",
+    "flowType": "DEVICE_GRANT",
+    "display": {
+      "label": "Device authorization",
+      "description": "Verify a device code and sign in to authorize the device",
+      "image": "assets/images/icons/lock.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Device Authorization Flow",
+      "handle": "device-authorization-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "verify-user-code",
+          "layout": {
+            "size": {
+              "width": 101,
+              "height": 34
+            },
+            "position": {
+              "x": 80,
+              "y": 313
+            }
+          }
+        },
+        {
+          "id": "verify-user-code",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "DeviceCodeExecutor"
+          },
+          "onSuccess": "call-authentication-flow",
+          "onIncomplete": "prompt-user-code",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 100
+            },
+            "position": {
+              "x": 330,
+              "y": 280
+            }
+          }
+        },
+        {
+          "id": "prompt-user-code",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "type": "TEXT",
+                "id": "device-code-heading",
+                "label": "{{ t(deviceGrant:forms.user_code.title) }}",
+                "variant": "HEADING_2"
+              },
+              {
+                "type": "BLOCK",
+                "id": "device-code-block",
+                "components": [
+                  {
+                    "type": "OTP_INPUT",
+                    "id": "device-code-input",
+                    "ref": "user_code",
+                    "label": "{{ t(deviceGrant:forms.user_code.fields.code.label) }}",
+                    "placeholder": "{{ t(deviceGrant:forms.user_code.fields.code.placeholder) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "device-code-submit",
+                    "label": "{{ t(deviceGrant:forms.user_code.actions.submit.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "device-code-input",
+                  "identifier": "user_code",
+                  "type": "TEXT_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "device-code-submit",
+                "nextNode": "verify-user-code"
+              }
+            }
+          ],
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 320
+            },
+            "position": {
+              "x": 330,
+              "y": 540
+            }
+          }
+        },
+        {
+          "id": "call-authentication-flow",
+          "type": "CALL",
+          "flow": {
+            "ref": ""
+          },
+          "onSuccess": "authorization-succeeded",
+          "layout": {
+            "size": {
+              "width": 260,
+              "height": 120
+            },
+            "position": {
+              "x": 740,
+              "y": 270
+            }
+          }
+        },
+        {
+          "id": "authorization-succeeded",
+          "type": "PROMPT",
+          "message": "{{ t(deviceGrant:forms.success.title) }}",
+          "next": "end",
+          "meta": {
+            "components": [
+              {
+                "type": "TEXT",
+                "id": "success-title",
+                "label": "{{ t(deviceGrant:forms.success.title) }}",
+                "variant": "HEADING_1",
+                "color": "SUCCESS"
+              },
+              {
+                "type": "TEXT",
+                "id": "success-description",
+                "label": "{{ t(deviceGrant:forms.success.description) }}",
+                "variant": "BODY_1"
+              }
+            ]
+          },
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 220
+            },
+            "position": {
+              "x": 1170,
+              "y": 220
+            }
+          }
+        },
+        {
+          "id": "end",
+          "type": "END",
+          "layout": {
+            "size": {
+              "width": 85,
+              "height": 34
+            },
+            "position": {
+              "x": 1620,
+              "y": 313
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "TEMPLATE",
     "category": "STARTER",
     "type": "BLANK",
     "flowType": "AUTHENTICATION",

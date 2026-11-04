@@ -7,6 +7,7 @@ package oauth
 import (
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
@@ -16,6 +17,7 @@ import (
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/callback"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/deviceauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
@@ -85,12 +87,12 @@ func Initialize(
 	}
 
 	tokenBuilder, tokenValidator := tokenservice.Initialize(
-		cfg, jwtService, jweService, resolver, idpService, enforcementService, jtiStore, actorProvider)
+		cfg, jwtService, jweService, resolver, idpService, enforcementService, jtiStore, actorProvider, governance)
 	parService := par.Initialize(mux, actorProvider, authnProvider, jwtService, discoveryService,
-		resourceService, dpopVerifier, cfg, runtimeStore, jtiStore, governance)
+		resourceService, dpopVerifier, cfg, runtimeStore, jtiStore, governance, authzDetails)
 	oauth2AuthzService, err := oauth2authz.Initialize(mux, actorProvider, resourceService,
 		jwtService, flowExecService, parService, revocationSvc, ssoSession, ssoTransport, flowProvider,
-		governance, cfg, runtimeStore, transactioner, jtiStore)
+		governance, cfg, runtimeStore, transactioner, jtiStore, authzDetails)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -99,13 +101,26 @@ func Initialize(
 	if len(cfg.OAuth.AllowedGrantTypes) == 0 ||
 		slices.Contains(cfg.OAuth.AllowedGrantTypes, string(providers.GrantTypeCIBA)) {
 		cibaService = ciba.Initialize(mux, jwtService, actorProvider, authnProvider, flowExecService,
-			discoveryService, resourceService, runtimeStore, jtiStore, governance, cfg)
+			discoveryService, resourceService, runtimeStore, jtiStore, governance, authzDetails, cfg)
+	}
+	var deviceAuthService deviceauth.DeviceAuthServiceInterface
+	if len(cfg.OAuth.AllowedGrantTypes) == 0 ||
+		slices.Contains(cfg.OAuth.AllowedGrantTypes, string(providers.GrantTypeDeviceCode)) {
+		deviceAuthService = deviceauth.Initialize(mux, jwtService, actorProvider, authnProvider, discoveryService,
+			resourceService, runtimeStore, jtiStore, governance, cfg)
 	}
 
+	// A device secret lasts as long as an SSO session can. The embedded engine has no session service,
+	// so it issues none.
+	var deviceSecretValidity time.Duration
+	if ssoSession != nil {
+		deviceSecretValidity = ssoSession.AbsoluteTimeout()
+	}
 	grantHandlerProvider := granthandlers.Initialize(
 		jwtService, oauth2AuthzService, tokenBuilder, tokenValidator,
 		attributeCacheSvc, ouService, authzService, actorProvider, resourceService,
-		cibaService, revocationSvc, revocationSvc, enforcementService, governance, authzDetails, cfg)
+		cibaService, deviceAuthService, revocationSvc, revocationSvc, enforcementService, governance, authzDetails,
+		deviceSecretValidity, ssoSession, cfg)
 
 	token.Initialize(mux, jwtService, actorProvider, authnProvider, grantHandlerProvider,
 		scopeValidator, observabilitySvc, discoveryService, dpopVerifier, jtiStore, ouService, governance, cfg)
@@ -114,7 +129,7 @@ func Initialize(
 	userinfo.Initialize(mux, jwtService, jweService, resolver,
 		tokenValidator, actorProvider, attributeCacheSvc,
 		discoveryService, dpopVerifier, governance, cfg)
-	callback.Initialize(mux, oauth2AuthzService, cibaService, cfg)
+	callback.Initialize(mux, oauth2AuthzService, cibaService, deviceAuthService, cfg)
 
 	if cfg.OAuth.Logout.IsEnabled() {
 		oauth2logout.Initialize(mux, jwtService, actorProvider, flowExecService, runtimeStore, cfg)

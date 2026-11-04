@@ -5,15 +5,15 @@ import {DELEGATION_GRANTS} from '../constants/delegationGrants';
 import type {AgentInboundAuthConfig} from '../models/agent';
 
 /**
- * Whether the grant types include one that lets an agent act on behalf of a signed-in user:
- * authorization code, CIBA or token exchange. Delegated mode is on exactly then.
+ * Whether the grant types include one that lets an agent act on behalf of a user: authorization
+ * code, CIBA, token exchange or JWT bearer. Delegated mode is on exactly then.
  */
 export function hasDelegationGrant(grantTypes?: string[]): boolean {
   return (grantTypes ?? []).some((grant) => DELEGATION_GRANTS.includes(grant));
 }
 
 /**
- * Whether an agent acts on behalf of a signed-in user. The server does not store the flag, so an
+ * Whether an agent acts on behalf of a user. The server does not store the flag, so an
  * update has to send it for the agent to be held to the delegated grant rules.
  */
 export default function isDelegatedAgent(inboundAuthConfig?: AgentInboundAuthConfig[]): boolean {

@@ -469,6 +469,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_DPoPProof_VerifyFail
 
 	assert.NotNil(suite.T(), errResp)
 	assert.Equal(suite.T(), constants.ErrorInvalidDPoPProof, errResp.Error)
+	assert.Equal(suite.T(), "Invalid DPoP proof", errResp.ErrorDescription)
 }
 
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_NoDPoPProof_VerifierNotInvoked() {
@@ -609,6 +610,59 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_WithRefreshToken() {
 	assert.Nil(suite.T(), errResp)
 	assert.NotNil(suite.T(), tokenResp)
 	assert.Equal(suite.T(), "access-token-123", tokenResp.AccessToken)
+}
+
+// A token exchange issues a refresh token only when its grant path asks for one, as the SSO session
+// exchange does, and the client allows the refresh token grant.
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_TokenExchangeRefreshTokenWhenAsked() {
+	for _, asked := range []bool{true, false} {
+		suite.SetupTest()
+		req := &model.TokenRequest{
+			ClientID:         "test-client-id",
+			GrantType:        string(providers.GrantTypeTokenExchange),
+			SubjectToken:     "subject-token",
+			SubjectTokenType: "urn:ietf:params:oauth:token-type:jwt",
+			Scope:            "openid",
+		}
+		app := &providers.OAuthClient{
+			ClientID: "test-client-id",
+			GrantTypes: []providers.GrantType{
+				providers.GrantTypeTokenExchange,
+				providers.GrantTypeRefreshToken,
+			},
+		}
+
+		suite.mockGrantProvider.ExpectedCalls = nil
+		suite.mockGrantProvider.On("GetGrantHandler", providers.GrantTypeTokenExchange).
+			Return(suite.mockGrantHandler, nil)
+		mockRefreshHandler := granthandlersmock.NewRefreshTokenGrantHandlerInterfaceMock(suite.T())
+		if asked {
+			suite.mockGrantProvider.On("GetGrantHandler", providers.GrantTypeRefreshToken).
+				Return(mockRefreshHandler, nil)
+		}
+		suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
+		suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "openid", "test-client-id").
+			Return("openid", nil)
+		tokenRespDTO := &model.TokenResponseDTO{
+			AccessToken: model.TokenDTO{Token: "access-token-123", TokenType: "Bearer", ExpiresIn: 3600,
+				Scopes: []string{"openid"}, Subject: "user123", Audiences: []string{"test-audience"}},
+			IssuesRefreshToken: asked,
+		}
+		suite.mockGrantHandler.On("HandleGrant", mock.Anything, mock.Anything, app).Return(tokenRespDTO, nil)
+		if asked {
+			mockRefreshHandler.On("IssueRefreshToken", mock.Anything, tokenRespDTO, app, "user123",
+				[]string{"test-audience"}, string(providers.GrantTypeTokenExchange), []string{"openid"},
+				(*model.ClaimsRequest)(nil), "", "", "", int64(0)).Return(nil)
+		}
+
+		svc := suite.newService()
+		_, errResp := svc.ProcessTokenRequest(context.Background(), req, app)
+
+		assert.Nil(suite.T(), errResp)
+		if !asked {
+			mockRefreshHandler.AssertNotCalled(suite.T(), "IssueRefreshToken")
+		}
+	}
 }
 
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_RefreshTokenIssuanceError() {
@@ -1201,6 +1255,45 @@ func (suite *TokenEventsTestSuite) TestIssued_SubjectTypeOmittedWhenTokenHasNoCa
 	evt := suite.lastEvent()
 	assert.Equal(suite.T(), "user-1", evt.Data[event.DataKey.Subject])
 	assert.NotContains(suite.T(), evt.Data, event.DataKey.SubjectType)
+}
+
+func (suite *TokenEventsTestSuite) TestPublishGrantError() {
+	cases := []struct {
+		name        string
+		code        string
+		wantStatus  string
+		wantMessage string
+	}{
+		{"a server error publishes 500 and hides its description", constants.ErrorServerError, "500",
+			"Failed to process token request"},
+		{"a client error publishes 400 and keeps its description", constants.ErrorInvalidGrant, "400",
+			"grant rejected"},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.published = nil
+			errResp := &model.ErrorResponse{Error: tc.code, ErrorDescription: "grant rejected"}
+
+			suite.newService().publishGrantError(suite.ctx(), appClient(), "app-client-id",
+				"authorization_code", "", errResp, 0)
+
+			errData, ok := suite.lastEvent().Data[event.DataKey.Error].(map[string]interface{})
+			suite.Require().True(ok)
+			suite.Equal(tc.wantStatus, errData["code"])
+			suite.Equal("grant rejected", errData["message"])
+			suite.Equal(tc.wantMessage, errResp.ErrorDescription)
+		})
+	}
+}
+
+func (suite *TokenEventsTestSuite) TestPublishGrantError_NoCodePublishesNothing() {
+	errResp := &model.ErrorResponse{ErrorDescription: "grant rejected"}
+
+	suite.newService().publishGrantError(suite.ctx(), appClient(), "app-client-id",
+		"authorization_code", "", errResp, 0)
+
+	suite.Empty(suite.published)
+	suite.Equal("grant rejected", errResp.ErrorDescription)
 }
 
 // AccessingOUResponsesTestSuite covers the two answers this endpoint hands the accessing-OU

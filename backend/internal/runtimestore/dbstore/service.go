@@ -210,6 +210,25 @@ func (d *dbStore) CompareFieldAndSwap(ctx context.Context, namespace providers.R
 	return rowsAffected > 0, nil
 }
 
+// CompareFieldAndSwapBeforeExpiry atomically updates a value only when its JSON field matches
+// and the supplied application-level expiry has not passed.
+func (d *dbStore) CompareFieldAndSwapBeforeExpiry(ctx context.Context,
+	namespace providers.RuntimeStoreNamespace, key, field, expected string, expiresAt time.Time,
+	newValue []byte,
+) (bool, error) {
+	dbClient, err := d.dbProvider.GetRuntimeTransientDBClient()
+	if err != nil {
+		return false, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	rowsAffected, err := dbClient.ExecuteContext(ctx, queryCompareFieldAndSwapBeforeRuntimeStoreExpiry,
+		d.deploymentID, string(namespace), key, newValue, time.Now().UTC(), field, expected, expiresAt.UTC())
+	if err != nil {
+		return false, fmt.Errorf("failed to compare-and-swap before expiry in database: %w", err)
+	}
+	return rowsAffected > 0, nil
+}
+
 // parseStoreValue extracts the VALUE column from a result row, handling both string and []byte.
 func parseStoreValue(row map[string]interface{}) ([]byte, error) {
 	switch v := row[columnNameValue].(type) {

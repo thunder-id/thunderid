@@ -49,8 +49,8 @@ const versionPath = versionPathArgIndex !== -1 ? process.argv[versionPathArgInde
 
 const OUTPUT_DIR = join(STATIC_DIR, versionPath, 'postman');
 
-// Spec files to skip (WIP / not yet stable)
-const SKIP_FILES = new Set(['design.yaml']);
+// Spec files to skip (WIP / not yet stable, or APIs the server does not register)
+const SKIP_FILES = new Set(['design.yaml', 'scim.yaml']);
 
 const CONVERT_OPTIONS = {
   folderStrategy: 'Tags',

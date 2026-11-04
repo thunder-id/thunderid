@@ -199,6 +199,9 @@ export interface Application {
    */
   authFlowId?: string;
 
+  /** Device Grant flow used when this application accepts the OAuth Device Code grant. */
+  deviceGrantFlowId?: string;
+
   /**
    * Registration flow ID
    * @example '80024fb3-29ed-4c33-aa48-8aee5e96d522'
@@ -346,7 +349,8 @@ export interface Application {
   isReadOnly?: boolean;
 
   /**
-   * Effective access status, derived by the server at read time. Read-only; never LOCKED.
+   * Effective access status, derived by the server at read time. Read-only; never LOCKED, and never
+   * EXPIRED, as applications have no lifespan.
    */
-  status?: {value: Exclude<AccessStatusReport['value'], 'LOCKED'>};
+  status?: {value: Exclude<AccessStatusReport['value'], 'LOCKED' | 'EXPIRED'>};
 }

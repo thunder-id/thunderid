@@ -4,6 +4,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {screen, cleanup} from '@testing-library/react';
 import {describe, it, expect, afterEach} from 'vitest';
+import DesignContext from '../../../../contexts/Design/DesignContext';
 import type {FlowComponent} from '../../../../models/flow';
 import renderWithProviders from '../../../../test/renderWithProviders';
 import TextAdapter from '../TextAdapter';
@@ -53,10 +54,38 @@ describe('TextAdapter', () => {
     expect(window.getComputedStyle(el).textAlign).toBe('center');
   });
 
+  it('renders left-aligned when no DesignProvider is mounted', () => {
+    renderWithProviders(
+      <DesignContext.Provider value={undefined}>
+        <TextAdapter component={baseComponent} resolve={(s) => s} />
+      </DesignContext.Provider>,
+    );
+    const el = screen.getByText('Hello World');
+    expect(window.getComputedStyle(el).textAlign).toBe('left');
+  });
+
+  it('uses component.align when no DesignProvider is mounted', () => {
+    const component = {...baseComponent, align: 'center'};
+    renderWithProviders(
+      <DesignContext.Provider value={undefined}>
+        <TextAdapter component={component} resolve={(s) => s} />
+      </DesignContext.Provider>,
+    );
+    const el = screen.getByText('Hello World');
+    expect(window.getComputedStyle(el).textAlign).toBe('center');
+  });
+
   it('falls back to left alignment when no align and design mode is disabled', () => {
     renderWithProviders(<TextAdapter component={baseComponent} resolve={(s) => s} />, {
       designContext: {isDesignEnabled: false},
     });
+    const el = screen.getByText('Hello World');
+    expect(window.getComputedStyle(el).textAlign).toBe('left');
+  });
+
+  it('renders left aligned on a page that mounts no DesignProvider', () => {
+    renderWithProviders(<TextAdapter component={baseComponent} resolve={(s) => s} />, {designContext: null});
+
     const el = screen.getByText('Hello World');
     expect(window.getComputedStyle(el).textAlign).toBe('left');
   });

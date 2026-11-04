@@ -60,9 +60,11 @@ export {default as SettingsLockNotice} from './components/common/SettingsLockNot
 export {default as TokenAudienceSelector} from './components/common/TokenAudienceSelector';
 export type {TokenAudienceOption} from './components/common/TokenAudienceSelector';
 export {default as AuthenticationFlowSection} from './components/edit-application/flows-settings/AuthenticationFlowSection';
+export {default as DeviceGrantFlowSection} from './components/edit-application/flows-settings/DeviceGrantFlowSection';
 export {default as RegistrationFlowSection} from './components/edit-application/flows-settings/RegistrationFlowSection';
 export {default as ClientAccessTokenSection} from './components/edit-application/token-settings/ClientAccessTokenSection';
 export {default as EditTokenSettings} from './components/edit-application/token-settings/EditTokenSettings';
+export {default as IdentityAssertionsSection} from './components/edit-application/advanced-settings/IdentityAssertionsSection';
 
 // Constants and utilities shared with other configure-* packages
 export {default as CertificateTypes} from './constants/certificate-types';
@@ -73,6 +75,8 @@ export {
   applyTokenEndpointAuthMethodChange,
   deriveOAuth2Flags,
   hasUserAccess,
+  isGrantLockedByIdJag,
+  isIdJagEnabled,
 } from './utils/oauth2Rules';
 export type {OAuth2Flags} from './utils/oauth2Rules';
 export {default as validateBackchannelLogoutUri} from './utils/validateBackchannelLogoutUri';

@@ -159,12 +159,12 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetRoleAssignmentsAndCount() {
 		},
 	})
 
-	count, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1")
+	count, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1", "")
 
 	suite.NoError(err)
 	suite.Equal(2, count)
 
-	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", 1, 1)
+	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 1, 1)
 
 	suite.NoError(err)
 	suite.Len(assignments, 1)
@@ -246,7 +246,7 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetAuthorizedPermissions() {
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"user1",
-		[]string{"group1"}, nil, "",
+		[]string{"group1"}, nil, "", "",
 
 		[]string{"perm2", "perm3"})
 
@@ -379,7 +379,7 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetEntityRoleIDs_AlwaysEmpty() {
 	}
 	for _, tc := range cases {
 		suite.Run(tc.name, func() {
-			roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), tc.entityID, tc.groupIDs)
+			roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), tc.entityID, tc.groupIDs, "")
 			suite.NoError(err)
 			suite.Empty(roleIDs)
 			suite.NotNil(roleIDs, "must return [] not nil for safe composite union")
@@ -446,4 +446,83 @@ func (suite *RoleFileBasedStoreTestSuite) TestCascadeHooksAreNoOps() {
 	deleted, err := suite.store.DeleteRolePermission(context.Background(), "rs1", "system:user")
 	suite.NoError(err)
 	suite.Equal(int64(0), deleted)
+}
+
+// A declared assignment is made in the role's owner, and no other organization unit holds one.
+func (suite *RoleFileBasedStoreTestSuite) TestDeclaredAssignmentsAreMadeInTheOwner() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID: "role1", Name: "Auditor", OUID: "ou1",
+		Assignments: []RoleAssignment{{ID: "user1", Type: assigneeTypeEntity}, {ID: "grp1", Type: AssigneeTypeGroup}},
+	})
+	ctx := context.Background()
+
+	for _, ouID := range []string{"", "ou1"} {
+		assignments, err := suite.store.GetRoleAssignments(ctx, "role1", ouID, 10, 0)
+		suite.Require().NoError(err)
+		suite.Equal([]RoleAssignment{
+			{ID: "user1", Type: assigneeTypeEntity, OUID: "ou1"},
+			{ID: "grp1", Type: AssigneeTypeGroup, OUID: "ou1"},
+		}, assignments)
+
+		count, err := suite.store.GetRoleAssignmentsCountByType(ctx, "role1", ouID, string(AssigneeTypeGroup))
+		suite.Require().NoError(err)
+		suite.Equal(1, count)
+	}
+
+	assignments, err := suite.store.GetRoleAssignments(ctx, "role1", "ou-child", 10, 0)
+	suite.Require().NoError(err)
+	suite.Empty(assignments)
+	count, err := suite.store.GetRoleAssignmentsCount(ctx, "role1", "ou-child")
+	suite.Require().NoError(err)
+	suite.Zero(count)
+
+	suite.NoError(suite.store.DeleteAssignmentsInOU(ctx, "role1", "ou-child"))
+}
+
+// Resource files declare no mandated assignments.
+func (suite *RoleFileBasedStoreTestSuite) TestListMandatedAssignmentsForRoleIsEmpty() {
+	got, err := suite.store.ListMandatedAssignmentsForRole(context.Background(), "role1", "")
+
+	suite.Require().NoError(err)
+	suite.Empty(got)
+}
+
+// Resource files declare no mandated roles.
+func (suite *RoleFileBasedStoreTestSuite) TestListMandatedRoleUnitsIsEmpty() {
+	got, err := suite.store.ListMandatedRoleUnits(context.Background())
+
+	suite.Require().NoError(err)
+	suite.Empty(got)
+}
+
+func (suite *RoleFileBasedStoreTestSuite) TestHasAssigneeAssignments() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID: "role1", Name: "Auditor", OUID: "ou1",
+		Assignments: []RoleAssignment{
+			{ID: "grp1", Type: AssigneeTypeGroup},
+			{ID: "user1", Type: assigneeTypeEntity, OUID: "ou2"},
+		},
+	})
+	ctx := context.Background()
+
+	found, err := suite.store.HasAssigneeAssignments(ctx, string(AssigneeTypeGroup), "grp1")
+	suite.Require().NoError(err)
+	suite.True(found)
+
+	found, err = suite.store.HasAssigneeAssignments(ctx, string(AssigneeTypeGroup), "grp2")
+	suite.Require().NoError(err)
+	suite.False(found)
+
+	found, err = suite.store.HasAssigneeAssignments(ctx, string(AssigneeTypeGroup), "user1")
+	suite.Require().NoError(err)
+	suite.False(found, "an assignment of another assignee type does not count")
+}
+
+func (suite *RoleFileBasedStoreTestSuite) TestGetRolesByIDs() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{ID: "role1", Name: "Auditor", OUID: "ou1"})
+
+	roles, err := suite.store.GetRolesByIDs(context.Background(), []string{"role1", "missing"})
+
+	suite.Require().NoError(err)
+	suite.Equal([]Role{{ID: "role1", Name: "Auditor", OUID: "ou1"}}, roles)
 }

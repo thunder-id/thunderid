@@ -51,6 +51,9 @@ type fakeVersionStore struct {
 	leaseErr error
 	// onSetApplied runs once a version is recorded as applied, with its number.
 	onSetApplied func(applied int)
+	// masters are each gateway's masters in order; masterErr fails every master call.
+	masters   map[string][]Master
+	masterErr error
 }
 
 func (f *fakeVersionStore) GetLease(_ context.Context, gatewayID string) (*applyLease, error) {
@@ -347,6 +350,85 @@ func (f *fakeVersionStore) DeleteExcluded(_ context.Context, gatewayID string) e
 	return nil
 }
 
+func (f *fakeVersionStore) AddMaster(_ context.Context, master Master, token string) (*Master, error) {
+	if f.masterErr != nil {
+		return nil, f.masterErr
+	}
+	if lease, ok := f.leases[master.GatewayID]; token != "" && (!ok || lease.Token != token) {
+		return nil, errLeaseLost
+	}
+	if f.masters == nil {
+		f.masters = map[string][]Master{}
+	}
+	kept := master
+	kept.Seq = len(f.masters[master.GatewayID]) + 1
+	kept.CreatedAt = testCreatedAt
+	f.masters[master.GatewayID] = append(f.masters[master.GatewayID], kept)
+	return &kept, nil
+}
+
+// Transact runs work and, when it fails, puts back the masters and the applied versions as they were,
+// as a rolled back transaction leaves them.
+func (f *fakeVersionStore) Transact(ctx context.Context, work func(txCtx context.Context) error) error {
+	masters := map[string][]Master{}
+	for id, kept := range f.masters {
+		masters[id] = append([]Master(nil), kept...)
+	}
+	applied := map[string]*AppliedVersion{}
+	for id, held := range f.applied {
+		copied := *held
+		applied[id] = &copied
+	}
+	if err := work(ctx); err != nil {
+		f.masters, f.applied = masters, applied
+		return err
+	}
+	return nil
+}
+
+func (f *fakeVersionStore) GetMaster(_ context.Context, gatewayID string) (*Master, error) {
+	if f.masterErr != nil {
+		return nil, f.masterErr
+	}
+	kept := f.masters[gatewayID]
+	if len(kept) == 0 {
+		return nil, nil
+	}
+	master := kept[len(kept)-1]
+	return &master, nil
+}
+
+func (f *fakeVersionStore) ListMasters(_ context.Context, gatewayID string) ([]Master, error) {
+	if f.masterErr != nil {
+		return nil, f.masterErr
+	}
+	kept := f.masters[gatewayID]
+	listed := make([]Master, 0, len(kept))
+	for i := len(kept) - 1; i >= 0; i-- {
+		master := kept[i]
+		master.Resources = ""
+		listed = append(listed, master)
+	}
+	return listed, nil
+}
+
+func (f *fakeVersionStore) PruneMasters(_ context.Context, gatewayID string, through int) error {
+	kept := f.masters[gatewayID]
+	pruned := kept[:0]
+	for _, master := range kept {
+		if master.Seq > through {
+			pruned = append(pruned, master)
+		}
+	}
+	f.masters[gatewayID] = pruned
+	return nil
+}
+
+func (f *fakeVersionStore) DeleteMasters(_ context.Context, gatewayID string) error {
+	delete(f.masters, gatewayID)
+	return nil
+}
+
 // fakeExporter answers a capture with canned files, and a value capture with canned values.
 type fakeExporter struct {
 	response *export.ExportResponse
@@ -465,6 +547,7 @@ type versionFixture struct {
 	exporter *fakeExporter
 	client   *fakeGatewayClient
 	names    *fakeActorNames
+	gateways *fakeStore
 }
 
 // newVersionFixture builds a service administering one registered gateway, gw-1, whose key is sealed.
@@ -484,8 +567,8 @@ func newVersionFixture(t *testing.T) *versionFixture {
 		client:   &fakeGatewayClient{},
 		names:    &fakeActorNames{names: map[string]string{"u-1": "alice", "u-2": "bob"}},
 	}
-	gateways := &fakeStore{gateways: []Gateway{{ID: "gw-1", Name: "dev", BaseURL: "https://dp.test", Key: sealedKey}}}
-	f.svc = newVersionService(gateways, f.versions, f.exporter, f.client, testSecretFields, f.names)
+	f.gateways = &fakeStore{gateways: []Gateway{{ID: "gw-1", Name: "dev", BaseURL: "https://dp.test", Key: sealedKey}}}
+	f.svc = newVersionService(f.gateways, f.versions, f.exporter, f.client, testSecretFields, f.names)
 	return f
 }
 

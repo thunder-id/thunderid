@@ -128,6 +128,35 @@ describe('AgentOverview', () => {
     expect(screen.queryByText('Disabled')).not.toBeInTheDocument();
   });
 
+  // Allowed user types apply only to users signing in through the agent, so only authorization
+  // code shows the row, even though every one of these grants turns Delegated mode on.
+  it.each([
+    ['CIBA', 'urn:openid:params:grant-type:ciba'],
+    ['token exchange', 'urn:ietf:params:oauth:grant-type:token-exchange'],
+    ['JWT bearer', 'urn:ietf:params:oauth:grant-type:jwt-bearer'],
+  ])('should hide the allowed user types row for an agent delegated through %s alone', (_name, grant) => {
+    render(
+      <AgentOverview
+        agent={{...baseAgent, allowedUserTypes: ['person']}}
+        oauth2Config={{grantTypes: ['client_credentials', grant], responseTypes: []}}
+      />,
+    );
+
+    expect(screen.getAllByText('Enabled')).toHaveLength(2);
+    expect(screen.queryByText('Allowed user types')).not.toBeInTheDocument();
+  });
+
+  it('should hide the allowed user types row when Delegated mode is off', () => {
+    render(
+      <AgentOverview
+        agent={{...baseAgent, allowedUserTypes: ['person']}}
+        oauth2Config={{grantTypes: ['client_credentials'], responseTypes: []}}
+      />,
+    );
+
+    expect(screen.queryByText('Allowed user types')).not.toBeInTheDocument();
+  });
+
   it('falls back to the handle when an allowed user type is not found', () => {
     render(
       <AgentOverview agent={{...baseAgent, allowedUserTypes: ['unknown']}} oauth2Config={delegatedOauth2Config} />,

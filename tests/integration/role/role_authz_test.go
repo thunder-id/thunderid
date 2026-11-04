@@ -80,8 +80,7 @@ const (
 	roleAuthzAssigneeUsername = "authz-role-assignee"
 	roleAuthzAssigneePassword = "Assignee@123"
 
-	roleAuthzClientID    = "CONSOLE"
-	roleAuthzRedirectURI = "https://localhost:8095/console"
+	roleAuthzClientID = "CONSOLE"
 
 	// The permissions the scoped administrator holds and requests in its token. Deliberately
 	// excludes both the root "system" permission and "system:user".
@@ -100,6 +99,8 @@ const (
 	// operation would confer a permission it does not itself hold.
 	errCodeGrantNotPermitted = "SAZ-4030"
 )
+
+var roleAuthzRedirectURI = testutils.TestServerURL + "/console"
 
 func TestRoleAuthzTestSuite(t *testing.T) {
 	suite.Run(t, new(RoleAuthzTestSuite))
@@ -406,17 +407,31 @@ func (ts *RoleAuthzTestSuite) membersPayload(userIDs ...string) []byte {
 }
 
 // assignScopedAdminToDeclarativeRole binds the scoped administrator to the file-defined role using
-// the root client, since the scoped administrator cannot reach the role API itself.
+// the root client, since the scoped administrator cannot reach the role API itself. The role belongs
+// to decl-ou-1 while the administrator lives in the suite's own organization unit, so the
+// administrator is first shared with decl-ou-1: a role is assigned only to users owned by or shared
+// with the organization unit the assignment is made in.
 func (ts *RoleAuthzTestSuite) assignScopedAdminToDeclarativeRole() error {
-	payload, err := json.Marshal(AssignmentsRequest{
+	if err := ts.rootPost("/users/"+ts.scopedAdminID+"/sharing-policies", map[string]interface{}{
+		"otherTreeRoots": map[string]interface{}{
+			"mode": "selected", "units": []map[string]string{{"ouId": "decl-ou-1"}},
+		},
+	}, http.StatusCreated); err != nil {
+		return fmt.Errorf("share the scoped administrator with decl-ou-1: %w", err)
+	}
+	return ts.rootPost(rolesBasePath+"/"+roleAuthzDeclarativeRoleID+"/assignments/add", AssignmentsRequest{
 		Assignments: []Assignment{{ID: ts.scopedAdminID, Type: AssigneeTypeUser}},
-	})
+	}, http.StatusNoContent)
+}
+
+// rootPost sends a JSON body with the root client and refuses any status but the one expected.
+func (ts *RoleAuthzTestSuite) rootPost(path string, body interface{}, wantStatus int) error {
+	payload, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
 
-	url := testServerURL + rolesBasePath + "/" + roleAuthzDeclarativeRoleID + "/assignments/add"
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
+	req, err := http.NewRequest(http.MethodPost, testServerURL+path, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
@@ -428,10 +443,9 @@ func (ts *RoleAuthzTestSuite) assignScopedAdminToDeclarativeRole() error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNoContent {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("add declarative role assignment failed with status %d: %s",
-			resp.StatusCode, body)
+	if resp.StatusCode != wantStatus {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("POST %s failed with status %d: %s", path, resp.StatusCode, respBody)
 	}
 	return nil
 }

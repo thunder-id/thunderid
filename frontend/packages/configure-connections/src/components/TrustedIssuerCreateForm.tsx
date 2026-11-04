@@ -24,6 +24,7 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import useCreateTrustedIssuer from '../api/useCreateTrustedIssuer';
 import useConnectionRoutes from '../hooks/useConnectionRoutes';
+import useIsIdJagAcceptanceUnavailable from '../hooks/useIsIdJagAcceptanceUnavailable';
 import isConflictError from '../utils/isConflictError';
 import validateTrustedIssuerForm, {
   type TrustedIssuerFieldErrorKind,
@@ -45,6 +46,9 @@ interface TrustedIssuerCreateFormProps {
  * The trusted-issuer create form: fields, validation, and submission via
  * {@link useCreateTrustedIssuer}. On success, navigates to the created issuer's detail page.
  *
+ * The ID-JAG switch cannot be turned on while the server does not accept identity assertions,
+ * but stays available to turn off.
+ *
  * Renders its own Back + submit footer so it lines up with the other "Add custom connection"
  * wizard steps; the wizard supplies the surrounding chrome (breadcrumb, progress, close) and
  * collects the connection name on a preceding step.
@@ -61,6 +65,7 @@ export default function TrustedIssuerCreateForm({
   const productName = config.brand.product_name;
   const routes = useConnectionRoutes();
   const createTrustedIssuer = useCreateTrustedIssuer();
+  const isIdJagAcceptanceUnavailable = useIsIdJagAcceptanceUnavailable();
 
   const [issuer, setIssuer] = useState('');
   const [jwksEndpoint, setJwksEndpoint] = useState('');
@@ -152,7 +157,8 @@ export default function TrustedIssuerCreateForm({
         <Typography variant="subtitle1" gutterBottom>
           {t(
             'trustedIssuers:create.subtitle',
-            'Register an external identity provider whose identity assertions ThunderID can exchange for access tokens.',
+            'Register an external identity provider whose identity assertions {{productName}} can exchange for access tokens.',
+            {productName},
           )}
         </Typography>
       </Stack>
@@ -264,6 +270,7 @@ export default function TrustedIssuerCreateForm({
               control={
                 <Switch
                   checked={idJagEnabled}
+                  disabled={isIdJagAcceptanceUnavailable && !idJagEnabled}
                   onChange={(e) => {
                     clearCreateError();
                     setIdJagEnabled(e.target.checked);
@@ -285,6 +292,14 @@ export default function TrustedIssuerCreateForm({
                 'Accept and exchange signed identity assertions from this issuer for access tokens.',
               )}
             </Typography>
+            {isIdJagAcceptanceUnavailable && (
+              <Typography variant="caption" color="text.secondary" sx={{display: 'block', ml: 6.5}}>
+                {t(
+                  'trustedIssuers:idJag.acceptanceUnavailable',
+                  'This server does not accept identity assertions from any issuer.',
+                )}
+              </Typography>
+            )}
           </Box>
         </Stack>
       </Paper>

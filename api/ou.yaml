@@ -680,6 +680,10 @@ paths:
       tags:
         - Organization Units
       summary: List roles in organization unit
+      description: |
+        Lists the roles the organization unit owns, followed by the roles shared with it. Each
+        listed role's `isOwnedByOU` field says which of the two it is. A shared role is read-only
+        here.
       parameters:
         - in: path
           name: id
@@ -705,10 +709,12 @@ paths:
                     name: "OU Admin"
                     description: "Administers this organization unit"
                     isReadOnly: false
+                    isOwnedByOU: true
                   - id: "f1a2b3c4-5d6e-4f7a-8b9c-0d1e2f3a4b5c"
                     name: "Viewer"
-                    description: "Read-only access to this organization unit"
+                    description: "Read-only access, shared from the parent organization unit"
                     isReadOnly: true
+                    isOwnedByOU: false
                 links:
                   - href: "organization-units/afc77cfd-620b-4cf0-a31c-7377b0ea8902/roles?offset=2&limit=2"
                     rel: "next"
@@ -1271,6 +1277,9 @@ paths:
       tags:
         - organization-units-by-path
       summary: List roles in organization unit by handle path
+      description: |
+        Lists the roles the organization unit owns, followed by the roles shared with it. Each
+        listed role's `isOwnedByOU` field says which of the two it is.
       parameters:
         - in: path
           name: path
@@ -1303,10 +1312,12 @@ paths:
                     name: "OU Admin"
                     description: "Administers this organization unit"
                     isReadOnly: false
+                    isOwnedByOU: true
                   - id: "f1a2b3c4-5d6e-4f7a-8b9c-0d1e2f3a4b5c"
                     name: "Viewer"
-                    description: "Read-only access to this organization unit"
+                    description: "Read-only access, shared from the parent organization unit"
                     isReadOnly: true
+                    isOwnedByOU: false
                 links:
                   - href: "organization-units/tree/engineering/frontend/roles?offset=2&limit=2"
                     rel: "next"
@@ -1588,7 +1599,10 @@ components:
           type: string
         isReadOnly:
           type: boolean
-          description: "Whether the role is declarative (read-only) or mutable."
+          description: "Whether the role is read-only here: declarative, or shared with the organization unit."
+        isOwnedByOU:
+          type: boolean
+          description: "Whether the organization unit owns the role rather than being shared it."
 
     Link:
       type: object

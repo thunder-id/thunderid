@@ -1,0 +1,165 @@
+---
+title: OpenID for Verifiable Credential Issuance (OpenID4VCI)
+docType: reference
+sidebar_position: 1
+description: OpenID4VCI in {{ProductName}}, issue SD-JWT VCs to digital wallets via the authorization code grant and generate credential offers for wallet onboarding.
+---
+
+# OpenID for Verifiable Credential Issuance (OpenID4VCI)
+
+**OpenID for Verifiable Credential Issuance** ([OpenID4VCI](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html)) is the protocol wallets use to request a credential from an issuer. <ProductName /> acts as the **credential issuer**: it authenticates the user through the OAuth 2.1 authorization code flow and issues a signed **SD-JWT VC** bound to the wallet's key. The credential can later be presented at relying parties without disclosing unnecessary attributes.
+
+Credential configurations are managed resources you create through the <ProductName /> Console. The issuer engine reflects them immediately in the public metadata document.
+
+## How It Works
+
+<ProductName /> uses the authorization code grant as the issuance flow. The wallet acts as an OAuth client; the user signs in through the normal <ProductName /> login pages.
+
+1. An operator creates a **credential configuration** in the <ProductName /> Console, specifying the credential type (`vct`) and which user profile claims to include as selectively disclosable attributes.
+2. <ProductName /> advertises the credential configuration in its issuer metadata at `GET /.well-known/openid-credential-issuer`.
+3. A relying party (or <ProductName /> itself) generates a **credential offer**: a compact `openid-credential-offer://` deep link the user opens in their wallet.
+4. The wallet resolves the offer and redirects the user to the <ProductName /> authorization endpoint with the credential configuration handle as the OAuth scope.
+5. The user authenticates. <ProductName /> issues an access token scoped to the credential configuration.
+6. The wallet requests a fresh `c_nonce` from `POST /openid4vci/nonce` to bind the credential to its key.
+7. The wallet posts a credential request to `POST /openid4vci/credential` with the access token and a holder proof JWT signed with its private key.
+8. <ProductName /> verifies the access token and holder proof, resolves the user's profile claims, signs an SD-JWT VC bound to the wallet's public key, and returns it.
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| **Credential format** | `dc+sd-jwt`. Every configured claim is individually selectively disclosable. |
+| **Holder binding** | The wallet's public key is embedded in the SD-JWT VC `cnf` claim as a JWK. One credential is issued per holder proof JWT. |
+| **Issuer-initiated offer** | `GET /openid4vci/offer?credential_configuration_id=<handle>` returns the JSON offer and an `openid-credential-offer://` deep link. The stored offer resolves at `GET /openid4vci/credential-offer/{id}` and expires after 5 minutes. |
+| **Proof type** | Holder proofs must use `proof_type: "jwt"` with `typ: openid4vci-proof+jwt`. The `aud` must equal the credential issuer URL; the `nonce` must match a valid, unexpired `c_nonce`. |
+| **Batch issuance** | Multiple proofs may be submitted via `proofs.jwt`. One SD-JWT VC is issued per proof, up to the configured `batch_size`. When `batch_size > 1`, `batch_credential_issuance` is advertised in the metadata. |
+| **DPoP** | When the access token carries `cnf.jkt`, the credential request must include a matching DPoP proof header (RFC 9449). |
+| **Claim sourcing** | Claims are resolved from the user's profile attributes. Missing attributes are silently omitted from the issued credential. Only claims with a `displayName` are advertised in the metadata `claims` object; all configured claims are issued. |
+| **Signing** | Signed with the key set as `signing_key_id`. The certificate chain is included in the SD-JWT VC `x5c` header. Omitting `signing_key_id` disables the issuer engine at startup. |
+| **Scope enforcement** | When `enforce_scope` is enabled, the access token must carry a scope matching the `credential_configuration_id`. |
+
+</details>
+
+## Credential Configurations
+
+A **credential configuration** defines one credential type the issuer can produce. Its `handle` becomes the `credential_configuration_id` in the issuer metadata document and the OAuth scope wallets request.
+
+Manage configurations in **Verifiable Credentials → Templates** in the <ProductName /> Console, or declare them in YAML for file-based deployments (`resource_type: credential_configuration`).
+
+| Field | Description |
+|---|---|
+| **Handle** | Unique identifier for this credential type. Becomes the OAuth scope and `credential_configuration_id` in issuer metadata. Required. |
+| **Credential Type (VCT)** | The `vct` URI that identifies this credential type to wallets and verifiers. Required. |
+| **Claims** | Each entry maps a user profile attribute name to an optional wallet display name. The attribute value is sourced from the user's profile at issuance. Claims with a display name are advertised in the metadata `claims` object; all configured claims are included in the issued credential regardless. |
+| **Display** | Wallet presentation display settings: locale (BCP 47 tag, e.g. `en-US`) and `logoUri` (a hosted image URL shown as the credential logo in the wallet). |
+| **Validity** | Lifetime of issued credentials in seconds. Overrides the server-level `credential_validity_seconds` when set. |
+
+## Server Configurations
+
+Configure the issuer engine under the `openid4vci:` key in `deployment.yaml`. All values can be overridden there; the defaults below come from the built-in server defaults.
+
+| Key | Default | Description |
+|---|---|---|
+| `signing_key_id` | `ecdsa-key` | Key used to sign issued SD-JWT VCs. Must be certificate-backed (`x5c` required). Omitting this key disables the issuer engine entirely. |
+| `credential_issuer` | server URL | The `credential_issuer` identifier in the metadata document. |
+| `base_url` | server URL | Base URL for endpoint URLs advertised in metadata. |
+| `authorization_servers` | `[server URL]` | Authorization server list advertised in metadata. |
+| `nonce_ttl_seconds` | `300` | How long a `c_nonce` is valid (seconds). |
+| `proof_max_age_seconds` | `300` | Maximum age of the holder proof JWT `iat` claim. |
+| `credential_validity_seconds` | `2592000` | Lifetime of issued SD-JWT VCs (seconds; default is 30 days). |
+| `batch_size` | `5` | Maximum number of proofs per credential request. Values above `1` enable batch issuance. |
+| `enforce_scope` | `false` | When `true`, the access token must carry a scope matching the `credential_configuration_id`. |
+
+## Issuer Metadata
+
+`GET /.well-known/openid-credential-issuer` returns the credential issuer metadata document built dynamically from active credential configurations.
+
+```json
+{
+  "credential_issuer": "https://auth.example.com",
+  "credential_endpoint": "https://auth.example.com/openid4vci/credential",
+  "nonce_endpoint": "https://auth.example.com/openid4vci/nonce",
+  "authorization_servers": ["https://auth.example.com"],
+  "credential_configurations_supported": {
+    "example-pid": {
+      "format": "dc+sd-jwt",
+      "scope": "example-pid",
+      "vct": "urn:example:pid:1",
+      "cryptographic_binding_methods_supported": ["jwk"],
+      "credential_signing_alg_values_supported": ["ES256"],
+      "proof_types_supported": {
+        "jwt": { "proof_signing_alg_values_supported": ["ES256"] }
+      },
+      "display": [{ "name": "Example PID" }],
+      "claims": {
+        "given_name": { "display": [{ "name": "First Name" }] }
+      }
+    }
+  }
+}
+```
+
+## Try It in <ProductName />
+
+### Generate a Credential Offer
+
+```http
+GET /openid4vci/offer?credential_configuration_id=example-pid
+```
+
+Response includes the offer JSON and a deep link:
+
+```json
+{
+  "credential_offer": {
+    "credential_issuer": "https://auth.example.com",
+    "credential_configuration_ids": ["example-pid"],
+    "grants": { "authorization_code": {} }
+  },
+  "credential_offer_uri": "openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fauth.example.com%2Fopenid4vci%2Fcredential-offer%2Fabc123"
+}
+```
+
+### Request a `c_nonce` and Issue a Credential
+
+```http
+POST /openid4vci/nonce
+```
+
+```json
+{ "c_nonce": "wKI4LTs208I3EgjkuYpvRQ" }
+```
+
+Then issue the credential with the access token (from the authorization code flow) and a holder proof JWT:
+
+```http
+POST /openid4vci/credential
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "credential_configuration_id": "example-pid",
+  "proof": {
+    "proof_type": "jwt",
+    "jwt": "<holder-proof-jwt>"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "credentials": [{ "credential": "<sd-jwt-vc>" }]
+}
+```
+
+For batch issuance, pass multiple proof JWTs in `proofs.jwt`: one SD-JWT VC is returned per proof.
+
+## Related Guides
+
+- [OpenID for Verifiable Presentations](../openid4vp), verify a previously issued SD-JWT VC at a relying party
+- [DPoP](../../oauth-oidc/dpop), bind access tokens to a wallet key to prevent token theft
+- [Authorization Code](../../oauth-oidc/authorization-code), the underlying grant used in the issuance flow
+- [JWKS](../../oauth-oidc/jwks), public keys used by wallets to verify the issued credential signature

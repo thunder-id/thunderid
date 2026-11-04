@@ -122,7 +122,7 @@ export default function UseCasesSection(): JSX.Element {
           link: {label: 'Framework guides', href: '/sdks-and-tools'},
         },
         {
-          text: `Give your users an open source identity provider option. ${productName} integrates through standard OpenID Connect, OAuth 2.1, SAML, and SCIM, with ready-to-use deployment artifacts.`,
+          text: `Give your users an open source identity provider option. ${productName} integrates through standard OpenID Connect, OAuth 2.1, and SAML, with ready-to-use deployment artifacts.`,
           link: {label: 'Integration guides', href: docsUrl('/docs/next/guides/protocols')},
         },
       ],

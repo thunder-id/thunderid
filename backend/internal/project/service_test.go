@@ -192,6 +192,67 @@ func (suite *ProjectServiceTestSuite) TestGetProject() {
 	})
 }
 
+func (suite *ProjectServiceTestSuite) TestResolveProjectOU() {
+	for name, tc := range map[string]struct {
+		ouID     string
+		inside   bool
+		expected string
+	}{
+		"no organization unit":            {expected: testRootOUID},
+		"an organization unit in project": {ouID: "child-ou", inside: true, expected: "child-ou"},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.record(), nil)
+			if tc.ouID != "" {
+				suite.mockOUService.On("IsParent", mock.Anything, testRootOUID, tc.ouID).Return(tc.inside, nil)
+			}
+
+			ouID, svcErr := suite.service.ResolveProjectOU(context.Background(), testProjectID, tc.ouID)
+
+			suite.Nil(svcErr)
+			suite.Equal(tc.expected, ouID)
+		})
+	}
+}
+
+func (suite *ProjectServiceTestSuite) TestResolveProjectOU_Fails() {
+	unknownOU := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1003"}
+	for name, tc := range map[string]struct {
+		storeErr error
+		isParent bool
+		ouErr    *tidcommon.ServiceError
+		expected tidcommon.ServiceError
+	}{
+		"an unknown project": {storeErr: errProjectNotFound, expected: ErrorProjectNotFound},
+		"a store error": {
+			storeErr: errors.New("db"), expected: tidcommon.InternalServerError,
+		},
+		"an organization unit outside the project": {expected: ErrorOUNotInProject},
+		"an unknown organization unit":             {ouErr: unknownOU, expected: *unknownOU},
+		"a hierarchy lookup failure": {
+			ouErr: &tidcommon.InternalServerError, expected: tidcommon.InternalServerError,
+		},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			if tc.storeErr != nil {
+				suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(projectRecord{}, tc.storeErr)
+			} else {
+				suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.record(), nil)
+				suite.mockOUService.On("IsParent", mock.Anything, testRootOUID, "other-ou").
+					Return(tc.isParent, tc.ouErr)
+			}
+
+			ouID, svcErr := suite.service.ResolveProjectOU(context.Background(), testProjectID, "other-ou")
+
+			suite.Empty(ouID)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.expected, *svcErr)
+		})
+	}
+}
+
 func (suite *ProjectServiceTestSuite) TestGetProject_RootOULookupFails() {
 	suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.record(), nil)
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, testRootOUID).

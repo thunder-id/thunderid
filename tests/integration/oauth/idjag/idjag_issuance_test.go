@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -42,11 +43,34 @@ const (
 	issuanceAgentClientID     = "idjag_issuance_agent"
 	issuanceAgentClientSecret = "idjag_issuance_agent_secret"
 
+	idTokenAttrsClientID      = "idjag_id_token_attrs_client"
+	idTokenAttrsAppName       = "IDJAGIDTokenAttributesApp"
+	idTokenAttrsAgentClientID = "idjag_id_token_attrs_agent"
+	issuanceRoleName          = "idjag-issuance-role"
+	issuanceGroupName         = "idjag-issuance-group"
+	issuanceNonce             = "idjag-issuance-nonce"
+
+	tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange"
+	idJAGGrantProfile      = "urn:ietf:params:oauth:grant-profile:id-jag"
+	extraIDJAGClientID     = "idjag_extra_client"
+	extraIDJAGAppName      = "IDJAGExtraApp"
+
 	// appErrorInvalidOAuthConfiguration is the APP-1024 error code returned when an OAuth
 	// configuration is rejected at application create time (see
 	// backend/internal/application/error_constants.go: ErrorInvalidOAuthConfiguration).
 	appErrorInvalidOAuthConfiguration = "APP-1024"
+	// appErrorInvalidGrantType and agentErrorInvalidGrantType are the codes returned when a client asks
+	// for a grant type the server does not allow.
+	appErrorInvalidGrantType   = "APP-1010"
+	agentErrorInvalidGrantType = "AGT-1003"
 )
+
+// defaultAllowedGrantTypes is the server's default oauth.allowed_grant_types, which applies while
+// deployment.yaml does not set the key.
+var defaultAllowedGrantTypes = []string{
+	"client_credentials", "authorization_code", "refresh_token", tokenExchangeGrantType,
+	"urn:openid:params:grant-type:ciba", jwtBearerGrantType,
+}
 
 var issuanceAuthFlow = testutils.Flow{
 	Name:     "IDJAG Issuance Auth Flow",
@@ -244,9 +268,19 @@ func (ts *IDJAGIssuanceTestSuite) create(path string, body map[string]any) strin
 // does not leave a stray application behind for later test runs to trip over.
 func (ts *IDJAGIssuanceTestSuite) createApplicationExpectError(app map[string]any) (int, testutils.ErrorResponse) {
 	ts.T().Helper()
-	jsonData, err := json.Marshal(app)
+	return ts.createExpectError("/applications", app, testutils.DeleteApplication)
+}
+
+// createExpectError POSTs a resource definition to path that is expected to be rejected, returning the
+// response status code and the decoded error body. A resource that is unexpectedly created is removed
+// with deleteCreated.
+func (ts *IDJAGIssuanceTestSuite) createExpectError(
+	path string, definition map[string]any, deleteCreated func(id string) error,
+) (int, testutils.ErrorResponse) {
+	ts.T().Helper()
+	jsonData, err := json.Marshal(definition)
 	ts.Require().NoError(err)
-	req, err := http.NewRequest("POST", testutils.TestServerURL+"/applications", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", testutils.TestServerURL+path, bytes.NewBuffer(jsonData))
 	ts.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := ts.client.Do(req)
@@ -258,13 +292,73 @@ func (ts *IDJAGIssuanceTestSuite) createApplicationExpectError(app map[string]an
 		var created map[string]any
 		ts.Require().NoError(json.Unmarshal(body, &created))
 		if id, ok := created["id"].(string); ok && id != "" {
-			_ = testutils.DeleteApplication(id)
+			_ = deleteCreated(id)
 		}
 		return resp.StatusCode, testutils.ErrorResponse{}
 	}
 	var errResp testutils.ErrorResponse
 	ts.Require().NoError(json.Unmarshal(body, &errResp))
 	return resp.StatusCode, errResp
+}
+
+// createIDJAGAgent creates the delegated agent from idjagAgentDefinition through /agents and deletes it
+// when the test ends.
+func (ts *IDJAGIssuanceTestSuite) createIDJAGAgent() {
+	ts.T().Helper()
+	ts.useDefaultAgentTypeInSuiteOU()
+	agentID := ts.create("/agents", ts.idjagAgentDefinition())
+	ts.T().Cleanup(func() { _ = testutils.DeleteAgent(agentID) })
+}
+
+// useDefaultAgentTypeInSuiteOU points the default agent type at the suite's OU until the test ends. The
+// type is a singleton shared with every other suite, so it is snapshotted first and put back before the
+// OU is deleted.
+func (ts *IDJAGIssuanceTestSuite) useDefaultAgentTypeInSuiteOU() {
+	ts.T().Helper()
+	t := ts.T()
+	snapshot, err := testutils.SnapshotAgentType()
+	ts.Require().NoError(err, "snapshot the default agent type")
+	t.Cleanup(func() {
+		if restoreErr := testutils.RestoreAgentType(snapshot); restoreErr != nil {
+			t.Errorf("restore the default agent type: %v", restoreErr)
+		}
+	})
+	_, err = testutils.CreateAgentType(testutils.UserType{
+		Handle:      "default",
+		DisplayName: "Default",
+		OUID:        ts.ouID,
+		Schema: map[string]interface{}{
+			"name": map[string]interface{}{"type": "string", "required": true, "unique": true},
+		},
+	})
+	ts.Require().NoError(err, "point the default agent type at the test OU")
+}
+
+// idjagAgentDefinition returns a delegated agent of the default type whose client has ID-JAG on.
+func (ts *IDJAGIssuanceTestSuite) idjagAgentDefinition() map[string]any {
+	return map[string]any{
+		"ouId": ts.ouID, "type": "default", "attributes": map[string]any{"name": "IDJAG Issuance Agent"},
+		"delegated": true, "authFlowId": ts.authFlowID,
+		"allowedUserTypes": []string{"idjag-issuance-person"},
+		"inboundAuthConfig": []map[string]any{{
+			"type": "oauth2",
+			"config": map[string]any{
+				"clientId": issuanceAgentClientID, "clientSecret": issuanceAgentClientSecret,
+				"redirectUris":            []string{issuanceRedirectURI},
+				"grantTypes":              []string{"authorization_code", tokenExchangeGrantType},
+				"responseTypes":           []string{"code"},
+				"pkceRequired":            true,
+				"tokenEndpointAuthMethod": "client_secret_basic",
+				"scopes":                  []string{"openid", "profile", "email", "read", "write"},
+				"token": map[string]any{
+					"idJag": map[string]any{
+						"enabled":          true,
+						"allowedAudiences": []string{allowedAudience},
+					},
+				},
+			},
+		}},
+	}
 }
 
 // obtainSelfIssuedIDToken runs the full authorization code flow for the
@@ -278,6 +372,13 @@ func (ts *IDJAGIssuanceTestSuite) obtainSelfIssuedIDToken() string {
 // resulting self-issued ID token.
 func (ts *IDJAGIssuanceTestSuite) obtainIDToken(clientID, clientSecret string) string {
 	ts.T().Helper()
+	return ts.obtainIDTokenForScope(clientID, clientSecret, "openid email")
+}
+
+// obtainIDTokenForScope runs the full authorization code flow for the given client with the given scope
+// and a nonce, and returns the resulting self-issued ID token.
+func (ts *IDJAGIssuanceTestSuite) obtainIDTokenForScope(clientID, clientSecret, scope string) string {
+	ts.T().Helper()
 
 	verifier, err := testutils.GenerateCodeVerifier()
 	ts.Require().NoError(err)
@@ -287,7 +388,8 @@ func (ts *IDJAGIssuanceTestSuite) obtainIDToken(clientID, clientSecret string) s
 	params.Set("client_id", clientID)
 	params.Set("redirect_uri", issuanceRedirectURI)
 	params.Set("response_type", "code")
-	params.Set("scope", "openid email")
+	params.Set("scope", scope)
+	params.Set("nonce", issuanceNonce)
 	params.Set("state", "idjag-issuance-state")
 	params.Set("code_challenge", challenge)
 	params.Set("code_challenge_method", "S256")
@@ -410,54 +512,14 @@ func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_Success() {
 	ts.Require().NoError(err)
 	ts.NotEmpty(claims.Sub)
 	ts.Equal(allowedAudience, claims.Aud)
-	ts.Equal("https://localhost:8095", claims.Iss)
+	ts.Equal(testutils.TestServerURL, claims.Iss)
 	ts.Equal(issuanceClientID, claims.Additional["client_id"])
 }
 
 // TestIDJAGIssuance_Agent covers a delegated agent created through /agents with ID-JAG on: it signs
 // the user in and exchanges the ID token for an ID-JAG naming the agent's client.
 func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_Agent() {
-	// The `default` agent type is a singleton shared with every other suite. Snapshot it before
-	// pointing it at this suite's OU, so it is put back before the OU is deleted.
-	snapshot, err := testutils.SnapshotAgentType()
-	ts.Require().NoError(err, "snapshot the default agent type")
-	defer func() {
-		ts.Require().NoError(testutils.RestoreAgentType(snapshot), "restore the default agent type")
-	}()
-	_, err = testutils.CreateAgentType(testutils.UserType{
-		Handle:      "default",
-		DisplayName: "Default",
-		OUID:        ts.ouID,
-		Schema: map[string]interface{}{
-			"name": map[string]interface{}{"type": "string", "required": true, "unique": true},
-		},
-	})
-	ts.Require().NoError(err, "point the default agent type at the test OU")
-
-	agentID := ts.create("/agents", map[string]any{
-		"ouId": ts.ouID, "type": "default", "attributes": map[string]any{"name": "IDJAG Issuance Agent"},
-		"delegated": true, "authFlowId": ts.authFlowID,
-		"allowedUserTypes": []string{"idjag-issuance-person"},
-		"inboundAuthConfig": []map[string]any{{
-			"type": "oauth2",
-			"config": map[string]any{
-				"clientId": issuanceAgentClientID, "clientSecret": issuanceAgentClientSecret,
-				"redirectUris":            []string{issuanceRedirectURI},
-				"grantTypes":              []string{"authorization_code", "urn:ietf:params:oauth:grant-type:token-exchange"},
-				"responseTypes":           []string{"code"},
-				"pkceRequired":            true,
-				"tokenEndpointAuthMethod": "client_secret_basic",
-				"scopes":                  []string{"openid", "profile", "email", "read", "write"},
-				"token": map[string]any{
-					"idJag": map[string]any{
-						"enabled":          true,
-						"allowedAudiences": []string{allowedAudience},
-					},
-				},
-			},
-		}},
-	})
-	defer func() { _ = testutils.DeleteAgent(agentID) }()
+	ts.createIDJAGAgent()
 
 	idToken := ts.obtainIDToken(issuanceAgentClientID, issuanceAgentClientSecret)
 
@@ -730,4 +792,303 @@ func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_InvalidSubjectToken() {
 	ts.Require().NoError(err)
 	ts.Equal(http.StatusBadRequest, statusCode)
 	ts.NotEmpty(resp.Error)
+}
+
+// TestIDJAGIssuance_IssuanceSwitchedOff verifies that oauth.id_jag.issuance.enabled: false refuses ID-JAG
+// requests from an application and from an agent that have ID-JAG on, and that such clients can still be
+// created.
+func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_IssuanceSwitchedOff() {
+	restartWithOAuthConfig(ts.T(), switchIDJAGRoleOff("issuance"))
+	appID := ts.createApplication(ts.extraIDJAGAppDefinition())
+	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
+	ts.createIDJAGAgent()
+
+	for name, client := range map[string]struct{ id, secret string }{
+		"application": {issuanceClientID, issuanceClientSecret},
+		"agent":       {issuanceAgentClientID, issuanceAgentClientSecret},
+	} {
+		ts.Run(name, func() {
+			resp := ts.requestRefusedIDJAG(client.id, client.secret)
+			ts.Equal("invalid_target", resp.Error)
+			ts.Equal("The client is not permitted to request ID-JAGs", resp.ErrorDescription)
+		})
+	}
+}
+
+// TestIDJAGIssuance_TokenExchangeNotAllowed verifies that a deployment whose allowed grant types leave out
+// token exchange issues no ID-JAGs, and refuses an application or agent that turns ID-JAG on. This was
+// already the behaviour before the issuance switch existed; the test keeps it, since the documentation
+// tells deployments that issuance needs the token exchange grant.
+func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_TokenExchangeNotAllowed() {
+	restartWithOAuthConfig(ts.T(), disallowTokenExchange)
+
+	resp := ts.requestRefusedIDJAG(issuanceClientID, issuanceClientSecret)
+	ts.Equal("unsupported_grant_type", resp.Error)
+	ts.Equal("Unsupported grant type", resp.ErrorDescription)
+
+	statusCode, errResp := ts.createApplicationExpectError(ts.extraIDJAGAppDefinition())
+	ts.Equal(http.StatusBadRequest, statusCode)
+	ts.Equal(appErrorInvalidGrantType, errResp.Code)
+
+	ts.useDefaultAgentTypeInSuiteOU()
+	statusCode, errResp = ts.createExpectError("/agents", ts.idjagAgentDefinition(), testutils.DeleteAgent)
+	ts.Equal(http.StatusBadRequest, statusCode)
+	ts.Equal(agentErrorInvalidGrantType, errResp.Code)
+}
+
+// requestRefusedIDJAG signs the user in to the given client, exchanges the ID token for an ID-JAG, and
+// returns the error response the exchange is expected to fail with.
+func (ts *IDJAGIssuanceTestSuite) requestRefusedIDJAG(clientID, clientSecret string) IDJAGTokenResponse {
+	ts.T().Helper()
+	formData := url.Values{}
+	formData.Set("grant_type", tokenExchangeGrantType)
+	formData.Set("subject_token", ts.obtainIDToken(clientID, clientSecret))
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:id_token")
+	formData.Set("requested_token_type", "urn:ietf:params:oauth:token-type:id-jag")
+	formData.Set("audience", allowedAudience)
+
+	resp, statusCode, err := ts.exchangeForIDJAG(formData.Encode(), "Basic "+basicAuth(clientID, clientSecret))
+	ts.Require().NoError(err)
+	ts.Require().Equalf(http.StatusBadRequest, statusCode, "unexpected response: %+v", resp)
+	return resp
+}
+
+// restartWithOAuthConfig restarts the server with the oauth section of deployment.yaml changed by edit
+// until the test ends, and returns a function that restores the original section earlier.
+func restartWithOAuthConfig(t *testing.T, edit func(oauth map[string]interface{})) func() error {
+	t.Helper()
+	restore, err := testutils.RestartWithOAuthConfig(edit)
+	t.Cleanup(func() {
+		if restoreErr := restore(); restoreErr != nil {
+			t.Errorf("restore the oauth config: %v", restoreErr)
+		}
+	})
+	require.NoError(t, err, "restart the server with the changed oauth config")
+	return restore
+}
+
+// switchIDJAGRoleOff sets oauth.id_jag.<role>.enabled to false.
+func switchIDJAGRoleOff(role string) func(oauth map[string]interface{}) {
+	return func(oauth map[string]interface{}) {
+		oauth["id_jag"] = map[string]interface{}{role: map[string]interface{}{"enabled": false}}
+	}
+}
+
+// disallowTokenExchange removes the token exchange grant from oauth.allowed_grant_types, starting from
+// the configured list or, when deployment.yaml does not set one, the default list.
+func disallowTokenExchange(oauth map[string]interface{}) {
+	allowed := defaultAllowedGrantTypes
+	if configured, ok := oauth["allowed_grant_types"].([]interface{}); ok {
+		allowed = make([]string, 0, len(configured))
+		for _, grantType := range configured {
+			if name, isString := grantType.(string); isString {
+				allowed = append(allowed, name)
+			}
+		}
+	}
+
+	remaining := make([]string, 0, len(allowed))
+	for _, grantType := range allowed {
+		if grantType != tokenExchangeGrantType {
+			remaining = append(remaining, grantType)
+		}
+	}
+	oauth["allowed_grant_types"] = remaining
+}
+
+// extraIDJAGAppDefinition returns an application, beyond the suite's fixtures, whose client has ID-JAG on.
+func (ts *IDJAGIssuanceTestSuite) extraIDJAGAppDefinition() map[string]any {
+	return map[string]any{
+		"name": extraIDJAGAppName, "description": "ID-JAG app created while a test reconfigures the server",
+		"ouId": ts.ouID, "type": "fullstack", "authFlowId": ts.authFlowID,
+		"isRegistrationFlowEnabled": false,
+		"allowedUserTypes":          []string{"idjag-issuance-person"},
+		"inboundAuthConfig": []map[string]any{{
+			"type": "oauth2",
+			"config": map[string]any{
+				"clientId": extraIDJAGClientID, "clientSecret": issuanceClientSecret,
+				"redirectUris":            []string{issuanceRedirectURI},
+				"grantTypes":              []string{"authorization_code", tokenExchangeGrantType},
+				"responseTypes":           []string{"code"},
+				"tokenEndpointAuthMethod": "client_secret_basic",
+				"scopes":                  []string{"openid", "email"},
+				"token": map[string]any{
+					"idJag": map[string]any{"enabled": true, "allowedAudiences": []string{allowedAudience}},
+				},
+			},
+		}},
+	}
+}
+
+// TestIDJAGIssuance_CarriesIDTokenAttributes covers an application whose ID token releases email, roles
+// and groups: the ID-JAG carries the email, and none of roles, groups or the claims the ID token adds.
+func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_CarriesIDTokenAttributes() {
+	ts.grantRoleAndGroup()
+	appID := ts.createApplication(ts.idTokenAttributesAppDefinition())
+	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
+
+	ts.assertIDJAGCarriesIDTokenAttributes(idTokenAttrsClientID, issuanceClientSecret)
+}
+
+// TestIDJAGIssuance_Agent_CarriesIDTokenAttributes covers the same rule for a delegated agent created
+// through /agents.
+func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_Agent_CarriesIDTokenAttributes() {
+	ts.grantRoleAndGroup()
+	ts.useDefaultAgentTypeInSuiteOU()
+	agentID := ts.create("/agents", ts.idTokenAttributesAgentDefinition())
+	ts.T().Cleanup(func() { _ = testutils.DeleteAgent(agentID) })
+
+	ts.assertIDJAGCarriesIDTokenAttributes(idTokenAttrsAgentClientID, issuanceAgentClientSecret)
+}
+
+// TestIDJAGIssuance_CarriesOnlyReleasedAttributes covers a sign-in without the email scope: the ID token
+// holds no email, so the ID-JAG holds none either, although the ID token configuration lists it.
+func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_CarriesOnlyReleasedAttributes() {
+	appID := ts.createApplication(ts.idTokenAttributesAppDefinition())
+	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
+
+	idToken := ts.obtainIDTokenForScope(idTokenAttrsClientID, issuanceClientSecret, "openid")
+	idTokenClaims, err := testutils.DecodeJWTPayloadMap(idToken)
+	ts.Require().NoError(err)
+	ts.Require().NotContains(idTokenClaims, "email", "the ID token should not carry email without the email scope")
+
+	claims := ts.issueIDJAGClaims(idTokenAttrsClientID, issuanceClientSecret, idToken, "")
+
+	ts.NotContains(claims, "email")
+}
+
+// TestIDJAGIssuance_ExchangeScopeDoesNotAddClaims covers an exchange request whose scope names email: the
+// scope lands in the ID-JAG's scope claim, but no email claim is added when the ID token holds none.
+func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_ExchangeScopeDoesNotAddClaims() {
+	appID := ts.createApplication(ts.idTokenAttributesAppDefinition())
+	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
+
+	idToken := ts.obtainIDTokenForScope(idTokenAttrsClientID, issuanceClientSecret, "openid")
+	idTokenClaims, err := testutils.DecodeJWTPayloadMap(idToken)
+	ts.Require().NoError(err)
+	ts.Require().NotContains(idTokenClaims, "email", "the ID token should not carry email without the email scope")
+
+	claims := ts.issueIDJAGClaims(idTokenAttrsClientID, issuanceClientSecret, idToken, "email")
+
+	ts.Equal("email", claims["scope"])
+	ts.NotContains(claims, "email")
+}
+
+// assertIDJAGCarriesIDTokenAttributes signs the user in to the client with the email and roles scopes,
+// exchanges the ID token for an ID-JAG, and checks which of the ID token's claims the ID-JAG carries.
+func (ts *IDJAGIssuanceTestSuite) assertIDJAGCarriesIDTokenAttributes(clientID, clientSecret string) {
+	ts.T().Helper()
+	idToken := ts.obtainIDTokenForScope(clientID, clientSecret, "openid email roles")
+	idTokenClaims, err := testutils.DecodeJWTPayloadMap(idToken)
+	ts.Require().NoError(err)
+	excluded := []string{"roles", "groups", "nonce", "auth_time"}
+	for _, name := range append([]string{"email"}, excluded...) {
+		ts.Require().Containsf(idTokenClaims, name, "the ID token should carry %s", name)
+	}
+
+	claims := ts.issueIDJAGClaims(clientID, clientSecret, idToken, "")
+
+	ts.Equal(issuanceTestEmail, claims["email"])
+	for _, name := range excluded {
+		ts.NotContainsf(claims, name, "the ID-JAG should not carry %s", name)
+	}
+}
+
+// issueIDJAGClaims exchanges idToken for an ID-JAG for the allowed audience, with scope on the exchange
+// request when it is not empty, and returns the ID-JAG's claims.
+func (ts *IDJAGIssuanceTestSuite) issueIDJAGClaims(clientID, clientSecret, idToken, scope string) map[string]any {
+	ts.T().Helper()
+	formData := url.Values{}
+	formData.Set("grant_type", tokenExchangeGrantType)
+	formData.Set("subject_token", idToken)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:id_token")
+	formData.Set("requested_token_type", "urn:ietf:params:oauth:token-type:id-jag")
+	formData.Set("audience", allowedAudience)
+	if scope != "" {
+		formData.Set("scope", scope)
+	}
+
+	resp, statusCode, err := ts.exchangeForIDJAG(formData.Encode(), "Basic "+basicAuth(clientID, clientSecret))
+	ts.Require().NoError(err)
+	ts.Require().Equalf(http.StatusOK, statusCode, "%s: %s", resp.Error, resp.ErrorDescription)
+
+	claims, err := testutils.DecodeJWTPayloadMap(resp.AccessToken)
+	ts.Require().NoError(err)
+	return claims
+}
+
+// grantRoleAndGroup gives the suite's user a role and a group membership until the test ends, so ID tokens
+// that release roles and groups carry them.
+func (ts *IDJAGIssuanceTestSuite) grantRoleAndGroup() {
+	ts.T().Helper()
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: issuanceRoleName, OUID: ts.ouID,
+		Assignments: []testutils.Assignment{{ID: ts.userID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "create test role")
+	ts.T().Cleanup(func() { _ = testutils.DeleteRole(roleID) })
+
+	groupID, err := testutils.CreateGroup(testutils.Group{
+		Name: issuanceGroupName, OUID: ts.ouID,
+		Members: []testutils.Member{{Id: ts.userID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "create test group")
+	ts.T().Cleanup(func() { _ = testutils.DeleteGroup(groupID) })
+}
+
+// idTokenAttributesTokenConfig returns client token settings whose ID token releases email, roles and
+// groups, with ID-JAG on.
+func idTokenAttributesTokenConfig() map[string]any {
+	return map[string]any{
+		"idToken": map[string]any{"userAttributes": []string{"email", "roles", "groups"}},
+		"idJag":   map[string]any{"enabled": true, "allowedAudiences": []string{allowedAudience}},
+	}
+}
+
+// idTokenAttributesAppDefinition returns an application whose ID token releases email, roles and groups,
+// with ID-JAG on.
+func (ts *IDJAGIssuanceTestSuite) idTokenAttributesAppDefinition() map[string]any {
+	return map[string]any{
+		"name": idTokenAttrsAppName, "description": "ID-JAG app whose ID token releases attributes",
+		"ouId": ts.ouID, "type": "fullstack", "authFlowId": ts.authFlowID,
+		"isRegistrationFlowEnabled": false,
+		"allowedUserTypes":          []string{"idjag-issuance-person"},
+		"inboundAuthConfig": []map[string]any{{
+			"type": "oauth2",
+			"config": map[string]any{
+				"clientId": idTokenAttrsClientID, "clientSecret": issuanceClientSecret,
+				"redirectUris":            []string{issuanceRedirectURI},
+				"grantTypes":              []string{"authorization_code", tokenExchangeGrantType},
+				"responseTypes":           []string{"code"},
+				"tokenEndpointAuthMethod": "client_secret_basic",
+				"scopes":                  []string{"openid", "email", "roles"},
+				"scopeClaims":             map[string]any{"roles": []string{"roles", "groups"}},
+				"token":                   idTokenAttributesTokenConfig(),
+			},
+		}},
+	}
+}
+
+// idTokenAttributesAgentDefinition returns a delegated agent whose ID token releases email, roles and
+// groups, with ID-JAG on.
+func (ts *IDJAGIssuanceTestSuite) idTokenAttributesAgentDefinition() map[string]any {
+	return map[string]any{
+		"ouId": ts.ouID, "type": "default", "attributes": map[string]any{"name": "IDJAG ID Token Attributes Agent"},
+		"delegated": true, "authFlowId": ts.authFlowID,
+		"allowedUserTypes": []string{"idjag-issuance-person"},
+		"inboundAuthConfig": []map[string]any{{
+			"type": "oauth2",
+			"config": map[string]any{
+				"clientId": idTokenAttrsAgentClientID, "clientSecret": issuanceAgentClientSecret,
+				"redirectUris":            []string{issuanceRedirectURI},
+				"grantTypes":              []string{"authorization_code", tokenExchangeGrantType},
+				"responseTypes":           []string{"code"},
+				"pkceRequired":            true,
+				"tokenEndpointAuthMethod": "client_secret_basic",
+				"scopes":                  []string{"openid", "email", "roles"},
+				"scopeClaims":             map[string]any{"roles": []string{"roles", "groups"}},
+				"token":                   idTokenAttributesTokenConfig(),
+			},
+		}},
+	}
 }

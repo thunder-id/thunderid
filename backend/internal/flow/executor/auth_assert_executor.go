@@ -5,6 +5,7 @@ package executor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -228,10 +229,11 @@ func addCorrelationClaim(jwtClaims map[string]interface{}, executionID string) {
 // replaced value would reach the authorization code and be reported as the event's subject, which is
 // the mapped-attribute disclosure these claims exist to avoid.
 var reservedAssertionClaims = map[string]bool{
-	oauth2const.ClaimSubjectID:     true,
-	oauth2const.ClaimSubjectType:   true,
-	oauth2const.ClaimCorrelationID: true,
-	oauth2const.ClaimSessionID:     true,
+	oauth2const.ClaimSubjectID:                   true,
+	oauth2const.ClaimSubjectType:                 true,
+	oauth2const.ClaimCorrelationID:               true,
+	oauth2const.ClaimSessionID:                   true,
+	oauth2const.ClaimGrantedAuthorizationDetails: true,
 }
 
 // addSubjectIdentityClaims carries the authenticated entity's resource ID and category onto the
@@ -347,8 +349,13 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *providers.NodeContext,
 
 	// Bind the assertion to the originating auth request so the corresponding callback can verify this assertion
 	// authorizes the specific request it accompanies.
-	if authReqID, exists := ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID]; exists && authReqID != "" {
+	if authReqID := common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
+		common.RuntimeKeyAuthorizationRequestID); authReqID != "" {
 		jwtClaims[oauth2const.ClaimAuthorizationRequestID] = authReqID
+	}
+
+	if granted, ok := ctx.RuntimeData[common.RuntimeKeyConsentedAuthorizationDetails]; ok && granted != "" {
+		jwtClaims[oauth2const.ClaimGrantedAuthorizationDetails] = json.RawMessage(granted)
 	}
 
 	addCorrelationClaim(jwtClaims, ctx.ExecutionID)
@@ -517,6 +524,9 @@ func (a *authAssertExecutor) getRequiredUserAttributes(ctx *providers.NodeContex
 	// If present, we should apply attribute filtering based on these attributes
 	_, essentialExists := ctx.RuntimeData[common.RuntimeKeyRequiredEssentialAttributes]
 	_, optionalExists := ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes]
+	if !optionalExists {
+		_, optionalExists = ctx.SharedRuntimeData[common.RuntimeKeyRequiredOptionalAttributes]
+	}
 
 	if essentialExists || optionalExists {
 		userAttributes = []string{}
@@ -530,8 +540,8 @@ func (a *authAssertExecutor) getRequiredUserAttributes(ctx *providers.NodeContex
 		}
 		if optionalExists {
 			logger.Debug(ctx.Context, "Adding required optional attributes to user attributes list")
-			userAttributes = append(userAttributes,
-				strings.Fields(ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes])...)
+			userAttributes = append(userAttributes, strings.Fields(common.RuntimeDataOrShared(ctx.RuntimeData,
+				ctx.SharedRuntimeData, common.RuntimeKeyRequiredOptionalAttributes))...)
 		}
 
 		return userAttributes
@@ -789,7 +799,7 @@ func (a *authAssertExecutor) appendRolesToClaims(
 		groupIDs = append(groupIDs, g.ID)
 	}
 
-	roles, svcErr := a.roleService.GetUserRoles(ctx.Context, userID, groupIDs)
+	roles, svcErr := a.roleService.GetUserRoles(ctx.Context, userID, groupIDs, "")
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Failed to fetch user roles",
 			log.MaskedString(log.LoggerKeyUserID, userID),

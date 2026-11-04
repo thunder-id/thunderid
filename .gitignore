@@ -41,7 +41,7 @@ Thumbs.db
 *.crt
 *.cert
 # Exception: test fixtures checked into testdata/ directories must be tracked.
-# See tests/integration/testutils/testdata/mock_google_oidc_key.pem for rationale.
+# See tests/integration/mockservices/testdata/mock_google_oidc_key.pem for rationale.
 !**/testdata/*.pem
 !**/testdata/*.key
 !**/testdata/*.crt
@@ -131,6 +131,7 @@ backend/coverage_unit.html
 docs/static/api/combined.yaml
 docs/static/api/next/combined.yaml
 docs/static/api/next/postman/
+docs/static/api/*/postman/collections/modules/
 
 # Playwright
 .playwright-cli/

@@ -7,10 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/agent"
 	agentmodel "github.com/thunder-id/thunderid/internal/agent/model"
 	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
@@ -76,8 +79,8 @@ type roleDeclarativeYAML struct {
 	OUID            string                     `yaml:"ouId,omitempty"`
 	OUHandle        string                     `yaml:"ouHandle,omitempty"`
 	Permissions     []role.ResourcePermissions `yaml:"permissions"`
-	Assignments     []role.RoleAssignment      `yaml:"assignments,omitempty"`
 	SharingPolicies []sharing.PolicyRequest    `yaml:"sharingPolicies,omitempty"`
+	Assignments     []role.RoleAssignment      `yaml:"assignments,omitempty"`
 }
 
 type userDeclarativeYAML struct {
@@ -341,13 +344,14 @@ func (s *importService) importRole(
 	}
 	req.OUID = resolvedOUID
 
+	// Assignments are added once the sharing policies are in place, since one may be made in an
+	// organization unit only a policy lets the role reach.
 	createReq := role.RoleCreationDetail{
 		ID:          req.ID,
 		Name:        req.Name,
 		Description: req.Description,
 		OUID:        req.OUID,
 		Permissions: req.Permissions,
-		Assignments: req.Assignments,
 	}
 	updateReq := role.RoleUpdateDetail{
 		Name:        req.Name,
@@ -382,16 +386,8 @@ func (s *importService) importRole(
 				updated.ID, updated.Name, updated.OUID, req.SharingPolicies, operationUpdate); outcome != nil {
 				return *outcome
 			}
-			if len(req.Assignments) > 0 {
-				if s.roleAssignmentService == nil {
-					return serviceErrorOutcome(resourceTypeRole, updated.ID, updated.Name, operationUpdate,
-						tidcommon.CustomServiceError(tidcommon.InternalServerError,
-							tidcommon.I18nMessage{DefaultValue: "roleAssignmentService not configured"}))
-				}
-				assignErr := s.roleAssignmentService.AddAssignments(ctx, updated.ID, req.Assignments)
-				if assignErr != nil {
-					return serviceErrorOutcome(resourceTypeRole, updated.ID, updated.Name, operationUpdate, assignErr)
-				}
+			if assignErr := s.addRoleAssignments(ctx, updated.ID, req.Assignments); assignErr != nil {
+				return serviceErrorOutcome(resourceTypeRole, updated.ID, updated.Name, operationUpdate, assignErr)
 			}
 			return successOutcome(resourceTypeRole, updated.ID, updated.Name, operationUpdate)
 		}
@@ -406,17 +402,40 @@ func (s *importService) importRole(
 		return serviceErrorOutcome(resourceTypeRole, req.ID, req.Name, operationCreate, svcErr)
 	}
 
-	// A policy names the role it governs, so the policies are replayed once the role exists. A refusal
-	// therefore undoes the create, so a retry does not meet a half-imported role.
-	if outcome := s.applySharingPolicies(ctx, role.RoleSharingType, resourceTypeRole,
-		created.ID, created.Name, created.OUID, req.SharingPolicies, operationCreate); outcome != nil {
+	// A policy names the role it governs, so the policies are replayed once the role exists, and the
+	// assignments after them. A refusal of either undoes the create, so a retry does not meet a
+	// half-imported role.
+	outcome := s.applySharingPolicies(ctx, role.RoleSharingType, resourceTypeRole,
+		created.ID, created.Name, created.OUID, req.SharingPolicies, operationCreate)
+	if outcome == nil {
+		if assignErr := s.addRoleAssignments(ctx, created.ID, req.Assignments); assignErr != nil {
+			refused := serviceErrorOutcome(resourceTypeRole, created.ID, created.Name, operationCreate, assignErr)
+			outcome = &refused
+		}
+	}
+	if outcome != nil {
 		if delErr := s.roleService.DeleteRole(ctx, created.ID); delErr != nil {
-			log.GetLogger().Error(ctx, "Failed to remove a role whose sharing policies were refused",
+			log.GetLogger().Error(ctx, "Failed to remove a role whose sharing policies or assignments were refused",
 				log.String("roleID", created.ID), log.String("code", delErr.Code))
 		}
 		return *outcome
 	}
 	return successOutcome(resourceTypeRole, created.ID, created.Name, operationCreate)
+}
+
+// addRoleAssignments adds a role document's assignments, each in the organization unit it names or,
+// when it names none, in the one owning its assignee.
+func (s *importService) addRoleAssignments(
+	ctx context.Context, roleID string, assignments []role.RoleAssignment,
+) *tidcommon.ServiceError {
+	if len(assignments) == 0 {
+		return nil
+	}
+	if s.roleAssignmentService == nil {
+		return tidcommon.CustomServiceError(tidcommon.InternalServerError,
+			tidcommon.I18nMessage{DefaultValue: "roleAssignmentService not configured"})
+	}
+	return s.roleAssignmentService.AddAssigneesToRoles(ctx, assignments, []string{roleID})
 }
 
 func (s *importService) importGroup(
@@ -722,8 +741,19 @@ func (s *importService) importLayout(
 	return successOutcome(resourceTypeLayout, created.ID, created.DisplayName, operationCreate)
 }
 
+// userSharingReplay is a user's sharing policies that mandate roles, replayed once the import's roles are in.
+type userSharingReplay struct {
+	// resultIndex is the user's outcome, which a refusal replaces.
+	resultIndex int
+	userID      string
+	owningOUID  string
+	policies    []sharing.PolicyRequest
+	operation   string
+}
+
+// importUser imports a user, deferring the sharing policies that mandate roles to mandating.
 func (s *importService) importUser(
-	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
+	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool, mandating *[]userSharingReplay,
 ) ImportItemOutcome {
 	if s.userService == nil {
 		return unsupportedAdapterOutcome(resourceTypeUser, "user")
@@ -796,6 +826,13 @@ func (s *importService) importUser(
 					}
 				}
 			}
+			// Replaying such policies without their roles first would strip the mandates of a share that is already
+			// there, so the whole replay waits.
+			if mandatesRoles(req.SharingPolicies) {
+				*mandating = append(*mandating, userSharingReplay{userID: updated.ID, owningOUID: updated.OUID,
+					policies: req.SharingPolicies, operation: operationUpdate})
+				return successOutcome(resourceTypeUser, updated.ID, "", operationUpdate)
+			}
 			if outcome := s.applySharingPolicies(ctx, user.UserSharingType, resourceTypeUser,
 				updated.ID, "", updated.OUID, req.SharingPolicies, operationUpdate); outcome != nil {
 				return *outcome
@@ -849,17 +886,128 @@ func (s *importService) importUser(
 	}
 
 	// The policies come after the user exists, because a policy names the user it governs. A refusal
-	// therefore undoes the create, so a retry does not meet a half-imported user.
+	// therefore undoes the create, so a retry does not meet a half-imported user. Policies mandating roles are
+	// replayed now without them, so the user already reaches its units when a role later in the import is
+	// assigned to it there, and in full once the roles are in.
+	policies := req.SharingPolicies
+	deferred := mandatesRoles(policies)
+	if deferred {
+		policies = withoutMandatedRoles(policies)
+	}
 	if outcome := s.applySharingPolicies(ctx, user.UserSharingType, resourceTypeUser,
-		created.ID, "", created.OUID, req.SharingPolicies, operationCreate); outcome != nil {
-		if delErr := s.userService.DeleteUser(ctx, created.ID); delErr != nil {
-			log.GetLogger().Error(ctx, "Failed to remove a user whose sharing policies were refused",
-				log.MaskedString(log.LoggerKeyUserID, created.ID), log.String("code", delErr.Code))
-		}
+		created.ID, "", created.OUID, policies, operationCreate); outcome != nil {
+		s.undoUserCreate(ctx, created.ID)
 		return *outcome
+	}
+	if deferred {
+		*mandating = append(*mandating, userSharingReplay{userID: created.ID, owningOUID: created.OUID,
+			policies: req.SharingPolicies, operation: operationCreate})
 	}
 
 	return successOutcome(resourceTypeUser, created.ID, "", operationCreate)
+}
+
+// replayMandatingUserSharing replays the role-mandating user shares after the roles, returning how many failed.
+func (s *importService) replayMandatingUserSharing(
+	ctx context.Context, mandating []userSharingReplay, results []ImportItemOutcome,
+) int {
+	refused := 0
+	for _, r := range mandating {
+		outcome := s.applySharingPolicies(ctx, user.UserSharingType, resourceTypeUser,
+			r.userID, "", r.owningOUID, r.policies, r.operation)
+		if outcome == nil {
+			continue
+		}
+		if r.operation == operationCreate {
+			s.undoUserCreate(ctx, r.userID)
+		}
+		results[r.resultIndex] = *outcome
+		refused++
+	}
+	return refused
+}
+
+// undoUserCreate removes a user whose sharing policies were refused.
+func (s *importService) undoUserCreate(ctx context.Context, userID string) {
+	if delErr := s.userService.DeleteUser(ctx, userID); delErr != nil {
+		log.GetLogger().Error(ctx, "Failed to remove a user whose sharing policies were refused",
+			log.MaskedString(log.LoggerKeyUserID, userID), log.String("code", delErr.Code))
+	}
+}
+
+// mandatesRoles reports whether any of a user's sharing policies carries a roles rule.
+func mandatesRoles(policies []sharing.PolicyRequest) bool {
+	for _, p := range policies {
+		for _, rules := range overlayRuleSets(p) {
+			if _, ok := rules[user.RolesFieldKey]; ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// overlayRuleSets lists every set of overlay rules a policy carries, section by section and unit by unit.
+func overlayRuleSets(p sharing.PolicyRequest) []map[string]sharing.OverlayRule {
+	var sets []map[string]sharing.OverlayRule
+	if p.AllUnits != nil {
+		sets = append(sets, p.AllUnits.OverlayRules)
+	}
+	if p.ChildUnits != nil {
+		sets = append(sets, p.ChildUnits.OverlayRules)
+		for _, u := range p.ChildUnits.Units {
+			sets = append(sets, u.OverlayRules)
+		}
+	}
+	if p.OtherTreeRoots != nil {
+		sets = append(sets, p.OtherTreeRoots.OverlayRules)
+		for _, u := range p.OtherTreeRoots.Units {
+			sets = append(sets, u.OverlayRules)
+		}
+	}
+	return sets
+}
+
+// withoutMandatedRoles returns copies of the policies with every roles rule left out.
+func withoutMandatedRoles(policies []sharing.PolicyRequest) []sharing.PolicyRequest {
+	out := make([]sharing.PolicyRequest, len(policies))
+	for i, p := range policies {
+		if p.AllUnits != nil {
+			all := *p.AllUnits
+			all.OverlayRules = withoutRolesRule(all.OverlayRules)
+			p.AllUnits = &all
+		}
+		if p.ChildUnits != nil {
+			child := *p.ChildUnits
+			child.OverlayRules = withoutRolesRule(child.OverlayRules)
+			child.Units = slices.Clone(child.Units)
+			for j := range child.Units {
+				child.Units[j].OverlayRules = withoutRolesRule(child.Units[j].OverlayRules)
+			}
+			p.ChildUnits = &child
+		}
+		if p.OtherTreeRoots != nil {
+			roots := *p.OtherTreeRoots
+			roots.OverlayRules = withoutRolesRule(roots.OverlayRules)
+			roots.Units = slices.Clone(roots.Units)
+			for j := range roots.Units {
+				roots.Units[j].OverlayRules = withoutRolesRule(roots.Units[j].OverlayRules)
+			}
+			p.OtherTreeRoots = &roots
+		}
+		out[i] = p
+	}
+	return out
+}
+
+// withoutRolesRule returns rules less the roles rule, leaving the given map unchanged.
+func withoutRolesRule(rules map[string]sharing.OverlayRule) map[string]sharing.OverlayRule {
+	if _, ok := rules[user.RolesFieldKey]; !ok {
+		return rules
+	}
+	out := maps.Clone(rules)
+	delete(out, user.RolesFieldKey)
+	return out
 }
 
 func (s *importService) importTranslation(ctx context.Context, doc parsedDocument, dryRun bool) ImportItemOutcome {
@@ -1105,6 +1253,18 @@ func (s *importService) importAgent(
 		InboundAuthProfileReq: req.InboundAuthProfileReq,
 		InboundAuthConfig:     req.InboundAuthConfig,
 	}
+	// An import restores the lifespan as exported, an expired one included; an absent one leaves an
+	// existing agent's unchanged. A malformed value is reported by the dry run as well.
+	if req.ValidUntil != "" {
+		if svcErr := agent.ValidateLifespanFormat(req.ValidUntil); svcErr != nil {
+			return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationCreate, svcErr)
+		}
+		validUntil := req.ValidUntil
+		rawValidUntil, _ := json.Marshal(validUntil)
+		createReq.ValidUntil = &validUntil
+		updateReq.ValidUntil = rawValidUntil
+	}
+	ctx = agent.WithLifespanRestore(ctx)
 
 	if dryRun {
 		if options.IsUpsertEnabled() && req.ID != "" {

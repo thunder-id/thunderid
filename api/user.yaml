@@ -1122,7 +1122,8 @@ paths:
       summary: Overlay rules for an organization unit
       description: |
         Answers for one organization unit, named in the `ouId` query parameter: whether it owns the
-        user, and which policies reached it.
+        user, which policies reached it, and the `roles` rule when a share mandates roles for the
+        user there.
 
         An organization unit no policy reaches answers `404`, because the user is not
         available there and so has no terms to resolve.
@@ -1150,6 +1151,17 @@ paths:
                     visible: true
                     policyIds: ["0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"]
                     rules: {}
+                mandatedRoles:
+                  summary: An organization unit a share mandates roles in
+                  value:
+                    ouId: "acme-customer-a"
+                    isOwnedByOU: false
+                    visible: true
+                    policyIds: ["0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"]
+                    rules:
+                      roles:
+                        editable: false
+                        value: ["0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a11"]
                 owner:
                   summary: The organization unit that owns the user
                   value:
@@ -2579,6 +2591,46 @@ components:
                 description:
                   key: "error.sharingservice.invalid_target_ou_description"
                   defaultValue: "The target organization unit does not satisfy the policy's constraints: acme-customer-a is named more than once"
+            rolesNotOnNamedUnit:
+              summary: A roles rule anywhere but on a named child unit with reach unit
+              value:
+                code: "USR-1039"
+                message:
+                  key: "error.userservice.roles_not_on_named_unit"
+                  defaultValue: "Roles can be mandated only on named child units"
+                description:
+                  key: "error.userservice.roles_not_on_named_unit_description"
+                  defaultValue: "Set the roles rule on a unit listed under childUnits in selected mode with reach unit, not on a subtree or on a section that reaches every unit"
+            rolesRuleNotFixed:
+              summary: A roles rule that lists no role, or carries excludedValues
+              value:
+                code: "USR-1040"
+                message:
+                  key: "error.userservice.roles_rule_not_fixed"
+                  defaultValue: "Invalid roles rule"
+                description:
+                  key: "error.userservice.roles_rule_not_fixed_description"
+                  defaultValue: "A roles rule must list at least one role in value, without excludedValues"
+            mandatedRolesNotSupported:
+              summary: Roles mandated while roles load only from resource files
+              value:
+                code: "ROL-1038"
+                message:
+                  key: "error.roleservice.mandated_roles_not_supported"
+                  defaultValue: "Mandated roles are not supported"
+                description:
+                  key: "error.roleservice.mandated_roles_not_supported_description"
+                  defaultValue: "Roles load only from declarative resource files, so a sharing policy cannot mandate them. Use the mutable or composite role store"
+            mandatedRoleNotInOU:
+              summary: A mandated role the organization unit neither owns nor has shared with it
+              value:
+                code: "ROL-1035"
+                message:
+                  key: "error.roleservice.mandated_role_not_in_ou"
+                  defaultValue: "Role is not available in the organization unit"
+                description:
+                  key: "error.roleservice.mandated_role_not_in_ou_description"
+                  defaultValue: "A sharing policy can only mandate a role in an organization unit that owns the role or has it shared with it"
             deploymentWideReach:
               summary: A reach this endpoint may not create
               value:
@@ -2650,6 +2702,46 @@ components:
                 description:
                   key: "error.sharingservice.invalid_target_ou_description"
                   defaultValue: "The target organization unit does not satisfy the policy's constraints: acme-customer-a is named more than once"
+            rolesNotOnNamedUnit:
+              summary: A roles rule anywhere but on a named child unit with reach unit
+              value:
+                code: "USR-1039"
+                message:
+                  key: "error.userservice.roles_not_on_named_unit"
+                  defaultValue: "Roles can be mandated only on named child units"
+                description:
+                  key: "error.userservice.roles_not_on_named_unit_description"
+                  defaultValue: "Set the roles rule on a unit listed under childUnits in selected mode with reach unit, not on a subtree or on a section that reaches every unit"
+            rolesRuleNotFixed:
+              summary: A roles rule that lists no role, or carries excludedValues
+              value:
+                code: "USR-1040"
+                message:
+                  key: "error.userservice.roles_rule_not_fixed"
+                  defaultValue: "Invalid roles rule"
+                description:
+                  key: "error.userservice.roles_rule_not_fixed_description"
+                  defaultValue: "A roles rule must list at least one role in value, without excludedValues"
+            mandatedRolesNotSupported:
+              summary: Roles mandated while roles load only from resource files
+              value:
+                code: "ROL-1038"
+                message:
+                  key: "error.roleservice.mandated_roles_not_supported"
+                  defaultValue: "Mandated roles are not supported"
+                description:
+                  key: "error.roleservice.mandated_roles_not_supported_description"
+                  defaultValue: "Roles load only from declarative resource files, so a sharing policy cannot mandate them. Use the mutable or composite role store"
+            mandatedRoleNotInOU:
+              summary: A mandated role the organization unit neither owns nor has shared with it
+              value:
+                code: "ROL-1035"
+                message:
+                  key: "error.roleservice.mandated_role_not_in_ou"
+                  defaultValue: "Role is not available in the organization unit"
+                description:
+                  key: "error.roleservice.mandated_role_not_in_ou_description"
+                  defaultValue: "A sharing policy can only mandate a role in an organization unit that owns the role or has it shared with it"
             sectionKindChange:
               summary: An edit that turns a section naming units into one reaching a whole group, or the reverse
               value:
@@ -2823,14 +2915,27 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-          example:
-            code: "SSE-4030"
-            message:
-              key: "error.unauthorized"
-              defaultValue: "Unauthorized"
-            description:
-              key: "error.unauthorized_description"
-              defaultValue: "The caller is not authorized to perform this operation"
+          examples:
+            unauthorized:
+              summary: The caller may not act for the organization unit
+              value:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
+            grantNotPermitted:
+              summary: A share mandating a role the caller may not grant
+              value:
+                code: "SAZ-4030"
+                message:
+                  key: "error.sysauthz.grant_not_permitted"
+                  defaultValue: "Insufficient privileges to grant these permissions"
+                description:
+                  key: "error.sysauthz.grant_not_permitted_description"
+                  defaultValue: "The operation would grant permissions that the caller does not hold"
 
   schemas:
     ResourceUsage:
@@ -3714,6 +3819,46 @@ components:
             nothing below it, which leaves it free to pass the user on itself. `subtree`
             reaches it and everything below it at any depth.
           example: unit
+        overlayRules:
+          $ref: '#/components/schemas/UserOverlayRules'
+
+    UserOverlayRules:
+      type: object
+      additionalProperties: false
+      description: |
+        The terms the organization unit holds the user on. A user declares one field, `roles`: the
+        roles the share mandates for the user in that organization unit. A rule is accepted only on
+        a unit named under `childUnits` in `selected` mode with `reach: unit`.
+      properties:
+        roles:
+          $ref: '#/components/schemas/UserRolesRule'
+
+    UserRolesRule:
+      type: object
+      additionalProperties: false
+      required: [editable, value]
+      description: |
+        The roles mandated for the user in the organization unit. Writing the share writes one
+        mandated role assignment for each role, in that organization unit. Updating the share brings
+        the assignments in line with the new list, and deleting the share removes them.
+
+        The rule is fixed: `editable` is `false` and `value` lists at least one role ID.
+
+        Each role must be owned by, or shared with, the organization unit, and the caller must be
+        allowed to grant it, by the same check as a direct assignment. A reshare from a mandated
+        unit can carry only roles from its own mandate.
+      properties:
+        editable:
+          type: boolean
+          enum: [false]
+          example: false
+        value:
+          type: array
+          minItems: 1
+          description: The IDs of the roles to mandate.
+          items:
+            type: string
+          example: ["0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a11"]
 
     UserOtherTreeRoots:
       description: |
@@ -3873,8 +4018,9 @@ components:
           type: object
           description: |
             The effective rule per templated field: which of the user's fields the
-            organization unit may override, and on what terms. Always empty for now, because a
-            user declares no templated fields yet.
+            organization unit may override, and on what terms. A user declares one field, `roles`,
+            which is present when a user share mandates roles in the organization unit and is
+            otherwise left out, so the map is empty for most organization units.
           additionalProperties:
             $ref: '#/components/schemas/UserOverlayRule'
 

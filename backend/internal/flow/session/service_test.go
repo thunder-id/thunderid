@@ -79,6 +79,12 @@ func liveStoreSession() *Session {
 	}
 }
 
+func (suite *ServiceTestSuite) TestAbsoluteTimeout() {
+	svc, _ := suite.newService()
+
+	suite.Equal(DefaultTimeouts().Absolute, svc.AbsoluteTimeout())
+}
+
 // --- Resolve ---
 
 func (suite *ServiceTestSuite) TestResolve_Hit() {
@@ -538,6 +544,37 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_WritesAfterRefreshWindow() {
 	suite.Require().NotNil(updated, "an activity refresh past the throttle window must persist")
 	suite.True(updated.LastActiveAt.After(stale), "last-active slides forward")
 	suite.True(updated.IdleExpiresAt.After(originalIdle), "idle deadline slides forward")
+}
+
+// --- RecordActivity ---
+
+func (suite *ServiceTestSuite) TestRecordActivity_SlidesIdleUnderThrottle() {
+	svc, m := suite.newService()
+	var now, idleAt, cutoff time.Time
+	m.store.EXPECT().SlideIdleDeadline(mock.Anything, "sess-1", mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, _ string, n, i, c time.Time) error {
+			now, idleAt, cutoff = n, i, c
+			return nil
+		})
+
+	suite.Require().NoError(svc.RecordActivity(context.Background(), "sess-1"))
+
+	suite.Equal(now.Add(svc.timeouts.Idle), idleAt, "idle deadline moves a full idle window past now")
+	suite.Equal(now.Add(-svc.timeouts.ActivityRefresh), cutoff, "writes are throttled by the refresh window")
+}
+
+func (suite *ServiceTestSuite) TestRecordActivity_EmptySessionIDIsNoop() {
+	svc, _ := suite.newService()
+
+	suite.NoError(svc.RecordActivity(context.Background(), ""))
+}
+
+func (suite *ServiceTestSuite) TestRecordActivity_StoreError() {
+	svc, m := suite.newService()
+	m.store.EXPECT().SlideIdleDeadline(mock.Anything, "sess-1", mock.Anything, mock.Anything, mock.Anything).
+		Return(errors.New("db down"))
+
+	suite.Error(svc.RecordActivity(context.Background(), "sess-1"))
 }
 
 // --- Terminate ---

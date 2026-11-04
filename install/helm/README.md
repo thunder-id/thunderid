@@ -363,6 +363,32 @@ file references by Helm. Environment variable placeholders (`{{.VAR}}`) and `fil
 when ThunderID reads configuration directly via its application config loader (e.g., from a ConfigMap or file).
 They are not resolved when the value is first converted into a Kubernetes Secret by this chart.
 
+#### Redis TLS
+
+To connect to a TLS-only Redis, create a Secret with the CA certificate (and a client pair for mutual TLS) and reference it from `tls.secretName`:
+
+```bash
+kubectl create secret generic redis-tls \
+  --from-file=ca.crt=./ca.crt \
+  --from-file=tls.crt=./client.crt \
+  --from-file=tls.key=./client.key
+```
+
+```yaml
+configuration:
+  database:
+    runtime_transient:
+      type: "redis"
+      redis:
+        address: "redis.example.com:6380"
+        tls:
+          enabled: true
+          secretName: "redis-tls"
+          clientAuth: true   # only when Redis requires client certificates
+```
+
+`configuration.cache.redis.tls` takes the same fields. The Secret is mounted into both the server and the setup job. Omit `secretName` to trust the system CA pool.
+
 #### Password Field Options
 Password fields are available in `configuration.database.config.postgres`, `configuration.database.runtime_transient.postgres`, `configuration.database.runtime_transient.redis`, `configuration.database.entity.postgres`, and `configuration.database.runtime_persistent.postgres`:
 
@@ -456,6 +482,11 @@ Password fields are available in `configuration.database.config.postgres`, `conf
 | `configuration.database.runtime_transient.redis.passwordRef.key` | Kubernetes Secret key for runtime-transient Redis password                                                                                                      | `""`                         |
 | `configuration.database.runtime_transient.redis.db`          | Redis logical database index (0–15) (for Redis only)                                                                                                   | `0`                          |
 | `configuration.database.runtime_transient.redis.key_prefix`   | Prefix applied to all Redis keys written by ThunderID (for Redis only)                                                                                   | `""`                         |
+| `configuration.database.runtime_transient.redis.tls.enabled` | Connect to Redis over TLS | `false` |
+| `configuration.database.runtime_transient.redis.tls.secretName` | Existing Secret with `ca.crt` (and `tls.crt` / `tls.key` when `clientAuth` is true), mounted into the server and setup pods. Leave empty to trust the system CA pool | `""` |
+| `configuration.database.runtime_transient.redis.tls.clientAuth` | Present `tls.crt` / `tls.key` from the Secret (mutual TLS) | `false` |
+| `configuration.database.runtime_transient.redis.tls.serverName` | Expected Redis server name. Defaults to the host in `address` | `""` |
+| `configuration.database.runtime_transient.redis.tls.insecureSkipVerify` | Skip server certificate verification (not for production) | `false` |
 | `configuration.database.entity.type`                | Entity database type (postgres or sqlite)                                                                                                                 | `postgres`                   |
 | `configuration.database.entity.sqlite.path`          | SQLite database path (for SQLite only)                                                                                                                  | `database/entitydb.db` |
 | `configuration.database.entity.sqlite.options`       | SQLite options (for SQLite only)                                                                                                                        | `_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)` |
@@ -503,6 +534,11 @@ Password fields are available in `configuration.database.config.postgres`, `conf
 | `configuration.cache.redis.passwordRef.key`       | Kubernetes Secret key for Redis password. When set, overrides `password` field and uses external Secret                                                | `""`                        |
 | `configuration.cache.redis.db`                    | Redis database number                                                                                                                                   | `0`                          |
 | `configuration.cache.redis.keyPrefix`             | Prefix for all Redis cache keys                                                                                                                         | `thunderid`                  |
+| `configuration.cache.redis.tls.enabled` | Connect to Redis over TLS | `false` |
+| `configuration.cache.redis.tls.secretName` | Existing Secret with `ca.crt` (and `tls.crt` / `tls.key` when `clientAuth` is true), mounted into the server and setup pods. Leave empty to trust the system CA pool | `""` |
+| `configuration.cache.redis.tls.clientAuth` | Present `tls.crt` / `tls.key` from the Secret (mutual TLS) | `false` |
+| `configuration.cache.redis.tls.serverName` | Expected Redis server name. Defaults to the host in `address` | `""` |
+| `configuration.cache.redis.tls.insecureSkipVerify` | Skip server certificate verification (not for production) | `false` |
 | `configuration.jwt.issuer`                        | JWT issuer (derived from server.publicUrl if not set)                                                                                                   | derived                      |
 | `configuration.jwt.validityPeriod`                | JWT validity period in seconds                                                                                                                          | `3600`                       |
 | `configuration.jwt.audience`                      | Default audience for auth assertions                                                                                                                    | `application`                |
@@ -517,6 +553,8 @@ Password fields are available in `configuration.database.config.postgres`, `conf
 | `configuration.oauth.clientAssertion.maxLifetime` | Maximum lifetime of a `private_key_jwt` client assertion in seconds | `300` |
 | `configuration.oauth.clientAssertion.maxIatAge` | Maximum age of a `private_key_jwt` client assertion's `iat` claim in seconds | `60` |
 | `configuration.oauth.cimd.enabled` | Advertise Client ID Metadata Document support (`client_id_metadata_document_supported`) in the authorization server metadata. Turn it off when MCP clients should register through Dynamic Client Registration instead | `true` |
+| `configuration.oauth.idJag.issuance.enabled` | Allow issuing Identity Assertion JWT Authorization Grants (ID-JAG) through token exchange. When `false`, ID-JAG requests fail with `invalid_target` whatever the application or agent setting. Also needs the token exchange grant in `configuration.oauth.allowedGrantTypes` | `true` |
+| `configuration.oauth.idJag.acceptance.enabled` | Allow accepting ID-JAGs from trusted issuers through the JWT bearer grant. When `false`, the grant is not served and discovery omits it and the ID-JAG grant profile. Also needs the JWT bearer grant in `configuration.oauth.allowedGrantTypes` | `true` |
 | `configuration.oauth.authorizationDetails.processorTimeout` | Timeout of one call to an authorization details type's processor, in seconds, at most 30 | `5` |
 | `configuration.oauth.authorizationDetails.typeMetadataEnabled` | Serve the authorization details type metadata endpoint and advertise it in the authorization server metadata | `true` |
 | `configuration.oauth.revocation.criteria.maxEntriesPerChange` | Maximum revocation entries one role, group or scope change may record; a larger change is refused | `10000` |
@@ -525,7 +563,6 @@ Password fields are available in `configuration.database.config.postgres`, `conf
 | `configuration.flow.autoInferRegistration`        | Enable auto-infer registration flow                                                                                                                     | `true`                       |
 | `configuration.directApi.enabled`                 | Register the Direct API authentication endpoints (`/auth/**`, `/register/passkey/**`). When `false`, they return `404` and the Console hides them. AuthZEN access endpoints are not affected. | `true` |
 | `configuration.passkey.allowedOrigins`            | Passkey allowed origins                                                                                                                                 | `[]`                         |
-| `configuration.scim.urnPrefix`                    | URN prefix of the per-user-type SCIM extension schemas. A trailing colon is added if missing.                                                            | `urn:thunderid:params:scim:schemas:` |
 | `configuration.accountAccess.<category>.lockGranularity` | Account access (automatic lock) policy for `<category>` `user` or `agent`. `authentication_method` locks only the sign-in method that failed; `account` locks every method. A key removed from `values.yaml` keeps the product default | `authentication_method` |
 | `configuration.accountAccess.<category>.recordLastLogin` | Record when the identity last signed in                                                                                                       | `false`                      |
 | `configuration.accountAccess.<category>.lastLoginResolutionSeconds` | Skip the last sign-in write while the recorded time is newer than this; `0` writes every time                                      | `3600`                       |
@@ -549,6 +586,9 @@ Password fields are available in `configuration.database.config.postgres`, `conf
 | `configuration.flow.store`                        | Storage mode for flows (`mutable`, `declarative`, `composite`)                                                                                           | `""`                         |
 | `configuration.openid4vp.store`                   | Storage mode for presentation definitions (`mutable`, `declarative`, `composite`)                                                                        | `""`                         |
 | `configuration.openid4vci.store`                  | Storage mode for credential configurations (`mutable`, `declarative`, `composite`)                                                                       | `""`                         |
+| `configuration.notification.template.maxSubjectLength`   | Maximum email template subject length, in characters. Unset uses the server default.                                                              | unset (`1000`)               |
+| `configuration.notification.template.maxEmailBodyLength` | Maximum email template body length, in characters. Unset uses the server default.                                                                 | unset (`50000`)              |
+| `configuration.notification.template.maxSmsBodyLength`   | Maximum SMS template body length, in characters. Unset uses the server default.                                                                   | unset (`4096`)               |
 
 > CORS allowed origins are configured through the server-config `cors` section — by creating the declarative resource `config/resources/server_configs/cors.yaml` (with `server_config.store: composite` set so it loads at boot) or at runtime with `PUT /server-config/cors` — not through Helm values.
 

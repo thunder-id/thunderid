@@ -35,16 +35,16 @@ Controls the <ProductName /> server's network settings and identity.
 | `server.http_only` | `false` | If `true`, disables HTTPS and uses HTTP only (not recommended for production) |
 | `server.public_url` | _(derived from server hostname, port and protocol)_ | The public URL clients use to reach the server, if it differs from the bind address. Derived when unset. |
 | `server.timeouts.read_header_seconds` | `10` | Seconds the server waits to read a request's headers. Guards against clients that send headers slowly to hold connections open. |
-| `server.timeouts.write_seconds` | `10` | Seconds a request may take from the end of its headers until its response is written. A request still running at that point loses its connection, though the server finishes the work. It applies to every route except those with a timeout of their own, `gateway.apply_timeout_seconds` and `import.timeout_seconds`, so it can stay short. |
+| `server.timeouts.write_seconds` | `10` | Seconds a request may take from the end of its headers until its response is written. A request still running at that point loses its connection, though the server finishes the work. It applies to every route except those with a timeout of their own, so it can stay short: applying and reverting a version (`gateway.apply_timeout_seconds`), the import (`import.timeout_seconds`), and the MCP server (`/mcp`), which gets the longer of the two because a tool can run either. |
 | `server.timeouts.idle_seconds` | `120` | Seconds a kept-alive connection waits for its next request before it is closed. |
 | `server.identifier` | `default-deployment` | Unique identifier for this deployment instance. Every stored resource is scoped by it, so changing it on a server that already holds data hides that data rather than renaming it. |
 | `gateway.max_gateways` | `1` | Guards how many gateways this deployment administers, through the Gateway API (`POST /gateways`) or a gateway declared in a file. A standalone deployment pairs with one; raise it only where something else manages the fleet, or set it to `0` for a deployment that administers none. A registration beyond the number is refused with `409`. This is a guard rather than a guarantee: two registrations arriving at the same moment can leave one more gateway than configured, so do not rely on it as a licensing or security boundary. |
-| `gateway.max_versions` | `3` | How many captured configuration versions this deployment keeps (`POST /configuration-versions`). Capturing one beyond the number removes the oldest, except a version some gateway holds or could be reverted to. Those are kept even when that leaves more versions than the number, so applying and reverting keep working whatever it is. The number is never less than one. |
+| `gateway.max_versions` | `3` | How many captured configuration versions this deployment keeps (`POST /configuration-versions`). Capturing one beyond the number removes the oldest, except a version some gateway holds or could be reverted to. Those are kept even when that leaves more versions than the number, so applying and reverting keep working whatever it is. It also bounds the masters kept for each gateway (`GET /gateways/{id}/master/history`): recording one beyond the number removes that gateway's oldest, with no exception for a master the gateway holds, since the newest is always the one it holds. The number is never less than one. |
 | `gateway.auto_apply` | `false` | Whether a control plane applies its latest configuration version to the default gateway each time it captures one after a change, so a write reaches that gateway without a deploy. Off by default, because a control plane that administers several gateways usually keeps applying a version a deliberate step. The apply is refused like any other, for example when the gateway lacks a value the version refers to; the control plane logs it and the next change tries again. |
 | `gateway.allow_private_addresses` | `false` | Whether a gateway may be registered at, and reached on, a loopback, link-local or private address such as `localhost`, `10.0.0.5` or `169.254.169.254`. Off, a base URL naming one is refused with `400` (`GTW-1027`), and a hostname that resolves to one is refused when the gateway is called, so this deployment's calls, which carry the gateway's key, cannot be pointed at something inside its own network. Turn it on for a local or single-host setup whose gateways sit on such addresses. A base URL must be `https` and carry no credentials whatever this is set to. |
 | `gateway.removal_confirmation_threshold` | `5` | How many resources an apply or revert may remove from a gateway without being confirmed. One that would remove more is refused with `409` (`GTW-1030`) unless the request sets `confirmRemovals`; a dry run shows the removals first. A rollback to a much smaller version is the usual case. `0` turns the check off. |
-| `gateway.apply_timeout_seconds` | `300` | Seconds a request to apply a configuration version to a gateway, or to revert one, may take to answer, in place of `server.timeouts.write_seconds`. It covers waiting for an apply already running on that gateway and the gateway's import. Raise it, together with `import.timeout_seconds` on the gateway and any proxy or ingress timeout in front of either, when large applies time out. |
-| `import.timeout_seconds` | `120` | Seconds an import request (`POST /import`) may take to answer, in place of `server.timeouts.write_seconds`. A control plane applies a configuration version to a gateway through this API, so raise it on the gateway when large applies time out. |
+| `gateway.apply_timeout_seconds` | `300` | Seconds a request to apply a configuration version to a gateway, or to revert one, may take to answer, in place of `server.timeouts.write_seconds`. An MCP request (`/mcp`) gets this or `import.timeout_seconds`, whichever is longer, since a tool can deploy or import. It covers waiting for an apply already running on that gateway and the gateway's import. Raise it, together with `import.timeout_seconds` on the gateway and any proxy or ingress timeout in front of either, when large applies time out. |
+| `import.timeout_seconds` | `120` | Seconds an import request (`POST /import`) may take to answer, in place of `server.timeouts.write_seconds`. An MCP request (`/mcp`) gets this or `gateway.apply_timeout_seconds`, whichever is longer. A control plane applies a configuration version to a gateway through this API, so raise it on the gateway when large applies time out. |
 | `gateway.store` | `composite` | Where gateways are read from. `mutable` is the database alone, and gateways declared in files are not read. `declarative` is files alone, and registration through the API is refused. `composite` is both: listings merge the two, registration writes to the database, and a gateway declared in a file cannot be changed or removed through the API, because the file is read again on every start and would undo it. |
 | `notification.template.store` | `composite` | Where notification templates are read from. `mutable` is the database alone, and templates are editable through the Console and API. `declarative` is files alone, and writes through the API are refused with `403`. `composite` is both: file-declared templates are read-only and are merged with editable database templates. |
 
@@ -270,13 +270,19 @@ Stores short-lived runtime data such as authorization codes, authorization reque
 | `database.runtime_transient.redis.dial_timeout_ms` | `5000` | Redis connection (dial) timeout in milliseconds |
 | `database.runtime_transient.redis.read_timeout_ms` | `3000` | Redis read timeout in milliseconds |
 | `database.runtime_transient.redis.write_timeout_ms` | `3000` | Redis write timeout in milliseconds |
+| `database.runtime_transient.redis.tls.enabled` | `false` | Connect to Redis over TLS. Required for TLS-only Redis endpoints |
+| `database.runtime_transient.redis.tls.ca_file` | `""` | Path to a PEM file with the CA certificate(s) used to verify the Redis server. Leave empty to use the system CA pool |
+| `database.runtime_transient.redis.tls.cert_file` | `""` | Path to the PEM client certificate for mutual TLS. Must be set together with `key_file` |
+| `database.runtime_transient.redis.tls.key_file` | `""` | Path to the PEM client private key for mutual TLS. Must be set together with `cert_file` |
+| `database.runtime_transient.redis.tls.server_name` | `""` | Server name used to verify the Redis certificate. Defaults to the host in `address` |
+| `database.runtime_transient.redis.tls.insecure_skip_verify` | `false` | Skip Redis server certificate verification. Do not use in production |
 
 #### Redis Connection Requirements
 
 - <ProductName /> requires Redis 6.0 or later.
 - <ProductName /> connects to a single Redis node. Cluster mode and Sentinel mode are not currently supported.
 - The default Redis port is `6379`. Ensure the port is reachable from the <ProductName /> server.
-- <ProductName /> does not enforce TLS at the client configuration level. To encrypt traffic, place a TLS-terminating proxy in front of Redis and point `database.runtime_transient.redis.address` at the proxy endpoint.
+- To encrypt traffic, set `database.runtime_transient.redis.tls.enabled` to `true`. TLS 1.2 or later is required. Set `tls.ca_file` when the Redis certificate is not signed by a CA in the system pool, and set `tls.cert_file` and `tls.key_file` when Redis requires client certificates.
 - If your Redis deployment uses Access Control Lists (ACLs), create a dedicated user and grant the following commands: `GET`, `SET`, `DEL`, `EXPIRE`, `EVAL`, `EVALSHA`. Set `database.runtime_transient.redis.username` and `database.runtime_transient.redis.password` accordingly.
 - <ProductName /> calls `PING` at startup to verify connectivity. The process terminates if the Redis server is unreachable.
 
@@ -389,6 +395,12 @@ Stores SSO sessions, revoked tokens, consent records, and account access state (
 | `cache.redis.dial_timeout_ms` | `5000` | Redis connection (dial) timeout in milliseconds |
 | `cache.redis.read_timeout_ms` | `3000` | Redis read timeout in milliseconds |
 | `cache.redis.write_timeout_ms` | `3000` | Redis write timeout in milliseconds |
+| `cache.redis.tls.enabled` | `false` | Connect to Redis over TLS. Required for TLS-only Redis endpoints |
+| `cache.redis.tls.ca_file` | `""` | Path to a PEM file with the CA certificate(s) used to verify the Redis server. Leave empty to use the system CA pool |
+| `cache.redis.tls.cert_file` | `""` | Path to the PEM client certificate for mutual TLS. Must be set together with `key_file` |
+| `cache.redis.tls.key_file` | `""` | Path to the PEM client private key for mutual TLS. Must be set together with `cert_file` |
+| `cache.redis.tls.server_name` | `""` | Server name used to verify the Redis certificate. Defaults to the host in `address` |
+| `cache.redis.tls.insecure_skip_verify` | `false` | Skip Redis server certificate verification. Do not use in production |
 
 ### Cache Property Overrides
 
@@ -457,6 +469,13 @@ cache:
     dial_timeout_ms: 5000
     read_timeout_ms: 3000
     write_timeout_ms: 3000
+    tls:
+      enabled: false
+      ca_file: ""
+      cert_file: ""
+      key_file: ""
+      server_name: ""
+      insecure_skip_verify: false
 ```
 
 :::note
@@ -499,6 +518,8 @@ OAuth 2.0 and OpenID Connect settings.
 | `oauth.client_assertion.max_lifetime` | `300` | Maximum lifetime of a `private_key_jwt` client assertion in seconds. The `exp` claim must not be later than `iat` plus this value, or the current time plus this value when `iat` is absent |
 | `oauth.client_assertion.max_iat_age` | `60` | Maximum age of a `private_key_jwt` client assertion's `iat` claim in seconds. Assertions with an older `iat` are rejected |
 | `oauth.cimd.enabled` | `true` | If `true`, advertises `client_id_metadata_document_supported` in the authorization server metadata, so MCP clients that support Client ID Metadata Documents identify themselves with one. Set it to `false` if MCP clients should register through Dynamic Client Registration instead. It doesn't affect registering clients from a document in the Console. See [Register an MCP Client from Its Metadata Document](../../guides/mcp/mcp-clients/client-id-metadata-document) |
+| `oauth.id_jag.issuance.enabled` | `true` | A deployment-wide switch over the ID-JAG setting on each application and agent. If `false`, a token exchange request for an ID-JAG (`requested_token_type=urn:ietf:params:oauth:token-type:id-jag`) fails with `invalid_target`, whatever the client's setting. Ordinary token exchange keeps working. It does not block enabling ID-JAG on an application or agent. Issuance also needs `urn:ietf:params:oauth:grant-type:token-exchange` in `oauth.allowed_grant_types`. See [Issue Identity Assertions (ID-JAG)](../../guides/protocols/oauth-oidc/identity-assertion-grant/issue-identity-assertions) |
+| `oauth.id_jag.acceptance.enabled` | `true` | A deployment-wide switch over the ID-JAG setting on each trusted issuer connection. If `false`, the JWT bearer grant is not served, because it accepts only ID-JAGs: a token request with that grant fails with `unsupported_grant_type`, and the discovery documents omit the grant and the ID-JAG grant profile. Acceptance also needs `urn:ietf:params:oauth:grant-type:jwt-bearer` in `oauth.allowed_grant_types`. See [Accept Identity Assertions from an External IdP](../../guides/protocols/oauth-oidc/identity-assertion-grant/accept-identity-assertions) |
 | `oauth.authorization_details.processor_timeout` | `5` | Timeout of one call to an authorization details type's processor, in seconds. The value must be from 1 to 30 |
 | `oauth.authorization_details.type_metadata_enabled` | `true` | If `true`, serves the authorization details type metadata endpoint and advertises it as `authorization_details_types_endpoint` in the authorization server metadata. `authorization_details_types_supported` is advertised either way |
 | `oauth.allowed_auth_methods` | `["client_secret_basic", "client_secret_post", "private_key_jwt", "none"]` | Client token endpoint authentication methods allowed during client registration |
@@ -523,7 +544,7 @@ Authentication and registration flow settings.
 |---------|---------|-------------|
 | `flow.max_version_history` | `10` | Maximum number of flow versions to retain |
 | `flow.auto_infer_registration` | `true` | If `true`, automatically infers registration from authentication flows |
-| `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. The system flows built into the server need `ApplicationActionValidator`, `CriteriaRevocationExecutor`, and `SessionRevocationExecutor`; the server does not start without them. |
+| `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. The system flows built into the server need `AccessChangeValidator`, `ApplicationActionValidator`, `CriteriaRevocationExecutor`, `PreDeleteExecutor`, and `SessionRevocationExecutor`; the server does not start without them. |
 
 ### Built-in Executors
 
@@ -542,15 +563,17 @@ flow:
 
 **Register a subset:**
 
-List only the executor names you need, together with the three the system flows need. Built-in executors not in the list are excluded:
+List only the executor names you need, together with the five the system flows need. Built-in executors not in the list are excluded:
 
 ```yaml
 flow:
   executors:
     - CredentialsAuthExecutor
     - InviteExecutor
+    - AccessChangeValidator
     - ApplicationActionValidator
     - CriteriaRevocationExecutor
+    - PreDeleteExecutor
     - SessionRevocationExecutor
 ```
 
@@ -807,7 +830,7 @@ Use these values in any `categories` list to filter which events a subscriber re
 | `observability.authentication` | Token issuance and revocation events, back-channel logout delivery, revocation store outages, automatic account locks, and unlocks by a recovery flow |
 | `observability.authorization` | Authorization-related events |
 | `observability.flows` | Authentication and registration flow execution events |
-| `observability.administration` | Suspend, unsuspend, and unlock operations by an administrator, and server configuration writes |
+| `observability.administration` | Suspend, unsuspend, and unlock operations by an administrator, agent lifespan changes, and server configuration writes |
 
 ### Example
 
@@ -941,13 +964,16 @@ Server-sent email that is not part of a flow, such as the automatic account-lock
 
 ## Notification Configuration
 
-Controls notification delivery behaviour, including OTP generation parameters.
+Controls notification delivery behaviour, including OTP generation parameters and notification-template content limits.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `notification.otp.length` | `6` | OTP character length. Must be in `[4, 10]`. |
 | `notification.otp.use_numeric_only` | `true` | If `true`, OTPs use digits only; if `false`, OTPs use a mixed alphanumeric character set. |
 | `notification.otp.validity_period_seconds` | `120` | OTP validity period in seconds. Must be in `[30, 600]`. |
+| `notification.template.max_subject_length` | `1000` | Maximum email template subject length, in characters. `0` uses the default; a negative value fails startup. |
+| `notification.template.max_email_body_length` | `50000` | Maximum email template body length, in characters. `0` uses the default; a negative value fails startup. |
+| `notification.template.max_sms_body_length` | `4096` | Maximum SMS template body length, in characters. `0` uses the default; a negative value fails startup. |
 
 ## Authentication Provider Configuration
 

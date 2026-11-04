@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useQueries, type UseQueryResult} from '@tanstack/react-query';
+import {useEffect} from 'react';
 import {useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {useThunderID} from '@thunderid/react';
@@ -34,11 +35,29 @@ export interface AggregatedUserTypeAttribute extends FlattenedAttribute {
 }
 
 /**
+ * Options for {@link useGetUserTypeAttributes}.
+ */
+export interface UseGetUserTypeAttributesOptions {
+  /**
+   * Whether to fetch. Defaults to true. When false nothing is requested, and the result is empty
+   * and not loading.
+   */
+  enabled?: boolean;
+}
+
+/**
  * Result of {@link useGetUserTypeAttributes}.
  */
 export interface UseGetUserTypeAttributesResult {
   attributes: AggregatedUserTypeAttribute[];
   isLoading: boolean;
+  /**
+   * The failure of the list request, or else of the first schema request that failed. Attributes
+   * from the user types that did load are still returned alongside it.
+   */
+  error: Error | null;
+  /** Retries what failed: the list request if it failed, otherwise every failed schema request. */
+  refetch: () => void;
 }
 
 /**
@@ -85,25 +104,37 @@ function aggregateAttributes(results: UseQueryResult<ApiUserType>[]): Aggregated
  * Those per-type queries deliberately reuse the key and request shape of `useGetUserType` so the
  * cache is shared with other consumers rather than duplicated.
  *
- * @returns The aggregated attributes and the combined loading state.
+ * @param options - Optional settings, see {@link UseGetUserTypeAttributesOptions}
+ * @returns The aggregated attributes, the combined loading state, any read failure and a retry.
  */
-export default function useGetUserTypeAttributes(): UseGetUserTypeAttributesResult {
+export default function useGetUserTypeAttributes(
+  options?: UseGetUserTypeAttributesOptions,
+): UseGetUserTypeAttributesResult {
+  const {enabled = true} = options ?? {};
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const logger = useLogger('useGetUserTypeAttributes');
 
-  const {data: userTypesData, isLoading: isLoadingList} = useGetUserTypes({limit: USER_TYPE_FETCH_LIMIT});
+  const {
+    data: userTypesData,
+    isLoading: isLoadingList,
+    error: listError,
+    refetch: refetchList,
+  } = useGetUserTypes({limit: USER_TYPE_FETCH_LIMIT}, {enabled});
 
   const totalUserTypes: number = userTypesData?.totalResults ?? 0;
-  if (totalUserTypes > USER_TYPE_FETCH_LIMIT) {
-    logger.warn('Attribute suggestions cover only the first user types returned by the server', {
-      fetched: USER_TYPE_FETCH_LIMIT,
-      totalResults: totalUserTypes,
-    });
-  }
+  useEffect(() => {
+    if (enabled && totalUserTypes > USER_TYPE_FETCH_LIMIT) {
+      logger.warn('Attribute suggestions cover only the first user types returned by the server', {
+        fetched: USER_TYPE_FETCH_LIMIT,
+        totalResults: totalUserTypes,
+      });
+    }
+  }, [enabled, totalUserTypes, logger]);
 
-  const {attributes, isLoadingSchemas} = useQueries({
-    queries: (userTypesData?.types ?? []).map((userType) => ({
+  // A disabled list may still hold data cached by another consumer; its types must not be fetched.
+  const {attributes, isLoadingSchemas, schemaError, failedSchemaRefetches} = useQueries({
+    queries: (enabled ? (userTypesData?.types ?? []) : []).map((userType) => ({
       queryKey: [UserTypeQueryKeys.USER_TYPE, userType.id],
       queryFn: async (): Promise<ApiUserType> => {
         const serverUrl: string = getServerUrl();
@@ -125,8 +156,26 @@ export default function useGetUserTypeAttributes(): UseGetUserTypeAttributesResu
     combine: (results: UseQueryResult<ApiUserType>[]) => ({
       attributes: aggregateAttributes(results),
       isLoadingSchemas: results.some((result) => result.isLoading),
+      schemaError: results.find((result) => result.error)?.error ?? null,
+      failedSchemaRefetches: results.filter((result) => result.isError).map((result) => result.refetch),
     }),
   });
 
-  return {attributes, isLoading: isLoadingList || isLoadingSchemas};
+  const refetch = (): void => {
+    if (listError) {
+      refetchList().catch(() => undefined);
+      return;
+    }
+    failedSchemaRefetches.forEach((refetchSchema) => {
+      refetchSchema().catch(() => undefined);
+    });
+  };
+
+  return {
+    attributes,
+    isLoading: isLoadingList || isLoadingSchemas,
+    // A disabled list can still carry an earlier failure of the same shared query.
+    error: enabled ? (listError ?? schemaError) : null,
+    refetch,
+  };
 }

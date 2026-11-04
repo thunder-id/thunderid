@@ -275,5 +275,61 @@ describe('TranslationJsonEditor', () => {
       const parsed = JSON.parse((editor as HTMLTextAreaElement).value) as Record<string, string>;
       expect(parsed).toEqual(externalValues);
     });
+
+    it('shows the saved value once the refetch after a save returns it', () => {
+      const onChange = vi.fn();
+      const editedValues = {...sampleValues, 'actions.save': 'Save now'};
+
+      const {rerender} = render(
+        <TranslationJsonEditor
+          values={sampleValues}
+          serverKeys={sampleServerKeys}
+          allowNewKeys={false}
+          colorMode="light"
+          onChange={onChange}
+        />,
+      );
+
+      changeEditor(screen.getByTestId('monaco-editor'), JSON.stringify(editedValues));
+      expect(onChange).toHaveBeenCalledWith(editedValues);
+
+      // The parent echoes the merged local change back down.
+      rerender(
+        <TranslationJsonEditor
+          values={{...editedValues}}
+          serverKeys={sampleServerKeys}
+          allowNewKeys={false}
+          colorMode="light"
+          onChange={onChange}
+        />,
+      );
+
+      // The save clears the local changes while the refetch is still in flight, so the
+      // stale server values come down first.
+      rerender(
+        <TranslationJsonEditor
+          values={{...sampleValues}}
+          serverKeys={sampleServerKeys}
+          allowNewKeys={false}
+          colorMode="light"
+          onChange={onChange}
+        />,
+      );
+
+      // The refetch then returns the saved value, which matches the earlier edit.
+      rerender(
+        <TranslationJsonEditor
+          values={{...editedValues}}
+          serverKeys={sampleServerKeys}
+          allowNewKeys={false}
+          colorMode="light"
+          onChange={onChange}
+        />,
+      );
+
+      const editor = screen.getByTestId('monaco-editor');
+      const parsed = JSON.parse((editor as HTMLTextAreaElement).value) as Record<string, string>;
+      expect(parsed).toEqual(editedValues);
+    });
   });
 });

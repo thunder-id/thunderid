@@ -93,7 +93,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_NotRequested() {
 	svc := suite.newService()
 
 	errCode, errMsg := svc.checkPromptNone(promptNoneCtx(),
-		&oauth2model.OAuthParameters{Prompt: ""}, promptNoneApp())
+		&oauth2model.OAuthParameters{Prompt: ""}, promptNoneApp(), nil)
 
 	suite.Empty(errCode)
 	suite.Empty(errMsg)
@@ -105,7 +105,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_NoSession() {
 	svc := suite.wirePromptNone(nil)
 
 	errCode, _ := svc.checkPromptNone(promptNoneCtx(),
-		&oauth2model.OAuthParameters{Prompt: oauth2const.PromptNone}, promptNoneApp())
+		&oauth2model.OAuthParameters{Prompt: oauth2const.PromptNone}, promptNoneApp(), nil)
 
 	suite.Equal(oauth2const.ErrorLoginRequired, errCode)
 }
@@ -116,7 +116,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_LiveSession() {
 	svc := suite.wirePromptNone(promptNoneSession(time.Minute))
 
 	errCode, errMsg := svc.checkPromptNone(promptNoneCtx(),
-		&oauth2model.OAuthParameters{Prompt: oauth2const.PromptNone}, promptNoneApp())
+		&oauth2model.OAuthParameters{Prompt: oauth2const.PromptNone}, promptNoneApp(), nil)
 
 	suite.Empty(errCode)
 	suite.Empty(errMsg)
@@ -128,7 +128,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_NoSessionService() {
 	svc := suite.newService()
 
 	errCode, _ := svc.checkPromptNone(promptNoneCtx(),
-		&oauth2model.OAuthParameters{Prompt: oauth2const.PromptNone}, promptNoneApp())
+		&oauth2model.OAuthParameters{Prompt: oauth2const.PromptNone}, promptNoneApp(), nil)
 
 	suite.Equal(oauth2const.ErrorLoginRequired, errCode)
 }
@@ -139,7 +139,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_NoInboundCookie() {
 	svc := suite.wirePromptNone(promptNoneSession(time.Minute))
 
 	errCode, _ := svc.checkPromptNone(context.Background(),
-		&oauth2model.OAuthParameters{Prompt: oauth2const.PromptNone}, promptNoneApp())
+		&oauth2model.OAuthParameters{Prompt: oauth2const.PromptNone}, promptNoneApp(), nil)
 
 	suite.Equal(oauth2const.ErrorLoginRequired, errCode)
 }
@@ -152,7 +152,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_MaxAgeExceeded() {
 	errCode, _ := svc.checkPromptNone(promptNoneCtx(), &oauth2model.OAuthParameters{
 		Prompt: oauth2const.PromptNone,
 		MaxAge: "60",
-	}, promptNoneApp())
+	}, promptNoneApp(), nil)
 
 	suite.Equal(oauth2const.ErrorLoginRequired, errCode)
 }
@@ -164,7 +164,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_MaxAgeWithinLimit() 
 	errCode, _ := svc.checkPromptNone(promptNoneCtx(), &oauth2model.OAuthParameters{
 		Prompt: oauth2const.PromptNone,
 		MaxAge: "3600",
-	}, promptNoneApp())
+	}, promptNoneApp(), nil)
 
 	suite.Empty(errCode)
 }
@@ -177,7 +177,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_MalformedMaxAge() {
 	errCode, _ := svc.checkPromptNone(promptNoneCtx(), &oauth2model.OAuthParameters{
 		Prompt: oauth2const.PromptNone,
 		MaxAge: "not-a-number",
-	}, promptNoneApp())
+	}, promptNoneApp(), nil)
 
 	suite.Empty(errCode)
 }
@@ -192,7 +192,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_MaxAgeBoundary() {
 	errCode, _ := svc.checkPromptNone(promptNoneCtx(), &oauth2model.OAuthParameters{
 		Prompt: oauth2const.PromptNone,
 		MaxAge: "120",
-	}, promptNoneApp())
+	}, promptNoneApp(), nil)
 
 	suite.Empty(errCode, "a session well inside max_age must satisfy the request")
 }
@@ -214,7 +214,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_IDTokenHintMatches()
 	errCode, _ := svc.checkPromptNone(promptNoneCtx(), &oauth2model.OAuthParameters{
 		Prompt:      oauth2const.PromptNone,
 		IDTokenHint: idTokenHint("https://localhost:8090", promptNoneSubject),
-	}, promptNoneApp())
+	}, promptNoneApp(), nil)
 
 	suite.Empty(errCode)
 }
@@ -228,7 +228,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_IDTokenHintDifferent
 	errCode, _ := svc.checkPromptNone(promptNoneCtx(), &oauth2model.OAuthParameters{
 		Prompt:      oauth2const.PromptNone,
 		IDTokenHint: idTokenHint("https://localhost:8090", "someone-else"),
-	}, promptNoneApp())
+	}, promptNoneApp(), nil)
 
 	suite.Equal(oauth2const.ErrorLoginRequired, errCode)
 }
@@ -242,7 +242,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_IDTokenHintForeignIs
 	errCode, _ := svc.checkPromptNone(promptNoneCtx(), &oauth2model.OAuthParameters{
 		Prompt:      oauth2const.PromptNone,
 		IDTokenHint: idTokenHint("https://attacker.example.com", promptNoneSubject),
-	}, promptNoneApp())
+	}, promptNoneApp(), nil)
 
 	suite.Equal(oauth2const.ErrorInvalidRequest, errCode)
 }
@@ -256,7 +256,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_IDTokenHintBadSignat
 	errCode, _ := svc.checkPromptNone(promptNoneCtx(), &oauth2model.OAuthParameters{
 		Prompt:      oauth2const.PromptNone,
 		IDTokenHint: idTokenHint("https://localhost:8090", promptNoneSubject),
-	}, promptNoneApp())
+	}, promptNoneApp(), nil)
 
 	suite.Equal(oauth2const.ErrorInvalidRequest, errCode)
 }
@@ -278,7 +278,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_IDTokenHintNotAnIDTo
 			errCode, _ := svc.checkPromptNone(promptNoneCtx(), &oauth2model.OAuthParameters{
 				Prompt:      oauth2const.PromptNone,
 				IDTokenHint: hint,
-			}, promptNoneApp())
+			}, promptNoneApp(), nil)
 
 			suite.Equal(oauth2const.ErrorInvalidRequest, errCode)
 		})
@@ -301,7 +301,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_IDTokenHintLegacyRef
 	errCode, _ := svc.checkPromptNone(promptNoneCtx(), &oauth2model.OAuthParameters{
 		Prompt:      oauth2const.PromptNone,
 		IDTokenHint: hint,
-	}, promptNoneApp())
+	}, promptNoneApp(), nil)
 
 	suite.Equal(oauth2const.ErrorInvalidRequest, errCode)
 }
@@ -315,7 +315,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_IDTokenHintNoSubject
 	errCode, _ := svc.checkPromptNone(promptNoneCtx(), &oauth2model.OAuthParameters{
 		Prompt:      oauth2const.PromptNone,
 		IDTokenHint: idTokenHint("https://localhost:8090", ""),
-	}, promptNoneApp())
+	}, promptNoneApp(), nil)
 
 	suite.Equal(oauth2const.ErrorInvalidRequest, errCode)
 }
@@ -327,8 +327,46 @@ func (suite *AuthorizeServiceTestSuite) TestResolveSSOSession_NoInboundHandle() 
 	svc := suite.wirePromptNone(promptNoneSession(time.Minute))
 
 	// A bare context, without the inbound handle the transport would have attached.
-	suite.Nil(svc.resolveSSOSession(context.Background(), promptNoneApp()),
+	suite.Nil(svc.resolveSSOSession(context.Background(), promptNoneApp(), nil),
 		"without the inbound cookies there is no handle to resolve a session from")
+}
+
+// TestResolveSSOSession_PresentedSession covers a session the caller presents itself, which is used
+// ahead of the cookie when it is for the client's flow.
+func (suite *AuthorizeServiceTestSuite) TestResolveSSOSession_PresentedSession() {
+	presentedFor := func(flowID string) []oauth2model.SessionData {
+		return []oauth2model.SessionData{{FlowIdentifier: flowsession.FlowIdentifier(flowID),
+			SessionHandle: "presented-handle"}}
+	}
+	cases := []struct {
+		name        string
+		ctx         context.Context
+		sessionData []oauth2model.SessionData
+		wantHandle  string
+	}{
+		{"a presented session wins over the cookie", promptNoneCtx(), presentedFor(promptNoneFlowID),
+			"presented-handle"},
+		{"a presented session is used without a cookie", context.Background(), presentedFor(promptNoneFlowID),
+			"presented-handle"},
+		{"a session presented for another flow leaves the cookie", promptNoneCtx(), presentedFor("another-flow"),
+			promptNoneFlowCookie},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc := suite.wirePromptNone(promptNoneSession(time.Minute))
+			presented := promptNoneSession(time.Minute)
+			presented.HandleID = "presented-handle"
+			svc.ssoSession.(*sessionmock.ServiceMock).EXPECT().
+				Resolve(mock.Anything, "presented-handle", promptNoneFlowID, 2, mock.Anything).
+				Return(presented, nil).Maybe()
+
+			sess := svc.resolveSSOSession(tc.ctx, promptNoneApp(), tc.sessionData)
+
+			suite.Require().NotNil(sess)
+			suite.Equal(tc.wantHandle, sess.HandleID)
+		})
+	}
 }
 
 // TestResolveSSOSession_ClientLookupFails covers the inbound client not resolving: the flow that
@@ -340,7 +378,7 @@ func (suite *AuthorizeServiceTestSuite) TestResolveSSOSession_ClientLookupFails(
 	suite.mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, promptNoneAppID).
 		Return(nil, errors.New("inbound client lookup failed"))
 
-	suite.Nil(svc.resolveSSOSession(promptNoneCtx(), promptNoneApp()),
+	suite.Nil(svc.resolveSSOSession(promptNoneCtx(), promptNoneApp(), nil),
 		"an unresolvable client cannot yield a session")
 }
 
@@ -356,7 +394,7 @@ func (suite *AuthorizeServiceTestSuite) TestResolveSSOSession_FlowLookupFails() 
 	suite.mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, promptNoneAppID).
 		Return(&inboundmodel.InboundClient{ID: promptNoneAppID, AuthFlowID: promptNoneFlowID}, nil)
 
-	suite.Nil(svc.resolveSSOSession(promptNoneCtx(), promptNoneApp()),
+	suite.Nil(svc.resolveSSOSession(promptNoneCtx(), promptNoneApp(), nil),
 		"without the flow there is no active version to match the session against")
 }
 
@@ -378,7 +416,7 @@ func (suite *AuthorizeServiceTestSuite) TestResolveSSOSession_ResolveErrors() {
 	suite.mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, promptNoneAppID).
 		Return(&inboundmodel.InboundClient{ID: promptNoneAppID, AuthFlowID: promptNoneFlowID}, nil)
 
-	suite.Nil(svc.resolveSSOSession(promptNoneCtx(), promptNoneApp()),
+	suite.Nil(svc.resolveSSOSession(promptNoneCtx(), promptNoneApp(), nil),
 		"a store failure must not be mistaken for a live session")
 }
 
@@ -402,7 +440,7 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_MaxAgeZeroIsNeverSat
 	errCode, _ := svc.checkPromptNone(promptNoneCtx(), &oauth2model.OAuthParameters{
 		Prompt: oauth2const.PromptNone,
 		MaxAge: "0",
-	}, promptNoneApp())
+	}, promptNoneApp(), nil)
 
 	suite.Equal(oauth2const.ErrorLoginRequired, errCode,
 		"max_age=0 cannot be answered from an existing session")
@@ -666,4 +704,159 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Pr
 	suite.Equal(oauth2const.ErrorLoginRequired, authErr.Code)
 	suite.True(authErr.SendErrorToClient)
 	suite.Equal("test-state", authErr.State)
+}
+
+// ssoSessionRequest is a silent authorization made with the session the prompt=none tests resolve.
+func ssoSessionRequest() SSOSessionAuthorization {
+	return SSOSessionAuthorization{
+		SessionData: []oauth2model.SessionData{{
+			FlowIdentifier: flowsession.FlowIdentifier(promptNoneFlowID),
+			SessionHandle:  promptNoneFlowCookie,
+		}},
+		Scope: "openid",
+	}
+}
+
+// TestAuthorizeWithSSOSession_ReturnsCode: a presented session that completes the client's flow
+// silently yields an authorization code for the subject, without persisting it.
+func (suite *AuthorizeServiceTestSuite) TestAuthorizeWithSSOSession_ReturnsCode() {
+	svc := suite.wirePromptNone(promptNoneSession(time.Minute))
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).Return("exec-1", nil)
+	suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
+		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "",
+		[]flowexec.SessionData{{FlowIdentifier: flowsession.FlowIdentifier(promptNoneFlowID),
+			SessionHandle: promptNoneFlowCookie}}).
+		Return(&flowexec.FlowStep{Status: providers.FlowStatusComplete, Assertion: svcJWTWithIat}, nil)
+	suite.mockAuthReqStore.EXPECT().GetRequest(mock.Anything, testAuthID).Return(true, authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{ClientID: "client-1", StandardScopes: []string{"openid"}},
+	}, nil)
+	suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, testAuthID).Return(nil)
+
+	code, authErr := svc.AuthorizeWithSSOSession(context.Background(), promptNoneApp(), ssoSessionRequest())
+
+	suite.Require().Nil(authErr)
+	suite.Require().NotNil(code)
+	suite.Equal("client-1", code.ClientID)
+	suite.Equal("test-user", code.AuthorizedUserID)
+	suite.mockAuthzCodeStore.AssertNotCalled(suite.T(), "InsertAuthorizationCode", mock.Anything, mock.Anything)
+}
+
+// TestAuthorizeWithSSOSession_SessionOfAnotherFlow: a session presented under another flow's identifier
+// is not this client's session, so the request needs the user and no flow starts.
+func (suite *AuthorizeServiceTestSuite) TestAuthorizeWithSSOSession_SessionOfAnotherFlow() {
+	svc := suite.wirePromptNone(promptNoneSession(time.Minute))
+	req := ssoSessionRequest()
+	req.SessionData[0].FlowIdentifier = flowsession.FlowIdentifier("another-flow")
+	// Under another flow's identifier no handle is found for this client's flow, so none resolves.
+	svc.ssoSession.(*sessionmock.ServiceMock).EXPECT().
+		Resolve(mock.Anything, "", promptNoneFlowID, 2, mock.Anything).Return(nil, nil)
+
+	code, authErr := svc.AuthorizeWithSSOSession(context.Background(), promptNoneApp(), req)
+
+	suite.Nil(code)
+	suite.Require().NotNil(authErr)
+	suite.Equal(oauth2const.ErrorLoginRequired, authErr.Code)
+	suite.mockFlowExecService.AssertNotCalled(suite.T(), "InitiateFlow", mock.Anything, mock.Anything)
+}
+
+// TestAuthorizeWithSSOSession_FlowNeedsUser: a flow that stops for the user cannot be completed
+// silently; the request is dropped and login_required returned.
+func (suite *AuthorizeServiceTestSuite) TestAuthorizeWithSSOSession_FlowNeedsUser() {
+	svc := suite.wirePromptNone(promptNoneSession(time.Minute))
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).Return("exec-1", nil)
+	suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
+		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "", mock.Anything).
+		Return(&flowexec.FlowStep{Status: providers.FlowStatusIncomplete}, nil)
+	suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, testAuthID).Return(nil)
+
+	code, authErr := svc.AuthorizeWithSSOSession(context.Background(), promptNoneApp(), ssoSessionRequest())
+
+	suite.Nil(code)
+	suite.Require().NotNil(authErr)
+	suite.Equal(oauth2const.ErrorLoginRequired, authErr.Code)
+}
+
+// TestAuthorizeWithSSOSession_FlowServerError: a server failure while running the flow is reported as
+// a server error rather than as needing the user.
+func (suite *AuthorizeServiceTestSuite) TestAuthorizeWithSSOSession_FlowServerError() {
+	svc := suite.wirePromptNone(promptNoneSession(time.Minute))
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).Return("exec-1", nil)
+	suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
+		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "", mock.Anything).
+		Return(nil, &tidcommon.InternalServerError)
+	suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, testAuthID).Return(nil)
+
+	code, authErr := svc.AuthorizeWithSSOSession(context.Background(), promptNoneApp(), ssoSessionRequest())
+
+	suite.Nil(code)
+	suite.Require().NotNil(authErr)
+	suite.Equal(oauth2const.ErrorServerError, authErr.Code)
+}
+
+// TestAuthorizeWithSSOSession_UnreadableAssertion: an assertion the completed flow returned that cannot be
+// decoded is a server failure, and the request is dropped.
+func (suite *AuthorizeServiceTestSuite) TestAuthorizeWithSSOSession_UnreadableAssertion() {
+	svc := suite.wirePromptNone(promptNoneSession(time.Minute))
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).Return("exec-1", nil)
+	suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
+		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "", mock.Anything).
+		Return(&flowexec.FlowStep{Status: providers.FlowStatusComplete, Assertion: "not-a-jwt"}, nil)
+	suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, testAuthID).Return(nil)
+
+	code, authErr := svc.AuthorizeWithSSOSession(context.Background(), promptNoneApp(), ssoSessionRequest())
+
+	suite.Nil(code)
+	suite.Require().NotNil(authErr)
+	suite.Equal(oauth2const.ErrorServerError, authErr.Code)
+}
+
+// TestAuthorizeWithSSOSession_CodeNotMinted: a failure to mint the code is a server error when the server
+// failed, and passes through as it is when the request itself was at fault.
+func (suite *AuthorizeServiceTestSuite) TestAuthorizeWithSSOSession_CodeNotMinted() {
+	cases := []struct {
+		name     string
+		found    bool
+		storeErr error
+		wantCode string
+	}{
+		{"the request store fails", false, errors.New("store unavailable"), oauth2const.ErrorServerError},
+		{"the request is gone", false, nil, oauth2const.ErrorInvalidRequest},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc := suite.wirePromptNone(promptNoneSession(time.Minute))
+			suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil).Once()
+			suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).Return("exec-1", nil).Once()
+			suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
+				string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "", mock.Anything).
+				Return(&flowexec.FlowStep{Status: providers.FlowStatusComplete, Assertion: svcJWTWithIat}, nil).Once()
+			suite.mockAuthReqStore.EXPECT().GetRequest(mock.Anything, testAuthID).
+				Return(tc.found, authRequestContext{}, tc.storeErr).Once()
+
+			code, authErr := svc.AuthorizeWithSSOSession(context.Background(), promptNoneApp(), ssoSessionRequest())
+
+			suite.Nil(code)
+			suite.Require().NotNil(authErr)
+			suite.Equal(tc.wantCode, authErr.Code)
+		})
+	}
+}
+
+// TestAuthorizeWithSSOSession_SingleResourceOnly: a token is bound to one resource server, so more than
+// one resource is refused before anything runs.
+func (suite *AuthorizeServiceTestSuite) TestAuthorizeWithSSOSession_SingleResourceOnly() {
+	svc := suite.newService()
+	req := ssoSessionRequest()
+	req.Resources = []string{"https://a.example.com", "https://b.example.com"}
+
+	code, authErr := svc.AuthorizeWithSSOSession(context.Background(), promptNoneApp(), req)
+
+	suite.Nil(code)
+	suite.Require().NotNil(authErr)
+	suite.Equal(oauth2const.ErrorInvalidTarget, authErr.Code)
 }

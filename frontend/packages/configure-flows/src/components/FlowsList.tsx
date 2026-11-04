@@ -20,6 +20,7 @@ export default function FlowsList(): JSX.Element {
   const logger = useLogger('FlowsList');
   const dataGridLocaleText = useDataGridLocaleText();
   const {data, isLoading, error, refetch} = useGetFlows();
+  const visibleFlows = data?.flows ?? [];
 
   // Resolves an error through the `flows` catalog. `t` defaults to the `common` namespace, so
   // this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `flows:`, per
@@ -71,16 +72,15 @@ export default function FlowsList(): JSX.Element {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
+      <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
+        <ListingTable.Container disablePaper>
           <ListingTable.DataGrid
-            rows={data?.flows ?? []}
+            rows={visibleFlows}
             columns={columns}
             getRowId={(row): string => (row as BasicFlowDefinition).id}
             onRowClick={(params) => {
               handleOpenClick(params.row as BasicFlowDefinition);
             }}
-            rowHeight={64}
             initialState={{
               pagination: {
                 paginationModel: {pageSize: 10},

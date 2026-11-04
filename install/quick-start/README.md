@@ -231,6 +231,15 @@ cache:
     key_prefix: "thunderid:"
 ```
 
+For a TLS-enabled Redis, add a `tls` block under `redis` (mount the CA and client files into the container):
+
+```yaml
+    tls:
+      enabled: true
+      ca_file: "/path/to/ca.crt"
+      # cert_file and key_file are only needed when Redis requires client certificates.
+```
+
 ---
 
 ## Troubleshooting

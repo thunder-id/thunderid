@@ -49,16 +49,26 @@ CREATE TABLE "ROLE_PERMISSION" (
 -- Index for resource server queries with deployment isolation on ROLE_PERMISSION
 CREATE INDEX idx_role_permission_resource_server ON "ROLE_PERMISSION" (RESOURCE_SERVER_ID, DEPLOYMENT_ID);
 
--- Table to store Role assignments (to entities and groups)
+-- Table to store Role assignments (to entities and groups). ASSIGNMENT_OU_ID is the organization unit
+-- the assignment was made in: the role's owner, or an organization unit the role is shared with.
+-- SHARING_POLICY_ID is the sharing policy that mandates the assignment, or '' for a direct assignment.
 CREATE TABLE "ROLE_ASSIGNMENT" (
     DEPLOYMENT_ID       VARCHAR(255) NOT NULL,
     ROLE_ID         VARCHAR(36) NOT NULL,
+    ASSIGNMENT_OU_ID VARCHAR(36) NOT NULL,
     ASSIGNEE_TYPE   VARCHAR(6)  NOT NULL CHECK (ASSIGNEE_TYPE IN ('entity', 'group')),
     ASSIGNEE_ID     VARCHAR(36) NOT NULL,
+    SHARING_POLICY_ID VARCHAR(36) NOT NULL DEFAULT '',
     CREATED_AT      TEXT DEFAULT (datetime('now')),
     UPDATED_AT      TEXT DEFAULT (datetime('now')),
-    PRIMARY KEY (ROLE_ID, DEPLOYMENT_ID, ASSIGNEE_TYPE, ASSIGNEE_ID)
+    PRIMARY KEY (ROLE_ID, DEPLOYMENT_ID, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, ASSIGNEE_ID, SHARING_POLICY_ID)
 );
+
+-- Index for removing the assignments a sharing policy mandates, with deployment isolation
+CREATE INDEX idx_role_assignment_sharing_policy ON "ROLE_ASSIGNMENT" (DEPLOYMENT_ID, SHARING_POLICY_ID);
+
+-- Index for looking up an assignee's role assignments, optionally in one organization unit, with deployment isolation
+CREATE INDEX idx_role_assignment_assignee ON "ROLE_ASSIGNMENT" (DEPLOYMENT_ID, ASSIGNEE_TYPE, ASSIGNEE_ID, ASSIGNMENT_OU_ID);
 
 -- Table to store theme configurations.
 CREATE TABLE "THEME" (
@@ -105,6 +115,7 @@ CREATE TABLE "INBOUND_CLIENT" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     ENTITY_ID VARCHAR(36) NOT NULL,
     AUTH_FLOW_ID VARCHAR(100) NOT NULL,
+    DEVICE_GRANT_FLOW_ID VARCHAR(100),
     REGISTRATION_FLOW_ID VARCHAR(100),
     IS_REGISTRATION_FLOW_ENABLED CHAR(1) DEFAULT '1',
     RECOVERY_FLOW_ID VARCHAR(100),
@@ -557,6 +568,24 @@ CREATE TABLE "GATEWAY_EXCLUDED_RESOURCE" (
     -- rather than left alone for good.
     ONCE BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (DEPLOYMENT_ID, GATEWAY_ID, RESOURCE_KEY)
+);
+
+-- What each gateway holds, resource by resource: every resource deployed to it as the gateway last
+-- accepted it, in RESOURCES, and in MANIFEST one entry per resource saying how it got there and
+-- whether the gateway accepted it. Each apply writes a new row, numbered per gateway, and keeps the
+-- earlier ones as the gateway's history, within the same bound as the versions. HASH names the row
+-- by what it holds. A gateway declared in a file has no GATEWAY row, so there is no foreign key.
+CREATE TABLE "GATEWAY_MASTER" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID VARCHAR(36) PRIMARY KEY,
+    GATEWAY_ID VARCHAR(36) NOT NULL,
+    SEQ INTEGER NOT NULL,
+    HASH VARCHAR(64) NOT NULL,
+    RESOURCES TEXT NOT NULL,
+    MANIFEST TEXT NOT NULL,
+    CREATED_AT TEXT DEFAULT (datetime('now')),
+    CREATED_BY VARCHAR(255),
+    UNIQUE (DEPLOYMENT_ID, GATEWAY_ID, SEQ)
 );
 
 -- Table capturing the resource-sharing graph. Generic across resource types: a policy is one

@@ -365,6 +365,16 @@ const sidebars: SidebarsConfig = {
                 },
               ],
             },
+            {
+              type: 'category',
+              label: 'Personal Assistants',
+              collapsible: true,
+              collapsed: true,
+              key: 'personal-assistants',
+              items: [
+                {type: 'doc', id: 'use-cases/ai-agents/personal-assistants/overview', label: 'Understand It', key: 'personal-assistants-understand-it'},
+              ],
+            },
           ],
         },
         {
@@ -486,6 +496,11 @@ const sidebars: SidebarsConfig = {
                   type: 'doc',
                   id: 'guides/agents/agent-schema',
                   label: 'Agent Schema',
+                },
+                {
+                  type: 'doc',
+                  id: 'guides/agents/agent-lifespan',
+                  label: 'Agent Lifespan',
                 },
               ],
             },
@@ -807,6 +822,11 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'guides/flows/single-sign-on',
               label: 'Single Sign-On',
+            },
+            {
+              type: 'doc',
+              id: 'guides/flows/share-a-flow',
+              label: 'Share a Flow',
             },
             {
               type: 'doc',

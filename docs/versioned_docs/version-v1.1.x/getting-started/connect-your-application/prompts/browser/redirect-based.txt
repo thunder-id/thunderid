@@ -1,0 +1,57 @@
+# Integrate {{productName}} Authentication in Vanilla JavaScript Application
+
+## Context
+I have a vanilla JavaScript application and I want to integrate {{productName}}'s authentication system using the ThunderID Browser SDK with {{productName}}-hosted login pages.
+
+## Requirements
+- Use @thunderid/browser SDK for authentication
+- Configure {{productName}}-hosted login pages
+- Implement sign-in and sign-out functionality
+- Display signed-in user's profile information
+- Handle authentication state
+
+## Configuration
+- **Client ID**: {{clientId}}
+- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **SDK**: @thunderid/browser
+
+## IMPORTANT Configuration Rules
+- Create a ThunderIDBrowserClient instance and call initialize() with a config object
+- Required config properties: `clientId` and `baseUrl`
+- Optional config properties: `afterSignInUrl`, `afterSignOutUrl`, `scopes` (string array), `storage`
+- Storage options: 'sessionStorage' (default), 'localStorage', 'browserMemory'
+- NEVER use property names like `signInRedirectURL` or `signOutRedirectURL`
+
+## Available SDK APIs
+
+### ThunderIDBrowserClient
+- `initialize(config)` - Initialize the client with configuration
+- `signIn()` - Redirect to {{productName}} sign-in page
+- `signOut()` - Sign out and clear session
+- `isSignedIn()` - Check if user is signed in (returns Promise<boolean>)
+- `getUser()` - Get authenticated user profile (returns Promise<User>)
+- `getAccessToken()` - Get current access token
+- `getIdToken()` - Get ID token
+- `getDecodedIdToken()` - Get decoded ID token claims
+- `httpRequest(config)` - Make authenticated HTTP request
+- `on(hook, callback)` - Register event callbacks (Hooks.SignIn, Hooks.SignOut, etc.)
+
+### User Object Properties
+- `displayName` - User's display name
+- `username` - Username
+- `email` - Email address
+- `given_name` - First name
+- `family_name` - Last name
+- `picture` - Profile picture URL
+
+## Implementation Steps
+1. Create a vanilla JS app using Vite by running: `npm create vite@latest my-js-app -- --template vanilla`
+2. Navigate into the project directory: `cd my-js-app`
+3. Install dependencies: `npm install`
+4. Install @thunderid/browser package: `npm install @thunderid/browser`
+5. Create src/auth.js to initialize ThunderIDBrowserClient with clientId and baseUrl
+6. Update src/main.js to check isSignedIn(), show sign-in button or user profile
+7. Add event listeners for sign-in and sign-out buttons
+8. Run the development server: `npm run dev`
+
+Please provide complete, working code with proper configuration for {{productName}} authentication using the ThunderID Browser SDK.

@@ -11,6 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	dbutils "github.com/thunder-id/thunderid/internal/system/database/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -53,6 +54,10 @@ func initRedisProvider() {
 		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RedisProvider"))
 
 		r := cfg.Redis
+		tlsConfig, err := dbutils.BuildRedisTLSConfig(r.TLS)
+		if err != nil {
+			logger.Fatal(context.Background(), "Invalid Redis TLS configuration", log.Error(err))
+		}
 		client := redis.NewClient(&redis.Options{
 			Addr:            r.Address,
 			Username:        r.Username,
@@ -64,6 +69,7 @@ func initRedisProvider() {
 			DialTimeout:     time.Duration(r.DialTimeoutMS) * time.Millisecond,
 			ReadTimeout:     time.Duration(r.ReadTimeoutMS) * time.Millisecond,
 			WriteTimeout:    time.Duration(r.WriteTimeoutMS) * time.Millisecond,
+			TLSConfig:       tlsConfig,
 		})
 
 		if err := client.Ping(context.Background()).Err(); err != nil {
@@ -77,7 +83,7 @@ func initRedisProvider() {
 
 		// Redis client is initialized at startup, outside any request.
 		logger.Info(context.Background(), "Connected to Redis runtime store",
-			log.String("address", r.Address))
+			log.String("address", r.Address), log.Bool("tls", tlsConfig != nil))
 		redisInstance = &redisProvider{
 			client:    client,
 			keyPrefix: r.KeyPrefix,

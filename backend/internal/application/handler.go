@@ -58,10 +58,13 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 
 	appDTO := model.ApplicationDTO{
 		OUID:        appRequest.OUID,
+		ProjectID:   appRequest.ProjectID,
 		Name:        appRequest.Name,
 		Description: appRequest.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                appRequest.AuthFlowID,
+			DeviceGrantFlowHandle:     appRequest.DeviceGrantFlowHandle,
+			DeviceGrantFlowID:         appRequest.DeviceGrantFlowID,
 			RegistrationFlowID:        appRequest.RegistrationFlowID,
 			IsRegistrationFlowEnabled: appRequest.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            appRequest.RecoveryFlowID,
@@ -95,37 +98,7 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 		return
 	}
 
-	returnApp := model.ApplicationCompleteResponse{
-		ID:          createdAppDTO.ID,
-		OUID:        createdAppDTO.OUID,
-		Name:        createdAppDTO.Name,
-		Description: createdAppDTO.Description,
-		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{
-			AuthFlowID:                createdAppDTO.AuthFlowID,
-			RegistrationFlowID:        createdAppDTO.RegistrationFlowID,
-			IsRegistrationFlowEnabled: createdAppDTO.IsRegistrationFlowEnabled,
-			RecoveryFlowID:            createdAppDTO.RecoveryFlowID,
-			IsRecoveryFlowEnabled:     createdAppDTO.IsRecoveryFlowEnabled,
-			SignOutFlowID:             createdAppDTO.SignOutFlowID,
-			ThemeID:                   createdAppDTO.ThemeID,
-			LayoutID:                  createdAppDTO.LayoutID,
-			Assertion:                 createdAppDTO.Assertion,
-			LoginConsent:              createdAppDTO.LoginConsent,
-			AllowedUserTypes:          createdAppDTO.AllowedUserTypes,
-			AllowedAgentTypes:         createdAppDTO.AllowedAgentTypes,
-			PasskeyAllowedOrigins:     createdAppDTO.PasskeyAllowedOrigins,
-			Attestation:               createdAppDTO.Attestation,
-		},
-		Type:       createdAppDTO.Type,
-		Template:   createdAppDTO.Template,
-		FlowSecret: createdAppDTO.FlowSecret,
-		URL:        createdAppDTO.URL,
-		LogoURL:    createdAppDTO.LogoURL,
-		TosURI:     createdAppDTO.TosURI,
-		PolicyURI:  createdAppDTO.PolicyURI,
-		Contacts:   createdAppDTO.Contacts,
-		Metadata:   createdAppDTO.Metadata,
-	}
+	returnApp := applicationCompleteResponseFromDTO(createdAppDTO, true)
 
 	// TODO: Need to refactor when supporting other/multiple inbound auth types.
 	if len(createdAppDTO.InboundAuthConfig) > 0 {
@@ -147,13 +120,20 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 // HandleApplicationListRequest handles the application request.
 func (ah *applicationHandler) HandleApplicationListRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	filters, err := filter.ParseEqualityFilterParam(r.URL.Query())
+	query := r.URL.Query()
+	filters, err := filter.ParseEqualityFilterParam(query)
 	if err != nil {
 		ah.handleError(ctx, w, r, &ErrorInvalidFilter)
 		return
 	}
 
-	listResponse, svcErr := ah.service.GetApplicationList(ctx, filters)
+	var listResponse *model.ApplicationListResponse
+	var svcErr *tidcommon.ServiceError
+	if query.Has(projectIDQueryParam) {
+		listResponse, svcErr = ah.service.GetApplicationListByProject(ctx, query.Get(projectIDQueryParam), filters)
+	} else {
+		listResponse, svcErr = ah.service.GetApplicationList(ctx, filters)
+	}
 	if svcErr != nil {
 		ah.handleError(ctx, w, r, svcErr)
 		return
@@ -203,6 +183,7 @@ func toApplicationGetResponse(ctx context.Context, appDTO *providers.Application
 		Description: appDTO.Description,
 		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{
 			AuthFlowID:                appDTO.AuthFlowID,
+			DeviceGrantFlowID:         appDTO.DeviceGrantFlowID,
 			RegistrationFlowID:        appDTO.RegistrationFlowID,
 			IsRegistrationFlowEnabled: appDTO.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            appDTO.RecoveryFlowID,
@@ -329,10 +310,13 @@ func (ah *applicationHandler) HandleApplicationPutRequest(w http.ResponseWriter,
 	updateReqAppDTO := model.ApplicationDTO{
 		ID:          id,
 		OUID:        appRequest.OUID,
+		ProjectID:   appRequest.ProjectID,
 		Name:        appRequest.Name,
 		Description: appRequest.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                appRequest.AuthFlowID,
+			DeviceGrantFlowHandle:     appRequest.DeviceGrantFlowHandle,
+			DeviceGrantFlowID:         appRequest.DeviceGrantFlowID,
 			RegistrationFlowID:        appRequest.RegistrationFlowID,
 			IsRegistrationFlowEnabled: appRequest.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            appRequest.RecoveryFlowID,
@@ -366,37 +350,7 @@ func (ah *applicationHandler) HandleApplicationPutRequest(w http.ResponseWriter,
 		return
 	}
 
-	returnApp := model.ApplicationCompleteResponse{
-		ID:          updatedAppDTO.ID,
-		OUID:        updatedAppDTO.OUID,
-		Name:        updatedAppDTO.Name,
-		Description: updatedAppDTO.Description,
-		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{
-			AuthFlowID:                updatedAppDTO.AuthFlowID,
-			RegistrationFlowID:        updatedAppDTO.RegistrationFlowID,
-			IsRegistrationFlowEnabled: updatedAppDTO.IsRegistrationFlowEnabled,
-			RecoveryFlowID:            updatedAppDTO.RecoveryFlowID,
-			IsRecoveryFlowEnabled:     updatedAppDTO.IsRecoveryFlowEnabled,
-			SignOutFlowID:             updatedAppDTO.SignOutFlowID,
-			ThemeID:                   updatedAppDTO.ThemeID,
-			LayoutID:                  updatedAppDTO.LayoutID,
-			Assertion:                 updatedAppDTO.Assertion,
-			LoginConsent:              updatedAppDTO.LoginConsent,
-			AllowedUserTypes:          updatedAppDTO.AllowedUserTypes,
-			AllowedAgentTypes:         updatedAppDTO.AllowedAgentTypes,
-			PasskeyAllowedOrigins:     updatedAppDTO.PasskeyAllowedOrigins,
-			Attestation:               updatedAppDTO.Attestation,
-		},
-		Type:      updatedAppDTO.Type,
-		Template:  updatedAppDTO.Template,
-		URL:       updatedAppDTO.URL,
-		LogoURL:   updatedAppDTO.LogoURL,
-		TosURI:    updatedAppDTO.TosURI,
-		PolicyURI: updatedAppDTO.PolicyURI,
-		Contacts:  updatedAppDTO.Contacts,
-		Status:    updatedAppDTO.Status,
-		Metadata:  updatedAppDTO.Metadata,
-	}
+	returnApp := applicationCompleteResponseFromDTO(updatedAppDTO, false)
 
 	// TODO: Need to refactor when supporting other/multiple inbound auth types.
 	if len(updatedAppDTO.InboundAuthConfig) > 0 {
@@ -717,4 +671,45 @@ func parsePaginationParams(query url.Values) (int, int, *tidcommon.ServiceError)
 		limit = serverconst.DefaultPageSize
 	}
 	return limit, offset, nil
+}
+
+func applicationCompleteResponseFromDTO(
+	dto *model.ApplicationDTO, includeFlowSecret bool,
+) model.ApplicationCompleteResponse {
+	response := model.ApplicationCompleteResponse{
+		ID:          dto.ID,
+		OUID:        dto.OUID,
+		Name:        dto.Name,
+		Description: dto.Description,
+		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{
+			AuthFlowID:                dto.AuthFlowID,
+			DeviceGrantFlowID:         dto.DeviceGrantFlowID,
+			RegistrationFlowID:        dto.RegistrationFlowID,
+			IsRegistrationFlowEnabled: dto.IsRegistrationFlowEnabled,
+			RecoveryFlowID:            dto.RecoveryFlowID,
+			IsRecoveryFlowEnabled:     dto.IsRecoveryFlowEnabled,
+			SignOutFlowID:             dto.SignOutFlowID,
+			ThemeID:                   dto.ThemeID,
+			LayoutID:                  dto.LayoutID,
+			Assertion:                 dto.Assertion,
+			LoginConsent:              dto.LoginConsent,
+			AllowedUserTypes:          dto.AllowedUserTypes,
+			AllowedAgentTypes:         dto.AllowedAgentTypes,
+			PasskeyAllowedOrigins:     dto.PasskeyAllowedOrigins,
+			Attestation:               dto.Attestation,
+		},
+		Type:      dto.Type,
+		Template:  dto.Template,
+		URL:       dto.URL,
+		LogoURL:   dto.LogoURL,
+		TosURI:    dto.TosURI,
+		PolicyURI: dto.PolicyURI,
+		Contacts:  dto.Contacts,
+		Status:    dto.Status,
+		Metadata:  dto.Metadata,
+	}
+	if includeFlowSecret {
+		response.FlowSecret = dto.FlowSecret
+	}
+	return response
 }

@@ -7,6 +7,7 @@ package identitygovernance
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
@@ -38,10 +39,11 @@ type IdentityGovernanceServiceInterface interface {
 	EvaluateAccess(ctx context.Context, entityID string, plane providers.AccessPlane,
 		method providers.AuthenticationMethod) (providers.AccessDecision, *tidcommon.ServiceError)
 
-	// IsSuspended reports whether the identity is suspended, and writes nothing. A missing runtime row
-	// reads as the starting state. An empty entityID, or one with no local identity, is not suspended;
-	// an unreadable entity is an error.
-	IsSuspended(ctx context.Context, entityID string) (bool, *tidcommon.ServiceError)
+	// AccessHold reports the hold that withholds the identity outside the access planes, such as from an
+	// authorization decision: suspended, then expired, or empty when neither applies. A lock is not a
+	// hold. It writes nothing, and a missing runtime row reads as the starting state. An empty entityID,
+	// or one with no local identity, has no hold; an unreadable entity is an error.
+	AccessHold(ctx context.Context, entityID string) (providers.AccessRefusalReason, *tidcommon.ServiceError)
 
 	// AdmitSignIn admits a completed sign-in at the session plane and, when admitted, clears an expired
 	// account-wide entry.
@@ -116,8 +118,9 @@ type entityStateProvider interface {
 
 // identityGovernanceService is the governance authority.
 type identityGovernanceService struct {
-	entityState entityStateProvider
-	source      accountAccessSourceInterface
+	entityState   entityStateProvider
+	source        accountAccessSourceInterface
+	transactioner providers.Transactioner
 	// notifier is optional; locks form the same without it.
 	notifier LockNotifierInterface
 	// authorizer is optional; nil permits.
@@ -130,11 +133,13 @@ type identityGovernanceService struct {
 
 // newIdentityGovernanceService builds the governance service.
 func newIdentityGovernanceService(entityState entityStateProvider, source accountAccessSourceInterface,
-	notifier LockNotifierInterface, authorizer sysauthz.SystemAuthorizationServiceInterface,
+	transactioner providers.Transactioner, notifier LockNotifierInterface,
+	authorizer sysauthz.SystemAuthorizationServiceInterface,
 	observability providers.ObservabilityProvider) *identityGovernanceService {
 	return &identityGovernanceService{
 		entityState:   entityState,
 		source:        source,
+		transactioner: transactioner,
 		notifier:      notifier,
 		authorizer:    authorizer,
 		observability: observability,
@@ -207,21 +212,29 @@ func (s *identityGovernanceService) EvaluateAccess(ctx context.Context, entityID
 	return s.decide(ctx, entity, plane, method), nil
 }
 
-// IsSuspended reports whether the identity is suspended, from a read that writes nothing.
-func (s *identityGovernanceService) IsSuspended(ctx context.Context,
-	entityID string) (bool, *tidcommon.ServiceError) {
+// AccessHold reports the identity's hold, from a read that writes nothing. A suspension is reported
+// before an ended lifespan, as the access checks order them, and a lifespan end that does not read is
+// reported as ended, so a corrupt value never lifts the hold.
+func (s *identityGovernanceService) AccessHold(ctx context.Context,
+	entityID string) (providers.AccessRefusalReason, *tidcommon.ServiceError) {
 	if entityID == "" {
-		return false, nil
+		return "", nil
 	}
 	entity, err := s.entityState.GetGovernedEntity(ctx, entityID, false)
 	if err != nil {
-		return false, s.serverError(ctx, "Failed to read the identity for a suspension check", entityID, err)
+		return "", s.serverError(ctx, "Failed to read the identity for a hold check", entityID, err)
 	}
 	if entity == nil {
-		return false, nil
+		return "", nil
 	}
 
-	return isSuspended(entity.State, entity.AccessState), nil
+	if isSuspended(entity.State, entity.AccessState) {
+		return providers.AccessRefusalReasonSuspended, nil
+	}
+	if entity.ValidUntilErr != nil || (entity.ValidUntil != "" && !isLockLive(entity.ValidUntil, s.now())) {
+		return providers.AccessRefusalReasonExpired, nil
+	}
+	return "", nil
 }
 
 // AdmitSignIn checks a completed sign-in and, when admitted, clears an expired account-wide entry. A
@@ -445,19 +458,36 @@ func (s *identityGovernanceService) readForCheck(ctx context.Context,
 		s.logger.Debug(ctx, "No local identity to govern; admitted", log.MaskedString(log.LoggerKeyEntityID, entityID))
 		return GovernedEntity{}, admit(), false, nil
 	}
+	if entity.ValidUntilErr != nil {
+		return GovernedEntity{}, providers.AccessDecision{}, false,
+			s.serverError(ctx, "Failed to read the identity's lifespan for an access check", entityID,
+				entity.ValidUntilErr)
+	}
 
 	return *entity, providers.AccessDecision{}, true, nil
 }
 
 // decide returns the decision for an entity at a plane and method. An identity with nothing that could
-// hold it, and an application that is not suspended, is admitted without reading the policy.
+// hold it, and an application that is not suspended, is admitted without reading the policy. An
+// admitted decision carries the entity's lifespan end as NotAfter.
 func (s *identityGovernanceService) decide(ctx context.Context, entity GovernedEntity, plane providers.AccessPlane,
 	method providers.AuthenticationMethod) providers.AccessDecision {
-	if !isSuspended(entity.State, entity.AccessState) &&
-		(entity.Category == providers.EntityCategoryApp || !hasLockEntries(entity)) {
-		return admit()
+	decision := admit()
+	if isSuspended(entity.State, entity.AccessState) ||
+		(entity.ValidUntil != "" && !isLockLive(entity.ValidUntil, s.now())) ||
+		(entity.Category != providers.EntityCategoryApp && hasLockEntries(entity)) {
+		decision = s.decideUnder(ctx, entity, plane, method, s.resolvePolicy(ctx, entity, method))
 	}
-	return s.decideUnder(ctx, entity, plane, method, s.resolvePolicy(ctx, entity, method))
+	if decision.Admitted && entity.ValidUntil != "" {
+		notAfter, err := time.Parse(time.RFC3339, entity.ValidUntil)
+		if err != nil {
+			// The entity service hands over a normalized value, so this guards only a corrupt one, which
+			// must not leave a token uncapped.
+			return providers.AccessDecision{}
+		}
+		decision.NotAfter = notAfter
+	}
+	return decision
 }
 
 // decideUnder returns the decision for an entity at a plane and method under a resolved policy.
@@ -466,6 +496,12 @@ func (s *identityGovernanceService) decideUnder(ctx context.Context, entity Gove
 	// A suspension refuses at every plane.
 	if isSuspended(entity.State, entity.AccessState) {
 		return refuse(policy.discloseAccountHold, providers.AccessRefusalReasonSuspended)
+	}
+
+	// An ended lifespan refuses at every plane, and is reported after a suspension. Its end is no longer
+	// live once the current time reaches it.
+	if entity.ValidUntil != "" && !isLockLive(entity.ValidUntil, s.now()) {
+		return refuse(policy.discloseAccountHold, providers.AccessRefusalReasonExpired)
 	}
 
 	// Only a suspension refuses an application.
@@ -501,8 +537,7 @@ func (s *identityGovernanceService) decideUnder(ctx context.Context, entity Gove
 	return refuse(policy.discloseAccountHold, providers.AccessRefusalReasonLocked)
 }
 
-// countFailure records one failure against the effective method and forms a lock when the threshold is
-// reached. A store failure is logged and leaves the attempt uncounted.
+// countFailure records a failure and forms any resulting lock in one transaction.
 func (s *identityGovernanceService) countFailure(ctx context.Context, entity GovernedEntity,
 	method providers.AuthenticationMethod, policy lockoutPolicy) {
 	effective := effectiveMethodFor(policy.granularity, method)
@@ -513,58 +548,40 @@ func (s *identityGovernanceService) countFailure(ctx context.Context, entity Gov
 	if policy.failureWindow > 0 {
 		windowStart = now.Add(-policy.failureWindow)
 	}
-	observed, recorded, err := s.entityState.IncrementFailure(ctx, entity.ID, effective, now, windowStart)
+	var episode LockEpisode
+	formed := false
+	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		observed, recorded, err := s.entityState.IncrementFailure(txCtx, entity.ID, effective, now, windowStart)
+		if err != nil || !recorded {
+			return err
+		}
+
+		// The increment holds the row until commit; start the lock after any wait for that row.
+		lockNow := s.now()
+		if !shouldFormLock(policy, observed, lockNow) {
+			return nil
+		}
+		episode = nextLockEpisode(policy, observed, lockNow)
+		formed, err = s.entityState.FormLock(txCtx, entity.ID, effective, observed, episode, lockNow)
+		if err != nil {
+			return err
+		}
+		if !formed {
+			return errors.New("account lock formation did not update the runtime row")
+		}
+		return nil
+	})
 	if err != nil {
-		s.logStoreFailure(ctx, "Failed to record a failed attempt", entity.ID, err)
+		s.logStoreFailure(ctx, "Failed to record a failed attempt and its account lock", entity.ID, err)
 		return
 	}
-	if !recorded {
-		// No row, or the store's hold guard skipped the write.
+	if !formed {
 		return
 	}
 
-	s.formLockIfEligible(ctx, entity, effective, policy, observed, now)
-}
-
-// formLockIfEligible opens a lock episode when the counters reach the threshold, re-reading up to
-// formationRetries times when a concurrent writer wins the guard. A store failure is logged and stops
-// the attempt; the recorded failures stay.
-func (s *identityGovernanceService) formLockIfEligible(ctx context.Context, entity GovernedEntity,
-	effective providers.AuthenticationMethod, policy lockoutPolicy, observed LockEntry, now time.Time) {
-	for range formationRetries {
-		if !shouldFormLock(policy, observed, now) {
-			return
-		}
-
-		episode := nextLockEpisode(policy, observed, now)
-
-		formed, err := s.entityState.FormLock(ctx, entity.ID, effective, observed, episode, now)
-		if err != nil {
-			s.logStoreFailure(ctx, "Failed to form an account lock", entity.ID, err)
-			return
-		}
-		if formed {
-			// Only the guard's winner reaches here, so one lock is recorded once and sends one notice.
-			// Scheduling never blocks.
-			s.auditLockFormed(ctx, entity, effective, episode)
-			if s.notifier != nil {
-				s.notifier.NotifyLockFormed(ctx, entity, effective, episode)
-			}
-			return
-		}
-
-		// The row changed. Re-read and decide again.
-		refreshed, err := s.entityState.GetGovernedEntity(ctx, entity.ID, true)
-		if err != nil {
-			s.logStoreFailure(ctx, "Failed to re-read the identity to form an account lock", entity.ID, err)
-			return
-		}
-		if refreshed == nil {
-			// Deleted after the failure was counted; there is nothing left to lock.
-			return
-		}
-		observed = refreshed.AccessState.observedFor(effective)
-		observed.Revision = refreshed.Revision
+	s.auditLockFormed(ctx, entity, effective, episode)
+	if s.notifier != nil {
+		s.notifier.NotifyLockFormed(ctx, entity, effective, episode)
 	}
 }
 

@@ -53,9 +53,9 @@ const TOKEN_TTL_MS = 60 * 60 * 1000;
  * endpoint here in one step (see backend/internal/idp/utils.go::resolveEndpointDefaults,
  * which preserves paths and only rewrites scheme+host).
  *
- * Mirrors tests/integration/testutils/mock_google_oidc_server.go so the Go integration
+ * Mirrors tests/integration/mockservices/google.go so the Go integration
  * suite and this Playwright suite exercise the backend identically. Reads the Go mock's
- * own key file (tests/integration/testutils/testdata/mock_google_oidc_key.pem) rather than
+ * own key file (tests/integration/mockservices/testdata/mock_google_oidc_key.pem) rather than
  * a copy, for the same reason the Go mock embeds it: a fixed `kid` must map to the same
  * key material every time it's served, or a backend JWKS cache surviving across mock
  * restarts on the same port would fail to verify. A single shared file keeps both suites'
@@ -91,7 +91,7 @@ export class MockGoogleOIDCServer extends MockHttpServer {
     this.clientSecret = clientSecret;
 
     const pem = readFileSync(
-      join(__dirname, "..", "..", "integration", "testutils", "testdata", "mock_google_oidc_key.pem")
+      join(__dirname, "..", "..", "integration", "mockservices", "testdata", "mock_google_oidc_key.pem")
     );
     this.privateKey = createPrivateKey(pem);
     const jwk = createPublicKey(this.privateKey).export({ format: "jwk" }) as Record<string, string>;

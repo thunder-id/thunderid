@@ -56,6 +56,8 @@ const (
 	ExecutorNameIdentityGovernance           = "IdentityGovernanceExecutor"
 	ExecutorNamePreSuspend                   = "PreSuspendExecutor"
 	ExecutorNameExtension                    = "ExtensionExecutor"
+	ExecutorNameAuthorizationDetail          = "AuthorizationDetailExecutor"
+	ExecutorNameDeviceCode                   = "DeviceCodeExecutor"
 )
 
 // Executor mode constants

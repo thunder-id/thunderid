@@ -1,0 +1,137 @@
+---
+title: Manage Applications
+docType: guide
+sidebar_position: 1
+persona: iam
+description: Register, update, and delete applications to enable OAuth 2.0 authentication for your services.
+---
+
+# Manage Applications
+
+An application in <ProductName /> represents the client that your users sign in to. You register your web app, mobile app, or backend service as an application to configure the authentication experience and control which users can access it.
+
+Each application holds:
+
+- An **authentication flow** that defines the steps users follow to sign in.
+- An optional **registration and recovery flow** for self-service user sign-up and recovery.
+
+OAuth 2.0 applications additionally hold:
+
+- A **Client ID** (and optionally a **Client Secret**) for token-based authentication.
+- OAuth 2.0 settings including redirect URIs, grant types, scopes, and token configuration.
+
+## Application Types
+
+<ProductName /> provides six application types. Choose the one that matches your architecture.
+
+| Type | Description | Client Secret |
+|------|-------------|---------------|
+| **Browser App** | For single-page applications (React, Angular, Vue) that run entirely in the browser.| No - public client |
+| **Full-stack App** | For server-rendered web applications (Express, Spring, .NET) where the backend handles the token exchange. | Yes - confidential client |
+| **Mobile App** | For native or cross-platform mobile apps (Swift, Kotlin, React Native, Flutter).| No - public client |
+| **Backend Service** | For server-to-server communication with no user interaction (background jobs, internal APIs, microservices). | Yes - confidential client |
+| **MCP Client** | For AI applications that connect to MCP servers using the Model Context Protocol. It may be a public or confidential client depending on its OAuth 2.0 configuration. | Depends on configuration |
+| **Custom App** | For applications that do not fit the other types, with full control over configuration. | Depends on configuration |
+
+The application type determines whether <ProductName /> issues a Flow Secret and whether the application can call the Flow Execution API directly to sign users in. See [Integration Models](../../key-concepts/authentication/integration-models.mdx#app-native) for how each type behaves.
+
+You set the application type when you create the application, and you cannot change it afterward. If you're creating applications through the REST API or a declarative resource instead of the Console, provide the `type` attribute with one of `browser`, `fullstack`, `mobile`, `m2m`, `mcp`, or `custom`; the API rejects a create request that omits it.
+
+## Create an Application
+
+Follow these steps in the <ProductName /> Console to register a new application.
+
+<Stepper stepNode="h3" as="h3">
+
+### Step 1: Select Technology or Application Type
+
+1. Sign in to the <ProductName /> Console.
+2. Navigate to **Applications** → **Add Application**.
+3. Pick your **Technology** if your framework is listed (for example, React). <ProductName /> uses this to pre-configure the right defaults and SDK integration. If your framework isn't listed, select an **Application Type** directly instead.
+
+### Step 2: Enter Application Name
+
+Enter an **Application Name**. This name identifies the application in the Console and may be visible to users on the consent screen.
+
+### Step 3: Customize the Appearance
+
+Choose an **Application Logo** from the available icons, or click **Shuffle** to cycle through options. This logo appears on the sign-in page and consent screen.
+
+Select a **Theme**, **Classic** or **High Contrast**, for the authentication pages of this application.
+
+:::note
+Backend Service applications skip the appearance, sign-in options, and sign-in experience steps and go directly to the creation step.
+:::
+
+### Step 4: Select Sign-In Options
+
+Select the sign-in methods users will use to authenticate with this application (for example, Username & Password, Google, or Apple). At least one option is required.
+
+### Step 5: Configure the Sign-In Experience
+
+**Sign-In Approach** determines how users reach the sign-in experience:
+
+- **Redirect to <ProductName /> sign-in/sign-up handling pages** (recommended): users are redirected to <ProductName />-hosted sign-in pages. You can customize these pages with the Flow Designer and integrate with SDKs.
+- **Embedded sign-in/sign-up components in your app**: the sign-in experience renders inside your application using <ProductName />'s UI components or APIs. No redirect occurs.
+
+:::note
+**Browser App** applications (SPAs) support only the **Redirect** approach. Because they run entirely in the browser as public clients, they cannot drive embedded (app-native) flow execution securely, so the embedded option is not offered for them. Other application types, such as **Mobile App** and **Full-stack App**, continue to support the embedded approach.
+:::
+
+**User Access** controls which user types can register with this application. Select one or more of the allowed user types (for example, **Customer** or **Person**). The selection appears as **Allowed User Types** once the application exists.
+Learn more about user types in [User Types](../../users/user-types).
+
+When first-time users sign in with a social identity provider, ensure exactly one selected user type has **Allow Self Registration** enabled. See [Control Who Can Register](../application-settings#control-who-can-register).
+
+### Step 6: Configure Application
+
+This step varies based on your application type and sign-in options. Backend Service applications skip this step entirely.
+
+**Browser App and Full-stack App**: enter the **Hosting URL** where your application is deployed (for example, `https://yourapp.example.com`). For the callback URL, choose whether to use the same URL or provide a custom one.
+
+**Mobile App**: enter a **Deep Link or Universal Link** that <ProductName /> redirects users back to after authentication (for example, `com.example.app://auth/callback` or `https://yourapp.example.com/auth/callback`).
+
+If you selected **Passkey** as a sign-in option, this step also shows **Passkey Settings**. Configure the **Relying Party ID** (your application's domain, for example `yourapp.example.com`) and **Relying Party Name** (a label shown to users during passkey prompts).
+
+:::note
+If you chose the **Embedded** sign-in approach in Step 5, this step only appears when Passkey is selected.
+:::
+
+### Step 7: Create Application
+
+After creating an OAuth 2.0 application, <ProductName /> generates a **Client ID** which you can find on the **General** tab of the created application.
+
+For confidential clients (Full-stack App and Backend Service), <ProductName /> also generates a **Client Secret** and displays it once during creation.
+
+:::warning
+Copy and store your **Client Secret** before clicking **Continue**. <ProductName /> never shows it again. Treat it with the same level of security as a password. Never expose it in browser console, version control, or logs.
+:::
+
+</Stepper>
+
+## Update an Application
+
+To update an application:
+
+1. Navigate to **Applications** and open the application you want to edit.
+2. Update the relevant settings. Learn more about each setting in [Application Settings](../application-settings).
+3. Click **Save**.
+
+Changes take effect immediately for new authentication requests. Active sessions and issued access tokens are not affected until they expire. Rotating the client secret is the exception: it also rejects refresh tokens issued before the rotation.
+
+## Delete an Application
+
+To delete an application:
+
+1. Open the application from the **Applications** list.
+2. Click **Delete Application** and confirm.
+
+:::warning
+Deleting an application is permanent. Any client using the application's Client ID will immediately lose the ability to authenticate. Issued tokens remain valid until they expire.
+:::
+
+## Next Steps
+
+- [Application Settings](../application-settings) - Configure OAuth 2.0, tokens, flows, and consent for your application
+- [Flows](../../flows/what-are-flows) - Build and assign custom authentication and registration flows
+- [Dynamic Client Registration](../../protocols/oauth-oidc/dynamic-client-registration) - Register OAuth 2.0 clients programmatically without using the Console

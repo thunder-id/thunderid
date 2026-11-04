@@ -6,6 +6,7 @@ import {
   SettingsLockNotice,
   AuthenticationFlowSection,
   RegistrationFlowSection,
+  hasUserAccess,
 } from '@thunderid/configure-applications';
 import {Stack} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
@@ -27,12 +28,15 @@ export default function EditFlowsSettings({
   onFieldChange,
 }: EditFlowsSettingsProps): JSX.Element {
   const {t} = useTranslation();
-  const isUnlocked = hasDelegationGrant(oauth2Config?.grantTypes);
+  // Only the authorization code and CIBA grants run this agent's sign-in flows. Token exchange and
+  // JWT bearer redeem an existing token or assertion, so they never run a sign-in flow.
+  const isUnlocked = hasUserAccess(oauth2Config?.grantTypes);
+  const isDelegated = hasDelegationGrant(oauth2Config?.grantTypes);
 
   // Agents share the inbound-client shape with applications (auth_flow_id, registration flow
   // config), so the same components are reused with an entity-label override. Forcing
   // isReadOnly disables every input via their existing disabled={application.isReadOnly} wiring
-  // when Delegated mode isn't on, without needing new props on the shared components.
+  // when the flows do not apply, without needing new props on the shared components.
   const appLikeAgent = {...agent, isReadOnly: (agent.isReadOnly ?? false) || !isUnlocked} as unknown as Application;
   const appLikeEditedAgent = editedAgent as unknown as Partial<Application>;
   const appHandleFieldChange = onFieldChange as unknown as (field: keyof Application, value: unknown) => void;
@@ -41,10 +45,17 @@ export default function EditFlowsSettings({
     <Stack spacing={3}>
       <SettingsLockNotice
         isUnlocked={isUnlocked}
-        message={t(
-          'agents:edit.flows.delegationLock.message',
-          'These settings are frozen for this agent. Turn on Delegated mode in the Advanced tab to unlock and start using them.',
-        )}
+        message={
+          isDelegated
+            ? t(
+                'agents:edit.flows.signInGrantLock.message',
+                'Sign-in flows apply only when this agent signs users in with the authorization code or CIBA grant type.',
+              )
+            : t(
+                'agents:edit.flows.delegationLock.message',
+                'These settings are frozen for this agent. Turn on Delegated mode in the Advanced tab to unlock and start using them.',
+              )
+        }
       >
         <Stack spacing={3}>
           <AuthenticationFlowSection

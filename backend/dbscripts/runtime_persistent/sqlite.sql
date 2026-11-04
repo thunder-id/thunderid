@@ -41,12 +41,14 @@ CREATE UNIQUE INDEX idx_revocation_criteria_lookup
 -- Index for expiry time on REVOCATION_CRITERIA (supports cleanup and expiry checks).
 CREATE INDEX idx_revocation_criteria_expiry_time ON "REVOCATION_CRITERIA" (EXPIRY_TIME);
 
--- Table to store SSO sessions, grouped by flow (FLOW_ID) and resolved by an opaque handle.
+-- Table to store login sessions. TYPE is SSO for a session that later logins can reuse, grouped by
+-- flow (FLOW_ID) and resolved by an opaque handle, or DIRECT for a session tied to a single login.
 -- Part of the database.runtime_persistent classification: persistent session state that must survive a
 -- runtime database flush.
-CREATE TABLE "SSO_SESSION" (
+CREATE TABLE "SESSION" (
     SESSION_ID VARCHAR(36) NOT NULL,
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    TYPE VARCHAR(10) NOT NULL CHECK (TYPE IN ('SSO', 'DIRECT')),
     SUBJECT_ID VARCHAR(36) NOT NULL,
     FLOW_ID VARCHAR(36) NOT NULL,
     FLOW_VERSION INTEGER NOT NULL,
@@ -63,15 +65,18 @@ CREATE TABLE "SSO_SESSION" (
     PRIMARY KEY (SESSION_ID, DEPLOYMENT_ID)
 );
 
--- Unique index for handle lookup on SSO_SESSION (one session per handle, per deployment)
-CREATE UNIQUE INDEX idx_sso_session_handle_id ON "SSO_SESSION" (HANDLE_ID, DEPLOYMENT_ID);
+-- Unique index for handle lookup on SESSION (one session per handle, per deployment)
+CREATE UNIQUE INDEX idx_session_handle_id ON "SESSION" (HANDLE_ID, DEPLOYMENT_ID);
 
 -- Unique index enforcing one session per establishing flow execution (per deployment). Lets
 -- concurrent joins in a single flow execution converge on one session instead of duplicating it.
-CREATE UNIQUE INDEX idx_sso_session_flow_execution ON "SSO_SESSION" (FLOW_EXECUTION_ID, DEPLOYMENT_ID);
+CREATE UNIQUE INDEX idx_session_flow_execution ON "SESSION" (FLOW_EXECUTION_ID, DEPLOYMENT_ID);
 
--- Index for absolute expiry on SSO_SESSION (supports cleanup)
-CREATE INDEX idx_sso_session_absolute_expires_at ON "SSO_SESSION" (ABSOLUTE_EXPIRES_AT);
+-- Index for absolute expiry on SESSION (supports cleanup)
+CREATE INDEX idx_session_absolute_expires_at ON "SESSION" (ABSOLUTE_EXPIRES_AT);
+
+-- Index for subject lookups on SESSION, used to list a subject's sessions and to end them all.
+CREATE INDEX idx_session_subject ON "SESSION" (DEPLOYMENT_ID, SUBJECT_ID);
 
 -- Table to store the durable session context for an SSO session, one row per checkpoint.
 CREATE TABLE "SSO_SESSION_CONTEXT" (
@@ -84,8 +89,8 @@ CREATE TABLE "SSO_SESSION_CONTEXT" (
     PRIMARY KEY (SESSION_ID, DEPLOYMENT_ID, CHECKPOINT_ID)
 );
 
--- Table to record the applications participating in an SSO session (1:many by SESSION_ID).
-CREATE TABLE "SSO_SESSION_PARTICIPANT" (
+-- Table to record the applications participating in a session (1:many by SESSION_ID).
+CREATE TABLE "SESSION_PARTICIPANT" (
     SESSION_ID VARCHAR(36) NOT NULL,
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     APP_ID VARCHAR(36) NOT NULL,
@@ -97,7 +102,7 @@ CREATE TABLE "SSO_SESSION_PARTICIPANT" (
 
 -- Index for participation lookups by application, used when an application is deleted and its
 -- participation must be detached from every session it joined.
-CREATE INDEX idx_sso_session_participant_app ON "SSO_SESSION_PARTICIPANT" (DEPLOYMENT_ID, APP_ID);
+CREATE INDEX idx_session_participant_app ON "SESSION_PARTICIPANT" (DEPLOYMENT_ID, APP_ID);
 
 -- Table to store consent records.
 CREATE TABLE "CONSENT" (

@@ -21,6 +21,15 @@ export interface AgentLoginConsentConfig {
   validityPeriod?: number;
 }
 
+/**
+ * Where an agent stands in its lifespan, derived by the server on every read.
+ */
+export type AgentLifespanPhase = 'UNBOUNDED' | 'ACTIVE' | 'EXPIRED';
+
+export interface AgentLifespan {
+  phase: AgentLifespanPhase;
+}
+
 export interface Agent {
   id: string;
   ouId: string;
@@ -47,6 +56,15 @@ export interface Agent {
    * Effective access status, derived by the server at read time. Read-only.
    */
   status?: AccessStatusReport;
+  /**
+   * The RFC 3339 instant the agent's lifespan ends. Absent when it does not expire. On an edit, null
+   * removes the end.
+   */
+  validUntil?: string | null;
+  /**
+   * Where the agent stands in its lifespan. Read-only.
+   */
+  lifespan?: AgentLifespan;
 }
 
 export interface BasicAgent {
@@ -64,6 +82,15 @@ export interface BasicAgent {
    * Effective access status, derived by the server at read time. Read-only.
    */
   status?: AccessStatusReport;
+  /**
+   * The RFC 3339 instant the agent's lifespan ends. Absent when it does not expire. On an edit, null
+   * removes the end.
+   */
+  validUntil?: string | null;
+  /**
+   * Where the agent stands in its lifespan. Read-only.
+   */
+  lifespan?: AgentLifespan;
 }
 
 export interface AgentListResponse {
@@ -89,7 +116,7 @@ export interface UpdateAgentRequest {
   description?: string;
   logoUrl?: string;
   owner?: string;
-  /** Whether the agent acts on behalf of a signed-in user. Not stored; it selects the grant rules checked on save. */
+  /** Whether the agent acts on behalf of a user. Not stored; it selects the grant rules checked on save. */
   delegated?: boolean;
   attributes?: Record<string, unknown>;
   allowedUserTypes?: string[];
@@ -98,6 +125,8 @@ export interface UpdateAgentRequest {
   authFlowId?: string;
   registrationFlowId?: string;
   isRegistrationFlowEnabled?: boolean;
+  /** Absent leaves the lifespan unchanged; null removes its end. */
+  validUntil?: string | null;
 }
 
 export interface AgentGroup {

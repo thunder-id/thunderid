@@ -19,9 +19,11 @@ import (
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/cibamock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/deviceauthmock"
 	"github.com/thunder-id/thunderid/tests/testhelpers"
 )
 
@@ -39,7 +41,7 @@ func TestCallbackDispatcherSuite(t *testing.T) {
 func (suite *CallbackDispatcherTestSuite) SetupTest() {
 	suite.mockAuthZ = authzmock.NewAuthorizeServiceInterfaceMock(suite.T())
 	suite.mockCIBA = cibamock.NewCIBAServiceInterfaceMock(suite.T())
-	suite.dispatcher = newCallbackDispatcher(testhelpers.OAuthConfig(), suite.mockAuthZ, suite.mockCIBA)
+	suite.dispatcher = newCallbackDispatcher(testhelpers.OAuthConfig(), suite.mockAuthZ, suite.mockCIBA, nil)
 
 	_ = config.InitializeServerRuntime("test", &config.Config{
 		JWT: engineconfig.JWTConfig{
@@ -63,6 +65,14 @@ func (suite *CallbackDispatcherTestSuite) postCallback(body string) *httptest.Re
 }
 
 // --- handleFlowCallback: empty / malformed body ---
+
+func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_OversizedBody_ReturnsBadRequest() {
+	w := suite.postCallback(`{"authId":"auth-1","assertion":"` + strings.Repeat("a", maxCallbackBodyBytes) + `"}`)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+	suite.mockAuthZ.AssertNotCalled(suite.T(), "HandleAuthorizationCallback",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
 
 func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_EmptyBody_ReturnsBadRequest() {
 	w := suite.postCallback("")
@@ -102,7 +112,7 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_MissingAssertio
 
 func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_AuthCode_DefaultType_Success() {
 	suite.mockAuthZ.EXPECT().
-		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion").
+		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion", mock.Anything).
 		Return("https://client.example.com/cb?code=xyz", nil)
 
 	w := suite.postCallback(`{"authId":"auth-1","assertion":"the-assertion"}`)
@@ -113,9 +123,22 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_AuthCode_Defaul
 	suite.Equal("https://client.example.com/cb?code=xyz", resp.RedirectURI)
 }
 
+func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_AuthCode_PassesSessionData() {
+	suite.mockAuthZ.EXPECT().
+		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion", []oauth2model.SessionData{
+			{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-1"},
+		}).
+		Return("https://client.example.com/cb?code=xyz", nil)
+
+	w := suite.postCallback(`{"authId":"auth-1","assertion":"the-assertion",` +
+		`"sessionData":[{"flowIdentifier":"f51bdb0f22d906bb","sessionHandle":"handle-1"}]}`)
+
+	suite.Equal(http.StatusOK, w.Code)
+}
+
 func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_AuthCode_ExplicitType_Success() {
 	suite.mockAuthZ.EXPECT().
-		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion").
+		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion", mock.Anything).
 		Return("https://client.example.com/cb?code=xyz", nil)
 
 	w := suite.postCallback(`{"authId":"auth-1","assertion":"the-assertion","type":"authorization_code"}`)
@@ -135,7 +158,7 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_AuthCode_ErrorS
 		State:             "state-abc",
 	}
 	suite.mockAuthZ.EXPECT().
-		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion").
+		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion", mock.Anything).
 		Return("", authErr)
 
 	w := suite.postCallback(`{"authId":"auth-1","assertion":"the-assertion"}`)
@@ -156,7 +179,7 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_AuthCode_ErrorS
 		State:             "",
 	}
 	suite.mockAuthZ.EXPECT().
-		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion").
+		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion", mock.Anything).
 		Return("", authErr)
 
 	w := suite.postCallback(`{"authId":"auth-1","assertion":"the-assertion"}`)
@@ -176,7 +199,7 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_AuthCode_ErrorP
 		State:             "mystate",
 	}
 	suite.mockAuthZ.EXPECT().
-		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion").
+		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion", mock.Anything).
 		Return("", authErr)
 
 	w := suite.postCallback(`{"authId":"auth-1","assertion":"the-assertion"}`)
@@ -196,7 +219,7 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_AuthCode_ErrorP
 		State:             "",
 	}
 	suite.mockAuthZ.EXPECT().
-		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion").
+		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion", mock.Anything).
 		Return("", authErr)
 
 	w := suite.postCallback(`{"authId":"auth-1","assertion":"the-assertion"}`)
@@ -241,7 +264,7 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_CIBA_Error() {
 func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_CIBA_NilCIBAService_ReturnsBadRequest() {
 	// When the CIBA grant type is not in allowed_grant_types, cibaService is nil. A CIBA
 	// callback must be rejected gracefully instead of panicking on the nil service.
-	suite.dispatcher = newCallbackDispatcher(testhelpers.OAuthConfig(), suite.mockAuthZ, nil)
+	suite.dispatcher = newCallbackDispatcher(testhelpers.OAuthConfig(), suite.mockAuthZ, nil, nil)
 
 	w := suite.postCallback(
 		`{"authId":"auth-req-1","assertion":"ciba-assertion","type":"urn:openid:params:grant-type:ciba"}`)
@@ -251,6 +274,22 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_CIBA_NilCIBASer
 	suite.NoError(json.NewDecoder(w.Body).Decode(&body))
 	suite.Equal(oauth2const.ErrorInvalidRequest, body["error"])
 	suite.Contains(body["error_description"], "Unsupported callback type")
+}
+
+func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_DeviceGrant_Success() {
+	deviceService := deviceauthmock.NewDeviceAuthServiceInterfaceMock(suite.T())
+	deviceService.EXPECT().HandleCallback(mock.Anything, "device-request-1", "device-assertion").Return(nil)
+	suite.dispatcher = newCallbackDispatcher(
+		testhelpers.OAuthConfig(), suite.mockAuthZ, suite.mockCIBA, deviceService)
+
+	w := suite.postCallback(
+		`{"authId":"device-request-1","assertion":"device-assertion",` +
+			`"type":"urn:ietf:params:oauth:grant-type:device_code"}`)
+
+	suite.Equal(http.StatusOK, w.Code)
+	var body map[string]string
+	suite.NoError(json.NewDecoder(w.Body).Decode(&body))
+	suite.Equal("OK", body["status"])
 }
 
 // --- handleFlowCallback: unsupported type ---
@@ -376,7 +415,7 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_SuppressedServe
 		State:             "state-abc",
 	}
 	suite.mockAuthZ.EXPECT().
-		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion").
+		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion", mock.Anything).
 		Return("", authErr)
 
 	w := suite.postCallback(`{"authId":"auth-1","assertion":"the-assertion"}`)

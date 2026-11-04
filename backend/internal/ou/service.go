@@ -1006,12 +1006,9 @@ func (ous *organizationUnitService) GetOrganizationUnitRoles(
 
 	items, totalCount, svcErr := ous.getResourceListWithExistenceCheck(
 		ctx, id, limit, offset, "roles",
-		listThenCount(
-			func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
-				return ous.roleResolver.GetRoleListByOUID(ctx, id, limit, offset)
-			},
-			ous.roleResolver.GetRoleCountByOUID,
-		),
+		func(ctx context.Context, id string, limit, offset int) (interface{}, int, error) {
+			return ous.roleResolver.GetRoleListByOUID(ctx, id, limit, offset)
+		},
 		false, // No composite error mapping for roles
 	)
 	if svcErr != nil {
@@ -1204,12 +1201,9 @@ func (ous *organizationUnitService) GetOrganizationUnitRolesByPath(
 
 	items, totalCount, svcErr := ous.getResourceListWithExistenceCheck(
 		ctx, ou.ID, limit, offset, "roles",
-		listThenCount(
-			func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
-				return ous.roleResolver.GetRoleListByOUID(ctx, id, limit, offset)
-			},
-			ous.roleResolver.GetRoleCountByOUID,
-		),
+		func(ctx context.Context, id string, limit, offset int) (interface{}, int, error) {
+			return ous.roleResolver.GetRoleListByOUID(ctx, id, limit, offset)
+		},
 		false,
 	)
 	if svcErr != nil {

@@ -69,8 +69,12 @@ describe('steps models', () => {
       expect(StaticStepTypes.Start).toBe('START');
     });
 
-    it('should have exactly 2 static step types', () => {
-      expect(Object.keys(StaticStepTypes)).toHaveLength(2);
+    it('should have Variables type', () => {
+      expect(StaticStepTypes.Variables).toBe('VARIABLES');
+    });
+
+    it('should have exactly 3 static step types', () => {
+      expect(Object.keys(StaticStepTypes)).toHaveLength(3);
     });
   });
 

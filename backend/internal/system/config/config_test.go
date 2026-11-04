@@ -945,6 +945,24 @@ func (suite *ConfigTestSuite) TestMergeStructs_PrimitiveTypes() {
 	assert.Equal(suite.T(), 2.71, base.Float64Field)         // Overridden
 }
 
+// An ID-JAG role switched off in deployment.yaml overrides the true default from default.json, and a
+// role the deployment leaves out keeps it.
+func (suite *ConfigTestSuite) TestMergeConfigs_IDJAGRoleOverride() {
+	base := &Config{OAuth: OAuthConfig{IDJAG: engineconfig.IDJAGConfig{
+		Issuance:   engineconfig.IDJAGRoleConfig{Enabled: new(true)},
+		Acceptance: engineconfig.IDJAGRoleConfig{Enabled: new(true)},
+	}}}
+	user := &Config{OAuth: OAuthConfig{IDJAG: engineconfig.IDJAGConfig{
+		Acceptance: engineconfig.IDJAGRoleConfig{Enabled: new(false)},
+	}}}
+
+	mergeConfigs(base, user)
+
+	assert.True(suite.T(), base.OAuth.IDJAG.Issuance.IsEnabled())
+	assert.Equal(suite.T(), new(true), base.OAuth.IDJAG.Issuance.Enabled)
+	assert.False(suite.T(), base.OAuth.IDJAG.Acceptance.IsEnabled())
+}
+
 // TestMergeConfigs_BoolPointerOverride guards the fix for the bug where plain bool config fields
 // defaulting to true in default.json could not be overridden to false via deployment.yaml (a user
 // false was indistinguishable from the zero value and silently dropped). The affected fields use
@@ -1789,8 +1807,44 @@ func (suite *ConfigTestSuite) TestNotificationConfig_Validate_DelegatesToOTP() {
 	assert.Contains(suite.T(), err.Error(), "notification.otp.length")
 }
 
+func (suite *ConfigTestSuite) TestNotificationTemplateConfig_Validate() {
+	// Zero and positive values are accepted (zero means "use the default").
+	assert.NoError(suite.T(), (&NotificationTemplateConfig{}).Validate())
+	assert.NoError(suite.T(), (&NotificationTemplateConfig{
+		MaxSubjectLength: 1000, MaxEmailBodyLength: 10000, MaxSMSBodyLength: 4096}).Validate())
+
+	// A negative value is rejected, and the error names the offending key.
+	for key, cfg := range map[string]*NotificationTemplateConfig{
+		"notification.template.max_subject_length":    {MaxSubjectLength: -1},
+		"notification.template.max_email_body_length": {MaxEmailBodyLength: -1},
+		"notification.template.max_sms_body_length":   {MaxSMSBodyLength: -1},
+	} {
+		err := cfg.Validate()
+		assert.Error(suite.T(), err)
+		assert.Contains(suite.T(), err.Error(), key)
+	}
+}
+
+func (suite *ConfigTestSuite) TestNotificationTemplateConfig_LengthLimits() {
+	// An unset (zero) value yields the built-in default.
+	zero := NotificationTemplateConfig{}
+	assert.Equal(suite.T(), defaultMaxSubjectLength, zero.SubjectLengthLimit())
+	assert.Equal(suite.T(), defaultMaxEmailBodyLength, zero.EmailBodyLengthLimit())
+	assert.Equal(suite.T(), defaultMaxSMSBodyLength, zero.SMSBodyLengthLimit())
+
+	// A configured positive value takes effect.
+	set := NotificationTemplateConfig{MaxSubjectLength: 10, MaxEmailBodyLength: 20, MaxSMSBodyLength: 30}
+	assert.Equal(suite.T(), 10, set.SubjectLengthLimit())
+	assert.Equal(suite.T(), 20, set.EmailBodyLengthLimit())
+	assert.Equal(suite.T(), 30, set.SMSBodyLengthLimit())
+}
+
 func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() {
 	sendErrs := true
+	idJAG := engineconfig.IDJAGConfig{
+		Issuance:   engineconfig.IDJAGRoleConfig{Enabled: new(true)},
+		Acceptance: engineconfig.IDJAGRoleConfig{Enabled: new(false)},
+	}
 	src := OAuthConfig{
 		RefreshToken:             engineconfig.RefreshTokenConfig{RenewOnGrant: true, ValidityPeriod: 7200},
 		AuthorizationCode:        engineconfig.AuthorizationCodeConfig{ValidityPeriod: 300},
@@ -1800,6 +1854,7 @@ func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() 
 		DPoP:                     engineconfig.DPoPConfig{Required: true, AllowedAlgs: []string{"ES256"}},
 		CIBA:                     engineconfig.CIBAConfig{IDTokenHintMaxAgeDays: 30},
 		TokenExchange:            engineconfig.TokenExchangeConfig{TokenFamily: "inherit"},
+		IDJAG:                    idJAG,
 		AllowWildcardRedirectURI: true,
 		AllowedGrantTypes:        []string{"authorization_code"},
 		AllowedResponseTypes:     []string{"code"},
@@ -1817,6 +1872,7 @@ func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() 
 	assert.Equal(suite.T(), src.DPoP, dst.DPoP)
 	assert.Equal(suite.T(), src.CIBA, dst.CIBA)
 	assert.Equal(suite.T(), src.TokenExchange, dst.TokenExchange)
+	assert.Equal(suite.T(), src.IDJAG, dst.IDJAG)
 	assert.Equal(suite.T(), src.AllowWildcardRedirectURI, dst.AllowWildcardRedirectURI)
 	assert.Equal(suite.T(), src.AllowedGrantTypes, dst.AllowedGrantTypes)
 	assert.Equal(suite.T(), src.AllowedResponseTypes, dst.AllowedResponseTypes)

@@ -49,7 +49,7 @@ func (e *rbacEngine) EvaluateAccessBatch(
 	for _, group := range groupEvaluations(request.Evaluations) {
 		authorizedPerms, svcErr := e.roleService.GetAuthorizedPermissionsByResourceServer(
 			ctx, group.subject.ID, group.subject.GroupIDs, group.subject.RoleIDs,
-			group.resourceServerID, group.permissions)
+			group.ouID, group.resourceServerID, group.permissions)
 		if svcErr != nil {
 			return nil, fmt.Errorf("role service error: %s", svcErr.Error)
 		}
@@ -68,10 +68,11 @@ func (e *rbacEngine) EvaluateAccessBatch(
 func groupEvaluations(evaluations []AccessEvaluationRequest) []evaluationGroup {
 	groups := make([]evaluationGroup, 0, len(evaluations))
 	for index, evaluation := range evaluations {
-		groupIndex := findEvaluationGroup(groups, evaluation.Subject, evaluation.ResourceServer.ID)
+		groupIndex := findEvaluationGroup(groups, evaluation.Subject, evaluation.OUID, evaluation.ResourceServer.ID)
 		if groupIndex == -1 {
 			groups = append(groups, evaluationGroup{
 				subject:          evaluation.Subject,
+				ouID:             evaluation.OUID,
 				resourceServerID: evaluation.ResourceServer.ID,
 			})
 			groupIndex = len(groups) - 1
@@ -87,12 +88,13 @@ func groupEvaluations(evaluations []AccessEvaluationRequest) []evaluationGroup {
 }
 
 // findEvaluationGroup returns the index of the group matching the subject.
-func findEvaluationGroup(groups []evaluationGroup, subject Subject, resourceServerID string) int {
+func findEvaluationGroup(groups []evaluationGroup, subject Subject, ouID, resourceServerID string) int {
 	for i, group := range groups {
 		if group.subject.Category == subject.Category &&
 			group.subject.ID == subject.ID &&
 			slices.Equal(group.subject.GroupIDs, subject.GroupIDs) &&
 			slices.Equal(group.subject.RoleIDs, subject.RoleIDs) &&
+			group.ouID == ouID &&
 			group.resourceServerID == resourceServerID {
 			return i
 		}

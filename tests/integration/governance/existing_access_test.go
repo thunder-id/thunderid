@@ -613,7 +613,7 @@ func (ts *ExistingAccessTestSuite) oauthApplication(name, clientID, authFlowID s
 func ssoSessionCount(t *testing.T, subjectID string) int {
 	t.Helper()
 	raw, err := testutils.QueryRuntimeDB(fmt.Sprintf(
-		`SELECT COUNT(*) FROM "SSO_SESSION" WHERE SUBJECT_ID = '%s';`, subjectID))
+		`SELECT COUNT(*) FROM "SESSION" WHERE SUBJECT_ID = '%s';`, subjectID))
 	require.NoError(t, err, "failed to read the SSO sessions")
 	count, err := strconv.Atoi(raw)
 	require.NoError(t, err, "unreadable SSO session count %q", raw)

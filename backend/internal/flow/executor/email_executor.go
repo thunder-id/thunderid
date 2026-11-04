@@ -212,6 +212,10 @@ func (e *emailExecutor) resolveSenderID(ctx *providers.NodeContext) (string, err
 func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, logger *log.Logger) (string, error) {
 	emailAttr := resolveInputIdentifierByType(ctx, providers.InputTypeEmail, userAttributeEmail)
 
+	if isConstantNodeInput(ctx, emailAttr) && ctx.UserInputs[emailAttr] != "" {
+		return ctx.UserInputs[emailAttr], nil
+	}
+
 	if recipientEmail, ok := ctx.ForwardedData[emailAttr].(string); ok && recipientEmail != "" {
 		return recipientEmail, nil
 	}

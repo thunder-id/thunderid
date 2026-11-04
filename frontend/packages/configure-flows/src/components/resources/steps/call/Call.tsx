@@ -127,9 +127,7 @@ function Call({resources, data}: CallPropsInterface): ReactElement {
     navigate(flowRoutes.flows.detail(referencedFlow.id));
   };
 
-  const bodyLabel: string = referencedFlow
-    ? referencedFlow.name
-    : t('flows:core.call.selectFlow', 'Select a flow to invoke');
+  const bodyLabel: string = referencedFlow?.name ?? t('flows:core.call.selectFlow', 'Select a flow to invoke');
 
   return (
     <ValidationErrorBoundary resource={resource}>

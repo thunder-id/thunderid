@@ -12,8 +12,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/DATA-DOG/go-sqlmock"
+
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/cachemock"
 )
@@ -255,6 +258,37 @@ func (s *CacheBackedEntityStoreTestSuite) TestUpdateSystemAttributes_Invalidates
 
 	_, ok := s.entityByIDCache.Get(context.Background(), cache.CacheKey{Key: entity.ID})
 	s.False(ok)
+}
+
+// A write inside a transaction drops the cached copies again once the transaction ends, so a copy a
+// concurrent read cached before the commit does not outlive it.
+func (s *CacheBackedEntityStoreTestSuite) TestUpdateSystemAttributes_DropsTheCacheAgainWhenTheTransactionEnds() {
+	db, sqlMock, err := sqlmock.New()
+	s.Require().NoError(err)
+	defer func() { _ = db.Close() }()
+	sqlMock.ExpectBegin()
+	sqlMock.ExpectCommit()
+	entity := s.makeEntity(testEntityID, "client")
+	s.entityByIDData[entity.ID] = &entity
+	s.mockStore.On("UpdateSystemAttributes", mock.Anything, entity.ID, mock.Anything).Return(nil).Once()
+
+	err = transaction.NewTransactioner(db, "entity").Transact(context.Background(),
+		func(txCtx context.Context) error {
+			if err := s.cachedStore.UpdateSystemAttributes(txCtx, entity.ID, nil); err != nil {
+				return err
+			}
+			// A concurrent read caches the row as it was before the commit.
+			s.entityByIDData[entity.ID] = &entity
+			s.entityWithCredsByIDData[entity.ID] = &entityWithCredentials{Entity: &entity}
+			return nil
+		})
+
+	s.Require().NoError(err)
+	_, ok := s.entityByIDCache.Get(context.Background(), cache.CacheKey{Key: entity.ID})
+	s.False(ok)
+	_, ok = s.entityWithCredentialsByIDCache.Get(context.Background(), cache.CacheKey{Key: entity.ID})
+	s.False(ok)
+	s.NoError(sqlMock.ExpectationsWereMet())
 }
 
 // GetEntityWithCredentials cache helper edge cases

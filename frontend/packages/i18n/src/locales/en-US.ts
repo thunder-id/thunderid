@@ -15,6 +15,13 @@ const translations = {
     'accountStatus.active.hint.user': 'This account can sign in normally.',
     'accountStatus.active.hint.agent': 'This agent can authenticate normally.',
     'accountStatus.active.hint.application': 'This application can authenticate normally.',
+    'accountStatus.expired.label': 'Expired',
+    'accountStatus.expired.hint.agent':
+      "The agent's lifespan has ended, so it cannot authenticate. Set a later end date to restore access.",
+    'accountStatus.expired.hint.agentSince':
+      "The agent's lifespan ended on {{since}}, so it cannot authenticate. Set a later end date to restore access.",
+    'accountStatus.expired.hint.other':
+      'The lifespan has ended, so access is refused. Set a later end date to restore access.',
     'accountStatus.locked.label': 'Locked',
     'accountStatus.locked.hint.user':
       'The account is locked and cannot sign in. The user can complete account recovery, or an administrator can unlock the account.',
@@ -151,9 +158,12 @@ const translations = {
     'actions.finish': 'Finish',
     'actions.done': 'Done',
     'actions.refresh': 'Refresh',
+    'actions.loadMore': 'Load more',
     'actions.copy': 'Copy',
     'actions.copyId': 'Copy ID',
     'actions.copied': 'Copied!',
+    'actions.show': 'Show',
+    'actions.hide': 'Hide',
     'actions.download': 'Download',
     'actions.upload': 'Upload',
     'actions.export': 'Export',
@@ -233,6 +243,7 @@ const translations = {
     'messages.createError': 'Failed to create',
     'messages.noData': 'No data available',
     'messages.noResults': 'No results found',
+    'messages.noOptions': 'No options available',
     'messages.somethingWentWrong': 'Something went wrong',
     'messages.tryAgain': 'Please try again',
 
@@ -1318,17 +1329,8 @@ const translations = {
     'onboarding.errors.unavailable.title': 'Could not start agent onboarding',
     'onboarding.errors.unavailable.description':
       'The agent onboarding flow could not be loaded. Check that the server is reachable and try again.',
+    'onboarding.errors.optionsFailed': 'Could not load the list. Try again.',
     'onboarding.errors.stepFailed': 'This step could not be completed. Review the values and try again.',
-    'onboarding.selectPlaceholder': 'Select an option',
-    'onboarding.authFlow.loading': 'Loading login flows...',
-    'onboarding.authFlow.error': 'Login flows could not be loaded.',
-    'onboarding.authFlow.empty': 'No login flows are available.',
-    'onboarding.userType.loading': 'Loading user types...',
-    'onboarding.userType.error': 'User types could not be loaded.',
-    'onboarding.userType.empty': 'No user types are available.',
-    'onboarding.user.loading': 'Loading users...',
-    'onboarding.user.error': 'Users could not be loaded.',
-    'onboarding.user.empty': 'No users are available.',
     'onboarding.addAnother': 'Add another agent',
 
     // Add form (native creation, no onboarding flow)
@@ -1413,7 +1415,9 @@ const translations = {
     'edit.page.validation.missingAllowedUserType': 'select at least one allowed user type',
     'edit.page.validation.missingCertificate': 'add a certificate',
     'edit.page.validation.invalidBackchannelLogoutUri': 'fix the back-channel logout URI',
+    'edit.page.validation.invalidIdentityAssertions': 'fix the identity assertions (ID-JAG) settings',
     'edit.page.validation.tokenSettings': 'fix the token settings',
+    'edit.page.validation.invalidLifespan': 'choose a lifespan end in the future',
     'edit.page.reset': 'Reset',
     'edit.page.save': 'Save',
     'edit.page.saving': 'Saving…',
@@ -1434,6 +1438,15 @@ const translations = {
     'edit.general.sections.owner.description': 'The user accountable for this agent.',
     'edit.general.sections.owner.label': 'Owner',
     'edit.general.owner.empty': 'No owner assigned',
+    'edit.attributes.lifespan.title': 'Lifespan',
+    'edit.attributes.lifespan.description':
+      'When this agent stops being able to authenticate. Tokens issued to it expire no later than this.',
+    'edit.attributes.lifespan.label': 'Valid Until',
+    'edit.attributes.lifespan.unbounded': 'No expiry date. Set one to end its access automatically.',
+    'edit.attributes.lifespan.mustBeFuture': 'Choose a date and time in the future.',
+    'lifespan.expiresIn': 'Expires {{relative}}',
+    'lifespan.expiredAgo': 'Expired {{relative}}',
+    'lifespan.noExpiry': 'No expiry date',
     'edit.general.sections.attributes.title': 'Attributes',
     'edit.general.sections.attributes.description':
       "A preview of this agent's attribute values. Manage them from the Attributes tab.",
@@ -1531,14 +1544,15 @@ const translations = {
     'edit.flows.allowedUserTypes.required': 'Select at least one user type that can sign up through this agent.',
     'edit.flows.delegationLock.message':
       'These settings are frozen for this agent. Turn on Delegated mode in the Advanced tab to unlock and start using them.',
+    'edit.flows.signInGrantLock.message':
+      'Sign-in flows apply only when this agent signs users in with the authorization code or CIBA grant type.',
 
     // Edit page - Advanced tab
     'edit.advanced.mode.title': 'Operating mode',
     'edit.advanced.delegationToggle.label': 'Delegated mode',
     'edit.advanced.mode.onOwnBehalf.description':
       'This agent authenticates with its own credentials without user interaction, using client credentials.',
-    'edit.advanced.mode.onBehalfOfUser.description':
-      'This agent acts on behalf of a signed-in user, using authorization code with PKCE.',
+    'edit.advanced.mode.onBehalfOfUser.description': 'This agent can act on behalf of a user.',
     'edit.advanced.agentSignIn.title': 'Agent sign-in',
     'edit.advanced.agentSignIn.description': 'Allow agents to sign in through this agent using the sign-in flow.',
     'edit.advanced.agentSignIn.toggle.label': 'Enable agent sign-in',
@@ -1578,6 +1592,9 @@ const translations = {
     'edit.tokens.audience.footnote': 'Attribute sets are configured independently for each audience.',
     'edit.tokens.delegationLock.message':
       'This agent does not receive tokens on behalf of a user. Turn on Delegated mode in the <advancedLink>Advanced tab</advancedLink> to configure them.',
+    'edit.tokens.user.tokenExchangeAttributes.note':
+      'Token exchange keeps only the selected attributes that the incoming token already carries.',
+    'edit.tokens.user.jwtBearerAttributes.note': 'Tokens from a redeemed ID-JAG carry no user attributes.',
     'edit.tokens.agent.attributes.title': 'Access token attributes',
     'edit.tokens.agent.attributes.description':
       'Extra attributes to add to the access token this agent receives for itself.',
@@ -1628,7 +1645,9 @@ const translations = {
     'errors.AGT-1042':
       'The subject attribute mapping must reference an attribute that is unique, required, and string typed in an allowed agent type.',
     'errors.AGT-1044':
-      'A delegated agent needs at least one grant type that lets it act for a signed-in user, such as authorization code.',
+      'A delegated agent needs at least one grant type that lets it act for a user, such as authorization code.',
+    'errors.AGT-1045': 'The lifespan end must be a valid date and time.',
+    'errors.AGT-1046': 'The lifespan end must be in the future.',
   },
 
   // ============================================================================
@@ -2053,6 +2072,8 @@ const translations = {
     'errors.GRP-1007': 'One or more selected members no longer exist. Refresh and try again.',
     'errors.GRP-1015': 'This group is managed declaratively and cannot be edited or deleted.',
     'errors.GRP-1016': 'New groups cannot be created while the server is running in declarative-only mode.',
+    'errors.GRP-1019':
+      "One or more selected members are not owned by or shared with this group's organization unit. Refresh and try again.",
   },
 
   // ============================================================================
@@ -2188,7 +2209,7 @@ const translations = {
   connections: {
     // Listing page
     'listing.title': 'Connections',
-    'listing.subtitle': 'Configure the external services ThunderID connects to.',
+    'listing.subtitle': 'Configure the external services {{productName}} connects to.',
     'listing.search.placeholder': 'Search connections',
     'listing.showingCount': 'Showing {{count}} connections',
     'listing.loading': 'Loading connections...',
@@ -2312,20 +2333,20 @@ const translations = {
     'detail.credentials.title': 'Credentials',
     'detail.credentials.description': 'Credentials and endpoints for this connection. Secrets are stored write-only.',
     'detail.configuration.title': 'Connection configuration',
-    'detail.configuration.description': 'Provide the details ThunderID needs to connect to this service.',
+    'detail.configuration.description': 'Provide the details {{productName}} needs to connect to this service.',
     'detail.authentication.title': 'Authentication',
     'detail.authentication.endpointChanged': 'The PDP endpoint changed. Enter fresh credentials before saving.',
     'detail.authentication.gatewayUrlChanged': 'The SMS gateway URL changed. Enter fresh credentials before saving.',
     'detail.authentication.description':
-      'Configure how ThunderID authenticates requests sent to this policy decision point.',
+      'Configure how {{productName}} authenticates requests sent to this policy decision point.',
     'detail.authentication.gatewayDescription':
-      'Configure how ThunderID authenticates requests sent to this SMS gateway.',
+      'Configure how {{productName}} authenticates requests sent to this SMS gateway.',
     'detail.authentication.originChanged':
       'The URL origin changed. Enter the credentials again under Authentication before saving.',
     'detail.authentication.method.label': 'Authentication method',
     'detail.authentication.method.none': 'None',
     'detail.outboundAuthentication.description':
-      'Credentials ThunderID uses to sign in to this provider. Secrets are stored write-only.',
+      'Credentials {{productName}} uses to sign in to this provider. Secrets are stored write-only.',
     'detail.usages.title': 'Usages',
     'detail.usages.description':
       'Resources that use this connection. A connection cannot be deleted while a resource uses it.',
@@ -2339,6 +2360,14 @@ const translations = {
     'detail.dangerZone.delete.title': 'Delete connection',
     'detail.dangerZone.delete.description':
       'Permanently delete this connection and all associated data. Any application relying on it will stop accepting logins through this provider. This action cannot be undone.',
+    'detail.dangerZone.delete.emailDescription':
+      'Permanently delete this email provider and all associated data. It cannot be deleted while a flow sends email through it. If it is the default email sender, system-generated emails are not sent until another sender is set as the default. This action cannot be undone.',
+    'detail.dangerZone.delete.smsDescription':
+      'Permanently delete this SMS provider and all associated data. It cannot be deleted while a flow sends SMS through it. This action cannot be undone.',
+    'detail.dangerZone.delete.pdpDescription':
+      'Permanently delete this policy decision point and all associated data. It cannot be deleted while a resource server uses it for authorization. This action cannot be undone.',
+    'detail.dangerZone.delete.httpDescription':
+      'Permanently delete this service endpoint and all associated data. It cannot be deleted while a flow calls it. This action cannot be undone.',
     'detail.saveBar.unsaved': 'You have unsaved changes',
     'detail.saveBar.save': 'Save changes',
     'detail.saveBar.saving': 'Saving...',
@@ -2348,7 +2377,7 @@ const translations = {
     'form.chrome.configure': 'Configure connection',
     'form.configureTitle': 'Configure {{vendor}}',
     'form.fields.name.label': 'Connection name',
-    'form.fields.name.hint': 'Friendly name used to identify this connection in ThunderID.',
+    'form.fields.name.hint': 'Friendly name used to identify this connection in {{productName}}.',
     'form.fields.name.placeholder': 'e.g. {{example}}',
     'form.fields.clientId.label': 'Client ID',
     'form.fields.clientId.hint': 'OAuth2 client identifier used for authentication.',
@@ -2395,7 +2424,7 @@ const translations = {
     'form.fields.issuer.hint': 'Issuer identifier expected in tokens from this provider.',
     'form.fields.tokenExchangeEnabled.label': 'Enable token exchange',
     'form.fields.tokenExchangeEnabled.hint':
-      "Let backend services exchange this provider's tokens for ThunderID access tokens.",
+      "Let backend services exchange this provider's tokens for {{productName}} access tokens.",
     'form.fields.trustedTokenAudience.label': 'Trusted token audience',
     'form.fields.trustedTokenAudience.hint': 'Accepted audience value for external tokens during token exchange.',
     'form.fields.accountSid.label': 'Account SID',
@@ -2409,7 +2438,7 @@ const translations = {
     'form.fields.senderId.label': 'Sender ID',
     'form.fields.senderId.hint': 'Phone number or alphanumeric sender ID messages are sent from.',
     'form.fields.smsGatewayUrl.label': 'Gateway URL',
-    'form.fields.smsGatewayUrl.hint': 'HTTP endpoint ThunderID calls to send an SMS.',
+    'form.fields.smsGatewayUrl.hint': 'HTTP endpoint {{productName}} calls to send an SMS.',
     'form.fields.httpMethod.label': 'HTTP method',
     'form.fields.httpMethod.hint': 'Method used to call the gateway URL.',
     'form.fields.contentType.label': 'Content type',
@@ -2426,7 +2455,7 @@ const translations = {
     'form.fields.authzenEndpoint.label': 'AuthZEN evaluation endpoint',
     'form.fields.authzenBatchEndpoint.label': 'AuthZEN batch evaluation endpoint',
     'form.fields.timeoutMs.label': 'Timeout in milliseconds',
-    'form.fields.timeoutMs.hint': 'Maximum time ThunderID waits for one PDP request.',
+    'form.fields.timeoutMs.hint': 'Maximum time {{productName}} waits for one PDP request.',
     'form.fields.httpEndpointDescription.label': 'Description',
     'form.fields.httpEndpointDescription.hint': 'Optional note about what this endpoint does, up to 500 characters.',
     'form.fields.httpEndpointUrl.label': 'Endpoint URL',
@@ -2456,10 +2485,10 @@ const translations = {
       'Select known subject attributes or type custom runtime attributes. Leave empty to send only the default subject fields.',
     'subjectMapping.mappings.title': 'Attribute mappings',
     'subjectMapping.mappings.description':
-      'Map ThunderID subject attribute names to the attribute names expected by the PDP.',
+      'Map {{productName}} subject attribute names to the attribute names expected by the PDP.',
     'subjectMapping.mappings.hint':
       'Select extra user or agent attributes to include in the PDP request. The PDP attribute is optional and is only needed when the PDP expects a different name.',
-    'subjectMapping.mappings.thunderIdAttribute': 'ThunderID attribute',
+    'subjectMapping.mappings.thunderIdAttribute': '{{productName}} attribute',
     'subjectMapping.mappings.pdpAttribute': 'PDP attribute',
     'subjectMapping.mappings.pdpAttributeOptional': 'PDP attribute (optional)',
     'subjectMapping.mappings.mapPdpAttribute': 'Map to a different PDP attribute',
@@ -2473,7 +2502,7 @@ const translations = {
     'subjectMapping.mappings.loadTypesError': 'Failed to load user and agent types.',
     'subjectMapping.mappings.remove': 'Remove',
     'subjectMapping.mappings.duplicateAttribute':
-      'Each ThunderID attribute can be mapped only once for an entity type.',
+      'Each {{productName}} attribute can be mapped only once for an entity type.',
     'subjectMapping.mappings.unresolved.warning':
       'These mappings could not be matched to exactly one user or agent type. Remove them before saving this connection.',
     'subjectMapping.mappings.unresolved.entityType': 'Entity type: {{entityType}}',
@@ -2743,7 +2772,7 @@ const translations = {
     // Create form
     'create.title': 'Add trusted issuer',
     'create.subtitle':
-      'Register an external identity provider whose identity assertions ThunderID can exchange for access tokens.',
+      'Register an external identity provider whose identity assertions {{productName}} can exchange for access tokens.',
     'create.duplicateName': 'A trusted issuer with this name already exists.',
     'create.form.name.label': 'Name',
     'create.form.issuer.label': 'Issuer URI',
@@ -2756,6 +2785,9 @@ const translations = {
     'create.form.idJagEnabled.label': 'Enable Identity Assertion JWT Authorization Grant (ID-JAG)',
     'create.form.idJagEnabled.hint':
       'Accept and exchange signed identity assertions from this issuer for access tokens.',
+
+    // Shared by the create form and the detail page
+    'idJag.acceptanceUnavailable': 'This server does not accept identity assertions from any issuer.',
 
     // Detail page
     'detail.back': 'Back to connections',
@@ -2893,6 +2925,9 @@ const translations = {
     'authorizationDetails.addItem': '{{item}}, add',
     'authorizationDetails.addBackItem': '{{item}}, add back',
     'authorizationDetails.newItem': '{{label}}, add',
+    'client.hosts': 'Published by {{clientIdHost}}. Returns to {{redirectUriHost}}.',
+    'client.deviceWarning':
+      'This app runs on your device. Other programs on your device can use the same address, so continue only if you started this app.',
   },
 
   // ============================================================================
@@ -3706,8 +3741,12 @@ const translations = {
     // Token section
     'edit.token.seconds': 'seconds',
     'edit.token.labels.token_validity': 'Token validity',
+    'edit.token.labels.access_token_validity': 'Access token validity',
     'edit.token.loading_attributes': 'Loading user attributes...',
     'edit.token.no_user_attributes': 'No user attributes available. Configure allowed user types for this {{entity}}.',
+    'edit.token.no_user_attributes.allUserTypes':
+      'No user type defines any attributes yet. Add attributes to a user type to select them here.',
+    'edit.token.user_attributes_load_error': 'Failed to load the user attributes.',
     'edit.token.click_to_add': 'Click to add',
     'edit.token.click_to_remove': 'Click to remove',
     'edit.token.configure_attributes': 'Add or remove attributes',
@@ -3718,12 +3757,18 @@ const translations = {
     'edit.token.validity.error': 'Validity period must be at least 1 second',
     'edit.token.token_profile_card.title': 'Token attributes & response',
     'edit.token.token_profile_card.title.native': 'Token attributes',
+    'edit.token.token_profile_card.title.accessTokenOnly': 'Access token attributes',
+    'edit.token.token_profile_card.title.accessTokenWithoutAttributes': 'Access token',
     'edit.token.token_profile_card.description':
       'Choose the attributes in each token and the user info response, and how each is returned.',
     'edit.token.token_profile_card.description.noUserInfo':
       'Choose the attributes in each token issued to this {{entity}}, and how each is returned.',
     'edit.token.token_profile_card.description.native':
       'Choose the attributes included in the token issued to this {{entity}}.',
+    'edit.token.token_profile_card.description.accessTokenOnly':
+      'The user attributes in the access token issued to this {{entity}} on behalf of a user.',
+    'edit.token.token_profile_card.description.accessTokenWithoutAttributes':
+      'The access token issued to this {{entity}} on behalf of a user.',
     'edit.token.tabs.access_token': 'Access token',
     'edit.token.tabs.id_token': 'ID token',
     'edit.token.tabs.refresh_token': 'Refresh token',
@@ -3734,6 +3779,8 @@ const translations = {
     'edit.token.user_info.inherit_info': 'User info response will use the same attributes as the ID token',
     'edit.token.scopes_card.title': 'Scopes & user attribute mappings',
     'edit.token.scopes_card.description': 'Configure the OAuth2 scopes and the user attributes exposed for each scope',
+    'edit.token.scopes_card.description.scopesOnly':
+      'A custom scope listed here is kept as an OpenID Connect scope instead of being treated as a resource server permission. Its mapped attributes are not added to the access token.',
     'edit.token.scopes.title': 'Available scopes',
     'edit.token.scopes.hint': 'Toggle the OAuth2 scopes available to this {{entity}}.',
     'edit.token.scopes.active_label': 'Active',
@@ -3784,6 +3831,8 @@ const translations = {
     'edit.token.id_token.response_type_placeholder': 'Select response type',
     'edit.token.id_token.encryption_alg_placeholder': 'Select encryption algorithm',
     'edit.token.id_token.encryption_enc_placeholder': 'Select content encryption',
+    'edit.token.id_token.id_jag_note':
+      'Identity assertions (ID-JAG) this {{entity}} requests also include the allowed attributes below, except roles and groups, whenever the ID token carries them.',
     'edit.token.user_info.response_type_placeholder': 'Select response type',
     'edit.token.user_info.encryption_alg_placeholder': 'Select encryption algorithm',
     'edit.token.user_info.encryption_enc_placeholder': 'Select content encryption',
@@ -3866,6 +3915,8 @@ const translations = {
     'edit.advanced.idJag.validityPeriod.error': 'Enter a value of at least 1 second.',
     'edit.advanced.idJag.validityPeriod.hint': 'How long an issued assertion stays valid. Default 300.',
     'edit.advanced.idJag.grantTypeHint': 'The token exchange grant type is enabled together with this feature.',
+    'edit.advanced.idJag.tokenExchangeUnavailable':
+      'This server does not allow the token exchange grant, so identity assertions cannot be issued.',
     'create.success': 'Application created successfully.',
     'create.error': 'Failed to create application. Please try again.',
     'create.flowGenerationError': 'Failed to generate the authentication flow. Please try again.',
@@ -4721,6 +4772,16 @@ const translations = {
     'core.executions.inputs.identifierLabel': 'Identifier',
     'core.executions.inputs.identifierPlaceholder': 'e.g., username, email',
     'core.executions.inputs.required': 'Required',
+    'core.executions.inputs.defaultLabel': 'Default value',
+    'core.executions.inputs.defaultHint':
+      'Used when the flow has no value for this input yet. A value that is already available is kept.',
+    'core.executions.inputs.defaultPlaceholder': 'Enter a value',
+    'core.executions.inputs.defaultNotSet': 'Not set',
+    'core.executions.inputs.defaultTrue': 'True',
+    'core.executions.inputs.defaultFalse': 'False',
+    'core.executions.inputs.constant': 'Constant',
+    'core.executions.inputs.constantHint':
+      'Replaces a submitted or available value with the default value when this step runs, unless the step reads that value from an earlier step. Needs a default value.',
     'core.executions.inputs.add': 'Add input',
     'core.executions.inputs.remove': 'Remove input',
     'core.executions.inputs.empty': 'No custom inputs configured. The executor will use its default inputs.',
@@ -4731,6 +4792,8 @@ const translations = {
     'core.executions.inputs.types.phone': 'Phone',
     'core.executions.inputs.types.consent': 'Consent',
     'core.executions.inputs.types.select': 'Select',
+    'core.executions.inputs.types.boolean': 'Boolean',
+    'core.executions.inputs.types.userSelect': 'User Select',
 
     // Execution steps - tooltips and messages
     // No-config executors
@@ -4766,6 +4829,7 @@ const translations = {
 
     // Validation messages - executor
     'core.validation.fields.executor.general': 'The executor <0>{{id}}</0> is not properly configured.',
+    'core.validation.fields.executor.inputs': 'One or more inputs are not properly configured.',
 
     // Validation messages - call
     'core.validation.fields.call.general': 'The Call node <0>{{id}}</0> has no referenced flow.',
@@ -4835,6 +4899,8 @@ const translations = {
       'SSO check <code>{{id}}</code> does not reference a session checkpoint. Select one in its properties, or remove the step.',
     'core.validation.sso.invalidCheckpointRef':
       'SSO check <code>{{id}}</code> references a session step that no longer exists. Select a valid session checkpoint in its properties.',
+    'core.validation.inputs.heldConstant':
+      'The input <code>{{id}}</code> asks for a value that an executor holds constant, so the value entered here would be replaced. Remove the input from this screen or remove the constant.',
     'core.validation.sso.orphanSession':
       'Session step <code>{{id}}</code> is not referenced by any SSO check. Add an SSO check that uses it, or remove the step.',
 
@@ -4903,6 +4969,14 @@ const translations = {
     'core.elements.text.align.options.right': 'Right',
     'core.elements.text.align.options.justify': 'Justify',
     'core.elements.text.align.options.inherit': 'Inherit',
+
+    // Elements - user select element
+    'core.elements.userSelect.caption': 'Loads the system users, page by page',
+    'core.elements.userSelect.dataSource.title': 'Data source',
+    'core.elements.userSelect.dataSource.hint': 'Loads users from the users API, page by page.',
+    'core.elements.userSelect.submitValue.title': 'Submit value',
+    'core.elements.userSelect.submitValue.value': 'User ID',
+    'core.elements.userSelect.submitValue.hint': 'Sends the ID of the chosen user, not the name.',
 
     // Elements - classes property field
     'core.elements.classesPropertyField.label': 'CSS classes',

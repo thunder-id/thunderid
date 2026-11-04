@@ -50,6 +50,8 @@ const (
 	// FlowTypeSystem represents a flow a service runs in process, such as revoking what a change
 	// invalidates. It is left out of ValidFlowTypes, so no API creates or starts one.
 	FlowTypeSystem FlowType = "SYSTEM"
+	// FlowTypeDeviceGrant represents a Device Authorization Grant flow.
+	FlowTypeDeviceGrant FlowType = "DEVICE_GRANT"
 )
 
 // ValidFlowTypes is the set of supported flow types.
@@ -60,6 +62,7 @@ var ValidFlowTypes = []FlowType{
 	FlowTypeRecovery,
 	FlowTypeSignOut,
 	FlowTypeAdministration,
+	FlowTypeDeviceGrant,
 }
 
 // NodeVariant identifies a PROMPT node sub-type that activates a variant-specific code path.
@@ -134,6 +137,8 @@ const (
 	GrantTypeTokenExchange GrantType = "urn:ietf:params:oauth:grant-type:token-exchange" //nolint:gosec
 	// GrantTypeCIBA represents the OpenID Connect CIBA (Client-Initiated Backchannel Authentication) grant type.
 	GrantTypeCIBA GrantType = "urn:openid:params:grant-type:ciba"
+	// GrantTypeDeviceCode represents the OAuth 2.0 Device Authorization Grant grant type.
+	GrantTypeDeviceCode GrantType = "urn:ietf:params:oauth:grant-type:device_code"
 	// GrantTypeJWTBearer represents the JWT bearer grant type used to present an ID-JAG assertion
 	// (draft-ietf-oauth-identity-assertion-authz-grant) issued by a trusted external IdP.
 	GrantTypeJWTBearer GrantType = "urn:ietf:params:oauth:grant-type:jwt-bearer" //nolint:gosec
@@ -175,6 +180,7 @@ var SupportedGrantTypes = []GrantType{
 	GrantTypeRefreshToken,
 	GrantTypeTokenExchange,
 	GrantTypeCIBA,
+	GrantTypeDeviceCode,
 	GrantTypeJWTBearer,
 }
 
@@ -192,6 +198,7 @@ func (gt GrantType) IsValid() bool {
 var refreshTokenIssuingGrantTypes = []GrantType{
 	GrantTypeAuthorizationCode,
 	GrantTypeCIBA,
+	GrantTypeDeviceCode,
 }
 
 // IssuesRefreshToken reports whether this grant type can issue a refresh token.
@@ -314,7 +321,7 @@ func (es EntityState) String() string {
 }
 
 // AccessStatus is the status a management read reports for an entity. LOCKED is derived at read
-// time from the stored unlock time and is never stored.
+// time from the stored unlock time, and EXPIRED from the entity's lifespan end; neither is stored.
 type AccessStatus string
 
 const (
@@ -327,6 +334,10 @@ const (
 	// AccessStatusSuspended means an administrator has suspended the entity. The record stays
 	// writable.
 	AccessStatusSuspended AccessStatus = "SUSPENDED"
+
+	// AccessStatusExpired means the entity's lifespan has ended. Moving its end into the future
+	// restores access.
+	AccessStatusExpired AccessStatus = "EXPIRED"
 )
 
 // String returns the string representation of the access status.
@@ -349,6 +360,9 @@ const (
 
 	// AccessHoldReasonAdministrativeSuspension is a suspension an administrator placed.
 	AccessHoldReasonAdministrativeSuspension AccessHoldReason = "ADMINISTRATIVE_SUSPENSION"
+
+	// AccessHoldReasonLifespanEnded is a lifespan that has reached its end.
+	AccessHoldReasonLifespanEnded AccessHoldReason = "LIFESPAN_ENDED"
 )
 
 // String returns the string representation of the hold reason.
@@ -424,6 +438,9 @@ const (
 
 	// AccessRefusalReasonSuspended says an administrator has suspended the account.
 	AccessRefusalReasonSuspended AccessRefusalReason = "suspended"
+
+	// AccessRefusalReasonExpired says the account's lifespan has ended. It never states when.
+	AccessRefusalReasonExpired AccessRefusalReason = "expired"
 )
 
 // ConsentStatus defines the possible statuses for a consent record.
@@ -471,6 +488,9 @@ const (
 	// NamespacePermission represents the permission consent namespace.
 	// Used for managing consent over resource action permissions (e.g. booking:reservations:read).
 	NamespacePermission Namespace = "permission"
+	// NamespaceAuthorizationDetail represents the RFC 9396 authorization detail consent namespace.
+	// Used for managing consent over individual authorization details (e.g. one payment).
+	NamespaceAuthorizationDetail Namespace = "authorization_detail"
 )
 
 // ConsentAuthorizationStatus defines the possible statuses for a consent authorization record.
@@ -664,6 +684,7 @@ const (
 	NamespaceLogoutReq      RuntimeStoreNamespace = "logout:req"
 	NamespacePAR            RuntimeStoreNamespace = "par:req"
 	NamespaceCIBA           RuntimeStoreNamespace = "ciba:req"
+	NamespaceDeviceAuth     RuntimeStoreNamespace = "device:req"
 	NamespaceJTI            RuntimeStoreNamespace = "jti:token"
 	NamespaceVCINonce       RuntimeStoreNamespace = "vci:nonce"
 	NamespaceVCIOffer       RuntimeStoreNamespace = "vci:offer"

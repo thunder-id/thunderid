@@ -116,6 +116,217 @@ func (s *authorizationDetailExecService) resolveRequestedTypes(ctx context.Conte
 	return types, nil
 }
 
+// RefreshableAuthorizationDetails drops one-off details and those whose type changed since the grant.
+func (s *authorizationDetailExecService) RefreshableAuthorizationDetails(ctx context.Context,
+	granted []providers.AuthorizationDetail) ([]providers.AuthorizationDetail, *tidcommon.ServiceError) {
+	if len(granted) == 0 {
+		return nil, nil
+	}
+	objects, svcErr := s.parseGrantedDetails(ctx, granted)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	// A deleted, recreated or changed type drops its detail rather than failing the request, since the user
+	// approved it on the version it was granted on.
+	refreshable := make([]providers.AuthorizationDetail, 0, len(granted))
+	for i, detail := range granted {
+		obj := objects[i]
+		t, svcErr := s.lookupType(ctx, obj.Type)
+		if svcErr != nil {
+			return nil, &tidcommon.InternalServerError
+		}
+		switch {
+		case t == nil:
+			s.logger.Debug(ctx, "Authorization details type deleted; detail is not renewed",
+				log.String("type", obj.Type))
+		case t.ID != detail.TypeID:
+			s.logger.Debug(ctx, "Authorization details type is not the one that granted the detail; "+
+				"detail is not renewed", log.String("type", obj.Type))
+		case t.Version != detail.TypeVersion:
+			s.logger.Debug(ctx, "Authorization details type changed since the grant; detail is not renewed",
+				log.String("type", obj.Type))
+		case !t.Reuse:
+			s.logger.Debug(ctx, "Authorization details type does not allow reuse; detail is not renewed",
+				log.String("type", obj.Type))
+		default:
+			value, err := obj.Value()
+			if err != nil {
+				s.logger.Error(ctx, "Failed to encode refreshable authorization details", log.Error(err))
+				return nil, &tidcommon.InternalServerError
+			}
+			detail.Value = value
+			refreshable = append(refreshable, detail)
+		}
+	}
+	if len(refreshable) == 0 {
+		return nil, nil
+	}
+	return refreshable, nil
+}
+
+// parseGrantedDetails parses the values of granted details, in order, as tokens carry them.
+func (s *authorizationDetailExecService) parseGrantedDetails(ctx context.Context,
+	granted []providers.AuthorizationDetail) ([]common.Detail, *tidcommon.ServiceError) {
+	values, err := common.EncodeDetailValues(granted)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to encode granted authorization details", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	objects, err := common.ParseRequestedDetails(string(values))
+	if err != nil {
+		s.logger.Error(ctx, "Failed to parse granted authorization details", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return objects, nil
+}
+
+// ModifyAuthorizationDetails checks a token request's authorization_details against a grant. Each entry
+// must modify a distinct granted detail, so one approval cannot be claimed twice.
+func (s *authorizationDetailExecService) ModifyAuthorizationDetails(ctx context.Context,
+	granted []providers.AuthorizationDetail, raw string) (json.RawMessage, *tidcommon.ServiceError) {
+	if len(granted) == 0 {
+		return nil, &ErrorNoAuthorizationDetailsGranted
+	}
+	grantedObjects, svcErr := s.parseGrantedDetails(ctx, granted)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	grantedTypes := make(map[string]providers.AuthorizationDetail, len(granted))
+	for _, detail := range granted {
+		grantedTypes[detail.Type] = detail
+	}
+	requested, err := common.ParseRequestedDetails(raw)
+	if err != nil {
+		return nil, ErrorMalformedAuthorizationDetails.WithParams(map[string]string{"reason": err.Error()})
+	}
+
+	types := map[string]providers.AuthorizationDetailType{}
+	for i, obj := range requested {
+		if _, ok := types[obj.Type]; ok {
+			continue
+		}
+		grant, isGranted := grantedTypes[obj.Type]
+		if !isGranted {
+			return nil, ErrorAuthorizationDetailNotGranted.WithParams(map[string]string{"index": strconv.Itoa(i)})
+		}
+		t, svcErr := s.lookupType(ctx, obj.Type)
+		if svcErr != nil {
+			return nil, &tidcommon.InternalServerError
+		}
+		if t == nil || t.ID != grant.TypeID || t.Version != grant.TypeVersion {
+			return nil, ErrorAuthorizationDetailTypeChangedSinceGrant.WithParams(
+				map[string]string{"index": strconv.Itoa(i)})
+		}
+		types[obj.Type] = *t
+	}
+
+	policies := make(map[string]common.FieldPolicies, len(types))
+	requestSchemas := make(map[string]*jsonschema.Resolved, len(types))
+	schemas := make(map[string]*jsonschema.Resolved, len(types))
+	for typ, t := range types {
+		policies[typ] = common.Policies(t.Schema)
+		requestSchema, err := common.CompileRequestSchema(t.Schema)
+		if err != nil {
+			s.logger.Error(ctx, "Registered authorization details type schema cannot be compiled", log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		requestSchemas[typ] = requestSchema
+		schema, err := common.CompileSchema(t.Schema)
+		if err != nil {
+			s.logger.Error(ctx, "Registered authorization details type schema cannot be compiled", log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		schemas[typ] = schema
+	}
+	// Each entry is held to its type's request schema, where processor-supplied fields may be left out, before it
+	// is compared with the grant, which bounds what the comparison reads.
+	for i, obj := range requested {
+		if err := common.ValidateDetail(requestSchemas[obj.Type], obj); err != nil {
+			return nil, ErrorAuthorizationDetailNotConformant.WithParams(
+				map[string]string{"index": strconv.Itoa(i), "reason": err.Error()})
+		}
+	}
+	modifies := make([][]bool, len(requested))
+	candidates := make([][]common.Detail, len(requested))
+	reasons := make([]error, len(requested))
+	for i, obj := range requested {
+		modifies[i] = make([]bool, len(grantedObjects))
+		candidates[i] = make([]common.Detail, len(grantedObjects))
+		for j, base := range grantedObjects {
+			if base.Type != obj.Type {
+				continue
+			}
+			candidate, err := common.WithSuppliedFields(obj, base, policies[base.Type])
+			if err == nil {
+				err = common.CheckModification(base, candidate, policies[base.Type], common.PartyClient)
+			}
+			if err != nil {
+				if reasons[i] == nil {
+					reasons[i] = err
+				}
+				continue
+			}
+			modifies[i][j] = true
+			candidates[i][j] = candidate
+		}
+	}
+	matched := matchDetails(modifies)
+	modified := make([]common.Detail, len(requested))
+	for i, obj := range requested {
+		if matched[i] < 0 {
+			if reasons[i] != nil && !slices.Contains(modifies[i], true) {
+				return nil, ErrorAuthorizationDetailExceedsGrant.WithParams(
+					map[string]string{"index": strconv.Itoa(i), "reason": reasons[i].Error()})
+			}
+			return nil, ErrorAuthorizationDetailNotGranted.WithParams(map[string]string{"index": strconv.Itoa(i)})
+		}
+		modified[i] = candidates[i][matched[i]]
+		if err := common.ValidateDetail(schemas[obj.Type], modified[i]); err != nil {
+			return nil, ErrorAuthorizationDetailNotConformant.WithParams(
+				map[string]string{"index": strconv.Itoa(i), "reason": err.Error()})
+		}
+		if err := common.CheckFieldLimits(policies[obj.Type], modified[i]); err != nil {
+			return nil, ErrorAuthorizationDetailNotAllowed.WithParams(
+				map[string]string{"index": strconv.Itoa(i), "reason": err.Error()})
+		}
+	}
+
+	encoded, err := common.EncodeValues(modified)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to encode modified authorization details", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return encoded, nil
+}
+
+// matchDetails pairs each requested detail with a distinct granted detail it modifies, or -1 if none.
+func matchDetails(modifies [][]bool) []int {
+	matched := make([]int, len(modifies))
+	owner := map[int]int{}
+	var assign func(i int, visited map[int]bool) bool
+	assign = func(i int, visited map[int]bool) bool {
+		for j, ok := range modifies[i] {
+			if !ok || visited[j] {
+				continue
+			}
+			visited[j] = true
+			if current, taken := owner[j]; !taken || assign(current, visited) {
+				owner[j] = i
+				matched[i] = j
+				return true
+			}
+		}
+		return false
+	}
+	for i := range matched {
+		matched[i] = -1
+	}
+	for i := range modifies {
+		assign(i, map[int]bool{})
+	}
+	return matched
+}
+
 // ProcessAuthorizationDetails runs the types' processors with the given subject. In a login the subject is the
 // signed-in user or agent, and a detail of a type without a processor is left for consent to decide. When the
 // subject is the client itself, as on client_credentials, no one is there to consent, so every type must
@@ -231,7 +442,7 @@ func (s *authorizationDetailExecService) processDetails(ctx context.Context, obj
 		if err != nil {
 			s.logger.Error(ctx, "Failed to read the processor authentication", log.String("type", t.Type),
 				log.Error(err))
-			return nil, &ErrorProcessorUnavailable
+			return nil, &common.ErrorProcessorUnavailable
 		}
 		if _, ok := batches[key]; !ok {
 			keys = append(keys, key)
@@ -251,7 +462,7 @@ func (s *authorizationDetailExecService) processDetails(ctx context.Context, obj
 		if err != nil {
 			s.logger.Warn(ctx, "Authorization details processor unavailable",
 				log.String("endpoint", cfg.Endpoint), log.Error(err))
-			return nil, &ErrorProcessorUnavailable
+			return nil, &common.ErrorProcessorUnavailable
 		}
 		if svcErr := s.applyProcessorAnswer(ctx, objects, cfg, indexes, resp, types, refused); svcErr != nil {
 			return nil, svcErr
@@ -331,12 +542,12 @@ func (s *authorizationDetailExecService) applyProcessorAnswer(ctx context.Contex
 		if !sent[result.DetailID] {
 			s.logger.Warn(ctx, "Authorization details processor answered a detail it was not sent",
 				log.String("endpoint", cfg.Endpoint))
-			return &ErrorProcessorUnavailable
+			return &common.ErrorProcessorUnavailable
 		}
 		if _, seen := results[result.DetailID]; seen {
 			s.logger.Warn(ctx, "Authorization details processor answered a detail more than once",
 				log.String("endpoint", cfg.Endpoint))
-			return &ErrorProcessorUnavailable
+			return &common.ErrorProcessorUnavailable
 		}
 		results[result.DetailID] = result
 	}
@@ -346,7 +557,7 @@ func (s *authorizationDetailExecService) applyProcessorAnswer(ctx context.Contex
 		if !ok || result.Decision == nil {
 			s.logger.Warn(ctx, "Authorization details processor answer is missing or undecided",
 				log.String("endpoint", cfg.Endpoint), log.String("type", t.Type))
-			return &ErrorProcessorUnavailable
+			return &common.ErrorProcessorUnavailable
 		}
 		if !*result.Decision {
 			s.logger.Debug(ctx, "Authorization detail refused by processor", log.String("type", t.Type),
@@ -370,7 +581,7 @@ func (s *authorizationDetailExecService) applyPatch(ctx context.Context, obj *co
 		if err != nil {
 			s.logger.Warn(ctx, "Authorization details processor patch cannot be applied",
 				log.String("type", t.Type), log.Error(err))
-			return &ErrorProcessorUnavailable
+			return &common.ErrorProcessorUnavailable
 		}
 		changes[path] = value
 	}
@@ -384,7 +595,7 @@ func (s *authorizationDetailExecService) applyPatch(ctx context.Context, obj *co
 		s.logger.Warn(ctx, "Authorization details processor patch refused", log.String("type", t.Type))
 		s.logger.Debug(ctx, "Authorization details processor patch refusal reason", log.String("type", t.Type),
 			log.Error(err))
-		return &ErrorProcessorUnavailable
+		return &common.ErrorProcessorUnavailable
 	}
 	*obj = patched
 	return nil

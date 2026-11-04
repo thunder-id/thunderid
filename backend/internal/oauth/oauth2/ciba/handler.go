@@ -82,15 +82,16 @@ func (h *cibaHandler) HandleBackchannelAuthRequest(w http.ResponseWriter, r *htt
 	}
 
 	request := &BackchannelAuthRequest{
-		LoginHint:       loginHint,
-		IDTokenHint:     idTokenHint,
-		Scope:           r.FormValue(oauth2const.RequestParamScope),
-		Resources:       r.Form[oauth2const.RequestParamResource],
-		BindingMessage:  r.FormValue(oauth2const.RequestParamBindingMessage),
-		RequestedExpiry: r.FormValue(oauth2const.RequestParamRequestedExpiry),
-		ACRValues:       r.FormValue(oauth2const.RequestParamAcrValues),
-		Headers:         utils.SanitizeRawMultiValueStringMap(utils.HeadersWithHost(r)),
-		QueryParams:     utils.SanitizeRawMultiValueStringMap(r.URL.Query()),
+		LoginHint:            loginHint,
+		IDTokenHint:          idTokenHint,
+		Scope:                r.FormValue(oauth2const.RequestParamScope),
+		Resources:            r.Form[oauth2const.RequestParamResource],
+		BindingMessage:       r.FormValue(oauth2const.RequestParamBindingMessage),
+		RequestedExpiry:      r.FormValue(oauth2const.RequestParamRequestedExpiry),
+		ACRValues:            r.FormValue(oauth2const.RequestParamAcrValues),
+		AuthorizationDetails: r.FormValue(oauth2const.RequestParamAuthorizationDetails),
+		Headers:              utils.SanitizeRawMultiValueStringMap(utils.HeadersWithHost(r)),
+		QueryParams:          utils.SanitizeRawMultiValueStringMap(r.URL.Query()),
 	}
 
 	response, cibaErr := h.cibaService.InitiateBackchannelAuth(r.Context(), request, clientInfo.OAuthApp)

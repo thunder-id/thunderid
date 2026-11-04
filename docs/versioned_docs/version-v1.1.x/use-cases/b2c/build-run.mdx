@@ -1,0 +1,70 @@
+---
+title: How It All Runs
+docType: use-case
+sidebar_position: 7
+description: See how the pieces you built play out on every request, from sign-in to an authorized API call.
+---
+
+# How It All Runs
+
+You have built every piece. On its own each one does little; together they carry a customer from opening the app to
+an authorized API call, and your app never handles a credential or makes an access decision itself. Here is one
+request passing through every piece you built:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor C as Customer
+  participant App as Wayfinder app
+  participant IL as Identity layer
+  participant API as Booking API
+  C->>App: Opens the app, taps sign in
+  App->>IL: Starts the sign-in flow (authorization code + PKCE)
+  IL-->>C: Presents the sign-in screen
+  C->>IL: Enters credentials
+  IL->>IL: Verifies the credential against the Customer user type
+  IL->>IL: Reads the Traveler role and its booking permissions
+  IL-->>App: Returns an authorization code (redirect back)
+  App->>IL: Exchanges the code and PKCE verifier for a token
+  IL-->>App: Signed token (scope: booking:read booking:create booking:cancel)
+  App->>API: Requests the customer's trips, with the token
+  API->>API: Verifies the token signature, checks booking:read against the wayfinder resource server
+  API-->>App: Returns the trips
+  App-->>C: Shows their trips
+```
+
+## The Token
+
+The token is the hinge. The identity layer mints it once, at sign-in, stamped with the permissions from the
+customer's role. Every call after that is just the app presenting the token and the API reading it: no second trip to
+the identity layer, no password anywhere near your backend. Decoded, it is an ordinary JSON Web Token (JWT), signed data your API can verify on its own:
+
+```json
+{
+  "sub": "3f29a1d2-8b4e-4c7a-9f21-6e5d0a1b2c3d",
+  "iss": "https://auth.example.com",
+  "aud": "https://api.wayfinder.example.com",
+  "scope": "booking:read booking:create booking:cancel",
+  "exp": 1893456000
+}
+```
+
+`sub` is the customer, `scope` is the permission list from their `Traveler` role, `aud` is the resource server the
+token was issued for, and `iss` is the <ProductName /> instance that signed it. See
+[Token Formats](../../../guides/protocols/oauth-oidc/token-formats) for the full set of claims (the fields inside the token).
+
+## What You've Built
+
+A complete consumer access solution, assembled by hand and running on standard OAuth2/OIDC:
+
+- Customers sign themselves up, sign in, and recover their own accounts.
+- Staff join by invitation, each scoped to a single job.
+- A role decides what every customer may do, and the Booking API enforces it on every request.
+- Your application stores no passwords and makes no access decisions of its own. The identity layer and the token
+  carry that weight.
+
+## See It Live
+
+[See It in a Sample App](../try-it-out) walks these same journeys in the running Wayfinder sample: sign in as John
+Doe, sign up a new customer, recover a password, and onboard a staff member. When you want the reasoning behind the
+defaults, and what to change when your constraints differ, see [Design Decisions](../architecture-decisions).

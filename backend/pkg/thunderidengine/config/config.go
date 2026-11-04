@@ -192,17 +192,28 @@ type CacheConfig struct {
 
 // RedisConfig holds the Redis connection configuration.
 type RedisConfig struct {
-	Address           string `yaml:"address"              json:"address"`
-	Username          string `yaml:"username"             json:"username"`
-	Password          string `yaml:"password"             json:"password"`
-	DB                int    `yaml:"db"                   json:"db"`
-	KeyPrefix         string `yaml:"key_prefix"           json:"key_prefix"`
-	MaxRetries        int    `yaml:"max_retries"          json:"max_retries"`
-	MinRetryBackoffMS int    `yaml:"min_retry_backoff_ms" json:"min_retry_backoff_ms"`
-	MaxRetryBackoffMS int    `yaml:"max_retry_backoff_ms" json:"max_retry_backoff_ms"`
-	DialTimeoutMS     int    `yaml:"dial_timeout_ms"      json:"dial_timeout_ms"`
-	ReadTimeoutMS     int    `yaml:"read_timeout_ms"      json:"read_timeout_ms"`
-	WriteTimeoutMS    int    `yaml:"write_timeout_ms"     json:"write_timeout_ms"`
+	Address           string         `yaml:"address"              json:"address"`
+	Username          string         `yaml:"username"             json:"username"`
+	Password          string         `yaml:"password"             json:"password"`
+	DB                int            `yaml:"db"                   json:"db"`
+	KeyPrefix         string         `yaml:"key_prefix"           json:"key_prefix"`
+	MaxRetries        int            `yaml:"max_retries"          json:"max_retries"`
+	MinRetryBackoffMS int            `yaml:"min_retry_backoff_ms" json:"min_retry_backoff_ms"`
+	MaxRetryBackoffMS int            `yaml:"max_retry_backoff_ms" json:"max_retry_backoff_ms"`
+	DialTimeoutMS     int            `yaml:"dial_timeout_ms"      json:"dial_timeout_ms"`
+	ReadTimeoutMS     int            `yaml:"read_timeout_ms"      json:"read_timeout_ms"`
+	WriteTimeoutMS    int            `yaml:"write_timeout_ms"     json:"write_timeout_ms"`
+	TLS               RedisTLSConfig `yaml:"tls" json:"tls"`
+}
+
+// RedisTLSConfig holds the TLS settings for a Redis connection.
+type RedisTLSConfig struct {
+	Enabled            bool   `yaml:"enabled"              json:"enabled"`
+	CAFile             string `yaml:"ca_file"              json:"ca_file"`
+	CertFile           string `yaml:"cert_file"            json:"cert_file"`
+	KeyFile            string `yaml:"key_file"             json:"key_file"`
+	ServerName         string `yaml:"server_name"          json:"server_name"`
+	InsecureSkipVerify bool   `yaml:"insecure_skip_verify" json:"insecure_skip_verify"`
 }
 
 // ServerConfig holds the server configuration details.
@@ -357,6 +368,26 @@ func (c CIMDConfig) IsEnabled() bool {
 	return c.Enabled != nil && *c.Enabled
 }
 
+// IDJAGConfig holds the deployment-wide Identity Assertion JWT Authorization Grant (ID-JAG) switches.
+// Each applies on top of the per-client and per-connection ID-JAG settings: when off, the role is off
+// whatever those settings say.
+type IDJAGConfig struct {
+	// Issuance controls whether ID-JAGs are issued through token exchange.
+	Issuance IDJAGRoleConfig `yaml:"issuance"   json:"issuance"`
+	// Acceptance controls whether ID-JAGs from trusted issuers are accepted on the jwt-bearer grant.
+	Acceptance IDJAGRoleConfig `yaml:"acceptance" json:"acceptance"`
+}
+
+// IDJAGRoleConfig switches one ID-JAG role on or off.
+type IDJAGRoleConfig struct {
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+}
+
+// IsEnabled returns whether the ID-JAG role is enabled, defaulting to true if unset, as default.json does.
+func (c IDJAGRoleConfig) IsEnabled() bool {
+	return c.Enabled == nil || *c.Enabled
+}
+
 // PARConfig holds the Pushed Authorization Request (RFC 9126) configuration.
 type PARConfig struct {
 	RequirePAR bool  `yaml:"require_par" json:"require_par"`
@@ -385,6 +416,14 @@ type ClientAssertionConfig struct {
 	MaxIatAge int64 `yaml:"max_iat_age" json:"max_iat_age"`
 }
 
+// DeviceGrantConfig holds the lifetime and polling interval for device authorization requests.
+type DeviceGrantConfig struct {
+	// ExpiresIn is the device authorization request lifetime in seconds.
+	ExpiresIn int64 `yaml:"expires_in" json:"expires_in"`
+	// Interval is the minimum token polling interval in seconds.
+	Interval int64 `yaml:"interval" json:"interval"`
+}
+
 // OAuthConfig holds the OAuth configuration details.
 type OAuthConfig struct {
 	RefreshToken         RefreshTokenConfig         `yaml:"refresh_token"               json:"refresh_token"`
@@ -392,10 +431,12 @@ type OAuthConfig struct {
 	AuthorizationRequest AuthorizationRequestConfig `yaml:"authorization_request"       json:"authorization_request"`
 	DCR                  DCRConfig                  `yaml:"dcr"                         json:"dcr"`
 	CIMD                 CIMDConfig                 `yaml:"cimd"                        json:"cimd"`
+	IDJAG                IDJAGConfig                `yaml:"id_jag"                      json:"id_jag"`
 	PAR                  PARConfig                  `yaml:"par"                         json:"par"`
 	DPoP                 DPoPConfig                 `yaml:"dpop"                        json:"dpop"`
 	AuthClass            AuthClassConfig            `yaml:"auth_class"                  json:"auth_class"`
 	CIBA                 CIBAConfig                 `yaml:"ciba"                        json:"ciba"`
+	DeviceGrant          DeviceGrantConfig          `yaml:"device_grant"                json:"device_grant"`
 	ClientAssertion      ClientAssertionConfig      `yaml:"client_assertion"            json:"client_assertion"`
 	Revocation           RevocationConfig           `yaml:"revocation"                  json:"revocation"`
 	TokenExchange        TokenExchangeConfig        `yaml:"token_exchange"              json:"token_exchange"`

@@ -27,4 +27,8 @@ const (
 
 	// TokenTypeLogout is the JWT type header value for an OIDC Back-Channel Logout token.
 	TokenTypeLogout = "logout+jwt" //nolint:gosec // JWT typ header value, not a credential
+
+	// TokenTypeDeviceSecret is the JWT type header value for the SSO session data returned with a code
+	// exchange. Its own type keeps it from being accepted where an access or subject token is expected.
+	TokenTypeDeviceSecret = "sso-session+jwt" //nolint:gosec // JWT typ header value, not a credential
 )

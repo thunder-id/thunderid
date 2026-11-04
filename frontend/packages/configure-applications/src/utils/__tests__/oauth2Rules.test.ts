@@ -19,6 +19,7 @@ import {
   isCimdGrantAllowed,
   isGrantLockedByIdJag,
   isIdJagEnabled,
+  isIdJagIssuanceUnavailable,
   isOAuthTokenMode,
 } from '../oauth2Rules';
 
@@ -370,6 +371,26 @@ describe('isIdJagEnabled', () => {
   });
 });
 
+describe('isIdJagIssuanceUnavailable', () => {
+  it('should be true when discovery lists grant types without token exchange', () => {
+    expect(isIdJagIssuanceUnavailable([OAuth2GrantTypes.AUTHORIZATION_CODE, OAuth2GrantTypes.JWT_BEARER])).toBe(true);
+  });
+
+  it('should be true when discovery lists no grant types', () => {
+    expect(isIdJagIssuanceUnavailable([])).toBe(true);
+  });
+
+  it('should be false when discovery lists the token exchange grant', () => {
+    expect(isIdJagIssuanceUnavailable([OAuth2GrantTypes.AUTHORIZATION_CODE, OAuth2GrantTypes.TOKEN_EXCHANGE])).toBe(
+      false,
+    );
+  });
+
+  it('should be false when discovery has not loaded', () => {
+    expect(isIdJagIssuanceUnavailable(undefined)).toBe(false);
+  });
+});
+
 describe('getPublicClientCaption', () => {
   it('points to the cc-incompatible key when client_credentials is selected', () => {
     const config = baseConfig({grantTypes: [OAuth2GrantTypes.CLIENT_CREDENTIALS]});
@@ -439,6 +460,7 @@ describe('hasUserAccess', () => {
   it('is true for authorization_code, CIBA, and password grants', () => {
     expect(hasUserAccess([OAuth2GrantTypes.AUTHORIZATION_CODE])).toBe(true);
     expect(hasUserAccess([OAuth2GrantTypes.CIBA])).toBe(true);
+    expect(hasUserAccess([OAuth2GrantTypes.DEVICE_CODE])).toBe(true);
     expect(hasUserAccess([OAuth2GrantTypes.PASSWORD])).toBe(true);
   });
 

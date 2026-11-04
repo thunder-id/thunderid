@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 )
@@ -37,6 +38,7 @@ const (
 	ExecutorNameProvisioning                 = executormeta.ExecutorNameProvisioning
 	ExecutorNameAttributeCollect             = executormeta.ExecutorNameAttributeCollect
 	ExecutorNameAuthorization                = executormeta.ExecutorNameAuthorization
+	ExecutorNameAuthorizationDetail          = executormeta.ExecutorNameAuthorizationDetail
 	ExecutorNamePermissionValidator          = executormeta.ExecutorNamePermissionValidator
 	ExecutorNameOUCreation                   = executormeta.ExecutorNameOUCreation
 	ExecutorNameHTTPRequest                  = executormeta.ExecutorNameHTTPRequest
@@ -69,6 +71,7 @@ const (
 	ExecutorNameIdentityGovernance           = executormeta.ExecutorNameIdentityGovernance
 	ExecutorNamePreSuspend                   = executormeta.ExecutorNamePreSuspend
 	ExecutorNameExtension                    = executormeta.ExecutorNameExtension
+	ExecutorNameDeviceCode                   = executormeta.ExecutorNameDeviceCode
 )
 
 // Executor mode constants
@@ -129,6 +132,7 @@ const (
 
 	revocationInputRole           = "targetRoleId"
 	revocationInputAssignee       = "targetAssigneeId"
+	revocationInputAssignmentOU   = "targetAssignmentOuId"
 	revocationInputGroup          = "targetGroupId"
 	revocationInputMember         = "targetMemberId"
 	revocationInputPermissions    = "targetPermissions"
@@ -138,7 +142,7 @@ const (
 
 	governanceInputOperatorNote = "operatorNote"
 
-	ouIDKey        = "ouId"
+	ouIDKey        = common.RuntimeKeyOUID
 	ouHandleKey    = "ouHandle"
 	defaultOUIDKey = "defaultOUID"
 
@@ -163,6 +167,9 @@ const (
 	ownerIDKey     = "ownerId"
 	descriptionKey = "description"
 	logoURLKey     = "logoUrl"
+	// validUntilKey carries the RFC 3339 instant the agent's lifespan ends. Absent registers an agent
+	// that does not expire.
+	validUntilKey = "validUntil"
 	// delegatedKey marks an agent that acts on behalf of a signed-in user. Absent means false.
 	delegatedKey = "delegated"
 	// redirectURIsKey carries the callback URIs of a delegated agent, comma separated. It is the

@@ -1,0 +1,59 @@
+---
+title: User Type Reference
+docType: reference
+sidebar_position: 2
+persona: iam
+description: Reference for user type schema settings, attribute types, and constraint modifiers.
+---
+
+# User Type Reference
+
+This page is a reference for all settings, attribute types, and constraint modifiers available when defining a user type schema. For step-by-step instructions on creating and managing user types, see [User Types](../user-types).
+
+## Attribute Types
+
+Each attribute in a user type schema has a **type**. <ProductName /> supports the following attribute types:
+
+| Type | Description |
+|------|-------------|
+| `string` | Text value. Supports `required`, `unique`, `credential`, `enum`, and `regex` constraints. |
+| `number` | Numeric value. Supports `required`, `unique`, and `enum` constraints. |
+| `boolean` | True or false value. Supports `required`. |
+| `object` | Nested object with its own `properties` map. Supports `required`. Nested properties follow the same type rules. |
+| `array` | List of values. Requires an `items` definition specifying the item type (`string`, `number`, or `object`). |
+
+## Attribute Constraint Modifiers
+
+Modifiers add validation and behavior rules to an attribute. You can combine multiple modifiers on a single attribute.
+
+| Modifier | Applies To | What It Does | When to Use |
+|----------|------------|--------------|-------------|
+| `required` | All types | The attribute must be provided on creation. <ProductName /> rejects the request if the value is missing. | Fields essential to the user's identity, such as `email` or `username`. |
+| `unique` | `string`, `number` | The value must be unique across all users. <ProductName /> rejects creation or update if a duplicate exists. | Natural identifiers like `username`, `email`, or `employeeId`. |
+| `credential` | `string`, `number` | <ProductName /> hashes and stores the value securely. Never returned in any API response, even to administrators. | Passwords or other sensitive secrets. |
+| `enum` | `string`, `number` | Restricts the value to a fixed set of allowed options. <ProductName /> rejects any value not in the list. | Controlled vocabularies like a `department` field limited to specific team names. |
+| `regex` | `string` | Validates the value against a regular expression on creation and update. <ProductName /> rejects values that do not match. | Format rules such as email patterns or password complexity requirements. |
+
+## Default Schema
+
+<ProductName /> includes one default user type with a pre-defined schema. You can use it as-is, customize it, or create your own user types. See [User Types](../user-types) for more information.
+
+### Person
+
+The general-purpose user type. Self-registration is enabled, so users of this type can sign up through the registration flow of any application that lists it under [Allowed User Types](../../applications/application-settings#control-who-can-register). Administrators can also create users of this type.
+
+| Attribute | Type | Constraints | Notes |
+|-----------|------|-------------|-------|
+| `username` | `string` | required, unique | Display attribute |
+| `email` | `string` | required, unique, regex | Validated against email format |
+| `given_name` | `string` | - | |
+| `family_name` | `string` | - | |
+| `mobile_number` | `string` | - | |
+| `sub` | `string` | - | |
+| `name` | `string` | - | |
+| `picture` | `string` | - | |
+| `password` | `string` | credential | Never returned in responses |
+
+:::note
+The `picture` attribute stores a URL. When a user's picture is hosted on an external origin, allow that origin in the Content Security Policy `img-src` directive. Otherwise the browser blocks the image where the Console displays it. See [Content Security Policy](../../../deployment/configuration#content-security-policy).
+:::

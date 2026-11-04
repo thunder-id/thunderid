@@ -1,0 +1,68 @@
+---
+title: ThunderIDNodeClient
+docType: reference
+description: Core authentication client for Node.js applications with OAuth 2.0 flows, session, and user management.
+---
+
+# `ThunderIDNodeClient`
+
+`ThunderIDNodeClient` is an abstract base class that extends `ThunderIDJavaScriptClient` with Node.js-specific configuration. Use this class as the foundation when building a new framework-specific authentication client for a Node.js runtime. Examples include adapters for other Node.js server frameworks.
+
+## Overview
+
+`ThunderIDNodeClient` inherits all methods from `ThunderIDJavaScriptClient` and applies the [`ThunderIDNodeConfig`](../../config/thunderid-node-config) type by default. Because the class is abstract, you cannot instantiate it directly. Instead, extend it and implement any framework-specific initialization or middleware logic in the subclass.
+
+## Usage
+
+```ts title="src/MyFrameworkClient.ts" showLineNumbers
+import { ThunderIDNodeClient, ThunderIDNodeConfig } from '@thunderid/node'
+
+interface MyFrameworkConfig extends ThunderIDNodeConfig {
+  customOption?: string
+}
+
+class MyFrameworkClient extends ThunderIDNodeClient<MyFrameworkConfig> {
+  // Add framework-specific methods or override inherited ones here
+}
+
+export default MyFrameworkClient
+```
+
+## Type Parameter
+
+| Parameter | Default | Description |
+| :--- | :--- | :--- |
+| `T` | `ThunderIDNodeConfig` | Configuration type. Extend [`ThunderIDNodeConfig`](../../config/thunderid-node-config) to add framework-specific configuration fields. |
+
+## Node-Specific Methods
+
+Not inherited from `ThunderIDJavaScriptClient`: these methods exist only on `ThunderIDNodeClient` and its subclasses (`ThunderIDExpressClient`, `ThunderIDNextClient`).
+
+### `updateUserCredentials(payload, userId?)`
+
+Updates one or more of a signed-in user's credentials, for example `password`, or any other attribute the user type schema declares `credential: true`. Calls `POST /users/me/update-credentials` with the session's access token attached.
+
+```ts
+updateUserCredentials(payload: Record<string, string>, userId?: string): Promise<void>
+```
+
+```ts title="AuthService.mjs" showLineNumbers
+await client.updateUserCredentials({ password: 'n3wP@ssword!' }, userId)
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `payload` | `Record<string, string>` | New values keyed by credential attribute name (for example `password`) |
+| `userId` | `string` (optional) | Session identifier to read the access token from |
+
+**Returns:** `Promise<void>` - The endpoint responds with `204 No Content` on success. Throws `ThunderIDAPIError` on failure.
+
+:::note
+This method collects only the new value, it does not verify the account's current value first. The self-service credential write path does not check the current value today.
+:::
+
+## Related
+
+- [`ThunderIDNodeConfig`](../../config/thunderid-node-config): Configuration type for this client

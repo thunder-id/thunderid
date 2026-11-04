@@ -42,6 +42,7 @@ paths:
                 issuer: "https://server.example.com"
                 authorization_endpoint: "https://server.example.com/oauth2/authorize"
                 token_endpoint: "https://server.example.com/oauth2/token"
+                device_authorization_endpoint: "https://server.example.com/oauth2/device-authorize"
                 jwks_uri: "https://server.example.com/oauth2/jwks"
                 introspection_endpoint: "https://server.example.com/oauth2/introspect"
                 pushed_authorization_request_endpoint: "https://server.example.com/oauth2/par"
@@ -56,6 +57,7 @@ paths:
                   - authorization_code
                   - client_credentials
                   - refresh_token
+                  - urn:ietf:params:oauth:grant-type:device_code
                   - urn:ietf:params:oauth:grant-type:jwt-bearer
                 token_endpoint_auth_methods_supported:
                   - client_secret_basic
@@ -87,6 +89,7 @@ paths:
                 issuer: "https://server.example.com"
                 authorization_endpoint: "https://server.example.com/oauth2/authorize"
                 token_endpoint: "https://server.example.com/oauth2/token"
+                device_authorization_endpoint: "https://server.example.com/oauth2/device-authorize"
                 userinfo_endpoint: "https://server.example.com/oauth2/userinfo"
                 jwks_uri: "https://server.example.com/oauth2/jwks"
                 introspection_endpoint: "https://server.example.com/oauth2/introspect"
@@ -102,6 +105,7 @@ paths:
                   - authorization_code
                   - client_credentials
                   - refresh_token
+                  - urn:ietf:params:oauth:grant-type:device_code
                   - urn:ietf:params:oauth:grant-type:jwt-bearer
                 token_endpoint_auth_methods_supported:
                   - client_secret_basic
@@ -147,6 +151,11 @@ components:
         token_endpoint:
           type: string
           description: URL of the token endpoint.
+        device_authorization_endpoint:
+          type: string
+          description: >-
+            URL of the Device Authorization endpoint (RFC 8628). Present when the Device Code grant
+            is enabled by the server.
         userinfo_endpoint:
           type: string
           description: URL of the UserInfo endpoint.
@@ -195,7 +204,7 @@ components:
           type: array
           items:
             type: string
-          description: Authorization grant profiles supported, e.g. the ID-JAG profile (`urn:ietf:params:oauth:grant-profile:id-jag`).
+          description: Authorization grant profiles supported, e.g. the ID-JAG profile (`urn:ietf:params:oauth:grant-profile:id-jag`). Present only while the JWT bearer grant is served, that is, it is in `oauth.allowed_grant_types` and `oauth.id_jag.acceptance.enabled` is `true`.
         client_id_metadata_document_supported:
           type: boolean
           description: Whether clients registered from a Client ID Metadata Document are supported. Present only when true.

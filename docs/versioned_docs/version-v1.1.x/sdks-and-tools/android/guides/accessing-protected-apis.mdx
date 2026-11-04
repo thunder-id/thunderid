@@ -1,0 +1,135 @@
+---
+title: Accessing Protected APIs
+docType: guide
+description: Make authenticated API requests from an Android application using OkHttp with automatic bearer token injection.
+---
+
+# Accessing Protected APIs
+
+When your app needs to call a backend API that requires authentication, use `ThunderIDClient.getAccessToken()` to retrieve a valid access token and attach it as a Bearer token to your requests. The SDK automatically refreshes the token if it has expired.
+
+## Using HttpURLConnection
+
+The following example calls a protected API endpoint using the standard Android `HttpURLConnection`:
+
+```kotlin title="ApiClient.kt" showLineNumbers
+import dev.thunderid.compose.ThunderIDState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
+
+suspend fun fetchProtectedResource(thunder: ThunderIDState): String {
+    val token = thunder.client.getAccessToken()
+
+    return withContext(Dispatchers.IO) {
+        val connection = URL("https://localhost:8090/api/resource").openConnection() as HttpURLConnection
+        connection.setRequestProperty("Authorization", "Bearer $token")
+        connection.setRequestProperty("Accept", "application/json")
+
+        check(connection.responseCode in 200..299) {
+            "Request failed: ${connection.responseCode}"
+        }
+
+        connection.inputStream.bufferedReader().readText()
+    }
+}
+```
+
+Call it from a composable:
+
+```kotlin title="ResourceView.kt" showLineNumbers
+import dev.thunderid.compose.LocalThunderID
+
+@Composable
+fun ResourceView() {
+    val thunder = LocalThunderID.current
+    var result by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        result = runCatching { fetchProtectedResource(thunder) }
+            .getOrElse { "Error: ${it.message}" }
+    }
+
+    Text(if (result.isEmpty()) "Loading..." else result)
+}
+```
+
+## Token Refresh
+
+`getAccessToken()` refreshes the access token automatically when it is expired, as long as a valid refresh token is available. You do not need to handle refresh manually.
+
+If the refresh token is also expired, `getAccessToken()` throws `IAMException` with code `SESSION_EXPIRED`. Handle this by signing the user out:
+
+```kotlin
+try {
+    val token = thunder.client.getAccessToken()
+    // use token
+} catch (e: IAMException) {
+    if (e.code == IAMErrorCode.SESSION_EXPIRED) {
+        runCatching { thunder.client.signOut() }
+        thunder.refresh()
+    } else {
+        println("Unexpected error: $e")
+    }
+}
+```
+
+## Using OkHttp
+
+If your project uses [OkHttp](https://square.github.io/okhttp/), create an `Interceptor` that injects the access token:
+
+```kotlin title="ThunderIDInterceptor.kt" showLineNumbers
+import dev.thunderid.compose.ThunderIDState
+import kotlinx.coroutines.runBlocking
+import okhttp3.Interceptor
+import okhttp3.Response
+
+class ThunderIDInterceptor(private val thunder: ThunderIDState) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val token = runBlocking { thunder.client.getAccessToken() }
+        val request = chain.request().newBuilder()
+            .addHeader("Authorization", "Bearer $token")
+            .build()
+        return chain.proceed(request)
+    }
+}
+```
+
+Build an `OkHttpClient` with the interceptor and use it for all protected requests:
+
+```kotlin
+val client = OkHttpClient.Builder()
+    .addInterceptor(ThunderIDInterceptor(thunder))
+    .build()
+
+val request = Request.Builder()
+    .url("https://localhost:8090/api/resource")
+    .build()
+
+client.newCall(request).execute().use { response ->
+    println(response.body?.string())
+}
+```
+
+## Using Retrofit
+
+If your project uses [Retrofit](https://square.github.io/retrofit/), combine it with the OkHttp interceptor above:
+
+```kotlin
+val retrofit = Retrofit.Builder()
+    .baseUrl("https://localhost:8090/")
+    .client(
+        OkHttpClient.Builder()
+            .addInterceptor(ThunderIDInterceptor(thunder))
+            .build()
+    )
+    .addConverterFactory(GsonConverterFactory.create())
+    .build()
+
+val api = retrofit.create(MyApiService::class.java)
+```
+
+:::tip API Server URL
+The <ProductName /> API server runs on `https://localhost:8090` by default in local development. Replace this with your production server URL when deploying.
+:::

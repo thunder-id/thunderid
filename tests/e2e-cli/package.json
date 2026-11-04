@@ -27,7 +27,7 @@
     "thunderid"
   ],
   "devDependencies": {
-    "@playwright/test": "1.60.0",
+    "@playwright/test": "1.64.1",
     "@types/node": "24.7.2",
     "@typescript-eslint/eslint-plugin": "8.57.2",
     "@typescript-eslint/parser": "8.57.2",

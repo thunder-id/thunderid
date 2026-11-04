@@ -71,6 +71,13 @@ const (
 	DataConsentPrompt = "consentPrompt"
 	// DataStepTimeout is the key used for the step expiry timestamp in the flow response.
 	DataStepTimeout = "stepTimeout"
+	// DataClientIDHost is the key used for the client ID host shown with the consent prompt.
+	DataClientIDHost = "clientIdHost"
+	// DataRedirectURIHost is the key used for the redirect URI host shown with the consent prompt.
+	DataRedirectURIHost = "redirectUriHost"
+	// DataRedirectURILoopback is the key used for whether the redirect URI host shown with the consent
+	// prompt is a loopback host, so the client runs on the user's device.
+	DataRedirectURILoopback = "redirectUriLoopback"
 	// DataInviteLink is the key used for the invite link in the flow response additional data.
 	DataInviteLink = "inviteLink"
 	// DataCallbackType is the OAuth grant type surfaced on the terminal flow response's additional data.
@@ -166,6 +173,9 @@ const (
 
 // RuntimeData keys.
 const (
+	// RuntimeKeyOUID holds the organization unit a flow has been asked to act for, such as the one a user picked on a
+	// prompt.
+	RuntimeKeyOUID = "ouId"
 	// RuntimeKeyUserAutoProvisioned indicates whether the user was auto-provisioned
 	RuntimeKeyUserAutoProvisioned = "userAutoProvisioned"
 	// RuntimeKeyUserEligibleForProvisioning indicates whether the user is eligible for auto provisioning
@@ -191,12 +201,22 @@ const (
 	// RuntimeKeyConsentedPermissions holds the space-separated permission scopes the user has consented to
 	// release to the client, as produced by the ConsentExecutor.
 	RuntimeKeyConsentedPermissions = "consented_permissions"
+	// RuntimeKeyRequestedAuthorizationDetails holds the requested RFC 9396 authorization details as JSON.
+	RuntimeKeyRequestedAuthorizationDetails = "requested_authorization_details"
+	// RuntimeKeyConsentedAuthorizationDetails holds the authorization details granted by consent as JSON.
+	RuntimeKeyConsentedAuthorizationDetails = "consented_authorization_details"
 	// RuntimeKeyRequiredEssentialAttributes holds the space-separated essential user attributes required for the flow.
 	RuntimeKeyRequiredEssentialAttributes = "required_essential_attributes"
 	// RuntimeKeyRequiredOptionalAttributes holds the space-separated optional user attributes required for the flow.
 	RuntimeKeyRequiredOptionalAttributes = "required_optional_attributes"
 	// RuntimeKeyRequiredLocales holds the space-separated locales requested for claims.
 	RuntimeKeyRequiredLocales = "required_locales"
+	// RuntimeKeyClientIDHost holds the host of the client ID of a client registered from a Client ID
+	// Metadata Document, set by the authorization request so that consent shows it.
+	RuntimeKeyClientIDHost = "client_id_host"
+	// RuntimeKeyRedirectURIHost holds the host of the redirect URI of a client registered from a Client ID
+	// Metadata Document, set by the authorization request so that consent shows it.
+	RuntimeKeyRedirectURIHost = "redirect_uri_host"
 	// RuntimeKeyConsentID holds the consent record ID after consent has been recorded.
 	RuntimeKeyConsentID = "consent_id"
 	// RuntimeKeyStepTimeout holds the expiry timestamp for the current flow step.

@@ -37,9 +37,11 @@ func (t AssigneeType) IsEntityType() bool {
 
 // AssignmentResponse represents an assignment of a role to a user or group.
 type AssignmentResponse struct {
-	ID      string       `json:"id"`
-	Type    AssigneeType `json:"type"`
-	Display string       `json:"display,omitempty"`
+	ID         string       `json:"id"`
+	Type       AssigneeType `json:"type"`
+	OUID       string       `json:"ouId"`
+	Display    string       `json:"display,omitempty"`
+	IsReadOnly bool         `json:"isReadOnly"`
 }
 
 // AssignmentRequest represents an assignment of a role to a user or group.
@@ -56,6 +58,7 @@ type RoleSummaryResponse struct {
 	OUID        string `json:"ouId"`
 	OUHandle    string `json:"ouHandle,omitempty"`
 	IsReadOnly  bool   `json:"isReadOnly"`
+	IsOwnedByOU bool   `json:"isOwnedByOU"`
 }
 
 // RoleResponse represents a complete role with permissions.
@@ -65,6 +68,7 @@ type RoleResponse struct {
 	Description string                `json:"description,omitempty"`
 	OUID        string                `json:"ouId"`
 	OUHandle    string                `json:"ouHandle,omitempty"`
+	IsOwnedByOU bool                  `json:"isOwnedByOU"`
 	Permissions []ResourcePermissions `json:"permissions"`
 }
 
@@ -97,7 +101,9 @@ type UpdateRoleRequest struct {
 }
 
 // AssignmentsRequest represents the request body for adding or removing assignments.
+// OUID names the organization unit the assignments are made in; empty means the role's owner.
 type AssignmentsRequest struct {
+	OUID        string              `json:"ouId,omitempty"`
 	Assignments []AssignmentRequest `json:"assignments" native:"required,min=1,dive"`
 }
 
@@ -149,17 +155,44 @@ type RoleWithPermissionsAndAssignments struct {
 	Assignments []RoleAssignment
 }
 
-// RoleAssignment represents an assignment used internally by the service layer.
+// RoleAssignment represents an assignment used internally by the service layer. OUID is the
+// organization unit the assignment is made in. A resource file may leave it out, and the assignment
+// is then made in the organization unit owning the assignee.
 type RoleAssignment struct {
 	ID   string       `yaml:"id"`
 	Type AssigneeType `yaml:"type"`
+	OUID string       `yaml:"ouId,omitempty"`
+	// PolicyID is the sharing policy that mandates the assignment. Empty for a direct assignment.
+	PolicyID string `yaml:"-"`
+}
+
+// MandatedAssignment is a role assignment written by a sharing policy.
+type MandatedAssignment struct {
+	RoleID     string
+	Assignment RoleAssignment
+}
+
+// MandatedFilter narrows a policy's mandated assignments; an empty OUID matches every unit.
+type MandatedFilter struct {
+	OUID   string
+	RoleID string
+}
+
+// MandatedRoleUnit is one role a sharing policy mandates in one organization unit.
+type MandatedRoleUnit struct {
+	PolicyID string
+	RoleID   string
+	OUID     string
 }
 
 // RoleAssignmentWithDisplay represents an assignment used internally by the service layer.
 type RoleAssignmentWithDisplay struct {
 	ID      string
 	Type    AssigneeType
+	OUID    string
 	Display string
+	// PolicyID is the sharing policy that mandates the assignment. Empty for a direct assignment.
+	PolicyID string
 }
 
 // Role represents basic role information used internally by the service layer.
@@ -170,6 +203,7 @@ type Role struct {
 	OUID        string
 	OUHandle    string
 	IsReadOnly  bool
+	IsOwnedByOU bool
 }
 
 // RoleWithPermissions represents complete role details used internally by the service layer.
@@ -179,6 +213,7 @@ type RoleWithPermissions struct {
 	Description string
 	OUID        string
 	OUHandle    string
+	IsOwnedByOU bool
 	Permissions []ResourcePermissions
 }
 

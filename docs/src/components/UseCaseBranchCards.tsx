@@ -54,7 +54,7 @@ const cards: BranchCard[] = [
       'You need org-scoped roles, policies, and branding',
       'Enterprise SSO or federated identity is required',
     ],
-    hiddenInVersions: ['v1.0.x'],
+    hiddenInVersions: ['v1.0.x', 'v1.1.x'],
   },
   {
     href: '/docs/next/use-cases/ai-agents/overview',

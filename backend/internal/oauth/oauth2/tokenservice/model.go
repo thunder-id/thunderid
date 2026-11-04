@@ -100,6 +100,12 @@ type RefreshTokenBuildContext struct {
 	// so a grant cannot outlive its original issuance window. Zero starts a fresh validity period,
 	// which is what first issuance does.
 	ExpiresAt int64
+	// AuthorizationDetails, when set, is carried on the refresh token for the access tokens minted on refresh.
+	AuthorizationDetails []providers.AuthorizationDetail
+	// SubjectEntityID is the resource ID of the entity the token's subject refers to, when the grant
+	// already knows it. Left empty the subject claim is used, which may be a mapped attribute that names
+	// no entity. The builder checks the entity with the identity governance authority before issuing.
+	SubjectEntityID string
 }
 
 // IDJAGBuildContext contains all the information needed to build an ID-JAG (Identity Assertion
@@ -112,7 +118,10 @@ type IDJAGBuildContext struct {
 	// Resources holds the RFC 8707 resource parameter values, when present on the request. Embedded
 	// in the ID-JAG's `resource` claim so the resource AS can process them on the jwt-bearer leg.
 	Resources []string
-	OAuthApp  *providers.OAuthClient
+	// UserAttributes holds the subject token's user attributes, which BuildIDJAG narrows to the
+	// identity claims the ID-JAG carries.
+	UserAttributes map[string]interface{}
+	OAuthApp       *providers.OAuthClient
 }
 
 // IDTokenBuildContext contains all the information needed to build an ID token (OIDC).
@@ -129,6 +138,10 @@ type IDTokenBuildContext struct {
 	// SessionID, when set, is emitted as the `sid` claim naming the SSO session this authentication
 	// belongs to. Empty when no session backs the grant, in which case the claim is omitted.
 	SessionID string
+	// SubjectEntityID is the resource ID of the entity the token's subject refers to, when the grant
+	// already knows it. Left empty the subject claim is used, which may be a mapped attribute that names
+	// no entity. The builder checks the entity with the identity governance authority before issuing.
+	SubjectEntityID string
 }
 
 const (
@@ -136,7 +149,32 @@ const (
 	claimEvents = "events"
 	// eventBackchannelLogout is the single member of the events claim, with an empty object value.
 	eventBackchannelLogout = "http://schemas.openid.net/event/backchannel-logout"
+	// claimSessionData is the device secret claim listing the SSO sessions it carries.
+	claimSessionData = "session_data"
+	// claimFlowIdentifier names, in a session_data entry, the flow the session belongs to, as the
+	// per-flow session cookie name does.
+	claimFlowIdentifier = "flow_identifier"
+	// claimSessionHandle carries, in a session_data entry, the handle that resumes the session.
+	claimSessionHandle = "session_handle"
 )
+
+// DeviceSecretClaims represents the validated claims of a device secret.
+type DeviceSecretClaims struct {
+	// Subject is the resource ID of the user the device secret was issued for.
+	Subject     string
+	SessionData []oauth2model.SessionData
+}
+
+// DeviceSecretBuildContext holds what a device secret is built from.
+type DeviceSecretBuildContext struct {
+	OAuthApp *providers.OAuthClient
+	// SubjectID is the resource ID of the user, the same for every application whatever its token
+	// subject maps to.
+	SubjectID   string
+	SessionData []oauth2model.SessionData
+	// ValidityPeriod is how many seconds the device secret stays usable.
+	ValidityPeriod int64
+}
 
 // LogoutTokenBuildContext holds what an OIDC Back-Channel Logout token is built from.
 type LogoutTokenBuildContext struct {
@@ -171,6 +209,14 @@ type RefreshTokenClaims struct {
 	// Empty when the grant had no session or the token predates sid issuance.
 	SessionID string
 	Claims    map[string]interface{}
+	// AuthorizationDetails holds the granted authorization details carried on the refresh token.
+	AuthorizationDetails []providers.AuthorizationDetail
+}
+
+// grantedTypeVersion identifies the type definition (ID and version) a refresh token's details were approved on.
+type grantedTypeVersion struct {
+	TypeID  string `json:"id"`
+	Version int    `json:"version"`
 }
 
 // MappedAuthorization is server-resolved authorization context for a subject token's issuing
@@ -200,6 +246,13 @@ type SubjectTokenClaims struct {
 	// TokenFamilyID is the subject token's token family id (tfid), if any. Token exchange may inherit
 	// it onto the exchanged token so the two share a revocation family.
 	TokenFamilyID string
+	// AttributeCacheID is the attribute cache entry (aci) a self-issued token references, which names
+	// the token's subject when its sub is a mapped attribute rather than a resource ID. Empty for
+	// externally-issued tokens.
+	AttributeCacheID string
+	// EntityID is the resource ID of the entity Sub refers to, set by the grant handler once it has
+	// resolved Sub. Left empty the token builder resolves Sub itself.
+	EntityID string
 	// Authorization is server-resolved context, not a claim from the token itself — see
 	// MappedAuthorization.
 	Authorization MappedAuthorization

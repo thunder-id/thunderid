@@ -57,6 +57,26 @@ describe('VENDOR_META_BY_TYPE', () => {
     });
   });
 
+  it('gives every connection that is not used to sign in its own delete description', () => {
+    expect(VENDOR_META_BY_TYPE[ConnectionTypes.SMTP]?.deleteDescriptionKey).toBe(
+      'connections:detail.dangerZone.delete.emailDescription',
+    );
+    for (const type of [ConnectionTypes.TWILIO, ConnectionTypes.VONAGE, ConnectionTypes.SMS_GATEWAY]) {
+      expect(VENDOR_META_BY_TYPE[type]?.deleteDescriptionKey).toBe(
+        'connections:detail.dangerZone.delete.smsDescription',
+      );
+    }
+    expect(VENDOR_META_BY_TYPE[ConnectionTypes.AUTHZEN_PDP]?.deleteDescriptionKey).toBe(
+      'connections:detail.dangerZone.delete.pdpDescription',
+    );
+    expect(VENDOR_META_BY_TYPE[ConnectionTypes.HTTP]?.deleteDescriptionKey).toBe(
+      'connections:detail.dangerZone.delete.httpDescription',
+    );
+    for (const type of [ConnectionTypes.GOOGLE, ConnectionTypes.GITHUB, ConnectionTypes.OIDC, ConnectionTypes.OAUTH]) {
+      expect(VENDOR_META_BY_TYPE[type]?.deleteDescriptionKey).toBeUndefined();
+    }
+  });
+
   it('presents the HTTP endpoint as a custom connection that re-enters credentials on an origin change and lists its usages', () => {
     expect(VENDOR_META_BY_TYPE[ConnectionTypes.HTTP]).toMatchObject({
       key: 'http',

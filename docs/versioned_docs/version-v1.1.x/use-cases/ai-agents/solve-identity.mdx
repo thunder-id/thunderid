@@ -1,0 +1,59 @@
+---
+title: The Agent Has No Identity of Its Own
+docType: use-case
+sidebar_position: 4
+description: Register an agent in {{ProductName}} as a principal with its own identifier, owner, and attribute schema, so every token it requests is attributable to it.
+---
+
+# The Agent Has No Identity of Its Own
+
+The first agent you ship usually borrows a credential from something that already had one. It works, and it
+costs you the ability to answer three questions later: which agent made this call, what is this one allowed to
+do that the others are not, and how do I stop this one without stopping the rest.
+
+Registering the agent is what makes those questions answerable, and everything that follows assumes it has
+been done.
+
+## The Agent Identity
+
+An **agent** in <ProductName /> is a principal with its own record, its own identifier, and its own credential.
+It is neither a user nor a reused service account, and registering one is what makes its actions attributable.
+Because the credential belongs to that agent alone, every token issued under it traces back to a single entry
+in your inventory.
+
+Identity binds to the configured agent rather than to the model behind it. Two agents running on the same
+model, with different prompts, tools, and roles, are two identities in <ProductName /> and are authorized
+separately.
+
+See [Create and Manage Agents](../../../guides/agents/manage-agents) to register one, and
+[Identifiers and owner](../../../guides/agents/manage-agents#identifiers-and-owner) for the fields that name it.
+
+## Agent Schema
+
+Registering agents one at a time produces a list. What turns that list into something you can query is the
+**agent schema**: a shared set of attributes every agent carries, so a fleet can be filtered and reported on
+rather than remembered.
+
+The default schema includes the agent's `model`, its `modelProvider`, and the `function` it performs. Those
+attributes can be selected into the agent's access token, which is how a gateway or a downstream service
+applies per-agent policy without maintaining its own registry of which agent is which.
+
+See [Agent Schema](../../../guides/agents/agent-schema) for the attributes an agent can carry and
+[Attribute values](../../../guides/agents/manage-agents#attribute-values) for setting them on one agent.
+
+## Owner
+
+Every agent record carries an **owner**, the person accountable for what it does. An agent outlives the sprint
+that produced it, and the owner is what keeps a running agent attached to somebody once that happens.
+
+The owner is a property you set and can update. <ProductName /> does not keep a history of previous owners, so
+if you need to reconstruct who was accountable at a past point in time, record that in whatever system already
+tracks ownership for the rest of your services.
+
+## Organization Unit
+
+An agent lives in an organization unit alongside the users, roles, and resource servers it works with. A single
+product uses the default unit and creates no others. Separate organization units matter when one instance
+serves businesses whose configuration must never mix.
+
+See [Organization Units](../../../guides/organization-units).

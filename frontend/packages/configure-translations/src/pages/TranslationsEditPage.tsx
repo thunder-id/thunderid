@@ -174,6 +174,8 @@ export default function TranslationsEditPage(): JSX.Element {
     );
 
     const firstRejected = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    // Load the saved values before clearing local changes so the editor never shows the old ones.
+    if (!firstRejected) await refetchTranslations();
     setIsSaving(false);
 
     if (firstRejected) {

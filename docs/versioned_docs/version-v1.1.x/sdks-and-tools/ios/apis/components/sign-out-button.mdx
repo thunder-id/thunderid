@@ -1,0 +1,76 @@
+---
+title: SignOutButton
+docType: reference
+description: SwiftUI button that signs the user out and refreshes authentication state in the ThunderID iOS SDK.
+---
+
+# `SignOutButton`
+
+The `SignOutButton` component renders a pre-styled button that calls `ThunderIDClient.signOut()`, then calls `ThunderIDState.refresh()` to update the reactive auth state. It disables itself automatically while the sign-out operation is in progress.
+
+`SignOutButton` requires `.thunderIDProvider(config:)` in its ancestor view hierarchy.
+
+## Usage
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct HomeView: View {
+    var body: some View {
+        VStack {
+            Text("You are signed in.")
+            SignOutButton()
+        }
+    }
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `onSignOutComplete` | `(() -> Void)?` | ❌ | Called after sign-out completes and `ThunderIDState` has been refreshed. |
+
+## Example: Handle Sign-Out Completion
+
+```swift
+SignOutButton {
+    // Navigate to the landing screen or perform cleanup
+    print("User has signed out")
+}
+```
+
+## Customization with `BaseSignOutButton`
+
+`BaseSignOutButton` is the unstyled variant. Use it to implement your own sign-out UI while delegating the actual sign-out logic to your own code or to `state.client.signOut()`.
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct CustomSignOutButton: View {
+    @EnvironmentObject var state: ThunderIDState
+
+    var body: some View {
+        BaseSignOutButton(
+            label: "Log Out",
+            isLoading: state.isLoading
+        ) {
+            Task {
+                _ = try? await state.client.signOut()
+                await state.refresh()
+            }
+        }
+        .foregroundStyle(.red)
+    }
+}
+```
+
+### `BaseSignOutButton` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `label` | `String` | ✅ | The button label text. |
+| `isLoading` | `Bool` | ❌ | When `true`, the button is disabled. Defaults to `false`. |
+| `action` | `() -> Void` | ✅ | Called when the button is tapped. |

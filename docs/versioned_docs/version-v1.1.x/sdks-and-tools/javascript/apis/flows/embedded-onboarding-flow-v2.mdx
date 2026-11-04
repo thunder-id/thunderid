@@ -1,0 +1,112 @@
+---
+title: User Onboarding Flow (V2)
+docType: reference
+displayed_sidebar: javascriptSdkSidebar
+description: Embedded onboarding flow component (version 2) for collecting additional user details after registration.
+---
+
+# User Onboarding Flow (V2)
+
+`executeEmbeddedUserOnboardingFlowV2` drives a post-sign-in onboarding sequence (e.g., profile completion, consent collection) without a browser redirect.
+
+## `executeEmbeddedUserOnboardingFlowV2(config)`
+
+Initiate or advance a V2 user onboarding flow.
+
+```ts
+import { executeEmbeddedUserOnboardingFlowV2, EmbeddedSignUpFlowStatusV2 } from '@thunderid/javascript'
+
+// Step 1 — Initiate onboarding
+const step1 = await executeEmbeddedUserOnboardingFlowV2({
+  baseUrl: 'https://localhost:8090',
+  payload: {
+    applicationId: '<your-app-id>',
+    flowType: 'USER_ONBOARDING',
+  },
+})
+
+// Step 2 — Complete profile
+const step2 = await executeEmbeddedUserOnboardingFlowV2({
+  baseUrl: 'https://localhost:8090',
+  payload: {
+    executionId: step1.executionId,
+    inputs: {
+      'http://wso2.org/claims/mobile': '+1-555-0100',
+    },
+  },
+})
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `config.url` | `string` | ✅ | Full endpoint URL. Mutually exclusive with `baseUrl` |
+| `config.baseUrl` | `string` | ✅ | <ProductName /> base URL |
+| `config.payload` | `EmbeddedFlowExecuteRequestConfigV2` | ✅ | Flow request body |
+| `config.payload.applicationId` | `string` | No | Application ID. Required for the first step |
+| `config.payload.flowType` | `string` | No | Must be `'USER_ONBOARDING'` for the first step |
+| `config.payload.executionId` | `string` | No | Execution ID from a prior response |
+| `config.payload.inputs` | `Record<string, string>` | No | Step input values |
+| `config.payload.challengeToken` | `string` | No | Challenge token from a prior step |
+
+## Response: `EmbeddedUserOnboardingFlowResponse`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `executionId` | `string` | ID to pass in subsequent requests |
+| `flowStatus` | `EmbeddedSignUpFlowStatusV2` | Current flow status |
+| `type` | `string` | `View` or `Redirection` |
+| `data` | `EmbeddedFlowResponseDataV2` | Component tree for the current step |
+| `error` | `FlowError` | Present when `flowStatus` is `Error` or `Incomplete`. Contains `code`, `message`, and `description` |
+
+## V2 Component Model
+
+All V2 flow responses share a common component model for building custom UI.
+
+### `EmbeddedFlowResponseDataV2`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `components` | `EmbeddedFlowComponentV2[]` | Top-level UI components to render |
+
+### `EmbeddedFlowComponentV2`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `id` | `string` | Component identifier |
+| `type` | `EmbeddedFlowComponentTypeV2` | Component type |
+| `components` | `EmbeddedFlowComponentV2[]` | Nested child components |
+| `config` | `Record<string, unknown>` | Component-specific configuration (label, placeholder, etc.) |
+| `variant` | `string` | Visual variant |
+
+### `EmbeddedFlowComponentTypeV2`
+
+| Value | Description |
+|-------|-------------|
+| `Button` | Interactive button |
+| `Checkbox` | Checkbox input |
+| `Divider` | Visual divider |
+| `Form` | Form container |
+| `Image` | Image element |
+| `Input` | Text/password/email input |
+| `Radio` | Radio button |
+| `Select` | Dropdown select |
+| `Typography` | Display text |
+
+### `EmbeddedFlowActionVariantV2`
+
+| Value | Description |
+|-------|-------------|
+| `Primary` | Primary action (e.g., submit) |
+| `Secondary` | Secondary action (e.g., cancel) |
+| `Social` | Social login button |
+| `Text` | Text-only action link |
+
+### `EmbeddedFlowEventTypeV2`
+
+| Value | Description |
+|-------|-------------|
+| `Submit` | Form submission |
+| `Click` | Button click |
+| `Change` | Input value change |

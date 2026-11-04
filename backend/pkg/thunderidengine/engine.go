@@ -26,6 +26,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	"github.com/thunder-id/thunderid/internal/oauth"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/deviceauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
@@ -159,12 +160,13 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	if engineCtx.identityGovernance == nil {
 		logger.Debug(ctx, "No identity governance provider is set, so account suspensions and locks are not enforced")
 	}
+	oauthSettings := engineCtx.oauthConfig
 	oauthConfig := oauthconfig.Config{
 		DeploymentID:               engineCtx.serverConfig.Identifier,
 		RuntimeTransientDBType:     engineCtx.runtimeTransientDBType,
 		BaseURL:                    engineconfig.GetServerURL(&engineCtx.serverConfig),
 		JWT:                        engineCtx.jwtConfig,
-		OAuth:                      engineCtx.oauthConfig,
+		OAuth:                      oauthSettings,
 		GateClient:                 engineCtx.gateClientConfig,
 		EnableOUQualifiedEndpoints: engineCtx.serverConfig.EnableOUQualifiedEndpoints,
 	}
@@ -196,9 +198,11 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		AgentMgtProvider:   engineCtx.agentMgtProvider,
 		ObservabilitySvc:   engineCtx.observabilitySvc,
 		IdentityGovernance: engineCtx.identityGovernance,
+		DeviceCodeVerifier: deviceauth.NewUserCodeVerifier(engineCtx.runtimeStoreProvider),
 		ArtifactLifetime: func(client *providers.OAuthClient) time.Duration {
 			return tokenservice.ArtifactLifetime(oauthConfig, client)
 		},
+		AuthzDetailProvider: engineCtx.authzDetailProvider,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory:    engineCtx.flowFactory,
@@ -230,7 +234,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.execRegistry, engineCtx.interceptorRegistry, engineCtx.observabilitySvc,
 		engineCtx.runtimeCryptoSvc, engineCtx.attestationProvider, engineCtx.graphBuilder,
 		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, nil,
-		engineCtx.identityGovernance, flowConfig)
+		engineCtx.identityGovernance, nil, flowConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
 	}
@@ -363,7 +367,7 @@ func buildOriginReader(cfg engineconfig.OriginConfig) (cors.ServerConfigReader, 
 	if err != nil {
 		return nil, fmt.Errorf("thunderidengine: invalid origin configuration: %w", err)
 	}
-	if err := (cors.OriginHandler{}).Validate(decoded, nil, nil); err != nil {
+	if err := (cors.OriginHandler{}).Validate(context.Background(), decoded, nil, nil); err != nil {
 		return nil, fmt.Errorf("thunderidengine: invalid origin configuration: %w", err)
 	}
 	return staticOriginReader{config: decoded.(cors.OriginConfig)}, nil

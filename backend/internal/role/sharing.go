@@ -5,9 +5,11 @@ package role
 
 import (
 	"context"
+	"fmt"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
@@ -22,12 +24,20 @@ const roleAssignmentsFieldKey = "assignments"
 // roleSharingDeclaration is how a role participates in sharing: the framework asks it what roles
 // are called, which fields a policy may govern, and who owns one.
 type roleSharingDeclaration struct {
-	service RoleServiceInterface
+	service           RoleServiceInterface
+	assignmentService RoleAssignmentServiceInterface
+	roleStore         roleStoreInterface
+	ouService         oupkg.OrganizationUnitServiceInterface
 }
 
 // newRoleSharingDeclaration returns the declaration registered with the sharing framework.
-func newRoleSharingDeclaration(service RoleServiceInterface) *roleSharingDeclaration {
-	return &roleSharingDeclaration{service: service}
+func newRoleSharingDeclaration(
+	service RoleServiceInterface, assignmentService RoleAssignmentServiceInterface, roleStore roleStoreInterface,
+	ouService oupkg.OrganizationUnitServiceInterface,
+) *roleSharingDeclaration {
+	return &roleSharingDeclaration{
+		service: service, assignmentService: assignmentService, roleStore: roleStore, ouService: ouService,
+	}
 }
 
 // ResourceType identifies roles to the sharing framework.
@@ -56,4 +66,24 @@ func (d *roleSharingDeclaration) OwningOUID(
 		return "", svcErr
 	}
 	return role.OUID, nil
+}
+
+// DeleteOverlayValues removes the assignments an organization unit made for a role once the role is
+// no longer shared with it. Assignments live in the role's own table rather than the framework's.
+// It refuses while a user share mandates the role in a unit that still exists.
+func (d *roleSharingDeclaration) DeleteOverlayValues(ctx context.Context, resourceID, ouID string) error {
+	mandated, err := d.roleStore.ListMandatedAssignmentsForRole(ctx, resourceID, ouID)
+	if err != nil {
+		return fmt.Errorf("failed to list the mandated assignments of role %s: %w", resourceID, err)
+	}
+	if len(mandated) > 0 {
+		exists, svcErr := d.ouService.IsOrganizationUnitExists(ctx, ouID)
+		if svcErr != nil {
+			return fmt.Errorf("failed to check organization unit %s exists: code=%s", ouID, svcErr.Code)
+		}
+		if exists {
+			return sharing.NewResourceTypeError(&ErrorRoleMandatedInOU)
+		}
+	}
+	return d.assignmentService.DeleteAssignmentsInOU(ctx, resourceID, ouID)
 }

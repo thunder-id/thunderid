@@ -1,0 +1,399 @@
+---
+title: ThunderIDJavaScriptClient
+docType: reference
+displayed_sidebar: javascriptSdkSidebar
+description: Core authentication client for browser and Node.js environments, extending HttpClient with OAuth 2.0 flows.
+---
+
+# `ThunderIDJavaScriptClient`
+
+`ThunderIDJavaScriptClient` is the base class that all platform-specific <ProductName /> clients extend. It provides OIDC discovery, PKCE, token exchange, session management, JWT decoding, and agent/OBO authentication. Instantiate it directly only when writing a custom platform adapter: for browser use, prefer `@thunderid/browser`; for React, use `@thunderid/react`.
+
+## Constructor
+
+```ts
+const client = new ThunderIDJavaScriptClient(storage?, cryptoUtils?)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `storage` | `Storage` | `DefaultCacheStore` | Custom storage implementation for session and config data |
+| `cryptoUtils` | `Crypto` | `DefaultCrypto` | Custom cryptographic utilities (PKCE, JWT decoding) |
+
+## Methods
+
+### Initialization
+
+#### `initialize(config, storage?)`
+
+Initialize the client with your application configuration. Must be called before using any other method.
+
+```ts
+await client.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  afterSignInUrl: 'http://localhost:3000',
+  afterSignOutUrl: 'http://localhost:3000',
+})
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `config` | `AuthClientConfig` | Application configuration. See [Configuration Reference](../configuration) |
+| `storage` | `Storage` | Optional storage override for this instance |
+
+**Returns:** `Promise<boolean>`, `true` when initialization completes.
+
+#### `reInitialize(config)`
+
+Update configuration at runtime without creating a new instance. Forces OIDC discovery to re-run.
+
+```ts
+await client.reInitialize({ scopes: ['openid', 'profile', 'email'] })
+```
+
+**Returns:** `Promise<boolean>`
+
+#### `getConfiguration()`
+
+Retrieve the current configuration stored for this instance.
+
+```ts
+const config = client.getConfiguration()
+```
+
+**Returns:** `T` (the configuration type)
+
+### Authentication State
+
+#### `isSignedIn(userId?)`
+
+Check whether a user session is currently active (token exists and has not expired).
+
+```ts
+const signedIn = await client.isSignedIn()
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `userId` | `string` | Optional session ID for multi-user scenarios |
+
+**Returns:** `Promise<boolean>`
+
+### Token Management
+
+#### `getAccessToken(sessionId?)`
+
+Retrieve the raw access token string for the current session.
+
+```ts
+const token = await client.getAccessToken()
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `sessionId` | `string` | Optional session ID for multi-user scenarios |
+
+**Returns:** `Promise<string>`
+
+#### `decodeJwtToken<R>(token)`
+
+Decode a JWT token and return its payload as a typed object. Does not validate the signature.
+
+```ts
+const claims = await client.decodeJwtToken<{ sub: string; email: string }>(token)
+console.log(claims.sub)
+```
+
+**Returns:** `Promise<R>`
+
+#### `exchangeToken(config, sessionId?)`
+
+Perform a token exchange request (RFC 8693 / custom grant). Sends a POST to the token endpoint with the provided data, optionally attaching the current access token.
+
+```ts
+const result = await client.exchangeToken({
+  tokenEndpoint: 'https://localhost:8090/oauth2/token',
+  data: {
+    grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+    subject_token: '{{token}}',
+    subject_token_type: 'urn:ietf:params:oauth:token-type:access_token',
+    resource: 'https://api.example.com/app',
+  },
+  attachToken: true,
+  returnsSession: true,
+})
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `config` | `TokenExchangeRequestConfig` | Token exchange configuration |
+| `config.tokenEndpoint` | `string` | Token endpoint URL. Falls back to OIDC discovery |
+| `config.data` | `Record<string, string>` | POST body fields. Use `{{token}}` to substitute the current access token |
+| `config.attachToken` | `boolean` | Whether to include `Authorization: Bearer <token>` |
+| `config.returnsSession` | `boolean` | When `true`, the response is stored as the new session |
+| `sessionId` | `string` | Optional session ID |
+
+**Returns:** `Promise<TokenResponse | Response | User>`
+
+#### `getDiscoveryResponse()`
+
+Retrieve the cached OIDC discovery document, or `null` if the client has not been initialized.
+
+```ts
+const discovery = await client.getDiscoveryResponse()
+console.log(discovery?.token_endpoint)
+```
+
+**Returns:** `Promise<OIDCDiscoveryApiResponse | null>`
+
+### User and Session
+
+#### `getUser(userId?)`
+
+Retrieve the authenticated user's identity claims, extracted from the stored ID token.
+
+```ts
+const user = await client.getUser()
+console.log(user.displayName, user.email)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `userId` | `string` | Optional session ID |
+
+**Returns:** `Promise<User>`
+
+The `User` object includes:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `displayName` | `string` | User's display name |
+| `username` | `string` | Username |
+| `email` | `string` | Email address |
+| `given_name` | `string` | First name |
+| `family_name` | `string` | Last name |
+| `picture` | `string` | Profile picture URL |
+| `sub` | `string` | Subject identifier |
+
+#### `clearSession(sessionId?)`
+
+Clear stored session data for a given session ID.
+
+```ts
+client.clearSession()
+```
+
+**Returns:** `void`
+
+#### `setSession(sessionData, sessionId?)`
+
+Manually write session data into storage. Use when handling the token response externally.
+
+```ts
+await client.setSession({ access_token: '...', id_token: '...', expires_in: '3600' })
+```
+
+**Returns:** `Promise<void>`
+
+#### `getInstanceId()`
+
+Return the numeric instance ID assigned to this client. Used to namespace storage when running multiple SDK instances.
+
+```ts
+const id = client.getInstanceId() // 0 by default
+```
+
+**Returns:** `number`
+
+### Platform-Specific Methods to Override
+
+Subclasses must implement these methods. Calling them on `ThunderIDJavaScriptClient` directly throws `Error: Method not implemented.`
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `signIn` | `(options?) => Promise<User \| TokenResponse \| undefined>` | Initiate the authentication flow |
+| `signOut` | `(options?) => Promise<string \| boolean>` | End the session and sign out |
+| `signInSilently` | `(options?) => Promise<User \| boolean \| undefined>` | Silent token refresh without user interaction |
+| `signUp` | `(options?) => Promise<void \| EmbeddedFlowExecuteResponse>` | Start a sign-up flow |
+| `recover` | `(payload) => Promise<EmbeddedFlowExecuteResponse>` | Run a recovery flow |
+| `getUserProfile` | `(options?) => Promise<UserProfile>` | Fetch the full user profile |
+| `updateUserProfile` | `(payload, userId?) => Promise<User>` | Update the user's profile |
+| `isLoading` | `() => boolean` | Whether an auth operation is in progress |
+
+### Agent and OBO Authentication
+
+#### `getAgentToken(agentConfig)`
+
+Authenticate as a service agent using the embedded sign-in flow and return a token.
+
+```ts
+const token = await client.getAgentToken({
+  agentID: 'my-agent@org.com',
+  agentSecret: 'secret',
+})
+```
+
+**Returns:** `Promise<TokenResponse>`
+
+#### `getOBOSignInURL(agentConfig)`
+
+Build an On-Behalf-Of (OBO) authorization URL that includes the agent's `requested_actor` parameter.
+
+```ts
+const url = await client.getOBOSignInURL({ agentID: 'my-agent@org.com', agentSecret: 'secret' })
+window.location.href = url
+```
+
+**Returns:** `Promise<string>`
+
+#### `getOBOToken(agentConfig, authCodeResponse)`
+
+Exchange an authorization code plus an agent token for an OBO access token.
+
+```ts
+const token = await client.getOBOToken(agentConfig, {
+  code: params.get('code')!,
+  session_state: params.get('session_state') ?? '',
+  state: params.get('state')!,
+})
+```
+
+**Returns:** `Promise<TokenResponse>`
+
+### Static Helpers
+
+#### `ThunderIDJavaScriptClient.isSignOutSuccessful(url)`
+
+Check whether a post-logout redirect URL indicates a successful sign-out.
+
+```ts
+if (ThunderIDJavaScriptClient.isSignOutSuccessful(window.location.href)) {
+  console.log('Signed out successfully')
+}
+```
+
+**Returns:** `boolean`
+
+#### `ThunderIDJavaScriptClient.didSignOutFail(url)`
+
+Check whether a post-logout redirect URL indicates a failed sign-out (same state parameter but with an `error` query parameter).
+
+```ts
+if (ThunderIDJavaScriptClient.didSignOutFail(window.location.href)) {
+  console.error('Sign-out failed')
+}
+```
+
+**Returns:** `boolean`
+
+### Backchannel Authentication (CIBA)
+
+These methods implement the OpenID Connect Client-Initiated Backchannel Authentication (CIBA) poll-mode flow. Use them to trigger user authentication on a separate device without a browser redirect. Push mode is **not** supported. For protocol details, see the [Backchannel Authentication guide](../../../../guides/protocols/oauth-oidc/backchannel-authentication).
+
+#### `initiateCIBA(options)`
+
+Send a backchannel authentication request to `POST /oauth2/bc-authorize` and return the `auth_req_id` needed to begin polling.
+
+The endpoint URL is discovered automatically from the OIDC discovery document. Scopes are sourced from the `scopes` field you supplied to `initialize()`.
+
+```ts
+const { authReqId, interval, expiresIn } = await client.initiateCIBA({
+  loginHint: 'user@example.com',
+  bindingMessage: 'Approve login from call center',
+})
+```
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `options.loginHint` | `string` | One of two | A hint identifying the end-user, typically an email address, phone number, or username. |
+| `options.idTokenHint` | `string` | One of two | A previously issued ID token that identifies the end-user. |
+| `options.loginHintToken` | `string` | No | Defined in the CIBA specification but **not supported** by <ProductName />. The server returns `invalid_request` when this parameter is provided. |
+| `options.bindingMessage` | `string` | No | A short, human-readable string displayed on both the consumption and authentication devices to bind the two interactions. Maximum 256 printable characters. |
+| `options.requestedExpiry` | `number` | No | Requested lifetime in seconds for the `auth_req_id`. The server clamps values above its maximum. |
+| `options.acrValues` | `string` | No | Space-separated Authentication Context Class Reference values. |
+
+Exactly one of `loginHint` or `idTokenHint` must be provided.
+
+**Returns:** `Promise<CIBAInitiateResponse>`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `authReqId` | `string` | Unique identifier for this authentication request. Pass to `pollCIBA()`. |
+| `interval` | `number` | Minimum seconds between polling attempts. Increase by 5 on `slow_down`. |
+| `expiresIn` | `number` | Lifetime in seconds of the `auth_req_id`. |
+
+**Throws:** `ThunderIDAPIError` with code `JS-AUTH_CORE-CIBA1-HE03` when the server rejects the request.
+
+#### `pollCIBA(authReqId, interval, options?)`
+
+Poll `POST /oauth2/token` with `grant_type=urn:openid:params:grant-type:ciba` until the user authenticates, the request expires, or polling is cancelled. On success, the received tokens are stored in the SDK session.
+
+```ts
+const controller = new AbortController()
+
+// Cancel polling after 2 minutes if the user has not yet responded.
+setTimeout(() => controller.abort(), 120_000)
+
+try {
+  const tokens = await client.pollCIBA(authReqId, interval, {
+    signal: controller.signal,
+  })
+} catch (err) {
+  if (err.code === 'JS-AUTH_CORE-CIBA2-AB05') {
+    console.log('Polling cancelled — user did not respond in time.')
+  }
+}
+```
+
+`signal` accepts a standard [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal). Call `controller.abort()` at any time to stop polling immediately, even when the method is sleeping between attempts.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `authReqId` | `string` | Yes | The `authReqId` returned by `initiateCIBA()`. |
+| `interval` | `number` | Yes | Initial polling interval in seconds, as returned by `initiateCIBA()`. |
+| `options.signal` | `AbortSignal` | No | Cancels polling immediately, interrupting any in-progress sleep. |
+
+**Polling behavior:**
+
+| Server response | Action |
+|---|---|
+| `authorization_pending` | Wait for the current interval, then retry. |
+| `slow_down` | Permanently increase the interval by 5 seconds, wait, then retry. |
+| `expired_token` | Reject immediately. |
+| `access_denied` | Reject immediately. |
+| Successful token response | Store tokens in the SDK session and resolve. |
+
+**Returns:** `Promise<TokenResponse>`
+
+**Throws:**
+
+| Code | Cause |
+|------|-------|
+| `JS-AUTH_CORE-CIBA2-HE03` | The server returned a terminal error (`expired_token`, `access_denied`, or another non-retryable error). |
+| `JS-AUTH_CORE-CIBA2-AB05` | Polling was cancelled via `AbortSignal`. |
+
+### Protected Methods (for subclass use)
+
+These methods are available to subclasses building platform adapters:
+
+| Method | Description |
+|--------|-------------|
+| `loadOpenIDProviderConfiguration(forceInit?)` | Fetch and cache the OIDC discovery document |
+| `getSignInUrl(requestConfig?, userId?)` | Build the OAuth 2.0 authorization URL with PKCE |
+| `requestAccessToken(code, sessionState, state, userId?, tokenRequestConfig?)` | Exchange an authorization code for tokens |
+| `getSignOutUrl(userId?)` | Build the OIDC end-session URL |
+| `refreshAccessToken(userId?)` | Use the refresh token to get a new access token |
+| `revokeAccessToken(userId?)` | Revoke the current access token |
+| `getDecodedIdToken(userId?, idToken?)` | Decode the stored ID token |
+| `getIdToken(userId?)` | Get the raw ID token string |
+| `getUserSession(userId?)` | Get scopes and session state for the current session |
+| `getOpenIDProviderEndpoints()` | Get the cached OIDC endpoint URLs |
+| `getStorageManager()` | Access the underlying `StorageManager` instance |
+| `getCryptoHelper()` | Access the underlying `IsomorphicCrypto` instance |

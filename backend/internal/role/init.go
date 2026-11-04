@@ -5,6 +5,7 @@ package role
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -45,10 +46,14 @@ func Initialize(
 	roleService := newRoleService(
 		roleStore, entityService, groupService, ouService, resourceService, transactioner, authzService,
 		sharingService)
+	assignmentService := newRoleAssignmentService(
+		roleStore, entityService, groupService, entityTypeService, resourceService, transactioner, authzService,
+		sharingService,
+	)
 
 	// Registered before declarative resources load, because loading seeds the sharing policies those
 	// files declare and the framework refuses a type it does not know.
-	sharingService.RegisterResourceType(newRoleSharingDeclaration(roleService))
+	sharingService.RegisterResourceType(newRoleSharingDeclaration(roleService, assignmentService, roleStore, ouService))
 
 	// Step 3: Load declarative resources into store (if applicable)
 	if fileStore != nil {
@@ -60,15 +65,21 @@ func Initialize(
 			context.Background(), makeRoleSharingConfig(roleService)); err != nil {
 			return nil, nil, nil, nil, err
 		}
+		if err := placeDeclaredAssignments(
+			context.Background(), fileStore, entityService, groupService, sharingService); err != nil {
+			return nil, nil, nil, nil, fmt.Errorf("failed to load role resources: %w", err)
+		}
 	}
 
-	assignmentService := newRoleAssignmentService(
-		roleStore, entityService, groupService, entityTypeService, resourceService, transactioner, authzService,
-	)
+	// Step 4: Drop the mandates no user share holds up any longer, once the declared role policies are in.
+	if err := assignmentService.reconcileMandatedAssignments(context.Background()); err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("failed to reconcile mandated role assignments: %w", err)
+	}
+
 	roleHandler := newRoleHandler(roleService, assignmentService)
 	registerRoutes(mux, roleHandler)
 	exporter := newRoleExporter(roleService, assignmentService, sharingService)
-	ouRoleResolver := newOURoleResolver(roleStore)
+	ouRoleResolver := newOURoleResolver(roleService)
 	return roleService, assignmentService, ouRoleResolver, exporter, nil
 }
 

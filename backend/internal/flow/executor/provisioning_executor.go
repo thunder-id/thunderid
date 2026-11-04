@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -632,9 +633,9 @@ func (p *provisioningExecutor) HasRequiredInputs(ctx *providers.NodeContext,
 // and prompt metadata for schema attrs, but schema-absent node inputs are ignored.
 //
 // Missing inputs are ordered as: required non-credentials -> optional non-credentials ->
-// required credentials -> optional credentials. maxPerPrompt caps the forwarded
-// prompt batch after this list is built. includeOptional only affects optional
-// non-credential attrs.
+// required credentials -> optional credentials and then each group sorted by attribute name.
+// maxPerPrompt caps the forwarded prompt batch after this list is built.
+// includeOptional only affects optional non-credential attrs.
 func (p *provisioningExecutor) hasRequiredInputs(ctx *providers.NodeContext,
 	category entitytype.TypeCategory, execResp *providers.ExecutorResponse) bool {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
@@ -712,7 +713,12 @@ func (p *provisioningExecutor) buildMissingInputs(
 	presentedOptionalInputs := core.GetPresentedOptionalInputs(ctx.RuntimeData)
 	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 
-	for _, attr := range schemaAttrs {
+	sortedAttrs := slices.Clone(schemaAttrs)
+	slices.SortFunc(sortedAttrs, func(a, b entitytype.AttributeInfo) int {
+		return strings.Compare(a.Attribute, b.Attribute)
+	})
+
+	for _, attr := range sortedAttrs {
 		if p.isAttrSatisfied(ctx, extIdentity, attr) {
 			continue
 		}
@@ -1007,6 +1013,9 @@ func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext
 			{Type: providers.OAuthInboundAuthType, OAuthConfig: oauthConfig},
 		},
 	}
+	if validUntil := collectedValue(nodeCtx, validUntilKey); validUntil != "" {
+		agent.ValidUntil = &validUntil
+	}
 	// The callback URIs, login flow and user type belong to a delegated agent, and all three are
 	// required with delegation, so leftovers from an earlier choice are not applied to one that acts
 	// on its own behalf. The service validates all three.
@@ -1059,8 +1068,12 @@ func agentDelegation(ctx *providers.NodeContext) (bool, *tidcommon.ServiceError)
 }
 
 // collectedValue reads a value the flow collected for key, preferring what an executor resolved
-// over what the caller submitted. Submitted values are unfiltered, so a resolved one wins.
+// over what the caller submitted. Submitted values are unfiltered, so a resolved one wins. A constant
+// input of the node is read first.
 func collectedValue(ctx *providers.NodeContext, key string) string {
+	if isConstantNodeInput(ctx, key) && ctx.UserInputs[key] != "" {
+		return ctx.UserInputs[key]
+	}
 	if val, ok := ctx.RuntimeData[key]; ok && val != "" {
 		return val
 	}

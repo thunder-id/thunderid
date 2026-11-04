@@ -215,13 +215,17 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
             from: '/docs/next/guides/organization-units',
             to: '/docs/next/guides/organization-units/manage-organization-units',
           },
+          {
+            from: '/docs/next/use-cases/ai-agents/personal-assistants',
+            to: '/docs/next/use-cases/ai-agents/personal-assistants/overview',
+          },
         ],
 
-        // v1.0.x moved from /docs/v1.0.x/ to the bare /docs/ root (it is the
-        // lastVersion). Redirect the old versioned URLs to their new root path so
-        // existing links keep working. GitHub Pages can't do server 301s, so these
-        // are generated as static client-side redirect stubs. The current/"Next"
-        // docs are untouched (still at /docs/next/).
+        // The lastVersion is served at the bare /docs/ root. Redirect its versioned
+        // URL (/docs/v1.1.x/) to the root path, so links written against the version
+        // prefix keep working. GitHub Pages can't do server 301s, so these are
+        // generated as static client-side redirect stubs. The current/"Next" docs
+        // (/docs/next/) and older versions (/docs/v1.0.x/) keep their own paths.
         createRedirects(existingPath: string): string[] | undefined {
           const from: string[] = [];
 
@@ -233,12 +237,16 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
             from.push(existingPath.replace('/sdks-and-tools/', '/sdks/'));
           }
 
-          if (existingPath.startsWith('/docs/') && !existingPath.startsWith('/docs/next/')) {
-            from.push(existingPath.replace('/docs/', '/docs/v1.0.x/'));
+          if (
+            existingPath.startsWith('/docs/') &&
+            !existingPath.startsWith('/docs/next/') &&
+            !existingPath.startsWith('/docs/v1.0.x/')
+          ) {
+            from.push(existingPath.replace('/docs/', '/docs/v1.1.x/'));
             // Chain both moves, so a link written against the old path *and*
-            // the old version prefix still lands.
+            // the version prefix still lands.
             if (existingPath.includes('/sdks-and-tools/')) {
-              from.push(existingPath.replace('/docs/', '/docs/v1.0.x/').replace('/sdks-and-tools/', '/sdks/'));
+              from.push(existingPath.replace('/docs/', '/docs/v1.1.x/').replace('/sdks-and-tools/', '/sdks/'));
             }
           }
 
@@ -272,7 +280,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           // Edit URL for the "edit this page" feature.
           editUrl: productConfig.project.source.github.editUrls.content,
           // Versioning.
-          lastVersion: 'v1.0.x',
+          lastVersion: 'v1.1.x',
           versions: {
             current: {
               label: 'Next',
@@ -282,15 +290,22 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
               // No "Version: Next" pill at the top of every doc page.
               badge: false,
             },
-            'v1.0.x': {
-              label: 'v1.0.x',
+            'v1.1.x': {
+              label: 'v1.1.x',
               // No `path` override, so as the lastVersion it is served at the bare doc
-              // root (/docs) as the latest release. The version tracks the 1.0 minor
-              // line (1.0.0, 1.0.1, ...), so patch releases reuse these docs. The
+              // root (/docs) as the latest release. The version tracks the 1.1 minor
+              // line (1.1.0, 1.1.1, ...), so patch releases reuse these docs. The
               // current/"Next" docs stay at /docs/next as a preview.
               // Current stable release: not archived, so no "unmaintained" banner.
               banner: 'none',
-              // No "Version: v1.0.x" pill at the top of every doc page.
+              // No "Version: v1.1.x" pill at the top of every doc page.
+              badge: false,
+            },
+            'v1.0.x': {
+              label: 'v1.0.x',
+              // Served at /docs/v1.0.x. The 1.0 minor line still receives patch
+              // releases, so no "unmaintained" banner.
+              banner: 'none',
               badge: false,
             },
           },
