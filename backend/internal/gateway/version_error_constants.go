@@ -236,4 +236,30 @@ var (
 				"control plane captures it, is not YAML until its values are filled in.",
 		},
 	}
+	// ErrorPromoteToItself is returned when a promotion names the same gateway as source and target.
+	ErrorPromoteToItself = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1036",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.promote_to_itself",
+			DefaultValue: "The source and target are the same gateway",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.promote_to_itself.description",
+			DefaultValue: "Promote from one gateway to another.",
+		},
+	}
+	// ErrorSourceRunsNothing is returned when a promotion's source gateway runs no version yet.
+	ErrorSourceRunsNothing = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1037",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.source_runs_nothing",
+			DefaultValue: "The source gateway runs no version yet",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.source_runs_nothing.description",
+			DefaultValue: "Deploy a version to the source gateway before promoting it.",
+		},
+	}
 )
