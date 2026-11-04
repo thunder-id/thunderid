@@ -460,7 +460,7 @@ jobs:
           Write-Host "📂 Extracting build..."
 
           # Find the zip file
-          $zipFile = Get-ChildItem -Filter "$env:PRODUCT_NAME_LOWER-dp-*-win-*.zip" | Where-Object { $_.Name -match "^$($env:PRODUCT_NAME_LOWER)-gateway-\d" } | Select-Object -First 1
+          $zipFile = Get-ChildItem -Filter "$env:PRODUCT_NAME_LOWER-gateway-*-win-*.zip" | Where-Object { $_.Name -match "^$($env:PRODUCT_NAME_LOWER)-gateway-\d" } | Select-Object -First 1
 
           if (-not $zipFile) {
             Write-Host "❌ No distribution zip found"
@@ -473,7 +473,7 @@ jobs:
           Expand-Archive -Path $zipFile.FullName -DestinationPath "." -Force
 
           # Find the extracted directory
-          $extractedDir = Get-ChildItem -Directory -Filter "$env:PRODUCT_NAME_LOWER-dp-*-win-*" | Where-Object { $_.Name -match "^$($env:PRODUCT_NAME_LOWER)-gateway-\d" } | Select-Object -First 1
+          $extractedDir = Get-ChildItem -Directory -Filter "$env:PRODUCT_NAME_LOWER-gateway-*-win-*" | Where-Object { $_.Name -match "^$($env:PRODUCT_NAME_LOWER)-gateway-\d" } | Select-Object -First 1
 
           if (-not $extractedDir) {
             Write-Host "❌ No extracted directory found"
