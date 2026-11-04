@@ -913,7 +913,7 @@ bootstrap:
     70-custom-users.yaml: |
       # resource_type: user
       type: person
-      ouHandle: default
+      ouHandle: system
       attributes:
         username: alice
         sub: alice

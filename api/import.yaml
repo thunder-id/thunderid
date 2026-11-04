@@ -59,7 +59,7 @@ paths:
                     resource_type: connection
                     id: 0193b0a1-1004-7000-8000-000000000001
                     name: Google IDP
-                    ouHandle: default
+                    ouHandle: system
                     type: google
                     clientId: "{{.GOOGLE_CLIENT_ID}}"
                     clientSecret: "{{.GOOGLE_CLIENT_SECRET}}"

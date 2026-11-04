@@ -45,7 +45,7 @@ import (
 type OUAuthzTestSuite struct {
 	suite.Suite
 
-	// Users here live outside the default OU, and a sign-in is bounded to its application's OU, so each
+	// Users here live outside the system OU, and a sign-in is bounded to its application's OU, so each
 	// signs in through an application in its own OU rather than the Console.
 	signIn testutils.OUSignInApps
 

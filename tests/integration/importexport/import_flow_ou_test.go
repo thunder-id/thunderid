@@ -89,7 +89,7 @@ func (suite *ImportExportErrorSuite) TestImportFlowOwner() {
 		wantOwner string
 	}{
 		{name: "by id", owner: "ouId: " + defaultOUID + "\n", wantOwner: defaultOUID},
-		{name: "by handle", owner: "ouHandle: default\n", wantOwner: defaultOUID},
+		{name: "by handle", owner: "ouHandle: system\n", wantOwner: defaultOUID},
 		{name: "the id wins over the handle", owner: "ouId: " + defaultOUID + "\nouHandle: nowhere\n",
 			wantOwner: defaultOUID},
 		{name: "no owner is refused", owner: "", wantCode: flowOURequiredCode},
@@ -134,7 +134,7 @@ func (suite *ImportExportErrorSuite) TestImportFlowRefusesToChangeTheOwner() {
 		_ = testutils.DeleteFlow(id)
 		_ = testutils.DeleteOrganizationUnit(ouID)
 	}()
-	created := suite.importFlow(flowDocument(id, handle, "ouHandle: default\n"), false, false)
+	created := suite.importFlow(flowDocument(id, handle, "ouHandle: system\n"), false, false)
 	suite.Require().Equal("success", created.Status, "message: %s", created.Message)
 
 	other := flowDocument(id, handle, "ouId: "+ouID+"\n")

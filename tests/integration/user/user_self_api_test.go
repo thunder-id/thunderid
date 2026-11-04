@@ -17,7 +17,7 @@ import (
 
 type SelfUserEndpointsSuite struct {
 	suite.Suite
-	// The user lives outside the default OU, and a sign-in is bounded to its application's OU, so it signs in
+	// The user lives outside the system OU, and a sign-in is bounded to its application's OU, so it signs in
 	// through an application in its own OU rather than the Console.
 	signIn     testutils.OUSignInApps
 	ouID       string

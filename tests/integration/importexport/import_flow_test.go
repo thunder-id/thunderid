@@ -57,7 +57,7 @@ func promptFlowDocument(id, handle, extraInputProperty string) string {
 		extra = "            " + strings.TrimRight(extraInputProperty, "\n") + "\n"
 	}
 
-	return fmt.Sprintf("resource_type: flow\nid: %s\nhandle: %q\nname: %q\nflowType: RECOVERY\nouHandle: default\nnodes:\n"+
+	return fmt.Sprintf("resource_type: flow\nid: %s\nhandle: %q\nname: %q\nflowType: RECOVERY\nouHandle: system\nnodes:\n"+
 		"  - id: start\n    type: START\n    onSuccess: prompt\n"+
 		"  - id: prompt\n    type: PROMPT\n    prompts:\n"+
 		"      - inputs:\n"+
@@ -76,7 +76,7 @@ func heldConstantFlowDocument(id, handle, extraInputProperty string) string {
 		extra = "          " + strings.TrimRight(extraInputProperty, "\n") + "\n"
 	}
 
-	return fmt.Sprintf("resource_type: flow\nid: %s\nhandle: %q\nname: %q\nflowType: AUTHENTICATION\nouHandle: default\nnodes:\n"+
+	return fmt.Sprintf("resource_type: flow\nid: %s\nhandle: %q\nname: %q\nflowType: AUTHENTICATION\nouHandle: system\nnodes:\n"+
 		"  - id: start\n    type: START\n    onSuccess: prompt\n"+
 		"  - id: prompt\n    type: PROMPT\n    prompts:\n"+
 		"      - inputs:\n"+

@@ -49,7 +49,7 @@ export TOKEN="<access-token>"
 
 ### Create the `wayfinder` resource server
 
-Resource servers are managed through the Resource Management API. Create the `wayfinder` resource server. Replace `<default-ou-id>` with the ID of your default organization unit (look it up via `GET /organization-units`):
+Resource servers are managed through the Resource Management API. Create the `wayfinder` resource server. Replace `<system-ou-id>` with the ID of your system organization unit (look it up via `GET /organization-units`):
 
 ```bash
 curl -k -X POST https://localhost:8090/resource-servers \
@@ -58,7 +58,7 @@ curl -k -X POST https://localhost:8090/resource-servers \
   -d '{
     "name": "Wayfinder Booking",
     "identifier": "https://api.wayfinder.example.com",
-    "ouId": "<default-ou-id>",
+    "ouId": "<system-ou-id>",
     "delimiter": ":"
   }'
 ```
@@ -122,7 +122,7 @@ Create the `Traveler` role and assign it to John Doe so he can book from his fir
 
 ### Create the `Traveler` role
 
-Roles and their permissions are managed through the Role Management API. Create the role with the three `booking:*` permissions in one call. Replace `<default-ou-id>` with the ID of your default organization unit (look it up via `GET /organization-units`) and `<wayfinder-rs-id>` with the ID returned when you created the `wayfinder` resource server.
+Roles and their permissions are managed through the Role Management API. Create the role with the three `booking:*` permissions in one call. Replace `<system-ou-id>` with the ID of your system organization unit (look it up via `GET /organization-units`) and `<wayfinder-rs-id>` with the ID returned when you created the `wayfinder` resource server.
 
 ```bash
 curl -k -X POST https://localhost:8090/roles \
@@ -131,7 +131,7 @@ curl -k -X POST https://localhost:8090/roles \
   -d '{
     "name": "Traveler",
     "description": "Consumer role with full booking permissions",
-    "ouId": "<default-ou-id>",
+    "ouId": "<system-ou-id>",
     "permissions": [
       {
         "resourceServerId": "<wayfinder-rs-id>",
@@ -161,6 +161,6 @@ flowchart TD
   ou["Organization Unit: Default"] --> contents["User Types<br/>Roles<br/>Resource Servers"]
 ```
 
-Wayfinder is a single business, so it uses the `Default` organization unit that every fresh instance provides
+Wayfinder is a single business, so it uses the `System` organization unit that every fresh instance provides
 and creates no others. If your product instead spans multiple separate organizations that each need their own users,
 roles, and configuration, see [Multi-Tenant SaaS Identity](../../b2b/multi-tenant-saas) for a detailed solution.

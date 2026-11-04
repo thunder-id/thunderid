@@ -156,8 +156,8 @@ func GetHTTPClientWithToken(token string) *http.Client {
 const OUSignInRedirectURI = "https://localhost:3000/ou-sign-in"
 
 // CreateOUSignInApplication creates a public client owned by ouID that signs users in through the default flow
-// and puts their OU in its access tokens, as the Console does for the default OU. A sign-in is bounded to its
-// application's OU, so a user outside the default OU signs in through one of these instead of the Console.
+// and puts their OU in its access tokens, as the Console does for the system OU. A sign-in is bounded to its
+// application's OU, so a user outside the system OU signs in through one of these instead of the Console.
 func CreateOUSignInApplication(ouID, clientID string) (string, error) {
 	return CreateApplication(Application{
 		Name: "OU Sign-in " + clientID,
@@ -188,7 +188,7 @@ func CreateOUSignInApplication(ouID, clientID string) (string, error) {
 }
 
 // OUSignInApps creates one CreateOUSignInApplication client per organization unit, on first use, for a suite whose
-// users live outside the default OU. DeleteAll removes them, before the suite deletes the units.
+// users live outside the system OU. DeleteAll removes them, before the suite deletes the units.
 type OUSignInApps struct {
 	appIDs    map[string]string
 	clientIDs map[string]string
@@ -254,7 +254,7 @@ func GetHTTPClientForUser(username, password string) (*http.Client, error) {
 }
 
 // GetHTTPClientForOUUser is GetHTTPClientForUser through a CreateOUSignInApplication client, for a user outside
-// the default OU.
+// the system OU.
 func GetHTTPClientForOUUser(clientID, username, password string) (*http.Client, error) {
 	return getHTTPClientForUser(clientID, OUSignInRedirectURI, username, password)
 }

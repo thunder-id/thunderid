@@ -1461,7 +1461,7 @@ var defaultMessages = map[string]string{
 	"error.projectservice.invalid_request_format": "Invalid request format",
 	"error.projectservice.invalid_request_format_description": "The request body is malformed or contains invalid data",
 	"error.projectservice.ou_not_in_project": "Organization unit not in project",
-	"error.projectservice.ou_not_in_project_description": "The organization unit must be the default organization unit or one below it",
+	"error.projectservice.ou_not_in_project_description": "The organization unit must be the system organization unit or one below it",
 	"error.projectservice.project_id_conflict": "Project ID already exists",
 	"error.projectservice.project_id_conflict_description": "Omit the ID to have one generated, or supply an ID that no other project uses",
 	"error.projectservice.project_not_found": "Project not found",

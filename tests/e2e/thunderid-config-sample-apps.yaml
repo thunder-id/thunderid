@@ -8,7 +8,7 @@
 # suites over the one shared REACT_SDK_SAMPLE app.
 resource_type: application
 id: 6e35c100-3fee-48f3-99e0-f21ecb670904
-ouHandle: default
+ouHandle: system
 name: E2E Sample App (MFA)
 description: Dedicated sample-app clone for MFA E2E testing; do not use outside tests/e2e/tests/sample-app-authentication/sample-app-mfa-login.spec.ts
 type: browser
@@ -90,7 +90,7 @@ inboundAuthConfig:
 # application), but isolated from MFA and default login.
 resource_type: application
 id: 1d5460d5-e0e0-4075-af9d-b04dd94f6ca5
-ouHandle: default
+ouHandle: system
 name: E2E Sample App (Social Login)
 description: Dedicated sample-app clone for social-login E2E testing; do not use outside tests/e2e/tests/sample-app-authentication/sample-app-social-login.spec.ts
 type: browser

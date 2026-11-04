@@ -15,7 +15,7 @@ import (
 
 // Initialize builds the project service over the database store and registers the project
 // management routes and MCP tools. The returned service is also a resource dependency provider, so that the
-// default organization unit cannot be deleted while a project exists. The returned exporter
+// system organization unit cannot be deleted while a project exists. The returned exporter
 // exports projects as declarative resources.
 func Initialize(
 	mux *http.ServeMux, mcpServer *mcp.Server, ouService ou.OrganizationUnitServiceInterface,

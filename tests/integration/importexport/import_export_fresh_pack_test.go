@@ -166,7 +166,7 @@ func (suite *ImportExportFreshPackSuite) TestApplicationImportReportsIgnoredStat
 		Content: fmt.Sprintf(`resource_type: application
 name: Ignored state import %d
 type: custom
-ouHandle: default
+ouHandle: system
 state: SUSPENDED
 `, time.Now().UnixNano()),
 		Options: testutils.ImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},

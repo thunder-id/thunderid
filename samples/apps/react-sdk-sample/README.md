@@ -23,7 +23,7 @@ If you have the pre-built distribution, you can run it directly:
 
 ### 1. Import ThunderID Resources
 
-The sample ships with a `thunderid-config/` directory containing a declarative YAML file that creates the required user type and application (referencing the default OU by handle) in one step.
+The sample ships with a `thunderid-config/` directory containing a declarative YAML file that creates the required user type and application (referencing the system OU by handle) in one step.
 
 1. Open `thunderid-config/thunderid.env` and set your preferred credentials:
 
@@ -39,7 +39,7 @@ The sample ships with a `thunderid-config/` directory containing a declarative Y
    - **First-time login**: a welcome screen appears with an **Open** button to upload the YAML file directly.
    - **Later**: access the same welcome screen from the user profile menu in the top-right corner of the console.
 
-This creates the `Customer` user type and the `React SDK Sample` application under the default organization unit.
+This creates the `Customer` user type and the `React SDK Sample` application under the system organization unit.
 
 ### 2. Configure the Application
 

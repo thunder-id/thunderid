@@ -25,7 +25,7 @@ type importOutcome struct {
 	} `json:"results"`
 }
 
-// defaultOUID and defaultProjectID are the default organization unit and the Default project the
+// defaultOUID and defaultProjectID are the system organization unit and the Default project the
 // bootstrap declares (backend/cmd/server/bootstrap/01-default-resources.yaml).
 const (
 	defaultOUID      = "01900000-0000-7000-8000-000000000001"

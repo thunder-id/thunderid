@@ -218,7 +218,7 @@ If a handle cannot be resolved (because the target resource does not exist or th
 resource_type: application
 name: My App
 type: fullstack
-ouHandle: default
+ouHandle: system
 authFlowHandle: default-basic-flow
 registrationFlowHandle: default-registration-flow
 isRegistrationFlowEnabled: true
@@ -241,7 +241,7 @@ When a connection document has both `ouId` and `ouHandle`, `ouId` wins. <Product
 resource_type: connection
 id: 0193b0a1-1003-7000-8000-000000000001
 name: Corp OIDC
-ouHandle: default
+ouHandle: system
 type: oidc
 clientId: "{{.CORP_OIDC_CLIENT_ID}}"
 clientSecret: "{{.CORP_OIDC_CLIENT_SECRET}}"
@@ -258,7 +258,7 @@ A `connection` document of any kind can carry a `sharingPolicies` list that shar
 resource_type: connection
 id: 0193b0a1-1003-7000-8000-000000000002
 name: Corp SMTP
-ouHandle: default
+ouHandle: system
 type: email-smtp
 host: smtp.example.com
 port: 587
@@ -288,7 +288,7 @@ id: 0193b0a1-1001-7000-8000-000000000042
 handle: acme-login
 name: Acme Login Flow
 flowType: AUTHENTICATION
-ouHandle: default
+ouHandle: system
 nodes:
   - id: start
     type: START
@@ -390,7 +390,7 @@ Channel rules are enforced on both apply and dry-run:
 resource_type: notification_template
 channel: email
 handle: user-invite
-ouHandle: default
+ouHandle: system
 displayName: User Invitation Email
 description: Sent when a user is invited.
 content:
@@ -406,7 +406,7 @@ design:
 resource_type: notification_template
 channel: sms
 handle: otp-verification
-ouHandle: default
+ouHandle: system
 displayName: OTP Verification SMS
 content:
   body: "Your verification code is {{ctx(otpCode)}}"
@@ -445,7 +445,7 @@ resource_type: resource_server
 id: 01900000-0000-7000-8000-0000000009ff
 name: Team Workspace
 identifier: "urn:example:workspace"
-ouHandle: default
+ouHandle: system
 delimiter: ":"
 actions:
   - { name: Audit, handle: audit }

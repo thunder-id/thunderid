@@ -58,8 +58,8 @@ export async function getOrganizationUnitId(handle: string): Promise<string> {
   return ou.id;
 }
 
-export async function getDefaultOrganizationUnitId(): Promise<string> {
-  return getOrganizationUnitId('default');
+export async function getSystemOrganizationUnitId(): Promise<string> {
+  return getOrganizationUnitId('system');
 }
 
 export async function getCustomersOrganizationUnitId(): Promise<string> {

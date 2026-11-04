@@ -6,7 +6,7 @@ resource_type: application
 # OAuth profile below. The API gate accepts only access tokens, so the exchange is required: an
 # assertion is an intermediate credential, not an API credential.
 id: 019e3a5c-0501-7f3e-a66e-66fc7918c3a7
-ouHandle: default
+ouHandle: system
 name: E2E Admin Native App
 description: Native application for E2E test infrastructure admin authentication
 type: fullstack

@@ -1545,12 +1545,12 @@ spec:
           type: user
       
       ---
-      # File: Default.yaml
+      # File: System.yaml
       resource_type: organization_unit
       id: 01900000-0000-7000-8000-000000000001
-      handle: default
-      name: Default
-      description: Default organization unit
+      handle: system
+      name: System
+      description: System organization unit
       parent: null
       isRegistrationFlowEnabled: false
       isRecoveryFlowEnabled: false

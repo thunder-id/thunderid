@@ -96,7 +96,7 @@ def ensure_sso_flow(http, base_url, flow_path):
 
     # A flow has to name the organization unit that owns it. Give it the default unit, the
     # one the bootstrap flows belong to.
-    ou = http.get(f"{base_url}/organization-units/tree/default")
+    ou = http.get(f"{base_url}/organization-units/tree/system")
     ou.raise_for_status()
     definition["ouId"] = ou.json()["id"]
 

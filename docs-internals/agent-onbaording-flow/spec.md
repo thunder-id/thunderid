@@ -387,7 +387,7 @@ The Console must read the `merged` configuration layer. A missing handle, a hand
 
 Handle resolution must search subsequent pages of administration flows. The Console must not assume the bootstrap flow is on the first page or hardcode its ID.
 
-Every flow, including this one, belongs to exactly one organization unit. A flow document in a bootstrap or declarative file names its owner with `ouId` or `ouHandle`, so the default flow will carry `ouHandle: default`. A flow created through `POST /flows` must give `ouId`, and a flow's owner cannot change afterwards.
+Every flow, including this one, belongs to exactly one organization unit. A flow document in a bootstrap or declarative file names its owner with `ouId` or `ouHandle`, so the default flow will carry `ouHandle: system`. A flow created through `POST /flows` must give `ouId`, and a flow's owner cannot change afterwards.
 
 The default flow and its configuration will be bootstrap resources. Existing deployments must apply those resources through the bootstrap process during upgrade; a binary update alone must not be assumed to install them. Flow authors may select another administration flow by changing the configured handle.
 
@@ -528,4 +528,4 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-09-07 | Initial specification. |
-| 0.2 | 2026-10-26 | Every flow is owned by exactly one organization unit. A flow names its owner with `ouId` on create, or with `ouId` or `ouHandle` in a bootstrap or declarative file, and the default onboarding flow carries `ouHandle: default` (AC11.6). |
+| 0.2 | 2026-10-26 | Every flow is owned by exactly one organization unit. A flow names its owner with `ouId` on create, or with `ouId` or `ouHandle` in a bootstrap or declarative file, and the default onboarding flow carries `ouHandle: system` (AC11.6). |

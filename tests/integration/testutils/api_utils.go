@@ -338,11 +338,11 @@ func FindBootstrapOUID() (string, error) {
 	}
 
 	for _, ou := range list.OrganizationUnits {
-		if ou.Handle == "default" {
+		if ou.Handle == "system" {
 			return ou.ID, nil
 		}
 	}
-	return "", errors.New("bootstrap organization unit with handle 'default' not found")
+	return "", errors.New("bootstrap organization unit with handle 'system' not found")
 }
 
 var (

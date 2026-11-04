@@ -1,8 +1,8 @@
 resource_type: organization_unit
 id: 01900000-0000-7000-8000-000000000001
-handle: default
-name: Default
-description: Default organization unit
+handle: system
+name: System
+description: System organization unit
 logoUrl: "avatar:shape=rounded,variant=anonymous_entity,content=pavilion,colors=0"
 ---
 resource_type: project
@@ -16,7 +16,7 @@ id: 01900000-0000-7000-8000-000000000010
 category: user
 handle: person
 displayName: Person
-ouHandle: default
+ouHandle: system
 allowSelfRegistration: true
 systemAttributes:
   display: username
@@ -69,7 +69,7 @@ resource_type: agent_type
 id: 01900000-0000-7000-8000-000000000011
 handle: default
 displayName: Default
-ouHandle: default
+ouHandle: system
 systemAttributes:
   display: name
 schema:
@@ -111,7 +111,7 @@ id: 01900000-0000-7000-8000-000000000020
 name: System
 description: System resource server
 identifier: https://localhost:8090/mcp
-ouHandle: default
+ouHandle: system
 resources:
   - name: System
     handle: system
@@ -119,7 +119,7 @@ resources:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000061
-ouHandle: default
+ouHandle: system
 name: Default Authentication Flow
 handle: default-flow
 flowType: AUTHENTICATION
@@ -284,7 +284,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000068
-ouHandle: default
+ouHandle: system
 name: Console App Authentication Flow
 handle: console-app-flow
 flowType: AUTHENTICATION
@@ -397,7 +397,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000070
-ouHandle: default
+ouHandle: system
 name: Console App Recovery Flow
 handle: console-app-flow
 flowType: RECOVERY
@@ -592,7 +592,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000006a
-ouHandle: default
+ouHandle: system
 name: Default Sign Out Flow
 handle: default-flow
 flowType: SIGNOUT
@@ -649,7 +649,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000067
-ouHandle: default
+ouHandle: system
 name: Default Recovery Flow
 handle: default-flow
 flowType: RECOVERY
@@ -951,7 +951,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000064
-ouHandle: default
+ouHandle: system
 name: Default Registration Flow
 handle: default-flow
 flowType: REGISTRATION
@@ -1193,7 +1193,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000069
-ouHandle: default
+ouHandle: system
 name: Console App Registration Flow
 handle: console-app-flow
 flowType: REGISTRATION
@@ -1353,7 +1353,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000066
-ouHandle: default
+ouHandle: system
 name: Default User Onboarding Flow
 handle: default-flow
 flowType: USER_ONBOARDING
@@ -1943,7 +1943,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000077
-ouHandle: default
+ouHandle: system
 name: Default User Deletion Flow
 handle: default-user-deletion-flow
 flowType: ADMINISTRATION
@@ -2034,7 +2034,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000079
-ouHandle: default
+ouHandle: system
 name: Default Application Deletion Flow
 handle: default-application-deletion-flow
 flowType: ADMINISTRATION
@@ -2122,7 +2122,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000007a
-ouHandle: default
+ouHandle: system
 name: Default Secret Regeneration Flow
 handle: default-secret-regeneration-flow
 flowType: ADMINISTRATION
@@ -2212,7 +2212,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000081
-ouHandle: default
+ouHandle: system
 name: Default Role Assignment Removal Flow
 handle: default-role-assignment-removal-flow
 flowType: ADMINISTRATION
@@ -2306,7 +2306,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000007c
-ouHandle: default
+ouHandle: system
 name: Default Action Deletion Flow
 handle: default-action-deletion-flow
 flowType: ADMINISTRATION
@@ -2399,7 +2399,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000007d
-ouHandle: default
+ouHandle: system
 name: Default Role Deletion Flow
 handle: default-role-deletion-flow
 flowType: ADMINISTRATION
@@ -2493,7 +2493,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000007e
-ouHandle: default
+ouHandle: system
 name: Default Group Deletion Flow
 handle: default-group-deletion-flow
 flowType: ADMINISTRATION
@@ -2587,7 +2587,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000007f
-ouHandle: default
+ouHandle: system
 name: Default Group Membership Removal Flow
 handle: default-group-membership-removal-flow
 flowType: ADMINISTRATION
@@ -2681,7 +2681,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000080
-ouHandle: default
+ouHandle: system
 name: Default Role Permission Removal Flow
 handle: default-role-permission-removal-flow
 flowType: ADMINISTRATION
@@ -2775,7 +2775,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000007b
-ouHandle: default
+ouHandle: system
 name: Default Agent Onboarding Flow
 handle: default-agent-onboarding-flow
 flowType: ADMINISTRATION
@@ -6237,7 +6237,7 @@ inboundAuthConfig:
 resource_type: user
 id: 01900000-0000-7000-8000-000000000030
 type: person
-ouHandle: default
+ouHandle: system
 attributes:
   username: "{{ .ADMIN_USERNAME }}"
   sub: "{{ .ADMIN_USERNAME }}"
@@ -6253,7 +6253,7 @@ resource_type: group
 id: 01900000-0000-7000-8000-000000000040
 name: Administrators
 description: System administrators group
-ouHandle: default
+ouHandle: system
 members:
   - id: 01900000-0000-7000-8000-000000000030
     type: user
@@ -6262,7 +6262,7 @@ resource_type: role
 id: 01900000-0000-7000-8000-000000000050
 name: Administrator
 description: System administrator role with full permissions
-ouHandle: default
+ouHandle: system
 permissions:
   - resourceServerId: 01900000-0000-7000-8000-000000000020
     permissions:
@@ -6727,7 +6727,7 @@ translations:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000087
-ouHandle: default
+ouHandle: system
 name: Default User Unlock Flow
 handle: default-user-unlock-flow
 flowType: ADMINISTRATION
@@ -6802,7 +6802,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000086
-ouHandle: default
+ouHandle: system
 name: Default Agent Unlock Flow
 handle: default-agent-unlock-flow
 flowType: ADMINISTRATION
@@ -6857,7 +6857,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000088
-ouHandle: default
+ouHandle: system
 name: Default User Suspend Flow
 handle: default-user-suspend-flow
 flowType: ADMINISTRATION
@@ -6968,7 +6968,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000089
-ouHandle: default
+ouHandle: system
 name: Default User Unsuspend Flow
 handle: default-user-unsuspend-flow
 flowType: ADMINISTRATION
@@ -7043,7 +7043,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000082
-ouHandle: default
+ouHandle: system
 name: Default Agent Suspend Flow
 handle: default-agent-suspend-flow
 flowType: ADMINISTRATION
@@ -7154,7 +7154,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000083
-ouHandle: default
+ouHandle: system
 name: Default Agent Unsuspend Flow
 handle: default-agent-unsuspend-flow
 flowType: ADMINISTRATION
@@ -7209,7 +7209,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000084
-ouHandle: default
+ouHandle: system
 name: Default Application Suspend Flow
 handle: default-application-suspend-flow
 flowType: ADMINISTRATION
@@ -7320,7 +7320,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000085
-ouHandle: default
+ouHandle: system
 name: Default Application Unsuspend Flow
 handle: default-application-unsuspend-flow
 flowType: ADMINISTRATION
@@ -7377,7 +7377,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000a0
 channel: email
 handle: user-invite
-ouHandle: default
+ouHandle: system
 displayName: User Invitation Email
 description: Sent to invite a new user to complete their registration.
 content:
@@ -7401,7 +7401,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000a1
 channel: sms
 handle: user-invite
-ouHandle: default
+ouHandle: system
 displayName: User Invitation SMS
 description: Sent to invite a new user to complete their registration.
 content:
@@ -7411,7 +7411,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000a2
 channel: email
 handle: self-registration
-ouHandle: default
+ouHandle: system
 displayName: Self Registration Invite Email
 description: Sent to complete a self-service registration.
 content:
@@ -7435,7 +7435,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000a3
 channel: sms
 handle: self-registration
-ouHandle: default
+ouHandle: system
 displayName: Self Registration Invite SMS
 description: Sent to complete a self-service registration.
 content:
@@ -7445,7 +7445,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000a4
 channel: email
 handle: magic-link
-ouHandle: default
+ouHandle: system
 displayName: Magic Link Sign-In Email
 description: Sent to let a user sign in through a secure link.
 content:
@@ -7470,7 +7470,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000a5
 channel: email
 handle: password-recovery
-ouHandle: default
+ouHandle: system
 displayName: Password Recovery Email
 description: Sent to let a user reset their account password.
 content:
@@ -7502,7 +7502,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000a6
 channel: email
 handle: ciba-notification
-ouHandle: default
+ouHandle: system
 displayName: CIBA Authentication Notification Email
 description: Sent to approve a backchannel authentication request.
 content:
@@ -7529,7 +7529,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000a7
 channel: sms
 handle: ciba-notification
-ouHandle: default
+ouHandle: system
 displayName: CIBA Authentication Notification SMS
 description: Sent to approve a backchannel authentication request.
 content:
@@ -7539,7 +7539,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000a8
 channel: email
 handle: otp
-ouHandle: default
+ouHandle: system
 displayName: Email OTP Verification
 description: Sent to verify a user's email address with a one-time passcode.
 content:
@@ -7564,7 +7564,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000a9
 channel: sms
 handle: otp
-ouHandle: default
+ouHandle: system
 displayName: SMS OTP Verification
 description: Sent to verify a user's phone number with a one-time passcode.
 content:
@@ -7574,7 +7574,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000aa
 channel: email
 handle: authentication-method-locked
-ouHandle: default
+ouHandle: system
 displayName: Account Temporarily Locked Email
 description: Sent when repeated failed sign-ins lock one sign-in method for a limited time.
 content:
@@ -7595,7 +7595,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000ab
 channel: email
 handle: authentication-method-locked-permanent
-ouHandle: default
+ouHandle: system
 displayName: Account Locked Email
 description: Sent when repeated failed sign-ins lock one sign-in method until it is released.
 content:
@@ -7616,7 +7616,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000ac
 channel: email
 handle: account-locked
-ouHandle: default
+ouHandle: system
 displayName: Account Sign-in Temporarily Locked Email
 description: Sent when repeated failed sign-ins lock every sign-in method on the account for a limited time.
 content:
@@ -7637,7 +7637,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000ad
 channel: email
 handle: account-locked-permanent
-ouHandle: default
+ouHandle: system
 displayName: Account Sign-in Locked Email
 description: Sent when repeated failed sign-ins lock every sign-in method on the account until it is released.
 content:
@@ -7658,7 +7658,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000ae
 channel: email
 handle: account-suspended
-ouHandle: default
+ouHandle: system
 displayName: Account Suspended Email
 description: Sent when an administrator suspends an account.
 content:
@@ -7677,7 +7677,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000af
 channel: email
 handle: account-unsuspended
-ouHandle: default
+ouHandle: system
 displayName: Account Suspension Lifted Email
 description: Sent when an administrator lifts a suspension. The account stays locked until it is recovered or unlocked.
 content:
@@ -7696,7 +7696,7 @@ resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000b0
 channel: email
 handle: account-unlocked
-ouHandle: default
+ouHandle: system
 displayName: Account Unlocked Email
 description: Sent when an administrator unlocks an account.
 content:
