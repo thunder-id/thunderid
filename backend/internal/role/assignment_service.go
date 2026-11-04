@@ -345,7 +345,12 @@ func (as *roleAssignmentService) ValidateRemoveAssignment(ctx context.Context, i
 		return &revocation.AccessRevocationTarget{AssigneeType: string(assignment.Type)}, nil
 	}
 
-	scopes, svcErr := resolveScopes(ctx, as.resourceService, role.Permissions)
+	// Losing the role loses everything it granted, including the permissions beneath them.
+	revoked, svcErr := revokedPermissions(ctx, as.resourceService, role.Permissions, nil)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	scopes, svcErr := resolveScopes(ctx, as.resourceService, revoked)
 	if svcErr != nil {
 		return nil, svcErr
 	}

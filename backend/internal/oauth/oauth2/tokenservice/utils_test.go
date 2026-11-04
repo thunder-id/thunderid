@@ -22,8 +22,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
+	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
 )
 
@@ -1396,4 +1398,67 @@ func (suite *UtilsTestSuite) TestBuildAccessEvaluationsRequest_SetsTheContextOnE
 
 	request = BuildAccessEvaluationsRequest("app-1", "app", nil, nil, []string{"read"}, "rs-1", nil)
 	suite.Nil(request.Evaluations[0].Context, "no context is sent when there is none")
+}
+
+// A refused scope that reports permissions the subject holds beneath it yields those instead, so a
+// client asking for a resource receives the part of it the subject can satisfy.
+func (suite *UtilsTestSuite) TestFilterAuthorizedScopesSubstitutesHeldDescendants() {
+	t := suite.T()
+	scopes := []string{"reservations", "invoices:read"}
+	evaluations := []providers.AccessEvaluationResponse{
+		{Decision: false, Context: map[string]interface{}{
+			providers.ContextKeyGrantedInstead: []string{"reservations:create", "reservations:view"},
+		}},
+		{Decision: true},
+	}
+
+	granted := FilterAuthorizedScopes(scopes, evaluations)
+
+	// The resource itself is never substituted in: holding what is beneath it is not holding it.
+	assert.Equal(t, []string{"reservations:create", "reservations:view", "invoices:read"}, granted)
+}
+
+// A refusal with nothing beneath it contributes nothing, exactly as before.
+func (suite *UtilsTestSuite) TestFilterAuthorizedScopesLeavesAPlainRefusalAlone() {
+	t := suite.T()
+	granted := FilterAuthorizedScopes(
+		[]string{"reservations"}, []providers.AccessEvaluationResponse{{Decision: false}})
+
+	assert.Empty(t, granted)
+}
+
+func (suite *UtilsTestSuite) TestApplyMappedAuthorizationDirectTargetsAreExact() {
+	for _, tc := range []struct {
+		name, held, requested string
+		want                  []string
+	}{
+		{"parent does not grant child", "reservations", "reservations:create", nil},
+		{"child does not answer parent", "reservations:create", "reservations", nil},
+		{"literal target", "reservations:create", "reservations:create", []string{"reservations:create"}},
+	} {
+		suite.Run(tc.name, func() {
+			authz := authzmock.NewAuthorizationProviderMock(suite.T())
+			targets := []providers.AuthorizationTarget{{
+				Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: tc.held,
+			}}
+			granted, err := ApplyMappedAuthorization(
+				context.Background(), authz, nil, targets, "rs-1", []string{tc.requested}, true, log.GetLogger())
+			suite.Nil(err)
+			suite.Equal(tc.want, granted)
+		})
+	}
+}
+
+func (suite *UtilsTestSuite) TestApplyMappedAuthorizationPreservesRoleAlternatives() {
+	authz := authzmock.NewAuthorizationProviderMock(suite.T())
+	authz.On("EvaluateAccessBatch", mock.Anything, mock.Anything).Return(
+		&providers.AccessEvaluationsResponse{Evaluations: []providers.AccessEvaluationResponse{{
+			Decision: false,
+			Context:  map[string]interface{}{providers.ContextKeyGrantedInstead: []string{"reservations:view"}},
+		}}}, nil).Once()
+	targets := []providers.AuthorizationTarget{{Type: providers.AuthorizationTargetRole, ID: "role-1"}}
+	granted, err := ApplyMappedAuthorization(
+		context.Background(), authz, nil, targets, "rs-1", []string{"reservations"}, true, log.GetLogger())
+	suite.Nil(err)
+	suite.Equal([]string{"reservations:view"}, granted)
 }

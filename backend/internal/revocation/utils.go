@@ -20,6 +20,11 @@ func EntityScopeCriterionValue(entityID, audience, scope string) string {
 	return digest(entityID, audience, scope)
 }
 
+// EntityScopeSubtreeCriterionValue binds a subtree to its principal, audience, and original delimiter.
+func EntityScopeSubtreeCriterionValue(entityID, audience, root, delimiter string) string {
+	return digest(entityID, audience, root, delimiter)
+}
+
 // ScopeCriterionValue returns the value denying one scope on one resource server for every principal.
 func ScopeCriterionValue(audience, scope string) string {
 	return digest(audience, scope)
@@ -68,14 +73,44 @@ func ScopeCriteria(subject string, audiences, scopes []string) []Criterion {
 		for _, scope := range scopes {
 			if subject != "" {
 				criteria = append(criteria, Criterion{
-					Type:  CriterionTypeEntityScope,
-					Value: EntityScopeCriterionValue(subject, audience, scope),
+					Type: CriterionTypeEntityScope, Value: EntityScopeCriterionValue(subject, audience, scope),
 				})
 			}
 			criteria = append(criteria, Criterion{
-				Type:  CriterionTypeScope,
-				Value: ScopeCriterionValue(audience, scope),
+				Type: CriterionTypeScope, Value: ScopeCriterionValue(audience, scope),
 			})
+		}
+	}
+	return criteria
+}
+
+// SubtreeScopeCriteria derives frozen subtree lookup keys without reading the live permission catalog.
+func SubtreeScopeCriteria(subject string, audiences, scopes []string) []Criterion {
+	if subject == "" {
+		return nil
+	}
+	criteria := []Criterion{}
+	seen := map[Criterion]bool{}
+	for _, audience := range audiences {
+		for _, scope := range scopes {
+			for _, delimiter := range []string{".", "_", ":", "-", "/"} {
+				root := scope
+				for root != "" {
+					criterion := Criterion{
+						Type:  CriterionTypeEntityScopeSubtree,
+						Value: EntityScopeSubtreeCriterionValue(subject, audience, root, delimiter),
+					}
+					if !seen[criterion] {
+						seen[criterion] = true
+						criteria = append(criteria, criterion)
+					}
+					index := strings.LastIndex(root, delimiter)
+					if index < 0 {
+						break
+					}
+					root = root[:index]
+				}
+			}
 		}
 	}
 	return criteria

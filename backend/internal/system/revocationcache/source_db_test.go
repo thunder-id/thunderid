@@ -74,6 +74,9 @@ func (suite *DBSourceTestSuite) TestSnapshot_Success() {
 		criterionTypeScope, mock.Anything, testDeploymentID).
 		Return([]map[string]interface{}{}, nil)
 
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeEntityScopeSubtree, mock.Anything, testDeploymentID).Return([]map[string]interface{}{}, nil)
+
 	snapshot, err := suite.source.Snapshot(context.Background())
 
 	suite.Require().NoError(err)
@@ -117,6 +120,9 @@ func (suite *DBSourceTestSuite) TestSnapshot_Empty() {
 	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
 		criterionTypeScope, mock.Anything, testDeploymentID).
 		Return([]map[string]interface{}{}, nil)
+
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeEntityScopeSubtree, mock.Anything, testDeploymentID).Return([]map[string]interface{}{}, nil)
 
 	snapshot, err := suite.source.Snapshot(context.Background())
 

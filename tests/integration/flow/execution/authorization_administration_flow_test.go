@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 
@@ -373,6 +374,54 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlo
 		"The role still grants the kept permission, so a token carrying only it must stay accepted")
 	ts.Equal([]string{scopePermissionKept}, ts.rolePermissions(roleID),
 		"The role must grant exactly the permissions the flow was given")
+}
+
+func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlow_HierarchicalBranches() {
+	for _, retainChild := range []bool{false, true} {
+		name := "whole"
+		if retainChild {
+			name = "retained"
+		}
+		ts.Run(name, func() {
+			audience := "https://hierarchical-revocation.example/" + name
+			rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+				Name: "Hierarchical revocation " + name, Identifier: audience, OUID: ts.ouID,
+				HierarchicalPermissions: true,
+			}, nil)
+			ts.Require().NoError(err)
+			ts.T().Cleanup(func() { ts.NoError(testutils.DeleteResourceServerWithChildren(rsID)) })
+			root, err := testutils.CreateResource(rsID, "Reservations", "reservations", "")
+			ts.Require().NoError(err)
+			for _, child := range []string{"create", "view"} {
+				_, err = testutils.CreateResource(rsID, child, child, root)
+				ts.Require().NoError(err)
+			}
+			roleID := ts.createRoleOn("Hierarchical revocation "+name, rsID, []string{"reservations"},
+				testutils.Assignment{ID: ts.appID, Type: "app"})
+			client := authzFlowClient
+			client.audience = audience
+			tokens := map[string]string{}
+			for _, permission := range []string{"reservations", "reservations:create", "reservations:view"} {
+				tokens[permission] = grantedToken(&ts.Suite, client, permission)
+			}
+			permissions := "[]"
+			if retainChild {
+				permissions = permissionSet(&ts.Suite, rsID, "reservations:create")
+			}
+			step := executeAsAdmin(&ts.Suite, ts.flowIDs[rolePermissionRemovalFlowHandle], map[string]string{
+				roleTargetInput: roleID, permissionsTargetInput: permissions,
+			})
+			requireCompleted(&ts.Suite, step)
+			for permission, token := range tokens {
+				ts.False(tokenIsActive(&ts.Suite, client, token),
+					"old subtree token must be revoked for %s", permission)
+			}
+			if retainChild {
+				time.Sleep(time.Until(time.Now().Truncate(time.Second).Add(time.Second)))
+				grantedToken(&ts.Suite, client, "reservations:create")
+			}
+		})
+	}
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlow_NothingDroppedRevokesNothing() {

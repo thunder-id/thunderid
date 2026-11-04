@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -61,6 +62,12 @@ type RoleServiceInterface interface {
 		ctx context.Context, entityID string, groups, roleIDs []string, assignmentOUID, resourceServerID string,
 		requestedPermissions []string,
 	) ([]string, *tidcommon.ServiceError)
+	// ExpandHeldDescendants returns held descendants as alternatives to denied parent requests,
+	// counting only the assignments made in assignmentOUID when one is given.
+	ExpandHeldDescendants(
+		ctx context.Context, entityID string, groups, roleIDs []string, assignmentOUID, resourceServerID string,
+		permissions []string,
+	) (map[string][]string, *tidcommon.ServiceError)
 	// GetAllPermissions returns every permission the entity and/or groups hold, keyed by resource
 	// server. Unlike GetAuthorizedPermissionsByResourceServer it enumerates rather than checks.
 	GetAllPermissions(
@@ -94,6 +101,7 @@ type RoleServiceInterface interface {
 
 // roleService is the default implementation of the RoleServiceInterface.
 type roleService struct {
+	delimiters      *permissionDelimiterResolver
 	roleStore       roleStoreInterface
 	entityService   entity.EntityServiceInterface
 	groupService    group.GroupServiceInterface
@@ -117,6 +125,7 @@ func newRoleService(
 	sharingService sharing.SharingServiceInterface,
 ) RoleServiceInterface {
 	return &roleService{
+		delimiters:      newPermissionDelimiterResolver(resourceService),
 		roleStore:       roleStore,
 		entityService:   entityService,
 		groupService:    groupService,
@@ -623,7 +632,11 @@ func (rs *roleService) ValidateDeleteRole(ctx context.Context, id string) (
 	if svcErr := rs.requireRoleNotMandated(ctx, id); svcErr != nil {
 		return nil, svcErr
 	}
-	return rs.roleAccessChangeTarget(ctx, id, role.Permissions)
+	revoked, svcErr := revokedPermissions(ctx, rs.resourceService, role.Permissions, nil)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return rs.roleAccessChangeTarget(ctx, id, revoked)
 }
 
 // requireRoleNotMandated refuses to delete a role a user sharing policy still mandates.
@@ -656,7 +669,11 @@ func (rs *roleService) ValidateUpdateRolePermissions(ctx context.Context, id str
 	if svcErr := rs.authzService.CanGrantPermissions(ctx, toPermissionSet(permissions)); svcErr != nil {
 		return nil, svcErr
 	}
-	return rs.roleAccessChangeTarget(ctx, id, droppedPermissions(role.Permissions, permissions))
+	revoked, svcErr := revokedPermissions(ctx, rs.resourceService, role.Permissions, permissions)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return rs.roleAccessChangeTarget(ctx, id, revoked)
 }
 
 // ValidateGroupDeletion runs the group service's checks for the deletion and returns what it revokes.
@@ -737,9 +754,13 @@ func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
 		return []string{}, nil
 	}
 
+	// Include ancestors before the store's indexed exact lookup.
+	delimiter := rs.delimiters.resolve(ctx, resourceServerID, "")
+	candidates, coverage := expandRequestedPermissions(requestedPermissions, delimiter)
+
 	// Get authorized permissions from store
-	authorizedPermissions, err := rs.roleStore.GetAuthorizedPermissionsByResourceServer(
-		ctx, entityID, groups, roleIDs, assignmentOUID, resourceServerID, requestedPermissions)
+	authorizedCandidates, err := rs.roleStore.GetAuthorizedPermissionsByResourceServer(
+		ctx, entityID, groups, roleIDs, assignmentOUID, resourceServerID, candidates)
 	if err != nil {
 		logger.Error(ctx, "Failed to get authorized permissions",
 			log.MaskedString(log.LoggerKeyUserID, entityID),
@@ -749,6 +770,14 @@ func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
 		return nil, &tidcommon.InternalServerError
 	}
 
+	// Map matched ancestors back to the requested permissions.
+	authorizedPermissions := resolveCoveredPermissions(
+		requestedPermissions, authorizedCandidates, coverage)
+
+	// Inheritance must not authorize permission strings absent from the catalog.
+	authorizedPermissions = rs.dropUndeclaredPermissions(
+		ctx, resourceServerID, authorizedPermissions, authorizedCandidates, delimiter)
+
 	logger.Debug(ctx, "Retrieved authorized permissions",
 		log.MaskedString(log.LoggerKeyUserID, entityID),
 		log.Int("groupCount", len(groups)),
@@ -757,6 +786,109 @@ func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
 		log.Int("authorizedCount", len(authorizedPermissions)))
 
 	return authorizedPermissions, nil
+}
+
+// dropUndeclaredPermissions validates scopes authorized only through an ancestor.
+// Unreadable catalogs exclude inherited scopes; direct grants retain their existing behavior.
+func (rs *roleService) dropUndeclaredPermissions(
+	ctx context.Context, resourceServerID string,
+	authorizedPermissions, matchedByName []string, delimiter string,
+) []string {
+	if delimiter == "" || len(authorizedPermissions) == 0 {
+		return authorizedPermissions
+	}
+
+	named := make(map[string]struct{}, len(matchedByName))
+	for _, permission := range matchedByName {
+		named[permission] = struct{}{}
+	}
+
+	inherited := make([]string, 0, len(authorizedPermissions))
+	for _, permission := range authorizedPermissions {
+		if _, ok := named[permission]; !ok {
+			inherited = append(inherited, permission)
+		}
+	}
+	if len(inherited) == 0 {
+		return authorizedPermissions
+	}
+
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	undeclared, svcErr := rs.resourceService.ValidatePermissions(ctx, resourceServerID, inherited)
+	if svcErr != nil {
+		logger.Error(ctx, "Could not check inherited permissions against the catalog; refusing them",
+			log.String("resourceServerID", resourceServerID),
+			log.Int("inheritedCount", len(inherited)))
+		undeclared = inherited
+	}
+	if len(undeclared) == 0 {
+		return authorizedPermissions
+	}
+
+	refused := make(map[string]struct{}, len(undeclared))
+	for _, permission := range undeclared {
+		refused[permission] = struct{}{}
+	}
+	logger.Debug(ctx, "Refusing permissions the resource server does not declare",
+		log.String("resourceServerID", resourceServerID),
+		log.Int("refusedCount", len(refused)))
+
+	declared := make([]string, 0, len(authorizedPermissions))
+	for _, permission := range authorizedPermissions {
+		if _, ok := refused[permission]; !ok {
+			declared = append(declared, permission)
+		}
+	}
+	return declared
+}
+
+// expandRequestedPermissions returns exact/ancestor lookup candidates and their requested-scope coverage.
+func expandRequestedPermissions(
+	requestedPermissions []string, delimiter string,
+) ([]string, map[string][]string) {
+	candidates := make([]string, 0, len(requestedPermissions))
+	coverage := make(map[string][]string, len(requestedPermissions))
+
+	for _, requested := range requestedPermissions {
+		if requested == "" {
+			continue
+		}
+		for _, candidate := range append(
+			[]string{requested}, security.AncestorPermissions(requested, delimiter)...,
+		) {
+			if _, seen := coverage[candidate]; !seen {
+				candidates = append(candidates, candidate)
+			}
+			coverage[candidate] = append(coverage[candidate], requested)
+		}
+	}
+
+	return candidates, coverage
+}
+
+// resolveCoveredPermissions returns the requested permissions that at least one authorized candidate
+// covers, in the order they were requested.
+func resolveCoveredPermissions(
+	requestedPermissions, authorizedCandidates []string, coverage map[string][]string,
+) []string {
+	authorized := make(map[string]bool, len(requestedPermissions))
+	for _, candidate := range authorizedCandidates {
+		for _, requested := range coverage[candidate] {
+			authorized[requested] = true
+		}
+	}
+
+	covered := make([]string, 0, len(requestedPermissions))
+	for _, requested := range requestedPermissions {
+		if authorized[requested] {
+			covered = append(covered, requested)
+			// Guard against a requested permission listed twice yielding it twice.
+			authorized[requested] = false
+		}
+	}
+
+	return covered
 }
 
 // GetAllPermissions retrieves every permission the entity and/or groups hold through their assigned
@@ -1048,7 +1180,11 @@ func (rs *roleService) groupScopes(ctx context.Context, groupID string) (
 			Permissions:      permissionSet[resourceServerID],
 		})
 	}
-	return resolveScopes(ctx, rs.resourceService, permissions)
+	revoked, svcErr := revokedPermissions(ctx, rs.resourceService, permissions, nil)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return resolveScopes(ctx, rs.resourceService, revoked)
 }
 
 // validateRoleMutable refuses a change to a declarative role, failing closed when the check errors.
@@ -1372,4 +1508,86 @@ func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceErr
 		return svcErr
 	}
 	return sharingErrors.Translate(svcErr)
+}
+
+// ExpandHeldDescendants returns held descendants of refused permissions without granting their parents.
+// Only the assignments made in assignmentOUID count when one is given, matching
+// GetAuthorizedPermissionsByResourceServer.
+func (rs *roleService) ExpandHeldDescendants(
+	ctx context.Context, entityID string, groups, roleIDs []string, assignmentOUID, resourceServerID string,
+	permissions []string,
+) (map[string][]string, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	delimiter := rs.delimiters.resolve(ctx, resourceServerID, "")
+	if delimiter == "" || len(permissions) == 0 {
+		return nil, nil
+	}
+
+	held, err := rs.heldPermissions(ctx, entityID, groups, roleIDs, assignmentOUID, resourceServerID)
+	if err != nil {
+		logger.Error(ctx, "Failed to enumerate held permissions",
+			log.MaskedString(log.LoggerKeyUserID, entityID),
+			log.String("resourceServerID", resourceServerID),
+			log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	expanded := make(map[string][]string, len(permissions))
+	for _, permission := range permissions {
+		prefix := permission + delimiter
+		descendants := make([]string, 0, len(held))
+		for _, candidate := range held {
+			if strings.HasPrefix(candidate, prefix) && !slices.Contains(descendants, candidate) {
+				descendants = append(descendants, candidate)
+			}
+		}
+		if len(descendants) > 0 {
+			slices.Sort(descendants)
+			expanded[permission] = descendants
+		}
+	}
+
+	if len(expanded) == 0 {
+		return nil, nil
+	}
+	return expanded, nil
+}
+
+// heldPermissions lists the permissions on one resource server that the subject's assigned roles, counting
+// only the assignments made in assignmentOUID when one is given, and its directly mapped roles grant.
+// Federated subjects can have mapped roles without entity or group assignments.
+func (rs *roleService) heldPermissions(
+	ctx context.Context, entityID string, groups, roleIDs []string, assignmentOUID, resourceServerID string,
+) ([]string, error) {
+	held := make([]string, 0)
+	heldRoleIDs := slices.Clone(roleIDs)
+	if entityID != "" || len(groups) > 0 {
+		assigned, err := rs.roleStore.GetEntityRoleIDs(ctx, entityID, groups, assignmentOUID)
+		if err != nil {
+			return nil, err
+		}
+		heldRoleIDs = append(heldRoleIDs, assigned...)
+	}
+
+	seen := make(map[string]bool, len(heldRoleIDs))
+	for _, roleID := range heldRoleIDs {
+		if seen[roleID] {
+			continue
+		}
+		seen[roleID] = true
+		role, err := rs.roleStore.GetRole(ctx, roleID)
+		if err != nil {
+			if errors.Is(err, ErrRoleNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		for _, entry := range role.Permissions {
+			if entry.ResourceServerID == resourceServerID {
+				held = append(held, entry.Permissions...)
+			}
+		}
+	}
+	return held, nil
 }

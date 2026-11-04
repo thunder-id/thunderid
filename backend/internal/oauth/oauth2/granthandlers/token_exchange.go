@@ -313,8 +313,10 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	}
 
 	// Determine final scopes
+	delimiter := h.exchangeDelimiter(ctx, tokenRequest, subjectClaims.Authorization.Configured)
 	finalScopes, errResp := h.getScopes(
-		tokenRequest, subjectClaims.Scopes, subjectClaims.Authorization.Configured)
+		tokenRequest, subjectClaims.Scopes, oauthApp.ScopeClaims,
+		delimiter, subjectClaims.Authorization.Configured)
 	if errResp != nil {
 		return nil, errResp
 	}
@@ -358,6 +360,8 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 
 		finalAudiences = []string{targetRS.Identifier}
 	}
+
+	finalScopes = compactPermissionScopes(finalScopes, oidcScopes, targetRS)
 
 	// Build access token using token builder
 	userSubConfig := oauthApp.UserAccessTokenConfig()
@@ -614,6 +618,8 @@ func (h *tokenExchangeGrantHandler) validateAccessTokenType(
 func (h *tokenExchangeGrantHandler) getScopes(
 	tokenRequest *model.TokenRequest,
 	subjectScopes []string,
+	scopeClaims map[string][]string,
+	delimiter string,
 	authorityIsMapping bool,
 ) ([]string, *model.ErrorResponse) {
 	if tokenRequest.Scope == "" {
@@ -644,15 +650,11 @@ func (h *tokenExchangeGrantHandler) getScopes(
 		}
 	}
 
-	// Filter requested scopes to only include those present in subject token
-	subjectScopeSet := make(map[string]bool)
-	for _, s := range subjectScopes {
-		subjectScopeSet[s] = true
-	}
-
+	// Hierarchical permission grants can narrow to descendants; OIDC grants stay exact.
+	oidcScopes := oidcScopeSet(slices.Concat(subjectScopes, requestedScopes), scopeClaims)
 	validRequestedScopes := []string{}
 	for _, requestedScope := range requestedScopes {
-		if subjectScopeSet[requestedScope] {
+		if grantPermits(requestedScope, subjectScopes, oidcScopes, delimiter) {
 			validRequestedScopes = append(validRequestedScopes, requestedScope)
 		}
 	}
@@ -773,4 +775,19 @@ func (h *tokenExchangeGrantHandler) resolveExchangedEntity(ctx context.Context,
 		return "", "", nil
 	}
 	return entry.SubjectID, entry.SubjectCategory, nil
+}
+
+// exchangeDelimiter returns the target server's enabled hierarchy delimiter when requested scopes are
+// narrowed against the subject token, which a configured mapping replaces as the authority.
+// Missing or unreadable metadata preserves exact matching; audience binding is validated later.
+func (h *tokenExchangeGrantHandler) exchangeDelimiter(ctx context.Context, tokenRequest *model.TokenRequest,
+	authorityIsMapping bool) string {
+	if tokenRequest.Scope == "" || authorityIsMapping {
+		return ""
+	}
+	targetRS, errResp := resourceindicators.ResolveTargetResourceServer(ctx, h.resourceService, tokenRequest.Resources)
+	if errResp != nil {
+		return ""
+	}
+	return hierarchyDelimiter(targetRS)
 }

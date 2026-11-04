@@ -22,6 +22,8 @@ const (
 	authzenUserTypeName             = "authzen-person"
 	authzenResourceIdentifier       = "authzen-booking-api"
 	authzenBookingApprovePermission = "booking:approve"
+	authzenBookingPermission        = "booking"
+	authzenFlatResourceIdentifier   = "authzen-flat-api"
 	authzenOtherResourceIdentifier  = "authzen-invoice-api"
 )
 
@@ -38,6 +40,14 @@ type AuthZENAPITestSuite struct {
 	otherServerID    string
 	resourceID       string
 	roleID           string
+
+	subtreeUserID string
+	subtreeRoleID string
+
+	flatServerID   string
+	flatResourceID string
+	flatRoleID     string
+	flatPermission string
 
 	readPermission    string
 	writePermission   string
@@ -86,10 +96,11 @@ func (ts *AuthZENAPITestSuite) SetupSuite() {
 	ts.deniedUserID = deniedUserID
 
 	resourceServer, err := createResourceServer(testutils.ResourceServer{
-		Name:        "AuthZEN Booking API",
-		Description: "Resource server for AuthZEN integration tests",
-		Identifier:  authzenResourceIdentifier,
-		OUID:        ts.ouID,
+		Name:                    "AuthZEN Booking API",
+		Description:             "Resource server for AuthZEN integration tests",
+		Identifier:              authzenResourceIdentifier,
+		OUID:                    ts.ouID,
+		HierarchicalPermissions: true,
 	})
 	ts.Require().NoError(err, "create AuthZEN resource server")
 	ts.resourceServerID = resourceServer.ID
@@ -159,17 +170,98 @@ func (ts *AuthZENAPITestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(err, "create AuthZEN test role")
 	ts.roleID = roleID
+
+	// A second subject granted the booking resource itself rather than any action beneath it. The
+	// resource carries a permission of its own, and granting it grants what it contains.
+	subtreeUserID, err := testutils.CreateUser(testutils.User{
+		Type:       authzenUserTypeName,
+		OUID:       ts.ouID,
+		Attributes: json.RawMessage(`{"username": "authzen-subtree-user"}`),
+	})
+	ts.Require().NoError(err, "create AuthZEN subtree subject user")
+	ts.subtreeUserID = subtreeUserID
+
+	subtreeRoleID, err := testutils.CreateRole(testutils.Role{
+		Name:        "AuthZEN Booking Manager",
+		Description: "Role granting the booking resource rather than its actions",
+		OUID:        ts.ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{
+				ResourceServerID: ts.resourceServerID,
+				Permissions:      []string{resource.Permission},
+			},
+		},
+		Assignments: []testutils.Assignment{
+			{ID: ts.subtreeUserID, Type: "user"},
+		},
+	})
+	ts.Require().NoError(err, "create AuthZEN subtree role")
+	ts.subtreeRoleID = subtreeRoleID
+
+	// A resource server that has not declared its permissions hierarchical. The same shape of grant
+	// must authorize nothing but itself there, since what a scope string means belongs to the
+	// resource server rather than to the way the string happens to be built.
+	flatServer, err := createResourceServer(testutils.ResourceServer{
+		Name:        "AuthZEN Flat API",
+		Description: "Resource server that does not declare hierarchical permissions",
+		Identifier:  authzenFlatResourceIdentifier,
+		OUID:        ts.ouID,
+	})
+	ts.Require().NoError(err, "create flat resource server")
+	ts.flatServerID = flatServer.ID
+
+	flatResource, err := createResource(ts.flatServerID, createResourceRequest{
+		Name:        "Booking",
+		Handle:      "booking",
+		Description: "Booking resource on a non-hierarchical server",
+	})
+	ts.Require().NoError(err, "create flat resource")
+	ts.flatResourceID = flatResource.ID
+
+	flatApprove, err := createAction(
+		ts.flatServerID,
+		ts.flatResourceID,
+		testutils.Action{Name: "Approve booking", Handle: "approve", Description: "Approve booking"},
+	)
+	ts.Require().NoError(err, "create flat approve action")
+	ts.flatPermission = flatApprove.Permission
+
+	flatRoleID, err := testutils.CreateRole(testutils.Role{
+		Name:        "AuthZEN Flat Booking Manager",
+		Description: "Grants the booking resource on a non-hierarchical server",
+		OUID:        ts.ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.flatServerID, Permissions: []string{flatResource.Permission}},
+		},
+		Assignments: []testutils.Assignment{
+			{ID: ts.subtreeUserID, Type: "user"},
+		},
+	})
+	ts.Require().NoError(err, "create flat role")
+	ts.flatRoleID = flatRoleID
 }
 
 func (ts *AuthZENAPITestSuite) TearDownSuite() {
+	if ts.flatRoleID != "" {
+		_ = testutils.DeleteRole(ts.flatRoleID)
+	}
+	if ts.subtreeRoleID != "" {
+		_ = testutils.DeleteRole(ts.subtreeRoleID)
+	}
 	if ts.roleID != "" {
 		_ = testutils.DeleteRole(ts.roleID)
 	}
 	if ts.resourceServerID != "" {
-		_ = testutils.DeleteResourceServer(ts.resourceServerID)
+		ts.NoError(testutils.DeleteResourceServerWithChildren(ts.resourceServerID))
 	}
 	if ts.otherServerID != "" {
-		_ = testutils.DeleteResourceServer(ts.otherServerID)
+		ts.NoError(testutils.DeleteResourceServerWithChildren(ts.otherServerID))
+	}
+	if ts.flatServerID != "" {
+		ts.NoError(testutils.DeleteResourceServerWithChildren(ts.flatServerID))
+	}
+	if ts.subtreeUserID != "" {
+		ts.NoError(testutils.DeleteUser(ts.subtreeUserID))
 	}
 	if ts.deniedUserID != "" {
 		_ = testutils.DeleteUser(ts.deniedUserID)
@@ -1425,4 +1517,59 @@ func errorMessage(context map[string]interface{}) string {
 
 func stringPtr(value string) *string {
 	return &value
+}
+
+// A role granting a resource authorizes the actions beneath it, without those being granted
+// individually, and still refuses anything the resource does not contain.
+func (ts *AuthZENAPITestSuite) TestEvaluateAccessGrantedThroughTheResourceItself() {
+	beneath := ts.evaluate(evaluationRequest{
+		Subject:  subject{Type: "user", ID: ts.subtreeUserID},
+		Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
+		Action:   action{Name: ts.approvePermission},
+	})
+	ts.True(beneath.Decision, "booking:approve is beneath the granted booking resource")
+
+	itself := ts.evaluate(evaluationRequest{
+		Subject:  subject{Type: "user", ID: ts.subtreeUserID},
+		Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
+		Action:   action{Name: authzenBookingPermission},
+	})
+	ts.True(itself.Decision, "the granted resource permission authorizes itself")
+
+	// A server-level action is a sibling of the booking resource, not something it contains.
+	sibling := ts.evaluate(evaluationRequest{
+		Subject:  subject{Type: "user", ID: ts.subtreeUserID},
+		Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
+		Action:   action{Name: ts.readPermission},
+	})
+	ts.False(sibling.Decision, "read is not beneath booking")
+}
+
+// Holding an action never confers the resource it sits under, which would carry every other action
+// beneath it as well.
+func (ts *AuthZENAPITestSuite) TestEvaluateAccessDoesNotGrantTheResourceFromAnActionBeneathIt() {
+	result := ts.evaluate(evaluationRequest{
+		Subject:  subject{Type: "user", ID: ts.userID},
+		Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
+		Action:   action{Name: authzenBookingPermission},
+	})
+	ts.False(result.Decision, "booking:approve must not confer booking")
+}
+
+// The relation applies only where the resource server declared it. The same grant of the booking
+// resource, on a server that did not, authorizes the resource itself and nothing beneath it.
+func (ts *AuthZENAPITestSuite) TestEvaluateAccessIsExactWhenTheServerIsNotHierarchical() {
+	beneath := ts.evaluate(evaluationRequest{
+		Subject:  subject{Type: "user", ID: ts.subtreeUserID},
+		Resource: resource{Type: authzenFlatResourceIdentifier, ID: ts.flatResourceID},
+		Action:   action{Name: ts.flatPermission},
+	})
+	ts.False(beneath.Decision, "booking:approve is not conferred where permissions do not nest")
+
+	itself := ts.evaluate(evaluationRequest{
+		Subject:  subject{Type: "user", ID: ts.subtreeUserID},
+		Resource: resource{Type: authzenFlatResourceIdentifier, ID: ts.flatResourceID},
+		Action:   action{Name: authzenBookingPermission},
+	})
+	ts.True(itself.Decision, "the granted permission still authorizes itself")
 }

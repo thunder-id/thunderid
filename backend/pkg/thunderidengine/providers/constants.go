@@ -721,3 +721,6 @@ const (
 	// ParamAPV is the raw (already base64url-decoded) ECDH-ES apv header value. Value type: []byte.
 	ParamAPV = "apv"
 )
+
+// ContextKeyGrantedInstead carries trusted RBAC alternatives to a refused permission.
+const ContextKeyGrantedInstead = "granted_instead"

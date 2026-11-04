@@ -230,10 +230,14 @@ func (e *accessChangeValidator) buildPlan(change accessChange, inputs map[string
 	}
 	for _, entityID := range target.EntityIDs {
 		for _, scope := range target.Scopes {
-			plan.Criteria = append(plan.Criteria, revocation.Criterion{
-				Type:  revocation.CriterionTypeEntityScope,
-				Value: revocation.EntityScopeCriterionValue(entityID, scope.Audience, scope.Scope),
-			})
+			criterion := revocation.Criterion{Type: revocation.CriterionTypeEntityScope,
+				Value: revocation.EntityScopeCriterionValue(entityID, scope.Audience, scope.Scope)}
+			if scope.SubtreeDelimiter != "" {
+				criterion.Type = revocation.CriterionTypeEntityScopeSubtree
+				criterion.Value = revocation.EntityScopeSubtreeCriterionValue(
+					entityID, scope.Audience, scope.Scope, scope.SubtreeDelimiter)
+			}
+			plan.Criteria = append(plan.Criteria, criterion)
 		}
 	}
 	return plan

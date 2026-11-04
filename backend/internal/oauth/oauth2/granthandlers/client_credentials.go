@@ -167,6 +167,8 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		}
 	}
 
+	scopes = compactPermissionScopes(scopes, nil, targetRS)
+
 	clientAttributes, clientAttrErr := tokenservice.BuildClientAttributes(oauthApp, h.actorProvider)
 	if clientAttrErr != nil {
 		return nil, &model.ErrorResponse{

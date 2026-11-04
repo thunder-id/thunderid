@@ -350,8 +350,29 @@ func fromEngineAccessEvaluationsResponse(
 	for _, evaluation := range response.Evaluations {
 		evaluations = append(evaluations, providers.AccessEvaluationResponse{
 			Decision: evaluation.Decision,
-			Context:  evaluation.Context,
+			Context:  withGrantedInstead(evaluation.Context, evaluation.GrantedInstead),
 		})
 	}
 	return &providers.AccessEvaluationsResponse{Evaluations: evaluations}
+}
+
+// withGrantedInstead exposes typed alternatives through the public evaluation context.
+// Only the engine's typed field can supply this reserved entry; generic context cannot grant scopes.
+func withGrantedInstead(
+	evaluationContext map[string]interface{}, grantedInstead []string,
+) map[string]interface{} {
+	_, hasReservedContext := evaluationContext[providers.ContextKeyGrantedInstead]
+	if len(grantedInstead) == 0 && !hasReservedContext {
+		return evaluationContext
+	}
+	merged := make(map[string]interface{}, len(evaluationContext)+1)
+	for key, value := range evaluationContext {
+		if key != providers.ContextKeyGrantedInstead {
+			merged[key] = value
+		}
+	}
+	if len(grantedInstead) > 0 {
+		merged[providers.ContextKeyGrantedInstead] = grantedInstead
+	}
+	return merged
 }

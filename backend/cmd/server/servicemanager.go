@@ -332,7 +332,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// roles, groups, and entities, so it can only be built once all three are ready. Until it is
 	// injected the guard fails closed, so this must not be skipped.
 	ouAuthzService.SetPermissionResolver(
-		role.NewEffectivePermissionResolver(roleService, groupService, entityService))
+		role.NewEffectivePermissionResolver(roleService, groupService, entityService, resourceService))
 
 	authZService := authz.Initialize(
 		roleService, resourceService, entityService, authZENPDPService)
@@ -407,7 +407,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize authentication services.
 	authAssertGen := authnAssert.Initialize()
-	consentEnforcer := authnConsent.Initialize(jwtService, authzDetailMgtService)
+	consentEnforcer := authnConsent.Initialize(jwtService, authzDetailMgtService, resourceService)
 
 	_, directAuthGuard := authn.Initialize(mux, mcpServer, idpService, jwtService, authnProvider, authAssertGen,
 		otpCoreService, notifSenderSvc, notifTemplateRenderer, magicLinkService, oauthAuthnService,

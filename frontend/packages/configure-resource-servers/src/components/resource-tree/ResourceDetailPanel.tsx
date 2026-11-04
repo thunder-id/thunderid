@@ -112,7 +112,12 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
       updateRs.mutate(
         {
           id: resourceServer.id,
-          data: {name, description: description || null, identifier: nextIdentifier, ouId: resourceServer.ouId},
+          data: {
+            name,
+            description: description || null,
+            identifier: nextIdentifier,
+            ouId: resourceServer.ouId,
+          },
         },
         {
           onSuccess: () => {

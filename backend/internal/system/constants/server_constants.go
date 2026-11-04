@@ -4,6 +4,9 @@
 // Package constants defines global constants used across the system module.
 package constants
 
+// SystemResourceServerID identifies the built-in resource server seeded by bootstrap.
+const SystemResourceServerID = "01900000-0000-7000-8000-000000000020"
+
 // DefaultLogLevel is the default log level used if not specified.
 const DefaultLogLevel = "info"
 

@@ -21,11 +21,12 @@ const (
 	columnNameRevokedAt      = "revoked_at"
 	columnNameReason         = "reason"
 	// The criterion types this source reads, shared with the write path.
-	criterionTypeTokenFamily = string(revocation.CriterionTypeTokenFamily)
-	criterionTypeSubject     = string(revocation.CriterionTypeSubject)
-	criterionTypeAppKey      = string(revocation.CriterionTypeApplicationKey)
-	criterionTypeEntityScope = string(revocation.CriterionTypeEntityScope)
-	criterionTypeScope       = string(revocation.CriterionTypeScope)
+	criterionTypeTokenFamily        = string(revocation.CriterionTypeTokenFamily)
+	criterionTypeSubject            = string(revocation.CriterionTypeSubject)
+	criterionTypeAppKey             = string(revocation.CriterionTypeApplicationKey)
+	criterionTypeEntityScope        = string(revocation.CriterionTypeEntityScope)
+	criterionTypeEntityScopeSubtree = string(revocation.CriterionTypeEntityScopeSubtree)
+	criterionTypeScope              = string(revocation.CriterionTypeScope)
 )
 
 // dbSource reads the deny-list snapshot from the runtime persistent database. It is the only source today; it
@@ -111,9 +112,18 @@ func (s *dbSource) Snapshot(ctx context.Context) (revokedSnapshot, error) {
 		return revokedSnapshot{}, err
 	}
 
+	subtreeRows, err := dbClient.QueryContext(ctx, querySnapshotBoundedCriteria,
+		criterionTypeEntityScopeSubtree, now, s.deploymentID)
+	if err != nil {
+		return revokedSnapshot{}, fmt.Errorf("error reading revoked subtree snapshot: %w", err)
+	}
+	subtrees, err := parseBoundedEntries(subtreeRows)
+	if err != nil {
+		return revokedSnapshot{}, err
+	}
 	return revokedSnapshot{
 		Tokens: tokens, Families: families, Subjects: subjects, AppKeys: appKeys,
-		EntityScopes: entityScopes, Scopes: scopes,
+		EntityScopes: entityScopes, EntityScopeSubtrees: subtrees, Scopes: scopes,
 	}, nil
 }
 

@@ -72,6 +72,9 @@ type AccessEvaluationRequest struct {
 type AccessEvaluationResponse struct {
 	Decision bool
 	Context  map[string]interface{}
+	// GrantedInstead carries RBAC alternatives for a denied parent without changing its decision.
+	// External PDPs cannot supply these alternatives through generic context.
+	GrantedInstead []string
 }
 
 // AccessEvaluationsRequest represents a batched fine-grained access evaluation request.

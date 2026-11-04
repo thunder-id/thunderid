@@ -3979,16 +3979,16 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedPermissio
 func (suite *TokenExchangeGrantHandlerTestSuite) TestGetScopes_MappedAuthorizationIsSingleAuthority() {
 	tokenRequest := &model.TokenRequest{Scope: testScopeWrite}
 
-	_, errResp := suite.handler.getScopes(tokenRequest, nil, false)
+	_, errResp := suite.handler.getScopes(tokenRequest, nil, nil, ":", false)
 	assert.NotNil(suite.T(), errResp)
 	assert.Equal(suite.T(), constants.ErrorInvalidScope, errResp.Error)
 
-	scopes, errResp := suite.handler.getScopes(tokenRequest, nil, true)
+	scopes, errResp := suite.handler.getScopes(tokenRequest, nil, nil, ":", true)
 	assert.Nil(suite.T(), errResp)
 	assert.Equal(suite.T(), []string{testScopeWrite}, scopes)
 
 	unscopedRequest := &model.TokenRequest{Scope: ""}
-	scopes, errResp = suite.handler.getScopes(unscopedRequest, nil, true)
+	scopes, errResp = suite.handler.getScopes(unscopedRequest, nil, nil, ":", true)
 	assert.Nil(suite.T(), errResp)
 	assert.Empty(suite.T(), scopes)
 }
@@ -4615,6 +4615,67 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestExchangedTokenFamilyID() {
 			got := suite.handler.exchangedTokenFamilyID(context.Background(), subjectClaims, log.GetLogger())
 
 			suite.Equal(tc.want, got)
+		})
+	}
+}
+
+// A subject token carrying a resource may be exchanged down to something beneath it, which is the
+// safe direction for a delegation token. The reverse is refused.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestGetScopes_NarrowsWithinTheSubjectTokensGrant() {
+	claims := map[string][]string{"reservations:history": {"email"}}
+	tests := []struct {
+		name          string
+		requested     string
+		subjectScopes []string
+		want          []string
+	}{
+		{
+			name:          "narrows to a scope beneath one the subject token carries",
+			requested:     "reservations:view",
+			subjectScopes: []string{"reservations"},
+			want:          []string{"reservations:view"},
+		},
+		{
+			name:          "refuses the resource a carried descendant sits under",
+			requested:     "reservations",
+			subjectScopes: []string{"reservations:view"},
+			want:          []string{},
+		},
+		{
+			name:          "refuses a sibling",
+			requested:     "reservations:create",
+			subjectScopes: []string{"reservations:view"},
+			want:          []string{},
+		},
+		{
+			name:          "keeps an exactly carried scope",
+			requested:     "reservations:view",
+			subjectScopes: []string{"reservations:view"},
+			want:          []string{"reservations:view"},
+		},
+		{
+			name:      "unheld custom OIDC scope cannot inherit permission authority",
+			requested: "reservations:history", subjectScopes: []string{"reservations"}, want: []string{},
+		},
+		{
+			name:      "explicit custom OIDC scope survives",
+			requested: "reservations:history", subjectScopes: []string{"reservations:history"},
+			want: []string{"reservations:history"},
+		},
+		{
+			name:      "permission narrowing survives alongside a rejected custom OIDC scope",
+			requested: "reservations:history reservations:view", subjectScopes: []string{"reservations"},
+			want: []string{"reservations:view"},
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			scopes, errResp := suite.handler.getScopes(
+				&model.TokenRequest{Scope: tt.requested}, tt.subjectScopes, claims, ":", false)
+
+			suite.Require().Nil(errResp)
+			suite.Equal(tt.want, scopes)
 		})
 	}
 }
