@@ -56,7 +56,7 @@ func PlatformAssetName(version string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("unsupported architecture: %s", runtime.GOARCH)
 	}
-	return fmt.Sprintf("%s-dp-%s-%s-%s.zip", product.Slug, version, platform, arch), nil
+	return fmt.Sprintf("%s-gateway-%s-%s-%s.zip", product.Slug, version, platform, arch), nil
 }
 
 func fetchJSON(url string, dest any) error {

@@ -278,7 +278,7 @@ func findMatchingZipFile(zipFilePattern string) ([]string, error) {
 		return nil, err
 	}
 
-	// Filter the files to only include those that have a version number or 'v' after 'thunderid-dp-'
+	// Filter the files to only include those that have a version number or 'v' after 'thunderid-gateway-'
 	var matchingFiles []string
 	for _, file := range files {
 		baseName := filepath.Base(file)
@@ -1342,7 +1342,7 @@ func RunSetupScript() error {
 func GetZipFilePattern() string {
 	goos, goarch := detectOSAndArchitecture()
 	// Use a more general pattern, the filtering will happen in findMatchingZipFile
-	return fmt.Sprintf("thunderid-dp-*-%s-%s.zip", goos, goarch)
+	return fmt.Sprintf("thunderid-gateway-*-%s-%s.zip", goos, goarch)
 }
 
 // GetDBType returns the configured database type ("sqlite" or "postgres").

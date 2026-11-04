@@ -38,15 +38,15 @@ interface Asset {
 }
 
 /**
- * A product zip, with the version captured. Only Data Plane packs (`thunderid-dp-*`) are product
+ * A product zip, with the version captured. Only Data Plane packs (`thunderid-gateway-*`) are product
  * zips, so the quickstart pack (`thunderid-<version>-*`) that shares target/dist is not read as one.
  */
-const PRODUCT_ZIP = /^thunderid-dp-(\d.*)-(?:macos|linux|win)-(?:x64|arm64)\.zip$/;
+const PRODUCT_ZIP = /^thunderid-gateway-(\d.*)-(?:macos|linux|win)-(?:x64|arm64)\.zip$/;
 
 /**
  * Builds a manifest from the zips present in dir.
  *
- * Naming is the contract: build.sh emits `thunderid-dp-<version>-<platform>-<arch>.zip` and
+ * Naming is the contract: build.sh emits `thunderid-gateway-<version>-<platform>-<arch>.zip` and
  * `sample-app-<name>-<version>.zip`, which is exactly what release.PlatformAssetName and
  * release.SampleAssetName look for. The version is taken from the product zips, and the sample
  * zips are attached to the same release so `try` resolves against it.
@@ -57,7 +57,7 @@ export function buildManifest(dir: string, baseUrl: string): { version: string; 
   const productZips = zips.filter(name => PRODUCT_ZIP.test(name));
   if (productZips.length === 0) {
     throw new Error(
-      `No product zips in ${dir}. Expected something like thunderid-dp-1.0.1-linux-x64.zip; found: ${
+      `No product zips in ${dir}. Expected something like thunderid-gateway-1.0.1-linux-x64.zip; found: ${
         zips.join(", ") || "(nothing)"
       }`
     );
