@@ -922,15 +922,27 @@ func (s *entityService) GetSharedResourceType(category providers.EntityCategory)
 	return resourceType, ok
 }
 
-// GetTransitiveEntityGroups retrieves all groups an entity belongs to, including nested group membership.
-// Delegates entirely to the group membership provider which covers both DB and declarative groups.
+// GetTransitiveEntityGroups retrieves all groups an entity belongs to, including nested group membership,
+// leaving out groups the organization unit a sign-in has fixed does not own, since groups are never shared.
+// Delegates the lookup to the group membership provider which covers both DB and declarative groups.
 func (s *entityService) GetTransitiveEntityGroups(
 	ctx context.Context, entityID string,
 ) ([]providers.EntityGroup, error) {
 	if s.groupMembershipProvider == nil {
 		return []providers.EntityGroup{}, nil
 	}
-	return s.groupMembershipProvider.GetTransitiveGroupsForEntity(ctx, entityID)
+	groups, err := s.groupMembershipProvider.GetTransitiveGroupsForEntity(ctx, entityID)
+	ouID := signInOU(ctx)
+	if err != nil || ouID == "" {
+		return groups, err
+	}
+	inOU := make([]providers.EntityGroup, 0, len(groups))
+	for _, group := range groups {
+		if group.OUID == ouID {
+			inOU = append(inOU, group)
+		}
+	}
+	return inOU, nil
 }
 
 // GetTransitiveGroupAncestors resolves the ancestor chain of a single group.
