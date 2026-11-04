@@ -270,13 +270,19 @@ Stores short-lived runtime data such as authorization codes, authorization reque
 | `database.runtime_transient.redis.dial_timeout_ms` | `5000` | Redis connection (dial) timeout in milliseconds |
 | `database.runtime_transient.redis.read_timeout_ms` | `3000` | Redis read timeout in milliseconds |
 | `database.runtime_transient.redis.write_timeout_ms` | `3000` | Redis write timeout in milliseconds |
+| `database.runtime_transient.redis.tls.enabled` | `false` | Connect to Redis over TLS. Required for TLS-only Redis endpoints |
+| `database.runtime_transient.redis.tls.ca_file` | `""` | Path to a PEM file with the CA certificate(s) used to verify the Redis server. Leave empty to use the system CA pool |
+| `database.runtime_transient.redis.tls.cert_file` | `""` | Path to the PEM client certificate for mutual TLS. Must be set together with `key_file` |
+| `database.runtime_transient.redis.tls.key_file` | `""` | Path to the PEM client private key for mutual TLS. Must be set together with `cert_file` |
+| `database.runtime_transient.redis.tls.server_name` | `""` | Server name used to verify the Redis certificate. Defaults to the host in `address` |
+| `database.runtime_transient.redis.tls.insecure_skip_verify` | `false` | Skip Redis server certificate verification. Do not use in production |
 
 #### Redis Connection Requirements
 
 - <ProductName /> requires Redis 6.0 or later.
 - <ProductName /> connects to a single Redis node. Cluster mode and Sentinel mode are not currently supported.
 - The default Redis port is `6379`. Ensure the port is reachable from the <ProductName /> server.
-- <ProductName /> does not enforce TLS at the client configuration level. To encrypt traffic, place a TLS-terminating proxy in front of Redis and point `database.runtime_transient.redis.address` at the proxy endpoint.
+- To encrypt traffic, set `database.runtime_transient.redis.tls.enabled` to `true`. TLS 1.2 or later is required. Set `tls.ca_file` when the Redis certificate is not signed by a CA in the system pool, and set `tls.cert_file` and `tls.key_file` when Redis requires client certificates.
 - If your Redis deployment uses Access Control Lists (ACLs), create a dedicated user and grant the following commands: `GET`, `SET`, `DEL`, `EXPIRE`, `EVAL`, `EVALSHA`. Set `database.runtime_transient.redis.username` and `database.runtime_transient.redis.password` accordingly.
 - <ProductName /> calls `PING` at startup to verify connectivity. The process terminates if the Redis server is unreachable.
 
@@ -389,6 +395,12 @@ Stores SSO sessions, revoked tokens, consent records, and account access state (
 | `cache.redis.dial_timeout_ms` | `5000` | Redis connection (dial) timeout in milliseconds |
 | `cache.redis.read_timeout_ms` | `3000` | Redis read timeout in milliseconds |
 | `cache.redis.write_timeout_ms` | `3000` | Redis write timeout in milliseconds |
+| `cache.redis.tls.enabled` | `false` | Connect to Redis over TLS. Required for TLS-only Redis endpoints |
+| `cache.redis.tls.ca_file` | `""` | Path to a PEM file with the CA certificate(s) used to verify the Redis server. Leave empty to use the system CA pool |
+| `cache.redis.tls.cert_file` | `""` | Path to the PEM client certificate for mutual TLS. Must be set together with `key_file` |
+| `cache.redis.tls.key_file` | `""` | Path to the PEM client private key for mutual TLS. Must be set together with `cert_file` |
+| `cache.redis.tls.server_name` | `""` | Server name used to verify the Redis certificate. Defaults to the host in `address` |
+| `cache.redis.tls.insecure_skip_verify` | `false` | Skip Redis server certificate verification. Do not use in production |
 
 ### Cache Property Overrides
 
@@ -457,6 +469,13 @@ cache:
     dial_timeout_ms: 5000
     read_timeout_ms: 3000
     write_timeout_ms: 3000
+    tls:
+      enabled: false
+      ca_file: ""
+      cert_file: ""
+      key_file: ""
+      server_name: ""
+      insecure_skip_verify: false
 ```
 
 :::note

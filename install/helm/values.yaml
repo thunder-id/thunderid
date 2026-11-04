@@ -362,6 +362,15 @@ configuration:
           key: ""
         db: 0             # Redis logical database index (0-15)
         key_prefix: ""   # Prefix for all Redis keys, e.g. "thunderid:"
+        # TLS settings for the Redis connection. Required for TLS-only Redis endpoints.
+        tls:
+          enabled: false
+          # Existing Secret holding ca.crt (and tls.crt / tls.key when clientAuth is true).
+          # It is mounted into the server and setup pods. Leave empty to trust the system CA pool.
+          secretName: ""
+          clientAuth: false          # Present tls.crt / tls.key from the Secret (mutual TLS)
+          serverName: ""             # Expected server name; defaults to the host in address
+          insecureSkipVerify: false  # Skip server certificate verification (not for production)
     entity:
       # WARNING: Use sqlite only if you are running a single pod.
       type: "postgres" # postgres or sqlite
@@ -434,6 +443,15 @@ configuration:
       password: ""
       db: 0
       keyPrefix: "thunderid"
+      # TLS settings for the Redis connection. Required for TLS-only Redis endpoints.
+      tls:
+        enabled: false
+        # Existing Secret holding ca.crt (and tls.crt / tls.key when clientAuth is true).
+        # It is mounted into the server and setup pods. Leave empty to trust the system CA pool.
+        secretName: ""
+        clientAuth: false          # Present tls.crt / tls.key from the Secret (mutual TLS)
+        serverName: ""             # Expected server name; defaults to the host in address
+        insecureSkipVerify: false  # Skip server certificate verification (not for production)
 
   # Token Configuration
   jwt:

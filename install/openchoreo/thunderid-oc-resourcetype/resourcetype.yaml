@@ -31,7 +31,7 @@ spec:
         # the remote key into a Secret on the data plane, injected into the
         # container via envFrom. Required properties at the key:
         #   crypto.key (mounted as a file under config/certs/)
-        # With runtime.dbType postgres, additionally:
+        # With runtime.dbType postgres or postgres-redis, additionally:
         #   DB_CONFIG_HOSTNAME,  DB_CONFIG_PORT,  DB_CONFIG_NAME,
         #   DB_CONFIG_USERNAME,  DB_CONFIG_PASSWORD,  DB_CONFIG_SSLMODE
         #   DB_RUNTIME_TRANSIENT_HOSTNAME, DB_RUNTIME_TRANSIENT_PORT, DB_RUNTIME_TRANSIENT_NAME,
@@ -40,6 +40,8 @@ spec:
         #   DB_ENTITY_USERNAME,    DB_ENTITY_PASSWORD,    DB_ENTITY_SSLMODE
         #   DB_RUNTIME_PERSISTENT_HOSTNAME, DB_RUNTIME_PERSISTENT_PORT, DB_RUNTIME_PERSISTENT_NAME,
         #   DB_RUNTIME_PERSISTENT_USERNAME, DB_RUNTIME_PERSISTENT_PASSWORD, DB_RUNTIME_PERSISTENT_SSLMODE
+        # With runtime.dbType postgres-redis, additionally:
+        #   REDIS_ADDRESS, REDIS_USERNAME, REDIS_PASSWORD
         # Additionally, one property per {{.VAR}} placeholder used in
         # declarativeResources and not covered by parameters.env — e.g.
         # ADMIN_PASSWORD, which the samples reference for the admin user's
@@ -117,10 +119,39 @@ spec:
             #   postgres — externally hosted PostgreSQL (e.g. AWS RDS);
             #              connection details come from the DB_* properties
             #              at secretStore.key. Use for production.
+            #   postgres-redis — as postgres, but the runtime-transient
+            #              store (sessions, tokens) is served from an
+            #              externally hosted Redis, optionally over TLS;
+            #              connection details come from REDIS_ADDRESS,
+            #              REDIS_USERNAME and REDIS_PASSWORD at
+            #              secretStore.key. See runtime.redis.
             dbType:
               type: string
-              enum: [sqlite, postgres]
+              enum: [sqlite, postgres, postgres-redis]
               default: "sqlite"
+            # Redis connection settings, used only with dbType postgres-redis.
+            # With tls.enabled the server connects to Redis over TLS. The
+            # files below are read from the same certificate key as the other
+            # certificates (see runtime.certs) and mounted under config/certs/:
+            #   redis-ca.crt       (CA that signed the Redis server cert; with caCert)
+            #   redis-client.cert, redis-client.key  (client pair; with clientAuth)
+            redis:
+              type: object
+              default: {}
+              properties:
+                tls:
+                  type: object
+                  default: {}
+                  properties:
+                    enabled: { type: boolean, default: false }
+                    # Trust redis-ca.crt. When false the system CA pool is used.
+                    caCert: { type: boolean, default: true }
+                    # Present redis-client.cert / redis-client.key (mutual TLS).
+                    clientAuth: { type: boolean, default: false }
+                    # Expected server name; defaults to the host in REDIS_ADDRESS.
+                    serverName: { type: string, default: "" }
+                    # Skip server certificate verification (not for production).
+                    insecureSkipVerify: { type: boolean, default: false }
             # enabled: false — serve plain HTTP (default); true — serve HTTPS
             # from the ThunderID container using config/certs/server.cert and
             # server.key. The image ships no serving pair, so these files must
@@ -641,6 +672,142 @@ spec:
               store: "${parameters.runtime.stores.serverConfig}"
 
     # User-supplied deployment.yaml, replacing the built-in default above.
+    # ThunderID deployment.yaml — PostgreSQL + Redis variant. Identical to
+    # the PostgreSQL variant except that runtime_transient is served from
+    # Redis, optionally over TLS (parameters.runtime.redis.tls). The database
+    # connection fields and crypto key are left as Go-template placeholders
+    # that ThunderID substitutes at startup from the env vars materialized
+    # out of the platform secret store (parameters.secretStore).
+    - id: thunderid-config-pg-redis
+      includeWhen: "${parameters.configOverrides.deploymentYaml == '' && parameters.runtime.dbType == 'postgres-redis'}"
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${metadata.name}-config"
+          namespace: "${metadata.namespace}"
+          labels: ${metadata.labels}
+        data:
+          deployment.yaml: |
+            server:
+              hostname: "0.0.0.0"
+              public_url: "${environmentConfigs.serverPublicUrl}"
+              port: ${parameters.runtime.port}
+              http_only: ${!parameters.runtime.tls.enabled}
+              security:
+                mcp:
+                  # Kept equal to the System resource_server identifier seeded below, so the guard
+                  # and the advertised RFC 9728 "resource" both match the tokens clients receive.
+                  # Falls back through the Console's resource indicator before the derived default:
+                  # Console-issued tokens carry that identifier, so deriving independently here
+                  # would make the MCP guard reject them whenever it is customised.
+                  audience: "${parameters.runtime.security.mcpAudience != '' ? parameters.runtime.security.mcpAudience : (parameters.runtime.console.resourceIdentifier != '' ? parameters.runtime.console.resourceIdentifier : environmentConfigs.serverPublicUrl + '/mcp')}"
+
+            tls:
+              min_version: "${parameters.runtime.tls.minVersion}"
+              cert_file: "config/certs/server.cert"
+              key_file: "config/certs/server.key"
+
+            gate_client:
+              hostname: "${environmentConfigs.gateClientHostname}"
+              port: ${environmentConfigs.gateClientPort}
+              scheme: "${environmentConfigs.gateClientScheme}"
+
+            database:
+              config:
+                type: "postgres"
+                postgres:
+                  hostname: "{{.DB_CONFIG_HOSTNAME}}"
+                  port: {{.DB_CONFIG_PORT}}
+                  name: "{{.DB_CONFIG_NAME}}"
+                  username: "{{.DB_CONFIG_USERNAME}}"
+                  password: "{{.DB_CONFIG_PASSWORD}}"
+                  sslmode: "{{.DB_CONFIG_SSLMODE}}"
+              runtime_transient:
+                type: "redis"
+                redis:
+                  address: "{{.REDIS_ADDRESS}}"
+                  username: "{{.REDIS_USERNAME}}"
+                  password: "{{.REDIS_PASSWORD}}"
+                  tls:
+                    enabled: ${parameters.runtime.redis.tls.enabled}
+                    ca_file: "${parameters.runtime.redis.tls.enabled && parameters.runtime.redis.tls.caCert ? 'config/certs/redis-ca.crt' : ''}"
+                    cert_file: "${parameters.runtime.redis.tls.enabled && parameters.runtime.redis.tls.clientAuth ? 'config/certs/redis-client.cert' : ''}"
+                    key_file: "${parameters.runtime.redis.tls.enabled && parameters.runtime.redis.tls.clientAuth ? 'config/certs/redis-client.key' : ''}"
+                    server_name: "${parameters.runtime.redis.tls.serverName}"
+                    insecure_skip_verify: ${parameters.runtime.redis.tls.insecureSkipVerify}
+              entity:
+                type: "postgres"
+                postgres:
+                  hostname: "{{.DB_ENTITY_HOSTNAME}}"
+                  port: {{.DB_ENTITY_PORT}}
+                  name: "{{.DB_ENTITY_NAME}}"
+                  username: "{{.DB_ENTITY_USERNAME}}"
+                  password: "{{.DB_ENTITY_PASSWORD}}"
+                  sslmode: "{{.DB_ENTITY_SSLMODE}}"
+              runtime_persistent:
+                type: "postgres"
+                postgres:
+                  hostname: "{{.DB_RUNTIME_PERSISTENT_HOSTNAME}}"
+                  port: {{.DB_RUNTIME_PERSISTENT_PORT}}
+                  name: "{{.DB_RUNTIME_PERSISTENT_NAME}}"
+                  username: "{{.DB_RUNTIME_PERSISTENT_USERNAME}}"
+                  password: "{{.DB_RUNTIME_PERSISTENT_PASSWORD}}"
+                  sslmode: "{{.DB_RUNTIME_PERSISTENT_SSLMODE}}"
+
+            cache:
+              disabled: false
+              type: "inmemory"
+              size: ${parameters.runtime.cache.size}
+              ttl: ${parameters.runtime.cache.ttl}
+              eviction_policy: "LRU"
+              cleanup_interval: 600
+
+            jwt:
+              validity_period: ${parameters.runtime.jwt.validityPeriod}
+
+            oauth:
+              refresh_token:
+                renew_on_grant: true
+                validity_period: ${parameters.runtime.oauth.refreshTokenValidityPeriod}
+
+            flow:
+              max_version_history: 3
+              auto_infer_registration: true
+              store: "${parameters.runtime.stores.flow}"
+
+            direct_api:
+              enabled: ${parameters.runtime.directApiEnabled}
+
+            declarative_resources:
+              enabled: ${parameters.runtime.declarativeResourcesEnabled}
+
+            user:
+              store: "${parameters.runtime.stores.user}"
+            user_type:
+              store: "${parameters.runtime.stores.userType}"
+            organization_unit:
+              store: "${parameters.runtime.stores.organizationUnit}"
+            identity_provider:
+              store: "${parameters.runtime.stores.identityProvider}"
+            application:
+              store: "${parameters.runtime.stores.application}"
+            group:
+              store: "${parameters.runtime.stores.group}"
+            role:
+              store: "${parameters.runtime.stores.role}"
+            theme:
+              store: "${parameters.runtime.stores.theme}"
+            layout:
+              store: "${parameters.runtime.stores.layout}"
+            translation:
+              store: "${parameters.runtime.stores.translation}"
+            resource:
+              store: "${parameters.runtime.stores.resourceServer}"
+            server_config:
+              store: "${parameters.runtime.stores.serverConfig}"
+
+    # User-supplied deployment.yaml, replacing the built-in default above.
     - id: thunderid-config-override
       includeWhen: "${parameters.configOverrides.deploymentYaml != ''}"
       template:
@@ -808,6 +975,10 @@ spec:
                       {"name": "declarative-resources", "mountPath": "/opt/thunderid/config/resources.yaml", "subPath": "resources.yaml"}
                     ] + (["crypto.key", "signing.cert", "signing.key", "ecdsa-signing.cert", "ecdsa-signing.key"]
                       + (parameters.runtime.tls.enabled ? ["server.cert", "server.key"] : [])
+                      + (parameters.runtime.dbType == "postgres-redis" && parameters.runtime.redis.tls.enabled
+                          ? (parameters.runtime.redis.tls.caCert ? ["redis-ca.crt"] : [])
+                            + (parameters.runtime.redis.tls.clientAuth ? ["redis-client.cert", "redis-client.key"] : [])
+                          : [])
                       + parameters.runtime.certs.extraFiles)
                       .map(f, {"name": "certs-override", "mountPath": "/opt/thunderid/config/certs/" + f, "subPath": f, "readOnly": true})}
                   resources:

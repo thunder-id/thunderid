@@ -46,9 +46,10 @@ resources for services explicitly opted into `mutable`/`composite` stores.
 ## Prerequisites
 
 1. A Kubernetes cluster with OpenChoreo installed (control plane + data plane).
-2. Only with `runtime.dbType: postgres` — an accessible PostgreSQL server
-   (e.g. AWS RDS) with **four databases** created and the ThunderID schema
-   loaded:
+2. Only with `runtime.dbType: postgres` or `postgres-redis` — an accessible
+   PostgreSQL server (e.g. AWS RDS) with **four databases** created (three
+   with `postgres-redis`, which needs no `runtime_transient` database) and the
+   ThunderID schema loaded:
 
    ```bash
    # against each database, run the matching script:
@@ -125,7 +126,8 @@ certificate, and signing-key properties are mounted as files under
 `config/certs/` instead (their dotted names are not valid environment
 variable names, so `envFrom` skips them, which is expected). ThunderID fails
 fast at startup when a referenced property is missing. The `DB_*` properties
-are only needed with `runtime.dbType: postgres`:
+are only needed with `runtime.dbType: postgres` or `postgres-redis`
+(`DB_RUNTIME_TRANSIENT_*` is not used with `postgres-redis`):
 
 | Property | Description |
 |----------|-------------|
@@ -136,9 +138,12 @@ are only needed with `runtime.dbType: postgres`:
 | `server.cert` / `server.key` | HTTPS serving pair, required with `runtime.tls.enabled` |
 | `ca.crt` | Root CA, required with `runtime.tls.verifyBackend` |
 | `DB_CONFIG_HOSTNAME` / `_PORT` / `_NAME` / `_USERNAME` / `_PASSWORD` / `_SSLMODE` | Config database connection (postgres only) |
-| `DB_RUNTIME_TRANSIENT_*` (same six) | Runtime-transient database connection (postgres only) |
+| `DB_RUNTIME_TRANSIENT_*` (same six) | Runtime-transient database connection (postgres only, not used with `postgres-redis`) |
 | `DB_ENTITY_*` (same six) | Entity database connection (postgres only) |
 | `DB_RUNTIME_PERSISTENT_*` (same six) | Runtime-persistent database connection (postgres only) |
+| `REDIS_ADDRESS` / `REDIS_USERNAME` / `REDIS_PASSWORD` | Runtime-transient Redis connection (`postgres-redis` only) |
+| `redis-ca.crt` | CA certificate for the Redis server, mounted over `config/certs/` (`postgres-redis` with `runtime.redis.tls.enabled` and `caCert`) |
+| `redis-client.cert` / `redis-client.key` | Redis client pair, mounted over `config/certs/` (`postgres-redis` with `runtime.redis.tls.clientAuth`) |
 
 The rendered `deployment.yaml` keeps the scalar fields as `{{.VAR}}`
 placeholders; ThunderID resolves them from the environment at startup. The
@@ -347,7 +352,12 @@ A second `HTTPRoute` is rendered for that hostname and the Console's
 | `runtime.tls.verifyBackend` | Verify the backend certificate at the gateway against the `ca.crt` property at `runtime.certs.storeKey` (publish `ca.crt` there when enabling this); off skips verification (encrypted, unverified) | `false` |
 | `runtime.certs.storeKey` | Optional separate store entry for the certificate/key files. Empty (default): read them from `secretStore.key` alongside the environment values. Set: materialize them from this entry into a dedicated `-certs` Secret. Either way the JWT signing pairs are always mounted over `config/certs/`, plus the serving pair when `tls.enabled` | `""` (use `secretStore.key`) |
 | `runtime.certs.extraFiles` | Additional properties to project over `config/certs/` beyond the always-mounted signing (and, with TLS, serving) pairs | `[]` |
-| `runtime.dbType` | Database engine — `sqlite` (bundled files, ephemeral pod-local storage, development only) or `postgres` (externally hosted, production) | `sqlite` |
+| `runtime.dbType` | Database engine — `sqlite` (bundled files, ephemeral pod-local storage, development only), `postgres` (externally hosted, production), or `postgres-redis` (as `postgres`, with the runtime-transient store served from an external Redis) | `sqlite` |
+| `runtime.redis.tls.enabled` | Connect to Redis over TLS (`postgres-redis` only) | `false` |
+| `runtime.redis.tls.caCert` | Trust the `redis-ca.crt` property from the certificate key. `false` uses the system CA pool | `true` |
+| `runtime.redis.tls.clientAuth` | Present the `redis-client.cert` / `redis-client.key` properties (mutual TLS) | `false` |
+| `runtime.redis.tls.serverName` | Expected Redis server name. Defaults to the host in `REDIS_ADDRESS` | `""` |
+| `runtime.redis.tls.insecureSkipVerify` | Skip Redis server certificate verification (not for production) | `false` |
 | `runtime.imagePullPolicy` | `Always` / `IfNotPresent` / `Never` | `Always` |
 | `runtime.port` | Port the ThunderID server listens on | `8090` |
 | `runtime.gate.clientBase` | Gate frontend base path | `/gate` |

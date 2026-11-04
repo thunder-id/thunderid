@@ -192,17 +192,28 @@ type CacheConfig struct {
 
 // RedisConfig holds the Redis connection configuration.
 type RedisConfig struct {
-	Address           string `yaml:"address"              json:"address"`
-	Username          string `yaml:"username"             json:"username"`
-	Password          string `yaml:"password"             json:"password"`
-	DB                int    `yaml:"db"                   json:"db"`
-	KeyPrefix         string `yaml:"key_prefix"           json:"key_prefix"`
-	MaxRetries        int    `yaml:"max_retries"          json:"max_retries"`
-	MinRetryBackoffMS int    `yaml:"min_retry_backoff_ms" json:"min_retry_backoff_ms"`
-	MaxRetryBackoffMS int    `yaml:"max_retry_backoff_ms" json:"max_retry_backoff_ms"`
-	DialTimeoutMS     int    `yaml:"dial_timeout_ms"      json:"dial_timeout_ms"`
-	ReadTimeoutMS     int    `yaml:"read_timeout_ms"      json:"read_timeout_ms"`
-	WriteTimeoutMS    int    `yaml:"write_timeout_ms"     json:"write_timeout_ms"`
+	Address           string         `yaml:"address"              json:"address"`
+	Username          string         `yaml:"username"             json:"username"`
+	Password          string         `yaml:"password"             json:"password"`
+	DB                int            `yaml:"db"                   json:"db"`
+	KeyPrefix         string         `yaml:"key_prefix"           json:"key_prefix"`
+	MaxRetries        int            `yaml:"max_retries"          json:"max_retries"`
+	MinRetryBackoffMS int            `yaml:"min_retry_backoff_ms" json:"min_retry_backoff_ms"`
+	MaxRetryBackoffMS int            `yaml:"max_retry_backoff_ms" json:"max_retry_backoff_ms"`
+	DialTimeoutMS     int            `yaml:"dial_timeout_ms"      json:"dial_timeout_ms"`
+	ReadTimeoutMS     int            `yaml:"read_timeout_ms"      json:"read_timeout_ms"`
+	WriteTimeoutMS    int            `yaml:"write_timeout_ms"     json:"write_timeout_ms"`
+	TLS               RedisTLSConfig `yaml:"tls" json:"tls"`
+}
+
+// RedisTLSConfig holds the TLS settings for a Redis connection.
+type RedisTLSConfig struct {
+	Enabled            bool   `yaml:"enabled"              json:"enabled"`
+	CAFile             string `yaml:"ca_file"              json:"ca_file"`
+	CertFile           string `yaml:"cert_file"            json:"cert_file"`
+	KeyFile            string `yaml:"key_file"             json:"key_file"`
+	ServerName         string `yaml:"server_name"          json:"server_name"`
+	InsecureSkipVerify bool   `yaml:"insecure_skip_verify" json:"insecure_skip_verify"`
 }
 
 // ServerConfig holds the server configuration details.

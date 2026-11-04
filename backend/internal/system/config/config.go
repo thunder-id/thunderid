@@ -73,17 +73,18 @@ type SQLiteDataSource struct {
 
 // RedisDataSource holds Redis-specific connection details.
 type RedisDataSource struct {
-	Address           string `yaml:"address"              json:"address"`
-	Username          string `yaml:"username"             json:"username"`
-	Password          string `yaml:"password"             json:"password"`
-	DB                int    `yaml:"db"                   json:"db"`
-	KeyPrefix         string `yaml:"key_prefix"           json:"key_prefix"`
-	MaxRetries        int    `yaml:"max_retries"          json:"max_retries"`
-	MinRetryBackoffMS int    `yaml:"min_retry_backoff_ms" json:"min_retry_backoff_ms"`
-	MaxRetryBackoffMS int    `yaml:"max_retry_backoff_ms" json:"max_retry_backoff_ms"`
-	DialTimeoutMS     int    `yaml:"dial_timeout_ms"      json:"dial_timeout_ms"`
-	ReadTimeoutMS     int    `yaml:"read_timeout_ms"      json:"read_timeout_ms"`
-	WriteTimeoutMS    int    `yaml:"write_timeout_ms"     json:"write_timeout_ms"`
+	Address           string                      `yaml:"address"              json:"address"`
+	Username          string                      `yaml:"username"             json:"username"`
+	Password          string                      `yaml:"password"             json:"password"`
+	DB                int                         `yaml:"db"                   json:"db"`
+	KeyPrefix         string                      `yaml:"key_prefix"           json:"key_prefix"`
+	MaxRetries        int                         `yaml:"max_retries"          json:"max_retries"`
+	MinRetryBackoffMS int                         `yaml:"min_retry_backoff_ms" json:"min_retry_backoff_ms"`
+	MaxRetryBackoffMS int                         `yaml:"max_retry_backoff_ms" json:"max_retry_backoff_ms"`
+	DialTimeoutMS     int                         `yaml:"dial_timeout_ms"      json:"dial_timeout_ms"`
+	ReadTimeoutMS     int                         `yaml:"read_timeout_ms"      json:"read_timeout_ms"`
+	WriteTimeoutMS    int                         `yaml:"write_timeout_ms"     json:"write_timeout_ms"`
+	TLS               engineconfig.RedisTLSConfig `yaml:"tls" json:"tls"`
 }
 
 // DatabaseConfig holds the different database configuration details.
