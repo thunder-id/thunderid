@@ -210,6 +210,8 @@ func (s *DCRHandlerTestSuite) TestHandleDCRRegistration_Success() {
 	assert.Equal(s.T(), "test-client-id", responseBody.ClientID)
 	assert.Equal(s.T(), "test-client-secret", responseBody.ClientSecret)
 	assert.Equal(s.T(), "Test Client", responseBody.ClientName)
+	assert.Equal(s.T(), "no-store", rr.Header().Get("Cache-Control"))
+	assert.Equal(s.T(), "no-cache", rr.Header().Get("Pragma"))
 	s.mockService.AssertExpectations(s.T())
 }
 
@@ -416,6 +418,8 @@ func (s *DCRHandlerTestSuite) TestGet_ReturnsRegistration() {
 	s.Require().NoError(json.Unmarshal(rr.Body.Bytes(), &response))
 	s.Equal(testClientID, response.ClientID)
 	s.Empty(response.ClientSecret, "the client secret is not readable and must not be returned")
+	s.Equal("no-store", rr.Header().Get("Cache-Control"))
+	s.Equal("no-cache", rr.Header().Get("Pragma"))
 }
 
 // A caller holding no system permission is rejected, and the registration is not exposed.
@@ -479,6 +483,8 @@ func (s *DCRHandlerTestSuite) TestPut_UpdatesRegistration() {
 	s.Require().NoError(json.Unmarshal(rr.Body.Bytes(), &response))
 	s.Equal(testClientID, response.ClientID, "the client_id must be preserved across an update")
 	s.Equal("Renamed", response.ClientName)
+	s.Equal("no-store", rr.Header().Get("Cache-Control"))
+	s.Equal("no-cache", rr.Header().Get("Pragma"))
 }
 
 // A client_id in the body that contradicts the path is rejected.
