@@ -740,6 +740,7 @@ function FlowBuilder() {
             nodes={displayNodes}
             sourceNodes={nodes}
             sourceEdges={edges}
+            onDeleteRefused={showError}
             edges={displayEdges}
             setNodes={setNodes}
             setEdges={setEdges}

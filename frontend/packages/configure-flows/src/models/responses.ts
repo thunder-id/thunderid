@@ -203,6 +203,15 @@ export interface FlowExecutor {
 }
 
 /**
+ * Node-level condition: the node runs when `key` resolves to `value`, otherwise the flow moves to `onSkip`.
+ */
+export interface FlowNodeCondition {
+  key: string;
+  value: string;
+  onSkip?: string;
+}
+
+/**
  * Flow node definition matching the API specification.
  */
 export interface FlowNode {
@@ -262,11 +271,7 @@ export interface FlowNode {
   /**
    * Node-level condition for execution
    */
-  condition?: {
-    key: string;
-    value: string;
-    onSkip?: string;
-  };
+  condition?: FlowNodeCondition;
   /**
    * Cross-flow reference for CALL nodes. Carries the ID of the flow to invoke.
    */

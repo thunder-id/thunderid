@@ -4812,6 +4812,8 @@ const translations = {
     // Canvas hints and tips
     'core.canvas.hints.autoLayout': 'Tip: Use auto-layout to organize your flow',
     'core.canvas.buttons.autoLayout': 'Auto layout',
+    'core.canvas.errors.skipTargetDelete':
+      'Cannot delete this step: a condition on {{nodes}} skips to it and no single next step can replace it.',
 
     // Steps - end
     'core.steps.end.flowCompletionProperties': 'Flow completion properties',

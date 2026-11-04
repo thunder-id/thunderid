@@ -5,6 +5,7 @@ import {
   type Connection,
   type Edge,
   type Node,
+  type OnBeforeDelete,
   type OnConnect,
   type OnEdgesDelete,
   type OnNodesDelete,
@@ -15,7 +16,8 @@ import {
   getOutgoers,
   useReactFlow,
 } from '@xyflow/react';
-import {useRef} from 'react';
+import {type Dispatch, type SetStateAction, useRef} from 'react';
+import {useTranslation} from 'react-i18next';
 import useFlowConfig from './useFlowConfig';
 import useFlowPlugins from './useFlowPlugins';
 import VisualFlowConstants from '../constants/VisualFlowConstants';
@@ -74,17 +76,68 @@ const syncLabelActionRef = (label: string, previousRef: string | undefined, next
 };
 
 /**
+ * Maps each kept node whose condition skips to a deleted node onto the kept node reached by following
+ * the deleted nodes' edges. The value is undefined when a deleted node on the way has no single next
+ * node, since a skip target cannot be guessed.
+ */
+export const resolveSkipTargets = (
+  deletedIds: ReadonlySet<string>,
+  nodes: Node[],
+  edges: Edge[],
+): Map<string, string | undefined> => {
+  const resolveFrom = (start: string): string | undefined => {
+    const visited = new Set<string>();
+    let target: string | undefined = start;
+    while (target !== undefined && deletedIds.has(target)) {
+      if (visited.has(target)) {
+        return undefined;
+      }
+      visited.add(target);
+      const from: string = target;
+      const successors = new Set<string>(
+        edges.filter((edge: Edge) => edge.source === from).map((edge: Edge) => edge.target),
+      );
+      target = successors.size === 1 ? [...successors][0] : undefined;
+    }
+
+    return target;
+  };
+
+  const targets = new Map<string, string | undefined>();
+  nodes.forEach((node: Node) => {
+    const onSkip: string | undefined = (node.data as StepData | undefined)?.condition?.onSkip;
+    if (!deletedIds.has(node.id) && onSkip && deletedIds.has(onSkip)) {
+      targets.set(node.id, resolveFrom(onSkip));
+    }
+  });
+
+  return targets;
+};
+
+/**
  * Props interface for useVisualFlowHandlers hook
  */
 export interface UseVisualFlowHandlersProps {
   onEdgeResolve?: (connection: Connection, nodes: Node[]) => Edge;
-  setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
+  setEdges: Dispatch<SetStateAction<Edge[]>>;
+  setNodes: Dispatch<SetStateAction<Node[]>>;
+  /**
+   * The persisted graph when the canvas shows a compact display transform, which hides stacked
+   * executors and renames edge ends to stack ids. Defaults to the canvas graph.
+   */
+  sourceNodes?: Node[];
+  sourceEdges?: Edge[];
+  /**
+   * Reports a deletion that was refused, with a message for the user.
+   */
+  onDeleteRefused?: (message: string) => void;
 }
 
 /**
  * Return type for useVisualFlowHandlers hook
  */
 export interface UseVisualFlowHandlersReturn {
+  handleBeforeDelete: OnBeforeDelete<Node, Edge>;
   handleConnect: OnConnect;
   handleNodesDelete: OnNodesDelete<Node>;
   handleEdgesDelete: OnEdgesDelete<Edge>;
@@ -104,6 +157,7 @@ const useVisualFlowHandlers = (props: UseVisualFlowHandlersProps): UseVisualFlow
   const {edgeStyle} = useFlowConfig();
 
   const {emitEdgeDelete} = useFlowPlugins();
+  const {t} = useTranslation();
 
   // Store ALL dependencies in refs - updated every render
   const depsRef = useRef({
@@ -111,6 +165,7 @@ const useVisualFlowHandlers = (props: UseVisualFlowHandlersProps): UseVisualFlow
     reactFlowInstance,
     edgeStyle,
     emitEdgeDelete,
+    t,
   });
 
   // Update refs every render (minimal overhead - just assignment)
@@ -119,6 +174,7 @@ const useVisualFlowHandlers = (props: UseVisualFlowHandlersProps): UseVisualFlow
     reactFlowInstance,
     edgeStyle,
     emitEdgeDelete,
+    t,
   };
 
   // Store stable references to handler functions
@@ -126,6 +182,30 @@ const useVisualFlowHandlers = (props: UseVisualFlowHandlersProps): UseVisualFlow
 
   // Create handlers only once - reads ALL deps from ref at call time
   handlersRef.current ??= {
+    // A condition's skip target has no edge on the canvas, so the builder cannot repair one that
+    // points at a removed node. Refuse a deletion that leaves no single node to skip to.
+    handleBeforeDelete: ({nodes, edges}) => {
+      const {props: currentProps, reactFlowInstance: rf, t: translate} = depsRef.current;
+      const {sourceNodes, sourceEdges, onDeleteRefused} = currentProps;
+
+      const deletedIds = new Set<string>(nodes.map((node: Node) => node.id));
+      const targets = resolveSkipTargets(deletedIds, sourceNodes ?? rf.getNodes(), sourceEdges ?? rf.getEdges());
+      const blocked: string[] = [...targets].filter(([, target]) => target === undefined).map(([id]) => id);
+      if (blocked.length === 0) {
+        return Promise.resolve({nodes, edges});
+      }
+
+      onDeleteRefused?.(
+        translate('flows:core.canvas.errors.skipTargetDelete', {
+          defaultValue:
+            'Cannot delete this step: a condition on {{nodes}} skips to it and no single next step can replace it.',
+          nodes: blocked.join(', '),
+        }),
+      );
+
+      return Promise.resolve(false);
+    },
+
     handleConnect: (connection: Connection): void => {
       const {props: currentProps, reactFlowInstance: rf, edgeStyle: currentEdgeStyle} = depsRef.current;
       const {onEdgeResolve, setEdges} = currentProps;
@@ -228,10 +308,27 @@ const useVisualFlowHandlers = (props: UseVisualFlowHandlersProps): UseVisualFlow
 
     handleNodesDelete: (deleted: Node[]): void => {
       const {props: currentProps, reactFlowInstance: rf, edgeStyle: currentEdgeStyle} = depsRef.current;
-      const {setEdges} = currentProps;
-      const {getNodes} = rf;
+      const {setEdges, setNodes, sourceNodes, sourceEdges} = currentProps;
+      const {getNodes, getEdges} = rf;
 
       const currentNodes = getNodes();
+
+      // Move skip targets past the deleted nodes the same way edges are reconnected. Hidden
+      // stack members live only in the source graph, so resolve and write there.
+      const targets = resolveSkipTargets(
+        new Set<string>(deleted.map((node: Node) => node.id)),
+        sourceNodes ?? currentNodes,
+        sourceEdges ?? getEdges(),
+      );
+      if (targets.size > 0) {
+        setNodes((latestNodes: Node[]) =>
+          latestNodes.map((node: Node) => {
+            const onSkip: string | undefined = targets.get(node.id);
+            const condition = (node.data as StepData).condition;
+            return onSkip && condition ? {...node, data: {...node.data, condition: {...condition, onSkip}}} : node;
+          }),
+        );
+      }
 
       setEdges((latestEdges: Edge[]) =>
         deleted.reduce((acc: Edge[], node: Node) => {
