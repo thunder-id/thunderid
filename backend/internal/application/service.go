@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -1257,6 +1258,7 @@ func toInboundClient(dto *model.ApplicationProcessedDTO) inboundmodel.InboundCli
 		AllowedAgentTypes:         dto.AllowedAgentTypes,
 		SubjectAttribute:          dto.SubjectAttribute,
 		PasskeyAllowedOrigins:     dto.PasskeyAllowedOrigins,
+		PasskeyRelyingPartyID:     dto.PasskeyRelyingPartyID,
 		Attestation:               dto.Attestation,
 	}
 
@@ -1315,6 +1317,7 @@ func toProcessedDTO(
 			AllowedAgentTypes:         dao.AllowedAgentTypes,
 			SubjectAttribute:          dao.SubjectAttribute,
 			PasskeyAllowedOrigins:     dao.PasskeyAllowedOrigins,
+			PasskeyRelyingPartyID:     dao.PasskeyRelyingPartyID,
 			Attestation:               dao.Attestation.WithoutCredentials(),
 		},
 	}
@@ -1630,6 +1633,9 @@ func (as *applicationService) validateApplicationFields(
 	if app.PolicyURI != "" && !sysutils.IsValidURI(app.PolicyURI) {
 		return &ErrorInvalidPolicyURI
 	}
+	if app.PasskeyRelyingPartyID != "" && !isValidPasskeyRelyingPartyID(app.PasskeyRelyingPartyID) {
+		return &ErrorInvalidPasskeyRelyingPartyID
+	}
 	// Reject an unrecognized application type. Requiring a type (create) and enforcing
 	// immutability (update) are handled by the respective callers.
 	switch app.Type {
@@ -1660,6 +1666,13 @@ func (as *applicationService) validateApplicationFields(
 		return &ErrorAmbiguousAttestationConfig
 	}
 	return nil
+}
+
+// isValidPasskeyRelyingPartyID reports whether id is a bare lowercase domain name, with no scheme, port
+// or path.
+func isValidPasskeyRelyingPartyID(id string) bool {
+	u, err := url.Parse("https://" + id)
+	return err == nil && u.Host == id && u.Hostname() == id && strings.ToLower(id) == id
 }
 
 // validateConsentConfig validates the consent configuration for the application.
@@ -2343,6 +2356,7 @@ func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *providers.App
 			AllowedAgentTypes:         dto.AllowedAgentTypes,
 			SubjectAttribute:          dto.SubjectAttribute,
 			PasskeyAllowedOrigins:     dto.PasskeyAllowedOrigins,
+			PasskeyRelyingPartyID:     dto.PasskeyRelyingPartyID,
 			LoginConsent:              dto.LoginConsent,
 			Attestation:               dto.Attestation,
 		},
@@ -2459,6 +2473,7 @@ func buildBaseApplicationProcessedDTO(appID string, app *model.ApplicationDTO,
 			AllowedAgentTypes:         app.AllowedAgentTypes,
 			SubjectAttribute:          app.SubjectAttribute,
 			PasskeyAllowedOrigins:     app.PasskeyAllowedOrigins,
+			PasskeyRelyingPartyID:     app.PasskeyRelyingPartyID,
 			LoginConsent:              app.LoginConsent,
 			Attestation:               app.Attestation,
 		},
@@ -2548,6 +2563,7 @@ func buildReturnApplicationDTO(
 			AllowedAgentTypes:         app.AllowedAgentTypes,
 			SubjectAttribute:          app.SubjectAttribute,
 			PasskeyAllowedOrigins:     app.PasskeyAllowedOrigins,
+			PasskeyRelyingPartyID:     app.PasskeyRelyingPartyID,
 			LoginConsent:              app.LoginConsent,
 			Attestation:               app.Attestation.WithoutCredentials(),
 		},

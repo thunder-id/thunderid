@@ -380,6 +380,22 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			wantPerm: "",
 		},
 		{
+			name:   "POST /users/me/passkeys/register/start self-service",
+			method: http.MethodPost, path: "/users/me/passkeys/register/start", wantPerm: "",
+		},
+		{
+			name:   "POST /users/me/passkeys/register/finish self-service",
+			method: http.MethodPost, path: "/users/me/passkeys/register/finish", wantPerm: "",
+		},
+		{
+			name:   "GET /users/me/passkeys self-service",
+			method: http.MethodGet, path: "/users/me/passkeys", wantPerm: "",
+		},
+		{
+			name:   "DELETE /users/me/passkeys/{id} self-service",
+			method: http.MethodDelete, path: "/users/me/passkeys/cred-1", wantPerm: "",
+		},
+		{
 			name:   "GET /register/passkey/start self-service",
 			method: http.MethodGet, path: "/register/passkey/start", wantPerm: "",
 		},

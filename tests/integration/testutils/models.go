@@ -58,6 +58,7 @@ type Application struct {
 	SubjectAttribute          map[string]string        `json:"subjectAttribute,omitempty"`
 	Certificate               map[string]interface{}   `json:"certificate,omitempty"`
 	PasskeyAllowedOrigins     []string                 `json:"passkeyAllowedOrigins,omitempty"`
+	PasskeyRelyingPartyID     string                   `json:"passkeyRelyingPartyId,omitempty"`
 	InboundAuthConfig         []map[string]interface{} `json:"inboundAuthConfig,omitempty"`
 	AssertionConfig           map[string]interface{}   `json:"assertion,omitempty"`
 	// LoginConsent is the login consent configuration (e.g. validityPeriod in seconds).

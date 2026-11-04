@@ -1160,8 +1160,9 @@ func (s *entityService) UpdateSystemCredentials(ctx context.Context, entityID st
 				return fmt.Errorf("%w: empty value for credential type %q", ErrInvalidCredential, credType)
 			}
 		case []interface{}:
-			// Structured credentials (e.g., passkey objects) — validate non-empty.
-			if len(v) == 0 {
+			// Structured credentials (e.g., passkey objects) — validate non-empty. A user may remove
+			// every passkey, which clears the type.
+			if len(v) == 0 && credType != authnprovidercm.CredentialTypePasskey {
 				return fmt.Errorf("%w: empty array for credential type %q", ErrInvalidCredential, credType)
 			}
 		case nil:
@@ -1194,8 +1195,12 @@ func (s *entityService) UpdateSystemCredentials(ctx context.Context, entityID st
 			}
 		}
 
-		// Merge: existing preserved, new/updated types replaced.
+		// Merge: existing preserved, new/updated types replaced, emptied types removed.
 		for k, v := range hashedMap {
+			if arr, ok := v.([]interface{}); ok && len(arr) == 0 {
+				delete(existingCreds, k)
+				continue
+			}
 			existingCreds[k] = v
 		}
 

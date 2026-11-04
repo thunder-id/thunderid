@@ -916,6 +916,34 @@ func (s *ServiceTestSuite) TestUpdateSystemCredentials_NoStampForOtherCredential
 	}
 }
 
+// Removing a user's last passkey clears the type and keeps the other credentials.
+func (s *ServiceTestSuite) TestUpdateSystemCredentials_EmptyPasskeyListRemovesType() {
+	e := testEntity("e-pk")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{
+			Entity:            e,
+			SystemCredentials: json.RawMessage(`{"passkey":[{"value":"v1"}],"flowSecret":[{"value":"h"}]}`),
+		}, nil).Once()
+	var written json.RawMessage
+	s.store.On("UpdateSystemCredentials", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
+		Run(func(args mock.Arguments) {
+			written, _ = args.Get(2).(json.RawMessage)
+		}).Return(nil).Once()
+
+	s.NoError(s.svc.UpdateSystemCredentials(s.ctx, e.ID, json.RawMessage(`{"passkey":[]}`)))
+
+	var creds map[string]interface{}
+	s.Require().NoError(json.Unmarshal(written, &creds))
+	s.NotContains(creds, "passkey")
+	s.Contains(creds, "flowSecret")
+}
+
+func (s *ServiceTestSuite) TestUpdateSystemCredentials_EmptyListRejectedForOtherTypes() {
+	err := s.svc.UpdateSystemCredentials(s.ctx, "e-other", json.RawMessage(`{"clientSecret":[]}`))
+
+	s.ErrorIs(err, ErrInvalidCredential)
+}
+
 func (s *ServiceTestSuite) TestGetCredentialsByType_NoCredentials() {
 	e := testEntity("ecreds")
 	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).

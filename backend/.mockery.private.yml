@@ -123,6 +123,14 @@ packages:
       pkgname: passkey
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/selfpasskey:
+    config:
+      all: true
+      dir: internal/selfpasskey
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: selfpasskey
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/idp:
     config:
       all: true
