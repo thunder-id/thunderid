@@ -215,6 +215,10 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
             from: '/docs/next/guides/organization-units',
             to: '/docs/next/guides/organization-units/manage-organization-units',
           },
+          {
+            from: '/docs/next/use-cases/ai-agents/personal-assistants',
+            to: '/docs/next/use-cases/ai-agents/personal-assistants/overview',
+          },
         ],
 
         // The lastVersion is served at the bare /docs/ root. Redirect its versioned

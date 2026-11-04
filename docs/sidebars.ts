@@ -365,6 +365,16 @@ const sidebars: SidebarsConfig = {
                 },
               ],
             },
+            {
+              type: 'category',
+              label: 'Personal Assistants',
+              collapsible: true,
+              collapsed: true,
+              key: 'personal-assistants',
+              items: [
+                {type: 'doc', id: 'use-cases/ai-agents/personal-assistants/overview', label: 'Understand It', key: 'personal-assistants-understand-it'},
+              ],
+            },
           ],
         },
         {
