@@ -941,6 +941,7 @@ func RestartServerWithResourcesFile(resourcesFilePath string) error {
 
 func StopServer() {
 	log.Println("Stopping server...")
+	stopping := serverCmd != nil || serverPid != 0
 
 	if serverCmd != nil {
 		// Normal case: we started this process and hold its Cmd handle.
@@ -1009,6 +1010,13 @@ func StopServer() {
 			}
 		}
 		removePidFile()
+	}
+
+	// Callers start a new server or run the setup script next, and both need the port free.
+	if stopping {
+		if err := waitForPortClosed(serverPort, 10*time.Second); err != nil {
+			log.Printf("Warning: %v", err)
+		}
 	}
 }
 
