@@ -18,10 +18,6 @@ import (
 // group store runs in composite mode (the product default). Declarative groups live in the
 // file-based store alongside runtime groups in the database: reads merge both stores, while every
 // write against a declarative group must be rejected as immutable. The fixture IDs live in model.go.
-const (
-	declGroupClientID    = "CONSOLE"
-	declGroupRedirectURI = "https://localhost:8095/console"
-)
 
 type GroupDeclarativeAPITestSuite struct {
 	suite.Suite
@@ -315,16 +311,16 @@ func (suite *GroupDeclarativeAPITestSuite) TestDeclarativeUserInheritsPermission
 		}
 	}()
 
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
-		declGroupClientID,
-		declGroupRedirectURI,
-		grantedScope,
-		declGroupMemberID,
-		declGroupMemberPassword,
-		true,
-		"",
-		rsIdentifier,
-	)
+	// The user lives in the declarative OU, and a sign-in is bounded to its application's OU, so it signs in
+	// through an application there rather than the Console.
+	var signIn testutils.OUSignInApps
+	defer func() {
+		if deleteErr := signIn.DeleteAll(); deleteErr != nil {
+			suite.T().Logf("Failed to clean up the sign-in application: %v", deleteErr)
+		}
+	}()
+	tokenResp, err := signIn.ObtainAccessToken(declGroupOUID, grantedScope, declGroupMemberID,
+		declGroupMemberPassword, rsIdentifier)
 	suite.Require().NoError(err, "the declarative user should be able to authenticate")
 	suite.Require().NotEmpty(tokenResp.AccessToken)
 

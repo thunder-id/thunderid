@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
@@ -923,6 +924,597 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_PromptAll_EmptyOUInput_Req
 	suite.mockOUService.AssertNotCalled(suite.T(), "IsOrganizationUnitExists", mock.Anything, mock.Anything)
 }
 
+// --- Sign-in boundary tests ---
+
+// boundedCtx is a context carrying a sign-in boundary of the application alone, as for a shared app.
+func (suite *OUResolverExecutorTestSuite) boundedCtx() context.Context {
+	return authnprovidercm.WithSignInBoundary(context.Background(),
+		authnprovidercm.SignInBoundary{ApplicationID: "app-1"})
+}
+
+// signedInCtx is a context carrying the sign-in boundary of app-1 after user-1 signed in.
+func (suite *OUResolverExecutorTestSuite) signedInCtx() context.Context {
+	return authnprovidercm.WithSignInBoundary(context.Background(),
+		authnprovidercm.SignInBoundary{ApplicationID: "app-1", EntityID: "user-1"})
+}
+
+// eligibleCtx is a bounded sign-in step prompting a signed-in user, with the given extra node properties.
+func (suite *OUResolverExecutorTestSuite) eligibleCtx(properties map[string]interface{},
+	inputs map[string]string) *providers.NodeContext {
+	nodeProperties := map[string]interface{}{common.NodePropertyOUResolveFrom: ouResolveFromPrompt}
+	for k, v := range properties {
+		nodeProperties[k] = v
+	}
+	return &providers.NodeContext{
+		ExecutionID:    "flow-123",
+		Context:        suite.signedInCtx(),
+		FlowType:       providers.FlowTypeAuthentication,
+		NodeProperties: nodeProperties,
+		RuntimeData:    map[string]string{},
+		UserInputs:     inputs,
+	}
+}
+
+// ouTree registers the tree acme > {engineering > platform, sales} with the OU service.
+func (suite *OUResolverExecutorTestSuite) ouTree() {
+	for _, ou := range []providers.OrganizationUnit{
+		{ID: "acme-ou", Handle: "acme"},
+		{ID: "eng-ou", Handle: "engineering", Parent: "acme-ou"},
+		{ID: "platform-ou", Handle: "platform", Parent: "eng-ou"},
+		{ID: "sales-ou", Handle: "sales", Parent: "acme-ou"},
+	} {
+		suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ou.ID).
+			Return(ou, (*tidcommon.ServiceError)(nil)).Maybe()
+	}
+}
+
+func (suite *OUResolverExecutorTestSuite) eligible(ous []string) {
+	suite.mockOUService.On("GetEligibleOUs", mock.Anything).Return(ous, (*tidcommon.ServiceError)(nil))
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Bounded_DecidedOUIsKeptByEveryStrategy() {
+	for _, strategy := range []string{ouResolveFromCaller, ouResolveFromPrompt, ouResolveFromPromptAll} {
+		suite.Run(strategy, func() {
+			ctx := &providers.NodeContext{
+				ExecutionID:    "flow-123",
+				Context:        suite.boundedCtx(),
+				FlowType:       providers.FlowTypeAuthentication,
+				NodeProperties: map[string]interface{}{common.NodePropertyOUResolveFrom: strategy},
+				RuntimeData:    map[string]string{ouIDKey: "decided-ou", defaultOUIDKey: testParentOUID},
+				UserInputs:     map[string]string{ouIDKey: testChildOUID},
+			}
+
+			result, err := suite.executor.Execute(ctx)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), providers.ExecComplete, result.Status)
+			assert.NotContains(suite.T(), result.RuntimeData, ouIDKey)
+		})
+	}
+	suite.mockOUService.AssertNotCalled(suite.T(), "GetEligibleOUs", mock.Anything)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Eligible_NoEligibleOUFails() {
+	suite.eligible([]string{})
+
+	result, err := suite.executor.Execute(suite.eligibleCtx(nil, map[string]string{}))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, result.Status)
+	assert.Equal(suite.T(), ErrNoAccessToApplication.Code, result.Error.Code)
+	assert.Empty(suite.T(), result.RuntimeData[ouIDKey])
+}
+
+// A signed-in user the OU provider cannot list OUs for picks below the parent OU, as before sign-in.
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Eligible_UnlistedUserPicksBelowTheParentOU() {
+	suite.mockOUService.On("GetEligibleOUs", mock.Anything).Return([]string(nil),
+		&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1020"})
+	suite.mockOUService.On("GetOrganizationUnitChildren", mock.Anything, testParentOUID, 1, 0, mock.Anything).
+		Return(&providers.OrganizationUnitListResponse{TotalResults: 2}, (*tidcommon.ServiceError)(nil))
+
+	result, err := suite.executor.Execute(suite.eligibleCtx(
+		map[string]interface{}{common.NodePropertyOUParent: testParentOUID}, map[string]string{}))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, result.Status)
+	suite.Require().Len(result.Inputs, 1)
+	assert.Equal(suite.T(), providers.InputTypeOUSelect, result.Inputs[0].Type)
+	assert.Equal(suite.T(), testParentOUID, result.AdditionalData[common.DataRootOUID])
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Eligible_OneEligibleOUIsDecided() {
+	suite.eligible([]string{"eng-ou"})
+
+	result, err := suite.executor.Execute(suite.eligibleCtx(nil, map[string]string{}))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
+	assert.Equal(suite.T(), "eng-ou", result.RuntimeData[ouIDKey])
+	suite.mockOUService.AssertNotCalled(suite.T(), "GetOrganizationUnit", mock.Anything, mock.Anything)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Eligible_SeveralEligibleOUsAreOfferedByHandlePath() {
+	suite.eligible([]string{"sales-ou", "platform-ou", "eng-ou"})
+	suite.ouTree()
+
+	result, err := suite.executor.Execute(suite.eligibleCtx(nil, map[string]string{}))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, result.Status)
+	assert.Nil(suite.T(), result.Error)
+	assert.Empty(suite.T(), result.RuntimeData[ouIDKey])
+	suite.Require().Len(result.Inputs, 1)
+	assert.Equal(suite.T(), ouIDKey, result.Inputs[0].Identifier)
+	assert.Equal(suite.T(), providers.InputTypeSelect, result.Inputs[0].Type)
+	assert.True(suite.T(), result.Inputs[0].Required)
+	assert.Equal(suite.T(), []string{"acme/engineering", "acme/engineering/platform", "acme/sales"},
+		result.Inputs[0].Options)
+	assert.Equal(suite.T(), result.Inputs, result.ForwardedData[common.ForwardedDataKeyInputs])
+	// Shared ancestors are read once.
+	suite.mockOUService.AssertNumberOfCalls(suite.T(), "GetOrganizationUnit", 4)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Eligible_ChosenPathDecidesItsOU() {
+	suite.eligible([]string{"sales-ou", "eng-ou"})
+	suite.ouTree()
+
+	result, err := suite.executor.Execute(suite.eligibleCtx(nil, map[string]string{ouIDKey: "acme/sales"}))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
+	assert.Equal(suite.T(), "sales-ou", result.RuntimeData[ouIDKey])
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Eligible_AnswerOutsideTheOptionsAsksAgain() {
+	for _, answer := range []string{"acme/platform", "platform-ou", "acme"} {
+		suite.Run(answer, func() {
+			suite.SetupTest()
+			suite.eligible([]string{"sales-ou", "eng-ou"})
+			suite.ouTree()
+
+			result, err := suite.executor.Execute(suite.eligibleCtx(nil, map[string]string{ouIDKey: answer}))
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), providers.ExecUserInputRequired, result.Status)
+			assert.Equal(suite.T(), ErrInvalidOU.Code, result.Error.Code)
+			assert.Empty(suite.T(), result.RuntimeData[ouIDKey])
+			suite.Require().Len(result.Inputs, 1)
+			assert.Equal(suite.T(), []string{"acme/engineering", "acme/sales"}, result.Inputs[0].Options)
+			assert.Equal(suite.T(), result.Inputs, result.ForwardedData[common.ForwardedDataKeyInputs])
+		})
+	}
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Eligible_ParentOUKeepsItselfAndDescendants() {
+	suite.eligible([]string{"acme-ou", "eng-ou", "platform-ou", "other-ou"})
+	suite.ouTree()
+	for _, ouID := range []string{"eng-ou", "platform-ou"} {
+		suite.mockOUService.On("IsParent", mock.Anything, "acme-ou", ouID).
+			Return(true, (*tidcommon.ServiceError)(nil))
+	}
+	suite.mockOUService.On("IsParent", mock.Anything, "acme-ou", "other-ou").
+		Return(false, (*tidcommon.ServiceError)(nil))
+
+	result, err := suite.executor.Execute(suite.eligibleCtx(
+		map[string]interface{}{common.NodePropertyOUParent: "acme-ou"}, map[string]string{}))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, result.Status)
+	suite.Require().Len(result.Inputs, 1)
+	assert.Equal(suite.T(), []string{"acme", "acme/engineering", "acme/engineering/platform"},
+		result.Inputs[0].Options)
+	suite.mockOUService.AssertNotCalled(suite.T(), "IsParent", mock.Anything, "acme-ou", "acme-ou")
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Eligible_DirectChildrenOnlyKeepsDirectChildren() {
+	suite.eligible([]string{"acme-ou", "platform-ou", "sales-ou"})
+	suite.ouTree()
+
+	result, err := suite.executor.Execute(suite.eligibleCtx(map[string]interface{}{
+		common.NodePropertyOUParent:             "acme-ou",
+		common.NodePropertyOUDirectChildrenOnly: true,
+	}, map[string]string{}))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
+	assert.Equal(suite.T(), "sales-ou", result.RuntimeData[ouIDKey])
+	suite.mockOUService.AssertNotCalled(suite.T(), "IsParent", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Eligible_DirectChildrenAreOfferedByHandle() {
+	directChildren := map[string]interface{}{
+		common.NodePropertyOUParent:             "acme-ou",
+		common.NodePropertyOUDirectChildrenOnly: true,
+	}
+	tests := []struct {
+		name   string
+		answer string
+		want   string
+	}{
+		{name: "NoAnswer"},
+		{name: "Handle", answer: "sales", want: "sales-ou"},
+		{name: "HandlePath", answer: "acme/sales"},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.eligible([]string{"sales-ou", "platform-ou", "eng-ou"})
+			suite.ouTree()
+
+			inputs := map[string]string{ouIDKey: tc.answer}
+			result, err := suite.executor.Execute(suite.eligibleCtx(directChildren, inputs))
+
+			assert.NoError(suite.T(), err)
+			if tc.want != "" {
+				assert.Equal(suite.T(), providers.ExecComplete, result.Status)
+				assert.Equal(suite.T(), tc.want, result.RuntimeData[ouIDKey])
+				return
+			}
+			assert.Equal(suite.T(), providers.ExecUserInputRequired, result.Status)
+			if tc.answer != "" {
+				suite.Require().NotNil(result.Error)
+				assert.Equal(suite.T(), ErrInvalidOU.Code, result.Error.Code)
+			}
+			suite.Require().Len(result.Inputs, 1)
+			assert.Equal(suite.T(), []string{"engineering", "sales"}, result.Inputs[0].Options)
+		})
+	}
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Eligible_NothingBelowParentOUFails() {
+	suite.eligible([]string{"acme-ou", "platform-ou"})
+	suite.ouTree()
+
+	result, err := suite.executor.Execute(suite.eligibleCtx(map[string]interface{}{
+		common.NodePropertyOUParent:             "acme-ou",
+		common.NodePropertyOUDirectChildrenOnly: true,
+	}, map[string]string{}))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, result.Status)
+	assert.Equal(suite.T(), ErrNoAccessToApplication.Code, result.Error.Code)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Eligible_ServiceErrorsFail() {
+	svcErr := &tidcommon.ServiceError{
+		Type:  tidcommon.ServerErrorType,
+		Code:  "OU-50001",
+		Error: tidcommon.I18nMessage{Key: "error.test.internal_error", DefaultValue: "internal error"},
+	}
+	tests := []struct {
+		name       string
+		properties map[string]interface{}
+		setup      func()
+	}{
+		{"EligibleOUs", nil, func() {
+			suite.mockOUService.On("GetEligibleOUs", mock.Anything).Return([]string(nil), svcErr)
+		}},
+		{"Hierarchy", map[string]interface{}{common.NodePropertyOUParent: "acme-ou"}, func() {
+			suite.eligible([]string{"eng-ou"})
+			suite.mockOUService.On("IsParent", mock.Anything, "acme-ou", "eng-ou").Return(false, svcErr)
+		}},
+		{"HandlePath", nil, func() {
+			suite.eligible([]string{"eng-ou", "sales-ou"})
+			suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "eng-ou").
+				Return(providers.OrganizationUnit{}, svcErr)
+		}},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			tc.setup()
+
+			result, err := suite.executor.Execute(suite.eligibleCtx(tc.properties, map[string]string{}))
+
+			assert.Error(suite.T(), err)
+			assert.Nil(suite.T(), result)
+		})
+	}
+}
+
+// Before sign-in the prompt strategy checks the pick in a bounded flow, and never lists eligible OUs.
+func (suite *OUResolverExecutorTestSuite) TestExecute_Bounded_PromptBeforeSignInDoesNotReadEligibleOUs() {
+	ctx := suite.directChildrenCtx("", ouIDKey, testChildOUID)
+	delete(ctx.NodeProperties, common.NodePropertyOUDirectChildrenOnly)
+	suite.withApplicationAccess(ctx)
+	suite.mockOUService.On("IsEligibleOU", askedWithoutAUser(), testChildOUID).
+		Return(true, (*tidcommon.ServiceError)(nil))
+	suite.mockOUService.On("IsParent", mock.Anything, testParentOUID, testChildOUID).
+		Return(true, (*tidcommon.ServiceError)(nil))
+
+	result, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
+	assert.Equal(suite.T(), testChildOUID, result.RuntimeData[ouIDKey])
+	suite.mockOUService.AssertNotCalled(suite.T(), "GetEligibleOUs", mock.Anything)
+}
+
+// Without a boundary an OU already in runtime data does not stop a strategy from resolving.
+func (suite *OUResolverExecutorTestSuite) TestExecute_Unbounded_StrategiesIgnoreADecidedOU() {
+	callerCtx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("caller-user", "caller-ou", "token", []string{"system"}, nil))
+	tests := []struct {
+		name       string
+		strategy   string
+		ctx        context.Context
+		setup      func()
+		wantStatus providers.ExecutorStatus
+		wantOUID   string
+	}{
+		{"Caller", ouResolveFromCaller, callerCtx, func() {}, providers.ExecComplete, "caller-ou"},
+		{"Prompt", ouResolveFromPrompt, context.Background(), func() {
+			suite.mockOUService.On("GetOrganizationUnitChildren", mock.Anything, testParentOUID, 1, 0, mock.Anything).
+				Return(&providers.OrganizationUnitListResponse{TotalResults: 2}, (*tidcommon.ServiceError)(nil))
+		}, providers.ExecUserInputRequired, ""},
+		{"PromptAll", ouResolveFromPromptAll, context.Background(), func() {},
+			providers.ExecUserInputRequired, ""},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			tc.setup()
+			ctx := &providers.NodeContext{
+				ExecutionID:    "flow-123",
+				Context:        tc.ctx,
+				FlowType:       providers.FlowTypeRegistration,
+				NodeProperties: map[string]interface{}{common.NodePropertyOUResolveFrom: tc.strategy},
+				RuntimeData:    map[string]string{ouIDKey: "decided-ou", defaultOUIDKey: testParentOUID},
+				UserInputs:     map[string]string{},
+			}
+
+			result, err := suite.executor.Execute(ctx)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), tc.wantStatus, result.Status)
+			assert.Equal(suite.T(), tc.wantOUID, result.RuntimeData[ouIDKey])
+		})
+	}
+}
+
 func TestOUResolverExecutorSuite(t *testing.T) {
 	suite.Run(t, new(OUResolverExecutorTestSuite))
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Eligible_EqualHandlePathsAreOrderedAndMatchedByOUID() {
+	for _, ou := range []providers.OrganizationUnit{
+		{ID: "ou-b", Handle: "acme"},
+		{ID: "ou-a", Handle: "acme"},
+	} {
+		suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ou.ID).
+			Return(ou, (*tidcommon.ServiceError)(nil)).Maybe()
+	}
+	suite.eligible([]string{"ou-b", "ou-a"})
+	for i := 0; i < 20; i++ {
+		result, err := suite.executor.Execute(suite.eligibleCtx(nil, map[string]string{}))
+		assert.NoError(suite.T(), err)
+		assert.Equal(suite.T(), []string{"acme", "acme"}, result.Inputs[0].Options)
+
+		result, err = suite.executor.Execute(suite.eligibleCtx(nil, map[string]string{ouIDKey: "acme"}))
+		assert.NoError(suite.T(), err)
+		assert.Equal(suite.T(), "ou-a", result.RuntimeData[ouIDKey])
+	}
+}
+
+// --- Application access of a picked OU ---
+
+// pickMode is one way the prompt strategy takes a pick: the context carrying it, and the lookups that accept it.
+type pickMode struct {
+	name       string
+	ctx        func(suite *OUResolverExecutorTestSuite) *providers.NodeContext
+	accept     func(suite *OUResolverExecutorTestSuite)
+	unknown    func(suite *OUResolverExecutorTestSuite)
+	inputType  string
+	rootOUData bool
+}
+
+func (suite *OUResolverExecutorTestSuite) pickModes() []pickMode {
+	return []pickMode{
+		{
+			name: "TreePick",
+			ctx: func(s *OUResolverExecutorTestSuite) *providers.NodeContext {
+				ctx := s.directChildrenCtx("", ouIDKey, testChildOUID)
+				delete(ctx.NodeProperties, common.NodePropertyOUDirectChildrenOnly)
+				return ctx
+			},
+			accept: func(s *OUResolverExecutorTestSuite) {
+				s.mockOUService.On("IsParent", mock.Anything, testParentOUID, testChildOUID).
+					Return(true, (*tidcommon.ServiceError)(nil))
+			},
+			unknown: func(s *OUResolverExecutorTestSuite) {
+				s.mockOUService.On("IsParent", mock.Anything, testParentOUID, testChildOUID).
+					Return(false, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
+			},
+			inputType: ouIDKey,
+		},
+		{
+			name: "DirectChildByID",
+			ctx: func(s *OUResolverExecutorTestSuite) *providers.NodeContext {
+				return s.directChildrenCtx("", ouIDKey, testChildOUID)
+			},
+			accept: func(s *OUResolverExecutorTestSuite) {
+				s.mockOUService.On("GetOrganizationUnit", mock.Anything, testChildOUID).Return(
+					providers.OrganizationUnit{ID: testChildOUID, Parent: testParentOUID},
+					(*tidcommon.ServiceError)(nil))
+			},
+			unknown: func(s *OUResolverExecutorTestSuite) {
+				s.mockOUService.On("GetOrganizationUnit", mock.Anything, testChildOUID).Return(
+					providers.OrganizationUnit{}, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
+			},
+			inputType:  ouIDKey,
+			rootOUData: true,
+		},
+		{
+			name: "DirectChildByHandle",
+			ctx: func(s *OUResolverExecutorTestSuite) *providers.NodeContext {
+				return s.directChildrenCtx(ouHandleKey, ouHandleKey, "tenant-a")
+			},
+			accept:     func(s *OUResolverExecutorTestSuite) { s.childWithHandle("tenant-a") },
+			unknown:    func(s *OUResolverExecutorTestSuite) { s.noChildWithHandle("tenant-a") },
+			inputType:  ouHandleKey,
+			rootOUData: true,
+		},
+	}
+}
+
+// withApplicationAccess makes ctx a bounded sign-in step of app-1.
+func (suite *OUResolverExecutorTestSuite) withApplicationAccess(ctx *providers.NodeContext) {
+	ctx.Context = suite.boundedCtx()
+	ctx.FlowType = providers.FlowTypeAuthentication
+}
+
+// askedWithoutAUser matches a context carrying the sign-in boundary of app-1 with no signed-in user.
+func askedWithoutAUser() any {
+	return mock.MatchedBy(func(c context.Context) bool {
+		b, ok := authnprovidercm.SignInBoundaryFrom(c)
+		return ok && b == authnprovidercm.SignInBoundary{ApplicationID: "app-1"}
+	})
+}
+
+// A pick made after sign-in by a user the OU provider cannot list OUs for is still checked against the application
+// alone; completion checks the user.
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Pick_AfterSignInIsCheckedAgainstTheApplication() {
+	ctx := suite.directChildrenCtx("", ouIDKey, testChildOUID)
+	ctx.Context = suite.signedInCtx()
+	ctx.FlowType = providers.FlowTypeAuthentication
+	suite.mockOUService.On("GetEligibleOUs", mock.Anything).Return([]string(nil),
+		&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1020"})
+	suite.pickModes()[1].accept(suite)
+	suite.mockOUService.On("IsEligibleOU", askedWithoutAUser(), testChildOUID).
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
+
+	result, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, result.Status)
+	suite.Equal(testChildOUID, result.RuntimeData[ouIDKey])
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Pick_ApplicationNotUsableFromOU_AsksAgain() {
+	for _, mode := range suite.pickModes() {
+		suite.Run(mode.name, func() {
+			suite.SetupTest()
+			ctx := mode.ctx(suite)
+			ctx.NodeProperties[common.NodePropertyOUParent] = testParentOUID
+			suite.withApplicationAccess(ctx)
+			mode.accept(suite)
+			suite.mockOUService.On("IsEligibleOU", askedWithoutAUser(), testChildOUID).
+				Return(false, (*tidcommon.ServiceError)(nil))
+
+			result, err := suite.executor.Execute(ctx)
+
+			suite.NoError(err)
+			suite.Equal(providers.ExecUserInputRequired, result.Status)
+			suite.Equal(&ErrApplicationNotInOU, result.Error)
+			suite.NotContains(result.RuntimeData, ouIDKey)
+			suite.Require().Len(result.Inputs, 1)
+			suite.Equal(mode.inputType, result.Inputs[0].Identifier)
+			if mode.rootOUData {
+				suite.Equal(testParentOUID, result.AdditionalData[common.DataRootOUID])
+			}
+		})
+	}
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Pick_ApplicationUsableFromOU_Completes() {
+	for _, mode := range suite.pickModes() {
+		suite.Run(mode.name, func() {
+			suite.SetupTest()
+			ctx := mode.ctx(suite)
+			suite.withApplicationAccess(ctx)
+			mode.accept(suite)
+			suite.mockOUService.On("IsEligibleOU", askedWithoutAUser(), testChildOUID).
+				Return(true, (*tidcommon.ServiceError)(nil))
+
+			result, err := suite.executor.Execute(ctx)
+
+			suite.NoError(err)
+			suite.Equal(providers.ExecComplete, result.Status)
+			suite.Nil(result.Error)
+			suite.Equal(testChildOUID, result.RuntimeData[ouIDKey])
+		})
+	}
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Pick_UnknownPickKeepsItsError() {
+	for _, mode := range suite.pickModes() {
+		suite.Run(mode.name, func() {
+			suite.SetupTest()
+			ctx := mode.ctx(suite)
+			suite.withApplicationAccess(ctx)
+			mode.unknown(suite)
+
+			result, err := suite.executor.Execute(ctx)
+
+			suite.NoError(err)
+			suite.Equal(providers.ExecUserInputRequired, result.Status)
+			suite.NotEqual(&ErrApplicationNotInOU, result.Error)
+			suite.NotNil(result.Error)
+			suite.mockOUService.AssertNotCalled(suite.T(), "IsEligibleOU", mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Pick_UnboundedFlowSkipsTheCheck() {
+	for _, mode := range suite.pickModes() {
+		suite.Run(mode.name, func() {
+			suite.SetupTest()
+			ctx := mode.ctx(suite)
+			mode.accept(suite)
+
+			result, err := suite.executor.Execute(ctx)
+
+			suite.NoError(err)
+			suite.Equal(providers.ExecComplete, result.Status)
+			suite.Equal(testChildOUID, result.RuntimeData[ouIDKey])
+			suite.mockOUService.AssertNotCalled(suite.T(), "IsEligibleOU", mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Pick_BoundaryWithoutApplicationSkipsTheCheck() {
+	ctx := suite.directChildrenCtx("", ouIDKey, testChildOUID)
+	ctx.Context = authnprovidercm.WithSignInBoundary(context.Background(),
+		authnprovidercm.SignInBoundary{OUID: testParentOUID})
+	suite.pickModes()[1].accept(suite)
+
+	result, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, result.Status)
+	suite.mockOUService.AssertNotCalled(suite.T(), "IsEligibleOU", mock.Anything, mock.Anything)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Pick_AccessCheckErrorFailsTheStep() {
+	for _, mode := range suite.pickModes() {
+		suite.Run(mode.name, func() {
+			suite.SetupTest()
+			ctx := mode.ctx(suite)
+			suite.withApplicationAccess(ctx)
+			mode.accept(suite)
+			suite.mockOUService.On("IsEligibleOU", askedWithoutAUser(), testChildOUID).
+				Return(false, &tidcommon.InternalServerError)
+
+			result, err := suite.executor.Execute(ctx)
+
+			suite.Error(err)
+			suite.Nil(result)
+		})
+	}
+}
+
+// A client error from the OU provider, such as an OU that does not exist, is a pick the application cannot use.
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Pick_AccessCheckClientErrorAsksAgain() {
+	ctx := suite.directChildrenCtx("", ouIDKey, testChildOUID)
+	suite.withApplicationAccess(ctx)
+	suite.pickModes()[1].accept(suite)
+	suite.mockOUService.On("IsEligibleOU", askedWithoutAUser(), testChildOUID).
+		Return(false, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1003"})
+
+	result, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, result.Status)
+	suite.Equal(&ErrApplicationNotInOU, result.Error)
+	suite.NotContains(result.RuntimeData, ouIDKey)
 }

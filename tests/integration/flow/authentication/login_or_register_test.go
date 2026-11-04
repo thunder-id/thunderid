@@ -48,7 +48,7 @@ func TestLoginOrRegisterTestSuite(t *testing.T) {
 // to registration. AUTHENTICATION requires AuthAssertExecutor, every onIncomplete must target a
 // PROMPT, and both IdentifyingExecutor and CredentialsAuthExecutor need explicit email inputs because
 // they default to username.
-func buildLoginOrRegisterFlow(handle string) testutils.Flow {
+func buildLoginOrRegisterFlow(handle, parentOUID string) testutils.Flow {
 	emailInput := []map[string]interface{}{
 		{"ref": "input_email", "identifier": "email", "type": "TEXT_INPUT", "required": true},
 	}
@@ -95,8 +95,16 @@ func buildLoginOrRegisterFlow(handle string) testutils.Flow {
 						{"ref": "input_pwd", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
 					},
 				},
-				"onSuccess":    "auth_assert",
+				"onSuccess":    "resolve_ou",
 				"onIncomplete": "prompt_password",
+			},
+			// The application is shared, so the sign-in decides the user's OU before the assertion.
+			{
+				"id":         "resolve_ou",
+				"type":       "TASK_EXECUTION",
+				"properties": map[string]interface{}{"resolveFrom": "prompt", "parentOuId": parentOUID},
+				"executor":   map[string]interface{}{"name": "OUResolverExecutor"},
+				"onSuccess":  "auth_assert",
 			},
 			{
 				"id":   "prompt_password",
@@ -223,7 +231,7 @@ func (ts *LoginOrRegisterTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create the ambiguous user pair")
 	ts.createdUserIDs = append(ts.createdUserIDs, sharedIDs...)
 
-	flowID, err := testutils.CreateFlow(buildLoginOrRegisterFlow("auth_flow_login_or_register"))
+	flowID, err := testutils.CreateFlow(buildLoginOrRegisterFlow("auth_flow_login_or_register", ts.parentOUID))
 	ts.Require().NoError(err, "Failed to create the login-or-register flow")
 	ts.flowID = flowID
 
@@ -238,6 +246,9 @@ func (ts *LoginOrRegisterTestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(err, "Failed to create the test application")
 	ts.appID = appID
+
+	// The users live in the child OUs, which a sign-in reaches only when the application is shared there.
+	ts.Require().NoError(testutils.ShareApplicationWithChildUnits(appID), "Failed to share the test application")
 }
 
 func (ts *LoginOrRegisterTestSuite) TearDownSuite() {

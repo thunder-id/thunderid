@@ -13,9 +13,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
 
@@ -150,7 +153,7 @@ func (suite *ServiceTestSuite) TestFindCheckpoint_Present() {
 	sc := &SessionContext{SessionID: "sess-1", CheckpointID: "session"}
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "session").Return(sc, nil)
 
-	got, err := svc.FindCheckpoint(context.Background(), "sess-1", "session")
+	got, err := svc.FindCheckpoint(context.Background(), &Session{SessionID: "sess-1"}, "session")
 	suite.Require().NoError(err)
 	suite.Same(sc, got)
 }
@@ -159,7 +162,7 @@ func (suite *ServiceTestSuite) TestFindCheckpoint_Absent() {
 	svc, m := suite.newService()
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "session").Return(nil, nil)
 
-	got, err := svc.FindCheckpoint(context.Background(), "sess-1", "session")
+	got, err := svc.FindCheckpoint(context.Background(), &Session{SessionID: "sess-1"}, "session")
 	suite.Require().NoError(err)
 	suite.Nil(got)
 }
@@ -169,13 +172,23 @@ func (suite *ServiceTestSuite) TestFindCheckpoint_ReadError() {
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, errors.New("store down"))
 
-	_, err := svc.FindCheckpoint(context.Background(), "sess-1", "session")
+	_, err := svc.FindCheckpoint(context.Background(), &Session{SessionID: "sess-1"}, "session")
 
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "failed to read SSO session checkpoint")
 }
 
 // --- SaveCheckpoint ---
+
+// boundaryContext returns a context inside a sign-in boundary of ouID, or one with no boundary when
+// ouID is empty.
+func boundaryContext(ouID string) context.Context {
+	if ouID == "" {
+		return context.Background()
+	}
+	return authnprovidercm.WithSignInBoundary(context.Background(),
+		authnprovidercm.SignInBoundary{OUID: ouID, ApplicationID: "app-123"})
+}
 
 func saveInput() SaveCheckpointInput {
 	return SaveCheckpointInput{
@@ -242,6 +255,100 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_AttachesToExisting() {
 	suite.Equal("step_up", savedCtx.CheckpointID)
 	suite.False(touchedAt.IsZero(), "the re-authentication must refresh the session's auth time")
 	suite.True(touchedIdle.After(touchedAt), "the idle deadline must slide past the new auth time")
+}
+
+// The joining participant is recorded under the sign-in's organization unit, with its token family.
+func (suite *ServiceTestSuite) TestSaveCheckpoint_RecordsTheParticipantUnderItsOU() {
+	for name, ouID := range map[string]string{"bounded sign-in": "ou-x", "sign-in with no OU": ""} {
+		suite.Run(name, func() {
+			svc, m := suite.newService()
+			svc.ouEligibility = suite.subjectMaySignIn(true)
+			m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+			m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything).Return(nil)
+			runTx(m)
+			m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
+			var recorded Participant
+			m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
+				func(_ context.Context, p Participant) error { recorded = p; return nil })
+			in := saveInput()
+			in.HandleHint = testHandle
+			in.TokenFamilyID = "tfid-1"
+
+			_, err := svc.SaveCheckpoint(boundaryContext(ouID), in)
+
+			suite.Require().NoError(err)
+			suite.Equal(Participant{SessionID: "sess-1", AppID: "app-123", OUID: ouID, TokenFamilyID: "tfid-1",
+				FirstJoinedAt: recorded.FirstJoinedAt, LastActiveAt: recorded.LastActiveAt}, recorded)
+		})
+	}
+}
+
+// subjectMaySignIn returns an eligibility check that answers eligible for any organization unit it is asked about.
+func (suite *ServiceTestSuite) subjectMaySignIn(eligible bool) *OUEligibilityMock {
+	e := NewOUEligibilityMock(suite.T())
+	e.EXPECT().IsEligibleOU(mock.Anything, mock.Anything).Return(eligible, nil).Maybe()
+	return e
+}
+
+// A sign-in its assertion will refuse is recorded under no organization unit, keeping its token family, so it never
+// becomes the session's last-used one.
+func (suite *ServiceTestSuite) TestSaveCheckpoint_RecordsARefusedSignInUnderNoOU() {
+	svc, m := suite.newService()
+	svc.ouEligibility = suite.subjectMaySignIn(false)
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything).Return(nil)
+	runTx(m)
+	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
+	var recorded Participant
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, p Participant) error { recorded = p; return nil })
+	in := saveInput()
+	in.HandleHint = testHandle
+	in.TokenFamilyID = "tfid-1"
+
+	_, err := svc.SaveCheckpoint(boundaryContext("ou-x"), in)
+
+	suite.Require().NoError(err)
+	suite.Empty(recorded.OUID)
+	suite.Equal("tfid-1", recorded.TokenFamilyID)
+}
+
+// A sign-in bounded to an organization unit its subject cannot sign in to does not reuse the session, so nothing is
+// recorded for it.
+func (suite *ServiceTestSuite) TestLoadCheckpoint_RefusedInAnOUItsSubjectCannotSignInTo() {
+	svc, m := suite.newService()
+	svc.ouEligibility = suite.subjectMaySignIn(false)
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "session").
+		Return(&SessionContext{SessionID: "sess-1"}, nil)
+	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	_, _, err := svc.LoadCheckpoint(boundaryContext("ou-x"), loadInput())
+
+	suite.Require().Error(err)
+	m.store.AssertNotCalled(suite.T(), "Record", mock.Anything, mock.Anything)
+}
+
+// The snapshot leaves out the flow's organization unit, which is decided per sign-in, and the caller's
+// runtime data is not modified.
+func (suite *ServiceTestSuite) TestSaveCheckpoint_SnapshotDropsTheOrganizationUnit() {
+	svc, m := suite.newService()
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything).Return(nil)
+	runTx(m)
+	var savedCtx SessionContext
+	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, c SessionContext) error { savedCtx = c; return nil })
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	in := saveInput()
+	in.HandleHint = testHandle
+	in.RuntimeData = map[string]string{common.RuntimeKeyOUID: "ou-old", "email": "alice@example.com"}
+
+	_, err := svc.SaveCheckpoint(context.Background(), in)
+
+	suite.Require().NoError(err)
+	suite.Equal(map[string]string{"email": "alice@example.com"}, savedCtx.RuntimeData)
+	suite.Equal("ou-old", in.RuntimeData[common.RuntimeKeyOUID])
 }
 
 // TestSaveCheckpoint_ReauthRefreshFailureStillSaves pins the degradation: a failure to refresh the
@@ -372,6 +479,35 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_Success() {
 	suite.Equal(originalAbsolute, updated.AbsoluteExpiresAt)
 	// The joining application is recorded.
 	suite.Equal("app-456", recorded.AppID)
+}
+
+// An application joining one session under two organization units is recorded once under each, each
+// with the token family of its own grant.
+func (suite *ServiceTestSuite) TestLoadCheckpoint_RecordsEachOUOfAnApplication() {
+	svc, m := suite.newService()
+	svc.ouEligibility = suite.subjectMaySignIn(true)
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "session").
+		Return(&SessionContext{SessionID: "sess-1"}, nil)
+	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
+	var recorded []Participant
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, p Participant) error { recorded = append(recorded, p); return nil })
+
+	for ouID, tfid := range map[string]string{"ou-x": "tfid-x", "ou-y": "tfid-y"} {
+		in := loadInput()
+		in.TokenFamilyID = tfid
+		_, _, err := svc.LoadCheckpoint(boundaryContext(ouID), in)
+		suite.Require().NoError(err)
+	}
+
+	suite.Require().Len(recorded, 2)
+	families := map[string]string{}
+	for _, p := range recorded {
+		suite.Equal("app-456", p.AppID)
+		families[p.OUID] = p.TokenFamilyID
+	}
+	suite.Equal(map[string]string{"ou-x": "tfid-x", "ou-y": "tfid-y"}, families)
 }
 
 // TestLoadCheckpoint_UsesForwardedReads is the guard for the reuse-path read reduction: given the rows
@@ -598,6 +734,26 @@ func (suite *ServiceTestSuite) TestTerminate_RevokesParticipantFamilies() {
 	revoker.AssertExpectations(suite.T())
 }
 
+// Sign-out revokes the family of every organization unit an application signed in under.
+func (suite *ServiceTestSuite) TestTerminate_RevokesTheFamilyOfEveryOURow() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+	runTx(m)
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-x", TokenFamilyID: "tfid-x"},
+		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-y", TokenFamilyID: "tfid-y"},
+	}, nil)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-x").Return(nil).Once()
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-y").Return(nil).Once()
+	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
+	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil)
+
+	_, err := svc.Terminate(context.Background(), "handle-abc", "flow-1")
+
+	suite.Require().NoError(err)
+}
+
 // Subject-wide termination deletes sessions without enumerating token families: the caller's subject
 // criterion already covers them, so a per-application revocation here would only add redundant rows.
 // The pairing is enforced at flow-creation time, not here.
@@ -736,8 +892,252 @@ func (suite *ServiceTestSuite) TestTerminate_DeleteError() {
 	suite.Contains(err.Error(), "failed to terminate session")
 }
 
+func (suite *ServiceTestSuite) TestLastUsedOUID_LatestRowWithAnOUWins() {
+	svc, m := suite.newService()
+	earlier := time.Unix(1700000000, 0).UTC()
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-old", LastActiveAt: earlier},
+		{SessionID: "sess-1", AppID: "app-2", OUID: "ou-new", LastActiveAt: earlier.Add(2 * time.Minute)},
+		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-mid", LastActiveAt: earlier.Add(time.Minute)},
+		{SessionID: "sess-1", AppID: "app-3", LastActiveAt: earlier.Add(3 * time.Minute)},
+	}, nil)
+
+	ouID, err := svc.lastUsedOUID(context.Background(), "sess-1")
+
+	suite.Require().NoError(err)
+	suite.Equal("ou-new", ouID)
+}
+
+// Rows with an equal last-active time keep the first one joined.
+func (suite *ServiceTestSuite) TestLastUsedOUID_TieKeepsTheFirstJoined() {
+	svc, m := suite.newService()
+	at := time.Unix(1700000000, 0).UTC()
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-first", LastActiveAt: at},
+		{SessionID: "sess-1", AppID: "app-2", OUID: "ou-second", LastActiveAt: at},
+	}, nil)
+
+	ouID, err := svc.lastUsedOUID(context.Background(), "sess-1")
+
+	suite.Require().NoError(err)
+	suite.Equal("ou-first", ouID)
+}
+
+func (suite *ServiceTestSuite) TestLastUsedOUID_EmptyWithoutARowWithAnOU() {
+	for name, participants := range map[string][]Participant{
+		"only rows without one": {{SessionID: "sess-1", AppID: "app-1", LastActiveAt: time.Now().UTC()}},
+		"no rows":               nil,
+	} {
+		suite.Run(name, func() {
+			svc, m := suite.newService()
+			m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(participants, nil)
+
+			ouID, err := svc.lastUsedOUID(context.Background(), "sess-1")
+
+			suite.Require().NoError(err)
+			suite.Empty(ouID)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestLastUsedOUID_ListError() {
+	svc, m := suite.newService()
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(nil, errors.New("db down"))
+
+	_, err := svc.lastUsedOUID(context.Background(), "sess-1")
+
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "db down")
+}
+
 // newServiceWithRevoker builds a service wired to a criteria revoker, for the paths that revoke token
 // families as part of a session write.
+// reuseCtx returns a context carrying the sign-in boundary of app-1 that has decided ouID.
+func reuseCtx(ouID string) context.Context {
+	return authnprovidercm.WithSignInBoundary(context.Background(),
+		authnprovidercm.SignInBoundary{OUID: ouID, ApplicationID: "app-1"})
+}
+
+// reusedSession is a session user-2 signed in with.
+func reusedSession() *Session {
+	return &Session{SessionID: "sess-1", SubjectID: "user-2"}
+}
+
+// withLastUsedOU makes the session's only participant one that signed in to ou-last.
+func withLastUsedOU(m *serviceMocks) {
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-last", LastActiveAt: time.Now().UTC()},
+	}, nil).Once()
+}
+
+// eligibilityAsked returns an eligibility check asked once whether user-2 may land in ou-last, inside the
+// boundary with no organization unit, answering eligible and svcErr.
+func (suite *ServiceTestSuite) eligibilityAsked(eligible bool, svcErr *tidcommon.ServiceError) *OUEligibilityMock {
+	e := NewOUEligibilityMock(suite.T())
+	e.EXPECT().IsEligibleOU(mock.MatchedBy(func(c context.Context) bool {
+		b, ok := authnprovidercm.SignInBoundaryFrom(c)
+		return ok && b == authnprovidercm.SignInBoundary{ApplicationID: "app-1", EntityID: "user-2"}
+	}), "ou-last").Return(eligible, svcErr).Once()
+	return e
+}
+
+func (suite *ServiceTestSuite) TestReuseOU_FollowsTheLastUsedOUWhileTheSubjectIsEligible() {
+	for name, eligible := range map[string]bool{"eligible": true, "not eligible": false} {
+		suite.Run(name, func() {
+			svc, m := suite.newService()
+			withLastUsedOU(m)
+			svc.ouEligibility = suite.eligibilityAsked(eligible, nil)
+
+			ouID, reusable, err := svc.reuseOU(reuseCtx(""), reusedSession())
+
+			suite.Require().NoError(err)
+			suite.Equal(eligible, reusable)
+			if eligible {
+				suite.Equal("ou-last", ouID)
+				return
+			}
+			suite.Empty(ouID)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestReuseOU_AuthenticatesWithoutALastUsedOU() {
+	svc, m := suite.newService()
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(nil, nil).Once()
+
+	ouID, reusable, err := svc.reuseOU(reuseCtx(""), reusedSession())
+
+	suite.Require().NoError(err)
+	suite.False(reusable)
+	suite.Empty(ouID)
+}
+
+// An unbounded sign-in has nothing to decide and reuses the session.
+func (suite *ServiceTestSuite) TestReuseOU_UnboundedReusesTheSession() {
+	svc, _ := suite.newService()
+
+	ouID, reusable, err := svc.reuseOU(context.Background(), reusedSession())
+
+	suite.Require().NoError(err)
+	suite.True(reusable)
+	suite.Empty(ouID)
+}
+
+// fixedOUEligibilityAsked returns an eligibility check asked once whether user-2 may land in ou-fixed, the
+// organization unit the boundary fixed, answering eligible and svcErr.
+func (suite *ServiceTestSuite) fixedOUEligibilityAsked(eligible bool,
+	svcErr *tidcommon.ServiceError) *OUEligibilityMock {
+	e := NewOUEligibilityMock(suite.T())
+	e.EXPECT().IsEligibleOU(mock.MatchedBy(func(c context.Context) bool {
+		b, ok := authnprovidercm.SignInBoundaryFrom(c)
+		return ok && b == authnprovidercm.SignInBoundary{OUID: "ou-fixed", ApplicationID: "app-1", EntityID: "user-2"}
+	}), "ou-fixed").Return(eligible, svcErr).Once()
+	return e
+}
+
+// An organization unit already decided is never overridden: the session is reused there only while its subject
+// may sign in to it, and the sign-in authenticates otherwise.
+func (suite *ServiceTestSuite) TestReuseOU_FixedOUReusesOnlyForAnEligibleSubject() {
+	for name, eligible := range map[string]bool{"eligible": true, "not eligible": false} {
+		suite.Run(name, func() {
+			svc, _ := suite.newService()
+			svc.ouEligibility = suite.fixedOUEligibilityAsked(eligible, nil)
+
+			ouID, reusable, err := svc.reuseOU(reuseCtx("ou-fixed"), reusedSession())
+
+			suite.Require().NoError(err)
+			suite.Equal(eligible, reusable)
+			suite.Empty(ouID)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestReuseOU_Failures() {
+	suite.Run("last-used organization unit", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(nil, errors.New("db down")).Once()
+
+		_, reusable, err := svc.reuseOU(reuseCtx(""), reusedSession())
+
+		suite.Require().Error(err)
+		suite.False(reusable)
+	})
+	suite.Run("eligibility", func() {
+		svc, m := suite.newService()
+		withLastUsedOU(m)
+		svc.ouEligibility = suite.eligibilityAsked(false, &tidcommon.InternalServerError)
+
+		_, reusable, err := svc.reuseOU(reuseCtx(""), reusedSession())
+
+		suite.Require().Error(err)
+		suite.False(reusable)
+		suite.Contains(err.Error(), "last-used organization unit")
+	})
+	suite.Run("fixed organization unit", func() {
+		svc, _ := suite.newService()
+		svc.ouEligibility = suite.fixedOUEligibilityAsked(false, &tidcommon.InternalServerError)
+
+		_, reusable, err := svc.reuseOU(reuseCtx("ou-fixed"), reusedSession())
+
+		suite.Require().Error(err)
+		suite.False(reusable)
+	})
+}
+
+// A sign-in that cannot reuse the session finds no checkpoint, so it authenticates.
+func (suite *ServiceTestSuite) TestFindCheckpoint_NoneWhenTheSignInCannotReuseTheSession() {
+	svc, m := suite.newService()
+	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "session").
+		Return(&SessionContext{SessionID: "sess-1", CheckpointID: "session"}, nil)
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(nil, nil).Once()
+
+	got, err := svc.FindCheckpoint(reuseCtx(""), reusedSession(), "session")
+
+	suite.Require().NoError(err)
+	suite.Nil(got)
+}
+
+// A bounded sign-in with no organization unit loads the checkpoint under the one it follows: the participant row
+// records it, and the returned snapshot carries it for the flow, leaving the saved snapshot as it was.
+func (suite *ServiceTestSuite) TestLoadCheckpoint_FollowsTheLastUsedOU() {
+	svc, m := suite.newService()
+	live := liveStoreSession()
+	live.SubjectID = "user-2"
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(live, nil)
+	saved := &SessionContext{SessionID: "sess-1", CheckpointID: "session", RuntimeData: map[string]string{"k": "v"}}
+	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "session").Return(saved, nil)
+	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
+	withLastUsedOU(m)
+	svc.ouEligibility = suite.eligibilityAsked(true, nil)
+	var recorded Participant
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, p Participant) error { recorded = p; return nil })
+
+	_, sc, err := svc.LoadCheckpoint(reuseCtx(""), loadInput())
+
+	suite.Require().NoError(err)
+	suite.Equal(map[string]string{"k": "v", common.RuntimeKeyOUID: "ou-last"}, sc.RuntimeData)
+	suite.Equal("ou-last", recorded.OUID)
+	suite.Equal(map[string]string{"k": "v"}, saved.RuntimeData)
+}
+
+func (suite *ServiceTestSuite) TestLoadCheckpoint_RefusesASignInThatCanNoLongerReuseTheSession() {
+	svc, m := suite.newService()
+	live := liveStoreSession()
+	live.SubjectID = "user-2"
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(live, nil)
+	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "session").
+		Return(&SessionContext{SessionID: "sess-1", CheckpointID: "session"}, nil)
+	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
+	withLastUsedOU(m)
+	svc.ouEligibility = suite.eligibilityAsked(false, nil)
+
+	_, _, err := svc.LoadCheckpoint(reuseCtx(""), loadInput())
+
+	suite.Require().Error(err)
+	m.store.AssertNotCalled(suite.T(), "Record", mock.Anything, mock.Anything)
+}
+
 func (suite *ServiceTestSuite) newServiceWithRevoker() (*service, *serviceMocks, *CriteriaRevokerMock) {
 	m := &serviceMocks{
 		store: newSessionStoreMock(suite.T()),
@@ -763,7 +1163,7 @@ func (suite *ServiceTestSuite) TestDetachApplication_DetachesWithoutEndingShared
 	}, nil)
 	runTx(m)
 	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil)
-	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-doomed").Return(nil)
+	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-doomed", "").Return(nil)
 	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
 		{SessionID: "sess-1", AppID: "app-survivor", TokenFamilyID: "tfid-b"},
 	}, nil)
@@ -783,12 +1183,38 @@ func (suite *ServiceTestSuite) TestDetachApplication_DeletesSessionWhenLastParti
 	}, nil)
 	runTx(m)
 	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil)
-	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-only").Return(nil)
+	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-only", "").Return(nil)
 	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(nil, nil)
 	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
 	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
 
 	err := svc.DetachApplication(context.Background(), "app-only")
+
+	suite.Require().NoError(err)
+}
+
+// Each organization unit the application signed in under is its own row: each family is revoked and each
+// row dropped, and the session ends only once the last of them is gone.
+func (suite *ServiceTestSuite) TestDetachApplication_DetachesEveryOURow() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-x", TokenFamilyID: "tfid-x"},
+		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-y", TokenFamilyID: "tfid-y"},
+	}, nil)
+	runTx(m)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-x").Return(nil).Once()
+	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-1", "ou-x").Return(nil).Once()
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-y", TokenFamilyID: "tfid-y"},
+	}, nil).Once()
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-y").Return(nil).Once()
+	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-1", "ou-y").Return(nil).Once()
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(nil, nil).Once()
+	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil).Once()
+	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil).Once()
+
+	err := svc.DetachApplication(context.Background(), "app-1")
 
 	suite.Require().NoError(err)
 }
@@ -801,7 +1227,7 @@ func (suite *ServiceTestSuite) TestDetachApplication_DetachesParticipationWithNo
 	}, nil)
 	runTx(m)
 	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "").Return(nil)
-	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-embedded").Return(nil)
+	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-embedded", "").Return(nil)
 	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
 		{SessionID: "sess-1", AppID: "app-other"},
 	}, nil)
@@ -823,7 +1249,8 @@ func (suite *ServiceTestSuite) TestDetachApplication_RevocationFailureAbortsTheD
 	err := svc.DetachApplication(context.Background(), "app-doomed")
 
 	suite.Require().Error(err)
-	m.store.AssertNotCalled(suite.T(), "DeleteParticipant", mock.Anything, mock.Anything, mock.Anything)
+	m.store.AssertNotCalled(suite.T(), "DeleteParticipant", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything)
 	m.store.AssertNotCalled(suite.T(), "DeleteSession", mock.Anything, mock.Anything)
 }
 

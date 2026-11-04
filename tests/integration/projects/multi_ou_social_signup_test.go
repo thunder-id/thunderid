@@ -99,7 +99,7 @@ var (
 					"name": "IdentifyingExecutor",
 					"mode": "resolve",
 				},
-				"onSuccess":    "auth_assert",
+				"onSuccess":    "resolve_ou",
 				"onIncomplete": "prompt_select_org",
 			},
 			{
@@ -123,7 +123,7 @@ var (
 				"condition": map[string]interface{}{
 					"key":    "{{ctx(entityState)}}",
 					"value":  "not_exists",
-					"onSkip": "auth_assert",
+					"onSkip": "resolve_ou",
 				},
 				"prompts": []map[string]interface{}{
 					{
@@ -161,6 +161,19 @@ var (
 				},
 				"executor": map[string]interface{}{
 					"name": "ProvisioningExecutor",
+				},
+				"onSuccess": "auth_assert",
+			},
+			// The application is shared with the organizations, so a sign-in to an existing account decides
+			// its organization here. A new account's organization is the one OU creation set.
+			{
+				"id":   "resolve_ou",
+				"type": "TASK_EXECUTION",
+				"properties": map[string]interface{}{
+					"resolveFrom": "prompt",
+				},
+				"executor": map[string]interface{}{
+					"name": "OUResolverExecutor",
 				},
 				"onSuccess": "auth_assert",
 			},
@@ -508,6 +521,7 @@ func (ts *MultiOUSocialSignupTestSuite) SetupSuite() {
 	setNodeProperty(loginFlow, "google_auth", "idpId", googleIDPID)
 	setNodeProperty(loginFlow, "github_auth", "idpId", githubIDPID)
 	setNodeProperty(loginFlow, "create_org", "parentOuId", rootOUID)
+	setNodeProperty(loginFlow, "resolve_ou", "parentOuId", rootOUID)
 	loginFlowID, err := testutils.CreateFlow(loginFlow)
 	ts.Require().NoError(err, "Failed to create login flow")
 	ts.loginFlowID = loginFlowID
@@ -541,6 +555,10 @@ func (ts *MultiOUSocialSignupTestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(err, "Failed to create application")
 	ts.appID = appID
+
+	// Users sign in to the organizations beneath the root, which a sign-in reaches only when the
+	// application is shared there.
+	ts.Require().NoError(testutils.ShareApplicationWithChildUnits(appID), "Failed to share application")
 }
 
 func (ts *MultiOUSocialSignupTestSuite) startMockProviders() {

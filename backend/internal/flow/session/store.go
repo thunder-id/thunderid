@@ -252,7 +252,7 @@ func (st *store) buildSessionContextFromRow(row map[string]interface{}) (*Sessio
 func (st *store) Record(ctx context.Context, p Participant) error {
 	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(ctx, queryUpsertParticipant,
-			p.SessionID, st.deploymentID, p.AppID, p.FirstJoinedAt, p.LastActiveAt, p.TokenFamilyID)
+			p.SessionID, st.deploymentID, p.AppID, p.OUID, p.FirstJoinedAt, p.LastActiveAt, p.TokenFamilyID)
 		if err != nil {
 			return fmt.Errorf("failed to record session participant: %w", err)
 		}
@@ -356,10 +356,10 @@ func (st *store) ListByAppID(ctx context.Context, appID string) ([]Participant, 
 	return result, nil
 }
 
-// DeleteParticipant removes one application's participation in one session.
-func (st *store) DeleteParticipant(ctx context.Context, sessionID, appID string) error {
+// DeleteParticipant removes one application's participation in one session under one organization unit.
+func (st *store) DeleteParticipant(ctx context.Context, sessionID, appID, ouID string) error {
 	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
-		_, err := dbClient.ExecuteContext(ctx, queryDeleteParticipant, sessionID, appID, st.deploymentID)
+		_, err := dbClient.ExecuteContext(ctx, queryDeleteParticipant, sessionID, appID, ouID, st.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to delete session participant: %w", err)
 		}
@@ -385,9 +385,14 @@ func buildParticipantFromRow(row map[string]interface{}) (Participant, error) {
 	if err != nil {
 		return Participant{}, err
 	}
+	ouID, err := parseString(row["ou_id"], "ou_id")
+	if err != nil {
+		return Participant{}, err
+	}
 	return Participant{
 		SessionID:     sessionID,
 		AppID:         appID,
+		OUID:          ouID,
 		TokenFamilyID: parseNullableString(row["tfid"]),
 		FirstJoinedAt: firstJoinedAt,
 		LastActiveAt:  lastActiveAt,

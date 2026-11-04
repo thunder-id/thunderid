@@ -32,6 +32,10 @@ import (
 type UserOUFilterTestSuite struct {
 	suite.Suite
 
+	// The child administrator signs in through an application in the child, since a sign-in is bounded to
+	// its application's OU.
+	signIn testutils.OUSignInApps
+
 	parentOUID     string
 	childOUID      string
 	grandchildOUID string
@@ -156,6 +160,9 @@ func (ts *UserOUFilterTestSuite) SetupSuite() {
 }
 
 func (ts *UserOUFilterTestSuite) TearDownSuite() {
+	if err := ts.signIn.DeleteAll(); err != nil {
+		ts.T().Logf("teardown: delete sign-in applications: %v", err)
+	}
 	if ts.adminRoleID != "" {
 		if err := testutils.DeleteRole(ts.adminRoleID); err != nil {
 			ts.T().Logf("teardown: delete role: %v", err)
@@ -264,7 +271,7 @@ func (ts *UserOUFilterTestSuite) importUser(name, policies string) {
 func (ts *UserOUFilterTestSuite) childAdminClient() *http.Client {
 	ts.T().Helper()
 	userID := ts.createUser("child-admin", ts.childOUID)
-	client, rsID, roleID := scopedAdminClient(ts.T(), ts.childOUID, userID, "ou-filter-child-admin",
+	client, rsID, roleID := scopedAdminClient(ts.T(), &ts.signIn, ts.childOUID, userID, "ou-filter-child-admin",
 		"OU Filter Child", "https://ou-filter-test.example.com/child")
 	ts.adminRSID, ts.adminRoleID = rsID, roleID
 	return client

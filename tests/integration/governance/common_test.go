@@ -65,10 +65,8 @@ const (
 	shippedSignInAction = "action_001"
 )
 
-// The console the root operator signs in to, and the bootstrap organization unit and system resource
-// server the root permission lives in.
+// The bootstrap organization unit and system resource server the root permission lives in.
 const (
-	boundaryConsoleURI     = "https://localhost:8095/console"
 	bootstrapOUID          = "01900000-0000-7000-8000-000000000001"
 	systemResourceServerID = "01900000-0000-7000-8000-000000000020"
 )
@@ -583,9 +581,9 @@ func runAdministrationFlowAs(t *testing.T, token, handle string, inputs map[stri
 	require.Equal(t, "COMPLETE", answer.flowStatus, "%s did not complete: %+v", handle, answer)
 }
 
-// newRootOperator creates a user in the fixture holding the system permission and signs it in to the
-// Console, so a test that regresses into governing its own operator holds a throwaway account rather
-// than the administrator every other suite runs as. The role is deleted when t ends. It is created in
+// newRootOperator creates a user in the fixture holding the system permission and signs it in through the
+// fixture's sign-in application, so a test that regresses into governing its own operator holds a throwaway
+// account rather than the administrator every other suite runs as. The role is deleted when t ends. It is created in
 // the fixture's organization unit, since a role is assigned only to users that unit owns or is shared.
 func newRootOperator(t *testing.T, users *userFixture) (userID, username, password, accessToken string) {
 	t.Helper()
@@ -600,9 +598,9 @@ func newRootOperator(t *testing.T, users *userFixture) (userID, username, passwo
 	})
 	require.NoError(t, err, "failed to grant the root permission")
 	cleanupRole(t, roleID)
-	token, err := testutils.ObtainAccessTokenWithPassword("CONSOLE", boundaryConsoleURI, "system",
-		username, password, true)
-	require.NoError(t, err, "the root operator must sign in to the console")
+	token, err := testutils.ObtainAccessTokenWithPassword(users.signInClientID, testutils.OUSignInRedirectURI,
+		"system", username, password, true, "", testutils.SystemResourceIdentifier)
+	require.NoError(t, err, "the root operator must sign in")
 	return userID, username, password, token.AccessToken
 }
 
@@ -787,6 +785,10 @@ type userFixture struct {
 	userType string
 	typeIDs  []string
 	userIDs  []string
+	// signInClientID is the fixture's own sign-in application, since a sign-in is bounded to its
+	// application's OU and the Console signs in only the default OU's users.
+	signInClientID string
+	signInAppID    string
 }
 
 // newUserFixture creates the organization unit governance_<name>_ou and, in it, the user type
@@ -803,6 +805,10 @@ func newUserFixture(t *testing.T, name string, userType testutils.UserType) *use
 	})
 	require.NoError(t, err, "failed to create the test organization unit")
 	f.ouID = ouID
+
+	f.signInClientID = "governance_" + name + "_sign_in_" + f.suffix
+	f.signInAppID, err = testutils.CreateOUSignInApplication(ouID, f.signInClientID)
+	require.NoError(t, err, "failed to create the fixture's sign-in application")
 
 	userType.Handle = f.userType
 	f.addUserType(t, userType)
@@ -856,6 +862,11 @@ func (f *userFixture) usernameFor(label string) string {
 // tearDown deletes what the fixture created, logging rather than failing.
 func (f *userFixture) tearDown(t *testing.T) {
 	t.Helper()
+	if f.signInAppID != "" {
+		if err := testutils.DeleteApplication(f.signInAppID); err != nil {
+			t.Logf("teardown: failed to delete the sign-in application: %v", err)
+		}
+	}
 	for _, userID := range f.userIDs {
 		if err := testutils.DeleteUser(userID); err != nil {
 			t.Logf("teardown: failed to delete user %s: %v", userID, err)

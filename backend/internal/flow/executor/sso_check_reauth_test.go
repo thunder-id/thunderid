@@ -74,7 +74,7 @@ func (suite *SSOCheckExecutorTestSuite) TestReauthMaxAgeWithinLimit() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().Resolve(mock.Anything, "handle-abc", "flow-1", 3, mock.Anything).
 		Return(sessionAuthenticatedAgo(time.Minute), nil)
-	sso.EXPECT().FindCheckpoint(mock.Anything, "sess-1", "session").
+	sso.EXPECT().FindCheckpoint(mock.Anything, resolvedSession(), "session").
 		Return(&session.SessionContext{SessionID: "sess-1", CheckpointID: "session"}, nil)
 	exec := suite.newExecutor(sso)
 
@@ -92,7 +92,7 @@ func (suite *SSOCheckExecutorTestSuite) TestReauthMalformedMaxAge() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().Resolve(mock.Anything, "handle-abc", "flow-1", 3, mock.Anything).
 		Return(sessionAuthenticatedAgo(time.Hour), nil)
-	sso.EXPECT().FindCheckpoint(mock.Anything, "sess-1", "session").
+	sso.EXPECT().FindCheckpoint(mock.Anything, resolvedSession(), "session").
 		Return(&session.SessionContext{SessionID: "sess-1", CheckpointID: "session"}, nil)
 	exec := suite.newExecutor(sso)
 
@@ -110,7 +110,7 @@ func (suite *SSOCheckExecutorTestSuite) TestReauthZeroAuthenticatedAt() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().Resolve(mock.Anything, "handle-abc", "flow-1", 3, mock.Anything).
 		Return(liveSession(), nil)
-	sso.EXPECT().FindCheckpoint(mock.Anything, "sess-1", "session").
+	sso.EXPECT().FindCheckpoint(mock.Anything, resolvedSession(), "session").
 		Return(&session.SessionContext{SessionID: "sess-1", CheckpointID: "session"}, nil)
 	exec := suite.newExecutor(sso)
 
@@ -144,7 +144,7 @@ func (suite *SSOCheckExecutorTestSuite) TestReauthNotRequestedReusesSession() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().Resolve(mock.Anything, "handle-abc", "flow-1", 3, mock.Anything).
 		Return(sessionAuthenticatedAgo(24*time.Hour), nil)
-	sso.EXPECT().FindCheckpoint(mock.Anything, "sess-1", "session").
+	sso.EXPECT().FindCheckpoint(mock.Anything, resolvedSession(), "session").
 		Return(&session.SessionContext{SessionID: "sess-1", CheckpointID: "session"}, nil)
 	exec := suite.newExecutor(sso)
 
@@ -162,7 +162,7 @@ func (suite *SSOCheckExecutorTestSuite) TestReauthAuthTimeBoundary() {
 
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().Resolve(mock.Anything, "handle-abc", "flow-1", 3, mock.Anything).Return(s, nil)
-	sso.EXPECT().FindCheckpoint(mock.Anything, "sess-1", "session").
+	sso.EXPECT().FindCheckpoint(mock.Anything, resolvedSession(), "session").
 		Return(&session.SessionContext{SessionID: "sess-1", CheckpointID: "session"}, nil)
 	exec := suite.newExecutor(sso)
 
@@ -182,7 +182,7 @@ func (suite *SSOCheckExecutorTestSuite) TestReauthSilentRequestReusesBoundarySes
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().Resolve(mock.Anything, "handle-abc", "flow-1", 3, mock.Anything).
 		Return(sessionAuthenticatedAgo(time.Hour), nil)
-	sso.EXPECT().FindCheckpoint(mock.Anything, "sess-1", "session").
+	sso.EXPECT().FindCheckpoint(mock.Anything, resolvedSession(), "session").
 		Return(&session.SessionContext{SessionID: "sess-1", CheckpointID: "session"}, nil)
 	exec := suite.newExecutor(sso)
 

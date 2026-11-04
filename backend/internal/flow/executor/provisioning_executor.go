@@ -5,6 +5,7 @@ package executor
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -230,7 +232,7 @@ func isSelfRegistering(ctx *providers.NodeContext) bool {
 func (p *provisioningExecutor) registrationLinkHolders(ctx *providers.NodeContext,
 	category entitytype.TypeCategory, federated *core.ExternalIdentity,
 	execResp *providers.ExecutorResponse) ([]string, error) {
-	holders, epErr := p.entityProvider.GetLinkedEntities(federated.IdpID, federated.Sub)
+	holders, epErr := p.entityProvider.GetLinkedEntities(ctx.Context, federated.IdpID, federated.Sub)
 	if epErr != nil {
 		if epErr.Code != entityprovider.ErrorCodeNotImplemented {
 			return nil, errors.New("failed to retrieve the users linked to the federated identity")
@@ -375,7 +377,10 @@ func (p *provisioningExecutor) resolveExistingEntity(ctx *providers.NodeContext,
 		return true, nil
 	}
 
-	entityID, err := p.IdentifyEntity(ctx.Context, identifyingAttrs, execResp, category)
+	// The existence lookup is deployment-wide: a user outside a sign-in boundary must still be found,
+	// or provisioning would attempt a duplicate create.
+	identifyCtx := security.WithRuntimeContext(context.Background())
+	entityID, err := p.IdentifyEntity(identifyCtx, identifyingAttrs, execResp, category)
 	if err != nil {
 		logger.Error(ctx.Context, "Failed to identify the entity", log.Error(err))
 		execResp.Status = providers.ExecFailure
@@ -556,7 +561,7 @@ func (p *provisioningExecutor) handleExistingEntity(ctx *providers.NodeContext,
 		return false, nil
 	}
 
-	existingEntity, getEntityErr := p.entityProvider.GetEntityProfile(entityID)
+	existingEntity, getEntityErr := p.entityProvider.GetEntityProfile(ctx.Context, entityID)
 	if getEntityErr != nil {
 		return false, errors.New("failed to retrieve the existing entity")
 	}
@@ -586,7 +591,9 @@ func (p *provisioningExecutor) resolveAmbiguousEntityForProvisioning(ctx *provid
 	category entitytype.TypeCategory, identifyingAttrs map[string]interface{}) (*string, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	matches, searchErr := p.entityProvider.SearchEntities(identifyingAttrs)
+	// Deployment-wide like the existence lookup: the holders may all be outside a sign-in boundary.
+	matches, searchErr := p.entityProvider.SearchEntities(security.WithRuntimeContext(context.Background()),
+		identifyingAttrs)
 	if searchErr != nil {
 		return nil, fmt.Errorf("failed to search for matching entities: code=%s, description=%s",
 			searchErr.Code, searchErr.Description)

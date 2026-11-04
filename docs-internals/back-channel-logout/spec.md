@@ -1,7 +1,7 @@
 # OIDC Back-Channel Logout Specification
 
 - **Status:** Final
-- **Version:** 0.4
+- **Version:** 0.5
 - **Related documents:** [threat-model.md](threat-model.md), [#5233](https://github.com/thunder-id/thunderid/issues/5233), [#5258](https://github.com/thunder-id/thunderid/discussions/5258), [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html), [OpenID Connect RP-Initiated Logout 1.0](https://openid.net/specs/openid-connect-rpinitiated-1_0.html), [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)
 
 ## Summary
@@ -146,7 +146,7 @@ The dispatcher is the one new runtime component. It turns a terminated session i
 | Termination event | What the listener receives: session id, subject id, participant list, and the reason (`sign_out` or `subject_revocation`). Copied, never referenced, so the caller's data is not shared with a goroutine |
 | Intake queue | A bounded channel of termination events, sized by `queue_size`. The listener offers to it without blocking |
 | Worker pool | A fixed set of goroutines that take events off the queue, expand each into jobs, and run deliveries |
-| Job | One participant of one event: application id, session id, subject id, the attempt number, and the time the next attempt is due. The attempt number starts at 1 and goes up with each retry; once it reaches `max_attempts` the job is not retried again, and it is recorded on every outcome as `attempt_number`. The dispatcher's unit of work |
+| Job | One participating application of one event: application id, session id, subject id, the attempt number, and the time the next attempt is due. The attempt number starts at 1 and goes up with each retry; once it reaches `max_attempts` the job is not retried again, and it is recorded on every outcome as `attempt_number`. The dispatcher's unit of work |
 | Retry scheduler | Holds jobs whose next attempt is not yet due and hands them back to a worker when it is. A waiting job never occupies a worker |
 | In-flight bound | A semaphore of `max_in_flight` permits, held for the duration of one HTTP attempt, shared by the whole dispatcher. Each relying party may hold at most a quarter of them, and at least one, so an endpoint that hangs cannot hold every permit while healthy ones wait; a job over its relying party's share waits on a timer for `retry_delay` without using an attempt or holding a worker |
 | Logout token builder and delivery client | Build the logout token ([The logout token](#the-logout-token)) and perform one attempt ([Delivery](#delivery)) |
@@ -161,7 +161,7 @@ flowchart LR
     W -->|"no URI"| SKIP["skip, no record"]
     W -->|"client gone"| CNF["record failed: client_not_found"]
     W -->|"read error"| R
-    W --> J["one job per participant"]
+    W --> J["one job per participating application"]
     J --> S["in-flight permit<br/>max_in_flight"]
     S --> A["attempt: resolve the profile if not yet resolved,<br/>mint token, POST, classify"]
     A -->|"200 or 204"| OK["record delivered"]
@@ -319,9 +319,9 @@ The reason codes are `unreachable`, `server_error`, `rejected`, `private_address
 
 ### Data model
 
-No schema change. The SSO session, session participant, session context, and OAuth inbound profile tables are reused unchanged, and the cleanup procedures are untouched.
+This feature adds no table and no column. The SSO session, session participant, session context, and OAuth inbound profile tables are reused, and the cleanup procedures are untouched.
 
-- The session participant table is already keyed by session identifier and already records the application id, which makes it the notification set without modification.
+- The session participant table is already keyed by session identifier and already records the application id, which makes it the notification set without modification. A later, separate change added the organization unit the application signed in under (`OU_ID`, part of the key), so an application signed in under several units has a row and a token family for each; termination revokes every family, and the dispatcher notifies each application once.
 - The registration parameter needs no DDL. The OAuth profile is persisted as a single JSON column, so existing rows read back with the parameter absent, which is the correct default.
 - The only semantic change is that the session identifier becomes a value published as `sid`, and the comments that describe it as never exposed to clients are updated to say so.
 
@@ -541,3 +541,4 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 | 0.2 | 2026-10-02 | Aligned with the dispatcher as reviewed in #5608. |
 | 0.3 | 2026-10-05 | Delivery and the discovery flags depend only on the back-channel flag, not on the logout endpoint, as reviewed in #5630. |
 | 0.4 | 2026-10-26 | A 2xx other than 200 and 204 is classified as rejected, matching the dispatcher, as reviewed in #5777. |
+| 0.5 | 2026-10-31 | Participants are recorded per application and organization unit; the dispatcher notifies each application once. |

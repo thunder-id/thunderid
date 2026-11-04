@@ -70,6 +70,12 @@ paths:
                 value:
                   applicationId: "550e8400-e29b-41d4-a716-446655440000"
                   flowType: "AUTHENTICATION"
+              initialRequestForOrganizationUnit:
+                summary: Initial sign-in request bounded to an organization unit
+                value:
+                  applicationId: "550e8400-e29b-41d4-a716-446655440000"
+                  flowType: "AUTHENTICATION"
+                  ouId: "8a1f6c2e-3b4d-4e5f-9a6b-7c8d9e0f1a2b"
               initialRequestBackendApp:
                 summary: Initial request from a backend/server-side application (requires the Flow-Secret header)
                 value:
@@ -108,6 +114,8 @@ paths:
           description: |
             Flow step executed successfully.
             Flow-level failures are returned with HTTP 200 and `flowStatus: ERROR` in the response body.
+            A sign-in is refused this way at its assertion step when it has not decided the organization unit
+            it signs in to (`FET-1124`), or decided one the user cannot sign in to (`FET-1122`).
           content:
             application/json:
               schema:
@@ -233,7 +241,10 @@ paths:
                         defaultValue: "The credentials provided are invalid"
         
         "400":
-          description: 'Bad Request: The request body is malformed or contains invalid data'
+          description: >
+            Bad Request: The request body is malformed or contains invalid data. An `ouId` sent on a
+            request that does not start an `AUTHENTICATION` flow is refused with `FES-1026`, and an
+            `ouId` the application is not accessible from, or that does not exist, with `FES-1023`.
           content:
             application/json:
               schema:
@@ -315,6 +326,15 @@ components:
           example: false
         sessionData:
           $ref: '#/components/schemas/FlowRequestSessionData'
+        ouId:
+          type: string
+          description: >-
+            Identifier of the organization unit to sign in to. Accepted only with `flowType`
+            `AUTHENTICATION`; the sign-in is then bounded to this organization unit. Refused with
+            `FES-1026` on any other request, including one that continues a flow by `executionId` or
+            starts one by `flowId`. An organization unit the application is not accessible from, or
+            that does not exist, is refused with `FES-1023`.
+          example: "8a1f6c2e-3b4d-4e5f-9a6b-7c8d9e0f1a2b"
 
     AdministrativeFlowRequest:
       type: object

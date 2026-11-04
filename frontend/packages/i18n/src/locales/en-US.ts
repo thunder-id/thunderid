@@ -4863,6 +4863,10 @@ const translations = {
     'core.validation.sso.orphanSession':
       'Session step <code>{{id}}</code> is not referenced by any SSO check. Add an SSO check that uses it, or remove the step.',
 
+    // Validation messages - Resolve OU placement
+    'core.validation.ouResolver.afterSession':
+      'Resolve OU step <code>{{id}}</code> comes after a Save / Load Session step, so the flow will be rejected on save. Place it between the sign-in steps and Save / Load Session, or before Check SSO Session.',
+
     // Validation messages - sign out
     'core.validation.signOut.confirmNotConnected':
       'Sign-out button <code>{{id}}</code> is not connected, so it will not sign the user out. Connect it to the session sign-out step, or change its action.',

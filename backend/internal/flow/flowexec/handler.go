@@ -14,6 +14,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -57,6 +58,7 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	action := sysutils.SanitizeString(flowR.Action)
 	inputs := sysutils.SanitizeStringMap(flowR.Inputs)
 	challengeToken := sysutils.SanitizeString(flowR.ChallengeToken)
+	ouID := sysutils.SanitizeString(flowR.OUID)
 	flowSecret := sysutils.SanitizeString(r.Header.Get(serverconst.FlowSecretHeaderName))
 	attestationToken := sysutils.SanitizeString(r.Header.Get(serverconst.AttestationTokenHeaderName))
 	sessionData := make([]SessionData, 0, len(flowR.SessionData))
@@ -70,9 +72,18 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 		sessionData = append(sessionData, SessionData{FlowIdentifier: flowIdentifier, SessionHandle: sessionHandle})
 	}
 
+	// An organization unit is named only to start a sign-in; a flow selected by ID is an administration flow.
+	ctx := r.Context()
+	if ouID != "" {
+		if executionID != "" || flowID != "" || flowTypeStr != string(providers.FlowTypeAuthentication) {
+			sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, APIErrorOUIDNotAllowed)
+			return
+		}
+		ctx = sysContext.WithAccessingOUID(ctx, ouID)
+	}
+
 	// Read the inbound SSO transport inputs and make them available to the flow service, which
 	// selects the handle once the flow is known.
-	ctx := r.Context()
 	ssoExchange := &session.Exchange{Request: r, Response: w}
 	if h.ssoTransport != nil {
 		ctx = session.WithInbound(ctx, h.ssoTransport.Read(ssoExchange))

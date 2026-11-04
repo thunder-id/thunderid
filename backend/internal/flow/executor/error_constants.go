@@ -1767,6 +1767,50 @@ var (
 			DefaultValue: "The sign-in flow does not run the checks the requested authorization details need",
 		},
 	}
+
+	// ErrApplicationNotInOU is returned when the application cannot be used from the organization unit the user picked.
+	ErrApplicationNotInOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1123",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.application_not_in_ou",
+			DefaultValue: "This application isn't available in that organization",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.application_not_in_ou_desc",
+			DefaultValue: "Check the organization name and try again",
+		},
+	}
+
+	// ErrNoAccessToApplication is returned when the user is in no organization unit the application can be used from,
+	// or a bounded sign-in reaches its assertion in an organization unit its user cannot sign in to.
+	ErrNoAccessToApplication = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1122",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.no_access_to_application",
+			DefaultValue: "You don't have access to this application",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.no_access_to_application_desc",
+			DefaultValue: "None of your organization units can use this application",
+		},
+	}
+
+	// ErrOrganizationNotResolved is returned when a bounded sign-in reaches its assertion without deciding the
+	// organization unit it signs in to.
+	ErrOrganizationNotResolved = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1124",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.organization_not_resolved",
+			DefaultValue: "Organization unit not resolved",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.organization_not_resolved_desc",
+			DefaultValue: "The sign-in did not determine an organization unit to sign in to",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

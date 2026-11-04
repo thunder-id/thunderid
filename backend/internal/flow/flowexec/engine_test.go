@@ -19,6 +19,7 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -5035,6 +5036,413 @@ func (s *EngineTestSuite) TestNewFlowEngine_UsesTheVariableValuesItIsGiven() {
 	engine := newFlowEngine(nil, nil, nil, NewFlowProviderMock(s.T()), nil, values).(*flowEngine)
 	s.Same(values, engine.variableValuesProvider)
 
-	s.Nil(newFlowEngine(nil, nil, nil, NewFlowProviderMock(s.T()), nil, nil).(*flowEngine).variableValuesProvider,
-		"an engine given none leaves every flow on the owner's defaults")
+	s.Nil(newFlowEngine(nil, nil, nil, NewFlowProviderMock(s.T()), nil, nil).(*flowEngine).
+		variableValuesProvider, "an engine given none leaves every flow on the owner's defaults")
+}
+
+// captureStepContext runs a node whose condition skips it and returns the context the engine built
+// for the step.
+func (s *EngineTestSuite) captureStepContext(ctx *EngineContext) context.Context {
+	node := coremock.NewNodeInterfaceMock(s.T())
+	node.On("GetID").Return("node-1").Maybe()
+	node.On("GetType").Return(common.NodeTypeTaskExecution).Maybe()
+	node.On("GetCondition").Return(nil).Maybe()
+	var stepCtx context.Context
+	node.On("ShouldExecute", mock.Anything).Run(func(args mock.Arguments) {
+		stepCtx = args.Get(0).(*providers.NodeContext).Context
+	}).Return(false)
+	ctx.CurrentNode = node
+	if ctx.Context == nil {
+		ctx.Context = context.Background()
+	}
+
+	fe := &flowEngine{logger: log.GetLogger()}
+	_, _, _ = fe.executeNodePackage(ctx, node, &FlowStep{}, 0)
+	s.NotNil(stepCtx)
+	return stepCtx
+}
+
+func (s *EngineTestSuite) TestStepContext_CarriesSignInBoundaryOnlyWhenBounded() {
+	bounded := &EngineContext{AppID: "app-1", SignInBounded: true, RuntimeData: map[string]string{}}
+	boundary, ok := authnprovidercm.SignInBoundaryFrom(s.captureStepContext(bounded))
+	s.True(ok)
+	s.Equal(authnprovidercm.SignInBoundary{ApplicationID: "app-1"}, boundary)
+
+	unbounded := &EngineContext{AppID: "app-1", RuntimeData: map[string]string{}}
+	_, ok = authnprovidercm.SignInBoundaryFrom(s.captureStepContext(unbounded))
+	s.False(ok)
+}
+
+func (s *EngineTestSuite) TestStepContext_SignInBoundaryFollowsRuntimeOUID() {
+	ctx := &EngineContext{AppID: "app-1", SignInBounded: true, RuntimeData: map[string]string{}}
+	boundary, _ := authnprovidercm.SignInBoundaryFrom(s.captureStepContext(ctx))
+	s.Empty(boundary.OUID)
+
+	ctx.RuntimeData[common.RuntimeKeyOUID] = "ou-7"
+	boundary, ok := authnprovidercm.SignInBoundaryFrom(s.captureStepContext(ctx))
+	s.True(ok)
+	s.Equal(authnprovidercm.SignInBoundary{OUID: "ou-7", ApplicationID: "app-1"}, boundary)
+}
+
+// The subject an earlier step signed in rides on the boundary of the next step.
+func (s *EngineTestSuite) TestStepContext_SignInBoundaryCarriesTheSignedInSubject() {
+	ctx := &EngineContext{AppID: "app-1", SignInBounded: true, RuntimeData: map[string]string{}}
+	boundary, _ := authnprovidercm.SignInBoundaryFrom(s.captureStepContext(ctx))
+	s.Empty(boundary.EntityID)
+
+	ctx.AuthUser = signedInAuthUser()
+	boundary, ok := authnprovidercm.SignInBoundaryFrom(s.captureStepContext(ctx))
+	s.True(ok)
+	s.Equal(authnprovidercm.SignInBoundary{ApplicationID: "app-1", EntityID: signedInUserID}, boundary)
+}
+
+// An organization unit a node returns, such as the one a reused session follows, bounds the next step.
+func (s *EngineTestSuite) TestStepContext_SignInBoundaryFollowsAnOUIDTheLastNodeSet() {
+	ctx := &EngineContext{AppID: "app-1", SignInBounded: true, RuntimeData: map[string]string{}}
+	fe := &flowEngine{logger: log.GetLogger()}
+
+	fe.updateContextWithNodeResponse(ctx, &common.NodeResponse{
+		Status:      common.NodeStatusComplete,
+		RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-last"},
+	})
+
+	boundary, ok := authnprovidercm.SignInBoundaryFrom(s.captureStepContext(ctx))
+	s.True(ok)
+	s.Equal(authnprovidercm.SignInBoundary{OUID: "ou-last", ApplicationID: "app-1"}, boundary)
+}
+
+// switchToCallee builds a caller with the given boundedness, switches it to a callee of calleeType and
+// returns the context.
+func (s *EngineTestSuite) switchToCallee(callerBounded bool, calleeType providers.FlowType) *EngineContext {
+	t := s.T()
+	mockCallNode := coremock.NewNodeInterfaceMock(t)
+	mockCallNode.On("GetID").Return("call_node").Maybe()
+	mockStartNode := coremock.NewNodeInterfaceMock(t)
+	mockStartNode.On("GetID").Return("start").Maybe()
+	mockCalleeGraph := coremock.NewGraphInterfaceMock(t)
+	mockCalleeGraph.On("GetType").Return(calleeType).Maybe()
+	mockCalleeGraph.On("GetStartNode").Return(mockStartNode, nil).Maybe()
+
+	fe := &flowEngine{logger: log.GetLogger()}
+	ctx := &EngineContext{
+		Context:       context.Background(),
+		CurrentNode:   mockCallNode,
+		FlowType:      providers.FlowTypeAuthentication,
+		SignInBounded: callerBounded,
+	}
+	_, svcErr := fe.switchContextToCallee(ctx, &common.NodeResponse{}, mockCalleeGraph, log.GetLogger())
+	s.Nil(svcErr)
+	return ctx
+}
+
+func (s *EngineTestSuite) TestSwitchContextToCallee_BoundedSignInCallingRegistrationRunsUnbounded() {
+	ctx := s.switchToCallee(true, providers.FlowTypeRegistration)
+	s.False(ctx.SignInBounded)
+
+	ctx.popFrame()
+	s.True(ctx.SignInBounded)
+}
+
+func (s *EngineTestSuite) TestSwitchContextToCallee_SignInCallingAuthenticationIsBounded() {
+	ctx := s.switchToCallee(true, providers.FlowTypeAuthentication)
+	s.True(ctx.SignInBounded)
+
+	ctx.popFrame()
+	s.True(ctx.SignInBounded)
+}
+
+func (s *EngineTestSuite) TestSwitchContextToCallee_UnboundedCallerCallingAuthenticationRunsUnbounded() {
+	ctx := s.switchToCallee(false, providers.FlowTypeAuthentication)
+	s.False(ctx.SignInBounded)
+
+	ctx.popFrame()
+	s.False(ctx.SignInBounded)
+}
+
+const (
+	calleeAppID   = "callee-app"
+	calleeAppOUID = "callee-app-ou"
+)
+
+// signedInUserID is the user signedInAuthUser holds.
+const signedInUserID = "user-1"
+
+// signedInAuthUser is a user the default provider signed in and resolved.
+func signedInAuthUser() providers.AuthUser {
+	var authUser providers.AuthUser
+	authUser.SetStateFor("default", providers.AuthState{
+		EntityReference: &providers.EntityReference{EntityID: signedInUserID, EntityCategory: "user"},
+		Attributes:      &providers.AttributesResponse{},
+	})
+	return authUser
+}
+
+// signInCallee is a bounded sign-in caller of calleeAppID that has called a sign-in flow.
+type signInCallee struct {
+	engine      *flowEngine
+	ctx         *EngineContext
+	callerGraph *coremock.GraphInterfaceMock
+	callNode    *coremock.CallNodeInterfaceMock
+	onSuccess   *coremock.NodeInterfaceMock
+}
+
+// callSignIn switches the bounded sign-in caller into a sign-in callee.
+func (s *EngineTestSuite) callSignIn() *signInCallee {
+	t := s.T()
+	c := &signInCallee{
+		callerGraph: coremock.NewGraphInterfaceMock(t),
+		callNode:    coremock.NewCallNodeInterfaceMock(t),
+		onSuccess:   coremock.NewNodeInterfaceMock(t),
+	}
+	c.callNode.On("GetID").Return("sign-in-call").Maybe()
+	c.callerGraph.On("GetNode", "sign-in-call").Return(c.callNode, true).Maybe()
+	c.callNode.On("GetOnSuccess").Return("after-sign-in").Maybe()
+	c.callerGraph.On("GetNode", "after-sign-in").Return(c.onSuccess, true).Maybe()
+	calleeGraph := coremock.NewGraphInterfaceMock(t)
+	calleeGraph.On("GetType").Return(providers.FlowTypeAuthentication)
+	calleeGraph.On("GetStartNode").Return(coremock.NewNodeInterfaceMock(t), nil)
+
+	c.engine = &flowEngine{logger: log.GetLogger()}
+	c.ctx = &EngineContext{
+		Context:       context.Background(),
+		AppID:         calleeAppID,
+		Application:   providers.Application{ID: calleeAppID, OUID: calleeAppOUID},
+		FlowType:      providers.FlowTypeAuthentication,
+		SignInBounded: true,
+		Graph:         c.callerGraph,
+		CurrentNode:   c.callNode,
+		RuntimeData:   map[string]string{},
+		AuthUser:      signedInAuthUser(),
+	}
+	_, svcErr := c.engine.switchContextToCallee(c.ctx, &common.NodeResponse{}, calleeGraph, log.GetLogger())
+	s.Require().Nil(svcErr)
+	s.Require().True(c.ctx.SignInBounded)
+	return c
+}
+
+// end runs the callee's END node after the callee signed the user in with an assertion and a session handle.
+func (c *signInCallee) end(t *testing.T) (core.NodeInterface, bool, *FlowStep, *tidcommon.ServiceError) {
+	endNode := coremock.NewNodeInterfaceMock(t)
+	endNode.On("GetType").Return(common.NodeTypeEnd)
+	c.ctx.CurrentNode = endNode
+	c.ctx.Assertion = "callee-assertion"
+	step := &FlowStep{SSOHandleOut: "callee-handle", SSOFlowID: "sign-in-flow"}
+	next, cont, svcErr := c.engine.processNodeResponse(c.ctx,
+		&common.NodeResponse{Status: common.NodeStatusComplete}, step, log.GetLogger())
+	return next, cont, step, svcErr
+}
+
+// calleeOf switches a caller of calleeAppID with the given type, boundedness and ouId into a callee of calleeType.
+func (s *EngineTestSuite) calleeOf(callerType providers.FlowType, callerBounded bool, callerOUID string,
+	calleeType providers.FlowType) *EngineContext {
+	t := s.T()
+	callNode := coremock.NewNodeInterfaceMock(t)
+	callNode.On("GetID").Return("call").Maybe()
+	calleeGraph := coremock.NewGraphInterfaceMock(t)
+	calleeGraph.On("GetType").Return(calleeType)
+	calleeGraph.On("GetStartNode").Return(coremock.NewNodeInterfaceMock(t), nil)
+	runtimeData := map[string]string{}
+	if callerOUID != "" {
+		runtimeData[common.RuntimeKeyOUID] = callerOUID
+	}
+	ctx := &EngineContext{
+		Context:       context.Background(),
+		AppID:         calleeAppID,
+		Application:   providers.Application{ID: calleeAppID, OUID: calleeAppOUID},
+		FlowType:      callerType,
+		SignInBounded: callerBounded,
+		CurrentNode:   callNode,
+		RuntimeData:   runtimeData,
+	}
+	fe := &flowEngine{logger: log.GetLogger()}
+	_, svcErr := fe.switchContextToCallee(ctx, &common.NodeResponse{}, calleeGraph, log.GetLogger())
+	s.Require().Nil(svcErr)
+	return ctx
+}
+
+func (s *EngineTestSuite) TestSwitchContextToCallee_SignInCalleeKeepsTheOUItsSignInCallerDecided() {
+	ctx := s.calleeOf(providers.FlowTypeAuthentication, true, "caller-ou", providers.FlowTypeAuthentication)
+
+	s.True(ctx.SignInBounded)
+	s.Equal("caller-ou", ctx.RuntimeData[common.RuntimeKeyOUID])
+
+	ctx.popFrame()
+	s.Equal("caller-ou", ctx.RuntimeData[common.RuntimeKeyOUID])
+}
+
+func (s *EngineTestSuite) TestSwitchContextToCallee_SignInCallerWithoutAnOUPassesNone() {
+	ctx := s.calleeOf(providers.FlowTypeAuthentication, true, "", providers.FlowTypeAuthentication)
+
+	s.True(ctx.SignInBounded)
+	s.NotContains(ctx.RuntimeData, common.RuntimeKeyOUID)
+}
+
+func (s *EngineTestSuite) TestSwitchContextToCallee_RegistrationCallerCallingSignInRunsUnboundedWithoutItsOU() {
+	ctx := s.calleeOf(providers.FlowTypeRegistration, false, "target-ou", providers.FlowTypeAuthentication)
+
+	s.False(ctx.SignInBounded)
+	s.NotContains(ctx.RuntimeData, common.RuntimeKeyOUID)
+}
+
+func (s *EngineTestSuite) TestSwitchContextToCallee_SignInCallersOUDoesNotBindANonSignInCallee() {
+	ctx := s.calleeOf(providers.FlowTypeAuthentication, true, "caller-ou", providers.FlowTypeRegistration)
+
+	s.False(ctx.SignInBounded)
+	s.NotContains(ctx.RuntimeData, common.RuntimeKeyOUID)
+}
+
+// refuseAtAssertion fails the callee's assertion node with refusal after the callee signed the user in with an
+// assertion and a session handle.
+func (c *signInCallee) refuseAtAssertion(t *testing.T, refusal *tidcommon.ServiceError) (
+	core.NodeInterface, bool, *FlowStep, *tidcommon.ServiceError) {
+	c.ctx.CurrentNode = coremock.NewNodeInterfaceMock(t)
+	c.ctx.Assertion = "callee-assertion"
+	step := &FlowStep{SSOHandleOut: "callee-handle", SSOFlowID: "sign-in-flow"}
+	next, cont, svcErr := c.engine.processNodeResponse(c.ctx,
+		&common.NodeResponse{Status: common.NodeStatusFailure, Error: refusal}, step, log.GetLogger())
+	return next, cont, step, svcErr
+}
+
+// signInBoundaryRefusals are the errors a node refuses a sign-in for its organization unit boundary with.
+var signInBoundaryRefusals = []*tidcommon.ServiceError{
+	&executor.ErrOrganizationNotResolved,
+	&executor.ErrNoAccessToApplication,
+}
+
+// A sign-in callee that ends returns to the caller's onSuccess with its user, assertion and handle, without the
+// OU provider being asked about its organization unit.
+func (s *EngineTestSuite) TestProcessNodeResponse_SignInCalleeReturnsWithoutABoundaryCheck() {
+	c := s.callSignIn()
+
+	next, cont, step, svcErr := c.end(s.T())
+
+	s.Nil(svcErr)
+	s.True(cont)
+	s.Equal(c.onSuccess, next)
+	s.Equal(0, c.ctx.frameDepth())
+	s.True(c.ctx.AuthUser.IsAuthenticated())
+	s.Equal("callee-assertion", c.ctx.Assertion)
+	s.Equal("callee-handle", step.SSOHandleOut)
+	s.Empty(step.Status)
+}
+
+// A sign-in refused after its Session node minted a session handle ends in error with no user, assertion or handle,
+// so the client is handed no session.
+func (s *EngineTestSuite) TestProcessNodeResponse_RefusedSignInDropsItsUserAndSessionHandle() {
+	for _, refusal := range signInBoundaryRefusals {
+		s.Run(refusal.Code, func() {
+			t := s.T()
+			sessionNode := coremock.NewNodeInterfaceMock(t)
+			assertNode := coremock.NewNodeInterfaceMock(t)
+			assertNode.On("GetID").Return("auth_assert").Maybe()
+			graph := coremock.NewGraphInterfaceMock(t)
+			graph.On("GetID").Return("sign-in-flow").Maybe()
+			graph.On("GetNode", "auth_assert").Return(assertNode, true)
+			fe := &flowEngine{logger: log.GetLogger()}
+			ctx := &EngineContext{
+				Context:       context.Background(),
+				FlowType:      providers.FlowTypeAuthentication,
+				SignInBounded: true,
+				Graph:         graph,
+				CurrentNode:   sessionNode,
+				AuthUser:      signedInAuthUser(),
+			}
+			step := &FlowStep{}
+
+			next, cont, svcErr := fe.processNodeResponse(ctx, &common.NodeResponse{
+				Status:     common.NodeStatusComplete,
+				NextNodeID: "auth_assert",
+				EngineData: map[string]string{common.RuntimeKeySSOSessionHandle: "minted-handle"},
+			}, step, log.GetLogger())
+			s.Require().Nil(svcErr)
+			s.Require().True(cont)
+			s.Require().Equal(assertNode, next)
+			s.Require().Equal("minted-handle", step.SSOHandleOut)
+
+			next, cont, svcErr = fe.processNodeResponse(ctx,
+				&common.NodeResponse{Status: common.NodeStatusFailure, Error: refusal}, step, log.GetLogger())
+
+			s.Nil(svcErr)
+			s.False(cont)
+			s.Nil(next)
+			s.Equal(providers.FlowStatusError, step.Status)
+			s.Equal(refusal, step.Error)
+			s.Empty(step.Assertion)
+			s.Empty(step.SSOHandleOut)
+			s.Empty(step.SSOFlowID)
+			s.False(ctx.AuthUser.IsAuthenticated())
+			s.Empty(ctx.Assertion)
+		})
+	}
+}
+
+// A sign-in callee refused at its assertion node fails to its caller like any failed callee, with no user,
+// assertion or handle.
+func (s *EngineTestSuite) TestProcessNodeResponse_RefusedSignInCalleeTakesTheFailurePath() {
+	for _, refusal := range signInBoundaryRefusals {
+		s.Run(refusal.Code+" with an onFailure route", func() {
+			c := s.callSignIn()
+			failed := coremock.NewNodeInterfaceMock(s.T())
+			c.callNode.On("GetOnFailure").Return("sign-in-failed")
+			c.callerGraph.On("GetNode", "sign-in-failed").Return(failed, true)
+
+			next, cont, step, svcErr := c.refuseAtAssertion(s.T(), refusal)
+
+			s.Nil(svcErr)
+			s.True(cont)
+			s.Equal(failed, next)
+			s.Require().NotNil(c.ctx.CurrentNodeResponse)
+			s.Equal(refusal, c.ctx.CurrentNodeResponse.Error)
+			s.Equal(0, c.ctx.frameDepth())
+			s.True(c.ctx.SignInBounded)
+			s.False(c.ctx.AuthUser.IsAuthenticated())
+			s.Empty(c.ctx.Assertion)
+			s.Empty(step.SSOHandleOut)
+			s.Empty(step.SSOFlowID)
+		})
+
+		s.Run(refusal.Code+" without an onFailure route", func() {
+			c := s.callSignIn()
+			c.callNode.On("GetOnFailure").Return("")
+
+			next, cont, step, svcErr := c.refuseAtAssertion(s.T(), refusal)
+
+			s.Nil(svcErr)
+			s.False(cont)
+			s.Nil(next)
+			s.Equal(providers.FlowStatusError, step.Status)
+			s.Equal(refusal, step.Error)
+			s.Empty(c.ctx.Assertion)
+			s.Empty(step.SSOHandleOut)
+		})
+	}
+}
+
+// The caller's onFailure route after a sign-in callee refused at its assertion node sees no signed-in user.
+func (s *EngineTestSuite) TestProcessNodeResponse_RefusedSignInCalleeLeavesNoUserForTheFailureRoute() {
+	c := s.callSignIn()
+	assertNode := coremock.NewNodeInterfaceMock(s.T())
+	assertNode.On("GetID").Return("assert-after-failure")
+	assertNode.On("GetType").Return(common.NodeTypeTaskExecution)
+	assertNode.On("GetCondition").Return(nil)
+	var seen *providers.AuthUser
+	assertNode.On("ShouldExecute", mock.Anything).Run(func(args mock.Arguments) {
+		authUser := args.Get(0).(*providers.NodeContext).AuthUser
+		seen = &authUser
+	}).Return(false)
+	c.callNode.On("GetOnFailure").Return("assert-after-failure")
+	c.callerGraph.On("GetNode", "assert-after-failure").Return(assertNode, true)
+	c.callerGraph.On("GetID").Return("sign-in-flow")
+	s.Require().True(c.ctx.AuthUser.IsAuthenticated())
+
+	next, cont, step, svcErr := c.refuseAtAssertion(s.T(), &executor.ErrNoAccessToApplication)
+	s.Require().Nil(svcErr)
+	s.Require().True(cont)
+	s.Require().Equal(assertNode, next)
+	_, _, _ = c.engine.executeNodePackage(c.ctx, assertNode, step, 0)
+
+	s.Require().NotNil(seen)
+	s.False(seen.IsAuthenticated())
+	s.Empty(seen.ProviderNames())
+	s.Empty(c.ctx.Assertion)
 }

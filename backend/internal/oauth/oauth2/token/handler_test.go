@@ -323,8 +323,8 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_SuccessWithIssuedToke
 }
 
 // OUScopedGrantTestSuite covers which grants the organization-unit-scoped token endpoint serves.
-// Only client_credentials acts for an organization unit; another grant would be admitted against
-// the named unit and then issue a token identical to the bare endpoint's.
+// Only client_credentials and token exchange act for an organization unit; another grant would be
+// admitted against the named unit and then issue a token identical to the bare endpoint's.
 type OUScopedGrantTestSuite struct {
 	suite.Suite
 	service *TokenServiceInterfaceMock
@@ -365,8 +365,9 @@ func (s *OUScopedGrantTestSuite) serve(grantType, accessingOUID string) (*httpte
 // no token is issued and no issuance event claims a scope the token would not carry.
 func (s *OUScopedGrantTestSuite) TestAnotherGrantIsRefusedOnThePrefixedPath() {
 	for _, grantType := range []string{
-		string(providers.GrantTypeAuthorizationCode),
 		string(providers.GrantTypeRefreshToken),
+		string(providers.GrantTypeCIBA),
+		string(providers.GrantTypeJWTBearer),
 	} {
 		recorder, body := s.serve(grantType, "customer-a")
 
@@ -387,6 +388,30 @@ func (s *OUScopedGrantTestSuite) TestClientCredentialsIsServedOnThePrefixedPath(
 	recorder, _ := s.serve(string(providers.GrantTypeClientCredentials), "customer-a")
 
 	s.Equal(http.StatusOK, recorder.Code)
+}
+
+// Token exchange and the authorization code reach the service with the unit on its context; the grants
+// themselves accept only a device secret, and a code issued for the unit, there.
+func (s *OUScopedGrantTestSuite) TestUnitBoundGrantsReachTheServiceWithTheUnit() {
+	for _, grantType := range []string{
+		string(providers.GrantTypeTokenExchange),
+		string(providers.GrantTypeAuthorizationCode),
+	} {
+		s.Run(grantType, func() {
+			s.SetupTest()
+			s.service.EXPECT().
+				ProcessTokenRequest(mock.MatchedBy(func(ctx context.Context) bool {
+					return syscontext.GetAccessingOUID(ctx) == "customer-a"
+				}), mock.Anything, mock.Anything).
+				Return(&model.TokenResponse{
+					AccessToken: "at", TokenType: constants.TokenTypeBearer, ExpiresIn: 3600,
+				}, nil).Once()
+
+			recorder, _ := s.serve(grantType, "customer-a")
+
+			s.Equal(http.StatusOK, recorder.Code)
+		})
+	}
 }
 
 // The bare endpoint is untouched: it names no organization unit and keeps serving every grant.

@@ -14,6 +14,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/group"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
@@ -67,7 +68,8 @@ type RoleServiceInterface interface {
 		ctx context.Context, entityID string, groupIDs []string,
 	) (security.PermissionSet, *tidcommon.ServiceError)
 	// GetUserRoles returns the names of the roles assigned to the entity directly or through its
-	// groups, counting only the assignments made in assignmentOUID when one is given.
+	// groups, counting only the assignments made in assignmentOUID when one is given, or else in the
+	// sign-in boundary's organization unit when the context carries one.
 	GetUserRoles(
 		ctx context.Context, entityID string, groupIDs []string, assignmentOUID string,
 	) ([]string, *tidcommon.ServiceError)
@@ -797,6 +799,8 @@ func (rs *roleService) GetAllPermissions(
 }
 
 // GetUserRoles retrieves the names of roles assigned to an entity directly and/or through group membership.
+// When assignmentOUID is empty and the context carries a sign-in boundary, only the roles assigned in the
+// boundary's organization unit are returned.
 func (rs *roleService) GetUserRoles(
 	ctx context.Context, entityID string, groupIDs []string, assignmentOUID string,
 ) ([]string, *tidcommon.ServiceError) {
@@ -810,6 +814,10 @@ func (rs *roleService) GetUserRoles(
 
 	if entityID == "" && len(groupIDs) == 0 {
 		return []string{}, nil
+	}
+
+	if boundary, bounded := authnprovidercm.SignInBoundaryFrom(ctx); bounded && assignmentOUID == "" {
+		assignmentOUID = boundary.OUID
 	}
 
 	roles, err := rs.roleStore.GetUserRoles(ctx, entityID, groupIDs, assignmentOUID)

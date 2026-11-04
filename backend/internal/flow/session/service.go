@@ -14,12 +14,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"time"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -35,10 +39,10 @@ type Service interface {
 	AbsoluteTimeout() time.Duration
 
 	// FindCheckpoint returns the resolved session's snapshot for the checkpoint, or (nil, nil) when
-	// the session holds none. Callers deciding only whether a checkpoint is available compare the
-	// result against nil; the SSO-Check node forwards it to the paired Session node so the load path
-	// does not fetch the same row again.
-	FindCheckpoint(ctx context.Context, sessionID, checkpoint string) (*SessionContext, error)
+	// the session holds none or the sign-in on the context cannot reuse it. Callers deciding only whether a
+	// checkpoint is available compare the result against nil; the SSO-Check node forwards it to the paired
+	// Session node so the load path does not fetch the same row again.
+	FindCheckpoint(ctx context.Context, sess *Session, checkpoint string) (*SessionContext, error)
 
 	// SaveCheckpoint attaches the checkpoint to this flow execution's session — the one already
 	// resolved (via HandleHint), one an earlier join minted, or a freshly established one — writing
@@ -67,10 +71,10 @@ type Service interface {
 	// nil when the subject holds no sessions.
 	TerminateBySubject(ctx context.Context, subjectID string) error
 
-	// DetachApplication detaches an application from every SSO session it participates in: it revokes
-	// the token family of that participation and drops the participant row, deleting the session itself
-	// only when the application was its last participant. It is idempotent, returning nil when the
-	// application participates in none.
+	// DetachApplication detaches an application from every SSO session it participates in: for each
+	// organization unit it signed in under, it revokes that participation's token family and drops its
+	// row, deleting the session itself only when the application was its last participant. It is
+	// idempotent, returning nil when the application participates in none.
 	DetachApplication(ctx context.Context, appID string) error
 }
 
@@ -140,9 +144,16 @@ type service struct {
 	resolver         Resolver
 	transactioner    providers.Transactioner
 	criteriaRevoker  CriteriaRevoker
+	ouEligibility    OUEligibility
 	terminationTopic *eventlistener.Topic[TerminatedSession]
 	timeouts         Timeouts
 	logger           *log.Logger
+}
+
+// OUEligibility answers whether the sign-in on the context may land in an organization unit. The OU provider
+// implements it.
+type OUEligibility interface {
+	IsEligibleOU(ctx context.Context, ouID string) (bool, *tidcommon.ServiceError)
 }
 
 var _ Service = (*service)(nil)
@@ -179,10 +190,16 @@ func (s *service) Resolve(ctx context.Context, handle, flowID string, flowVersio
 // FindCheckpoint implements Service. Fetching the checkpoint context by its full primary key answers
 // the availability question by itself, so this replaces listing every checkpoint id and matching in
 // Go, and it returns the row for the caller to hand to LoadCheckpoint.
-func (s *service) FindCheckpoint(ctx context.Context, sessionID, checkpoint string) (*SessionContext, error) {
-	snapshot, err := s.store.GetByCheckpoint(ctx, sessionID, checkpoint)
+func (s *service) FindCheckpoint(ctx context.Context, sess *Session, checkpoint string) (*SessionContext, error) {
+	snapshot, err := s.store.GetByCheckpoint(ctx, sess.SessionID, checkpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read SSO session checkpoint: %w", err)
+	}
+	if snapshot == nil {
+		return nil, nil
+	}
+	if _, reusable, err := s.reuseOU(ctx, sess); err != nil || !reusable {
+		return nil, err
 	}
 	return snapshot, nil
 }
@@ -217,10 +234,15 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 	snapshot := SessionContext{
 		SessionID:      target.SessionID,
 		CheckpointID:   in.Checkpoint,
-		RuntimeData:    in.RuntimeData,
+		RuntimeData:    snapshotRuntimeData(in.RuntimeData),
 		AuthUser:       in.AuthUser,
 		CompletedSteps: in.CompletedSteps,
 		ContextVersion: 1,
+	}
+
+	participantOU, err := s.participantOU(ctx, in.SubjectID, participantOUID(ctx))
+	if err != nil {
+		return SaveCheckpointResult{}, err
 	}
 
 	// Write this checkpoint's context (upsert) and the joining participant in one transaction.
@@ -229,7 +251,7 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 		if err := s.store.CreateContext(txCtx, snapshot); err != nil {
 			return err
 		}
-		return s.recordParticipant(txCtx, target.SessionID, in.AppID, in.TokenFamilyID, now)
+		return s.recordParticipant(txCtx, target.SessionID, in.AppID, participantOU, in.TokenFamilyID, now)
 	}); err != nil {
 		return SaveCheckpointResult{}, err
 	}
@@ -305,6 +327,25 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 		}
 	}
 
+	// A sign-in that decided no organization unit follows the one the reuse does, which reaches the flow through
+	// the replayed runtime data.
+	followedOUID, reusable, err := s.reuseOU(ctx, sess)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !reusable {
+		return nil, nil, fmt.Errorf("the sign-in can no longer reuse the session")
+	}
+	if followedOUID != "" {
+		followed := *snapshot
+		followed.RuntimeData = maps.Clone(snapshot.RuntimeData)
+		if followed.RuntimeData == nil {
+			followed.RuntimeData = map[string]string{}
+		}
+		followed.RuntimeData[common.RuntimeKeyOUID] = followedOUID
+		snapshot = &followed
+	}
+
 	// Record the joining application as a participant. When this reused session issues a token family,
 	// its SESSION_ID -> tfid mapping is security-critical: logout resolves the families to revoke from
 	// these rows, so a token stamped with a tfid that has no persisted mapping would be unrevocable.
@@ -312,7 +353,14 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 	// load before publishing the tfid, forcing full re-authentication). Without a tfid there is nothing
 	// to revoke, so the write stays best-effort. Either way it is not throttled with the activity
 	// refresh above: the upsert also registers an application joining the session for the first time.
-	if partErr := s.recordParticipant(ctx, sess.SessionID, in.AppID, in.TokenFamilyID, now); partErr != nil {
+	participantOU := followedOUID
+	if fixed := participantOUID(ctx); fixed != "" {
+		if participantOU, err = s.participantOU(ctx, sess.SubjectID, fixed); err != nil {
+			return nil, nil, err
+		}
+	}
+	if partErr := s.recordParticipant(ctx, sess.SessionID, in.AppID, participantOU, in.TokenFamilyID,
+		now); partErr != nil {
 		if in.TokenFamilyID != "" {
 			return nil, nil, fmt.Errorf("failed to record SSO session participant for token family: %w", partErr)
 		}
@@ -320,6 +368,105 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 	}
 
 	return sess, snapshot, nil
+}
+
+// participantOUID returns the sign-in boundary's organization unit, the one the grant is signed in under,
+// or "" outside a boundary.
+func participantOUID(ctx context.Context) string {
+	boundary, _ := authnprovidercm.SignInBoundaryFrom(ctx)
+	return boundary.OUID
+}
+
+// participantOU returns the organization unit to record a participant under: ouID, while the subject may sign in
+// there. A sign-in the assertion will refuse is recorded under none, so it never becomes the session's last-used
+// organization unit.
+func (s *service) participantOU(ctx context.Context, subjectID, ouID string) (string, error) {
+	if ouID == "" {
+		return "", nil
+	}
+	boundary, _ := authnprovidercm.SignInBoundaryFrom(ctx)
+	boundary.EntityID = subjectID
+	eligible, svcErr := s.ouEligibility.IsEligibleOU(authnprovidercm.WithSignInBoundary(ctx, boundary), ouID)
+	if svcErr != nil {
+		return "", fmt.Errorf("failed to check the participant's organization unit: %s", svcErr.Code)
+	}
+	if !eligible {
+		s.logger.Debug(ctx, "Subject cannot sign in to the organization unit; recording the participant under none")
+		return "", nil
+	}
+	return ouID, nil
+}
+
+// snapshotRuntimeData copies the runtime data for the snapshot without the organization unit, which is
+// decided per sign-in; a replayed copy would overwrite the joining flow's own.
+func snapshotRuntimeData(runtimeData map[string]string) map[string]string {
+	snapshot := maps.Clone(runtimeData)
+	delete(snapshot, common.RuntimeKeyOUID)
+	return snapshot
+}
+
+// reuseOU returns the organization unit a sign-in follows when it reuses the session. A sign-in bounded with no
+// organization unit decided follows the one the session's subject last signed in to with it, while the subject may
+// still sign in there. A sign-in bounded to a decided organization unit follows none, and reuses the session only
+// while its subject may sign in to that unit. reusable is false otherwise, and the sign-in authenticates instead. An
+// unbounded sign-in follows none and may reuse the session.
+func (s *service) reuseOU(ctx context.Context, sess *Session) (string, bool, error) {
+	boundary, bounded := authnprovidercm.SignInBoundaryFrom(ctx)
+	if !bounded {
+		return "", true, nil
+	}
+	if boundary.OUID != "" {
+		boundary.EntityID = sess.SubjectID
+		eligible, svcErr := s.ouEligibility.IsEligibleOU(authnprovidercm.WithSignInBoundary(ctx, boundary),
+			boundary.OUID)
+		if svcErr != nil {
+			return "", false, fmt.Errorf("failed to check the session subject's organization unit: %s", svcErr.Code)
+		}
+		if !eligible {
+			s.logger.Debug(ctx, "Session subject cannot sign in to the decided organization unit; authenticating")
+		}
+		return "", eligible, nil
+	}
+	lastUsed, err := s.lastUsedOUID(ctx, sess.SessionID)
+	if err != nil {
+		return "", false, err
+	}
+	if lastUsed == "" {
+		s.logger.Debug(ctx, "Session has no last-used organization unit; authenticating")
+		return "", false, nil
+	}
+
+	boundary.EntityID = sess.SubjectID
+	eligible, svcErr := s.ouEligibility.IsEligibleOU(authnprovidercm.WithSignInBoundary(ctx, boundary), lastUsed)
+	if svcErr != nil {
+		return "", false, fmt.Errorf("failed to check the session subject's last-used organization unit: %s",
+			svcErr.Code)
+	}
+	if !eligible {
+		s.logger.Debug(ctx, "Session subject cannot sign in to its last-used organization unit; authenticating")
+		return "", false, nil
+	}
+	return lastUsed, true, nil
+}
+
+// lastUsedOUID returns the organization unit of the session's most recently active participant that signed in
+// under one, or "" when none did.
+func (s *service) lastUsedOUID(ctx context.Context, sessionID string) (string, error) {
+	participants, err := s.store.ListBySessionID(ctx, sessionID)
+	if err != nil {
+		return "", fmt.Errorf("failed to list session participants: %w", err)
+	}
+	var latest *Participant
+	for i := range participants {
+		p := &participants[i]
+		if p.OUID != "" && (latest == nil || p.LastActiveAt.After(latest.LastActiveAt)) {
+			latest = p
+		}
+	}
+	if latest == nil {
+		return "", nil
+	}
+	return latest.OUID, nil
 }
 
 // Terminate implements Service.
@@ -486,7 +633,8 @@ func (s *service) DetachApplication(ctx context.Context, appID string) error {
 					return revErr
 				}
 			}
-			if delErr := s.store.DeleteParticipant(txCtx, participation.SessionID, appID); delErr != nil {
+			if delErr := s.store.DeleteParticipant(txCtx, participation.SessionID, appID,
+				participation.OUID); delErr != nil {
 				return delErr
 			}
 			remaining, listErr := s.store.ListBySessionID(txCtx, participation.SessionID)
@@ -508,8 +656,13 @@ func (s *service) DetachApplication(ctx context.Context, appID string) error {
 		return fmt.Errorf("failed to remove session for the application: %w", txErr)
 	}
 
-	s.logger.Debug(ctx, "Detached application from SSO sessions",
-		log.Int("sessionCount", len(participations)))
+	if s.logger.IsDebugEnabled() {
+		sessionIDs := make(map[string]struct{}, len(participations))
+		for _, participation := range participations {
+			sessionIDs[participation.SessionID] = struct{}{}
+		}
+		s.logger.Debug(ctx, "Detached application from SSO sessions", log.Int("sessionCount", len(sessionIDs)))
+	}
 	return nil
 }
 
@@ -631,10 +784,10 @@ func (s *service) establishSession(ctx context.Context, in SaveCheckpointInput) 
 	return established, created, nil
 }
 
-// recordParticipant records the application as a participant of the session, refreshing its
-// last-active time and current-grant tfid if it has joined before. It is a no-op when the
-// application id is unknown.
-func (s *service) recordParticipant(ctx context.Context, sessionID, appID, tokenFamilyID string,
+// recordParticipant records the application as a participant of the session under the organization
+// unit, refreshing its last-active time and current-grant tfid if it has joined under that unit before.
+// It is a no-op when the application id is unknown.
+func (s *service) recordParticipant(ctx context.Context, sessionID, appID, ouID, tokenFamilyID string,
 	now time.Time) error {
 	if appID == "" {
 		return nil
@@ -642,6 +795,7 @@ func (s *service) recordParticipant(ctx context.Context, sessionID, appID, token
 	return s.store.Record(ctx, Participant{
 		SessionID:     sessionID,
 		AppID:         appID,
+		OUID:          ouID,
 		TokenFamilyID: tokenFamilyID,
 		FirstJoinedAt: now,
 		LastActiveAt:  now,

@@ -47,6 +47,10 @@ import (
 type UserTypeAuthzTestSuite struct {
 	suite.Suite
 
+	// Users here live outside the default OU, and a sign-in is bounded to its application's OU, so each
+	// signs in through an application in its own OU rather than the Console.
+	signIn testutils.OUSignInApps
+
 	// Admin-created fixture IDs
 	ou1ID  string
 	ou2ID  string
@@ -77,9 +81,6 @@ const (
 
 	schemaAdminUsername = "schema-authz-admin"
 	schemaAdminPassword = "SchemaAdmin@123"
-
-	schemaAuthzDevelopClientID    = "CONSOLE"
-	schemaAuthzDevelopRedirectURI = "https://localhost:8095/console"
 
 	// Unique role name to avoid collisions across test runs.
 	schemaAdminRoleName = "User Type Admin (authz-test)"
@@ -194,16 +195,8 @@ func (ts *UserTypeAuthzTestSuite) SetupSuite() {
 	ts.schemaAdminRoleID = roleID
 
 	// ---- 6. Obtain a scoped access token for the test user ----
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
-		schemaAuthzDevelopClientID,
-		schemaAuthzDevelopRedirectURI,
-		"system system:usertype",
-		schemaAdminUsername,
-		schemaAdminPassword,
-		true,
-		"",
-		scopedRSIdentifier,
-	)
+	tokenResp, err := ts.signIn.ObtainAccessToken(ts.ou12ID,
+		"system system:usertype", schemaAdminUsername, schemaAdminPassword, scopedRSIdentifier)
 	ts.Require().NoError(err, "obtain schema-admin scoped token")
 	ts.Require().NotEmpty(tokenResp.AccessToken, "schema-admin token must be non-empty")
 	grantedScopes := strings.Fields(tokenResp.Scope)
@@ -216,6 +209,9 @@ func (ts *UserTypeAuthzTestSuite) SetupSuite() {
 // ---------------------------------------------------------------------------
 
 func (ts *UserTypeAuthzTestSuite) TearDownSuite() {
+	if err := ts.signIn.DeleteAll(); err != nil {
+		ts.T().Logf("teardown: delete sign-in applications: %v", err)
+	}
 	// Delete role first (has assignment to user).
 	if ts.schemaAdminRoleID != "" {
 		if err := testutils.DeleteRole(ts.schemaAdminRoleID); err != nil {

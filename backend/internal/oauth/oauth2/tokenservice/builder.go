@@ -631,6 +631,9 @@ func (tb *tokenBuilder) buildRefreshTokenClaims(ctx *RefreshTokenBuildContext) (
 		claims[constants.ClaimRefreshAuthorizationDetails] = values
 		claims[constants.ClaimRefreshAuthorizationDetailVersions] = versions
 	}
+	if ctx.OUID != "" {
+		claims[constants.ClaimAccessTokenOUID] = ctx.OUID
+	}
 
 	return claims, nil
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
@@ -1333,6 +1334,60 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_FetchUserGr
 
 	suite.mockAuthzService.AssertExpectations(suite.T())
 	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
+// The organization unit scoped endpoint redeems a code only when its sign-in recorded that unit as ouId; the
+// bare endpoint redeems any code.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_OUScopedEndpointRedeemsOnlyACodeForThatOU() {
+	cases := []struct {
+		name        string
+		accessingOU string
+		codeOU      string
+		issued      bool
+	}{
+		{"code issued for the unit", "ou-a", "ou-a", true},
+		{"code issued for another unit", "ou-a", "ou-b", false},
+		{"code recording no unit", "ou-a", "", false},
+		{"bare endpoint", "", "ou-b", true},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			code := suite.testAuthzCode
+			code.AttributeCacheID = testCacheID
+			attrs := map[string]interface{}{"username": "testuser"}
+			if tc.codeOU != "" {
+				attrs[constants.ClaimOUID] = tc.codeOU
+			}
+			suite.mockAttrCacheService.On("GetAttributeCache", mock.Anything, testCacheID).
+				Return(&attributecache.AttributeCache{ID: testCacheID, Attributes: attrs},
+					(*tidcommon.ServiceError)(nil))
+			suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+				Return(&code, nil)
+			if tc.issued {
+				suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+					Return(&model.TokenDTO{Token: "test-jwt-token", TokenType: constants.TokenTypeBearer}, nil)
+			}
+			ctx := context.Background()
+			if tc.accessingOU != "" {
+				ctx = syscontext.WithAccessingOUID(ctx, tc.accessingOU)
+			}
+
+			result, err := suite.handler.HandleGrant(ctx, suite.testTokenReq, suite.oauthApp)
+
+			if tc.issued {
+				suite.Nil(err)
+				suite.Require().NotNil(result)
+				suite.Equal("test-jwt-token", result.AccessToken.Token)
+				return
+			}
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(constants.ErrorInvalidGrant, err.Error)
+			suite.Equal(constants.OUCodeRefusal, err.ErrorDescription)
+			suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+		})
+	}
 }
 
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_AttributeCacheFetchError() {

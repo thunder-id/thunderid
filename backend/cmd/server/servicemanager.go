@@ -427,7 +427,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// The termination hook is kept for the back-channel logout dispatcher, which OAuth builds and which
 	// is added to the hook once OAuth is initialized.
 	sessionService, terminationHook, sessionCfg := initSessionService(ctx, serverConfigService,
-		runtime.Config.Server.Identifier, sessionRevoker, logger)
+		runtime.Config.Server.Identifier, sessionRevoker, ouProvider, logger)
 	flowConfig.Session = sessionCfg
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowCoreAndExecutor(ctx, logger,
 		cacheManager, executor.ExecutorDependencies{
@@ -501,6 +501,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		themeMgtService, layoutMgtService, flowMgtService, entityTypeService, runtimeCryptoSvc, jweService,
 		cimdService, sharingService, entityService)
 	fatalOnError(ctx, logger, err, "Failed to initialize InboundClientService")
+
+	// Two-phase initialization: the entity and inbound client services import the ou package, so they are
+	// injected into the OU provider, which answers sign-in eligibility through them, once they are built.
+	ouProvider.SetSignInEligibilityResolvers(entityService, inboundClientService)
 
 	// Inject the consent service into the consent enforcer. It is wired here rather than at enforcer
 	// construction because it depends on the inbound client service, which is only available after the
@@ -610,7 +614,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// The flow endpoint and the authorize endpoint share one SSO handle transport. The SSO cookie is
 	// marked Secure unless the deployment is configured to serve over plain HTTP.
 	ssoTransport := flowsession.NewHandleTransport(flowsession.TransportConfig{SecureCookies: flowConfig.SecureCookies})
-	flowExecService, err := flowexec.Initialize(mux, flowMgtService, actorProvider,
+	flowExecService, err := flowexec.Initialize(mux, flowMgtService, actorProvider, ouProvider,
 		execRegistry, interceptorRegistry, observabilitySvc, runtimeCryptoSvc, attestationProvider,
 		graphBuilder, jwtService, runtimeStoreProvider, transactioner, serverConfigService, ssoTransport,
 		governanceProvider, flowMgtService, flowConfig)
@@ -705,12 +709,12 @@ func unregisterServices() {
 // builds the session service, returning the service, its termination hook, and the config so the caller
 // can thread the config into flowexec too.
 func initSessionService(ctx context.Context, svc serverconfig.ServerConfigService, deploymentID string,
-	criteriaRevoker flowsession.CriteriaRevoker, logger *log.Logger,
+	criteriaRevoker flowsession.CriteriaRevoker, ouEligibility flowsession.OUEligibility, logger *log.Logger,
 ) (flowsession.Service, flowsession.TerminationHook, flowsession.Config) {
 	cfg := readSessionConfig(ctx, svc, logger)
 	sessionService, terminationHook, err := flowsession.Initialize(dbprovider.GetDBProvider(), deploymentID,
 		flowsession.NewTimeouts(cfg.IdleTimeoutSeconds, cfg.AbsoluteTimeoutSeconds,
-			cfg.ActivityRefreshIntervalSeconds), criteriaRevoker)
+			cfg.ActivityRefreshIntervalSeconds), criteriaRevoker, ouEligibility)
 	fatalOnError(ctx, logger, err, "Failed to initialize SSO session service")
 	return sessionService, terminationHook, cfg
 }

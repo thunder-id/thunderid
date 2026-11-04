@@ -36,6 +36,7 @@ type AgentTypeAuthzTestSuite struct {
 	userID     string
 	roleID     string
 	scopedRSID string
+	signInApp  string
 
 	// scopedClient carries a token with system:usertype but no agenttype permission.
 	scopedClient *http.Client
@@ -48,9 +49,10 @@ const (
 	agentTypeAuthzUsername     = "agent-type-authz-user"
 	agentTypeAuthzPassword     = "AgentTypeAuthz@123"
 
-	agentTypeAuthzClientID    = "CONSOLE"
-	agentTypeAuthzRedirectURI = "https://localhost:8095/console"
-	agentTypeAuthzRSIdentity  = "https://authz-test.example.com/agenttype"
+	// The user lives in the suite's OU, and a sign-in is bounded to its application's OU, so it signs in
+	// through an application in that OU rather than the Console.
+	agentTypeAuthzClientID   = "agent_type_authz_sign_in"
+	agentTypeAuthzRSIdentity = "https://authz-test.example.com/agenttype"
 )
 
 func TestAgentTypeAuthzTestSuite(t *testing.T) {
@@ -110,9 +112,12 @@ func (s *AgentTypeAuthzTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.roleID = roleID
 
+	s.signInApp, err = testutils.CreateOUSignInApplication(s.ouID, agentTypeAuthzClientID)
+	s.Require().NoError(err)
+
 	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
 		agentTypeAuthzClientID,
-		agentTypeAuthzRedirectURI,
+		testutils.OUSignInRedirectURI,
 		"system system:usertype",
 		agentTypeAuthzUsername,
 		agentTypeAuthzPassword,
@@ -137,6 +142,9 @@ func (s *AgentTypeAuthzTestSuite) TearDownSuite() {
 	// Cleanup failures are asserted, not swallowed. This suite builds a resource server with a
 	// nested permission tree, and a discarded error here would leave that tree in the shared
 	// database while the suite still reported PASS.
+	if s.signInApp != "" {
+		s.NoError(testutils.DeleteApplication(s.signInApp), "teardown: delete sign-in application")
+	}
 	if s.roleID != "" {
 		s.NoError(testutils.DeleteRole(s.roleID), "teardown: delete role")
 	}

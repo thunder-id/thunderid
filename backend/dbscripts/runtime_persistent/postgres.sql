@@ -84,15 +84,17 @@ CREATE TABLE "SSO_SESSION_CONTEXT" (
     PRIMARY KEY (SESSION_ID, DEPLOYMENT_ID, CHECKPOINT_ID)
 );
 
--- Table to record the applications participating in an SSO session (1:many by SESSION_ID).
+-- Table to record the applications participating in an SSO session (1:many by SESSION_ID), one row per
+-- application and the organization unit it signed in under ('' when the sign-in had none).
 CREATE TABLE "SSO_SESSION_PARTICIPANT" (
     SESSION_ID VARCHAR(36) NOT NULL,
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     APP_ID VARCHAR(36) NOT NULL,
+    OU_ID VARCHAR(36) NOT NULL DEFAULT '',
     TFID VARCHAR(36),
     FIRST_JOINED_AT TIMESTAMP NOT NULL,
     LAST_ACTIVE_AT TIMESTAMP NOT NULL,
-    PRIMARY KEY (SESSION_ID, DEPLOYMENT_ID, APP_ID)
+    PRIMARY KEY (SESSION_ID, DEPLOYMENT_ID, APP_ID, OU_ID)
 );
 
 -- Index for participation lookups by application, used when an application is deleted and its

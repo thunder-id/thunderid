@@ -567,6 +567,80 @@ func (_c *EntityServiceInterfaceMock_DeleteEntity_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// EntityOUs provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) EntityOUs(ctx context.Context, entityID string) ([]string, bool, error) {
+	ret := _mock.Called(ctx, entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EntityOUs")
+	}
+
+	var r0 []string
+	var r1 bool
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]string, bool, error)); ok {
+		return returnFunc(ctx, entityID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []string); ok {
+		r0 = returnFunc(ctx, entityID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) bool); ok {
+		r1 = returnFunc(ctx, entityID)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string) error); ok {
+		r2 = returnFunc(ctx, entityID)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// EntityServiceInterfaceMock_EntityOUs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EntityOUs'
+type EntityServiceInterfaceMock_EntityOUs_Call struct {
+	*mock.Call
+}
+
+// EntityOUs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+func (_e *EntityServiceInterfaceMock_Expecter) EntityOUs(ctx any, entityID any) *EntityServiceInterfaceMock_EntityOUs_Call {
+	return &EntityServiceInterfaceMock_EntityOUs_Call{Call: _e.mock.On("EntityOUs", ctx, entityID)}
+}
+
+func (_c *EntityServiceInterfaceMock_EntityOUs_Call) Run(run func(ctx context.Context, entityID string)) *EntityServiceInterfaceMock_EntityOUs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_EntityOUs_Call) Return(ouIDs []string, found bool, err error) *EntityServiceInterfaceMock_EntityOUs_Call {
+	_c.Call.Return(ouIDs, found, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_EntityOUs_Call) RunAndReturn(run func(ctx context.Context, entityID string) ([]string, bool, error)) *EntityServiceInterfaceMock_EntityOUs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // FormLock provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) FormLock(ctx context.Context, entityID string, method providers.AuthenticationMethod, observed identitygovernance.LockEntry, episode identitygovernance.LockEpisode, now time.Time) (bool, error) {
 	ret := _mock.Called(ctx, entityID, method, observed, episode, now)

@@ -7,12 +7,14 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -105,10 +107,10 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_NoConflict_Retur
 
 	freeID := (*string)(nil)
 	suite.mockEntityProvider.On("IdentifyEntity",
-		map[string]interface{}{"email": "free@example.com"}).
+		mock.Anything, map[string]interface{}{"email": "free@example.com"}).
 		Return(freeID, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "not found", ""))
 	suite.mockEntityProvider.On("IdentifyEntity",
-		map[string]interface{}{"username": "newuser"}).
+		mock.Anything, map[string]interface{}{"username": "newuser"}).
 		Return(freeID, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "not found", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -144,7 +146,7 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AttributeConflic
 
 			existingUserID := testExistingUserID
 			suite.mockEntityProvider.On("IdentifyEntity",
-				map[string]interface{}{tt.attribute: tt.value}).
+				mock.Anything, map[string]interface{}{tt.attribute: tt.value}).
 				Return(&existingUserID, nil).Once()
 
 			resp, err := suite.executor.Execute(ctx)
@@ -177,7 +179,7 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AttributeConflic
 
 	existingID := testExistingUserID
 	suite.mockEntityProvider.On("IdentifyEntity",
-		map[string]interface{}{"model": "gpt-5"}).
+		mock.Anything, map[string]interface{}{"model": "gpt-5"}).
 		Return(&existingID, nil).Once()
 
 	resp, err := suite.executor.Execute(ctx)
@@ -204,7 +206,7 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_CategoryFromRunt
 		testUniquenessAgentType).Return([]string{"name"}, nil).Once()
 
 	suite.mockEntityProvider.On("IdentifyEntity",
-		map[string]interface{}{"name": "Foo"}).
+		mock.Anything, map[string]interface{}{"name": "Foo"}).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "not found", "")).
 		Once()
 
@@ -297,7 +299,7 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_UniqueAttrNotInI
 
 	freeID := (*string)(nil)
 	suite.mockEntityProvider.On("IdentifyEntity",
-		map[string]interface{}{"username": "newuser"}).
+		mock.Anything, map[string]interface{}{"username": "newuser"}).
 		Return(freeID, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "not found", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -346,7 +348,7 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_IdentifyEntitySy
 		Return([]string{"email"}, nil)
 
 	suite.mockEntityProvider.On("IdentifyEntity",
-		map[string]interface{}{"email": "test@example.com"}).
+		mock.Anything, map[string]interface{}{"email": "test@example.com"}).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "db error", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -370,7 +372,7 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AmbiguousLookup_
 		Return([]string{"email"}, nil)
 
 	suite.mockEntityProvider.On("IdentifyEntity",
-		map[string]interface{}{"email": "test@example.com"}).
+		mock.Anything, map[string]interface{}{"email": "test@example.com"}).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeAmbiguousEntity, "ambiguous", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -397,6 +399,36 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_NoUniqueAttribut
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity")
+}
+
+// A sign-in boundary on the step must not narrow the lookup: uniqueness stays deployment wide.
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_SignInBoundary_LookupIsNotBounded() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		Context: authnprovidercm.WithSignInBoundary(context.Background(),
+			authnprovidercm.SignInBoundary{OUID: "ou-1", ApplicationID: "app-1"}),
+		UserInputs: map[string]string{"email": "taken@example.com"},
+		RuntimeData: map[string]string{
+			categoryNameKey: string(entitytype.TypeCategoryUser),
+			categoryTypeKey: testUniquenessUserType,
+		},
+	}
+
+	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, mock.Anything, testUniquenessUserType).
+		Return([]string{"email"}, nil)
+	existingID := testExistingUserID
+	suite.mockEntityProvider.On("IdentifyEntity",
+		mock.MatchedBy(func(c context.Context) bool {
+			_, bounded := authnprovidercm.SignInBoundaryFrom(c)
+			return !bounded
+		}), map[string]interface{}{"email": "taken@example.com"}).
+		Return(&existingID, nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
 func TestAttributeUniquenessValidatorSuite(t *testing.T) {

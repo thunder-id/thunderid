@@ -55,8 +55,9 @@ func TestUserDisambiguationTestSuite(t *testing.T) {
 
 // buildResolveFlow returns an authentication flow whose IdentifyingExecutor runs in resolve mode and,
 // once a single account is resolved, authenticates it. Both executors need explicit email inputs
-// because they default to username. onIncomplete targets a PROMPT in both places.
-func buildResolveFlow(handle string) testutils.Flow {
+// because they default to username. onIncomplete targets a PROMPT in both places. The OU resolver picks among
+// the user's OUs at or below parentOUID.
+func buildResolveFlow(handle, parentOUID string) testutils.Flow {
 	emailInput := []map[string]interface{}{
 		{"ref": "input_email", "identifier": "email", "type": "TEXT_INPUT", "required": true},
 	}
@@ -98,8 +99,16 @@ func buildResolveFlow(handle string) testutils.Flow {
 						{"ref": "input_pwd", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
 					},
 				},
-				"onSuccess":    "auth_assert",
+				"onSuccess":    "resolve_ou",
 				"onIncomplete": "prompt_password",
+			},
+			// The application is shared, so the sign-in decides the user's OU before the assertion.
+			{
+				"id":         "resolve_ou",
+				"type":       "TASK_EXECUTION",
+				"properties": map[string]interface{}{"resolveFrom": "prompt", "parentOuId": parentOUID},
+				"executor":   map[string]interface{}{"name": "OUResolverExecutor"},
+				"onSuccess":  "auth_assert",
 			},
 			{
 				"id":   "prompt_password",
@@ -230,7 +239,7 @@ func (ts *UserDisambiguationTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create the indistinguishable user pair")
 	ts.createdUserIDs = append(ts.createdUserIDs, twinIDs...)
 
-	resolveFlowID, err := testutils.CreateFlow(buildResolveFlow("auth_flow_resolve_mode"))
+	resolveFlowID, err := testutils.CreateFlow(buildResolveFlow("auth_flow_resolve_mode", ts.parentOUID))
 	ts.Require().NoError(err, "Failed to create the resolve flow")
 	ts.createdFlowIDs = append(ts.createdFlowIDs, resolveFlowID)
 
@@ -249,6 +258,8 @@ func (ts *UserDisambiguationTestSuite) SetupSuite() {
 		},
 	})
 	ts.Require().NoError(err, "Failed to create the resolve app")
+	// The candidates live in the child OUs, which a sign-in reaches only when the application is shared there.
+	ts.Require().NoError(testutils.ShareApplicationWithChildUnits(ts.resolveAppID), "Failed to share the resolve app")
 
 	hintFlowID, err := testutils.CreateFlow(buildLoginHintFlow("auth_flow_login_hint"))
 	ts.Require().NoError(err, "Failed to create the login-hint flow")

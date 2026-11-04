@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -35,6 +36,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -394,6 +396,70 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Fl
 	assert.True(suite.T(), authErr.SendErrorToClient)
 	assert.Equal(suite.T(), "https://client.example.com/callback", authErr.ClientRedirectURI)
 	assert.Equal(suite.T(), "test-state", authErr.State)
+}
+
+// An organization unit the application is not accessible from is answered to the client as the OU token
+// route answers it, not as a server error.
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_FlowInitOrganizationUnitRefused() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).
+		Return("", &flowexec.ErrorInvalidOrganizationUnit)
+
+	svc := suite.newService()
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), suite.testMsg())
+
+	assert.Nil(suite.T(), result)
+	suite.Require().NotNil(authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorUnauthorizedClient, authErr.Code)
+	assert.Equal(suite.T(), oauth2const.OUAccessRefusal, authErr.Message)
+	assert.True(suite.T(), authErr.SendErrorToClient)
+	assert.Equal(suite.T(), "https://client.example.com/callback", authErr.ClientRedirectURI)
+	assert.Equal(suite.T(), "test-state", authErr.State)
+}
+
+// The organization-unit-qualified route hands its unit to the flow start unlooked-up, so a unit that does
+// not exist and one the application is not shared with both reach the start, which refuses each with
+// FES-1023, and both come back to the client as the same redirect.
+func (suite *AuthorizeServiceTestSuite) TestOUQualifiedAuthorize_UnknownAndUnsharedUnitsGetTheSameRedirect() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
+	var startedFor []string
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, _ *flowexec.FlowInitContext) {
+			startedFor = append(startedFor, sysContext.GetAccessingOUID(ctx))
+		}).
+		Return("", &flowexec.ErrorInvalidOrganizationUnit).Times(2)
+
+	mux := http.NewServeMux()
+	registerRoutes(mux, newAuthorizeHandler(suite.newService(), nil, authorizeServiceCfgFromRuntime()), true)
+	query := url.Values(suite.testMsg().RequestQueryParams).Encode()
+	authorize := func(ouID string) *httptest.ResponseRecorder {
+		recorder := httptest.NewRecorder()
+		mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/ou/"+ouID+"/oauth2/authorize?"+query, nil))
+		return recorder
+	}
+
+	unknown := authorize("no-such-ou")
+	unshared := authorize("customer-a")
+
+	suite.Equal([]string{"no-such-ou", "customer-a"}, startedFor)
+	suite.Require().Equal(http.StatusFound, unknown.Code)
+	suite.Require().Equal(http.StatusFound, unshared.Code)
+	suite.Equal(unknown.Header().Get("Location"), unshared.Header().Get("Location"),
+		"a unit that does not exist and one not shared must read the same")
+	location, err := url.Parse(unknown.Header().Get("Location"))
+	suite.Require().NoError(err)
+	suite.Equal("https://client.example.com/callback", location.Scheme+"://"+location.Host+location.Path)
+	suite.Equal(oauth2const.ErrorUnauthorizedClient, location.Query().Get("error"))
+	suite.Equal(oauth2const.OUAccessRefusal, location.Query().Get("error_description"))
+	suite.Equal("test-state", location.Query().Get("state"))
 }
 
 func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_StoreRequestError() {

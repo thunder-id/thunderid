@@ -2843,6 +2843,50 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_CarriesSessionID() {
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
+func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_CarriesTheIssuingOU() {
+	tests := []struct {
+		name string
+		ouID string
+	}{
+		{"issuing OU known", "ou-issued"},
+		{"no issuing OU", ""},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			suite.SetupTest()
+			ctx := &RefreshTokenBuildContext{
+				ClientID:             "test-client",
+				Scopes:               []string{"openid"},
+				GrantType:            string(providers.GrantTypeAuthorizationCode),
+				AccessTokenSubject:   "user123",
+				AccessTokenAudiences: []string{"app123"},
+				OAuthApp:             suite.oauthApp,
+				OUID:                 tt.ouID,
+			}
+
+			suite.mockJWTService.On("GenerateJWT",
+				mock.Anything,
+				"test-client",
+				"https://example.com",
+				mock.Anything,
+				mock.MatchedBy(func(claims map[string]interface{}) bool {
+					ouID, stamped := claims[constants.ClaimAccessTokenOUID]
+					if tt.ouID == "" {
+						return !stamped
+					}
+					return ouID == tt.ouID
+				}), mock.Anything, mock.Anything,
+			).Return(testRefreshToken, time.Now().Unix(), nil)
+
+			result, err := suite.builder.BuildRefreshToken(context.Background(), ctx)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), testRefreshToken, result.Token)
+			suite.mockJWTService.AssertExpectations(suite.T())
+		})
+	}
+}
+
 func (suite *TokenBuilderTestSuite) TestBuildAccessToken_CarriesAuthorizationDetails() {
 	details := json.RawMessage(`[{"type":"payment_initiation","id":"d1"}]`)
 	buildCtx := &AccessTokenBuildContext{

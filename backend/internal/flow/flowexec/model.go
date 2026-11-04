@@ -32,6 +32,7 @@ type frame struct {
 	forwardedData       map[string]interface{}
 	additionalData      map[string]string
 	resumeCallNodeID    string
+	signInBounded       bool
 }
 
 // EngineContext holds the overall context used by the flow engine during execution.
@@ -42,10 +43,13 @@ type EngineContext struct {
 	Context          context.Context
 	initiatorRequest *providers.InitiatorRequest
 
-	ExecutionID    string
-	FlowType       providers.FlowType
-	AppID          string
-	Verbose        bool
+	ExecutionID string
+	FlowType    providers.FlowType
+	AppID       string
+	Verbose     bool
+	// SignInBounded marks a flow whose sign-in is limited to an OU boundary. Set only by the flow
+	// execution service and persisted with the context.
+	SignInBounded  bool
 	UserInputs     map[string]string
 	RuntimeData    map[string]string
 	ForwardedData  map[string]interface{}
@@ -126,6 +130,7 @@ func (e *EngineContext) pushFrame(resumeCallNodeID string) {
 		forwardedData:       e.ForwardedData,
 		additionalData:      e.AdditionalData,
 		resumeCallNodeID:    resumeCallNodeID,
+		signInBounded:       e.SignInBounded,
 	}
 	e.frameStack = append(e.frameStack, f)
 }
@@ -141,6 +146,7 @@ func (e *EngineContext) popFrame() *frame {
 
 	e.Graph = top.graph
 	e.FlowType = top.flowType
+	e.SignInBounded = top.signInBounded
 	e.CurrentNode = top.currentNode
 	e.CurrentNodeResponse = top.currentNodeResponse
 	e.CurrentAction = top.currentAction
@@ -307,6 +313,7 @@ type FlowRequest struct {
 	Action         string            `json:"action"`
 	Inputs         map[string]string `json:"inputs"`
 	SessionData    []SessionData     `json:"sessionData,omitempty"`
+	OUID           string            `json:"ouId,omitempty"`
 }
 
 // FlowInitContext represents the context for initiating a new flow with runtime data
@@ -350,12 +357,14 @@ type serializedFrame struct {
 	CurrentSegmentID *string `json:"currentSegmentId,omitempty"`
 	RuntimeData      *string `json:"runtimeData,omitempty"`
 	ResumeCallNodeID string  `json:"resumeCallNodeId,omitempty"`
+	SignInBounded    bool    `json:"signInBounded,omitempty"`
 }
 
 // flowContextContent holds all flow state serialized into the CONTEXT JSON column.
 type flowContextContent struct {
 	AppID                 string  `json:"appId"`
 	Verbose               bool    `json:"verbose"`
+	SignInBounded         bool    `json:"signInBounded,omitempty"`
 	CurrentNodeID         *string `json:"currentNodeId,omitempty"`
 	CurrentAction         *string `json:"currentAction,omitempty"`
 	CurrentSegmentID      *string `json:"currentSegmentId,omitempty"`
@@ -573,6 +582,7 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context,
 		FlowType:              graph.GetType(),
 		AppID:                 content.AppID,
 		Verbose:               content.Verbose,
+		SignInBounded:         content.SignInBounded,
 		UserInputs:            userInputs,
 		RuntimeData:           runtimeData,
 		CurrentNode:           currentNode,
@@ -744,6 +754,7 @@ func (f *FlowContextDB) FromEngineContext(ctx EngineContext) error {
 	content := flowContextContent{
 		AppID:                 ctx.AppID,
 		Verbose:               ctx.Verbose,
+		SignInBounded:         ctx.SignInBounded,
 		CurrentNodeID:         currentNodeID,
 		CurrentAction:         currentAction,
 		CurrentSegmentID:      currentSegmentID,
@@ -827,6 +838,7 @@ func (f *FlowContextDB) deserializeFrameStack(ctx context.Context,
 			currentSegmentID: currentSegmentID,
 			runtimeData:      runtimeData,
 			resumeCallNodeID: sf.ResumeCallNodeID,
+			signInBounded:    sf.SignInBounded,
 		})
 	}
 
@@ -849,6 +861,7 @@ func (f *FlowContextDB) serializeFrameStack(frameStack []*frame) (*string, error
 		sf := serializedFrame{
 			GraphID:          f.graph.GetID(),
 			ResumeCallNodeID: f.resumeCallNodeID,
+			SignInBounded:    f.signInBounded,
 		}
 
 		if f.currentNode != nil {

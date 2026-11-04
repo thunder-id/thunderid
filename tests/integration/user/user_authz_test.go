@@ -39,6 +39,10 @@ import (
 type UserAuthzTestSuite struct {
 	suite.Suite
 
+	// Users here live outside the default OU, and a sign-in is bounded to its application's OU, so each
+	// signs in through an application in its own OU rather than the Console.
+	signIn testutils.OUSignInApps
+
 	// Admin-created OUs
 	userOU1ID string
 	userOU2ID string
@@ -70,9 +74,6 @@ const (
 	userMgrRoleName   = "User Admin (user-authz-test)"
 	entityTypeOU1Name = "authz-user-type-ou1"
 	entityTypeOU2Name = "authz-user-type-ou2"
-
-	userAuthzDevelopClientID    = "CONSOLE"
-	userAuthzDevelopRedirectURI = "https://localhost:8095/console"
 )
 
 func TestUserAuthzTestSuite(t *testing.T) {
@@ -190,16 +191,8 @@ func (ts *UserAuthzTestSuite) SetupSuite() {
 	ts.userMgrRoleID = roleID
 
 	// ---- 7. Obtain a scoped access token for the user-manager ----
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
-		userAuthzDevelopClientID,
-		userAuthzDevelopRedirectURI,
-		"system system:user system:usertype:view",
-		userMgrUsername,
-		userMgrPassword,
-		true,
-		"",
-		scopedRSIdentifier,
-	)
+	tokenResp, err := ts.signIn.ObtainAccessToken(ts.userOU1ID,
+		"system system:user system:usertype:view", userMgrUsername, userMgrPassword, scopedRSIdentifier)
 	ts.Require().NoError(err, "obtain user-manager token")
 	ts.Require().NotEmpty(tokenResp.AccessToken, "user-manager token must be non-empty")
 
@@ -211,6 +204,9 @@ func (ts *UserAuthzTestSuite) SetupSuite() {
 // ---------------------------------------------------------------------------
 
 func (ts *UserAuthzTestSuite) TearDownSuite() {
+	if err := ts.signIn.DeleteAll(); err != nil {
+		ts.T().Logf("teardown: delete sign-in applications: %v", err)
+	}
 	if ts.userMgrRoleID != "" {
 		if err := testutils.DeleteRole(ts.userMgrRoleID); err != nil {
 			ts.T().Logf("teardown: delete user-manager role: %v", err)

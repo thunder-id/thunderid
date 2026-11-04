@@ -42,7 +42,7 @@ type sessionStore interface {
 	DeleteSession(ctx context.Context, sessionID string) (bool, error)
 
 	// Record inserts the participant, or refreshes its LAST_ACTIVE_AT (preserving FIRST_JOINED_AT)
-	// when the application has already joined the session.
+	// when the application has already joined the session under the same organization unit.
 	Record(ctx context.Context, p Participant) error
 	// ListBySessionID returns the applications that have joined the session, oldest first.
 	ListBySessionID(ctx context.Context, sessionID string) ([]Participant, error)
@@ -53,6 +53,6 @@ type sessionStore interface {
 	DeleteBySessionID(ctx context.Context, sessionID string) error
 	// ListByAppID returns every participation of the application, across sessions, oldest first.
 	ListByAppID(ctx context.Context, appID string) ([]Participant, error)
-	// DeleteParticipant removes one application's participation in one session.
-	DeleteParticipant(ctx context.Context, sessionID, appID string) error
+	// DeleteParticipant removes one application's participation in one session under one organization unit.
+	DeleteParticipant(ctx context.Context, sessionID, appID, ouID string) error
 }
