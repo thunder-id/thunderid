@@ -8,8 +8,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/stretchr/testify/mock"
@@ -252,21 +250,6 @@ func (suite *OrganizationUnitServiceTestSuite) newServiceWithRoleResolver(
 	}
 }
 
-func (suite *OrganizationUnitServiceTestSuite) newServiceWithFlowResolver(
-	store *organizationUnitStoreInterfaceMock,
-	authzService *sysauthzmock.SystemAuthorizationServiceInterfaceMock,
-	flowResolver ouFlowResolver,
-) *organizationUnitService {
-	mtx := new(mockTransactioner)
-	mtx.On("Transact", mock.Anything, mock.Anything).Return(nil).Maybe()
-	return &organizationUnitService{
-		ouStore:       store,
-		authzService:  authzService,
-		transactioner: mtx,
-		flowResolver:  flowResolver,
-	}
-}
-
 type mockTransactioner struct {
 	mock.Mock
 }
@@ -423,15 +406,12 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_SetResolvers() {
 
 	userResolver := new(OUUserResolverMock)
 	groupResolver := new(OUGroupResolverMock)
-	flowResolver := newOuFlowResolverMock(suite.T())
 
 	service.SetOUUserResolver(userResolver)
 	service.SetOUGroupResolver(groupResolver)
-	service.SetOUFlowResolver(flowResolver)
 
 	suite.Require().Equal(userResolver, service.userResolver)
 	suite.Require().Equal(groupResolver, service.groupResolver)
-	suite.Require().Equal(flowResolver, service.flowResolver)
 }
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_CreateOrganizationUnit() {
@@ -633,26 +613,6 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_CreateOrganizationU
 			store.AssertExpectations(suite.T())
 		})
 	}
-}
-
-func (suite *OrganizationUnitServiceTestSuite) TestOUService_CreateOrganizationUnit_InvalidDefaultFlow() {
-	store := newOrganizationUnitStoreInterfaceMock(suite.T())
-	flowResolver := newOuFlowResolverMock(suite.T())
-	flowResolver.On("IsValidFlow", mock.Anything, "bad-auth-flow", providers.FlowTypeAuthentication).
-		Return(false, nil).Once()
-
-	service := suite.newServiceWithFlowResolver(store, newAllowAllAuthz(suite.T()), flowResolver)
-	result, err := service.CreateOrganizationUnit(context.Background(), OrganizationUnitRequestWithID{
-		Handle:     "finance",
-		Name:       "Finance",
-		AuthFlowID: "bad-auth-flow",
-	})
-
-	suite.Require().NotNil(err)
-	suite.Require().Equal(ErrorInvalidAuthFlowID, *err)
-	suite.Require().Equal(OrganizationUnit{}, result)
-	store.AssertNumberOfCalls(suite.T(), "CheckOrganizationUnitNameConflict", 0)
-	store.AssertNumberOfCalls(suite.T(), "CreateOrganizationUnit", 0)
 }
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit() {
@@ -1274,33 +1234,6 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationU
 	}
 }
 
-func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationUnit_InvalidDefaultFlow() {
-	store := newOrganizationUnitStoreInterfaceMock(suite.T())
-	existing := OrganizationUnit{ID: "ou-1", Handle: "root", Name: "Root"}
-	store.On("GetOrganizationUnit", mock.Anything, "ou-1").
-		Return(existing, nil).
-		Once()
-	store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
-		Return(false).
-		Once()
-
-	flowResolver := newOuFlowResolverMock(suite.T())
-	flowResolver.On("IsValidFlow", mock.Anything, "bad-signout-flow", providers.FlowTypeSignOut).
-		Return(false, nil).Once()
-
-	service := suite.newServiceWithFlowResolver(store, newAllowAllAuthz(suite.T()), flowResolver)
-	result, err := service.UpdateOrganizationUnit(context.Background(), "ou-1", OrganizationUnitRequestWithID{
-		Handle:        "root",
-		Name:          "Root",
-		SignOutFlowID: "bad-signout-flow",
-	})
-
-	suite.Require().NotNil(err)
-	suite.Require().Equal(ErrorInvalidSignOutFlowID, *err)
-	suite.Require().Equal(OrganizationUnit{}, result)
-	store.AssertNumberOfCalls(suite.T(), "UpdateOrganizationUnit", 0)
-}
-
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationUnitByPath() {
 	request := OrganizationUnitRequestWithID{Handle: "root", Name: "Root"}
 
@@ -1786,111 +1719,6 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_validateOUHandle() 
 	suite.Run("valid handle", func() {
 		err := service.validateOUHandle("finance")
 		suite.Require().Nil(err)
-	})
-}
-
-func (suite *OrganizationUnitServiceTestSuite) TestOUService_validateDefaultFlows() {
-	suite.Run("no flow resolver configured skips validation", func() {
-		service := &organizationUnitService{}
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{
-			AuthFlowID: "auth-flow-1",
-		})
-		suite.Require().Nil(err)
-	})
-
-	suite.Run("empty flow IDs are not validated", func() {
-		flowResolver := newOuFlowResolverMock(suite.T())
-		service := &organizationUnitService{flowResolver: flowResolver}
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{})
-		suite.Require().Nil(err)
-		flowResolver.AssertNumberOfCalls(suite.T(), "IsValidFlow", 0)
-	})
-
-	suite.Run("all valid flows", func() {
-		flowResolver := newOuFlowResolverMock(suite.T())
-		flowResolver.On("IsValidFlow", mock.Anything, "auth-flow-1", providers.FlowTypeAuthentication).
-			Return(true, nil).Once()
-		flowResolver.On("IsValidFlow", mock.Anything, "reg-flow-1", providers.FlowTypeRegistration).
-			Return(true, nil).Once()
-		flowResolver.On("IsValidFlow", mock.Anything, "recovery-flow-1", providers.FlowTypeRecovery).
-			Return(true, nil).Once()
-		flowResolver.On("IsValidFlow", mock.Anything, "signout-flow-1", providers.FlowTypeSignOut).
-			Return(true, nil).Once()
-		service := &organizationUnitService{flowResolver: flowResolver}
-
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{
-			AuthFlowID:         "auth-flow-1",
-			RegistrationFlowID: "reg-flow-1",
-			RecoveryFlowID:     "recovery-flow-1",
-			SignOutFlowID:      "signout-flow-1",
-		})
-
-		suite.Require().Nil(err)
-	})
-
-	suite.Run("invalid auth flow", func() {
-		flowResolver := newOuFlowResolverMock(suite.T())
-		flowResolver.On("IsValidFlow", mock.Anything, "bad-flow", providers.FlowTypeAuthentication).
-			Return(false, nil).Once()
-		service := &organizationUnitService{flowResolver: flowResolver}
-
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{
-			AuthFlowID: "bad-flow",
-		})
-
-		suite.Require().Equal(ErrorInvalidAuthFlowID, *err)
-	})
-
-	suite.Run("invalid registration flow", func() {
-		flowResolver := newOuFlowResolverMock(suite.T())
-		flowResolver.On("IsValidFlow", mock.Anything, "bad-flow", providers.FlowTypeRegistration).
-			Return(false, nil).Once()
-		service := &organizationUnitService{flowResolver: flowResolver}
-
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{
-			RegistrationFlowID: "bad-flow",
-		})
-
-		suite.Require().Equal(ErrorInvalidRegistrationFlowID, *err)
-	})
-
-	suite.Run("invalid recovery flow", func() {
-		flowResolver := newOuFlowResolverMock(suite.T())
-		flowResolver.On("IsValidFlow", mock.Anything, "bad-flow", providers.FlowTypeRecovery).
-			Return(false, nil).Once()
-		service := &organizationUnitService{flowResolver: flowResolver}
-
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{
-			RecoveryFlowID: "bad-flow",
-		})
-
-		suite.Require().Equal(ErrorInvalidRecoveryFlowID, *err)
-	})
-
-	suite.Run("invalid signout flow", func() {
-		flowResolver := newOuFlowResolverMock(suite.T())
-		flowResolver.On("IsValidFlow", mock.Anything, "bad-flow", providers.FlowTypeSignOut).
-			Return(false, nil).Once()
-		service := &organizationUnitService{flowResolver: flowResolver}
-
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{
-			SignOutFlowID: "bad-flow",
-		})
-
-		suite.Require().Equal(ErrorInvalidSignOutFlowID, *err)
-	})
-
-	suite.Run("flow resolver server error propagates", func() {
-		flowResolver := newOuFlowResolverMock(suite.T())
-		flowResolver.On("IsValidFlow", mock.Anything, "auth-flow-1", providers.FlowTypeAuthentication).
-			Return(false, &tidcommon.InternalServerError).Once()
-		service := &organizationUnitService{flowResolver: flowResolver}
-
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{
-			AuthFlowID: "auth-flow-1",
-		})
-
-		suite.Require().Equal(tidcommon.InternalServerError, *err)
 	})
 }
 
