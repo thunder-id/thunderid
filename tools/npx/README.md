@@ -48,6 +48,13 @@ npx thunderid --product-version https://releases.example.com/releases.json
 npx thunderid --product-version https://releases.example.com/releases.json --product-version 1.1.0
 ```
 
+To try a prerelease such as a milestone, use the `next` channel. It installs the newest release,
+prereleases included, where `npx thunderid` installs the newest stable one:
+
+```bash
+npx thunderid@next
+```
+
 The same value can be given as `THUNDERID_PRODUCT_VERSION` for scripted runs. Flags win over the
 environment.
 

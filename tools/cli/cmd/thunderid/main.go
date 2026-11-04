@@ -20,7 +20,16 @@ import (
 
 // version is the CLI version. It is injected at build time via
 // -ldflags "-X main.version=<v>" and keeps the placeholder below for local builds.
-var version = "0.0.0-semantically-released"
+var version = devVersion
+
+// devVersion is the version a local build reports.
+const devVersion = "0.0.0-semantically-released"
+
+// isPrereleaseBuild reports whether v is a prerelease version, which is what the next channel
+// publishes (1.1.0-next.0). A local build's placeholder is not one, so it tracks stable releases.
+func isPrereleaseBuild(v string) bool {
+	return v != devVersion && strings.Contains(v, "-")
+}
 
 func main() {
 	args := os.Args[1:]
@@ -38,6 +47,9 @@ func main() {
 		ui.Fatal(err.Error())
 		os.Exit(1)
 	}
+	// A CLI published on the next channel carries a prerelease version, and installs the newest
+	// release, prereleases included. Every other CLI installs the newest stable release.
+	release.Default.Prereleases = isPrereleaseBuild(version)
 
 	// --help can follow a flag, so it is matched anywhere rather than only in first position.
 	if hasFlag(args, "--help", "-h") {

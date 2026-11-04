@@ -4,6 +4,7 @@
 package release
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -283,4 +284,63 @@ func TestFetchReleasesData_NoFallbackWhenDisabled(t *testing.T) {
 	_, err := fetchReleasesDataFrom("http://127.0.0.1:1/releases.json", "")
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "fallback", "an empty fallback must not be attempted")
+}
+
+// manifestWithPrerelease mirrors releases.json once a milestone is out: the milestone is the newest
+// release, and the latest release is still the newest stable one.
+func manifestWithPrerelease() *releasesData {
+	stable := releaseEntry{TagName: "v1.1.0", IsLatest: true, PublishedAt: "2026-11-02T09:39:35Z"}
+	return &releasesData{
+		LatestRelease: stable,
+		Releases: []releaseEntry{
+			stable,
+			{TagName: "v2.0.0-m1", PublishedAt: "2026-11-04T12:00:00Z"},
+			{TagName: "v1.0.2", PublishedAt: "2026-10-27T07:08:35Z"},
+		},
+	}
+}
+
+func serveManifest(t *testing.T, data *releasesData) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		require.NoError(t, json.NewEncoder(w).Encode(data))
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+func TestLatestVersion_StableChannelSkipsPrereleases(t *testing.T) {
+	c := &Client{ManifestURL: serveManifest(t, manifestWithPrerelease())}
+	got, err := c.LatestVersion()
+	require.NoError(t, err)
+	assert.Equal(t, "1.1.0", got)
+}
+
+func TestLatestVersion_NextChannelTakesTheNewestRelease(t *testing.T) {
+	c := &Client{ManifestURL: serveManifest(t, manifestWithPrerelease()), Prereleases: true}
+	got, err := c.LatestVersion()
+	require.NoError(t, err)
+	assert.Equal(t, "2.0.0-m1", got)
+}
+
+// Once the final release ships after its milestones, the next channel moves to it too.
+func TestLatestVersion_NextChannelTakesAStableReleaseNewerThanThePrereleases(t *testing.T) {
+	data := manifestWithPrerelease()
+	final := releaseEntry{TagName: "v2.0.0", IsLatest: true, PublishedAt: "2026-12-01T00:00:00Z"}
+	data.LatestRelease = final
+	data.Releases = append([]releaseEntry{final}, data.Releases...)
+
+	c := &Client{ManifestURL: serveManifest(t, data), Prereleases: true}
+	got, err := c.LatestVersion()
+	require.NoError(t, err)
+	assert.Equal(t, "2.0.0", got)
+}
+
+// The GitHub fallback carries no publish dates, so the next channel reads its latest release.
+func TestLatestVersion_NextChannelWithoutDatesUsesTheLatestRelease(t *testing.T) {
+	data := &releasesData{LatestRelease: releaseEntry{TagName: "v1.1.0"}}
+	c := &Client{ManifestURL: serveManifest(t, data), Prereleases: true}
+	got, err := c.LatestVersion()
+	require.NoError(t, err)
+	assert.Equal(t, "1.1.0", got)
 }

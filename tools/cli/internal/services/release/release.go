@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 )
@@ -36,9 +37,10 @@ type releaseAsset struct {
 }
 
 type releaseEntry struct {
-	TagName  string         `json:"tagName"`
-	IsLatest bool           `json:"isLatest"`
-	Assets   []releaseAsset `json:"assets"`
+	TagName     string         `json:"tagName"`
+	IsLatest    bool           `json:"isLatest"`
+	PublishedAt string         `json:"publishedAt"`
+	Assets      []releaseAsset `json:"assets"`
 }
 
 type releasesData struct {
@@ -124,16 +126,42 @@ func FetchLatestVersion() (string, error) { return Default.LatestVersion() }
 
 // LatestVersion returns the newest version the manifest advertises, without a leading "v".
 // It ignores any pinned version: callers use it to tell the operator that an upgrade exists.
+// The manifest's latest release is its newest stable one; a client that takes prereleases reads
+// the newest release of any kind instead.
 func (c *Client) LatestVersion() (string, error) {
 	data, err := c.fetchReleasesData()
 	if err != nil {
 		return "", err
 	}
 	tag := data.LatestRelease.TagName
+	if c.Prereleases {
+		if newest := newestRelease(data); newest != "" {
+			tag = newest
+		}
+	}
 	if tag == "" {
 		return "", fmt.Errorf("tagName missing from releases data")
 	}
 	return strings.TrimPrefix(tag, "v"), nil
+}
+
+// newestRelease returns the tag of the most recently published release in data, prerelease or
+// not, or "" when no entry carries a publish date. The GitHub fallback carries none, and it only
+// ever reports the latest stable release, so a prerelease channel reads stable releases while the
+// manifest is unreachable.
+func newestRelease(data *releasesData) string {
+	var tag string
+	var newest time.Time
+	for _, r := range append([]releaseEntry{data.LatestRelease}, data.Releases...) {
+		published, err := time.Parse(time.RFC3339, r.PublishedAt)
+		if err != nil || r.TagName == "" {
+			continue
+		}
+		if tag == "" || published.After(newest) {
+			tag, newest = r.TagName, published
+		}
+	}
+	return tag
 }
 
 // ProgressFunc is called during download/extract operations.

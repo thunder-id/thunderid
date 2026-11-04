@@ -89,3 +89,18 @@ func TestPrintUsageListsVersionFlag(t *testing.T) {
 		t.Errorf("printUsage() output does not list the --version flag:\n%s", usage)
 	}
 }
+
+// Only a CLI published on the next channel installs prereleases.
+func TestIsPrereleaseBuild(t *testing.T) {
+	for v, want := range map[string]bool{
+		"1.0.2":        false,
+		"1.1.0":        false,
+		"1.1.0-next.0": true,
+		"2.0.0-next.3": true,
+		devVersion:     false,
+	} {
+		if got := isPrereleaseBuild(v); got != want {
+			t.Errorf("isPrereleaseBuild(%q) = %v, want %v", v, got, want)
+		}
+	}
+}

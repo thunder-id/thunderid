@@ -28,6 +28,9 @@ type Client struct {
 	FallbackURL string
 	// PinnedVersion is the release to install, without a leading "v". Empty means the latest.
 	PinnedVersion string
+	// Prereleases makes the newest release the latest even when it is a prerelease. A CLI
+	// published on the next channel sets it, so `npx thunderid@next` installs milestones.
+	Prereleases bool
 }
 
 // Default is the client the package-level helpers use. main replaces it once the command line
