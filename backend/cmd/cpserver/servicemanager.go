@@ -252,6 +252,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	groupService, ouGroupResolver, groupExporter, err := group.Initialize(
 		mux, dbprovider.GetDBProvider(), ouService, entityService, entityTypeService, ouAuthzService,
+		sharingService,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize GroupService")
 	exporters = append(exporters, groupExporter)
@@ -269,6 +270,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	ouService.SetOUUserResolver(ouUserResolver)
 	ouService.SetOUGroupResolver(ouGroupResolver)
 	ouService.SetOURoleResolver(ouRoleResolver)
+	groupService.SetRoleAssignmentResolver(roleAssignmentService)
 
 	// Two-phase initialization: user shares mandate roles through the role assignment service, which is built after
 	// users. The declared shares' mandates wait for it.

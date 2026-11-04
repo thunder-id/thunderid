@@ -1986,6 +1986,78 @@ func (_c *roleStoreInterfaceMock_GetUserRoles_Call) RunAndReturn(run func(ctx co
 	return _c
 }
 
+// HasAssigneeAssignments provides a mock function for the type roleStoreInterfaceMock
+func (_mock *roleStoreInterfaceMock) HasAssigneeAssignments(ctx context.Context, assigneeType string, assigneeID string) (bool, error) {
+	ret := _mock.Called(ctx, assigneeType, assigneeID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for HasAssigneeAssignments")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (bool, error)); ok {
+		return returnFunc(ctx, assigneeType, assigneeID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) bool); ok {
+		r0 = returnFunc(ctx, assigneeType, assigneeID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, assigneeType, assigneeID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// roleStoreInterfaceMock_HasAssigneeAssignments_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'HasAssigneeAssignments'
+type roleStoreInterfaceMock_HasAssigneeAssignments_Call struct {
+	*mock.Call
+}
+
+// HasAssigneeAssignments is a helper method to define mock.On call
+//   - ctx context.Context
+//   - assigneeType string
+//   - assigneeID string
+func (_e *roleStoreInterfaceMock_Expecter) HasAssigneeAssignments(ctx any, assigneeType any, assigneeID any) *roleStoreInterfaceMock_HasAssigneeAssignments_Call {
+	return &roleStoreInterfaceMock_HasAssigneeAssignments_Call{Call: _e.mock.On("HasAssigneeAssignments", ctx, assigneeType, assigneeID)}
+}
+
+func (_c *roleStoreInterfaceMock_HasAssigneeAssignments_Call) Run(run func(ctx context.Context, assigneeType string, assigneeID string)) *roleStoreInterfaceMock_HasAssigneeAssignments_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *roleStoreInterfaceMock_HasAssigneeAssignments_Call) Return(b bool, err error) *roleStoreInterfaceMock_HasAssigneeAssignments_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *roleStoreInterfaceMock_HasAssigneeAssignments_Call) RunAndReturn(run func(ctx context.Context, assigneeType string, assigneeID string) (bool, error)) *roleStoreInterfaceMock_HasAssigneeAssignments_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsRoleDeclarative provides a mock function for the type roleStoreInterfaceMock
 func (_mock *roleStoreInterfaceMock) IsRoleDeclarative(ctx context.Context, roleID string) (bool, error) {
 	ret := _mock.Called(ctx, roleID)
