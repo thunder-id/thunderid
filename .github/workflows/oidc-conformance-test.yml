@@ -101,7 +101,7 @@ jobs:
           make build_frontend
           make build_backend OS=$(go env GOOS) ARCH=$(go env GOARCH)
 
-          DIST_PATH=$(find target/dist -name "${PRODUCT_NAME_LOWER}-*.zip" | head -1)
+          DIST_PATH=$(find target/dist -name "${PRODUCT_NAME_LOWER}-dp-*.zip" | head -1)
           if [ -z "$DIST_PATH" ]; then
             echo "ERROR: no distribution zip produced under target/dist"
             ls -la target/dist || true

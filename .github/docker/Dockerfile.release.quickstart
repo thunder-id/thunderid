@@ -16,7 +16,7 @@ RUN apk add --no-cache unzip
 
 WORKDIR /dist
 
-COPY thunderid-quickstart-*-linux-*.zip ./
+COPY thunderid-[0-9]*-linux-*.zip ./
 
 RUN set -eux; \
     case "$TARGETARCH" in \
@@ -24,10 +24,10 @@ RUN set -eux; \
       arm64) archive_arch=arm64 ;; \
       *) echo "unsupported target architecture: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
-    archive="$(ls thunderid-quickstart-*-linux-"$archive_arch".zip)"; \
+    archive="$(ls thunderid-[0-9]*-linux-"$archive_arch".zip)"; \
     unzip -q "$archive" -d /extracted; \
     mkdir -p /opt/thunderid-quickstart; \
-    cp -r /extracted/thunderid-quickstart-*/. /opt/thunderid-quickstart/
+    cp -r /extracted/thunderid-[0-9]*/. /opt/thunderid-quickstart/
 
 # Listen on every interface so the published ports reach the planes. The pack's own URLs, and the
 # certificate it generates, stay on localhost, which is where the published ports are reached from.

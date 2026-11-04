@@ -42,7 +42,7 @@ Run from the repository root.
 
 To rebuild after a code change, repeat the step that covers it. After a frontend-only change, run step 1 and then `./build.sh package_quickstart`, which repackages without rebuilding the Go binaries. That only works once `build_quickstart` has built them before; on a clean tree run `build_quickstart`. `make build_quickstart` does the same as the second command.
 
-The result is `target/dist/thunderid-quickstart-<version>-<os>-<arch>.zip`.
+The result is `target/dist/thunderid-<version>-<os>-<arch>.zip`.
 
 ### What packaging does
 
@@ -73,13 +73,13 @@ The result is `target/dist/thunderid-quickstart-<version>-<os>-<arch>.zip`.
 
 ```bash
 cd target/dist
-unzip thunderid-quickstart-*.zip
-cd thunderid-quickstart-*
+unzip thunderid-[0-9]*.zip
+cd thunderid-[0-9]*
 ./setup.sh   # once
 ./start.sh
 ```
 
-On Windows, build with `.\build.ps1 build_quickstart`, extract `thunderid-quickstart-*-win-x64.zip`, and run the PowerShell equivalents from the extracted folder:
+On Windows, build with `.\build.ps1 build_quickstart`, extract `thunderid-[0-9]*-win-x64.zip`, and run the PowerShell equivalents from the extracted folder:
 
 ```powershell
 .\setup.ps1   # once

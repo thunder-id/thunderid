@@ -14,7 +14,7 @@ RUN apk add --no-cache unzip
 
 WORKDIR /dist
 
-COPY thunderid-*-linux-*.zip ./
+COPY thunderid-dp-*-linux-*.zip ./
 
 RUN set -eux; \
     case "$TARGETARCH" in \
@@ -22,10 +22,10 @@ RUN set -eux; \
       arm64) archive_arch=arm64 ;; \
       *) echo "unsupported target architecture: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
-    archive="$(ls thunderid-*-linux-"$archive_arch".zip)"; \
+    archive="$(ls thunderid-dp-*-linux-"$archive_arch".zip)"; \
     unzip -q "$archive" -d /extracted; \
     mkdir -p /opt/thunderid; \
-    cp -r /extracted/thunderid-*/. /opt/thunderid/
+    cp -r /extracted/thunderid-dp-*/. /opt/thunderid/
 
 # ./Dockerfile edits these before compiling; here the archive is already packaged.
 RUN sed -i 's/hostname: "localhost"/hostname: "0.0.0.0"/' /opt/thunderid/deployment.yaml && \

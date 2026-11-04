@@ -278,15 +278,15 @@ func findMatchingZipFile(zipFilePattern string) ([]string, error) {
 		return nil, err
 	}
 
-	// Filter the files to only include those that have a version number or 'v' after 'thunderid-'
+	// Filter the files to only include those that have a version number or 'v' after 'thunderid-dp-'
 	var matchingFiles []string
 	for _, file := range files {
 		baseName := filepath.Base(file)
 		parts := strings.Split(baseName, "-")
-		if len(parts) >= 3 {
-			// Check if the second part starts with a number or 'v'
-			secondPart := parts[1]
-			if len(secondPart) > 0 && (secondPart[0] == 'v' || (secondPart[0] >= '0' && secondPart[0] <= '9')) {
+		if len(parts) >= 4 {
+			// Check if the third part starts with a number or 'v'
+			thirdPart := parts[2]
+			if len(thirdPart) > 0 && (thirdPart[0] == 'v' || (thirdPart[0] >= '0' && thirdPart[0] <= '9')) {
 				matchingFiles = append(matchingFiles, file)
 			}
 		}
@@ -316,10 +316,10 @@ func findMatchingZipFile(zipFilePattern string) ([]string, error) {
 
 func extractVersionFromZipName(zipName string) string {
 	parts := strings.Split(zipName, "-")
-	if len(parts) < 3 {
+	if len(parts) < 4 {
 		return ""
 	}
-	return strings.TrimPrefix(parts[1], "v")
+	return strings.TrimPrefix(parts[2], "v")
 }
 
 // parseVersionSegment splits a segment like "0-rc1" into its numeric value and optional
@@ -1342,7 +1342,7 @@ func RunSetupScript() error {
 func GetZipFilePattern() string {
 	goos, goarch := detectOSAndArchitecture()
 	// Use a more general pattern, the filtering will happen in findMatchingZipFile
-	return fmt.Sprintf("thunderid-*-%s-%s.zip", goos, goarch)
+	return fmt.Sprintf("thunderid-dp-*-%s-%s.zip", goos, goarch)
 }
 
 // GetDBType returns the configured database type ("sqlite" or "postgres").
