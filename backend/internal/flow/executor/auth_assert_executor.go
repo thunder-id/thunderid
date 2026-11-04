@@ -349,7 +349,8 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *providers.NodeContext,
 
 	// Bind the assertion to the originating auth request so the corresponding callback can verify this assertion
 	// authorizes the specific request it accompanies.
-	if authReqID, exists := ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID]; exists && authReqID != "" {
+	if authReqID := common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
+		common.RuntimeKeyAuthorizationRequestID); authReqID != "" {
 		jwtClaims[oauth2const.ClaimAuthorizationRequestID] = authReqID
 	}
 
@@ -523,6 +524,9 @@ func (a *authAssertExecutor) getRequiredUserAttributes(ctx *providers.NodeContex
 	// If present, we should apply attribute filtering based on these attributes
 	_, essentialExists := ctx.RuntimeData[common.RuntimeKeyRequiredEssentialAttributes]
 	_, optionalExists := ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes]
+	if !optionalExists {
+		_, optionalExists = ctx.SharedRuntimeData[common.RuntimeKeyRequiredOptionalAttributes]
+	}
 
 	if essentialExists || optionalExists {
 		userAttributes = []string{}
@@ -536,8 +540,8 @@ func (a *authAssertExecutor) getRequiredUserAttributes(ctx *providers.NodeContex
 		}
 		if optionalExists {
 			logger.Debug(ctx.Context, "Adding required optional attributes to user attributes list")
-			userAttributes = append(userAttributes,
-				strings.Fields(ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes])...)
+			userAttributes = append(userAttributes, strings.Fields(common.RuntimeDataOrShared(ctx.RuntimeData,
+				ctx.SharedRuntimeData, common.RuntimeKeyRequiredOptionalAttributes))...)
 		}
 
 		return userAttributes

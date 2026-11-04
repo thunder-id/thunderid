@@ -190,7 +190,8 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 // layer seeds it in runtime data, and a direct /flow/execute request (which does not go through the
 // authorization endpoint) may supply it as an input.
 func (a *authorizationExecutor) resolveResourceServerID(ctx *providers.NodeContext) string {
-	identifier := ctx.RuntimeData[common.RuntimeKeyResourceServerIdentifier]
+	identifier := common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
+		common.RuntimeKeyResourceServerIdentifier)
 	if identifier == "" {
 		identifier = ctx.UserInputs[common.RuntimeKeyResourceServerIdentifier]
 	}
@@ -211,7 +212,7 @@ func (a *authorizationExecutor) resolveResourceServerID(ctx *providers.NodeConte
 
 // extractRequestedPermissions extracts requested permissions from the context.
 func extractRequestedPermissions(ctx *providers.NodeContext) []string {
-	requestedPermissions := ctx.RuntimeData[requestedPermissionsKey]
+	requestedPermissions := common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData, requestedPermissionsKey)
 	if requestedPermissions != "" {
 		return utils.ParseStringArray(requestedPermissions, " ")
 	}

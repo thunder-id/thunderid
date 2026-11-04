@@ -714,6 +714,7 @@ func CreateApplication(app Application) (string, error) {
 		"isRegistrationFlowEnabled": app.IsRegistrationFlowEnabled,
 		"isRecoveryFlowEnabled":     app.IsRecoveryFlowEnabled,
 		"authFlowId":                app.AuthFlowID,
+		"deviceGrantFlowId":         app.DeviceGrantFlowID,
 		"registrationFlowId":        app.RegistrationFlowID,
 		"recoveryFlowId":            app.RecoveryFlowID,
 	}

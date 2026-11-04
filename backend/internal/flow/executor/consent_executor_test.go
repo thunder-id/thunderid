@@ -954,6 +954,34 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_FailOnDeny_UserDeni
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
+func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_DeviceGrantDenialFailsWhenNodeSettingEnabled() {
+	decisionsJSON, err := json.Marshal(providers.ConsentDecisions{
+		Approved: false,
+		Reason:   providers.ConsentDecisionReasonUserDenied,
+	})
+	assert.NoError(suite.T(), err)
+	ctx := buildConsentNodeContext()
+	ctx.UserInputs[userInputConsentDecisions] = string(decisionsJSON)
+	ctx.RuntimeData[common.RuntimeKeyCallbackType] = string(providers.GrantTypeDeviceCode)
+	ctx.NodeProperties[propertyKeyConsentFailOnDeny] = true
+	suite.setupDefaultAuthnProviderMocks()
+	suite.executor.Executor.(*coremock.ExecutorInterfaceMock).
+		On("ValidatePrerequisites", ctx, mock.AnythingOfType("*providers.ExecutorResponse"), mock.Anything).Return(true)
+	suite.executor.Executor.(*coremock.ExecutorInterfaceMock).
+		On("HasRequiredInputs", ctx, mock.AnythingOfType("*providers.ExecutorResponse")).Return(true)
+	suite.mockConsentEnforcer.On("RecordConsent", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(&providers.Consent{ID: "device-denial"}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrConsentDenied.Code, resp.Error.Code)
+	suite.mockConsentEnforcer.AssertCalled(suite.T(), "RecordConsent", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_FailOnDeny_UserApprovedWithOptionalToggledOff() {
 	decisions := providers.ConsentDecisions{
 		Approved: true,

@@ -190,7 +190,7 @@ func (e *flowGraphExporter) ViewResource(_ context.Context, document *yaml.Node)
 
 // loadDeclarativeResources loads immutable flow graph resources from files.
 func loadDeclarativeResources(
-	flowStore flowStoreInterface, flowValidator FlowValidatorInterface, ouSvc ouProvider,
+	flowStore, referenceStore flowStoreInterface, validator FlowValidatorInterface, ouSvc ouProvider,
 ) error {
 	// Type assert to access Storer interface for resource loading
 	fileBasedStore, ok := flowStore.(*fileBasedStore)
@@ -202,7 +202,7 @@ func loadDeclarativeResources(
 		ResourceType:  "Flow",
 		DirectoryName: "flows",
 		Parser:        parseToCompleteFlowDefinition,
-		Validator:     validateFlowGraphWrapper(flowValidator, ouSvc),
+		Validator:     validateFlowGraphWrapper(validator, ouSvc),
 		IDExtractor: func(data interface{}) string {
 			flow, ok := data.(*providers.CompleteFlowDefinition)
 			if !ok || flow == nil {
@@ -215,6 +215,26 @@ func loadDeclarativeResources(
 	loader := declarativeresource.NewResourceLoader(resourceConfig, fileBasedStore)
 	if err := loader.LoadResources(); err != nil {
 		return fmt.Errorf("failed to load flow graph resources: %w", err)
+	}
+
+	deviceGrantValidator, ok := validator.(*flowValidator)
+	if !ok {
+		return nil
+	}
+	deviceGrantValidator.flowStore = referenceStore
+	flows, err := fileBasedStore.ListActiveFlowsWithNodes(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to validate declarative flow references: %w", err)
+	}
+	for _, flow := range flows {
+		if flow.FlowType != providers.FlowTypeDeviceGrant {
+			continue
+		}
+		if svcErr := deviceGrantValidator.validateDeviceGrantCallTargetTypes(
+			context.Background(), flow.Nodes); svcErr != nil {
+			return fmt.Errorf("validation failed for declarative Device Grant flow %q: %s - %s",
+				flow.ID, svcErr.Code, svcErr.Error)
+		}
 	}
 
 	return nil

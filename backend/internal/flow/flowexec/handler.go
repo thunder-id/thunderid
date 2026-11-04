@@ -98,11 +98,7 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	}
 
 	if flowErr != nil {
-		errorAssertion := ""
-		if flowStep != nil {
-			errorAssertion = flowStep.ErrorAssertion
-		}
-		handleFlowError(r.Context(), w, flowErr, errorAssertion)
+		handleFlowError(r.Context(), w, flowErr, flowStep)
 		return
 	}
 
@@ -152,12 +148,13 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 // OAuth callback so the failure reaches the waiting authorization request.
 type flowErrorResponse struct {
 	apierror.ErrorResponse
-	ErrorAssertion string `json:"errorAssertion,omitempty"`
+	ErrorAssertion string    `json:"errorAssertion,omitempty"`
+	Data           *FlowData `json:"data,omitempty"`
 }
 
 // handleFlowError handles errors that occur during flow execution as an API error response.
 func handleFlowError(ctx context.Context, w http.ResponseWriter, flowErr *tidcommon.ServiceError,
-	errorAssertion string) {
+	flowStep *FlowStep) {
 	errResp := apierror.ErrorResponse{
 		Code:        flowErr.Code,
 		Message:     flowErr.Error,
@@ -179,9 +176,16 @@ func handleFlowError(ctx context.Context, w http.ResponseWriter, flowErr *tidcom
 		}
 	}
 
-	if errorAssertion != "" {
+	if flowStep != nil && flowStep.ErrorAssertion != "" {
+		response := flowErrorResponse{
+			ErrorResponse:  errResp,
+			ErrorAssertion: flowStep.ErrorAssertion,
+		}
+		if len(flowStep.Data.AdditionalData) > 0 {
+			response.Data = &flowStep.Data
+		}
 		sysutils.WriteSuccessResponse(ctx, w, statusCode,
-			flowErrorResponse{ErrorResponse: errResp, ErrorAssertion: errorAssertion})
+			response)
 		return
 	}
 

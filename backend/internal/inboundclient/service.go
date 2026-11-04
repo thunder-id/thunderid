@@ -160,7 +160,7 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 	if client.ID != "" && s.store.IsDeclarative(ctx, client.ID) {
 		return ErrCannotModifyDeclarative
 	}
-	if err := s.resolveFlowDefaults(ctx, client); err != nil {
+	if err := s.resolveFlowDefaults(ctx, client, oauthProfile); err != nil {
 		return err
 	}
 	if err := s.reconcileReferencedFlows(ctx, client); err != nil {
@@ -254,7 +254,7 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 	if s.store.IsDeclarative(ctx, client.ID) {
 		return ErrCannotModifyDeclarative
 	}
-	if err := s.resolveFlowDefaults(ctx, client); err != nil {
+	if err := s.resolveFlowDefaults(ctx, client, oauthProfile); err != nil {
 		return err
 	}
 	if err := s.reconcileReferencedFlows(ctx, client); err != nil {
@@ -327,7 +327,7 @@ func (s *inboundClientService) Validate(ctx context.Context, client *inboundmode
 	if client == nil {
 		return nil
 	}
-	if err := s.resolveFlowDefaults(ctx, client); err != nil {
+	if err := s.resolveFlowDefaults(ctx, client, oauthProfile); err != nil {
 		return err
 	}
 	if fkErr := s.validateFKs(ctx, client); fkErr != nil {
@@ -401,6 +401,13 @@ func (s *inboundClientService) ResolveInboundAuthProfileHandles(
 			return ErrFKInvalidAuthFlow
 		}
 		profile.AuthFlowID = flow.ID
+	}
+	if profile.DeviceGrantFlowID == "" && profile.DeviceGrantFlowHandle != "" {
+		flow, svcErr := s.flowMgt.GetFlowByHandle(ctx, profile.DeviceGrantFlowHandle, providers.FlowTypeDeviceGrant)
+		if svcErr != nil {
+			return ErrFKInvalidDeviceGrantFlow
+		}
+		profile.DeviceGrantFlowID = flow.ID
 	}
 	if profile.RegistrationFlowID == "" && profile.RegistrationFlowHandle != "" {
 		flow, svcErr := s.flowMgt.GetFlowByHandle(ctx, profile.RegistrationFlowHandle, providers.FlowTypeRegistration)
@@ -714,11 +721,11 @@ func BuildOAuthClient(
 	return client
 }
 
-// resolveFlowDefaults fills AuthFlowID, RegistrationFlowID, RecoveryFlowID, and SignOutFlowID
-// using a uniform chain: explicit override → OU default → server default (only auth has a
-// server-level default configured; registration/recovery/signout server defaults are intentionally
-// left empty to prevent CALL-node mismatches across independently configured flows).
-func (s *inboundClientService) resolveFlowDefaults(ctx context.Context, c *inboundmodel.InboundClient) error {
+// resolveFlowDefaults fills the configured inbound flow IDs. Authentication may use its configured
+// defaults. Device Grant requires an explicit flow assignment when the OAuth profile enables it.
+func (s *inboundClientService) resolveFlowDefaults(
+	ctx context.Context, c *inboundmodel.InboundClient, oauthProfile *providers.OAuthProfile,
+) error {
 	if c == nil {
 		return nil
 	}
@@ -731,6 +738,12 @@ func (s *inboundClientService) resolveFlowDefaults(ctx context.Context, c *inbou
 	}
 	if !c.IsRecoveryFlowEnabled {
 		c.RecoveryFlowID = ""
+	}
+	deviceGrantEnabled := oauthProfileAllowsDeviceGrant(oauthProfile)
+	if !deviceGrantEnabled {
+		c.DeviceGrantFlowID = ""
+	} else if c.DeviceGrantFlowID == "" {
+		return ErrFKDeviceGrantFlowRequired
 	}
 
 	if s.flowMgt == nil {
@@ -797,8 +810,19 @@ func (s *inboundClientService) resolveFlowDefaults(ctx context.Context, c *inbou
 		return err
 	}
 	c.SignOutFlowID = signOutID
-
 	return nil
+}
+
+func oauthProfileAllowsDeviceGrant(profile *providers.OAuthProfile) bool {
+	if profile == nil {
+		return false
+	}
+	for _, grantType := range profile.GrantTypes {
+		if grantType == string(providers.GrantTypeDeviceCode) {
+			return true
+		}
+	}
+	return false
 }
 
 // IsDeclarative reports whether the entity's inbound profile was loaded from a declarative resource file.
@@ -1421,6 +1445,9 @@ func (s *inboundClientService) validateFKs(ctx context.Context, c *inboundmodel.
 	if err := s.validateSignOutFlowID(ctx, c.SignOutFlowID); err != nil {
 		return err
 	}
+	if err := s.validateDeviceGrantFlowID(ctx, c.DeviceGrantFlowID); err != nil {
+		return err
+	}
 	if err := s.validateReferencedFlows(ctx, c); err != nil {
 		return err
 	}
@@ -1495,6 +1522,20 @@ func (s *inboundClientService) validateSignOutFlowID(ctx context.Context, flowID
 	}
 	if !valid {
 		return ErrFKInvalidSignOutFlow
+	}
+	return nil
+}
+
+func (s *inboundClientService) validateDeviceGrantFlowID(ctx context.Context, flowID string) error {
+	if flowID == "" || s.flowMgt == nil {
+		return nil
+	}
+	valid, svcErr := s.flowMgt.IsValidFlow(ctx, flowID, providers.FlowTypeDeviceGrant)
+	if svcErr != nil {
+		return ErrFKFlowServerError
+	}
+	if !valid {
+		return ErrFKInvalidDeviceGrantFlow
 	}
 	return nil
 }
@@ -2097,6 +2138,7 @@ func (s *inboundClientService) walkReferencedFlows(
 		{c.RegistrationFlowID, providers.FlowTypeRegistration},
 		{c.RecoveryFlowID, providers.FlowTypeRecovery},
 		{c.SignOutFlowID, providers.FlowTypeSignOut},
+		{c.DeviceGrantFlowID, providers.FlowTypeDeviceGrant},
 	}
 	for _, start := range starts {
 		if start.id == "" {
@@ -2115,9 +2157,16 @@ func (s *inboundClientService) walkReferencedFlows(
 					return ErrFKInvalidRecoveryFlow
 				case providers.FlowTypeSignOut:
 					return ErrFKInvalidSignOutFlow
+				case providers.FlowTypeDeviceGrant:
+					return ErrFKInvalidDeviceGrantFlow
 				}
 			}
 			return ErrFKFlowServerError
+		}
+		if start.flowType == providers.FlowTypeDeviceGrant {
+			if !containsFlowType(targets, providers.FlowTypeAuthentication) {
+				return ErrFKInvalidDeviceGrantFlow
+			}
 		}
 
 		for _, t := range targets {
@@ -2137,6 +2186,8 @@ func (s *inboundClientService) walkReferencedFlows(
 				expected = c.RecoveryFlowID
 			case providers.FlowTypeSignOut:
 				expected = c.SignOutFlowID
+			case providers.FlowTypeDeviceGrant:
+				expected = c.DeviceGrantFlowID
 			default:
 				continue
 			}
@@ -2170,4 +2221,13 @@ func (s *inboundClientService) walkReferencedFlows(
 	}
 
 	return nil
+}
+
+func containsFlowType(targets []flowmgt.CallTarget, flowType providers.FlowType) bool {
+	for _, target := range targets {
+		if target.FlowType == flowType {
+			return true
+		}
+	}
+	return false
 }

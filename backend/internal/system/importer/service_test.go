@@ -1077,6 +1077,25 @@ func TestImportResources_CreateApplication(t *testing.T) {
 	assert.Equal(t, operationCreate, resp.Results[0].Operation)
 }
 
+func TestImportApplicationRemapsDeviceGrantFlowID(t *testing.T) {
+	appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
+	svc := newTestImportService(appSvc)
+	docs, err := parseDocuments("resource_type: application\nid: app-1\nname: My App\n" +
+		"deviceGrantFlowId: old-device-grant-flow\n" +
+		"deviceGrantFlowHandle: custom-device-grant\n")
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+
+	outcome := svc.(*importService).importApplication(context.Background(), docs[0],
+		&ImportOptions{Target: importTargetRuntime}, false,
+		map[string]string{"old-device-grant-flow": "new-device-grant-flow"})
+
+	assert.Equal(t, statusSuccess, outcome.Status)
+	require.Len(t, appSvc.created, 1)
+	assert.Equal(t, "new-device-grant-flow", appSvc.created[0].DeviceGrantFlowID)
+	assert.Equal(t, "custom-device-grant", appSvc.created[0].DeviceGrantFlowHandle)
+}
+
 // stateDocuments are a document without a state and the same document with one.
 func stateDocuments(doc string) []struct {
 	name     string

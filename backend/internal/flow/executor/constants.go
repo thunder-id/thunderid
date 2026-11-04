@@ -71,6 +71,7 @@ const (
 	ExecutorNameIdentityGovernance           = executormeta.ExecutorNameIdentityGovernance
 	ExecutorNamePreSuspend                   = executormeta.ExecutorNamePreSuspend
 	ExecutorNameExtension                    = executormeta.ExecutorNameExtension
+	ExecutorNameDeviceCode                   = executormeta.ExecutorNameDeviceCode
 )
 
 // Executor mode constants

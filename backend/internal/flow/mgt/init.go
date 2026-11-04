@@ -122,7 +122,7 @@ func Initialize(
 //   - Declarative flows cannot be updated or deleted
 func initializeStore(
 	cacheManager cache.CacheManagerInterface,
-	flowValidator FlowValidatorInterface,
+	validator FlowValidatorInterface,
 	ouSvc ouProvider,
 ) (flowStoreInterface, *compositeFlowStore, providers.Transactioner, error) {
 	var compositeStore *compositeFlowStore
@@ -140,14 +140,14 @@ func initializeStore(
 			return nil, nil, nil, err
 		}
 		compositeStore = newCompositeFlowStore(fileStore, dbStore)
-		if err := loadDeclarativeResources(fileStore, flowValidator, ouSvc); err != nil {
+		if err := loadDeclarativeResources(fileStore, compositeStore, validator, ouSvc); err != nil {
 			return nil, nil, nil, err
 		}
 		return compositeStore, compositeStore, transactioner, nil
 
 	case serverconst.StoreModeDeclarative:
 		fileStore, transactioner := newFileBasedStore()
-		if err := loadDeclarativeResources(fileStore, flowValidator, ouSvc); err != nil {
+		if err := loadDeclarativeResources(fileStore, fileStore, validator, ouSvc); err != nil {
 			return nil, nil, nil, err
 		}
 		return fileStore, nil, transactioner, nil
@@ -156,6 +156,9 @@ func initializeStore(
 		store, transactioner, err := newCacheBackedFlowStore(flowByIDCache, flowByHandleCache)
 		if err != nil {
 			return nil, nil, nil, err
+		}
+		if flowValidator, ok := validator.(*flowValidator); ok {
+			flowValidator.flowStore = store
 		}
 		return store, nil, transactioner, nil
 	}
