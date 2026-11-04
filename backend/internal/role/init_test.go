@@ -653,7 +653,7 @@ func (suite *InitTestSuite) TestInitialize_DBClientError() {
 	}()
 
 	mux := http.NewServeMux()
-	_, _, _, _, err := Initialize(mux, nil, nil, nil, nil, nil, nil, suite.sharingForInit())
+	_, _, _, _, err := Initialize(mux, nil, nil, nil, nil, nil, nil, nil, suite.sharingForInit())
 
 	suite.Error(err)
 	suite.Equal("mock db client error", err.Error())
@@ -677,7 +677,7 @@ func (suite *InitTestSuite) TestInitialize_TransactionerError() {
 	}()
 
 	mux := http.NewServeMux()
-	_, _, _, _, err := Initialize(mux, nil, nil, nil, nil, nil, nil, suite.sharingForInit())
+	_, _, _, _, err := Initialize(mux, nil, nil, nil, nil, nil, nil, nil, suite.sharingForInit())
 
 	suite.Error(err)
 	suite.Equal("mock transactioner error", err.Error())
@@ -710,7 +710,7 @@ func (suite *InitTestSuite) TestInitialize_Success() {
 	}()
 
 	mux := http.NewServeMux()
-	svc, _, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil, nil, suite.sharingForInit())
+	svc, _, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil, nil, nil, suite.sharingForInit())
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -770,7 +770,7 @@ func (suite *InitTestSuite) TestInitialize_StoreInitError() {
 	}()
 
 	mux := http.NewServeMux()
-	svc, _, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil, nil, suite.sharingForInit())
+	svc, _, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil, nil, nil, suite.sharingForInit())
 
 	suite.Error(err)
 	if err != nil {
@@ -826,7 +826,7 @@ func (suite *InitTestSuite) TestInitialize_DeclaredRoleSharing() {
 			return cfg.ResourceType == RoleSharingType && cfg.DirectoryName == "roles"
 		})).Return(nil).Once()
 
-	svc, _, _, _, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, sharingService)
+	svc, _, _, _, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, sharingService)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -840,7 +840,7 @@ func (suite *InitTestSuite) TestInitialize_DeclaredSharingPolicyRefused() {
 	sharingService.EXPECT().LoadDeclarativeResources(mock.Anything, mock.Anything).
 		Return(errors.New("policy refused")).Once()
 
-	svc, _, _, _, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, sharingService)
+	svc, _, _, _, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, sharingService)
 
 	suite.ErrorContains(err, "policy refused")
 	suite.Nil(svc)
