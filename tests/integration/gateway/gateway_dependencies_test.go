@@ -13,13 +13,14 @@ import (
 
 // Selecting a child unit sends its parent along when the gateway lacks it, marked as required by the
 // child; without dependencies the same selection is refused, naming the parent. Removing the parent
-// while the gateway keeps the child is refused too.
+// while the gateway keeps the child is refused too, and removing both goes through: the child's name
+// sorts after its parent's, so it is the gateway that sends the child's removal first.
 func (ts *GatewayVersionsTestSuite) TestDeployingAUnitBringsItsParent() {
 	parent := fmt.Sprintf("needed-%d", time.Now().UnixNano())
 	parentID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{Handle: parent, Name: parent})
 	ts.Require().NoError(err)
 	childID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: parent + "-child", Name: parent + " child", Parent: &parentID})
+		Handle: parent + "-child", Name: "unit under " + parent, Parent: &parentID})
 	ts.Require().NoError(err)
 	defer func() {
 		_ = testutils.DeleteOrganizationUnit(childID)
@@ -67,4 +68,43 @@ func (ts *GatewayVersionsTestSuite) TestDeployingAUnitBringsItsParent() {
 	ts.True(result.Recorded, "the apply was not recorded: %s", result.Import)
 	ts.Equal(http.StatusNotFound, ts.unitStatus(childID))
 	ts.Equal(http.StatusNotFound, ts.unitStatus(parentID))
+}
+
+// Moving a unit out of its parent and removing the parent in one apply goes through: the parent's
+// removal waits for the move, and is sent in a second import once the gateway has accepted it.
+func (ts *GatewayVersionsTestSuite) TestRemovingAUnitAMoveFreesGoesAfterTheMove() {
+	parent := fmt.Sprintf("freed-%d", time.Now().UnixNano())
+	parentID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{Handle: parent, Name: parent})
+	ts.Require().NoError(err)
+	childHandle, childName := parent+"-child", "unit under "+parent
+	childID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: childHandle, Name: childName, Parent: &parentID})
+	ts.Require().NoError(err)
+	defer func() {
+		_ = testutils.DeleteOrganizationUnit(childID)
+		_ = testutils.DeleteOrganizationUnit(parentID)
+	}()
+	underParent := ts.capture("a unit under another")
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPut, "/organization-units/"+childID,
+		map[string]any{"handle": childHandle, "name": childName, "parent": nil}, nil))
+	ts.Require().NoError(testutils.DeleteOrganizationUnit(parentID))
+	moved := ts.capture("the unit moved out and its parent removed")
+	parentKey, childKey := "organization_unit/"+parentID, "organization_unit/"+childID
+
+	// The gateway takes the unit back under its parent.
+	var result applyResult
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, "/gateways/"+ts.gatewayID+"/apply",
+		map[string]any{"version": underParent.Version, "selection": []string{childKey}}, &result))
+	ts.Require().True(result.Recorded, "the apply was not recorded: %s", result.Import)
+	ts.Require().Equal(http.StatusOK, ts.unitStatus(parentID))
+
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, "/gateways/"+ts.gatewayID+"/apply",
+		map[string]any{"version": moved.Version, "selection": []string{parentKey, childKey}}, &result),
+		"a removal the same apply frees was refused")
+	ts.True(result.Recorded, "the apply was not recorded: %s", result.Import)
+	ts.Equal(http.StatusNotFound, ts.unitStatus(parentID), "the freed parent was not removed")
+	var child map[string]any
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodGet, "/organization-units/"+childID, nil, &child))
+	ts.Nil(child["parent"], "the unit was not moved out")
+	ts.Contains(string(result.Import), `"operation":"delete"`, "the answer lacks the second import's")
 }

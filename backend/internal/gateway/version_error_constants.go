@@ -285,9 +285,8 @@ var (
 			DefaultValue: "A resource to remove is still needed by one the gateway keeps",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key: "error.gatewayservice.removal_in_use.description",
-			DefaultValue: "Remove the resources that need it in the same apply, deploy an update that stops " +
-				"them needing it first, or leave it in place.",
+			Key:          "error.gatewayservice.removal_in_use.description",
+			DefaultValue: "Remove or update the resources that need it in the same apply, or leave it in place.",
 		},
 	}
 	// ErrorResourceNotDeployed names a resource no master of the gateway records.

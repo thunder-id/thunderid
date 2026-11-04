@@ -269,9 +269,11 @@ the same way until it names that resource too, which also stops holding it back.
 
 A removal is refused with `409` (`GTW-1033`) while a document the gateway keeps still names the
 resource by id, such as a unit whose child unit stays, so an apply never leaves a resource pointing at
-nothing. Remove the resources that need it in the same apply, or leave it in place. An update that
-stops a resource needing it does not count in the same apply, since the gateway can refuse the update
-and still make the removal: deploy the update first, and the removal after.
+nothing. Remove or update the resources that need it in the same apply, or leave it in place. A
+removal that only an update in the same apply frees, such as an application updated to stop naming a
+flow that the version also removes, is sent in a second import once the gateway has accepted the
+update; if the gateway refuses the update, the resource stays in place and the diff offers the removal
+again.
 
 ## Revert a Gateway
 

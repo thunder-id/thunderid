@@ -60,17 +60,16 @@ func chosen(diff *Diff, target *Version, selection *[]string,
 		if withDependencies {
 			var expanded []string
 			expanded, required = withNeeded(*selection, diff.Changes)
-			if missing := lacking(expanded, diff.Changes); len(missing) > 0 {
+			if missing, _ := lacking(expanded, diff.Changes); len(missing) > 0 {
 				return shipment{}, tidcommon.CustomServiceError(ErrorDependencyNotDeployed, tidcommon.I18nMessage{
-					Key: ErrorDependencyNotDeployed.ErrorDescription.Key,
-					DefaultValue: strings.Join(missing, "; ") + ". This gateway holds that back: select it as " +
-						"well to send it, or leave out what needs it."})
+					Key: "error.gatewayservice.dependency_held_back.description",
+					DefaultValue: "{{param(missing)}}. This gateway holds that back: select it as well to send " +
+						"it, or leave out what needs it.",
+					Params: map[string]string{"missing": strings.Join(missing, "; ")}})
 			}
 			wanted = toSet(expanded)
-		} else if missing := lacking(*selection, diff.Changes); len(missing) > 0 {
-			return shipment{}, tidcommon.CustomServiceError(ErrorDependencyNotDeployed, tidcommon.I18nMessage{
-				Key:          ErrorDependencyNotDeployed.ErrorDescription.Key,
-				DefaultValue: strings.Join(missing, "; ") + ". Select them as well, or apply with withDependencies."})
+		} else if missing, heldBack := lacking(*selection, diff.Changes); len(missing) > 0 {
+			return shipment{}, dependenciesMissing(missing, heldBack)
 		}
 	}
 	take := func(change Change) bool { return selection == nil || wanted[change.Key] }
@@ -105,20 +104,34 @@ func chosen(diff *Diff, target *Version, selection *[]string,
 	return shipment{content: joinBundle(documents), deletions: deletions}, nil
 }
 
-// refuseRemovalsInUse refuses removals that a document the gateway keeps still names. The documents
-// are read from the master, not from what this apply sends: the import carries on past a refused
-// update, so an update in the same apply could fail and leave the removal made under a resource that
-// still names it.
-func refuseRemovalsInUse(sent shipment, master *Master) *tidcommon.ServiceError {
-	referenced := stillReferenced(sent.deletions, parseBundle(master.Resources))
+// refuseRemovalsInUse refuses removals that a document the gateway keeps still names once this apply's
+// documents are written over it. A removal that only an update in the same apply frees goes through,
+// sent after that update, so the import cannot refuse the update and still make the removal.
+func refuseRemovalsInUse(sent shipment, master *Master, updated []bundleResource) *tidcommon.ServiceError {
+	referenced := stillReferenced(sent.deletions, parseBundle(master.Resources), updated)
 	if len(referenced) == 0 {
 		return nil
 	}
 	return tidcommon.CustomServiceError(ErrorRemovalInUse, tidcommon.I18nMessage{
-		Key: ErrorRemovalInUse.ErrorDescription.Key,
-		DefaultValue: strings.Join(referenced, "; ") +
-			". Remove them in the same apply, deploy an update that stops them needing it first, or leave it " +
-			"in place."})
+		Key:          "error.gatewayservice.removal_in_use_by.description",
+		DefaultValue: "{{param(referenced)}}. Remove or update them in the same apply, or leave it in place.",
+		Params:       map[string]string{"referenced": strings.Join(referenced, "; ")}})
+}
+
+// dependenciesMissing refuses a selection sent without its dependencies, naming what it lacks. Sending
+// with dependencies brings along only what the gateway does not hold back, so when a held-back change
+// is among what it lacks, the caller is told to select it rather than to send dependencies along.
+func dependenciesMissing(missing []string, heldBack bool) *tidcommon.ServiceError {
+	if heldBack {
+		return tidcommon.CustomServiceError(ErrorDependencyNotDeployed, tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.dependency_held_back_missing.description",
+			DefaultValue: "{{param(missing)}}. This gateway holds some of that back: select it as well to send it.",
+			Params:       map[string]string{"missing": strings.Join(missing, "; ")}})
+	}
+	return tidcommon.CustomServiceError(ErrorDependencyNotDeployed, tidcommon.I18nMessage{
+		Key:          "error.gatewayservice.dependency_missing.description",
+		DefaultValue: "{{param(missing)}}. Select them as well, or apply with withDependencies.",
+		Params:       map[string]string{"missing": strings.Join(missing, "; ")}})
 }
 
 func keysOf(excluded []excludedResource) map[string]bool {
