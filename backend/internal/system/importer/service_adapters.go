@@ -1069,6 +1069,10 @@ func (s *importService) importResourceServerChildren(
 
 	// pathToID maps a resource path (its permission) → created/resolved ID for parent resolution.
 	pathToID := make(map[string]string)
+	// existingIDs maps a parent ID, empty for the top level, to the handles of the resources that
+	// already exist under it and their IDs. A parent's resources are listed on the first handle
+	// conflict under it, so an upsert re-import lists each parent's resources only once.
+	existingIDs := make(map[string]map[string]string)
 
 	// A child is written after its parent, whichever order the document lists them in, so its
 	// parent path always resolves to an id already created or found. An export lists resources
@@ -1096,18 +1100,30 @@ func (s *importService) importResourceServerChildren(
 					parentID = &pid
 				}
 			}
-			list, listErr := s.resourceService.GetResourceList(ctx, serverID, parentID, serverconst.MaxPageSize, 0)
-			if listErr != nil {
-				return listErr
+			parentKey := ""
+			if parentID != nil {
+				parentKey = *parentID
 			}
-			var existingID string
-			for j := range list.Resources {
-				if list.Resources[j].Handle == res.Handle {
-					existingID = list.Resources[j].ID
-					break
+			handleToID, listed := existingIDs[parentKey]
+			if !listed {
+				handleToID = make(map[string]string)
+				for offset := 0; ; offset += serverconst.MaxPageSize {
+					list, listErr := s.resourceService.GetResourceList(
+						ctx, serverID, parentID, serverconst.MaxPageSize, offset)
+					if listErr != nil {
+						return listErr
+					}
+					for j := range list.Resources {
+						handleToID[list.Resources[j].Handle] = list.Resources[j].ID
+					}
+					if len(list.Resources) < serverconst.MaxPageSize {
+						break
+					}
 				}
+				existingIDs[parentKey] = handleToID
 			}
-			if existingID == "" {
+			existingID, ok := handleToID[res.Handle]
+			if !ok {
 				continue
 			}
 			created = &providers.Resource{ID: existingID}
