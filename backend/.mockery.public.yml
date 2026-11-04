@@ -417,9 +417,7 @@ packages:
       pkgname: oumock
       filename: "{{.InterfaceName}}_mock.go"
     # ConfigurableOUService is intentionally excluded: it is only used for two-phase
-    # service wiring within the ou package (unused outside it), and its SetOUFlowResolver
-    # method takes the unexported ouFlowResolver interface, which cannot be referenced
-    # from this external mock package.
+    # service wiring within the ou package (unused outside it).
     interfaces:
       HierarchyEnumeratorInterface:
       OUUserResolver:
@@ -427,7 +425,6 @@ packages:
       OURoleResolver:
       OrganizationUnitServiceInterface:
       organizationUnitStoreInterface:
-      ouFlowResolver:
 
   github.com/thunder-id/thunderid/internal/flow/core:
     config:
