@@ -193,6 +193,15 @@ packages:
       pkgname: eventlistener
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/system/eventbus:
+    config:
+      dir: internal/system/eventbus
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: eventbus
+      filename: "{{.InterfaceName}}_mock_test.go"
+    interfaces:
+      Subscriber:
+
   github.com/thunder-id/thunderid/internal/flow/session:
     config:
       # Every interface except TerminationHook, which is only ever the real eventlistener hook.
