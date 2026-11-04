@@ -83,6 +83,8 @@ const (
 	scimAuthzMgrRoleName = "SCIM Authz Manager (scim-authz-test)"
 )
 
+var scimAuthzDevelopRedirectURI = testutils.TestServerURL + "/console"
+
 func TestSCIMAuthzTestSuite(t *testing.T) {
 	t.Skip(scimDisabledReason)
 	suite.Run(t, new(SCIMAuthzTestSuite))

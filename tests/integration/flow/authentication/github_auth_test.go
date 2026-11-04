@@ -75,10 +75,6 @@ var (
 	}
 )
 
-const (
-	mockGithubFlowPort = 8092
-)
-
 var githubEntityType = testutils.UserType{
 	Handle:      "github_auth_user",
 	DisplayName: "Github Auth User",
@@ -122,8 +118,9 @@ func (ts *GithubAuthFlowTestSuite) SetupSuite() {
 	ts.config = &common.TestSuiteConfig{}
 
 	// Start mock GitHub server
-	ts.mockGithubServer = testutils.NewMockGithubOAuthServer(mockGithubFlowPort,
-		"test_github_client", "test_github_secret")
+	var err error
+	ts.mockGithubServer, err = testutils.NewMockGithubOAuthServer("github_auth_flow_client", "github_auth_flow_secret")
+	ts.Require().NoError(err, "Failed to create mock GitHub server")
 
 	email := "testuser@github.com"
 	ts.mockGithubServer.AddUser(&testutils.GithubUserInfo{
@@ -143,9 +140,6 @@ func (ts *GithubAuthFlowTestSuite) SetupSuite() {
 			Verified: true,
 		},
 	})
-
-	err := ts.mockGithubServer.Start()
-	ts.Require().NoError(err, "Failed to start mock GitHub server")
 
 	// Create test organization unit for GitHub auth tests
 	ouID, err := testutils.CreateOrganizationUnit(githubAuthTestOU)
@@ -192,12 +186,12 @@ func (ts *GithubAuthFlowTestSuite) SetupSuite() {
 		Properties: []testutils.IDPProperty{
 			{
 				Name:     "client_id",
-				Value:    "test_github_client",
+				Value:    "github_auth_flow_client",
 				IsSecret: false,
 			},
 			{
 				Name:     "client_secret",
-				Value:    "test_github_secret",
+				Value:    "github_auth_flow_secret",
 				IsSecret: true,
 			},
 			{

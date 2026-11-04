@@ -1269,7 +1269,7 @@ function test_integration() {
     export GOCOVERDIR="$coverage_dir"
     
     echo "Coverage data will be collected in: $coverage_dir"
-    go run -C ./tests/integration ./main.go $extra_args
+    go run -C ./tests/integration . $extra_args
     test_exit_code=$?
     
     # Process coverage data if tests passed or failed

@@ -306,7 +306,7 @@ func validateText(def providers.VariableDefinition, raw string) error {
 
 	hasMaxLength := false
 	for _, rule := range rules {
-		if validateInput(rule, raw) {
+		if SatisfiesValidationRule(rule, raw) {
 			hasMaxLength = hasMaxLength || rule.Type == providers.ValidationTypeMaxLength
 			continue
 		}

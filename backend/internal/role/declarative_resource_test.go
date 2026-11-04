@@ -640,6 +640,7 @@ func TestPlaceDeclaredAssignmentsTestSuite(t *testing.T) {
 
 func (suite *PlaceDeclaredAssignmentsTestSuite) SetupTest() {
 	suite.entities = entitymock.NewEntityServiceInterfaceMock(suite.T())
+	registerSharedCategories(suite.entities)
 	suite.groups = groupmock.NewGroupServiceInterfaceMock(suite.T())
 	suite.sharing = sharingmock.NewSharingServiceInterfaceMock(suite.T())
 }

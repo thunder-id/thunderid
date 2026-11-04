@@ -15,6 +15,13 @@ const translations = {
     'accountStatus.active.hint.user': 'This account can sign in normally.',
     'accountStatus.active.hint.agent': 'This agent can authenticate normally.',
     'accountStatus.active.hint.application': 'This application can authenticate normally.',
+    'accountStatus.expired.label': 'Expired',
+    'accountStatus.expired.hint.agent':
+      "The agent's lifespan has ended, so it cannot authenticate. Set a later end date to restore access.",
+    'accountStatus.expired.hint.agentSince':
+      "The agent's lifespan ended on {{since}}, so it cannot authenticate. Set a later end date to restore access.",
+    'accountStatus.expired.hint.other':
+      'The lifespan has ended, so access is refused. Set a later end date to restore access.',
     'accountStatus.locked.label': 'Locked',
     'accountStatus.locked.hint.user':
       'The account is locked and cannot sign in. The user can complete account recovery, or an administrator can unlock the account.',
@@ -151,9 +158,12 @@ const translations = {
     'actions.finish': 'Finish',
     'actions.done': 'Done',
     'actions.refresh': 'Refresh',
+    'actions.loadMore': 'Load more',
     'actions.copy': 'Copy',
     'actions.copyId': 'Copy ID',
     'actions.copied': 'Copied!',
+    'actions.show': 'Show',
+    'actions.hide': 'Hide',
     'actions.download': 'Download',
     'actions.upload': 'Upload',
     'actions.export': 'Export',
@@ -233,6 +243,7 @@ const translations = {
     'messages.createError': 'Failed to create',
     'messages.noData': 'No data available',
     'messages.noResults': 'No results found',
+    'messages.noOptions': 'No options available',
     'messages.somethingWentWrong': 'Something went wrong',
     'messages.tryAgain': 'Please try again',
 
@@ -1318,17 +1329,8 @@ const translations = {
     'onboarding.errors.unavailable.title': 'Could not start agent onboarding',
     'onboarding.errors.unavailable.description':
       'The agent onboarding flow could not be loaded. Check that the server is reachable and try again.',
+    'onboarding.errors.optionsFailed': 'Could not load the list. Try again.',
     'onboarding.errors.stepFailed': 'This step could not be completed. Review the values and try again.',
-    'onboarding.selectPlaceholder': 'Select an option',
-    'onboarding.authFlow.loading': 'Loading login flows...',
-    'onboarding.authFlow.error': 'Login flows could not be loaded.',
-    'onboarding.authFlow.empty': 'No login flows are available.',
-    'onboarding.userType.loading': 'Loading user types...',
-    'onboarding.userType.error': 'User types could not be loaded.',
-    'onboarding.userType.empty': 'No user types are available.',
-    'onboarding.user.loading': 'Loading users...',
-    'onboarding.user.error': 'Users could not be loaded.',
-    'onboarding.user.empty': 'No users are available.',
     'onboarding.addAnother': 'Add another agent',
 
     // Add form (native creation, no onboarding flow)
@@ -1415,6 +1417,7 @@ const translations = {
     'edit.page.validation.invalidBackchannelLogoutUri': 'fix the back-channel logout URI',
     'edit.page.validation.invalidIdentityAssertions': 'fix the identity assertions (ID-JAG) settings',
     'edit.page.validation.tokenSettings': 'fix the token settings',
+    'edit.page.validation.invalidLifespan': 'choose a lifespan end in the future',
     'edit.page.reset': 'Reset',
     'edit.page.save': 'Save',
     'edit.page.saving': 'Saving…',
@@ -1435,6 +1438,15 @@ const translations = {
     'edit.general.sections.owner.description': 'The user accountable for this agent.',
     'edit.general.sections.owner.label': 'Owner',
     'edit.general.owner.empty': 'No owner assigned',
+    'edit.attributes.lifespan.title': 'Lifespan',
+    'edit.attributes.lifespan.description':
+      'When this agent stops being able to authenticate. Tokens issued to it expire no later than this.',
+    'edit.attributes.lifespan.label': 'Valid Until',
+    'edit.attributes.lifespan.unbounded': 'No expiry date. Set one to end its access automatically.',
+    'edit.attributes.lifespan.mustBeFuture': 'Choose a date and time in the future.',
+    'lifespan.expiresIn': 'Expires {{relative}}',
+    'lifespan.expiredAgo': 'Expired {{relative}}',
+    'lifespan.noExpiry': 'No expiry date',
     'edit.general.sections.attributes.title': 'Attributes',
     'edit.general.sections.attributes.description':
       "A preview of this agent's attribute values. Manage them from the Attributes tab.",
@@ -1634,6 +1646,8 @@ const translations = {
       'The subject attribute mapping must reference an attribute that is unique, required, and string typed in an allowed agent type.',
     'errors.AGT-1044':
       'A delegated agent needs at least one grant type that lets it act for a user, such as authorization code.',
+    'errors.AGT-1045': 'The lifespan end must be a valid date and time.',
+    'errors.AGT-1046': 'The lifespan end must be in the future.',
   },
 
   // ============================================================================
@@ -2058,6 +2072,8 @@ const translations = {
     'errors.GRP-1007': 'One or more selected members no longer exist. Refresh and try again.',
     'errors.GRP-1015': 'This group is managed declaratively and cannot be edited or deleted.',
     'errors.GRP-1016': 'New groups cannot be created while the server is running in declarative-only mode.',
+    'errors.GRP-1019':
+      "One or more selected members are not owned by or shared with this group's organization unit. Refresh and try again.",
   },
 
   // ============================================================================
@@ -3807,6 +3823,8 @@ const translations = {
     'edit.token.id_token.response_type_placeholder': 'Select response type',
     'edit.token.id_token.encryption_alg_placeholder': 'Select encryption algorithm',
     'edit.token.id_token.encryption_enc_placeholder': 'Select content encryption',
+    'edit.token.id_token.id_jag_note':
+      'Identity assertions (ID-JAG) this {{entity}} requests also include the allowed attributes below, except roles and groups, whenever the ID token carries them.',
     'edit.token.user_info.response_type_placeholder': 'Select response type',
     'edit.token.user_info.encryption_alg_placeholder': 'Select encryption algorithm',
     'edit.token.user_info.encryption_enc_placeholder': 'Select content encryption',
@@ -4746,6 +4764,16 @@ const translations = {
     'core.executions.inputs.identifierLabel': 'Identifier',
     'core.executions.inputs.identifierPlaceholder': 'e.g., username, email',
     'core.executions.inputs.required': 'Required',
+    'core.executions.inputs.defaultLabel': 'Default value',
+    'core.executions.inputs.defaultHint':
+      'Used when the flow has no value for this input yet. A value that is already available is kept.',
+    'core.executions.inputs.defaultPlaceholder': 'Enter a value',
+    'core.executions.inputs.defaultNotSet': 'Not set',
+    'core.executions.inputs.defaultTrue': 'True',
+    'core.executions.inputs.defaultFalse': 'False',
+    'core.executions.inputs.constant': 'Constant',
+    'core.executions.inputs.constantHint':
+      'Replaces a submitted or available value with the default value when this step runs, unless the step reads that value from an earlier step. Needs a default value.',
     'core.executions.inputs.add': 'Add input',
     'core.executions.inputs.remove': 'Remove input',
     'core.executions.inputs.empty': 'No custom inputs configured. The executor will use its default inputs.',
@@ -4756,6 +4784,8 @@ const translations = {
     'core.executions.inputs.types.phone': 'Phone',
     'core.executions.inputs.types.consent': 'Consent',
     'core.executions.inputs.types.select': 'Select',
+    'core.executions.inputs.types.boolean': 'Boolean',
+    'core.executions.inputs.types.userSelect': 'User Select',
 
     // Execution steps - tooltips and messages
     // No-config executors
@@ -4791,6 +4821,7 @@ const translations = {
 
     // Validation messages - executor
     'core.validation.fields.executor.general': 'The executor <0>{{id}}</0> is not properly configured.',
+    'core.validation.fields.executor.inputs': 'One or more inputs are not properly configured.',
 
     // Validation messages - call
     'core.validation.fields.call.general': 'The Call node <0>{{id}}</0> has no referenced flow.',
@@ -4860,6 +4891,8 @@ const translations = {
       'SSO check <code>{{id}}</code> does not reference a session checkpoint. Select one in its properties, or remove the step.',
     'core.validation.sso.invalidCheckpointRef':
       'SSO check <code>{{id}}</code> references a session step that no longer exists. Select a valid session checkpoint in its properties.',
+    'core.validation.inputs.heldConstant':
+      'The input <code>{{id}}</code> asks for a value that an executor holds constant, so the value entered here would be replaced. Remove the input from this screen or remove the constant.',
     'core.validation.sso.orphanSession':
       'Session step <code>{{id}}</code> is not referenced by any SSO check. Add an SSO check that uses it, or remove the step.',
 
@@ -4932,6 +4965,14 @@ const translations = {
     'core.elements.text.align.options.right': 'Right',
     'core.elements.text.align.options.justify': 'Justify',
     'core.elements.text.align.options.inherit': 'Inherit',
+
+    // Elements - user select element
+    'core.elements.userSelect.caption': 'Loads the system users, page by page',
+    'core.elements.userSelect.dataSource.title': 'Data source',
+    'core.elements.userSelect.dataSource.hint': 'Loads users from the users API, page by page.',
+    'core.elements.userSelect.submitValue.title': 'Submit value',
+    'core.elements.userSelect.submitValue.value': 'User ID',
+    'core.elements.userSelect.submitValue.hint': 'Sends the ID of the chosen user, not the name.',
 
     // Elements - classes property field
     'core.elements.classesPropertyField.label': 'CSS classes',

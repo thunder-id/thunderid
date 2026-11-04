@@ -29,7 +29,6 @@ import (
 )
 
 const (
-	teAuthzMockOIDCPort = 8102
 	teAuthzExternalCID  = "te-authz-mapping-external-client"
 	teAuthzExternalCSec = "te-authz-mapping-external-secret"
 	teAuthzRedirectURI  = "https://localhost:3000/callback"
@@ -125,7 +124,7 @@ func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) SetupSuite() {
 	ts.Require().NoError(err)
 	ts.groupRoleID = groupRoleID
 
-	mockIDP, err := testutils.NewMockOIDCServer(teAuthzMockOIDCPort, teAuthzExternalCID, teAuthzExternalCSec)
+	mockIDP, err := testutils.NewMockOIDCServer(teAuthzExternalCID, teAuthzExternalCSec)
 	ts.Require().NoError(err)
 	ts.mockIDP = mockIDP
 	ts.mockIDP.SetAuthorizeFunc(func(string) (string, error) {
@@ -134,7 +133,6 @@ func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) SetupSuite() {
 		}
 		return ts.activeSub, nil
 	})
-	ts.Require().NoError(ts.mockIDP.Start())
 
 	idpID, err := testutils.CreateIDP(testutils.IDP{
 		Name:        "Token Exchange Authorization Mapping IdP",

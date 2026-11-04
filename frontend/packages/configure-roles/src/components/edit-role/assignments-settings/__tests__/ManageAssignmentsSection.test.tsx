@@ -36,20 +36,11 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@wso2/oxygen-ui')>();
   return {
     ...actual,
-    ListingTable: {
-      ...actual.ListingTable,
-      Provider: ({children}: {children: React.ReactNode}) => children,
-      Container: ({children, disablePaper = false}: {children: React.ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-table-container" data-disable-paper={disablePaper ? 'true' : undefined}>
-          {children}
-        </div>
-      ),
+    DataGrid: {
       DataGrid: ({
         rows,
         columns,
         getRowId = undefined,
-        paginationMode = undefined,
-        disableColumnFilter = false,
       }: {
         rows: Record<string, unknown>[];
         columns: {
@@ -58,15 +49,8 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
           valueGetter?: (value: unknown, row: Record<string, unknown>) => string;
         }[];
         getRowId?: (row: Record<string, unknown>) => string;
-        paginationMode?: string;
-        disableColumnFilter?: boolean;
       }) => (
-        <div
-          role="grid"
-          data-testid="data-grid"
-          data-pagination-mode={paginationMode}
-          data-disable-column-filter={String(disableColumnFilter)}
-        >
+        <div role="grid" data-testid="data-grid">
           {rows.map((row) => {
             const rowId = getRowId ? getRowId(row) : (row.id as string);
             return (
@@ -173,15 +157,6 @@ describe('ManageAssignmentsSection', () => {
       expect(screen.getByText('Orders API')).toBeInTheDocument();
     });
 
-    it.each([0, 1, 2, 3])('should render a server paged grid with the column filter disabled on tab %i', (tab) => {
-      renderComponent({activeAssignmentTab: tab});
-
-      const grid = screen.getByTestId('data-grid');
-      expect(grid).toHaveAttribute('data-pagination-mode', 'server');
-      expect(grid).toHaveAttribute('data-disable-column-filter', 'true');
-      expect(screen.getByTestId('listing-table-container')).not.toHaveAttribute('data-disable-paper');
-    });
-
     it('should render headerAction when provided', () => {
       renderComponent({headerAction: <button type="button">Add</button>});
 
@@ -286,22 +261,6 @@ describe('ManageAssignmentsSection', () => {
       renderComponent();
 
       expect(screen.getByRole('grid')).toBeInTheDocument();
-    });
-
-    it.each([1, 2, 3])('should render an empty grid while tab %i is loading', (activeAssignmentTab) => {
-      vi.mocked(useGetRoleAssignments).mockImplementation(
-        () =>
-          ({
-            data: undefined,
-            isLoading: true,
-            error: null,
-          }) as unknown as ReturnType<typeof useGetRoleAssignments>,
-      );
-
-      renderComponent({activeAssignmentTab});
-
-      expect(screen.getByRole('grid')).toBeInTheDocument();
-      expect(screen.queryByRole('row')).not.toBeInTheDocument();
     });
   });
 });

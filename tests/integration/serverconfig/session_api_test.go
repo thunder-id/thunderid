@@ -15,7 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const sessionConfigURL = serverConfigURL + "/session"
+var sessionConfigURL = serverConfigURL + "/session"
 
 // sessionSectionValue mirrors the session section value: SSO session lifetimes in seconds.
 type sessionSectionValue struct {

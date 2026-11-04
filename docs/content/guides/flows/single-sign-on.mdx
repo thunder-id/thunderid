@@ -84,7 +84,7 @@ A sign-in lands in one organization unit (OU) where both the user and the applic
 
 Two timeouts bound every flow SSO session:
 
-- **Idle timeout**: the maximum inactivity period. The idle deadline moves forward on each use of the session, so an active session stays alive. The default is 30 minutes.
+- **Idle timeout**: the maximum inactivity period. The idle deadline moves forward on each use of the session, so an active session stays alive. A sign-in that reuses the session counts as use, and so does a `refresh_token` grant for tokens issued under the session, so an application that keeps a user signed in by refreshing tokens keeps the session alive for other applications too. To limit database writes, the deadline moves at most once per activity-refresh interval, which is 1 minute by default. The default idle timeout is 2 hours.
 - **Absolute timeout**: the maximum total lifetime, fixed when the session is created and never extended. The default is 8 hours.
 
 A session expires when it passes either deadline. After expiry, **Check SSO Session** takes the **Authenticate** path and the user signs in again.
@@ -94,11 +94,14 @@ Set the timeouts in the `session` server-config resource. In a source checkout, 
 ```yaml
 name: session
 value:
-  idleTimeoutSeconds: 1800      # 30 minutes
-  absoluteTimeoutSeconds: 28800 # 8 hours
+  idleTimeoutSeconds: 7200              # 2 hours
+  absoluteTimeoutSeconds: 28800         # 8 hours
+  activityRefreshIntervalSeconds: 60    # 1 minute
 ```
 
-The idle timeout must not exceed the absolute timeout.
+The idle timeout must not exceed the absolute timeout, and the activity-refresh interval must be less than the idle timeout.
+
+A token refresh keeps the session alive only if it arrives before the idle deadline; a later refresh does not revive an expired session. An application that refreshes when its access token expires therefore needs an idle timeout longer than the access token validity period. The default idle timeout of 2 hours leaves room for the default access token validity of 1 hour. A deployment that follows NIST SP 800-63B-4 at AAL2, which recommends an inactivity timeout of no more than 1 hour, should set the idle timeout to 3600 seconds or less and set the access token validity period of its applications below it.
 
 ## Session Cookie
 

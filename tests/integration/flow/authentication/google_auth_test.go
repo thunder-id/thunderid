@@ -75,10 +75,6 @@ var (
 	}
 )
 
-const (
-	mockGoogleFlowPort = 8093
-)
-
 var googleEntityType = testutils.UserType{
 	Handle:      "google_auth_user",
 	DisplayName: "Google Auth User",
@@ -139,9 +135,8 @@ func (ts *GoogleAuthFlowTestSuite) SetupSuite() {
 	// Initialize config
 	ts.config = &common.TestSuiteConfig{}
 
-	// Start mock Google server
-	mockServer, err := testutils.NewMockGoogleOIDCServer(mockGoogleFlowPort,
-		"test_google_client", "test_google_secret")
+	// Create mock Google server
+	mockServer, err := testutils.NewMockGoogleOIDCServer("google_auth_flow_client", "google_auth_flow_secret")
 	ts.Require().NoError(err, "Failed to create mock Google server")
 	ts.mockGoogleServer = mockServer
 
@@ -155,9 +150,6 @@ func (ts *GoogleAuthFlowTestSuite) SetupSuite() {
 		Picture:       "https://example.com/picture.jpg",
 		Locale:        "en",
 	})
-
-	err = ts.mockGoogleServer.Start()
-	ts.Require().NoError(err, "Failed to start mock Google server")
 
 	// Create test organization unit for Google auth tests
 	ouID, err := testutils.CreateOrganizationUnit(googleAuthTestOU)
@@ -204,12 +196,12 @@ func (ts *GoogleAuthFlowTestSuite) SetupSuite() {
 		Properties: []testutils.IDPProperty{
 			{
 				Name:     "client_id",
-				Value:    "test_google_client",
+				Value:    "google_auth_flow_client",
 				IsSecret: false,
 			},
 			{
 				Name:     "client_secret",
-				Value:    "test_google_secret",
+				Value:    "google_auth_flow_secret",
 				IsSecret: true,
 			},
 			{

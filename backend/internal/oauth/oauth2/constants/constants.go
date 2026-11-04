@@ -269,7 +269,18 @@ const (
 	ClaimCHash    string = "c_hash"
 	ClaimAuthTime string = "auth_time"
 	ClaimACR      string = "acr"
+	ClaimAMR      string = "amr"
 	ClaimScope    string = "scope"
+	ClaimAct      string = "act"
+	ClaimCnf      string = "cnf"
+)
+
+// ID-JAG claim names (draft-ietf-oauth-identity-assertion-authz-grant Section 3.1) not defined above.
+const (
+	ClaimResource  string = "resource"
+	ClaimTenant    string = "tenant"
+	ClaimAudTenant string = "aud_tenant"
+	ClaimAudSub    string = "aud_sub"
 )
 
 // Custom JWT claim names.

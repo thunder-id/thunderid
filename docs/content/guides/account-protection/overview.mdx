@@ -37,7 +37,8 @@ Every user, agent, and application has a status, shown in the **Status** column 
 |---|---|
 | `ACTIVE` | No hold applies. |
 | `LOCKED` | A lock is in force on one or more sign-in methods. |
-| `SUSPENDED` | An administrator suspended the account. A suspended account shows this status even when it is also locked. |
+| `EXPIRED` | The agent's lifespan has ended. An expired agent shows this status even when it is also locked. See [Set an Agent's Lifespan](../../agents/agent-lifespan). |
+| `SUSPENDED` | An administrator suspended the account. A suspended account shows this status even when it is also locked or expired. |
 
 While an account is held, its Console page shows a banner that lists each locked sign-in method and when its lock ends. See the [API Reference](../../../apis#tag/users) for the status fields.
 

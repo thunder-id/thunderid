@@ -20,8 +20,6 @@ import (
 )
 
 const (
-	pkjServerURL          = "https://localhost:8095"
-	pkjIssuer             = "https://localhost:8095" // server issuer = required aud value
 	pkjResourceIdentifier = "https://pkj-test.example.com"
 	pkjRSAClientID        = "pkj_rsa_client"
 	pkjECClientID         = "pkj_ec_client"
@@ -29,6 +27,11 @@ const (
 	pkjRSAKid             = "pkj-rsa-kid"
 	pkjECKid              = "pkj-ec-kid"
 	pkjPSKid              = "pkj-ps-kid"
+)
+
+var (
+	pkjServerURL = testutils.TestServerURL
+	pkjIssuer    = testutils.TestServerURL // server issuer = required aud value
 )
 
 type PrivateKeyJWTTestSuite struct {

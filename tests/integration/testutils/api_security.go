@@ -250,7 +250,7 @@ func (a *OUSignInApps) DeleteAll() error {
 // GetHTTPClientForUser obtains a token using password grant (via CONSOLE app) and returns an HTTP client that
 // injects that token. This keeps token generation out of individual tests.
 func GetHTTPClientForUser(username, password string) (*http.Client, error) {
-	return getHTTPClientForUser("CONSOLE", "https://localhost:8095/console", username, password)
+	return getHTTPClientForUser("CONSOLE", TestServerURL+"/console", username, password)
 }
 
 // GetHTTPClientForOUUser is GetHTTPClientForUser through a CreateOUSignInApplication client, for a user outside
@@ -300,7 +300,7 @@ func ObtainAdminAccessToken() error {
 	var err error
 	adminTokenState, err = ObtainAccessTokenWithPassword(
 		"CONSOLE",
-		"https://localhost:8095/console",
+		TestServerURL+"/console",
 		"system",
 		adminUsername,
 		adminPassword,

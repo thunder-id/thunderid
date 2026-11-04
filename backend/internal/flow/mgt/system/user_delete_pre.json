@@ -1,19 +1,19 @@
 {
-  "id": "019a1f40-6a1c-7000-8000-5e5713d00001",
-  "handle": "system-application-delete",
-  "name": "Application deletion",
+  "id": "019a1f40-6a1c-7000-8000-5e5713d00003",
+  "handle": "system-user-delete-pre",
+  "name": "User deletion, before the change",
   "flowType": "SYSTEM",
   "nodes": [
     {
       "id": "start",
       "type": "START",
-      "onSuccess": "validate_application_deletion"
+      "onSuccess": "pre_delete"
     },
     {
-      "id": "validate_application_deletion",
+      "id": "pre_delete",
       "type": "TASK_EXECUTION",
       "executor": {
-        "name": "ApplicationActionValidator",
+        "name": "PreDeleteExecutor",
         "mode": "revoke_all"
       },
       "onSuccess": "revoke_tokens"

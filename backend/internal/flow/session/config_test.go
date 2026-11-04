@@ -4,6 +4,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -63,11 +64,11 @@ func (s *ConfigTestSuite) TestValidate_ActivityRefreshInvariantAcrossDefaults() 
 	// One second above the default refresh is accepted.
 	s.Require().NoError(Config{IdleTimeoutSeconds: 61}.Validate())
 
-	// Gap B: a defaulted (1800s) idle with a large configured refresh must be rejected, even though
+	// Gap B: a defaulted (7200s) idle with a large configured refresh must be rejected, even though
 	// the idle field itself is left unset.
-	s.Require().Error(Config{ActivityRefreshIntervalSeconds: 3600}.Validate())
+	s.Require().Error(Config{ActivityRefreshIntervalSeconds: 7200}.Validate())
 	// A large refresh below the defaulted idle window is accepted.
-	s.Require().NoError(Config{ActivityRefreshIntervalSeconds: 1799}.Validate())
+	s.Require().NoError(Config{ActivityRefreshIntervalSeconds: 7199}.Validate())
 }
 
 func (s *ConfigTestSuite) TestHandler_DecodeEmptyIsZero() {
@@ -83,7 +84,7 @@ func (s *ConfigTestSuite) TestHandler_DecodeJSON() {
 }
 
 func (s *ConfigTestSuite) TestHandler_ValidateRejectsIncoherent() {
-	s.Require().Error(ConfigHandler{}.Validate(Config{IdleTimeoutSeconds: -5}, nil, nil))
+	s.Require().Error(ConfigHandler{}.Validate(context.Background(), Config{IdleTimeoutSeconds: -5}, nil, nil))
 }
 
 func (s *ConfigTestSuite) TestHandler_MergeWritableWins() {

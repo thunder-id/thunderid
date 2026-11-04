@@ -26,7 +26,7 @@ func validateInputValues(inputs []providers.Input, userInputs map[string]string)
 		}
 
 		for _, rule := range input.Validation {
-			if validateInput(rule, value) {
+			if SatisfiesValidationRule(rule, value) {
 				continue
 			}
 			fieldErrors = append(fieldErrors, common.FieldError{
@@ -39,9 +39,9 @@ func validateInputValues(inputs []providers.Input, userInputs map[string]string)
 	return fieldErrors
 }
 
-// validateInput returns false when the value violates the rule. Unknown rule
+// SatisfiesValidationRule returns false when the value violates the rule. Unknown rule
 // types and regex rules without a CompiledRegex pass through.
-func validateInput(rule providers.ValidationRule, value string) bool {
+func SatisfiesValidationRule(rule providers.ValidationRule, value string) bool {
 	switch rule.Type {
 	case providers.ValidationTypeRegex:
 		if rule.CompiledRegex == nil {

@@ -15,12 +15,13 @@ import (
 const (
 	passkeyFlowRelyingPartyID   = "localhost"
 	passkeyFlowRelyingPartyName = "ThunderID Test"
-	// passkeyFlowOrigin is set as the application's only allowed passkey origin, which is what the
-	// flow executor validates the assertion against. It must also be listed under
-	// passkey.allowed_origins in the test deployment.yaml, since SetupSuite enrols the credential
-	// through the direct passkey API, and that path takes its allowed origins from server config.
-	passkeyFlowOrigin = "https://localhost:8095"
 )
+
+// passkeyFlowOrigin is set as the application's only allowed passkey origin, which is what the
+// flow executor validates the assertion against. It must also be listed under
+// passkey.allowed_origins in the test deployment.yaml, since SetupSuite enrols the credential
+// through the direct passkey API, and that path takes its allowed origins from server config.
+var passkeyFlowOrigin = testutils.TestServerURL
 
 // passkeyChallengeNode builds the challenge node, optionally omitting the relying party ID so the
 // misconfiguration case can be exercised.

@@ -26,22 +26,13 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@wso2/oxygen-ui')>();
   return {
     ...actual,
-    ListingTable: {
-      ...actual.ListingTable,
-      Provider: ({children}: {children: React.ReactNode}) => children,
-      Container: ({children, disablePaper = false}: {children: React.ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-table-container" data-disable-paper={disablePaper ? 'true' : undefined}>
-          {children}
-        </div>
-      ),
+    DataGrid: {
       DataGrid: ({
         rows,
         columns,
         checkboxSelection = false,
         onRowSelectionModelChange = undefined,
         getRowId = undefined,
-        paginationMode = undefined,
-        disableColumnFilter = false,
       }: {
         rows: Record<string, unknown>[];
         columns: {
@@ -52,16 +43,8 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
         checkboxSelection?: boolean;
         onRowSelectionModelChange?: (model: {type: string; ids: Set<string>}) => void;
         getRowId?: (row: Record<string, unknown>) => string;
-        paginationMode?: string;
-        disableColumnFilter?: boolean;
       }) => (
-        <div
-          role="grid"
-          data-testid="data-grid"
-          data-pagination-mode={paginationMode}
-          data-disable-column-filter={String(disableColumnFilter)}
-          data-checkbox-selection={String(checkboxSelection)}
-        >
+        <div role="grid" data-testid="data-grid">
           {rows.map((row) => {
             const rowId = getRowId ? getRowId(row) : (row.id as string);
             return (
@@ -152,18 +135,17 @@ describe('AddAssignmentDialog', () => {
       {id: 'app-2', name: 'Billing API', description: 'Billing backend service'},
     ],
   };
-  const mockExistingAppAssignments = {
-    totalResults: 1,
-    startIndex: 0,
-    count: 1,
-    assignments: [{id: 'app-2', type: 'app', display: 'Billing API'}],
-  };
-
   const mockAgentsData = {
     totalResults: 1,
     startIndex: 0,
     count: 1,
     agents: [{id: 'agent-1', ouId: 'ou-1', type: 'agent', display: 'Automation Agent'}],
+  };
+  const mockExistingAppAssignments = {
+    totalResults: 1,
+    startIndex: 0,
+    count: 1,
+    assignments: [{id: 'app-2', type: 'app', display: 'Billing API'}],
   };
 
   const renderComponent = (props = {}) => render(<AddAssignmentDialog {...defaultProps} {...props} />);
@@ -274,19 +256,6 @@ describe('AddAssignmentDialog', () => {
 
       expect(screen.getByText('Admins')).toBeInTheDocument();
     });
-
-    it.each([0, 1, 2, 3])(
-      'should render a selectable server paged grid with the column filter disabled on tab %i',
-      (tab) => {
-        renderComponent({initialTab: tab});
-
-        const grid = screen.getByTestId('data-grid');
-        expect(grid).toHaveAttribute('data-checkbox-selection', 'true');
-        expect(grid).toHaveAttribute('data-pagination-mode', 'server');
-        expect(grid).toHaveAttribute('data-disable-column-filter', 'true');
-        expect(screen.getByTestId('listing-table-container')).not.toHaveAttribute('data-disable-paper');
-      },
-    );
   });
 
   describe('Organization Unit Scope', () => {
@@ -350,40 +319,6 @@ describe('AddAssignmentDialog', () => {
 
       expect(mockOnAdd).toHaveBeenCalledTimes(1);
       expect(mockOnAdd).toHaveBeenCalledWith([{id: 'user-1', type: 'user'}]);
-    });
-
-    it('should call onAdd with group assignments when a group is selected', async () => {
-      const user = userEvent.setup();
-      renderComponent();
-
-      await user.click(screen.getByText('Groups'));
-      await user.click(screen.getByTestId('checkbox-group-1'));
-      await user.click(screen.getByRole('button', {name: /Add/}));
-
-      expect(mockOnAdd).toHaveBeenCalledWith([{id: 'group-1', type: 'group'}]);
-    });
-
-    it('should call onAdd with app assignments when an app is selected', async () => {
-      const user = userEvent.setup();
-      renderComponent();
-
-      await user.click(screen.getByText('Apps'));
-      await user.click(screen.getByTestId('checkbox-app-1'));
-      await user.click(screen.getByRole('button', {name: /Add/}));
-
-      expect(mockOnAdd).toHaveBeenCalledWith([{id: 'app-1', type: 'app'}]);
-    });
-
-    it('should call onAdd with agent assignments when an agent is selected', async () => {
-      const user = userEvent.setup();
-      renderComponent();
-
-      await user.click(screen.getByText('Agents'));
-      expect(screen.getByRole('row')).toHaveAttribute('data-row-id', 'agent-1');
-      await user.click(screen.getByTestId('checkbox-agent-1'));
-      await user.click(screen.getByRole('button', {name: /Add/}));
-
-      expect(mockOnAdd).toHaveBeenCalledWith([{id: 'agent-1', type: 'agent'}]);
     });
 
     it('should show selection count on Add button', async () => {

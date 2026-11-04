@@ -1,0 +1,236 @@
+---
+title: Set an Agent's Lifespan
+docType: guide
+sidebar_position: 4
+persona: iam
+description: Give an agent an end date so it stops authenticating and obtaining tokens automatically, and extend, reduce, or remove that end later.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Set an Agent's Lifespan
+
+An agent registered for a pilot, a fixed engagement, or a contractor's project should not stay valid after the work ends. Give it a lifespan: an end date and time, its `validUntil`. From that instant the agent cannot authenticate or obtain tokens, with no job to run and nothing to remember. Each token issued to it or for it expires no later than the `validUntil` in force when the token is issued. Reducing the lifespan afterwards does not revoke tokens already issued; they stay valid until their original expiry. Extend the lifespan to bring the agent back.
+
+An agent has no lifespan unless you give it one, so it does not expire.
+
+## Prerequisites
+
+- <ProductName /> running. See [Get <ProductName />](../../../getting-started/get-thunderid).
+- Permission to create or update agents, `system:agent`.
+
+## How a lifespan works
+
+An agent works, subject to every other check, until its `validUntil`, and is expired from that instant on. <ProductName /> compares `validUntil` with its own clock, with no leeway, and derives where the agent stands on every read:
+
+| Phase | When | Restricts access |
+|---|---|---|
+| `UNBOUNDED` | The agent has no `validUntil`. | No |
+| `ACTIVE` | The current time is before `validUntil`. | No |
+| `EXPIRED` | The current time is at or after `validUntil`. | Yes |
+
+An expired agent is refused everywhere: it cannot sign in, its client cannot authenticate, and no grant, including refresh and token exchange, issues a token to it or for it. That includes a token for a user the agent acts for. Expiry does not delete the agent, its credentials, or its groups and roles, and it revokes nothing. The agent stays readable and editable, so extending its lifespan is all it takes to bring it back.
+
+### Tokens end with the lifespan
+
+Every access token, refresh token, ID token, and identity assertion (ID-JAG) that involves an agent with a lifespan expires no later than that agent's `validUntil` at the time the token is issued, whether the agent is the token's subject, the client it is issued to, or the actor in a token exchange. When several agents are involved, the earliest `validUntil` applies:
+
+```text
+exp = min(issued at + configured validity, validUntil of every agent involved)
+```
+
+For example, an agent whose lifespan ends in five minutes requests a token, and the configured access token validity is twenty minutes. The token expires in five minutes, and `expires_in` in the response is `300`.
+
+<ProductName /> stops issuing one second before `validUntil`, so a token's `exp` can be up to a second earlier than `validUntil`.
+
+The cap is fixed when a token is issued. If you later move `validUntil` earlier, tokens already issued are not revoked and stay valid until their original `exp`. See [Change or remove a lifespan](#change-or-remove-a-lifespan).
+
+## Set a lifespan when you create an agent
+
+Send `validUntil` when you create the agent through the API. The Console's **Add agent** form does not ask for it; set it on the agent's page after creating it, as described in [Change or remove a lifespan](#change-or-remove-a-lifespan).
+
+```bash
+curl -X POST https://localhost:8090/agents \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "type": "default",
+    "ouId": "<organization-unit-id>",
+    "owner": "<owner-user-id>",
+    "attributes": {
+      "name": "Quarterly Report Agent"
+    },
+    "validUntil": "<future-date-time>"
+  }'
+```
+
+Replace `<future-date-time>` with an RFC 3339 date and time later than the current time, such as `2027-03-31T00:00:00Z`. Leave it out, or send `null`, for an agent that does not expire. A value that fails is refused with `400`, and the agent is not created:
+
+| Error code | Cause |
+|---|---|
+| `AGT-1045` | `validUntil` is not an RFC 3339 date and time. |
+| `AGT-1046` | `validUntil` is not later than the current time. |
+
+There is no default lifespan and no maximum: whoever creates the agent decides.
+
+## Change or remove a lifespan
+
+Move the end later to extend the lifespan, or earlier to reduce it. Reducing it to a moment just ahead is how you end an agent's access early without suspending it.
+
+<Tabs groupId="agent-config">
+<TabItem value="console" label="Console" default>
+
+1. Go to **Agents** and open the agent.
+2. Open the **Attributes** tab. The **Lifespan** card shows when the lifespan ends and how long is left, such as "Expires in 3 months".
+3. Choose a date and time in **Valid Until**. It is shown in your time zone and saved in UTC. A new end must be in the future; until it is, **Save** stays disabled.
+4. To remove the end, so that the agent does not expire, clear the field.
+5. Click **Save** in the unsaved-changes bar.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+`PUT /agents/<agent-id>` replaces the agent's definition, so send its full definition with `validUntil` changed, not only `validUntil`. Leaving out `inboundAuthConfig` removes the agent's OAuth profile and its credentials. See [Manage an agent](../manage-agents#manage-an-agent).
+
+```bash
+curl -X PUT https://localhost:8090/agents/<agent-id> \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d @agent.json
+```
+
+Here `agent.json` holds the agent's definition, its `type`, `ouId`, `owner`, `attributes` (including `name`), and `inboundAuthConfig`, with `"validUntil": "<future-date-time>"` added, where `<future-date-time>` is an RFC 3339 date and time later than the current time.
+
+| `validUntil` in the request | Effect |
+|---|---|
+| Absent | The lifespan is unchanged, so a client that does not know the field cannot remove a lifespan. |
+| `null` | The lifespan is removed, and the agent does not expire. |
+| A date and time | Must be an RFC 3339 date and time later than the current time, unless it equals the stored value. Resending an expired agent's stored value unchanged is accepted. |
+
+A refused `validUntil` refuses the whole update, so none of the other fields in the request are changed either. See the [Agents API Reference](../../../apis#tag/agents).
+
+</TabItem>
+</Tabs>
+
+A change applies to the agent's next request. It does not change tokens already issued: a reduction leaves them valid until their original `exp`, and an extension does not lengthen them. To cut an agent off at once, including its existing tokens, [suspend it](../../account-protection/suspend-and-restore-accounts) instead.
+
+### Who can change a lifespan
+
+Any caller who may update the agent may change its lifespan; there is no separate permission. That includes the agent itself: an agent that holds `system:agent` for its own organization unit, or acts for a user who holds it, can extend or remove its own lifespan. Agents do not hold this permission by default. Grant it only to agents that manage other agents.
+
+An agent defined in a declarative resource file is read only, so its lifespan changes only through the file. See [Declarative agents](#declarative-agents).
+
+## Bring back an expired agent
+
+Set a `validUntil` in the future, in the Console or with `PUT /agents/<agent-id>`. Nothing about the agent has to be recreated: its credentials, groups, roles, and settings are as they were, and its next request is admitted.
+
+Bringing an agent back does not release a suspension or a lock. A suspended agent stays suspended until it is unsuspended, and a lock stays until it ends or is unlocked.
+
+## Check an agent's lifespan
+
+<Tabs groupId="agent-config">
+<TabItem value="console" label="Console" default>
+
+- The **Status** column of the **Agents** list shows **Expired** for an expired agent. Hover over the status to see when the lifespan ends or ended, such as "Expires in 3 months" or "Expired 12 days ago", or "No expiry date" for an agent that does not expire.
+- An expired agent's page shows a banner stating when its lifespan ended.
+- The agent's **Overview** tab shows a **Valid Until** chip beside its attributes once a lifespan is set.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+`GET /agents/<agent-id>` and `GET /agents` return `validUntil` and a read-only `lifespan.phase`:
+
+```json
+{
+  "status": {"value": "ACTIVE"},
+  "validUntil": "2027-03-31T00:00:00Z",
+  "lifespan": {"phase": "ACTIVE"}
+}
+```
+
+An agent that does not expire has `lifespan.phase` set to `UNBOUNDED` and no `validUntil`. An expired agent reports status `EXPIRED`, with the reason `LIFESPAN_ENDED` and `since` set to its `validUntil`:
+
+```json
+{
+  "status": {
+    "value": "EXPIRED",
+    "details": {"reason": "LIFESPAN_ENDED", "since": "2026-09-30T00:00:00Z"}
+  },
+  "validUntil": "2026-09-30T00:00:00Z",
+  "lifespan": {"phase": "EXPIRED"}
+}
+```
+
+The agent list cannot be filtered by lifespan. To find agents that are expired or about to expire, list the agents and read each one's `validUntil` and `lifespan.phase`.
+
+</TabItem>
+</Tabs>
+
+An agent shows one status. A suspension ranks above expiry, and expiry above a lock: `SUSPENDED`, then `EXPIRED`, then `LOCKED`, then `ACTIVE`. An expired agent that is also suspended shows `SUSPENDED`, and an expired agent can still be suspended. See [Account Status](../../account-protection/overview#account-status).
+
+## Read the lifespan from a token
+
+An agent's own `client_credentials` token can carry its `validUntil` as the `sub_valid_until` claim, in Unix seconds like `exp`, so a resource server can see when the agent stops working without calling the management API. Select `sub_valid_until` on the agent's **Tokens** tab to add it. It is left out for an agent that does not expire, and tokens the agent obtains for a user never carry it. See [Agent Token](../authentication/agent-own-token).
+
+The claim records the lifespan when the token was issued. To decide whether a token is still valid, rely on `exp`, which is never later than the claim, or on introspection, not on `sub_valid_until`.
+
+## Declarative agents
+
+Set the lifespan of an agent defined in a declarative resource file with a top-level `validUntil`:
+
+```yaml
+resource_type: agent
+id: quarterly-report-agent
+ouId: <organization-unit-id>
+type: default
+validUntil: "2027-03-31T00:00:00Z"
+attributes:
+  name: Quarterly Report Agent
+```
+
+The value must be an RFC 3339 date and time, or the file fails to load. A past value is accepted and loads the agent as expired, so a file keeps loading after its agent's lifespan ends. Leave `validUntil` out for an agent that does not expire. To change the lifespan, edit the file and redeploy it.
+
+## Export and import
+
+[Export](../../resource-export) writes every agent's `validUntil`. An agent that does not expire is written with `9999-12-31T23:59:59Z`, which <ProductName /> uses to mean no end, so importing the document removes a lifespan the target agent has since been given.
+
+[Import](../../declarative-configurations/import-resources) restores the value as exported, including a past one, so an expired agent is restored expired rather than refused. A document with no `validUntil` leaves an existing agent's lifespan unchanged and creates a new agent that does not expire. A malformed value fails the import, and a dry run reports it.
+
+## Audit lifespan changes
+
+When observability is enabled, every lifespan change is published as an event in the `observability.administration` category, after the change is saved:
+
+| Event | Published when |
+|---|---|
+| `AGENT_LIFESPAN_SET` | An agent is created, through the API, a flow, or an import. |
+| `AGENT_LIFESPAN_EXTENDED` | An update moves `validUntil` later, or removes it. |
+| `AGENT_LIFESPAN_REDUCED` | An update moves `validUntil` earlier. |
+| `AGENT_REACTIVATED` | An update brings back an expired agent. It follows the matching `AGENT_LIFESPAN_EXTENDED`. |
+| `AGENT_LIFESPAN_UPDATE_FAILED` | A change is refused or fails, with the class `not_authorized`, `invalid_lifespan`, `read_only`, or `operation_failed`. |
+
+Each event records the agent, who made the change, the previous `validUntil`, and the new one. Nothing is published when an agent expires: its expiry is the `validUntil` of its most recent lifespan event. Changes to declarative agents publish no events; the file's version history is their record. See [Agent Analytics](../../../deployment/agent-analytics#event-types) and [Event Categories](../../../deployment/configuration#event-categories).
+
+## Things to know
+
+- **A reduction does not shorten tokens already issued.** They stay valid until their original `exp`. Suspend the agent to revoke them.
+- **Several nodes with the in-memory cache.** The node that changes a lifespan updates its own cache, but other nodes keep the previous value for up to `cache.ttl`, one hour by default. Until then, a reduced agent can still obtain tokens on another node, and an extended one can still be refused. Use the `redis` cache when a change must take effect on every node at once. See [Cache Configuration](../../../deployment/configuration#cache-configuration).
+- **Validator leeway.** A token is accepted until its `exp` plus the validator's clock-skew tolerance. <ProductName />'s own validator allows `jwt.leeway`, 30 seconds by default, so a token can be used for up to that long after `validUntil`. See [JWT Configuration](../../../deployment/configuration#jwt-configuration).
+- **Refusals do not say why.** An expired agent's client authentication fails with `invalid_client`, as for a wrong secret, and a refused token request with `invalid_grant`. Only [AuthZEN](../../protocols/authzen) access evaluation, which answers with the reason "Subject's lifespan has ended", and passkey enrolment, which refuses with `AUTHN-1013`, state it.
+- **Tokens issued before an agent had a lifespan.** They keep their full configured lifetime and can outlive a `validUntil` set later.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| `AGT-1045` | `validUntil` must be a full RFC 3339 date and time, such as `2027-03-31T00:00:00Z`. A date alone is refused. |
+| `AGT-1046` | A new `validUntil` must be later than the current time. To end an agent's access now, suspend it, or set an end a few minutes ahead. |
+| An agent's requests fail with `invalid_client` or `invalid_grant` | Check its status. An `EXPIRED` agent is refused until its lifespan is extended. If the agent acts for a user, also check the other agents involved, since any expired agent refuses the token. |
+| An agent still gets tokens after you reduced its lifespan | On a deployment with several nodes and the in-memory cache, the other nodes can serve the previous value for up to `cache.ttl`. |
+| Tokens expire sooner than the configured validity | The agent's lifespan, or that of another agent involved, ends sooner. Check `validUntil` on each agent. |
+| **Valid Until** cannot be changed | The agent is declarative and read only; change the file. Otherwise, check that you hold `system:agent`. |
+
+## Next Steps
+
+- [Create and Manage Agents](../manage-agents): Register an agent and manage its identifiers, owner, and access
+- [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts): Cut an agent off at once, including its existing tokens
+- [Agent Token](../authentication/agent-own-token): The claims on an agent's own token, including `sub_valid_until`

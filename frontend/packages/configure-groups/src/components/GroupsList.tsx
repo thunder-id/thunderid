@@ -5,7 +5,7 @@ import {QueryErrorNotice} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
-import {Eye, Group, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -66,13 +66,15 @@ export default function GroupsList(): JSX.Element {
         flex: 1,
         minWidth: 200,
         renderCell: (params: DataGrid.GridRenderCellParams<GroupBasic>): JSX.Element => (
-          <ListingTable.CellIcon
-            icon={<Group size={20} />}
-            primary={params.row.name}
-            secondary={params.row.description === '' ? undefined : params.row.description}
-            sx={{width: '100%'}}
-          />
+          <Typography variant="body2">{params.row.name}</Typography>
         ),
+      },
+      {
+        field: 'description',
+        headerName: t('groups:listing.columns.description', 'Description'),
+        flex: 1.5,
+        minWidth: 250,
+        valueGetter: (_value, row): string => row.description ?? '-',
       },
       {
         field: 'ouHandle',
@@ -99,8 +101,8 @@ export default function GroupsList(): JSX.Element {
             {params.row.isReadOnly ? (
               <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton
-                  size="small"
                   aria-label={t('common:status.readOnly', 'Read only')}
+                  size="small"
                   disableRipple
                   sx={{cursor: 'default'}}
                 >
@@ -111,8 +113,8 @@ export default function GroupsList(): JSX.Element {
               <>
                 <Tooltip title={t('common:actions.edit', 'Edit')}>
                   <IconButton
-                    size="small"
                     aria-label={t('common:actions.edit', 'Edit')}
+                    size="small"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleViewClick(params.row.id);
@@ -123,8 +125,8 @@ export default function GroupsList(): JSX.Element {
                 </Tooltip>
                 <Tooltip title={t('common:actions.delete', 'Delete')}>
                   <IconButton
-                    size="small"
                     aria-label={t('common:actions.delete', 'Delete')}
+                    size="small"
                     color="error"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -157,8 +159,8 @@ export default function GroupsList(): JSX.Element {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
+      <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
+        <ListingTable.Container disablePaper>
           <ListingTable.DataGrid
             rows={data?.groups ?? []}
             columns={columns}
@@ -181,7 +183,6 @@ export default function GroupsList(): JSX.Element {
             disableColumnFilter
             localeText={dataGridLocaleText}
             autoHeight
-            rowHeight={64}
             sx={{
               '& .MuiDataGrid-row': {
                 cursor: 'pointer',

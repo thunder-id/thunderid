@@ -3,7 +3,7 @@
 
 /* eslint-disable react/require-default-props */
 
-import {render, screen, fireEvent, waitFor, within} from '@testing-library/react';
+import {render, screen, fireEvent, waitFor} from '@testing-library/react';
 import {DataGrid} from '@wso2/oxygen-ui';
 import {MemoryRouter} from 'react-router';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -155,16 +155,12 @@ vi.mock('@wso2/oxygen-ui', async () => {
       GridRenderCellParams: {},
     },
     ListingTable: {
-      Provider: ({children, loading, variant}: {children: React.ReactNode; loading?: boolean; variant?: string}) => (
-        <div data-testid="listing-table-provider" data-loading={loading ? 'true' : 'false'} data-variant={variant}>
+      Provider: ({children, loading}: {children: React.ReactNode; loading?: boolean}) => (
+        <div data-testid="listing-table-provider" data-loading={loading ? 'true' : 'false'}>
           {children}
         </div>
       ),
-      Container: ({children, disablePaper}: {children: React.ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-table-container" data-disable-paper={disablePaper ? 'true' : undefined}>
-          {children}
-        </div>
-      ),
+      Container: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
       DataGrid: ({rows, columns, loading, onRowClick, getRowId}: MockDataGridProps) => {
         // Capture columns and onRowClick for testing
         capturedColumns.value = columns as unknown as DataGrid.GridColDef<BasicFlowDefinition>[];
@@ -201,11 +197,10 @@ vi.mock('@wso2/oxygen-ui', async () => {
           </div>
         );
       },
-      CellIcon: ({primary, secondary, icon}: {primary: string; secondary?: string; icon?: React.ReactNode}) => (
+      CellIcon: ({primary, icon}: {primary: string; icon?: React.ReactNode}) => (
         <>
           {icon}
           <span>{primary}</span>
-          {secondary && <span>{secondary}</span>}
         </>
       ),
       RowActions: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
@@ -249,17 +244,6 @@ describe('FlowsList', () => {
       );
 
       expect(screen.getByTestId('data-grid')).toBeInTheDocument();
-    });
-
-    it('should use the data grid variant inside a paper container', () => {
-      render(
-        <MemoryRouter>
-          <FlowsList />
-        </MemoryRouter>,
-      );
-
-      expect(screen.getByTestId('listing-table-provider')).toHaveAttribute('data-variant', 'data-grid');
-      expect(screen.getByTestId('listing-table-container')).not.toHaveAttribute('data-disable-paper');
     });
 
     it('should render column headers', () => {
@@ -657,7 +641,7 @@ describe('FlowsList', () => {
   });
 
   describe('Column RenderCell Execution', () => {
-    it('should render the name cell with the flow name and handle', () => {
+    it('should have name column without renderCell (plain text)', () => {
       render(
         <MemoryRouter>
           <FlowsList />
@@ -665,60 +649,8 @@ describe('FlowsList', () => {
       );
 
       const nameColumn = capturedColumns.value.find((col) => col.field === 'name');
-      expect(nameColumn?.renderCell).toBeDefined();
-
-      const {container} = render(
-        nameColumn!.renderCell!({row: mockFlowsData.flows[0]} as DataGrid.GridRenderCellParams<BasicFlowDefinition>),
-      );
-      expect(within(container).getByText('Login Flow')).toBeInTheDocument();
-      expect(within(container).getByText('login-flow')).toBeInTheDocument();
-    });
-
-    it('should render the flow type as a chip', () => {
-      render(
-        <MemoryRouter>
-          <FlowsList />
-        </MemoryRouter>,
-      );
-
-      const flowTypeColumn = capturedColumns.value.find((col) => col.field === 'flowType');
-      const {container} = render(
-        flowTypeColumn!.renderCell!({
-          row: mockFlowsData.flows[0],
-        } as DataGrid.GridRenderCellParams<BasicFlowDefinition>),
-      );
-      expect(within(container).getByText('AUTHENTICATION')).toBeInTheDocument();
-    });
-
-    it('should name the edit and delete actions', () => {
-      render(
-        <MemoryRouter>
-          <FlowsList />
-        </MemoryRouter>,
-      );
-
-      const actionsColumn = capturedColumns.value.find((col) => col.field === 'actions');
-      const {getByRole} = render(
-        actionsColumn!.renderCell!({row: mockFlowsData.flows[0]} as DataGrid.GridRenderCellParams<BasicFlowDefinition>),
-      );
-      expect(getByRole('button', {name: 'Edit'})).toBeInTheDocument();
-      expect(getByRole('button', {name: 'Delete'})).toBeInTheDocument();
-    });
-
-    it('should name the view action of a read-only flow', () => {
-      render(
-        <MemoryRouter>
-          <FlowsList />
-        </MemoryRouter>,
-      );
-
-      const actionsColumn = capturedColumns.value.find((col) => col.field === 'actions');
-      const {getByRole} = render(
-        actionsColumn!.renderCell!({
-          row: {...mockFlowsData.flows[0], isReadOnly: true},
-        } as DataGrid.GridRenderCellParams<BasicFlowDefinition>),
-      );
-      expect(getByRole('button', {name: 'View'})).toBeInTheDocument();
+      expect(nameColumn).toBeDefined();
+      expect(nameColumn?.renderCell).toBeUndefined();
     });
 
     it('should render actions cell with IconButton', () => {

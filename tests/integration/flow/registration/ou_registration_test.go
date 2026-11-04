@@ -13,10 +13,6 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const (
-	mockNotificationServerPortOU = 8098
-)
-
 var (
 	basicRegistrationFlowWithOU = testutils.Flow{
 		Name:     "Basic Registration Flow with OU Test",
@@ -442,13 +438,11 @@ func (ts *OURegistrationFlowTestSuite) SetupSuite() {
 	}
 	ts.entityTypeID = schemaID
 
-	// Start mock notification server for SMS flow
-	ts.mockServer = testutils.NewMockNotificationServer(mockNotificationServerPortOU)
-	err = ts.mockServer.Start()
+	// Create mock notification server for SMS flow
+	ts.mockServer, err = testutils.NewMockNotificationServer()
 	if err != nil {
-		ts.T().Fatalf("Failed to start mock notification server: %v", err)
+		ts.T().Fatalf("Failed to create mock notification server: %v", err)
 	}
-	time.Sleep(100 * time.Millisecond)
 
 	// Create notification sender for SMS flow
 	customSender := testutils.NotificationSender{

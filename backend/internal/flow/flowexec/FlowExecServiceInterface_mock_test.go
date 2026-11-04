@@ -8,6 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
+	common0 "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -278,26 +279,26 @@ func (_c *FlowExecServiceInterfaceMock_ExecuteByID_Call) RunAndReturn(run func(c
 }
 
 // ExecuteSystemFlow provides a mock function for the type FlowExecServiceInterfaceMock
-func (_mock *FlowExecServiceInterfaceMock) ExecuteSystemFlow(ctx context.Context, sysCtx *SystemFlowContext) (*SystemFlowResult, *common.ServiceError) {
+func (_mock *FlowExecServiceInterfaceMock) ExecuteSystemFlow(ctx context.Context, sysCtx *common0.SystemFlowContext) (*common0.SystemFlowResult, *common.ServiceError) {
 	ret := _mock.Called(ctx, sysCtx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ExecuteSystemFlow")
 	}
 
-	var r0 *SystemFlowResult
+	var r0 *common0.SystemFlowResult
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *SystemFlowContext) (*SystemFlowResult, *common.ServiceError)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *common0.SystemFlowContext) (*common0.SystemFlowResult, *common.ServiceError)); ok {
 		return returnFunc(ctx, sysCtx)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *SystemFlowContext) *SystemFlowResult); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *common0.SystemFlowContext) *common0.SystemFlowResult); ok {
 		r0 = returnFunc(ctx, sysCtx)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*SystemFlowResult)
+			r0 = ret.Get(0).(*common0.SystemFlowResult)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *SystemFlowContext) *common.ServiceError); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *common0.SystemFlowContext) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, sysCtx)
 	} else {
 		if ret.Get(1) != nil {
@@ -314,20 +315,20 @@ type FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call struct {
 
 // ExecuteSystemFlow is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sysCtx *SystemFlowContext
+//   - sysCtx *common0.SystemFlowContext
 func (_e *FlowExecServiceInterfaceMock_Expecter) ExecuteSystemFlow(ctx any, sysCtx any) *FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call {
 	return &FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call{Call: _e.mock.On("ExecuteSystemFlow", ctx, sysCtx)}
 }
 
-func (_c *FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call) Run(run func(ctx context.Context, sysCtx *SystemFlowContext)) *FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call {
+func (_c *FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call) Run(run func(ctx context.Context, sysCtx *common0.SystemFlowContext)) *FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *SystemFlowContext
+		var arg1 *common0.SystemFlowContext
 		if args[1] != nil {
-			arg1 = args[1].(*SystemFlowContext)
+			arg1 = args[1].(*common0.SystemFlowContext)
 		}
 		run(
 			arg0,
@@ -337,12 +338,12 @@ func (_c *FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call) Run(run func(ctx 
 	return _c
 }
 
-func (_c *FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call) Return(systemFlowResult *SystemFlowResult, serviceError *common.ServiceError) *FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call {
+func (_c *FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call) Return(systemFlowResult *common0.SystemFlowResult, serviceError *common.ServiceError) *FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call {
 	_c.Call.Return(systemFlowResult, serviceError)
 	return _c
 }
 
-func (_c *FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call) RunAndReturn(run func(ctx context.Context, sysCtx *SystemFlowContext) (*SystemFlowResult, *common.ServiceError)) *FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call {
+func (_c *FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call) RunAndReturn(run func(ctx context.Context, sysCtx *common0.SystemFlowContext) (*common0.SystemFlowResult, *common.ServiceError)) *FlowExecServiceInterfaceMock_ExecuteSystemFlow_Call {
 	_c.Call.Return(run)
 	return _c
 }

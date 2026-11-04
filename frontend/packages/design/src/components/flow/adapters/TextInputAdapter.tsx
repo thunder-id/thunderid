@@ -55,6 +55,9 @@ export default function TextInputAdapter({
   const autoFocus = ref === 'username';
   const hasError = !!(touched?.[ref] && fieldErrors?.[ref]);
   const value = values[ref] ?? '';
+  // A hint says why the field is asked for, so it shows whether or not the field has a value. The resolved
+  // text is shown as it is: a second pass through t() would read a colon in the prose as a namespace separator.
+  const hint = component.hint ? (resolve(component.hint) ?? component.hint) : undefined;
 
   return (
     <FormControl required={component.required} className={cn('Flow--textInput', 'FormControl--root')}>
@@ -75,7 +78,7 @@ export default function TextInputAdapter({
         variant="outlined"
         disabled={isLoading}
         error={hasError}
-        helperText={hasError ? fieldErrors?.[ref] : undefined}
+        helperText={hasError ? fieldErrors?.[ref] : hint}
         color={hasError ? 'error' : 'primary'}
         value={value}
         onChange={(e) => onInputChange(ref, e.target.value)}

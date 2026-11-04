@@ -301,6 +301,7 @@ func (s *service) listInstancesInOU(ctx context.Context, instances []connectionI
 	}
 	for _, instance := range sharedPage {
 		instance.IsOwnedByOU = new(false)
+		instance.OUID = ouID
 		page = append(page, instance)
 	}
 	total := len(owned) + len(sharedIDs)

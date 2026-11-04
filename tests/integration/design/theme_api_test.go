@@ -12,14 +12,15 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
-	testServerURL = "https://localhost:8095"
 	themeBasePath = "/design/themes"
 )
+
+var testServerURL = testutils.TestServerURL
 
 var (
 	testTheme = json.RawMessage(`{

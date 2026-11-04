@@ -314,12 +314,14 @@ func (nd *NodeDefinition) UnmarshalYAML(value *yaml.Node) error {
 
 // InputDefinition represents an input parameter for a node.
 type InputDefinition struct {
-	Ref        string                     `json:"ref,omitempty"        yaml:"ref,omitempty"        jsonschema:"Reference ID for the input."`
-	Type       string                     `json:"type"                 yaml:"type"                 jsonschema:"Input type (e.g., 'text', 'password', 'email')."`
-	Identifier string                     `json:"identifier"           yaml:"identifier"           jsonschema:"Field identifier or name."`
-	Required   bool                       `json:"required"             yaml:"required"             jsonschema:"Whether this input is mandatory."`
-	OneTimeUse bool                       `json:"oneTimeUse,omitempty" yaml:"oneTimeUse,omitempty" jsonschema:"When true, the input is removed from the flow context after being consumed."`
-	Validation []ValidationRuleDefinition `json:"validation,omitempty" yaml:"validation,omitempty" jsonschema:"Server-enforced validation rules applied to the submitted value."`
+	Ref          string                     `json:"ref,omitempty"        yaml:"ref,omitempty"        jsonschema:"Reference ID for the input."`
+	Type         string                     `json:"type"                 yaml:"type"                 jsonschema:"Input type (e.g., 'text', 'password', 'email')."`
+	Identifier   string                     `json:"identifier"           yaml:"identifier"           jsonschema:"Field identifier or name."`
+	Required     bool                       `json:"required"             yaml:"required"             jsonschema:"Whether this input is mandatory."`
+	OneTimeUse   bool                       `json:"oneTimeUse,omitempty" yaml:"oneTimeUse,omitempty" jsonschema:"When true, the input is removed from the flow context after being consumed."`
+	DefaultValue string                     `json:"defaultValue,omitempty" yaml:"defaultValue,omitempty" jsonschema:"Value the flow supplies for the input when it has none. On a prompt input the person still sees it, prefilled. For a constant input, the fixed value."`
+	Constant     bool                       `json:"constant,omitempty"   yaml:"constant,omitempty"   jsonschema:"When true, DefaultValue always replaces any existing value for this input. Supported on executor inputs only and requires a non-empty DefaultValue."`
+	Validation   []ValidationRuleDefinition `json:"validation,omitempty" yaml:"validation,omitempty" jsonschema:"Server-enforced validation rules applied to the submitted value."`
 }
 
 // VariableDefinition declares one variable of a flow. It is described in the vocabulary of a prompt's inputs: an
@@ -632,7 +634,7 @@ func (c *AccessTokenSubConfig) ValidityPeriodOrZero() int64 {
 // IDTokenConfig is the ID token configuration.
 type IDTokenConfig struct {
 	ValidityPeriod int64               `json:"validityPeriod,omitempty" yaml:"validityPeriod,omitempty" jsonschema:"ID token validity period in seconds."`
-	UserAttributes []string            `json:"userAttributes,omitempty" yaml:"userAttributes,omitempty" jsonschema:"User attributes to embed in the ID token."`
+	UserAttributes []string            `json:"userAttributes,omitempty" yaml:"userAttributes,omitempty" jsonschema:"User attributes to embed in the ID token. Identity assertions (ID-JAG) also carry the ones the ID token holds, except roles and groups."`
 	ResponseType   IDTokenResponseType `json:"responseType,omitempty"   yaml:"responseType,omitempty"   jsonschema:"ID token response type (JWT, JWE, NESTED_JWT). Defaults to JWT."`
 	SigningAlg     string              `json:"signingAlg,omitempty"     yaml:"signingAlg,omitempty"     jsonschema:"JWS algorithm used to sign the ID token. Defaults to the server's preferred signing key algorithm."`
 	EncryptionAlg  string              `json:"encryptionAlg,omitempty"  yaml:"encryptionAlg,omitempty"  jsonschema:"JWE key-management algorithm. Required when responseType is JWE or NESTED_JWT."`
@@ -1348,11 +1350,20 @@ type Input struct {
 	Validation  []ValidationRule `json:"validation,omitempty"`
 	// OneTimeUse indicates that the input can only be consumed once
 	OneTimeUse bool `json:"oneTimeUse,omitempty"`
+	// DefaultValue is written to the flow context for a missing input and returned with a prompted input.
+	DefaultValue string `json:"defaultValue,omitempty"`
+	// Constant makes DefaultValue replace an existing value instead of only filling a missing one. Executor inputs only.
+	Constant bool `json:"-"`
 }
 
 // IsSensitive checks whether this input's type is considered sensitive.
 func (i Input) IsSensitive() bool {
 	return slices.Contains(sensitiveInputTypes, i.Type)
+}
+
+// IsSensitive checks whether this input definition's type is considered sensitive.
+func (d InputDefinition) IsSensitive() bool {
+	return slices.Contains(sensitiveInputTypes, d.Type)
 }
 
 // ValidationRule defines a single constraint on a flow input. CompiledRegex is

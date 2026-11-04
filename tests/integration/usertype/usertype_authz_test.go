@@ -73,8 +73,6 @@ type UserTypeAuthzTestSuite struct {
 }
 
 const (
-	authzSchemaTestServerURL = testutils.TestServerURL
-
 	schemaAuthzOU1Handle  = "schema-authz-ou1"
 	schemaAuthzOU2Handle  = "schema-authz-ou2"
 	schemaAuthzOU12Handle = "schema-authz-ou12"
@@ -85,6 +83,10 @@ const (
 	// Unique role name to avoid collisions across test runs.
 	schemaAdminRoleName = "User Type Admin (authz-test)"
 )
+
+var schemaAuthzDevelopRedirectURI = testutils.TestServerURL + "/console"
+
+var authzSchemaTestServerURL = testutils.TestServerURL
 
 // schemaAuthzUserTypeID persists the user type ID used to create the test
 // user across SetupSuite/TearDownSuite.

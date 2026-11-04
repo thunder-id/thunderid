@@ -364,7 +364,7 @@ func buildOriginReader(cfg engineconfig.OriginConfig) (cors.ServerConfigReader, 
 	if err != nil {
 		return nil, fmt.Errorf("thunderidengine: invalid origin configuration: %w", err)
 	}
-	if err := (cors.OriginHandler{}).Validate(decoded, nil, nil); err != nil {
+	if err := (cors.OriginHandler{}).Validate(context.Background(), decoded, nil, nil); err != nil {
 		return nil, fmt.Errorf("thunderidengine: invalid origin configuration: %w", err)
 	}
 	return staticOriginReader{config: decoded.(cors.OriginConfig)}, nil

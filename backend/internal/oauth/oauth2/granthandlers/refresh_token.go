@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -43,6 +44,7 @@ type refreshTokenGrantHandler struct {
 	criteriaRevoker  revocation.CriteriaRevokerInterface
 	authzDetails     providers.AuthorizationDetailProvider
 	ouService        providers.OrganizationUnitProvider
+	ssoSession       session.Service
 }
 
 // newRefreshTokenGrantHandler creates a new instance of RefreshTokenGrantHandler.
@@ -58,6 +60,7 @@ func newRefreshTokenGrantHandler(
 	criteriaRevoker revocation.CriteriaRevokerInterface,
 	authzDetails providers.AuthorizationDetailProvider,
 	ouService providers.OrganizationUnitProvider,
+	ssoSession session.Service,
 	cfg oauthconfig.Config,
 ) RefreshTokenGrantHandlerInterface {
 	return &refreshTokenGrantHandler{
@@ -73,6 +76,7 @@ func newRefreshTokenGrantHandler(
 		criteriaRevoker:  criteriaRevoker,
 		authzDetails:     authzDetails,
 		ouService:        ouService,
+		ssoSession:       ssoSession,
 	}
 }
 
@@ -379,7 +383,20 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		return nil, errResp
 	}
 
+	h.recordSessionActivity(ctx, refreshTokenClaims.SessionID, logger)
+
 	return tokenResponse, nil
+}
+
+// recordSessionActivity counts the refresh as a use of the SSO session the grant was issued under, so
+// it keeps that session alive. It is best-effort: a failure is logged and does not fail the refresh.
+func (h *refreshTokenGrantHandler) recordSessionActivity(ctx context.Context, sessionID string,
+	logger *log.Logger) {
+	if h.ssoSession != nil {
+		if err := h.ssoSession.RecordActivity(ctx, sessionID); err != nil {
+			logger.Warn(ctx, "Failed to record SSO session activity on token refresh", log.Error(err))
+		}
+	}
 }
 
 // revokeTokenFamilyOnReplay revokes the token family of a replayed (already-revoked) refresh token, when

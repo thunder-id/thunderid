@@ -59,6 +59,8 @@ func (dh *dcrHandler) HandleDCRRegistration(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	w.Header().Set(serverconst.CacheControlHeaderName, serverconst.CacheControlNoStore)
+	w.Header().Set(serverconst.PragmaHeaderName, serverconst.PragmaNoCache)
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, dcrResponse)
 }
 
@@ -87,6 +89,8 @@ func (dh *dcrHandler) HandleGetClientConfiguration(w http.ResponseWriter, r *htt
 		return
 	}
 
+	w.Header().Set(serverconst.CacheControlHeaderName, serverconst.CacheControlNoStore)
+	w.Header().Set(serverconst.PragmaHeaderName, serverconst.PragmaNoCache)
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
 }
 
@@ -119,6 +123,8 @@ func (dh *dcrHandler) HandleUpdateClientConfiguration(w http.ResponseWriter, r *
 		return
 	}
 
+	w.Header().Set(serverconst.CacheControlHeaderName, serverconst.CacheControlNoStore)
+	w.Header().Set(serverconst.PragmaHeaderName, serverconst.PragmaNoCache)
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
 }
 

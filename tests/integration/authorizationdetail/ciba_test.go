@@ -131,8 +131,9 @@ func TestCIBATestSuite(t *testing.T) {
 }
 
 func (s *CIBATestSuite) SetupSuite() {
-	s.notifications = testutils.NewMockNotificationServer(0)
-	s.Require().NoError(s.notifications.Start())
+	notifications, err := testutils.NewMockNotificationServer()
+	s.notifications = notifications
+	s.Require().NoError(err)
 
 	senderID, err := testutils.CreateNotificationSender(testutils.NotificationSender{
 		Name:     "Authorization Details CIBA Sender",

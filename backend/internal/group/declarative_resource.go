@@ -6,6 +6,7 @@ package group
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -201,15 +202,17 @@ type groupDeclarativeResource struct {
 // loadDeclarativeResources loads immutable group resources from YAML files into the file store.
 // The dbStore parameter is optional and is used only for duplicate checking in composite mode.
 // The ouService parameter is optional and is used to resolve ou_handle to ou_id.
+// The service parameter is optional and is used to check members against the group's organization unit.
 func loadDeclarativeResources(
 	fileStore *fileBasedGroupStore, dbStore groupStoreInterface, ouService oupkg.OrganizationUnitServiceInterface,
+	service *groupService,
 ) error {
 	resourceConfig := declarativeresource.ResourceConfig{
 		ResourceType:  "Group",
 		DirectoryName: "groups",
 		Parser:        parseToGroupWrapper,
 		Validator: func(data interface{}) error {
-			return validateGroupWrapper(data, fileStore, dbStore, ouService)
+			return validateGroupWrapper(data, fileStore, dbStore, ouService, service)
 		},
 		IDExtractor: func(data interface{}) string {
 			if v, ok := data.(*groupDeclarativeResource); ok {
@@ -255,12 +258,15 @@ func parseToGroup(data []byte) (*groupDeclarativeResource, error) {
 }
 
 // validateGroupWrapper validates a parsed group and checks for duplicate IDs.
-// When ouService is provided, OU handles are resolved before validation runs.
+// When ouService is provided, OU handles are resolved before validation runs. When service is
+// provided, members already loaded are checked against the group's organization unit, the same
+// rule the API applies.
 func validateGroupWrapper(
 	data interface{},
 	fileStore *fileBasedGroupStore,
 	dbStore groupStoreInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
+	service *groupService,
 ) error {
 	grp, ok := data.(*groupDeclarativeResource)
 	if !ok {
@@ -283,6 +289,19 @@ func validateGroupWrapper(
 
 	if grp.OUID == "" {
 		return fmt.Errorf("ouId or ouHandle is required for group '%s'", grp.Name)
+	}
+
+	if service != nil && len(grp.Members) > 0 {
+		entityIDs, groupIDs := splitMemberIDs(grp.Members)
+		// Declarative resource loading runs during startup, outside any request.
+		unavailableIDs, err := service.findMembersNotAvailableInOU(context.Background(), grp.OUID, entityIDs, groupIDs)
+		if err != nil {
+			return fmt.Errorf("failed to check members of group '%s': %w", grp.Name, err)
+		}
+		if len(unavailableIDs) > 0 {
+			return fmt.Errorf("group '%s' has members its organization unit neither owns nor has shared "+
+				"with it: %s", grp.Name, strings.Join(unavailableIDs, ", "))
+		}
 	}
 
 	if fileStore != nil {

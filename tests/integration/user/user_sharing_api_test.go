@@ -55,6 +55,8 @@ const (
 	sharingTestScopes   = "system system:user system:usertype:view"
 )
 
+var sharingTestConsoleURI = testutils.TestServerURL + "/console"
+
 // sharingPolicy is the part of a policy response these tests read.
 type sharingPolicy struct {
 	ID             string `json:"id"`

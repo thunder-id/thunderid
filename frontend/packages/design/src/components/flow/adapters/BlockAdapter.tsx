@@ -4,7 +4,7 @@
 import {EmbeddedFlowComponentType, EmbeddedFlowEventType, type EmbeddedFlowComponent} from '@thunderid/react';
 import {cn} from '@thunderid/utils';
 import {Box, Button} from '@wso2/oxygen-ui';
-import type {JSX} from 'react';
+import {Fragment, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import CheckboxAdapter from './CheckboxAdapter';
 import DividerAdapter from './DividerAdapter';
@@ -13,8 +13,9 @@ import PasswordInputAdapter from './PasswordInputAdapter';
 import RichTextAdapter from './RichTextAdapter';
 import SelectAdapter from './SelectAdapter';
 import StackContainer from './StackContainer';
+import SubmitButtonAdapter from './SubmitButtonAdapter';
 import TextInputAdapter from './TextInputAdapter';
-import type {FlowComponent, FlowFieldProps} from '../../../models/flow';
+import type {FlowComponent, FlowFieldProps, RenderFlowField} from '../../../models/flow';
 import getIntegrationIcon from '../../../utils/getIntegrationIcon';
 
 interface BlockContext {
@@ -37,50 +38,17 @@ interface BlockContext {
   primarySubmitId?: string;
   /** When true, the approving (primary) submit action is disabled while other actions stay available */
   approvalBlocked?: boolean;
+  /** Renders field types the shared adapters do not cover. Returning `undefined` leaves the field to them. */
+  renderField?: RenderFlowField;
+  /** Disables the submit buttons and the Enter key without disabling the inputs */
+  isSubmitDisabled?: boolean;
+  /** Draws the inputs of a block that has no submit action. Off by default, where such a block shows nothing. */
+  rendersInputsWithoutSubmit?: boolean;
 }
 
 // The primary submit action approves a consent prompt; any other submit action denies it.
 function isApprovalAction(component: EmbeddedFlowComponent): boolean {
   return (component as FlowComponent).variant?.toUpperCase() === 'PRIMARY';
-}
-
-interface SubmitButtonAdapterProps {
-  component: FlowComponent;
-  isLoading: boolean;
-  /** When true, the button is disabled even while the flow is not loading */
-  disabled?: boolean;
-  resolve: (template: string | undefined) => string | undefined;
-  /** When provided, the button fires its own action via onClick instead of form submit */
-  onClick?: () => void;
-}
-
-function SubmitButtonAdapter({
-  component,
-  isLoading,
-  disabled = false,
-  resolve,
-  onClick = undefined,
-}: SubmitButtonAdapterProps): JSX.Element {
-  const {t} = useTranslation();
-
-  return (
-    <Button
-      id={component.id}
-      type={onClick ? 'button' : 'submit'}
-      fullWidth
-      className={cn(
-        'Flow--submitButton',
-        'Button--root',
-        component.variant === 'PRIMARY' ? 'Button--primary' : 'Button--outlined',
-      )}
-      variant={component.variant === 'PRIMARY' ? 'contained' : 'outlined'}
-      disabled={isLoading || disabled}
-      onClick={onClick}
-      sx={{mt: 2}}
-    >
-      {t(resolve(component.label)!)}
-    </Button>
-  );
 }
 
 interface ResendButtonAdapterProps {
@@ -201,6 +169,12 @@ function renderFormSubComponent(
     additionalData: ctx.additionalData,
   };
 
+  const customField = ctx.renderField?.(sub, fieldProps);
+
+  if (customField !== undefined) {
+    return <Fragment key={sub.id ?? compIndex}>{customField}</Fragment>;
+  }
+
   if (
     (sub.type as EmbeddedFlowComponentType) === EmbeddedFlowComponentType.TextInput ||
     sub.type === 'TEXT_INPUT' ||
@@ -256,8 +230,9 @@ function renderFormSubComponent(
       <SubmitButtonAdapter
         key={sub.id ?? compIndex}
         component={sub}
-        isLoading={ctx.isLoading}
-        disabled={ctx.approvalBlocked === true && isApprovalAction(sub)}
+        disabled={
+          ctx.isLoading || ctx.isSubmitDisabled === true || (ctx.approvalBlocked === true && isApprovalAction(sub))
+        }
         resolve={ctx.resolve}
         onClick={
           ctx.hasMultipleSubmits && sub.id !== ctx.primarySubmitId
@@ -331,6 +306,7 @@ function FormBlockAdapter({component, index, ...ctx}: FormBlockAdapterProps): JS
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+    if (ctx.isSubmitDisabled) return;
     if (ctx.onValidate && !ctx.onValidate(blockComponents)) return;
     if (primarySubmit && !(ctx.approvalBlocked && isApprovalAction(primarySubmit))) {
       ctx.onSubmit(primarySubmit, ctx.values);
@@ -449,7 +425,13 @@ export default function BlockAdapter({
       c.eventType === EmbeddedFlowEventType.Trigger,
   );
 
-  if (hasSubmit)
+  // When asked to, a block that holds inputs is drawn as a form even without a submit action: the trigger block
+  // draws actions alone, so its inputs would otherwise never be shown.
+  const drawsInputs =
+    ctx.rendersInputsWithoutSubmit === true &&
+    flattenedComponents.some((c) => typeof c.ref === 'string' && !!c.ref && c.type !== 'ACTION' && c.type !== 'RESEND');
+
+  if (hasSubmit || drawsInputs)
     return (
       <FormBlockAdapter
         component={component}

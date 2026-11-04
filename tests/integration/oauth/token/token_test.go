@@ -19,12 +19,13 @@ import (
 )
 
 const (
-	testServerURL                        = "https://localhost:8095"
 	clientId                             = "token_test_client_123"
 	clientSecret                         = "token_test_secret_123"
 	appName                              = "TokenTestApp"
 	tokenDefaultResourceServerIdentifier = "https://token-default.example.com"
 )
+
+var testServerURL = testutils.TestServerURL
 
 type TokenTestSuite struct {
 	suite.Suite

@@ -16,16 +16,9 @@ vi.mock('react-i18next', () => ({
 }));
 
 const flows: FlowListRow[] = [
-  {
-    id: 'flow-1',
-    handle: 'suspend-users',
-    name: 'Suspend users',
-    flowType: 'ADMINISTRATION',
-    updatedAt: '2025-01-01T10:00:00Z',
-  },
+  {id: 'flow-1', name: 'Suspend users', flowType: 'ADMINISTRATION', updatedAt: '2025-01-01T10:00:00Z'},
   {
     id: 'flow-2',
-    handle: 'default-sign-in',
     name: 'Default sign-in',
     flowType: 'AUTHENTICATION',
     updatedAt: '2025-01-02T15:30:00Z',
@@ -61,7 +54,6 @@ describe('useFlowListColumns', () => {
       expect(screen.getByRole('columnheader', {name: header})).toBeInTheDocument();
     });
     const row = rowOf('Suspend users');
-    expect(within(row).getByText('suspend-users')).toBeInTheDocument();
     expect(within(row).getByText('ADMINISTRATION')).toBeInTheDocument();
     expect(within(row).getByText(/Jan.*2025|2025.*Jan/)).toBeInTheDocument();
   });

@@ -6,8 +6,6 @@ package i18n
 import "github.com/thunder-id/thunderid/tests/integration/testutils"
 
 const (
-	testServerURL = testutils.TestServerURL
-	languagesURL  = testServerURL + "/i18n/languages"
 
 	// systemLanguage / systemNamespace mirror the server defaults
 	// (backend/internal/system/i18n/mgt/constants.go).
@@ -21,6 +19,10 @@ const (
 	// testNamespace is the namespace owned by this suite; TearDown clears it.
 	testNamespace = "integration-i18n"
 )
+
+var languagesURL = testServerURL + "/i18n/languages"
+
+var testServerURL = testutils.TestServerURL
 
 // i18nMessage mirrors the i18n message structure returned in API error responses.
 type i18nMessage struct {

@@ -54,7 +54,8 @@ func setExternalIdentity(execResp *providers.ExecutorResponse, idpID, sub string
 
 // revocationPlan is the trusted intent a flow's pre-processing node produces and the executors that
 // follow act on. It is never built from request input, so the criteria, breadth and reason recorded
-// here are authoritative for the rest of the flow.
+// here are authoritative for the rest of the flow. A system post flow reads the plan its pre flow
+// produced, which the service hands back unchanged.
 type revocationPlan struct {
 	Criteria []revocation.Criterion `json:"criteria"`
 	Mode     revocation.Mode        `json:"mode"`
@@ -173,6 +174,16 @@ func resolveInputIdentifierByType(ctx *providers.NodeContext, inputType string, 
 		return input.Identifier
 	}
 	return fallback
+}
+
+// isConstantNodeInput reports whether the running node holds the input constant.
+func isConstantNodeInput(ctx *providers.NodeContext, identifier string) bool {
+	for _, input := range ctx.NodeInputs {
+		if input.Identifier == identifier {
+			return input.Constant
+		}
+	}
+	return false
 }
 
 // findInputByType returns the first input in the given slice whose Type matches inputType.

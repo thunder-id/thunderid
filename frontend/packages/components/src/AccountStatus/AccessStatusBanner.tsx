@@ -24,7 +24,7 @@ export interface AccessStatusBannerProps {
 /**
  * The hold on a record, as a banner on its page. Renders nothing for an active record.
  *
- * A suspension is a warning: it lasts until an administrator releases it. A lock is information: it
+ * A suspension or an ended lifespan is a warning: it lasts until an administrator acts. A lock is information: it
  * either lifts on its own or is the expected landing after a release. Each live lock is listed with
  * when it ends.
  */
@@ -43,7 +43,11 @@ export default function AccessStatusBanner({
   return (
     <Alert
       role="status"
-      severity={description.value === AccessStatuses.SUSPENDED ? 'warning' : 'info'}
+      severity={
+        description.value === AccessStatuses.SUSPENDED || description.value === AccessStatuses.EXPIRED
+          ? 'warning'
+          : 'info'
+      }
       data-testid="access-status-banner"
       sx={sx}
     >

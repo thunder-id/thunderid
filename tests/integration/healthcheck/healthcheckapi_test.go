@@ -8,13 +8,11 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const (
-	testServerURL = "https://localhost:8095"
-)
+var testServerURL = testutils.TestServerURL
 
 type HealthCheckAPITestSuite struct {
 	suite.Suite

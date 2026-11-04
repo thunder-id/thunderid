@@ -1,0 +1,77 @@
+---
+title: Let Customers Bring Their Own AI Assistant
+docType: use-case
+sidebar_position: 0
+description: What changes when customers bring their own AI assistants to your services, and the identity questions those assistants' API calls raise.
+---
+
+# Let Customers Bring Their Own AI Assistant
+
+A bank customer has a personal AI assistant they already use for everyday chores. Each week they ask it to check
+their balance, list the week's card payments, and point out anything unusual. To do that, the assistant has to call
+the bank's APIs as that customer.
+
+To the customer, it is their assistant running one more errand. To the bank, it is an assistant it has never seen
+before, brought in by a customer and asking to act with that customer's access. The bank did not build it and needs
+no arrangement with whoever did, so what it trusts about the assistant has to come from the customer who brought it.
+
+## The Problem
+
+The bank is one example. Any organization whose customers sign in to use its services meets the same problem once
+those customers start bringing their own assistants, whether it runs a bank, an insurer, or a utility. Each time
+such an assistant calls an API, the same identity questions come up:
+
+- **Whose assistant is it?** The customer brings the assistant in, not the bank. It has to belong to that customer
+  from the moment it is registered, and stay theirs.
+- **For whom can it act?** Only its customer. It must not reach another customer's account, and it must not act on
+  its own authority with nobody behind it.
+- **Who decides what it may do?** The customer approves what the assistant asks for, and can approve less. A
+  permission the customer does not hold is never theirs to give.
+- **Who made the call?** The bank's APIs need to see both the customer whose account is used and the assistant that
+  made the request, so an action the assistant took is never mistaken for one the customer took themselves.
+- **How is it stopped?** The customer needs to pause or remove the assistant. The bank needs to stop it too, for
+  example when a flaw is reported in it, without locking the customer out of their own account.
+- **What can the bank see?** The bank's security team needs to find every assistant its customers have registered,
+  and know whose each one is.
+
+These all come back to one requirement:
+
+> **An assistant a customer brings in needs an identity of its own, tied to that customer.**
+
+## How It Works
+
+The identity layer registers the assistant as an identity of its own, owned by the customer who brought it in. It
+issues the assistant tokens only for that customer, and only after the customer signs in and approves.
+
+<PersonalAssistantSolutionDiagram />
+
+The customer registers the assistant once, as their own (1). When the assistant needs access, it asks the identity
+layer (2). The identity layer asks the customer to sign in and approve what the assistant asks for (3), then issues a
+signed token for that customer only and returns it to the assistant (4). The assistant sends the token with each
+call, and the bank's APIs check it (5).
+
+The token names the customer as the subject and the assistant as the actor, so the APIs apply the customer's
+permissions and still know the assistant made the request. The assistant can renew its access without the customer
+signing in again, and each renewed token still names both.
+
+Control is shared by the two parties that answer for the assistant. The customer can change what it may use, pause
+it, or remove it. The bank can find any assistant and stop it, and when a customer's own account is suspended or
+closed, their assistants stop with it.
+
+:::tip Not Your Pattern?
+- If the agents are your own, built and run by your organization, see
+  [Identity for AI Agents](../../) for agents with identities you register and manage.
+:::
+
+## Next Steps
+
+The assistant's token works like the one an agent gets when it acts for a user: the customer is the subject and the
+assistant is the actor. These pages show what that token carries and how the assistant renews it:
+
+<NextSteps>
+  <NextStepsCard
+    title="The Token Cannot Say the Agent Acted for a User"
+    description="How a delegated token names the user as the subject and the agent as the actor."
+    href="../../solve-acts-for-user"
+  />
+</NextSteps>

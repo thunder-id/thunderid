@@ -54,6 +54,23 @@ func (suite *UtilsTestSuite) TestReservedAccessTokenClaimNames_IncludesAuthoriza
 	assert.True(suite.T(), builderOwnedClaimNames()[constants.ClaimAuthorizationDetails])
 }
 
+func (suite *UtilsTestSuite) TestIDJAGIdentityClaims_WithoutIDTokenConfiguration() {
+	attrs := map[string]interface{}{"email": "user@example.com"}
+	tests := []struct {
+		name     string
+		oauthApp *providers.OAuthClient
+	}{
+		{"no client", nil},
+		{"no token configuration", &providers.OAuthClient{}},
+		{"no ID token configuration", &providers.OAuthClient{Token: &providers.OAuthTokenConfig{}}},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			assert.Empty(suite.T(), idjagIdentityClaims(attrs, tc.oauthApp))
+		})
+	}
+}
+
 func (suite *UtilsTestSuite) TestJoinScopes_WithMultipleScopes() {
 	scopes := []string{"read", "write", "admin"}
 	result := JoinScopes(scopes)

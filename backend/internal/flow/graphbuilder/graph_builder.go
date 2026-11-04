@@ -374,34 +374,16 @@ func (b *graphBuilder) configureNodeInputs(
 	inputs := make([]providers.Input, len(nodeDef.Executor.Inputs))
 	for i, input := range nodeDef.Executor.Inputs {
 		inputs[i] = providers.Input{
-			Ref:        input.Ref,
-			Identifier: input.Identifier,
-			Type:       input.Type,
-			Required:   input.Required,
-			OneTimeUse: input.OneTimeUse,
+			Ref:          input.Ref,
+			Identifier:   input.Identifier,
+			Type:         input.Type,
+			Required:     input.Required,
+			OneTimeUse:   input.OneTimeUse,
+			DefaultValue: input.DefaultValue,
+			Constant:     input.Constant,
 		}
 	}
 	executorNode.SetInputs(inputs)
-}
-
-// toValidationRules converts mgt rule definitions to runtime ValidationRule
-// values and pre-compiles their regex patterns. Returns nil for an empty input.
-func toValidationRules(defs []providers.ValidationRuleDefinition) ([]providers.ValidationRule, error) {
-	if len(defs) == 0 {
-		return nil, nil
-	}
-	rules := make([]providers.ValidationRule, len(defs))
-	for i, d := range defs {
-		rules[i] = providers.ValidationRule{
-			Type:    providers.ValidationType(d.Type),
-			Value:   d.Value,
-			Message: d.Message,
-		}
-	}
-	if err := common.PrepareValidationRules(rules); err != nil {
-		return nil, err
-	}
-	return rules, nil
 }
 
 // configureNodeVariant sets the prompt node's variant from the node definition.
@@ -462,18 +444,20 @@ func (b *graphBuilder) configureNodePrompts(
 		// Convert inputs
 		inputs := make([]providers.Input, len(promptDef.Inputs))
 		for j, inputDef := range promptDef.Inputs {
-			validation, err := toValidationRules(inputDef.Validation)
+			validation, err := common.ToValidationRules(inputDef.Validation)
 			if err != nil {
 				return fmt.Errorf("node %s, prompt %d, input %s: %w",
 					nodeDef.ID, i, inputDef.Identifier, err)
 			}
 			inputs[j] = providers.Input{
-				Ref:        inputDef.Ref,
-				Identifier: inputDef.Identifier,
-				Type:       inputDef.Type,
-				Required:   inputDef.Required,
-				OneTimeUse: inputDef.OneTimeUse,
-				Validation: validation,
+				Ref:          inputDef.Ref,
+				Identifier:   inputDef.Identifier,
+				Type:         inputDef.Type,
+				Required:     inputDef.Required,
+				OneTimeUse:   inputDef.OneTimeUse,
+				DefaultValue: inputDef.DefaultValue,
+				Constant:     inputDef.Constant,
+				Validation:   validation,
 			}
 		}
 		prompts[i].Inputs = inputs

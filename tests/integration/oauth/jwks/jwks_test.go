@@ -12,7 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const jwksEndpoint = testutils.TestServerURL + "/oauth2/jwks"
+var jwksEndpoint = testutils.TestServerURL + "/oauth2/jwks"
 
 type jwk struct {
 	Kid string `json:"kid"`

@@ -18,10 +18,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
+	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
 
 type ServiceTestSuite struct {
@@ -41,7 +43,7 @@ func (s *ServiceTestSuite) SetupTest() {
 	s.port = newEntityStateProviderMock(s.T())
 	s.source = newAccountAccessSourceInterfaceMock(s.T())
 	s.now = time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
-	s.svc = newIdentityGovernanceService(s.port, s.source, nil, nil, nil)
+	s.svc = newIdentityGovernanceService(s.port, s.source, transaction.NewNoOpTransactioner(), nil, nil, nil)
 	s.svc.now = func() time.Time { return s.now }
 	s.ctx = context.Background()
 }
@@ -51,7 +53,7 @@ func newTestService(t *testing.T, port entityStateProvider, cfg accountAccessVal
 	authorizer sysauthz.SystemAuthorizationServiceInterface) *identityGovernanceService {
 	source := newAccountAccessSourceInterfaceMock(t)
 	source.EXPECT().Current(mock.Anything).Return(cfg).Maybe()
-	return newIdentityGovernanceService(port, source, notifier, authorizer, nil)
+	return newIdentityGovernanceService(port, source, transaction.NewNoOpTransactioner(), notifier, authorizer, nil)
 }
 
 // admittedFailure returns RecordFailure's error and requires an attempt that read cleanly to be
@@ -563,75 +565,6 @@ func (s *ServiceTestSuite) TestFailureDuringALiveLockFormsNothing() {
 		testMethod)))
 	s.port.AssertNotCalled(s.T(), "FormLock",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-}
-
-func (s *ServiceTestSuite) TestFormationStopsWhenAReReadShowsANewerLock() {
-	entity := s.activeEntity()
-	s.expectConfig(methodGranularityConfig())
-	// The first read, then the re-read after the guard loses.
-	s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(&entity, nil).Once()
-	s.port.On("IncrementFailure", mock.Anything, entity.ID, testMethod, mock.Anything, mock.Anything).
-		Return(LockEntry{FailureCount: 5}, true, nil).Once()
-	s.port.On("FormLock", mock.Anything, entity.ID, testMethod,
-		mock.Anything, mock.Anything, mock.Anything).Return(false, nil).Once()
-
-	refreshed := s.activeEntity()
-	putLockEntry(&refreshed.AccessState, testMethod, LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
-	s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(&refreshed, nil).Once()
-
-	s.Require().Nil(s.admittedFailure(s.svc.RecordFailure(s.ctx, entity.ID, providers.AccessPlaneAuthentication,
-		testMethod)))
-}
-
-func (s *ServiceTestSuite) TestFormationRetryIsGuardedOnTheReReadRevision() {
-	entity := s.activeEntity()
-	s.expectConfig(methodGranularityConfig())
-	s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(&entity, nil).Once()
-	s.port.On("IncrementFailure", mock.Anything, entity.ID, testMethod, mock.Anything, mock.Anything).
-		Return(LockEntry{FailureCount: 5, Revision: 3}, true, nil).Once()
-	s.port.On("FormLock", mock.Anything, entity.ID, testMethod,
-		LockEntry{FailureCount: 5, Revision: 3}, mock.Anything, mock.Anything).Return(false, nil).Once()
-
-	refreshed := s.activeEntity()
-	refreshed.Revision = 9
-	putLockEntry(&refreshed.AccessState, testMethod, LockEntry{FailureCount: 6})
-	s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(&refreshed, nil).Once()
-	s.port.On("FormLock", mock.Anything, entity.ID, testMethod,
-		LockEntry{FailureCount: 6, Revision: 9}, mock.Anything, mock.Anything).Return(true, nil).Once()
-
-	s.Require().Nil(s.admittedFailure(s.svc.RecordFailure(s.ctx, entity.ID, providers.AccessPlaneAuthentication,
-		testMethod)))
-}
-
-func (s *ServiceTestSuite) TestFormationStopsWhenAReReadShowsAReset() {
-	entity := s.activeEntity()
-	s.expectConfig(methodGranularityConfig())
-	// Both reads see a row with no entries.
-	s.expectRead(entity)
-	s.port.On("IncrementFailure", mock.Anything, entity.ID, testMethod, mock.Anything, mock.Anything).
-		Return(LockEntry{FailureCount: 5}, true, nil).Once()
-	s.port.On("FormLock", mock.Anything, entity.ID, testMethod,
-		mock.Anything, mock.Anything, mock.Anything).Return(false, nil).Once()
-
-	s.Require().Nil(s.admittedFailure(s.svc.RecordFailure(s.ctx, entity.ID, providers.AccessPlaneAuthentication,
-		testMethod)))
-}
-
-func (s *ServiceTestSuite) TestFormationRetriesAreBounded() {
-	entity := s.activeEntity()
-	s.expectConfig(methodGranularityConfig())
-	s.port.On("IncrementFailure", mock.Anything, entity.ID, testMethod, mock.Anything, mock.Anything).
-		Return(LockEntry{FailureCount: 5}, true, nil).Once()
-
-	// The guard never holds and the row keeps looking eligible.
-	s.port.On("FormLock", mock.Anything, entity.ID, testMethod,
-		mock.Anything, mock.Anything, mock.Anything).Return(false, nil).Times(formationRetries)
-	eligible := s.activeEntity()
-	putLockEntry(&eligible.AccessState, testMethod, LockEntry{FailureCount: 5})
-	s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(&eligible, nil)
-
-	s.Require().Nil(s.admittedFailure(s.svc.RecordFailure(s.ctx, entity.ID, providers.AccessPlaneAuthentication,
-		testMethod)))
 }
 
 func (s *ServiceTestSuite) TestFailureOnAMissingRowIsNotAnError() {
@@ -1919,24 +1852,12 @@ func (s *ServiceTestSuite) TestOrdinaryFailureDoesNotNotify() {
 	notifier.AssertNotCalled(s.T(), "NotifyLockFormed", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
-// Of two concurrent failures, only the guard's winner notifies.
-func (s *ServiceTestSuite) TestLosingWriterDoesNotNotify() {
+// A failed formation rolls the count back and sends no notice.
+func (s *ServiceTestSuite) TestAFailedFormationDoesNotNotify() {
 	svc, notifier := s.notifyingService()
 	s.expectFailureReaching(3)
 	s.port.EXPECT().FormLock(mock.Anything, "user-1", providers.AuthenticationMethodCredential,
-		mock.Anything, mock.Anything, mock.Anything).Return(false, nil)
-
-	// The re-read shows the lock another writer formed, so this attempt stops.
-	locked := s.governedUser()
-	locked.AccessState = AccessState{Lock: LockState{
-		AuthenticationMethods: map[providers.AuthenticationMethod]LockEntry{
-			providers.AuthenticationMethodCredential: {
-				FailureCount: 3,
-				LockCount:    1,
-				UnlockAt:     s.now.Add(5 * time.Minute).UTC().Format(time.RFC3339),
-			},
-		}}}
-	s.port.EXPECT().GetGovernedEntity(mock.Anything, "user-1", true).Return(&locked, nil)
+		mock.Anything, mock.Anything, mock.Anything).Return(false, nil).Once()
 
 	s.Require().Nil(s.admittedFailure(svc.RecordFailure(s.ctx, "user-1", providers.AccessPlaneAuthentication,
 		providers.AuthenticationMethodCredential)))
@@ -2329,42 +2250,69 @@ func (s *ServiceTestSuite) TestALockRefusalNamesTheLock() {
 	s.Equal(providers.AccessDecision{Reason: providers.AccessRefusalReasonLocked}, decision)
 }
 
-// A failed counter write leaves the attempt uncounted and admitted: it never changes the answer. Only a
-// failed read is an error.
+// A failed counter write, or a transaction that does not begin or commit, leaves the attempt uncounted
+// and admitted and publishes nothing: it never changes the answer. Only a failed read is an error.
 func (s *ServiceTestSuite) TestAFailedCounterWriteLeavesTheAttemptAdmitted() {
-	for name, arrange := range map[string]func(){
-		"increment": func() {
-			s.expectRead(s.activeEntity())
+	dbErr := errors.New("database unavailable")
+	for name, tc := range map[string]struct {
+		beginErr  error
+		commitErr error
+		arrange   func()
+	}{
+		"begin": {beginErr: dbErr, arrange: func() {}},
+		"increment": {arrange: func() {
 			s.port.On("IncrementFailure", mock.Anything, "e1", testMethod, mock.Anything, mock.Anything).
-				Return(LockEntry{}, false, errors.New("database unavailable")).Once()
-		},
-		"lock write": func() {
-			s.expectRead(s.activeEntity())
+				Return(LockEntry{}, false, dbErr).Once()
+		}},
+		"lock write": {arrange: func() {
 			s.port.On("IncrementFailure", mock.Anything, "e1", testMethod, mock.Anything, mock.Anything).
 				Return(LockEntry{FailureCount: 5}, true, nil).Once()
 			s.port.On("FormLock", mock.Anything, "e1", testMethod, mock.Anything, mock.Anything, mock.Anything).
-				Return(false, errors.New("database unavailable")).Once()
-		},
-		"re-read after a lost guard": func() {
-			s.port.On("GetGovernedEntity", mock.Anything, "e1", true).Return(new(s.activeEntity()), nil).Once()
+				Return(false, dbErr).Once()
+		}},
+		"lost guard": {arrange: func() {
 			s.port.On("IncrementFailure", mock.Anything, "e1", testMethod, mock.Anything, mock.Anything).
 				Return(LockEntry{FailureCount: 5}, true, nil).Once()
 			s.port.On("FormLock", mock.Anything, "e1", testMethod, mock.Anything, mock.Anything, mock.Anything).
 				Return(false, nil).Once()
-			s.port.On("GetGovernedEntity", mock.Anything, "e1", true).
-				Return(nil, errors.New("database unavailable")).Once()
-		},
+		}},
+		"commit": {commitErr: dbErr, arrange: func() {
+			s.port.On("IncrementFailure", mock.Anything, "e1", testMethod, mock.Anything, mock.Anything).
+				Return(LockEntry{FailureCount: 5}, true, nil).Once()
+			s.port.On("FormLock", mock.Anything, "e1", testMethod, mock.Anything, mock.Anything, mock.Anything).
+				Return(true, nil).Once()
+		}},
 	} {
 		s.Run(name, func() {
 			s.SetupTest()
 			s.expectConfig(methodGranularityConfig())
-			arrange()
+			s.expectRead(s.activeEntity())
+			transactioner := transactionmock.NewTransactionerMock(s.T())
+			transactioner.EXPECT().Transact(s.ctx, mock.Anything).RunAndReturn(
+				func(ctx context.Context, action func(context.Context) error) error {
+					if tc.beginErr != nil {
+						return tc.beginErr
+					}
+					if err := action(ctx); err != nil {
+						return err
+					}
+					return tc.commitErr
+				}).Once()
+			s.svc.transactioner = transactioner
+			notifier := NewLockNotifierInterfaceMock(s.T())
+			s.svc.notifier = notifier
+			observability := observabilityprovidermock.NewObservabilityProviderMock(s.T())
+			s.svc.observability = observability
+			tc.arrange()
 
 			decision, err := s.svc.RecordFailure(s.ctx, "e1", providers.AccessPlaneAuthentication, testMethod)
 
-			s.Require().Nil(err)
+			s.Require().Nil(err, "recording failure must keep the caller's original authentication answer")
 			s.True(decision.Admitted)
 			s.port.AssertExpectations(s.T())
+			notifier.AssertNotCalled(s.T(), "NotifyLockFormed", mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything)
+			observability.AssertNotCalled(s.T(), "PublishEvent", mock.Anything, mock.Anything)
 		})
 	}
 }
@@ -2650,7 +2598,8 @@ func (s *ServiceTestSuite) TestReadEntityAccessReportsCurrentStatus() {
 			if tc.category != providers.EntityCategoryApp {
 				source.EXPECT().Current(s.ctx).Return(cfg).Once()
 			}
-			svc := newIdentityGovernanceService(newEntityStateProviderMock(s.T()), source, nil, nil, nil)
+			svc := newIdentityGovernanceService(newEntityStateProviderMock(s.T()), source,
+				transaction.NewNoOpTransactioner(), nil, nil, nil)
 			svc.now = func() time.Time { return s.now }
 			stored := RuntimeAttributes{AccessState: AccessState{LastLoginAt: "2026-09-07T10:00:00Z"}}
 			if tc.unlockAt != "" {
@@ -3074,58 +3023,6 @@ func (s *ServiceTestSuite) TestAnUnknownIdentityIsPublishedAsNotFound() {
 	}
 }
 
-// Under account granularity a lost formation re-reads the account entry and guards the retry on it; with
-// no entry left there is nothing to lock.
-func (s *ServiceTestSuite) TestFormationRetryUnderAccountGranularityReadsTheAccountEntry() {
-	for name, tc := range map[string]struct {
-		entry   *LockEntry
-		retried bool
-	}{
-		"entry advanced": {&LockEntry{FailureCount: 6}, true},
-		"entry cleared":  {nil, false},
-	} {
-		s.Run(name, func() {
-			s.SetupTest()
-			s.expectConfig(accountGranularityConfig())
-			entity := s.activeEntity()
-			s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(&entity, nil).Once()
-			s.port.On("IncrementFailure", mock.Anything, entity.ID, AuthenticationMethodAccount, mock.Anything,
-				mock.Anything).
-				Return(LockEntry{FailureCount: 5, Revision: 3}, true, nil).Once()
-			s.port.On("FormLock", mock.Anything, entity.ID, AuthenticationMethodAccount,
-				LockEntry{FailureCount: 5, Revision: 3}, mock.Anything, mock.Anything).Return(false, nil).Once()
-			refreshed := s.activeEntity()
-			refreshed.Revision = 9
-			refreshed.AccessState.Lock.Account = tc.entry
-			s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(&refreshed, nil).Once()
-			if tc.retried {
-				s.port.On("FormLock", mock.Anything, entity.ID, AuthenticationMethodAccount,
-					LockEntry{FailureCount: 6, Revision: 9}, mock.Anything, mock.Anything).Return(true, nil).Once()
-			}
-
-			s.Require().Nil(s.admittedFailure(s.svc.RecordFailure(s.ctx, entity.ID,
-				providers.AccessPlaneAuthentication, testMethod)))
-			s.port.AssertNumberOfCalls(s.T(), "FormLock", map[bool]int{true: 2, false: 1}[tc.retried])
-		})
-	}
-}
-
-// An identity deleted between the counted failure and the re-read has nothing left to lock.
-func (s *ServiceTestSuite) TestFormationStopsWhenTheIdentityIsGone() {
-	s.expectConfig(methodGranularityConfig())
-	entity := s.activeEntity()
-	s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(&entity, nil).Once()
-	s.port.On("IncrementFailure", mock.Anything, entity.ID, testMethod, mock.Anything, mock.Anything).
-		Return(LockEntry{FailureCount: 5}, true, nil).Once()
-	s.port.On("FormLock", mock.Anything, entity.ID, testMethod, mock.Anything, mock.Anything, mock.Anything).
-		Return(false, nil).Once()
-	s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(nil, nil).Once()
-
-	s.Require().Nil(s.admittedFailure(s.svc.RecordFailure(s.ctx, entity.ID, providers.AccessPlaneAuthentication,
-		testMethod)))
-	s.port.AssertNumberOfCalls(s.T(), "FormLock", 1)
-}
-
 // Only a suspension holds an application, so its failure is admitted and not counted even with an
 // account-wide hold recorded.
 func (s *ServiceTestSuite) TestAnApplicationFailureIsAdmittedWithoutCounting() {
@@ -3287,4 +3184,74 @@ func (s *ServiceTestSuite) TestAFailureIsNotCountedWhileTheLifespanHasEnded() {
 	s.Equal(providers.AccessRefusalReasonExpired, decision.Reason)
 	s.port.AssertNotCalled(s.T(), "IncrementFailure",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestFailureAndLockShareTheTransactionAndPublishAfterCommit() {
+	svc, notifier := s.notifyingService()
+	transactioner := transactionmock.NewTransactionerMock(s.T())
+	svc.transactioner = transactioner
+	observability := observabilityprovidermock.NewObservabilityProviderMock(s.T())
+	svc.observability = observability
+	entity := s.governedUser()
+	s.port.EXPECT().GetGovernedEntity(s.ctx, entity.ID, true).Return(&entity, nil).Once()
+	txCtx := context.WithValue(s.ctx, transactionContextKey{}, true)
+	committed := false
+	var steps []string
+	transactioner.EXPECT().Transact(s.ctx, mock.Anything).RunAndReturn(
+		func(_ context.Context, action func(context.Context) error) error {
+			err := action(txCtx)
+			if err == nil {
+				steps = append(steps, "commit")
+				committed = true
+			}
+			return err
+		}).Once()
+	s.port.EXPECT().IncrementFailure(txCtx, "user-1", testMethod, s.now, s.now.Add(-15*time.Minute)).
+		Run(func(context.Context, string, providers.AuthenticationMethod, time.Time, time.Time) {
+			steps = append(steps, "increment")
+		}).Return(LockEntry{FailureCount: 3, Revision: 8}, true, nil).Once()
+	s.port.EXPECT().FormLock(txCtx, "user-1", testMethod, LockEntry{FailureCount: 3, Revision: 8},
+		mock.Anything, s.now).Run(func(context.Context, string, providers.AuthenticationMethod, LockEntry,
+		LockEpisode, time.Time) {
+		steps = append(steps, "form")
+	}).Return(true, nil).Once()
+	observability.EXPECT().IsEnabled().Return(true).Once()
+	observability.EXPECT().PublishEvent(s.ctx, mock.MatchedBy(func(evt *providers.Event) bool {
+		return evt.Type == string(event.EventTypeIdentityLocked) && evt.Data[event.DataKey.Subject] == "user-1"
+	})).Run(func(context.Context, *providers.Event) {
+		s.True(committed, "the lock event must follow a successful commit")
+		steps = append(steps, "event")
+	}).Once()
+	notifier.EXPECT().NotifyLockFormed(s.ctx, mock.Anything, testMethod, mock.Anything).
+		Run(func(context.Context, GovernedEntity, providers.AuthenticationMethod, LockEpisode) {
+			s.True(committed, "the email notice must follow a successful commit")
+			steps = append(steps, "notice")
+		}).Once()
+
+	s.Require().Nil(s.admittedFailure(svc.RecordFailure(s.ctx, "user-1", providers.AccessPlaneAuthentication,
+		testMethod)))
+	s.Equal([]string{"increment", "form", "commit", "event", "notice"}, steps)
+}
+
+// transactionContextKey distinguishes the context supplied by the runtime transaction.
+type transactionContextKey struct{}
+
+func (s *ServiceTestSuite) TestLockDurationStartsAfterTheCounterAcquiresTheRow() {
+	entity := s.activeEntity()
+	s.expectRead(entity)
+	s.expectConfig(methodGranularityConfig())
+	lockedAt := s.now.Add(10 * time.Minute)
+	clock := s.now
+	s.svc.now = func() time.Time { return clock }
+	s.port.EXPECT().IncrementFailure(s.ctx, entity.ID, testMethod, s.now, s.now.Add(-15*time.Minute)).
+		Run(func(context.Context, string, providers.AuthenticationMethod, time.Time, time.Time) {
+			clock = lockedAt
+		}).Return(LockEntry{FailureCount: 5, Revision: 8}, true, nil).Once()
+	s.port.EXPECT().FormLock(s.ctx, entity.ID, testMethod, LockEntry{FailureCount: 5, Revision: 8},
+		mock.MatchedBy(func(episode LockEpisode) bool {
+			return episode.UnlockAt == lockedAt.Add(5*time.Minute).Format(time.RFC3339)
+		}), lockedAt).Return(true, nil).Once()
+
+	s.Require().Nil(s.admittedFailure(s.svc.RecordFailure(s.ctx, entity.ID, providers.AccessPlaneAuthentication,
+		testMethod)))
 }

@@ -495,6 +495,29 @@ func (suite *RoleFileBasedStoreTestSuite) TestListMandatedRoleUnitsIsEmpty() {
 	suite.Empty(got)
 }
 
+func (suite *RoleFileBasedStoreTestSuite) TestHasAssigneeAssignments() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID: "role1", Name: "Auditor", OUID: "ou1",
+		Assignments: []RoleAssignment{
+			{ID: "grp1", Type: AssigneeTypeGroup},
+			{ID: "user1", Type: assigneeTypeEntity, OUID: "ou2"},
+		},
+	})
+	ctx := context.Background()
+
+	found, err := suite.store.HasAssigneeAssignments(ctx, string(AssigneeTypeGroup), "grp1")
+	suite.Require().NoError(err)
+	suite.True(found)
+
+	found, err = suite.store.HasAssigneeAssignments(ctx, string(AssigneeTypeGroup), "grp2")
+	suite.Require().NoError(err)
+	suite.False(found)
+
+	found, err = suite.store.HasAssigneeAssignments(ctx, string(AssigneeTypeGroup), "user1")
+	suite.Require().NoError(err)
+	suite.False(found, "an assignment of another assignee type does not count")
+}
+
 func (suite *RoleFileBasedStoreTestSuite) TestGetRolesByIDs() {
 	suite.seedRole(RoleWithPermissionsAndAssignments{ID: "role1", Name: "Auditor", OUID: "ou1"})
 

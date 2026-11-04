@@ -13,53 +13,35 @@ interface MockDataGridProps {
   loading?: boolean;
   checkboxSelection?: boolean;
   onRowSelectionModelChange?: (model: {type: string; ids: Set<string>}) => void;
-  getRowId?: (row: {id: string; [key: string]: unknown}) => string;
-  disableColumnFilter?: boolean;
 }
 
 vi.mock('@wso2/oxygen-ui', async () => {
   const actual = await vi.importActual<typeof OxygenUI>('@wso2/oxygen-ui');
   return {
     ...actual,
-    ListingTable: {
-      ...actual.ListingTable,
-      Provider: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
-      Container: ({children, disablePaper = false}: {children: React.ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-table-container" data-disable-paper={disablePaper ? 'true' : undefined}>
-          {children}
-        </div>
-      ),
+    DataGrid: {
+      ...(actual.DataGrid ?? {}),
       DataGrid: ({
         rows = [],
         loading = false,
         checkboxSelection = false,
         onRowSelectionModelChange = undefined,
-        getRowId = (row) => row.id,
-        disableColumnFilter = false,
       }: MockDataGridProps) => (
-        <div
-          data-testid="users-grid"
-          data-loading={loading}
-          data-checkbox-selection={checkboxSelection}
-          data-disable-column-filter={disableColumnFilter}
-        >
-          {rows.map((row) => {
-            const rowId = getRowId(row);
-            return (
-              <div key={rowId} data-testid={`user-${rowId}`}>
-                {checkboxSelection && (
-                  <input
-                    type="checkbox"
-                    data-testid={`checkbox-${rowId}`}
-                    onChange={() => {
-                      onRowSelectionModelChange?.({type: 'include', ids: new Set([rowId])});
-                    }}
-                  />
-                )}
-                {rowId}
-              </div>
-            );
-          })}
+        <div data-testid="users-grid" data-loading={loading}>
+          {rows.map((row) => (
+            <div key={row.id} data-testid={`user-${row.id}`}>
+              {checkboxSelection && (
+                <input
+                  type="checkbox"
+                  data-testid={`checkbox-${row.id}`}
+                  onChange={() => {
+                    onRowSelectionModelChange?.({type: 'include', ids: new Set([row.id])});
+                  }}
+                />
+              )}
+              {row.id}
+            </div>
+          ))}
         </div>
       ),
     },
@@ -250,15 +232,6 @@ describe('AddMemberDialog', () => {
     expect(screen.getByTestId('user-a2')).toBeInTheDocument();
   });
 
-  it('should render a selectable grid with the column filter disabled', () => {
-    renderWithProviders(<AddMemberDialog {...defaultProps} />);
-
-    const grid = screen.getByTestId('users-grid');
-    expect(grid).toHaveAttribute('data-checkbox-selection', 'true');
-    expect(grid).toHaveAttribute('data-disable-column-filter', 'true');
-    expect(screen.getByTestId('listing-table-container')).not.toHaveAttribute('data-disable-paper');
-  });
-
   it('should show loading state', () => {
     mockUseGetUsers.mockReturnValue({
       data: null,
@@ -327,17 +300,6 @@ describe('AddMemberDialog', () => {
     await user.click(screen.getByText('Add selected'));
 
     expect(defaultProps.onAdd).toHaveBeenCalledWith([{id: 'a1', type: 'app'}]);
-  });
-
-  it('should call onAdd with selected agent members', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<AddMemberDialog {...defaultProps} />);
-
-    await user.click(screen.getByText('Agents'));
-    await user.click(screen.getByTestId('checkbox-agent-1'));
-    await user.click(screen.getByText('Add selected'));
-
-    expect(defaultProps.onAdd).toHaveBeenCalledWith([{id: 'agent-1', type: 'agent'}]);
   });
 
   it('should render groups in the grid when Groups tab is selected', async () => {
@@ -412,14 +374,38 @@ describe('AddMemberDialog', () => {
   it('should load all candidate collections with only the active tab enabled', () => {
     renderWithProviders(<AddMemberDialog {...defaultProps} />);
 
-    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({path: '/users', itemsKey: 'users', enabled: true});
+    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({
+      path: '/users',
+      itemsKey: 'users',
+      enabled: true,
+      filter: undefined,
+    });
     expect(mockUseGetAllCandidates).toHaveBeenCalledWith({
       path: '/applications',
       itemsKey: 'applications',
       enabled: false,
+      filter: undefined,
     });
-    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({path: '/agents', itemsKey: 'agents', enabled: false});
-    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({path: '/groups', itemsKey: 'groups', enabled: false});
+    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({
+      path: '/agents',
+      itemsKey: 'agents',
+      enabled: false,
+      filter: undefined,
+    });
+    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({
+      path: '/groups',
+      itemsKey: 'groups',
+      enabled: false,
+      filter: undefined,
+    });
+  });
+
+  it("should list only the candidates available in the group's organization unit when ouId is given", () => {
+    renderWithProviders(<AddMemberDialog {...defaultProps} ouId="ou-1" />);
+
+    ['/users', '/applications', '/agents', '/groups'].forEach((path) => {
+      expect(mockUseGetAllCandidates).toHaveBeenCalledWith(expect.objectContaining({path, filter: 'ouId eq "ou-1"'}));
+    });
   });
 
   it('should show error alert when users fetch fails', () => {

@@ -64,8 +64,6 @@ type OUAuthzTestSuite struct {
 }
 
 const (
-	authzTestServerURL = testutils.TestServerURL
-
 	authzOU1Handle  = "authz-ou1"
 	authzOU2Handle  = "authz-ou2"
 	authzOU12Handle = "authz-ou12"
@@ -77,6 +75,10 @@ const (
 	// collisions when tests run multiple times without a clean DB.
 	ouViewRoleName = "OU View Admin (authz-test)"
 )
+
+var developRedirectURI = testutils.TestServerURL + "/console"
+
+var authzTestServerURL = testutils.TestServerURL
 
 // authzEntityTypeID persists the entity type ID across SetupSuite/TearDownSuite.
 var authzEntityTypeID string

@@ -788,6 +788,57 @@ func (_c *GraphInterfaceMock_HasSegments_Call) RunAndReturn(run func() bool) *Gr
 	return _c
 }
 
+// IsConstantInput provides a mock function for the type GraphInterfaceMock
+func (_mock *GraphInterfaceMock) IsConstantInput(identifier string) bool {
+	ret := _mock.Called(identifier)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsConstantInput")
+	}
+
+	var r0 bool
+	if returnFunc, ok := ret.Get(0).(func(string) bool); ok {
+		r0 = returnFunc(identifier)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	return r0
+}
+
+// GraphInterfaceMock_IsConstantInput_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsConstantInput'
+type GraphInterfaceMock_IsConstantInput_Call struct {
+	*mock.Call
+}
+
+// IsConstantInput is a helper method to define mock.On call
+//   - identifier string
+func (_e *GraphInterfaceMock_Expecter) IsConstantInput(identifier any) *GraphInterfaceMock_IsConstantInput_Call {
+	return &GraphInterfaceMock_IsConstantInput_Call{Call: _e.mock.On("IsConstantInput", identifier)}
+}
+
+func (_c *GraphInterfaceMock_IsConstantInput_Call) Run(run func(identifier string)) *GraphInterfaceMock_IsConstantInput_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *GraphInterfaceMock_IsConstantInput_Call) Return(b bool) *GraphInterfaceMock_IsConstantInput_Call {
+	_c.Call.Return(b)
+	return _c
+}
+
+func (_c *GraphInterfaceMock_IsConstantInput_Call) RunAndReturn(run func(identifier string) bool) *GraphInterfaceMock_IsConstantInput_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RemoveEdge provides a mock function for the type GraphInterfaceMock
 func (_mock *GraphInterfaceMock) RemoveEdge(fromNodeID string, toNodeID string) error {
 	ret := _mock.Called(fromNodeID, toNodeID)
