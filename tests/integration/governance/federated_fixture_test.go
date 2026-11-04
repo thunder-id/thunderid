@@ -19,10 +19,6 @@ const (
 
 	// pickAction submits the link holder the user picked.
 	pickAction = "action_pick"
-
-	// federatedIdPPort is where the test deployment points the server for the Google endpoints, so the
-	// mock IdP cannot take a free port.
-	federatedIdPPort = 8093
 )
 
 // federatedFixture is a Google IdP, a sign-in flow through it, and an application using that flow.
@@ -44,9 +40,10 @@ type federatedFixture struct {
 func newFederatedFixture(t *testing.T, name, ouID, userType string) *federatedFixture {
 	t.Helper()
 
-	server, err := testutils.NewMockGoogleOIDCServer(federatedIdPPort, federatedClientID, federatedClientSecret)
+	// The Google mock tells suites apart by client, and suites in different test groups run at once.
+	clientID := federatedClientID + "_" + name
+	server, err := testutils.NewMockGoogleOIDCServer(clientID, federatedClientSecret)
 	require.NoError(t, err, "failed to create the mock IdP")
-	require.NoError(t, server.Start(), "failed to start the mock IdP")
 	f := &federatedFixture{server: server, ouID: ouID, userType: userType}
 	t.Cleanup(func() { f.tearDown(t) })
 
@@ -54,7 +51,7 @@ func newFederatedFixture(t *testing.T, name, ouID, userType string) *federatedFi
 		Name: "Governance " + name + " IdP",
 		Type: "GOOGLE",
 		Properties: []testutils.IDPProperty{
-			{Name: "client_id", Value: federatedClientID},
+			{Name: "client_id", Value: clientID},
 			{Name: "client_secret", Value: federatedClientSecret, IsSecret: true},
 			{Name: "redirect_uri", Value: federatedRedirectURI},
 			{Name: "scopes", Value: "openid email profile"},

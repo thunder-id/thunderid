@@ -94,6 +94,10 @@ Every event shares one envelope:
 | `IDENTITY_UNSUSPENDED`, `IDENTITY_UNSUSPENSION_FAILED` | A suspension is released, or the release is refused or fails |
 | `IDENTITY_UNLOCKED`, `IDENTITY_UNLOCK_FAILED` | An operator releases every sign-in lock on a user or agent, or the unlock is refused or fails |
 | `IDENTITY_SELF_UNLOCKED`, `IDENTITY_SELF_UNLOCK_FAILED` | A recovery flow releases every sign-in lock on the holder's own account, or the unlock is refused or fails |
+| `AGENT_LIFESPAN_SET` | An agent is created, with or without a lifespan, through the API, a flow, or an import |
+| `AGENT_LIFESPAN_EXTENDED`, `AGENT_LIFESPAN_REDUCED` | An update moves an agent's `validUntil` later, including removing it, or earlier |
+| `AGENT_REACTIVATED` | An update brings back an expired agent. It follows the matching `AGENT_LIFESPAN_EXTENDED` |
+| `AGENT_LIFESPAN_UPDATE_FAILED` | A lifespan change is refused or fails, with the class `not_authorized`, `invalid_lifespan`, `read_only`, or `operation_failed` |
 | `SERVER_CONFIG_UPDATED`, `SERVER_CONFIG_UPDATE_FAILED` | A server configuration section is written, or the write is rejected. The value is not recorded |
 | `FLOW_STARTED`, `FLOW_COMPLETED`, `FLOW_FAILED` | A flow execution starts, succeeds, or fails |
 | `FLOW_NODE_EXECUTION_STARTED`, `FLOW_NODE_EXECUTION_COMPLETED`, `FLOW_NODE_EXECUTION_FAILED` | A single flow node runs |

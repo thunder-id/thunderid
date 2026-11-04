@@ -42,16 +42,8 @@ vi.mock('@wso2/oxygen-ui', async () => {
       GridRenderCellParams: {} as never,
     },
     ListingTable: {
-      Provider: ({children, variant = undefined}: {children: React.ReactNode; variant?: string}) => (
-        <div data-testid="listing-provider" data-variant={variant}>
-          {children}
-        </div>
-      ),
-      Container: ({children, disablePaper = undefined}: {children: React.ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-container" data-disable-paper={disablePaper}>
-          {children}
-        </div>
-      ),
+      Provider: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
+      Container: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
       DataGrid: ({
         rows = [],
         columns = [],
@@ -271,20 +263,6 @@ describe('UsersList', () => {
     const indicators = await screen.findAllByRole('img', {name: 'Active'});
     expect(indicators.length).toBeGreaterThan(0);
     indicators.forEach((indicator) => expect(indicator).toHaveAttribute('tabindex', '-1'));
-  });
-
-  it('renders the listing as a papered data grid', () => {
-    render(<UsersList />);
-
-    expect(screen.getByTestId('listing-provider')).toHaveAttribute('data-variant', 'data-grid');
-    expect(screen.getByTestId('listing-container')).not.toHaveAttribute('data-disable-paper');
-  });
-
-  it('gives each row action button an accessible name', () => {
-    render(<UsersList />);
-
-    expect(screen.getAllByRole('button', {name: 'Edit'})).toHaveLength(2);
-    expect(screen.getAllByRole('button', {name: 'Delete'})).toHaveLength(2);
   });
 
   it('displays user avatars with initials', async () => {

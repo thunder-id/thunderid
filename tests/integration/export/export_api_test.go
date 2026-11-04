@@ -22,8 +22,6 @@ import (
 )
 
 const (
-	testServerURL = "https://localhost:8095"
-
 	vcExportConfigHandle     = "export_test_credential"
 	vcExportConfigVCT        = "https://credentials.thunderid.local/ExportTestCredential"
 	vcExportDefinitionHandle = "export_test_presentation"
@@ -33,6 +31,8 @@ const (
 	vcExportDeclarativeConfigID     = "decl-credential-config-1"
 	vcExportDeclarativeDefinitionID = "decl-presentation-def-1"
 )
+
+var testServerURL = testutils.TestServerURL
 
 // ExportAPITestSuite is a test suite for export API tests.
 type ExportAPITestSuite struct {

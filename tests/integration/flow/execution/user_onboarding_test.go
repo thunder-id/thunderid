@@ -20,10 +20,91 @@ const (
 	// the server-config flow section rather than from an application binding.
 	onboardingFlowHandle = "user_onboarding_flow_test"
 
+	onboardingDynamicTypeName   = "onboarding-dynamic-person"
+	onboardingDynamicFlowHandle = "user_onboarding_dynamic_inputs_test"
+
 	errCodeOUNotFound            = "FET-1030"
 	errCodeUserTypeNotAllowed    = "FET-1054"
 	errCodeUserTypeNotValidForOU = "FET-1058"
 )
+
+// onboardingDynamicFlow has no inputs of its own on the details prompt, so every field it shows is a
+// schema attribute the provisioning node injects at the placeholder.
+var onboardingDynamicFlow = testutils.Flow{
+	Name:     "User Onboarding Dynamic Inputs Test Flow",
+	FlowType: "USER_ONBOARDING",
+	Handle:   onboardingDynamicFlowHandle,
+	Nodes: []map[string]interface{}{
+		{"id": "start", "type": "START", "onSuccess": "ou_resolver"},
+		{
+			"id":           "ou_resolver",
+			"type":         "TASK_EXECUTION",
+			"executor":     map[string]interface{}{"name": "OUResolverExecutor"},
+			"properties":   map[string]interface{}{"resolveFrom": "promptAll"},
+			"onSuccess":    "user_type_resolver",
+			"onIncomplete": "prompt_ou",
+		},
+		{
+			"id":   "prompt_ou",
+			"type": "PROMPT",
+			"prompts": []map[string]interface{}{
+				{
+					"inputs": []map[string]interface{}{
+						{"ref": "ou_selection_input", "identifier": "ouId", "type": "OU_SELECT", "required": true},
+					},
+					"action": map[string]interface{}{"ref": "action_ou", "nextNode": "ou_resolver"},
+				},
+			},
+		},
+		{
+			"id":           "user_type_resolver",
+			"type":         "TASK_EXECUTION",
+			"executor":     map[string]interface{}{"name": "UserTypeResolver"},
+			"properties":   map[string]interface{}{"allowedUserTypes": []string{onboardingDynamicTypeName}},
+			"onSuccess":    "provisioning",
+			"onIncomplete": "prompt_usertype",
+		},
+		{
+			"id":   "prompt_usertype",
+			"type": "PROMPT",
+			"prompts": []map[string]interface{}{
+				{
+					"inputs": []map[string]interface{}{
+						{"ref": "usertype_input", "identifier": "userType", "type": "SELECT", "required": true},
+					},
+					"action": map[string]interface{}{"ref": "action_usertype", "nextNode": "user_type_resolver"},
+				},
+			},
+		},
+		{
+			"id":           "provisioning",
+			"type":         "TASK_EXECUTION",
+			"executor":     map[string]interface{}{"name": "ProvisioningExecutor"},
+			"onSuccess":    "end",
+			"onIncomplete": "prompt_dynamic",
+		},
+		{
+			"id":   "prompt_dynamic",
+			"type": "PROMPT",
+			"meta": map[string]interface{}{
+				"components": []map[string]interface{}{
+					{"type": "BLOCK", "id": "block_dynamic_user_inputs", "components": []map[string]interface{}{
+						{"type": "DYNAMIC_INPUT_PLACEHOLDER", "id": "dynamic_inputs"},
+						{"type": "ACTION", "id": "action_details", "label": "Continue", "variant": "PRIMARY",
+							"eventType": "SUBMIT"},
+					}},
+				},
+			},
+			"prompts": []map[string]interface{}{
+				{
+					"inputs": []map[string]interface{}{},
+					"action": map[string]interface{}{"ref": "action_details", "nextNode": "provisioning"},
+				},
+			},
+		},
+		{"id": "end", "type": "END"},
+	},
+}
 
 type UserOnboardingTestSuite struct {
 	suite.Suite
@@ -33,6 +114,7 @@ type UserOnboardingTestSuite struct {
 	childOUID     string
 	rootTypeID    string
 	childTypeID   string
+	dynamicTypeID string
 	rootTypeName  string
 	childTypeName string
 	flowID        string
@@ -248,6 +330,23 @@ func (ts *UserOnboardingTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create user onboarding flow")
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, ts.flowID)
 
+	ts.dynamicTypeID, err = testutils.CreateUserType(testutils.UserType{
+		Handle:      onboardingDynamicTypeName,
+		DisplayName: "Onboarding dynamic person",
+		OUID:        rootOUID,
+		Schema: map[string]interface{}{
+			"username":    map[string]interface{}{"type": "string", "required": true},
+			"email":       map[string]interface{}{"type": "string", "required": true},
+			"given_name":  map[string]interface{}{"type": "string", "required": true},
+			"family_name": map[string]interface{}{"type": "string", "required": true},
+		},
+	})
+	ts.Require().NoError(err, "Failed to create dynamic inputs user type")
+
+	dynamicFlowID, err := testutils.CreateFlow(onboardingDynamicFlow)
+	ts.Require().NoError(err, "Failed to create dynamic inputs onboarding flow")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, dynamicFlowID)
+
 	// The onboarding flow is reached by its default handle, so the flow section has to name it.
 	ts.setOnboardingDefaultHandle(onboardingFlowHandle)
 }
@@ -263,7 +362,7 @@ func (ts *UserOnboardingTestSuite) TearDownSuite() {
 			ts.T().Logf("Failed to delete test flow during teardown: %v", err)
 		}
 	}
-	for _, typeID := range []string{ts.childTypeID, ts.rootTypeID} {
+	for _, typeID := range []string{ts.dynamicTypeID, ts.childTypeID, ts.rootTypeID} {
 		if typeID == "" {
 			continue
 		}
@@ -569,4 +668,29 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_SubmittedConstantNeverReachesA
 
 	user := ts.findOnboardedUser(username)
 	ts.Equal(ts.rootTypeName, user.Type, "The user type must come from the resolver, not the submission")
+}
+
+// The attributes the provisioning node asks for come from the user type schema, so they must reach
+// the onboarding form in a stable order rather than the order the schema happens to be read in.
+func (ts *UserOnboardingTestSuite) TestOnboarding_DynamicInputsOrderedByAttribute() {
+	ts.setOnboardingDefaultHandle(onboardingDynamicFlowHandle)
+
+	expected := []string{"email", "family_name", "given_name", "username"}
+
+	// The order used to be random, so repeat to make a lucky pass unlikely.
+	for i := 0; i < 6; i++ {
+		step := ts.initiateOnboarding(nil)
+		ts.Require().Equal("INCOMPLETE", step.FlowStatus, "Onboarding should pause to select an OU")
+
+		step, err := common.CompleteFlow(step.ExecutionID,
+			map[string]string{"ouId": ts.rootOUID}, "action_ou", step.ChallengeToken)
+		ts.Require().NoError(err, "Failed to submit the OU selection")
+		ts.Require().Equal("INCOMPLETE", step.FlowStatus, "The flow should ask for the schema attributes")
+
+		identifiers := make([]string, 0, len(step.Data.Inputs))
+		for _, input := range step.Data.Inputs {
+			identifiers = append(identifiers, input.Identifier)
+		}
+		ts.Require().Equal(expected, identifiers, "Dynamic inputs should be ordered by attribute name")
+	}
 }

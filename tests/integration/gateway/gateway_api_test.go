@@ -18,7 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const testServerURL = "https://localhost:8095"
+var testServerURL = testutils.TestServerURL
 
 // gateway is the shape a read returns. Key is populated only by a registration, which is the one
 // response that carries it; every read leaves it empty, which is what the tests below assert.

@@ -15,7 +15,6 @@ import (
 )
 
 const (
-	conditionalExecMockGooglePort    = 8093
 	conditionalExecNewUserSub        = "conditional-exec-new-user-sub"
 	conditionalExecNewUserEmail      = "newuser@conditional-exec-test.com"
 	conditionalExecExistingUserSub   = "conditional-exec-existing-user-sub"
@@ -173,9 +172,8 @@ func (ts *ConditionalExecAuthFlowTestSuite) SetupSuite() {
 	// Initialize config
 	ts.config = &common.TestSuiteConfig{}
 
-	// Start mock Google server
-	mockGoogleServer, err := testutils.NewMockGoogleOIDCServer(conditionalExecMockGooglePort,
-		"test_google_client", "test_google_secret")
+	// Create mock Google server
+	mockGoogleServer, err := testutils.NewMockGoogleOIDCServer("conditional_exec_google_client", "conditional_exec_google_secret")
 	ts.Require().NoError(err, "Failed to create mock Google server")
 	ts.mockGoogleServer = mockGoogleServer
 
@@ -200,9 +198,6 @@ func (ts *ConditionalExecAuthFlowTestSuite) SetupSuite() {
 		Picture:       "https://example.com/picture2.jpg",
 		Locale:        "en",
 	})
-
-	err = ts.mockGoogleServer.Start()
-	ts.Require().NoError(err, "Failed to start mock Google server")
 
 	// Create test organization unit
 	ouID, err := testutils.CreateOrganizationUnit(conditionalExecTestOU)
@@ -244,12 +239,12 @@ func (ts *ConditionalExecAuthFlowTestSuite) SetupSuite() {
 		Properties: []testutils.IDPProperty{
 			{
 				Name:     "client_id",
-				Value:    "test_google_client",
+				Value:    "conditional_exec_google_client",
 				IsSecret: false,
 			},
 			{
 				Name:     "client_secret",
-				Value:    "test_google_secret",
+				Value:    "conditional_exec_google_secret",
 				IsSecret: true,
 			},
 			{

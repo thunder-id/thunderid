@@ -144,7 +144,7 @@ echo "$CODE_CHALLENGE"
 https://{{productSlug}}.example.com/oauth2/authorize?response_type=code&client_id=$CLIENT_ID&redirect_uri=$REDIRECT_URI&scope=openid&state=xyz&code_challenge=$CODE_CHALLENGE&code_challenge_method=S256
 ```
 
-Replace `$CLIENT_ID`, `$REDIRECT_URI`, and `$CODE_CHALLENGE` with their real values before pasting this URL into a browser; shell variables do not expand there.
+Replace `$CLIENT_ID`, `$REDIRECT_URI`, and `$CODE_CHALLENGE` with their real values before pasting this URL into a browser; shell variables do not expand there. For the assertion to carry identity claims such as `email`, also request the scopes that release them, for example `scope=openid%20email`. See [Identity Claims](#identity-claims).
 
 3. After the user signs in (and consents, if consent is enabled for the application), <ProductName /> redirects the browser to `$REDIRECT_URI` with a `code` query parameter. Capture it from the callback URL and export it:
 
@@ -244,7 +244,7 @@ The payload carries the assertion's claims:
 - `client_id`: the application or agent that requested the assertion.
 - `exp`, `iat`, `nbf`, `jti`: standard timing and uniqueness claims.
 
-The assertion also carries a `scope` claim when the exchange request included a `scope` parameter, and a `resource` claim when it included one or more `resource` parameters, as a string for a single value or an array for several.
+The assertion also carries a `scope` claim when the exchange request included a `scope` parameter, and a `resource` claim when it included one or more `resource` parameters, as a string for a single value or an array for several. It also carries the user's identity claims from the ID token. See [Identity Claims](#identity-claims).
 
 ## Present It to the External Server
 
@@ -254,6 +254,52 @@ Send the ID-JAG to the external authorization server's token endpoint using the 
 curl -X POST https://external-as.example.com/token \
   -d grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer \
   -d assertion="$ID_JAG"
+```
+
+## Identity Claims
+
+An external authorization server often needs more than `sub` to find the user's account, for example the user's email address. <ProductName /> copies identity claims from the ID token you exchange into the assertion: each claim on the client's ID token attribute list. To choose the claims, select them as ID token attributes:
+
+<Tabs groupId="idjag-client">
+<TabItem value="application" label="Application" default>
+
+1. In the Console, navigate to **Applications**.
+2. Select the application.
+3. Open the **Token** tab.
+4. Under **Issued to**, select **User**.
+5. Open the **ID token & user info** tab, then the **ID token** tab.
+6. Expand **Allowed attributes** and select the attributes the external server needs, for example `email`.
+7. Click **Save**.
+
+</TabItem>
+<TabItem value="agent" label="Agent">
+
+1. In the Console, navigate to **Agents**.
+2. Select the agent.
+3. Open the **Tokens** tab.
+4. Under **Issued to**, select **User**.
+5. Open the **ID token** tab.
+6. Expand **Allowed attributes** and select the attributes the external server needs, for example `email`.
+7. Click **Save**.
+
+</TabItem>
+</Tabs>
+
+While identity assertions are on, the **ID token** tab shows a note that these attributes also go into the assertions. Through the API, set them in `token.idToken.userAttributes` of the client's OAuth configuration.
+
+- A claim appears only when the ID token carries it. The ID token carries an attribute that has a value on the user's profile, when a scope granted at sign-in releases it or the sign-in request asks for it with the `claims` parameter. The client's scope-to-claim mapping decides which claims each scope releases, and by default the `email` scope releases `email`. See [Claims & Scopes](../../claims-and-scopes). The `scope` parameter of the exchange request does not add identity claims.
+- `roles` and `groups` are never copied. They name the user's roles and groups in <ProductName />, not at the external service.
+- A claim the assertion defines itself is never copied: `iss`, `sub`, `sub_id`, `aud`, `client_id`, `jti`, `exp`, `iat`, `nbf`, `resource`, `scope`, `authorization_details`, `act`, `tenant`, `aud_tenant`, `aud_sub`, `cnf`, `auth_time`, `acr`, and `amr`. Neither are `nonce` and `sid`, which <ProductName /> adds to ID tokens itself.
+- Every allowed audience receives the same claims. To send fewer, select fewer attributes for the ID token.
+- Upgrading from a version that sent only `sub` for the user changes existing clients without any configuration change: their assertions start to carry these claims. Before you upgrade, review each client's ID token attributes and allowed audiences.
+- The values are the ones in the ID token. An attribute you add to the list, or a change to the user's profile, reaches the assertion only through a newly issued ID token, so sign the user in again after such a change. An attribute you remove stops appearing in assertions at once, because each exchange applies the current list.
+
+For example, with `email` among the ID token attributes, the `email` scope granted at sign-in and releasing `email`, and an email address on the user's profile, the payload also includes:
+
+```json
+{
+  "email": "alex@example.com"
+}
 ```
 
 ## Request Parameters
@@ -266,7 +312,7 @@ curl -X POST https://external-as.example.com/token \
 | `subject_token_type` | Yes | `urn:ietf:params:oauth:token-type:id_token` |
 | `audience` | Yes, exactly one | Identifier of the external authorization server. Must exactly match an entry in the client's allowed audiences (string equality, no wildcards or URL normalization). |
 | `resource` | No, repeatable | Absolute URI without a fragment. Embedded verbatim in the grant's `resource` claim. |
-| `scope` | No | Space-delimited. Embedded verbatim in the grant's `scope` claim. Not checked against the client's or subject token's scopes; the external server enforces its own policy. |
+| `scope` | No | Space-delimited. Embedded verbatim in the grant's `scope` claim. Not checked against the client's or subject token's scopes; the external server enforces its own policy. Does not add identity claims. |
 
 ## Response
 
@@ -293,6 +339,7 @@ The header sets `typ` to `oauth-id-jag+jwt`.
 | `exp` / `iat` / `nbf` / `jti` | Standard timing and uniqueness claims |
 | `scope` | Optional, present when a scope was requested |
 | `resource` | Optional, present when a resource was requested |
+| Identity claims | Optional, the ID token's allowed attributes that the ID token carries. See [Identity Claims](#identity-claims). |
 
 ## Troubleshooting
 

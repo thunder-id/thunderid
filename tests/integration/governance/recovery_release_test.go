@@ -26,8 +26,9 @@ const recoveryWrongCodeErrorCode = "FET-1008"
 const (
 	recoveryPasskeyRPID   = "localhost"
 	recoveryPasskeyRPName = "ThunderID Test"
-	recoveryPasskeyOrigin = "https://localhost:8095"
 )
+
+var recoveryPasskeyOrigin = testutils.TestServerURL
 
 // RecoveryReleaseTestSuite checks that a completed recovery flow releases every lock and the
 // ladder with it, only for the identity it proved, and a credential write outside recovery releases

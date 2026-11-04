@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	testServerURL = "https://localhost:8095"
 	flowsEndpoint = "/flows"
 )
+
+var testServerURL = testutils.TestServerURL
 
 var (
 	testAuthFlow = FlowDefinition{

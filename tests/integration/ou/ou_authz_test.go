@@ -60,8 +60,6 @@ type OUAuthzTestSuite struct {
 }
 
 const (
-	authzTestServerURL = testutils.TestServerURL
-
 	authzOU1Handle  = "authz-ou1"
 	authzOU2Handle  = "authz-ou2"
 	authzOU12Handle = "authz-ou12"
@@ -69,13 +67,16 @@ const (
 	ouAdminUsername = "ou-authz-admin"
 	ouAdminPassword = "OUAdmin@123"
 
-	developClientID    = "CONSOLE"
-	developRedirectURI = "https://localhost:8095/console"
+	developClientID = "CONSOLE"
 
 	// Name of the role created in SetupSuite. Using a unique name avoids
 	// collisions when tests run multiple times without a clean DB.
 	ouViewRoleName = "OU View Admin (authz-test)"
 )
+
+var developRedirectURI = testutils.TestServerURL + "/console"
+
+var authzTestServerURL = testutils.TestServerURL
 
 // authzEntityTypeID persists the entity type ID across SetupSuite/TearDownSuite.
 var authzEntityTypeID string

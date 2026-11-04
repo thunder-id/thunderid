@@ -5,7 +5,7 @@ import {QueryErrorNotice} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
-import {IdCard, Pencil, QrCode as QrCodeIcon, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Pencil, QrCode as QrCodeIcon, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -69,12 +69,7 @@ export default function VerifiableCredentialsList(): JSX.Element {
         flex: 1,
         minWidth: 180,
         renderCell: (params: DataGrid.GridRenderCellParams<VerifiableCredentialSummary>): JSX.Element => (
-          <ListingTable.CellIcon
-            icon={<IdCard size={20} />}
-            primary={params.row.name ?? '-'}
-            secondary={params.row.handle}
-            sx={{width: '100%'}}
-          />
+          <Typography variant="body2">{params.row.name ?? '-'}</Typography>
         ),
       },
       {
@@ -101,8 +96,8 @@ export default function VerifiableCredentialsList(): JSX.Element {
           <ListingTable.RowActions>
             <Tooltip title={t('verifiable-credentials:listing.offer', 'Generate offer')}>
               <IconButton
-                size="small"
                 aria-label={t('verifiable-credentials:listing.offer', 'Generate offer')}
+                size="small"
                 onClick={(e) => {
                   e.stopPropagation();
                   setOfferHandle(params.row.handle);
@@ -113,8 +108,8 @@ export default function VerifiableCredentialsList(): JSX.Element {
             </Tooltip>
             <Tooltip title={t('common:actions.edit', 'Edit')}>
               <IconButton
-                size="small"
                 aria-label={t('common:actions.edit', 'Edit')}
+                size="small"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleEditClick(params.row.id);
@@ -125,9 +120,9 @@ export default function VerifiableCredentialsList(): JSX.Element {
             </Tooltip>
             <Tooltip title={t('common:actions.delete', 'Delete')}>
               <IconButton
+                aria-label={t('common:actions.delete', 'Delete')}
                 size="small"
                 color="error"
-                aria-label={t('common:actions.delete', 'Delete')}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleDeleteClick(params.row.id);
@@ -157,8 +152,8 @@ export default function VerifiableCredentialsList(): JSX.Element {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
+      <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
+        <ListingTable.Container disablePaper>
           <ListingTable.DataGrid
             rows={data ?? []}
             columns={columns}
@@ -166,7 +161,6 @@ export default function VerifiableCredentialsList(): JSX.Element {
             onRowClick={(params) => {
               handleEditClick((params.row as VerifiableCredentialSummary).id);
             }}
-            rowHeight={64}
             pageSizeOptions={[5, 10, 25]}
             disableRowSelectionOnClick
             // Filtering is not wired end to end, so the column filter panel stays hidden.

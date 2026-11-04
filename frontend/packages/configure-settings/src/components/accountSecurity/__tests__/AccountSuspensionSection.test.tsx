@@ -45,7 +45,7 @@ const loaded = (flows: ReturnType<typeof flow>[], unconfigured: string[] = []) =
   refetch: vi.fn(),
 });
 
-const row = (name: string): HTMLElement => screen.getByText(name).closest<HTMLElement>('[role="row"]')!;
+const row = (name: string): HTMLElement => screen.getByRole('gridcell', {name}).closest<HTMLElement>('[role="row"]')!;
 
 describe('AccountSuspensionSection', () => {
   beforeEach(() => {
@@ -175,7 +175,7 @@ describe('AccountSuspensionSection', () => {
     mockUseGetAccountLifecycleFlows.mockReturnValue(loaded([flow('f-1', 'User suspend flow')]));
     renderWithProviders(<AccountSuspensionSection />);
 
-    await userEvent.click(screen.getByText('User suspend flow'));
+    await userEvent.click(screen.getByRole('gridcell', {name: 'User suspend flow'}));
     expect(mockNavigate).toHaveBeenCalledWith('/flows/f-1');
   });
 

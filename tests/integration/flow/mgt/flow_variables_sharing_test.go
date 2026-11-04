@@ -486,7 +486,7 @@ func (suite *FlowVariablesSharingTestSuite) TestAUnitSeesWhatWasSharedWithItAndN
 	suite.Require().NotNil(found, "the shared flow is listed for the child")
 	suite.Equal(false, found["isOwnedByOU"])
 	suite.Equal(true, found["isReadOnly"])
-	suite.Equal(suite.parentOU, found["ouId"], "the owner's, not the requested one")
+	suite.Equal(suite.childOU, found["ouId"], "the requested unit's, not the owner's")
 	suite.Contains(found, "activeVersion")
 	suite.Contains(found, "createdAt")
 
@@ -495,6 +495,7 @@ func (suite *FlowVariablesSharingTestSuite) TestAUnitSeesWhatWasSharedWithItAndN
 	suite.Require().Equal(http.StatusOK, status, string(body))
 	flow := suite.decode(body)
 	suite.Equal(false, flow["isOwnedByOU"])
+	suite.Equal(suite.childOU, flow["ouId"], "the requested unit's, not the owner's")
 	suite.NotContains(flow, "nodes")
 	byID := map[string]map[string]interface{}{}
 	for _, v := range flow["variables"].([]interface{}) {

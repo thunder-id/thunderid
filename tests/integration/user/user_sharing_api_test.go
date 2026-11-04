@@ -46,11 +46,12 @@ type UserSharingAPITestSuite struct {
 }
 
 const (
-	sharingTestUserType   = "user-sharing-test-type"
-	sharingTestPassword   = "Sharing@123"
-	sharingTestScopes     = "system system:user system:usertype:view"
-	sharingTestConsoleURI = "https://localhost:8095/console"
+	sharingTestUserType = "user-sharing-test-type"
+	sharingTestPassword = "Sharing@123"
+	sharingTestScopes   = "system system:user system:usertype:view"
 )
+
+var sharingTestConsoleURI = testutils.TestServerURL + "/console"
 
 // sharingPolicy is the part of a policy response these tests read.
 type sharingPolicy struct {

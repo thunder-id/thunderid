@@ -154,9 +154,7 @@ func (ts *EscalationTestSuite) TestASuccessResetsTheConsecutiveCount() {
 		"after a success the ceiling must not be reached, and the ladder starts again")
 }
 
-// requireRung requires the user's password lock to serve the given rung, read as the lock's unlock
-// time less the failure that formed it, and returns its stored expiry. Both come from the runtime row,
-// so a short rung cannot lapse before they are read.
+// requireRung reads the episode immediately after formation and returns its stored expiry.
 func (ts *EscalationTestSuite) requireRung(userID string, rungSeconds int, msg string) time.Time {
 	ts.T().Helper()
 

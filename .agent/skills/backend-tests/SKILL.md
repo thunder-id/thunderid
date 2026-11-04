@@ -50,7 +50,14 @@ func TestExampleServiceTestSuite(t *testing.T) {
 
 ## Integration Tests
 
-Testify suites in `tests/integration/<area>/`, run with `make test_integration`. Also add:
+Testify suites in `tests/integration/<area>/`, run with `make test_integration`.
+
+- A new suite runs in the default group. List it in a group in `tests/integration/groups.yaml` only to balance run time. Each group runs its own server.
+- Build server URLs from `testutils.TestServerURL`. Never hardcode the server port.
+- Stand in for an external service with a `testutils` mock (Ex: `NewMockOIDCServer`, `NewMockNotificationServer`). Never start a server on a fixed port.
+- A Google or GitHub mock needs a client ID no other suite uses.
+
+Also add:
 
 | Change | Add |
 |---|---|

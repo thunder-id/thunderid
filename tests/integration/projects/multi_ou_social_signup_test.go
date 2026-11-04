@@ -21,8 +21,6 @@ import (
 )
 
 const (
-	mockGooglePort       = 8093
-	mockGithubPort       = 8092
 	googleClientID       = "orgs_test_google_client"
 	googleClientSecret   = "orgs_test_google_secret"
 	githubClientID       = "orgs_test_github_client"
@@ -544,11 +542,12 @@ func (ts *MultiOUSocialSignupTestSuite) SetupSuite() {
 }
 
 func (ts *MultiOUSocialSignupTestSuite) startMockProviders() {
-	mockGoogle, err := testutils.NewMockGoogleOIDCServer(mockGooglePort, googleClientID, googleClientSecret)
+	mockGoogle, err := testutils.NewMockGoogleOIDCServer(googleClientID, googleClientSecret)
 	ts.Require().NoError(err, "Failed to create mock Google server")
 	ts.mockGoogle = mockGoogle
 
-	ts.mockGithub = testutils.NewMockGithubOAuthServer(mockGithubPort, githubClientID, githubClientSecret)
+	ts.mockGithub, err = testutils.NewMockGithubOAuthServer(githubClientID, githubClientSecret)
+	ts.Require().NoError(err, "Failed to create mock GitHub server")
 
 	for _, users := range usersByProvider {
 		for _, user := range []federatedUser{users.invited, users.newUser, users.selfSignedUp} {
@@ -575,8 +574,6 @@ func (ts *MultiOUSocialSignupTestSuite) startMockProviders() {
 		}
 	}
 
-	ts.Require().NoError(ts.mockGoogle.Start(), "Failed to start mock Google server")
-	ts.Require().NoError(ts.mockGithub.Start(), "Failed to start mock GitHub server")
 }
 
 func (ts *MultiOUSocialSignupTestSuite) createIDP(idpType, clientID, clientSecret, scopes string) string {

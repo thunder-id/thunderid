@@ -1,7 +1,20 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Box, Chip, Collapse, IconButton, ListingTable, Paper, Stack, Typography} from '@wso2/oxygen-ui';
+import {
+  Box,
+  Chip,
+  Collapse,
+  IconButton,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Typography,
+} from '@wso2/oxygen-ui';
 import {ChevronRight} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {Fragment, useState} from 'react';
@@ -51,54 +64,52 @@ export default function ResourceSummaryTable({
 
   return (
     <Paper variant="outlined" sx={{overflow: 'hidden'}}>
-      <ListingTable density="compact" sx={{'& .MuiTableCell-paddingNone': {p: 0}}}>
-        <ListingTable.Head>
-          <ListingTable.Row>
-            <ListingTable.Cell sx={{width: 48}} />
-            <ListingTable.Cell>
+      <Table size="small">
+        <TableHead>
+          <TableRow sx={{'& th': {bgcolor: 'action.hover'}}}>
+            <TableCell sx={{width: 48}} />
+            <TableCell>
               <Typography variant="caption" sx={{fontWeight: 'bold'}}>
                 {showStatus || showDependencies ? ti18n('table.item') : ti18n('table.resourceType')}
               </Typography>
-            </ListingTable.Cell>
+            </TableCell>
             {showStatus && (
-              <ListingTable.Cell sx={{width: 110}}>
+              <TableCell sx={{width: 110}}>
                 <Typography variant="caption" sx={{fontWeight: 'bold'}}>
                   {ti18n('table.status')}
                 </Typography>
-              </ListingTable.Cell>
+              </TableCell>
             )}
             {showDependencies && (
-              <ListingTable.Cell sx={{width: 140}}>
+              <TableCell sx={{width: 140}}>
                 <Typography variant="caption" sx={{fontWeight: 'bold'}}>
                   {ti18n('table.dependencies')}
                 </Typography>
-              </ListingTable.Cell>
+              </TableCell>
             )}
             {!showStatus && !showDependencies && (
-              <ListingTable.Cell sx={{width: 120}}>
+              <TableCell sx={{width: 120}}>
                 <Typography variant="caption" sx={{fontWeight: 'bold'}}>
                   {ti18n('table.count')}
                 </Typography>
-              </ListingTable.Cell>
+              </TableCell>
             )}
-          </ListingTable.Row>
-        </ListingTable.Head>
-        <ListingTable.Body>
+          </TableRow>
+        </TableHead>
+        <TableBody>
           {items.length === 0 ? (
-            <ListingTable.Row>
-              <ListingTable.Cell colSpan={showStatus || showDependencies ? 4 : 3} sx={{textAlign: 'center'}}>
-                <Box sx={{py: 4}}>
-                  <Typography variant="body2" color="text.secondary">
-                    {ti18n('table.noResources')}
-                  </Typography>
-                </Box>
-              </ListingTable.Cell>
-            </ListingTable.Row>
+            <TableRow>
+              <TableCell colSpan={showStatus || showDependencies ? 4 : 3} sx={{py: 4, textAlign: 'center'}}>
+                <Typography variant="body2" color="text.secondary">
+                  {ti18n('table.noResources')}
+                </Typography>
+              </TableCell>
+            </TableRow>
           ) : (
             items.map((item) => (
               <Fragment key={item.id}>
-                <ListingTable.Row hover clickable onClick={() => toggle(item.id)}>
-                  <ListingTable.Cell>
+                <TableRow hover sx={{cursor: 'pointer'}} onClick={() => toggle(item.id)}>
+                  <TableCell sx={{py: 1, pl: 1.5}}>
                     <IconButton
                       size="small"
                       onClick={(e) => {
@@ -117,43 +128,43 @@ export default function ResourceSummaryTable({
                         <ChevronRight size={16} />
                       </Box>
                     </IconButton>
-                  </ListingTable.Cell>
-                  <ListingTable.Cell>
+                  </TableCell>
+                  <TableCell>
                     <Stack direction="row" spacing={1} alignItems="center">
                       {item.icon}
                       <Typography variant="body2" sx={{fontWeight: 'medium'}}>
                         {item.label}
                       </Typography>
                     </Stack>
-                  </ListingTable.Cell>
+                  </TableCell>
                   {showStatus && (
-                    <ListingTable.Cell>
+                    <TableCell>
                       {item.status === 'ready' ? (
                         <Chip label={t('export.status.ready')} size="small" color="success" />
                       ) : (
                         <Chip label={t('export.status.warning')} size="small" color="warning" />
                       )}
-                    </ListingTable.Cell>
+                    </TableCell>
                   )}
                   {showDependencies && (
-                    <ListingTable.Cell>
+                    <TableCell>
                       <Typography variant="body2" color="text.secondary">
                         {item.dependencyCount && item.dependencyCount > 0
                           ? t('export.table.dependencyCount', {count: item.dependencyCount})
                           : t('export.table.noDependencies')}
                       </Typography>
-                    </ListingTable.Cell>
+                    </TableCell>
                   )}
                   {!showStatus && !showDependencies && (
-                    <ListingTable.Cell>
+                    <TableCell>
                       <Typography variant="body2" fontWeight={600}>
                         {item.value}
                       </Typography>
-                    </ListingTable.Cell>
+                    </TableCell>
                   )}
-                </ListingTable.Row>
-                <ListingTable.Row>
-                  <ListingTable.Cell colSpan={showStatus || showDependencies ? 4 : 3} padding="none" sx={{border: 0}}>
+                </TableRow>
+                <TableRow>
+                  <TableCell colSpan={showStatus || showDependencies ? 4 : 3} sx={{p: 0, border: 0}}>
                     <Collapse in={Boolean(expanded[item.id])} timeout="auto" unmountOnExit>
                       {item.content ?? (
                         <Box sx={{px: 5, py: 1.5, bgcolor: 'background.default'}}>
@@ -163,13 +174,13 @@ export default function ResourceSummaryTable({
                         </Box>
                       )}
                     </Collapse>
-                  </ListingTable.Cell>
-                </ListingTable.Row>
+                  </TableCell>
+                </TableRow>
               </Fragment>
             ))
           )}
-        </ListingTable.Body>
-      </ListingTable>
+        </TableBody>
+      </Table>
     </Paper>
   );
 }

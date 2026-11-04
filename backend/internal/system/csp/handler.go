@@ -3,7 +3,10 @@
 
 package csp
 
-import "encoding/json"
+import (
+	"context"
+	"encoding/json"
+)
 
 // PolicyHandler decodes, validates, and merges the "csp" server-config section. It implements the
 // section-handler contract structurally, without importing the serverconfig package.
@@ -23,7 +26,7 @@ func (PolicyHandler) Decode(raw json.RawMessage) (any, error) {
 }
 
 // Validate checks that the incoming value is an acceptable csp policy.
-func (PolicyHandler) Validate(incoming, _, _ any) error {
+func (PolicyHandler) Validate(_ context.Context, incoming, _, _ any) error {
 	cfg, _ := incoming.(PolicyConfig)
 	return cfg.Validate()
 }

@@ -243,10 +243,6 @@ var (
 	googleRegTestOUID  string
 )
 
-const (
-	mockGoogleRegFlowPort = 8093
-)
-
 type GoogleRegistrationFlowTestSuite struct {
 	suite.Suite
 	mockGoogleServer *testutils.MockGoogleOIDCServer
@@ -262,9 +258,8 @@ func TestGoogleRegistrationFlowTestSuite(t *testing.T) {
 func (ts *GoogleRegistrationFlowTestSuite) SetupSuite() {
 	ts.config = &common.TestSuiteConfig{}
 
-	// Start mock Google server
-	mockServer, err := testutils.NewMockGoogleOIDCServer(mockGoogleRegFlowPort,
-		"test_google_client", "test_google_secret")
+	// Create mock Google server
+	mockServer, err := testutils.NewMockGoogleOIDCServer("google_registration_client", "google_registration_secret")
 	ts.Require().NoError(err, "Failed to create mock Google server")
 	ts.mockGoogleServer = mockServer
 
@@ -278,9 +273,6 @@ func (ts *GoogleRegistrationFlowTestSuite) SetupSuite() {
 		Picture:       "https://example.com/regpicture.jpg",
 		Locale:        "en",
 	})
-
-	err = ts.mockGoogleServer.Start()
-	ts.Require().NoError(err, "Failed to start mock Google server")
 
 	// Create test organization unit for Google registration tests
 	ouID, err := testutils.CreateOrganizationUnit(googleRegTestOU)
@@ -304,12 +296,12 @@ func (ts *GoogleRegistrationFlowTestSuite) SetupSuite() {
 		Properties: []testutils.IDPProperty{
 			{
 				Name:     "client_id",
-				Value:    "test_google_client",
+				Value:    "google_registration_client",
 				IsSecret: false,
 			},
 			{
 				Name:     "client_secret",
-				Value:    "test_google_secret",
+				Value:    "google_registration_secret",
 				IsSecret: true,
 			},
 			{

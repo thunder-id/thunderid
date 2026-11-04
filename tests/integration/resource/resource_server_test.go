@@ -17,10 +17,11 @@ import (
 )
 
 const (
-	testServerURL                  = "https://localhost:8095"
 	systemResourceServerIdentifier = "https://localhost:8090/mcp"
 	invalidMCPIdentifierCode       = "RES-1024"
 )
+
+var testServerURL = testutils.TestServerURL
 
 var (
 	testOU = testutils.OrganizationUnit{

@@ -25,19 +25,42 @@ import (
 
 const (
 	TargetDir                   = "../../target/dist"
-	ExtractedDir                = "../../target/out/.test"
 	TestDeploymentYamlPath      = "./resources/deployment.yaml"
 	DefaultConfigJSONPath       = "../../backend/cmd/server/config/default.json"
 	TestDatabaseSchemaDirectory = "resources/dbscripts"
 	DatabaseFileBasePath        = "database/"
 
 	// GoogleMockBaseURL and GitHubMockBaseURL point the /connections/google and
-	// /connections/github vendors at the local mock OAuth servers (mock_google_oidc_server.go,
-	// mock_github_oauth_server.go) instead of the real accounts.google.com/github.com endpoints.
-	// Must match the mock port constants used by the flow/authn integration suites.
+	// /connections/github vendors at the Google and GitHub mock services the test runner hosts
+	// instead of the real accounts.google.com/github.com endpoints. They must match
+	// mockservices.Ports.
 	GoogleMockBaseURL = "http://localhost:8093"
 	GitHubMockBaseURL = "http://localhost:8092"
 )
+
+// ExtractedDir is where the product is unzipped. Each test group unzips its own copy.
+var ExtractedDir = extractedDir()
+
+func extractedDir() string {
+	if group := TestGroup(); group != "" {
+		return filepath.Join("../../target/out/.test/groups", group)
+	}
+	return "../../target/out/.test"
+}
+
+// DefaultServerPort is the port the server runs on when the runner sets no SERVER_PORT.
+const DefaultServerPort = "8095"
+
+// ServerPort returns the port of the server under test. The runner sets SERVER_PORT for the process
+// of each test group and for the test packages it runs, so a SERVER_PORT set anywhere else is ignored.
+func ServerPort() string {
+	if TestGroup() != "" || os.Getenv("SERVER_EXTRACTED_HOME") != "" {
+		if port := os.Getenv("SERVER_PORT"); port != "" {
+			return port
+		}
+	}
+	return DefaultServerPort
+}
 
 // ServerBinary is the name of the server binary, platform-dependent.
 var ServerBinary string
@@ -585,8 +608,11 @@ func copyDirectory(src, dest string) error {
 func RunInitScript(zipFilePattern string) error {
 	log.Println("Running init script...")
 
-	// Skip database initialization for PostgreSQL
+	// The workflow creates the PostgreSQL databases a single server uses. A test group creates its own.
 	if dbType == "postgres" {
+		if TestGroup() != "" {
+			return createPostgresDatabases()
+		}
 		log.Println("Skipping database initialization for PostgreSQL (already initialized in workflow)")
 		return nil
 	}
@@ -906,7 +932,7 @@ func RestartServerWithResourcesFile(resourcesFilePath string) error {
 		return fmt.Errorf("failed to start server with resources file: %w", err)
 	}
 
-	if err := waitForServerReady(30 * time.Second); err != nil {
+	if err := WaitForServerReady(30 * time.Second); err != nil {
 		return fmt.Errorf("server did not become ready after restart: %w", err)
 	}
 
@@ -1005,18 +1031,23 @@ func RestartServer() error {
 		return fmt.Errorf("failed to restart server: %v", err)
 	}
 
-	if err := waitForServerReady(30 * time.Second); err != nil {
+	if err := WaitForServerReady(30 * time.Second); err != nil {
 		return fmt.Errorf("server did not become ready after restart: %w", err)
 	}
 
 	return nil
 }
 
-// waitForServerReady polls the server's health endpoint until it responds with a 2xx
+// readinessRequestTimeout bounds each health check WaitForServerReady makes.
+const readinessRequestTimeout = 5 * time.Second
+
+// WaitForServerReady polls the server's health endpoint until it responds with a 2xx
 // status or the timeout is exceeded. A polling interval of 500ms is used.
-func waitForServerReady(timeout time.Duration) error {
+func WaitForServerReady(timeout time.Duration) error {
 	healthURL := "https://localhost:" + serverPort + "/health/liveness"
 	client := GetHTTPClient()
+	// A server that accepts the connection but never answers must not hold the wait past its deadline.
+	client.Timeout = readinessRequestTimeout
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
@@ -1047,6 +1078,12 @@ func UpdateDeploymentConfig(srcPath string) error {
 
 	if err := copyFile(srcPath, destPath); err != nil {
 		return fmt.Errorf("failed to update deployment.yaml from %s: %w", srcPath, err)
+	}
+	// The pristine deployment.yaml names the default port and databases, not the test group's.
+	if group := TestGroup(); group != "" {
+		if err := ConfigureTestGroup(group, serverPort); err != nil {
+			return err
+		}
 	}
 
 	log.Printf("Deployment config updated from %s", srcPath)
@@ -1363,11 +1400,16 @@ func queryPostgresRuntimeDB(sqlQuery string) (string, error) {
 	if conn == nil {
 		return "", fmt.Errorf("deployment.yaml has no database.runtime_persistent.postgres section")
 	}
+	return runPsql(conn, fmt.Sprint(conn["name"]), "-c", sqlQuery)
+}
+
+// runPsql runs psql against the named database on the server a deployment.yaml postgres section
+// names, and returns the trimmed output.
+func runPsql(conn map[string]interface{}, database string, args ...string) (string, error) {
 	value := func(key string) string { return fmt.Sprint(conn[key]) }
 
-	cmd := exec.Command("psql", "-X", "-q", "-At", "-v", "ON_ERROR_STOP=1",
-		"-h", value("hostname"), "-p", value("port"), "-U", value("username"), "-d", value("name"),
-		"-c", sqlQuery)
+	cmd := exec.Command("psql", append([]string{"-X", "-q", "-At", "-v", "ON_ERROR_STOP=1",
+		"-h", value("hostname"), "-p", value("port"), "-U", value("username"), "-d", database}, args...)...)
 	cmd.Env = append(os.Environ(), "PGPASSWORD="+value("password"))
 	out, err := cmd.CombinedOutput()
 	if err != nil {

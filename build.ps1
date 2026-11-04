@@ -1521,9 +1521,9 @@ function Test-Integration {
 
         Write-Host "Coverage data will be collected in: $coverage_dir"
         if ($extra_args.Count -gt 0) {
-            & go run -C ./tests/integration ./main.go @extra_args
+            & go run -C ./tests/integration . @extra_args
         } else {
-            & go run -C ./tests/integration ./main.go
+            & go run -C ./tests/integration .
         }
         $test_exit_code = $LASTEXITCODE
 

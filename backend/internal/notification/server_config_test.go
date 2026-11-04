@@ -4,6 +4,7 @@
 package notification
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -45,18 +46,19 @@ func (s *ServerConfigTestSuite) TestDecodeRejectsAnUnknownField() {
 }
 
 func (s *ServerConfigTestSuite) TestValidateDoesNotResolveTheSender() {
-	s.NoError(s.handler.Validate(
+	s.NoError(s.handler.Validate(context.Background(),
 		notificationconfig.NotificationSectionConfig{DefaultEmailSenderID: "missing"}, nil, nil))
 }
 
 func (s *ServerConfigTestSuite) TestValidateAcceptsClearingTheSender() {
 	empty := notificationconfig.NotificationSectionConfig{}
-	s.NoError(s.handler.Validate(empty, empty, empty))
+	s.NoError(s.handler.Validate(context.Background(), empty, empty, empty))
 }
 
 // A declarative sender locks the section.
 func (s *ServerConfigTestSuite) TestValidateRejectsAWriteOverADeclarativeSender() {
-	s.ErrorIs(s.handler.Validate(notificationconfig.NotificationSectionConfig{DefaultEmailSenderID: "sender-2"},
+	s.ErrorIs(s.handler.Validate(context.Background(),
+		notificationconfig.NotificationSectionConfig{DefaultEmailSenderID: "sender-2"},
 		notificationconfig.NotificationSectionConfig{DefaultEmailSenderID: "sender-1"},
 		notificationconfig.NotificationSectionConfig{}), errDeclarativeSenderLocked)
 }

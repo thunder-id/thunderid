@@ -3206,18 +3206,21 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_Success()
 		Scope:              testScopeRead,
 	}
 
+	subjectAttributes := map[string]interface{}{"email": "user@example.com"}
 	suite.mockTokenValidator.On("ValidateIDJAGSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
-			Sub: testUserID,
-			Iss: testIDJAGServerIssuer,
-			Aud: []string{testClientID},
+			Sub:            testUserID,
+			Iss:            testIDJAGServerIssuer,
+			Aud:            []string{testClientID},
+			UserAttributes: subjectAttributes,
 		}, nil)
 	suite.mockTokenBuilder.On("BuildIDJAG", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.IDJAGBuildContext) bool {
 			return ctx.Subject == testUserID &&
 				ctx.Audience == testIDJAGAudience &&
 				ctx.ClientID == testClientID &&
-				tokenservice.JoinScopes(ctx.Scopes) == testScopeRead
+				tokenservice.JoinScopes(ctx.Scopes) == testScopeRead &&
+				assert.ObjectsAreEqual(subjectAttributes, ctx.UserAttributes)
 		})).Return(&model.TokenDTO{
 		Token:     "test-id-jag",
 		TokenType: constants.TokenTypeNA,

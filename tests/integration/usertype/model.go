@@ -9,9 +9,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const (
-	testServerURL = "https://localhost:8095"
-)
+var testServerURL = testutils.TestServerURL
 
 // SystemAttributes holds system-level metadata for a user type.
 type SystemAttributes struct {

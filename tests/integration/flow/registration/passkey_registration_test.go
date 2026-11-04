@@ -15,13 +15,14 @@ import (
 const (
 	passkeyRegRelyingPartyID   = "localhost"
 	passkeyRegRelyingPartyName = "ThunderID Test"
-	// passkeyRegOrigin is set as the application's only allowed passkey origin, which is what the
-	// flow executor validates the attestation against. It must also be listed under
-	// passkey.allowed_origins in the test deployment.yaml, since TestPasskeyRegistration_Success
-	// authenticates with the enrolled credential through the direct passkey API, and that path
-	// takes its allowed origins from server config.
-	passkeyRegOrigin = "https://localhost:8095"
 )
+
+// passkeyRegOrigin is set as the application's only allowed passkey origin, which is what the
+// flow executor validates the attestation against. It must also be listed under
+// passkey.allowed_origins in the test deployment.yaml, since TestPasskeyRegistration_Success
+// authenticates with the enrolled credential through the direct passkey API, and that path
+// takes its allowed origins from server config.
+var passkeyRegOrigin = testutils.TestServerURL
 
 // buildPasskeyRegistrationFlow assembles a registration flow that provisions the user first, since
 // the register_start mode needs a user in context, then enrols a passkey for them.

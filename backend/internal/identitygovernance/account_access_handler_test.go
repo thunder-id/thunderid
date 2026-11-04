@@ -4,6 +4,7 @@
 package identitygovernance
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -98,7 +99,7 @@ func (s *AccountAccessHandlerTestSuite) TestTheLockEmailTemplatesAreConfigurable
 	incoming := s.decode(`{"user":{"notifications":{"onLock":{"email":{"templates":{` +
 		`"temporary":"authentication-method-locked","permanent":"authentication-method-locked-permanent",` +
 		`"account":{"permanent":"account-locked-permanent"},"methods":{"otp":{"temporary":"otp-locked"}}}}}}}}`)
-	s.Require().NoError(s.handler.Validate(incoming, nil, nil))
+	s.Require().NoError(s.handler.Validate(context.Background(), incoming, nil, nil))
 
 	s.Equal(&accountAccessLockTemplates{
 		lockEmailTemplatePair: lockEmailTemplatePair{
@@ -136,7 +137,7 @@ func (s *AccountAccessHandlerTestSuite) TestAnInvalidLockTemplateIsRejected() {
 			`"methods":{"account":{"temporary":"authentication-method-locked"}}}`,
 	} {
 		incoming := s.decode(`{"user":{"notifications":{"onLock":{"email":{"templates":` + templates + `}}}}}`)
-		err := s.handler.Validate(incoming, nil, nil)
+		err := s.handler.Validate(context.Background(), incoming, nil, nil)
 		s.Require().Error(err, want)
 		s.Contains(err.Error(), want)
 	}
@@ -144,26 +145,26 @@ func (s *AccountAccessHandlerTestSuite) TestAnInvalidLockTemplateIsRejected() {
 
 func (s *AccountAccessHandlerTestSuite) TestAnUnknownGranularityIsRejected() {
 	incoming := s.decode(`{"user":{"lockGranularity":"entitiy"}}`)
-	s.Require().Error(s.handler.Validate(incoming, nil, nil))
+	s.Require().Error(s.handler.Validate(context.Background(), incoming, nil, nil))
 }
 
 func (s *AccountAccessHandlerTestSuite) TestEachKnownGranularityIsAccepted() {
 	for _, value := range []granularity{granularityAuthenticationMethod, granularityAccount} {
 		incoming := s.decode(`{"user":{"lockGranularity":"` + string(value) + `"}}`)
-		s.Require().NoError(s.handler.Validate(incoming, nil, nil), value)
+		s.Require().NoError(s.handler.Validate(context.Background(), incoming, nil, nil), value)
 	}
 }
 
 // A default that states nothing configures no lock, so it is not checked for one.
 func (s *AccountAccessHandlerTestSuite) TestADefaultStatingNothingIsAccepted() {
-	s.Require().NoError(s.handler.Validate(s.decode(`{"user":{"default":{}}}`), nil, nil))
+	s.Require().NoError(s.handler.Validate(context.Background(), s.decode(`{"user":{"default":{}}}`), nil, nil))
 }
 
 func (s *AccountAccessHandlerTestSuite) TestAZeroDurationIsAccepted() {
 	// Zero means a permanent lock.
 	incoming := s.decode(
 		`{"user":{"default":{"enabled":true,"threshold":5,"failureWindowSeconds":900,"lockDurationsSeconds":[300,0]}}}`)
-	s.Require().NoError(s.handler.Validate(incoming, nil, nil))
+	s.Require().NoError(s.handler.Validate(context.Background(), incoming, nil, nil))
 }
 
 // A value that would overflow time.Duration is refused at write time.
@@ -183,17 +184,17 @@ func (s *AccountAccessHandlerTestSuite) TestADurationTooLargeToCarryIsRejected()
 	}
 	for _, c := range cases {
 		s.Run(c.field, func() {
-			err := s.handler.Validate(s.decode(c.document), nil, nil)
+			err := s.handler.Validate(context.Background(), s.decode(c.document), nil, nil)
 			s.Require().Error(err)
 			s.Contains(err.Error(), c.field)
 		})
 	}
 
 	// The bound itself is accepted.
-	s.Require().NoError(s.handler.Validate(
+	s.Require().NoError(s.handler.Validate(context.Background(),
 		s.decode(fmt.Sprintf(complete, maxDurationSeconds, maxDurationSeconds, maxDurationSeconds)),
 		nil, nil))
-	s.Require().NoError(s.handler.Validate(
+	s.Require().NoError(s.handler.Validate(context.Background(),
 		s.decode(fmt.Sprintf(`{"user":{"lastLoginResolutionSeconds":%d}}`, maxDurationSeconds)),
 		nil, nil))
 }
@@ -201,7 +202,7 @@ func (s *AccountAccessHandlerTestSuite) TestADurationTooLargeToCarryIsRejected()
 // An enabled policy that can never form a lock is refused.
 func (s *AccountAccessHandlerTestSuite) TestAPolicyThatCannotFormALockIsRejected() {
 	incoming := s.decode(`{"user":{"default":{"enabled":true,"threshold":5}}}`)
-	err := s.handler.Validate(incoming, nil, nil)
+	err := s.handler.Validate(context.Background(), incoming, nil, nil)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "failureWindowSeconds")
 	s.Contains(err.Error(), "lockDurationsSeconds")
@@ -209,7 +210,7 @@ func (s *AccountAccessHandlerTestSuite) TestAPolicyThatCannotFormALockIsRejected
 
 // A policy that says it is enabled and states nothing else cannot form a lock, so it is refused.
 func (s *AccountAccessHandlerTestSuite) TestAnEnabledPolicyStatingNothingElseIsRejected() {
-	err := s.handler.Validate(s.decode(`{"user":{"default":{"enabled":true}}}`), nil, nil)
+	err := s.handler.Validate(context.Background(), s.decode(`{"user":{"default":{"enabled":true}}}`), nil, nil)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "threshold")
 	s.Contains(err.Error(), "failureWindowSeconds")
@@ -224,10 +225,11 @@ func (s *AccountAccessHandlerTestSuite) TestTheConsecutiveCeilingIsValidated() {
 			`"lockDurationsSeconds":[300],"maxConsecutiveFailures":%d}}}`, ceiling)
 	}
 	for _, accepted := range []int{0, 5, 50} {
-		s.NoError(s.handler.Validate(s.decode(policy(accepted)), nil, nil), "ceiling %d", accepted)
+		s.NoError(s.handler.Validate(context.Background(), s.decode(policy(accepted)), nil, nil),
+			"ceiling %d", accepted)
 	}
 	for _, refused := range []int{-1, 4} {
-		err := s.handler.Validate(s.decode(policy(refused)), nil, nil)
+		err := s.handler.Validate(context.Background(), s.decode(policy(refused)), nil, nil)
 		s.Require().Error(err, "ceiling %d", refused)
 		s.Contains(err.Error(), "maxConsecutiveFailures")
 	}
@@ -236,9 +238,9 @@ func (s *AccountAccessHandlerTestSuite) TestTheConsecutiveCeilingIsValidated() {
 // A writable layer that states only the ceiling is checked against the base's threshold and keeps
 // every other base field.
 func (s *AccountAccessHandlerTestSuite) TestTheConsecutiveCeilingIsLaidOverTheBase() {
-	s.Require().NoError(s.precedence.Validate(
+	s.Require().NoError(s.precedence.Validate(context.Background(),
 		s.decode(`{"user":{"default":{"maxConsecutiveFailures":20}}}`), accountAccessValue{}, accountAccessValue{}))
-	s.Require().Error(s.precedence.Validate(
+	s.Require().Error(s.precedence.Validate(context.Background(),
 		s.decode(`{"user":{"default":{"maxConsecutiveFailures":3}}}`), accountAccessValue{}, accountAccessValue{}),
 		"the base threshold is 5")
 
@@ -251,7 +253,7 @@ func (s *AccountAccessHandlerTestSuite) TestTheConsecutiveCeilingIsLaidOverTheBa
 func (s *AccountAccessHandlerTestSuite) TestAZeroWindowIsAccepted() {
 	incoming := s.decode(
 		`{"user":{"default":{"enabled":true,"threshold":5,"failureWindowSeconds":0,"lockDurationsSeconds":[300]}}}`)
-	s.Require().NoError(s.handler.Validate(incoming, nil, nil))
+	s.Require().NoError(s.handler.Validate(context.Background(), incoming, nil, nil))
 }
 
 func (s *AccountAccessHandlerTestSuite) TestAnIncompleteWritableLayerIsCoherentAgainstTheBase() {
@@ -260,12 +262,12 @@ func (s *AccountAccessHandlerTestSuite) TestAnIncompleteWritableLayerIsCoherentA
 			`"lockDurationsSeconds":[300]}}}`)}
 	// Only a threshold; the base supplies the rest.
 	incoming := s.decode(`{"user":{"default":{"threshold":3}}}`)
-	s.Require().NoError(handler.Validate(incoming, nil, nil))
+	s.Require().NoError(handler.Validate(context.Background(), incoming, nil, nil))
 }
 
 func (s *AccountAccessHandlerTestSuite) TestSwitchingACategoryOffNeedsNoOtherField() {
 	incoming := s.decode(`{"agent":{"default":{"enabled":false}}}`)
-	s.Require().NoError(s.handler.Validate(incoming, nil, nil))
+	s.Require().NoError(s.handler.Validate(context.Background(), incoming, nil, nil))
 }
 
 func (s *AccountAccessHandlerTestSuite) TestAWritableCategoryDoesNotDeleteAnotherCategory() {
@@ -312,14 +314,14 @@ func (s *AccountAccessHandlerTestSuite) TestWritableOverridesTheBase() {
 }
 
 func (s *AccountAccessHandlerTestSuite) TestPartialWriteValidatesAgainstTheBase() {
-	s.Require().NoError(s.precedence.Validate(
+	s.Require().NoError(s.precedence.Validate(context.Background(),
 		s.decode(`{"user":{"default":{"threshold":3}}}`), accountAccessValue{},
 		accountAccessValue{}))
 }
 
 func (s *AccountAccessHandlerTestSuite) TestIncompleteEnabledPolicyWithoutABaseIsRefused() {
 	value := s.decode(`{"user":{"default":{"enabled":true,"threshold":3}}}`)
-	s.Require().Error(accountAccessHandler{}.Validate(value, nil, nil))
+	s.Require().Error(accountAccessHandler{}.Validate(context.Background(), value, nil, nil))
 }
 
 func (s *AccountAccessHandlerTestSuite) TestWritableCanDisableTheBasePolicy() {
@@ -360,21 +362,22 @@ func (s *AccountAccessHandlerTestSuite) TestMergeTakesTheLockEmailTemplatesOfThe
 
 // While a declarative document exists the section is locked, so a write cannot be a silent no-op.
 func (s *AccountAccessHandlerTestSuite) TestADeclarativeDocumentRefusesWrites() {
-	err := s.precedence.Validate(s.decode(`{"user":{"default":{"threshold":2}}}`),
+	err := s.precedence.Validate(context.Background(), s.decode(`{"user":{"default":{"threshold":2}}}`),
 		s.decode(`{"user":{"default":{"threshold":7}}}`), accountAccessValue{})
 	s.Require().ErrorIs(err, errDeclarativeAccountAccessLocked)
 }
 
 // At load time a partial declarative document is checked laid over the base.
 func (s *AccountAccessHandlerTestSuite) TestTheDeclarativeLoadValidatesAgainstTheBase() {
-	s.Require().NoError(s.precedence.Validate(s.decode(`{"user":{"default":{"threshold":7}}}`), nil, nil))
+	s.Require().NoError(s.precedence.Validate(context.Background(),
+		s.decode(`{"user":{"default":{"threshold":7}}}`), nil, nil))
 }
 
 // Last-login settings are configurable through the section.
 func (s *AccountAccessHandlerTestSuite) TestLastLoginSettingsAreConfigurableThroughTheSection() {
 	incoming := s.decode(`{"user":{"recordLastLogin":true,"lastLoginResolutionSeconds":300},` +
 		`"agent":{"recordLastLogin":false}}`)
-	s.Require().NoError(s.handler.Validate(incoming, nil, nil))
+	s.Require().NoError(s.handler.Validate(context.Background(), incoming, nil, nil))
 
 	s.True(*incoming.User.RecordLastLogin)
 	s.Equal(300, *incoming.User.LastLoginResolutionSeconds)
@@ -385,13 +388,13 @@ func (s *AccountAccessHandlerTestSuite) TestLastLoginSettingsAreConfigurableThro
 // A negative resolution is refused at write time rather than clamped.
 func (s *AccountAccessHandlerTestSuite) TestANegativeLastLoginResolutionIsRejected() {
 	incoming := s.decode(`{"user":{"lastLoginResolutionSeconds":-1}}`)
-	err := s.handler.Validate(incoming, nil, nil)
+	err := s.handler.Validate(context.Background(), incoming, nil, nil)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "lastLoginResolutionSeconds")
 }
 
 func (s *AccountAccessHandlerTestSuite) TestAWrongValueTypeIsRefused() {
-	err := s.handler.Validate("not a section", nil, nil)
+	err := s.handler.Validate(context.Background(), "not a section", nil, nil)
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "unexpected config type string")
@@ -413,7 +416,7 @@ func (s *AccountAccessHandlerTestSuite) TestNegativeValuesAreRejected() {
 		"user.default.lockDecaySeconds":        `{"user":{"default":{"lockDecaySeconds":-1}}}`,
 		"user.default.lockDurationsSeconds[1]": `{"user":{"default":{"lockDurationsSeconds":[300,-1]}}}`,
 	} {
-		err := s.handler.Validate(s.decode(document), nil, nil)
+		err := s.handler.Validate(context.Background(), s.decode(document), nil, nil)
 		s.Require().Error(err, path)
 		s.Contains(err.Error(), path+" must be >= 0")
 	}
