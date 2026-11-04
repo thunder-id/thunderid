@@ -10,6 +10,8 @@ import (
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 const valueCaptureLoggerComponentName = "ConnectionValueCapture"
@@ -59,4 +61,13 @@ func (s *service) captureModel(ctx context.Context, id string, model connectionE
 		return
 	}
 	s.valueCapturer.CaptureValues(ctx, resourceTypeConnection, &model)
+}
+
+// checkDataPlaneReady refuses a create whose values could not reach a data plane yet: while none is
+// registered, or the default one is still being provisioned. Without a capturer nothing is refused.
+func (s *service) checkDataPlaneReady(ctx context.Context) *tidcommon.ServiceError {
+	if s.valueCapturer == nil {
+		return nil
+	}
+	return s.valueCapturer.CheckDataPlaneReady(ctx)
 }

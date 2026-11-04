@@ -51,15 +51,27 @@ func Initialize(mux *http.ServeMux, exporter export.ExportServiceInterface,
 		gatewayStore = newStore()
 	}
 
-	service := newService(gatewayStore)
+	// On a control plane, which is the plane given a capture, whether a gateway is ready is read from
+	// health checks made on demand. Deploys and calls to a gateway's store wait for it to be
+	// provisioned, and so do the creates that capture values into the default one. Any other plane
+	// checks nothing and refuses nothing.
+	var ready *readiness
+	if capture != nil {
+		ready = newReadiness(gatewayStore, newStatusStore(), newGatewayClient())
+	}
+	gatewayService := newService(gatewayStore)
+	gatewayService.(*service).readiness = ready
 	versions := newVersionService(gatewayStore, newVersionStore(), exporter, newGatewayClient(),
 		declarativeresource.SecretFieldsOf(exporters), newActorNames())
 	versions.autoApply = isAutoApplyEnabled()
-	h := newHandler(service)
+	versions.readiness = ready
+	h := newHandler(gatewayService)
 	h.afterDelete = versions.Forget
+	h.readiness = ready
 	stores := newStoreService(gatewayStore, newGatewayClient())
+	stores.(*storeService).readiness = ready
 	if capture != nil {
-		capture.bind(exporter, gatewayStore, stores)
+		capture.bind(exporter, gatewayStore, stores, ready)
 	}
 	if changes != nil {
 		changes.bind(versions)
@@ -75,10 +87,10 @@ func Initialize(mux *http.ServeMux, exporter export.ExportServiceInterface,
 	// declares and re-reading replaces rather than accumulates.
 	if fileStore != nil {
 		if err := loadDeclarativeGateways(fileStore); err != nil {
-			return service, err
+			return gatewayService, err
 		}
 	}
-	return service, nil
+	return gatewayService, nil
 }
 
 func registerRoutes(mux *http.ServeMux, h *handler) {
@@ -102,6 +114,18 @@ func registerRoutes(mux *http.ServeMux, h *handler) {
 		AllowCredentials: true,
 		MaxAge:           600,
 	}
+	statusOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	// Only a control plane says whether its data plane is ready.
+	if h.readiness != nil {
+		mux.HandleFunc(middleware.WithCORS("GET /gateways/default/status", h.handleDefaultStatus, statusOpts))
+		mux.HandleFunc(middleware.WithCORS("OPTIONS /gateways/default/status", noContent, statusOpts))
+	}
+
 	mux.HandleFunc(middleware.WithCORS("GET /gateways/{id}", h.handleGet, itemOpts))
 	mux.HandleFunc(middleware.WithCORS("PUT /gateways/{id}", h.handleUpdate, itemOpts))
 	mux.HandleFunc(middleware.WithCORS("DELETE /gateways/{id}", h.handleDelete, itemOpts))

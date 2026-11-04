@@ -35,8 +35,11 @@ type ServiceInterface interface {
 }
 
 type service struct {
-	store  storeInterface
-	logger *log.Logger
+	store storeInterface
+	// readiness checks a gateway as it is registered or changed, and fills in its status on a read.
+	// Nil leaves both out.
+	readiness *readiness
+	logger    *log.Logger
 }
 
 func newService(store storeInterface) ServiceInterface {
@@ -66,8 +69,23 @@ func (s *service) List(ctx context.Context) ([]Gateway, *tidcommon.ServiceError)
 	}
 	for i := range gateways {
 		gateways[i].Key = ""
+		gateways[i].Status = s.statusOf(ctx, &gateways[i])
 	}
 	return gateways, nil
+}
+
+// statusOf reads a gateway's status for showing it, without waiting on a check. A status that cannot
+// be read is left out rather than failing the read of the gateway.
+func (s *service) statusOf(ctx context.Context, gw *Gateway) *GatewayStatus {
+	if s.readiness == nil {
+		return nil
+	}
+	status, err := s.readiness.Peek(ctx, gw)
+	if err != nil {
+		s.logger.Warn(ctx, "Failed to read a gateway's status", log.String("gatewayId", gw.ID), log.Error(err))
+		return nil
+	}
+	return status
 }
 
 func (s *service) Get(ctx context.Context, id string) (*Gateway, *tidcommon.ServiceError) {
@@ -83,6 +101,7 @@ func (s *service) Get(ctx context.Context, id string) (*Gateway, *tidcommon.Serv
 		return nil, &ErrorGatewayNotFound
 	}
 	gw.Key = ""
+	gw.Status = s.statusOf(ctx, gw)
 	return gw, nil
 }
 
@@ -185,6 +204,11 @@ func (s *service) Register(ctx context.Context,
 
 	s.logger.Info(ctx, "Registered a gateway", log.String("gatewayId", registered.ID),
 		log.String("baseUrl", registered.BaseURL))
+	// A gateway registered is checked at once, so one registered only once it serves, as a data plane
+	// provisioned for an organization is, can be used without waiting for the next check.
+	if s.readiness != nil {
+		s.readiness.Refresh(ctx, registered)
+	}
 	registered.Key = ""
 	// The generated key travels in the response and is not kept anywhere readable.
 	return &Registration{Gateway: *registered, Key: key}, nil
@@ -287,6 +311,10 @@ func (s *service) Update(ctx context.Context, id string,
 	}
 
 	s.logger.Info(ctx, "Updated a gateway", log.String("gatewayId", existing.ID))
+	// A gateway that moved, or now trusts another certificate, is checked again at once.
+	if s.readiness != nil {
+		s.readiness.Refresh(ctx, existing)
+	}
 	existing.Key = ""
 	return existing, nil
 }
@@ -311,6 +339,9 @@ func (s *service) Delete(ctx context.Context, id string) *tidcommon.ServiceError
 		return &tidcommon.InternalServerError
 	}
 	s.logger.Info(ctx, "Removed a gateway", log.String("gatewayId", id))
+	if s.readiness != nil {
+		s.readiness.Forget(ctx, id)
+	}
 	return nil
 }
 

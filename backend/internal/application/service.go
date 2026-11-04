@@ -151,6 +151,9 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 	if app == nil {
 		return nil, &ErrorApplicationNil
 	}
+	if svcErr := as.checkDataPlaneReady(ctx); svcErr != nil {
+		return nil, svcErr
+	}
 	// Check if store is in pure declarative mode
 	if isDeclarativeModeEnabled() {
 		return nil, &ErrorCannotModifyDeclarativeResource

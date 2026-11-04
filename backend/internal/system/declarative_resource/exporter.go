@@ -106,6 +106,11 @@ type ReferenceWriter interface {
 // fails is logged by the capturer and never fails the write that triggered it.
 type ValueCapturer interface {
 	CaptureValues(ctx context.Context, resourceType string, resource interface{})
+	// CheckDataPlaneReady is called before creating a resource whose values are captured. It refuses
+	// with ErrorNoDataPlane or ErrorDataPlaneNotReady while there is no data plane ready to take
+	// them, since a value captured then, such as a client secret hashed on write, would never reach
+	// it. Nil means the create may go ahead.
+	CheckDataPlaneReady(ctx context.Context) *tidcommon.ServiceError
 }
 
 // ResourceViewer is implemented by an exporter that can show a document it exported the way the

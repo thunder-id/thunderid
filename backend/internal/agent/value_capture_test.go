@@ -12,12 +12,21 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // recordingCapturer records every resource handed to it.
 type recordingCapturer struct {
 	resourceTypes []string
 	resources     []interface{}
+	// refusal is what CheckDataPlaneReady answers, nil to let a create go ahead.
+	refusal *tidcommon.ServiceError
+}
+
+func (r *recordingCapturer) CheckDataPlaneReady(context.Context) *tidcommon.ServiceError {
+	return r.refusal
 }
 
 func (r *recordingCapturer) CaptureValues(_ context.Context, resourceType string, resource interface{}) {
@@ -127,4 +136,16 @@ func (suite *AgentServiceTestSuite) TestCaptureWithoutACapturerDoesNothing() {
 	assert.NotPanics(suite.T(), func() {
 		svc.captureValues(context.Background(), &model.AgentCompleteResponse{ID: testAgentID})
 	})
+}
+
+// While no data plane is registered, a create is refused before anything is written or captured.
+func (suite *AgentServiceTestSuite) TestCreateAgent_RefusedUntilADataPlaneIsRegistered() {
+	svc, _, _, _, _ := suite.setupService()
+	capturer := &recordingCapturer{refusal: &declarativeresource.ErrorNoDataPlane}
+	svc.valueCapturer = capturer
+
+	_, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{})
+
+	suite.Equal(&declarativeresource.ErrorNoDataPlane, svcErr)
+	assert.Empty(suite.T(), capturer.resources)
 }

@@ -9,7 +9,10 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
+	"time"
 
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -20,6 +23,9 @@ type handler struct {
 	service ServiceInterface
 	// afterDelete runs once a gateway is removed, so what was applied to it is forgotten with it.
 	afterDelete func(ctx context.Context, id string)
+	// readiness answers whether the default gateway is ready. It is set on a control plane alone, and
+	// without it the route is not served.
+	readiness *readiness
 }
 
 func newHandler(service ServiceInterface) *handler {
@@ -35,6 +41,19 @@ func (h *handler) handleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, gateways)
+}
+
+// handleDefaultStatus returns whether the default gateway is ready, so a console can say when its
+// data plane is still being provisioned or cannot be reached. It names no gateway, so any signed-in
+// user may read it.
+func (h *handler) handleDefaultStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	status, svcErr := h.readiness.DefaultStatus(ctx)
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, status)
 }
 
 // handleGet returns one gateway.
@@ -121,6 +140,9 @@ func decodeBody(w http.ResponseWriter, r *http.Request, target any) bool {
 }
 
 // handleError maps a service error to an HTTP error response.
+// retryAfterSeconds is the Retry-After a request refused until a data plane is ready is answered with.
+var retryAfterSeconds = strconv.Itoa(int(notReadyCheckInterval / time.Second))
+
 func handleError(ctx context.Context, w http.ResponseWriter, svcErr *common.ServiceError) {
 	statusCode := http.StatusInternalServerError
 	if svcErr.Type == common.ClientErrorType {
@@ -140,6 +162,11 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *common.Serv
 		svcErr.Code == ErrorVersionRemoved.Code || svcErr.Code == ErrorAppliedChanged.Code ||
 		svcErr.Code == ErrorApplyInProgress.Code || svcErr.Code == ErrorRemovalsNeedConfirmation.Code {
 		statusCode = http.StatusConflict
+	}
+	if declarativeresource.IsDataPlaneRefusal(svcErr) {
+		statusCode = http.StatusConflict
+		// A data plane being provisioned is checked again this often, so asking sooner learns nothing.
+		w.Header().Set("Retry-After", retryAfterSeconds)
 	}
 
 	sysutils.WriteErrorResponse(ctx, w, statusCode, apierror.ErrorResponse{

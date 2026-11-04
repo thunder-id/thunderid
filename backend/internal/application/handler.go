@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -534,6 +535,9 @@ func (ah *applicationHandler) handleError(ctx context.Context, w http.ResponseWr
 			statusCode = http.StatusNotFound
 		case ErrorSharingPolicyExists.Code, ErrorSharingPolicyVersionMismatch.Code:
 			// Both are conflicts with state the caller has not seen, not malformed requests.
+			statusCode = http.StatusConflict
+		case declarativeresource.ErrorDataPlaneNotReady.Code, declarativeresource.ErrorNoDataPlane.Code:
+			// The request is sound; the deployment's data plane is not ready for it yet.
 			statusCode = http.StatusConflict
 		default:
 			statusCode = http.StatusBadRequest

@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -281,6 +282,9 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 			statusCode = http.StatusNotFound
 		case ErrorAttributeConflict.Code,
 			ErrorAgentAlreadyExistsWithClientID.Code:
+			statusCode = http.StatusConflict
+		case declarativeresource.ErrorDataPlaneNotReady.Code, declarativeresource.ErrorNoDataPlane.Code:
+			// The request is sound; the deployment's data plane is not ready for it yet.
 			statusCode = http.StatusConflict
 		case ErrorCannotModifyDeclarativeResource.Code,
 			tidcommon.ErrorUnauthorized.Code:

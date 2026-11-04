@@ -14,12 +14,21 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // recordingCapturer records every resource handed to it.
 type recordingCapturer struct {
 	resourceTypes []string
 	resources     []interface{}
+	// refusal is what CheckDataPlaneReady answers, nil to let a create go ahead.
+	refusal *tidcommon.ServiceError
+}
+
+func (r *recordingCapturer) CheckDataPlaneReady(context.Context) *tidcommon.ServiceError {
+	return r.refusal
 }
 
 func (r *recordingCapturer) CaptureValues(_ context.Context, resourceType string, resource interface{}) {
@@ -135,4 +144,16 @@ func (suite *ServiceTestSuite) TestCaptureWithoutACapturerDoesNothing() {
 	assert.NotPanics(suite.T(), func() {
 		service.captureValues(context.Background(), confidentialClientDTO("My App"))
 	})
+}
+
+// While the data plane is not ready, a create is refused before anything is written or captured.
+func (suite *ServiceTestSuite) TestCreateApplication_RefusedUntilTheDataPlaneIsReady() {
+	service, _ := suite.setupTestService()
+	capturer := &recordingCapturer{refusal: &declarativeresource.ErrorDataPlaneNotReady}
+	service.valueCapturer = capturer
+
+	_, svcErr := service.CreateApplication(context.Background(), confidentialClientDTO("My App"))
+
+	assert.Equal(suite.T(), &declarativeresource.ErrorDataPlaneNotReady, svcErr)
+	assert.Empty(suite.T(), capturer.resources)
 }

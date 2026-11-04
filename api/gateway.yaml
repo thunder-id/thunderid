@@ -119,6 +119,29 @@ paths:
         "409":
           $ref: '#/components/responses/Conflict'
 
+  /gateways/default/status:
+    get:
+      tags: [Gateways]
+      summary: Get whether the data plane is ready
+      description: |
+        Reports the default gateway's status: whether this control plane's data plane is ready. A
+        console shows it, so any signed-in user may read it; it names no gateway.
+
+        While it is `pending` or `provisioning`, creating an application, agent, resource server,
+        connection, authorization detail type or user is refused with `409`: `GTW-1038` while no
+        default gateway is registered, and `GTW-1034` while it has never answered its health check.
+        Those resources produce values, such as a generated client secret, that have to reach the
+        default gateway. Once it has answered, nothing is refused, even while it is `unreachable`.
+        Only a control plane serves this.
+      responses:
+        "200":
+          description: The default gateway's status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayStatus'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
   /gateways/{id}:
     parameters:
       - name: id
@@ -373,7 +396,9 @@ paths:
             remove more resources than `gateway.removal_confirmation_threshold` and was not confirmed
             (`GTW-1030`); another apply or revert to the gateway was still running after this one had
             waited as long as an import may take (`GTW-1029`); a capture removed the version before
-            the apply could record it (`GTW-1018`); or another apply finished first (`GTW-1019`).
+            the apply could record it (`GTW-1018`); another apply finished first (`GTW-1019`); or the
+            gateway has never answered its health check, as one still being provisioned has not
+            (`GTW-1034`, with `Retry-After`; dry runs included).
           content:
             application/json:
               schema:
@@ -428,8 +453,9 @@ paths:
           description: |
             The gateway does not hold every value the version refers to (`GTW-1017`); the revert
             would remove more resources than `gateway.removal_confirmation_threshold` and was not
-            confirmed (`GTW-1030`); or another apply or revert to the gateway was still running
-            after this one had waited as long as an import may take (`GTW-1029`).
+            confirmed (`GTW-1030`); another apply or revert to the gateway was still running
+            after this one had waited as long as an import may take (`GTW-1029`); or the gateway
+            has never answered its health check (`GTW-1034`, with `Retry-After`).
           content:
             application/json:
               schema:
@@ -829,6 +855,38 @@ components:
         updatedAt:
           type: string
           format: date-time
+        status:
+          description: |
+            Whether the gateway answers its health check, as last seen. Only a control plane reports
+            it. A read never waits on a check: an out-of-date status is checked again in the
+            background.
+          allOf:
+            - $ref: '#/components/schemas/GatewayStatus'
+    GatewayStatus:
+      type: object
+      description: |
+        Whether a gateway can take what the control plane sends it. The control plane calls the
+        gateway's `GET /health/readiness` when something needs its state and its last check is out of
+        date (after 15 seconds while it is not ready, 90 once it is), and as soon as the gateway is
+        registered or changed.
+      required:
+        - state
+      properties:
+        state:
+          type: string
+          enum: [pending, provisioning, ready, unreachable]
+          description: |
+            `pending`: no default gateway is registered (only the default's status reports this).
+            `provisioning`: the gateway has never answered its health check. `ready`: it answered its
+            last check. `unreachable`: it answered before, but not its last check.
+        provisionedAt:
+          type: string
+          format: date-time
+          description: When the gateway first answered its health check. Omitted until it has.
+        checkedAt:
+          type: string
+          format: date-time
+          description: When the gateway was last checked. Omitted until it has been.
     AppliedConfiguration:
       type: object
       required: [gatewayId, resources]

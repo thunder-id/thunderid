@@ -98,6 +98,9 @@ func (s *authorizationDetailMgtService) CreateAuthorizationDetailType(ctx contex
 	if IsDeclarativeModeEnabled() {
 		return nil, &ErrorDeclarativeModeCreateNotAllowed
 	}
+	if svcErr := s.checkDataPlaneReady(ctx); svcErr != nil {
+		return nil, svcErr
+	}
 	if svcErr := validateTypeDefinition(t); svcErr != nil {
 		return nil, svcErr
 	}

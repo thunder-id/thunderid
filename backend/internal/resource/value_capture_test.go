@@ -11,12 +11,21 @@ import (
 
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // recordingCapturer records every resource handed to it.
 type recordingCapturer struct {
 	resourceTypes []string
 	resources     []interface{}
+	// refusal is what CheckDataPlaneReady answers, nil to let a create go ahead.
+	refusal *tidcommon.ServiceError
+}
+
+func (r *recordingCapturer) CheckDataPlaneReady(context.Context) *tidcommon.ServiceError {
+	return r.refusal
 }
 
 func (r *recordingCapturer) CaptureValues(_ context.Context, resourceType string, resource interface{}) {
@@ -132,5 +141,17 @@ func (suite *ResourceServiceTestSuite) TestCaptureOfNoServerDoesNothing() {
 
 	suite.service.(*resourceService).captureValues(context.Background(), nil)
 
+	suite.Empty(capturer.resources)
+}
+
+// While the data plane is not ready, a create is refused before anything is written or captured.
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_RefusedUntilTheDataPlaneIsReady() {
+	capturer := suite.recordCaptures()
+	capturer.refusal = &declarativeresource.ErrorDataPlaneNotReady
+	rs := providers.ResourceServer{Name: "Orders API", Identifier: "https://orders.example.com", OUID: "ou-123"}
+
+	_, svcErr := suite.service.CreateResourceServer(context.Background(), rs)
+
+	suite.Equal(&declarativeresource.ErrorDataPlaneNotReady, svcErr)
 	suite.Empty(capturer.resources)
 }

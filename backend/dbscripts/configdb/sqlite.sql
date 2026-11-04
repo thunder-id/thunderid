@@ -569,6 +569,19 @@ CREATE TABLE "GATEWAY_EXCLUDED_RESOURCE" (
     PRIMARY KEY (DEPLOYMENT_ID, GATEWAY_ID, RESOURCE_KEY)
 );
 
+-- Whether each gateway answers its health check, as last seen. PROVISIONED_AT is when it first
+-- answered and is never cleared, so a gateway that has never answered is still being provisioned, and
+-- one that answered before but not on its last check is unreachable. A gateway declared in a file has
+-- no GATEWAY row, so there is no foreign key.
+CREATE TABLE "GATEWAY_STATUS" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    GATEWAY_ID VARCHAR(36) NOT NULL,
+    REACHABLE INTEGER NOT NULL,
+    CHECKED_AT TEXT NOT NULL,
+    PROVISIONED_AT TEXT,
+    PRIMARY KEY (DEPLOYMENT_ID, GATEWAY_ID)
+);
+
 -- Table capturing the resource-sharing graph. Generic across resource types: a policy is one
 -- organization unit's standing decision about one resource, and there is exactly one per
 -- (resource, initiating OU) so that an edit has a single well-defined subject.

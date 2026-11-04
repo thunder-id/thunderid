@@ -49,6 +49,9 @@ type Gateway struct {
 	IsDefault bool      `json:"isDefault,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	// Status is whether the gateway answers its health check, as last seen. It is not stored with the
+	// registration, and a read fills it in.
+	Status *GatewayStatus `json:"status,omitempty"`
 }
 
 // KeyConfigured reports whether a key is held, which is all a read of one discloses.

@@ -333,6 +333,9 @@ func (us *userService) CreateUser(
 	if user.LinkedAccount != nil && (user.LinkedAccount.IdpID == "" || user.LinkedAccount.Sub == "") {
 		return nil, &ErrorInvalidRequestFormat
 	}
+	if svcErr := us.checkDataPlaneReady(ctx); svcErr != nil {
+		return nil, svcErr
+	}
 
 	// Check if caller is authorized to create users in the target OU.
 	if svcErr := us.checkUserAccess(ctx, security.ActionCreateUser, user.OUID, ""); svcErr != nil {

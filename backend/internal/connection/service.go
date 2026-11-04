@@ -330,6 +330,9 @@ func (s *service) getByType(ctx context.Context, idpType providers.IDPType, id s
 
 // create delegates creation to the identity-provider service.
 func (s *service) create(ctx context.Context, dto *providers.IDPDTO) (*providers.IDPDTO, *tidcommon.ServiceError) {
+	if svcErr := s.checkDataPlaneReady(ctx); svcErr != nil {
+		return nil, svcErr
+	}
 	created, svcErr := s.idpService.CreateIdentityProvider(ctx, dto)
 	if svcErr == nil {
 		s.captureIDPValues(ctx, created)
@@ -406,6 +409,9 @@ func (s *service) getSenderByProvider(ctx context.Context, senderType ncommon.No
 // createSender delegates creation to the notification-sender service.
 func (s *service) createSender(ctx context.Context, dto ncommon.NotificationSenderDTO) (
 	*ncommon.NotificationSenderDTO, *tidcommon.ServiceError) {
+	if svcErr := s.checkDataPlaneReady(ctx); svcErr != nil {
+		return nil, svcErr
+	}
 	created, svcErr := s.notificationService.CreateSender(ctx, dto)
 	if svcErr == nil {
 		s.captureSenderValues(ctx, created)
@@ -573,6 +579,9 @@ func (s *service) createHTTP(ctx context.Context, connection httpconnection.HTTP
 	*httpconnection.HTTPConnection, *tidcommon.ServiceError) {
 	if s.httpService == nil {
 		return nil, &tidcommon.InternalServerError
+	}
+	if svcErr := s.checkDataPlaneReady(ctx); svcErr != nil {
+		return nil, svcErr
 	}
 	created, svcErr := s.httpService.CreateHTTPConnection(ctx, connection)
 	if svcErr == nil {

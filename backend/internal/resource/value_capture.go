@@ -7,6 +7,8 @@ import (
 	"context"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // captureValues hands a written resource server to the value capturer, in the shape its exporter
@@ -17,4 +19,13 @@ func (rs *resourceService) captureValues(ctx context.Context, server *providers.
 		return
 	}
 	rs.valueCapturer.CaptureValues(ctx, resourceTypeResourceServer, server)
+}
+
+// checkDataPlaneReady refuses a create whose values could not reach a data plane yet: while none is
+// registered, or the default one is still being provisioned. Without a capturer nothing is refused.
+func (rs *resourceService) checkDataPlaneReady(ctx context.Context) *tidcommon.ServiceError {
+	if rs.valueCapturer == nil {
+		return nil
+	}
+	return rs.valueCapturer.CheckDataPlaneReady(ctx)
 }

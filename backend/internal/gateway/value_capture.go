@@ -9,7 +9,9 @@ import (
 	"sync"
 	"time"
 
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/variablestore"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -23,6 +25,15 @@ const (
 	pushRetryDelay    = 2 * time.Second
 	pushRetryDelayMax = time.Minute
 	pushAttempts      = 10
+)
+
+// readyCheckDelay is how often a value waiting for its gateway to be provisioned tries again, and
+// readyWaitMax how long it waits before giving up. A data plane being provisioned takes minutes, so a
+// value written meanwhile waits for it rather than spending its attempts on a gateway not yet
+// serving.
+const (
+	readyCheckDelay = 15 * time.Second
+	readyWaitMax    = time.Hour
 )
 
 // placeholderValuer computes the values an export of one resource refers to by name.
@@ -47,15 +58,22 @@ type placeholderValuer interface {
 // does nothing. The binding happens during startup, before any request is served, so it is not
 // guarded.
 type ValueCapture struct {
-	values   placeholderValuer
-	gateways storeInterface
-	store    StoreServiceInterface
-	logger   *log.Logger
+	values    placeholderValuer
+	gateways  storeInterface
+	store     StoreServiceInterface
+	readiness *readiness
+	logger    *log.Logger
 
 	// retryDelay and attempts are how a write that failed is tried again, pushRetryDelay and
 	// pushAttempts unless a test shortens them.
 	retryDelay time.Duration
 	attempts   int
+	// readyDelay and readyWait are how a value waits for a gateway still being provisioned,
+	// readyCheckDelay and readyWaitMax unless a test shortens them.
+	readyDelay time.Duration
+	readyWait  time.Duration
+	// now tells how long a value has waited, time.Now unless a test moves time itself.
+	now func() time.Time
 
 	mu      sync.Mutex
 	pending map[string]*pendingValue
@@ -71,6 +89,9 @@ type pendingValue struct {
 	running                     bool
 	// again records a newer value given while a write ran, to be written once it returns.
 	again bool
+	// waitingSince is when the value first found its gateway still being provisioned, zero while it
+	// has not.
+	waitingSince time.Time
 }
 
 // NewValueCapture returns a capture that does nothing until Initialize binds it.
@@ -79,14 +100,32 @@ func NewValueCapture() *ValueCapture {
 		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GatewayValueCapture")),
 		retryDelay: pushRetryDelay,
 		attempts:   pushAttempts,
+		readyDelay: readyCheckDelay,
+		readyWait:  readyWaitMax,
+		now:        time.Now,
 		pending:    map[string]*pendingValue{},
 	}
 }
 
-func (c *ValueCapture) bind(values placeholderValuer, gateways storeInterface, store StoreServiceInterface) {
+func (c *ValueCapture) bind(values placeholderValuer, gateways storeInterface, store StoreServiceInterface,
+	ready *readiness) {
 	c.values = values
 	c.gateways = gateways
 	c.store = store
+	c.readiness = ready
+}
+
+// CheckDataPlaneReady refuses the create of a resource whose values are captured while the default
+// gateway cannot take them: none is registered, or it has never answered its health check. Once it
+// has, a create goes ahead even while it is unreachable, and its values wait to be written. A capture
+// that is not bound, as on a plane that is not a control plane, refuses nothing, and neither does an
+// internal caller such as the bootstrap of a new deployment's default resources: what it creates is
+// the control plane's own, and has to exist before any data plane can.
+func (c *ValueCapture) CheckDataPlaneReady(ctx context.Context) *tidcommon.ServiceError {
+	if c == nil || c.readiness == nil || security.IsRuntimeContext(ctx) {
+		return nil
+	}
+	return c.readiness.CheckDataPlaneReady(ctx)
 }
 
 // CaptureValues writes the values the resource's export would refer to into the default gateway's
@@ -153,7 +192,10 @@ func (c *ValueCapture) enqueue(ctx context.Context, gatewayID, collection string
 			c.pending[key] = p
 		}
 		p.value = values[name]
+		// A newer value is a new write: it gets its own attempts, and its own wait for the gateway, so
+		// a secret generated late in an old value's wait is not dropped at that old value's deadline.
 		p.failures = 0
+		p.waitingSince = time.Time{}
 		if p.running {
 			p.again = true
 			continue
@@ -193,6 +235,20 @@ func (c *ValueCapture) push(ctx context.Context, key string) {
 		// A newer value arrived while this one was written; it goes now, whatever became of this one.
 		p.again, p.failures = false, 0
 		p.timer = time.AfterFunc(0, func() { c.push(ctx, key) })
+	case svcErr != nil && svcErr.Code == declarativeresource.ErrorDataPlaneNotReady.Code:
+		// The gateway is still being provisioned. The value waits for it without spending an attempt,
+		// and is written once it answers its health check.
+		if p.waitingSince.IsZero() {
+			p.waitingSince = c.now()
+		}
+		if c.now().Sub(p.waitingSince) < c.readyWait {
+			p.timer = time.AfterFunc(c.readyDelay, func() { c.push(ctx, key) })
+			return
+		}
+		c.logger.Error(ctx, "Gave up capturing a value: the default gateway was not provisioned in time",
+			log.String("gatewayId", p.gatewayID), log.String("collection", p.collection),
+			log.String("name", p.name))
+		delete(c.pending, key)
 	case svcErr != nil && p.failures+1 < c.attempts:
 		p.failures++
 		c.logger.Warn(ctx, "Failed to capture a value in the default gateway's store; it will be tried again",

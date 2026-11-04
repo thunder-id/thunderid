@@ -80,7 +80,7 @@ func newCaptureFixture(t *testing.T) *captureFixture {
 	// of one write; a test of the retries sets its own.
 	f.capture.retryDelay = 5 * time.Millisecond
 	f.capture.attempts = 1
-	f.capture.bind(f.exporter, f.gateways, newStoreService(f.gateways, newGatewayClient()))
+	f.capture.bind(f.exporter, f.gateways, newStoreService(f.gateways, newGatewayClient()), nil)
 	return f
 }
 
@@ -277,4 +277,121 @@ func TestACaptureGivesUpAfterItsAttempts(t *testing.T) {
 	f.settle(t)
 
 	assert.Equal(t, []string{"/variables/A", "/variables/A"}, f.paths())
+}
+
+// awaitProvisioning makes the default gateway one still being provisioned: it fails every health
+// check until the returned function marks it provisioned.
+func (f *captureFixture) awaitProvisioning() (provision func()) {
+	ready, statuses, _ := readinessWith(f.gateways)
+	stores := newStoreService(f.gateways, newGatewayClient()).(*storeService)
+	stores.readiness = ready
+	f.capture.bind(f.exporter, f.gateways, stores, ready)
+	return func() {
+		if err := statuses.Record(context.Background(), "gw-2", true); err != nil {
+			panic(err)
+		}
+	}
+}
+
+// A value written while the default gateway is still being provisioned waits for it without spending
+// its attempts, and is written once the gateway answers its health check.
+func TestACaptureWaitsForTheGatewayToBeProvisioned(t *testing.T) {
+	f := newCaptureFixture(t)
+	provision := f.awaitProvisioning()
+	clock := &testClock{at: time.Now()}
+	f.capture.now = clock.now
+	f.capture.readyDelay = time.Millisecond
+	f.exporter.secrets = map[string]string{"APPLICATION_MY_APP_CLIENT_SECRET": "the-secret"}
+
+	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	clock.checkedAgain(t)
+	assert.Empty(t, f.paths(), "a value was written to a gateway still being provisioned")
+	assert.False(t, f.capture.idle(), "a value waiting for its gateway was given up on")
+
+	provision()
+	f.settle(t)
+
+	assert.Equal(t, []string{"/secrets/APPLICATION_MY_APP_CLIENT_SECRET"}, f.paths())
+}
+
+// A gateway never provisioned is waited for only so long.
+func TestACaptureGivesUpOnAGatewayNeverProvisioned(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.awaitProvisioning()
+	f.capture.readyDelay = 5 * time.Millisecond
+	f.capture.readyWait = 30 * time.Millisecond
+	f.exporter.variables = map[string]string{"A": "1"}
+
+	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	f.settle(t)
+
+	assert.Empty(t, f.paths())
+}
+
+// A newer value given while an older one waits for the gateway waits from when it was given, so it is
+// not dropped at the older value's deadline.
+func TestANewerValueWaitsForTheGatewayFromWhenItWasGiven(t *testing.T) {
+	f := newCaptureFixture(t)
+	provision := f.awaitProvisioning()
+	clock := &testClock{at: time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC)}
+	f.capture.now = clock.now
+	f.capture.readyDelay = time.Millisecond
+	f.capture.readyWait = time.Hour
+
+	f.exporter.secrets = map[string]string{"S": "old"}
+	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	clock.checkedAgain(t)
+
+	// Fifty minutes into the older value's wait, a newer value is given.
+	clock.advance(50 * time.Minute)
+	f.exporter.secrets = map[string]string{"S": "new"}
+	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	clock.checkedAgain(t)
+
+	// Past the older value's deadline, well within the newer one's.
+	clock.advance(20 * time.Minute)
+	clock.checkedAgain(t)
+	assert.False(t, f.capture.idle(), "the newer value was dropped at the older value's deadline")
+
+	provision()
+	f.settle(t)
+
+	calls, _ := f.received()
+	require.Len(t, calls, 1)
+	assert.Equal(t, `{"value":"new"}`, calls[0].body)
+}
+
+// testClock is a clock a test moves by hand, counting how often it is read so a test can wait for
+// the capture to have checked the time again.
+type testClock struct {
+	mu    sync.Mutex
+	at    time.Time
+	reads int
+}
+
+func (c *testClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.reads++
+	return c.at
+}
+
+func (c *testClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.at = c.at.Add(d)
+}
+
+// checkedAgain waits until the capture has read the clock a few more times, so whatever it decides
+// at the clock's current time has been decided.
+func (c *testClock) checkedAgain(t *testing.T) {
+	t.Helper()
+	c.mu.Lock()
+	from := c.reads
+	c.mu.Unlock()
+	require.Eventually(t, func() bool {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.reads >= from+4
+	}, 5*time.Second, time.Millisecond)
 }
