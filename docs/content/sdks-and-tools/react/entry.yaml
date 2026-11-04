@@ -1210,6 +1210,228 @@ guides:
                 })
               }
 
+  - id: backend-for-frontend
+    title: Using a Backend for Frontend (BFF)
+    icon: server
+    minutes: 15
+    description: Keep the tokens on a server of your own and support single logout, with an Express BFF that signs users
+      in for your React app.
+    intro: A Backend for Frontend (BFF) is a small server that belongs to your app. It signs users in and keeps the tokens,
+      so the refresh token never reaches the browser, and it receives back-channel logout. Use this setup when you want to
+      keep your React app but need single logout or safer token storage.
+    sections:
+    - type: diagram
+      id: how-it-works
+      title: How it works
+      intro: The browser talks only to the BFF, through an HttpOnly session cookie. The BFF holds the tokens and the
+        client secret, adds the access token to API calls, and receives the back-channel logout {{ProductName}} sends
+        when the user's session ends elsewhere.
+      diagram: backend-for-frontend
+
+    - type: table
+      id: compared-with-react-only
+      title: Compared with React only
+      showHeader: true
+      columns:
+      - label: ''
+        style: text
+      - label: React only
+        style: muted
+      - label: React + BFF
+        style: text
+      rows:
+      - cells:
+        - Where tokens live
+        - Browser sessionStorage
+        - The BFF. The browser gets an access token only if the app asks for one
+      - cells:
+        - Single logout
+        - Not supported
+        - Supported
+      - cells:
+        - Client type
+        - Public, no secret
+        - Confidential, with a client secret
+
+    - type: steps
+      id: set-up-the-bff
+      title: Set up the BFF
+      steps:
+      - title: Register a confidential application
+        description: In the Console, create an application with a client secret. Open it, go to Advanced Settings →
+          OAuth2 Configuration, and set these URIs. The redirect URIs use the React app's origin. The back-channel
+          logout URI points at the BFF itself, because {{ProductName}} calls it directly, server to server.
+        code:
+          file: OAuth2 Configuration
+          lang: text
+          content: |-
+            Authorized redirect URI     http://localhost:5173/api/auth/callback
+            Post-logout redirect URI    http://localhost:5173
+            Back-channel logout URI     http://localhost:3001/api/auth/backchannel-logout
+      - title: Install the Express SDK
+        tabs:
+        - label: npm
+          code:
+            lang: bash
+            content: npm install express cookie-parser @thunderid/express
+        - label: Yarn
+          code:
+            lang: bash
+            content: yarn add express cookie-parser @thunderid/express
+        - label: pnpm
+          code:
+            lang: bash
+            content: pnpm add express cookie-parser @thunderid/express
+        - label: Bun
+          code:
+            lang: bash
+            content: bun add express cookie-parser @thunderid/express
+      - title: Add the environment variables
+        description: Keep the client secret on the server. `APP_URL` is the origin the browser opens the React app on.
+        code:
+          file: server/.env
+          lang: bash
+          content: |-
+            THUNDERID_BASE_URL=https://localhost:8090
+            THUNDERID_CLIENT_ID=<your-client-id>
+            THUNDERID_CLIENT_SECRET=<your-client-secret>
+            APP_URL=http://localhost:5173
+      - title: Mount the SDK and receive back-channel logout
+        description: Mount `thunderID()` under `/api/auth` and add the back-channel logout route. The SDK stores the
+          tokens on the server and sets the `HttpOnly` session cookie. Start the server with
+          `node --env-file=.env index.mjs`.
+        code:
+          file: server/index.mjs
+          lang: js
+          content: |-
+            import express from 'express'
+            import cookieParser from 'cookie-parser'
+            import { thunderID, handleBackchannelLogout } from '@thunderid/express'
+
+            const appUrl = process.env.APP_URL
+
+            const app = express()
+            app.use(cookieParser())
+
+            const auth = express.Router()
+            app.use('/api/auth', auth)
+
+            auth.use(
+              thunderID({
+                baseUrl: process.env.THUNDERID_BASE_URL,
+                clientId: process.env.THUNDERID_CLIENT_ID,
+                clientSecret: process.env.THUNDERID_CLIENT_SECRET,
+                afterSignInUrl: `${appUrl}/api/auth/callback`,
+                afterSignOutUrl: appUrl,
+                sessionCookie: { httpOnly: true, sameSite: 'lax' },
+              }),
+            )
+
+            // ThunderID posts a logout token here when the user's session ends elsewhere.
+            auth.post('/backchannel-logout', handleBackchannelLogout())
+
+            // Add the endpoints the React SDK calls. See "Endpoints the React SDK calls".
+
+            app.listen(3001)
+
+    - type: steps
+      id: connect-the-react-app
+      title: Connect the React app
+      steps:
+      - title: Serve the BFF on the app's origin
+        description: Forward `/api/auth` to the BFF, so the session cookie is first party and you need no CORS setup. In
+          production, serve the React build and the BFF from the same origin, for example behind one reverse proxy.
+        code:
+          file: vite.config.js
+          lang: js
+          content: |-
+            import { defineConfig } from 'vite'
+            import react from '@vitejs/plugin-react'
+
+            export default defineConfig({
+              plugins: [react()],
+              server: {
+                proxy: {
+                  '/api/auth': { target: 'http://localhost:3001' },
+                },
+              },
+            })
+      - title: Switch the provider to BFF mode
+        description: Set `endpoints.backend`. The app needs no client ID or base URL, because every endpoint defaults to a
+          path under `/api/auth` on the app's origin. `session.checkInterval` sets how often, in seconds, the SDK checks
+          that the session is still live.
+        code:
+          file: src/main.jsx
+          lang: jsx
+          content: |-
+            <ThunderIDProvider
+              endpoints={{ backend: {} }}
+              session={{ checkInterval: 30 }}
+            >
+              <App />
+            </ThunderIDProvider>
+        note: Hooks and components work as before. Calls through the SDK's http client go to /api/auth/proxy/*, and
+          the BFF adds the access token.
+
+    - type: table
+      id: endpoints
+      title: Endpoints the React SDK calls
+      intro: 'The BFF serves these under /api/auth. The SDK sends the header X-Requested-With: XMLHttpRequest on every
+        request it makes with fetch. Reject requests without it, except the sign-in redirects, so a page on another site
+        cannot use the session cookie.'
+      showHeader: true
+      columns:
+      - label: Endpoint
+        style: code
+      - label: What it does
+        style: text
+      rows:
+      - cells: [GET /signin, Starts sign-in. The browser navigates here]
+      - cells: [GET /callback, The redirect URI. Exchanges the code and sets the session cookie]
+      - cells: [GET /session, Returns the signed-in user]
+      - cells: [GET /checksession, Tells the app whether the session is still live. Must not refresh the session]
+      - cells: [POST /refresh, Refreshes the access token on the server]
+      - cells: [POST /signout, Ends the session and returns the end-session URL]
+      - cells: [POST /token, Returns an access token for APIs the app calls directly. Leave it out if the app sends every
+            call through the proxy]
+      - cells: ['ALL /proxy/*', Forwards API calls with the access token]
+
+    - type: steps
+      id: try-single-logout
+      title: Try single logout
+      steps:
+      - title: Allow a local back-channel logout URI
+        description: '{{ProductName}} rejects localhost and private network addresses as back-channel logout URIs by
+          default. For local testing only, allow them in `deployment.yaml` and restart the server.'
+        code:
+          file: deployment.yaml
+          lang: yaml
+          content: |-
+            oauth:
+              logout:
+                backchannel:
+                  reject_private_addresses: false
+      - title: Add single sign-on to the sign-in flow
+        description: The flow needs the Check SSO Session and Save / Load Session nodes. Without them
+          {{ProductName}} records no session, so it sends no logout.
+      - title: Sign out from another app
+        description: Sign in to this app and to a second app that uses the same {{ProductName}}, in the same browser.
+          Sign out of the second app. Within 30 seconds, or as soon as you switch back to this app's tab, it signs you
+          out too.
+
+    - type: linkGrid
+      id: beyond-this-guide
+      title: Beyond this guide
+      items:
+      - label: React and Express BFF sample
+        href: https://github.com/thunder-id/samples/tree/main/patterns/react-express-bff
+      - label: Express SDK
+        href: /sdks-and-tools/express
+      - label: Back-channel logout
+        href: /docs/next/guides/protocols/oauth-oidc/backchannel-logout
+      - label: Next.js SDK
+        href: /sdks-and-tools/nextjs
+
 rail:
   statsTitle: Package
   stats:
