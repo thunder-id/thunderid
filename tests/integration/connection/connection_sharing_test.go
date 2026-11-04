@@ -418,7 +418,7 @@ func (s *ConnectionAPITestSuite) TestTheOUFilterListsOwnedConnectionsThenSharedO
 	shared := s.listedIn(childOUID)
 	s.Require().Contains(shared, created.ID, "the connection shared with the child is listed for it")
 	s.Equal(false, shared[created.ID]["isOwnedByOU"])
-	s.Equal(s.ouID, shared[created.ID]["ouId"], "the owner's, not the one listed")
+	s.Equal(childOUID, shared[created.ID]["ouId"], "the one listed, not the owner's")
 
 	status, body := s.sharingRequest(http.MethodGet, "/connections?limit=100", nil)
 	s.Require().Equal(http.StatusOK, status)

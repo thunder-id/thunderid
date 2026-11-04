@@ -1353,6 +1353,46 @@ func (_c *GroupServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run
 	return _c
 }
 
+// SetRoleAssignmentResolver provides a mock function for the type GroupServiceInterfaceMock
+func (_mock *GroupServiceInterfaceMock) SetRoleAssignmentResolver(r group.RoleAssignmentResolver) {
+	_mock.Called(r)
+	return
+}
+
+// GroupServiceInterfaceMock_SetRoleAssignmentResolver_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetRoleAssignmentResolver'
+type GroupServiceInterfaceMock_SetRoleAssignmentResolver_Call struct {
+	*mock.Call
+}
+
+// SetRoleAssignmentResolver is a helper method to define mock.On call
+//   - r group.RoleAssignmentResolver
+func (_e *GroupServiceInterfaceMock_Expecter) SetRoleAssignmentResolver(r any) *GroupServiceInterfaceMock_SetRoleAssignmentResolver_Call {
+	return &GroupServiceInterfaceMock_SetRoleAssignmentResolver_Call{Call: _e.mock.On("SetRoleAssignmentResolver", r)}
+}
+
+func (_c *GroupServiceInterfaceMock_SetRoleAssignmentResolver_Call) Run(run func(r group.RoleAssignmentResolver)) *GroupServiceInterfaceMock_SetRoleAssignmentResolver_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 group.RoleAssignmentResolver
+		if args[0] != nil {
+			arg0 = args[0].(group.RoleAssignmentResolver)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_SetRoleAssignmentResolver_Call) Return() *GroupServiceInterfaceMock_SetRoleAssignmentResolver_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_SetRoleAssignmentResolver_Call) RunAndReturn(run func(r group.RoleAssignmentResolver)) *GroupServiceInterfaceMock_SetRoleAssignmentResolver_Call {
+	_c.Run(run)
+	return _c
+}
+
 // UpdateGroup provides a mock function for the type GroupServiceInterfaceMock
 func (_mock *GroupServiceInterfaceMock) UpdateGroup(ctx context.Context, groupID string, request group.UpdateGroupRequest) (*group.Group, *common.ServiceError) {
 	ret := _mock.Called(ctx, groupID, request)

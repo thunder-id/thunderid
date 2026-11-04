@@ -259,8 +259,9 @@ func (ts *ControlPlaneTestSuite) TestATokenWithoutTheSystemScopeIsRefused() {
 // A token naming the trusted issuer but signed with another key is refused: the issuer's JWKS is
 // what decides.
 func (ts *ControlPlaneTestSuite) TestATokenTheTrustedIssuerDidNotSignIsRefused() {
-	forger, err := testutils.NewMockOIDCServer(0, "", "")
+	forger, err := testutils.NewMockOIDCServer("", "")
 	ts.Require().NoError(err)
+	defer func() { _ = forger.Stop() }()
 	now := time.Now()
 	forged, err := forger.SignJWT(map[string]interface{}{"typ": "at+jwt"}, map[string]interface{}{
 		"iss":   fmt.Sprintf("http://localhost:%d", testutils.TrustedIssuerPort),

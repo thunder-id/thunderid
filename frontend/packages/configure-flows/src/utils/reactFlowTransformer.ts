@@ -3,7 +3,8 @@
 
 import type {Edge, Node} from '@xyflow/react';
 import generateResourceId from './generateResourceId';
-import {toApiInputType} from './inputTypeMapping';
+import {getInputIdentifier, INPUT_ELEMENT_TYPES, toApiInputType} from './inputTypeMapping';
+import {getPromptInputDefault} from './promptInputDefault';
 import VisualFlowConstants from '../constants/VisualFlowConstants';
 import {ActionTypes} from '../models/actions';
 import type {Element} from '../models/elements';
@@ -73,6 +74,10 @@ interface FlowInput {
   type: string;
   identifier: string;
   required: boolean;
+  /** Value written to the flow when none is available, or always for a constant. */
+  defaultValue?: string;
+  /** Makes `defaultValue` replace any existing value. */
+  constant?: boolean;
 }
 
 /**
@@ -156,22 +161,6 @@ const STEP_TO_NODE_TYPE_MAP: Record<string, string> = {
  *   credentials block would otherwise demand a username and password to fire.
  */
 const INPUTLESS_ACTION_TYPES = new Set<string>([ElementTypes.Resend, ElementTypes.RichText]);
-
-/**
- * Set of input element types for quick lookup
- */
-const INPUT_ELEMENT_TYPES = new Set<string>([
-  ElementTypes.TextInput,
-  ElementTypes.PasswordInput,
-  ElementTypes.EmailInput,
-  ElementTypes.PhoneInput,
-  ElementTypes.NumberInput,
-  ElementTypes.DateInput,
-  ElementTypes.OtpInput,
-  ElementTypes.Checkbox,
-  ElementTypes.Dropdown,
-  ElementTypes.Select,
-]);
 
 /**
  * Derives the eventType for ACTION category components based on buttonType
@@ -311,14 +300,7 @@ function extractInputs(components: Element[]): FlowInput[] {
       // Extract ref (attribute) from top-level properties
       // ref is the attribute selected from the dropdown (e.g., 'username', 'email')
       const componentWithProps = component as Element & {name?: string; ref?: string; required?: boolean};
-      let identifier: string;
-      if (typeof componentWithProps.name === 'string') {
-        identifier = componentWithProps.name;
-      } else if (typeof componentWithProps.ref === 'string') {
-        identifier = componentWithProps.ref;
-      } else {
-        identifier = component.id;
-      }
+      const identifier = getInputIdentifier(component);
 
       const isRequired = componentWithProps.required ?? false;
 
@@ -366,20 +348,16 @@ function extractPrompts(components: Element[], nodeId: string, edges: Edge[]): F
     function processForInputs(component: Element): void {
       if (INPUT_ELEMENT_TYPES.has(component.type)) {
         const componentWithProps = component as Element & {name?: string; ref?: string; required?: boolean};
-        let identifier: string;
-        if (typeof componentWithProps.name === 'string') {
-          identifier = componentWithProps.name;
-        } else if (typeof componentWithProps.ref === 'string') {
-          identifier = componentWithProps.ref;
-        } else {
-          identifier = component.id;
-        }
+        const identifier = getInputIdentifier(component);
+
+        const defaultValue = getPromptInputDefault(component);
 
         inputs.push({
           ref: component.id,
           type: toApiInputType(component.type),
           identifier,
           required: componentWithProps.required ?? false,
+          ...(defaultValue ? {defaultValue} : {}),
         });
       }
 
@@ -754,6 +732,31 @@ function createConsentDecisionsInput(): FlowInput {
 }
 
 /**
+ * Returns a copy of an input derived from a prompt without the prompt's default, which applies to the
+ * prompt only.
+ */
+function withoutDefault(input: FlowInput): FlowInput {
+  const derived = {...input};
+  delete derived.defaultValue;
+  return derived;
+}
+
+/**
+ * Adds an executor's constant inputs to the inputs derived for it. A constant replaces a derived
+ * input with the same identifier.
+ */
+function withConstantInputs(inputs: FlowInput[], constants: FlowInput[]): FlowInput[] {
+  if (constants.length === 0) {
+    return inputs;
+  }
+
+  return [
+    ...inputs.filter((input) => !constants.some((constant) => constant.identifier === input.identifier)),
+    ...constants,
+  ];
+}
+
+/**
  * Collects inputs for TASK_EXECUTION nodes from their preceding PROMPT nodes.
  * This is done in a second pass after all nodes are transformed.
  * Returns a new array of flow nodes with inputs added where applicable.
@@ -771,11 +774,14 @@ function collectInputsForExecutionNodes(
       return flowNode;
     }
 
-    // If executor already has user-configured inputs, preserve them
-    if (flowNode.executor?.inputs && flowNode.executor.inputs.length > 0) {
+    // If executor already has user-configured inputs, preserve them. Constants alone do not count:
+    // they fix a value but do not say which inputs the executor takes from the preceding prompt.
+    const configuredInputs = flowNode.executor?.inputs ?? [];
+    if (configuredInputs.some((input) => !input.constant)) {
       return flowNode;
     }
 
+    const constants = configuredInputs.filter((input) => input.constant);
     const executorName = flowNode.executor?.name;
 
     // OAuth/OIDC executors get a standard 'code' input for OAuth callback
@@ -785,7 +791,7 @@ function collectInputsForExecutionNodes(
         executor: {
           ...flowNode.executor,
           name: executorName,
-          inputs: [createOAuthCodeInput()],
+          inputs: withConstantInputs([createOAuthCodeInput()], constants),
         },
       };
     }
@@ -799,7 +805,7 @@ function collectInputsForExecutionNodes(
         executor: {
           ...flowNode.executor,
           name: executorName,
-          inputs: [createConsentDecisionsInput()],
+          inputs: withConstantInputs([createConsentDecisionsInput()], constants),
         },
       };
     }
@@ -838,7 +844,7 @@ function collectInputsForExecutionNodes(
         executor: {
           ...flowNode.executor,
           name: flowNode.executor.name,
-          inputs,
+          inputs: withConstantInputs(inputs.map(withoutDefault), constants),
         },
       };
     }

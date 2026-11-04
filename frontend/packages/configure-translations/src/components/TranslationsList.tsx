@@ -137,8 +137,8 @@ export default function TranslationsList(): JSX.Element {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
+      <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
+        <ListingTable.Container disablePaper>
           <ListingTable.DataGrid
             rows={rows}
             columns={columns}
@@ -152,7 +152,7 @@ export default function TranslationsList(): JSX.Element {
               },
             }}
             pageSizeOptions={[5, 10, 25]}
-            rowHeight={64}
+            rowHeight={56}
             disableRowSelectionOnClick
             // Filtering is not wired end to end, so the column filter panel stays hidden.
             disableColumnFilter

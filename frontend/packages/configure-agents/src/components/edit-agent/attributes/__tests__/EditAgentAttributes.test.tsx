@@ -97,6 +97,13 @@ describe('EditAgentAttributes', () => {
     expect(screen.queryByTestId('field-password')).not.toBeInTheDocument();
   });
 
+  it('shows the lifespan beside the attributes, as the add form asks for it', () => {
+    render(<EditAgentAttributes agent={baseAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+
+    expect(screen.getByText('Lifespan')).toBeInTheDocument();
+    expect(screen.getByText('Valid Until')).toBeInTheDocument();
+  });
+
   it('has no local Save/Cancel controls — the page-level Save bar is the only save path', () => {
     render(<EditAgentAttributes agent={baseAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
 
@@ -232,6 +239,19 @@ describe('EditAgentAttributes', () => {
       expect(screen.getByText('email')).toBeInTheDocument();
       expect(screen.getByText('a@b.com')).toBeInTheDocument();
       expect(screen.queryByTestId('field-email')).not.toBeInTheDocument();
+    });
+
+    it('still shows the lifespan, without letting it be changed', () => {
+      render(
+        <EditAgentAttributes
+          agent={{...baseAgent, isReadOnly: true}}
+          editedAgent={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByText('Lifespan')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /choose date/i})).toBeDisabled();
     });
   });
 });

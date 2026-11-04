@@ -22,8 +22,6 @@ import (
 )
 
 const (
-	testServerURL = "https://localhost:8095"
-
 	extensionExecutorName = "ExtensionExecutor"
 
 	// Error codes the extension executor returns.
@@ -65,6 +63,8 @@ const (
 
 	successBody = `{"actionStatus":"SUCCESS"}`
 )
+
+var testServerURL = testutils.TestServerURL
 
 // credentialInputs are the inputs of the username and password prompt.
 var credentialInputs = []map[string]interface{}{

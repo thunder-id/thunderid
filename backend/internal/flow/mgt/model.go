@@ -44,7 +44,7 @@ type BasicFlowDefinition struct {
 	CreatedAt     string             `json:"createdAt"     jsonschema:"Creation timestamp."`
 	UpdatedAt     string             `json:"updatedAt"     jsonschema:"Last update timestamp."`
 	IsReadOnly    bool               `json:"isReadOnly"    jsonschema:"Whether the flow is immutable (declarative)."`
-	OUID          string             `json:"ouId"          jsonschema:"Organization unit that owns the flow."`
+	OUID          string             `json:"ouId"          jsonschema:"Organization unit that owns the flow, or the requested one when the flow was shared with it."`
 	IsOwnedByOU   *bool              `json:"isOwnedByOU,omitempty" jsonschema:"With an organization unit in the request: whether it owns the flow. False means the flow was shared with it."`
 }
 

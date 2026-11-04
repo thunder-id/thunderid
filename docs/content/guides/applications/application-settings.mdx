@@ -87,7 +87,7 @@ On the **User** sub-tab, choose which user attributes each token carries, how lo
 
 **Access token**: select the user attributes to include in the access token payload. Default attributes (`sub`, `iss`, `exp`, and others) are always included and cannot be removed. Set **Token validity** in seconds (for example, `3600` for one hour).
 
-**ID token**: select the user attributes to include. Only attributes covered by the requested scopes are returned. Set **Token validity** in seconds.
+**ID token**: select the user attributes to include. Only attributes covered by the requested scopes are returned. Set **Token validity** in seconds. When the application issues identity assertions, they carry these attributes too, except `roles` and `groups`. See [Issue Identity Assertions (ID-JAG)](../../protocols/oauth-oidc/identity-assertion-grant/issue-identity-assertions#identity-claims).
 
 You can also configure the ID token response format via the API. These settings are not available in the Console.
 

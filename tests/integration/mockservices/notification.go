@@ -1,24 +1,23 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package testutils
+package mockservices
 
 import (
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"sync"
 )
 
-// MockNotificationServer provides a mock HTTP server for testing SMS notifications
-type MockNotificationServer struct {
-	server   *http.Server
+// NotificationServer provides a mock HTTP server for testing SMS notifications
+type NotificationServer struct {
+	handler  http.Handler
+	baseURL  string
 	messages []SMSMessage
 	mutex    sync.RWMutex
-	port     int
 	// failStatus, when 400 or above, is returned instead of a success response.
 	failStatus int
 }
@@ -39,16 +38,18 @@ type SMSRequest struct {
 	Body string `json:"body"`
 }
 
-// NewMockNotificationServer creates a new mock notification server
-func NewMockNotificationServer(port int) *MockNotificationServer {
-	return &MockNotificationServer{
-		port:     port,
+// NewNotificationServer creates a new mock notification server
+func NewNotificationServer(baseURL string) *NotificationServer {
+	m := &NotificationServer{
+		baseURL:  baseURL,
 		messages: make([]SMSMessage, 0),
 	}
+	m.handler = m.routes()
+	return m
 }
 
-// Start starts the mock notification server
-func (m *MockNotificationServer) Start() error {
+// routes maps the mock's endpoints.
+func (m *NotificationServer) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	// Handle SMS sending endpoint
@@ -60,47 +61,22 @@ func (m *MockNotificationServer) Start() error {
 	// Handle clear messages endpoint for testing
 	mux.HandleFunc("/clear", m.handleClearMessages)
 
-	m.server = &http.Server{Handler: mux}
-
-	// Bind before returning so the port is reachable as soon as Start succeeds, and so a port clash
-	// surfaces here rather than later as a dispatch that never arrives.
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", m.port))
-	if err != nil {
-		return fmt.Errorf("failed to start mock notification server on port %d: %w", m.port, err)
-	}
-	m.port = listener.Addr().(*net.TCPAddr).Port
-
-	go func() {
-		if err := m.server.Serve(listener); err != nil && err != http.ErrServerClosed {
-			log.Printf("Mock notification server error: %v", err)
-		}
-	}()
-
-	log.Printf("Mock notification server started on port %d", m.port)
-	return nil
-}
-
-// Stop stops the mock notification server
-func (m *MockNotificationServer) Stop() error {
-	if m.server != nil {
-		return m.server.Close()
-	}
-	return nil
+	return mux
 }
 
 // GetURL returns the base URL of the mock server
-func (m *MockNotificationServer) GetURL() string {
-	return fmt.Sprintf("http://localhost:%d", m.port)
+func (m *NotificationServer) GetURL() string {
+	return m.baseURL
 }
 
 // GetSendSMSURL returns the SMS sending endpoint URL
-func (m *MockNotificationServer) GetSendSMSURL() string {
+func (m *NotificationServer) GetSendSMSURL() string {
 	return fmt.Sprintf("%s/send-sms", m.GetURL())
 }
 
 // SetResponseStatus makes subsequent send requests return the given status, so tests can exercise
 // how a sender failure surfaces. A status below 400 restores the normal success response.
-func (m *MockNotificationServer) SetResponseStatus(status int) {
+func (m *NotificationServer) SetResponseStatus(status int) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.failStatus = status
@@ -108,7 +84,7 @@ func (m *MockNotificationServer) SetResponseStatus(status int) {
 
 // handleSendSMS handles SMS sending requests. Any method is accepted so that senders configured to
 // use GET can be exercised; the method actually used is recorded on the message.
-func (m *MockNotificationServer) handleSendSMS(w http.ResponseWriter, r *http.Request) {
+func (m *NotificationServer) handleSendSMS(w http.ResponseWriter, r *http.Request) {
 	// Read the raw body as the SMS message content
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -164,7 +140,7 @@ func (m *MockNotificationServer) handleSendSMS(w http.ResponseWriter, r *http.Re
 }
 
 // handleGetMessages handles requests to retrieve sent messages
-func (m *MockNotificationServer) handleGetMessages(w http.ResponseWriter, r *http.Request) {
+func (m *NotificationServer) handleGetMessages(w http.ResponseWriter, r *http.Request) {
 	m.mutex.RLock()
 	messages := make([]SMSMessage, len(m.messages))
 	copy(messages, m.messages)
@@ -176,7 +152,7 @@ func (m *MockNotificationServer) handleGetMessages(w http.ResponseWriter, r *htt
 }
 
 // handleClearMessages handles requests to clear all messages
-func (m *MockNotificationServer) handleClearMessages(w http.ResponseWriter, r *http.Request) {
+func (m *NotificationServer) handleClearMessages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -192,7 +168,7 @@ func (m *MockNotificationServer) handleClearMessages(w http.ResponseWriter, r *h
 }
 
 // GetLastMessage returns the last received message
-func (m *MockNotificationServer) GetLastMessage() *SMSMessage {
+func (m *NotificationServer) GetLastMessage() *SMSMessage {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -205,7 +181,7 @@ func (m *MockNotificationServer) GetLastMessage() *SMSMessage {
 }
 
 // GetMessages returns every message held, oldest first, without consuming them.
-func (m *MockNotificationServer) GetMessages() []SMSMessage {
+func (m *NotificationServer) GetMessages() []SMSMessage {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
@@ -215,7 +191,7 @@ func (m *MockNotificationServer) GetMessages() []SMSMessage {
 }
 
 // ClearMessages clears all stored messages
-func (m *MockNotificationServer) ClearMessages() {
+func (m *NotificationServer) ClearMessages() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.messages = make([]SMSMessage, 0)

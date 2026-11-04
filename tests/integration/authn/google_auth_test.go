@@ -18,11 +18,11 @@ import (
 )
 
 const (
-	testServerURL    = testutils.TestServerURL
 	googleAuthStart  = "/auth/oauth/google/start"
 	googleAuthFinish = "/auth/oauth/google/finish"
-	mockGooglePort   = 8093
 )
+
+var testServerURL = testutils.TestServerURL
 
 var googleAuthTestOU = testutils.OrganizationUnit{
 	Handle:      "google-auth-test-ou",
@@ -71,8 +71,7 @@ func TestGoogleAuthTestSuite(t *testing.T) {
 }
 
 func (suite *GoogleAuthTestSuite) SetupSuite() {
-	mockServer, err := testutils.NewMockGoogleOIDCServer(mockGooglePort,
-		"test-google-client", "test-google-secret")
+	mockServer, err := testutils.NewMockGoogleOIDCServer("test-google-client", "test-google-secret")
 	suite.Require().NoError(err, "Failed to create mock Google server")
 	suite.mockGoogleServer = mockServer
 
@@ -86,9 +85,6 @@ func (suite *GoogleAuthTestSuite) SetupSuite() {
 		Picture:       "https://example.com/picture.jpg",
 		Locale:        "en",
 	})
-
-	err = suite.mockGoogleServer.Start()
-	suite.Require().NoError(err, "Failed to start mock Google server")
 
 	ouID, err := testutils.CreateOrganizationUnit(googleAuthTestOU)
 	suite.Require().NoError(err, "Failed to create test organization unit")

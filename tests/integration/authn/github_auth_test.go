@@ -20,7 +20,6 @@ import (
 const (
 	githubAuthStart  = "/auth/oauth/github/start"
 	githubAuthFinish = "/auth/oauth/github/finish"
-	mockGithubPort   = 8092
 )
 
 var githubAuthTestOU = testutils.OrganizationUnit{
@@ -70,8 +69,9 @@ func TestGithubAuthTestSuite(t *testing.T) {
 }
 
 func (suite *GithubAuthTestSuite) SetupSuite() {
-	suite.mockGithubServer = testutils.NewMockGithubOAuthServer(mockGithubPort,
-		"test-github-client", "test-github-secret")
+	var err error
+	suite.mockGithubServer, err = testutils.NewMockGithubOAuthServer("test-github-client", "test-github-secret")
+	suite.Require().NoError(err, "Failed to create mock GitHub server")
 
 	email := "testuser@github.com"
 	suite.mockGithubServer.AddUser(&testutils.GithubUserInfo{
@@ -91,9 +91,6 @@ func (suite *GithubAuthTestSuite) SetupSuite() {
 			Verified: true,
 		},
 	})
-
-	err := suite.mockGithubServer.Start()
-	suite.Require().NoError(err, "Failed to start mock GitHub server")
 
 	ouID, err := testutils.CreateOrganizationUnit(githubAuthTestOU)
 	suite.Require().NoError(err, "Failed to create test organization unit")

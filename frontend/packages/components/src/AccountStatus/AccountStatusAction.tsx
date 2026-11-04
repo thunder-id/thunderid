@@ -53,6 +53,8 @@ export interface AccountStatusActionProps {
  */
 const ACTIONS_FOR_STATUS: Record<AccessStatus, LifecycleAction[]> = {
   ACTIVE: ['suspend'],
+  // A lock beneath an ended lifespan is not shown, so only Suspend is offered.
+  EXPIRED: ['suspend'],
   LOCKED: ['unlock', 'suspend'],
   SUSPENDED: ['unsuspend', 'unsuspendAndUnlock'],
 };

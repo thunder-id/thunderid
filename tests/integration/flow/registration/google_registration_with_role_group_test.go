@@ -188,10 +188,6 @@ var (
 	googleRegGroupRoleTestOUID  string
 )
 
-const (
-	mockGoogleRegGroupRoleFlowPort = 8093
-)
-
 type GoogleRegistrationGroupRoleTestSuite struct {
 	suite.Suite
 	mockGoogleServer *testutils.MockGoogleOIDCServer
@@ -209,9 +205,8 @@ func TestGoogleRegistrationGroupRoleTestSuite(t *testing.T) {
 func (ts *GoogleRegistrationGroupRoleTestSuite) SetupSuite() {
 	ts.config = &common.TestSuiteConfig{}
 
-	// Start mock Google server
-	mockServer, err := testutils.NewMockGoogleOIDCServer(mockGoogleRegGroupRoleFlowPort,
-		"test_google_client", "test_google_secret")
+	// Create mock Google server
+	mockServer, err := testutils.NewMockGoogleOIDCServer("google_role_group_registration_client", "google_role_group_registration_secret")
 	ts.Require().NoError(err, "Failed to create mock Google server")
 	ts.mockGoogleServer = mockServer
 
@@ -225,9 +220,6 @@ func (ts *GoogleRegistrationGroupRoleTestSuite) SetupSuite() {
 		Picture:       "https://example.com/grouprolepicture.jpg",
 		Locale:        "en",
 	})
-
-	err = ts.mockGoogleServer.Start()
-	ts.Require().NoError(err, "Failed to start mock Google server")
 
 	// Create test organization unit
 	ouID, err := testutils.CreateOrganizationUnit(googleRegGroupRoleTestOU)
@@ -274,12 +266,12 @@ func (ts *GoogleRegistrationGroupRoleTestSuite) SetupSuite() {
 		Properties: []testutils.IDPProperty{
 			{
 				Name:     "client_id",
-				Value:    "test_google_client",
+				Value:    "google_role_group_registration_client",
 				IsSecret: false,
 			},
 			{
 				Name:     "client_secret",
-				Value:    "test_google_secret",
+				Value:    "google_role_group_registration_secret",
 				IsSecret: true,
 			},
 			{

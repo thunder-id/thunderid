@@ -415,6 +415,16 @@ func (c *compositeRoleStore) DeleteAssignmentsByAssignee(
 	return c.dbStore.DeleteAssignmentsByAssignee(ctx, assigneeType, assigneeID)
 }
 
+// HasAssigneeAssignments reports whether either store holds an assignment of the assignee.
+func (c *compositeRoleStore) HasAssigneeAssignments(
+	ctx context.Context, assigneeType, assigneeID string) (bool, error) {
+	found, err := c.dbStore.HasAssigneeAssignments(ctx, assigneeType, assigneeID)
+	if err != nil || found {
+		return found, err
+	}
+	return c.fileStore.HasAssigneeAssignments(ctx, assigneeType, assigneeID)
+}
+
 // GetReferencedPermissions returns the permissions referenced by database-backed roles only.
 // Declarative roles are immutable, so their permissions are never pruned.
 func (c *compositeRoleStore) GetReferencedPermissions(ctx context.Context) ([]ResourcePermissions, error) {

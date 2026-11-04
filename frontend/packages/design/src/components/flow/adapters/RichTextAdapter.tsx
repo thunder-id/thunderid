@@ -6,7 +6,7 @@ import {cn, containsMetaTemplate, replaceMetaTemplate} from '@thunderid/utils';
 import {Box} from '@wso2/oxygen-ui';
 import DOMPurify from 'dompurify';
 import type {JSX, MouseEvent as ReactMouseEvent} from 'react';
-import useDesign from '../../../contexts/Design/useDesign';
+import useOptionalDesign from '../../../contexts/Design/useOptionalDesign';
 import type {FlowComponent} from '../../../models/flow';
 
 /** The meta key used by the server to embed the application's access URL. */
@@ -73,7 +73,8 @@ export default function RichTextAdapter({
   values = undefined,
   onSubmit = undefined,
 }: RichTextAdapterProps): JSX.Element | null {
-  const {isDesignEnabled} = useDesign();
+  // The console mounts no DesignProvider, so the adapter reads the design without requiring one.
+  const isDesignEnabled = useOptionalDesign()?.isDesignEnabled ?? false;
   const rawLabel = typeof component.label === 'string' ? component.label : undefined;
   const richTextAction = component.action;
 

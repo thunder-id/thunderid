@@ -193,6 +193,11 @@ interface TokenUserAttributesSectionProps {
    */
   accessTokenNote?: ReactNode;
   /**
+   * Whether ID-JAG issuance is on (OAuth mode). The ID token tab then says that its attributes, except
+   * roles and groups, also go into the identity assertions the entity requests. Defaults to false.
+   */
+  idJagEnabled?: boolean;
+  /**
    * Which user type schemas `userAttributes` came from, so the hint shown when there are none
    * points at the right fix. Defaults to 'allowedUserTypes'.
    */
@@ -260,6 +265,7 @@ export default function TokenUserAttributesSection({
   accessTokenOnly = false,
   showAccessTokenAttributes = true,
   accessTokenNote = undefined,
+  idJagEnabled = false,
   userAttributeSource = 'allowedUserTypes',
   userAttributesError = null,
   onRetryUserAttributes = undefined,
@@ -844,6 +850,15 @@ export default function TokenUserAttributesSection({
                           </Stack>
                         </Box>
                         <Divider />
+                        {idJagEnabled && (
+                          <Alert severity="info">
+                            {t(
+                              'applications:edit.token.id_token.id_jag_note',
+                              'Identity assertions (ID-JAG) this {{entity}} requests also include the allowed attributes below, except roles and groups, whenever the ID token carries them.',
+                              {entity: entityLabel},
+                            )}
+                          </Alert>
+                        )}
                         {renderAttributeChips(idAttrs, 'id')}
                       </Stack>
                     </Grid>

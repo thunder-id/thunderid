@@ -13,10 +13,6 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const (
-	mockHTTPServerPort = 9091
-)
-
 var (
 	httpRequestExecutorFlow = testutils.Flow{
 		Name:     "HTTP Request Executor Auth Flow",
@@ -40,7 +36,7 @@ var (
 				"id":   "http_request_notification",
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
-					"url":    "http://localhost:9091/api/notifications",
+					"url":    common.MockHTTPBaseURL + "/api/notifications",
 					"method": "POST",
 					"headers": "{\"Content-Type\": \"application/json\", " +
 						"\"X-Flow-Id\": \"{{ctx(flowID)}}\"}",
@@ -92,7 +88,7 @@ var (
 				"id":   "http_request_notification",
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
-					"url":           "http://localhost:9091/api/error",
+					"url":           common.MockHTTPBaseURL + "/api/error",
 					"method":        "POST",
 					"headers":       "{\"Content-Type\": \"application/json\"}",
 					"body":          "{\"userId\": \"{{ctx(userId)}}\"}",
@@ -141,7 +137,7 @@ var (
 				"id":   "http_request_notification",
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
-					"url":           "http://localhost:9091/api/error",
+					"url":           common.MockHTTPBaseURL + "/api/error",
 					"method":        "POST",
 					"headers":       "{\"Content-Type\": \"application/json\"}",
 					"body":          "{\"userId\": \"{{ctx(userId)}}\"}",
@@ -194,7 +190,7 @@ var (
 				"id":   "http_request_notification",
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
-					"url":     "http://localhost:9091/api/notifications",
+					"url":     common.MockHTTPBaseURL + "/api/notifications",
 					"method":  "POST",
 					"headers": "{\"Content-Type\": \"application/json\"}",
 					// The current request carries Accept and Content-Type, so current-source and
@@ -323,14 +319,15 @@ func (ts *HTTPRequestExecutorTestSuite) SetupSuite() {
 	}
 	ts.entityTypeID = schemaID
 
-	// Start mock HTTP server
-	ts.mockNotificationServer = testutils.NewMockHTTPServer(mockHTTPServerPort)
-	err = ts.mockNotificationServer.Start()
+	// Create mock HTTP server
+	ts.mockNotificationServer, err = testutils.NewMockHTTPServer()
 	if err != nil {
-		ts.T().Fatalf("Failed to start mock HTTP server: %v", err)
+		ts.T().Fatalf("Failed to create mock HTTP server: %v", err)
 	}
-	time.Sleep(100 * time.Millisecond)
-	ts.T().Log("Mock HTTP server started successfully")
+	for _, flow := range []testutils.Flow{httpRequestExecutorFlow, httpRequestExecutorContinueWithErrorFlow,
+		httpRequestExecutorFailOnErrorFlow, httpRequestExecutorRequestPlaceholderFlow} {
+		common.UseMockHTTPServer(flow, ts.mockNotificationServer)
+	}
 
 	// Create test user for authentication
 	testUser := httpRequestTestUser

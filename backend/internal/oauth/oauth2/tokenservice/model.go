@@ -121,7 +121,10 @@ type IDJAGBuildContext struct {
 	// Resources holds the RFC 8707 resource parameter values, when present on the request. Embedded
 	// in the ID-JAG's `resource` claim so the resource AS can process them on the jwt-bearer leg.
 	Resources []string
-	OAuthApp  *providers.OAuthClient
+	// UserAttributes holds the subject token's user attributes, which BuildIDJAG narrows to the
+	// identity claims the ID-JAG carries.
+	UserAttributes map[string]interface{}
+	OAuthApp       *providers.OAuthClient
 }
 
 // IDTokenBuildContext contains all the information needed to build an ID token (OIDC).

@@ -35,7 +35,7 @@ func (ts *IDJAGConsumptionTestSuite) lifespanAgentBody(validUntil string, withSe
 		"tokenEndpointAuthMethod": "client_secret_basic",
 		"scopes":                  []string{"openid", "profile", "email"},
 		"token": map[string]any{
-			"idJag": map[string]any{"enabled": true, "allowedAudiences": []string{"https://localhost:8095"}},
+			"idJag": map[string]any{"enabled": true, "allowedAudiences": []string{testutils.TestServerURL}},
 		},
 	}
 	if withSecret {
@@ -128,7 +128,7 @@ func idJagRequest(idToken string) url.Values {
 		"subject_token":        {idToken},
 		"subject_token_type":   {"urn:ietf:params:oauth:token-type:id_token"},
 		"requested_token_type": {"urn:ietf:params:oauth:token-type:id-jag"},
-		"audience":             {"https://localhost:8095"},
+		"audience":             {testutils.TestServerURL},
 	}
 }
 

@@ -14,10 +14,6 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const (
-	smsRecoveryMockNotificationPort = 8099
-)
-
 var (
 	smsRecoveryOU = testutils.OrganizationUnit{
 		Handle:      "sms-recovery-test-ou",
@@ -95,10 +91,9 @@ func (ts *SMSOTPRecoveryFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create test user")
 	ts.testUserID = userIDs[0]
 
-	// Start mock SMS notification server
-	ts.mockSMSServer = testutils.NewMockNotificationServer(smsRecoveryMockNotificationPort)
-	ts.Require().NoError(ts.mockSMSServer.Start(), "Failed to start mock SMS notification server")
-	time.Sleep(100 * time.Millisecond)
+	// Create mock SMS notification server
+	ts.mockSMSServer, err = testutils.NewMockNotificationServer()
+	ts.Require().NoError(err, "Failed to create mock SMS notification server")
 
 	// Create notification sender pointing at the mock server
 	senderID, err := testutils.CreateNotificationSender(testutils.NotificationSender{

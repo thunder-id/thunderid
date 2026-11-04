@@ -2690,6 +2690,115 @@ func (s *PromptOnlyNodeTestSuite) TestSyntheticMeta_PromotionDoesNotMutateShared
 	s.Equal(true, comp["required"], "second execution must still promote required correctly")
 }
 
+func (s *PromptOnlyNodeTestSuite) TestSyntheticMeta_ExistingComponentCarriesTheDefaultAsValue() {
+	original := map[string]interface{}{
+		"components": []interface{}{
+			map[string]interface{}{"id": "input_department", "ref": "department", "type": "TEXT_INPUT"},
+		},
+	}
+	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+	pn := node.(PromptNodeInterface)
+	pn.SetMeta(original)
+	pn.SetPrompts([]common.Prompt{
+		{
+			Inputs: []providers.Input{{
+				Ref: "input_department", Identifier: "department", Type: providers.InputTypeText,
+				DefaultValue: "Computer Science",
+			}},
+			Action: &common.Action{Ref: "submit", NextNode: "next"},
+		},
+	})
+
+	resp, err := node.Execute(&providers.NodeContext{
+		ExecutionID: "test-flow",
+		UserInputs:  map[string]string{},
+		Verbose:     true,
+	})
+
+	s.Require().Nil(err)
+	metaMap, _ := resp.Meta.(map[string]interface{})
+	comps, _ := metaMap["components"].([]interface{})
+	s.Require().Len(comps, 1)
+	comp, _ := comps[0].(map[string]interface{})
+	s.Equal("Computer Science", comp["value"])
+
+	origComps, _ := original["components"].([]interface{})
+	origComp, _ := origComps[0].(map[string]interface{})
+	s.NotContains(origComp, "value", "the shared node meta must not be mutated")
+}
+
+func (s *PromptOnlyNodeTestSuite) TestSyntheticMeta_DefaultReplacesAStaleComponentValue() {
+	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+	pn := node.(PromptNodeInterface)
+	pn.SetMeta(map[string]interface{}{
+		"components": []interface{}{
+			map[string]interface{}{"id": "input_department", "ref": "department", "type": "TEXT_INPUT", "value": "Old"},
+		},
+	})
+	pn.SetPrompts([]common.Prompt{
+		{
+			Inputs: []providers.Input{{
+				Ref: "input_department", Identifier: "department", Type: providers.InputTypeText, DefaultValue: "New",
+			}},
+			Action: &common.Action{Ref: "submit", NextNode: "next"},
+		},
+	})
+
+	resp, err := node.Execute(&providers.NodeContext{
+		ExecutionID: "test-flow",
+		UserInputs:  map[string]string{},
+		Verbose:     true,
+	})
+
+	s.Require().Nil(err)
+	metaMap, _ := resp.Meta.(map[string]interface{})
+	comps, _ := metaMap["components"].([]interface{})
+	s.Require().Len(comps, 1)
+	comp, _ := comps[0].(map[string]interface{})
+	s.Equal("New", comp["value"])
+}
+
+// The prompt shown again after a failed validation carries the default value in both the input and the
+// meta, the same way the first prompt does.
+func (s *PromptOnlyNodeTestSuite) TestSyntheticMeta_ReturnsTheDefaultAfterAValidationFailure() {
+	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+	pn := node.(PromptNodeInterface)
+	pn.SetMeta(map[string]interface{}{
+		"components": []interface{}{
+			map[string]interface{}{"id": "input_department", "ref": "department", "type": "TEXT_INPUT"},
+		},
+	})
+	pn.SetPrompts([]common.Prompt{
+		{
+			Inputs: []providers.Input{{
+				Ref: "input_department", Identifier: "department", Type: providers.InputTypeText,
+				DefaultValue: "Computer Science",
+				Validation: []providers.ValidationRule{
+					{Type: providers.ValidationTypeMinLength, Value: float64(5), Message: "validation.minLength"},
+				},
+			}},
+			Action: &common.Action{Ref: "submit", NextNode: "next"},
+		},
+	})
+
+	resp, err := node.Execute(&providers.NodeContext{
+		ExecutionID:   "test-flow",
+		CurrentAction: "submit",
+		UserInputs:    map[string]string{"department": "CS"},
+		Verbose:       true,
+	})
+
+	s.Require().Nil(err)
+	s.NotEmpty(resp.FieldErrors)
+	s.Require().Len(resp.Inputs, 1)
+	s.Equal("Computer Science", resp.Inputs[0].DefaultValue)
+	metaMap, _ := resp.Meta.(map[string]interface{})
+	comps, _ := metaMap["components"].([]interface{})
+	s.Require().Len(comps, 1)
+	comp, _ := comps[0].(map[string]interface{})
+	s.Equal("Computer Science", comp["value"])
+}
+
 func (s *PromptOnlyNodeTestSuite) TestSyntheticMeta_InsertedInsideBlockBeforeAction() {
 	meta := map[string]interface{}{
 		"components": []interface{}{
@@ -3551,4 +3660,343 @@ func (s *PromptOnlyNodeTestSuite) TestBuildSyntheticComponentList_KeepsExistingS
 		inputs, metaComps, map[string]struct{}{})
 
 	s.Empty(promotions)
+}
+
+// promptWithInputs builds a prompt node whose single prompt holds the given inputs.
+func promptWithInputs(inputs ...providers.Input) NodeInterface {
+	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+	node.(PromptNodeInterface).SetPrompts([]common.Prompt{
+		{Inputs: inputs, Action: &common.Action{Ref: "submit", NextNode: "next"}},
+	})
+	return node
+}
+
+func (s *PromptOnlyNodeTestSuite) TestExecuteDefaultInputIsPromptedPrefilledAndNotStored() {
+	department := providers.Input{
+		Identifier: "department", Type: providers.InputTypeText, DefaultValue: "Computer Science",
+	}
+	ctx := &providers.NodeContext{ExecutionID: "test-flow", UserInputs: map[string]string{}}
+
+	resp, err := promptWithInputs(department).Execute(ctx)
+
+	s.Nil(err)
+	s.Equal(common.NodeStatusIncomplete, resp.Status)
+	s.Equal(common.NodeResponseTypeView, resp.Type)
+	s.Require().Len(resp.Inputs, 1)
+	s.Equal("department", resp.Inputs[0].Identifier)
+	s.Equal("Computer Science", resp.Inputs[0].DefaultValue)
+	s.NotContains(ctx.UserInputs, "department")
+}
+
+// A page refresh runs the prompt again with nothing submitted, so the input is asked for again with its
+// default.
+func (s *PromptOnlyNodeTestSuite) TestExecuteDefaultInputIsPromptedAgainWhenNothingWasSubmitted() {
+	department := providers.Input{
+		Identifier: "department", Type: providers.InputTypeText, DefaultValue: "Computer Science",
+	}
+	node := promptWithInputs(department)
+	ctx := &providers.NodeContext{ExecutionID: "test-flow", UserInputs: map[string]string{}}
+
+	for range 2 {
+		resp, err := node.Execute(ctx)
+
+		s.Nil(err)
+		s.Equal(common.NodeStatusIncomplete, resp.Status)
+		s.Require().Len(resp.Inputs, 1)
+		s.Equal("Computer Science", resp.Inputs[0].DefaultValue)
+	}
+	s.NotContains(ctx.UserInputs, "department")
+}
+
+// The only action of the prompt is not selected for the person while an input is still unanswered, on
+// the first run and on a refresh.
+func (s *PromptOnlyNodeTestSuite) TestExecuteDefaultInputDoesNotAutoSelectTheAction() {
+	department := providers.Input{
+		Identifier: "department", Type: providers.InputTypeText, DefaultValue: "Computer Science",
+	}
+	node := promptWithInputs(department)
+	ctx := &providers.NodeContext{ExecutionID: "test-flow", UserInputs: map[string]string{}}
+
+	for range 2 {
+		resp, err := node.Execute(ctx)
+
+		s.Nil(err)
+		s.Equal(common.NodeStatusIncomplete, resp.Status)
+		s.Empty(ctx.CurrentAction)
+		s.Require().Len(resp.Actions, 1)
+		s.Equal("submit", resp.Actions[0].Ref)
+	}
+}
+
+func (s *PromptOnlyNodeTestSuite) TestExecuteDefaultInputIsAppliedOnSubmit() {
+	cases := []struct {
+		name       string
+		userInputs map[string]string
+	}{
+		{"left out", map[string]string{}},
+		{"submitted empty", map[string]string{"department": ""}},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			department := providers.Input{
+				Identifier: "department", Type: providers.InputTypeText, Required: true,
+				DefaultValue: "Computer Science",
+			}
+			ctx := &providers.NodeContext{ExecutionID: "test-flow", CurrentAction: "submit", UserInputs: tc.userInputs}
+
+			resp, err := promptWithInputs(department).Execute(ctx)
+
+			s.Nil(err)
+			s.Equal(common.NodeStatusComplete, resp.Status)
+			s.Equal("next", resp.NextNodeID)
+			s.Equal("Computer Science", ctx.UserInputs["department"])
+		})
+	}
+}
+
+func (s *PromptOnlyNodeTestSuite) TestExecuteDefaultInputIsAppliedWhenTheActionIsAutoSelected() {
+	department := providers.Input{
+		Identifier: "department", Type: providers.InputTypeText, DefaultValue: "Computer Science",
+	}
+	ctx := &providers.NodeContext{ExecutionID: "test-flow", UserInputs: map[string]string{"department": ""}}
+
+	resp, err := promptWithInputs(department).Execute(ctx)
+
+	s.Nil(err)
+	s.Equal(common.NodeStatusComplete, resp.Status)
+	s.Equal("submit", ctx.CurrentAction)
+	s.Equal("Computer Science", ctx.UserInputs["department"])
+}
+
+// Only the inputs of the submitted prompt take their defaults.
+func (s *PromptOnlyNodeTestSuite) TestExecuteDefaultInputIsAppliedOnlyForTheSubmittedPrompt() {
+	department := providers.Input{
+		Identifier: "department", Type: providers.InputTypeText, DefaultValue: "Computer Science",
+	}
+	faculty := providers.Input{Identifier: "faculty", Type: providers.InputTypeText, DefaultValue: "Engineering"}
+	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+	node.(PromptNodeInterface).SetPrompts([]common.Prompt{
+		{Inputs: []providers.Input{department}, Action: &common.Action{Ref: "first", NextNode: "next"}},
+		{Inputs: []providers.Input{faculty}, Action: &common.Action{Ref: "second", NextNode: "next"}},
+	})
+	ctx := &providers.NodeContext{ExecutionID: "test-flow", CurrentAction: "first", UserInputs: map[string]string{}}
+
+	resp, err := node.Execute(ctx)
+
+	s.Nil(err)
+	s.Equal(common.NodeStatusComplete, resp.Status)
+	s.Equal("Computer Science", ctx.UserInputs["department"])
+	s.NotContains(ctx.UserInputs, "faculty")
+}
+
+func (s *PromptOnlyNodeTestSuite) TestExecuteDefaultInputKeepsSubmittedValue() {
+	department := providers.Input{
+		Identifier: "department", Type: providers.InputTypeText, DefaultValue: "Computer Science",
+	}
+	ctx := &providers.NodeContext{
+		ExecutionID:   "test-flow",
+		CurrentAction: "submit",
+		UserInputs:    map[string]string{"department": "Mathematics"},
+	}
+
+	resp, err := promptWithInputs(department).Execute(ctx)
+
+	s.Nil(err)
+	s.Equal(common.NodeStatusComplete, resp.Status)
+	s.Equal("Mathematics", ctx.UserInputs["department"])
+}
+
+func (s *PromptOnlyNodeTestSuite) TestExecuteDefaultInputIsSkippedByALaterPrompt() {
+	department := providers.Input{
+		Identifier: "department", Type: providers.InputTypeText, DefaultValue: "Computer Science",
+	}
+	ctx := &providers.NodeContext{ExecutionID: "test-flow", CurrentAction: "submit", UserInputs: map[string]string{}}
+
+	first, err := promptWithInputs(department).Execute(ctx)
+	s.Nil(err)
+	s.Equal(common.NodeStatusComplete, first.Status)
+
+	ctx.CurrentAction = ""
+	second, err := promptWithInputs(department).Execute(ctx)
+
+	s.Nil(err)
+	s.Equal(common.NodeStatusComplete, second.Status)
+	s.Empty(second.Inputs)
+}
+
+func (s *PromptOnlyNodeTestSuite) TestExecuteDefaultInputIsNotPromptedWhenAValueExists() {
+	department := providers.Input{
+		Identifier: "department", Type: providers.InputTypeText, DefaultValue: "Computer Science",
+	}
+	cases := []struct {
+		name          string
+		userInputs    map[string]string
+		runtimeData   map[string]string
+		forwardedData map[string]interface{}
+		wantInput     string
+	}{
+		{"submitted value", map[string]string{"department": "Mathematics"}, nil, nil, "Mathematics"},
+		{"runtime value", map[string]string{}, map[string]string{"department": "Mathematics"}, nil, ""},
+		{"forwarded value", map[string]string{}, nil, map[string]interface{}{"department": "Mathematics"}, ""},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			ctx := &providers.NodeContext{
+				ExecutionID:   "test-flow",
+				UserInputs:    tc.userInputs,
+				RuntimeData:   tc.runtimeData,
+				ForwardedData: tc.forwardedData,
+			}
+
+			resp, err := promptWithInputs(department).Execute(ctx)
+
+			s.Nil(err)
+			s.Equal(common.NodeStatusComplete, resp.Status)
+			s.Equal(tc.wantInput, ctx.UserInputs["department"])
+		})
+	}
+}
+
+func (s *PromptOnlyNodeTestSuite) TestExecuteDefaultInputDoesNotReplaceAnExistingValueOnSubmit() {
+	department := providers.Input{
+		Identifier: "department", Type: providers.InputTypeText, DefaultValue: "Computer Science",
+	}
+	cases := []struct {
+		name          string
+		userInputs    map[string]string
+		runtimeData   map[string]string
+		forwardedData map[string]interface{}
+		wantInput     string
+	}{
+		{"submitted value", map[string]string{"department": "Mathematics"}, nil, nil, "Mathematics"},
+		{"runtime value", map[string]string{"department": ""}, map[string]string{"department": "Mathematics"}, nil, ""},
+		{"forwarded value", map[string]string{}, nil, map[string]interface{}{"department": "Mathematics"}, ""},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			ctx := &providers.NodeContext{
+				ExecutionID:   "test-flow",
+				CurrentAction: "submit",
+				UserInputs:    tc.userInputs,
+				RuntimeData:   tc.runtimeData,
+				ForwardedData: tc.forwardedData,
+			}
+
+			resp, err := promptWithInputs(department).Execute(ctx)
+
+			s.Nil(err)
+			s.Equal(common.NodeStatusComplete, resp.Status)
+			s.Equal(tc.wantInput, ctx.UserInputs["department"])
+		})
+	}
+}
+
+func (s *PromptOnlyNodeTestSuite) TestExecuteConstantInputFailsWithServerError() {
+	cases := []struct {
+		name  string
+		input providers.Input
+	}{
+		{"with a default", providers.Input{
+			Identifier: "faculty", Type: providers.InputTypeText, DefaultValue: "Engineering", Constant: true,
+		}},
+		{"without a default", providers.Input{Identifier: "faculty", Type: providers.InputTypeText, Constant: true}},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			ctx := &providers.NodeContext{ExecutionID: "test-flow", UserInputs: map[string]string{}}
+
+			resp, err := promptWithInputs(tc.input).Execute(ctx)
+
+			s.Nil(resp)
+			s.Require().NotNil(err)
+			s.Equal(tidcommon.InternalServerError.Code, err.Code)
+		})
+	}
+}
+
+func (s *PromptOnlyNodeTestSuite) TestExecuteForwardedInputsWithDefaults() {
+	department := func(extra providers.Input) providers.Input {
+		extra.Identifier, extra.Type = "department", providers.InputTypeText
+		return extra
+	}
+	notes := providers.Input{Identifier: "notes", Type: providers.InputTypeText, Required: true}
+	forwarded := func(inputs ...providers.Input) map[string]interface{} {
+		return map[string]interface{}{common.ForwardedDataKeyInputs: inputs}
+	}
+
+	cases := []struct {
+		name          string
+		declared      []providers.Input
+		userInputs    map[string]string
+		runtimeData   map[string]string
+		forwardedData map[string]interface{}
+		wantShown     map[string]string
+		wantStored    string
+	}{
+		{
+			name:          "default is prompted prefilled and the forwarded input only adds its flags",
+			declared:      []providers.Input{department(providers.Input{DefaultValue: "D1"})},
+			userInputs:    map[string]string{},
+			forwardedData: forwarded(department(providers.Input{Required: true})),
+			wantShown:     map[string]string{"department": "D1"},
+			wantStored:    "",
+		},
+		{
+			name:          "existing value keeps the default out and hides the forwarded input",
+			declared:      []providers.Input{department(providers.Input{DefaultValue: "D1"}), notes},
+			userInputs:    map[string]string{"department": "U"},
+			forwardedData: forwarded(department(providers.Input{Required: true})),
+			wantShown:     map[string]string{"notes": ""},
+			wantStored:    "U",
+		},
+		{
+			name:          "a forwarded input is shown as it is, its own default is not applied",
+			declared:      []providers.Input{notes},
+			userInputs:    map[string]string{},
+			forwardedData: forwarded(department(providers.Input{DefaultValue: "D3"})),
+			wantShown:     map[string]string{"notes": "", "department": ""},
+			wantStored:    "",
+		},
+		{
+			name:          "forwarded value keeps the default out",
+			declared:      []providers.Input{department(providers.Input{DefaultValue: "D1"}), notes},
+			userInputs:    map[string]string{},
+			forwardedData: map[string]interface{}{"department": "F"},
+			wantShown:     map[string]string{"notes": ""},
+			wantStored:    "",
+		},
+		{
+			name:        "runtime value keeps the default out",
+			declared:    []providers.Input{department(providers.Input{DefaultValue: "D1"}), notes},
+			userInputs:  map[string]string{},
+			runtimeData: map[string]string{"department": "R"},
+			wantShown:   map[string]string{"notes": ""},
+			wantStored:  "",
+		},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			ctx := &providers.NodeContext{
+				ExecutionID:   "test-flow",
+				UserInputs:    tc.userInputs,
+				RuntimeData:   tc.runtimeData,
+				ForwardedData: tc.forwardedData,
+			}
+
+			resp, err := promptWithInputs(tc.declared...).Execute(ctx)
+
+			s.Nil(err)
+			shown := map[string]string{}
+			for _, input := range resp.Inputs {
+				shown[input.Identifier] = input.DefaultValue
+			}
+			s.Equal(tc.wantShown, shown)
+			s.Equal(tc.wantStored, ctx.UserInputs["department"])
+		})
+	}
 }

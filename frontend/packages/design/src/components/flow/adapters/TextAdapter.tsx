@@ -5,7 +5,7 @@ import {cn} from '@thunderid/utils';
 import {Typography} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import useDesign from '../../../contexts/Design/useDesign';
+import useOptionalDesign from '../../../contexts/Design/useOptionalDesign';
 import type {FlowComponent} from '../../../models/flow';
 import mapEmbeddedFlowTextColor from '../../../utils/mapEmbeddedFlowTextColor';
 import {mapEmbeddedFlowTextVariant} from '../../../utils/mapEmbeddedFlowTextVariant';
@@ -17,7 +17,8 @@ interface TextAdapterProps {
 
 export default function TextAdapter({component, resolve}: TextAdapterProps): JSX.Element {
   const {t} = useTranslation();
-  const {isDesignEnabled} = useDesign();
+  // The console mounts no DesignProvider, so the adapter reads the design without requiring one.
+  const isDesignEnabled = useOptionalDesign()?.isDesignEnabled ?? false;
   const typographyVariant = mapEmbeddedFlowTextVariant(component.variant);
 
   const textAlign = component.align ?? (isDesignEnabled ? 'center' : 'left');

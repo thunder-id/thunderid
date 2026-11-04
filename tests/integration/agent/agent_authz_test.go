@@ -63,8 +63,6 @@ type AgentAuthzTestSuite struct {
 }
 
 const (
-	agentAuthzServerURL = "https://localhost:8095"
-
 	agentAuthzOU1Handle = "authz-agent-ou1"
 	agentAuthzOU2Handle = "authz-agent-ou2"
 
@@ -81,6 +79,8 @@ const (
 	// application in OU1 rather than the Console.
 	agentAuthzClientID = "agent_authz_ou1_sign_in"
 )
+
+var agentAuthzServerURL = testutils.TestServerURL
 
 func TestAgentAuthzTestSuite(t *testing.T) {
 	suite.Run(t, new(AgentAuthzTestSuite))

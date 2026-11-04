@@ -183,3 +183,22 @@ func (ts *LockoutTestSuite) TestUnlockingAnUnlockedAccountIsHarmless() {
 	ts.True(authenticate(ts.T(), "username", username, password).succeeded(),
 		"the account must stay usable")
 }
+
+func (ts *LockoutTestSuite) TestConcurrentFailuresFormOneLockAndHeldAttemptsWriteNothing() {
+	applyPolicy(ts.T(), longRungLockoutPolicy())
+	userID, username, password := ts.users.newUser(ts.T(), "concurrent", nil)
+
+	failAuthenticationConcurrently(ts.T(), "username", username, lockThreshold*4)
+
+	ts.Equal("LOCKED", readStatus(ts.T(), userID).Value, "the burst must form a lock")
+	entry := storedLock(ts.T(), userID, "credential")
+	ts.Equal(1, entry.LockCount, "a concurrent burst must open one episode")
+	ts.Zero(entry.FailureCount, "forming the episode must reset its window counter")
+	ts.Equal(lockThreshold, entry.ConsecutiveFailures, "counting must stop once the threshold forms a lock")
+	revision := runtimeRevision(ts.T(), userID)
+
+	failAuthenticationConcurrently(ts.T(), "username", username, lockThreshold*2)
+	requireRefusedAsHeld(ts.T(), authenticate(ts.T(), "username", username, password), statedLockCode,
+		"the correct password must be refused after the burst")
+	ts.Equal(revision, runtimeRevision(ts.T(), userID), "held attempts must write nothing")
+}

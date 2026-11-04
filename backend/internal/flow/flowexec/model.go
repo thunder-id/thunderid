@@ -326,20 +326,6 @@ type FlowInitContext struct {
 	InitiatorRequest *providers.InitiatorRequest
 }
 
-// SystemFlowContext is a request to run a system flow.
-type SystemFlowContext struct {
-	// Handle names the system flow.
-	Handle string
-	// Inputs are the flow's user inputs.
-	Inputs map[string]string
-}
-
-// SystemFlowResult is the outcome of a system flow that ran to completion.
-type SystemFlowResult struct {
-	// ExecutionID identifies the run in the logs.
-	ExecutionID string
-}
-
 // FlowContextDB represents the database row for a flow context.
 type FlowContextDB struct {
 	ExecutionID string

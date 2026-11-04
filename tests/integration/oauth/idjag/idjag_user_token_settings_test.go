@@ -19,9 +19,8 @@ import (
 )
 
 const (
-	userTokenMockIssuerPort = 8106
-	userTokenRSIdentifier   = "https://idjag-user-token-rs.example.com"
-	userTokenSubject        = "external-idjag-user"
+	userTokenRSIdentifier = "https://idjag-user-token-rs.example.com"
+	userTokenSubject      = "external-idjag-user"
 
 	userTokenAgentClientID     = "idjag_user_token_agent_client"
 	userTokenAgentClientSecret = "idjag_user_token_agent_secret"
@@ -88,10 +87,8 @@ func (ts *IDJAGUserTokenSettingsTestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(err, "point the default agent type at the test OU")
 
-	mockIssuer, err := testutils.NewMockOIDCServer(
-		userTokenMockIssuerPort, "idjag-user-token-client", "idjag-user-token-secret")
+	mockIssuer, err := testutils.NewMockOIDCServer("idjag-user-token-client", "idjag-user-token-secret")
 	ts.Require().NoError(err, "create mock ID-JAG issuer")
-	ts.Require().NoError(mockIssuer.Start(), "start mock ID-JAG issuer")
 	ts.mockIssuer = mockIssuer
 
 	idpID, err := testutils.CreateIDP(testutils.IDP{

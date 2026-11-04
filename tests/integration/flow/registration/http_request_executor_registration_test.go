@@ -12,10 +12,6 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const (
-	mockHTTPServerPortReg = 9091
-)
-
 var (
 	httpRequestRegistrationFlow = testutils.Flow{
 		Name:     "HTTP Request Registration Test Flow",
@@ -132,7 +128,7 @@ var (
 				"id":   "create_external_profile",
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
-					"url":    "http://localhost:9091/api/users",
+					"url":    common.MockHTTPBaseURL + "/api/users",
 					"method": "POST",
 					"headers": map[string]interface{}{
 						"Content-Type":  "application/json",
@@ -248,6 +244,13 @@ func (ts *HTTPRequestRegistrationFlowTestSuite) SetupSuite() {
 	}
 	httpRequestRegEntityTypeID = schemaID
 
+	// Create mock HTTP server
+	ts.mockServer, err = testutils.NewMockHTTPServer()
+	if err != nil {
+		ts.T().Fatalf("Failed to create mock HTTP server: %v", err)
+	}
+	common.UseMockHTTPServer(httpRequestRegistrationFlow, ts.mockServer)
+
 	// Create registration flow
 	flowID, err := testutils.CreateFlow(httpRequestRegistrationFlow)
 	if err != nil {
@@ -271,15 +274,6 @@ func (ts *HTTPRequestRegistrationFlowTestSuite) SetupSuite() {
 		ts.T().Fatalf("Failed to create test application during setup: %v", err)
 	}
 	httpRequestRegTestAppID = appID
-
-	// Start mock HTTP server
-	ts.mockServer = testutils.NewMockHTTPServer(mockHTTPServerPortReg)
-	err = ts.mockServer.Start()
-	if err != nil {
-		ts.T().Fatalf("Failed to start mock HTTP server: %v", err)
-	}
-	time.Sleep(100 * time.Millisecond)
-	ts.T().Log("Mock HTTP server started successfully")
 }
 
 func (ts *HTTPRequestRegistrationFlowTestSuite) TearDownSuite() {

@@ -280,7 +280,7 @@ func (suite *ServiceTestSuite) TestSetConfig_HandlerRejects() {
 		Return(storeLayers{ReadOnly: declarative}, nil)
 	suite.mockHandler.EXPECT().Decode(declarative).Return(readOnlyVal, nil)
 	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil)
-	suite.mockHandler.EXPECT().Validate(incomingVal, readOnlyVal, nil).Return(errors.New("bad value"))
+	suite.mockHandler.EXPECT().Validate(mock.Anything, incomingVal, readOnlyVal, nil).Return(errors.New("bad value"))
 	svcErr := suite.service.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw)
 	assert.Same(suite.T(), &ErrorInvalidConfigValue, svcErr)
 	suite.mockStore.AssertNotCalled(suite.T(), "UpsertServerConfig", mock.Anything, mock.Anything)
@@ -292,7 +292,7 @@ func (suite *ServiceTestSuite) TestSetConfig_OK() {
 		Return(storeLayers{ReadOnly: declarative}, nil)
 	suite.mockHandler.EXPECT().Decode(declarative).Return(readOnlyVal, nil)
 	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil)
-	suite.mockHandler.EXPECT().Validate(incomingVal, readOnlyVal, nil).Return(nil)
+	suite.mockHandler.EXPECT().Validate(mock.Anything, incomingVal, readOnlyVal, nil).Return(nil)
 	suite.mockStore.EXPECT().
 		UpsertServerConfig(mock.Anything, ServerConfig{Name: ConfigNameCORS, Value: incomingRaw}).Return(nil)
 	svcErr := suite.service.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw)
@@ -303,7 +303,7 @@ func (suite *ServiceTestSuite) TestSetConfig_UpsertError() {
 	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(incomingVal, nil)
 	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).Return(storeLayers{}, nil)
 	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil)
-	suite.mockHandler.EXPECT().Validate(incomingVal, nil, nil).Return(nil)
+	suite.mockHandler.EXPECT().Validate(mock.Anything, incomingVal, nil, nil).Return(nil)
 	suite.mockStore.EXPECT().UpsertServerConfig(mock.Anything, mock.Anything).Return(errors.New("db error"))
 	svcErr := suite.service.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw)
 	assert.Same(suite.T(), &common.InternalServerError, svcErr)
@@ -328,7 +328,7 @@ func (suite *ServiceTestSuite) TestSetConfig_PublishesTheChange() {
 		Return(storeLayers{Writable: previous}, nil)
 	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil)
 	suite.mockHandler.EXPECT().Decode(previous).Return(readOnlyVal, nil)
-	suite.mockHandler.EXPECT().Validate(incomingVal, nil, readOnlyVal).Return(nil)
+	suite.mockHandler.EXPECT().Validate(mock.Anything, incomingVal, nil, readOnlyVal).Return(nil)
 	suite.mockStore.EXPECT().UpsertServerConfig(mock.Anything, mock.Anything).Return(nil)
 	svc, published := suite.auditedService()
 
@@ -370,7 +370,7 @@ func (suite *ServiceTestSuite) expectSuccessfulWrite() {
 	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(incomingVal, nil)
 	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).Return(storeLayers{}, nil)
 	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil)
-	suite.mockHandler.EXPECT().Validate(incomingVal, nil, nil).Return(nil)
+	suite.mockHandler.EXPECT().Validate(mock.Anything, incomingVal, nil, nil).Return(nil)
 	suite.mockStore.EXPECT().UpsertServerConfig(mock.Anything, mock.Anything).Return(nil)
 }
 
@@ -379,7 +379,7 @@ func (suite *ServiceTestSuite) TestSetConfig_PublishesAFailedUpsert() {
 	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(incomingVal, nil)
 	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).Return(storeLayers{}, nil)
 	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil)
-	suite.mockHandler.EXPECT().Validate(incomingVal, nil, nil).Return(nil)
+	suite.mockHandler.EXPECT().Validate(mock.Anything, incomingVal, nil, nil).Return(nil)
 	suite.mockStore.EXPECT().UpsertServerConfig(mock.Anything, mock.Anything).Return(errors.New("db error"))
 	svc, published := suite.auditedService()
 

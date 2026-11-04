@@ -6,6 +6,7 @@ package flowexec
 import (
 	"context"
 
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -20,5 +21,6 @@ type FlowExecServiceInterface interface {
 		*FlowStep, *tidcommon.ServiceError)
 	InitiateFlow(ctx context.Context, initContext *FlowInitContext) (string, *tidcommon.ServiceError)
 	InitiateAndExecute(ctx context.Context, initContext *FlowInitContext) (*FlowStep, *tidcommon.ServiceError)
-	ExecuteSystemFlow(ctx context.Context, sysCtx *SystemFlowContext) (*SystemFlowResult, *tidcommon.ServiceError)
+	ExecuteSystemFlow(ctx context.Context, sysCtx *common.SystemFlowContext) (*common.SystemFlowResult,
+		*tidcommon.ServiceError)
 }

@@ -20,20 +20,6 @@ import (
 )
 
 const (
-	testServerURL = "https://localhost:8095"
-
-	// mcpResourceIdentifier matches the MCP resource identifier the running integration server
-	// itself computes (baseURL + "/mcp", derived from the server's own configured hostname/port —
-	// see tests/integration/resources/deployment.yaml). It intentionally does NOT reuse
-	// testutils.SystemResourceIdentifier ("https://localhost:8090/mcp"), which reflects the
-	// product's generic bootstrapped default rather than this harness's actual port (8095) — a
-	// token audience-bound to that default would fail mcp.DefaultGuard's RFC 8707 audience check
-	// against this server.
-	mcpResourceIdentifier = testServerURL + "/mcp"
-
-	mcpEndpoint    = testServerURL + "/mcp"
-	revokeEndpoint = testServerURL + "/oauth2/revoke"
-
 	mcpProtocolVersion = "2025-06-18"
 
 	// mcpProtocolVersion20260728 is the MCP stateless core (SEP-2567/2575) protocol version: no
@@ -52,6 +38,21 @@ const (
 
 	systemActionHandle = "system"
 )
+
+var revokeEndpoint = testServerURL + "/oauth2/revoke"
+
+var mcpEndpoint = testServerURL + "/mcp"
+
+// mcpResourceIdentifier matches the MCP resource identifier the running integration server
+// itself computes (baseURL + "/mcp", derived from the server's own configured hostname/port —
+// see tests/integration/resources/deployment.yaml). It intentionally does NOT reuse
+// testutils.SystemResourceIdentifier ("https://localhost:8090/mcp"), which reflects the
+// product's generic bootstrapped default rather than this harness's actual port (8095) — a
+// token audience-bound to that default would fail mcp.DefaultGuard's RFC 8707 audience check
+// against this server.
+var mcpResourceIdentifier = testServerURL + "/mcp"
+
+var testServerURL = testutils.TestServerURL
 
 // MCPTestSuite exercises the MCP server's authentication end-to-end: a real signed token, the
 // shared security.BearerAuthenticator path, and real revocation enforcement — as opposed to the

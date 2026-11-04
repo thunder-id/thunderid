@@ -2129,6 +2129,47 @@ func (suite *RoleStoreTestSuite) TestDeleteAssignmentsByAssignee() {
 	})
 }
 
+func (suite *RoleStoreTestSuite) TestHasAssigneeAssignments() {
+	suite.Run("reports an assignment", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryCountAssigneeAssignments,
+			string(AssigneeTypeGroup), "group-1", testDeploymentID).
+			Return([]map[string]interface{}{{"count": int64(1)}}, nil).Once()
+
+		found, err := suite.store.HasAssigneeAssignments(
+			context.Background(), string(AssigneeTypeGroup), "group-1")
+
+		suite.NoError(err)
+		suite.True(found)
+	})
+
+	suite.Run("reports none when the assignee has no assignment", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryCountAssigneeAssignments,
+			string(AssigneeTypeGroup), "group-1", testDeploymentID).
+			Return([]map[string]interface{}{{"count": int64(0)}}, nil).Once()
+
+		found, err := suite.store.HasAssigneeAssignments(
+			context.Background(), string(AssigneeTypeGroup), "group-1")
+
+		suite.NoError(err)
+		suite.False(found)
+	})
+
+	suite.Run("db error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryCountAssigneeAssignments,
+			string(AssigneeTypeGroup), "group-1", testDeploymentID).
+			Return(nil, errors.New("db error")).Once()
+
+		found, err := suite.store.HasAssigneeAssignments(
+			context.Background(), string(AssigneeTypeGroup), "group-1")
+
+		suite.Error(err)
+		suite.False(found)
+	})
+}
+
 // Naming an organization unit narrows each assignment read to the assignments made there.
 func (suite *RoleStoreTestSuite) TestAssignmentReadsInOU() {
 	row := []map[string]interface{}{

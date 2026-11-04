@@ -266,6 +266,13 @@ var (
 		Query: `DELETE FROM "ROLE_ASSIGNMENT" ` +
 			`WHERE SHARING_POLICY_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND ROLE_ID = $3 AND DEPLOYMENT_ID = $4`,
 	}
+
+	// queryCountAssigneeAssignments counts an assignee's role assignments.
+	queryCountAssigneeAssignments = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-43",
+		Query: `SELECT COUNT(*) as count FROM "ROLE_ASSIGNMENT" ` +
+			`WHERE ASSIGNEE_TYPE = $1 AND ASSIGNEE_ID = $2 AND DEPLOYMENT_ID = $3`,
+	}
 )
 
 // buildGetRolesByNamesQuery constructs a query to fetch roles by a list of names, regardless of

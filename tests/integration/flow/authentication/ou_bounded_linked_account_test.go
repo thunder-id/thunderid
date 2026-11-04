@@ -12,8 +12,6 @@ import (
 )
 
 const (
-	// ouBoundaryMockGooglePort must be 8093, the Google endpoint testutils.GoogleMockBaseURL points the server at.
-	ouBoundaryMockGooglePort = 8093
 	ouBoundaryGoogleClientID = "ou_boundary_google_client"
 	ouBoundaryGoogleSecret   = "ou_boundary_google_secret"
 	ouBoundaryGoogleExecutor = "GoogleOIDCAuthExecutor"
@@ -49,11 +47,9 @@ func ouBoundaryGoogleFlow(handle, idpID string) testutils.Flow {
 // scenarios sign in through: a sign-in and a linking application in the parent shared with its children, and a JIT
 // application unshared in the child.
 func (ts *OUBoundedSignInTestSuite) setUpLinkedAccountFixture() {
-	mock, err := testutils.NewMockGoogleOIDCServer(ouBoundaryMockGooglePort, ouBoundaryGoogleClientID,
-		ouBoundaryGoogleSecret)
-	ts.Require().NoError(err, "create the mock Google server")
+	mock, err := testutils.NewMockGoogleOIDCServer(ouBoundaryGoogleClientID, ouBoundaryGoogleSecret)
+	ts.Require().NoError(err, "create the mock Google client")
 	ts.mockGoogle = mock
-	ts.Require().NoError(ts.mockGoogle.Start(), "start the mock Google server")
 
 	ts.googleIDPID, err = testutils.CreateIDP(testutils.IDP{
 		Name:        "OU Boundary Google",

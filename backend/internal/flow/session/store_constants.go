@@ -148,6 +148,18 @@ var (
 		Query: `DELETE FROM "SSO_SESSION_PARTICIPANT" ` +
 			`WHERE SESSION_ID = $1 AND APP_ID = $2 AND OU_ID = $3 AND DEPLOYMENT_ID = $4`,
 	}
+
+	// querySlideIdleDeadline refreshes a session's last-active timestamp and idle deadline. It matches
+	// only an active, unexpired session whose last refresh is older than the throttle cutoff, so it
+	// neither revives an expired session nor writes on every call.
+	querySlideIdleDeadline = model.DBQuery{
+		ID: "SSO-SESS-18",
+		Query: `UPDATE "SSO_SESSION" SET LAST_ACTIVE_AT = $1, IDLE_EXPIRES_AT = $2, ` +
+			`VERSION = VERSION + 1, UPDATED_AT = CURRENT_TIMESTAMP ` +
+			`WHERE SESSION_ID = $3 AND STATE = $4 AND LAST_ACTIVE_AT <= $5 ` +
+			`AND (IDLE_EXPIRES_AT IS NULL OR IDLE_EXPIRES_AT > $1) ` +
+			`AND (ABSOLUTE_EXPIRES_AT IS NULL OR ABSOLUTE_EXPIRES_AT > $1) AND DEPLOYMENT_ID = $6`,
+	}
 )
 
 // participantsBySessionIDsChunkSize caps the session ids per query, keeping it under the

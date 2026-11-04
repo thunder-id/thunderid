@@ -4,7 +4,7 @@
 import {fireEvent, render, screen} from '@testing-library/react';
 import type {JSX, ReactNode} from 'react';
 import {MemoryRouter, Route, Routes, useLocation} from 'react-router';
-import {describe, expect, it, vi} from 'vitest';
+import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {GroupsListPage, GroupCreateDialog, GroupDetailsPage} from '../../index';
 
 vi.mock('@thunderid/react', () => ({
@@ -45,19 +45,25 @@ vi.mock('@thunderid/react', () => ({
     administrationMode,
     editable,
     groupId,
+    ouId = 'every unit',
   }: {
     administrationMode: string;
     editable: boolean;
     groupId: string;
+    ouId?: string;
   }): JSX.Element => (
     <p>
-      members of {groupId} {editable ? 'editable' : 'read only'} through {administrationMode}
+      members of {groupId} {editable ? 'editable' : 'read only'} through {administrationMode} from {ouId}
     </p>
   ),
 }));
 
+const {groupLoaded} = vi.hoisted(() => ({groupLoaded: {value: true}}));
+
 vi.mock('../../api/useGetGroup', () => ({
-  default: (id: string) => ({data: {description: 'The admins', id, name: 'Admins'}}),
+  default: (id: string) => ({
+    data: groupLoaded.value ? {description: 'The admins', id, name: 'Admins', ouId: 'ou-1'} : undefined,
+  }),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -114,21 +120,31 @@ describe('GroupCreateDialog', () => {
 });
 
 describe('GroupDetailsPage', () => {
+  beforeEach(() => {
+    groupLoaded.value = true;
+  });
+
   it('shows the group and its members, read only unless told otherwise', () => {
     renderAt('/groups/g-1', <GroupDetailsPage />);
     expect(screen.getByRole('heading', {name: 'Admins'})).toBeTruthy();
     expect(screen.getByText('The admins')).toBeTruthy();
-    expect(screen.getByText('members of g-1 read only through flow')).toBeTruthy();
+    expect(screen.getByText('members of g-1 read only through flow from ou-1')).toBeTruthy();
     expect(screen.getByRole('link', {name: 'Back'}).getAttribute('href')).toBe('/groups');
   });
 
   it('lets admins change the members when editable', () => {
     renderAt('/groups/g-1', <GroupDetailsPage editable />);
-    expect(screen.getByText('members of g-1 editable through flow')).toBeTruthy();
+    expect(screen.getByText('members of g-1 editable through flow from ou-1')).toBeTruthy();
   });
 
   it('removes members through the API directly when told to', () => {
     renderAt('/groups/g-1', <GroupDetailsPage editable administrationMode="native" />);
-    expect(screen.getByText('members of g-1 editable through native')).toBeTruthy();
+    expect(screen.getByText('members of g-1 editable through native from ou-1')).toBeTruthy();
+  });
+
+  it('offers adding members only once the group and its organization unit are loaded', () => {
+    groupLoaded.value = false;
+    renderAt('/groups/g-1', <GroupDetailsPage editable />);
+    expect(screen.getByText('members of g-1 read only through flow from every unit')).toBeTruthy();
   });
 });

@@ -21,7 +21,6 @@ import {
   Typography,
   Tabs,
   Tab,
-  ListingTable,
 } from '@wso2/oxygen-ui';
 import {AppWindow, Bot, UserRound, UsersRound} from '@wso2/oxygen-ui-icons-react';
 import {useState, useMemo, useCallback, type JSX, type SyntheticEvent} from 'react';
@@ -45,6 +44,8 @@ interface AddMemberDialogProps {
   isSubmitting?: boolean;
   /** Group ID used to hide members that are already assigned. */
   groupId?: string;
+  /** The group's organization unit. When set, only the users, apps, agents and groups available in it are listed. */
+  ouId?: string;
 }
 
 /**
@@ -59,6 +60,7 @@ export default function AddMemberDialog({
   onErrorDismiss = undefined,
   isSubmitting = false,
   groupId = undefined,
+  ouId = undefined,
 }: AddMemberDialogProps): JSX.Element {
   const {t} = useTranslation();
   const {data: userTypesData} = useGetUserTypes();
@@ -92,12 +94,19 @@ export default function AddMemberDialog({
     page: 0,
   });
 
+  const ouFilter = ouId ? `ouId eq "${ouId}"` : undefined;
+
   const {
     data: users = [],
     isLoading: usersLoading,
     error: usersError,
     refetch: refetchUsers,
-  } = useGetAllCandidates<User>({path: '/users', itemsKey: 'users', enabled: activeTab === 0});
+  } = useGetAllCandidates<User>({
+    path: '/users',
+    itemsKey: 'users',
+    enabled: activeTab === 0,
+    filter: ouFilter,
+  });
   const {
     data: applications = [],
     isLoading: appsLoading,
@@ -107,19 +116,30 @@ export default function AddMemberDialog({
     path: '/applications',
     itemsKey: 'applications',
     enabled: activeTab === 1,
+    filter: ouFilter,
   });
   const {
     data: agents = [],
     isLoading: agentsLoading,
     error: agentsError,
     refetch: refetchAgents,
-  } = useGetAllCandidates<BasicAgent>({path: '/agents', itemsKey: 'agents', enabled: activeTab === 2});
+  } = useGetAllCandidates<BasicAgent>({
+    path: '/agents',
+    itemsKey: 'agents',
+    enabled: activeTab === 2,
+    filter: ouFilter,
+  });
   const {
     data: allGroups = [],
     isLoading: groupsLoading,
     error: groupsError,
     refetch: refetchGroups,
-  } = useGetAllCandidates<GroupBasic>({path: '/groups', itemsKey: 'groups', enabled: activeTab === 3});
+  } = useGetAllCandidates<GroupBasic>({
+    path: '/groups',
+    itemsKey: 'groups',
+    enabled: activeTab === 3,
+    filter: ouFilter,
+  });
   const {
     data: membersData,
     isLoading: membersLoading,
@@ -446,31 +466,25 @@ export default function AddMemberDialog({
               </Alert>
             )}
 
-            <ListingTable.Provider variant="data-grid">
-              <ListingTable.Container sx={{height: 400}}>
-                <ListingTable.DataGrid
-                  rows={filteredUsers}
-                  columns={userColumns}
-                  loading={usersLoading}
-                  getRowId={(row): string => (row as User).id}
-                  checkboxSelection
-                  rowSelectionModel={userSelectionModel}
-                  onRowSelectionModelChange={(newSelection) => {
-                    setUserSelectionModel(newSelection);
-                    onErrorDismiss?.();
-                  }}
-                  paginationModel={userPaginationModel}
-                  onPaginationModelChange={setUserPaginationModel}
-                  pageSizeOptions={[5, 10]}
-                  disableRowSelectionOnClick
-                  // Filtering is not wired end to end, so the column filter panel stays hidden.
-                  disableColumnFilter
-                  localeText={dataGridLocaleText}
-                  // The name and ID lines need the row height the standard density spends on vertical padding.
-                  sx={{'& .MuiDataGrid-cell': {py: 0}}}
-                />
-              </ListingTable.Container>
-            </ListingTable.Provider>
+            <Box sx={{height: 400, width: '100%'}}>
+              <DataGrid.DataGrid
+                rows={filteredUsers}
+                columns={userColumns}
+                loading={usersLoading}
+                getRowId={(row): string => row.id}
+                checkboxSelection
+                rowSelectionModel={userSelectionModel}
+                onRowSelectionModelChange={(newSelection) => {
+                  setUserSelectionModel(newSelection);
+                  onErrorDismiss?.();
+                }}
+                paginationModel={userPaginationModel}
+                onPaginationModelChange={setUserPaginationModel}
+                pageSizeOptions={[5, 10]}
+                disableRowSelectionOnClick
+                localeText={dataGridLocaleText}
+              />
+            </Box>
           </>
         )}
 
@@ -492,29 +506,25 @@ export default function AddMemberDialog({
               </Alert>
             )}
 
-            <ListingTable.Provider variant="data-grid">
-              <ListingTable.Container sx={{height: 400}}>
-                <ListingTable.DataGrid
-                  rows={filteredApplications}
-                  columns={appColumns}
-                  loading={appsLoading}
-                  getRowId={(row): string => (row as BasicApplication).id}
-                  checkboxSelection
-                  rowSelectionModel={appSelectionModel}
-                  onRowSelectionModelChange={(newSelection) => {
-                    setAppSelectionModel(newSelection);
-                    onErrorDismiss?.();
-                  }}
-                  paginationModel={appPaginationModel}
-                  onPaginationModelChange={setAppPaginationModel}
-                  pageSizeOptions={[5, 10]}
-                  disableRowSelectionOnClick
-                  // Filtering is not wired end to end, so the column filter panel stays hidden.
-                  disableColumnFilter
-                  localeText={dataGridLocaleText}
-                />
-              </ListingTable.Container>
-            </ListingTable.Provider>
+            <Box sx={{height: 400, width: '100%'}}>
+              <DataGrid.DataGrid
+                rows={filteredApplications}
+                columns={appColumns}
+                loading={appsLoading}
+                getRowId={(row): string => row.id}
+                checkboxSelection
+                rowSelectionModel={appSelectionModel}
+                onRowSelectionModelChange={(newSelection) => {
+                  setAppSelectionModel(newSelection);
+                  onErrorDismiss?.();
+                }}
+                paginationModel={appPaginationModel}
+                onPaginationModelChange={setAppPaginationModel}
+                pageSizeOptions={[5, 10]}
+                disableRowSelectionOnClick
+                localeText={dataGridLocaleText}
+              />
+            </Box>
           </>
         )}
 
@@ -536,29 +546,25 @@ export default function AddMemberDialog({
               </Alert>
             )}
 
-            <ListingTable.Provider variant="data-grid">
-              <ListingTable.Container sx={{height: 400}}>
-                <ListingTable.DataGrid
-                  rows={filteredAgents}
-                  columns={agentColumns}
-                  loading={agentsLoading}
-                  getRowId={(row): string => (row as BasicAgent).id}
-                  checkboxSelection
-                  rowSelectionModel={agentSelectionModel}
-                  onRowSelectionModelChange={(newSelection) => {
-                    setAgentSelectionModel(newSelection);
-                    onErrorDismiss?.();
-                  }}
-                  paginationModel={agentPaginationModel}
-                  onPaginationModelChange={setAgentPaginationModel}
-                  pageSizeOptions={[5, 10]}
-                  disableRowSelectionOnClick
-                  // Filtering is not wired end to end, so the column filter panel stays hidden.
-                  disableColumnFilter
-                  localeText={dataGridLocaleText}
-                />
-              </ListingTable.Container>
-            </ListingTable.Provider>
+            <Box sx={{height: 400, width: '100%'}}>
+              <DataGrid.DataGrid
+                rows={filteredAgents}
+                columns={agentColumns}
+                loading={agentsLoading}
+                getRowId={(row): string => row.id}
+                checkboxSelection
+                rowSelectionModel={agentSelectionModel}
+                onRowSelectionModelChange={(newSelection) => {
+                  setAgentSelectionModel(newSelection);
+                  onErrorDismiss?.();
+                }}
+                paginationModel={agentPaginationModel}
+                onPaginationModelChange={setAgentPaginationModel}
+                pageSizeOptions={[5, 10]}
+                disableRowSelectionOnClick
+                localeText={dataGridLocaleText}
+              />
+            </Box>
           </>
         )}
 
@@ -580,29 +586,25 @@ export default function AddMemberDialog({
               </Alert>
             )}
 
-            <ListingTable.Provider variant="data-grid">
-              <ListingTable.Container sx={{height: 400}}>
-                <ListingTable.DataGrid
-                  rows={groups}
-                  columns={groupColumns}
-                  loading={groupsLoading}
-                  getRowId={(row): string => (row as GroupBasic).id}
-                  checkboxSelection
-                  rowSelectionModel={groupSelectionModel}
-                  onRowSelectionModelChange={(newSelection) => {
-                    setGroupSelectionModel(newSelection);
-                    onErrorDismiss?.();
-                  }}
-                  paginationModel={groupPaginationModel}
-                  onPaginationModelChange={setGroupPaginationModel}
-                  pageSizeOptions={[5, 10]}
-                  disableRowSelectionOnClick
-                  // Filtering is not wired end to end, so the column filter panel stays hidden.
-                  disableColumnFilter
-                  localeText={dataGridLocaleText}
-                />
-              </ListingTable.Container>
-            </ListingTable.Provider>
+            <Box sx={{height: 400, width: '100%'}}>
+              <DataGrid.DataGrid
+                rows={groups}
+                columns={groupColumns}
+                loading={groupsLoading}
+                getRowId={(row): string => row.id}
+                checkboxSelection
+                rowSelectionModel={groupSelectionModel}
+                onRowSelectionModelChange={(newSelection) => {
+                  setGroupSelectionModel(newSelection);
+                  onErrorDismiss?.();
+                }}
+                paginationModel={groupPaginationModel}
+                onPaginationModelChange={setGroupPaginationModel}
+                pageSizeOptions={[5, 10]}
+                disableRowSelectionOnClick
+                localeText={dataGridLocaleText}
+              />
+            </Box>
           </>
         )}
       </DialogContent>

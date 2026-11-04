@@ -53,7 +53,7 @@ const EMAIL_SCOPES = ["user", "user:email"];
  * scheme+host). That single rewrite covers both github.com and api.github.com, which is why the
  * API paths (/user, /user/emails) are served by this same server.
  *
- * Mirrors tests/integration/testutils/mock_github_oauth_server.go so the Go integration suite and
+ * Mirrors tests/integration/mockservices/github.go so the Go integration suite and
  * this Playwright suite exercise the backend identically. Unlike the Google mock there is no ID
  * token, JWKS or discovery document to serve: GitHub is plain OAuth2, and the backend identifies
  * the user from the /user response alone.

@@ -13,6 +13,7 @@ import AgentDeleteDialog from './AgentDeleteDialog';
 import useGetAgents from '../api/useGetAgents';
 import AgentConstants from '../constants/agent-constants';
 import useAgentRoutes from '../hooks/useAgentRoutes';
+import useLifespanEndText from '../hooks/useLifespanEndText';
 import type {BasicAgent} from '../models/agent';
 
 export default function AgentsList(): JSX.Element {
@@ -21,6 +22,7 @@ export default function AgentsList(): JSX.Element {
   const {t} = useTranslation();
   const logger = useLogger('AgentsList');
   const dataGridLocaleText = useDataGridLocaleText();
+  const lifespanEndText = useLifespanEndText();
   const {data, isLoading, error, refetch} = useGetAgents();
 
   // Resolves an error through the `agents` catalog. `t` defaults to the `common` namespace, so
@@ -54,6 +56,18 @@ export default function AgentsList(): JSX.Element {
     setDeleteDialogOpen(false);
     setSelectedAgentId(null);
   };
+
+  // When the lifespan ends, or that it has no end, says more than the status's own text, for an agent
+  // that can still authenticate and for one that expired. A suspension or a lock keeps its own text.
+  const lifespanHint = useCallback(
+    (agent: BasicAgent): string | undefined => {
+      if (agent.status && agent.status.value !== 'ACTIVE' && agent.status.value !== 'EXPIRED') return undefined;
+      if (agent.lifespan?.phase === 'UNBOUNDED') return t('agents:lifespan.noExpiry', 'No expiry date');
+
+      return lifespanEndText(agent.validUntil ?? agent.status?.details?.since);
+    },
+    [lifespanEndText, t],
+  );
 
   const columns: DataGrid.GridColDef<BasicAgent>[] = useMemo(
     () => [
@@ -89,7 +103,12 @@ export default function AgentsList(): JSX.Element {
         minWidth: 110,
         sortable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<BasicAgent>) => (
-          <AccessStatusIndicator status={params.row.status} category="agent" tabIndex={params.tabIndex} />
+          <AccessStatusIndicator
+            status={params.row.status}
+            category="agent"
+            hint={lifespanHint(params.row)}
+            tabIndex={params.tabIndex}
+          />
         ),
       },
       {
@@ -117,10 +136,10 @@ export default function AgentsList(): JSX.Element {
             {params.row.isReadOnly ? (
               <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton
+                  aria-label={t('common:status.readOnly', 'Read only')}
                   size="small"
                   disableRipple
                   sx={{cursor: 'default'}}
-                  aria-label={t('common:status.readOnly', 'Read only')}
                 >
                   <Eye size={16} />
                 </IconButton>
@@ -129,8 +148,8 @@ export default function AgentsList(): JSX.Element {
               <>
                 <Tooltip title={t('common:actions.edit', 'Edit')}>
                   <IconButton
-                    size="small"
                     aria-label={t('common:actions.edit', 'Edit')}
+                    size="small"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleEditClick(params.row.id);
@@ -141,9 +160,9 @@ export default function AgentsList(): JSX.Element {
                 </Tooltip>
                 <Tooltip title={t('common:actions.delete', 'Delete')}>
                   <IconButton
+                    aria-label={t('common:actions.delete', 'Delete')}
                     size="small"
                     color="error"
-                    aria-label={t('common:actions.delete', 'Delete')}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDeleteClick(params.row.id);
@@ -158,7 +177,7 @@ export default function AgentsList(): JSX.Element {
         ),
       },
     ],
-    [handleDeleteClick, handleEditClick, t],
+    [handleDeleteClick, handleEditClick, lifespanHint, t],
   );
 
   if (error) {
@@ -175,8 +194,8 @@ export default function AgentsList(): JSX.Element {
 
   return (
     <Box data-testid="agents-list">
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
+      <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
+        <ListingTable.Container disablePaper>
           <ListingTable.DataGrid
             rows={data?.agents ?? []}
             columns={columns}
@@ -192,7 +211,6 @@ export default function AgentsList(): JSX.Element {
             // Filtering is not wired end to end, so the column filter panel stays hidden.
             disableColumnFilter
             localeText={dataGridLocaleText}
-            rowHeight={64}
             sx={{
               height: 'auto',
               '& .MuiDataGrid-row': {cursor: 'pointer'},

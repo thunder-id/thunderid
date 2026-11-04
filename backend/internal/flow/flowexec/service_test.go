@@ -27,7 +27,7 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
-	"github.com/thunder-id/thunderid/internal/flow/common"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
@@ -3565,6 +3565,153 @@ func (s *ServiceTestSuite) TestLoadContextFromStore_GetFlowGraphError() {
 	s.NotNil(svcErr)
 }
 
+// ----- withoutConstantInputs -----
+
+func (s *ServiceTestSuite) TestWithoutConstantInputs_DropsOnlyConstants() {
+	graph := coremock.NewGraphInterfaceMock(s.T())
+	graph.EXPECT().IsConstantInput("username").Return(false)
+	graph.EXPECT().IsConstantInput("faculty").Return(true)
+
+	accepted := withoutConstantInputs(graph, map[string]string{"username": "alice", "faculty": "Arts"})
+
+	s.Equal(map[string]string{"username": "alice"}, accepted)
+}
+
+func (s *ServiceTestSuite) TestWithoutConstantInputs_WithoutAGraphKeepsEverything() {
+	inputs := map[string]string{"username": "alice"}
+
+	s.Equal(inputs, withoutConstantInputs(nil, inputs))
+}
+
+func (s *ServiceTestSuite) TestWithoutConstantInputs_NothingSubmitted() {
+	graph := coremock.NewGraphInterfaceMock(s.T())
+
+	s.Empty(withoutConstantInputs(graph, nil))
+}
+
+// graphWithConstantInput returns a graph whose only node holds the locale input constant.
+func (s *ServiceTestSuite) graphWithConstantInput(flowType providers.FlowType) core.GraphInterface {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	graph := flowFactory.CreateGraph("graph-1", flowType, 1)
+	node, err := flowFactory.CreateNode("node-1", string(flowcommon.NodeTypeTaskExecution),
+		map[string]interface{}{}, false, false)
+	s.Require().NoError(err)
+	node.(core.ExecutorBackedNodeInterface).SetInputs(
+		[]providers.Input{{Identifier: "locale", DefaultValue: "en-US", Constant: true}})
+	s.Require().NoError(graph.AddNode(node))
+	return graph
+}
+
+// A client that starts a flow cannot set an input the flow holds constant.
+func (s *ServiceTestSuite) TestLoadNewContext_IgnoresConstantInputs() {
+	security.InitSystemPermissions("")
+	graph := s.graphWithConstantInput(providers.FlowTypeAdministration)
+	flow := &providers.CompleteFlowDefinition{
+		ID: "administration-1", FlowType: providers.FlowTypeAdministration, ActiveVersion: 1,
+	}
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "administration-1").Return(flow, nil).Once()
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(s.T())
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, flow).Return(graph, nil)
+	service := &flowExecService{
+		flowProvider: mockFlowProvider, graphBuilder: mockGraphBuilder, cfg: testFlowExecCfg,
+	}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}),
+		"administration-1", "", "", true, "",
+		map[string]string{"subject": "user-1", "locale": "fr-FR"}, "", "", log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Require().NotNil(engineCtx)
+	s.Equal("user-1", engineCtx.UserInputs["subject"])
+	s.NotContains(engineCtx.UserInputs, "locale")
+}
+
+// A client that continues a flow cannot set an input the flow holds constant either.
+func (s *ServiceTestSuite) TestLoadPrevContext_IgnoresConstantInputs() {
+	t := s.T()
+	graph := s.graphWithConstantInput(providers.FlowTypeAdministration)
+	rawCtx := "{\"executionID\":\"exec-1\",\"appID\":\"app-1\",\"flowType\":\"ADMINISTRATION\"," +
+		"\"graphID\":\"graph-1\",\"currentNodeID\":\"node-1\",\"userInputs\":\"{}\"," +
+		"\"runtimeData\":\"{}\",\"executionHistory\":\"{}\"}"
+	mockStore := newFlowStoreInterfaceMock(t)
+	mockStore.EXPECT().GetFlowContext(mock.Anything, "exec-1").
+		Return(&FlowContextDB{ExecutionID: "exec-1", Context: rawCtx}, nil)
+	mockFlowProvider := NewFlowProviderMock(t)
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, mock.Anything).Return(&providers.CompleteFlowDefinition{}, nil)
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(graph, nil)
+	service := &flowExecService{
+		flowStore: mockStore, graphBuilder: mockGraphBuilder, flowProvider: mockFlowProvider, cfg: testFlowExecCfg,
+	}
+
+	engineCtx, svcErr := service.loadPrevContext(context.Background(), "exec-1", "",
+		map[string]string{"username": "alice", "locale": "fr-FR"}, log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Require().NotNil(engineCtx)
+	s.Equal("alice", engineCtx.UserInputs["username"])
+	s.NotContains(engineCtx.UserInputs, "locale")
+}
+
+// The initial inputs of a flow started by the server, such as the login hint of a CIBA request, come
+// from a client, so they cannot set an input the flow holds constant either.
+func (s *ServiceTestSuite) TestInitiateAndExecute_IgnoresConstantInitialInputs() {
+	t := s.T()
+	appID := "test-app-constant"
+	graph := s.graphWithConstantInput(providers.FlowTypeAuthentication)
+
+	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
+	mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
+	mockFlowProvider := NewFlowProviderMock(t)
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+	mockCrypto := cryptomock.NewRuntimeCryptoProviderMock(t)
+	mockStore := newFlowStoreInterfaceMock(t)
+	mockEngine := newFlowEngineInterfaceMock(t)
+
+	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
+		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-constant"}, nil)
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
+		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "auth-graph-constant").
+		Return(&providers.CompleteFlowDefinition{ID: "auth-graph-constant"}, nil)
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(graph, nil)
+	mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]byte("encrypted"), nil, nil)
+	mockStore.EXPECT().StoreFlowContext(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	var capturedCtx *EngineContext
+	mockEngine.EXPECT().Execute(mock.MatchedBy(func(ctx *EngineContext) bool {
+		capturedCtx = ctx
+		return true
+	})).Return(FlowStep{Status: providers.FlowStatusIncomplete}, nil)
+
+	service := &flowExecService{
+		flowStore:     mockStore,
+		graphBuilder:  mockGraphBuilder,
+		flowProvider:  mockFlowProvider,
+		flowEngine:    mockEngine,
+		actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr(), nil, nil),
+		transactioner: &stubTransactioner{},
+		cryptoSvc:     mockCrypto,
+		cfg:           testFlowExecCfg,
+	}
+
+	step, svcErr := service.InitiateAndExecute(context.Background(), &FlowInitContext{
+		ApplicationID: appID,
+		FlowType:      "AUTHENTICATION",
+		InitialInputs: map[string]string{"username": "alice", "locale": "fr-FR"},
+	})
+
+	s.Nil(svcErr)
+	s.NotNil(step)
+	s.Require().NotNil(capturedCtx)
+	s.Equal("alice", capturedCtx.UserInputs["username"])
+	s.NotContains(capturedCtx.UserInputs, "locale")
+}
+
 // ----- firstPositiveExpiry -----
 
 func (s *ServiceTestSuite) TestFirstPositiveExpiry_PositiveVWins() {
@@ -3805,7 +3952,7 @@ func (s *ServiceTestSuite) systemFlowService() (*flowExecService, *FlowProviderM
 
 func systemFlow() *providers.CompleteFlowDefinition {
 	return &providers.CompleteFlowDefinition{
-		ID: "019a1f40-6a1c-7000-8000-5e5713d00001", Handle: "system-application-delete",
+		ID: "019a1f40-6a1c-7000-8000-5e5713d00001", Handle: "system-application-delete-pre",
 		FlowType: providers.FlowTypeSystem,
 	}
 }
@@ -3813,17 +3960,38 @@ func systemFlow() *providers.CompleteFlowDefinition {
 // A system flow runs to completion as one, with the inputs it was given and no application loaded.
 func (s *ServiceTestSuite) TestExecuteSystemFlow_RunsToCompletion() {
 	service, flows, engine := s.systemFlowService()
-	flows.EXPECT().GetSystemFlow(mock.Anything, "system-application-delete").Return(systemFlow(), nil)
+	flows.EXPECT().GetSystemFlow(mock.Anything, "system-application-delete-pre").Return(systemFlow(), nil)
 	engine.EXPECT().Execute(mock.MatchedBy(func(ctx *EngineContext) bool {
 		return ctx.FlowType == providers.FlowTypeSystem && ctx.UserInputs["targetApplicationId"] == "app-1" &&
 			ctx.Application.ID == ""
-	})).Return(FlowStep{Status: providers.FlowStatusComplete}, nil)
+	})).Run(func(ctx *EngineContext) {
+		ctx.setSharedRuntimeData("revocationPlan", "plan")
+	}).Return(FlowStep{Status: providers.FlowStatusComplete}, nil)
 
-	result, svcErr := service.ExecuteSystemFlow(context.Background(), &SystemFlowContext{
-		Handle: "system-application-delete", Inputs: map[string]string{"targetApplicationId": "app-1"}})
+	result, svcErr := service.ExecuteSystemFlow(context.Background(), &flowcommon.SystemFlowContext{
+		Handle: "system-application-delete-pre", Inputs: map[string]string{"targetApplicationId": "app-1"}})
 
 	s.Nil(svcErr)
 	s.NotEmpty(result.ExecutionID)
+	// What the steps shared comes back, for the caller to hand to the flow that runs after the change.
+	s.Equal(map[string]string{"revocationPlan": "plan"}, result.RuntimeData)
+}
+
+// A post flow starts with what its pre flow shared, so its steps finish what that run started.
+func (s *ServiceTestSuite) TestExecuteSystemFlow_StartsWithTheRuntimeDataItIsGiven() {
+	service, flows, engine := s.systemFlowService()
+	flows.EXPECT().GetSystemFlow(mock.Anything, "system-revocation-post").Return(systemFlow(), nil)
+	engine.EXPECT().Execute(mock.MatchedBy(func(ctx *EngineContext) bool {
+		plan, ok := ctx.getSharedRuntimeData("revocationPlan")
+		return ok && plan == "plan"
+	})).Return(FlowStep{Status: providers.FlowStatusComplete}, nil)
+
+	result, svcErr := service.ExecuteSystemFlow(context.Background(), &flowcommon.SystemFlowContext{
+		Handle: "system-revocation-post", RuntimeData: map[string]string{"revocationPlan": "plan"}})
+
+	s.Nil(svcErr)
+	s.NotEmpty(result.ExecutionID)
+	s.Equal(map[string]string{"revocationPlan": "plan"}, result.RuntimeData)
 }
 
 // A step's refusal is returned as it is, so the caller reports the real reason.
@@ -3834,7 +4002,7 @@ func (s *ServiceTestSuite) TestExecuteSystemFlow_ReturnsAStepsRefusal() {
 	engine.EXPECT().Execute(mock.Anything).Return(FlowStep{Status: providers.FlowStatusError, Error: refusal}, nil)
 
 	result, svcErr := service.ExecuteSystemFlow(context.Background(),
-		&SystemFlowContext{Handle: "system-application-delete"})
+		&flowcommon.SystemFlowContext{Handle: "system-application-delete-pre"})
 	s.Nil(result)
 	s.Same(refusal, svcErr)
 }
@@ -3852,7 +4020,7 @@ func (s *ServiceTestSuite) TestExecuteSystemFlow_AnythingButCompletionIsAServerE
 			engine.EXPECT().Execute(mock.Anything).Return(step, nil)
 
 			result, svcErr := service.ExecuteSystemFlow(context.Background(),
-				&SystemFlowContext{Handle: "system-application-delete"})
+				&flowcommon.SystemFlowContext{Handle: "system-application-delete-pre"})
 			s.Nil(result)
 			s.Equal(&tidcommon.InternalServerError, svcErr)
 		})
@@ -3860,7 +4028,7 @@ func (s *ServiceTestSuite) TestExecuteSystemFlow_AnythingButCompletionIsAServerE
 
 	service, flows, engine := s.systemFlowService()
 	flows.EXPECT().GetSystemFlow(mock.Anything, "unknown").Return(nil, &tidcommon.ServiceError{Code: "FMS-1003"})
-	result, svcErr := service.ExecuteSystemFlow(context.Background(), &SystemFlowContext{Handle: "unknown"})
+	result, svcErr := service.ExecuteSystemFlow(context.Background(), &flowcommon.SystemFlowContext{Handle: "unknown"})
 	s.Nil(result)
 	s.Equal(&tidcommon.InternalServerError, svcErr)
 	engine.AssertNotCalled(s.T(), "Execute", mock.Anything)
@@ -4009,7 +4177,7 @@ func (s *ServiceTestSuite) TestBoundSignIn_FixesTheOrganizationUnitAtStart() {
 
 			s.Require().Nil(svcErr)
 			s.True(engineCtx.SignInBounded)
-			ouID, fixed := engineCtx.RuntimeData[common.RuntimeKeyOUID]
+			ouID, fixed := engineCtx.RuntimeData[flowcommon.RuntimeKeyOUID]
 			s.Equal(tc.wantOUID != "", fixed)
 			s.Equal(tc.wantOUID, ouID)
 		})
@@ -4108,7 +4276,7 @@ func (s *ServiceTestSuite) TestBoundSignIn_OtherFlowTypesAreNotBounded() {
 
 	s.Require().Nil(svcErr)
 	s.False(engineCtx.SignInBounded)
-	s.NotContains(engineCtx.RuntimeData, common.RuntimeKeyOUID)
+	s.NotContains(engineCtx.RuntimeData, flowcommon.RuntimeKeyOUID)
 }
 
 // The authorize entry point stores the boundary with the context, beside the runtime data it passed.
@@ -4126,7 +4294,7 @@ func (s *ServiceTestSuite) TestBoundSignIn_InitiateFlowStoresTheBoundary() {
 	executionID, svcErr := f.service.InitiateFlow(context.Background(), &FlowInitContext{
 		ApplicationID: boundaryAppID,
 		FlowType:      string(providers.FlowTypeAuthentication),
-		RuntimeData:   map[string]string{common.RuntimeKeyClientID: "boundary-client"},
+		RuntimeData:   map[string]string{flowcommon.RuntimeKeyClientID: "boundary-client"},
 	})
 
 	s.Require().Nil(svcErr)
@@ -4136,8 +4304,8 @@ func (s *ServiceTestSuite) TestBoundSignIn_InitiateFlowStoresTheBoundary() {
 	var runtimeData map[string]string
 	s.Require().NoError(json.Unmarshal([]byte(*stored.RuntimeData), &runtimeData))
 	s.Equal(map[string]string{
-		common.RuntimeKeyClientID: "boundary-client",
-		common.RuntimeKeyOUID:     boundaryAppOUID,
+		flowcommon.RuntimeKeyClientID: "boundary-client",
+		flowcommon.RuntimeKeyOUID:     boundaryAppOUID,
 	}, runtimeData)
 }
 
@@ -4157,7 +4325,7 @@ func (s *ServiceTestSuite) TestBoundSignIn_ExecuteRunsTheFlowBounded() {
 	s.Require().Nil(svcErr)
 	s.Require().NotNil(ran)
 	s.True(ran.SignInBounded)
-	s.Equal(boundaryNamedOUID, ran.RuntimeData[common.RuntimeKeyOUID])
+	s.Equal(boundaryNamedOUID, ran.RuntimeData[flowcommon.RuntimeKeyOUID])
 }
 
 // boundaryAuthUser is boundaryUserID as the default provider signed it in.
@@ -4211,7 +4379,7 @@ func (f *boundaryFixture) execute(flowType providers.FlowType) (*FlowStep, *tidc
 func (s *ServiceTestSuite) TestExecute_BoundedCompletionIsNotCheckedAgain() {
 	f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
 	s.continueStoredFlow(f, providers.FlowTypeAuthentication, true,
-		map[string]string{common.RuntimeKeyOUID: boundaryNamedOUID}, completedSignIn())
+		map[string]string{flowcommon.RuntimeKeyOUID: boundaryNamedOUID}, completedSignIn())
 
 	step, svcErr := f.execute(providers.FlowTypeAuthentication)
 

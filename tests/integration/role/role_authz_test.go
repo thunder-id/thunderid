@@ -102,6 +102,8 @@ const (
 	errCodeGrantNotPermitted = "SAZ-4030"
 )
 
+var roleAuthzRedirectURI = testutils.TestServerURL + "/console"
+
 func TestRoleAuthzTestSuite(t *testing.T) {
 	suite.Run(t, new(RoleAuthzTestSuite))
 }

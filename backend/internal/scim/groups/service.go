@@ -420,7 +420,7 @@ func mapGroupServiceErrorToSCIM(svcErr *tidcommon.ServiceError) *tidcommon.Servi
 		return &scim.ErrorResourceNotFound
 	case group.ErrorImmutableGroup.Code:
 		return &scim.ErrorMutabilityViolation
-	case group.ErrorInvalidMemberID.Code, group.ErrorInvalidGroupMemberID.Code:
+	case group.ErrorInvalidMemberID.Code, group.ErrorInvalidGroupMemberID.Code, group.ErrorMemberOUMismatch.Code:
 		return &scim.ErrorInvalidGroupMember
 	case group.ErrorGroupNameConflict.Code:
 		return &scim.ErrorUniquenessConflict

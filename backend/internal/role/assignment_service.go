@@ -60,6 +60,8 @@ type RoleAssignmentServiceInterface interface {
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
+	// HasGroupRoleAssignments reports whether the group is assigned any role.
+	HasGroupRoleAssignments(ctx context.Context, groupID string) (bool, *tidcommon.ServiceError)
 }
 
 // roleAssignmentService is the default implementation of RoleAssignmentServiceInterface.
@@ -743,7 +745,7 @@ func validateAssignmentIDs(
 			if ouID == "" || e.OUID == ouID {
 				continue
 			}
-			shared, svcErr := isEntitySharedWithOU(ctx, sharingSvc, e, ouID)
+			shared, svcErr := isEntitySharedWithOU(ctx, entitySvc, sharingSvc, e, ouID)
 			if svcErr != nil {
 				logger.Error(ctx, "Failed to check whether an assignee is shared with the organization unit",
 					log.String("id", e.ID), log.Any("error", svcErr))
@@ -782,18 +784,14 @@ func validateAssignmentIDs(
 	return nil
 }
 
-// isEntitySharedWithOU reports whether a sharing policy reaches ouID with the entity. Users and
-// applications are shareable; an entity of any other category is never shared.
+// isEntitySharedWithOU reports whether a sharing policy reaches ouID with the entity. An entity whose
+// category is not registered as shareable with the entity service is never shared.
 func isEntitySharedWithOU(
-	ctx context.Context, sharingSvc sharing.SharingServiceInterface, e providers.Entity, ouID string,
+	ctx context.Context, entitySvc entity.EntityServiceInterface, sharingSvc sharing.SharingServiceInterface,
+	e providers.Entity, ouID string,
 ) (bool, *tidcommon.ServiceError) {
-	var rt sharing.ResourceType
-	switch e.Category {
-	case providers.EntityCategoryUser:
-		rt = resourcedependency.ResourceTypeUser
-	case providers.EntityCategoryApp:
-		rt = resourcedependency.ResourceTypeApplication
-	default:
+	rt, shareable := entitySvc.GetSharedResourceType(e.Category)
+	if !shareable {
 		return false, nil
 	}
 	return sharingSvc.IsVisible(ctx, rt, e.ID, ouID)
@@ -1161,6 +1159,18 @@ func (as *roleAssignmentService) CascadeDeleteDependencies(
 		return 0, err
 	}
 	return int(deleted), nil
+}
+
+// HasGroupRoleAssignments reports whether the group is assigned any role.
+func (as *roleAssignmentService) HasGroupRoleAssignments(
+	ctx context.Context, groupID string) (bool, *tidcommon.ServiceError) {
+	found, err := as.roleStore.HasAssigneeAssignments(ctx, string(AssigneeTypeGroup), groupID)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to check the group's role assignments",
+			log.String("groupID", groupID), log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	return found, nil
 }
 
 // assignmentFilterQuery returns the filter an assignment list was narrowed by, for its pagination

@@ -64,8 +64,6 @@ type UserAuthzTestSuite struct {
 }
 
 const (
-	userAuthzServerURL = "https://localhost:8095"
-
 	userAuthzOU1Handle = "authz-user-ou1"
 	userAuthzOU2Handle = "authz-user-ou2"
 
@@ -75,6 +73,10 @@ const (
 	entityTypeOU1Name = "authz-user-type-ou1"
 	entityTypeOU2Name = "authz-user-type-ou2"
 )
+
+var userAuthzDevelopRedirectURI = testutils.TestServerURL + "/console"
+
+var userAuthzServerURL = testutils.TestServerURL
 
 func TestUserAuthzTestSuite(t *testing.T) {
 	suite.Run(t, new(UserAuthzTestSuite))

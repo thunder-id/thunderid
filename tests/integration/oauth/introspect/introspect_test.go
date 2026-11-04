@@ -32,9 +32,6 @@ import (
 )
 
 const (
-	introspectEndpoint = testutils.TestServerURL + "/oauth2/introspect"
-	revokeEndpoint     = testutils.TestServerURL + "/oauth2/revoke"
-	tokenEndpoint      = testutils.TestServerURL + "/oauth2/token"
 
 	// userClient runs the authorization_code login. ObtainAccessTokenWithPassword always sends the
 	// client credentials in the token request body, so this client must register client_secret_post.
@@ -68,6 +65,12 @@ const (
 	testGivenName = "Intro"
 	testFamily    = "Spection"
 )
+
+var tokenEndpoint = testutils.TestServerURL + "/oauth2/token"
+
+var revokeEndpoint = testutils.TestServerURL + "/oauth2/revoke"
+
+var introspectEndpoint = testutils.TestServerURL + "/oauth2/introspect"
 
 var testUserType = testutils.UserType{
 	Handle:      "introspect-person",

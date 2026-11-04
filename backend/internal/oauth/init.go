@@ -113,7 +113,7 @@ func Initialize(
 		jwtService, oauth2AuthzService, tokenBuilder, tokenValidator,
 		attributeCacheSvc, ouService, authzService, actorProvider, resourceService,
 		cibaService, revocationSvc, revocationSvc, enforcementService, governance, authzDetails,
-		deviceSecretValidity, cfg)
+		deviceSecretValidity, ssoSession, cfg)
 
 	token.Initialize(mux, jwtService, actorProvider, authnProvider, grantHandlerProvider,
 		scopeValidator, observabilitySvc, discoveryService, dpopVerifier, jtiStore, ouService, governance, cfg)

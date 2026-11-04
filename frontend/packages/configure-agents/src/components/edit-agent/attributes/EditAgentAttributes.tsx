@@ -5,17 +5,19 @@ import {QueryErrorNotice, SettingsCard} from '@thunderid/components';
 import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
 import {renderSchemaField} from '@thunderid/configure-users';
 import {useResolveDisplayName} from '@thunderid/hooks';
-import {Box, CircularProgress, Typography} from '@wso2/oxygen-ui';
+import {Box, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {useCallback, useEffect, useRef, type JSX} from 'react';
 import {useForm, useWatch} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import AttributesSummarySection from './AttributesSummarySection';
+import LifespanSection from './LifespanSection';
 import type {Agent} from '../../../models/agent';
 
 interface EditAgentAttributesProps {
   agent: Agent;
   editedAgent: Partial<Agent>;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
+  onLifespanValidationChange?: (hasError: boolean) => void;
 }
 
 type AttributeFormData = Record<string, unknown>;
@@ -43,6 +45,7 @@ export default function EditAgentAttributes({
   agent,
   editedAgent,
   onFieldChange,
+  onLifespanValidationChange = undefined,
 }: EditAgentAttributesProps): JSX.Element {
   const {t} = useTranslation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
@@ -102,10 +105,26 @@ export default function EditAgentAttributes({
     return <QueryErrorNotice error={error} t={tForErrors} variant="inline" onRetry={() => void refetch()} />;
   }
 
+  // The lifespan is not a schema attribute, but it is asked for beside them when an agent is added, so
+  // it is edited here too, in a card of its own.
+  const lifespanSection = (
+    <LifespanSection
+      agent={agent}
+      editedAgent={editedAgent}
+      onFieldChange={onFieldChange}
+      onValidationChange={onLifespanValidationChange}
+    />
+  );
+
   // A read-only agent can't be edited at all, so there's nothing for a form to do here — fall
   // back to the same summary shown on the General tab.
   if (agent.isReadOnly) {
-    return <AttributesSummarySection agent={agent} />;
+    return (
+      <Stack spacing={3}>
+        <AttributesSummarySection agent={agent} />
+        {lifespanSection}
+      </Stack>
+    );
   }
 
   const schemaFields = schemaDetails?.schema
@@ -115,21 +134,24 @@ export default function EditAgentAttributes({
     : [];
 
   return (
-    <SettingsCard
-      title={t('agents:edit.attributes.title', 'Attributes')}
-      description={t('agents:edit.attributes.description', 'View and manage agent attribute values.')}
-    >
-      <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
-        {schemaFields.length > 0 ? (
-          schemaFields.map(([fieldName, fieldDef]) =>
-            renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),
-          )
-        ) : (
-          <Typography variant="body2" color="text.secondary">
-            {t('agents:edit.attributes.noSchema', 'No schema available for editing')}
-          </Typography>
-        )}
-      </Box>
-    </SettingsCard>
+    <Stack spacing={3}>
+      <SettingsCard
+        title={t('agents:edit.attributes.title', 'Attributes')}
+        description={t('agents:edit.attributes.description', 'View and manage agent attribute values.')}
+      >
+        <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
+          {schemaFields.length > 0 ? (
+            schemaFields.map(([fieldName, fieldDef]) =>
+              renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),
+            )
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              {t('agents:edit.attributes.noSchema', 'No schema available for editing')}
+            </Typography>
+          )}
+        </Box>
+      </SettingsCard>
+      {lifespanSection}
+    </Stack>
   );
 }

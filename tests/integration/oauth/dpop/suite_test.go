@@ -36,18 +36,21 @@ const (
 
 	dpopRedirectURI = "https://localhost:3000"
 
-	// Endpoint URLs — these MUST equal the canonicalized form the server uses
-	// for DPoP htu comparison. The server canonicalizes, so as long as we send
-	// a syntactically equivalent URL we are fine.
-	tokenEndpoint    = testutils.TestServerURL + "/oauth2/token"
-	parEndpoint      = testutils.TestServerURL + "/oauth2/par"
-	userInfoEndpoint = testutils.TestServerURL + "/oauth2/userinfo"
-	authzEndpoint    = testutils.TestServerURL + "/oauth2/authorize"
-
 	// Test user
 	dpopTestUsername = "dpop_test_user"
 	dpopTestPassword = "DPoPTest123!"
 )
+
+var authzEndpoint = testutils.TestServerURL + "/oauth2/authorize"
+
+var userInfoEndpoint = testutils.TestServerURL + "/oauth2/userinfo"
+
+var parEndpoint = testutils.TestServerURL + "/oauth2/par"
+
+// Endpoint URLs — these MUST equal the canonicalized form the server uses
+// for DPoP htu comparison. The server canonicalizes, so as long as we send
+// a syntactically equivalent URL we are fine.
+var tokenEndpoint = testutils.TestServerURL + "/oauth2/token"
 
 var (
 	dpopTestUserSchema = testutils.UserType{

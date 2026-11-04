@@ -50,7 +50,13 @@ export default function GroupDetailsPage({
           {group?.name ?? ''}
         </Typography>
         {group?.description && <Typography color="text.secondary">{group.description}</Typography>}
-        <GroupMembers groupId={id} editable={editable} administrationMode={administrationMode} />
+        {/* Adding waits for the group, so the candidates are only ever listed from its organization unit. */}
+        <GroupMembers
+          groupId={id}
+          ouId={group?.ouId}
+          editable={editable && group !== undefined}
+          administrationMode={administrationMode}
+        />
       </Stack>
     </Stack>
   );

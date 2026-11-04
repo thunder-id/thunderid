@@ -55,6 +55,8 @@ const (
 	agentTypeAuthzRSIdentity = "https://authz-test.example.com/agenttype"
 )
 
+var agentTypeAuthzRedirectURI = testutils.TestServerURL + "/console"
+
 func TestAgentTypeAuthzTestSuite(t *testing.T) {
 	suite.Run(t, new(AgentTypeAuthzTestSuite))
 }

@@ -1,12 +1,11 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package testutils
+package mockservices
 
 import (
 	"crypto/rand"
 	"encoding/json"
-	"fmt"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -47,10 +46,9 @@ type OAuthUserInfo struct {
 	Custom  map[string]interface{} `json:"-"` // Additional custom fields
 }
 
-// MockOAuthServer provides a base mock OAuth 2.0 server
-type MockOAuthServer struct {
-	server        *http.Server
-	port          int
+// OAuthServer provides a base mock OAuth 2.0 server
+type OAuthServer struct {
+	handler       http.Handler
 	mutex         sync.RWMutex
 	authCodes     map[string]*OAuthAuthCodeData
 	accessTokens  map[string]*OAuthTokenData
@@ -70,95 +68,77 @@ type MockOAuthServer struct {
 	userInfoPath  string
 }
 
-// NewMockOAuthServer creates a new mock OAuth 2.0 server
-func NewMockOAuthServer(port int, clientID, clientSecret string) *MockOAuthServer {
-	return &MockOAuthServer{
-		port:          port,
+// NewOAuthServer creates a new mock OAuth 2.0 server
+func NewOAuthServer(baseURL, clientID, clientSecret string) *OAuthServer {
+	m := &OAuthServer{
 		authCodes:     make(map[string]*OAuthAuthCodeData),
 		accessTokens:  make(map[string]*OAuthTokenData),
 		users:         make(map[string]*OAuthUserInfo),
 		clientID:      clientID,
 		clientSecret:  clientSecret,
-		baseURL:       fmt.Sprintf("http://localhost:%d", port),
+		baseURL:       baseURL,
 		authorizePath: "/oauth/authorize",
 		tokenPath:     "/oauth/token",
 		userInfoPath:  "/oauth/userinfo",
 	}
+	m.handler = m.routes()
+	return m
 }
 
-// Start starts the mock OAuth server
-func (m *MockOAuthServer) Start() error {
+// routes maps the mock's endpoints.
+func (m *OAuthServer) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc(m.authorizePath, m.handleAuthorize)
 	mux.HandleFunc(m.tokenPath, m.handleToken)
 	mux.HandleFunc(m.userInfoPath, m.handleUserInfo)
 
-	m.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", m.port),
-		Handler: mux,
-	}
-
-	go func() {
-		if err := m.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("Mock OAuth server error: %v\n", err)
-		}
-	}()
-
-	return nil
-}
-
-// Stop stops the mock OAuth server
-func (m *MockOAuthServer) Stop() error {
-	if m.server != nil {
-		return m.server.Close()
-	}
-	return nil
+	return mux
 }
 
 // GetURL returns the base URL
-func (m *MockOAuthServer) GetURL() string {
+func (m *OAuthServer) GetURL() string {
 	return m.baseURL
 }
 
 // GetAuthorizeURL returns the authorization endpoint URL
-func (m *MockOAuthServer) GetAuthorizeURL() string {
+func (m *OAuthServer) GetAuthorizeURL() string {
 	return m.baseURL + m.authorizePath
 }
 
 // GetTokenURL returns the token endpoint URL
-func (m *MockOAuthServer) GetTokenURL() string {
+func (m *OAuthServer) GetTokenURL() string {
 	return m.baseURL + m.tokenPath
 }
 
 // GetUserInfoURL returns the userinfo endpoint URL
-func (m *MockOAuthServer) GetUserInfoURL() string {
+func (m *OAuthServer) GetUserInfoURL() string {
 	return m.baseURL + m.userInfoPath
 }
 
 // SetAuthorizeFunc sets a custom authorization function
-func (m *MockOAuthServer) SetAuthorizeFunc(fn func(userID string) (string, error)) {
+func (m *OAuthServer) SetAuthorizeFunc(fn func(userID string) (string, error)) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.authorizeFunc = fn
 }
 
 // SetTokenResponseOverride replaces the whole token response with the given status and body.
-func (m *MockOAuthServer) SetTokenResponseOverride(fn func() (int, string)) {
+func (m *OAuthServer) SetTokenResponseOverride(fn func() (int, string)) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.tokenOverride = fn
 }
 
 // SetUserInfoResponseOverride replaces the whole userinfo response with the given status and body.
-func (m *MockOAuthServer) SetUserInfoResponseOverride(fn func() (int, string)) {
+func (m *OAuthServer) SetUserInfoResponseOverride(fn func() (int, string)) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.userInfoOverride = fn
 }
 
 // ClearOverrides restores normal behaviour on both endpoints between tests.
-func (m *MockOAuthServer) ClearOverrides() {
+func (m *OAuthServer) ClearOverrides() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.tokenOverride = nil
@@ -178,14 +158,14 @@ func writeOAuthOverride(w http.ResponseWriter, fn func() (int, string)) bool {
 }
 
 // AddUser adds a user to the mock server
-func (m *MockOAuthServer) AddUser(user *OAuthUserInfo) {
+func (m *OAuthServer) AddUser(user *OAuthUserInfo) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.users[user.Sub] = user
 }
 
 // handleAuthorize handles the OAuth authorization endpoint
-func (m *MockOAuthServer) handleAuthorize(w http.ResponseWriter, r *http.Request) {
+func (m *OAuthServer) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -278,7 +258,7 @@ func (m *MockOAuthServer) handleAuthorize(w http.ResponseWriter, r *http.Request
 }
 
 // handleToken handles the OAuth token endpoint
-func (m *MockOAuthServer) handleToken(w http.ResponseWriter, r *http.Request) {
+func (m *OAuthServer) handleToken(w http.ResponseWriter, r *http.Request) {
 	m.mutex.RLock()
 	override := m.tokenOverride
 	m.mutex.RUnlock()
@@ -386,7 +366,7 @@ func (m *MockOAuthServer) handleToken(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUserInfo handles the OAuth userinfo endpoint
-func (m *MockOAuthServer) handleUserInfo(w http.ResponseWriter, r *http.Request) {
+func (m *OAuthServer) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	m.mutex.RLock()
 	override := m.userInfoOverride
 	m.mutex.RUnlock()

@@ -10,12 +10,28 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const testServerURL = "https://localhost:8095"
+var testServerURL = testutils.TestServerURL
+
+// MockHTTPBaseURL stands in for a suite's mock HTTP server in the HTTP request nodes of a flow
+// definition. UseMockHTTPServer replaces it with the server's URL.
+const MockHTTPBaseURL = "http://mock-http-server"
+
+// UseMockHTTPServer points the HTTP request nodes of a flow definition at the suite's mock HTTP server.
+func UseMockHTTPServer(flow testutils.Flow, server *testutils.MockHTTPServer) {
+	nodes, _ := flow.Nodes.([]map[string]interface{})
+	for _, node := range nodes {
+		properties, _ := node["properties"].(map[string]interface{})
+		if url, ok := properties["url"].(string); ok {
+			properties["url"] = strings.Replace(url, MockHTTPBaseURL, server.GetURL(), 1)
+		}
+	}
+}
 
 // InitiateAuthenticationFlow initiates the authentication flow
 func InitiateAuthenticationFlow(appID string, verbose bool, inputs map[string]string, action string) (

@@ -461,16 +461,52 @@ func builderOwnedClaimNames() map[string]bool {
 func FilterAttributesByAllowList(
 	attrs map[string]interface{}, subConfig *providers.AccessTokenSubConfig,
 ) map[string]interface{} {
-	filtered := make(map[string]interface{})
-	if subConfig == nil || len(subConfig.Attributes) == 0 {
-		return filtered
+	if subConfig == nil {
+		return make(map[string]interface{})
 	}
-	for _, attr := range subConfig.Attributes {
+	return filterAttributes(attrs, subConfig.Attributes)
+}
+
+// filterAttributes returns the entries of attrs whose names are listed in allowed.
+func filterAttributes(attrs map[string]interface{}, allowed []string) map[string]interface{} {
+	filtered := make(map[string]interface{})
+	for _, attr := range allowed {
 		if val, ok := attrs[attr]; ok {
 			filtered[attr] = val
 		}
 	}
 	return filtered
+}
+
+// idjagIdentityClaims returns the subject attributes an ID-JAG carries: the ones the client's ID token
+// configuration releases, except the names idjagExcludedAttributeNames lists.
+func idjagIdentityClaims(attrs map[string]interface{}, oauthApp *providers.OAuthClient) map[string]interface{} {
+	if oauthApp == nil || oauthApp.Token == nil || oauthApp.Token.IDToken == nil {
+		return make(map[string]interface{})
+	}
+	claims := filterAttributes(attrs, oauthApp.Token.IDToken.UserAttributes)
+	for name := range idjagExcludedAttributeNames() {
+		delete(claims, name)
+	}
+	return claims
+}
+
+// idjagExcludedAttributeNames returns the names a copied attribute never takes in an ID-JAG: the claims
+// the ID token builder writes itself, the claims the grant defines
+// (draft-ietf-oauth-identity-assertion-authz-grant Section 3.1), and roles and groups, which name this
+// deployment's entitlements rather than the target's.
+func idjagExcludedAttributeNames() map[string]bool {
+	excluded := builderOwnedIDTokenClaimNames()
+	for _, name := range []string{
+		constants.ClaimIss, constants.ClaimSub, constants.ClaimSubjectID, constants.ClaimAud,
+		constants.ClaimClientID, constants.ClaimJTI, constants.ClaimExp, constants.ClaimIat, constants.ClaimNbf,
+		constants.ClaimResource, constants.ClaimScope, constants.ClaimAuthorizationDetails, constants.ClaimAct,
+		constants.ClaimTenant, constants.ClaimAudTenant, constants.ClaimAudSub, constants.ClaimCnf,
+		constants.ClaimAMR, constants.UserAttributeRoles, constants.UserAttributeGroups,
+	} {
+		excluded[name] = true
+	}
+	return excluded
 }
 
 // BuildClientAttributes gathers all OAuth client/application-scoped attributes that should be added

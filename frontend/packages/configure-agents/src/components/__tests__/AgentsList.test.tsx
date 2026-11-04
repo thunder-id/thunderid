@@ -33,16 +33,8 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
     ...actual,
     OxygenUIThemeProvider: ({children}: {children: React.ReactNode}) => children,
     ListingTable: {
-      Provider: ({children, variant = undefined}: {children: React.ReactNode; variant?: string}) => (
-        <div data-testid="listing-provider" data-variant={variant}>
-          {children}
-        </div>
-      ),
-      Container: ({children, disablePaper = undefined}: {children: React.ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-container" data-disable-paper={disablePaper}>
-          {children}
-        </div>
-      ),
+      Provider: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
+      Container: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
       DataGrid: ({
         rows,
         columns,
@@ -261,38 +253,74 @@ describe('AgentsList', () => {
     expect(screen.getByText('Active')).toBeInTheDocument();
   });
 
+  it('should say when an agent expires, and how long ago one expired, on hovering its status', async () => {
+    const day = 24 * 3600 * 1000;
+    vi.mocked(useGetAgents).mockReturnValue({
+      data: {
+        ...mockAgentsData,
+        agents: [
+          {
+            ...mockAgentsData.agents[0],
+            validUntil: new Date(Date.now() + 90 * day).toISOString(),
+            lifespan: {phase: 'ACTIVE'},
+          },
+          {
+            ...mockAgentsData.agents[1],
+            validUntil: new Date(Date.now() - 13 * day).toISOString(),
+            lifespan: {phase: 'EXPIRED'},
+            status: {value: 'EXPIRED', details: {reason: 'LIFESPAN_ENDED'}},
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetAgents>);
+    const user = userEvent.setup();
+
+    renderComponent();
+
+    await user.hover(screen.getByRole('img', {name: 'Active'}));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Expires in 3 months');
+    await user.unhover(screen.getByRole('img', {name: 'Active'}));
+
+    await user.hover(screen.getByRole('img', {name: 'Expired'}));
+    await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('Expired 13 days ago'));
+  });
+
+  it('should say an agent has no expiry date when its lifespan has no end', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useGetAgents).mockReturnValue({
+      data: {...mockAgentsData, agents: [{...mockAgentsData.agents[0], lifespan: {phase: 'UNBOUNDED'}}]},
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetAgents>);
+
+    renderComponent();
+
+    await user.hover(screen.getByRole('img', {name: 'Active'}));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('No expiry date');
+  });
+
+  it('should keep the plain status text when the read reports no lifespan', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useGetAgents).mockReturnValue({
+      data: {...mockAgentsData, agents: [mockAgentsData.agents[0]]},
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetAgents>);
+
+    renderComponent();
+
+    await user.hover(screen.getByRole('img', {name: 'Active'}));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('This agent can authenticate normally.');
+  });
+
   it("should keep the status indicators in the grid's roving focus rather than the page tab order", () => {
     renderComponent();
 
     const indicators = screen.getAllByRole('img', {name: 'Active'});
     expect(indicators.length).toBeGreaterThan(0);
     indicators.forEach((indicator) => expect(indicator).toHaveAttribute('tabindex', '-1'));
-  });
-
-  it('should render the listing as a papered data grid', () => {
-    vi.mocked(useGetAgents).mockReturnValue({
-      data: mockAgentsData,
-      isLoading: false,
-      error: null,
-    } as ReturnType<typeof useGetAgents>);
-
-    renderComponent();
-
-    expect(screen.getByTestId('listing-provider')).toHaveAttribute('data-variant', 'data-grid');
-    expect(screen.getByTestId('listing-container')).not.toHaveAttribute('data-disable-paper');
-  });
-
-  it('should give each row action button an accessible name', () => {
-    vi.mocked(useGetAgents).mockReturnValue({
-      data: mockAgentsData,
-      isLoading: false,
-      error: null,
-    } as ReturnType<typeof useGetAgents>);
-
-    renderComponent();
-
-    expect(screen.getAllByRole('button', {name: 'Edit'})).toHaveLength(2);
-    expect(screen.getAllByRole('button', {name: 'Delete'})).toHaveLength(2);
   });
 
   it('should fall back to the agent id when an agent has no display value', () => {

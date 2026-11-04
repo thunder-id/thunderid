@@ -9,12 +9,12 @@ import {
   CircularProgress,
   Collapse,
   IconButton,
-  ListingTable,
   Paper,
   Stack,
   Table,
   TableBody,
   TableCell,
+  TableHead,
   TableRow,
   TextField,
   Tooltip,
@@ -269,41 +269,41 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
   const valuesTable = (resources: ResourceGroup[]): JSX.Element => (
     <Box sx={{bgcolor: 'background.default', px: 2, py: 1.5}}>
       <Paper variant="outlined" sx={{overflow: 'hidden'}}>
-        <ListingTable density="compact">
-          <ListingTable.Head>
-            <ListingTable.Row>
-              <ListingTable.Cell>{t('values.name', 'Name')}</ListingTable.Cell>
-              <ListingTable.Cell>{t('values.value', 'Value')}</ListingTable.Cell>
-              <ListingTable.Cell align="right" />
-            </ListingTable.Row>
-          </ListingTable.Head>
-          <ListingTable.Body>
+        <Table size="small">
+          <TableHead>
+            <TableRow sx={{'& th': {bgcolor: 'action.hover'}}}>
+              <TableCell>{t('values.name', 'Name')}</TableCell>
+              <TableCell>{t('values.value', 'Value')}</TableCell>
+              <TableCell align="right" />
+            </TableRow>
+          </TableHead>
+          <TableBody>
             {resources.map((resource: ResourceGroup) => (
               <Fragment key={resource.key}>
                 {resource.label && (
-                  <ListingTable.Row>
-                    <ListingTable.Cell colSpan={3}>
+                  <TableRow>
+                    <TableCell colSpan={3} sx={{py: 0.75}}>
                       <Typography component="h4" variant="subtitle2">
                         {resource.label}
                       </Typography>
-                    </ListingTable.Cell>
-                  </ListingTable.Row>
+                    </TableCell>
+                  </TableRow>
                 )}
                 {resource.rows.map((row: ValueRow) => (
-                  <ListingTable.Row key={row.name} data-testid={`value-row-${row.name}`}>
-                    <ListingTable.Cell sx={{verticalAlign: 'top', width: '40%'}}>
-                      <Box sx={{pl: resource.label ? 1 : 0}}>{nameCell(row)}</Box>
-                    </ListingTable.Cell>
-                    <ListingTable.Cell sx={{verticalAlign: 'top', minWidth: 280}}>{valueCell(row)}</ListingTable.Cell>
-                    <ListingTable.Cell align="right" sx={{verticalAlign: 'top', whiteSpace: 'nowrap'}}>
+                  <TableRow key={row.name} data-testid={`value-row-${row.name}`}>
+                    <TableCell sx={{pl: resource.label ? 3 : 2, verticalAlign: 'top', width: '40%'}}>
+                      {nameCell(row)}
+                    </TableCell>
+                    <TableCell sx={{verticalAlign: 'top', minWidth: 280}}>{valueCell(row)}</TableCell>
+                    <TableCell align="right" sx={{verticalAlign: 'top', whiteSpace: 'nowrap'}}>
                       {actionsCell(row)}
-                    </ListingTable.Cell>
-                  </ListingTable.Row>
+                    </TableCell>
+                  </TableRow>
                 ))}
               </Fragment>
             ))}
-          </ListingTable.Body>
-        </ListingTable>
+          </TableBody>
+        </Table>
       </Paper>
     </Box>
   );

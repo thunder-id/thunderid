@@ -5,10 +5,12 @@ package flowmgt
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"testing/fstest"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/flow/executormeta"
@@ -18,7 +20,7 @@ import (
 )
 
 const (
-	testSystemFlowHandle = "system-application-delete"
+	testSystemFlowHandle = "system-application-delete-pre"
 	testSystemFlowJSON   = `{"id": "019a1f40-6a1c-7000-8000-5e5713d0aaaa", "handle": "system-test", ` +
 		`"name": "Test", "flowType": "SYSTEM", "nodes": []}`
 )
@@ -58,8 +60,58 @@ func (s *SystemFlowTestSuite) TestBuiltInSystemFlowsAreValid() {
 	flows, err := loadSystemFlows(context.Background(), systemFlowFiles, validator)
 
 	s.Require().NoError(err)
-	s.Contains(flows, "system-application-delete")
-	s.Contains(flows, "system-application-secret-rotate")
+	// Each pre flow takes the steps its administration flow runs between the permission check and the
+	// write, and the one post flow takes the step those flows run after the write.
+	expected := map[string][]string{
+		"system-application-delete-pre": {
+			"ApplicationActionValidator:revoke_all", "CriteriaRevocationExecutor:revoke", "SessionRevocationExecutor:",
+		},
+		"system-application-secret-rotate-pre": {
+			"ApplicationActionValidator:revoke_before_action", "CriteriaRevocationExecutor:revoke",
+		},
+		"system-user-delete-pre": {
+			"PreDeleteExecutor:revoke_all", "CriteriaRevocationExecutor:revoke", "SessionRevocationExecutor:",
+		},
+		"system-role-delete-pre": {"AccessChangeValidator:role_deletion", "CriteriaRevocationExecutor:revoke"},
+		"system-role-assignment-removal-pre": {
+			"AccessChangeValidator:role_assignment_removal", "CriteriaRevocationExecutor:revoke",
+		},
+		"system-role-permission-removal-pre": {
+			"AccessChangeValidator:role_permission_removal", "CriteriaRevocationExecutor:revoke",
+		},
+		"system-group-delete-pre": {"AccessChangeValidator:group_deletion", "CriteriaRevocationExecutor:revoke"},
+		"system-group-membership-removal-pre": {
+			"AccessChangeValidator:group_membership_removal", "CriteriaRevocationExecutor:revoke",
+		},
+		"system-action-delete-pre": {"AccessChangeValidator:action_deletion", "CriteriaRevocationExecutor:revoke"},
+		"system-revocation-post":   {"CriteriaRevocationExecutor:advance_cutoff"},
+	}
+	s.Len(flows, len(expected))
+	for handle, steps := range expected {
+		s.Require().Contains(flows, handle)
+		s.Equal(steps, systemFlowSteps(s.T(), flows[handle]), handle)
+	}
+}
+
+// systemFlowSteps lists a flow's executors as name:mode, in the order the flow runs them from START.
+func systemFlowSteps(t *testing.T, data json.RawMessage) []string {
+	var flowDef FlowDefinition
+	require.NoError(t, json.Unmarshal(data, &flowDef))
+	nodes := make(map[string]providers.NodeDefinition, len(flowDef.Nodes))
+	next := ""
+	for _, node := range flowDef.Nodes {
+		nodes[node.ID] = node
+		if node.Type == "START" {
+			next = node.OnSuccess
+		}
+	}
+	var steps []string
+	for node, ok := nodes[next]; ok && node.Type != "END"; node, ok = nodes[node.OnSuccess] {
+		require.NotNil(t, node.Executor, node.ID)
+		steps = append(steps, node.Executor.Name+":"+node.Executor.Mode)
+		require.Less(t, len(steps), len(flowDef.Nodes), "the flow loops")
+	}
+	return steps
 }
 
 // Each system flow is validated as one, and is kept by its handle.
