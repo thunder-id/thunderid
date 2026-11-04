@@ -575,6 +575,50 @@ var (
 			DefaultValue: "The organization unit must be the project's root organization unit or one below it",
 		},
 	}
+
+	// ErrorGrantTypeNotAllowedForPersonalAgent is returned when a personal agent is given a grant type
+	// outside the personal set.
+	ErrorGrantTypeNotAllowedForPersonalAgent = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1049",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.grant_type_not_allowed_for_personal_agent",
+			DefaultValue: "Grant type not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.grant_type_not_allowed_for_personal_agent_description",
+			DefaultValue: "A personal agent can only use the authorization code, CIBA, and refresh token grants",
+		},
+	}
+
+	// ErrorInvalidKind is returned when an agent names a kind that is not known.
+	ErrorInvalidKind = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1050",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_kind",
+			DefaultValue: "Invalid kind",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_kind_description",
+			DefaultValue: "The agent kind is not a known kind",
+		},
+	}
+
+	// ErrorInvalidPublicKey is returned when a personal agent's public key is not a JWKS document with at
+	// least one key.
+	ErrorInvalidPublicKey = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1051",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_public_key",
+			DefaultValue: "Invalid public key",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_public_key_description",
+			DefaultValue: "The public key must be a JWKS document with at least one key",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339

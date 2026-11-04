@@ -12699,6 +12699,454 @@
   },
   {
     "resourceType": "TEMPLATE",
+    "category": "PASSWORD",
+    "type": "PERSONAL_AGENT",
+    "flowType": "REGISTRATION",
+    "display": {
+      "label": "User and Personal Assistants",
+      "description": "Register users with a password, or their personal assistants",
+      "image": "assets/images/icons/robot.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "User and Personal Assistant Registration Flow",
+      "handle": "personal-assistant-registration-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "prompt_registration_choice"
+        },
+        {
+          "id": "prompt_registration_choice",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_registration_choice",
+                "label": "{{ t(signup:forms.registration_choice.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_registration_choice",
+                "components": [
+                  {
+                    "type": "ACTION",
+                    "id": "action_register_user",
+                    "label": "{{ t(signup:forms.registration_choice.actions.register_user.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_register_personal_agent",
+                    "label": "{{ t(signup:forms.registration_choice.actions.register_personal_agent.label) }}",
+                    "variant": "SECONDARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "ref": "action_register_user",
+                "nextNode": "user_type_resolver"
+              }
+            },
+            {
+              "action": {
+                "ref": "action_register_personal_agent",
+                "nextNode": "call_owner_login"
+              }
+            }
+          ]
+        },
+        {
+          "id": "user_type_resolver",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "UserTypeResolver"
+          },
+          "onSuccess": "prompt_credentials",
+          "onIncomplete": "prompt_usertype"
+        },
+        {
+          "id": "prompt_usertype",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_usertype",
+                "label": "{{ t(signup:forms.user_type.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_usertype",
+                "components": [
+                  {
+                    "type": "SELECT",
+                    "id": "usertype_input",
+                    "ref": "userType",
+                    "label": "{{ t(signup:forms.user_type.fields.user_type.label) }}",
+                    "placeholder": "{{ t(signup:forms.user_type.fields.user_type.placeholder) }}",
+                    "required": true,
+                    "options": []
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_usertype",
+                    "label": "{{ t(signup:forms.user_type.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "usertype_input",
+                  "identifier": "userType",
+                  "type": "SELECT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_usertype",
+                "nextNode": "user_type_resolver"
+              }
+            }
+          ]
+        },
+        {
+          "id": "prompt_credentials",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_credentials",
+                "label": "{{ t(signup:forms.credentials.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_credentials",
+                "components": [
+                  {
+                    "type": "TEXT_INPUT",
+                    "id": "input_username",
+                    "ref": "username",
+                    "label": "{{ t(signup:forms.credentials.fields.username.label) }}",
+                    "placeholder": "{{ t(signup:forms.credentials.fields.username.placeholder) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "PASSWORD_INPUT",
+                    "id": "input_password",
+                    "ref": "password",
+                    "label": "{{ t(signup:forms.credentials.fields.password.label) }}",
+                    "placeholder": "{{ t(signup:forms.credentials.fields.password.placeholder) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_credentials",
+                    "label": "{{ t(signup:forms.credentials.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_username",
+                  "identifier": "username",
+                  "type": "TEXT_INPUT",
+                  "required": true
+                },
+                {
+                  "ref": "input_password",
+                  "identifier": "password",
+                  "type": "PASSWORD_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_credentials",
+                "nextNode": "user_provisioning"
+              }
+            }
+          ]
+        },
+        {
+          "id": "user_provisioning",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "ProvisioningExecutor"
+          },
+          "onSuccess": "end",
+          "onIncomplete": "prompt_schema_attrs"
+        },
+        {
+          "id": "prompt_schema_attrs",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_schema_attrs",
+                "label": "Tell us about you",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_dynamic_user_inputs",
+                "components": [
+                  {
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_schema_attrs",
+                    "label": "Continue",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_schema_attrs",
+                "nextNode": "user_provisioning"
+              }
+            }
+          ]
+        },
+        {
+          "id": "call_owner_login",
+          "type": "CALL",
+          "flow": {
+            "ref": "01900000-0000-7000-8000-000000000092"
+          },
+          "onSuccess": "agent_type_resolution"
+        },
+        {
+          "id": "agent_type_resolution",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "AgentTypeResolver"
+          },
+          "properties": {
+            "allowedAgentTypes": ["default"]
+          },
+          "onSuccess": "agent_provisioning"
+        },
+        {
+          "id": "prompt_agent_details",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "heading_agent_details",
+                "label": "{{ t(signup:forms.personal_agent_details.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "text_agent_details",
+                "label": "{{ t(signup:forms.personal_agent_details.jwks_subtitle) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_agent_details",
+                "components": [
+                  {
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_agent_inputs"
+                  },
+                  {
+                    "type": "TEXT_INPUT",
+                    "id": "input_agent_redirect_uris",
+                    "ref": "redirectUris",
+                    "label": "{{ t(signup:forms.personal_agent_details.fields.redirect_uris.label) }}",
+                    "placeholder": "{{ t(signup:forms.personal_agent_details.fields.redirect_uris.placeholder) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "TEXT_INPUT",
+                    "id": "input_agent_jwks_uri",
+                    "ref": "jwksUri",
+                    "label": "{{ t(signup:forms.personal_agent_details.fields.jwks_uri.label) }}",
+                    "placeholder": "{{ t(signup:forms.personal_agent_details.fields.jwks_uri.required_placeholder) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_agent_details",
+                    "label": "{{ t(signup:forms.personal_agent_details.actions.submit.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_agent_redirect_uris",
+                  "identifier": "redirectUris",
+                  "type": "TEXT_INPUT",
+                  "required": true
+                },
+                {
+                  "ref": "input_agent_jwks_uri",
+                  "identifier": "jwksUri",
+                  "type": "TEXT_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_agent_details",
+                "nextNode": "agent_provisioning"
+              }
+            }
+          ]
+        },
+        {
+          "id": "agent_provisioning",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "ProvisioningExecutor",
+            "inputs": [
+              {
+                "identifier": "kind",
+                "type": "TEXT_INPUT",
+                "required": false,
+                "defaultValue": "personal-assistant",
+                "constant": true
+              },
+              {
+                "identifier": "authFlowId",
+                "type": "TEXT_INPUT",
+                "required": false,
+                "defaultValue": "01900000-0000-7000-8000-000000000092",
+                "constant": true
+              },
+              {
+                "identifier": "alwaysPromptConsent",
+                "type": "BOOLEAN_INPUT",
+                "required": false,
+                "defaultValue": "true",
+                "constant": true
+              }
+            ]
+          },
+          "properties": {
+            "includeOptional": true
+          },
+          "onSuccess": "agent_credentials",
+          "onIncomplete": "prompt_agent_details",
+          "onFailure": "prompt_agent_details"
+        },
+        {
+          "id": "agent_credentials",
+          "type": "PROMPT",
+          "message": "Personal assistant registered successfully",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "color": "SUCCESS",
+                "id": "agent_credentials_heading",
+                "label": "{{ t(signup:forms.personal_agent_credentials.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "agent_credentials_message",
+                "label": "{{ t(signup:forms.personal_agent_credentials.jwks_message) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "id": "agent_credentials_client_id",
+                "label": "{{ t(agentOnboarding:forms.credentials.client_id_label) }}",
+                "source": "clientId",
+                "type": "COPYABLE_TEXT"
+              }
+            ]
+          },
+          "next": "end"
+        },
+        {
+          "id": "end",
+          "type": "END"
+        }
+      ]
+    },
+    "nodes": []
+  },
+  {
+    "resourceType": "TEMPLATE",
     "category": "STARTER",
     "type": "EMAIL_SELF_INVITE",
     "flowType": "REGISTRATION",

@@ -608,6 +608,36 @@ paths:
                     description:
                       key: "error.agentservice.owner_not_found_description"
                       defaultValue: "The specified owner does not match any known user, application, or agent"
+                grant-type-not-allowed-for-personal-agent:
+                  summary: A personal agent is given a grant type it cannot use
+                  value:
+                    code: "AGT-1049"
+                    message:
+                      key: "error.agentservice.grant_type_not_allowed_for_personal_agent"
+                      defaultValue: "Grant type not allowed"
+                    description:
+                      key: "error.agentservice.grant_type_not_allowed_for_personal_agent_description"
+                      defaultValue: "A personal agent can only use the authorization code, CIBA, and refresh token grants"
+                invalid-kind:
+                  summary: The kind is not a known agent kind
+                  value:
+                    code: "AGT-1050"
+                    message:
+                      key: "error.agentservice.invalid_kind"
+                      defaultValue: "Invalid kind"
+                    description:
+                      key: "error.agentservice.invalid_kind_description"
+                      defaultValue: "The agent kind is not a known kind"
+                invalid-public-key:
+                  summary: A personal agent's public key is not a JWKS document with a key
+                  value:
+                    code: "AGT-1051"
+                    message:
+                      key: "error.agentservice.invalid_public_key"
+                      defaultValue: "Invalid public key"
+                    description:
+                      key: "error.agentservice.invalid_public_key_description"
+                      defaultValue: "The public key must be a JWKS document with at least one key"
                 invalid-user-attribute:
                   summary: User attribute not valid for any allowed user type
                   value:
@@ -1996,6 +2026,13 @@ components:
           example: "2027-03-31T00:00:00Z"
         lifespan:
           $ref: '#/components/schemas/Lifespan'
+        kind:
+          type: string
+          readOnly: true
+          description: |
+            The agent kind, set when the agent is created and never changed.
+            `personal-assistant` marks a personal agent, which acts only for its owner, a user.
+          example: "personal-assistant"
         attributes:
           type: object
           additionalProperties: true
@@ -2066,7 +2103,8 @@ components:
       required: [type]
       description: |
         Request to create an agent. What gets persisted depends on which fields are provided:
-        - Always: entity row (`id`, `ouId`, `type`, `description`, `attributes`, `owner`).
+        - Always: entity row (`id`, `ouId`, `type`, `description`, `attributes`, `owner`,
+          `kind`).
         - When any inbound auth field is set: inbound client row (`authFlowId` defaults to the
           system default when omitted).
         - When `inboundAuthConfig` is set: OAuth profile row.
@@ -2120,6 +2158,17 @@ components:
             time. Omit it, or send `null`, to register an agent that does not expire. From this
             instant the agent obtains no new tokens, and no token issued to or for it outlives it.
           example: "2027-03-31T00:00:00Z"
+        kind:
+          type: string
+          enum: ["", personal-assistant]
+          description: |
+            Optional agent kind, fixed once the agent is created. Omit it, or send an empty string, for an
+            ordinary agent; any other value than the listed ones is refused. `personal-assistant` registers a
+            personal agent for the user named in `owner`, which is then required; the agent may use only the
+            authorization code (the default), CIBA and refresh token grants. Its OAuth client gets response type
+            `code` and PKCE with the authorization code grant, `private_key_jwt` when a key is given and a client
+            secret otherwise, and the personal agent login flow when no `authFlowId` is given. `delegated` does
+            not apply to a personal agent.
         attributes:
           type: object
           additionalProperties: true
@@ -2324,6 +2373,13 @@ components:
           example: "2027-03-31T00:00:00Z"
         lifespan:
           $ref: '#/components/schemas/Lifespan'
+        kind:
+          type: string
+          readOnly: true
+          description: |
+            The agent kind, set when the agent is created and never changed.
+            `personal-assistant` marks a personal agent, which acts only for its owner, a user.
+          example: "personal-assistant"
         attributes:
           type: object
           additionalProperties: true
@@ -2432,6 +2488,13 @@ components:
           example: "2027-03-31T00:00:00Z"
         lifespan:
           $ref: '#/components/schemas/Lifespan'
+        kind:
+          type: string
+          readOnly: true
+          description: |
+            The agent kind, set when the agent is created and never changed.
+            `personal-assistant` marks a personal agent, which acts only for its owner, a user.
+          example: "personal-assistant"
         attributes:
           type: object
           additionalProperties: true
@@ -2578,6 +2641,12 @@ components:
           type: integer
           description: Consent validity period in seconds. `0` means no expiration.
           example: 86400
+        alwaysPrompt:
+          type: boolean
+          description: |
+            Ask for consent on every authorization, even when an earlier consent covers it. Defaults to
+            false, and to true for a personal agent created without a value.
+          example: true
 
     AccessTokenConfig:
       type: object
