@@ -18,7 +18,7 @@ import (
 )
 
 // ImportProjectSkipSuite checks that the all-in-one server, which also runs as a Data Plane, skips the
-// project documents of a Control Plane export and still imports the root organization unit beside it.
+// project documents of a Control Plane export and still imports the organization unit beside it.
 type ImportProjectSkipSuite struct {
 	suite.Suite
 }
@@ -31,9 +31,9 @@ func (suite *ImportProjectSkipSuite) TestProjectDocumentIsSkipped() {
 	rootID := "019a0000-0000-7000-8000-0000000003a1"
 	handle := fmt.Sprintf("skipped-project-%d", time.Now().UnixNano())
 	_ = testutils.DeleteOrganizationUnit(rootID)
-	content := fmt.Sprintf("resource_type: project\nid: 019a0000-0000-7000-8000-0000000003a0\nrootOuId: %s\n"+
+	content := fmt.Sprintf("resource_type: project\nid: 019a0000-0000-7000-8000-0000000003a0\n"+
 		"handle: %s\ndisplayName: Skipped\n---\nresource_type: organization_unit\nid: %s\nhandle: %s\n"+
-		"name: Skipped\n", rootID, handle, rootID, handle)
+		"name: Skipped\n", handle, rootID, handle)
 	body, err := json.Marshal(map[string]any{
 		"content": content,
 		"options": map[string]any{"target": "runtime", "upsert": true},

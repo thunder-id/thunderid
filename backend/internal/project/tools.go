@@ -25,7 +25,6 @@ type projectMCPItem struct {
 	Handle      string `json:"handle"`
 	DisplayName string `json:"displayName"`
 	Description string `json:"description,omitempty"`
-	RootOUID    string `json:"rootOuId"`
 	CreatedAt   string `json:"createdAt"`
 }
 
@@ -40,7 +39,7 @@ type projectListMCPResponse struct {
 //nolint:lll
 type createProjectMCPInput struct {
 	ID          string `json:"id,omitempty" jsonschema:"Optional UUID to use as the project ID. Omit it to have one generated."`
-	Handle      string `json:"handle" jsonschema:"Immutable identifier of the project. It becomes the root organization unit's handle, so organization unit handle rules apply and it must not contain /."`
+	Handle      string `json:"handle" jsonschema:"Immutable identifier of the project, unique across projects. Lowercase letters, numbers, hyphens and underscores, at most 100 characters."`
 	DisplayName string `json:"displayName" jsonschema:"Display name of the project, at most 100 characters"`
 	Description string `json:"description,omitempty" jsonschema:"Optional description, at most 255 characters"`
 }
@@ -60,7 +59,7 @@ func registerMCPTools(server *mcp.Server, service ProjectServiceInterface) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_projects",
-		Description: `List all projects, oldest first. Each project has exactly one root organization unit.`,
+		Description: `List all projects, oldest first. Every project includes the default organization unit.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "List Projects",
 			ReadOnlyHint: true,
@@ -69,7 +68,7 @@ func registerMCPTools(server *mcp.Server, service ProjectServiceInterface) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_project_by_id",
-		Description: `Retrieve a project by ID, including the ID of its root organization unit.`,
+		Description: `Retrieve a project by ID.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Get Project by ID",
 			ReadOnlyHint: true,
@@ -78,9 +77,8 @@ func registerMCPTools(server *mcp.Server, service ProjectServiceInterface) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "create_project",
-		Description: `Create a project together with its root organization unit. The organization unit ` +
-			`takes the project's handle, display name and description. A handle already used by another ` +
-			`root organization unit is refused.`,
+		Description: `Create a project. Its resources are created in the default organization unit unless ` +
+			`they name one below it. A handle already used by another project is refused.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:          "Create Project",
 			IdempotentHint: false,
@@ -90,8 +88,7 @@ func registerMCPTools(server *mcp.Server, service ProjectServiceInterface) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "update_project",
 		Description: `Update the display name and description of a project (full replacement of both). ` +
-			`They are the root organization unit's name and description, so the root organization unit is ` +
-			`renamed too. The handle cannot change.`,
+			`The handle cannot change.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:          "Update Project",
 			IdempotentHint: true,
@@ -184,7 +181,6 @@ func toProjectMCPItem(project Project) projectMCPItem {
 		Handle:      project.Handle,
 		DisplayName: project.DisplayName,
 		Description: project.Description,
-		RootOUID:    project.RootOUID,
 		CreatedAt:   project.CreatedAt.Format(time.RFC3339Nano),
 	}
 }

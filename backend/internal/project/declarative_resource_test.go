@@ -71,11 +71,11 @@ func (suite *ProjectExporterTestSuite) TestGetAllResourceIDs() {
 }
 
 func (suite *ProjectExporterTestSuite) TestGetResourceByID() {
-	suite.Run("exports the project with its root organization unit ID", func() {
+	suite.Run("exports the project", func() {
 		suite.SetupTest()
 		suite.mockService.On("GetProject", mock.Anything, testProjectID).Return(&Project{
-			ID: testProjectID, Handle: "shop", DisplayName: "Shop", Description: "Online shop",
-			RootOUID: testRootOUID, CreatedAt: testCreatedAt,
+			ID: testProjectID, Handle: "shop", DisplayName: "Shop", Description: testDescription,
+			CreatedAt: testCreatedAt,
 		}, nil)
 
 		resource, name, svcErr := suite.exporter.GetResourceByID(context.Background(), testProjectID)
@@ -83,8 +83,8 @@ func (suite *ProjectExporterTestSuite) TestGetResourceByID() {
 		suite.Nil(svcErr)
 		suite.Equal("Shop", name)
 		suite.Equal(&projectDocument{
-			ID: testProjectID, RootOUID: testRootOUID, Handle: "shop", DisplayName: "Shop",
-			Description: "Online shop",
+			ID: testProjectID, Handle: "shop", DisplayName: "Shop",
+			Description: testDescription,
 		}, resource)
 	})
 	suite.Run("service error", func() {

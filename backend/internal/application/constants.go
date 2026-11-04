@@ -36,5 +36,5 @@ const projectIDQueryParam = "projectId"
 // are matched by value, since the Data Plane must not link the Control Plane only project package.
 const (
 	projectNotFoundErrorCode = "PRJ-1002"
-	ouNotInProjectErrorCode  = "PRJ-1013"
+	ouNotInProjectErrorCode  = "PRJ-1010"
 )
