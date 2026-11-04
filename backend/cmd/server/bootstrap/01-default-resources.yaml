@@ -7,10 +7,9 @@ logoUrl: "avatar:shape=rounded,variant=anonymous_entity,content=pavilion,colors=
 ---
 resource_type: project
 id: 01900000-0000-7000-8000-000000000002
-rootOuId: 01900000-0000-7000-8000-000000000001
 handle: default
 displayName: Default
-description: Default organization unit
+description: Default project
 ---
 resource_type: user_type
 id: 01900000-0000-7000-8000-000000000010

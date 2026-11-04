@@ -47,7 +47,7 @@ func (s *ProjectToolsTestSuite) SetupTest() {
 
 func (s *ProjectToolsTestSuite) project(id string) *Project {
 	return &Project{
-		ID: id, Handle: "shop", DisplayName: "Shop", Description: "Online shop", RootOUID: testRootOUID,
+		ID: id, Handle: "shop", DisplayName: "Shop", Description: testDescription,
 		CreatedAt: time.Date(2026, 10, 23, 8, 30, 0, 123456000, time.UTC),
 	}
 }
@@ -105,8 +105,8 @@ func (s *ProjectToolsTestSuite) TestListProjects() {
 
 		s.Equal(1, out.TotalResults)
 		s.Equal([]projectMCPItem{{
-			ID: testProjectID, Handle: "shop", DisplayName: "Shop", Description: "Online shop",
-			RootOUID: testRootOUID, CreatedAt: "2026-10-23T08:30:00.123456Z",
+			ID: testProjectID, Handle: "shop", DisplayName: "Shop", Description: testDescription,
+			CreatedAt: "2026-10-23T08:30:00.123456Z",
 		}}, out.Projects)
 	})
 	s.Run("reads every page", func() {
@@ -152,7 +152,7 @@ func (s *ProjectToolsTestSuite) TestGetProjectByID() {
 		s.structured(s.call("get_project_by_id", map[string]any{"id": testProjectID}), &out)
 
 		s.Equal(testProjectID, out.ID)
-		s.Equal(testRootOUID, out.RootOUID)
+		s.Equal("shop", out.Handle)
 	})
 	s.Run("not found", func() {
 		s.SetupTest()
@@ -168,12 +168,12 @@ func (s *ProjectToolsTestSuite) TestCreateProject() {
 	s.Run("creates the project from the input", func() {
 		s.SetupTest()
 		s.mockService.On("CreateProject", mock.Anything, ProjectRequest{
-			ID: testProjectID, Handle: "shop", DisplayName: "Shop", Description: "Online shop",
+			ID: testProjectID, Handle: "shop", DisplayName: "Shop", Description: testDescription,
 		}).Return(s.project(testProjectID), nil)
 
 		var out projectMCPItem
 		s.structured(s.call("create_project", map[string]any{
-			"id": testProjectID, "handle": "shop", "displayName": "Shop", "description": "Online shop",
+			"id": testProjectID, "handle": "shop", "displayName": "Shop", "description": testDescription,
 		}), &out)
 
 		s.Equal(testProjectID, out.ID)

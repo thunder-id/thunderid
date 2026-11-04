@@ -422,7 +422,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		sharingService,
 		authzDetailMgtService,
 		httpConnectionWriter,
-		// An imported root organization unit is created with its project.
+		// Declared projects are imported.
 		projectService,
 		// A control plane keeps configuration as references and holds no values, so none are resolved.
 		nil,

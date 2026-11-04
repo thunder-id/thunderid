@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -45,7 +44,7 @@ func (suite *ProjectHandlerTestSuite) TestHandleProjectPostRequest() {
 		suite.SetupTest()
 		suite.mockService.On("CreateProject", mock.Anything, ProjectRequest{
 			Handle: "shop", DisplayName: "Shop",
-		}).Return(&Project{ID: testProjectID, Handle: "shop", DisplayName: "Shop", RootOUID: testRootOUID}, nil)
+		}).Return(&Project{ID: testProjectID, Handle: "shop", DisplayName: "Shop"}, nil)
 		req := httptest.NewRequest(http.MethodPost, projectsPath,
 			strings.NewReader(`{"handle":"shop","displayName":"Shop"}`))
 		rec := httptest.NewRecorder()
@@ -55,7 +54,7 @@ func (suite *ProjectHandlerTestSuite) TestHandleProjectPostRequest() {
 		suite.Equal(http.StatusCreated, rec.Code)
 		var body Project
 		suite.Require().NoError(json.Unmarshal(rec.Body.Bytes(), &body))
-		suite.Equal(testRootOUID, body.RootOUID)
+		suite.Equal(testProjectID, body.ID)
 	})
 	suite.Run("malformed body", func() {
 		suite.SetupTest()
@@ -70,7 +69,7 @@ func (suite *ProjectHandlerTestSuite) TestHandleProjectPostRequest() {
 	suite.Run("handle conflict", func() {
 		suite.SetupTest()
 		suite.mockService.On("CreateProject", mock.Anything, mock.Anything).
-			Return(nil, &ou.ErrorOrganizationUnitHandleConflict)
+			Return(nil, &ErrorHandleConflict)
 		req := httptest.NewRequest(http.MethodPost, projectsPath,
 			strings.NewReader(`{"handle":"shop","displayName":"Shop"}`))
 		rec := httptest.NewRecorder()
@@ -78,6 +77,7 @@ func (suite *ProjectHandlerTestSuite) TestHandleProjectPostRequest() {
 		suite.handler.HandleProjectPostRequest(rec, req)
 
 		suite.Equal(http.StatusConflict, rec.Code)
+		suite.Equal(ErrorHandleConflict.Code, suite.errorCode(rec))
 	})
 }
 
@@ -208,18 +208,16 @@ func (suite *ProjectHandlerTestSuite) TestHandleProjectDeleteRequest() {
 
 		suite.Equal(http.StatusNoContent, rec.Code)
 	})
-	suite.Run("root OU in use", func() {
+	suite.Run("delete fails", func() {
 		suite.SetupTest()
-		suite.mockService.On("DeleteProject", mock.Anything, testProjectID).
-			Return(&ou.ErrorCannotDeleteOrganizationUnit)
+		suite.mockService.On("DeleteProject", mock.Anything, testProjectID).Return(&tidcommon.InternalServerError)
 		req := httptest.NewRequest(http.MethodDelete, projectsPath+"/"+testProjectID, nil)
 		req.SetPathValue("id", testProjectID)
 		rec := httptest.NewRecorder()
 
 		suite.handler.HandleProjectDeleteRequest(rec, req)
 
-		suite.Equal(http.StatusBadRequest, rec.Code)
-		suite.Equal(ou.ErrorCannotDeleteOrganizationUnit.Code, suite.errorCode(rec))
+		suite.Equal(http.StatusInternalServerError, rec.Code)
 	})
 }
 
@@ -230,8 +228,7 @@ func (suite *ProjectHandlerTestSuite) TestWriteProjectErrorStatusMapping() {
 	}{
 		{ErrorProjectNotFound, http.StatusNotFound},
 		{ErrorProjectIDConflict, http.StatusConflict},
-		{ou.ErrorOrganizationUnitHandleConflict, http.StatusConflict},
-		{ou.ErrorOrganizationUnitNameConflict, http.StatusConflict},
+		{ErrorHandleConflict, http.StatusConflict},
 		{tidcommon.ErrorUnauthorized, http.StatusForbidden},
 		{ErrorInvalidDisplayName, http.StatusBadRequest},
 		{tidcommon.InternalServerError, http.StatusInternalServerError},

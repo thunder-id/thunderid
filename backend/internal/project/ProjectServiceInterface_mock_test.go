@@ -398,8 +398,8 @@ func (_c *ProjectServiceInterfaceMock_GetResourceDependencies_Call) RunAndReturn
 }
 
 // ImportProject provides a mock function for the type ProjectServiceInterfaceMock
-func (_mock *ProjectServiceInterfaceMock) ImportProject(ctx context.Context, id string, rootOUID string, handle string, displayName string, description string, upsert bool) (bool, *common.ServiceError) {
-	ret := _mock.Called(ctx, id, rootOUID, handle, displayName, description, upsert)
+func (_mock *ProjectServiceInterfaceMock) ImportProject(ctx context.Context, id string, handle string, displayName string, description string, upsert bool) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx, id, handle, displayName, description, upsert)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ImportProject")
@@ -407,16 +407,16 @@ func (_mock *ProjectServiceInterfaceMock) ImportProject(ctx context.Context, id 
 
 	var r0 bool
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, string, bool) (bool, *common.ServiceError)); ok {
-		return returnFunc(ctx, id, rootOUID, handle, displayName, description, upsert)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, bool) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx, id, handle, displayName, description, upsert)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, string, bool) bool); ok {
-		r0 = returnFunc(ctx, id, rootOUID, handle, displayName, description, upsert)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, bool) bool); ok {
+		r0 = returnFunc(ctx, id, handle, displayName, description, upsert)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string, string, bool) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, id, rootOUID, handle, displayName, description, upsert)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string, bool) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, id, handle, displayName, description, upsert)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -433,16 +433,15 @@ type ProjectServiceInterfaceMock_ImportProject_Call struct {
 // ImportProject is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-//   - rootOUID string
 //   - handle string
 //   - displayName string
 //   - description string
 //   - upsert bool
-func (_e *ProjectServiceInterfaceMock_Expecter) ImportProject(ctx any, id any, rootOUID any, handle any, displayName any, description any, upsert any) *ProjectServiceInterfaceMock_ImportProject_Call {
-	return &ProjectServiceInterfaceMock_ImportProject_Call{Call: _e.mock.On("ImportProject", ctx, id, rootOUID, handle, displayName, description, upsert)}
+func (_e *ProjectServiceInterfaceMock_Expecter) ImportProject(ctx any, id any, handle any, displayName any, description any, upsert any) *ProjectServiceInterfaceMock_ImportProject_Call {
+	return &ProjectServiceInterfaceMock_ImportProject_Call{Call: _e.mock.On("ImportProject", ctx, id, handle, displayName, description, upsert)}
 }
 
-func (_c *ProjectServiceInterfaceMock_ImportProject_Call) Run(run func(ctx context.Context, id string, rootOUID string, handle string, displayName string, description string, upsert bool)) *ProjectServiceInterfaceMock_ImportProject_Call {
+func (_c *ProjectServiceInterfaceMock_ImportProject_Call) Run(run func(ctx context.Context, id string, handle string, displayName string, description string, upsert bool)) *ProjectServiceInterfaceMock_ImportProject_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -464,13 +463,9 @@ func (_c *ProjectServiceInterfaceMock_ImportProject_Call) Run(run func(ctx conte
 		if args[4] != nil {
 			arg4 = args[4].(string)
 		}
-		var arg5 string
+		var arg5 bool
 		if args[5] != nil {
-			arg5 = args[5].(string)
-		}
-		var arg6 bool
-		if args[6] != nil {
-			arg6 = args[6].(bool)
+			arg5 = args[5].(bool)
 		}
 		run(
 			arg0,
@@ -479,7 +474,6 @@ func (_c *ProjectServiceInterfaceMock_ImportProject_Call) Run(run func(ctx conte
 			arg3,
 			arg4,
 			arg5,
-			arg6,
 		)
 	})
 	return _c
@@ -490,7 +484,7 @@ func (_c *ProjectServiceInterfaceMock_ImportProject_Call) Return(b bool, service
 	return _c
 }
 
-func (_c *ProjectServiceInterfaceMock_ImportProject_Call) RunAndReturn(run func(ctx context.Context, id string, rootOUID string, handle string, displayName string, description string, upsert bool) (bool, *common.ServiceError)) *ProjectServiceInterfaceMock_ImportProject_Call {
+func (_c *ProjectServiceInterfaceMock_ImportProject_Call) RunAndReturn(run func(ctx context.Context, id string, handle string, displayName string, description string, upsert bool) (bool, *common.ServiceError)) *ProjectServiceInterfaceMock_ImportProject_Call {
 	_c.Call.Return(run)
 	return _c
 }

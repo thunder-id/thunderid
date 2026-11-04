@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 // projectAgent is the part of an agent create or update response these tests read.
@@ -29,75 +27,59 @@ type projectAgentList struct {
 
 func (ts *ProjectAPITestSuite) TestCreateAgentInProject() {
 	shop := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Shop"}`, ts.handle("agent-shop")))
-	other := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Other"}`, ts.handle("agent-other")))
+	otherRoot := ts.createRootOU("agent-other")
 
 	inShop := ts.createAgent(ts.agentBody("shop", `"projectId":%q`, shop.ID))
-	ts.Equal(shop.RootOUID, inShop.OUID)
-	inOther := ts.createAgent(ts.agentBody("other", `"ouId":%q`, other.RootOUID))
+	ts.Equal(defaultOUID, inShop.OUID)
+	inOther := ts.createAgent(ts.agentBody("other", `"ouId":%q`, otherRoot))
 
-	list := ts.listAgents("?projectId=" + url.QueryEscape(shop.ID))
-
-	ts.Equal(1, list.TotalResults)
-	ts.Require().Len(list.Agents, 1)
-	ts.Equal(inShop.ID, list.Agents[0].ID)
-	ts.Equal(new(true), list.Agents[0].IsOwnedByOU)
-
-	list = ts.listAgents("?projectId=" + url.QueryEscape(other.ID))
-	ts.Require().Len(list.Agents, 1)
-	ts.Equal(inOther.ID, list.Agents[0].ID)
+	ids := ts.agentIDs(ts.listAgents("?limit=100&projectId=" + url.QueryEscape(shop.ID)))
+	ts.Contains(ids, inShop.ID)
+	ts.NotContains(ids, inOther.ID)
 }
 
 func (ts *ProjectAPITestSuite) TestAgentInProjectOrganizationUnit() {
 	shop := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Shop"}`, ts.handle("agent-ou-shop")))
-	other := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Other"}`, ts.handle("agent-ou-other")))
-	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: ts.handle("agent-ou-child"), Name: "Child", Parent: &shop.RootOUID,
-	})
-	ts.Require().NoError(err)
-	ts.childOUs = append(ts.childOUs, childOUID)
+	otherRoot := ts.createRootOU("agent-ou-other")
+	childOUID := ts.createChildOU("agent-ou-child", defaultOUID)
 
-	inRoot := ts.createAgent(ts.agentBody("ou-root", `"projectId":%q,"ouId":%q`, shop.ID, shop.RootOUID))
-	ts.Equal(shop.RootOUID, inRoot.OUID)
+	inDefault := ts.createAgent(ts.agentBody("ou-default", `"projectId":%q,"ouId":%q`, shop.ID, defaultOUID))
+	ts.Equal(defaultOUID, inDefault.OUID)
 	inChild := ts.createAgent(ts.agentBody("ou-child", `"projectId":%q,"ouId":%q`, shop.ID, childOUID))
 	ts.Equal(childOUID, inChild.OUID)
 
 	status, body := ts.do(http.MethodPost, "/agents",
-		ts.agentBody("ou-outside", `"projectId":%q,"ouId":%q`, shop.ID, other.RootOUID))
+		ts.agentBody("ou-outside", `"projectId":%q,"ouId":%q`, shop.ID, otherRoot))
 	ts.Equal(http.StatusBadRequest, status, body)
 	ts.Equal("AGT-1048", codeOf(ts.T(), body))
 
-	list := ts.listAgents("?projectId=" + url.QueryEscape(shop.ID))
-	ts.Require().Len(list.Agents, 1)
-	ts.Equal(inRoot.ID, list.Agents[0].ID)
+	ids := ts.agentIDs(ts.listAgents("?limit=100&projectId=" + url.QueryEscape(shop.ID)))
+	ts.Contains(ids, inDefault.ID)
+	ts.NotContains(ids, inChild.ID)
 
-	list = ts.listAgents("?projectId=" + url.QueryEscape(shop.ID) + "&filter=" +
+	list := ts.listAgents("?projectId=" + url.QueryEscape(shop.ID) + "&filter=" +
 		url.QueryEscape(fmt.Sprintf("ouId eq %q", childOUID)))
-	ts.Require().Len(list.Agents, 1)
-	ts.Equal(inChild.ID, list.Agents[0].ID)
+	ts.Equal([]string{inChild.ID}, ts.agentIDs(list))
 
 	list = ts.listAgents("?projectId=" + url.QueryEscape(shop.ID) + "&filter=" +
-		url.QueryEscape(fmt.Sprintf("ouId eq %q", other.RootOUID)))
+		url.QueryEscape(fmt.Sprintf("ouId eq %q", otherRoot)))
 	ts.Empty(list.Agents)
 }
 
 func (ts *ProjectAPITestSuite) TestUpdateAgentWithProject() {
 	shop := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Shop"}`, ts.handle("agent-upd-shop")))
-	other := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Other"}`, ts.handle("agent-upd-other")))
-	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: ts.handle("agent-upd-child"), Name: "Child", Parent: &shop.RootOUID,
-	})
-	ts.Require().NoError(err)
-	ts.childOUs = append(ts.childOUs, childOUID)
+	otherRoot := ts.createRootOU("agent-upd-other")
+	childOUID := ts.createChildOU("agent-upd-child", defaultOUID)
 	agent := ts.createAgent(ts.agentBody("updated", `"projectId":%q`, shop.ID))
 
 	updated := ts.updateAgent(agent.ID, ts.agentBody("updated", `"projectId":%q`, shop.ID))
-	ts.Equal(shop.RootOUID, updated.OUID)
+	ts.Equal(defaultOUID, updated.OUID)
 
 	updated = ts.updateAgent(agent.ID, ts.agentBody("updated", `"projectId":%q,"ouId":%q`, shop.ID, childOUID))
 	ts.Equal(childOUID, updated.OUID)
 
 	status, body := ts.do(http.MethodPut, "/agents/"+agent.ID,
-		ts.agentBody("updated", `"projectId":%q`, other.ID))
+		ts.agentBody("updated", `"projectId":%q,"ouId":%q`, shop.ID, otherRoot))
 	ts.Equal(http.StatusBadRequest, status, body)
 	ts.Equal("AGT-1048", codeOf(ts.T(), body))
 }
@@ -145,4 +127,13 @@ func (ts *ProjectAPITestSuite) listAgents(query string) projectAgentList {
 	var list projectAgentList
 	ts.Require().Equal(http.StatusOK, ts.getJSON("/agents"+query, &list))
 	return list
+}
+
+// agentIDs returns the IDs of the listed agents.
+func (ts *ProjectAPITestSuite) agentIDs(list projectAgentList) []string {
+	ids := []string{}
+	for _, agent := range list.Agents {
+		ids = append(ids, agent.ID)
+	}
+	return ids
 }

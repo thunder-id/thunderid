@@ -152,7 +152,7 @@ type ouAdapter interface {
 // server passes none, skips project documents and imports organization units alone.
 type ProjectAdapter interface {
 	ProjectExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
-	ImportProject(ctx context.Context, id, rootOUID, handle, displayName, description string, upsert bool) (
+	ImportProject(ctx context.Context, id, handle, displayName, description string, upsert bool) (
 		bool, *tidcommon.ServiceError)
 }
 
@@ -1289,8 +1289,7 @@ var resourceDependencyOrder = []string{
 	resourceTypeGateway,
 	resourceTypeAuthorizationDetailType,
 	resourceTypeOrganizationUnit,
-	// After the organization units, so a project links to its root organization unit when the same
-	// import declares it, and before everything that is placed in an organization unit.
+	// Before everything that is placed in a project.
 	resourceTypeProject,
 	resourceTypeEntityType,
 	resourceTypeAgentType,
