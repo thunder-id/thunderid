@@ -1,0 +1,101 @@
+---
+title: Personal Agent Sign-In and Tokens
+docType: guide
+sidebar_position: 11
+persona: iam
+description: How a personal agent gets tokens for its owner in {{ProductName}} through browser sign-in, sign-in on another device, and refresh tokens, and what the sign-in flow must contain.
+---
+
+# Personal Agent Sign-In and Tokens
+
+A personal agent gets tokens only for its owner, and only after the owner signs in and approves what the agent may do. It uses the same grants as any agent acting for a user, with the requests and responses described in [Agent Access on Behalf of Users](../../authentication/on-behalf-of-user). What differs for a personal agent is the sign-in flow, the owner-only sign-in, consent on every authorization, and the reasons a request is refused.
+
+## The sign-in flow
+
+Every authorization runs the sign-in flow set on the agent when it was registered. The registration flow can set it as a fixed value (see [Fixed values](../register#fixed-values)). Otherwise the agent gets the shipped `default-personal-agent-auth-flow`, which runs these steps in order:
+
+1. Signs the owner in with a username and password.
+2. Evaluates the owner's permissions with `AuthorizationExecutor`.
+3. Asks the owner for consent with `ConsentExecutor`.
+4. Issues the assertion with `AuthAssertExecutor`.
+
+To use another sign-in method, such as passkeys or social sign-in, build your own sign-in flow and fix its handle in the registration flow. Include `AuthorizationExecutor` before `AuthAssertExecutor`. Following it with `ConsentExecutor` is recommended:
+
+- **`AuthorizationExecutor`** evaluates which of the requested permissions the owner holds. Without it, the token carries no permission scopes.
+- **`ConsentExecutor`** asks the owner to approve what the agent requested. Without it, the token carries every requested permission the owner holds, and the owner is never asked.
+
+See [Authorization and Consent](../../../flows/advanced-configurations#authorization-and-consent) for both executors.
+
+The owner cannot change an agent's sign-in flow through self-service. An administrator can, by updating the agent (see [Update a personal agent](../oversight#update-a-personal-agent)). A change to the registration flow's fixed value applies only to agents registered after the change.
+
+## Only the owner can sign in
+
+A personal agent accepts one subject: its owner. If anyone else signs in through the agent's sign-in flow, the sign-in is refused with "The authenticated subject is not allowed to sign in to this application", and no authorization code is issued. An existing single sign-on session of another user is not reused, so the flow asks for a fresh sign-in instead.
+
+## The owner approves every authorization
+
+The consent prompt appears on every authorization, even when the owner approved the same permissions before. A personal agent gets this behavior through `loginConsent.alwaysPrompt`, which is `true` unless the registration flow set `alwaysPromptConsent` to `false`. See [Ask for consent on every authorization](../../../consent#ask-for-consent-on-every-authorization).
+
+The permissions the owner sees are the ones the agent requested that the owner holds. The owner can approve any of them. The token carries only what was approved.
+
+## Get a token for the owner
+
+The agent authenticates to the token endpoint with its own credential: a signed assertion for `private_key_jwt`, or its client secret. See [Client Authentication Methods](../../../protocols/oauth-oidc/client-authentication-methods).
+
+### Browser sign-in
+
+The agent sends the owner to the authorization endpoint, with PKCE. The owner signs in and approves in the browser, and <ProductName /> returns an authorization code to the agent's redirect URI. The agent exchanges the code for tokens. With `private_key_jwt`, the request looks like this:
+
+```bash
+curl -X POST https://localhost:8090/oauth2/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'grant_type=authorization_code' \
+  -d 'code=<AUTH_CODE>' \
+  -d 'redirect_uri=<REDIRECT_URI>' \
+  -d 'code_verifier=<PKCE_VERIFIER>' \
+  -d 'client_id=<CLIENT_ID>' \
+  -d 'client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer' \
+  -d 'client_assertion=<SIGNED_ASSERTION>'
+```
+
+A personal agent has the authorization code grant from registration. See [Authorization Code](../../../protocols/oauth-oidc/authorization-code) for the flow.
+
+### Sign-in on another device
+
+An agent that cannot open a browser for the owner asks for approval on the owner's own device with CIBA (Client-Initiated Backchannel Authentication). The owner first adds the CIBA grant to the agent (see [Update an agent](../owner-self-service#update-an-agent)). The agent then sends `POST /oauth2/bc-authorize` with a `login_hint` that identifies the owner, and polls the token endpoint while the owner approves. The approval runs the agent's sign-in flow, so only the owner can complete it. See [Backchannel Authentication (CIBA)](../../../protocols/oauth-oidc/backchannel-authentication).
+
+A personal agent cannot use token exchange or client credentials. It never holds those grants, so the token endpoint refuses them with `unauthorized_client`.
+
+### Keep access without a new sign-in
+
+To renew the owner's access without a new sign-in, the owner adds the refresh token grant to the agent (see [Update an agent](../owner-self-service#update-an-agent)). The agent then receives a refresh token with each new token and exchanges it as any client does. See [Refresh Token](../../../protocols/oauth-oidc/refresh-token).
+
+A refresh token stops working when the owner removes the refresh token grant, when the agent is suspended, or when the owner's account is suspended.
+
+## What the token carries
+
+Every token a personal agent receives names the owner as `sub` and the agent as `act.sub`:
+
+```json
+{
+  "iss": "https://localhost:8090",
+  "sub": "<owner-user-id>",
+  "act": { "sub": "<agent-id>" },
+  "scope": "<approved-permissions>",
+  ...
+}
+```
+
+No grant returns a token for the agent alone. A resource reads `sub` to apply the owner's permissions and `act` to see which agent made the request. See [What the token carries](../../authentication/on-behalf-of-user#what-the-token-carries) for the full claim set.
+
+## Troubleshooting
+
+| What happens | Likely cause |
+|---|---|
+| The sign-in fails with "The authenticated subject is not allowed to sign in to this application" | Someone other than the owner signed in through the agent's sign-in flow. |
+| `unauthorized_client` at the token endpoint | The agent does not hold the grant it used. A personal agent never holds client credentials, token exchange, or JWT bearer, and the owner may have removed the CIBA or refresh token grant. |
+| `invalid_client` at the token endpoint | The agent's credential is wrong, or the agent is suspended by its owner, by your organization, or with its owner's account. |
+| `invalid_grant` on a refresh | The owner's account is suspended, or the refresh token was revoked when the agent was suspended. |
+| A token that worked stops working | The agent was suspended, which revokes the tokens issued to it. See [Owner Self-Service](../owner-self-service) and [Oversee Personal Agents](../oversight). |
+
+For errors every agent can get, see [Troubleshooting](../../authentication/agent-own-token#troubleshooting) and the [Agent Access on Behalf of Users troubleshooting](../../authentication/on-behalf-of-user#troubleshooting).

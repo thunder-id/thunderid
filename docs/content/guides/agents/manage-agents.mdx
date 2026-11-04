@@ -41,7 +41,7 @@ curl -X POST https://localhost:8090/agents \
   }'
 ```
 
-`type` and `attributes.name` are required, and so is an organization unit, given as `ouId` or `ouHandle`, unless you pass `projectId` (see [Scope agents to a project](#scope-agents-to-a-project)); `owner` and `validUntil` are optional, and so are the other attributes unless the [agent schema](../agent-schema) marks them required. `validUntil` is when the agent's lifespan ends; see [Set an Agent's Lifespan](../agent-lifespan). `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
+`type` and `attributes.name` are required, and so is an organization unit, given as `ouId` or `ouHandle`, unless you pass `projectId` (see [Scope agents to a project](#scope-agents-to-a-project)); `owner` and `validUntil` are optional, and so are the other attributes unless the [agent schema](../agent-schema) marks them required. `validUntil` is when the agent's lifespan ends; see [Set an Agent's Lifespan](../agent-lifespan). To register a personal agent for a user, also send `kind` set to `personal-assistant` and the user as `owner`; see [Register Personal Agents](../personal-agents/register#register-a-personal-agent-for-a-user). `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
 
 </TabItem>
 </Tabs>
@@ -58,9 +58,13 @@ In the Console, open the agent from the list. The name and description are edita
 
 Through the API, update an agent with `PUT /agents/<AGENT_ID>`. The request replaces the agent, so send `type` and every field to keep, not only the ones being changed. Leaving out the OAuth profile fields removes the agent's OAuth profile. See the [Agents API Reference](../../../apis#tag/agents) for the full request and response.
 
+:::note[Personal agents]
+A personal agent is updated the same way, but its grant types stay limited to what a personal agent may hold. See [Update a personal agent](../personal-agents/oversight#update-a-personal-agent).
+:::
+
 ### Identifiers and owner
 
-Every agent has an **Agent ID**, its identity in <ProductName />, and an **Owner**, the person accountable for it. The owner is the contact point for what the agent does. Assigning one grants that user no access to the agent.
+Every agent has an **Agent ID**, its identity in <ProductName />, and an **Owner**, the person accountable for it. The owner is the contact point for what the agent does. Assigning one grants that user no access to the agent, unless it is a personal agent, which its owner manages through [Owner Self-Service](../personal-agents/owner-self-service).
 
 - **Console:** the **Overview** tab shows the Agent ID and owner under **Agent details**, and the **Advanced** tab is where the owner is changed.
 - **API:** `GET /agents/<AGENT_ID>` returns both.

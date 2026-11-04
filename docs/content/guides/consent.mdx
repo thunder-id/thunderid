@@ -103,6 +103,16 @@ curl --location -X POST 'https://localhost:8090/applications' \
 
 `validityPeriod` is specified in seconds (e.g., `120` for a 2-minute validity period). After this period expires, the user will be prompted to grant consent again during the next login attempt.
 
+### Ask for consent on every authorization
+
+To ask for consent on every authorization, even when the user granted the same consent before, set `alwaysPrompt` to `true` in the `loginConsent` section of the application:
+
+```json
+"loginConsent": {
+    "alwaysPrompt": true
+}
+```
+
 ## Trying It Out
 
 To verify the attribute consent flow using an application configured with consent requirements:

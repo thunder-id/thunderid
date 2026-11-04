@@ -1,0 +1,44 @@
+---
+title: Secure Personal Agents
+docType: guide
+sidebar_position: 14
+persona: iam
+description: Harden personal agents in {{ProductName}}. Limit the management APIs to tokens issued for them, keep access tokens short-lived, fix registration values, and write suspension notes for owners.
+---
+
+# Secure Personal Agents
+
+Your users register personal agents built by others, which your organization does not control. The settings below limit what such an agent can do with its tokens, and how long those tokens last.
+
+## Accept only management tokens on <ProductName />'s APIs
+
+A personal agent's token names its owner as the subject. By default, <ProductName />'s REST APIs accept any token <ProductName /> issued and check only its scopes. A token the owner gave an agent for your own API therefore also works on <ProductName />'s APIs, as the owner.
+
+The registration flow and the self-service routes already refuse such delegated tokens. To cover the rest of <ProductName />'s APIs, set `server.security.rest.audience` to the identifier of the resource server your management tokens are issued for. The REST APIs then accept only tokens issued for that audience.
+
+Once the audience is set, your applications that call <ProductName />'s APIs must request their tokens for it with the `resource` parameter. This includes a portal that calls the self-service routes. See [Security Configuration](../../../../deployment/configuration#security-configuration).
+
+## Keep agents' access tokens short-lived
+
+An access token stays valid until it expires. A short lifetime limits how long a leaked token stays useful.
+
+- **Every agent registered through a flow** gets the deployment's default lifetimes: `jwt.validity_period` for access tokens (3600 seconds by default) and `oauth.refresh_token.validity_period` for refresh tokens. Lower them in `deployment.yaml`. They apply to every client that sets no lifetime of its own. See [JWT Configuration](../../../../deployment/configuration#jwt-configuration).
+- **A single agent** can have its own access token lifetime. Set `token.accessToken.userConfig.validityPeriod` in its OAuth configuration through the agent management API.
+
+A refresh token lets the agent get new access tokens without the owner. Without the refresh token grant, the owner signs in and approves each new token.
+
+## Fix the values your organization decides
+
+Set the values your organization decides as constant inputs on the registration flow's `ProvisioningExecutor` node. These are the agent's `kind`, its sign-in flow (`authFlowHandle` or `authFlowId`), and `alwaysPromptConsent`. Whoever runs the flow cannot change a constant. See [Fixed values](../register#fixed-values).
+
+## Keep consent in every sign-in flow
+
+The owner approves an agent's access in the sign-in flow's consent step. When you build a sign-in flow for personal agents, keep `ConsentExecutor` after `AuthorizationExecutor`. Without it, the agent gets every permission it requests that the owner holds, and the owner is never asked. See [The sign-in flow](../sign-in-and-tokens#the-sign-in-flow).
+
+## Prefer a key pair to a client secret
+
+Collect a JWKS URI or a public key in the registration flow, so the agent authenticates with `private_key_jwt`. The private key stays with the agent, so no secret is shown on a screen or passed through the flow. See [Choose the agent's credential](../register#choose-the-agents-credential).
+
+## Write suspension notes for the owner
+
+When you suspend a personal agent, the owner can read your operator note. Write it for the owner: say why the agent is suspended and what they can do, such as updating the agent's software. Leave out internal case details, other users' data, and anything else you would not show the owner.

@@ -1,0 +1,100 @@
+---
+title: Owner Self-Service
+docType: guide
+sidebar_position: 12
+persona: iam
+description: Let users list, update, suspend, and delete their own personal agents through the {{ProductName}} self-service API, from your application.
+---
+
+# Owner Self-Service
+
+The owner of a personal agent manages it through the self-service API under `/users/me/agents`. Your application, such as a customer portal, calls these routes with the owner's access token to show their agents and act on them.
+
+## Call the self-service routes
+
+Every route acts on the caller's own personal agents and needs the owner's access token in the `Authorization` header.
+
+- **The token must be the owner's own.** A request without a user access token is refused with `401`. A delegated token, one carrying an `act` claim, such as an agent's token for its owner, is refused with `403`. A personal agent therefore cannot manage itself or its owner's other agents.
+- **Only the caller's personal agents are reachable.** An update, delete, suspend, or unsuspend returns `404` for any other agent. That includes an agent that does not exist, is not a personal agent, or belongs to someone else.
+- **Declarative agents are read-only.** A personal agent defined in a declarative file can be read, but an update or delete returns `403`.
+
+The responses are the same agent objects the administrator's agent API returns. None of them carries a client secret.
+
+See the [Self API Reference](../../../../apis#tag/self) for every request and response.
+
+## List and read agents
+
+`GET /users/me/agents` lists the caller's personal agents across every organization unit, with `limit` and `offset` for pagination. Each entry is the summary `GET /agents` returns.
+
+`GET /users/me/agents/<AGENT_ID>` returns one agent, as `GET /agents/<AGENT_ID>` returns it. The read includes the agent's status:
+
+```json
+{
+  "id": "<agent-id>",
+  "kind": "personal-assistant",
+  "owner": "<owner-user-id>",
+  "description": "Answers questions about my spending",
+  "attributes": { "name": "Spending Assistant" },
+  "status": {
+    "value": "SUSPENDED",
+    "details": {
+      "reason": "ADMINISTRATIVE_SUSPENSION",
+      "appliedBy": ["organization", "owner"],
+      "since": "2026-10-12T08:00:00Z",
+      "operatorNote": "Security advisory for this agent"
+    }
+  }
+}
+```
+
+`appliedBy` lists everyone holding the agent suspended:
+
+| Value | Placed by | Lifted by |
+|---|---|---|
+| `owner` | The owner, through the self-service API | The owner |
+| `organization` | An administrator | An administrator |
+| `cascade` | <ProductName />, when the owner's account is suspended | <ProductName />, when the owner's account is unsuspended |
+
+The agent stays suspended while any of them remains. `reason`, `since`, and `operatorNote` describe one suspension, in this order of priority: the organization's, the owner's (`OWNER_SUSPENSION`), then the cascaded one (`CASCADED_SUSPENSION`). The owner can read the administrator's operator note, so a portal can show the owner why the agent is suspended.
+
+## Update an agent
+
+`PUT /users/me/agents/<AGENT_ID>` replaces the part of the agent its owner may change: the description, the agent schema attributes (including the name), the grant types, and the redirect URIs. Read the agent first and send these fields back with your changes.
+
+```bash
+curl -X PUT https://localhost:8090/users/me/agents/<AGENT_ID> \
+  -H 'Authorization: Bearer <OWNER_ACCESS_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "description": "Answers questions about my spending",
+    "attributes": { "name": "Spending Assistant" },
+    "grantTypes": ["authorization_code", "refresh_token"],
+    "redirectUris": ["https://assistant.example.com/callback"]
+  }'
+```
+
+- **`attributes`, `grantTypes`, and `redirectUris` are required.** A `description` left out is cleared.
+- **Other fields are refused** with `400`. The owner cannot change the owner, the kind, the sign-in flow, the credential, or any other OAuth setting here.
+- **Grant types** must be a subset of `authorization_code`, `urn:openid:params:grant-type:ciba`, and `refresh_token`. Any other grant is refused with `400`. The authorization code grant needs at least one redirect URI.
+- **An empty grant list removes every grant,** so the agent gets no tokens until the owner adds one.
+- **A removed grant is refused from then on.** Removing the refresh token grant also stops the refresh tokens the agent already holds.
+
+## Suspend an agent
+
+Suspending an agent stops it without deleting it. Its credential and settings are kept, and lifting the suspension needs no new registration.
+
+| Request | What it does |
+|---|---|
+| `POST /users/me/agents/<AGENT_ID>/suspend` | Revokes the tokens issued to the agent, then suspends it. Returns `204`. Suspending an agent the owner already suspended changes nothing. |
+| `POST /users/me/agents/<AGENT_ID>/unsuspend` | Lifts the owner's suspension. Returns `204`. An organization suspension stays in force. |
+| `POST /users/me/agents/suspend` | Suspends every personal agent of the caller that the caller has not already suspended. Returns `{ "suspendedCount": 2 }`, the number of agents this request suspended. |
+
+The owner's suspension is independent of the organization's. An owner can suspend an agent the organization already suspended, and each suspension stays in force until whoever placed it lifts it. A suspended agent fails client authentication, so it can neither sign its owner in nor refresh a token.
+
+Suspending one agent leaves the owner's other agents and the owner's own sessions alone.
+
+## Delete an agent
+
+`DELETE /users/me/agents/<AGENT_ID>` deletes the agent and returns `204`. Deletion is permanent: the agent and its credential are removed and cannot be restored. To use the agent again, the owner registers it again. To stop an agent for a while instead, suspend it.
+
+
