@@ -19,7 +19,8 @@ The entry points are the client surface in
 [spec.md](spec.md#client-surface), the redirect callback the SDK parses, the responses the
 ThunderID server returns, and the configuration the host application supplies. An SDK that runs
 on a server and handles back-channel logout has one more: an unauthenticated endpoint that
-receives a logout token.
+receives a logout token. An SDK that runs on a server can also hold credentials no public client
+may: the server's access evaluation secret and the client's own credentials for introspection.
 
 Cross-cutting concerns covered elsewhere: token issuance, signing, and revocation at the
 server; the authorization and flow execution endpoints themselves; client registration and
@@ -39,6 +40,11 @@ This model covers:
 - Receipt of a back-channel logout token by an SDK that runs on a server, and the ending of the
   local sessions it names.
 - Starting a verification of the signed-in user's own email address or mobile number.
+- Access evaluation with the server's `Direct-Auth-Secret`, and token introspection with client
+  credentials, in an SDK that runs on a server.
+- Device authorization on the device side, and the `deviceCode` it holds.
+- Dynamic client registration, and the `client_secret` it returns once.
+- Signing in to an organization unit, and switching between units.
 - Configuration supplied by the host application, where it can weaken the above.
 
 Out of scope:
@@ -68,6 +74,10 @@ flowchart LR
     REVOKE[Revocation endpoint]
     JWKS[JWKS endpoint]
     NOTIFY[Back-channel logout delivery]
+    OUEP[Organization unit authorize and token]
+    DEVICE[Device authorization endpoint]
+    SERVERONLY[Introspection and access evaluation]
+    DCR[Client registration endpoint]
   end
   APP --> SDK
   SDK --> STORE
@@ -77,6 +87,10 @@ flowchart LR
   SDK -->|TLS: flow steps and credentials| FLOW
   SDK -->|TLS: revoke on sign-out| REVOKE
   SDK -->|TLS: key retrieval| JWKS
+  SDK -->|TLS: sign-in bounded to a unit| OUEP
+  SDK -->|TLS: deviceCode, device side only| DEVICE
+  SDK -->|TLS: client credentials or Direct-Auth-Secret, server-side SDKs only| SERVERONLY
+  SDK -->|TLS: register, client_secret returned once| DCR
   NOTIFY -.->|logout token to the registered URI, server-side SDKs only| SDK
 ```
 
@@ -578,6 +592,285 @@ sequenceDiagram
 | 4 | [Tampering] | The application shows an attribute as verified that the server never recorded | [No] | Status comes only from the read-only `verifiedAttributes` of `/users/me`, re-read after `COMPLETE`; the SDK never marks an attribute verified locally, and an absent field shows neither status (AC10.4) |
 | 5 | [Information Disclosure] | The code reaches a log or a crash report | [No] | The code is a credential under interaction 03 and is never logged (AC10.5) |
 
+#### 09: Access evaluation with the server secret
+
+**Description**
+
+A server-side SDK asks the server's AuthZEN policy decision point whether a subject may perform
+an action on a resource. It reads the endpoints from `/.well-known/authzen-configuration`,
+checks that `policy_decision_point` matches the configured server, and posts the evaluation with
+a server-level secret in the `Direct-Auth-Secret` header. The secret is not a user's or a
+client's credential: it authorizes any evaluation against the deployment, so whoever holds it
+can probe every subject's entitlements.
+
+**Assets involved**
+
+| Initiator | Intermediate | Target |
+| --- | --- | --- |
+| Host application on a server | SDK | AuthZEN metadata, access evaluation endpoints |
+
+**Data flow**
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant A as Host application
+  participant S as SDK
+  participant M as AuthZEN metadata
+  participant E as Access evaluation endpoint
+  A->>S: evaluateAccess(subject, action, resource)
+  S->>M: fetch metadata, cached
+  S->>S: policy_decision_point must match the server exactly
+  S->>E: evaluation, Direct-Auth-Secret header
+  E->>S: decision, or a denial with an error context
+  S->>A: decision as a result
+```
+
+**Security considerations**
+
+| Area | Response | Comments |
+| --- | --- | --- |
+| Data confidentiality | [C-High] | The server secret, and the subject identifiers in each evaluation |
+| Communication medium | [M-NT] | |
+| Transport security | [TLS] | |
+| Authentication | Server secret in `Direct-Auth-Secret` | |
+| Accessibility | [Restricted] | Server-side SDKs only |
+| Authorization and Access Control | Server-side, by the secret | |
+
+**Threat assessment**
+
+| ID | Category | Threat | Materializable | Mitigation / comment |
+| --- | --- | --- | --- | --- |
+| 1 | [Information Disclosure] | A browser or mobile SDK exposes the operations, so the server secret ships inside a public client where anyone can extract it | [No] | The operations exist only in server-side SDKs; a browser or mobile SDK MUST NOT expose them and documents why (AC12.3) |
+| 2 | [Information Disclosure] | The secret reaches a log, an error message, or a crash report | [No] | The secret is supplied at initialization or per call and is never logged, before any caller-supplied logger runs |
+| 3 | [Spoofing] | Tampered metadata points the evaluation endpoints at another host, which receives the secret and returns the decisions it likes | [No] | `policy_decision_point` must match the configured server exactly, as the discovery `issuer` must, and an explicit endpoint override is held to the endpoint trust bar |
+| 4 | [Elevation of Privilege] | A denial for an unknown resource or action is raised as an error, and the application's error path lets the request through | [No] | A denial is always a result, never an error; only a transport failure or a `4xx` or `5xx` answer raises (AC12.6) |
+
+**Per-SDK expectation:** the Node SDK and the Framework Specific SDKs built on it may ship the
+operations, with the secret held in the server's own secret handling and never in configuration
+the client can read. Browser SDKs, iOS, Android, and Flutter do not ship them.
+
+#### 10: Device authorization on the device side
+
+**Description**
+
+On an input-constrained device or in a command-line tool, the SDK starts a device authorization
+(RFC 8628) at `/oauth2/device-authorize` and receives a `deviceCode`, a `userCode`, and the
+verification URIs. The user approves on another device with the `userCode`. Meanwhile the SDK
+polls the token endpoint with the `deviceCode`, which is the credential that redeems the
+approval: whoever holds it before the tokens are issued receives them.
+
+**Assets involved**
+
+| Initiator | Intermediate | Target |
+| --- | --- | --- |
+| SDK on the device | Platform secure store | Device authorization endpoint, token endpoint |
+
+**Data flow**
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant S as SDK on the device
+  participant D as Device authorization endpoint
+  participant U as User on another device
+  participant T as Token endpoint
+  S->>D: startDeviceAuthorization
+  D->>S: deviceCode, userCode, verification URIs, interval
+  S->>U: show userCode and verification URI only
+  U->>D: approve with userCode
+  S->>T: poll with deviceCode at no less than the interval
+  T->>S: token set
+```
+
+**Security considerations**
+
+| Area | Response | Comments |
+| --- | --- | --- |
+| Data confidentiality | [C-High] | The `deviceCode` until the tokens are issued, then the tokens |
+| Communication medium | [M-NT], [M-FS] | |
+| Transport security | [TLS] | |
+| Authentication | The user approves on another device | |
+| Accessibility | [Public] | The `userCode` is shown on screen by design |
+| Authorization and Access Control | Server-side, by the approval | |
+
+**Threat assessment**
+
+| ID | Category | Threat | Materializable | Mitigation / comment |
+| --- | --- | --- | --- | --- |
+| 1 | [Information Disclosure] | The `deviceCode` is shown, logged, or written to a crash report, and a reader polls with it to collect the tokens | [No] | The `deviceCode` is a credential: it is never shown or logged, and only the `userCode` and verification URIs are handed to the display |
+| 2 | [Denial of Service] | The SDK polls faster than the interval, or ignores `slow_down`, and the server throttles or refuses the device | [No] | Polling runs at no less than the interval and slows down on `slow_down`, under the same rules as `pollCIBA` |
+| 3 | [Spoofing] | A user is tricked into approving a `userCode` an attacker's device started, signing the attacker's device in as the user | [Yes] | Inherent to the grant. The server's verification page and the user-side `verifyDeviceCode` flow show what is being approved. Recorded as a residual |
+
+**Per-SDK expectation:** the device side ships in Android (TV), on Apple platforms where the
+package builds for tvOS, in Flutter, and in the Node SDK for command-line tools, each storing the
+tokens as a sign-in does. The user side, `verifyDeviceCode`, runs as an embedded flow in the
+browser SDKs, iOS, Android, and Flutter and holds no `deviceCode`.
+
+#### 11: Token introspection with client credentials
+
+**Description**
+
+A server-side SDK posts a token to `/oauth2/introspect` (RFC 7662) to learn whether it is
+active and what it carries. The endpoint requires client authentication, so the SDK sends the
+client's credentials with every call.
+
+**Assets involved**
+
+| Initiator | Intermediate | Target |
+| --- | --- | --- |
+| Host application on a server | SDK | Introspection endpoint |
+
+**Data flow**
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant A as Host application
+  participant S as SDK
+  participant I as Introspection endpoint
+  A->>S: introspectToken(token)
+  S->>I: token, client authentication
+  I->>S: introspection response
+  S->>A: response
+```
+
+**Security considerations**
+
+| Area | Response | Comments |
+| --- | --- | --- |
+| Data confidentiality | [C-High] | The client secret and the token being introspected |
+| Communication medium | [M-NT] | |
+| Transport security | [TLS] | |
+| Authentication | Client authentication at the endpoint | |
+| Accessibility | [Restricted] | Server-side SDKs only |
+| Authorization and Access Control | Server-side, by the client's credentials | |
+
+**Threat assessment**
+
+| ID | Category | Threat | Materializable | Mitigation / comment |
+| --- | --- | --- | --- | --- |
+| 1 | [Information Disclosure] | A public client ships the operation, so a client secret ends up in a browser bundle or a mobile binary | [No] | `introspectToken` is never exposed where a client secret cannot be held; browser and mobile SDKs do not ship it (AC12.3), and `clientSecret` is refused by a public client |
+| 2 | [Information Disclosure] | The client secret or the introspected token reaches a log | [No] | Both fall under the logging rules: the secret is never logged and the token is masked |
+
+**Per-SDK expectation:** the Node SDK and the Framework Specific SDKs built on it may ship
+`introspectToken`. Browser SDKs, iOS, Android, and Flutter do not.
+
+#### 12: Dynamic client registration
+
+**Description**
+
+A management caller registers a client by dynamic client registration (RFC 7591), and reads,
+replaces, or deletes it (RFC 7592). The server generates the `client_secret`, returns it once in
+the registration response, and stores it write-only, so the SDK holds the only readable copy
+for the length of that call.
+
+**Assets involved**
+
+| Initiator | Intermediate | Target |
+| --- | --- | --- |
+| Host application | SDK | Client registration endpoint |
+
+**Data flow**
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant A as Host application
+  participant S as SDK
+  participant R as Registration endpoint
+  A->>S: register(metadata)
+  S->>R: snake_case metadata
+  R->>S: registration with client_secret, once
+  S->>A: registration, secret handed over and not kept
+```
+
+**Security considerations**
+
+| Area | Response | Comments |
+| --- | --- | --- |
+| Data confidentiality | [C-High] | The `client_secret` |
+| Communication medium | [M-NT] | |
+| Transport security | [TLS] | |
+| Authentication | The signed-in user's access token, as for any management operation | |
+| Accessibility | [Restricted] | |
+| Authorization and Access Control | Server-side | |
+
+**Threat assessment**
+
+| ID | Category | Threat | Materializable | Mitigation / comment |
+| --- | --- | --- | --- | --- |
+| 1 | [Information Disclosure] | The `client_secret` is written to a log, or printed through the returned type's debug description | [No] | The secret is handed to the caller once and never retained, logged, or printed, including in a debug description (AC12.4) |
+| 2 | [Information Disclosure] | The SDK caches the registration, so the secret outlives the call in memory or storage | [No] | Nothing is retained; a later read returns no secret because the server stores it write-only (AC12.4) |
+
+**Per-SDK expectation:** every SDK that ships client registrations follows the same rules, and
+documents that the secret must be stored by the caller at once, since it cannot be read again.
+
+#### 13: Signing in to and switching organization units
+
+**Description**
+
+A sign-in can be bounded to one organization unit, named in a path segment of the authorization
+and token endpoints (`/ou/{ouId}/oauth2/authorize`, `/ou/{ouId}/oauth2/token`), in `ouId` on the
+request that starts an embedded sign-in flow, or in `ouId` on a backend's sign-in endpoint. The
+tokens carry the roles and permissions assigned in that unit, and the refresh token records it.
+Switching units is a new bounded sign-in that the server's SSO session usually completes without
+credentials, after which the SDK replaces the whole session.
+
+**Assets involved**
+
+| Initiator | Intermediate | Target |
+| --- | --- | --- |
+| End user through the host application | SDK, platform browser or web view | Organization unit authorization and token endpoints, flow execution endpoint |
+
+**Data flow**
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant A as Host application
+  participant S as SDK
+  participant Z as Unit authorization endpoint
+  participant T as Unit token endpoint
+  participant K as Secure store
+  A->>S: switchOrganizationUnit(ouId)
+  S->>Z: authorize with PKCE and state, unit percent-encoded
+  Z->>S: callback with code, or unauthorized_client
+  S->>T: code and verifier, same unit
+  T->>S: token set bound to the unit
+  S->>K: replace the whole session atomically
+```
+
+**Security considerations**
+
+| Area | Response | Comments |
+| --- | --- | --- |
+| Data confidentiality | [C-High] | Tokens issued for the unit |
+| Communication medium | [M-NT], [M-FS] | |
+| Transport security | [TLS] | |
+| Authentication | As for any sign-in, usually completed by the SSO session | |
+| Accessibility | [Public] | The organization unit authorization endpoint is reachable without authentication |
+| Authorization and Access Control | Server-side: the user and the application must both be found in the unit | |
+
+**Threat assessment**
+
+| ID | Category | Threat | Materializable | Mitigation / comment |
+| --- | --- | --- | --- | --- |
+| 1 | [Tampering] | A unit identifier carrying `/`, `?`, or `..` addresses a different route than the caller named | [No] | The unit is a single path segment and is percent-encoded (AC12.7, AC12.9) |
+| 2 | [Spoofing] | A code from a unit-bounded sign-in is redeemed for another unit, or at the unqualified token endpoint, so tokens come from a unit the user did not sign in to | [No] | The SDK redeems only at `/ou/{ouId}/oauth2/token` for the unit the sign-in started with (AC12.9), and the server answers a code for another unit with `invalid_grant` |
+| 3 | [Tampering] | A switch replaces part of the session, leaving an access token from one unit beside a refresh token from another, so later requests act with a mix of entitlements | [No] | A successful switch replaces the whole token set atomically and reads the user again, and a failed one leaves the previous session untouched (AC12.11, AC12.12) |
+| 4 | [Elevation of Privilege] | The application decides access from the `ouId`, `ouHandle`, or `ouName` claims, or from the switcher's current unit, which a decoded token or a stale cache can misstate | [No] | The claims are for display only, and the SDK documents that the server decides every request against the unit the token was issued for (AC12.13) |
+| 5 | [Information Disclosure] | Probing the unit endpoints, or reading the SDK's errors, reveals which organization units exist | [Conditional] | The server answers an unknown unit and an unusable one with the same `unauthorized_client`, and the SDK does not try to tell them apart. The two answers take measurably different time at the server. Recorded as a residual |
+| 6 | [Elevation of Privilege] | A refresh after a switch carries the tokens back into the previous unit, or into every unit | [No] | The refresh token records the unit it was issued for, and the server checks permissions in it again on refresh |
+| 7 | [Spoofing] | A bounded sign-in silently falls back to the unqualified endpoints where the deployment does not serve the organization unit routes, signing the user in to another unit | [No] | The SDK reports the failure and never falls back |
+
+**Per-SDK expectation:** every SDK that ships organization operations builds the unit routes
+from `baseUrl` with the unit percent-encoded, keeps the unit with the sign-in's state, sends
+`ouId` only on the request that starts an `AUTHENTICATION` flow, replaces the session atomically
+on a successful switch and leaves it untouched on a failed one, and documents the claims as
+display only. In backend mode the backend holds the tokens and carries `ouId` itself, so the
+client's part is passing it and reading the session again.
+
 ## Security Review Checklist
 
 ### Security considerations
@@ -599,7 +892,7 @@ sequenceDiagram
 | 13 | Are audit logs generated in a standardized format for critical functionality? | [N/A] | Auditing is server-side. The SDK emits diagnostic logs only, sanitized |
 | 14 | Do audit logs for critical configuration changes record the difference between the old and new versions? | [N/A] | |
 | 15 | Are data in transit and at rest encrypted? | [Yes] | TLS required, non-HTTPS `baseUrl` rejected outside loopback, tokens at rest in the platform secure store |
-| 16 | Are sensitive values such as credentials and keys stored in a secret store or vault? | [Yes] | Platform secure store by default; no client secret in a public client |
+| 16 | Are sensitive values such as credentials and keys stored in a secret store or vault? | [Yes] | Platform secure store by default; no client secret in a public client. The `Direct-Auth-Secret` and introspection credentials exist only in server-side SDKs, and a registration's `client_secret` is handed to the caller once and not kept |
 | 17 | Is personal, sensitive, or confidential data kept out of logs? | [Yes] | Masking rules apply at every level and before any caller-supplied logger |
 | 18 | Have users been given clear instructions for secure usage? | [Partial] | The quickstart and reference are required per SDK. A consolidated security guidance page for SDK adopters does not exist yet |
 
@@ -670,14 +963,26 @@ identifiers a user supplies during authentication and recovery.
 - Each self user attribute verification sends a message to the user's contact. The server caps
   codes per execution, not new executions, so send volume across executions is limited by the
   deployment's rate limits and the provider's quotas.
+- A user can be led to approve a device authorization `userCode` that an attacker's device
+  started. This is inherent to RFC 8628 and is bounded by what the verification page shows.
+- The organization unit endpoints answer an unknown unit and an unusable one with the same
+  `unauthorized_client`, but in measurably different time, so the existence of a unit can be
+  inferred. This is the server's to close, and is a known limitation of the organization unit
+  sign-in work under [#6302](https://github.com/thunder-id/thunderid/issues/6302).
+- Registration, recovery, and onboarding flows are not yet bounded to an organization unit, so
+  an SDK cannot bound them either. Follow-up work under #6302.
 
 ## Appendix
 
 - References: [RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749),
+  [RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591),
   [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636),
+  [RFC 7662](https://datatracker.ietf.org/doc/html/rfc7662),
   [RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009),
   [RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519),
+  [RFC 8628](https://datatracker.ietf.org/doc/html/rfc8628),
   [RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693),
+  [AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html),
   [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html),
   [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html),
   [OAuth 2.0 Security Best Current Practice](https://datatracker.ietf.org/doc/html/rfc9700),
@@ -692,3 +997,4 @@ identifiers a user supplies during authentication and recovery.
 | 0.2 | 2026-10-06 | Interaction 06 added for receiving a back-channel logout token in SDKs with a server runtime. |
 | 0.3 | 2026-10-12 | Interaction 07 added for a federated redirect inside an embedded flow. A callback without a `state` is never submitted, and mobile SDKs reject one that does not echo the request's `state`. Authorization codes, and callback URLs that carry one, are never logged. |
 | 0.4 | 2026-11-03 | Interaction 08 added for starting a self user attribute verification. |
+| 0.5 | 2026-11-04 | Interactions 09 to 13 added for what specification 0.11 introduced: access evaluation with the server's `Direct-Auth-Secret`, the device side of device authorization and its `deviceCode`, token introspection with client credentials, dynamic client registration and its once-returned `client_secret`, and signing in to and switching organization units. Each states what is expected of every SDK. |

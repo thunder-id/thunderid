@@ -4468,9 +4468,6 @@ importers:
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.60.0
-      '@tanstack/react-query':
-        specifier: 'catalog:'
-        version: 5.90.5(react@19.2.3)
       '@testing-library/jest-dom':
         specifier: 'catalog:'
         version: 6.9.1
@@ -4552,9 +4549,6 @@ importers:
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.60.0
-      '@tanstack/react-query':
-        specifier: 'catalog:'
-        version: 5.90.5(react@19.2.3)
       '@testing-library/jest-dom':
         specifier: 'catalog:'
         version: 6.9.1

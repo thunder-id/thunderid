@@ -4,7 +4,7 @@
 import {fireEvent, render, screen} from '@testing-library/react';
 import type {JSX, ReactNode} from 'react';
 import {MemoryRouter, Route, Routes, useLocation} from 'react-router';
-import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
 import {RolesListPage, RoleCreateDialog, RoleDetailsPage} from '../../index';
 
 vi.mock('@thunderid/react', () => ({
@@ -35,30 +35,29 @@ vi.mock('@thunderid/react', () => ({
       </button>
     </div>
   ),
-  RoleAssignments: ({
+  RoleDetails: ({
     administrationMode,
+    deletable,
     editable,
-    ouId = 'every unit',
     roleId,
+    onDeleted,
   }: {
     administrationMode: string;
+    deletable: boolean;
     editable: boolean;
-    ouId?: string;
     roleId: string;
+    onDeleted: () => void;
   }): JSX.Element => (
-    <p>
-      assignments of {roleId} {editable ? 'editable' : 'read only'} through {administrationMode} from {ouId}
-    </p>
+    <div>
+      <p>
+        role {roleId} {editable ? 'editable' : 'read only'} through {administrationMode}
+        {deletable ? ', deletable' : ''}
+      </p>
+      <button type="button" onClick={onDeleted}>
+        deleted
+      </button>
+    </div>
   ),
-  RolePermissions: ({roleId}: {roleId: string}): JSX.Element => <p>permissions of {roleId}</p>,
-}));
-
-const {roleLoaded} = vi.hoisted(() => ({roleLoaded: {value: true}}));
-
-vi.mock('../../api/useGetRole', () => ({
-  default: (id: string) => ({
-    data: roleLoaded.value ? {description: 'Can sign in', id, name: 'Viewer', ouId: 'ou-1'} : undefined,
-  }),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -115,26 +114,20 @@ describe('RoleCreateDialog', () => {
 });
 
 describe('RoleDetailsPage', () => {
-  beforeEach(() => {
-    roleLoaded.value = true;
-  });
-
-  it('shows the role, its permissions and its assignments', () => {
-    renderAt('/roles/r-1', <RoleDetailsPage editable />);
-    expect(screen.getByRole('heading', {name: 'Viewer'})).toBeTruthy();
-    expect(screen.getByText('permissions of r-1')).toBeTruthy();
-    expect(screen.getByText('assignments of r-1 editable through flow from ou-1')).toBeTruthy();
+  it('shows the role read only, through its administration flows, unless told otherwise', () => {
+    renderAt('/roles/x-1', <RoleDetailsPage />);
+    expect(screen.getByText('role x-1 read only through flow')).toBeTruthy();
     expect(screen.getByRole('link', {name: 'Back'}).getAttribute('href')).toBe('/roles');
   });
 
-  it('offers assigning only once the role and its organization unit are loaded', () => {
-    roleLoaded.value = false;
-    renderAt('/roles/r-1', <RoleDetailsPage editable />);
-    expect(screen.getByText('assignments of r-1 read only through flow from every unit')).toBeTruthy();
+  it('lets admins change and delete the role when allowed, through the API directly when told to', () => {
+    renderAt('/roles/x-1', <RoleDetailsPage editable deletable administrationMode="native" />);
+    expect(screen.getByText('role x-1 editable through native, deletable')).toBeTruthy();
   });
 
-  it('keeps the assignments read only when admins may not assign', () => {
-    renderAt('/roles/r-1', <RoleDetailsPage />);
-    expect(screen.getByText('assignments of r-1 read only through flow from ou-1')).toBeTruthy();
+  it('returns to the list once the role is deleted', () => {
+    renderAt('/roles/x-1', <RoleDetailsPage deletable />);
+    fireEvent.click(screen.getByRole('button', {name: 'deleted'}));
+    expect(screen.getByTestId('location').textContent).toBe('/roles');
   });
 });
