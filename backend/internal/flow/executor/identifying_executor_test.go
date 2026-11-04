@@ -1538,3 +1538,36 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_RecoveryTargetGovernanceF
 	suite.Equal(ErrFailedToIdentifyEntity.Code, resp.Error.Code)
 	suite.Empty(resp.RuntimeData[userAttributeUserID])
 }
+
+// Only the holder the user picked is synced, through the federated sign-in's link.
+func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_PickSyncsHolder() {
+	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(linkHolders(), nil).Once()
+	suite.expectBind("holder-support", nil)
+	suite.mockEntityProvider.On("SyncFederatedEntity", "holder-support", syncedLink("idp-a", "sub-1")).
+		Return(nil).Once()
+	ctx := linkHolderCtx(map[string]string{common.RuntimeKeyPendingFederatedSync: pendingSync()},
+		map[string]string{"ouHandle": "support"})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal("", resp.RuntimeData[common.RuntimeKeyPendingFederatedSync])
+}
+
+// A sync that is rejected fails the sign-in instead of binding the holder.
+func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_RejectedSyncFails() {
+	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(linkHolders(), nil).Once()
+	suite.expectBind("holder-support", nil)
+	suite.mockEntityProvider.On("SyncFederatedEntity", "holder-support", mock.Anything).Return(
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSyncRejected, "Sync rejected", "denied")).Once()
+	ctx := linkHolderCtx(map[string]string{common.RuntimeKeyPendingFederatedSync: pendingSync()},
+		map[string]string{"ouHandle": "support"})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(&ErrFederatedUserSyncFailed, resp.Error)
+	suite.NotContains(resp.RuntimeData, userAttributeUserID)
+}

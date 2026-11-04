@@ -717,6 +717,74 @@ func (_c *AuthnProviderManagerMock_LinkAccount_Call) RunAndReturn(run func(ctx c
 	return _c
 }
 
+// RefreshUserAttributes provides a mock function for the type AuthnProviderManagerMock
+func (_mock *AuthnProviderManagerMock) RefreshUserAttributes(ctx context.Context, authUser providers.AuthUser) (providers.AuthUser, *common.ServiceError) {
+	ret := _mock.Called(ctx, authUser)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RefreshUserAttributes")
+	}
+
+	var r0 providers.AuthUser
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.AuthUser) (providers.AuthUser, *common.ServiceError)); ok {
+		return returnFunc(ctx, authUser)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.AuthUser) providers.AuthUser); ok {
+		r0 = returnFunc(ctx, authUser)
+	} else {
+		r0 = ret.Get(0).(providers.AuthUser)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, providers.AuthUser) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, authUser)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AuthnProviderManagerMock_RefreshUserAttributes_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RefreshUserAttributes'
+type AuthnProviderManagerMock_RefreshUserAttributes_Call struct {
+	*mock.Call
+}
+
+// RefreshUserAttributes is a helper method to define mock.On call
+//   - ctx context.Context
+//   - authUser providers.AuthUser
+func (_e *AuthnProviderManagerMock_Expecter) RefreshUserAttributes(ctx any, authUser any) *AuthnProviderManagerMock_RefreshUserAttributes_Call {
+	return &AuthnProviderManagerMock_RefreshUserAttributes_Call{Call: _e.mock.On("RefreshUserAttributes", ctx, authUser)}
+}
+
+func (_c *AuthnProviderManagerMock_RefreshUserAttributes_Call) Run(run func(ctx context.Context, authUser providers.AuthUser)) *AuthnProviderManagerMock_RefreshUserAttributes_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 providers.AuthUser
+		if args[1] != nil {
+			arg1 = args[1].(providers.AuthUser)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthnProviderManagerMock_RefreshUserAttributes_Call) Return(authUser1 providers.AuthUser, serviceError *common.ServiceError) *AuthnProviderManagerMock_RefreshUserAttributes_Call {
+	_c.Call.Return(authUser1, serviceError)
+	return _c
+}
+
+func (_c *AuthnProviderManagerMock_RefreshUserAttributes_Call) RunAndReturn(run func(ctx context.Context, authUser providers.AuthUser) (providers.AuthUser, *common.ServiceError)) *AuthnProviderManagerMock_RefreshUserAttributes_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ResolveLinkCandidates provides a mock function for the type AuthnProviderManagerMock
 func (_mock *AuthnProviderManagerMock) ResolveLinkCandidates(ctx context.Context, authUser providers.AuthUser) (*providers.LinkCandidates, *common.ServiceError) {
 	ret := _mock.Called(ctx, authUser)

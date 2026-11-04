@@ -99,6 +99,12 @@ func (f *entityFileBasedStore) UpdateSystemAttributes(ctx context.Context, entit
 	return errors.New("UpdateSystemAttributes is not supported in file-based store")
 }
 
+// UpdateLinkSyncedAt is not supported in file-based store.
+func (f *entityFileBasedStore) UpdateLinkSyncedAt(ctx context.Context, entityID string,
+	attrs json.RawMessage) error {
+	return errors.New("UpdateLinkSyncedAt is not supported in file-based store")
+}
+
 // UpdateCredentials is not supported in file-based store.
 func (f *entityFileBasedStore) UpdateCredentials(ctx context.Context, entityID string,
 	creds json.RawMessage) error {

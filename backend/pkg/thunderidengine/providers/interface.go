@@ -43,6 +43,9 @@ type AuthnProviderManager interface {
 		requestedAttributes *RequestedAttributes,
 		metadata *GetAttributesMetadata,
 		authUser AuthUser) (AuthUser, *AttributesResponse, *common.ServiceError)
+	// RefreshUserAttributes reloads the attributes the AuthUser holds for the entity it names, after
+	// they were written outside authentication.
+	RefreshUserAttributes(ctx context.Context, authUser AuthUser) (AuthUser, *common.ServiceError)
 	// LinkAccount records a linked account against the user the AuthUser names, on the provider
 	// that authenticated that user.
 	LinkAccount(ctx context.Context, authUser AuthUser,
@@ -184,6 +187,9 @@ type IDPProvider interface {
 	GetDirectAuthorizationTargets(
 		ctx context.Context, idp *IDPDTO, claims map[string]interface{},
 	) ([]AuthorizationTarget, *common.ServiceError)
+	ResolveDirectAuthorizationTargets(
+		ctx context.Context, idp *IDPDTO, claims map[string]interface{},
+	) ([]AuthorizationTarget, []AuthorizationTarget, *common.ServiceError)
 }
 
 // ConsentProvider provides functionality to resolve consent requirements and

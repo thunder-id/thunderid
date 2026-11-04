@@ -9,18 +9,21 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -104,8 +107,12 @@ type EntityServiceInterface interface {
 	// Config
 	LoadIndexedAttributes(attributes []string) error
 
-	// GroupMembershipProvider registration
+	// Federated sync
+	SyncFederatedEntity(ctx context.Context, entityID string, sync providers.FederatedEntitySync) error
+
+	// Membership provider registration
 	SetGroupMembershipProvider(provider GroupMembershipProvider)
+	SetRoleMembershipProvider(provider RoleMembershipProvider)
 
 	// Sharing registration
 	// RegisterSharedCategory makes entities of a category shareable under the given sharing resource
@@ -131,12 +138,21 @@ type EntityServiceInterface interface {
 		suspendedAt string) (bool, error)
 }
 
-// GroupMembershipProvider resolves group memberships for entities. Implemented by the group
-// package's store and injected after group initialization to avoid a circular import.
+// GroupMembershipProvider resolves and replaces group memberships for entities. Implemented by the
+// group package and injected after group initialization to avoid a circular import.
 // Covers both DB-backed and declarative (YAML) group memberships.
 type GroupMembershipProvider interface {
 	GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]providers.EntityGroup, error)
 	GetTransitiveAncestorGroups(ctx context.Context, groupID string) ([]string, error)
+	ReplaceEntityGroups(ctx context.Context, entityID string, category providers.EntityCategory,
+		groupIDs, keepIDs []string) *tidcommon.ServiceError
+}
+
+// RoleMembershipProvider replaces an entity's direct role assignments. Implemented by the role
+// assignment service and injected after role initialization to avoid a circular import.
+type RoleMembershipProvider interface {
+	ReplaceEntityRoles(ctx context.Context, entityID string, category providers.EntityCategory,
+		roleIDs, keepIDs []string) *tidcommon.ServiceError
 }
 
 // entityService is the default implementation of EntityServiceInterface.
@@ -151,6 +167,7 @@ type entityService struct {
 	transactioner           providers.Transactioner
 	logger                  *log.Logger
 	groupMembershipProvider GroupMembershipProvider
+	roleMembershipProvider  RoleMembershipProvider
 }
 
 // usesEntityType reports whether entities of the given category route through the entity type
@@ -200,6 +217,11 @@ func (s *entityService) CreateEntity(ctx context.Context, entity *providers.Enti
 	if link != nil {
 		if sysAttrs, err = withLinkedSubject(sysAttrs, link.IdpID, link.Sub); err != nil {
 			return nil, err
+		}
+		if link.Synced {
+			if sysAttrs, err = withLinkSyncedAt(sysAttrs, link.IdpID, link.Sub, time.Now()); err != nil {
+				return nil, err
+			}
 		}
 	}
 	entity.SystemAttributes = sysAttrs
@@ -448,18 +470,8 @@ func (s *entityService) UpdateAttributes(ctx context.Context, entityID string, a
 		return err
 	}
 
-	// Drop stale attributes no longer in the schema so they don't block the update.
-	attributes, err = s.stripUndeclaredAttributes(ctx, existing.Category, existing.Type, attributes)
+	attributes, err = s.validateAttributeUpdate(ctx, existing.Category, existing.Type, entityID, attributes)
 	if err != nil {
-		return err
-	}
-
-	if err := s.validateIndexedValueLimit(attributes); err != nil {
-		return err
-	}
-
-	// Validate attribute uniqueness via schema (excludes self, credentials not required for updates).
-	if err := s.validateEntityType(ctx, existing.Category, existing.Type, attributes, entityID, true); err != nil {
 		return err
 	}
 
@@ -493,6 +505,24 @@ func (s *entityService) UpdateAttributes(ctx context.Context, entityID string, a
 
 		return nil
 	})
+}
+
+// validateAttributeUpdate drops stale attributes no longer in the schema, so they don't block the
+// update, and validates the rest as an update of entityID: the indexed value limit, the schema, and
+// uniqueness against other entities. Credentials aren't required. It returns the attributes to store.
+func (s *entityService) validateAttributeUpdate(ctx context.Context, category providers.EntityCategory,
+	entityType, entityID string, attributes json.RawMessage) (json.RawMessage, error) {
+	attributes, err := s.stripUndeclaredAttributes(ctx, category, entityType, attributes)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.validateIndexedValueLimit(attributes); err != nil {
+		return nil, err
+	}
+	if err := s.validateEntityType(ctx, category, entityType, attributes, entityID, true); err != nil {
+		return nil, err
+	}
+	return attributes, nil
 }
 
 // UpdateSystemAttributes updates the system-managed attributes of an entity.
@@ -788,9 +818,14 @@ func (s *entityService) GetEntityGroups(ctx context.Context, entityID string,
 	return s.store.GetEntityGroups(ctx, entityID, limit, offset)
 }
 
-// SetGroupMembershipProvider registers the group store used to resolve all group memberships.
+// SetGroupMembershipProvider registers the group provider used to resolve and replace group memberships.
 func (s *entityService) SetGroupMembershipProvider(provider GroupMembershipProvider) {
 	s.groupMembershipProvider = provider
+}
+
+// SetRoleMembershipProvider registers the role assignment service used to replace an entity's direct roles.
+func (s *entityService) SetRoleMembershipProvider(provider RoleMembershipProvider) {
+	s.roleMembershipProvider = provider
 }
 
 // RegisterSharedCategory makes entities of a category shareable under the given sharing resource type.
@@ -824,6 +859,251 @@ func (s *entityService) GetTransitiveGroupAncestors(
 		return []string{}, nil
 	}
 	return s.groupMembershipProvider.GetTransitiveAncestorGroups(ctx, groupID)
+}
+
+// SyncFederatedEntity writes what a federated sign-in syncs to a returning entity in one transaction,
+// and stamps the link's last sync time. Nothing is written unless the entity holds sync's link. Only
+// the entity's own user type's attributes that differ from the stored ones are written, and a
+// read-only (declarative) entity's attributes and link are left unchanged. Roles live in another
+// database, so their transaction runs nested inside this one, last, and commits first.
+func (s *entityService) SyncFederatedEntity(
+	ctx context.Context, entityID string, sync providers.FederatedEntitySync,
+) error {
+	if sync.Link.IdpID == "" || sync.Link.Sub == "" {
+		return ErrBadAttributesInRequest
+	}
+
+	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		// A declarative entity can't be locked, and its link and attributes aren't written.
+		existing, err := s.store.LockEntity(txCtx, entityID)
+		if errors.Is(err, ErrEntityNotFound) {
+			existing, err = s.store.GetEntity(txCtx, entityID)
+		}
+		if err != nil {
+			return err
+		}
+
+		links := map[string]interface{}{}
+		if len(existing.SystemAttributes) > 0 {
+			attrs := map[string]interface{}{}
+			if err := json.Unmarshal(existing.SystemAttributes, &attrs); err != nil {
+				return fmt.Errorf("failed to unmarshal system attributes: %w", err)
+			}
+			if links, err = objectAt(attrs, authnprovidercm.SystemAttrLinkedIDs); err != nil {
+				return err
+			}
+		}
+		if !hasLinkedSubject(links, sync.Link.IdpID, sync.Link.Sub) {
+			s.logger.Debug(ctx, "Entity does not hold the federated link, skipping sync",
+				log.MaskedString("id", entityID), log.String("idpId", sync.Link.IdpID))
+			return nil
+		}
+
+		if attributes := sync.AttributesByType[existing.Type]; len(attributes) > 0 && !existing.IsReadOnly {
+			if err := s.syncAttributes(txCtx, &existing, attributes); err != nil {
+				return err
+			}
+		}
+
+		if sync.Groups != nil {
+			if s.groupMembershipProvider == nil {
+				return errors.New("no group membership provider registered")
+			}
+			if svcErr := s.groupMembershipProvider.ReplaceEntityGroups(
+				txCtx, entityID, existing.Category, sync.Groups.IDs, sync.Groups.RetainIDs); svcErr != nil {
+				return syncWriteError("groups", svcErr)
+			}
+		}
+
+		if !existing.IsReadOnly {
+			// The attribute sync above doesn't write system attributes, so the locked read is still current.
+			stamped, err := withLinkSyncedAt(existing.SystemAttributes, sync.Link.IdpID, sync.Link.Sub, time.Now())
+			if err != nil {
+				return err
+			}
+			if err := s.store.UpdateLinkSyncedAt(txCtx, entityID, stamped); err != nil {
+				return err
+			}
+		}
+
+		// The role write commits on its own database when it returns, so it runs last: nothing after it
+		// can fail and roll back the rest while the roles stay written.
+		if sync.Roles != nil {
+			if s.roleMembershipProvider == nil {
+				return errors.New("no role membership provider registered")
+			}
+			if svcErr := s.roleMembershipProvider.ReplaceEntityRoles(
+				txCtx, entityID, existing.Category, sync.Roles.IDs, sync.Roles.RetainIDs); svcErr != nil {
+				return syncWriteError("roles", svcErr)
+			}
+		}
+		return nil
+	})
+}
+
+// syncAttributes merges the received values of the entity type's non-credential attributes into the
+// stored attributes, when any of them differ. A received value the account can't take, one of the wrong
+// shape or one that fails validation, is skipped and logged rather than failing the sync, so a provider
+// sending one bad value doesn't block the user's sign-ins.
+func (s *entityService) syncAttributes(
+	ctx context.Context, existing *providers.Entity, received map[string]interface{},
+) error {
+	if !usesEntityType(existing.Category) || s.entityTypeService == nil {
+		return nil
+	}
+
+	schemaAttrs, svcErr := s.entityTypeService.GetAttributes(ctx, entitytype.TypeCategory(existing.Category),
+		existing.Type, entitytype.AttributeFilter{AllowNonCredential: true})
+	if svcErr != nil {
+		return fmt.Errorf("failed to get schema attributes: %s", svcErr.ErrorDescription.DefaultValue)
+	}
+
+	current := make(map[string]interface{})
+	if len(existing.Attributes) > 0 {
+		if err := json.Unmarshal(existing.Attributes, &current); err != nil {
+			return fmt.Errorf("failed to read entity attributes: %w", err)
+		}
+	}
+
+	changes := make(map[string]interface{})
+	for _, a := range schemaAttrs {
+		raw, ok := received[a.Attribute]
+		if !ok {
+			continue
+		}
+		value, ok := syncValue(raw, a.Type)
+		if !ok {
+			s.logSkippedSyncAttribute(ctx, existing.ID, a.Attribute, "received value doesn't match the attribute type")
+			continue
+		}
+		if value == nil || jsonEqual(value, current[a.Attribute]) {
+			continue
+		}
+		changes[a.Attribute] = value
+	}
+	if len(changes) == 0 {
+		return nil
+	}
+
+	merged := maps.Clone(current)
+	maps.Copy(merged, changes)
+	encoded, err := s.validSyncedAttributes(ctx, existing, merged)
+	if err != nil {
+		return err
+	}
+	if encoded == nil {
+		// Some value is refused. Each change is checked on its own, on top of the ones already taken,
+		// so only the values the account can't take are left out.
+		merged = current
+		for _, name := range slices.Sorted(maps.Keys(changes)) {
+			candidate := maps.Clone(merged)
+			candidate[name] = changes[name]
+			candidateEncoded, err := s.validSyncedAttributes(ctx, existing, candidate)
+			if err != nil {
+				return err
+			}
+			if candidateEncoded == nil {
+				s.logSkippedSyncAttribute(ctx, existing.ID, name, "received value fails validation")
+				continue
+			}
+			merged, encoded = candidate, candidateEncoded
+		}
+		if encoded == nil {
+			return nil
+		}
+	}
+
+	return s.UpdateAttributes(ctx, existing.ID, encoded)
+}
+
+// validSyncedAttributes encodes attributes when they pass validation as an update of existing, or
+// returns nil when they are refused. Other failures are returned as errors.
+func (s *entityService) validSyncedAttributes(
+	ctx context.Context, existing *providers.Entity, attributes map[string]interface{},
+) (json.RawMessage, error) {
+	encoded, err := json.Marshal(attributes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode entity attributes: %w", err)
+	}
+	if _, err := s.validateAttributeUpdate(
+		ctx, existing.Category, existing.Type, existing.ID, encoded); err != nil {
+		if errors.Is(err, ErrSchemaValidationFailed) || errors.Is(err, ErrAttributeConflict) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return encoded, nil
+}
+
+// logSkippedSyncAttribute logs a received attribute a federated sync leaves out. The value isn't
+// logged, since it may hold personal data.
+func (s *entityService) logSkippedSyncAttribute(ctx context.Context, entityID, attribute, reason string) {
+	s.logger.Warn(ctx, "Skipping a federated attribute the account can't take",
+		log.MaskedString("id", entityID), log.String("attribute", attribute), log.String("reason", reason))
+}
+
+// syncWriteError wraps a group or role write failure, marking client errors with ErrSyncRejected.
+func syncWriteError(part string, svcErr *tidcommon.ServiceError) error {
+	if svcErr.Type == tidcommon.ClientErrorType {
+		return fmt.Errorf("%w: failed to sync %s: %s", ErrSyncRejected, part, svcErr.ErrorDescription.DefaultValue)
+	}
+
+	return fmt.Errorf("failed to sync %s: %s", part, svcErr.ErrorDescription.DefaultValue)
+}
+
+// syncValue returns the value a received attribute is stored as, or nil when it's null or empty.
+// Arrays and objects keep their structure, and a single value received for an array becomes a
+// one-item array, as providers often send a one-valued claim. Other values are converted to the
+// schema type. It returns false when the received value has the wrong shape for the type.
+func syncValue(received interface{}, schemaType string) (interface{}, bool) {
+	if text, ok := received.(string); received == nil || ok && text == "" {
+		return nil, true
+	}
+	_, isObject := received.(map[string]interface{})
+	isArray := false
+	if !isObject {
+		kind := reflect.ValueOf(received).Kind()
+		isArray = kind == reflect.Slice || kind == reflect.Array
+	}
+
+	switch schemaType {
+	case entitytypemodel.TypeArray:
+		if isObject {
+			return nil, false
+		}
+		if !isArray {
+			return []interface{}{received}, true
+		}
+		return received, true
+	case entitytypemodel.TypeObject:
+		return received, isObject
+	}
+	if isObject || isArray {
+		return nil, false
+	}
+
+	value := sysutils.ConvertInterfaceValueToString(received)
+	if value == "" {
+		return nil, true
+	}
+	return entitytypemodel.ConvertToSchemaType(value, schemaType), true
+}
+
+// jsonEqual reports whether a and b hold the same value once encoded, so a stored number and a
+// received one of a different Go type compare equal.
+func jsonEqual(a, b interface{}) bool {
+	normalize := func(v interface{}) interface{} {
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return nil
+		}
+
+		var out interface{}
+		_ = json.Unmarshal(encoded, &out)
+		return out
+	}
+
+	return reflect.DeepEqual(normalize(a), normalize(b))
 }
 
 // AuthenticateEntity authenticates an entity by combining identify and verify operations.
@@ -1280,6 +1560,40 @@ func hasLinkedSubject(links map[string]interface{}, idpID, sub string) bool {
 	subjects, _ := links[idpID].(map[string]interface{})
 	_, ok := subjects[sub]
 	return ok
+}
+
+// withLinkSyncedAt returns systemAttributes with the link's last sync time set to at. The link must be
+// recorded.
+func withLinkSyncedAt(systemAttributes json.RawMessage, idpID, sub string, at time.Time) (json.RawMessage, error) {
+	attrs := map[string]interface{}{}
+	if len(systemAttributes) > 0 {
+		if err := json.Unmarshal(systemAttributes, &attrs); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal system attributes: %w", err)
+		}
+	}
+
+	links, err := objectAt(attrs, authnprovidercm.SystemAttrLinkedIDs)
+	if err != nil {
+		return nil, err
+	}
+	subjects, err := objectAt(links, idpID)
+	if err != nil {
+		return nil, err
+	}
+	link, err := objectAt(subjects, sub)
+	if err != nil {
+		return nil, err
+	}
+	link[authnprovidercm.SystemAttrLastSyncedAt] = at.UTC().Format(time.RFC3339)
+	subjects[sub] = link
+	links[idpID] = subjects
+	attrs[authnprovidercm.SystemAttrLinkedIDs] = links
+
+	stamped, err := json.Marshal(attrs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal system attributes: %w", err)
+	}
+	return stamped, nil
 }
 
 // objectAt returns the object stored under key, or an empty one when the key is absent or null. A

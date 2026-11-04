@@ -333,6 +333,34 @@ func (m *authnProviderManager) GetUserAttributes(ctx context.Context,
 	return authUser, attributes, nil
 }
 
+// RefreshUserAttributes reloads the default provider's attributes for the entity the AuthUser names.
+// Federated sync writes through the entity store, which only the default provider reads. A state that
+// still holds an attribute token is fetched on its next read, so it is left as is.
+func (m *authnProviderManager) RefreshUserAttributes(ctx context.Context,
+	authUser providers.AuthUser) (providers.AuthUser, *tidcommon.ServiceError) {
+	state, ok := authUser.StateFor(defaultProviderName)
+	if !ok || state.AttributeToken != nil || state.EntityReference == nil ||
+		state.EntityReference.EntityID == "" {
+		return authUser, nil
+	}
+	p, ok := m.authnProviders[defaultProviderName]
+	if !ok || p == nil {
+		m.logger.Error(ctx, "no default provider registered to refresh user attributes")
+		return authUser, &tidcommon.InternalServerError
+	}
+
+	token := map[string]interface{}{authnprovidercm.UserAttributeUserID: state.EntityReference.EntityID}
+	fetched, svcErr := p.GetAttributes(ctx, token, nil, nil)
+	if svcErr != nil {
+		m.logger.Error(ctx, "provider failed to refresh user attributes",
+			log.String("error", svcErr.ErrorDescription.DefaultValue))
+		return authUser, &tidcommon.InternalServerError
+	}
+	state.Attributes = fetched
+	authUser.SetStateFor(defaultProviderName, state)
+	return authUser, nil
+}
+
 // InitiateEnrollment routes an enrollment-initiation request to the provider that handles the given credential type.
 func (m *authnProviderManager) InitiateEnrollment(ctx context.Context, credentialType string,
 	initData any, metadata *providers.AuthnMetadata) (any, *tidcommon.ServiceError) {

@@ -65,6 +65,8 @@ func registerSharedCategories(entitySvc *entitymock.EntityServiceInterfaceMock) 
 }
 
 func (suite *RoleAssignmentServiceTestSuite) SetupTest() {
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", &config.Config{}))
 	suite.mockStore = newRoleStoreInterfaceMock(suite.T())
 	suite.mockEntityService = entitymock.NewEntityServiceInterfaceMock(suite.T())
 	registerSharedCategories(suite.mockEntityService)
@@ -82,6 +84,10 @@ func (suite *RoleAssignmentServiceTestSuite) SetupTest() {
 		newAllowAllRoleAuthz(suite.T()),
 		suite.mockSharingService,
 	)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TearDownTest() {
+	config.ResetServerRuntime()
 }
 
 // GetRoleAssignments Tests
@@ -901,7 +907,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestAddAssignments_Transaction_Data
 
 	suite.ownedRole("role1").Once()
 	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{"user1"}).
-		Return([]providers.Entity{ownedUser()}, nil).Once()
+		Return([]providers.Entity{ownedUser()}, nil)
 
 	suite.transactioner.err = errors.New("failed to commit transaction block")
 
@@ -949,7 +955,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneesToRoles_EmptyRoleID
 func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneesToRoles_AddAssignmentsFails() {
 	assignments := []RoleAssignment{{ID: testUserID1, Type: AssigneeTypeUser}}
 	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
-		Return([]providers.Entity{ownedUser()}, nil).Once()
+		Return([]providers.Entity{ownedUser()}, nil)
 	suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
 
 	err := suite.service.AddAssigneesToRoles(context.Background(), assignments, []string{"role1"})
@@ -961,7 +967,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneesToRoles_AddAssignme
 func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneesToRoles_TransactionerError() {
 	assignments := []RoleAssignment{{ID: testUserID1, Type: AssigneeTypeUser}}
 	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
-		Return([]providers.Entity{ownedUser()}, nil).Once()
+		Return([]providers.Entity{ownedUser()}, nil)
 	suite.transactioner.err = errors.New("tx begin failed")
 
 	err := suite.service.AddAssigneesToRoles(context.Background(), assignments, []string{"role1"})
@@ -1978,4 +1984,321 @@ func (suite *RoleAssignmentServiceTestSuite) TestReconcileMandatedAssignments_De
 	suite.NoError(suite.service.(*roleAssignmentService).reconcileMandatedAssignments(context.Background()))
 
 	suite.mockStore.AssertNotCalled(suite.T(), "ListMandatedRoleUnits", mock.Anything)
+}
+
+// AddAssigneeToExistingRoles Tests
+
+func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneeToExistingRoles_SkipsMissingRoles() {
+	assignment := RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}
+	normalized := []RoleAssignment{{ID: testUserID1, Type: assigneeTypeEntity, OUID: testOwnerOU}}
+
+	suite.ownedRole("role1")
+	suite.mockStore.On("GetRole", mock.Anything, "deleted-role").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
+		Return([]providers.Entity{ownedUser()}, nil)
+	suite.mockStore.On("AddAssignments", mock.Anything, "role1", normalized).Return(nil).Once()
+
+	err := suite.service.AddAssigneeToExistingRoles(
+		context.Background(), assignment, []string{"role1", "deleted-role"})
+
+	suite.Nil(err)
+}
+
+// A role that doesn't reach the assignee's unit, or whose assignments aren't open there, is skipped, and
+// the rest are still assigned.
+func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneeToExistingRoles_SkipsRolesNotAssignableInOU() {
+	assignment := RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}
+	normalized := []RoleAssignment{{ID: testUserID1, Type: assigneeTypeEntity, OUID: testOwnerOU}}
+
+	suite.ownedRole("role1")
+	for _, rid := range []string{"unshared-role", "closed-role"} {
+		suite.mockStore.On("GetRole", mock.Anything, rid).Return(RoleWithPermissions{ID: rid, OUID: "ou-other"}, nil)
+	}
+	suite.mockSharingService.EXPECT().ResolveOverlayRules(mock.Anything, RoleSharingType, "unshared-role", testOwnerOU).
+		Return(sharing.ResolvedOverlay{OUID: testOwnerOU}, nil)
+	suite.mockSharingService.EXPECT().ResolveOverlayRules(mock.Anything, RoleSharingType, "closed-role", testOwnerOU).
+		Return(sharing.ResolvedOverlay{
+			OUID: testOwnerOU, Visible: true,
+			Rules: map[string]sharing.OverlayRule{roleAssignmentsFieldKey: {Editable: false}},
+		}, nil)
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
+		Return([]providers.Entity{ownedUser()}, nil)
+	suite.mockStore.On("AddAssignments", mock.Anything, "role1", normalized).Return(nil).Once()
+
+	err := suite.service.AddAssigneeToExistingRoles(
+		context.Background(), assignment, []string{"role1", "unshared-role", "closed-role"})
+
+	suite.Nil(err)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, "unshared-role", mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, "closed-role", mock.Anything)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneeToExistingRoles_NoRoleExists() {
+	assignment := RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
+		Return([]providers.Entity{ownedUser()}, nil)
+	suite.mockStore.On("GetRole", mock.Anything, "deleted-role").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
+
+	err := suite.service.AddAssigneeToExistingRoles(context.Background(), assignment, []string{"deleted-role"})
+
+	suite.Nil(err)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneeToExistingRoles_StoreError() {
+	assignment := RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
+		Return([]providers.Entity{ownedUser()}, nil)
+	suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{}, errors.New("db down")).Once()
+
+	err := suite.service.AddAssigneeToExistingRoles(context.Background(), assignment, []string{"role1"})
+
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+// ReplaceEntityRoles Tests
+
+// expectOwnedUser makes testUserID1 a user living in testOwnerOU, where its direct assignments are made.
+func (suite *RoleAssignmentServiceTestSuite) expectOwnedUser() {
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
+		Return([]providers.Entity{ownedUser()}, nil)
+}
+
+// expectHeldInOwnerOU makes roleIDs the roles testUserID1 holds in testOwnerOU.
+func (suite *RoleAssignmentServiceTestSuite) expectHeldInOwnerOU(roleIDs ...string) {
+	suite.mockStore.On("GetEntityRoleIDs", mock.Anything, testUserID1, []string(nil), testOwnerOU).
+		Return(roleIDs, nil).Once()
+}
+
+var testStoredUser = RoleAssignment{ID: testUserID1, Type: assigneeTypeEntity, OUID: testOwnerOU}
+
+func (suite *RoleAssignmentServiceTestSuite) expectAdded(roleID string, err error) {
+	suite.ownedRole(roleID)
+	suite.mockStore.On("AddAssignments", mock.Anything, roleID, []RoleAssignment{testStoredUser}).
+		Return(err).Once()
+}
+
+func (suite *RoleAssignmentServiceTestSuite) expectRemoved(roleID string, err error) {
+	suite.mockStore.On("RemoveAssignments", mock.Anything, roleID, []RoleAssignment{testStoredUser}).
+		Return(err).Once()
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestReplaceEntityRoles_AddsAndRemoves() {
+	suite.expectOwnedUser()
+	suite.expectHeldInOwnerOU("kept-role", "stale-role")
+	suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"new-role", "stale-role"}).
+		Return([]Role{{ID: "new-role"}, {ID: "stale-role"}}, nil).Once()
+	suite.expectAdded("new-role", nil)
+	suite.expectRemoved("stale-role", nil)
+
+	err := suite.service.ReplaceEntityRoles(context.Background(), testUserID1, providers.EntityCategoryUser,
+		[]string{"kept-role", "new-role"}, nil)
+
+	suite.Nil(err)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestReplaceEntityRoles_DeclarativeModeWritesNothing() {
+	config.GetServerRuntime().Config.Role.Store = "declarative"
+
+	err := suite.service.ReplaceEntityRoles(context.Background(), testUserID1, providers.EntityCategoryUser,
+		[]string{"role1"}, nil)
+
+	suite.Nil(err)
+	suite.Equal(0, suite.transactioner.transactCalls)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetEntityRoleIDs",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestReplaceEntityRoles_NeverRemovesKeptRoles() {
+	suite.expectOwnedUser()
+	suite.expectHeldInOwnerOU("ambiguous-role", "stale-role")
+	suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"stale-role"}).
+		Return([]Role{{ID: "stale-role"}}, nil).Once()
+	suite.expectRemoved("stale-role", nil)
+
+	err := suite.service.ReplaceEntityRoles(context.Background(), testUserID1, providers.EntityCategoryUser,
+		nil, []string{"ambiguous-role", "other-role"})
+
+	suite.Nil(err)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestReplaceEntityRoles_SkipsAlreadyAssignedRoles() {
+	suite.expectOwnedUser()
+	suite.expectHeldInOwnerOU("role1", "role2")
+
+	err := suite.service.ReplaceEntityRoles(context.Background(), testUserID1, providers.EntityCategoryUser,
+		[]string{"role2", "role1", "role1"}, nil)
+
+	suite.Nil(err)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetRolesByIDs", mock.Anything, mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "RemoveAssignments", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestReplaceEntityRoles_RemoveOnlyForApp() {
+	stored := RoleAssignment{ID: "app-1", Type: assigneeTypeEntity, OUID: testOwnerOU}
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{"app-1"}).
+		Return([]providers.Entity{{ID: "app-1", Category: providers.EntityCategoryApp, OUID: testOwnerOU}}, nil).
+		Once()
+	suite.mockStore.On("GetEntityRoleIDs", mock.Anything, "app-1", []string(nil), testOwnerOU).
+		Return([]string{"role1"}, nil).Once()
+	suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"role1"}).
+		Return([]Role{{ID: "role1"}}, nil).Once()
+	suite.mockStore.On("RemoveAssignments", mock.Anything, "role1", []RoleAssignment{stored}).Return(nil).Once()
+
+	err := suite.service.ReplaceEntityRoles(context.Background(), "app-1", providers.EntityCategoryApp, nil, nil)
+
+	suite.Nil(err)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestReplaceEntityRoles_SkipsMissingRoles() {
+	suite.expectOwnedUser()
+	suite.expectHeldInOwnerOU()
+	suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"deleted-role", "role1"}).
+		Return([]Role{{ID: "role1"}}, nil).Once()
+	suite.expectAdded("role1", nil)
+
+	err := suite.service.ReplaceEntityRoles(context.Background(), testUserID1, providers.EntityCategoryUser,
+		[]string{"deleted-role", "role1"}, nil)
+
+	suite.Nil(err)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestReplaceEntityRoles_GrantDenied() {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, "stale-role").
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	suite.service = newRoleAssignmentService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
+		suite.mockEntityTypeService, nil, suite.transactioner, authz, suite.mockSharingService)
+	suite.expectOwnedUser()
+	suite.expectHeldInOwnerOU("stale-role")
+	suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"stale-role"}).
+		Return([]Role{{ID: "stale-role"}}, nil).Once()
+
+	err := suite.service.ReplaceEntityRoles(context.Background(), testUserID1, providers.EntityCategoryUser,
+		nil, nil)
+
+	suite.Require().NotNil(err)
+	suite.Equal(sysauthz.ErrorGrantNotPermitted.Code, err.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "RemoveAssignments", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A role that doesn't reach the entity's unit, or whose assignments aren't open there, is skipped, and the
+// rest are still written.
+func (suite *RoleAssignmentServiceTestSuite) TestReplaceEntityRoles_SkipsRolesNotAssignableInOU() {
+	suite.expectOwnedUser()
+	suite.expectHeldInOwnerOU()
+	suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"new-role", "unshared-role", "closed-role"}).
+		Return([]Role{{ID: "new-role"}, {ID: "unshared-role"}, {ID: "closed-role"}}, nil).Once()
+	suite.expectAdded("new-role", nil)
+	for _, rid := range []string{"unshared-role", "closed-role"} {
+		suite.mockStore.On("GetRole", mock.Anything, rid).Return(RoleWithPermissions{ID: rid, OUID: "ou-other"}, nil)
+	}
+	suite.mockSharingService.EXPECT().ResolveOverlayRules(mock.Anything, RoleSharingType, "unshared-role", testOwnerOU).
+		Return(sharing.ResolvedOverlay{OUID: testOwnerOU}, nil)
+	suite.mockSharingService.EXPECT().ResolveOverlayRules(mock.Anything, RoleSharingType, "closed-role", testOwnerOU).
+		Return(sharing.ResolvedOverlay{
+			OUID: testOwnerOU, Visible: true,
+			Rules: map[string]sharing.OverlayRule{roleAssignmentsFieldKey: {Editable: false}},
+		}, nil)
+
+	err := suite.service.ReplaceEntityRoles(context.Background(), testUserID1, providers.EntityCategoryUser,
+		[]string{"new-role", "unshared-role", "closed-role"}, nil)
+
+	suite.Nil(err)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, "unshared-role", mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, "closed-role", mock.Anything)
+}
+
+// Any other refusal from AddAssignments fails the sync.
+func (suite *RoleAssignmentServiceTestSuite) TestReplaceEntityRoles_AddRefused() {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, "new-role").
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	suite.service = newRoleAssignmentService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
+		suite.mockEntityTypeService, nil, suite.transactioner, authz, suite.mockSharingService)
+	suite.expectOwnedUser()
+	suite.expectHeldInOwnerOU()
+	suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"new-role"}).
+		Return([]Role{{ID: "new-role"}}, nil).Once()
+
+	err := suite.service.ReplaceEntityRoles(context.Background(), testUserID1, providers.EntityCategoryUser,
+		[]string{"new-role"}, nil)
+
+	suite.Require().NotNil(err)
+	suite.Equal(sysauthz.ErrorGrantNotPermitted.Code, err.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestReplaceEntityRoles_InvalidCategory() {
+	err := suite.service.ReplaceEntityRoles(context.Background(), testUserID1, "group", []string{"role1"}, nil)
+
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorInvalidAssigneeType.Code, err.Code)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestReplaceEntityRoles_EntityNotFound() {
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
+		Return([]providers.Entity{}, nil).Once()
+
+	err := suite.service.ReplaceEntityRoles(context.Background(), testUserID1, providers.EntityCategoryUser,
+		[]string{"role1"}, nil)
+
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorInvalidAssignmentID.Code, err.Code)
+	suite.Zero(suite.transactioner.transactCalls)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestReplaceEntityRoles_ServerErrors() {
+	dbErr := errors.New("db error")
+	bothRoles := func() {
+		suite.expectHeldInOwnerOU("stale-role")
+		suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"role1", "stale-role"}).
+			Return([]Role{{ID: "role1"}, {ID: "stale-role"}}, nil).Once()
+	}
+	cases := []struct {
+		name  string
+		setup func()
+	}{
+		{"GetEntityRoleIDs", func() {
+			suite.mockStore.On("GetEntityRoleIDs", mock.Anything, testUserID1, []string(nil), testOwnerOU).
+				Return(nil, dbErr).Once()
+		}},
+		{"GetRolesByIDs", func() {
+			suite.expectHeldInOwnerOU("stale-role")
+			suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"role1", "stale-role"}).
+				Return(nil, dbErr).Once()
+		}},
+		{"AddAssignments", func() {
+			bothRoles()
+			suite.expectAdded("role1", dbErr)
+		}},
+		{"RemoveAssignments", func() {
+			bothRoles()
+			suite.expectAdded("role1", nil)
+			suite.expectRemoved("stale-role", dbErr)
+		}},
+		{"GetEntitiesByIDs", func() {
+			suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
+				Return(nil, dbErr).Once()
+		}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			if tc.name != "GetEntitiesByIDs" {
+				suite.expectOwnedUser()
+			}
+			tc.setup()
+
+			err := suite.service.ReplaceEntityRoles(context.Background(), testUserID1,
+				providers.EntityCategoryUser, []string{"role1"}, nil)
+
+			suite.Require().NotNil(err)
+			suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+		})
+	}
 }

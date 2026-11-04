@@ -2662,6 +2662,65 @@ func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_RoleAmbiguousMat
 	s.Empty(targets)
 }
 
+// TestResolveDirectAuthorizationTargets_ReturnsAmbiguousMatches returns every match of a name that
+// matches more than one group or role as ambiguous, and grants none of them.
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_ReturnsAmbiguousMatches() {
+	s.mockGroup.On("GetGroupsByNames", mock.Anything, []string{"engineering", "ops"}).
+		Return(map[string][]*group.Group{
+			"engineering": {{ID: "group-1", Name: "engineering"}, {ID: "group-2", Name: "engineering"}},
+			"ops":         {{ID: "group-3", Name: "ops"}},
+		}, nil)
+	s.mockRole.On("GetRolesByNames", mock.Anything, []string{"admins", "viewers"}).
+		Return(map[string][]*role.Role{
+			"admins":  {{ID: "role-1"}, {ID: "role-2"}},
+			"viewers": {{ID: "role-3"}},
+		}, nil)
+
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Direct: []providers.AuthorizationDirectMapping{
+				{Claim: "team", TargetType: providers.AuthorizationTargetGroup},
+				{Claim: "role", TargetType: providers.AuthorizationTargetRole},
+			}},
+		},
+	}
+	claims := map[string]interface{}{
+		"team": []interface{}{"engineering", "ops"}, "role": []interface{}{"admins", "viewers"},
+	}
+	targets, ambiguous, err := s.idpService.ResolveDirectAuthorizationTargets(context.Background(), idp, claims)
+
+	s.Nil(err)
+	s.Equal([]providers.AuthorizationTarget{
+		{Type: providers.AuthorizationTargetGroup, ID: "group-3"},
+		{Type: providers.AuthorizationTargetRole, ID: "role-3"},
+	}, targets)
+	s.Equal([]providers.AuthorizationTarget{
+		{Type: providers.AuthorizationTargetGroup, ID: "group-1"},
+		{Type: providers.AuthorizationTargetGroup, ID: "group-2"},
+		{Type: providers.AuthorizationTargetRole, ID: "role-1"},
+		{Type: providers.AuthorizationTargetRole, ID: "role-2"},
+	}, ambiguous)
+}
+
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_LookupError() {
+	s.mockGroup.On("GetGroupsByNames", mock.Anything, []string{"engineering"}).
+		Return(nil, &tidcommon.InternalServerError)
+
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Direct: []providers.AuthorizationDirectMapping{
+				{Claim: "team", TargetType: providers.AuthorizationTargetGroup},
+			}},
+		},
+	}
+	targets, ambiguous, err := s.idpService.ResolveDirectAuthorizationTargets(
+		context.Background(), idp, map[string]interface{}{"team": "engineering"})
+
+	s.NotNil(err)
+	s.Nil(targets)
+	s.Nil(ambiguous)
+}
+
 // TestGetDirectAuthorizationTargets_GroupSingleMatchGrants mirrors the role case for groups.
 func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_GroupSingleMatchGrants() {
 	s.mockGroup.On("GetGroupsByNames", mock.Anything, []string{"engineering"}).

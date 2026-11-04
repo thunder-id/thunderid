@@ -51,6 +51,10 @@ const SystemAttrValidUntil = "validUntil"
 // UnboundedValidUntil is the stored value of a lifespan that never ends.
 const UnboundedValidUntil = "9999-12-31T23:59:59Z"
 
+// SystemAttrLastSyncedAt is the key, inside a link's entry under SystemAttrLinkedIDs, recording when a
+// federated sign-in through that link last synced the entity.
+const SystemAttrLastSyncedAt = "lastSyncedAt"
+
 // MaxAccountLinkingFilters bounds the lookup filters one federated sign-in's account linking may
 // build, and so the provider lookups it runs. Each linking attribute multiplies the count by the
 // local attributes it matches on.

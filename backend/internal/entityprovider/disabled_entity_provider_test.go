@@ -75,6 +75,11 @@ func (suite *DisabledEntityProviderTestSuite) TestUpdateSystemCredentials() {
 	suite.Equal(errNotImplemented, err)
 }
 
+func (suite *DisabledEntityProviderTestSuite) TestSyncFederatedEntity() {
+	err := suite.provider.SyncFederatedEntity("entity-id", providers.FederatedEntitySync{})
+	suite.Equal(errNotImplemented, err)
+}
+
 func (suite *DisabledEntityProviderTestSuite) TestGetTransitiveEntityGroups() {
 	groups, err := suite.provider.GetTransitiveEntityGroups("entity-id")
 	suite.Nil(groups)

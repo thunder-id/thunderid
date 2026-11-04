@@ -37,6 +37,7 @@ type entityStoreInterface interface {
 	UpdateAttributes(ctx context.Context, entityID string, attributes json.RawMessage) error
 	UpdateSystemAttributes(ctx context.Context, entityID string,
 		attrs json.RawMessage) error
+	UpdateLinkSyncedAt(ctx context.Context, entityID string, attrs json.RawMessage) error
 	UpdateCredentials(ctx context.Context, entityID string,
 		creds json.RawMessage) error
 	UpdateSystemCredentials(ctx context.Context, entityID string,
@@ -345,6 +346,25 @@ func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID st
 	}
 
 	return es.resyncIdentifiers(ctx, dbClient, entityID)
+}
+
+// UpdateLinkSyncedAt writes system attributes that differ from the stored ones only in a link's last
+// sync time. UPDATED_AT is left unchanged, and identifiers are not re-synced since the sync time is
+// not indexed.
+func (es *entityDBStore) UpdateLinkSyncedAt(ctx context.Context, entityID string, attrs json.RawMessage) error {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryUpdateLinkSyncedAt, entityID, string(attrs), es.scope(ctx))
+	if err != nil {
+		return fmt.Errorf("failed to execute query: %w", err)
+	}
+	if rowsAffected == 0 {
+		return ErrEntityNotFound
+	}
+	return nil
 }
 
 // UpdateCredentials updates the credentials of an entity.

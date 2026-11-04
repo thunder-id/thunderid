@@ -19,28 +19,32 @@ import (
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 )
 
 type OIDCAuthExecutorTestSuite struct {
 	suite.Suite
-	mockOIDCService   *oidcmock.OIDCAuthnCoreServiceInterfaceMock
-	mockIDPService    *idpmock.IDPServiceInterfaceMock
-	mockFlowFactory   *coremock.FlowFactoryInterfaceMock
-	mockAuthnProvider *managermock.AuthnProviderManagerMock
-	executor          oidcAuthExecutorInterface
+	mockOIDCService    *oidcmock.OIDCAuthnCoreServiceInterfaceMock
+	mockIDPService     *idpmock.IDPServiceInterfaceMock
+	mockFlowFactory    *coremock.FlowFactoryInterfaceMock
+	mockAuthnProvider  *managermock.AuthnProviderManagerMock
+	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
+	executor           oidcAuthExecutorInterface
 }
 
 func TestOIDCAuthExecutorSuite(t *testing.T) {
 	suite.Run(t, new(OIDCAuthExecutorTestSuite))
 }
 
-func (suite *OIDCAuthExecutorTestSuite) SetupTest() {
+func (suite *OIDCAuthExecutorTestSuite) SetupTest() { //nolint:dupl // Mirrors the OAuth executor suite setup.
 	suite.mockOIDCService = oidcmock.NewOIDCAuthnCoreServiceInterfaceMock(suite.T())
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
+	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	suite.mockEntityProvider.On("SyncFederatedEntity", mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	mockExec := createMockAuthExecutor(suite.T(), ExecutorNameOIDCAuth)
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameOIDCAuth, providers.ExecutorTypeAuthentication,
@@ -48,7 +52,7 @@ func (suite *OIDCAuthExecutorTestSuite) SetupTest() {
 
 	suite.executor = newOIDCAuthExecutor(ExecutorNameOIDCAuth, defaultCodeOnlyInputs, []providers.Input{},
 		suite.mockFlowFactory, suite.mockIDPService, suite.mockOIDCService,
-		suite.mockAuthnProvider, providers.IDPTypeOIDC)
+		suite.mockAuthnProvider, providers.IDPTypeOIDC, suite.mockEntityProvider)
 }
 
 func newOIDCAuthenticatedUser() providers.AuthUser {

@@ -575,6 +575,37 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Ext
 	assert.Empty(suite.T(), credentials)
 }
 
+// A connection that keeps attributes to the session stores only the claims the user type or the node
+// requires. Values the user enters are still stored.
+func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_SessionOnlyKeepsRequiredClaims() {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: "username", Type: model.TypeString, Required: true},
+			{Attribute: attributeEmail, Type: model.TypeString},
+			{Attribute: "nickname", Type: model.TypeString},
+			{Attribute: "locale", Type: model.TypeString},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		UserInputs: map[string]string{"nickname": "entered"},
+		RuntimeData: map[string]string{
+			categoryTypeKey:                     testUserType,
+			common.RuntimeKeyAttributesSyncMode: string(providers.SyncModeSessionOnly),
+			common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-1", "sub-1",
+				map[string]interface{}{"username": "claimed", attributeEmail: "claimed@example.com",
+					"locale": "en"}),
+		},
+		NodeInputs: []providers.Input{{Identifier: attributeEmail, Required: true}},
+	}
+
+	identifying, _, err := suite.executor.getAttributesForProvisioning(ctx, entitytype.TypeCategoryUser)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), map[string]interface{}{"username": "claimed", attributeEmail: "claimed@example.com",
+		"nickname": "entered"}, identifying)
+}
+
 // A claim never stands in for a credential, so a password the flow has not collected is still prompted
 // even when the external identity asserts one.
 func (suite *ProvisioningExecutorTestSuite) TestBuildMissingInputs_ExternalClaimDoesNotSatisfyCredential() {
@@ -2669,7 +2700,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_GroupWithExistingMembers
 
 // Seeding is additive: the mapped role/group combine with the fixed assignGroup/assignRole lists,
 // deduplicated, when both flags are enabled.
-func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMapping() {
+func (suite *ProvisioningExecutorTestSuite) TestExecute_MappedGroupsAndRolesStoredOnCreation() {
 	suite.expectSchemaForProvisioning()
 	attrs := map[string]interface{}{"username": "newuser"}
 	attrsJSON, _ := json.Marshal(attrs)
@@ -2681,7 +2712,9 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMa
 	for k, v := range seedMappedAuthorizationTargets(suite.T(), []providers.AuthorizationTarget{
 		{Type: providers.AuthorizationTargetRole, ID: "mapped-role-id"},
 		{Type: providers.AuthorizationTargetGroup, ID: "mapped-group-id"},
-		// A permission target has no seeding equivalent and must be ignored.
+		// A target the flow already assigns is added once, through the flow's assignment.
+		{Type: providers.AuthorizationTargetGroup, ID: "static-group-id"},
+		// A permission target can't be stored and must be ignored.
 		{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read"},
 	}) {
 		runtimeData[k] = v
@@ -2696,10 +2729,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMa
 			{Identifier: "username", Type: "string", Required: true},
 		},
 		NodeProperties: map[string]interface{}{
-			"assignGroup":           "static-group-id",
-			"assignRole":            "static-role-id",
-			"seedGroupsFromMapping": true,
-			"seedRolesFromMapping":  true,
+			"assignGroup": "static-group-id",
+			"assignRole":  "static-role-id",
 		},
 	}
 
@@ -2713,11 +2744,19 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMa
 
 	suite.mockGroupService.On("AddMembersToGroups",
 		mock.Anything, []group.Member{{ID: testNewUserID, Type: group.MemberTypeUser}},
-		[]string{"static-group-id", "mapped-group-id"}).
+		[]string{"static-group-id"}).
 		Return((*tidcommon.ServiceError)(nil))
 	suite.mockRoleAssignmentService.On("AddAssigneesToRoles", mock.Anything,
 		[]role.RoleAssignment{{ID: testNewUserID, Type: role.AssigneeTypeUser}},
-		[]string{"static-role-id", "mapped-role-id"}).
+		[]string{"static-role-id"}).
+		Return((*tidcommon.ServiceError)(nil))
+	suite.mockGroupService.On("AddMemberToExistingGroups",
+		mock.Anything, group.Member{ID: testNewUserID, Type: group.MemberTypeUser},
+		[]string{"mapped-group-id"}).
+		Return((*tidcommon.ServiceError)(nil))
+	suite.mockRoleAssignmentService.On("AddAssigneeToExistingRoles", mock.Anything,
+		role.RoleAssignment{ID: testNewUserID, Type: role.AssigneeTypeUser},
+		[]string{"mapped-role-id"}).
 		Return((*tidcommon.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -2728,16 +2767,17 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMa
 	suite.mockRoleAssignmentService.AssertExpectations(suite.T())
 }
 
-// Without the seeding flags, mapped targets carried in runtime data are ignored entirely: only the
-// fixed assignGroup/assignRole lists are applied.
-func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedFromMappingDisabled_MappedTargetsIgnored() {
+// When the connection keeps groups and roles to the session, mapped targets carried in runtime data are
+// not stored: only the fixed assignGroup/assignRole lists are applied.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_SessionOnlyGroupsAndRoles_MappedTargetsNotStored() {
 	suite.expectSchemaForProvisioning()
 	attrs := map[string]interface{}{"username": "newuser"}
 	attrsJSON, _ := json.Marshal(attrs)
 
 	runtimeData := map[string]string{
-		ouIDKey:         testOUID,
-		categoryTypeKey: testUserType,
+		ouIDKey:                                 testOUID,
+		categoryTypeKey:                         testUserType,
+		common.RuntimeKeyGroupsAndRolesSyncMode: string(providers.SyncModeSessionOnly),
 	}
 	for k, v := range seedMappedAuthorizationTargets(suite.T(), []providers.AuthorizationTarget{
 		{Type: providers.AuthorizationTargetRole, ID: "mapped-role-id"},
@@ -5327,7 +5367,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_ProvisionsAndL
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything,
 		mock.MatchedBy(func(u *providers.User) bool {
 			return u.OUID == testOUID && u.Type == testUserType &&
-				*u.LinkedAccount == providers.LinkedAccount{IdpID: testFederatedIdpID, Sub: testFederatedSub}
+				*u.LinkedAccount == providers.LinkedAccount{
+					IdpID: testFederatedIdpID, Sub: testFederatedSub, Synced: true}
 		})).Return(&providers.User{ID: testNewUserID, OUID: testOUID, Type: testUserType},
 		(*tidcommon.ServiceError)(nil))
 
@@ -5339,6 +5380,70 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_ProvisionsAndL
 	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything)
 	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "LinkAccount",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A connection that keeps attributes to the session can drop every claim of a user type with no
+// required attributes. The user is still created, so the federated link is saved.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_SessionOnlyWithoutStoredClaimsStillLinks() {
+	suite.expectSchemaForProvisioning()
+	suite.mockUserMgtProvider.On("CreateUser", mock.Anything,
+		mock.MatchedBy(func(u *providers.User) bool {
+			return string(u.Attributes) == "{}" &&
+				*u.LinkedAccount == providers.LinkedAccount{IdpID: testFederatedIdpID, Sub: testFederatedSub}
+		})).Return(&providers.User{ID: testNewUserID, OUID: testOUID, Type: testUserType},
+		(*tidcommon.ServiceError)(nil))
+	ctx := suite.federatedCtx(false)
+	ctx.RuntimeData[common.RuntimeKeyAttributesSyncMode] = string(providers.SyncModeSessionOnly)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockUserMgtProvider.AssertNumberOfCalls(suite.T(), "CreateUser", 1)
+}
+
+// Without a federated identity, session-only sync does not excuse an empty attribute set.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_SessionOnlyWithoutFederatedIdentityStillFails() {
+	suite.expectSchemaForProvisioning()
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeRegistration,
+		RuntimeData: map[string]string{
+			ouIDKey: testOUID, categoryTypeKey: testUserType,
+			common.RuntimeKeyAttributesSyncMode: string(providers.SyncModeSessionOnly),
+		},
+		NodeInputs: []providers.Input{},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	require.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrProvisioningAttrsMissing.Code, resp.Error.Code)
+	suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "CreateUser")
+}
+
+// A claim that session-only sync will not store does not satisfy an attribute, so the user is still
+// prompted for an optional one the flow asks for.
+func (suite *ProvisioningExecutorTestSuite) TestBuildMissingInputs_SessionOnlyClaimDoesNotSatisfyOptional() {
+	ctx := &providers.NodeContext{
+		NodeProperties: map[string]interface{}{propertyKeyDynamicInputsIncludeOptional: true},
+		RuntimeData: map[string]string{
+			common.RuntimeKeyAttributesSyncMode: string(providers.SyncModeSessionOnly),
+			common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-1", "sub-1",
+				map[string]interface{}{"username": "claimed", attributeEmail: "claimed@example.com"}),
+		},
+	}
+
+	_, _, ncRequired, ncOptional := suite.executor.buildMissingInputs(ctx, []model.AttributeInfo{
+		{Attribute: "username", Type: model.TypeString, Required: true},
+		{Attribute: attributeEmail, Type: model.TypeString},
+	}, map[string]providers.Input{})
+
+	assert.Empty(suite.T(), ncRequired)
+	require.Len(suite.T(), ncOptional, 1)
+	assert.Equal(suite.T(), attributeEmail, ncOptional[0].Identifier)
 }
 
 // Several users hold the link and no Resolve User node picked one. Provisioning would add another
@@ -5431,7 +5536,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_CrossOURegistr
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything,
 		mock.MatchedBy(func(u *providers.User) bool {
 			return u.OUID == testOUID &&
-				*u.LinkedAccount == providers.LinkedAccount{IdpID: testFederatedIdpID, Sub: testFederatedSub}
+				*u.LinkedAccount == providers.LinkedAccount{
+					IdpID: testFederatedIdpID, Sub: testFederatedSub, Synced: true}
 		})).Return(&providers.User{ID: testNewUserID, OUID: testOUID, Type: testUserType},
 		(*tidcommon.ServiceError)(nil)).Once()
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
@@ -5699,4 +5805,45 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UnverifiedCandidateFails
 			assert.Equal(suite.T(), ErrUnverifiedLinkingCandidate.Code, resp.Error.Code)
 		})
 	}
+}
+
+// Completing registration as the holder in the target OU syncs that holder through the link.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_AmbiguousRegistrationSyncsBoundHolder() {
+	ctx := suite.linkedRegistrationCtx(
+		&providers.Entity{ID: testExistingUser123ID, OUID: testOUID},
+		&providers.Entity{ID: "holder-elsewhere", OUID: "ou-source"})
+	ctx.NodeProperties = map[string]interface{}{common.NodePropertyAllowCrossOUProvisioning: true}
+	ctx.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser] = dataValueTrue
+	ctx.RuntimeData[common.RuntimeKeyEntityState] = entityStateAmbiguous
+	ctx.RuntimeData[common.RuntimeKeyPendingFederatedSync] = pendingSync()
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
+		map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: testExistingUser123ID},
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(newAuthenticatedAuthUser(), providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil)).Once()
+	suite.mockEntityProvider.On("SyncFederatedEntity", testExistingUser123ID,
+		syncedLink(testFederatedIdpID, testFederatedSub)).Return(nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+}
+
+// A connection that keeps attributes to the session records the link without a sync time.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_SessionOnlyLinkIsNotSynced() {
+	suite.expectSchemaForProvisioning()
+	suite.mockUserMgtProvider.On("CreateUser", mock.Anything,
+		mock.MatchedBy(func(u *providers.User) bool {
+			return *u.LinkedAccount == providers.LinkedAccount{IdpID: testFederatedIdpID, Sub: testFederatedSub}
+		})).Return(&providers.User{ID: testNewUserID, OUID: testOUID, Type: testUserType},
+		(*tidcommon.ServiceError)(nil))
+	ctx := suite.federatedCtx(false)
+	ctx.RuntimeData[common.RuntimeKeyAttributesSyncMode] = string(providers.SyncModeSessionOnly)
+	// Session only keeps the claims out, so the attribute comes from the user.
+	ctx.UserInputs = map[string]string{"username": "newuser"}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 }

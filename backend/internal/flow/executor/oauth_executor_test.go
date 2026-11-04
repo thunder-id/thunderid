@@ -14,32 +14,37 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oauthmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 )
 
 type OAuthExecutorTestSuite struct {
 	suite.Suite
-	mockOAuthService  *oauthmock.OAuthAuthnCoreServiceInterfaceMock
-	mockIDPService    *idpmock.IDPServiceInterfaceMock
-	mockFlowFactory   *coremock.FlowFactoryInterfaceMock
-	mockAuthnProvider *managermock.AuthnProviderManagerMock
-	executor          oAuthExecutorInterface
+	mockOAuthService   *oauthmock.OAuthAuthnCoreServiceInterfaceMock
+	mockIDPService     *idpmock.IDPServiceInterfaceMock
+	mockFlowFactory    *coremock.FlowFactoryInterfaceMock
+	mockAuthnProvider  *managermock.AuthnProviderManagerMock
+	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
+	executor           oAuthExecutorInterface
 }
 
 func TestOAuthExecutorSuite(t *testing.T) {
 	suite.Run(t, new(OAuthExecutorTestSuite))
 }
 
-func (suite *OAuthExecutorTestSuite) SetupTest() {
+func (suite *OAuthExecutorTestSuite) SetupTest() { //nolint:dupl // Mirrors the OIDC executor suite setup.
 	suite.mockOAuthService = oauthmock.NewOAuthAuthnCoreServiceInterfaceMock(suite.T())
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
+	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	suite.mockEntityProvider.On("SyncFederatedEntity", mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	mockExec := createMockAuthExecutor(suite.T(), ExecutorNameOAuth)
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameOAuth, providers.ExecutorTypeAuthentication,
@@ -47,7 +52,7 @@ func (suite *OAuthExecutorTestSuite) SetupTest() {
 
 	suite.executor = newOAuthExecutor(ExecutorNameOAuth, defaultCodeOnlyInputs, []providers.Input{},
 		suite.mockFlowFactory, suite.mockIDPService, suite.mockOAuthService,
-		suite.mockAuthnProvider, providers.IDPTypeOAuth)
+		suite.mockAuthnProvider, providers.IDPTypeOAuth, suite.mockEntityProvider)
 }
 
 // expectIdentityProviderResolved stubs the AuthorizationRuleMapping resolution ProcessAuthFlowResponse
@@ -55,8 +60,8 @@ func (suite *OAuthExecutorTestSuite) SetupTest() {
 // it resolves no mapped targets and leaves runtime data untouched.
 func expectIdentityProviderResolved(m *idpmock.IDPServiceInterfaceMock) {
 	m.On("GetIdentityProvider", mock.Anything, "idp-123").Return(&providers.IDPDTO{ID: "idp-123"}, nil).Maybe()
-	m.On("GetDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, (*tidcommon.ServiceError)(nil)).Maybe()
+	m.On("ResolveDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, nil, (*tidcommon.ServiceError)(nil)).Maybe()
 }
 
 // assertIDPRetrievalFailsClosed runs processResponse on a callback whose subject differs from the
@@ -953,4 +958,74 @@ func (suite *OAuthExecutorTestSuite) TestExecute_NoEntityReference_DoesNotResolv
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), entityStateNotExists, resp.RuntimeData[common.RuntimeKeyEntityState])
 	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "GetEntityReference", mock.Anything, mock.Anything)
+}
+
+// oauthSyncContext is a sign-in by an identity one user holds the link of.
+func oauthSyncContext(flowType providers.FlowType, allowExistingUser bool) *providers.NodeContext {
+	return &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    flowType,
+		UserInputs:  map[string]string{"code": "auth_code_123"},
+		NodeProperties: map[string]interface{}{
+			"idpId":                             "idp-123",
+			"allowRegistrationWithExistingUser": allowExistingUser,
+		},
+	}
+}
+
+func (suite *OAuthExecutorTestSuite) expectReturningUser() {
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(newOAuthAuthenticatedUser(), providers.AuthenticatedClaims{"sub": "user-sub-123"},
+			(*tidcommon.ServiceError)(nil))
+	expectEntityReferenceResolved(suite.mockAuthnProvider, newOAuthAuthenticatedUser())
+	expectIdentityProviderResolved(suite.mockIDPService)
+}
+
+// The user holding the link is synced through the link the sign-in asserted, in authentication and,
+// when an existing user is allowed, in registration.
+func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_SyncsTheLinkHolder() {
+	for _, ctx := range []*providers.NodeContext{
+		oauthSyncContext(providers.FlowTypeAuthentication, false),
+		oauthSyncContext(providers.FlowTypeRegistration, true),
+	} {
+		suite.SetupTest()
+		suite.expectReturningUser()
+		execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+		suite.Require().NoError(suite.executor.ProcessAuthFlowResponse(ctx, execResp))
+
+		suite.Equal(providers.ExecComplete, execResp.Status)
+		suite.mockEntityProvider.AssertCalled(suite.T(), "SyncFederatedEntity", "local-user-123",
+			mock.MatchedBy(func(sync providers.FederatedEntitySync) bool {
+				return sync.Link == providers.LinkedAccount{IdpID: "idp-123", Sub: "user-sub-123"}
+			}))
+		suite.Equal("", execResp.RuntimeData[common.RuntimeKeyPendingFederatedSync])
+	}
+}
+
+// Registration that doesn't allow an existing user keeps the sync pending and writes nothing.
+func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationWithoutExistingUserDoesNotSync() {
+	suite.expectReturningUser()
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	suite.Require().NoError(suite.executor.ProcessAuthFlowResponse(
+		oauthSyncContext(providers.FlowTypeRegistration, false), execResp))
+
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "SyncFederatedEntity", mock.Anything, mock.Anything)
+	suite.NotEmpty(execResp.RuntimeData[common.RuntimeKeyPendingFederatedSync])
+}
+
+func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_RejectedSyncFailsSignIn() {
+	suite.mockEntityProvider.ExpectedCalls = nil
+	suite.mockEntityProvider.On("SyncFederatedEntity", "local-user-123", mock.Anything).Return(
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSyncRejected, "Sync rejected", "denied")).Once()
+	suite.expectReturningUser()
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	suite.Require().NoError(suite.executor.ProcessAuthFlowResponse(
+		oauthSyncContext(providers.FlowTypeAuthentication, false), execResp))
+
+	suite.Equal(providers.ExecFailure, execResp.Status)
+	suite.Equal(&ErrFederatedUserSyncFailed, execResp.Error)
 }
