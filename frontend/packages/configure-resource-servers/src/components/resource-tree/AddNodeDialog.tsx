@@ -13,8 +13,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
-  FormLabel,
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
@@ -237,69 +235,68 @@ export default function AddNodeDialog({
       <DialogTitle>{titleMap[mode]}</DialogTitle>
       <DialogContent>
         <Box sx={{display: 'flex', flexDirection: 'column', gap: 2, pt: 1}}>
-          <FormControl fullWidth required>
-            <FormLabel>{t('resourceServers:tree.fields.name', 'Name')}</FormLabel>
-            <TextField
-              value={name}
-              onChange={(e) => {
-                if (error) setError(null);
-                const newName = e.target.value;
-                setName(newName);
-                if (!handleEdited) {
-                  setHandle(generateHandle(newName, delimiter === '-' ? '_' : '-'));
-                }
-              }}
-              fullWidth
-              size="small"
-              placeholder={resolveNamePlaceholder()}
-              // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus
-            />
-          </FormControl>
-          <FormControl fullWidth required>
-            <FormLabel>{t('resourceServers:tree.fields.handle', 'Handle')}</FormLabel>
-            <TextField
-              value={handle}
-              onChange={(e) => {
-                if (error) setError(null);
-                setHandleEdited(true);
-                const sanitized = e.target.value.toLowerCase().replace(/[^a-z0-9._\-:/]/g, '');
-                setHandle(sanitized);
-              }}
-              fullWidth
-              size="small"
-              placeholder={resolveHandlePlaceholder()}
-              error={handleContainsDelimiter}
-              helperText={
-                handleContainsDelimiter
-                  ? t(
-                      'resourceServers:tree.fields.handleDelimiterError',
-                      'Handle cannot contain the delimiter character "{{delimiter}}".',
-                      {delimiter},
-                    )
-                  : t(
-                      'resourceServers:tree.fields.handleHint',
-                      'Lowercase, alphanumeric, and {{allowedChars}} characters. Cannot be changed after creation.',
-                      {allowedChars},
-                    )
+          <TextField
+            labelPlacement="top"
+            label={t('resourceServers:tree.fields.name', 'Name')}
+            required
+            value={name}
+            onChange={(e) => {
+              if (error) setError(null);
+              const newName = e.target.value;
+              setName(newName);
+              if (!handleEdited) {
+                setHandle(generateHandle(newName, delimiter === '-' ? '_' : '-'));
               }
-            />
-          </FormControl>
-          <FormControl fullWidth>
-            <FormLabel>{t('resourceServers:tree.fields.description', 'Description')}</FormLabel>
-            <TextField
-              value={description}
-              onChange={(e) => {
-                if (error) setError(null);
-                setDescription(e.target.value);
-              }}
-              fullWidth
-              size="small"
-              multiline
-              rows={2}
-              placeholder={resolveDescriptionPlaceholder()}
-            />
-          </FormControl>
+            }}
+            fullWidth
+            size="small"
+            placeholder={resolveNamePlaceholder()}
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus
+          />
+          <TextField
+            labelPlacement="top"
+            label={t('resourceServers:tree.fields.handle', 'Handle')}
+            required
+            value={handle}
+            onChange={(e) => {
+              if (error) setError(null);
+              setHandleEdited(true);
+              const sanitized = e.target.value.toLowerCase().replace(/[^a-z0-9._\-:/]/g, '');
+              setHandle(sanitized);
+            }}
+            fullWidth
+            size="small"
+            placeholder={resolveHandlePlaceholder()}
+            error={handleContainsDelimiter}
+            helperText={
+              handleContainsDelimiter
+                ? t(
+                    'resourceServers:tree.fields.handleDelimiterError',
+                    'Handle cannot contain the delimiter character "{{delimiter}}".',
+                    {delimiter},
+                  )
+                : t(
+                    'resourceServers:tree.fields.handleHint',
+                    'Lowercase, alphanumeric, and {{allowedChars}} characters. Cannot be changed after creation.',
+                    {allowedChars},
+                  )
+            }
+          />
+          <TextField
+            labelPlacement="top"
+            label={t('resourceServers:tree.fields.description', 'Description')}
+            value={description}
+            onChange={(e) => {
+              if (error) setError(null);
+              setDescription(e.target.value);
+            }}
+            fullWidth
+            size="small"
+            multiline
+            rows={2}
+            placeholder={resolveDescriptionPlaceholder()}
+          />
 
           {handle.trim() && (
             <Box sx={{bgcolor: 'action.hover', borderRadius: 1, px: 1.5, py: 1}}>

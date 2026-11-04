@@ -18,8 +18,6 @@ import {
   useTheme,
   Button,
   TextField,
-  FormControl,
-  FormLabel,
   Paper,
   Avatar,
   Stack,
@@ -231,32 +229,28 @@ export default function Preview({appLogo, selectedTheme, integrations}: PreviewP
                           onSubmit={(e) => e.preventDefault()}
                           sx={{display: 'flex', flexDirection: 'column', gap: 2, mb: hasSocialLogins ? 2 : 0}}
                         >
-                          <FormControl required>
-                            <FormLabel htmlFor="preview-username">
-                              {t('applications:onboarding.preview.username')}
-                            </FormLabel>
-                            <TextField
-                              id="preview-username"
-                              type="text"
-                              placeholder={t('applications:onboarding.preview.usernamePlaceholder')}
-                              fullWidth
-                              variant="outlined"
-                              disabled
-                            />
-                          </FormControl>
-                          <FormControl required>
-                            <FormLabel htmlFor="preview-password">
-                              {t('applications:onboarding.preview.password')}
-                            </FormLabel>
-                            <TextField
-                              id="preview-password"
-                              type="password"
-                              placeholder={t('applications:onboarding.preview.passwordPlaceholder')}
-                              fullWidth
-                              variant="outlined"
-                              disabled
-                            />
-                          </FormControl>
+                          <TextField
+                            labelPlacement="top"
+                            label={t('applications:onboarding.preview.username')}
+                            required
+                            id="preview-username"
+                            type="text"
+                            placeholder={t('applications:onboarding.preview.usernamePlaceholder')}
+                            fullWidth
+                            variant="outlined"
+                            disabled
+                          />
+                          <TextField
+                            labelPlacement="top"
+                            label={t('applications:onboarding.preview.password')}
+                            required
+                            id="preview-password"
+                            type="password"
+                            placeholder={t('applications:onboarding.preview.passwordPlaceholder')}
+                            fullWidth
+                            variant="outlined"
+                            disabled
+                          />
                           <Button type="submit" fullWidth color="primary" sx={previewPrimaryContainedSx}>
                             {t('applications:onboarding.preview.signInButton')}
                           </Button>
@@ -290,23 +284,21 @@ export default function Preview({appLogo, selectedTheme, integrations}: PreviewP
                           onSubmit={(e) => e.preventDefault()}
                           sx={{display: 'flex', flexDirection: 'column', gap: 2, mb: hasSocialLogins ? 2 : 0}}
                         >
-                          <FormControl required>
-                            <FormLabel htmlFor="preview-mobile">
-                              {t('applications:onboarding.preview.mobileNumber', {
-                                defaultValue: 'Mobile number',
-                              })}
-                            </FormLabel>
-                            <TextField
-                              id="preview-mobile"
-                              type="tel"
-                              placeholder={t('applications:onboarding.preview.mobileNumberPlaceholder', {
-                                defaultValue: 'Enter your mobile number',
-                              })}
-                              fullWidth
-                              variant="outlined"
-                              disabled
-                            />
-                          </FormControl>
+                          <TextField
+                            labelPlacement="top"
+                            label={t('applications:onboarding.preview.mobileNumber', {
+                              defaultValue: 'Mobile number',
+                            })}
+                            required
+                            id="preview-mobile"
+                            type="tel"
+                            placeholder={t('applications:onboarding.preview.mobileNumberPlaceholder', {
+                              defaultValue: 'Enter your mobile number',
+                            })}
+                            fullWidth
+                            variant="outlined"
+                            disabled
+                          />
                           <Button type="submit" fullWidth color="primary" sx={previewPrimaryContainedSx}>
                             {t('applications:onboarding.preview.sendOtpButton', {
                               defaultValue: 'Send OTP',

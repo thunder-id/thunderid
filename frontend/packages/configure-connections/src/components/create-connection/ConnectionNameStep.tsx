@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {NameSuggestion} from '@thunderid/components';
-import {FormControl, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
+import {Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 
@@ -30,9 +30,11 @@ export default function ConnectionNameStep({
         {t('wizard.name.title', "Let's collect some details about your connection")}
       </Typography>
 
-      <FormControl fullWidth required error={Boolean(nameError)}>
-        <FormLabel htmlFor="connection-name-input">{t('wizard.name.fieldLabel', 'Connection name')}</FormLabel>
+      <Stack>
         <TextField
+          labelPlacement="top"
+          label={t('wizard.name.fieldLabel', 'Connection name')}
+          required
           fullWidth
           id="connection-name-input"
           value={name}
@@ -44,7 +46,7 @@ export default function ConnectionNameStep({
         />
 
         <NameSuggestion onSelect={onNameChange} />
-      </FormControl>
+      </Stack>
     </Stack>
   );
 }

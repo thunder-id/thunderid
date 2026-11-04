@@ -365,16 +365,16 @@ function MappingRow({
       data-testid={`authorization-mapping-${mapping.key}`}
     >
       <Stack direction="row" spacing={2} alignItems="flex-start" sx={{mb: 2}}>
-        <FormControl sx={{flex: 1}}>
-          <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.claim.label')}</FormLabel>
-          <TextField
-            placeholder={t('authorizationRules.claim.placeholder')}
-            value={mapping.claim}
-            onChange={(e) => onChange({claim: e.target.value})}
-            error={mappingIsAttempted(mapping) && mapping.claim.trim() === ''}
-            inputProps={{'aria-label': t('authorizationRules.claim.label')}}
-          />
-        </FormControl>
+        <TextField
+          labelPlacement="top"
+          label={t('authorizationRules.claim.label')}
+          sx={{flex: 1}}
+          placeholder={t('authorizationRules.claim.placeholder')}
+          value={mapping.claim}
+          onChange={(e) => onChange({claim: e.target.value})}
+          error={mappingIsAttempted(mapping) && mapping.claim.trim() === ''}
+          inputProps={{'aria-label': t('authorizationRules.claim.label')}}
+        />
         {mapping.isAdvanced && (
           <FormControl sx={{width: 160}}>
             <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.valueType.label')}</FormLabel>

@@ -278,16 +278,16 @@ export default function SchemaPropertyEditor({
             {(expandedIds[property.id] ?? false) && (
               <Stack spacing={2} sx={{px: 3, pb: 3, pt: 1}}>
                 <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', md: '1fr 1fr'}, gap: 2}}>
-                  <FormControl fullWidth>
-                    <FormLabel>{t('userTypes:propertyName', 'Property name')}</FormLabel>
-                    <TextField
-                      value={property.name}
-                      onChange={(e) => handlePropertyChange(property.id, 'name', e.target.value)}
-                      placeholder={t('userTypes:propertyNamePlaceholder', 'e.g., email, age, address')}
-                      size="small"
-                      disabled={disabled}
-                    />
-                  </FormControl>
+                  <TextField
+                    labelPlacement="top"
+                    label={t('userTypes:propertyName', 'Property name')}
+                    fullWidth
+                    value={property.name}
+                    onChange={(e) => handlePropertyChange(property.id, 'name', e.target.value)}
+                    placeholder={t('userTypes:propertyNamePlaceholder', 'e.g., email, age, address')}
+                    size="small"
+                    disabled={disabled}
+                  />
 
                   <FormControl fullWidth>
                     <FormLabel>{t('userTypes:propertyType', 'Type')}</FormLabel>
@@ -467,35 +467,35 @@ export default function SchemaPropertyEditor({
 
                 {/* String: regex pattern */}
                 {(property.type === 'string' || isContactAttributeType(property.type)) && (
-                  <FormControl fullWidth>
-                    <FormLabel>
-                      {isContactAttributeType(property.type)
+                  <TextField
+                    labelPlacement="top"
+                    label={
+                      isContactAttributeType(property.type)
                         ? t('userTypes:contactRegexPattern', 'Regular expression pattern')
-                        : t('userTypes:regexPattern', 'Regular expression pattern (optional)')}
-                    </FormLabel>
-                    <TextField
-                      value={property.regex}
-                      required={isContactAttributeType(property.type)}
-                      error={isContactAttributeType(property.type) && !property.regex.trim()}
-                      helperText={
-                        isContactAttributeType(property.type) && !property.regex.trim()
-                          ? property.type === 'email'
-                            ? t(
-                                'userTypes:validationErrors.emailRegexRequired',
-                                'Enter a regular expression for email attributes.',
-                              )
-                            : t(
-                                'userTypes:validationErrors.mobileRegexRequired',
-                                'Enter a regular expression for mobile attributes.',
-                              )
-                          : undefined
-                      }
-                      onChange={(e) => handlePropertyChange(property.id, 'regex', e.target.value)}
-                      placeholder={t('userTypes:regexPlaceholder', 'e.g., ^[a-zA-Z0-9]+$')}
-                      size="small"
-                      disabled={disabled}
-                    />
-                  </FormControl>
+                        : t('userTypes:regexPattern', 'Regular expression pattern (optional)')
+                    }
+                    fullWidth
+                    value={property.regex}
+                    required={isContactAttributeType(property.type)}
+                    error={isContactAttributeType(property.type) && !property.regex.trim()}
+                    helperText={
+                      isContactAttributeType(property.type) && !property.regex.trim()
+                        ? property.type === 'email'
+                          ? t(
+                              'userTypes:validationErrors.emailRegexRequired',
+                              'Enter a regular expression for email attributes.',
+                            )
+                          : t(
+                              'userTypes:validationErrors.mobileRegexRequired',
+                              'Enter a regular expression for mobile attributes.',
+                            )
+                        : undefined
+                    }
+                    onChange={(e) => handlePropertyChange(property.id, 'regex', e.target.value)}
+                    placeholder={t('userTypes:regexPlaceholder', 'e.g., ^[a-zA-Z0-9]+$')}
+                    size="small"
+                    disabled={disabled}
+                  />
                 )}
 
                 {/* Enum: value input + chips */}

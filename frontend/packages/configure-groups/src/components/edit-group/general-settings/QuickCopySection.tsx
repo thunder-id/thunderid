@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {Stack, TextField, InputAdornment, Tooltip, IconButton, FormControl, FormLabel} from '@wso2/oxygen-ui';
+import {Stack, TextField, InputAdornment, Tooltip, IconButton} from '@wso2/oxygen-ui';
 import {Copy, Check} from '@wso2/oxygen-ui-icons-react';
 import {useTranslation} from 'react-i18next';
 import type {Group} from '../../../models/group';
@@ -25,50 +25,47 @@ export default function QuickCopySection({group, copiedField, onCopyToClipboard}
       )}
     >
       <Stack spacing={3}>
-        <FormControl fullWidth>
-          <FormLabel htmlFor="group-id-input">
-            {t('groups:edit.general.sections.quickCopy.groupId', 'Group ID')}
-          </FormLabel>
-          <TextField
-            fullWidth
-            id="group-id-input"
-            value={group.id}
-            InputProps={{
-              readOnly: true,
-              endAdornment: (
-                <InputAdornment position="end">
-                  <Tooltip
-                    title={
+        <TextField
+          labelPlacement="top"
+          label={t('groups:edit.general.sections.quickCopy.groupId', 'Group ID')}
+          fullWidth
+          id="group-id-input"
+          value={group.id}
+          InputProps={{
+            readOnly: true,
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip
+                  title={
+                    copiedField === 'group_id'
+                      ? t('common:actions.copied')
+                      : t('groups:edit.general.sections.quickCopy.copyGroupId')
+                  }
+                >
+                  <IconButton
+                    aria-label={
                       copiedField === 'group_id'
                         ? t('common:actions.copied')
                         : t('groups:edit.general.sections.quickCopy.copyGroupId')
                     }
+                    onClick={() => {
+                      onCopyToClipboard(group.id, 'group_id').catch(() => null);
+                    }}
+                    edge="end"
                   >
-                    <IconButton
-                      aria-label={
-                        copiedField === 'group_id'
-                          ? t('common:actions.copied')
-                          : t('groups:edit.general.sections.quickCopy.copyGroupId')
-                      }
-                      onClick={() => {
-                        onCopyToClipboard(group.id, 'group_id').catch(() => null);
-                      }}
-                      edge="end"
-                    >
-                      {copiedField === 'group_id' ? <Check size={16} /> : <Copy size={16} />}
-                    </IconButton>
-                  </Tooltip>
-                </InputAdornment>
-              ),
-            }}
-            sx={{
-              '& input': {
-                fontFamily: 'monospace',
-                fontSize: '0.875rem',
-              },
-            }}
-          />
-        </FormControl>
+                    {copiedField === 'group_id' ? <Check size={16} /> : <Copy size={16} />}
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ),
+          }}
+          sx={{
+            '& input': {
+              fontFamily: 'monospace',
+              fontSize: '0.875rem',
+            },
+          }}
+        />
       </Stack>
     </SettingsCard>
   );

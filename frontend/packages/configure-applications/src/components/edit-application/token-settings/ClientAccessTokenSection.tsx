@@ -2,18 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {
-  Alert,
-  Card,
-  CardContent,
-  Chip,
-  FormControl,
-  FormLabel,
-  Grid,
-  Stack,
-  TextField,
-  Typography,
-} from '@wso2/oxygen-ui';
+import {Alert, Card, CardContent, Chip, Grid, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useEffect, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import JwtPreview from './JwtPreview';
@@ -186,20 +175,20 @@ export default function ClientAccessTokenSection({
       </SettingsCard>
 
       <SettingsCard title={copy.validityTitle} description={copy.validityDescription}>
-        <FormControl fullWidth required>
-          <FormLabel htmlFor={inputId}>{copy.validityLabel}</FormLabel>
-          <TextField
-            id={inputId}
-            type="number"
-            fullWidth
-            value={validityInput}
-            onChange={(e) => handleValidityChange(e.target.value)}
-            error={isValidityInvalid}
-            helperText={isValidityInvalid ? copy.validityError : copy.validityHint}
-            inputProps={{min: 1}}
-            disabled={disabled}
-          />
-        </FormControl>
+        <TextField
+          labelPlacement="top"
+          label={copy.validityLabel}
+          required
+          id={inputId}
+          type="number"
+          fullWidth
+          value={validityInput}
+          onChange={(e) => handleValidityChange(e.target.value)}
+          error={isValidityInvalid}
+          helperText={isValidityInvalid ? copy.validityError : copy.validityHint}
+          inputProps={{min: 1}}
+          disabled={disabled}
+        />
       </SettingsCard>
     </Stack>
   );

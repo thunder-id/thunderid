@@ -560,27 +560,25 @@ export default function ConfigureDetails({
           {/* Mobile (non-wallet): the admin enters the app's deep link directly. */}
           {!isWallet && (
             <>
-              <FormControl fullWidth required>
-                <FormLabel htmlFor="deeplink-input">
-                  {t('applications:onboarding.configure.details.deeplink.label')}
-                </FormLabel>
-                <Controller
-                  name="deeplink"
-                  control={control}
-                  render={({field}) => (
-                    <TextField
-                      {...field}
-                      fullWidth
-                      id="deeplink-input"
-                      placeholder={t('applications:onboarding.configure.details.deeplink.placeholder')}
-                      error={!!errors.deeplink}
-                      helperText={
-                        errors.deeplink?.message ?? t('applications:onboarding.configure.details.deeplink.helperText')
-                      }
-                    />
-                  )}
-                />
-              </FormControl>
+              <Controller
+                name="deeplink"
+                control={control}
+                render={({field}) => (
+                  <TextField
+                    labelPlacement="top"
+                    label={t('applications:onboarding.configure.details.deeplink.label')}
+                    required
+                    {...field}
+                    fullWidth
+                    id="deeplink-input"
+                    placeholder={t('applications:onboarding.configure.details.deeplink.placeholder')}
+                    error={!!errors.deeplink}
+                    helperText={
+                      errors.deeplink?.message ?? t('applications:onboarding.configure.details.deeplink.helperText')
+                    }
+                  />
+                )}
+              />
               <Alert severity="info">{t('applications:onboarding.configure.details.mobile.info')}</Alert>
             </>
           )}
@@ -663,20 +661,17 @@ export default function ConfigureDetails({
               </Grid>
 
               {isWalletCustom && (
-                <FormControl fullWidth>
-                  <FormLabel htmlFor="wallet-client-id-input">
-                    {t('applications:onboarding.configure.details.wallet.clientId.label')}
-                  </FormLabel>
-                  <TextField
-                    fullWidth
-                    id="wallet-client-id-input"
-                    value={customClientId}
-                    error={isDuplicateWalletClientId}
-                    placeholder={t('applications:onboarding.configure.details.wallet.clientId.placeholder')}
-                    helperText={t('applications:onboarding.configure.details.wallet.clientId.helperText')}
-                    onChange={(e): void => applyCustomClientId(e.target.value)}
-                  />
-                </FormControl>
+                <TextField
+                  labelPlacement="top"
+                  label={t('applications:onboarding.configure.details.wallet.clientId.label')}
+                  fullWidth
+                  id="wallet-client-id-input"
+                  value={customClientId}
+                  error={isDuplicateWalletClientId}
+                  placeholder={t('applications:onboarding.configure.details.wallet.clientId.placeholder')}
+                  helperText={t('applications:onboarding.configure.details.wallet.clientId.helperText')}
+                  onChange={(e): void => applyCustomClientId(e.target.value)}
+                />
               )}
 
               {isDuplicateWalletClientId && (
@@ -690,27 +685,25 @@ export default function ConfigureDetails({
               )}
 
               {isWalletCustom && (
-                <FormControl fullWidth required>
-                  <FormLabel htmlFor="wallet-deeplink-input">
-                    {t('applications:onboarding.configure.details.deeplink.label')}
-                  </FormLabel>
-                  <Controller
-                    name="deeplink"
-                    control={control}
-                    render={({field}) => (
-                      <TextField
-                        {...field}
-                        fullWidth
-                        id="wallet-deeplink-input"
-                        placeholder={t('applications:onboarding.configure.details.deeplink.placeholder')}
-                        error={!!errors.deeplink}
-                        helperText={
-                          errors.deeplink?.message ?? t('applications:onboarding.configure.details.deeplink.helperText')
-                        }
-                      />
-                    )}
-                  />
-                </FormControl>
+                <Controller
+                  name="deeplink"
+                  control={control}
+                  render={({field}) => (
+                    <TextField
+                      labelPlacement="top"
+                      label={t('applications:onboarding.configure.details.deeplink.label')}
+                      required
+                      {...field}
+                      fullWidth
+                      id="wallet-deeplink-input"
+                      placeholder={t('applications:onboarding.configure.details.deeplink.placeholder')}
+                      error={!!errors.deeplink}
+                      helperText={
+                        errors.deeplink?.message ?? t('applications:onboarding.configure.details.deeplink.helperText')
+                      }
+                    />
+                  )}
+                />
               )}
             </>
           )}
@@ -728,28 +721,25 @@ export default function ConfigureDetails({
           {effectiveConfigurationType === ApplicationCreateFlowConfiguration.URL && (
             <Stack spacing={3}>
               {/* Hosting URL */}
-              <FormControl fullWidth required>
-                <FormLabel htmlFor="hosting-url-input">
-                  {t('applications:onboarding.configure.details.hostingUrl.label')}
-                </FormLabel>
-                <Controller
-                  name="hostingUrl"
-                  control={control}
-                  render={({field}) => (
-                    <TextField
-                      {...field}
-                      fullWidth
-                      id="hosting-url-input"
-                      placeholder={t('applications:onboarding.configure.details.hostingUrl.placeholder')}
-                      error={!!errors.hostingUrl}
-                      helperText={
-                        errors.hostingUrl?.message ??
-                        t('applications:onboarding.configure.details.hostingUrl.helperText')
-                      }
-                    />
-                  )}
-                />
-              </FormControl>
+              <Controller
+                name="hostingUrl"
+                control={control}
+                render={({field}) => (
+                  <TextField
+                    labelPlacement="top"
+                    label={t('applications:onboarding.configure.details.hostingUrl.label')}
+                    required
+                    {...field}
+                    fullWidth
+                    id="hosting-url-input"
+                    placeholder={t('applications:onboarding.configure.details.hostingUrl.placeholder')}
+                    error={!!errors.hostingUrl}
+                    helperText={
+                      errors.hostingUrl?.message ?? t('applications:onboarding.configure.details.hostingUrl.helperText')
+                    }
+                  />
+                )}
+              />
 
               {/* After Sign-in URL (Callback URL) */}
               <Stack spacing={2}>
@@ -789,28 +779,25 @@ export default function ConfigureDetails({
                 </FormControl>
 
                 {callbackMode === 'custom' && (
-                  <FormControl fullWidth>
-                    <FormLabel htmlFor="callback-url-input" id="custom-callback-url-label">
-                      {t('applications:onboarding.configure.details.callbackUrl.label')}
-                    </FormLabel>
-                    <Controller
-                      name="callbackUrl"
-                      control={control}
-                      render={({field}) => (
-                        <TextField
-                          {...field}
-                          fullWidth
-                          id="callback-url-input"
-                          placeholder={t('applications:onboarding.configure.details.callbackUrl.placeholder')}
-                          error={!!errors.callbackUrl}
-                          helperText={
-                            errors.callbackUrl?.message ??
-                            t('applications:onboarding.configure.details.callbackUrl.helperText')
-                          }
-                        />
-                      )}
-                    />
-                  </FormControl>
+                  <Controller
+                    name="callbackUrl"
+                    control={control}
+                    render={({field}) => (
+                      <TextField
+                        labelPlacement="top"
+                        label={t('applications:onboarding.configure.details.callbackUrl.label')}
+                        {...field}
+                        fullWidth
+                        id="callback-url-input"
+                        placeholder={t('applications:onboarding.configure.details.callbackUrl.placeholder')}
+                        error={!!errors.callbackUrl}
+                        helperText={
+                          errors.callbackUrl?.message ??
+                          t('applications:onboarding.configure.details.callbackUrl.helperText')
+                        }
+                      />
+                    )}
+                  />
                 )}
 
                 <Alert severity="info">{t('applications:onboarding.configure.details.callbackUrl.info')}</Alert>
@@ -828,54 +815,50 @@ export default function ConfigureDetails({
           <Typography variant="h1" gutterBottom>
             {t('applications:onboarding.configure.details.passkey.title') || 'Passkeys'}
           </Typography>
-          <FormControl fullWidth required>
-            <FormLabel htmlFor="relying-party-id-input">
-              {t('applications:onboarding.configure.details.relyingPartyId.label') || 'Relying party ID'}
-            </FormLabel>
-            <Controller
-              name="relyingPartyId"
-              control={control}
-              render={({field}) => (
-                <TextField
-                  {...field}
-                  fullWidth
-                  id="relying-party-id-input"
-                  placeholder={
-                    t('applications:onboarding.configure.details.relyingPartyId.placeholder') || 'e.g., example.com'
-                  }
-                  error={!!errors.relyingPartyId}
-                  helperText={
-                    errors.relyingPartyId?.message ??
-                    t('applications:onboarding.configure.details.relyingPartyId.helperText')
-                  }
-                />
-              )}
-            />
-          </FormControl>
-          <FormControl fullWidth required>
-            <FormLabel htmlFor="relying-party-name-input">
-              {t('applications:onboarding.configure.details.relyingPartyName.label') || 'Relying party name'}
-            </FormLabel>
-            <Controller
-              name="relyingPartyName"
-              control={control}
-              render={({field}) => (
-                <TextField
-                  {...field}
-                  fullWidth
-                  id="relying-party-name-input"
-                  placeholder={
-                    t('applications:onboarding.configure.details.relyingPartyName.placeholder') || 'e.g., My App'
-                  }
-                  error={!!errors.relyingPartyName}
-                  helperText={
-                    errors.relyingPartyName?.message ??
-                    t('applications:onboarding.configure.details.relyingPartyName.helperText')
-                  }
-                />
-              )}
-            />
-          </FormControl>
+          <Controller
+            name="relyingPartyId"
+            control={control}
+            render={({field}) => (
+              <TextField
+                labelPlacement="top"
+                label={t('applications:onboarding.configure.details.relyingPartyId.label') || 'Relying party ID'}
+                required
+                {...field}
+                fullWidth
+                id="relying-party-id-input"
+                placeholder={
+                  t('applications:onboarding.configure.details.relyingPartyId.placeholder') || 'e.g., example.com'
+                }
+                error={!!errors.relyingPartyId}
+                helperText={
+                  errors.relyingPartyId?.message ??
+                  t('applications:onboarding.configure.details.relyingPartyId.helperText')
+                }
+              />
+            )}
+          />
+          <Controller
+            name="relyingPartyName"
+            control={control}
+            render={({field}) => (
+              <TextField
+                labelPlacement="top"
+                label={t('applications:onboarding.configure.details.relyingPartyName.label') || 'Relying party name'}
+                required
+                {...field}
+                fullWidth
+                id="relying-party-name-input"
+                placeholder={
+                  t('applications:onboarding.configure.details.relyingPartyName.placeholder') || 'e.g., My App'
+                }
+                error={!!errors.relyingPartyName}
+                helperText={
+                  errors.relyingPartyName?.message ??
+                  t('applications:onboarding.configure.details.relyingPartyName.helperText')
+                }
+              />
+            )}
+          />
         </Stack>
       )}
     </Stack>

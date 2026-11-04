@@ -179,17 +179,17 @@ export default function AgentAddFormPage(): JSX.Element {
           }}
         >
           <Stack spacing={3}>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="agent-description">{t('agents:addForm.description')}</FormLabel>
-              <TextField
-                id="agent-description"
-                value={description}
-                multiline
-                minRows={2}
-                placeholder={t('agents:addForm.descriptionPlaceholder')}
-                onChange={(event) => setDescription(event.target.value)}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('agents:addForm.description')}
+              fullWidth
+              id="agent-description"
+              value={description}
+              multiline
+              minRows={2}
+              placeholder={t('agents:addForm.descriptionPlaceholder')}
+              onChange={(event) => setDescription(event.target.value)}
+            />
 
             <FormControl fullWidth required>
               <FormLabel htmlFor="agent-type">{t('agents:addForm.agentType')}</FormLabel>

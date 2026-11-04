@@ -152,15 +152,15 @@ export default function AuthenticationSection({
     }
 
     return (
-      <FormControl fullWidth required={Boolean(field.required)}>
-        <FormLabel htmlFor={`connection-field-${name}`}>{label}</FormLabel>
-        <TextField
-          id={`connection-field-${name}`}
-          value={value}
-          onChange={(e) => onFieldChange(name, e.target.value)}
-          fullWidth
-        />
-      </FormControl>
+      <TextField
+        labelPlacement="top"
+        label={label}
+        required={Boolean(field.required)}
+        id={`connection-field-${name}`}
+        value={value}
+        onChange={(e) => onFieldChange(name, e.target.value)}
+        fullWidth
+      />
     );
   };
 

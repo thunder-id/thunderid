@@ -157,15 +157,15 @@ export default function EditSchemaSettings({
 
           <Stack spacing={2}>
             <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', md: '1fr 1fr'}, gap: 2}}>
-              <FormControl fullWidth>
-                <FormLabel>{t('agentTypes:propertyName')}</FormLabel>
-                <TextField
-                  value={property.name}
-                  onChange={(e) => handlePropertyChange(property.id, 'name', e.target.value)}
-                  placeholder={t('agentTypes:propertyNamePlaceholder', 'e.g., email, age, address')}
-                  size="small"
-                />
-              </FormControl>
+              <TextField
+                labelPlacement="top"
+                label={t('agentTypes:propertyName')}
+                fullWidth
+                value={property.name}
+                onChange={(e) => handlePropertyChange(property.id, 'name', e.target.value)}
+                placeholder={t('agentTypes:propertyNamePlaceholder', 'e.g., email, age, address')}
+                size="small"
+              />
 
               <FormControl fullWidth>
                 <FormLabel>{t('agentTypes:propertyType', 'Type')}</FormLabel>
@@ -313,34 +313,34 @@ export default function EditSchemaSettings({
 
             {/* String: regex pattern */}
             {(property.type === 'string' || isContactAttributeType(property.type)) && (
-              <FormControl fullWidth>
-                <FormLabel>
-                  {isContactAttributeType(property.type)
+              <TextField
+                labelPlacement="top"
+                label={
+                  isContactAttributeType(property.type)
                     ? t('agentTypes:contactRegexPattern', 'Regular expression pattern')
-                    : t('agentTypes:regexPattern', 'Regular expression pattern (optional)')}
-                </FormLabel>
-                <TextField
-                  value={property.regex}
-                  required={isContactAttributeType(property.type)}
-                  error={isContactAttributeType(property.type) && !property.regex.trim()}
-                  helperText={
-                    isContactAttributeType(property.type) && !property.regex.trim()
-                      ? property.type === 'email'
-                        ? t(
-                            'agentTypes:validationErrors.emailRegexRequired',
-                            'Enter a regular expression for email attributes.',
-                          )
-                        : t(
-                            'agentTypes:validationErrors.mobileRegexRequired',
-                            'Enter a regular expression for mobile attributes.',
-                          )
-                      : undefined
-                  }
-                  onChange={(e) => handlePropertyChange(property.id, 'regex', e.target.value)}
-                  placeholder={t('agentTypes:regexPlaceholder', 'e.g., ^[a-zA-Z0-9]+$')}
-                  size="small"
-                />
-              </FormControl>
+                    : t('agentTypes:regexPattern', 'Regular expression pattern (optional)')
+                }
+                fullWidth
+                value={property.regex}
+                required={isContactAttributeType(property.type)}
+                error={isContactAttributeType(property.type) && !property.regex.trim()}
+                helperText={
+                  isContactAttributeType(property.type) && !property.regex.trim()
+                    ? property.type === 'email'
+                      ? t(
+                          'agentTypes:validationErrors.emailRegexRequired',
+                          'Enter a regular expression for email attributes.',
+                        )
+                      : t(
+                          'agentTypes:validationErrors.mobileRegexRequired',
+                          'Enter a regular expression for mobile attributes.',
+                        )
+                    : undefined
+                }
+                onChange={(e) => handlePropertyChange(property.id, 'regex', e.target.value)}
+                placeholder={t('agentTypes:regexPlaceholder', 'e.g., ^[a-zA-Z0-9]+$')}
+                size="small"
+              />
             )}
 
             {/* Enum: value input + chips */}

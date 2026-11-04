@@ -233,20 +233,20 @@ export default function VerifiablePresentationForm({
     required?: boolean,
     helperText?: string,
   ): JSX.Element => (
-    <FormControl fullWidth required={required}>
-      <FormLabel htmlFor={id}>{label}</FormLabel>
-      <TextField
-        fullWidth
-        id={id}
-        value={value}
-        placeholder={placeholder}
-        helperText={helperText}
-        onChange={(e: ChangeEvent<HTMLInputElement>): void => {
-          onErrorClear?.();
-          setValue(e.target.value);
-        }}
-      />
-    </FormControl>
+    <TextField
+      labelPlacement="top"
+      label={label}
+      required={required}
+      fullWidth
+      id={id}
+      value={value}
+      placeholder={placeholder}
+      helperText={helperText}
+      onChange={(e: ChangeEvent<HTMLInputElement>): void => {
+        onErrorClear?.();
+        setValue(e.target.value);
+      }}
+    />
   );
 
   return (
@@ -268,64 +268,62 @@ export default function VerifiablePresentationForm({
           {definitionId && (
             <SettingsCard title={t('form.quickCopy.title')} description={t('form.quickCopy.description')}>
               <Stack spacing={3}>
-                <FormControl fullWidth>
-                  <FormLabel htmlFor="vp-id">{t('form.id.label')}</FormLabel>
-                  <TextField
-                    fullWidth
-                    id="vp-id"
-                    value={definitionId}
-                    InputProps={{
-                      readOnly: true,
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <Tooltip title={copiedField === 'id' ? t('common:actions.copied') : t('form.copyId')}>
-                            <IconButton
-                              aria-label={t('form.copyId')}
-                              edge="end"
-                              onClick={(): void => {
-                                handleCopy(definitionId, 'id').catch(() => null);
-                              }}
-                            >
-                              {copiedField === 'id' ? <Check size={16} /> : <Copy size={16} />}
-                            </IconButton>
-                          </Tooltip>
-                        </InputAdornment>
-                      ),
-                    }}
-                    helperText={t('form.quickCopy.idHint')}
-                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-                  />
-                </FormControl>
-                <FormControl fullWidth>
-                  <FormLabel htmlFor="vp-handle">{t('form.handle.label')}</FormLabel>
-                  <TextField
-                    fullWidth
-                    id="vp-handle"
-                    value={handle}
-                    InputProps={{
-                      readOnly: true,
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <Tooltip
-                            title={copiedField === 'handle' ? t('common:actions.copied') : t('common:actions.copy')}
+                <TextField
+                  labelPlacement="top"
+                  label={t('form.id.label')}
+                  fullWidth
+                  id="vp-id"
+                  value={definitionId}
+                  InputProps={{
+                    readOnly: true,
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Tooltip title={copiedField === 'id' ? t('common:actions.copied') : t('form.copyId')}>
+                          <IconButton
+                            aria-label={t('form.copyId')}
+                            edge="end"
+                            onClick={(): void => {
+                              handleCopy(definitionId, 'id').catch(() => null);
+                            }}
                           >
-                            <IconButton
-                              aria-label={t('common:actions.copy')}
-                              edge="end"
-                              onClick={(): void => {
-                                handleCopy(handle, 'handle').catch(() => null);
-                              }}
-                            >
-                              {copiedField === 'handle' ? <Check size={16} /> : <Copy size={16} />}
-                            </IconButton>
-                          </Tooltip>
-                        </InputAdornment>
-                      ),
-                    }}
-                    helperText={t('form.handle.hint')}
-                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-                  />
-                </FormControl>
+                            {copiedField === 'id' ? <Check size={16} /> : <Copy size={16} />}
+                          </IconButton>
+                        </Tooltip>
+                      </InputAdornment>
+                    ),
+                  }}
+                  helperText={t('form.quickCopy.idHint')}
+                  sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                />
+                <TextField
+                  labelPlacement="top"
+                  label={t('form.handle.label')}
+                  fullWidth
+                  id="vp-handle"
+                  value={handle}
+                  InputProps={{
+                    readOnly: true,
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Tooltip
+                          title={copiedField === 'handle' ? t('common:actions.copied') : t('common:actions.copy')}
+                        >
+                          <IconButton
+                            aria-label={t('common:actions.copy')}
+                            edge="end"
+                            onClick={(): void => {
+                              handleCopy(handle, 'handle').catch(() => null);
+                            }}
+                          >
+                            {copiedField === 'handle' ? <Check size={16} /> : <Copy size={16} />}
+                          </IconButton>
+                        </Tooltip>
+                      </InputAdornment>
+                    ),
+                  }}
+                  helperText={t('form.handle.hint')}
+                  sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                />
               </Stack>
             </SettingsCard>
           )}
@@ -349,68 +347,66 @@ export default function VerifiablePresentationForm({
               )}
               {definitionId && (
                 <>
-                  <FormControl fullWidth>
-                    <FormLabel htmlFor="vp-ou-handle">{t('form.organizationUnit.handleLabel')}</FormLabel>
-                    <TextField
-                      id="vp-ou-handle"
-                      fullWidth
-                      size="small"
-                      value={initial?.ouHandle ?? '-'}
-                      InputProps={{
-                        readOnly: true,
-                        endAdornment: initial?.ouHandle ? (
-                          <InputAdornment position="end">
-                            <Tooltip
-                              title={copiedField === 'ouHandle' ? t('common:actions.copied') : t('common:actions.copy')}
+                  <TextField
+                    labelPlacement="top"
+                    label={t('form.organizationUnit.handleLabel')}
+                    id="vp-ou-handle"
+                    fullWidth
+                    size="small"
+                    value={initial?.ouHandle ?? '-'}
+                    InputProps={{
+                      readOnly: true,
+                      endAdornment: initial?.ouHandle ? (
+                        <InputAdornment position="end">
+                          <Tooltip
+                            title={copiedField === 'ouHandle' ? t('common:actions.copied') : t('common:actions.copy')}
+                          >
+                            <IconButton
+                              aria-label={t('common:actions.copy')}
+                              edge="end"
+                              onClick={(): void => {
+                                handleCopy(initial.ouHandle!, 'ouHandle').catch(() => null);
+                              }}
                             >
-                              <IconButton
-                                aria-label={t('common:actions.copy')}
-                                edge="end"
-                                onClick={(): void => {
-                                  handleCopy(initial.ouHandle!, 'ouHandle').catch(() => null);
-                                }}
-                              >
-                                {copiedField === 'ouHandle' ? <Check size={16} /> : <Copy size={16} />}
-                              </IconButton>
-                            </Tooltip>
-                          </InputAdornment>
-                        ) : undefined,
-                      }}
-                      helperText={t('form.organizationUnit.handleHint')}
-                      sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-                    />
-                  </FormControl>
-                  <FormControl fullWidth>
-                    <FormLabel htmlFor="vp-ou-id">{t('form.organizationUnit.idLabel')}</FormLabel>
-                    <TextField
-                      id="vp-ou-id"
-                      fullWidth
-                      size="small"
-                      value={initial?.ouId ?? ''}
-                      InputProps={{
-                        readOnly: true,
-                        endAdornment: (
-                          <InputAdornment position="end">
-                            <Tooltip
-                              title={copiedField === 'ouId' ? t('common:actions.copied') : t('common:actions.copy')}
+                              {copiedField === 'ouHandle' ? <Check size={16} /> : <Copy size={16} />}
+                            </IconButton>
+                          </Tooltip>
+                        </InputAdornment>
+                      ) : undefined,
+                    }}
+                    helperText={t('form.organizationUnit.handleHint')}
+                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                  />
+                  <TextField
+                    labelPlacement="top"
+                    label={t('form.organizationUnit.idLabel')}
+                    id="vp-ou-id"
+                    fullWidth
+                    size="small"
+                    value={initial?.ouId ?? ''}
+                    InputProps={{
+                      readOnly: true,
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Tooltip
+                            title={copiedField === 'ouId' ? t('common:actions.copied') : t('common:actions.copy')}
+                          >
+                            <IconButton
+                              aria-label={t('common:actions.copy')}
+                              edge="end"
+                              onClick={(): void => {
+                                handleCopy(initial?.ouId ?? '', 'ouId').catch(() => null);
+                              }}
                             >
-                              <IconButton
-                                aria-label={t('common:actions.copy')}
-                                edge="end"
-                                onClick={(): void => {
-                                  handleCopy(initial?.ouId ?? '', 'ouId').catch(() => null);
-                                }}
-                              >
-                                {copiedField === 'ouId' ? <Check size={16} /> : <Copy size={16} />}
-                              </IconButton>
-                            </Tooltip>
-                          </InputAdornment>
-                        ),
-                      }}
-                      helperText={t('form.organizationUnit.idHint')}
-                      sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-                    />
-                  </FormControl>
+                              {copiedField === 'ouId' ? <Check size={16} /> : <Copy size={16} />}
+                            </IconButton>
+                          </Tooltip>
+                        </InputAdornment>
+                      ),
+                    }}
+                    helperText={t('form.organizationUnit.idHint')}
+                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                  />
                 </>
               )}
             </Stack>

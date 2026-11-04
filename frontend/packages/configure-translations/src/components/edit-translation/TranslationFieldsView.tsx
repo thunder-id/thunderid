@@ -141,32 +141,32 @@ export default function TranslationFieldsView({
                 borderRadius: 1,
               }}
             >
-              <FormControl fullWidth>
-                <FormLabel htmlFor="new-translation-key">{t('editor.addKey.keyLabel')}</FormLabel>
-                <TextField
-                  id="new-translation-key"
-                  size="small"
-                  placeholder={t('editor.addKey.keyPlaceholder')}
-                  value={draft.key}
-                  onChange={(e) => onDraftChange({...draft, key: e.target.value})}
-                  error={isDuplicateKey}
-                  helperText={isDuplicateKey ? t('editor.addKey.duplicateKey') : undefined}
-                  sx={{'& .MuiInputBase-input': {fontFamily: 'monospace', fontSize: '0.8rem'}}}
-                />
-              </FormControl>
-              <FormControl fullWidth>
-                <FormLabel htmlFor="new-translation-value">{t('editor.addKey.valueLabel')}</FormLabel>
-                <TextField
-                  id="new-translation-value"
-                  size="small"
-                  placeholder={t('editor.addKey.valuePlaceholder')}
-                  value={draft.value}
-                  onChange={(e) => onDraftChange({...draft, value: e.target.value})}
-                  multiline
-                  minRows={1}
-                  maxRows={4}
-                />
-              </FormControl>
+              <TextField
+                labelPlacement="top"
+                label={t('editor.addKey.keyLabel')}
+                fullWidth
+                id="new-translation-key"
+                size="small"
+                placeholder={t('editor.addKey.keyPlaceholder')}
+                value={draft.key}
+                onChange={(e) => onDraftChange({...draft, key: e.target.value})}
+                error={isDuplicateKey}
+                helperText={isDuplicateKey ? t('editor.addKey.duplicateKey') : undefined}
+                sx={{'& .MuiInputBase-input': {fontFamily: 'monospace', fontSize: '0.8rem'}}}
+              />
+              <TextField
+                labelPlacement="top"
+                label={t('editor.addKey.valueLabel')}
+                fullWidth
+                id="new-translation-value"
+                size="small"
+                placeholder={t('editor.addKey.valuePlaceholder')}
+                value={draft.value}
+                onChange={(e) => onDraftChange({...draft, value: e.target.value})}
+                multiline
+                minRows={1}
+                maxRows={4}
+              />
               <Box sx={{display: 'flex', gap: 1}}>
                 <Button
                   size="small"

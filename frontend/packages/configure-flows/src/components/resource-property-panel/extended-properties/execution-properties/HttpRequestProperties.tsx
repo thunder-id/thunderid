@@ -1,16 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  Checkbox,
-  FormControlLabel,
-  FormHelperText,
-  FormLabel,
-  MenuItem,
-  Select,
-  Stack,
-  Typography,
-} from '@wso2/oxygen-ui';
+import {Checkbox, FormControlLabel, FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
 import {useCallback, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {HTTP_METHODS} from './constants';
@@ -69,17 +60,16 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
         {t('flows:core.executions.httpRequest.description')}
       </Typography>
 
-      <div>
-        <FormLabel htmlFor="http-url">{t('flows:core.executions.httpRequest.url.label')}</FormLabel>
-        <DraftTextField
-          id="http-url"
-          value={(properties['url'] as string) || ''}
-          onCommit={(value) => handleStringPropertyChange('url', value)}
-          placeholder={t('flows:core.executions.httpRequest.url.placeholder')}
-          fullWidth
-          size="small"
-        />
-      </div>
+      <DraftTextField
+        labelPlacement="top"
+        label={t('flows:core.executions.httpRequest.url.label')}
+        id="http-url"
+        value={(properties['url'] as string) || ''}
+        onCommit={(value) => handleStringPropertyChange('url', value)}
+        placeholder={t('flows:core.executions.httpRequest.url.placeholder')}
+        fullWidth
+        size="small"
+      />
 
       <div>
         <FormLabel htmlFor="http-method">{t('flows:core.executions.httpRequest.method.label')}</FormLabel>
@@ -118,48 +108,46 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
         />
       </div>
 
-      <div>
-        <FormLabel htmlFor="http-body">{t('flows:core.executions.httpRequest.body.label')}</FormLabel>
-        <DraftTextField
-          id="http-body"
-          value={
-            typeof properties['body'] === 'string'
-              ? properties['body']
-              : JSON.stringify(properties['body'] ?? {}, null, 2)
+      <DraftTextField
+        labelPlacement="top"
+        label={t('flows:core.executions.httpRequest.body.label')}
+        id="http-body"
+        value={
+          typeof properties['body'] === 'string'
+            ? properties['body']
+            : JSON.stringify(properties['body'] ?? {}, null, 2)
+        }
+        // Committing on blur also means a half-typed body is not repeatedly parsed and
+        // stored as a raw string on the way to becoming valid JSON.
+        onCommit={(value) => {
+          try {
+            const parsed: unknown = JSON.parse(value);
+            onChange('data.properties.body', parsed, resource);
+          } catch {
+            onChange('data.properties.body', value, resource);
           }
-          // Committing on blur also means a half-typed body is not repeatedly parsed and
-          // stored as a raw string on the way to becoming valid JSON.
-          onCommit={(value) => {
-            try {
-              const parsed: unknown = JSON.parse(value);
-              onChange('data.properties.body', parsed, resource);
-            } catch {
-              onChange('data.properties.body', value, resource);
-            }
-          }}
-          placeholder={t('flows:core.executions.httpRequest.body.placeholder')}
-          fullWidth
-          size="small"
-          multiline
-          minRows={3}
-        />
-      </div>
+        }}
+        placeholder={t('flows:core.executions.httpRequest.body.placeholder')}
+        fullWidth
+        size="small"
+        multiline
+        minRows={3}
+      />
 
-      <div>
-        <FormLabel htmlFor="http-timeout">{t('flows:core.executions.httpRequest.timeout.label')}</FormLabel>
-        <DraftTextField
-          id="http-timeout"
-          value={String((properties['timeout'] as number | string | undefined) ?? 10)}
-          onCommit={(value) => handleNumberPropertyChange('timeout', value)}
-          normalize={(raw) => clampToInteger(raw, 1, 20)}
-          placeholder={t('flows:core.executions.httpRequest.timeout.placeholder')}
-          fullWidth
-          size="small"
-          type="number"
-          inputProps={{min: 1, max: 20}}
-        />
-        <FormHelperText>{t('flows:core.executions.httpRequest.timeout.hint')}</FormHelperText>
-      </div>
+      <DraftTextField
+        labelPlacement="top"
+        label={t('flows:core.executions.httpRequest.timeout.label')}
+        helperText={t('flows:core.executions.httpRequest.timeout.hint')}
+        id="http-timeout"
+        value={String((properties['timeout'] as number | string | undefined) ?? 10)}
+        onCommit={(value) => handleNumberPropertyChange('timeout', value)}
+        normalize={(raw) => clampToInteger(raw, 1, 20)}
+        placeholder={t('flows:core.executions.httpRequest.timeout.placeholder')}
+        fullWidth
+        size="small"
+        type="number"
+        inputProps={{min: 1, max: 20}}
+      />
 
       <div>
         <FormLabel>{t('flows:core.executions.httpRequest.responseMapping.label')}</FormLabel>
@@ -202,45 +190,39 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
             label={t('flows:core.executions.httpRequest.errorHandling.failOnError.label')}
           />
 
-          <div>
-            <FormLabel htmlFor="retry-count">
-              {t('flows:core.executions.httpRequest.errorHandling.retryCount.label')}
-            </FormLabel>
-            <DraftTextField
-              id="retry-count"
-              value={String(errorHandling.retryCount ?? 0)}
-              onCommit={(value) =>
-                onChange('data.properties.errorHandling', {...errorHandling, retryCount: Number(value)}, resource)
-              }
-              normalize={(raw) => clampToInteger(raw, 0, 5)}
-              placeholder={t('flows:core.executions.httpRequest.errorHandling.retryCount.placeholder')}
-              fullWidth
-              size="small"
-              type="number"
-              inputProps={{min: 0, max: 5}}
-            />
-            <FormHelperText>{t('flows:core.executions.httpRequest.errorHandling.retryCount.hint')}</FormHelperText>
-          </div>
+          <DraftTextField
+            labelPlacement="top"
+            label={t('flows:core.executions.httpRequest.errorHandling.retryCount.label')}
+            helperText={t('flows:core.executions.httpRequest.errorHandling.retryCount.hint')}
+            id="retry-count"
+            value={String(errorHandling.retryCount ?? 0)}
+            onCommit={(value) =>
+              onChange('data.properties.errorHandling', {...errorHandling, retryCount: Number(value)}, resource)
+            }
+            normalize={(raw) => clampToInteger(raw, 0, 5)}
+            placeholder={t('flows:core.executions.httpRequest.errorHandling.retryCount.placeholder')}
+            fullWidth
+            size="small"
+            type="number"
+            inputProps={{min: 0, max: 5}}
+          />
 
-          <div>
-            <FormLabel htmlFor="retry-delay">
-              {t('flows:core.executions.httpRequest.errorHandling.retryDelay.label')}
-            </FormLabel>
-            <DraftTextField
-              id="retry-delay"
-              value={String(errorHandling.retryDelay ?? 0)}
-              onCommit={(value) =>
-                onChange('data.properties.errorHandling', {...errorHandling, retryDelay: Number(value)}, resource)
-              }
-              normalize={(raw) => clampToInteger(raw, 0, 5000)}
-              placeholder={t('flows:core.executions.httpRequest.errorHandling.retryDelay.placeholder')}
-              fullWidth
-              size="small"
-              type="number"
-              inputProps={{min: 0, max: 5000}}
-            />
-            <FormHelperText>{t('flows:core.executions.httpRequest.errorHandling.retryDelay.hint')}</FormHelperText>
-          </div>
+          <DraftTextField
+            labelPlacement="top"
+            label={t('flows:core.executions.httpRequest.errorHandling.retryDelay.label')}
+            helperText={t('flows:core.executions.httpRequest.errorHandling.retryDelay.hint')}
+            id="retry-delay"
+            value={String(errorHandling.retryDelay ?? 0)}
+            onCommit={(value) =>
+              onChange('data.properties.errorHandling', {...errorHandling, retryDelay: Number(value)}, resource)
+            }
+            normalize={(raw) => clampToInteger(raw, 0, 5000)}
+            placeholder={t('flows:core.executions.httpRequest.errorHandling.retryDelay.placeholder')}
+            fullWidth
+            size="small"
+            type="number"
+            inputProps={{min: 0, max: 5000}}
+          />
         </Stack>
       </div>
     </Stack>

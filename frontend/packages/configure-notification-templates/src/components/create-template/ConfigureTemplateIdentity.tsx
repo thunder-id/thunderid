@@ -4,7 +4,7 @@
 import {NameSuggestion, OrganizationUnitSummaryChip} from '@thunderid/components';
 import {OrganizationUnitTreeConstants} from '@thunderid/configure-organization-units';
 import {generateHandle} from '@thunderid/utils';
-import {FormControl, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
+import {Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useEffect, type ChangeEvent, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {NotificationChannel} from '../../models/notification-template';
@@ -111,9 +111,11 @@ export default function ConfigureTemplateIdentity({
         />
       )}
 
-      <FormControl fullWidth required>
-        <FormLabel htmlFor="template-name-input">{t('create.displayName.label', 'Display name')}</FormLabel>
+      <Stack>
         <TextField
+          labelPlacement="top"
+          label={t('create.displayName.label', 'Display name')}
+          required
           fullWidth
           id="template-name-input"
           value={displayName}
@@ -122,23 +124,23 @@ export default function ConfigureTemplateIdentity({
           inputProps={{maxLength: 255}}
         />
         <NameSuggestion onSelect={handleSuggestionSelect} />
-      </FormControl>
+      </Stack>
 
-      <FormControl fullWidth required>
-        <FormLabel htmlFor="template-handle-input">{t('create.handle.label', 'Handle')}</FormLabel>
-        <TextField
-          fullWidth
-          id="template-handle-input"
-          value={handle}
-          onChange={handleHandleChange}
-          placeholder={t('create.handle.placeholder', 'e.g. otp-verification')}
-          error={Boolean(handleError)}
-          helperText={
-            handleError ?? t('create.handle.helperText', 'A unique, URL-friendly identifier. Cannot be changed later.')
-          }
-          inputProps={{maxLength: 255, sx: {fontFamily: 'monospace'}}}
-        />
-      </FormControl>
+      <TextField
+        labelPlacement="top"
+        label={t('create.handle.label', 'Handle')}
+        required
+        fullWidth
+        id="template-handle-input"
+        value={handle}
+        onChange={handleHandleChange}
+        placeholder={t('create.handle.placeholder', 'e.g. otp-verification')}
+        error={Boolean(handleError)}
+        helperText={
+          handleError ?? t('create.handle.helperText', 'A unique, URL-friendly identifier. Cannot be changed later.')
+        }
+        inputProps={{maxLength: 255, sx: {fontFamily: 'monospace'}}}
+      />
     </Stack>
   );
 }

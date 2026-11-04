@@ -248,27 +248,22 @@ function ExtensionProperties({resource, onChange}: CommonResourcePropertiesProps
         onChange={(keys) => handleKeyListChange('responseKeys', keys)}
       />
 
-      <div>
-        <FormLabel htmlFor="extension-max-attempts">
-          {t('flows:core.executions.extension.maxAttempts.label', 'Max attempts')}
-        </FormLabel>
-        <DraftTextField
-          id="extension-max-attempts"
-          type="number"
-          value={String((properties['maxAttempts'] as number | string | undefined) ?? DEFAULT_MAX_ATTEMPTS)}
-          onCommit={(value) => onChange('data.properties.maxAttempts', Number(value), resource)}
-          normalize={(raw) => clampToInteger(raw, 1, 20)}
-          fullWidth
-          size="small"
-          inputProps={{min: 1, max: 20, step: 1}}
-        />
-        <FormHelperText>
-          {t(
-            'flows:core.executions.extension.maxAttempts.hint',
-            'How many FAILED or INCOMPLETE answers this step accepts in one flow execution. After that, the step fails without calling the service, and the flow continues at onFailure, or ends if none is set.',
-          )}
-        </FormHelperText>
-      </div>
+      <DraftTextField
+        labelPlacement="top"
+        label={t('flows:core.executions.extension.maxAttempts.label', 'Max attempts')}
+        helperText={t(
+          'flows:core.executions.extension.maxAttempts.hint',
+          'How many FAILED or INCOMPLETE answers this step accepts in one flow execution. After that, the step fails without calling the service, and the flow continues at onFailure, or ends if none is set.',
+        )}
+        id="extension-max-attempts"
+        type="number"
+        value={String((properties['maxAttempts'] as number | string | undefined) ?? DEFAULT_MAX_ATTEMPTS)}
+        onCommit={(value) => onChange('data.properties.maxAttempts', Number(value), resource)}
+        normalize={(raw) => clampToInteger(raw, 1, 20)}
+        fullWidth
+        size="small"
+        inputProps={{min: 1, max: 20, step: 1}}
+      />
 
       <Typography variant="body2" color="text.secondary">
         {t(

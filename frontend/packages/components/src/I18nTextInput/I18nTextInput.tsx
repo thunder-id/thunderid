@@ -21,11 +21,10 @@ import {
   CardHeader,
   CircularProgress,
   Divider,
-  FormControl,
-  FormLabel,
   IconButton,
   InputAdornment,
   Popover,
+  Stack,
   TextField,
   Tooltip,
   Typography,
@@ -508,9 +507,10 @@ export default function I18nTextInput({
   const resolvedValue = isDynamic ? (resolve(value, {t}) ?? '') : '';
 
   return (
-    <FormControl fullWidth>
-      <FormLabel>{label}</FormLabel>
+    <Stack>
       <TextField
+        labelPlacement="top"
+        label={label}
         fullWidth
         value={value}
         onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
@@ -575,6 +575,6 @@ export default function I18nTextInput({
         labels={labels}
         onTranslationCreated={onTranslationCreated}
       />
-    </FormControl>
+    </Stack>
   );
 }

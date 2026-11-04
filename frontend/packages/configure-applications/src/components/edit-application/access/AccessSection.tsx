@@ -187,28 +187,27 @@ export default function AccessSection({
           'Configure where this application is accessed from.',
         )}
       >
-        <FormControl fullWidth>
-          <FormLabel htmlFor="application-url-input">{t('applications:edit.general.labels.applicationUrl')}</FormLabel>
-          <Controller
-            name="url"
-            control={control}
-            render={({field}) => (
-              <TextField
-                {...field}
-                onChange={(e) => {
-                  field.onChange(e);
-                  onFieldChange('url', e.target.value);
-                }}
-                fullWidth
-                id="application-url-input"
-                placeholder="https://example.com"
-                error={!!errors.url}
-                helperText={errors.url?.message ?? t('applications:edit.general.applicationUrl.hint')}
-                disabled={application.isReadOnly}
-              />
-            )}
-          />
-        </FormControl>
+        <Controller
+          name="url"
+          control={control}
+          render={({field}) => (
+            <TextField
+              labelPlacement="top"
+              label={t('applications:edit.general.labels.applicationUrl')}
+              {...field}
+              onChange={(e) => {
+                field.onChange(e);
+                onFieldChange('url', e.target.value);
+              }}
+              fullWidth
+              id="application-url-input"
+              placeholder="https://example.com"
+              error={!!errors.url}
+              helperText={errors.url?.message ?? t('applications:edit.general.applicationUrl.hint')}
+              disabled={application.isReadOnly}
+            />
+          )}
+        />
       </SettingsCard>
     </Stack>
   );
