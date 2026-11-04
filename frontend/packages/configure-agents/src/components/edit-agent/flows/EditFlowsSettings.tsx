@@ -3,8 +3,9 @@
 
 import {
   type Application,
-  SettingsLockNotice,
   AuthenticationFlowSection,
+  DeviceGrantFlowSection,
+  SettingsLockNotice,
   RegistrationFlowSection,
   hasUserAccess,
 } from '@thunderid/configure-applications';
@@ -19,6 +20,8 @@ interface EditFlowsSettingsProps {
   editedAgent: Partial<Agent>;
   oauth2Config?: OAuthAgentConfig;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
+  deviceGrantFlowQueryError?: Error | null;
+  onRetryDeviceGrantFlowQuery?: () => void;
 }
 
 export default function EditFlowsSettings({
@@ -26,9 +29,11 @@ export default function EditFlowsSettings({
   editedAgent,
   oauth2Config = undefined,
   onFieldChange,
+  deviceGrantFlowQueryError = undefined,
+  onRetryDeviceGrantFlowQuery = undefined,
 }: EditFlowsSettingsProps): JSX.Element {
   const {t} = useTranslation();
-  // Only the authorization code and CIBA grants run this agent's sign-in flows. Token exchange and
+  // Authorization code, CIBA, and Device Code use this agent's sign-in flows. Token exchange and
   // JWT bearer redeem an existing token or assertion, so they never run a sign-in flow.
   const isUnlocked = hasUserAccess(oauth2Config?.grantTypes);
   const isDelegated = hasDelegationGrant(oauth2Config?.grantTypes);
@@ -69,6 +74,14 @@ export default function EditFlowsSettings({
             editedApp={appLikeEditedAgent}
             onFieldChange={appHandleFieldChange}
             entityLabel="agent"
+          />
+          <DeviceGrantFlowSection
+            application={appLikeAgent}
+            editedApp={appLikeEditedAgent}
+            onFieldChange={appHandleFieldChange}
+            entityLabel="agent"
+            deviceGrantFlowQueryError={deviceGrantFlowQueryError}
+            onRetryDeviceGrantFlowQuery={onRetryDeviceGrantFlowQuery}
           />
         </Stack>
       </SettingsLockNotice>

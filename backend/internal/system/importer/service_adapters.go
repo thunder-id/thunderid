@@ -1235,6 +1235,9 @@ func (s *importService) importAgent(
 	if mappedFlowID, ok := flowIDAliases[req.AuthFlowID]; ok {
 		req.AuthFlowID = mappedFlowID
 	}
+	if mappedFlowID, ok := flowIDAliases[req.DeviceGrantFlowID]; ok {
+		req.DeviceGrantFlowID = mappedFlowID
+	}
 	if mappedFlowID, ok := flowIDAliases[req.RegistrationFlowID]; ok {
 		req.RegistrationFlowID = mappedFlowID
 	}
@@ -1269,6 +1272,8 @@ func (s *importService) importAgent(
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                req.AuthFlowID,
 			AuthFlowHandle:            req.AuthFlowHandle,
+			DeviceGrantFlowID:         req.DeviceGrantFlowID,
+			DeviceGrantFlowHandle:     req.DeviceGrantFlowHandle,
 			RegistrationFlowID:        req.RegistrationFlowID,
 			RegistrationFlowHandle:    req.RegistrationFlowHandle,
 			IsRegistrationFlowEnabled: req.IsRegistrationFlowEnabled,
