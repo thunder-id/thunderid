@@ -141,24 +141,8 @@ func (ts *TokenExchangeTestSuite) createTestOrganizationUnit() string {
 		"parent":      nil,
 	}
 
-	ouJSON, err := json.Marshal(ouData)
-	ts.Require().NoError(err, "Failed to marshal OU data")
-
-	ouReq, err := http.NewRequest("POST", testutils.TestServerURL+"/organization-units", bytes.NewReader(ouJSON))
-	ts.Require().NoError(err, "Failed to create OU request")
-	ouReq.Header.Set("Content-Type", "application/json")
-
-	ouResp, err := ts.client.Do(ouReq)
-	ts.Require().NoError(err, "Failed to send OU request")
-	defer ouResp.Body.Close()
-
-	ts.Require().Equal(http.StatusCreated, ouResp.StatusCode, "Failed to create OU")
-
-	var ouRespData map[string]interface{}
-	err = json.NewDecoder(ouResp.Body).Decode(&ouRespData)
-	ts.Require().NoError(err, "Failed to parse OU response")
-
-	ouID := ouRespData["id"].(string)
+	ouID, err := testutils.ImportRootOrganizationUnit(ouData)
+	ts.Require().NoError(err, "Failed to create OU")
 	ts.T().Logf("Created test organization unit with ID: %s", ouID)
 
 	return ouID

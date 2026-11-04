@@ -841,6 +841,10 @@ func deleteUser(userId string) error {
 }
 
 func createOrganizationUnit(ouRequest OUCreateRequest) (string, error) {
+	if ouRequest.Parent == nil {
+		return testutils.ImportRootOrganizationUnit(ouRequest)
+	}
+
 	ouJSON, err := json.Marshal(ouRequest)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal OU request: %w", err)

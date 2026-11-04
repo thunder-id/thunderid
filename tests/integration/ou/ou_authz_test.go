@@ -458,3 +458,48 @@ func (ts *OUAuthzTestSuite) TestListOUsOffsetBeyondAuthorizedSet() {
 	ts.GreaterOrEqual(listResp.TotalResults, 1,
 		"total results must still report the authorized set size")
 }
+
+// ---------------------------------------------------------------------------
+// Tests — the root "system" permission across the deployment
+// ---------------------------------------------------------------------------
+
+// TestSystemScopeReachesEveryOU verifies the administrator's "system" permission reaches an OU
+// other than the one its token names.
+//
+// TODO: Change this to a refusal when the root "system" permission is confined to the token's
+// organization unit under OU-bounded authorization.
+func (ts *OUAuthzTestSuite) TestSystemScopeReachesEveryOU() {
+	req, err := http.NewRequest(http.MethodGet, authzTestServerURL+"/organization-units/"+ts.ou1ID, nil)
+	ts.Require().NoError(err)
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer closeBody(resp)
+
+	ts.Equal(http.StatusOK, resp.StatusCode,
+		"the system permission must reach an OU other than the token's")
+}
+
+// TestSystemScopeCannotCreateRootOU verifies a root OU is not created through the API, even with the
+// "system" permission. A root OU reaches the data plane only through import with the management API
+// key.
+func (ts *OUAuthzTestSuite) TestSystemScopeCannotCreateRootOU() {
+	payload := ts.newOUPayload("authz-admin-root-ou", "Authz Admin Root OU", nil)
+	req, err := http.NewRequest(http.MethodPost, authzTestServerURL+"/organization-units",
+		bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer closeBody(resp)
+
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusForbidden, resp.StatusCode,
+		"the system permission must not create a root OU through the API: %s", string(body))
+
+	var errResp testutils.ErrorResponse
+	ts.Require().NoError(json.Unmarshal(body, &errResp), "error body: %s", string(body))
+	ts.Equal("SSE-4030", errResp.Code)
+}

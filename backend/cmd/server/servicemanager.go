@@ -182,7 +182,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// what seals a secret before it reaches the database.
 	_, references := variablestore.Initialize(mux, configCryptoSvc, cacheManager)
 
-	ouAuthzService, err := sysauthz.Initialize()
+	// This server is the data plane, which confines each management token to the organization unit it
+	// names.
+	ouAuthzService, err := sysauthz.InitializeOUBoundedAuthorization()
 	fatalOnError(ctx, logger, err, "Failed to initialize system authorization service")
 
 	ouService, ouHierarchyResolver, ouEnumerator, ouExporter, err := ou.Initialize(

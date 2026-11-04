@@ -43,7 +43,7 @@ func (suite *ImportProjectSkipSuite) TestProjectDocumentIsSkipped() {
 	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/import", bytes.NewReader(body))
 	suite.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := testutils.GetHTTPClient().Do(req)
+	resp, err := testutils.GetManagementAPIKeyHTTPClient().Do(req)
 	suite.Require().NoError(err)
 	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)

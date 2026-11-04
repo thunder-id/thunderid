@@ -185,6 +185,23 @@ paths:
                     description:
                       key: "error.ouservice.circular_dependency_detected_description"
                       defaultValue: "Setting this parent would create a circular dependency"
+        "403":
+          description: |
+            The caller may not create an organization unit under the parent. On a data plane, no token
+            creates a root organization unit, whatever its permissions: only an import with the
+            management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "409":
           description: 'Conflict: Organization unit already exists'
           content:
@@ -329,6 +346,24 @@ paths:
                     description:
                       key: "error.ouservice.circular_dependency_detected_description"
                       defaultValue: "Setting this parent would create a circular dependency"
+        "403":
+          description: |
+            The caller may not update the organization unit. Moving it to the root also needs the
+            permission to create an organization unit. On a data plane, no token moves an organization
+            unit to the root, whatever its permissions: only an import with the management API key
+            does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -899,6 +934,24 @@ paths:
                 description:
                   key: "error.ouservice.invalid_request_format_description"
                   defaultValue: "The request body is malformed, contains invalid data, or required fields are missing/empty"
+        "403":
+          description: |
+            The caller may not update the organization unit. Moving it to the root also needs the
+            permission to create an organization unit. On a data plane, no token moves an organization
+            unit to the root, whatever its permissions: only an import with the management API key
+            does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:

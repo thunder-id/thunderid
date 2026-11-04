@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
@@ -2749,6 +2750,76 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationU
 		suite.Require().Equal(testOUID, result.ID)
 		store.AssertExpectations(suite.T())
 	})
+}
+
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationUnit_ParentChangeAuthz() {
+	parentID := testParentOUID
+	otherParentID := "other-parent"
+
+	tests := []struct {
+		name              string
+		existing          *string
+		requested         *string
+		checksRootCreate  bool
+		rootCreateAllowed bool
+	}{
+		{name: "moving to root is refused without root creation", existing: &parentID, requested: nil,
+			checksRootCreate: true, rootCreateAllowed: false},
+		{name: "moving to root is allowed with root creation", existing: &parentID, requested: nil,
+			checksRootCreate: true, rootCreateAllowed: true},
+		{name: "moving under another parent needs only the update", existing: &parentID,
+			requested: &otherParentID},
+		{name: "updating a root without moving it needs only the update", existing: nil, requested: nil},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			store := newOrganizationUnitStoreInterfaceMock(suite.T())
+			store.On("GetOrganizationUnit", mock.Anything, testOUID).
+				Return(OrganizationUnit{ID: testOUID, Handle: "finance", Name: "Finance", Parent: tc.existing}, nil).
+				Once()
+			store.On("IsOrganizationUnitDeclarative", mock.Anything, testOUID).Return(false).Once()
+			wantUpdated := !tc.checksRootCreate || tc.rootCreateAllowed
+			if wantUpdated {
+				if tc.requested != nil {
+					store.On("IsOrganizationUnitExists", mock.Anything, *tc.requested).Return(true, nil).Once()
+					store.On("GetOrganizationUnit", mock.Anything, *tc.requested).
+						Return(OrganizationUnit{ID: *tc.requested}, nil).Once()
+				}
+				if !stringPtrEqual(tc.existing, tc.requested) {
+					store.On("CheckOrganizationUnitNameConflict", mock.Anything, "Finance", tc.requested).
+						Return(false, nil).Once()
+					store.On("CheckOrganizationUnitHandleConflict", mock.Anything, "finance", tc.requested).
+						Return(false, nil).Once()
+				}
+				store.On("UpdateOrganizationUnit", mock.Anything, mock.Anything).Return(nil).Once()
+			}
+
+			// The mock refuses any call it does not expect, so an update that is not a move to the root
+			// fails if it checks creation.
+			authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+			authzMock.On("IsActionAllowed", mock.Anything, security.ActionUpdateOU,
+				mock.MatchedBy(func(c *sysauthz.ActionContext) bool { return c.OUID == testOUID })).
+				Return(true, nil).Once()
+			if tc.checksRootCreate {
+				authzMock.On("IsActionAllowed", mock.Anything, security.ActionCreateOU,
+					mock.MatchedBy(func(c *sysauthz.ActionContext) bool { return c.OUID == "" })).
+					Return(tc.rootCreateAllowed, nil).Once()
+			}
+
+			service := suite.newService(store, authzMock)
+			_, err := service.UpdateOrganizationUnit(context.Background(), testOUID,
+				OrganizationUnitRequestWithID{Handle: "finance", Name: "Finance", Parent: tc.requested})
+
+			if wantUpdated {
+				suite.Require().Nil(err)
+			} else {
+				suite.Require().NotNil(err)
+				suite.Equal(tidcommon.ErrorUnauthorized.Code, err.Code)
+				store.AssertNotCalled(suite.T(), "UpdateOrganizationUnit", mock.Anything, mock.Anything)
+			}
+		})
+	}
 }
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_StringPtrEqual() {

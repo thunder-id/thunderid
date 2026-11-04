@@ -66,6 +66,26 @@ func GetNoRedirectHTTPClient() *http.Client {
 	}
 }
 
+// GetManagementAPIKeyHTTPClient returns an HTTP client that presents the management API key, as a
+// deployment pipeline does when it imports into a data plane.
+func GetManagementAPIKeyHTTPClient() *http.Client {
+	client := GetNoRedirectHTTPClient()
+	client.Transport = &managementAPIKeyTransport{base: client.Transport}
+	return client
+}
+
+// managementAPIKeyTransport adds the management API key to every request.
+type managementAPIKeyTransport struct {
+	base http.RoundTripper
+}
+
+// RoundTrip sends the request with the management API key in its header.
+func (t *managementAPIKeyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	req.Header.Set(ManagementAPIKeyHeader, ManagementAPIKey)
+	return t.base.RoundTrip(req)
+}
+
 // CreateUserType creates a user type via API and returns the schema ID
 func CreateUserType(schema UserType) (string, error) {
 	if !schema.AllowSelfRegistration {
@@ -855,8 +875,14 @@ func ShareApplicationWithChildUnits(appID string) error {
 	return nil
 }
 
-// CreateOrganizationUnit creates an organization unit via API and returns the OU ID
+// CreateOrganizationUnit creates an organization unit and returns the OU ID. A root OU reaches the
+// data plane only through import with the management API key, so it is imported there; every other
+// OU, and any OU on the Control Plane, is created via API.
 func CreateOrganizationUnit(ou OrganizationUnit) (string, error) {
+	if ou.Parent == nil && !IsControlPlaneRun() {
+		return ImportRootOrganizationUnit(ou)
+	}
+
 	ouJSON, err := json.Marshal(ou)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal OU request: %w", err)
@@ -895,6 +921,73 @@ func CreateOrganizationUnit(ou OrganizationUnit) (string, error) {
 		return "", fmt.Errorf("response does not contain id or id is not a string. Response: %s", string(bodyBytes))
 	}
 	return ouID, nil
+}
+
+// ImportRootOrganizationUnit imports a root organization unit with the management API key, as a
+// deployment pipeline does, and returns its ID. ou is any value that marshals to the organization
+// unit's JSON fields.
+func ImportRootOrganizationUnit(ou any) (string, error) {
+	return importOrganizationUnit(ou, false)
+}
+
+// MoveOrganizationUnitToRoot makes an existing organization unit a root. Only an import with the
+// management API key does that on a data plane.
+func MoveOrganizationUnitToRoot(id, handle, name string) error {
+	_, err := importOrganizationUnit(map[string]any{
+		"id": id, "handle": handle, "name": name, "parent": nil,
+	}, true)
+	return err
+}
+
+// importOrganizationUnit imports one organization unit with the management API key and returns its ID.
+func importOrganizationUnit(ou any, upsert bool) (string, error) {
+	ouJSON, err := json.Marshal(ou)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal OU: %w", err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(ouJSON, &document); err != nil {
+		return "", fmt.Errorf("failed to build the OU import document: %w", err)
+	}
+	document["resource_type"] = "organization_unit"
+	content, err := json.Marshal(document)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal the OU import document: %w", err)
+	}
+
+	payload, err := json.Marshal(ImportRequest{Content: string(content), Options: ImportOptions{Upsert: upsert, Target: "runtime"}})
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal the import request: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/import", bytes.NewReader(payload))
+	if err != nil {
+		return "", fmt.Errorf("failed to create the import request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := GetManagementAPIKeyHTTPClient().Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send the import request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read the import response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var importResp ImportResponse
+	if err := json.Unmarshal(bodyBytes, &importResp); err != nil {
+		return "", fmt.Errorf("failed to parse the import response: %w. Response: %s", err, string(bodyBytes))
+	}
+	if len(importResp.Results) != 1 || importResp.Results[0].Status != "success" ||
+		importResp.Results[0].ResourceID == "" {
+		return "", fmt.Errorf("organization unit import failed. Response: %s", string(bodyBytes))
+	}
+	return importResp.Results[0].ResourceID, nil
 }
 
 // DeleteOrganizationUnit deletes an organization unit by ID
