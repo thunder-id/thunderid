@@ -100,7 +100,8 @@ type NotificationConfig struct {
 	Template NotificationTemplateConfig `yaml:"template" json:"template"`
 }
 
-// NotificationTemplateConfig holds the storage mode for notification templates.
+// NotificationTemplateConfig holds the storage mode and content-length limits for notification
+// templates.
 type NotificationTemplateConfig struct {
 	// Store defines the storage mode for notification templates.
 	// Valid values: "mutable", "declarative", "composite" (hybrid mode).
@@ -108,11 +109,61 @@ type NotificationTemplateConfig struct {
 	//   - enabled = true: behaves as "declarative"
 	//   - enabled = false: behaves as "mutable"
 	Store string `yaml:"store" json:"store"`
+
+	// Per-channel subject/body length limits in characters. A value of 0 uses the default (see the
+	// LengthLimit accessors); a negative value fails startup (see Validate).
+	MaxSubjectLength   int `yaml:"max_subject_length"    json:"max_subject_length"`
+	MaxEmailBodyLength int `yaml:"max_email_body_length" json:"max_email_body_length"`
+	MaxSMSBodyLength   int `yaml:"max_sms_body_length"   json:"max_sms_body_length"`
+}
+
+// Default content-length limits (in characters) applied by the LengthLimit accessors when the
+// corresponding config value is unset (0). Generous enough not to constrain legitimate templates.
+const (
+	defaultMaxSubjectLength   = 1000
+	defaultMaxEmailBodyLength = 50000
+	defaultMaxSMSBodyLength   = 4096
+)
+
+// SubjectLengthLimit reports the max subject length in characters, applying the default when unset.
+func (c NotificationTemplateConfig) SubjectLengthLimit() int {
+	return positiveOrDefault(c.MaxSubjectLength, defaultMaxSubjectLength)
+}
+
+// EmailBodyLengthLimit reports the max email body length in characters, applying the default when unset.
+func (c NotificationTemplateConfig) EmailBodyLengthLimit() int {
+	return positiveOrDefault(c.MaxEmailBodyLength, defaultMaxEmailBodyLength)
+}
+
+// SMSBodyLengthLimit reports the max SMS body length in characters, applying the default when unset.
+func (c NotificationTemplateConfig) SMSBodyLengthLimit() int {
+	return positiveOrDefault(c.MaxSMSBodyLength, defaultMaxSMSBodyLength)
 }
 
 // Validate checks the notification configuration for correctness.
 func (c *NotificationConfig) Validate() error {
-	return c.OTP.Validate()
+	if err := c.OTP.Validate(); err != nil {
+		return err
+	}
+	return c.Template.Validate()
+}
+
+// Validate ensures the notification template length limits are not negative. Zero is allowed and means
+// "use the default".
+func (c *NotificationTemplateConfig) Validate() error {
+	if c.MaxSubjectLength < 0 {
+		return fmt.Errorf("notification.template.max_subject_length must not be negative (got %d)",
+			c.MaxSubjectLength)
+	}
+	if c.MaxEmailBodyLength < 0 {
+		return fmt.Errorf("notification.template.max_email_body_length must not be negative (got %d)",
+			c.MaxEmailBodyLength)
+	}
+	if c.MaxSMSBodyLength < 0 {
+		return fmt.Errorf("notification.template.max_sms_body_length must not be negative (got %d)",
+			c.MaxSMSBodyLength)
+	}
+	return nil
 }
 
 // OTPConfig holds the OTP generation configuration details.
@@ -674,6 +725,14 @@ func derefBool(p *bool) bool {
 func derefInt(p *int, def int) int {
 	if p != nil {
 		return *p
+	}
+	return def
+}
+
+// positiveOrDefault returns v when it is positive, otherwise def.
+func positiveOrDefault(v, def int) int {
+	if v > 0 {
+		return v
 	}
 	return def
 }

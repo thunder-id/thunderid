@@ -4,10 +4,18 @@
 package notificationtemplate
 
 import (
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
+
+// maxLengthParam carries the configured limit into a *TooLong error so its {{param(maxLength)}}
+// description resolves to the actual number (substituted at serialization by I18nMessage).
+func maxLengthParam(maxLength int) map[string]string {
+	return map[string]string{"maxLength": strconv.Itoa(maxLength)}
+}
 
 // channelRules encapsulates a channel's specific validation and normalization: which fields are valid
 // for the channel and the canonical stored shape. It operates on the single templateDAO model rather
@@ -57,6 +65,13 @@ func (emailRules) validate(dao templateDAO) *tidcommon.ServiceError {
 	if strings.TrimSpace(dao.Content.Subject) == "" {
 		return &ErrorMissingSubject
 	}
+	limits := templateConfig()
+	if limit := limits.SubjectLengthLimit(); utf8.RuneCountInString(dao.Content.Subject) > limit {
+		return ErrorSubjectTooLong.WithParams(maxLengthParam(limit))
+	}
+	if limit := limits.EmailBodyLengthLimit(); utf8.RuneCountInString(dao.Content.Body) > limit {
+		return ErrorBodyTooLong.WithParams(maxLengthParam(limit))
+	}
 	design := dao.Design
 	if design != nil && design.ColorScheme != "" &&
 		design.ColorScheme != colorSchemeLight && design.ColorScheme != colorSchemeDark {
@@ -85,6 +100,9 @@ func (smsRules) validate(dao templateDAO) *tidcommon.ServiceError {
 	}
 	if dao.Design != nil {
 		return &ErrorDesignNotAllowed
+	}
+	if limit := templateConfig().SMSBodyLengthLimit(); utf8.RuneCountInString(dao.Content.Body) > limit {
+		return ErrorBodyTooLong.WithParams(maxLengthParam(limit))
 	}
 	// SMS has no design, so design tokens are not allowed anywhere in its content.
 	return validatePlaceholders(dao.Content, false)
