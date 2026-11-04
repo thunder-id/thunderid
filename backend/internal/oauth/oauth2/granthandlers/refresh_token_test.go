@@ -34,6 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
+	"github.com/thunder-id/thunderid/tests/mocks/flow/sessionmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
@@ -190,7 +191,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) rebuildHandlerWithConfig() {
 		suite.mockAuthzService,
 		suite.mockActorProvider,
 		suite.mockRefreshRevoker,
-		suite.mockCriteriaRevoker, noAuthzDetails(),
+		suite.mockCriteriaRevoker, noAuthzDetails(), nil,
 		suite.testCfg,
 	).(*refreshTokenGrantHandler)
 }
@@ -213,7 +214,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) withAuthorizationDetailService(
 		suite.mockAuthzService,
 		suite.mockActorProvider,
 		suite.mockRefreshRevoker,
-		suite.mockCriteriaRevoker, authzDetails,
+		suite.mockCriteriaRevoker, authzDetails, nil,
 		suite.testCfg,
 	).(*refreshTokenGrantHandler)
 }
@@ -229,7 +230,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestNewRefreshTokenGrantHandler(
 		suite.mockAttrCacheService,
 		suite.mockResourceService, suite.mockAuthzService,
 		suite.mockActorProvider, suite.mockRefreshRevoker,
-		suite.mockCriteriaRevoker, noAuthzDetails(), testhelpers.OAuthConfig())
+		suite.mockCriteriaRevoker, noAuthzDetails(), nil, testhelpers.OAuthConfig())
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*RefreshTokenGrantHandlerInterface)(nil), handler)
 }
@@ -777,7 +778,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RevokePreviousOn
 		suite.mockActorProvider,
 		nil,
 		nil,
-		noAuthzDetails(),
+		noAuthzDetails(), nil,
 		suite.testCfg,
 	).(*refreshTokenGrantHandler)
 
@@ -2819,7 +2820,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NoActorProviderS
 	suite.handler = newRefreshTokenGrantHandler(
 		suite.mockJWTService, suite.mockTokenBuilder, suite.mockTokenValidator,
 		suite.mockAttrCacheService, suite.mockResourceService, nil, nil,
-		suite.mockRefreshRevoker, suite.mockCriteriaRevoker, noAuthzDetails(), suite.testCfg,
+		suite.mockRefreshRevoker, suite.mockCriteriaRevoker, noAuthzDetails(), nil, suite.testCfg,
 	).(*refreshTokenGrantHandler)
 	suite.refreshClaimsValid()
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
@@ -3058,6 +3059,69 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_IDTokenCarriesSe
 	assert.Equal(suite.T(), "new.id.token", response.IDToken.Token)
 	assert.Equal(suite.T(), testSessionID, response.SessionID)
 	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
+// stubSessionRefresh sets up a successful refresh of a token issued under testSessionID.
+func (suite *RefreshTokenGrantHandlerTestSuite) stubSessionRefresh() *model.TokenRequest {
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(&tokenservice.RefreshTokenClaims{
+			ClientID:  testRefreshTokenClientID,
+			Sub:       testRefreshTokenUserID,
+			Audiences: []string{testRefreshTokenAudience},
+			Scopes:    []string{"read"},
+			GrantType: "authorization_code",
+			Iat:       int64(suite.validClaims["iat"].(float64)),
+			SessionID: testSessionID,
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token:     "new.access.token",
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		Scopes:    []string{"read"},
+	}, nil)
+	return &model.TokenRequest{
+		GrantType:    string(providers.GrantTypeRefreshToken),
+		ClientID:     testRefreshTokenClientID,
+		RefreshToken: suite.validRefreshToken,
+		Scope:        "read",
+	}
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RecordsSessionActivity() {
+	ssoSession := sessionmock.NewServiceMock(suite.T())
+	ssoSession.EXPECT().RecordActivity(mock.Anything, testSessionID).Return(nil).Once()
+	suite.handler.ssoSession = ssoSession
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.stubSessionRefresh(), suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), response)
+}
+
+// Recording activity is best-effort: a failure does not fail a refresh that otherwise succeeded.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_SessionActivityFailureDoesNotFailRefresh() {
+	ssoSession := sessionmock.NewServiceMock(suite.T())
+	ssoSession.EXPECT().RecordActivity(mock.Anything, testSessionID).Return(errors.New("db down")).Once()
+	suite.handler.ssoSession = ssoSession
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.stubSessionRefresh(), suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), "new.access.token", response.AccessToken.Token)
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_FailedRefreshDoesNotRecordSessionActivity() {
+	ssoSession := sessionmock.NewServiceMock(suite.T())
+	suite.handler.ssoSession = ssoSession
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(nil, errors.New("invalid token"))
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.NotNil(suite.T(), err)
+	ssoSession.AssertNotCalled(suite.T(), "RecordActivity", mock.Anything, mock.Anything)
 }
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_CarriesResponseSessionID() {
