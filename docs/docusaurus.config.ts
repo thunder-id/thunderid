@@ -216,10 +216,6 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
             to: '/docs/next/guides/organization-units/manage-organization-units',
           },
           {
-            from: '/docs/next/use-cases/ai-agents/personal-assistants',
-            to: '/docs/next/use-cases/ai-agents/personal-assistants/overview',
-          },
-          {
             from: '/docs/next/use-cases/b2b/multi-tenant-saas',
             to: '/docs/next/use-cases/b2b/overview',
           },
