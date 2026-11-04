@@ -172,7 +172,8 @@ runs again is also how values changed on the gateway take effect.`,
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "promote_gateway",
 		Description: `Deploy the version one gateway runs to another, as the Console promotes one stage to the ` +
-			`next. Only what the source runs is promoted: changes the source holds back stay out.
+			`next. Only what the source runs is promoted: changes the source holds back stay out. The target's ` +
+			`master records the source gateway's ID as the origin of each resource the promotion writes.
 
 Run it with dryRun first and show the user what it would change on the target.`,
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive},
