@@ -79,7 +79,7 @@ func (s *versionService) lease(ctx context.Context, gatewayID string, coalesce b
 			}
 			if queued {
 				s.logger.Info(ctx, "Queued the latest version behind the running apply",
-					log.String("gatewayId", gatewayID))
+					log.String("gatewayID", gatewayID))
 				return nil, "", time.Time{}, true, nil
 			}
 			// Released between the claim and the ask; claim again.
@@ -101,13 +101,13 @@ func (s *versionService) releaser(ctx context.Context, gatewayID, token string) 
 		// The release outlives the request that applied, which may be gone by now.
 		ctx := context.WithoutCancel(ctx)
 		if err := s.versions.ReleaseLease(ctx, gatewayID, token); err != nil {
-			s.logger.Error(ctx, "Failed to release the gateway's apply lease", log.String("gatewayId", gatewayID),
+			s.logger.Error(ctx, "Failed to release the gateway's apply lease", log.String("gatewayID", gatewayID),
 				log.Error(err))
 		}
 		by, pending, err := s.versions.TakePendingLatest(ctx, gatewayID)
 		if err != nil {
 			s.logger.Error(ctx, "Failed to read whether the latest version is to be applied again",
-				log.String("gatewayId", gatewayID), log.Error(err))
+				log.String("gatewayID", gatewayID), log.Error(err))
 			return
 		}
 		if pending {
@@ -124,12 +124,12 @@ func (s *versionService) applyLatestAgain(ctx context.Context, gatewayID string)
 	switch {
 	case svcErr != nil:
 		s.logger.Warn(ctx, "The latest version queued behind an apply could not be applied",
-			log.String("gatewayId", gatewayID), log.String("code", svcErr.Code))
+			log.String("gatewayID", gatewayID), log.String("code", svcErr.Code))
 	case result.Queued:
 		s.logger.Info(ctx, "The latest version is queued once more behind another apply",
-			log.String("gatewayId", gatewayID))
+			log.String("gatewayID", gatewayID))
 	default:
-		s.logger.Info(ctx, "Applied the latest version queued behind an apply", log.String("gatewayId", gatewayID),
+		s.logger.Info(ctx, "Applied the latest version queued behind an apply", log.String("gatewayID", gatewayID),
 			log.String("version", result.Diff.ToVersion))
 	}
 }

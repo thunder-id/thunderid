@@ -167,7 +167,7 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 	currentNode core.NodeInterface, flowStep *FlowStep, flowStartTime int64) (
 	core.NodeInterface, bool, *tidcommon.ServiceError) {
 	logger := fe.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID),
-		log.String("nodeID", currentNode.GetID()), log.String("nodeType", string(currentNode.GetType())))
+		log.String(log.LoggerKeyNodeID, currentNode.GetID()), log.String("nodeType", string(currentNode.GetType())))
 
 	logger.Debug(ctx.Context, "Executing node")
 
@@ -232,8 +232,7 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 
 	// Check if the node should be executed based on its condition
 	if !currentNode.ShouldExecute(nodeCtx) {
-		logger.Debug(ctx.Context, "Skipping node due to unmet condition",
-			log.String("nodeID", currentNode.GetID()))
+		logger.Debug(ctx.Context, "Skipping node due to unmet condition")
 		nextNode, svcErr := fe.skipToNextNode(ctx, currentNode, logger)
 		if svcErr != nil {
 			return nil, false, svcErr
@@ -585,8 +584,7 @@ func (fe *flowEngine) setNodeExecutor(
 	}
 	executableNode, ok := node.(core.ExecutorBackedNodeInterface)
 	if !ok {
-		logger.Error(ctx, "Task execution node does not implement ExecutorBackedNodeInterface",
-			log.String("nodeID", node.GetID()))
+		logger.Error(ctx, "Task execution node does not implement ExecutorBackedNodeInterface")
 		return &tidcommon.InternalServerError
 	}
 
@@ -595,20 +593,18 @@ func (fe *flowEngine) setNodeExecutor(
 		return nil
 	}
 
-	logger.Debug(ctx, "Executor not set for the node. Constructing executor.",
-		log.String("nodeID", node.GetID()))
+	logger.Debug(ctx, "Executor not set for the node. Constructing executor.")
 
 	executorName := executableNode.GetExecutorName()
 	if executorName == "" {
-		logger.Error(ctx, "Executor name not configured for executable node",
-			log.String("nodeID", node.GetID()))
+		logger.Error(ctx, "Executor name not configured for executable node")
 		return &tidcommon.InternalServerError
 	}
 
 	executor, err := fe.getExecutorByName(executorName)
 	if err != nil {
-		logger.Error(ctx, "Error constructing executor for node", log.String("nodeID", node.GetID()),
-			log.String("executorName", executorName), log.Error(err))
+		logger.Error(ctx, "Error constructing executor for node",
+			log.String(log.LoggerKeyExecutorName, executorName), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
 
@@ -1232,13 +1228,12 @@ func (fe *flowEngine) skipToNextNode(ctx *EngineContext, currentNode core.NodeIn
 
 	// Condition must specify where to skip to
 	if condition == nil || condition.OnSkip == "" {
-		logger.Error(ctx.Context, "Node has condition but onSkip is not specified",
-			log.String("nodeID", currentNode.GetID()))
+		logger.Error(ctx.Context, "Node has condition but onSkip is not specified")
 		return nil, &tidcommon.InternalServerError
 	}
 
 	logger.Debug(ctx.Context, "Using condition's onSkip for skipped node",
-		log.String("nodeID", currentNode.GetID()), log.String("onSkip", condition.OnSkip))
+		log.String("onSkip", condition.OnSkip))
 
 	nodeResp := &common.NodeResponse{NextNodeID: condition.OnSkip}
 
@@ -1413,7 +1408,8 @@ func (fe *flowEngine) isSegmentRestartAllowed(ctx *EngineContext, logger *log.Lo
 		return false
 	}
 
-	if svcErr := fe.setNodeExecutor(ctx.Context, segStartNode, logger); svcErr != nil {
+	nodeLogger := logger.With(log.String(log.LoggerKeyNodeID, seg.StartNodeID))
+	if svcErr := fe.setNodeExecutor(ctx.Context, segStartNode, nodeLogger); svcErr != nil {
 		return false
 	}
 
@@ -1517,7 +1513,7 @@ func publishNodeExecutionStartedEvent(
 	}
 
 	evt := event.NewEvent(
-		ctx.ExecutionID, // Use ExecutionID as TraceID
+		ctx.TraceID,
 		string(event.EventTypeFlowNodeExecutionStarted),
 		event.ComponentFlowEngine,
 	).
@@ -1588,7 +1584,7 @@ func publishNodeExecutionCompletedEvent(ctx *EngineContext, node core.NodeInterf
 	durationMs := executionEndTime - executionStartTime
 
 	evt := event.NewEvent(
-		ctx.ExecutionID, // Use ExecutionID as TraceID
+		ctx.TraceID,
 		string(eventType),
 		event.ComponentFlowEngine,
 	).
@@ -1625,7 +1621,7 @@ func publishFlowStartedEvent(ctx *EngineContext, obsSvc providers.ObservabilityP
 	}
 
 	evt := event.NewEvent(
-		ctx.ExecutionID, // Use ExecutionID as TraceID, so the whole flow shares one trace
+		ctx.TraceID,
 		string(event.EventTypeFlowStarted),
 		event.ComponentFlowEngine,
 	).
@@ -1652,7 +1648,7 @@ func publishFlowCompletedEvent(
 	durationMs := flowEndTime - flowStartTime
 
 	evt := event.NewEvent(
-		ctx.ExecutionID, // Use ExecutionID as TraceID
+		ctx.TraceID,
 		string(event.EventTypeFlowCompleted),
 		event.ComponentFlowEngine,
 	).
@@ -1676,7 +1672,7 @@ func publishFlowFailedEvent(ctx *EngineContext, svcErr *tidcommon.ServiceError,
 	durationMs := flowEndTime - flowStartTime
 
 	evt := event.NewEvent(
-		ctx.ExecutionID, // Use ExecutionID as TraceID, so the whole flow shares one trace
+		ctx.TraceID,
 		string(event.EventTypeFlowFailed),
 		event.ComponentFlowEngine,
 	).
