@@ -400,30 +400,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: 📦 Enable pnpm via corepack
-        # The Playwright image ships Node with corepack; use it instead of setup-node/setup-pnpm,
-        # both of which are noisy inside containers and add ~15-20s.
-        run: |
-          corepack enable
-          corepack prepare pnpm@11.21.0 --activate
-          pnpm --version
-
-      - name: 📦 Install Frontend Dependencies
-        run: |
-          pnpm install --frozen-lockfile
-
-      - name: 🗂️ Set up Turbo Cache
-        uses: ./.github/actions/setup-turbo-cache
-
-      - name: 🔨 Build Frontend Packages
-        working-directory: frontend
-        run: |
-          pnpm build:packages
-
-      - name: 🧪 Run Tests for Frontend Packages with Coverage
-        working-directory: frontend
-        run: |
-          pnpm test:packages:coverage
+      - name: 🧪 Build and Test Frontend Packages
+        uses: ./.github/actions/test-frontend-packages
 
       # Each package writes its own coverage/lcov.info with repo-relative paths, so the
       # whole set is uploaded under one flag rather than one flag per package.

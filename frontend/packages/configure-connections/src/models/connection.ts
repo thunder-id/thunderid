@@ -519,6 +519,8 @@ export interface ConnectionVendorMeta {
   generalSettingsCardCopy?: ConnectionGeneralSettingsCardCopy;
   /** i18n key for the create-wizard setup hint (vendors that need an OAuth app registered first). */
   createHintKey?: string;
+  /** i18n key for the Danger zone delete description, for connections that are not used to sign in. */
+  deleteDescriptionKey?: string;
 }
 
 /**

@@ -85,6 +85,7 @@ paths:
               - AUTHENTICATION
               - REGISTRATION
               - INVITATION
+              - DEVICE_GRANT
         - name: limit
           in: query
           description: Maximum number of flows to return
@@ -1600,6 +1601,7 @@ components:
             - AUTHENTICATION
             - REGISTRATION
             - INVITATION
+            - DEVICE_GRANT
         name:
           type: string
           description: Name of the flow
@@ -1663,6 +1665,7 @@ components:
             - AUTHENTICATION
             - REGISTRATION
             - INVITATION
+            - DEVICE_GRANT
           description: |
             Type of flow
           example: AUTHENTICATION
@@ -1919,6 +1922,7 @@ components:
             - AUTHENTICATION
             - REGISTRATION
             - INVITATION
+            - DEVICE_GRANT
           description: |
             Type of flow
           example: AUTHENTICATION
@@ -2000,6 +2004,7 @@ components:
             - AUTHENTICATION
             - REGISTRATION
             - INVITATION
+            - DEVICE_GRANT
           description: |
             Type of flow
           example: AUTHENTICATION

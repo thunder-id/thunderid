@@ -4,6 +4,7 @@
 import type {Node} from '@xyflow/react';
 import type {Base} from './base';
 import type {Element} from './elements';
+import type {FlowNodeCondition} from './responses';
 
 export interface StepPosition {
   x: number;
@@ -57,6 +58,10 @@ export interface StepData {
    * (e.g. a user-set `displayName`, executor options).
    */
   properties?: Record<string, unknown>;
+  /**
+   * Node-level condition kept from the flow definition; the builder does not edit it.
+   */
+  condition?: FlowNodeCondition;
   [key: string]: unknown;
 }
 

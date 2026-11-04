@@ -27,17 +27,19 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
-	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -97,6 +99,51 @@ type ServiceTestSuite struct {
 
 func TestServiceTestSuite(t *testing.T) {
 	suite.Run(t, new(ServiceTestSuite))
+}
+
+func (s *ServiceTestSuite) TestFlowErrorCallbackDataIncludesCallbackTypeAndAuthID() {
+	engineCtx := &EngineContext{sharedRuntimeData: map[string]string{
+		common.RuntimeKeyCallbackType:           string(providers.GrantTypeDeviceCode),
+		common.RuntimeKeyAuthorizationRequestID: "device-request-1",
+	}}
+
+	s.Equal(map[string]string{
+		common.DataCallbackType: string(providers.GrantTypeDeviceCode),
+		oauth2const.AuthID:      "device-request-1",
+	}, flowErrorCallbackData(engineCtx))
+	s.Equal(map[string]string{
+		common.DataCallbackType: string(providers.GrantTypeAuthorizationCode),
+		oauth2const.AuthID:      "authorization-request-1",
+	}, flowErrorCallbackData(&EngineContext{RuntimeData: map[string]string{
+		common.RuntimeKeyCallbackType:           string(providers.GrantTypeAuthorizationCode),
+		common.RuntimeKeyAuthorizationRequestID: "authorization-request-1",
+	}}))
+	s.Nil(flowErrorCallbackData(nil))
+	s.Nil(flowErrorCallbackData(&EngineContext{RuntimeData: map[string]string{
+		common.RuntimeKeyCallbackType: string(providers.GrantTypeAuthorizationCode),
+	}}))
+	s.Nil(flowErrorCallbackData(&EngineContext{RuntimeData: map[string]string{
+		common.RuntimeKeyCallbackType: string(providers.GrantTypeDeviceCode),
+	}}))
+}
+
+func (s *ServiceTestSuite) TestBuildErrorAssertionUsesSharedAuthorizationRequestID() {
+	jwtService := jwtmock.NewJWTServiceInterfaceMock(s.T())
+	jwtService.EXPECT().GenerateJWT(mock.Anything, "", "", int64(0), mock.MatchedBy(
+		func(claims map[string]interface{}) bool {
+			return claims[common.ClaimAuthorizationRequestID] == "device-request-1"
+		}), jwt.TokenTypeJWT, "").Return("signed-error", int64(60), (*tidcommon.ServiceError)(nil))
+	service := &flowExecService{jwtService: jwtService}
+	engineCtx := &EngineContext{
+		AppID: "app-1",
+		sharedRuntimeData: map[string]string{
+			common.RuntimeKeyAuthorizationRequestID: "device-request-1",
+		},
+	}
+
+	assertion := service.buildErrorAssertion(context.Background(), engineCtx,
+		common.FlowErrorTypeServer, "flow failed", log.GetLogger())
+	s.Equal("signed-error", assertion)
 }
 
 func TestInitiateFlowNilContext(t *testing.T) {
@@ -287,24 +334,26 @@ func TestInitiateFlowSuccessScenarios(t *testing.T) {
 
 			// Setup expectations
 			if tt.name == "user onboarding flow (system flow)" {
-				initContext.FlowType = string(providers.FlowTypeUserOnboarding)
+				systemFlowType := providers.FlowTypeUserOnboarding
+				systemHandle := testUserOnboardingFlowHandle
+				initContext.FlowType = string(systemFlowType)
 				initContext.ApplicationID = "" // System flows don't need app ID
 
 				// Mock flow management service to return flow by handle
 				mockFlow := &providers.CompleteFlowDefinition{
 					ID:       "onboarding-flow-123",
-					FlowType: providers.FlowTypeUserOnboarding,
+					FlowType: systemFlowType,
 				}
 				mockFlowProvider.EXPECT().GetFlowByHandle(mock.Anything,
-					testUserOnboardingFlowHandle, providers.FlowTypeUserOnboarding).Return(mockFlow, nil)
+					systemHandle, systemFlowType).Return(mockFlow, nil)
 
 				// Mock GetGraph call which is made during initContext
-				inviteGraph := flowFactory.CreateGraph("onboarding-flow-123", providers.FlowTypeUserOnboarding, 1)
+				inviteGraph := flowFactory.CreateGraph("onboarding-flow-123", systemFlowType, 1)
 				mockFlowProvider.EXPECT().
 					GetFlow(mock.Anything, "onboarding-flow-123").
 					Return(&providers.CompleteFlowDefinition{
 						ID:       "onboarding-flow-123",
-						FlowType: providers.FlowTypeUserOnboarding,
+						FlowType: systemFlowType,
 					}, nil)
 				mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(inviteGraph, nil)
 
@@ -2185,8 +2234,29 @@ func (s *ServiceTestSuite) TestGetFlowGraph_RegistrationAndRecovery() {
 			expectedCode: tidcommon.InternalServerError.Code,
 		},
 		{
+			name:     "device grant flow configured",
+			flowType: providers.FlowTypeDeviceGrant,
+			client: &inboundmodel.InboundClient{
+				ID:                appID,
+				DeviceGrantFlowID: "device-grant-graph-1",
+			},
+			expectedGraph: "device-grant-graph-1",
+		},
+		{
+			name:         "device grant flow not configured",
+			flowType:     providers.FlowTypeDeviceGrant,
+			client:       &inboundmodel.InboundClient{ID: appID},
+			expectedCode: ErrorDeviceGrantFlowDisabled.Code,
+		},
+		{
 			name:         "empty app id",
 			flowType:     providers.FlowTypeAuthentication,
+			client:       nil,
+			expectedCode: ErrorInvalidAppID.Code,
+		},
+		{
+			name:         "device grant with empty app id",
+			flowType:     providers.FlowTypeDeviceGrant,
 			client:       nil,
 			expectedCode: ErrorInvalidAppID.Code,
 		},
@@ -2203,7 +2273,7 @@ func (s *ServiceTestSuite) TestGetFlowGraph_RegistrationAndRecovery() {
 			}
 
 			lookupID := appID
-			if tt.name == "empty app id" {
+			if tt.client == nil {
 				lookupID = ""
 			}
 
@@ -2530,8 +2600,8 @@ func (s *ServiceTestSuite) TestLoadNewContext_ByIDLoadsInvitationFlowInTheTokens
 	s.Nil(svcErr)
 	s.Require().NotNil(engineCtx)
 	s.Equal(providers.FlowTypeInvitation, engineCtx.FlowType)
-	s.Equal("ou-1", engineCtx.RuntimeData[flowcommon.RuntimeKeyOUID])
-	s.Equal("admin-1", engineCtx.RuntimeData[flowcommon.RuntimeKeyInviter])
+	s.Equal("ou-1", engineCtx.RuntimeData[common.RuntimeKeyOUID])
+	s.Equal("admin-1", engineCtx.RuntimeData[common.RuntimeKeyInviter])
 	s.Empty(engineCtx.Application.ID)
 }
 
@@ -3408,7 +3478,7 @@ func (s *ServiceTestSuite) TestExecute_ContinuationOfInvitationFlowWithoutToken(
 		FlowType:         providers.FlowTypeInvitation,
 		Graph:            testGraph,
 		UserInputs:       map[string]string{},
-		RuntimeData:      map[string]string{flowcommon.RuntimeKeyOUID: "ou-1"},
+		RuntimeData:      map[string]string{common.RuntimeKeyOUID: "ou-1"},
 		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 	}))
 	mockStore.EXPECT().GetFlowContext(mock.Anything, "existing-execution-id").Return(storedCtx, nil)
@@ -3814,7 +3884,7 @@ func (s *ServiceTestSuite) graphWithConstantInput(flowType providers.FlowType) c
 	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
 	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
 	graph := flowFactory.CreateGraph("graph-1", flowType, 1)
-	node, err := flowFactory.CreateNode("node-1", string(flowcommon.NodeTypeTaskExecution),
+	node, err := flowFactory.CreateNode("node-1", string(common.NodeTypeTaskExecution),
 		map[string]interface{}{}, false, false)
 	s.Require().NoError(err)
 	node.(core.ExecutorBackedNodeInterface).SetInputs(
@@ -4187,7 +4257,7 @@ func (s *ServiceTestSuite) TestExecuteSystemFlow_RunsToCompletion() {
 		ctx.setSharedRuntimeData("revocationPlan", "plan")
 	}).Return(FlowStep{Status: providers.FlowStatusComplete}, nil)
 
-	result, svcErr := service.ExecuteSystemFlow(context.Background(), &flowcommon.SystemFlowContext{
+	result, svcErr := service.ExecuteSystemFlow(context.Background(), &common.SystemFlowContext{
 		Handle: "system-application-delete-pre", Inputs: map[string]string{"targetApplicationId": "app-1"}})
 
 	s.Nil(svcErr)
@@ -4205,7 +4275,7 @@ func (s *ServiceTestSuite) TestExecuteSystemFlow_StartsWithTheRuntimeDataItIsGiv
 		return ok && plan == "plan"
 	})).Return(FlowStep{Status: providers.FlowStatusComplete}, nil)
 
-	result, svcErr := service.ExecuteSystemFlow(context.Background(), &flowcommon.SystemFlowContext{
+	result, svcErr := service.ExecuteSystemFlow(context.Background(), &common.SystemFlowContext{
 		Handle: "system-revocation-post", RuntimeData: map[string]string{"revocationPlan": "plan"}})
 
 	s.Nil(svcErr)
@@ -4221,7 +4291,7 @@ func (s *ServiceTestSuite) TestExecuteSystemFlow_ReturnsAStepsRefusal() {
 	engine.EXPECT().Execute(mock.Anything).Return(FlowStep{Status: providers.FlowStatusError, Error: refusal}, nil)
 
 	result, svcErr := service.ExecuteSystemFlow(context.Background(),
-		&flowcommon.SystemFlowContext{Handle: "system-application-delete-pre"})
+		&common.SystemFlowContext{Handle: "system-application-delete-pre"})
 	s.Nil(result)
 	s.Same(refusal, svcErr)
 }
@@ -4239,7 +4309,7 @@ func (s *ServiceTestSuite) TestExecuteSystemFlow_AnythingButCompletionIsAServerE
 			engine.EXPECT().Execute(mock.Anything).Return(step, nil)
 
 			result, svcErr := service.ExecuteSystemFlow(context.Background(),
-				&flowcommon.SystemFlowContext{Handle: "system-application-delete-pre"})
+				&common.SystemFlowContext{Handle: "system-application-delete-pre"})
 			s.Nil(result)
 			s.Equal(&tidcommon.InternalServerError, svcErr)
 		})
@@ -4247,7 +4317,7 @@ func (s *ServiceTestSuite) TestExecuteSystemFlow_AnythingButCompletionIsAServerE
 
 	service, flows, engine := s.systemFlowService()
 	flows.EXPECT().GetSystemFlow(mock.Anything, "unknown").Return(nil, &tidcommon.ServiceError{Code: "FMS-1003"})
-	result, svcErr := service.ExecuteSystemFlow(context.Background(), &flowcommon.SystemFlowContext{Handle: "unknown"})
+	result, svcErr := service.ExecuteSystemFlow(context.Background(), &common.SystemFlowContext{Handle: "unknown"})
 	s.Nil(result)
 	s.Equal(&tidcommon.InternalServerError, svcErr)
 	engine.AssertNotCalled(s.T(), "Execute", mock.Anything)
@@ -4396,7 +4466,7 @@ func (s *ServiceTestSuite) TestBoundSignIn_FixesTheOrganizationUnitAtStart() {
 
 			s.Require().Nil(svcErr)
 			s.True(engineCtx.SignInBounded)
-			ouID, fixed := engineCtx.RuntimeData[flowcommon.RuntimeKeyOUID]
+			ouID, fixed := engineCtx.RuntimeData[common.RuntimeKeyOUID]
 			s.Equal(tc.wantOUID != "", fixed)
 			s.Equal(tc.wantOUID, ouID)
 		})
@@ -4495,7 +4565,7 @@ func (s *ServiceTestSuite) TestBoundSignIn_OtherFlowTypesAreNotBounded() {
 
 	s.Require().Nil(svcErr)
 	s.False(engineCtx.SignInBounded)
-	s.NotContains(engineCtx.RuntimeData, flowcommon.RuntimeKeyOUID)
+	s.NotContains(engineCtx.RuntimeData, common.RuntimeKeyOUID)
 }
 
 // The authorize entry point stores the boundary with the context, beside the runtime data it passed.
@@ -4513,7 +4583,7 @@ func (s *ServiceTestSuite) TestBoundSignIn_InitiateFlowStoresTheBoundary() {
 	executionID, svcErr := f.service.InitiateFlow(context.Background(), &FlowInitContext{
 		ApplicationID: boundaryAppID,
 		FlowType:      string(providers.FlowTypeAuthentication),
-		RuntimeData:   map[string]string{flowcommon.RuntimeKeyClientID: "boundary-client"},
+		RuntimeData:   map[string]string{common.RuntimeKeyClientID: "boundary-client"},
 	})
 
 	s.Require().Nil(svcErr)
@@ -4523,8 +4593,8 @@ func (s *ServiceTestSuite) TestBoundSignIn_InitiateFlowStoresTheBoundary() {
 	var runtimeData map[string]string
 	s.Require().NoError(json.Unmarshal([]byte(*stored.RuntimeData), &runtimeData))
 	s.Equal(map[string]string{
-		flowcommon.RuntimeKeyClientID: "boundary-client",
-		flowcommon.RuntimeKeyOUID:     boundaryAppOUID,
+		common.RuntimeKeyClientID: "boundary-client",
+		common.RuntimeKeyOUID:     boundaryAppOUID,
 	}, runtimeData)
 }
 
@@ -4544,7 +4614,7 @@ func (s *ServiceTestSuite) TestBoundSignIn_ExecuteRunsTheFlowBounded() {
 	s.Require().Nil(svcErr)
 	s.Require().NotNil(ran)
 	s.True(ran.SignInBounded)
-	s.Equal(boundaryNamedOUID, ran.RuntimeData[flowcommon.RuntimeKeyOUID])
+	s.Equal(boundaryNamedOUID, ran.RuntimeData[common.RuntimeKeyOUID])
 }
 
 // boundaryAuthUser is boundaryUserID as the default provider signed it in.
@@ -4598,7 +4668,7 @@ func (f *boundaryFixture) execute(flowType providers.FlowType) (*FlowStep, *tidc
 func (s *ServiceTestSuite) TestExecute_BoundedCompletionIsNotCheckedAgain() {
 	f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
 	s.continueStoredFlow(f, providers.FlowTypeAuthentication, true,
-		map[string]string{flowcommon.RuntimeKeyOUID: boundaryNamedOUID}, completedSignIn())
+		map[string]string{common.RuntimeKeyOUID: boundaryNamedOUID}, completedSignIn())
 
 	step, svcErr := f.execute(providers.FlowTypeAuthentication)
 

@@ -40,6 +40,14 @@ vi.mock('../SignOutFlowSection', () => ({
   ),
 }));
 
+vi.mock('../DeviceGrantFlowSection', () => ({
+  default: ({application, editedApp}: {application: Application; editedApp: Partial<Application>}) => (
+    <div data-testid="device-grant-flow-section">
+      DeviceGrantFlowSection - App: {application.id}, Edited Device Grant Flow: {editedApp.deviceGrantFlowId ?? 'None'}
+    </div>
+  ),
+}));
+
 describe('EditFlowsSettings', () => {
   const mockOnFieldChange = vi.fn();
   const mockApplication: Application = {
@@ -66,6 +74,7 @@ describe('EditFlowsSettings', () => {
       expect(screen.getByTestId('registration-flow-section')).toBeInTheDocument();
       expect(screen.getByTestId('recovery-flow-section')).toBeInTheDocument();
       expect(screen.getByTestId('signout-flow-section')).toBeInTheDocument();
+      expect(screen.getByTestId('device-grant-flow-section')).toBeInTheDocument();
     });
 
     it('should pass application to child components', () => {
@@ -78,6 +87,7 @@ describe('EditFlowsSettings', () => {
       expect(screen.getByTestId('auth-flow-section')).toHaveTextContent('App: app-123');
       expect(screen.getByTestId('registration-flow-section')).toHaveTextContent('App: app-123');
       expect(screen.getByTestId('recovery-flow-section')).toHaveTextContent('App: app-123');
+      expect(screen.getByTestId('device-grant-flow-section')).toHaveTextContent('App: app-123');
     });
 
     it('should pass editedApp to child components', () => {
@@ -96,6 +106,7 @@ describe('EditFlowsSettings', () => {
       expect(screen.getByTestId('auth-flow-section')).toHaveTextContent('Edited Auth Flow: edited-auth-flow');
       expect(screen.getByTestId('registration-flow-section')).toHaveTextContent('Edited Reg Flow: edited-reg-flow');
       expect(screen.getByTestId('recovery-flow-section')).toHaveTextContent('Edited Rec Flow: edited-rec-flow');
+      expect(screen.getByTestId('device-grant-flow-section')).toHaveTextContent('Edited Device Grant Flow: None');
     });
 
     it('should pass empty editedApp to child components', () => {
@@ -174,6 +185,7 @@ describe('EditFlowsSettings', () => {
       expect(sections[1]).toHaveAttribute('data-testid', 'registration-flow-section');
       expect(sections[2]).toHaveAttribute('data-testid', 'recovery-flow-section');
       expect(sections[3]).toHaveAttribute('data-testid', 'signout-flow-section');
+      expect(sections[4]).toHaveAttribute('data-testid', 'device-grant-flow-section');
     });
   });
 });

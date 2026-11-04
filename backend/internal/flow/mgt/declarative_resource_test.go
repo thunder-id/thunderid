@@ -671,7 +671,7 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_InvalidStore
 	// Create a mock store that's not a file-based store
 	mockStore := &flowStoreInterfaceMock{}
 
-	err := loadDeclarativeResources(mockStore, s.mockValidator, s.mockOU)
+	err := loadDeclarativeResources(mockStore, mockStore, s.mockValidator, s.mockOU)
 	assert.Error(s.T(), err)
 	assert.Contains(s.T(), err.Error(), "failed to assert flowStore to *fileBasedStore")
 }

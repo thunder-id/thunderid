@@ -4003,6 +4003,16 @@ func (suite *ServiceTestSuite) TestTranslateInboundClientFKError() {
 		wantCode string
 	}{
 		{
+			name:     "DeviceGrantFlowRequired",
+			err:      inboundclient.ErrFKDeviceGrantFlowRequired,
+			wantCode: ErrorDeviceGrantFlowRequired.Code,
+		},
+		{
+			name:     "InvalidDeviceGrantFlow",
+			err:      inboundclient.ErrFKInvalidDeviceGrantFlow,
+			wantCode: ErrorInvalidDeviceGrantFlowID.Code,
+		},
+		{
 			name:     "InvalidAuthFlow",
 			err:      inboundclient.ErrFKInvalidAuthFlow,
 			wantCode: ErrorInvalidAuthFlowID.Code,

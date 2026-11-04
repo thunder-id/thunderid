@@ -54,10 +54,12 @@ func parseDeclaredTemplate(data []byte) (interface{}, error) {
 // svcErrReason returns the most specific human-readable reason from a service error, preferring the
 // detailed description (e.g. "must be lowercase kebab-case") over the terse title ("Invalid handle").
 func svcErrReason(svcErr *tidcommon.ServiceError) string {
+	// Use String(), not DefaultValue, so a description that carries {{param(...)}} substitutions (e.g.
+	// the length-limit errors) renders the actual value rather than the raw placeholder at startup.
 	if svcErr.ErrorDescription.DefaultValue != "" {
-		return svcErr.ErrorDescription.DefaultValue
+		return svcErr.ErrorDescription.String()
 	}
-	return svcErr.Error.DefaultValue
+	return svcErr.Error.String()
 }
 
 // declaredToDAO validates a declared template and builds the DAO to store.

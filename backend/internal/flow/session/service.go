@@ -507,9 +507,9 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 	}
 	// Hard-delete the session and its derived state (checkpoint contexts and participants) in one
 	// transaction. Sign-out ends SSO reuse outright and nothing references the session afterwards, so the
-	// row is removed rather than tombstoned. DeleteSession removes the session row (SSO_SESSION), Delete
+	// row is removed rather than tombstoned. DeleteSession removes the session row (SESSION), Delete
 	// its checkpoint contexts (SSO_SESSION_CONTEXT), and DeleteBySessionID its participants
-	// (SSO_SESSION_PARTICIPANT). Repeated calls are idempotent: once the row is gone, GetByHandle
+	// (SESSION_PARTICIPANT). Repeated calls are idempotent: once the row is gone, GetByHandle
 	// returns nil above. Token families are revoked first, in the same transaction, so a crash can
 	// never orphan live tokens for a deleted session.
 	//

@@ -9,7 +9,8 @@ import VisualFlowConstants from '../constants/VisualFlowConstants';
 import {ActionTypes} from '../models/actions';
 import type {Element} from '../models/elements';
 import {ElementCategories, ElementTypes, ActionEventTypes, ButtonTypes} from '../models/elements';
-import type {StepAction, StepData} from '../models/steps';
+import type {FlowNodeCondition} from '../models/responses';
+import type {StepData} from '../models/steps';
 import {ExecutionTypes, StepTypes, StaticStepTypes} from '../models/steps';
 
 /**
@@ -61,9 +62,8 @@ interface FlowNode {
   onFailure?: string;
   onIncomplete?: string;
   next?: string;
-  flow?: {
-    ref: string;
-  };
+  condition?: FlowNodeCondition;
+  flow?: {ref: string};
 }
 
 /**
@@ -536,6 +536,11 @@ function transformNode(canvasNode: Node<StepData>, edges: Edge[]): FlowNode {
     flowNode.properties = stepData.properties;
   }
 
+  // The builder has no editor for a node's condition, so it goes back as it was read
+  if (stepData?.condition) {
+    flowNode.condition = stepData.condition;
+  }
+
   // Handle PROMPT nodes (VIEW steps with UI components)
   // Clean components to remove internal properties like variants
   if (canvasNode.type === StepTypes.View && stepData?.components) {
@@ -638,11 +643,9 @@ function transformNode(canvasNode: Node<StepData>, edges: Edge[]): FlowNode {
 
   // Handle CALL nodes (cross-flow invocation)
   if (canvasNode.type === StepTypes.Call) {
-    const callData = stepData as (StepData & {flow?: {ref?: string}}) | undefined;
-    const actionFlow = (callData?.action as (StepAction & {flow?: {ref?: string}}) | undefined)?.flow;
-    const flowRef: string | undefined = callData?.flow?.ref ?? actionFlow?.ref;
-    if (flowRef) {
-      flowNode.flow = {ref: flowRef};
+    const callFlow = (stepData as (StepData & {flow?: {ref?: string}}) | undefined)?.flow;
+    if (callFlow?.ref) {
+      flowNode.flow = {ref: callFlow.ref};
     }
 
     const successNode = findNextNode(canvasNode, edges);
@@ -968,6 +971,11 @@ export function validateFlowGraph(flowGraph: FlowGraph): string[] {
     // Check onIncomplete references
     if (node.onIncomplete && !nodeIds.has(node.onIncomplete)) {
       errors.push(`Node ${node.id}: onIncomplete references non-existent node ${node.onIncomplete}`);
+    }
+
+    // Check condition onSkip references
+    if (node.condition?.onSkip && !nodeIds.has(node.condition.onSkip)) {
+      errors.push(`Node ${node.id}: condition.onSkip references non-existent node ${node.condition.onSkip}`);
     }
 
     // Check action nextNode references (via prompts)

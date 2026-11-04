@@ -23,6 +23,16 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
+// DeviceVerificationResult contains trusted request data returned after a Device Grant user code check.
+type DeviceVerificationResult struct {
+	InvalidCode                bool
+	ApplicationID              string
+	AuthID                     string
+	RequestedPermissions       string
+	ResourceServerIdentifier   string
+	RequiredOptionalAttributes string
+}
+
 // LanguageTranslationsResponse represents all translations for a language, organized by namespace.
 type LanguageTranslationsResponse struct {
 	Language     string                       `json:"language"`
@@ -818,6 +828,7 @@ type Agent struct {
 type InboundClient struct {
 	ID                        string
 	AuthFlowID                string
+	DeviceGrantFlowID         string
 	RegistrationFlowID        string
 	IsRegistrationFlowEnabled bool
 	RecoveryFlowID            string
@@ -1419,6 +1430,8 @@ func (a *Application) OAuthClientID() string {
 // InboundAuthProfile is the wire field block embedded in entity DTOs (requests and responses).
 type InboundAuthProfile struct {
 	AuthFlowID                string              `json:"authFlowId,omitempty"             yaml:"authFlowId,omitempty"             jsonschema:"Authentication flow ID. Optional. Specifies which login flow to use (e.g., MFA, passwordless). If omitted, the default authentication flow is used."`
+	DeviceGrantFlowID         string              `json:"deviceGrantFlowId,omitempty"      yaml:"deviceGrantFlowId,omitempty"      jsonschema:"Device Grant flow ID. Optional. Specifies the flow used to approve device authorization requests."`
+	DeviceGrantFlowHandle     string              `json:"deviceGrantFlowHandle,omitempty"  yaml:"deviceGrantFlowHandle,omitempty"  jsonschema:"Device Grant flow handle. Optional. Alternative to deviceGrantFlowId — resolved to an ID at import time."`
 	AuthFlowHandle            string              `json:"authFlowHandle,omitempty"         yaml:"authFlowHandle,omitempty"         jsonschema:"Authentication flow handle. Optional. Alternative to authFlowId — resolved to an ID at import time."`
 	RegistrationFlowID        string              `json:"registrationFlowId,omitempty"     yaml:"registrationFlowId,omitempty"     jsonschema:"Registration flow ID. Optional. Specifies the user registration/signup flow."`
 	RegistrationFlowHandle    string              `json:"registrationFlowHandle,omitempty" yaml:"registrationFlowHandle,omitempty" jsonschema:"Registration flow handle. Optional. Alternative to registrationFlowId — resolved to an ID at import time."`

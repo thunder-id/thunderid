@@ -3,6 +3,7 @@
 
 import {useGetAgentType} from '@thunderid/configure-agent-types';
 import {useGetUserType} from '@thunderid/configure-user-types';
+import {useConfig} from '@thunderid/contexts';
 import {getUserTypeLabel} from '@thunderid/utils';
 import {
   Autocomplete,
@@ -51,6 +52,8 @@ export default function SubjectMappingGroupEditor({
   onRemoveGroup,
 }: SubjectMappingGroupEditorProps): JSX.Element {
   const {t} = useTranslation('connections');
+  const {config} = useConfig();
+  const productName: string = config.brand.product_name;
   const [pdpAttributeRows, setPdpAttributeRows] = useState<Set<number>>(new Set());
   const selectedType = subjectTypes.find((type) => type.handle === group.userType && type.category === group.category);
   const userTypeDetail = useGetUserType(group.category === 'user' ? selectedType?.id : undefined);
@@ -141,7 +144,7 @@ export default function SubjectMappingGroupEditor({
       <Stack direction="column" spacing={1.5}>
         <Stack direction="row" spacing={1.5}>
           <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{flex: 1}}>
-            {t('subjectMapping.mappings.thunderIdAttribute', 'ThunderID attribute')}
+            {t('subjectMapping.mappings.thunderIdAttribute', '{{productName}} attribute', {productName})}
           </Typography>
           <Box sx={{width: 40}} />
         </Stack>
@@ -177,14 +180,17 @@ export default function SubjectMappingGroupEditor({
                       placeholder={t('subjectMapping.mappings.thunderIdPlaceholder', 'e.g. email')}
                       inputProps={{
                         ...params.inputProps,
-                        'aria-label': t('subjectMapping.mappings.thunderIdAttribute', 'ThunderID attribute'),
+                        'aria-label': t('subjectMapping.mappings.thunderIdAttribute', '{{productName}} attribute', {
+                          productName,
+                        }),
                       }}
                       error={duplicateAttribute}
                       helperText={
                         duplicateAttribute
                           ? t(
                               'subjectMapping.mappings.duplicateAttribute',
-                              'Each ThunderID attribute can be mapped only once for an entity type.',
+                              'Each {{productName}} attribute can be mapped only once for an entity type.',
+                              {productName},
                             )
                           : undefined
                       }

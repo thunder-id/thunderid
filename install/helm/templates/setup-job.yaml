@@ -202,6 +202,7 @@ spec:
               mountPath: /opt/thunderid/config/secrets/user-lookup
               readOnly: true
             {{- end }}
+            {{- include "thunderid.redisTLSVolumeMounts" . | nindent 12 }}
             {{- /* Validate bootstrap configuration - patterns are mutually exclusive */ -}}
             {{- if and .Values.bootstrap.scripts .Values.bootstrap.configMap.name }}
             {{- fail "\n\n❌ ERROR: Invalid bootstrap configuration detected!\n\nYou cannot use both 'bootstrap.scripts' and 'bootstrap.configMap' at the same time." }}
@@ -274,6 +275,7 @@ spec:
                 path: client_secret
         {{- end }}
         {{- end }}
+        {{- include "thunderid.redisTLSVolumes" . | nindent 8 }}
         {{- if or .Values.bootstrap.scripts .Values.bootstrap.configMap.name }}
         - name: bootstrap-scripts
           configMap:

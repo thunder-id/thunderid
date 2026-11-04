@@ -21,6 +21,10 @@ describe('RouteConfig', () => {
     expect(RouteConfig.signIn()).toBe('/signin');
   });
 
+  it('has device path', () => {
+    expect(RouteConfig.device()).toBe('/device');
+  });
+
   it('has signUp path', () => {
     expect(RouteConfig.signUp()).toBe('/signup');
   });
@@ -42,6 +46,7 @@ describe('RouteConfig', () => {
       root: () => '/',
       error: () => '/error',
       signIn: () => '/signin',
+      device: () => '/device',
       signUp: () => '/signup',
       invite: () => '/invite',
       callback: () => '/callback',

@@ -165,19 +165,17 @@ var (
 		},
 	}
 	// ErrorInvalidSelection is returned when an apply's selection names a resource the diff does not
-	// report, or would leave out a resource too long to keep.
+	// report.
 	ErrorInvalidSelection = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "GTW-1025",
 		Error: tidcommon.I18nMessage{
 			Key:          "error.gatewayservice.invalid_selection",
-			DefaultValue: "The selection or skip names a resource this apply does not report",
+			DefaultValue: "The selection names a resource this apply does not report",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key: "error.gatewayservice.invalid_selection.description",
-			DefaultValue: "Select or skip changes by the keys a diff of this version reports for this gateway. " +
-				"A change cannot be both selected and skipped. A resource whose key is longer than 512 characters, " +
-				"or whose id or name is longer than 255, cannot be left out.",
+			Key:          "error.gatewayservice.invalid_selection.description",
+			DefaultValue: "Select changes by the keys a diff of this version reports for this gateway.",
 		},
 	}
 	// ErrorGatewayPrivateAddress is returned when a call to a gateway was refused before it was made,
@@ -234,6 +232,55 @@ var (
 			Key: "error.gatewayservice.resource_not_readable.description",
 			DefaultValue: "A document captured with template placeholders, as a deployment that is not a " +
 				"control plane captures it, is not YAML until its values are filled in.",
+		},
+	}
+	// ErrorPromoteToItself is returned when a promotion names the same gateway as source and target.
+	ErrorPromoteToItself = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1036",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.promote_to_itself",
+			DefaultValue: "The source and target are the same gateway",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.promote_to_itself.description",
+			DefaultValue: "Promote from one gateway to another.",
+		},
+	}
+	// ErrorSourceRunsNothing is returned when a promotion's source gateway runs no version yet.
+	ErrorSourceRunsNothing = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1037",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.source_runs_nothing",
+			DefaultValue: "The source gateway runs no version yet",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.source_runs_nothing.description",
+			DefaultValue: "Deploy a version to the source gateway before promoting it.",
+		},
+	}
+	// ErrorResourceNotDeployed names a resource no master of the gateway records.
+	ErrorResourceNotDeployed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.resource_not_deployed",
+			DefaultValue: "No apply to this gateway has recorded the resource",
+		},
+	}
+	// ErrorOriginTooLong is returned when an apply names where its version came from with a label
+	// longer than a master records.
+	ErrorOriginTooLong = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1035",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.origin_too_long",
+			DefaultValue: "The origin is too long",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.origin_too_long.description",
+			DefaultValue: "Name where the version came from in at most 255 characters.",
 		},
 	}
 )

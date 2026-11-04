@@ -11,13 +11,14 @@ import {useCallback, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import useCreateFlow from '../api/useCreateFlow';
+import useGetFlowsMeta from '../api/useGetFlowsMeta';
 import ConfigureFlowName from '../components/create-flow/ConfigureFlowName';
 import type {ConfigureFlowNameValue} from '../components/create-flow/ConfigureFlowName';
 import FlowOrganizationUnitStep from '../components/create-flow/FlowOrganizationUnitStep';
 import SelectFlowTemplate from '../components/create-flow/SelectFlowTemplate';
 import SelectFlowType from '../components/create-flow/SelectFlowType';
 import useFlowRoutes from '../hooks/useFlowRoutes';
-import type {FlowType} from '../models/flows';
+import {FlowType} from '../models/flows';
 import type {FlowTemplate} from '../models/templates';
 
 const FlowCreateStep = {
@@ -35,6 +36,8 @@ export default function FlowCreatePage(): JSX.Element {
   const flowRoutes = useFlowRoutes();
   const logger = useLogger('FlowCreatePage');
   const createFlow = useCreateFlow();
+  const {data: deviceGrantMeta} = useGetFlowsMeta({flowType: FlowType.DEVICE_GRANT});
+  const deviceGrantTemplate = deviceGrantMeta.templates.find((template) => template.type === 'DEVICE_GRANT') ?? null;
 
   const [requestedStep, setCurrentStep] = useState<FlowCreateStep>(FlowCreateStep.ORGANIZATION_UNIT);
   const [selectedType, setSelectedType] = useState<FlowType | null>(null);
@@ -59,10 +62,10 @@ export default function FlowCreatePage(): JSX.Element {
     () => [
       ...(hasMultipleOUs ? [FlowCreateStep.ORGANIZATION_UNIT] : []),
       FlowCreateStep.TYPE,
-      FlowCreateStep.TEMPLATE,
+      ...(selectedType === FlowType.DEVICE_GRANT ? [] : [FlowCreateStep.TEMPLATE]),
       FlowCreateStep.CONFIGURE,
     ],
-    [hasMultipleOUs],
+    [hasMultipleOUs, selectedType],
   );
 
   const steps: Record<FlowCreateStep, {label: string}> = useMemo(
@@ -105,6 +108,12 @@ export default function FlowCreatePage(): JSX.Element {
       return;
     }
     if (currentStep === FlowCreateStep.TYPE) {
+      if (selectedType === FlowType.DEVICE_GRANT) {
+        if (!deviceGrantTemplate) return;
+        setSelectedTemplate(deviceGrantTemplate);
+        setCurrentStep(FlowCreateStep.CONFIGURE);
+        return;
+      }
       setCurrentStep(FlowCreateStep.TEMPLATE);
       return;
     }
@@ -126,6 +135,10 @@ export default function FlowCreatePage(): JSX.Element {
         nodes: selectedTemplate.config.nodes,
       };
       setError(null);
+      if (selectedType === FlowType.DEVICE_GRANT) {
+        void navigate(flowRoutes.flows.detail('new'), {state: {draftFlow: flowRequest}});
+        return;
+      }
       createFlow.mutate(flowRequest, {
         onSuccess: (savedFlow) => {
           (async () => {
@@ -146,13 +159,15 @@ export default function FlowCreatePage(): JSX.Element {
   const handlePrevStep = (): void => {
     if (currentStep === FlowCreateStep.TYPE && hasMultipleOUs) setCurrentStep(FlowCreateStep.ORGANIZATION_UNIT);
     if (currentStep === FlowCreateStep.TEMPLATE) setCurrentStep(FlowCreateStep.TYPE);
-    if (currentStep === FlowCreateStep.CONFIGURE) setCurrentStep(FlowCreateStep.TEMPLATE);
+    if (currentStep === FlowCreateStep.CONFIGURE) {
+      setCurrentStep(selectedType === FlowType.DEVICE_GRANT ? FlowCreateStep.TYPE : FlowCreateStep.TEMPLATE);
+    }
   };
 
   const handleTypeChange = (type: FlowType): void => {
     clearCreateError();
     setSelectedType(type);
-    setSelectedTemplate(null);
+    setSelectedTemplate(type === FlowType.DEVICE_GRANT ? deviceGrantTemplate : null);
   };
 
   const handleTemplateChange = (template: FlowTemplate): void => {

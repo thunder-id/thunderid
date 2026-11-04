@@ -53,6 +53,8 @@ export interface UseFlowSaveProps {
    * graph at success time.
    */
   onSaved?: (savedCanvas: CanvasData) => void;
+  /** Called after a new flow is created, with its persisted ID. */
+  onCreated?: (flowId: string) => void;
 }
 
 /**
@@ -84,6 +86,7 @@ const useFlowSave = (props: UseFlowSaveProps): UseFlowSaveReturn => {
     showSuccess,
     setOpenValidationPanel,
     onSaved,
+    onCreated,
   } = props;
 
   const {t} = useTranslation();
@@ -151,10 +154,11 @@ const useFlowSave = (props: UseFlowSaveProps): UseFlowSaveReturn => {
         );
       } else {
         // Create new flow
-        createFlow.mutate(flowConfig as CreateFlowRequest, {
-          onSuccess: () => {
+        createFlow.mutate({...flowConfig, ...(ouId ? {ouId} : {})} as CreateFlowRequest, {
+          onSuccess: (createdFlow) => {
             showSuccess(t('flows:core.loginFlowBuilder.success.flowCreated'));
             onSaved?.(canvasData);
+            onCreated?.(createdFlow.id);
           },
           onError: (err: Error) => {
             showError(
@@ -181,6 +185,7 @@ const useFlowSave = (props: UseFlowSaveProps): UseFlowSaveReturn => {
       showSuccess,
       setOpenValidationPanel,
       onSaved,
+      onCreated,
       t,
       tForErrors,
       createFlow,

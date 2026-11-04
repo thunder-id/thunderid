@@ -118,7 +118,8 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   const {t} = useTranslation('connections');
   const navigate = useNavigate();
   const routes = useConnectionRoutes();
-  const {getGateCallbackUrl} = useConfig();
+  const {config: appConfig, getGateCallbackUrl} = useConfig();
+  const productName: string = appConfig.brand.product_name;
   const {type, id} = useParams<{type: string; id?: string}>();
 
   const connectionType = type as ConnectionType;
@@ -675,7 +676,8 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                   generalSettingsCardCopy === 'configuration'
                     ? t(
                         'detail.configuration.description',
-                        'Provide the details ThunderID needs to connect to this service.',
+                        'Provide the details {{productName}} needs to connect to this service.',
+                        {productName},
                       )
                     : t(
                         'detail.credentials.description',
@@ -715,7 +717,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
               {hasGenericAuthenticationSection && !isConnectionMetaError && authenticationMethods.length > 0 && (
                 <SettingsCard
                   title={t('detail.authentication.title')}
-                  description={t('detail.outboundAuthentication.description')}
+                  description={t('detail.outboundAuthentication.description', {productName})}
                 >
                   <AuthenticationSection
                     methods={authenticationMethods}
@@ -752,11 +754,13 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                   connectionType === ConnectionTypes.SMS_GATEWAY
                     ? t(
                         'detail.authentication.gatewayDescription',
-                        'Configure how ThunderID authenticates requests sent to this SMS gateway.',
+                        'Configure how {{productName}} authenticates requests sent to this SMS gateway.',
+                        {productName},
                       )
                     : t(
                         'detail.authentication.description',
-                        'Configure how ThunderID authenticates requests sent to this policy decision point.',
+                        'Configure how {{productName}} authenticates requests sent to this policy decision point.',
+                        {productName},
                       )
                 }
               >
@@ -844,7 +848,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                   {t('detail.dangerZone.delete.title')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
-                  {t('detail.dangerZone.delete.description')}
+                  {t(meta.deleteDescriptionKey ?? 'detail.dangerZone.delete.description')}
                 </Typography>
                 <Button
                   variant="contained"

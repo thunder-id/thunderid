@@ -58,6 +58,7 @@ const (
 	ExecutorNameExtension                    = "ExtensionExecutor"
 	ExecutorNameAuthorizationDetail          = "AuthorizationDetailExecutor"
 	ExecutorNameSharing                      = "SharingExecutor"
+	ExecutorNameDeviceCode                   = "DeviceCodeExecutor"
 )
 
 // Executor mode constants

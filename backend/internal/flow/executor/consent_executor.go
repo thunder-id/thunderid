@@ -385,6 +385,9 @@ func (e *consentExecutor) getRequiredAttributes(ctx *providers.NodeContext) (
 	if optionalAttrsStr, exists := ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes]; exists {
 		requiredAttributesProvided = true
 		optionalAttributes = strings.Fields(optionalAttrsStr)
+	} else if optionalAttrsStr, exists := ctx.SharedRuntimeData[common.RuntimeKeyRequiredOptionalAttributes]; exists {
+		requiredAttributesProvided = true
+		optionalAttributes = strings.Fields(optionalAttrsStr)
 	}
 
 	// If neither runtime key was provided but the application has an assertion with user attributes,

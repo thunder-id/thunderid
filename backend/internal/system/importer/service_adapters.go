@@ -741,6 +741,26 @@ func (s *importService) importLayout(
 	return successOutcome(resourceTypeLayout, created.ID, created.DisplayName, operationCreate)
 }
 
+// credentialsToWrite is a document's credentials as the user service takes them, or nil when there
+// are none to write. For an update, a credential the document carries no value for is left out.
+func credentialsToWrite(credentials map[string]interface{}, update bool) (json.RawMessage, error) {
+	kept := make(map[string]interface{}, len(credentials))
+	for name, value := range credentials {
+		if text, ok := value.(string); ok && text == "" && update {
+			continue
+		}
+		kept[name] = value
+	}
+	if len(kept) == 0 {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(kept)
+	if err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
 // userSharingReplay is a user's sharing policies that mandate roles, replayed once the import's roles are in.
 type userSharingReplay struct {
 	// resultIndex is the user's outcome, which a refusal replaces.
@@ -784,7 +804,16 @@ func (s *importService) importUser(
 		Attributes: attributesJSON,
 	}
 
-	credentialsJSON, err := json.Marshal(req.Credentials)
+	credentialsJSON, err := credentialsToWrite(req.Credentials, false)
+	if err != nil {
+		return ImportItemOutcome{ResourceType: resourceTypeUser, ResourceID: req.ID, Status: statusFailed,
+			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal user credentials: %v", err)}
+	}
+	// A credential the document names but carries no value for is left as the user has it: a stored
+	// credential is a hash that never leaves an export, so a server importing its own export, or one
+	// that fills the placeholder with nothing, has nothing new to set. A new user is different:
+	// without a credential they could never sign in, so an empty one is refused on a create.
+	credentialsToKeep, err := credentialsToWrite(req.Credentials, true)
 	if err != nil {
 		return ImportItemOutcome{ResourceType: resourceTypeUser, ResourceID: req.ID, Status: statusFailed,
 			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal user credentials: %v", err)}
@@ -808,11 +837,11 @@ func (s *importService) importUser(
 	if options.IsUpsertEnabled() && req.ID != "" {
 		updated, svcErr := s.userService.UpdateUser(ctx, req.ID, userReq)
 		if svcErr == nil {
-			if len(credentialsJSON) > 0 && string(credentialsJSON) != "null" && string(credentialsJSON) != "{}" {
+			if credentialsToKeep != nil {
 				if credErr := s.userService.UpdateUserCredentials(
 					ctx,
 					req.ID,
-					json.RawMessage(credentialsJSON),
+					credentialsToKeep,
 				); credErr != nil {
 					// Profile is already committed; emit a clear partial-failure outcome.
 					return ImportItemOutcome{
@@ -849,11 +878,11 @@ func (s *importService) importUser(
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationCreate, svcErr)
 	}
-	if len(credentialsJSON) > 0 && string(credentialsJSON) != "null" && string(credentialsJSON) != "{}" {
+	if credentialsJSON != nil {
 		if credErr := s.userService.UpdateUserCredentials(
 			ctx,
 			created.ID,
-			json.RawMessage(credentialsJSON),
+			credentialsJSON,
 		); credErr != nil {
 			if rollbackErr := s.userService.DeleteUser(ctx, created.ID); rollbackErr != nil {
 				combinedErr := &tidcommon.ServiceError{

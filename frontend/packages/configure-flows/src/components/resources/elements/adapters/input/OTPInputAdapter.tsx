@@ -11,6 +11,9 @@ import resolveUpstreamOtpLength from '../../../../../utils/resolveUpstreamOtpLen
 import {Hint} from '../../hint';
 import TemplatePlaceholder, {containsTemplateLiteral} from '../TemplatePlaceholder';
 
+const DEVICE_USER_CODE_INPUT_ID = 'device-code-input';
+const DEVICE_USER_CODE_LENGTH = 8;
+
 /**
  * OTP Input element type with properties at top level.
  */
@@ -50,7 +53,10 @@ function OTPInputAdapter({resource, stepId}: OTPInputAdapterPropsInterface): Rea
   const edges = useEdges();
 
   const otpElement = resource as OTPInputElement;
-  const otpLength = resolveUpstreamOtpLength(stepId, nodes, edges);
+  const otpLength =
+    otpElement?.id === DEVICE_USER_CODE_INPUT_ID
+      ? DEVICE_USER_CODE_LENGTH
+      : resolveUpstreamOtpLength(stepId, nodes, edges);
 
   const rawLabel = otpElement?.label ?? '';
   const labelNode: ReactNode = containsTemplateLiteral(rawLabel) ? (
@@ -66,14 +72,20 @@ function OTPInputAdapter({resource, stepId}: OTPInputAdapterPropsInterface): Rea
       </InputLabel>
       <Box display="flex" flexDirection="row" gap={1}>
         {Array.from({length: otpLength}, (_, index) => (
-          <OutlinedInput
-            key={index}
-            size="small"
-            id="otp-input-adapter"
-            type={otpElement?.inputType}
-            style={otpElement?.styles}
-            placeholder={resolve(otpElement?.placeholder, {t}) ?? otpElement?.placeholder ?? ''}
-          />
+          <Box key={index} display="flex" alignItems="center" gap={1}>
+            <OutlinedInput
+              size="small"
+              id="otp-input-adapter"
+              type={otpElement?.inputType}
+              style={otpElement?.styles}
+              placeholder={resolve(otpElement?.placeholder, {t}) ?? otpElement?.placeholder ?? ''}
+            />
+            {otpElement?.id === DEVICE_USER_CODE_INPUT_ID && index === 3 && (
+              <Box component="span" aria-hidden="true">
+                -
+              </Box>
+            )}
+          </Box>
         ))}
       </Box>
       {otpElement?.hint && (

@@ -1,0 +1,69 @@
+# Shared by the PR Builder and the Frontend Packages Cache workflow. Both must run the same
+# commands, or the Turbo task hashes differ and the cache saved on main is never reused.
+# Runs inside the Playwright container, so callers set the container and check out the sources.
+name: Test Frontend Packages
+description: Builds and tests the frontend packages with coverage through the Turbo cache
+
+runs:
+  using: composite
+  steps:
+    - name: 📦 Enable pnpm via corepack
+      # The Playwright image ships Node with corepack; use it instead of setup-node/setup-pnpm,
+      # both of which are noisy inside containers and add ~15-20s.
+      shell: bash
+      run: |
+        corepack enable
+        corepack prepare pnpm@11.21.0 --activate
+        pnpm --version
+
+    - name: 📦 Install Frontend Dependencies
+      shell: bash
+      run: |
+        pnpm install --frozen-lockfile
+
+    - name: 🗂️ Set up Turbo Cache
+      uses: ./.github/actions/setup-turbo-cache
+
+    # Turbo doesn't hash the container, so without this a new Playwright image would reuse outputs
+    # from the old one. Builds depend on the Node version, and tests also on the browser builds.
+    - name: 🔖 Fingerprint the Runtime
+      shell: bash
+      run: |
+        echo "FRONTEND_BUILD_RUNTIME=node-$(node --version)" >> "$GITHUB_ENV"
+        echo "FRONTEND_TEST_RUNTIME=node-$(node --version) $(ls "$PLAYWRIGHT_BROWSERS_PATH" | sort | tr '\n' ' ')" >> "$GITHUB_ENV"
+
+    - name: 🔨 Build Frontend Packages
+      shell: bash
+      working-directory: frontend
+      run: |
+        pnpm build:packages --summarize
+
+    - name: 🧪 Run Tests for Frontend Packages with Coverage
+      shell: bash
+      working-directory: frontend
+      run: |
+        pnpm test:packages:coverage --summarize
+
+    # The restored cache keeps every entry it was saved with, so without this it grows with each
+    # run. Keep only the task outputs this run used, which are the ones the next run can hit.
+    - name: 🧹 Prune Turbo Cache
+      shell: bash
+      run: |
+        node -e '
+          const fs = require("fs");
+          const keep = new Set();
+          for (const file of fs.readdirSync(".turbo/runs")) {
+            for (const task of JSON.parse(fs.readFileSync(`.turbo/runs/${file}`)).tasks) {
+              keep.add(task.hash);
+            }
+          }
+          let removed = 0;
+          for (const file of fs.readdirSync(".turbo/cache")) {
+            if (!keep.has(file.split(/[-.]/)[0])) {
+              fs.rmSync(`.turbo/cache/${file}`);
+              removed++;
+            }
+          }
+          fs.rmSync(".turbo/runs", {recursive: true});
+          console.log(`Kept ${keep.size} task outputs, removed ${removed} stale files`);
+        '

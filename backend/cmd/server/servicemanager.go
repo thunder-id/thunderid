@@ -72,6 +72,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dcr"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/deviceauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/logout/backchannel"
@@ -372,13 +373,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	runtimeStoreProvider, transactioner, err := runtimestore.Initialize(runtime.Config.Database.RuntimeTransient.Type,
 		runtime.Config.Server.Identifier)
 	fatalOnError(ctx, logger, err, "Failed to initialize runtime store")
+	oauthCfg := oauthconfig.FromServerRuntime()
+	deviceCodeVerifier := deviceauth.NewUserCodeVerifier(runtimeStoreProvider)
 
 	// Initialize passkey service
 	passkeyService := passkey.Initialize(entityService, runtimeStoreProvider, governanceService)
 
 	// Shared DPoP verifier (and its JTI replay cache) so OAuth and OpenID4VCI
 	// share JTI replay protection.
-	oauthCfg := oauthconfig.FromServerRuntime()
 	dpopVerifier := dpop.Initialize(oauthCfg, jti.Initialize(runtimeStoreProvider), runtimeCryptoSvc)
 	artifactLifetime := func(client *providers.OAuthClient) time.Duration {
 		return tokenservice.ArtifactLifetime(oauthCfg, client)
@@ -472,6 +474,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			ArtifactLifetime:    artifactLifetime,
 			AuthzDetailProvider: authzDetailService,
 			SharingService:      sharingService,
+			DeviceCodeVerifier:  deviceCodeVerifier,
 		},
 		interceptor.InterceptorDependencies{},
 		flowConfig,
@@ -482,9 +485,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverConfigService, ouService, notifTemplateSvc, httpConnectionService, flowConfigHandler, idpService,
 		true, sharingService)
 	fatalOnError(ctx, logger, err, "Failed to initialize FlowMgtService")
-
-	// Two-phase initialization: inject the flow resolver into the OU service.
-	ouService.SetOUFlowResolver(flowMgtService)
 
 	exporters = append(exporters, flowMgtExporter)
 	certservice, err := cert.Initialize(cacheManager, dbprovider.GetDBProvider())
@@ -576,7 +576,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// The gateways this control plane administers. Registration is bounded by server.max_gateways,
 	// which is one unless a deployment raises it.
-	gatewayService, err := gateway.Initialize(mux, exportService, nil, exporters, nil)
+	gatewayService, err := gateway.Initialize(mux, mcpServer, exportService, nil, exporters, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service
@@ -613,6 +613,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		secretresolver.New(variablestore.Lookup(references)).
 			WithSecretFields(declarativeresource.SecretFieldsOf(exporters)),
 	)
+	importer.RegisterMCPTools(mcpServer, importService)
+	export.RegisterMCPTools(mcpServer, exportService)
 
 	attestationProvider := initAttestationProvider(ctx, logger, runtimeCryptoSvc)
 	// The flow endpoint and the authorize endpoint share one SSO handle transport. The SSO cookie is

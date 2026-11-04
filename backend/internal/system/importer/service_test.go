@@ -795,6 +795,8 @@ type fakeUserService struct {
 	created                     []*providers.User
 	updateCredentialsShouldFail bool
 	deleted                     []string
+	// credentialUpdates records each credential update, by user.
+	credentialUpdates []string
 }
 
 func (f *fakeUserService) CreateUser(
@@ -834,8 +836,9 @@ func (f *fakeUserService) DeleteUser(_ context.Context, userID string) *tidcommo
 }
 
 func (f *fakeUserService) UpdateUserCredentials(
-	_ context.Context, _ string, _ json.RawMessage,
+	_ context.Context, userID string, _ json.RawMessage,
 ) *tidcommon.ServiceError {
+	f.credentialUpdates = append(f.credentialUpdates, userID)
 	if f.updateCredentialsShouldFail {
 		return &tidcommon.ServiceError{
 			Type:  tidcommon.ClientErrorType,
@@ -1075,6 +1078,25 @@ func TestImportResources_CreateApplication(t *testing.T) {
 	assert.Equal(t, 1, resp.Summary.Imported)
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
 	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+}
+
+func TestImportApplicationRemapsDeviceGrantFlowID(t *testing.T) {
+	appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
+	svc := newTestImportService(appSvc)
+	docs, err := parseDocuments("resource_type: application\nid: app-1\nname: My App\n" +
+		"deviceGrantFlowId: old-device-grant-flow\n" +
+		"deviceGrantFlowHandle: custom-device-grant\n")
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+
+	outcome := svc.(*importService).importApplication(context.Background(), docs[0],
+		&ImportOptions{Target: importTargetRuntime}, false,
+		map[string]string{"old-device-grant-flow": "new-device-grant-flow"})
+
+	assert.Equal(t, statusSuccess, outcome.Status)
+	require.Len(t, appSvc.created, 1)
+	assert.Equal(t, "new-device-grant-flow", appSvc.created[0].DeviceGrantFlowID)
+	assert.Equal(t, "custom-device-grant", appSvc.created[0].DeviceGrantFlowHandle)
 }
 
 // stateDocuments are a document without a state and the same document with one.
@@ -1860,6 +1882,44 @@ func TestImportResources_UserCredentialFailureRollsBackCreate(t *testing.T) {
 	assert.Equal(t, statusFailed, resp.Results[0].Status)
 	assert.Contains(t, resp.Results[0].Message, "user profile updated but credential update failed")
 	assert.Empty(t, userSvc.deleted)
+}
+
+// An update whose credential carries no value leaves the user's stored credential as it is: a server
+// importing its own export names each credential it cannot export the value of. A new user is still
+// refused an empty credential.
+func TestImportResources_UserUpdateKeepsACredentialCarryingNoValue(t *testing.T) {
+	userSvc := &fakeUserService{updateCredentialsShouldFail: true}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil, nil, nil)
+	user := func(id string) string {
+		return strings.Join([]string{
+			"resource_type: user",
+			"id: " + id,
+			"type: customer",
+			"ouId: ou-1",
+			"attributes:",
+			"  username: " + id,
+			"credentials:",
+			"  password: \"\"",
+			"",
+		}, "\n")
+	}
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: user("user-1")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Empty(t, userSvc.credentialUpdates, "an empty credential was written over the stored one")
+
+	noUpsert := false
+	resp, err = svc.ImportResources(context.Background(), &ImportRequest{Content: user("user-2"),
+		Options: &ImportOptions{Upsert: &noUpsert}})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status, "a new user was created without a credential")
+	assert.Equal(t, []string{"user-2"}, userSvc.credentialUpdates)
 }
 
 func TestImportResources_OrganizationUnitUpsertCreatePreservesID(t *testing.T) {

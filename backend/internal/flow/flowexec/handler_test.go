@@ -14,6 +14,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/session"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
@@ -51,37 +52,37 @@ func (s *HandlerTestSuite) TestHandleFlowError_ClientError_Returns400() {
 			DefaultValue: "bad request",
 		},
 	}
-	handleFlowError(context.Background(), w, svcErr, "")
+	handleFlowError(context.Background(), w, svcErr, nil)
 	s.Equal(http.StatusBadRequest, w.Code)
 }
 
 func (s *HandlerTestSuite) TestHandleFlowError_ForbiddenError_Returns403() {
 	w := httptest.NewRecorder()
-	handleFlowError(context.Background(), w, &ErrorDirectFlowInitiationNotPermitted, "")
+	handleFlowError(context.Background(), w, &ErrorDirectFlowInitiationNotPermitted, nil)
 	s.Equal(http.StatusForbidden, w.Code)
 }
 
 func (s *HandlerTestSuite) TestHandleFlowError_ApplicationNotUsable_Returns403() {
 	w := httptest.NewRecorder()
-	handleFlowError(context.Background(), w, &ErrorFlowApplicationNotUsable, "")
+	handleFlowError(context.Background(), w, &ErrorFlowApplicationNotUsable, nil)
 	s.Equal(http.StatusForbidden, w.Code)
 }
 
 func (s *HandlerTestSuite) TestHandleFlowError_InvitationOUMissing_Returns403() {
 	w := httptest.NewRecorder()
-	handleFlowError(context.Background(), w, &ErrorInvitationOUMissing, "")
+	handleFlowError(context.Background(), w, &ErrorInvitationOUMissing, nil)
 	s.Equal(http.StatusForbidden, w.Code)
 }
 
 func (s *HandlerTestSuite) TestHandleFlowError_FlowNotSharedWithOU_Returns403() {
 	w := httptest.NewRecorder()
-	handleFlowError(context.Background(), w, &ErrorFlowNotSharedWithOU, "")
+	handleFlowError(context.Background(), w, &ErrorFlowNotSharedWithOU, nil)
 	s.Equal(http.StatusForbidden, w.Code)
 }
 
 func (s *HandlerTestSuite) TestHandleFlowError_AdministrationAuthenticationRequired_Returns401() {
 	w := httptest.NewRecorder()
-	handleFlowError(context.Background(), w, &ErrorAdministrationAuthenticationRequired, "")
+	handleFlowError(context.Background(), w, &ErrorAdministrationAuthenticationRequired, nil)
 	s.Equal(http.StatusUnauthorized, w.Code)
 }
 
@@ -95,7 +96,7 @@ func (s *HandlerTestSuite) TestHandleFlowError_ServerError_Returns500() {
 			DefaultValue: "internal error",
 		},
 	}
-	handleFlowError(context.Background(), w, svcErr, "")
+	handleFlowError(context.Background(), w, svcErr, nil)
 	s.Equal(http.StatusInternalServerError, w.Code)
 }
 
@@ -455,7 +456,7 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_RejectsOUIDOutsideASig
 
 func (s *HandlerTestSuite) TestHandleFlowError_InvalidOrganizationUnit_Returns400() {
 	w := httptest.NewRecorder()
-	handleFlowError(context.Background(), w, &ErrorInvalidOrganizationUnit, "")
+	handleFlowError(context.Background(), w, &ErrorInvalidOrganizationUnit, nil)
 	s.Equal(http.StatusBadRequest, w.Code)
 	s.Contains(w.Body.String(), ErrorInvalidOrganizationUnit.Code)
 }
@@ -587,7 +588,7 @@ func (s *HandlerTestSuite) TestHandleFlowError_WithErrorAssertion_IncludesAssert
 		},
 	}
 
-	handleFlowError(context.Background(), w, svcErr, "signed-error-assertion")
+	handleFlowError(context.Background(), w, svcErr, &FlowStep{ErrorAssertion: "signed-error-assertion"})
 
 	s.Equal(http.StatusBadRequest, w.Code)
 
@@ -596,6 +597,36 @@ func (s *HandlerTestSuite) TestHandleFlowError_WithErrorAssertion_IncludesAssert
 	s.Equal("FES-1013", body["code"])
 	s.Equal("signed-error-assertion", body["errorAssertion"])
 	s.NotNil(body["message"])
+}
+
+func (s *HandlerTestSuite) TestHandleFlowError_WithDeviceGrantCallbackData_IncludesData() {
+	w := httptest.NewRecorder()
+	svcErr := &tidcommon.ServiceError{
+		Code:  "FES-5000",
+		Type:  tidcommon.ServerErrorType,
+		Error: tidcommon.I18nMessage{Key: "server.error", DefaultValue: "internal error"},
+	}
+	flowStep := &FlowStep{
+		ErrorAssertion: "signed-error-assertion",
+		Data: FlowData{AdditionalData: map[string]string{
+			oauth2const.AuthID:      "device-request-1",
+			common.DataCallbackType: string(providers.GrantTypeDeviceCode),
+		}},
+	}
+
+	handleFlowError(context.Background(), w, svcErr, flowStep)
+
+	s.Equal(http.StatusInternalServerError, w.Code)
+	var body struct {
+		ErrorAssertion string `json:"errorAssertion"`
+		Data           struct {
+			AdditionalData map[string]string `json:"additionalData"`
+		} `json:"data"`
+	}
+	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+	s.Equal("signed-error-assertion", body.ErrorAssertion)
+	s.Equal("device-request-1", body.Data.AdditionalData[oauth2const.AuthID])
+	s.Equal(string(providers.GrantTypeDeviceCode), body.Data.AdditionalData[common.DataCallbackType])
 }
 
 func (s *HandlerTestSuite) TestHandleFlowError_WithoutErrorAssertion_OmitsAssertionField() {
@@ -609,7 +640,7 @@ func (s *HandlerTestSuite) TestHandleFlowError_WithoutErrorAssertion_OmitsAssert
 		},
 	}
 
-	handleFlowError(context.Background(), w, svcErr, "")
+	handleFlowError(context.Background(), w, svcErr, nil)
 
 	s.Equal(http.StatusBadRequest, w.Code)
 

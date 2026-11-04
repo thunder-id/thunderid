@@ -1,0 +1,77 @@
+# Saves the Turbo cache of the PR Builder's Frontend Packages Tests job on main.
+# Pull request and merge queue runs can only restore Actions caches saved on their own ref or on
+# main, and the PR Builder never runs on main. Without this, their first run always starts cold.
+
+name: 🗂️ Frontend Packages Cache
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - '.github/actions/setup-turbo-cache/**'
+      - '.github/actions/test-frontend-packages/**'
+      - '.github/workflows/frontend-packages-cache.yml'
+  workflow_dispatch:
+
+# A queued run is replaced by a newer push, but a running one finishes so its cache gets saved.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Same job id as in the PR Builder, since the Turbo cache key is scoped by job id.
+  test-frontend-packages:
+    name: 🧪 Frontend Packages Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      options: --user root
+    # Same as the PR Builder job. See the comments there.
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      HOME: /root
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 30
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 🧪 Build and Test Frontend Packages
+        uses: ./.github/actions/test-frontend-packages
+
+  # Each run saves a new entry, and only the newest one is restored. The PR Builder's cleanup
+  # only covers pull request refs, so this removes the older entries saved here.
+  cleanup-turbo-cache:
+    name: 🗑️ Cleanup Stale Turbo Cache
+    needs: [test-frontend-packages]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: 🗑️ Delete superseded Turbo caches
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_REF: ${{ github.ref }}
+        run: |
+          gh api --paginate \
+            "repos/${{ github.repository }}/actions/caches?per_page=100&ref=${CACHE_REF}&key=turbo-${{ runner.os }}-test-frontend-packages-" \
+            --jq '.actions_caches[]
+                  | select(.key | test("--[0-9]+-[0-9]+$"))
+                  | {id, created_at, lineage: (.key | sub("--[0-9]+-[0-9]+$"; ""))}' \
+          | jq -s 'group_by(.lineage)[]
+                   | sort_by(.created_at) | reverse | .[1:] | .[].id' \
+          | xargs -r -I{} gh api --method DELETE "repos/${{ github.repository }}/actions/caches/{}"

@@ -20,6 +20,13 @@ func TestModelTestSuite(t *testing.T) {
 	suite.Run(t, new(ModelTestSuite))
 }
 
+func (s *ModelTestSuite) TestRuntimeDataOrShared() {
+	s.Equal("local", RuntimeDataOrShared(map[string]string{"key": "local"},
+		map[string]string{"key": "shared"}, "key"))
+	s.Equal("shared", RuntimeDataOrShared(nil, map[string]string{"key": "shared"}, "key"))
+	s.Empty(RuntimeDataOrShared(nil, nil, "missing"))
+}
+
 func (s *ModelTestSuite) TestNodeExecutionRecord_GetDuration() {
 	tests := []struct {
 		name      string

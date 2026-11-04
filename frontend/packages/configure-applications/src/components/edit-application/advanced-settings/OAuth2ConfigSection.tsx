@@ -4,6 +4,7 @@
 import {OAuth2Logo, SettingsCard} from '@thunderid/components';
 import {useThunderID} from '@thunderid/react';
 import {
+  Alert,
   Box,
   Stack,
   Typography,
@@ -28,7 +29,7 @@ import {useTranslation} from 'react-i18next';
 import useValidationReport from '../../../hooks/useValidationReport';
 import type {ApplicationTemplate} from '../../../models/application-templates';
 import type {OAuth2Config} from '../../../models/oauth';
-import {OAuth2ResponseTypes, TokenEndpointAuthMethods} from '../../../models/oauth';
+import {OAuth2GrantTypes, OAuth2ResponseTypes, TokenEndpointAuthMethods} from '../../../models/oauth';
 import {getGrantTypeLabel} from '../../../utils/getGrantTypeLabel';
 import isValidRedirectUriFormat from '../../../utils/isValidRedirectUriFormat';
 import {
@@ -415,6 +416,14 @@ export default function OAuth2ConfigSection({
                   {entity: 'application'},
                 )}
           </Typography>
+          {grantTypes.includes(OAuth2GrantTypes.DEVICE_CODE) && (
+            <Alert severity="info" sx={{mt: 1}}>
+              {t(
+                'applications:edit.advanced.grantTypes.deviceGrantFlowHint',
+                'The default Device Grant flow is selected automatically. You can choose a different flow in the Flows tab before saving.',
+              )}
+            </Alert>
+          )}
         </FormControl>
 
         {/* Response Types */}

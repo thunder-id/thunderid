@@ -1096,27 +1096,30 @@ func (fe *flowEngine) handleCallResponse(ctx *EngineContext,
 		return nil, &ErrorMaxCallDepthExceeded
 	}
 
-	flow, svcErr := fe.flowProvider.GetFlow(ctx.Context, nodeResp.CallTargetFlowID)
+	targetFlowID := nodeResp.CallTargetFlowID
+	flow, svcErr := fe.flowProvider.GetFlow(ctx.Context, targetFlowID)
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Failed to get call target flow",
-			log.String("targetFlowID", nodeResp.CallTargetFlowID))
+			log.String("targetFlowID", targetFlowID))
 		return nil, &tidcommon.InternalServerError
 	}
 
 	calleeGraph, svcErr := fe.graphBuilder.GetGraph(ctx.Context, flow)
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Failed to build call target graph",
-			log.String("targetFlowID", nodeResp.CallTargetFlowID))
+			log.String("targetFlowID", targetFlowID))
 		return nil, &tidcommon.InternalServerError
 	}
 
-	return fe.switchContextToCallee(ctx, nodeResp, calleeGraph, logger)
+	return fe.switchContextToCallee(ctx, nodeResp, calleeGraph, flow.FlowType, flow.ActiveVersion, logger)
 }
 
 // switchContextToCallee switches the engine context to the callee flow's graph and
 // sets the current node to the start node.
 func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
-	nodeResp *common.NodeResponse, calleeGraph core.GraphInterface, logger *log.Logger) (
+	nodeResp *common.NodeResponse, calleeGraph core.GraphInterface, calleeFlowType providers.FlowType,
+	calleeFlowVersion int,
+	logger *log.Logger) (
 	core.NodeInterface, *tidcommon.ServiceError) {
 	// The caller's boundedness and decided organization unit are read before the reset below.
 	callerBounded := ctx.SignInBounded
@@ -1125,6 +1128,9 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	// Push the current frame before switching to the callee
 	resumeCallNodeID := ctx.CurrentNode.GetID()
 	ctx.pushFrame(resumeCallNodeID)
+	if calleeFlowType == providers.FlowTypeAuthentication {
+		ctx.SSOFlowVersion = calleeFlowVersion
+	}
 
 	// Switch context to the callee flow. Per-frame transient state is reset so the callee
 	// starts with a clean slate; shared identity/input state (UserInputs, AuthUser, etc.) is

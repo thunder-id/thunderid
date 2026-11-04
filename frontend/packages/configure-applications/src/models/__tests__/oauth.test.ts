@@ -31,6 +31,10 @@ describe('OAuth Models', () => {
       expect(OAuth2GrantTypes.CIBA).toBe('urn:openid:params:grant-type:ciba');
     });
 
+    it('should have DEVICE_CODE grant type', () => {
+      expect(OAuth2GrantTypes.DEVICE_CODE).toBe('urn:ietf:params:oauth:grant-type:device_code');
+    });
+
     it('should have TOKEN_EXCHANGE grant type', () => {
       expect(OAuth2GrantTypes.TOKEN_EXCHANGE).toBe('urn:ietf:params:oauth:grant-type:token-exchange');
     });
@@ -47,6 +51,7 @@ describe('OAuth Models', () => {
         'PASSWORD',
         'IMPLICIT',
         'CIBA',
+        'DEVICE_CODE',
         'TOKEN_EXCHANGE',
         'JWT_BEARER',
       ];
@@ -96,6 +101,7 @@ describe('OAuth Models', () => {
         'password',
         'implicit',
         'urn:openid:params:grant-type:ciba',
+        'urn:ietf:params:oauth:grant-type:device_code',
       ];
 
       validGrantTypes.forEach((type) => {

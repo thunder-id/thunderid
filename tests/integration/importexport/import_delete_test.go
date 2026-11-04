@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -172,6 +174,112 @@ func (suite *ImportDeleteSuite) TestDeleteDoesNotMatchAnotherResourceType() {
 	suite.Equal(http.StatusBadRequest, status)
 	suite.Equal("IMP-1001", suite.errorCodeOf(body))
 	suite.FileExists(suite.fixturePath, "a type mismatch must not delete the theme file")
+}
+
+// requireGenericServerError asserts the response is the plain internal server error, naming neither
+// the configuration path nor the underlying failure.
+func (suite *ImportDeleteSuite) requireGenericServerError(status int, body []byte, leaks ...string) {
+	suite.T().Helper()
+
+	suite.Equalf(http.StatusInternalServerError, status, "unexpected status, body: %s", body)
+	suite.Equal("SSE-5000", suite.errorCodeOf(body))
+
+	// Check the decoded strings, not the raw body: JSON escapes backslashes, which would hide a
+	// Windows path.
+	var decoded any
+	suite.Require().NoError(json.Unmarshal(body, &decoded), "body: %s", body)
+	texts := collectStrings(decoded)
+	for _, leak := range leaks {
+		for _, text := range texts {
+			suite.NotContains(strings.ToLower(text), strings.ToLower(leak),
+				"the response must not expose server details")
+		}
+	}
+}
+
+// collectStrings returns every string value in a decoded JSON document.
+func collectStrings(value any) []string {
+	switch v := value.(type) {
+	case string:
+		return []string{v}
+	case []any:
+		var out []string
+		for _, item := range v {
+			out = append(out, collectStrings(item)...)
+		}
+		return out
+	case map[string]any:
+		var out []string
+		for _, item := range v {
+			out = append(out, collectStrings(item)...)
+		}
+		return out
+	}
+	return nil
+}
+
+// TestDeleteWithUnreadableDirectoryHidesServerDetails verifies a failure to read the resource
+// directory is reported as a generic internal error rather than the operating system's message, which
+// carries the absolute path of the directory.
+func (suite *ImportDeleteSuite) TestDeleteWithUnreadableDirectoryHidesServerDetails() {
+	layoutsDir := filepath.Join(filepath.Dir(suite.themesDir), "layouts")
+	backupDir := layoutsDir + ".import-delete-backup"
+
+	// Registered before anything is moved, so a failure part way through still restores the directory.
+	suite.T().Cleanup(func() {
+		if err := os.Remove(layoutsDir); err != nil && !os.IsNotExist(err) {
+			suite.T().Logf("Failed to remove the placeholder file %s: %v", layoutsDir, err)
+		}
+		if _, err := os.Stat(backupDir); err == nil {
+			suite.NoError(os.Rename(backupDir, layoutsDir))
+		}
+	})
+
+	if _, err := os.Stat(layoutsDir); err == nil {
+		suite.Require().NoError(os.Rename(layoutsDir, backupDir))
+	}
+	// A regular file where the directory belongs makes reading it fail with something other than
+	// "does not exist".
+	suite.Require().NoError(os.WriteFile(layoutsDir, []byte("not a directory"), 0o600))
+
+	status, body := suite.deleteResource("layout", "any-layout")
+	suite.requireGenericServerError(status, body, layoutsDir, filepath.Base(layoutsDir))
+}
+
+// TestDeleteWithMalformedFileHidesServerDetails verifies a file that cannot be parsed while scanning
+// for the match is reported as a generic internal error rather than the parser's message or the path.
+func (suite *ImportDeleteSuite) TestDeleteWithMalformedFileHidesServerDetails() {
+	brokenPath := filepath.Join(suite.themesDir, "aaa-import-delete-broken.yaml")
+	suite.Require().NoError(os.WriteFile(brokenPath, []byte("key: [unclosed\n"), 0o600))
+	suite.T().Cleanup(func() {
+		suite.Require().NoError(os.Remove(brokenPath))
+	})
+
+	status, body := suite.deleteResource("theme", importDeleteThemeID)
+	suite.requireGenericServerError(status, body, brokenPath, "yaml")
+	suite.FileExists(suite.fixturePath, "a failed scan must not delete the matching file")
+}
+
+// TestDeleteWithUnremovableFileHidesServerDetails verifies a failure to remove the matching file is
+// reported as a generic internal error rather than the operating system's message.
+func (suite *ImportDeleteSuite) TestDeleteWithUnremovableFileHidesServerDetails() {
+	if runtime.GOOS == "windows" {
+		suite.T().Skip("a read-only directory does not stop files being removed on Windows")
+	}
+	if os.Geteuid() == 0 {
+		suite.T().Skip("a root user can remove files from a read-only directory")
+	}
+
+	info, err := os.Stat(suite.themesDir)
+	suite.Require().NoError(err)
+	suite.Require().NoError(os.Chmod(suite.themesDir, 0o500))
+	suite.T().Cleanup(func() {
+		suite.Require().NoError(os.Chmod(suite.themesDir, info.Mode().Perm()))
+	})
+
+	status, body := suite.deleteResource("theme", importDeleteThemeID)
+	suite.requireGenericServerError(status, body, suite.fixturePath, "permission denied")
+	suite.FileExists(suite.fixturePath)
 }
 
 // errorCodeOf decodes the error code from an API error response body.

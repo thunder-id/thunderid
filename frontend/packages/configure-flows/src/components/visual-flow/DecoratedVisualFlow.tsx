@@ -103,6 +103,10 @@ export interface DecoratedVisualFlowPropsInterface extends Omit<VisualFlowPropsI
    * `edges`.
    */
   sourceEdges?: Edge[];
+  /**
+   * Shows a message when the canvas refuses a deletion.
+   */
+  onDeleteRefused?: (message: string) => void;
   mutateComponents: (components: Element[]) => Element[];
   onTemplateLoad: (template: Template) => [Node[], Edge[], Resource?, string?];
   onWidgetLoad: (
@@ -164,6 +168,7 @@ function DecoratedVisualFlow({
   edges,
   sourceNodes = undefined,
   sourceEdges = undefined,
+  onDeleteRefused = undefined,
   setNodes,
   setEdges,
   onNodesChange,
@@ -325,9 +330,13 @@ function DecoratedVisualFlow({
     onResourceDropOnCanvas,
   });
 
-  const {handleConnect, handleNodesDelete, handleEdgesDelete} = useVisualFlowHandlers({
+  const {handleBeforeDelete, handleConnect, handleNodesDelete, handleEdgesDelete} = useVisualFlowHandlers({
     onEdgeResolve,
     setEdges,
+    setNodes,
+    sourceNodes,
+    sourceEdges,
+    onDeleteRefused,
   });
 
   const {addCanvasNode, addToView, addToForm, addToViewAtIndex, addToFormAtIndex} = useDragDropHandlers({
@@ -1087,6 +1096,7 @@ function DecoratedVisualFlow({
                     edgeTypes={edgeTypes}
                     onEdgesChange={onEdgesChange}
                     onConnect={handleConnect}
+                    onBeforeDelete={handleBeforeDelete}
                     onNodesDelete={handleNodesDelete}
                     onEdgesDelete={handleEdgesDelete}
                     onNodeDragStop={handleNodeDragStop}

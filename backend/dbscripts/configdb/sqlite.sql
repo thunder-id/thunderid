@@ -115,6 +115,7 @@ CREATE TABLE "INBOUND_CLIENT" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     ENTITY_ID VARCHAR(36) NOT NULL,
     AUTH_FLOW_ID VARCHAR(100) NOT NULL,
+    DEVICE_GRANT_FLOW_ID VARCHAR(100),
     REGISTRATION_FLOW_ID VARCHAR(100),
     IS_REGISTRATION_FLOW_ENABLED CHAR(1) DEFAULT '1',
     RECOVERY_FLOW_ID VARCHAR(100),
@@ -534,6 +535,17 @@ CREATE TABLE "GATEWAY_APPLIED_VERSION" (
     -- When each value the applied version refers to was last set, as the gateway's store said at the
     -- apply, so the next apply reports those set again since by comparing the store's own times.
     HELD_VALUES TEXT,
+    -- Whether the gateway holds the applied version whole. An apply that left changes out, or whose
+    -- import refused some, records the version all the same as partly applied. MASTER_SEQ and
+    -- MASTER_HASH name the master the apply left, RESOURCES_HELD of RESOURCES_TOTAL count the
+    -- version's resources that master holds as the version has them, and PREVIOUS_MASTER_SEQ is the
+    -- master a revert returns the gateway to.
+    COMPLETE BOOLEAN NOT NULL DEFAULT TRUE,
+    MASTER_SEQ INTEGER,
+    MASTER_HASH VARCHAR(64),
+    PREVIOUS_MASTER_SEQ INTEGER,
+    RESOURCES_HELD INTEGER,
+    RESOURCES_TOTAL INTEGER,
     PRIMARY KEY (GATEWAY_ID, DEPLOYMENT_ID)
 );
 
@@ -563,10 +575,28 @@ CREATE TABLE "GATEWAY_EXCLUDED_RESOURCE" (
     RESOURCE_TYPE VARCHAR(255) NOT NULL,
     RESOURCE_ID VARCHAR(255),
     RESOURCE_NAME VARCHAR(255),
-    -- A resource skipped for one apply is owed to the gateway until an apply writes or removes it,
-    -- rather than left alone for good.
+    -- Set by a release that let an apply skip a resource once; such a row was owed to the gateway,
+    -- not a standing choice. Read to tell the two apart, never set any more.
     ONCE BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (DEPLOYMENT_ID, GATEWAY_ID, RESOURCE_KEY)
+);
+
+-- What each gateway holds, resource by resource: every resource deployed to it as the gateway last
+-- accepted it, in RESOURCES, and in MANIFEST one entry per resource saying how it got there and
+-- whether the gateway accepted it. Each apply writes a new row, numbered per gateway, and keeps the
+-- earlier ones as the gateway's history, within the same bound as the versions. HASH names the row
+-- by what it holds. A gateway declared in a file has no GATEWAY row, so there is no foreign key.
+CREATE TABLE "GATEWAY_MASTER" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID VARCHAR(36) PRIMARY KEY,
+    GATEWAY_ID VARCHAR(36) NOT NULL,
+    SEQ INTEGER NOT NULL,
+    HASH VARCHAR(64) NOT NULL,
+    RESOURCES TEXT NOT NULL,
+    MANIFEST TEXT NOT NULL,
+    CREATED_AT TEXT DEFAULT (datetime('now')),
+    CREATED_BY VARCHAR(255),
+    UNIQUE (DEPLOYMENT_ID, GATEWAY_ID, SEQ)
 );
 
 -- Table capturing the resource-sharing graph. Generic across resource types: a policy is one
