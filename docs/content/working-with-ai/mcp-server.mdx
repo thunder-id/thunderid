@@ -22,6 +22,8 @@ The MCP server is available through the `/mcp` endpoint of your <ProductName /> 
 
 <ProductName /> supports MCP protocol versions `2024-11-05` through `2026-07-28`, including the stateless core introduced in `2026-07-28`. Existing MCP clients continue to work without changes; <ProductName /> negotiates the protocol version per request. See the [MCP specification](https://modelcontextprotocol.io/specification/2026-07-28) for what changes between versions.
 
+For requests that use `2026-07-28`, closing the connection before the response arrives cancels the request, and <ProductName /> stops the tool call as soon as it can. Changes the tool already saved, such as an application it created, stay in place. Requests that use earlier protocol versions are not affected.
+
 ### Authentication
 
 The endpoint follows the [MCP Authorization Specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization). The MCP server publishes protected resource metadata at `/.well-known/oauth-protected-resource`, advertising <ProductName /> as the OAuth authorization server. If a [trusted issuer](../../guides/trusted-issuer) is configured, the metadata advertises that issuer instead. Spec-compliant MCP clients discover this automatically and run an OAuth authorization code + PKCE flow: you sign in through the browser, and the client obtains and refreshes tokens on its own. There is no manual token handling.

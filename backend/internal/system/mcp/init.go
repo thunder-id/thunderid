@@ -37,9 +37,12 @@ func Initialize(
 	guard func(http.Handler) http.Handler,
 	resourceMeta *oauthex.ProtectedResourceMetadata,
 ) {
+	// Under MCP 2026-07-28 a request's HTTP response stream is its whole lifecycle, so a client
+	// closing that stream cancels the request. PropagateRequestCancellation cancels the handler's
+	// context when the HTTP request ends; requests on older protocol versions are unaffected.
 	httpHandler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server {
 		return mcpServer
-	}, &mcpsdk.StreamableHTTPOptions{Stateless: true})
+	}, &mcpsdk.StreamableHTTPOptions{Stateless: true, PropagateRequestCancellation: true})
 
 	securedHandler := guard(withToolWriteDeadline(httpHandler))
 
