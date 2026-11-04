@@ -727,6 +727,16 @@ func validateResourceServerWrapper(
 		return fmt.Errorf("failed to check for duplicate resource server in declarative store: %w", err)
 	}
 
+	// Check for an equivalent identifier in the file store
+	identifierExists, err := fileStore.CheckResourceServerIdentifierExists(context.Background(), rs.Identifier)
+	if err != nil {
+		return fmt.Errorf("failed to check for duplicate resource server identifier in declarative store: %w", err)
+	}
+	if identifierExists {
+		return fmt.Errorf("duplicate resource server identifier '%s': "+
+			"an equivalent identifier already exists in declarative resources", rs.Identifier)
+	}
+
 	// COMPOSITE MODE: Check for duplicate ID in the database store
 	if dbStore != nil {
 		_, err := dbStore.GetResourceServer(context.Background(), rs.ID)
@@ -737,6 +747,15 @@ func validateResourceServerWrapper(
 		// Propagate any error other than not-found
 		if !errors.Is(err, errResourceServerNotFound) {
 			return fmt.Errorf("failed to check for duplicate resource server in database store: %w", err)
+		}
+
+		identifierExists, err := dbStore.CheckResourceServerIdentifierExists(context.Background(), rs.Identifier)
+		if err != nil {
+			return fmt.Errorf("failed to check for duplicate resource server identifier in database store: %w", err)
+		}
+		if identifierExists {
+			return fmt.Errorf("duplicate resource server identifier '%s': "+
+				"an equivalent identifier already exists in the database store", rs.Identifier)
 		}
 	}
 

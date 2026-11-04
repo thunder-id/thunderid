@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
@@ -281,17 +282,29 @@ func (s *resourceStore) CheckResourceServerNameExists(ctx context.Context, name 
 	return exists, err
 }
 
-// CheckResourceServerIdentifierExists checks if a resource server identifier exists.
+// CheckResourceServerIdentifierExists checks if a resource server identifier equivalent to the given one exists.
 func (s *resourceStore) CheckResourceServerIdentifierExists(ctx context.Context, identifier string) (bool, error) {
 	var exists bool
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
-		results, err := dbClient.QueryContext(ctx, queryCheckResourceServerIdentifierExists, identifier, s.scope(ctx))
+		normalized := normalizeResourceIdentifier(identifier)
+		lowered := strings.ToLower(normalized)
+		results, err := dbClient.QueryContext(ctx, queryCheckResourceServerIdentifierExists,
+			identifier, lowered, strings.TrimSuffix(lowered, "/"), s.scope(ctx))
 		if err != nil {
 			return fmt.Errorf("failed to check resource server identifier: %w", err)
 		}
 
-		exists, err = parseBoolFromCount(results)
-		return err
+		for _, row := range results {
+			existing, ok := row["identifier"].(string)
+			if !ok {
+				return fmt.Errorf("identifier field is missing or invalid")
+			}
+			if normalizeResourceIdentifier(existing) == normalized {
+				exists = true
+				return nil
+			}
+		}
+		return nil
 	})
 	return exists, err
 }

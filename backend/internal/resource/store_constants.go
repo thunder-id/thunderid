@@ -61,10 +61,12 @@ var (
 		Query: `SELECT COUNT(*) as count FROM "RESOURCE_SERVER" WHERE NAME = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
-	// queryCheckResourceServerIdentifierExists checks if a resource server identifier already exists.
+	// queryCheckResourceServerIdentifierExists retrieves the resource server identifiers that equal an identifier
+	// or match its lowercased normal form with or without a trailing "/".
 	queryCheckResourceServerIdentifierExists = dbmodel.DBQuery{
-		ID:    "RSQ-RES_MGT-33",
-		Query: `SELECT COUNT(*) as count FROM "RESOURCE_SERVER" WHERE IDENTIFIER = $1 AND DEPLOYMENT_ID = $2`,
+		ID: "RSQ-RES_MGT-33",
+		Query: `SELECT IDENTIFIER FROM "RESOURCE_SERVER"
+			WHERE (IDENTIFIER = $1 OR LOWER(IDENTIFIER) IN ($2, $3)) AND DEPLOYMENT_ID = $4`,
 	}
 
 	// queryGetResourceServerByIdentifier retrieves a resource server by identifier.
