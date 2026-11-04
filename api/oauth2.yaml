@@ -621,6 +621,15 @@ paths:
       responses:
         "201":
           description: Client registered successfully.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: Always `no-store`.
+            Pragma:
+              schema:
+                type: string
+              description: Always `no-cache`.
           content:
             application/json:
               schema:
@@ -676,6 +685,15 @@ paths:
       responses:
         "200":
           description: Current client registration.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: Always `no-store`.
+            Pragma:
+              schema:
+                type: string
+              description: Always `no-cache`.
           content:
             application/json:
               schema:
@@ -725,6 +743,15 @@ paths:
       responses:
         "200":
           description: Updated client registration.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: Always `no-store`.
+            Pragma:
+              schema:
+                type: string
+              description: Always `no-cache`.
           content:
             application/json:
               schema:
