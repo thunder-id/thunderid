@@ -72,7 +72,83 @@ const (
 	ResourceTypeAgentType ResourceType = "agenttype"
 	// ResourceTypeNotificationTemplate identifies a notification template resource.
 	ResourceTypeNotificationTemplate ResourceType = "notificationtemplate"
+	// ResourceTypeApplication identifies an application resource.
+	ResourceTypeApplication ResourceType = "app"
+	// ResourceTypeRole identifies a role resource.
+	ResourceTypeRole ResourceType = "role"
+	// ResourceTypeResourceServer identifies a resource server resource.
+	ResourceTypeResourceServer ResourceType = "rs"
+	// ResourceTypeConnection identifies a connection resource.
+	ResourceTypeConnection ResourceType = "connection"
+	// ResourceTypeFlow identifies a flow resource.
+	ResourceTypeFlow ResourceType = "flow"
+	// ResourceTypeDesign identifies a design (theme or layout) resource.
+	ResourceTypeDesign ResourceType = "design"
+	// ResourceTypeI18n identifies a translation resource.
+	ResourceTypeI18n ResourceType = "i18n"
+	// ResourceTypeGateway identifies a gateway resource.
+	ResourceTypeGateway ResourceType = "gateway"
+	// ResourceTypeAuthorizationDetailType identifies an authorization detail type resource.
+	ResourceTypeAuthorizationDetailType ResourceType = "authzdetail"
+	// ResourceTypeVerifiableCredential identifies a verifiable credential configuration resource.
+	ResourceTypeVerifiableCredential ResourceType = "vc"
+	// ResourceTypeProject identifies a project resource.
+	ResourceTypeProject ResourceType = "project"
+	// ResourceTypeServerConfig identifies a server configuration resource.
+	ResourceTypeServerConfig ResourceType = "serverconfig"
+	// ResourceTypeConfigurationVersion identifies a configuration version resource.
+	ResourceTypeConfigurationVersion ResourceType = "configversion"
 )
+
+// ---- Permission catalog ----
+
+// Action handles declared under each catalog resource.
+const (
+	catalogActionView   = "view"
+	catalogActionCreate = "create"
+	catalogActionUpdate = "update"
+	catalogActionDelete = "delete"
+)
+
+// crudActions are the actions declared on a catalog resource unless it lists its own.
+var crudActions = []string{catalogActionView, catalogActionCreate, catalogActionUpdate, catalogActionDelete}
+
+// serverConfigActions are the actions declared on server configurations, which can only be read and
+// replaced.
+var serverConfigActions = []string{catalogActionView, catalogActionUpdate}
+
+// configVersionActions are the actions declared on configuration versions, which can only be read and
+// captured.
+var configVersionActions = []string{catalogActionView, catalogActionCreate}
+
+// systemCatalog lists, in declaration order, each resource declared under the root system resource
+// on the System resource server and the actions declared on it. It must match the System resource
+// server in the bootstrap bundle (cmd/server/bootstrap/01-default-resources.yaml).
+var systemCatalog = []struct {
+	resource ResourceType
+	actions  []string
+}{
+	{ResourceTypeOU, crudActions},
+	{ResourceTypeUser, crudActions},
+	{ResourceTypeGroup, crudActions},
+	{ResourceTypeAgent, crudActions},
+	{ResourceTypeUserType, crudActions},
+	{ResourceTypeAgentType, crudActions},
+	{ResourceTypeNotificationTemplate, crudActions},
+	{ResourceTypeApplication, crudActions},
+	{ResourceTypeRole, crudActions},
+	{ResourceTypeResourceServer, crudActions},
+	{ResourceTypeConnection, crudActions},
+	{ResourceTypeFlow, crudActions},
+	{ResourceTypeVerifiableCredential, crudActions},
+	{ResourceTypeProject, crudActions},
+	{ResourceTypeDesign, crudActions},
+	{ResourceTypeI18n, crudActions},
+	{ResourceTypeGateway, crudActions},
+	{ResourceTypeAuthorizationDetailType, crudActions},
+	{ResourceTypeServerConfig, serverConfigActions},
+	{ResourceTypeConfigurationVersion, configVersionActions},
+}
 
 // ---- Actions ----
 
@@ -180,6 +256,9 @@ type SystemPermissions struct {
 	AgentTypeView            string
 	NotificationTemplate     string
 	NotificationTemplateView string
+	// Catalog holds every permission declared under Root, in declaration order: each resource
+	// followed by its actions.
+	Catalog []string
 }
 
 // sysPerms holds the active system permissions, initialized by InitSystemPermissions.
@@ -217,6 +296,12 @@ func InitSystemPermissions(handle string) {
 		AgentTypeView:            buildPermission(handle, "system", "agenttype", "view"),
 		NotificationTemplate:     buildPermission(handle, "system", "notificationtemplate"),
 		NotificationTemplateView: buildPermission(handle, "system", "notificationtemplate", "view"),
+	}
+	for _, entry := range systemCatalog {
+		p.Catalog = append(p.Catalog, buildPermission(handle, "system", string(entry.resource)))
+		for _, action := range entry.actions {
+			p.Catalog = append(p.Catalog, buildPermission(handle, "system", string(entry.resource), action))
+		}
 	}
 	sysPerms = p
 
