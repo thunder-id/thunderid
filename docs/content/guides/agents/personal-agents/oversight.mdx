@@ -1,0 +1,113 @@
+---
+title: Oversee Personal Agents
+docType: guide
+sidebar_position: 13
+persona: iam
+description: Find every personal agent in {{ProductName}}, update, suspend, or delete one, see which agents a user owns, and learn what suspending or deleting the owner does to them.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Oversee Personal Agents
+
+As an administrator, you can find every personal agent, see which agents each user owns, and update, suspend, or delete any of them. You cannot get a token through one, since it acts only for its owner.
+
+## Find personal agents
+
+Filter the agent list by kind to list personal agents:
+
+```bash
+curl -G https://localhost:8090/agents \
+  -H 'Authorization: Bearer <ADMIN_TOKEN>' \
+  --data-urlencode 'filter=kind eq "personal-assistant"'
+```
+
+The list returns one page at a time, 30 agents unless you set `limit` (up to 100). `totalResults` gives the number of matching agents; page through them with `offset`, or follow the `next` link in `links`. The filter also accepts `owner` and `name`. Join terms with `and`, using each key at most once. To list one user's personal agents:
+
+```bash
+curl -G https://localhost:8090/agents \
+  -H 'Authorization: Bearer <ADMIN_TOKEN>' \
+  --data-urlencode 'filter=kind eq "personal-assistant" and owner eq "<owner-user-id>"'
+```
+
+Each entry carries the agent's `kind` and `owner`. `GET /agents/<AGENT_ID>` returns the full agent, including its status and who holds it suspended. See the [Agents API Reference](../../../../apis#tag/agents).
+
+## What you can and cannot do
+
+| Action | For a personal agent |
+|---|---|
+| Read it | Allowed, as for any agent. No read returns its credential. |
+| Update it | Allowed, unless it is defined in a declarative file. |
+| Get a token through it | Not possible. Only its owner can sign in through it, and it cannot get a token for itself. |
+| Suspend it | Allowed. See [Suspend a personal agent](#suspend-a-personal-agent). |
+| Delete it | Allowed, unless it is defined in a declarative file. |
+| Register one for a user | Allowed. See [Register a personal agent for a user](../register#register-a-personal-agent-for-a-user). |
+
+Owning a personal agent gives the owner no administrative permission and no access to other agents.
+
+## Update a personal agent
+
+Update a personal agent with `PUT /agents/<AGENT_ID>`, as for any agent. See [Create and Manage Agents](../../manage-agents) for the request. A personal agent keeps what makes it personal:
+
+- **Its grant types** stay limited to the authorization code, CIBA, and refresh token grants. Any other grant is refused.
+- **Its kind** never changes, so it cannot become an ordinary agent.
+- **Its owner** is the user it was registered for and never changes. Leave `owner` out of the update, or send the current owner. A different owner is refused with "Owner cannot be changed".
+
+The owner can also update the agent through [Owner Self-Service](../owner-self-service), but only its description, attributes, grant types, and redirect URIs.
+
+## Suspend a personal agent
+
+Suspend a personal agent to stop it while you investigate, for example after a security advisory about the agent's software. Suspending revokes the agent's tokens and refuses it at client authentication. The owner's account, the owner's sessions, and the owner's other agents are not affected.
+
+<Tabs groupId="agent-config">
+<TabItem value="console" label="Console" default>
+
+1. Navigate to **Agents** and open the agent.
+2. Click **Actions**, then **Suspend**.
+3. In **Operator note (optional)**, explain why. The owner reads this note.
+4. Click **Suspend**.
+
+To lift the suspension, click **Actions**, then **Unsuspend**, and confirm.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+Run the `default-agent-suspend-flow` administration flow through the Flow Execution API, with the agent's ID as the subject:
+
+```bash
+curl -X POST https://localhost:8090/flow/execute \
+  -H 'Authorization: Bearer <ADMIN_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "flowId": "<suspend-flow-id>",
+    "inputs": {
+      "subject": "<agent-id>",
+      "operatorNote": "Security advisory for this agent"
+    }
+  }'
+```
+
+`<suspend-flow-id>` is the ID of the `default-agent-suspend-flow` flow. To lift the suspension, run `default-agent-unsuspend-flow` the same way.
+
+</TabItem>
+</Tabs>
+
+The owner sees the suspension on their read of the agent, with `organization` in `appliedBy`, and reads the operator note. The owner cannot lift your suspension, and you cannot lift theirs. The agent stays suspended until every suspension on it is lifted.
+
+## When the owner's account changes
+
+A personal agent follows its owner's account.
+
+- **Owner suspended.** Suspending a user also suspends all of their personal agents, with a suspension of its own (`cascade` in `appliedBy`). The owner is the subject of every token their agents hold, so suspending the user revokes those tokens too. Unsuspending the user lifts only the cascaded suspension. A suspension the owner or you placed on an agent stays in force.
+- **Owner deleted.** Deleting a user revokes the tokens of each of their personal agents and deletes the agents with the user. A personal agent defined in a declarative file is not deleted: it blocks the user's deletion until its file is changed. Ordinary agents the user owns also block the deletion.
+- **New agents for a suspended owner.** No personal agent can be created for a user whose account is suspended.
+
+## See the agents a user owns
+
+`GET /users/<USER_ID>/usages` lists the agents a user owns, as entries with `resourceType` set to `agent`. Each entry's `behaviorOnDelete` says what happens to the agent when the user is deleted:
+
+- `cascade`: the agent is a personal agent and is deleted with the user.
+- `restrict`: the agent blocks the user's deletion.
+
+An agent's `owner` field points the other way, so you can trace ownership in both directions. See the [Users API Reference](../../../../apis#tag/users).
