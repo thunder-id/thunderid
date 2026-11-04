@@ -54,6 +54,12 @@ var (
 		ID:    "GTM_MGT-04",
 		Query: `DELETE FROM "GATEWAY_MASTER" WHERE GATEWAY_ID = $1 AND SEQ <= $2 AND DEPLOYMENT_ID = $3`,
 	}
+	// queryGetMasterAt reads one of a gateway's masters by its number, with its resources.
+	queryGetMasterAt = dbmodel.DBQuery{
+		ID: "GTM_MGT-07",
+		Query: `SELECT SEQ, HASH, RESOURCES, MANIFEST, CREATED_AT, CREATED_BY FROM "GATEWAY_MASTER" ` +
+			`WHERE GATEWAY_ID = $1 AND SEQ = $2 AND DEPLOYMENT_ID = $3`,
+	}
 	// queryDeleteMasters forgets a removed gateway's masters.
 	queryDeleteMasters = dbmodel.DBQuery{
 		ID:    "GTM_MGT-05",
@@ -110,6 +116,22 @@ func (s *versionStore) AddMaster(ctx context.Context, master Master, token strin
 
 func (s *versionStore) GetMaster(ctx context.Context, gatewayID string) (*Master, error) {
 	rows, err := s.query(ctx, queryGetMaster, gatewayID, deployment.Resolve(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read the gateway's master: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	master, err := masterFrom(gatewayID, rows[0])
+	if err != nil {
+		return nil, err
+	}
+	master.Resources = asString(rows[0]["resources"])
+	return master, nil
+}
+
+func (s *versionStore) GetMasterAt(ctx context.Context, gatewayID string, seq int) (*Master, error) {
+	rows, err := s.query(ctx, queryGetMasterAt, gatewayID, seq, deployment.Resolve(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the gateway's master: %w", err)
 	}

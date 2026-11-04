@@ -281,6 +281,14 @@ func (s *MasterTestSuite) TestAManifestStoresIdsNotNames() {
 }
 
 // The master of a gateway nothing was applied to carries no time it was written.
+// A version the gateway holds none of still gives how many it holds, as 0 of its total.
+func (s *MasterTestSuite) TestAPartlyAppliedVersionAlwaysGivesItsCounts() {
+	raw, err := json.Marshal(AppliedVersion{GatewayID: "gw-1", Applied: "aaa", ResourcesTotal: 3})
+	s.Require().NoError(err)
+	s.JSONEq(`{"gatewayId":"gw-1","appliedVersion":"aaa","complete":false,"resourcesHeld":0,`+
+		`"resourcesTotal":3}`, string(raw))
+}
+
 func (s *MasterTestSuite) TestTheEmptyMasterHasNoCreationTime() {
 	raw, err := json.Marshal(emptyMaster("gw-1"))
 	s.Require().NoError(err)

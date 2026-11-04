@@ -23,13 +23,16 @@ type bundleResource struct {
 	Content string
 }
 
-// key identifies a resource across versions: its type with its id, or its name when it has no id.
-func (r bundleResource) key() string {
-	identity := r.ID
-	if identity == "" {
-		identity = r.Name
+// key identifies a resource across versions.
+func (r bundleResource) key() string { return resourceKey(r.Type, r.ID, r.Name) }
+
+// resourceKey identifies a resource across versions: its type with its id, or its name when it has
+// no id.
+func resourceKey(resourceType, id, name string) string {
+	if id == "" {
+		id = name
 	}
-	return r.Type + "/" + identity
+	return resourceType + "/" + id
 }
 
 var (
@@ -356,9 +359,6 @@ func changeOf(resource bundleResource, kind ChangeKind) Change {
 func summarize(changes []Change) DiffSummary {
 	var summary DiffSummary
 	for _, change := range changes {
-		if change.Excluded {
-			continue
-		}
 		switch change.Change {
 		case ChangeAdded:
 			summary.Added++

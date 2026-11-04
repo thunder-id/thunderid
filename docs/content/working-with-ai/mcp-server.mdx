@@ -264,7 +264,7 @@ The `deployments` tools move configuration from <ProductName /> to the gateways 
 | `capture_configuration_version` | `POST /configuration-versions` |
 | `diff_version` | `GET /gateways/{id}/diff` |
 | `deploy_version` | `POST /gateways/{id}/apply` |
-| `promote_gateway` | Deploys the version one gateway runs to another, leaving out the changes the source holds back, as the Console promotes. A resource the source refused is still part of that version, so it is sent to the target too: check the source's last deploy before promoting |
+| `promote_gateway` | Deploys the version one gateway is recorded as running to another, and records the source as where each resource came from. It follows that version rather than everything the source holds: an addition or update is sent only when the source holds it deployed as the version has it, a resource the version no longer has is removed from the target even if the source still holds it, and changes the target holds back stay out |
 | `rollback_gateway` | `POST /gateways/{id}/revert` |
 | `list_gateway_variables`, `list_gateway_secrets` | `GET /gateways/{id}/variables`, `GET /gateways/{id}/secrets` |
 | `set_gateway_variable`, `set_gateway_secret` | `PUT /gateways/{id}/variables/{name}`, `PUT /gateways/{id}/secrets/{name}` |
@@ -274,11 +274,9 @@ The `deployments` tools move configuration from <ProductName /> to the gateways 
 
 The deploy, promote, and rollback tools take `dryRun`. Ask the agent to run a dry run first: it reports what would be added, updated, and removed, and any variables or secrets the gateway is missing, without changing the gateway. A deploy that would remove more resources than the deployment's threshold is refused unless `confirmRemovals` is set. The server cannot tell whether you reviewed the removals: `confirmRemovals` is only what the client sends, and the agent is told to set it after you have seen them, so keep your MCP client asking before it runs these tools. A threshold of `0` turns the check off, and then a deploy removes resources without `confirmRemovals`. See `gateway.removal_confirmation_threshold` in [Configuration](../../deployment/configuration).
 
-A dry run compares the version with the one recorded as applied to the gateway, not with what the gateway accepted. A resource the gateway refused on an earlier deploy can therefore show as unchanged, while a deploy still sends the whole version and writes it again. Read the dry run's `import` to see what the gateway would refuse now.
+A dry run compares the version with the gateway's master, what the gateway accepted resource by resource, so a resource it refused before is offered again as a change.
 
-A completed deploy's `import` lists the resources the gateway refused, such as an agent whose owner the gateway does not hold. The rest of the version is applied, and the version is recorded. Fix the cause, then deploy the same version again to retry them.
-
-A removal the gateway refused or did not confirm is different: the answer has `recorded` set to `false`, and the gateway stays recorded as holding the version it held before. A later promote or rollback works from that earlier version, and the next deploy sends the removal again.
+A completed deploy's `import` lists the resources the gateway refused, such as an agent whose owner the gateway does not hold, among the changes that deploy sent. A deploy with a `selection`, or one that leaves out changes held back from an earlier deploy, sends only part of the version, so an `import` with no refusals does not mean the gateway holds the whole version: `complete` in the answer says whether it does, and `diff_version` shows what is still owed. Fix the cause of a refusal, then deploy the same version again to retry it.
 
 :::warning
 Setting a secret through an agent passes its value through the agent's conversation, and an export from a deployment that is not a control plane returns the values its placeholders refer to, secrets included. Configure your MCP client to ask before it runs these tools.

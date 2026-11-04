@@ -18,11 +18,13 @@ import (
 )
 
 // applyGateway stands in for a data plane a version is applied to: it answers the store reads an apply
-// makes as holding every value asked for, and takes each import slowly enough for another apply to
-// arrive while one runs.
+// makes as holding every value asked for, and can hold each import until the test releases it, so
+// another apply arrives while one runs.
 type applyGateway struct {
 	server *httptest.Server
-	delay  time.Duration
+	// release is closed when imports may answer; until then each one waits.
+	release     chan struct{}
+	releaseOnce sync.Once
 	// refuse makes every import fail, as a data plane that cannot take the version would.
 	refuse  bool
 	began   chan struct{}
@@ -30,17 +32,37 @@ type applyGateway struct {
 	imports int
 }
 
-func newApplyGateway(delay time.Duration) *applyGateway {
-	return startApplyGateway(delay, false)
+// newApplyGateway stands in for a data plane that answers each import at once.
+func newApplyGateway() *applyGateway {
+	g := startApplyGateway(false)
+	g.releaseImports()
+	return g
+}
+
+// newHeldApplyGateway stands in for a data plane whose imports answer only once the test calls
+// releaseImports.
+func newHeldApplyGateway() *applyGateway {
+	return startApplyGateway(false)
 }
 
 // newRefusingApplyGateway stands in for a data plane that answers every import with a failure.
 func newRefusingApplyGateway() *applyGateway {
-	return startApplyGateway(0, true)
+	return startApplyGateway(true)
 }
 
-func startApplyGateway(delay time.Duration, refuse bool) *applyGateway {
-	g := &applyGateway{delay: delay, refuse: refuse, began: make(chan struct{}, 8)}
+// releaseImports lets every import, held or to come, answer.
+func (g *applyGateway) releaseImports() {
+	g.releaseOnce.Do(func() { close(g.release) })
+}
+
+// close releases what the gateway holds and stops it; a held import would otherwise keep it open.
+func (g *applyGateway) close() {
+	g.releaseImports()
+	g.server.Close()
+}
+
+func startApplyGateway(refuse bool) *applyGateway {
+	g := &applyGateway{release: make(chan struct{}), refuse: refuse, began: make(chan struct{}, 8)}
 	g.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("API-Key") != captureGatewayKey {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -66,7 +88,10 @@ func startApplyGateway(delay time.Duration, refuse bool) *applyGateway {
 				return
 			}
 			g.began <- struct{}{}
-			time.Sleep(g.delay)
+			select {
+			case <-g.release:
+			case <-time.After(2 * time.Minute):
+			}
 			_, _ = w.Write([]byte(`{"summary":{"totalDocuments":0,"imported":0,"failed":0},"results":[]}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -142,8 +167,10 @@ func applyLatest(gatewayID string) applyOutcome {
 // An apply of the latest version that arrives while another apply runs is queued rather than refused
 // or run alongside, and is sent once the running one finishes, for the user who asked for it.
 func (ts *ControlPlaneTestSuite) TestAnApplyOfTheLatestVersionIsQueuedBehindARunningOne() {
-	g := newApplyGateway(2 * time.Second)
-	ts.T().Cleanup(g.server.Close)
+	// The first import is held until the queued apply has answered, so a change can be made and
+	// captured while it runs however long that takes.
+	g := newHeldApplyGateway()
+	ts.T().Cleanup(g.close)
 	gatewayID := ts.registerGateway(g.server)
 	unit, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle: unique("queued-apply"), Name: "Queued apply", Parent: &ts.ouID,
@@ -159,12 +186,21 @@ func (ts *ControlPlaneTestSuite) TestAnApplyOfTheLatestVersionIsQueuedBehindARun
 	case <-time.After(20 * time.Second):
 		ts.FailNow("the first apply never reached the gateway")
 	}
+	// A change made while the apply runs is what the queued apply has to send: an apply sends only
+	// what the gateway lacks, and the running one is sending everything else.
+	later, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: unique("queued-later"), Name: "Queued later", Parent: &ts.ouID,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(later) }()
+	ts.waitForCurrent(later)
 
 	queued := applyLatest(gatewayID)
 	ts.Require().Equal(http.StatusAccepted, queued.status, queued.raw)
 	ts.True(queued.Queued, "an apply arriving while another runs was not queued: %s", queued.raw)
 	ts.NotEmpty(queued.QueuedVersion, "the queued apply does not say which version it will send")
 	ts.False(queued.Recorded)
+	g.releaseImports()
 
 	select {
 	case running := <-first:
