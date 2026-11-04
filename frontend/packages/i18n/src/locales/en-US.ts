@@ -4484,6 +4484,12 @@ const translations = {
     'core.executions.identifying.mode.placeholder': 'Select a mode',
     'core.executions.identifying.description':
       'Configure the identifying executor mode. Use "Resolve" to enable user disambiguation when multiple users match.',
+    'core.executions.identifying.boundToUserType.label': 'Bound to the user type',
+    'core.executions.identifying.boundToUserType.hint':
+      'Accept only a user of the user type the flow resolved. A user of another type fails the step.',
+    'core.executions.identifying.continueOnNoMatch.label': 'Continue when no user matches',
+    'core.executions.identifying.continueOnNoMatch.hint':
+      'Follow the incomplete path without an error when no user matches, keeping the entered value.',
 
     // Administrative flow pre executor
     'core.executions.preDelete.mode.revokeAll': 'Revoke all grants',
@@ -4519,11 +4525,36 @@ const translations = {
     'core.executions.roleExecutor.mode.roleAssignmentRemoval': 'Remove role assignment',
     'core.executions.roleExecutor.mode.roleDeletion': 'Delete role',
     'core.executions.roleExecutor.mode.rolePermissionRemoval': 'Change role permissions',
+    'core.executions.roleExecutor.mode.roleSelection': 'Select roles',
+    'core.executions.roleExecutor.mode.roleAssignment': 'Assign roles',
+    'core.executions.roleExecutor.roles.label': 'Roles',
+    'core.executions.roleExecutor.roles.hint':
+      'IDs of the roles to assign, separated by spaces. When set, the admin is not asked to pick roles, and the step fails if the admin may not assign one of them.',
     'core.executions.roleExecutor.mode.label': 'Mode',
     'core.executions.roleExecutor.mode.placeholder': 'Select a mode',
+    'core.executions.sharing.description':
+      "Validate Share authorizes sharing a resource into a child organization unit as the admin who started the flow. Share applies it, on the owner's authority, once the invitee accepts.",
+    'core.executions.sharing.signUpDescription':
+      "Share the resource the properties name into a child organization unit of its owner, on the owner's authority, without checking who asked. Place it right after provisioning and name the user the flow just created.",
+    'core.executions.sharing.mode.label': 'Mode',
+    'core.executions.sharing.mode.placeholder': 'Select a mode',
+    'core.executions.sharing.mode.validate': 'Validate share',
+    'core.executions.sharing.mode.share': 'Share',
+    'core.executions.sharing.resourceType.label': 'Resource type',
+    'core.executions.sharing.resourceType.hint': 'The type of resource to share. Only user can be shared from a flow.',
+    'core.executions.sharing.resourceId.label': 'Resource ID',
+    'core.executions.sharing.resourceId.hint':
+      'The resource to share. Leave it empty in Validate Share for a user the flow creates on acceptance.',
+    'core.executions.sharing.owningOuId.label': 'Owning organization unit',
+    'core.executions.sharing.owningOuId.hint':
+      'The organization unit that owns a resource the flow creates on acceptance.',
+    'core.executions.sharing.targetOuId.label': 'Target organization unit',
+    'core.executions.sharing.targetOuId.hint':
+      'The child organization unit to share into. Values resolve from the flow runtime data only.',
     'core.executions.roleExecutor.mode.hint':
       'Must match the mode of the access change validator earlier in the flow. A mismatched pair is refused at runtime.',
-    'core.executions.roleExecutor.description': 'Apply the role change named by the trusted revocation plan.',
+    'core.executions.roleExecutor.description':
+      'In an administration flow, apply the role change named by the trusted revocation plan. In an invitation flow, Select roles offers the roles the admin can assign in the organization unit and records the choice, and Assign roles assigns them, as that admin, once the invitee accepts.',
 
     // Group executor modes
     'core.executions.groupExecutor.mode.groupDeletion': 'Delete group',
@@ -4644,6 +4675,11 @@ const translations = {
     'core.executions.provisioning.delegated.label': 'Delegated mode',
     'core.executions.provisioning.delegated.hint':
       'When enabled, agents created by this node act on behalf of a signed-in user. A value collected by the flow takes precedence.',
+    'core.executions.provisioning.provisioningOU.label': 'Create the user in',
+    'core.executions.provisioning.provisioningOU.resolved': 'The resolved organization unit',
+    'core.executions.provisioning.provisioningOU.userType': "The user type's organization unit",
+    'core.executions.provisioning.provisioningOU.hint':
+      "The resolved organization unit is the one an earlier step resolved, or else the user type's.",
     'core.executions.provisioning.includeOptional.label': 'Allow optional non-credential attributes',
     'core.executions.provisioning.includeOptional.hint':
       'Prompt for optional non-credential attributes during dynamic input collection.',

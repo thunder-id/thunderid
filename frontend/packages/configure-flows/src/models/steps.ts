@@ -125,6 +125,7 @@ export const ExecutionTypes = {
   AuthAssert: 'AuthAssertExecutor',
   Authorization: 'AuthorizationExecutor',
   AccountLinking: 'AccountLinkingExecutor',
+  SharingExecutor: 'SharingExecutor',
 } as const;
 
 export const ExecutionStepViewTypes = {

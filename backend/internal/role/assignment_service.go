@@ -46,6 +46,9 @@ type RoleAssignmentServiceInterface interface {
 	// named in ouID, or in the role's owner when it is empty, and what that revokes.
 	ValidateRemoveAssignment(ctx context.Context, id, ouID, assigneeID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	// ListAssignableRoles lists the roles the caller may assign in the organization unit: the ones it owns
+	// and the ones shared with it whose assignments it may change, as far as the caller may grant them.
+	ListAssignableRoles(ctx context.Context, ouID string) ([]Role, *tidcommon.ServiceError)
 	// AddAssigneesToRoles assigns each assignee to the roles in the organization unit it names, or in
 	// the one owning it when it names none. All are added or none is.
 	AddAssigneesToRoles(ctx context.Context, assignments []RoleAssignment,
@@ -592,6 +595,72 @@ func (as *roleAssignmentService) requireAssignableInOU(
 		return &ErrorSharedRoleFieldNotEditable
 	}
 	return nil
+}
+
+// ListAssignableRoles lists the roles the caller may assign in the organization unit.
+func (as *roleAssignmentService) ListAssignableRoles(
+	ctx context.Context, ouID string,
+) ([]Role, *tidcommon.ServiceError) {
+	ownedCount, err := as.roleStore.GetRoleListCountByOUID(ctx, ouID)
+	if err != nil {
+		return nil, as.listError(ctx, ouID, err)
+	}
+	var roles []Role
+	if ownedCount > 0 {
+		if roles, err = as.roleStore.GetRoleListByOUID(ctx, ouID, ownedCount, 0); err != nil {
+			return nil, as.listError(ctx, ouID, err)
+		}
+	}
+
+	sharedIDs, svcErr := as.sharingService.ListVisibleResourceIDs(ctx, RoleSharingType, ouID)
+	if svcErr != nil {
+		// An organization unit that does not exist has nothing shared with it.
+		if svcErr.Code != oupkg.ErrorOrganizationUnitNotFound.Code {
+			return nil, translateSharingError(svcErr)
+		}
+		sharedIDs = nil
+	}
+	editableIDs := make([]string, 0, len(sharedIDs))
+	for _, id := range sharedIDs {
+		svcErr := as.requireAssignableInOU(ctx, id, ouID, true)
+		if svcErr == nil {
+			editableIDs = append(editableIDs, id)
+		} else if svcErr.Type == tidcommon.ServerErrorType {
+			return nil, svcErr
+		}
+	}
+	if len(editableIDs) > 0 {
+		shared, err := as.roleStore.GetRolesByIDs(ctx, editableIDs)
+		if err != nil {
+			return nil, as.listError(ctx, ouID, err)
+		}
+		roles = append(roles, shared...)
+	}
+
+	ids := make([]string, 0, len(roles))
+	for _, r := range roles {
+		ids = append(ids, r.ID)
+	}
+	grantable, svcErr := as.authzService.GrantableMemberships(ctx, sysauthz.PrincipalTypeRole, ids)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	assignable := make([]Role, 0, len(grantable))
+	for _, r := range roles {
+		if slices.Contains(grantable, r.ID) {
+			assignable = append(assignable, r)
+		}
+	}
+	return assignable, nil
+}
+
+// listError maps a store failure while listing a unit's roles to a service error.
+func (as *roleAssignmentService) listError(ctx context.Context, ouID string, err error) *tidcommon.ServiceError {
+	if errors.Is(err, errResultLimitExceededInCompositeMode) {
+		return &ResultLimitExceededInCompositeMode
+	}
+	as.logger.Error(ctx, "Failed to list roles in organization unit", log.String("ouID", ouID), log.Error(err))
+	return &tidcommon.InternalServerError
 }
 
 // requireDirectRemoval refuses a removal naming an assignee who holds the role in the unit only through a mandate.

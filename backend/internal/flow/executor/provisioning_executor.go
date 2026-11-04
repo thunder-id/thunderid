@@ -78,6 +78,7 @@ func newProvisioningExecutor(
 				providers.FlowTypeRegistration,
 				providers.FlowTypeUserOnboarding,
 				providers.FlowTypeAdministration,
+				providers.FlowTypeInvitation,
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: propertyKeyDelegated},
@@ -89,6 +90,7 @@ func newProvisioningExecutor(
 				{Property: propertyKeySeedGroupsFromMapping},
 				{Property: propertyKeySeedRolesFromMapping},
 				{Property: common.NodePropertyAllowCrossOUProvisioning},
+				{Property: propertyKeyProvisioningOU},
 			},
 		})
 
@@ -217,6 +219,9 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		execResp.Status = providers.ExecFailure
 		execResp.Error = svcErr
 		return execResp, nil
+	}
+	if category == entitytype.TypeCategoryUser {
+		execResp.RuntimeData[userAttributeUserID] = entityID
 	}
 
 	return p.completeProvisioning(ctx, category, entityID, execResp, logger), nil
@@ -1135,8 +1140,19 @@ func (p *provisioningExecutor) handleCreateEntityError(
 // getTargetEntityRef retrieves the target entity reference (entity type and OU ID) for provisioning.
 func (p *provisioningExecutor) getTargetEntityRef(ctx *providers.NodeContext,
 	category entitytype.TypeCategory) (*entityRef, error) {
-	ouID := p.getOUID(ctx)
+	ouID, err := p.getOUID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	entityType := p.getEntityType(ctx)
+	placement, _ := ctx.NodeProperties[propertyKeyProvisioningOU].(string)
+	inUserTypeOU := provisioningOU(placement) == provisioningOUUserType
+	// Without a type resolver's record, as in a sign-in flow, the user type's unit is the named type's own.
+	if inUserTypeOU && ouID == "" && entityType != "" {
+		if ouID, err = p.entityTypeOUID(ctx, category, entityType); err != nil {
+			return nil, err
+		}
+	}
 
 	if ouID == "" || entityType == "" {
 		defaultEntityRef, err := p.getDefaultEntityRef(ctx, category)
@@ -1153,25 +1169,53 @@ func (p *provisioningExecutor) getTargetEntityRef(ctx *providers.NodeContext,
 		}
 	}
 
+	if inUserTypeOU && ouID == "" {
+		return nil, errors.New("the user type's organization unit is not resolved")
+	}
+
 	return &entityRef{
 		entityType: entityType,
 		ouID:       ouID,
 	}, nil
 }
 
+// entityTypeOUID returns the organization unit that owns the named entity type.
+func (p *provisioningExecutor) entityTypeOUID(ctx *providers.NodeContext, category entitytype.TypeCategory,
+	handle string) (string, error) {
+	if p.entityTypeService == nil {
+		return "", errors.New("entity type service is not configured")
+	}
+	entityType, svcErr := p.entityTypeService.GetEntityTypeByHandle(ctx.Context, category, handle)
+	if svcErr != nil {
+		return "", fmt.Errorf("failed to retrieve entity type %q in category %q: %s",
+			handle, category, svcErr.Error.DefaultValue)
+	}
+	return entityType.OUID, nil
+}
+
 // getOUID retrieves the organization unit ID from runtime data.
 // Priority: RuntimeData["ouId"] (set by OUResolverExecutor) > RuntimeData["defaultOUID"] (set by UserTypeResolver).
-func (p *provisioningExecutor) getOUID(ctx *providers.NodeContext) string {
+// With the provisioningOU property set to userType, only RuntimeData["defaultOUID"] is used; getTargetEntityRef
+// falls back to the provisioned type's own unit when it is not set.
+func (p *provisioningExecutor) getOUID(ctx *providers.NodeContext) (string, error) {
+	placement, _ := ctx.NodeProperties[propertyKeyProvisioningOU].(string)
+	switch provisioningOU(placement) {
+	case "", provisioningOUResolved:
+	case provisioningOUUserType:
+		return ctx.RuntimeData[defaultOUIDKey], nil
+	default:
+		return "", fmt.Errorf("unsupported %s value %q", propertyKeyProvisioningOU, placement)
+	}
 	// Check for ouId in runtime data (e.g. from OUResolverExecutor).
 	if val, ok := ctx.RuntimeData[ouIDKey]; ok && val != "" {
-		return val
+		return val, nil
 	}
 	// Fallback: check for defaultOUID in runtime data (set by UserTypeResolver).
 	if val, ok := ctx.RuntimeData[defaultOUIDKey]; ok && val != "" {
-		return val
+		return val, nil
 	}
 
-	return ""
+	return "", nil
 }
 
 // getEntityType retrieves the entity type to provision into from runtime data, which a type

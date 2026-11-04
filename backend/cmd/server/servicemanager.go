@@ -332,8 +332,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Complete the two-phase initialization of the privilege-escalation guard. The resolver spans
 	// roles, groups, and entities, so it can only be built once all three are ready. Until it is
 	// injected the guard fails closed, so this must not be skipped.
-	ouAuthzService.SetPermissionResolver(
-		role.NewEffectivePermissionResolver(roleService, groupService, entityService))
+	permissionResolver := role.NewEffectivePermissionResolver(roleService, groupService, entityService)
+	ouAuthzService.SetPermissionResolver(permissionResolver)
 
 	authZService := authz.Initialize(
 		roleService, resourceService, entityService, authZENPDPService)
@@ -447,6 +447,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			GroupService:           groupService,
 			RoleService:            roleService,
 			RoleAssignmentService:  roleAssignmentService,
+			PermissionResolver:     permissionResolver,
 			EntityProvider:         entityProvider,
 			UserMgtProvider:        userMgtProvider,
 			AttributeCacheSvc:      attributeCacheService,
@@ -470,6 +471,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			IdentityGovernance:  governanceProvider,
 			ArtifactLifetime:    artifactLifetime,
 			AuthzDetailProvider: authzDetailService,
+			SharingService:      sharingService,
 		},
 		interceptor.InterceptorDependencies{},
 		flowConfig,
@@ -619,7 +621,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	flowExecService, err := flowexec.Initialize(mux, flowMgtService, actorProvider, ouProvider,
 		execRegistry, interceptorRegistry, observabilitySvc, runtimeCryptoSvc, attestationProvider,
 		graphBuilder, jwtService, runtimeStoreProvider, transactioner, serverConfigService, ssoTransport,
-		governanceProvider, flowMgtService, flowConfig)
+		governanceProvider, flowMgtService, flowMgtService, flowConfig)
 	fatalOnError(ctx, logger, err, "Failed to initialize flow execution service")
 
 	// Initialize OAuth services.

@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package security
@@ -482,4 +482,15 @@ func (s *SecurityContextTestSuite) TestWithRuntimeContext() {
 			t.Errorf("Expected subject '%s', got '%s'", testUserID, GetSubject(ctx))
 		}
 	})
+}
+
+// A caller recorded earlier in a flow reads back as that caller, never as the runtime the flow step runs in.
+func (s *SecurityContextTestSuite) TestWithRecordedCaller() {
+	ctx := WithRecordedCaller(WithRuntimeContext(context.Background()), "admin-1", "ou-a",
+		[]string{"system:user:view"})
+
+	s.Equal("admin-1", GetSubject(ctx))
+	s.Equal("ou-a", GetOUID(ctx))
+	s.Equal([]string{"system:user:view"}, GetPermissions(ctx))
+	s.False(IsRuntimeContext(ctx))
 }

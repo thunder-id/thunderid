@@ -50,6 +50,11 @@ export const FlowType = {
    * Administration flows orchestrate authenticated administrative operations
    */
   ADMINISTRATION: 'ADMINISTRATION',
+
+  /**
+   * Invitation flows let an organization unit admin invite a user into their unit, started by flow ID
+   */
+  INVITATION: 'INVITATION',
 } as const;
 
 /**

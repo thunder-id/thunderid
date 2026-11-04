@@ -93,6 +93,7 @@ type userService struct {
 	valueCapturer      declarativeresource.ValueCapturer
 	sharingService     sharing.SharingServiceInterface
 	sharingDeclaration *userSharingDeclaration
+	logger             *log.Logger
 }
 
 // newUserService creates a new instance of userService with injected dependencies.
@@ -114,8 +115,9 @@ func newUserService(
 		uuidGenerator:     utils.GenerateUUIDv7,
 		valueCapturer:     valueCapturer,
 		sharingService:    sharingService,
+		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
-	us.sharingDeclaration = newUserSharingDeclaration(us, sharingService)
+	us.sharingDeclaration = newUserSharingDeclaration(us, sharingService, us.authorizeShareInto)
 	return us
 }
 
@@ -1307,6 +1309,21 @@ func (us *userService) checkUserDeclarative(
 		return &ErrorCannotModifyDeclarativeResource
 	}
 	return nil
+}
+
+// authorizeShareInto refuses unless the caller may create users in targetOUID. Users that load from resource files,
+// and a declared user, keep their sharing there. userID is empty for a user about to be created.
+func (us *userService) authorizeShareInto(ctx context.Context, userID, targetOUID string) *tidcommon.ServiceError {
+	if svcErr := us.checkUserAccess(ctx, security.ActionCreateUser, targetOUID, ""); svcErr != nil {
+		return svcErr
+	}
+	if isDeclarativeModeEnabled() {
+		return &ErrorCannotModifyDeclarativeResource
+	}
+	if userID == "" {
+		return nil
+	}
+	return us.checkUserDeclarative(ctx, userID, us.logger)
 }
 
 // checkUserAccess validates that the caller is authorized to perform the given action on a user.

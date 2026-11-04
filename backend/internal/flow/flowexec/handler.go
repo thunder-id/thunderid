@@ -179,7 +179,8 @@ func handleFlowError(ctx context.Context, w http.ResponseWriter, flowErr *tidcom
 	if flowErr.Type == tidcommon.ClientErrorType {
 		switch flowErr.Code {
 		case ErrorDirectFlowInitiationNotPermitted.Code, ErrorFlowIDExecutionNotPermitted.Code,
-			ErrorAdministrationPermissionRequired.Code, ErrorFlowApplicationNotUsable.Code:
+			ErrorAdministrationPermissionRequired.Code, ErrorFlowApplicationNotUsable.Code,
+			ErrorInvitationOUMissing.Code, ErrorFlowNotSharedWithOU.Code:
 			statusCode = http.StatusForbidden
 		case ErrorFlowSecretRequired.Code, ErrorFlowSecretInvalid.Code,
 			ErrorAttestationRequired.Code, ErrorAttestationInvalid.Code,

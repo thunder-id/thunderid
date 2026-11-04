@@ -1,9 +1,19 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Checkbox, FormControlLabel, FormHelperText, FormLabel, Stack, Typography} from '@wso2/oxygen-ui';
+import {
+  Checkbox,
+  FormControlLabel,
+  FormHelperText,
+  FormLabel,
+  MenuItem,
+  Select,
+  Stack,
+  Typography,
+} from '@wso2/oxygen-ui';
 import {useCallback, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
+import {PROVISIONING_OU_RESOLVED, PROVISIONING_OU_USER_TYPE} from './constants';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import {clampToInteger} from './utils';
@@ -80,6 +90,32 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
         label={t('flows:core.executions.federation.allowCrossOUProvisioning.label')}
       />
       <FormHelperText>{t('flows:core.executions.federation.allowCrossOUProvisioning.hint')}</FormHelperText>
+
+      <div>
+        <FormLabel id="provisioning-ou-label" htmlFor="provisioning-ou-select">
+          {t('flows:core.executions.provisioning.provisioningOU.label', 'Create the user in')}
+        </FormLabel>
+        <Select
+          id="provisioning-ou-select"
+          labelId="provisioning-ou-label"
+          value={(properties['provisioningOU'] as string) || PROVISIONING_OU_RESOLVED}
+          onChange={(e) => handleStringPropertyChange('provisioningOU', e.target.value)}
+          fullWidth
+        >
+          <MenuItem value={PROVISIONING_OU_RESOLVED}>
+            {t('flows:core.executions.provisioning.provisioningOU.resolved', 'The resolved organization unit')}
+          </MenuItem>
+          <MenuItem value={PROVISIONING_OU_USER_TYPE}>
+            {t('flows:core.executions.provisioning.provisioningOU.userType', "The user type's organization unit")}
+          </MenuItem>
+        </Select>
+        <FormHelperText>
+          {t(
+            'flows:core.executions.provisioning.provisioningOU.hint',
+            "The resolved organization unit is the one an earlier step resolved, or else the user type's.",
+          )}
+        </FormHelperText>
+      </div>
 
       <FormControlLabel
         control={

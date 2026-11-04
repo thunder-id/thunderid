@@ -80,7 +80,8 @@ func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode() {
 	assert.Empty(suite.T(), resp.AdditionalData[common.DataInviteLink])
 }
 
-func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_UserOnboarding_ExposesInviteLink() {
+// The admin who sends an onboarding link gets it back, for a screen that shows it when no email can be sent.
+func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_OnboardingExposesTheInviteLink() {
 	ctx := &providers.NodeContext{
 		ExecutionID:  "test-flow-id",
 		EntityID:     "test-app-id",
@@ -95,7 +96,28 @@ func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_UserOnboarding_Ex
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.NotEmpty(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink])
-	assert.Equal(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink], resp.AdditionalData[common.DataInviteLink])
+	assert.Equal(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink],
+		resp.AdditionalData[common.DataInviteLink])
+}
+
+// The admin who invites does not get the link, with which they could accept for an existing user; the email step
+// surfaces it only when no email can be sent.
+func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_InvitationKeepsTheInviteLinkFromTheAdmin() {
+	ctx := &providers.NodeContext{
+		ExecutionID:  "test-flow-id",
+		EntityID:     "test-app-id",
+		FlowType:     providers.FlowTypeInvitation,
+		ExecutorMode: ExecutorModeGenerate,
+		UserInputs:   make(map[string]string),
+		RuntimeData:  make(map[string]string),
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.NotEmpty(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink])
+	assert.Empty(suite.T(), resp.AdditionalData[common.DataInviteLink])
 }
 
 func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_Idempotency() {

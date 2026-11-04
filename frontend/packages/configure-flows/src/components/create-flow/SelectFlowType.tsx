@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, Card, CardContent, Stack, Typography} from '@wso2/oxygen-ui';
-import {KeyRound, Lock, LogOut, UserCog, UserPlus} from '@wso2/oxygen-ui-icons-react';
+import {KeyRound, Lock, LogOut, Send, UserCog, UserPlus} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {FlowType} from '../../models/flows';
@@ -65,6 +65,14 @@ export default function SelectFlowType({selectedType, onTypeChange, onReadyChang
       descriptionKey: 'flows:create.type.administration.description',
       descriptionDefault: 'Perform authenticated administrative and security operations',
       icon: <UserCog size={28} />,
+    },
+    {
+      type: FlowType.INVITATION,
+      labelKey: 'flows:create.type.invitation.label',
+      labelDefault: 'Invitation',
+      descriptionKey: 'flows:create.type.invitation.description',
+      descriptionDefault: 'Invite an existing or new user into your organization unit, with roles',
+      icon: <Send size={28} />,
     },
   ];
 

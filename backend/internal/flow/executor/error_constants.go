@@ -1811,6 +1811,93 @@ var (
 			DefaultValue: "The sign-in did not determine an organization unit to sign in to",
 		},
 	}
+
+	// ErrShareNotAuthorized is returned when a share was not authorized earlier in the same flow, or is
+	// authorized by someone other than the caller who started it.
+	ErrShareNotAuthorized = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1131",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.share_not_authorized",
+			DefaultValue: "Sharing not authorized",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.share_not_authorized_desc",
+			DefaultValue: "The share was not authorized by the caller who started this flow",
+		},
+	}
+
+	// ErrShareFailed is returned when a share is refused.
+	ErrShareFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1132",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.share_failed",
+			DefaultValue: "Sharing failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.share_failed_desc",
+			DefaultValue: "The resource could not be shared into the organization unit",
+		},
+	}
+
+	// ErrRoleNotAssignable is returned when a selected role is not one the caller may assign in the flow's
+	// organization unit.
+	ErrRoleNotAssignable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1133",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_not_assignable",
+			DefaultValue: "Role not assignable",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_not_assignable_desc",
+			DefaultValue: "A selected role cannot be assigned in this organization unit",
+		},
+	}
+
+	// ErrRoleAssignmentFailed is returned when a role an invitation flow recorded could not be assigned.
+	ErrRoleAssignmentFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1134",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_assignment_failed",
+			DefaultValue: "Role assignment failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_assignment_failed_desc",
+			DefaultValue: "The share was applied, but the selected roles could not be assigned",
+		},
+	}
+
+	// ErrInvitationEntityTypeNotNamed is returned when an invitation flow does not name exactly one entity type.
+	ErrInvitationEntityTypeNotNamed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1135",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.invitation_entity_type_not_named",
+			DefaultValue: "The {{param(entity)}} type is not configured",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.invitation_entity_type_not_named_desc",
+			DefaultValue: "An invitation flow must name exactly one {{param(entity)}} type",
+		},
+	}
+
+	// ErrNotTheInviter is returned when an invitation step that acts for the admin is reached by anyone but the
+	// admin who started the flow, presenting their own token.
+	ErrNotTheInviter = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1136",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.not_the_inviter",
+			DefaultValue: "Not the inviter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.not_the_inviter_desc",
+			DefaultValue: "Only the admin who started this invitation can complete this step",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

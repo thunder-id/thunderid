@@ -101,6 +101,8 @@ var catalog = map[string]providers.ExecutorMeta{
 		SupportedModes: []string{"identify", "resolve", "check_state"},
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "loginHintAttribute"},
+			{Property: "boundToUserType"},
+			{Property: "continueOnNoMatch"},
 		},
 	},
 	ExecutorNameIdentityGovernance: {
@@ -185,7 +187,7 @@ var catalog = map[string]providers.ExecutorMeta{
 	},
 	ExecutorNameProvisioning: {
 		SupportedFlowTypes: []providers.FlowType{
-			"AUTHENTICATION", "REGISTRATION", "USER_ONBOARDING", "ADMINISTRATION",
+			"AUTHENTICATION", "REGISTRATION", "USER_ONBOARDING", "ADMINISTRATION", "INVITATION",
 		},
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "delegated"},
@@ -197,6 +199,7 @@ var catalog = map[string]providers.ExecutorMeta{
 			{Property: "seedGroupsFromMapping"},
 			{Property: "seedRolesFromMapping"},
 			{Property: "allowCrossOUProvisioning"},
+			{Property: "provisioningOU"},
 		},
 	},
 	ExecutorNameSMSExecutor: {
@@ -250,9 +253,13 @@ var catalog = map[string]providers.ExecutorMeta{
 	},
 	ExecutorNameRole: {
 		SupportedModes: []string{
-			ExecutorModeRoleAssignmentRemoval, ExecutorModeRoleDeletion, ExecutorModeRolePermissionRemoval,
+			ExecutorModeRoleAssignment, ExecutorModeRoleAssignmentRemoval, ExecutorModeRoleDeletion,
+			ExecutorModeRolePermissionRemoval, ExecutorModeRoleSelection,
 		},
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "INVITATION"},
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "roles"},
+		},
 	},
 	ExecutorNameGroup: {
 		SupportedModes:     []string{ExecutorModeGroupDeletion, ExecutorModeGroupMembershipRemoval},
@@ -260,6 +267,16 @@ var catalog = map[string]providers.ExecutorMeta{
 	},
 	ExecutorNameActionDeletion: {
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
+	},
+	ExecutorNameSharing: {
+		SupportedModes:     []string{ExecutorModeShare, ExecutorModeValidate},
+		SupportedFlowTypes: []providers.FlowType{"INVITATION", "AUTHENTICATION", "REGISTRATION"},
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "resourceType", IsRequired: true},
+			{Property: "resourceId"},
+			{Property: "owningOuId"},
+			{Property: "targetOuId", IsRequired: true},
+		},
 	},
 }
 

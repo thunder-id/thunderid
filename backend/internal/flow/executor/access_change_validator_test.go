@@ -49,6 +49,7 @@ func newAdministrationTestFactory(t *testing.T) core.FlowFactoryInterface {
 func administrationNodeContext(mode string, inputs map[string]string) *providers.NodeContext {
 	return &providers.NodeContext{
 		Context:           context.Background(),
+		FlowType:          providers.FlowTypeAdministration,
 		ExecutorMode:      mode,
 		UserInputs:        inputs,
 		RuntimeData:       map[string]string{},

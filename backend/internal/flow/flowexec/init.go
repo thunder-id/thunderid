@@ -35,6 +35,7 @@ func Initialize(
 	ssoTransport session.HandleTransportInterface,
 	governance providers.IdentityGovernanceProvider,
 	variableValuesProvider variableValueProvider,
+	flowVisibility flowVisibilityProvider,
 	cfg flowconfig.Config,
 ) (FlowExecServiceInterface, error) {
 	flowStore := newFlowStore(storeProvider)
@@ -47,7 +48,7 @@ func Initialize(
 		cfg.Session.ActivityRefreshIntervalSeconds)
 	flowExecService := newFlowExecService(flowProvider, flowStore, flowEngine,
 		actorProvider, ouProvider, observabilitySvc, transactioner, cryptoSvc, attestationVerifier,
-		graphBuilder, jwtService, serverConfigSvc, governance, cfg, sessionTimeouts.Absolute)
+		graphBuilder, jwtService, serverConfigSvc, governance, flowVisibility, cfg, sessionTimeouts.Absolute)
 
 	handler := newFlowExecutionHandler(flowExecService, ssoTransport, sessionTimeouts.Absolute)
 	registerRoutes(mux, handler)

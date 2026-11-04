@@ -706,6 +706,11 @@ func TestGetFlowExpirySeconds(t *testing.T) {
 			expected: 86400,
 		},
 		{
+			name:     "Invitation flow",
+			flowType: providers.FlowTypeInvitation,
+			expected: 86400,
+		},
+		{
 			name:     "Unknown flow type (fallback)",
 			flowType: providers.FlowType("UNKNOWN_FLOW"),
 			expected: 3600,
@@ -2497,6 +2502,173 @@ func (s *ServiceTestSuite) TestLoadNewContext_ByIDWithoutInputsStartsEmpty() {
 	s.Empty(engineCtx.UserInputs)
 }
 
+// An invitation flow acts for the caller's own unit: an ouId sent as an input must not move it.
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDLoadsInvitationFlowInTheTokensOU() {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	graph := flowFactory.CreateGraph("invitation-1", providers.FlowTypeInvitation, 1)
+	flow := &providers.CompleteFlowDefinition{
+		ID: "invitation-1", FlowType: providers.FlowTypeInvitation, ActiveVersion: 1,
+	}
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(flow, nil).Once()
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(s.T())
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, flow).Return(graph, nil)
+	mockVisibility := newFlowVisibilityProviderMock(s.T())
+	mockVisibility.EXPECT().IsFlowVisible(mock.Anything, "invitation-1", "ou-1").Return(true, nil).Once()
+	service := &flowExecService{
+		flowProvider: mockFlowProvider, graphBuilder: mockGraphBuilder, flowVisibility: mockVisibility,
+		cfg: testFlowExecCfg,
+		actorProvider: actorprovider.Initialize(inboundclientmock.NewInboundClientServiceInterfaceMock(s.T()),
+			entityprovidermock.NewEntityProviderInterfaceMock(s.T()), noopAuthnMgr(), nil, nil),
+	}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}),
+		"invitation-1", "", "", false, "", map[string]string{"ouId": "ou-x"}, "", "", log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Require().NotNil(engineCtx)
+	s.Equal(providers.FlowTypeInvitation, engineCtx.FlowType)
+	s.Equal("ou-1", engineCtx.RuntimeData[flowcommon.RuntimeKeyOUID])
+	s.Equal("admin-1", engineCtx.RuntimeData[flowcommon.RuntimeKeyInviter])
+	s.Empty(engineCtx.Application.ID)
+}
+
+// An organization unit runs an invitation flow only when it owns the flow or was shared it.
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesInvitationFlowNotSharedWithTheTokensOU() {
+	security.InitSystemPermissions("")
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(
+		&providers.CompleteFlowDefinition{ID: "invitation-1", FlowType: providers.FlowTypeInvitation, OUID: "ou-root"},
+		nil)
+	mockVisibility := newFlowVisibilityProviderMock(s.T())
+	mockVisibility.EXPECT().IsFlowVisible(mock.Anything, "invitation-1", "ou-1").Return(false, nil).Once()
+	service := &flowExecService{flowProvider: mockFlowProvider, flowVisibility: mockVisibility, cfg: testFlowExecCfg}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}),
+		"invitation-1", "", "", false, "", nil, "", "", log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowNotSharedWithOU.Code, svcErr.Code)
+}
+
+// Without flow management to say whether the flow is shared, an invitation flow is refused.
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesInvitationWithoutAVisibilityProvider() {
+	security.InitSystemPermissions("")
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(
+		&providers.CompleteFlowDefinition{ID: "invitation-1", FlowType: providers.FlowTypeInvitation}, nil)
+	service := &flowExecService{flowProvider: mockFlowProvider, cfg: testFlowExecCfg}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}),
+		"invitation-1", "", "", false, "", nil, "", "", log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowNotSharedWithOU.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDReturnsTheErrorOfTheShareLookup() {
+	security.InitSystemPermissions("")
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(
+		&providers.CompleteFlowDefinition{ID: "invitation-1", FlowType: providers.FlowTypeInvitation}, nil)
+	mockVisibility := newFlowVisibilityProviderMock(s.T())
+	mockVisibility.EXPECT().IsFlowVisible(mock.Anything, "invitation-1", "ou-1").
+		Return(false, &tidcommon.InternalServerError).Once()
+	service := &flowExecService{flowProvider: mockFlowProvider, flowVisibility: mockVisibility, cfg: testFlowExecCfg}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}),
+		"invitation-1", "", "", false, "", nil, "", "", log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A client error from the share lookup, such as the token's OU no longer existing, is a refusal like an unshared
+// flow, not a sharing policy error.
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesAShareLookupClientErrorAsNotShared() {
+	security.InitSystemPermissions("")
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(
+		&providers.CompleteFlowDefinition{ID: "invitation-1", FlowType: providers.FlowTypeInvitation}, nil)
+	mockVisibility := newFlowVisibilityProviderMock(s.T())
+	mockVisibility.EXPECT().IsFlowVisible(mock.Anything, "invitation-1", "ou-1").
+		Return(false, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "FLM-1034"}).Once()
+	service := &flowExecService{flowProvider: mockFlowProvider, flowVisibility: mockVisibility, cfg: testFlowExecCfg}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}),
+		"invitation-1", "", "", false, "", nil, "", "", log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowNotSharedWithOU.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesInvitationWithoutTokenOU() {
+	security.InitSystemPermissions("")
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(
+		&providers.CompleteFlowDefinition{ID: "invitation-1", FlowType: providers.FlowTypeInvitation}, nil)
+	service := &flowExecService{flowProvider: mockFlowProvider, cfg: testFlowExecCfg}
+	ctx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin-1", "", "token", []string{"system"}, map[string]interface{}{}))
+
+	engineCtx, svcErr := service.loadNewContext(ctx,
+		"invitation-1", "", "", false, "", map[string]string{"ouId": "ou-x"}, "", "", log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvitationOUMissing.Code, svcErr.Code)
+}
+
+// Every flow started by ID needs the root permission for now, checked before the flow is resolved.
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesCallerWithoutRootPermission() {
+	security.InitSystemPermissions("")
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	service := &flowExecService{flowProvider: mockFlowProvider, cfg: testFlowExecCfg}
+
+	for _, flowID := range []string{"administration-1", "invitation-1"} {
+		engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system:user"}),
+			flowID, "", "", false, "", nil, "", "", log.GetLogger())
+
+		s.Nil(engineCtx)
+		s.Require().NotNil(svcErr)
+		s.Equal(ErrorAdministrationPermissionRequired.Code, svcErr.Code)
+	}
+	mockFlowProvider.AssertNotCalled(s.T(), "GetFlow", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestLoadNewContext_ByTypeRefusesInvitationFlow() {
+	service := &flowExecService{cfg: testFlowExecCfg}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext(nil), "", "",
+		string(providers.FlowTypeInvitation), false, "", nil, "", "", log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidFlowType.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestValidateInvitationCaller() {
+	s.Run("RejectsTokenWithoutOU", func() {
+		ctx := security.WithSecurityContextTest(context.Background(),
+			security.NewSecurityContextForTest("admin-1", "", "token", nil, map[string]interface{}{}))
+
+		svcErr := validateInvitationCaller(ctx)
+
+		s.Require().NotNil(svcErr)
+		s.Equal(ErrorInvitationOUMissing.Code, svcErr.Code)
+	})
+
+	s.Run("AllowsCallerWithTokenOU", func() {
+		s.Nil(validateInvitationCaller(authenticatedAdminContext([]string{"system"})))
+	})
+}
+
 // authenticatedAdminContext returns a context carrying an authenticated caller with the permissions
 // supplied, as the security middleware would produce for a request bearing a valid token.
 func authenticatedAdminContext(permissions []string) context.Context {
@@ -3212,6 +3384,53 @@ func (s *ServiceTestSuite) TestExecute_ContinuationFlow_AuthCodeApp_NotBlocked()
 
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", "existing-execution-id",
 		string(providers.FlowTypeAuthentication), false, "submit", map[string]string{}, "valid-token", "", "", nil)
+
+	s.Nil(svcErr)
+	s.NotNil(flowStep)
+}
+
+// The invitee continues an invitation flow without a token; the invite token carries the step instead.
+func (s *ServiceTestSuite) TestExecute_ContinuationOfInvitationFlowWithoutToken() {
+	t := s.T()
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime(t.TempDir(), &config.Config{}))
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	testGraph := flowFactory.CreateGraph("invitation-1", providers.FlowTypeInvitation, 1)
+
+	mockStore := newFlowStoreInterfaceMock(t)
+	mockFlowProvider := NewFlowProviderMock(t)
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+	mockEngine := newFlowEngineInterfaceMock(t)
+
+	storedCtx := &FlowContextDB{}
+	s.NoError(storedCtx.FromEngineContext(EngineContext{
+		ExecutionID:      "existing-execution-id",
+		FlowType:         providers.FlowTypeInvitation,
+		Graph:            testGraph,
+		UserInputs:       map[string]string{},
+		RuntimeData:      map[string]string{flowcommon.RuntimeKeyOUID: "ou-1"},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+	}))
+	mockStore.EXPECT().GetFlowContext(mock.Anything, "existing-execution-id").Return(storedCtx, nil)
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(
+		&providers.CompleteFlowDefinition{ID: "invitation-1", FlowType: providers.FlowTypeInvitation}, nil)
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
+	mockEngine.EXPECT().Execute(mock.Anything).Return(
+		FlowStep{Status: providers.FlowStatusComplete}, (*tidcommon.ServiceError)(nil))
+	mockStore.EXPECT().DeleteFlowContext(mock.Anything, "existing-execution-id").Return(nil)
+
+	service := &flowExecService{
+		flowStore:    mockStore,
+		graphBuilder: mockGraphBuilder,
+		flowProvider: mockFlowProvider,
+		flowEngine:   mockEngine,
+		actorProvider: actorprovider.Initialize(inboundclientmock.NewInboundClientServiceInterfaceMock(t),
+			entityprovidermock.NewEntityProviderInterfaceMock(t), noopAuthnMgr(), nil, nil),
+		transactioner: &stubTransactioner{},
+	}
+
+	flowStep, svcErr := service.Execute(security.WithRuntimeContext(context.Background()), "",
+		"existing-execution-id", "", false, "accept", map[string]string{}, "", "", "", nil)
 
 	s.Nil(svcErr)
 	s.NotNil(flowStep)

@@ -16,6 +16,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
@@ -1622,4 +1623,56 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_IsPar
 	assert.Nil(suite.T(), result)
 	assert.Contains(suite.T(), err.Error(), "failed to check OU ancestry for schema customer")
 	suite.mockOUService.AssertExpectations(suite.T())
+}
+
+// A inviting admin picks a type defined above their own unit, which their own token cannot read.
+func (suite *UserTypeResolverTestSuite) TestExecute_UserInvitationFlow_ResolvesOverARuntimeView() {
+	ctx := &providers.NodeContext{
+		Context:     adminContext(),
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeInvitation,
+		UserInputs:  map[string]string{},
+		RuntimeData: map[string]string{ouIDKey: "ou-a"},
+		NodeProperties: map[string]interface{}{
+			propertyKeyAllowedUserTypes: []interface{}{"employee"},
+		},
+	}
+	runtime := mock.MatchedBy(security.IsRuntimeContext)
+	suite.mockEntityTypeService.On("GetEntityTypeList", runtime, entitytype.TypeCategoryUser, 100, 0, false).
+		Return(&entitytype.EntityTypeListResponse{
+			Types: []entitytype.EntityTypeListItem{{Handle: "employee", OUID: "root-ou"}},
+		}, nil)
+	suite.mockOUService.On("IsParent", runtime, "root-ou", "ou-a").Return(true, nil)
+
+	result, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, result.Status)
+	suite.Equal("employee", result.RuntimeData[categoryTypeKey])
+	suite.Equal("root-ou", result.RuntimeData[defaultOUIDKey])
+	suite.False(security.IsRuntimeContext(ctx.Context), "the caller's own context must stay as it was")
+}
+
+// An invitation flow is bound to one user type, which it must name.
+func (suite *UserTypeResolverTestSuite) TestExecute_UserInvitationFlow_MustNameOneType() {
+	for name, allowed := range map[string]interface{}{
+		"none": nil, "two": []interface{}{"employee", "customer"},
+	} {
+		suite.Run(name, func() {
+			ctx := &providers.NodeContext{
+				Context:        adminContext(),
+				FlowType:       providers.FlowTypeInvitation,
+				UserInputs:     map[string]string{},
+				RuntimeData:    map[string]string{ouIDKey: "ou-a"},
+				NodeProperties: map[string]interface{}{propertyKeyAllowedUserTypes: allowed},
+			}
+
+			result, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecFailure, result.Status)
+			suite.Equal(ErrInvitationEntityTypeNotNamed.Code, result.Error.Code)
+			suite.Equal(string(entitytype.TypeCategoryUser), result.Error.ErrorDescription.Params["entity"])
+		})
+	}
 }
