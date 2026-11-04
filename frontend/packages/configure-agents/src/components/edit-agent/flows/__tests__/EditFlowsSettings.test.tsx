@@ -15,6 +15,19 @@ vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
   RegistrationFlowSection: ({application}: {application: Application}) => (
     <div data-testid="registration-flow" data-readonly={String(application.isReadOnly)} />
   ),
+  DeviceGrantFlowSection: ({
+    deviceGrantFlowQueryError = undefined,
+    onRetryDeviceGrantFlowQuery = undefined,
+  }: {
+    deviceGrantFlowQueryError?: Error | null;
+    onRetryDeviceGrantFlowQuery?: () => void;
+  }) => (
+    <div
+      data-testid="device-grant-flow"
+      data-query-error={deviceGrantFlowQueryError?.message ?? ''}
+      data-has-retry={String(Boolean(onRetryDeviceGrantFlowQuery))}
+    />
+  ),
   // Mocked so the absence assertions below fail if the section is ever wired back in.
   RecoveryFlowSection: ({application}: {application: Application}) => (
     <div data-testid="recovery-flow" data-readonly={String(application.isReadOnly)} />
@@ -37,6 +50,24 @@ describe('EditFlowsSettings', () => {
 
     expect(screen.getByTestId('auth-flow')).toBeInTheDocument();
     expect(screen.getByTestId('registration-flow')).toBeInTheDocument();
+    expect(screen.getByTestId('device-grant-flow')).toBeInTheDocument();
+  });
+
+  it('passes the Device Grant flow query error and retry handler to its section', () => {
+    const retry = vi.fn();
+    render(
+      <EditFlowsSettings
+        agent={baseAgent}
+        editedAgent={{}}
+        oauth2Config={{grantTypes: ['urn:ietf:params:oauth:grant-type:device_code'], responseTypes: []}}
+        onFieldChange={mockOnFieldChange}
+        deviceGrantFlowQueryError={new Error('Could not load flows')}
+        onRetryDeviceGrantFlowQuery={retry}
+      />,
+    );
+
+    expect(screen.getByTestId('device-grant-flow')).toHaveAttribute('data-query-error', 'Could not load flows');
+    expect(screen.getByTestId('device-grant-flow')).toHaveAttribute('data-has-retry', 'true');
   });
 
   it('never renders the recovery flow section, since the agent API does not persist it', () => {

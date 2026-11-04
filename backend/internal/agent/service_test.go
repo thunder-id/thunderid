@@ -2271,6 +2271,22 @@ func (suite *AgentServiceTestSuite) TestTranslateInboundClientError_InvalidGrant
 	assert.Equal(suite.T(), ErrorInvalidGrantType.Code, svcErr.Code)
 }
 
+func (suite *AgentServiceTestSuite) TestTranslateInboundClientError_FlowMismatch() {
+	svc, _, _, _, _ := suite.setupService()
+	err := &inboundclient.FlowMismatchError{
+		SourceFlowType: providers.FlowTypeDeviceGrant,
+		FlowType:       providers.FlowTypeAuthentication,
+	}
+
+	svcErr := svc.translateInboundClientError(context.Background(), err)
+
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorAgentFlowMismatch.Code, svcErr.Code)
+	assert.Equal(suite.T(), tidcommon.ClientErrorType, svcErr.Type)
+	assert.Equal(suite.T(), "device_grant", svcErr.ErrorDescription.Params["sourceFlowType"])
+	assert.Equal(suite.T(), "authentication", svcErr.ErrorDescription.Params["flowType"])
+}
+
 func (suite *AgentServiceTestSuite) TestTranslateInboundClientError_Unknown() {
 	svc, _, _, _, _ := suite.setupService()
 	svcErr := svc.translateInboundClientError(context.Background(), errors.New("unknown error"))

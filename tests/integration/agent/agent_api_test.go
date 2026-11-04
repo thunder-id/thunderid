@@ -27,7 +27,8 @@ const (
 	jwtBearerGrant = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 
 	// systemOUID is the system organization unit the bootstrap server configuration names.
-	systemOUID = "01900000-0000-7000-8000-000000000001"
+	systemOUID      = "01900000-0000-7000-8000-000000000001"
+	deviceCodeGrant = "urn:ietf:params:oauth:grant-type:device_code"
 )
 
 var testServerURL = testutils.TestServerURL
@@ -87,8 +88,9 @@ var (
 )
 
 var (
-	testOUID          string
-	defaultAuthFlowID string
+	testOUID                 string
+	defaultAuthFlowID        string
+	defaultDeviceGrantFlowID string
 
 	// IDs of the isolated auth flows referenced by handle in the resolution tests.
 	handleAuthFlowID1 string
@@ -129,6 +131,8 @@ func (ts *AgentAPITestSuite) SetupSuite() {
 
 	defaultAuthFlowID, err = testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
 	ts.Require().NoError(err, "Failed to get default auth flow ID")
+	defaultDeviceGrantFlowID, err = testutils.GetFlowIDByHandle("default-device-grant-flow", "DEVICE_GRANT")
+	ts.Require().NoError(err, "Failed to get default Device Grant flow ID")
 
 	handleAuthFlowID1, err = testutils.CreateIsolatedAuthFlow(handleAuthFlowHandle1)
 	ts.Require().NoError(err, "Failed to create the first isolated auth flow")
@@ -693,6 +697,49 @@ func (ts *AgentAPITestSuite) TestCreateAgent_DelegatedGetsTheDefaultGrants() {
 	ts.Assert().NotEmpty(cfg.ClientSecret)
 }
 
+func (ts *AgentAPITestSuite) TestCreateAgent_DeviceGrantFlowIsPersistedAndReturned() {
+	agent := delegatedAgent("device-grant-flow-create", deviceCodeGrant)
+	agent.DeviceGrantFlowID = defaultDeviceGrantFlowID
+
+	created, _ := ts.createAgentWithStatus(agent, http.StatusCreated)
+	ts.Require().NotEmpty(created.ID)
+	ts.Assert().Equal(defaultDeviceGrantFlowID, created.DeviceGrantFlowID)
+	ts.Require().Len(created.InboundAuthConfig, 1)
+	cfg := created.InboundAuthConfig[0].Config
+	ts.Require().NotNil(cfg)
+	ts.Assert().Contains(cfg.GrantTypes, deviceCodeGrant)
+
+	fetchedResp, err := doGet(testServerURL + agentBasePath + "/" + created.ID)
+	ts.Require().NoError(err)
+	defer fetchedResp.Body.Close()
+	ts.Require().Equal(http.StatusOK, fetchedResp.StatusCode)
+	var fetched Agent
+	ts.Require().NoError(json.NewDecoder(fetchedResp.Body).Decode(&fetched))
+	ts.Assert().Equal(defaultDeviceGrantFlowID, fetched.DeviceGrantFlowID)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_DeviceGrantFlowIsRequired() {
+	missingFlow := delegatedAgent("device-grant-flow-required", deviceCodeGrant)
+	_, code := ts.createAgentWithStatus(missingFlow, http.StatusBadRequest)
+	ts.Assert().Equal("AGT-1065", code)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_DeviceGrantFlowIDMustBeValid() {
+	invalidFlow := delegatedAgent("device-grant-flow-invalid", deviceCodeGrant)
+	invalidFlow.DeviceGrantFlowID = "missing-device-grant-flow"
+	_, code := ts.createAgentWithStatus(invalidFlow, http.StatusBadRequest)
+	ts.Assert().Equal("AGT-1066", code)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_DeviceGrantFlowMustCallConfiguredAuthenticationFlow() {
+	agent := delegatedAgent("device-grant-flow-mismatch", deviceCodeGrant)
+	agent.AuthFlowID = handleAuthFlowID1
+	agent.DeviceGrantFlowID = defaultDeviceGrantFlowID
+
+	_, code := ts.createAgentWithStatus(agent, http.StatusBadRequest)
+	ts.Assert().Equal("AGT-1067", code)
+}
+
 func (ts *AgentAPITestSuite) TestCreateAgent_DelegatedWithoutAnOAuthConfigNeedsARedirectURI() {
 	agent := delegatedAgent("delegated-no-config")
 	agent.InboundAuthConfig = nil
@@ -1211,6 +1258,29 @@ func (ts *AgentAPITestSuite) TestUpdateAgent_DelegatedGetsTheDefaultGrants() {
 	ts.Assert().Equal([]string{"client_credentials", "authorization_code", "refresh_token"}, cfg.GrantTypes)
 	ts.Assert().Equal([]string{"code"}, cfg.ResponseTypes)
 	ts.Assert().True(cfg.PKCERequired)
+}
+
+func (ts *AgentAPITestSuite) TestUpdateAgent_DeviceGrantFlowIsPersistedAndReturned() {
+	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("device-grant-flow-update", nil)})
+	ts.Require().NoError(err)
+	defer func() { _ = deleteAgent(agentID) }()
+
+	agent := delegatedAgent("device-grant-flow-update", deviceCodeGrant)
+	agent.DeviceGrantFlowID = defaultDeviceGrantFlowID
+	updated, _ := ts.updateAgentWithStatus(agentID, agent, http.StatusOK)
+	ts.Assert().Equal(defaultDeviceGrantFlowID, updated.DeviceGrantFlowID)
+	ts.Require().Len(updated.InboundAuthConfig, 1)
+	cfg := updated.InboundAuthConfig[0].Config
+	ts.Require().NotNil(cfg)
+	ts.Assert().Contains(cfg.GrantTypes, deviceCodeGrant)
+
+	fetchedResp, err := doGet(testServerURL + agentBasePath + "/" + agentID)
+	ts.Require().NoError(err)
+	defer fetchedResp.Body.Close()
+	ts.Require().Equal(http.StatusOK, fetchedResp.StatusCode)
+	var fetched Agent
+	ts.Require().NoError(json.NewDecoder(fetchedResp.Body).Decode(&fetched))
+	ts.Assert().Equal(defaultDeviceGrantFlowID, fetched.DeviceGrantFlowID)
 }
 
 func (ts *AgentAPITestSuite) TestUpdateAgent_NotDelegatedAlwaysHoldsClientCredentials() {
