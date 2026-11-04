@@ -66,6 +66,14 @@ export default function SelectFlowType({selectedType, onTypeChange, onReadyChang
       descriptionDefault: 'Perform authenticated administrative and security operations',
       icon: <UserCog size={28} />,
     },
+    {
+      type: FlowType.DEVICE_GRANT,
+      labelKey: 'flows:create.type.deviceGrant.label',
+      labelDefault: 'Device authorization',
+      descriptionKey: 'flows:create.type.deviceGrant.description',
+      descriptionDefault: 'Authorize input-constrained devices through a browser sign-in flow',
+      icon: <KeyRound size={28} />,
+    },
   ];
 
   const handleSelect = (type: string): void => {

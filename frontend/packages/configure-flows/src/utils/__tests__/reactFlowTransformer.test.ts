@@ -2403,22 +2403,7 @@ describe('reactFlowTransformer', () => {
       expect(result.nodes[0].flow).toEqual({ref: 'referenced-flow-id'});
     });
 
-    it('should fall back to data.action.flow.ref when data.flow is absent', () => {
-      const canvasData: ReactFlowCanvasData = {
-        nodes: [
-          createNode('call-1', StepTypes.Call, {x: 0, y: 0}, {
-            action: {type: 'CALL', flow: {ref: 'flow-from-action'}},
-          } as unknown as StepData),
-        ],
-        edges: [],
-      };
-
-      const result = transformReactFlow(canvasData);
-
-      expect(result.nodes[0].flow).toEqual({ref: 'flow-from-action'});
-    });
-
-    it('should omit flow when neither data.flow nor data.action.flow provides a ref', () => {
+    it('should omit flow when data.flow has no ref', () => {
       const canvasData: ReactFlowCanvasData = {
         nodes: [createNode('call-1', StepTypes.Call)],
         edges: [],

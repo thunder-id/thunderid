@@ -60,6 +60,7 @@ export {default as SettingsLockNotice} from './components/common/SettingsLockNot
 export {default as TokenAudienceSelector} from './components/common/TokenAudienceSelector';
 export type {TokenAudienceOption} from './components/common/TokenAudienceSelector';
 export {default as AuthenticationFlowSection} from './components/edit-application/flows-settings/AuthenticationFlowSection';
+export {default as DeviceGrantFlowSection} from './components/edit-application/flows-settings/DeviceGrantFlowSection';
 export {default as RegistrationFlowSection} from './components/edit-application/flows-settings/RegistrationFlowSection';
 export {default as ClientAccessTokenSection} from './components/edit-application/token-settings/ClientAccessTokenSection';
 export {default as EditTokenSettings} from './components/edit-application/token-settings/EditTokenSettings';

@@ -75,6 +75,7 @@ export function deriveOAuth2Flags(config: OAuth2Config): OAuth2Flags {
 export const USER_ACCESS_GRANTS: readonly string[] = [
   OAuth2GrantTypes.AUTHORIZATION_CODE,
   OAuth2GrantTypes.CIBA,
+  OAuth2GrantTypes.DEVICE_CODE,
   OAuth2GrantTypes.PASSWORD,
 ];
 

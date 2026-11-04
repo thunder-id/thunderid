@@ -533,6 +533,16 @@ describe('useFlowInitialization', () => {
       expect(mockSetEdges).toHaveBeenCalled();
     });
 
+    it('should initialize an unsaved draft without a flowId', () => {
+      const draftFlowData = {...createMockExistingFlowData(), id: '', flowType: 'DEVICE_GRANT'};
+
+      renderUseFlowInitialization({initialFlowData: draftFlowData});
+
+      expect(mockTransformFlowToCanvas).toHaveBeenCalledWith(draftFlowData);
+      expect(mockSetNodes).toHaveBeenCalled();
+      expect(mockSetEdges).toHaveBeenCalled();
+    });
+
     it('should call onNeedsAutoLayout when nodes lack layout data', () => {
       const existingFlowData = {
         ...createMockExistingFlowData(),

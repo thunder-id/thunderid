@@ -50,6 +50,11 @@ export const FlowType = {
    * Administration flows orchestrate authenticated administrative operations
    */
   ADMINISTRATION: 'ADMINISTRATION',
+
+  /**
+   * Device Grant flows handle browser authorization for input-constrained devices.
+   */
+  DEVICE_GRANT: 'DEVICE_GRANT',
 } as const;
 
 /**
