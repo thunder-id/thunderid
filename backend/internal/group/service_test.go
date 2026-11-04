@@ -78,7 +78,7 @@ type GroupServiceTestSuite struct {
 	suite.Suite
 }
 
-func (suite *GroupServiceTestSuite) SetupSuite() {
+func (suite *GroupServiceTestSuite) SetupTest() {
 	testConfig := &config.Config{
 		DeclarativeResources: config.DeclarativeResources{Enabled: false},
 	}
@@ -88,7 +88,7 @@ func (suite *GroupServiceTestSuite) SetupSuite() {
 	}
 }
 
-func (suite *GroupServiceTestSuite) TearDownSuite() {
+func (suite *GroupServiceTestSuite) TearDownTest() {
 	config.ResetServerRuntime()
 }
 
@@ -3923,4 +3923,30 @@ func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_CarriesTheReadError
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorGroupNotFound.Code, svcErr.Code)
 	suite.Nil(member)
+}
+
+func (suite *GroupServiceTestSuite) TestAddMemberToExistingGroups_SkipsMissingGroups() {
+	storeMock := newGroupStoreInterfaceMock(suite.T())
+	storeMock.On("GetGroupsByIDs", mock.Anything, []string{"deleted-group"}).
+		Return([]GroupBasicDAO{}, nil).Once()
+	service := &groupService{groupStore: storeMock}
+
+	svcErr := service.AddMemberToExistingGroups(context.Background(),
+		Member{ID: "user-1", Type: MemberTypeUser}, []string{"deleted-group"})
+
+	suite.Require().Nil(svcErr)
+	storeMock.AssertNotCalled(suite.T(), "AddGroupMembers", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *GroupServiceTestSuite) TestAddMemberToExistingGroups_StoreError() {
+	storeMock := newGroupStoreInterfaceMock(suite.T())
+	storeMock.On("GetGroupsByIDs", mock.Anything, []string{"group-1"}).
+		Return(nil, errors.New("db down")).Once()
+	service := &groupService{groupStore: storeMock}
+
+	svcErr := service.AddMemberToExistingGroups(context.Background(),
+		Member{ID: "user-1", Type: MemberTypeUser}, []string{"group-1"})
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }

@@ -65,6 +65,8 @@ func registerSharedCategories(entitySvc *entitymock.EntityServiceInterfaceMock) 
 }
 
 func (suite *RoleAssignmentServiceTestSuite) SetupTest() {
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", &config.Config{}))
 	suite.mockStore = newRoleStoreInterfaceMock(suite.T())
 	suite.mockEntityService = entitymock.NewEntityServiceInterfaceMock(suite.T())
 	registerSharedCategories(suite.mockEntityService)
@@ -82,6 +84,10 @@ func (suite *RoleAssignmentServiceTestSuite) SetupTest() {
 		newAllowAllRoleAuthz(suite.T()),
 		suite.mockSharingService,
 	)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TearDownTest() {
+	config.ResetServerRuntime()
 }
 
 // GetRoleAssignments Tests
@@ -901,7 +907,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestAddAssignments_Transaction_Data
 
 	suite.ownedRole("role1").Once()
 	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{"user1"}).
-		Return([]providers.Entity{ownedUser()}, nil).Once()
+		Return([]providers.Entity{ownedUser()}, nil)
 
 	suite.transactioner.err = errors.New("failed to commit transaction block")
 
@@ -949,7 +955,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneesToRoles_EmptyRoleID
 func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneesToRoles_AddAssignmentsFails() {
 	assignments := []RoleAssignment{{ID: testUserID1, Type: AssigneeTypeUser}}
 	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
-		Return([]providers.Entity{ownedUser()}, nil).Once()
+		Return([]providers.Entity{ownedUser()}, nil)
 	suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
 
 	err := suite.service.AddAssigneesToRoles(context.Background(), assignments, []string{"role1"})
@@ -961,7 +967,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneesToRoles_AddAssignme
 func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneesToRoles_TransactionerError() {
 	assignments := []RoleAssignment{{ID: testUserID1, Type: AssigneeTypeUser}}
 	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
-		Return([]providers.Entity{ownedUser()}, nil).Once()
+		Return([]providers.Entity{ownedUser()}, nil)
 	suite.transactioner.err = errors.New("tx begin failed")
 
 	err := suite.service.AddAssigneesToRoles(context.Background(), assignments, []string{"role1"})
@@ -1978,4 +1984,75 @@ func (suite *RoleAssignmentServiceTestSuite) TestReconcileMandatedAssignments_De
 	suite.NoError(suite.service.(*roleAssignmentService).reconcileMandatedAssignments(context.Background()))
 
 	suite.mockStore.AssertNotCalled(suite.T(), "ListMandatedRoleUnits", mock.Anything)
+}
+
+// AddAssigneeToExistingRoles Tests
+
+func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneeToExistingRoles_SkipsMissingRoles() {
+	assignment := RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}
+	normalized := []RoleAssignment{{ID: testUserID1, Type: assigneeTypeEntity, OUID: testOwnerOU}}
+
+	suite.ownedRole("role1")
+	suite.mockStore.On("GetRole", mock.Anything, "deleted-role").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
+		Return([]providers.Entity{ownedUser()}, nil)
+	suite.mockStore.On("AddAssignments", mock.Anything, "role1", normalized).Return(nil).Once()
+
+	err := suite.service.AddAssigneeToExistingRoles(
+		context.Background(), assignment, []string{"role1", "deleted-role"})
+
+	suite.Nil(err)
+}
+
+// A role that doesn't reach the assignee's unit, or whose assignments aren't open there, is skipped, and
+// the rest are still assigned.
+func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneeToExistingRoles_SkipsRolesNotAssignableInOU() {
+	assignment := RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}
+	normalized := []RoleAssignment{{ID: testUserID1, Type: assigneeTypeEntity, OUID: testOwnerOU}}
+
+	suite.ownedRole("role1")
+	for _, rid := range []string{"unshared-role", "closed-role"} {
+		suite.mockStore.On("GetRole", mock.Anything, rid).Return(RoleWithPermissions{ID: rid, OUID: "ou-other"}, nil)
+	}
+	suite.mockSharingService.EXPECT().ResolveOverlayRules(mock.Anything, RoleSharingType, "unshared-role", testOwnerOU).
+		Return(sharing.ResolvedOverlay{OUID: testOwnerOU}, nil)
+	suite.mockSharingService.EXPECT().ResolveOverlayRules(mock.Anything, RoleSharingType, "closed-role", testOwnerOU).
+		Return(sharing.ResolvedOverlay{
+			OUID: testOwnerOU, Visible: true,
+			Rules: map[string]sharing.OverlayRule{roleAssignmentsFieldKey: {Editable: false}},
+		}, nil)
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
+		Return([]providers.Entity{ownedUser()}, nil)
+	suite.mockStore.On("AddAssignments", mock.Anything, "role1", normalized).Return(nil).Once()
+
+	err := suite.service.AddAssigneeToExistingRoles(
+		context.Background(), assignment, []string{"role1", "unshared-role", "closed-role"})
+
+	suite.Nil(err)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, "unshared-role", mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, "closed-role", mock.Anything)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneeToExistingRoles_NoRoleExists() {
+	assignment := RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
+		Return([]providers.Entity{ownedUser()}, nil)
+	suite.mockStore.On("GetRole", mock.Anything, "deleted-role").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
+
+	err := suite.service.AddAssigneeToExistingRoles(context.Background(), assignment, []string{"deleted-role"})
+
+	suite.Nil(err)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneeToExistingRoles_StoreError() {
+	assignment := RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
+		Return([]providers.Entity{ownedUser()}, nil)
+	suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{}, errors.New("db down")).Once()
+
+	err := suite.service.AddAssigneeToExistingRoles(context.Background(), assignment, []string{"role1"})
+
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
