@@ -200,7 +200,8 @@ func parseFlags() {
 
 // useTrustedIssuerTokens makes the trusted issuer's tokens the ones the Control Plane suites send:
 // one carrying the system scope for every test client, one without it for the test that it is
-// refused, and one for a user the issuer's user endpoint does not know.
+// refused, one for a user the issuer's user endpoint does not know, and the ones the MCP endpoint's
+// tests send.
 func useTrustedIssuerTokens(issuer *testutils.TrustedIssuer) error {
 	admin, err := testutils.IssueManagementToken(issuer, "system", managementTokenLifetime)
 	if err != nil {
@@ -221,7 +222,34 @@ func useTrustedIssuerTokens(issuer *testutils.TrustedIssuer) error {
 	if err != nil {
 		return err
 	}
-	return os.Setenv(testutils.StrangerTokenEnv, stranger)
+	if err := os.Setenv(testutils.StrangerTokenEnv, stranger); err != nil {
+		return err
+	}
+
+	now := time.Now()
+	mcp := testutils.MCPAudiences()
+	mcpTokens := []struct {
+		env                 string
+		audience            any
+		scope               string
+		issuedAt, expiresAt time.Time
+	}{
+		{testutils.MCPScopedTokenEnv, mcp, "system", now, now.Add(managementTokenLifetime)},
+		{testutils.MCPUnscopedTokenEnv, mcp, "", now, now.Add(managementTokenLifetime)},
+		{testutils.MCPExpiredTokenEnv, mcp, "system", now.Add(-2 * time.Hour), now.Add(-time.Hour)},
+		{testutils.OtherResourceTokenEnv, testutils.OtherResource, "system", now, now.Add(managementTokenLifetime)},
+	}
+	for _, t := range mcpTokens {
+		token, err := testutils.IssueToken(issuer, t.audience, testutils.TrustedIssuerAdminSubject, t.scope,
+			t.issuedAt, t.expiresAt)
+		if err != nil {
+			return err
+		}
+		if err := os.Setenv(t.env, token); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func initTests() {

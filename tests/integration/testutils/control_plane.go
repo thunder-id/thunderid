@@ -49,7 +49,27 @@ const (
 	UnscopedTokenEnv = "TEST_CP_UNSCOPED_TOKEN"
 	// StrangerTokenEnv carries a token the trusted issuer signed for TrustedIssuerStrangerSubject.
 	StrangerTokenEnv = "TEST_CP_STRANGER_TOKEN"
+
+	// MCPScopedTokenEnv, MCPUnscopedTokenEnv and MCPExpiredTokenEnv carry tokens the trusted issuer
+	// signed for MCPAudiences: one with the system scope, one without it, and one with the scope that
+	// expired an hour before the run.
+	MCPScopedTokenEnv   = "TEST_CP_MCP_SCOPED_TOKEN"
+	MCPUnscopedTokenEnv = "TEST_CP_MCP_UNSCOPED_TOKEN"
+	MCPExpiredTokenEnv  = "TEST_CP_MCP_EXPIRED_TOKEN"
+	// OtherResourceTokenEnv carries a token the trusted issuer signed with the system scope for
+	// OtherResource.
+	OtherResourceTokenEnv = "TEST_CP_OTHER_RESOURCE_TOKEN"
+	// OtherResource is a resource the trusted issuer issues tokens for that is not this Control Plane.
+	OtherResource = "https://other-resource.example.com"
 )
+
+// MCPAudiences returns the audiences the tokens for the Control Plane's MCP endpoint name: the
+// management API's and the MCP resource identifier. Until #6037 is fixed, /mcp checks a trusted
+// issuer's token against the first instead of the resource it advertises; naming both keeps each
+// token accepted or refused for what its test is about, before and after the fix.
+func MCPAudiences() []string {
+	return []string{TrustedIssuerAudience, TestServerURL + "/mcp"}
+}
 
 // UseControlPlane makes ReplaceResources install the Control Plane's deployment.yaml.
 func UseControlPlane() {
@@ -122,13 +142,20 @@ func IssueManagementToken(issuer tokenSigner, scope string, validFor time.Durati
 func IssueManagementTokenFor(issuer tokenSigner, subject, scope string,
 	validFor time.Duration) (string, error) {
 	now := time.Now()
+	return IssueToken(issuer, TrustedIssuerAudience, subject, scope, now, now.Add(validFor))
+}
+
+// IssueToken signs an access token for the given audience, one or a list, naming the given user and
+// valid from issuedAt until expiresAt. An empty scope leaves the scope claim out.
+func IssueToken(issuer tokenSigner, audience any, subject, scope string,
+	issuedAt, expiresAt time.Time) (string, error) {
 	claims := map[string]interface{}{
 		"iss": issuer.GetURL(),
-		"aud": TrustedIssuerAudience,
+		"aud": audience,
 		"sub": subject,
-		"iat": now.Unix(),
-		"nbf": now.Unix(),
-		"exp": now.Add(validFor).Unix(),
+		"iat": issuedAt.Unix(),
+		"nbf": issuedAt.Unix(),
+		"exp": expiresAt.Unix(),
 	}
 	if scope != "" {
 		claims["scope"] = scope
