@@ -185,6 +185,21 @@ database:
       password: {{ "{{.DB_RUNTIME_TRANSIENT_REDIS_PASSWORD}}" | quote }}
       db: {{ .Values.configuration.database.runtime_transient.redis.db }}
       key_prefix: {{ .Values.configuration.database.runtime_transient.redis.key_prefix | quote }}
+      {{- with .Values.configuration.database.runtime_transient.redis.tls }}
+      {{- if .enabled }}
+      tls:
+        enabled: true
+        {{- if .secretName }}
+        ca_file: "config/redis-tls/runtime-transient/ca.crt"
+        {{- if .clientAuth }}
+        cert_file: "config/redis-tls/runtime-transient/tls.crt"
+        key_file: "config/redis-tls/runtime-transient/tls.key"
+        {{- end }}
+        {{- end }}
+        server_name: {{ .serverName | quote }}
+        insecure_skip_verify: {{ .insecureSkipVerify | default false }}
+      {{- end }}
+      {{- end }}
     {{- else }}
     postgres:
       hostname: {{ .Values.configuration.database.runtime_transient.postgres.hostname | quote }}
@@ -269,6 +284,21 @@ cache:
     password: {{ "{{.CACHE_REDIS_PASSWORD}}" | quote }}
     db: {{ .Values.configuration.cache.redis.db }}
     key_prefix: {{ .Values.configuration.cache.redis.keyPrefix | quote }}
+    {{- with .Values.configuration.cache.redis.tls }}
+    {{- if .enabled }}
+    tls:
+      enabled: true
+      {{- if .secretName }}
+      ca_file: "config/redis-tls/cache/ca.crt"
+      {{- if .clientAuth }}
+      cert_file: "config/redis-tls/cache/tls.crt"
+      key_file: "config/redis-tls/cache/tls.key"
+      {{- end }}
+      {{- end }}
+      server_name: {{ .serverName | quote }}
+      insecure_skip_verify: {{ .insecureSkipVerify | default false }}
+    {{- end }}
+    {{- end }}
   {{- end }}
 
 jwt:

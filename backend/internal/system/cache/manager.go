@@ -11,6 +11,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	dbutils "github.com/thunder-id/thunderid/internal/system/database/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
@@ -66,6 +67,12 @@ func Initialize(cacheConfig engineconfig.CacheConfig, deploymentID string) Cache
 	cm.enabled = true
 
 	if getCacheType(cacheConfig) == cacheTypeRedis {
+		tlsConfig, err := dbutils.BuildRedisTLSConfig(cacheConfig.Redis.TLS)
+		if err != nil {
+			logger.Error(ctx, "Invalid Redis TLS configuration. Cache initialization aborted.", log.Error(err))
+			cm.enabled = false
+			return cm
+		}
 		cm.redisClient = redis.NewClient(&redis.Options{
 			Addr:            cacheConfig.Redis.Address,
 			Username:        cacheConfig.Redis.Username,
@@ -77,6 +84,7 @@ func Initialize(cacheConfig engineconfig.CacheConfig, deploymentID string) Cache
 			DialTimeout:     time.Duration(cacheConfig.Redis.DialTimeoutMS) * time.Millisecond,
 			ReadTimeout:     time.Duration(cacheConfig.Redis.ReadTimeoutMS) * time.Millisecond,
 			WriteTimeout:    time.Duration(cacheConfig.Redis.WriteTimeoutMS) * time.Millisecond,
+			TLSConfig:       tlsConfig,
 		})
 		if err := cm.redisClient.Ping(context.Background()).Err(); err != nil {
 			logger.Error(ctx, "Failed to connect to Redis. Cache initialization aborted.", log.Error(err))
