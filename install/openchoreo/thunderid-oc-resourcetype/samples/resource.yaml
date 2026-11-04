@@ -79,7 +79,7 @@ spec:
     # ─── Optional parameters (defaults shown) ─────────────────────────────
 
     # Pin a specific image tag in production.
-    # image: "ghcr.io/thunder-id/thunderid:latest"
+    # image: "ghcr.io/thunder-id/thunderid-gateway:latest"
 
     # Full-content overrides for the three rendered configuration files.
     # Each replaces the built-in default entirely when set and is used

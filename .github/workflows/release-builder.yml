@@ -764,7 +764,7 @@ jobs:
         run: |
           # Build image under the repository owner with the product name
           OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE_NAME="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}"
+          IMAGE_NAME="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}-gateway"
 
           # Get version without 'v' prefix for Docker tags
           DOCKER_VERSION="${{ needs.resolve.outputs.version }}"
@@ -804,7 +804,7 @@ jobs:
       - name: 🐳 Build and Push Multi-Arch Quickstart Docker Image
         run: |
           OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE_NAME="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}-quickstart"
+          IMAGE_NAME="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}"
 
           DOCKER_VERSION="${{ needs.resolve.outputs.version }}"
           if [[ $DOCKER_VERSION == v* ]]; then
@@ -1274,7 +1274,7 @@ jobs:
           # Re-points the tag from the manifest docker-images already pushed. No rebuild
           # and no layer upload, so this cannot produce a different image.
           OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE_NAME="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}"
+          IMAGE_NAME="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}-gateway"
           DOCKER_VERSION='${{ needs.resolve.outputs.semver }}'
 
           docker buildx imagetools create \
@@ -1283,7 +1283,7 @@ jobs:
 
           echo "✅ ${IMAGE_NAME}:latest now points at ${DOCKER_VERSION}"
 
-          QUICKSTART_IMAGE_NAME="${IMAGE_NAME}-quickstart"
+          QUICKSTART_IMAGE_NAME="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}"
           docker buildx imagetools create \
             --tag "${QUICKSTART_IMAGE_NAME}:latest" \
             "${QUICKSTART_IMAGE_NAME}:${DOCKER_VERSION}"

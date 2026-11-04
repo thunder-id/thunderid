@@ -36,7 +36,7 @@ docker run hello-world
 Pin to a specific release tag for reproducible deployments:
 
 ```bash
-docker pull ghcr.io/thunder-id/thunderid:<version>
+docker pull ghcr.io/thunder-id/thunderid-gateway:<version>
 ```
 
 ### Step 2: Set Up the Server
@@ -48,7 +48,7 @@ docker run -it --rm \
   -v thunderid-data:/opt/thunderid/database \
   -v thunderid-certs:/opt/thunderid/config/certs \
   -v thunderid-secrets:/opt/thunderid/config/secrets \
-  ghcr.io/thunder-id/thunderid:<version> \
+  ghcr.io/thunder-id/thunderid-gateway:<version> \
   ./setup.sh
 ```
 
@@ -66,7 +66,7 @@ docker run -d \
   -v thunderid-data:/opt/thunderid/database \
   -v thunderid-certs:/opt/thunderid/config/certs \
   -v thunderid-secrets:/opt/thunderid/config/secrets \
-  ghcr.io/thunder-id/thunderid:<version>
+  ghcr.io/thunder-id/thunderid-gateway:<version>
 ```
 
 <ProductName /> is now running at `https://localhost:8090`. Mount the same `thunderid-certs` and `thunderid-secrets` volumes you used during setup so the server reads the generated key material and the Direct Auth Secret.
@@ -101,7 +101,7 @@ docker run -d \
   -v thunderid-data:/opt/thunderid/database \
   -v thunderid-certs:/opt/thunderid/config/certs \
   -v thunderid-secrets:/opt/thunderid/config/secrets \
-  ghcr.io/thunder-id/thunderid:<version>
+  ghcr.io/thunder-id/thunderid-gateway:<version>
 ```
 
 To also use custom TLS certificates, mount them alongside the configuration:
@@ -117,14 +117,14 @@ docker run -d \
   -v thunderid-data:/opt/thunderid/database \
   -v thunderid-certs:/opt/thunderid/config/certs \
   -v thunderid-secrets:/opt/thunderid/config/secrets \
-  ghcr.io/thunder-id/thunderid:<version>
+  ghcr.io/thunder-id/thunderid-gateway:<version>
 ```
 
 The mounted files provide the server TLS certificate; the JWT signing and encryption keys still come from the `thunderid-certs` volume that setup populated.
 
 ## Run the Control Plane and Data Plane together with Docker
 
-The quickstart image, `ghcr.io/thunder-id/thunderid-quickstart`, runs a Control Plane, the Data Plane it manages, and a second Data Plane that signs operators into the Control Plane, already wired together in one container. Use it to try the Control Plane without configuring a trusted issuer yourself. The Compose file in `install/quick-start-cp` starts it:
+The quickstart image, `ghcr.io/thunder-id/thunderid`, runs a Control Plane, the Data Plane it manages, and a second Data Plane that signs operators into the Control Plane, already wired together in one container. Use it to try the Control Plane without configuring a trusted issuer yourself. The Compose file in `install/quick-start-cp` starts it:
 
 ```bash
 docker compose -f install/quick-start-cp/docker-compose.yml up
