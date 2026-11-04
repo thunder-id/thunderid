@@ -47,7 +47,7 @@ func (suite *OAuthExecutorTestSuite) SetupTest() {
 
 	suite.executor = newOAuthExecutor(ExecutorNameOAuth, defaultCodeOnlyInputs, []providers.Input{},
 		suite.mockFlowFactory, suite.mockIDPService, suite.mockOAuthService,
-		suite.mockAuthnProvider, providers.IDPTypeOAuth)
+		suite.mockAuthnProvider, providers.IDPTypeOAuth, nil)
 }
 
 // expectIdentityProviderResolved stubs the AuthorizationRuleMapping resolution ProcessAuthFlowResponse

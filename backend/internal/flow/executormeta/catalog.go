@@ -194,8 +194,6 @@ var catalog = map[string]providers.ExecutorMeta{
 			{Property: "maxPerPrompt"},
 			{Property: "assignGroup"},
 			{Property: "assignRole"},
-			{Property: "seedGroupsFromMapping"},
-			{Property: "seedRolesFromMapping"},
 			{Property: "allowCrossOUProvisioning"},
 		},
 	},

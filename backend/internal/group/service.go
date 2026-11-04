@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -65,6 +66,7 @@ type GroupServiceInterface interface {
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError)
 	// ValidateRemoveGroupMembers runs the checks RemoveGroupMembers runs before it changes anything.
 	ValidateRemoveGroupMembers(ctx context.Context, groupID string, members []Member) *tidcommon.ServiceError
+	AddMemberToExistingGroups(ctx context.Context, member Member, groupIDs []string) *tidcommon.ServiceError
 	AddMembersToGroups(ctx context.Context, members []Member,
 		groupIDs []string) *tidcommon.ServiceError
 	GetResourceDependencies(
@@ -1275,6 +1277,22 @@ func (gs *groupService) AddMembersToGroups(
 		return &tidcommon.InternalServerError
 	}
 	return nil
+}
+
+// AddMemberToExistingGroups adds member to the groups in groupIDs that still exist, skipping the rest.
+// Nothing is written when groups are declarative-only, since the declarative store holds no writable
+// memberships.
+func (gs *groupService) AddMemberToExistingGroups(
+	ctx context.Context, member Member, groupIDs []string,
+) *tidcommon.ServiceError {
+	if len(groupIDs) == 0 || isGroupDeclarativeModeEnabled() {
+		return nil
+	}
+	groups, svcErr := gs.GetGroupsByIDs(ctx, groupIDs)
+	if svcErr != nil {
+		return svcErr
+	}
+	return gs.AddMembersToGroups(ctx, []Member{member}, slices.Sorted(maps.Keys(groups)))
 }
 
 // convertGroupDAOToGroup constructs a Group from a GroupDAO.
