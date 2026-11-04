@@ -250,6 +250,14 @@ describe('ConnectionForm', () => {
       expect(toggle).not.toBeChecked();
     });
 
+    it('names the product in the tokenExchangeEnabled hint', () => {
+      render(<ConnectionForm {...oidcEditProps} />);
+
+      expect(
+        screen.getByText("Let backend services exchange this provider's tokens for ThunderID access tokens."),
+      ).toBeInTheDocument();
+    });
+
     it('reports the switch toggle through onFieldChange as a "true"/"false" string', () => {
       const onFieldChange = vi.fn();
       render(<ConnectionForm {...oidcEditProps} onFieldChange={onFieldChange} />);

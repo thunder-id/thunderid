@@ -157,7 +157,8 @@ export default function TrustedIssuerCreateForm({
         <Typography variant="subtitle1" gutterBottom>
           {t(
             'trustedIssuers:create.subtitle',
-            'Register an external identity provider whose identity assertions ThunderID can exchange for access tokens.',
+            'Register an external identity provider whose identity assertions {{productName}} can exchange for access tokens.',
+            {productName},
           )}
         </Typography>
       </Stack>
