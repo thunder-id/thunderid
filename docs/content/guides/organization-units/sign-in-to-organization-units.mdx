@@ -132,6 +132,7 @@ An organization the application is not available in is refused at the pick, befo
 
 - **Organization claims.** The `ouId`, `ouName`, and `ouHandle` claims, when the application asks for them, name the OU the sign-in landed in rather than the user's own. A user shared into that OU acts in it, while self-service calls such as `GET /users/me` still read and update the user's own profile.
 - **Permissions and roles.** Authorization counts only the role assignments made in the OU the sign-in landed in, and the `roles` claim lists only those roles. A refresh token records that OU when its access token carries the `ouId` claim, and a refresh checks permissions again in it. A refresh is refused once the user can no longer sign in to that OU, for example after the user's share into it is removed. Without the claim, a refresh counts role assignments made in every OU.
+- **Groups.** The `groups` claim lists only the groups the OU the sign-in landed in owns. A user shared into that OU can belong to groups in its own OU too, and those are left out. A refresh keeps the groups the sign-in listed.
 
 ## Refusals
 

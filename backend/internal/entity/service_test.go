@@ -1891,6 +1891,61 @@ func (s *ServiceTestSuite) TestGetTransitiveEntityGroups_ProviderError() {
 	s.ErrorIs(err, s.testErr)
 }
 
+func (s *ServiceTestSuite) TestGetTransitiveEntityGroups_BoundaryKeepsOnlyTheOUsGroups() {
+	ctx := s.inBoundary("ou-decided")
+	provider := NewGroupMembershipProviderMock(s.T())
+	provider.On("GetTransitiveGroupsForEntity", ctx, "user1").Return([]providers.EntityGroup{
+		{ID: "grp-home", Name: "Admins", OUID: "ou-home"},
+		{ID: "grp-decided", Name: "Editors", OUID: "ou-decided"},
+	}, nil).Once()
+
+	s.svc.SetGroupMembershipProvider(provider)
+	groups, err := s.svc.GetTransitiveEntityGroups(ctx, "user1")
+
+	s.NoError(err)
+	s.Equal([]providers.EntityGroup{{ID: "grp-decided", Name: "Editors", OUID: "ou-decided"}}, groups)
+}
+
+func (s *ServiceTestSuite) TestGetTransitiveEntityGroups_BoundaryWithNoGroupInTheOUReturnsNone() {
+	ctx := s.inBoundary("ou-decided")
+	provider := NewGroupMembershipProviderMock(s.T())
+	provider.On("GetTransitiveGroupsForEntity", ctx, "user1").
+		Return([]providers.EntityGroup{{ID: "grp-home", Name: "Admins", OUID: "ou-home"}}, nil).Once()
+
+	s.svc.SetGroupMembershipProvider(provider)
+	groups, err := s.svc.GetTransitiveEntityGroups(ctx, "user1")
+
+	s.NoError(err)
+	s.Empty(groups)
+}
+
+func (s *ServiceTestSuite) TestGetTransitiveEntityGroups_BoundaryWithoutADecidedOUKeepsEveryGroup() {
+	ctx := s.inBoundary("")
+	expected := []providers.EntityGroup{
+		{ID: "grp-home", Name: "Admins", OUID: "ou-home"},
+		{ID: "grp-other", Name: "Editors", OUID: "ou-other"},
+	}
+	provider := NewGroupMembershipProviderMock(s.T())
+	provider.On("GetTransitiveGroupsForEntity", ctx, "user1").Return(expected, nil).Once()
+
+	s.svc.SetGroupMembershipProvider(provider)
+	groups, err := s.svc.GetTransitiveEntityGroups(ctx, "user1")
+
+	s.NoError(err)
+	s.Equal(expected, groups)
+}
+
+func (s *ServiceTestSuite) TestGetTransitiveEntityGroups_BoundaryProviderError() {
+	ctx := s.inBoundary("ou-decided")
+	provider := NewGroupMembershipProviderMock(s.T())
+	provider.On("GetTransitiveGroupsForEntity", ctx, "user1").Return(nil, s.testErr).Once()
+
+	s.svc.SetGroupMembershipProvider(provider)
+	_, err := s.svc.GetTransitiveEntityGroups(ctx, "user1")
+
+	s.ErrorIs(err, s.testErr)
+}
+
 // A system-attribute blob the server cannot parse must fail the credential write rather than silently
 // replacing the blob, which would drop the keys belonging to whichever service owns the entity.
 func (s *ServiceTestSuite) TestWithSystemAttribute_CorruptBlobErrors() {

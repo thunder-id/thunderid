@@ -47,6 +47,9 @@ const (
 	ouBoundaryParentRole = "OU Boundary Reader"
 	ouBoundaryChildRole  = "OU Boundary Writer"
 
+	ouBoundaryParentGroup = "OU Boundary Parent Group"
+	ouBoundaryChildGroup  = "OU Boundary Child Group"
+
 	// An organization unit that does not exist.
 	ouBoundaryUnknownOUID = "0195ffff-0000-7000-8000-000000000000"
 )
@@ -294,7 +297,7 @@ func (ts *OUBoundedSignInTestSuite) SetupSuite() {
 	ts.ssoFlowID = ssoFlow
 
 	assertion := map[string]interface{}{
-		"userAttributes": []string{"ouId", "ouHandle", "roles"},
+		"userAttributes": []string{"ouId", "ouHandle", "roles", "groups"},
 	}
 	ts.nativeChildApp = ts.createNativeApp("OU Boundary Native Child", "ou_boundary_native_child",
 		ts.childOUID, credentialsFlow, allowedTypes, assertion)
@@ -1011,6 +1014,35 @@ func (ts *OUBoundedSignInTestSuite) TestRolesFromOtherOUsAreNotListed() {
 			claims := ts.signInRequestingPermissions(tc.ouID)
 			ts.Equal([]interface{}{tc.role}, claims.Additional["roles"],
 				"only the role assigned in the sign-in's OU is listed")
+		})
+	}
+}
+
+// The groups claim lists only the groups the OU the sign-in lands in owns, though the user is in a group of each.
+func (ts *OUBoundedSignInTestSuite) TestGroupsFromOtherOUsAreNotListed() {
+	for name, ouID := range map[string]string{
+		ouBoundaryParentGroup: ts.parentOUID,
+		ouBoundaryChildGroup:  ts.childOUID,
+	} {
+		groupID, err := testutils.CreateGroup(testutils.Group{
+			Name: name, OUID: ouID, Members: []testutils.Member{{Id: ts.sharedUserID, Type: "user"}},
+		})
+		ts.Require().NoError(err, "create group %s", name)
+		defer func() {
+			if err := testutils.DeleteGroup(groupID); err != nil {
+				ts.T().Logf("delete group %s: %v", groupID, err)
+			}
+		}()
+	}
+
+	for _, tc := range []struct{ name, ouID, group string }{
+		{"Child", ts.childOUID, ouBoundaryChildGroup},
+		{"Parent", ts.parentOUID, ouBoundaryParentGroup},
+	} {
+		ts.Run(tc.name, func() {
+			claims := ts.requireSignedInto(ts.signIn(ts.nativeSharedApp, tc.ouID, ouBoundarySharedUser, nil), tc.ouID)
+			ts.Equal([]interface{}{tc.group}, claims.Additional["groups"],
+				"only the group the sign-in's OU owns is listed")
 		})
 	}
 }
