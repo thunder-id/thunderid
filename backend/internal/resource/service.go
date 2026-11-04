@@ -260,6 +260,9 @@ func (rs *resourceService) CreateResourceServer(
 	resourceServer providers.ResourceServer,
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
 	rs.logger.Debug(ctx, "Creating resource server", log.String("name", resourceServer.Name))
+	if svcErr := rs.checkDataPlaneReady(ctx); svcErr != nil {
+		return nil, svcErr
+	}
 
 	if resourceServer.AuthorizationEngine.Type == "" {
 		resourceServer.AuthorizationEngine.Type = providers.AuthorizationEngineTypeRBAC

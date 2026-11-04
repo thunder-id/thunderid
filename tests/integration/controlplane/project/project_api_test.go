@@ -53,6 +53,9 @@ type ProjectAPITestSuite struct {
 	childOUs []string
 	apps     []string
 	agents   []string
+	// dataPlaneID is the suite's data plane, registered as the default gateway so applications and
+	// agents can be created.
+	dataPlaneID string
 }
 
 func TestProjectAPITestSuite(t *testing.T) {
@@ -61,6 +64,15 @@ func TestProjectAPITestSuite(t *testing.T) {
 
 func (ts *ProjectAPITestSuite) SetupSuite() {
 	ts.suffix = fmt.Sprintf("%d", time.Now().UnixNano())
+	id, err := testutils.RegisterDataPlaneGateway("project-suite-data-plane-"+ts.suffix, true)
+	ts.Require().NoError(err)
+	ts.dataPlaneID = id
+}
+
+func (ts *ProjectAPITestSuite) TearDownSuite() {
+	if ts.dataPlaneID != "" {
+		_ = testutils.DeleteGateway(ts.dataPlaneID)
+	}
 }
 
 // TearDownTest removes what a test created, applications and children first so their projects can

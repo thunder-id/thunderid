@@ -28,6 +28,12 @@ import (
 type recordingCapturer struct {
 	resourceTypes []string
 	resources     []interface{}
+	// refusal is what CheckDataPlaneReady answers, nil to let a create go ahead.
+	refusal *tidcommon.ServiceError
+}
+
+func (r *recordingCapturer) CheckDataPlaneReady(context.Context) *tidcommon.ServiceError {
+	return r.refusal
 }
 
 func (r *recordingCapturer) CaptureValues(_ context.Context, resourceType string, resource interface{}) {
@@ -184,4 +190,19 @@ func TestACapturedCredentialIsNamedAsTheExportNamesIt(t *testing.T) {
 		assert.Equal(t, "{{."+name+"}}", exported.Credentials["password"])
 		assert.Equal(t, "s3cret", value)
 	}
+}
+
+// While the data plane is not ready, a create is refused before anything is written or captured.
+func TestCreateUser_RefusedUntilTheDataPlaneIsReady(t *testing.T) {
+	entities := entitymock.NewEntityServiceInterfaceMock(t)
+	capturer := &recordingCapturer{refusal: &declarativeresource.ErrorDataPlaneNotReady}
+	service := newCapturingUserService(t, capturer, entities)
+
+	_, svcErr := service.CreateUser(context.Background(), &providers.User{
+		Type: testUserType, OUID: testOrgID,
+		Attributes: json.RawMessage(`{"username":"alice","password":"s3cret"}`),
+	})
+
+	assert.Equal(t, &declarativeresource.ErrorDataPlaneNotReady, svcErr)
+	assert.Empty(t, capturer.resources)
 }

@@ -383,6 +383,10 @@ func InitSystemPermissions(handle string) {
 		// Import APIs.
 		{"POST /import", p.Root},
 		{"POST /import/delete", p.Root},
+
+		// Whether the data plane is ready. Any signed-in user may read it: it names no gateway, and
+		// whoever creates resources needs to know whether a create can go ahead.
+		{"GET /gateways/default/status", ""},
 	}
 }
 

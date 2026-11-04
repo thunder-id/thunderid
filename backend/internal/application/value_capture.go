@@ -8,6 +8,8 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // captureValues hands a written application to the value capturer, in the shape its exporter reads
@@ -27,4 +29,13 @@ func (as *applicationService) captureValues(ctx context.Context, app *model.Appl
 		Type:              string(app.Type),
 		InboundAuthConfig: app.InboundAuthConfig,
 	})
+}
+
+// checkDataPlaneReady refuses a create whose values could not reach a data plane yet: while none is
+// registered, or the default one is still being provisioned. Without a capturer nothing is refused.
+func (as *applicationService) checkDataPlaneReady(ctx context.Context) *tidcommon.ServiceError {
+	if as.valueCapturer == nil {
+		return nil
+	}
+	return as.valueCapturer.CheckDataPlaneReady(ctx)
 }

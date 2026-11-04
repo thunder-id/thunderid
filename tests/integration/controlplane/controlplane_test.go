@@ -26,6 +26,8 @@ import (
 type ControlPlaneTestSuite struct {
 	suite.Suite
 	ouID string
+	// dataPlaneID is the suite's data plane, registered as the default gateway for each test.
+	dataPlaneID string
 }
 
 func TestControlPlaneTestSuite(t *testing.T) {
@@ -43,6 +45,23 @@ func (ts *ControlPlaneTestSuite) SetupSuite() {
 
 func (ts *ControlPlaneTestSuite) TearDownSuite() {
 	_ = testutils.DeleteOrganizationUnit(ts.ouID)
+}
+
+// SetupTest registers the suite's data plane as the default gateway. A control plane refuses to create
+// a resource whose values go to the default gateway until one is registered and answers its health
+// check, so each test starts with one that does. A test that registers its own default takes the
+// default from it for that test.
+func (ts *ControlPlaneTestSuite) SetupTest() {
+	id, err := testutils.RegisterDataPlaneGateway(unique("data-plane"), true)
+	ts.Require().NoError(err)
+	ts.dataPlaneID = id
+}
+
+func (ts *ControlPlaneTestSuite) TearDownTest() {
+	if ts.dataPlaneID != "" {
+		_ = testutils.DeleteGateway(ts.dataPlaneID)
+		ts.dataPlaneID = ""
+	}
 }
 
 // unique returns a name no other run of the suite uses.

@@ -24,6 +24,12 @@ import (
 type recordingCapturer struct {
 	resourceTypes []string
 	resources     []interface{}
+	// refusal is what CheckDataPlaneReady answers, nil to let a create go ahead.
+	refusal *tidcommon.ServiceError
+}
+
+func (r *recordingCapturer) CheckDataPlaneReady(context.Context) *tidcommon.ServiceError {
+	return r.refusal
 }
 
 func (r *recordingCapturer) CaptureValues(_ context.Context, resourceType string, resource interface{}) {
@@ -219,4 +225,19 @@ func (s *ServiceTestSuite) TestInitializeHandsTheHTTPConnectionWriter() {
 		newSharingServiceMock(s.T()))
 	s.Require().NoError(err)
 	s.IsType(&httpConnectionWriter{}, synced)
+}
+
+// While the data plane is not ready, every kind of connection create is refused before anything is
+// written or captured.
+func (s *ServiceTestSuite) TestCreatesAreRefusedUntilTheDataPlaneIsReady() {
+	capturer := &recordingCapturer{refusal: &declarativeresource.ErrorDataPlaneNotReady}
+	s.svc.valueCapturer = capturer
+
+	_, svcErr := s.svc.create(context.Background(), &providers.IDPDTO{Name: "g", Type: providers.IDPTypeGoogle})
+	s.Equal(&declarativeresource.ErrorDataPlaneNotReady, svcErr)
+	_, svcErr = s.svc.createSender(context.Background(), *s.twilioSender("the-token"))
+	s.Equal(&declarativeresource.ErrorDataPlaneNotReady, svcErr)
+	_, svcErr = s.svc.createHTTP(context.Background(), httpconnection.HTTPConnection{Name: "orders"})
+	s.Equal(&declarativeresource.ErrorDataPlaneNotReady, svcErr)
+	s.Empty(capturer.resources)
 }

@@ -49,7 +49,10 @@ type StoreAnswer[T any] struct {
 type storeService struct {
 	gateways storeInterface
 	client   gatewayStoreClientInterface
-	logger   *log.Logger
+	// readiness refuses a call to the store of a gateway that has never answered its health check.
+	// Nil refuses none.
+	readiness *readiness
+	logger    *log.Logger
 }
 
 func newStoreService(gateways storeInterface, client gatewayStoreClientInterface) StoreServiceInterface {
@@ -146,6 +149,11 @@ func callGatewayStore[T any](ctx context.Context, s *storeService, gatewayID str
 	gw, svcErr := findGateway(ctx, s.gateways, s.logger, gatewayID)
 	if svcErr != nil {
 		return nil, svcErr
+	}
+	if s.readiness != nil {
+		if svcErr := s.readiness.RequireProvisioned(ctx, gw); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 	key, svcErr := reveal(ctx, s.logger, gw.Key)
 	if svcErr != nil {

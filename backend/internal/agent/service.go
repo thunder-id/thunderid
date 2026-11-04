@@ -121,6 +121,9 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 	if agent == nil {
 		return nil, &ErrorInvalidRequestFormat
 	}
+	if svcErr := s.checkDataPlaneReady(ctx); svcErr != nil {
+		return nil, svcErr
+	}
 	normalizeLoginConsent(agent.LoginConsent)
 
 	if svcErr := applyGrantTypes(agent); svcErr != nil {

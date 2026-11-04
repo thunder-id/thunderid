@@ -19,6 +19,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -597,6 +598,9 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 			ErrorSharingPolicyExists.Code,
 			ErrorSharingPolicyVersionMismatch.Code,
 			ErrorSharedUserCannotMove.Code:
+			statusCode = http.StatusConflict
+		case declarativeresource.ErrorDataPlaneNotReady.Code, declarativeresource.ErrorNoDataPlane.Code:
+			// The request is sound; the deployment's data plane is not ready for it yet.
 			statusCode = http.StatusConflict
 		case ErrorHandlePathRequired.Code,
 			ErrorInvalidHandlePath.Code,

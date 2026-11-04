@@ -303,6 +303,34 @@ curl -X PUT https://localhost:8090/gateways/<gateway_id>/secrets/APPLICATION_ORD
   -d '{"value": "<client_secret>"}'
 ```
 
+## Wait for the Data Plane
+
+A data plane is often registered before it serves, while it is still being provisioned. The control
+plane checks a gateway's `GET /health/readiness` itself, when something needs to know whether the
+gateway is ready and the last check is out of date, and as soon as the gateway is registered or
+changed. A data plane that answers is ready; one that never has is still being provisioned.
+
+`GET /gateways/default/status` reports the default gateway's state, and any signed-in user may read
+it:
+
+| State | Meaning | Creates that produce values | Deploys |
+|---|---|---|---|
+| `pending` | No default gateway is registered | Refused, `409` `GTW-1038` | Not applicable |
+| `provisioning` | The default gateway has never answered its health check | Refused, `409` `GTW-1034` | Refused, `409` `GTW-1034` |
+| `ready` | It answered its last check | Allowed | Allowed |
+| `unreachable` | It answered before, but not its last check | Allowed | Fail if it cannot be reached |
+
+The creates refused are those of applications, agents, resource servers, connections, authorization
+detail types and users. Each produces values, such as a generated client secret, that the control
+plane writes to the default gateway, and a value written before a data plane exists would never reach
+it. A refusal carries `Retry-After`. Calls to a gateway's variables and secrets are refused with
+`GTW-1034` too while it has never answered. Once a data plane has been provisioned, nothing is
+refused for it being unreachable: its values wait to be written, and a deploy fails as it would
+otherwise.
+
+The default resources a control plane creates for itself on its first start are not refused, since
+they exist before any data plane can.
+
 ## Deploy From the Console
 
 The console does all of the above from one full-screen page. The **Deploy** button in the console's

@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -216,6 +217,9 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 		case ErrorTypeNotFound.Code:
 			statusCode = http.StatusNotFound
 		case ErrorTypeConflict.Code, ErrorTypeIDConflict.Code, ErrorTypeChanged.Code:
+			statusCode = http.StatusConflict
+		case declarativeresource.ErrorDataPlaneNotReady.Code, declarativeresource.ErrorNoDataPlane.Code:
+			// The request is sound; the deployment's data plane is not ready for it yet.
 			statusCode = http.StatusConflict
 		default:
 			statusCode = http.StatusBadRequest

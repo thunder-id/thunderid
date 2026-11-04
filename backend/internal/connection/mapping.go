@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -176,6 +177,9 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 			httpconnection.ErrorHasBlockingDependencies.Code,
 			ErrorSharingPolicyExists.Code,
 			ErrorSharingPolicyVersionMismatch.Code:
+			status = http.StatusConflict
+		case declarativeresource.ErrorDataPlaneNotReady.Code, declarativeresource.ErrorNoDataPlane.Code:
+			// The request is sound; the deployment's data plane is not ready for it yet.
 			status = http.StatusConflict
 		default:
 			status = http.StatusBadRequest

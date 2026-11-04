@@ -4,8 +4,12 @@
 package testutils
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -157,4 +161,69 @@ func StopDataPlane() {
 		<-done
 	}
 	dataPlaneCmd = nil
+}
+
+// RegisterDataPlaneGateway registers the suite's Data Plane as a gateway of the Control Plane under
+// test, and returns the registration's id. A Control Plane refuses to create a resource whose values
+// go to its default gateway until one is registered and answers its health check, so a suite that
+// creates such resources registers the Data Plane as the default first.
+func RegisterDataPlaneGateway(name string, isDefault bool) (string, error) {
+	// The Data Plane is bootstrapped in a home of its own, beside the Control Plane's, with a
+	// certificate of its own that the Control Plane is told to trust.
+	outDir := filepath.Dir(filepath.Dir(GetExtractedProductHome()))
+	certificates, err := filepath.Glob(filepath.Join(outDir, filepath.Base(DataPlaneExtractedDir), "*",
+		"config", "certs", "server.cert"))
+	if err != nil || len(certificates) != 1 {
+		return "", fmt.Errorf("the data plane's certificate was not found: %v", err)
+	}
+	certificate, err := os.ReadFile(certificates[0])
+	if err != nil {
+		return "", fmt.Errorf("failed to read the data plane's certificate: %w", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"name": name, "baseUrl": DataPlaneURL, "key": ManagementAPIKey,
+		"caCertificate": string(certificate), "isDefault": isDefault,
+	})
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/gateways", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to register the data plane: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(raw))
+	}
+	var registered struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &registered); err != nil {
+		return "", fmt.Errorf("failed to parse the registration: %w", err)
+	}
+	return registered.ID, nil
+}
+
+// DeleteGateway removes a gateway registered with the Control Plane under test.
+func DeleteGateway(id string) error {
+	req, err := http.NewRequest(http.MethodDelete, TestServerURL+"/gateways/"+id, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to remove the gateway: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 204, got %d. Response: %s", resp.StatusCode, string(raw))
+	}
+	return nil
 }

@@ -66,6 +66,9 @@ type versionService struct {
 	names        actorNamer
 	// autoApply makes a capture of the current version apply it to the default gateway.
 	autoApply bool
+	// readiness refuses a deploy to a gateway that has never answered its health check. Nil refuses
+	// none.
+	readiness *readiness
 	logger    *log.Logger
 }
 
@@ -384,6 +387,9 @@ func (s *versionService) Apply(ctx context.Context, gatewayID string,
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := s.refuseUnprovisioned(ctx, gw); svcErr != nil {
+		return nil, svcErr
+	}
 	target, svcErr := s.resolve(ctx, req.Version)
 	if svcErr != nil {
 		return nil, svcErr
@@ -419,10 +425,23 @@ func (s *versionService) refuseUnconfirmedRemovalsOf(ctx context.Context, gw *Ga
 	return s.refuseUnconfirmedRemovals(ctx, gw, diff, applyOptions{})
 }
 
+// refuseUnprovisioned refuses a deploy, dry runs included, to a gateway that has never answered its
+// health check, before the apply lease is claimed or anything is written: one still being
+// provisioned could only fail late, as unreachable.
+func (s *versionService) refuseUnprovisioned(ctx context.Context, gw *Gateway) *tidcommon.ServiceError {
+	if s.readiness == nil {
+		return nil
+	}
+	return s.readiness.RequireProvisioned(ctx, gw)
+}
+
 func (s *versionService) Revert(ctx context.Context, gatewayID string,
 	req RevertRequest) (*ApplyResult, *tidcommon.ServiceError) {
 	gw, svcErr := s.gateway(ctx, gatewayID)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := s.refuseUnprovisioned(ctx, gw); svcErr != nil {
 		return nil, svcErr
 	}
 	applied, err := s.versions.GetApplied(ctx, gatewayID)

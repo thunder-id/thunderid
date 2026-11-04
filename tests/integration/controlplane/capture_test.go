@@ -37,6 +37,11 @@ type capturingGateway struct {
 func newCapturingGateway() *capturingGateway {
 	g := &capturingGateway{values: map[string]string{}, attempts: map[string]int{}, written: map[string]bool{}}
 	g.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The readiness check is public, as a data plane's is, so the control plane sees it serving.
+		if r.Method == http.MethodGet && r.URL.Path == "/health/readiness" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		if r.Header.Get("API-Key") != captureGatewayKey {
 			w.WriteHeader(http.StatusUnauthorized)
 			return

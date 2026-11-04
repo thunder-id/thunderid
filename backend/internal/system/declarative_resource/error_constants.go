@@ -52,4 +52,41 @@ var (
 			DefaultValue: "Deleting declarative resources is not permitted",
 		},
 	}
+
+	// ErrorDataPlaneNotReady is returned when a write is refused because the default gateway, the data
+	// plane the values it produces are written to, has not yet answered a health check: it is still
+	// being provisioned. A deploy to a gateway in that state is refused with it too.
+	ErrorDataPlaneNotReady = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1034",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.data_plane_not_ready",
+			DefaultValue: "The data plane is not ready yet",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.data_plane_not_ready.description",
+			DefaultValue: "Your data plane is still being provisioned. Try again once it is ready.",
+		},
+	}
+
+	// ErrorNoDataPlane is returned when a write is refused because no default gateway is registered, so
+	// the values it produces have no data plane to be written to.
+	ErrorNoDataPlane = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1038",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.no_data_plane",
+			DefaultValue: "No data plane is connected yet",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.no_data_plane.description",
+			DefaultValue: "Register a data plane and wait until it is ready, then try again.",
+		},
+	}
 )
+
+// IsDataPlaneRefusal reports whether a service error is a write refused until a data plane is ready,
+// which a handler answers with 409: the request is sound, but the deployment is not ready for it yet.
+func IsDataPlaneRefusal(svcErr *tidcommon.ServiceError) bool {
+	return svcErr != nil && (svcErr.Code == ErrorDataPlaneNotReady.Code || svcErr.Code == ErrorNoDataPlane.Code)
+}

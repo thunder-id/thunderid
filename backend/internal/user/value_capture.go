@@ -10,6 +10,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // captureSubmittedCredentials hands the credentials a new user was created with to the value
@@ -77,4 +79,13 @@ func (us *userService) captureCredentials(ctx context.Context, user *providers.U
 		resource.Credentials[name] = value
 	}
 	us.valueCapturer.CaptureValues(ctx, resourceTypeUser, resource)
+}
+
+// checkDataPlaneReady refuses a create whose values could not reach a data plane yet: while none is
+// registered, or the default one is still being provisioned. Without a capturer nothing is refused.
+func (us *userService) checkDataPlaneReady(ctx context.Context) *tidcommon.ServiceError {
+	if us.valueCapturer == nil {
+		return nil
+	}
+	return us.valueCapturer.CheckDataPlaneReady(ctx)
 }
