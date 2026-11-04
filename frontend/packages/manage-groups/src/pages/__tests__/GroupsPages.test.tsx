@@ -4,7 +4,7 @@
 import {fireEvent, render, screen} from '@testing-library/react';
 import type {JSX, ReactNode} from 'react';
 import {MemoryRouter, Route, Routes, useLocation} from 'react-router';
-import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
 import {GroupsListPage, GroupCreateDialog, GroupDetailsPage} from '../../index';
 
 vi.mock('@thunderid/react', () => ({
@@ -41,29 +41,29 @@ vi.mock('@thunderid/react', () => ({
       </button>
     </div>
   ),
-  GroupMembers: ({
+  GroupDetails: ({
     administrationMode,
+    deletable,
     editable,
     groupId,
-    ouId = 'every unit',
+    onDeleted,
   }: {
     administrationMode: string;
+    deletable: boolean;
     editable: boolean;
     groupId: string;
-    ouId?: string;
+    onDeleted: () => void;
   }): JSX.Element => (
-    <p>
-      members of {groupId} {editable ? 'editable' : 'read only'} through {administrationMode} from {ouId}
-    </p>
+    <div>
+      <p>
+        group {groupId} {editable ? 'editable' : 'read only'} through {administrationMode}
+        {deletable ? ', deletable' : ''}
+      </p>
+      <button type="button" onClick={onDeleted}>
+        deleted
+      </button>
+    </div>
   ),
-}));
-
-const {groupLoaded} = vi.hoisted(() => ({groupLoaded: {value: true}}));
-
-vi.mock('../../api/useGetGroup', () => ({
-  default: (id: string) => ({
-    data: groupLoaded.value ? {description: 'The admins', id, name: 'Admins', ouId: 'ou-1'} : undefined,
-  }),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -120,31 +120,20 @@ describe('GroupCreateDialog', () => {
 });
 
 describe('GroupDetailsPage', () => {
-  beforeEach(() => {
-    groupLoaded.value = true;
-  });
-
-  it('shows the group and its members, read only unless told otherwise', () => {
-    renderAt('/groups/g-1', <GroupDetailsPage />);
-    expect(screen.getByRole('heading', {name: 'Admins'})).toBeTruthy();
-    expect(screen.getByText('The admins')).toBeTruthy();
-    expect(screen.getByText('members of g-1 read only through flow from ou-1')).toBeTruthy();
+  it('shows the group read only, through its administration flows, unless told otherwise', () => {
+    renderAt('/groups/x-1', <GroupDetailsPage />);
+    expect(screen.getByText('group x-1 read only through flow')).toBeTruthy();
     expect(screen.getByRole('link', {name: 'Back'}).getAttribute('href')).toBe('/groups');
   });
 
-  it('lets admins change the members when editable', () => {
-    renderAt('/groups/g-1', <GroupDetailsPage editable />);
-    expect(screen.getByText('members of g-1 editable through flow from ou-1')).toBeTruthy();
+  it('lets admins change and delete the group when allowed, through the API directly when told to', () => {
+    renderAt('/groups/x-1', <GroupDetailsPage editable deletable administrationMode="native" />);
+    expect(screen.getByText('group x-1 editable through native, deletable')).toBeTruthy();
   });
 
-  it('removes members through the API directly when told to', () => {
-    renderAt('/groups/g-1', <GroupDetailsPage editable administrationMode="native" />);
-    expect(screen.getByText('members of g-1 editable through native from ou-1')).toBeTruthy();
-  });
-
-  it('offers adding members only once the group and its organization unit are loaded', () => {
-    groupLoaded.value = false;
-    renderAt('/groups/g-1', <GroupDetailsPage editable />);
-    expect(screen.getByText('members of g-1 read only through flow from every unit')).toBeTruthy();
+  it('returns to the list once the group is deleted', () => {
+    renderAt('/groups/x-1', <GroupDetailsPage deletable />);
+    fireEvent.click(screen.getByRole('button', {name: 'deleted'}));
+    expect(screen.getByTestId('location').textContent).toBe('/groups');
   });
 });
