@@ -5,6 +5,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -110,10 +111,10 @@ func (s *DependenciesTestSuite) TestARemovalStillNamedIsRefused() {
 		app("app-1", "ou-2", "flow-1")}))
 
 	assert.Equal(t, []string{"organization_unit/ou-1 is needed by organization_unit/ou-2"},
-		stillReferenced([]gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"}}, held))
+		stillReferenced([]gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"}}, held, nil))
 	assert.Empty(t, stillReferenced([]gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"},
-		{ResourceType: "organization_unit", ID: "ou-2"}, {ResourceType: "application", ID: "app-1"}}, held))
-	assert.Empty(t, stillReferenced([]gatewayDeletion{{ResourceType: "flow", ID: "flow-9"}}, held))
+		{ResourceType: "organization_unit", ID: "ou-2"}, {ResourceType: "application", ID: "app-1"}}, held, nil))
+	assert.Empty(t, stillReferenced([]gatewayDeletion{{ResourceType: "flow", ID: "flow-9"}}, held, nil))
 }
 
 // Deploying one application sends the flow and the unit it needs that the gateway lacks, marked as
@@ -241,10 +242,10 @@ func (s *DependenciesTestSuite) TestRemovingWhatTheGatewayStillNeedsIsRefused() 
 	assert.True(t, result.Recorded)
 }
 
-// A removal is refused while the gateway keeps a document that names it, even when the same apply
-// updates that document to stop naming it: the import carries on past a refused update, so the
-// removal would be made under a resource that still names it. The update goes first, the removal after.
-func (s *DependenciesTestSuite) TestARemovalWaitsForTheUpdateThatStopsNamingIt() {
+// A removal stays refused while the document that names it is updated away in the same apply, since
+// the gateway can refuse the update and still make the removal; once the update is deployed, the
+// removal goes ahead.
+func (s *DependenciesTestSuite) TestARemovalGoesAfterTheUpdateThatFreesIt() {
 	t := s.T()
 	f := newVersionFixture(t)
 	f.exporter.response = documents(unit("ou-1"), unit("ou-3"), childUnit("ou-2", "ou-1"))
@@ -257,17 +258,77 @@ func (s *DependenciesTestSuite) TestARemovalWaitsForTheUpdateThatStopsNamingIt()
 	require.Nil(t, svcErr)
 	sentBefore := len(f.client.sent)
 
-	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
-
-	require.NotNil(t, svcErr)
-	assert.Equal(t, ErrorRemovalInUse.Code, svcErr.Code)
-	assert.Len(t, f.client.sent, sentBefore, "a refused apply reached the gateway")
-
-	_, svcErr = f.svc.Apply(context.Background(), "gw-1",
-		ApplyRequest{Selection: &[]string{"organization_unit/ou-2"}})
-	require.Nil(t, svcErr)
 	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+
 	require.Nil(t, svcErr)
-	assert.Equal(t, []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"}}, f.client.last().Deletions)
+	require.Len(t, f.client.sent, sentBefore+2, "the removal was not sent on its own after the update")
+	first, second := f.client.sent[sentBefore], f.client.sent[sentBefore+1]
+	assert.Equal(t, childUnit("ou-2", "ou-3"), first.Content)
+	assert.Empty(t, first.Deletions, "the removal was sent with the update that frees it")
+	assert.Empty(t, second.Content)
+	assert.Equal(t, []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"}}, second.Deletions)
 	assert.True(t, result.Recorded)
+	master, _ := f.svc.GetMaster(context.Background(), "gw-1")
+	removed, _ := entryOf(master, "organization_unit/ou-1")
+	assert.Equal(t, EntryRemoved, removed.State)
+	assert.Equal(t, MasterSummary{Deployed: 2, Removed: 1}, master.Summary)
+}
+
+// When the gateway refuses the update that would free a removal, the removal is not sent: the resource
+// stays in place, recorded as the gateway keeps it, and the diff offers the removal again.
+func (s *DependenciesTestSuite) TestARemovalWaitsWhileItsUpdateIsRefused() {
+	t := s.T()
+	f := newVersionFixture(t)
+	f.exporter.response = documents(unit("ou-1"), childUnit("ou-2", "ou-1"))
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.Nil(t, svcErr)
+	f.exporter.response = documents(unit("ou-3"), childUnit("ou-2", "ou-3"))
+	_, svcErr = f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+	f.client.imported = answerOf(wrote("ou-3"), refused("ou-2", "ou-2", "OU-7"))
+	sentBefore := len(f.client.sent)
+
+	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+
+	require.Nil(t, svcErr)
+	assert.Len(t, f.client.sent, sentBefore+1, "a removal was sent although its update was refused")
+	assert.Empty(t, f.client.last().Deletions)
+	assert.True(t, result.Recorded)
+	master, _ := f.svc.GetMaster(context.Background(), "gw-1")
+	kept, _ := entryOf(master, "organization_unit/ou-1")
+	assert.Equal(t, EntryDeployed, kept.State, "the resource the refused update still names was dropped")
+	diff, _ := f.svc.Diff(context.Background(), "gw-1", "")
+	offered := map[string]ChangeKind{}
+	for _, change := range diff.Changes {
+		offered[change.Key] = change.Change
+	}
+	assert.Equal(t, ChangeDeleted, offered["organization_unit/ou-1"])
+	assert.Equal(t, ChangeUpdated, offered["organization_unit/ou-2"])
+}
+
+// A dry run sends every removal at once, since nothing is written, and two answers merge into one.
+func (s *DependenciesTestSuite) TestADryRunSendsEveryRemovalAtOnce() {
+	t := s.T()
+	f := newVersionFixture(t)
+	f.exporter.response = documents(unit("ou-1"), childUnit("ou-2", "ou-1"))
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.Nil(t, svcErr)
+	f.exporter.response = documents(unit("ou-3"), childUnit("ou-2", "ou-3"))
+	_, svcErr = f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{DryRun: true})
+
+	require.Nil(t, svcErr)
+	assert.True(t, f.client.last().DryRun)
+	assert.Equal(t, []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"}}, f.client.last().Deletions)
+
+	merged := mergeAnswers(json.RawMessage(`{"summary":{"imported":2,"failed":0},"results":[{"status":"success"}]}`),
+		json.RawMessage(`{"summary":{"deleted":1,"failed":0},"results":[{"operation":"delete","status":"success"}]}`))
+	assert.JSONEq(t, `{"summary":{"imported":2,"deleted":1,"failed":0},"results":[{"status":"success"},`+
+		`{"operation":"delete","status":"success"}]}`, string(merged))
 }

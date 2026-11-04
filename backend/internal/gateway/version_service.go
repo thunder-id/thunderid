@@ -653,8 +653,9 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 		}
 	}
 	sent, svcErr := chosen(diff, target, selection, options.withDependencies)
+	sentDocuments := parseBundle(sent.content)
 	if svcErr == nil {
-		svcErr = refuseRemovalsInUse(sent, previous)
+		svcErr = refuseRemovalsInUse(sent, previous, sentDocuments)
 	}
 	if svcErr == nil {
 		svcErr = s.refuseUnconfirmedRemovals(ctx, gw, len(sent.deletions), options)
@@ -676,26 +677,23 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 		variables = opened
 	}
 
+	// A removal that an update in this apply frees goes after the update, once the gateway accepted it.
+	now, after, awaiting := deferredRemovals(sent.deletions, parseBundle(previous.Resources), sentDocuments)
 	request := gatewayImportRequest{
 		Content:   sent.content,
 		Variables: variables,
 		DryRun:    dryRun,
 		Options:   gatewayImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
-		Deletions: sent.deletions,
+		Deletions: now,
 	}
 	if !dryRun {
 		if svcErr := s.mayStillSend(ctx, gw, target, token, prepared); svcErr != nil {
 			return nil, svcErr
 		}
 	}
-	// With nothing to send, the gateway is not called: its master already holds the version. The
-	// version is recorded as applied all the same, so a revert returns to what was held before.
-	answer, err := json.RawMessage(`{"results":[]}`), error(nil)
-	if request.Content != "" || len(request.Deletions) > 0 {
-		answer, err = s.client.Import(ctx, gw, key, request)
-	}
+	answer, wrote, err := s.send(ctx, gw, key, &request, after, awaiting)
 	// Once the gateway may have written any of it, the version is kept as it is.
-	delivered = mayHaveWritten(err)
+	delivered = wrote || mayHaveWritten(err)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to apply a version to a gateway", log.String("gatewayId", gw.ID),
 			log.Int("version", target.Seq), log.Error(err))
@@ -811,6 +809,38 @@ func levelWith(master *Master, version *Version) appliedState {
 	}
 	state.complete = state.held == state.total && !extra
 	return state
+}
+
+// send writes an apply's import and returns the gateway's answer, as one, with whether the gateway
+// may have written any of it. With nothing to send, the gateway is not called: its master already
+// holds the version, which is recorded as applied all the same, so a revert returns to what was held
+// before. A removal that waits for an update goes in a second import, once the first says the gateway
+// accepted the update; one whose update was refused stays in place. A dry run sends everything at
+// once, since nothing is written. The request is left naming every removal sent.
+func (s *versionService) send(ctx context.Context, gw *Gateway, key string, request *gatewayImportRequest,
+	after []gatewayDeletion, awaiting map[string][]bundleResource) (json.RawMessage, bool, error) {
+	if request.Content == "" && len(request.Deletions) == 0 && len(after) == 0 {
+		return json.RawMessage(`{"results":[]}`), false, nil
+	}
+	if request.DryRun {
+		request.Deletions = append(request.Deletions, after...)
+		answer, err := s.client.Import(ctx, gw, key, *request)
+		return answer, false, err
+	}
+	answer, err := s.client.Import(ctx, gw, key, *request)
+	if err != nil {
+		return nil, mayHaveWritten(err), err
+	}
+	released := releasedRemovals(after, awaiting, answer)
+	if len(released) == 0 {
+		return answer, true, nil
+	}
+	more, err := s.client.Import(ctx, gw, key, gatewayImportRequest{Options: request.Options, Deletions: released})
+	if err != nil {
+		return nil, true, err
+	}
+	request.Deletions = append(request.Deletions, released...)
+	return mergeAnswers(answer, more), true, nil
 }
 
 // mayStillSend reports whether an apply may send its import now. A lease held longer than an apply

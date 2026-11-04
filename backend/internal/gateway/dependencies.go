@@ -4,6 +4,7 @@
 package gateway
 
 import (
+	"encoding/json"
 	"regexp"
 	"sort"
 	"strings"
@@ -112,9 +113,10 @@ func lacking(selection []string, changes []Change) []string {
 }
 
 // stillReferenced returns the removals that a document the gateway keeps still names by id, each with
-// the key that names it: removing it would leave that document pointing at nothing. A document
-// removed in the same apply does not count.
-func stillReferenced(deletions []gatewayDeletion, held []bundleResource) []string {
+// the key that names it: removing it would leave that document pointing at nothing. The documents are
+// read as this apply leaves them: one the apply writes over is read as the version has it, so a
+// removal it no longer names goes through, and one removed in the same apply does not count.
+func stillReferenced(deletions []gatewayDeletion, held, updated []bundleResource) []string {
 	if len(deletions) == 0 {
 		return nil
 	}
@@ -123,7 +125,7 @@ func stillReferenced(deletions []gatewayDeletion, held []bundleResource) []strin
 		removing[deletion.ResourceType+"/"+deletion.ID] = true
 	}
 	var referenced []string
-	for holder, needs := range needsOf(held) {
+	for holder, needs := range needsOf(projectedOver(held, updated)) {
 		if removing[holder] {
 			continue
 		}
@@ -135,4 +137,141 @@ func stillReferenced(deletions []gatewayDeletion, held []bundleResource) []strin
 	}
 	sort.Strings(referenced)
 	return referenced
+}
+
+// projectedOver is what a gateway keeps once an apply's documents are written over it.
+func projectedOver(held, updated []bundleResource) []bundleResource {
+	byKey := make(map[string]bundleResource, len(held)+len(updated))
+	order := make([]string, 0, len(held)+len(updated))
+	for _, resource := range held {
+		byKey[resource.key()] = resource
+		order = append(order, resource.key())
+	}
+	for _, resource := range updated {
+		if _, ok := byKey[resource.key()]; !ok {
+			order = append(order, resource.key())
+		}
+		byKey[resource.key()] = resource
+	}
+	projected := make([]bundleResource, 0, len(order))
+	for _, key := range order {
+		projected = append(projected, byKey[key])
+	}
+	return projected
+}
+
+// deferredRemovals splits an apply's removals into those sent with its documents and those sent only
+// once the documents are written: a removal that a document the gateway keeps names, which this apply
+// updates to stop naming it, waits for that update, so a refused update leaves the resource in place.
+// For each removal that waits it returns the documents the gateway has to accept first.
+func deferredRemovals(deletions []gatewayDeletion, held,
+	updated []bundleResource) (now, after []gatewayDeletion, awaiting map[string][]bundleResource) {
+	if len(deletions) == 0 || len(updated) == 0 {
+		return deletions, nil, nil
+	}
+	updating := make(map[string]bundleResource, len(updated))
+	for _, resource := range updated {
+		updating[resource.key()] = resource
+	}
+	holders := map[string][]bundleResource{}
+	for holder, needs := range needsOf(held) {
+		resource, ok := updating[holder]
+		if !ok {
+			continue
+		}
+		for _, needed := range needs {
+			holders[needed] = append(holders[needed], resource)
+		}
+	}
+	awaiting = map[string][]bundleResource{}
+	for _, deletion := range deletions {
+		key := deletion.ResourceType + "/" + deletion.ID
+		if held, ok := holders[key]; ok {
+			after = append(after, deletion)
+			awaiting[key] = held
+			continue
+		}
+		now = append(now, deletion)
+	}
+	return now, after, awaiting
+}
+
+// releasedRemovals returns, of the removals that waited for an update, those whose updates the
+// gateway accepted, read from its answer the way the master reads it. One whose update the gateway
+// refused, or did not answer for while refusing something, stays in place.
+func releasedRemovals(after []gatewayDeletion, awaiting map[string][]bundleResource,
+	answer json.RawMessage) []gatewayDeletion {
+	if len(after) == 0 {
+		return nil
+	}
+	outcomes, answered := outcomesOf(answer)
+	if !answered {
+		return nil
+	}
+	// Read as the master reads the answer: a document the answer names is accepted when it says so,
+	// and one it does not name is taken as written unless the gateway refused something it did not name.
+	matcher := newOutcomeMatcher(outcomes)
+	named := map[string]*importOutcome{}
+	for _, held := range awaiting {
+		for _, resource := range held {
+			if _, seen := named[resource.key()]; !seen {
+				named[resource.key()] = matcher.take(resource, false)
+			}
+		}
+	}
+	unnamedFailure := matcher.refusedUnnamed()
+	accepted := make(map[string]bool, len(named))
+	for key, outcome := range named {
+		if outcome == nil {
+			accepted[key] = !unnamedFailure
+			continue
+		}
+		accepted[key] = outcome.Status == outcomeSuccess
+	}
+	var released []gatewayDeletion
+	for _, deletion := range after {
+		ready := true
+		for _, resource := range awaiting[deletion.ResourceType+"/"+deletion.ID] {
+			ready = ready && accepted[resource.key()]
+		}
+		if ready {
+			released = append(released, deletion)
+		}
+	}
+	return released
+}
+
+// mergeAnswers joins the answers of two imports into one: the results in order, the summary summed.
+func mergeAnswers(first, second json.RawMessage) json.RawMessage {
+	type parsed struct {
+		Summary map[string]json.RawMessage `json:"summary"`
+		Results []json.RawMessage          `json:"results"`
+	}
+	var a, b parsed
+	if json.Unmarshal(first, &a) != nil || json.Unmarshal(second, &b) != nil {
+		return first
+	}
+	summary := map[string]interface{}{}
+	for _, part := range []map[string]json.RawMessage{a.Summary, b.Summary} {
+		for key, raw := range part {
+			var number float64
+			if json.Unmarshal(raw, &number) == nil {
+				sum, _ := summary[key].(float64)
+				summary[key] = sum + number
+				continue
+			}
+			if _, ok := summary[key]; !ok {
+				summary[key] = raw
+			}
+		}
+	}
+	results := append(append([]json.RawMessage{}, a.Results...), b.Results...)
+	if results == nil {
+		results = []json.RawMessage{}
+	}
+	merged, err := json.Marshal(map[string]interface{}{"summary": summary, "results": results})
+	if err != nil {
+		return first
+	}
+	return merged
 }

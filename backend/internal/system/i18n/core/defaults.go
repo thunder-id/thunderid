@@ -1060,7 +1060,7 @@ var defaultMessages = map[string]string{
 	"error.gatewayservice.promote_to_itself": "The source and target are the same gateway",
 	"error.gatewayservice.promote_to_itself.description": "Promote from one gateway to another.",
 	"error.gatewayservice.removal_in_use": "A resource to remove is still needed by one the gateway keeps",
-	"error.gatewayservice.removal_in_use.description": "Remove the resources that need it in the same apply, deploy an update that stops them needing it first, or leave it in place.",
+	"error.gatewayservice.removal_in_use.description": "Remove or update the resources that need it in the same apply, or leave it in place.",
 	"error.gatewayservice.removals_need_confirmation": "This apply would remove many resources from the gateway",
 	"error.gatewayservice.removals_need_confirmation.description": "Review the removals with a dry run, then apply again with confirmRemovals set to go ahead.",
 	"error.gatewayservice.resource_not_deployed": "No apply to this gateway has recorded the resource",
