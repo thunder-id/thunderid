@@ -73,10 +73,7 @@ func (b *graphBuilder) GetGraph(ctx context.Context, flow *providers.CompleteFlo
 	graph, err := b.buildGraph(ctx, flow)
 	if err != nil {
 		logger.Error(ctx, "Failed to build graph", log.Error(err))
-		return nil, tidcommon.CustomServiceError(errorGraphBuildFailure, tidcommon.I18nMessage{
-			Key:          "error.flow.graphbuilder.graph_build_failure_description",
-			DefaultValue: err.Error(),
-		})
+		return nil, &errorGraphBuildFailure
 	}
 
 	// Cache the built graph

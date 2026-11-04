@@ -182,7 +182,8 @@ func (s *GraphBuilderTestSuite) TestGetGraph_BuildFailure() {
 	s.Nil(graph)
 	s.NotNil(err)
 	s.Equal(errorGraphBuildFailure.Code, err.Code)
-	s.Contains(err.ErrorDescription.DefaultValue, "node creation error")
+	s.Equal(errorGraphBuildFailure.ErrorDescription.DefaultValue, err.ErrorDescription.DefaultValue)
+	s.NotContains(err.ErrorDescription.DefaultValue, "node creation error")
 }
 
 func (s *GraphBuilderTestSuite) TestGetGraph_CacheSetError() {
