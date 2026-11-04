@@ -23,6 +23,7 @@ import (
 
 	"github.com/thunder-id/thunderid/tools/cli/internal/commands/integrate"
 	"github.com/thunder-id/thunderid/tools/cli/internal/commands/sample"
+	"github.com/thunder-id/thunderid/tools/cli/internal/plane"
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/docs"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/health"
@@ -574,6 +575,9 @@ func NewReplModel(
 	commands = append(commands, logCmd)
 	commands = append(commands, defaultCommands...)
 
+	// The onboarding offers the sample apps, which run on a Data Plane install only.
+	showOnboarding := isFirstRun && setup.PlaneOf(installPath) == plane.Data
+
 	return ReplModel{
 		input:          ti,
 		spinner:        s,
@@ -586,7 +590,7 @@ func NewReplModel(
 		proc:           proc,
 		width:          80,
 		height:         24,
-		showOnboarding: isFirstRun,
+		showOnboarding: showOnboarding,
 		onboardingList: newOnboardingList(80),
 		body:           newOutputViewport(),
 		guideViewport:  viewport.New(),
@@ -702,6 +706,20 @@ func waitForSampleResult(sampleName string, ch <-chan sample.Result) tea.Cmd {
 		}
 		return sampleDoneMsg{proc: r.Proc, sampleName: sampleName, sampleURL: r.SampleURL, serverURL: r.ServerURL, features: r.Features}
 	}
+}
+
+// dataPlaneURL returns the base URL of the quickstart's Data Plane, on the scheme the
+// session's server answered on, or "" for an install that runs a single server.
+func (m ReplModel) dataPlaneURL() string {
+	port := setup.DataPlanePort(m.installPath)
+	if port <= 0 {
+		return ""
+	}
+	scheme := "https"
+	if strings.HasPrefix(m.baseURL, "http://") {
+		scheme = "http"
+	}
+	return fmt.Sprintf("%s://localhost:%d", scheme, port)
 }
 
 func (m ReplModel) effectivePort() int {
@@ -1147,11 +1165,11 @@ func (m ReplModel) update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 			m.tryingOut = false
 			m.guideLoading = true
 			m.guideLabel = p.Label
-			m.guideDocURL = docs.SiteURL(p.Slug)
+			m.guideDocURL = docs.SiteURL(m.version, p.Slug)
 			m.input.Blur()
-			slug := p.Slug
+			slug, version := p.Slug, m.version
 			cmds = append(cmds, func() tea.Msg {
-				markdown, err := docs.FetchGuide(slug)
+				markdown, err := docs.FetchGuide(version, slug)
 				return guideLoadedMsg{markdown: markdown, err: err}
 			})
 			break
@@ -1509,7 +1527,17 @@ func (m *ReplModel) stopThunderID(explicit bool) error {
 	if !productOnPort(port) {
 		return nil // nothing of ours is listening
 	}
-	return stopPort(port)
+	// The quickstart runs more than one server, and the session only tracks the port it is
+	// known by, so the others are stopped along with it.
+	// One port that will not free must not leave the others running, so every port is tried and
+	// the first failure is reported.
+	var firstErr error
+	for _, p := range setup.InstallPorts(m.installPath, port) {
+		if err := stopPort(p); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // stopTimeout bounds an explicit stop of an attached instance.
@@ -1753,17 +1781,26 @@ func (m ReplModel) credentialsBox() string {
 		return ""
 	}
 	label := lipgloss.NewStyle().Foreground(lipgloss.Color(colorGrey)).Width(10)
-	rows := lipgloss.JoinVertical(lipgloss.Left,
-		Bold("Admin credentials"),
-		label.Render("Username")+Cyan(m.adminCreds.Username),
-		label.Render("Password")+Cyan(m.adminCreds.Password),
-		Dim("Sign in to the Console with these credentials."),
-	)
+	var rows []string
+	for _, account := range credentialAccounts(m.adminCreds) {
+		if len(rows) > 0 {
+			rows = append(rows, "")
+		}
+		rows = append(rows,
+			Bold(account.title),
+			label.Render("Username")+Cyan(account.creds.Username),
+			label.Render("Password")+Cyan(account.creds.Password),
+			Dim(account.hint),
+		)
+	}
+	if len(rows) == 0 {
+		return ""
+	}
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(colorBrandBlue)).
 		Padding(0, 1).
-		Render(rows)
+		Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 }
 
 // View implements tea.Model.
@@ -1827,7 +1864,7 @@ func (m ReplModel) bodyPreamble() string {
 	case statusStarting:
 		b.WriteString(m.spinner.View() + " Starting...\n")
 	case statusReady:
-		b.WriteString(StatusBoxString(m.baseURL) + "\n")
+		b.WriteString(StatusBoxString(m.baseURL, m.dataPlaneURL()) + "\n")
 	case statusStopped:
 		b.WriteString(Red("○") + " Stopped\n")
 	}

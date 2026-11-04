@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/tools/cli/internal/cli"
 	"github.com/thunder-id/thunderid/tools/cli/internal/commands/sample"
 	"github.com/thunder-id/thunderid/tools/cli/internal/commands/upgrade"
+	"github.com/thunder-id/thunderid/tools/cli/internal/plane"
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/config"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/release"
@@ -20,7 +21,16 @@ import (
 
 // version is the CLI version. It is injected at build time via
 // -ldflags "-X main.version=<v>" and keeps the placeholder below for local builds.
-var version = "0.0.0-semantically-released"
+var version = devVersion
+
+// devVersion is the version a local build reports.
+const devVersion = "0.0.0-semantically-released"
+
+// isPrereleaseBuild reports whether v is a prerelease version, which is what the next channel
+// publishes (1.1.0-next.0). A local build's placeholder is not one, so it tracks stable releases.
+func isPrereleaseBuild(v string) bool {
+	return v != devVersion && strings.Contains(v, "-")
+}
 
 func main() {
 	args := os.Args[1:]
@@ -38,6 +48,13 @@ func main() {
 		ui.Fatal(err.Error())
 		os.Exit(1)
 	}
+	if err := configurePlane(args); err != nil {
+		ui.Fatal(err.Error())
+		os.Exit(1)
+	}
+	// A CLI published on the next channel carries a prerelease version, and installs the newest
+	// release, prereleases included. Every other CLI installs the newest stable release.
+	release.Default.Prereleases = isPrereleaseBuild(version)
 
 	// --help can follow a flag, so it is matched anywhere rather than only in first position.
 	if hasFlag(args, "--help", "-h") {
@@ -121,17 +138,24 @@ Flags:
   --verbose, -v        Show detailed output
   --setup              Force re-run setup
   --version, -V        Show the CLI version
+  --plane              Distribution to install: quickstart (Control Plane and Data
+                       Plane) or dp (the Data Plane alone). Defaults to the quickstart
+                       when the release ships one, and to the Data Plane otherwise.
   --product-version    Release to install, or the manifest to read releases from.
-                       Takes a version (1.0.1) or a URL (https://example.com/releases.json).
-                       Pass it twice to combine the two. Also read from
-                       THUNDERID_PRODUCT_VERSION.
+                       Takes a version (1.0.1), a manifest URL
+                       (https://example.com/releases.json), or a GitHub release page
+                       (https://github.com/<owner>/<repo>/releases/tag/v2.0.0-m1).
+                       Pass it twice to combine a version and a manifest. Also read
+                       from THUNDERID_PRODUCT_VERSION.
   --help, -h           Show this help message
 
 Examples:
+  %s --plane dp
   %s --product-version 1.0.1
   %s --product-version https://releases.example.com/releases.json
   %s --product-version https://releases.example.com/releases.json --product-version 1.0.1
-`, product.Slug, product.Name, product.Slug, product.Slug, product.Slug)
+  %s --product-version https://github.com/<owner>/<repo>/releases/tag/v2.0.0-m1
+`, product.Slug, product.Name, product.Slug, product.Slug, product.Slug, product.Slug, product.Slug)
 }
 
 // configureReleaseSource applies --product-version, falling back to THUNDERID_PRODUCT_VERSION so
@@ -154,19 +178,45 @@ func configureReleaseSource(args []string) error {
 	return nil
 }
 
+// configurePlane applies --plane, the distribution to install. Without it the release decides:
+// the quickstart when it ships one.
+func configurePlane(args []string) error {
+	values := flagValues(args, planeFlag)
+	switch len(values) {
+	case 0:
+		return nil
+	case 1:
+		p, err := plane.Parse(values[0])
+		if err != nil {
+			return err
+		}
+		release.Default.Plane = p
+		return nil
+	default:
+		return fmt.Errorf("--plane was given more than once; pass one plane")
+	}
+}
+
+const planeFlag = "--plane"
+
 // productVersionFlags collects every --product-version value, accepting both "--flag value" and
 // "--flag=value".
 func productVersionFlags(args []string) []string {
+	return flagValues(args, productVersionFlag)
+}
+
+// flagValues collects every value of flag, accepting both "--flag value" and "--flag=value".
+func flagValues(args []string, flag string) []string {
 	var values []string
 	for i := 0; i < len(args); i++ {
 		switch {
-		case args[i] == productVersionFlag:
+		case args[i] == flag:
 			if i+1 < len(args) {
 				values = append(values, args[i+1])
 				i++
 			}
-		case strings.HasPrefix(args[i], productVersionFlag+"="):
-			values = append(values, strings.TrimPrefix(args[i], productVersionFlag+"="))
+		case strings.HasPrefix(args[i], flag+"="):
+			values = append(values, strings.TrimPrefix(args[i], flag+"="))
 		}
 	}
 	return values

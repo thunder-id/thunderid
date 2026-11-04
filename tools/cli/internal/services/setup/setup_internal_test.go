@@ -164,3 +164,34 @@ func TestListenerPIDs_NoListener(t *testing.T) {
 	require.NoError(t, err, "nothing listening is not a lookup failure")
 	assert.Empty(t, pids)
 }
+
+// The quickstart prints its accounts in a block the CLI does not parse, so the CLI settles both
+// passwords itself and hands them to setup.
+func TestQuickstartAccounts_GeneratesWhatWasNotSupplied(t *testing.T) {
+	t.Setenv("THUNDERID_SERVICE_DESK_USERNAME", "")
+	t.Setenv("THUNDERID_SERVICE_DESK_PASSWORD", "")
+
+	adminPass, env, creds := quickstartAccounts("admin", "")
+
+	require.NotNil(t, creds)
+	assert.NotEmpty(t, adminPass)
+	assert.Equal(t, "admin", creds.Username)
+	assert.Equal(t, adminPass, creds.Password)
+	require.NotNil(t, creds.ServiceDesk)
+	assert.Equal(t, "servicedeskadmin", creds.ServiceDesk.Username)
+	assert.Contains(t, env, "SERVICE_DESK_USERNAME=servicedeskadmin")
+	assert.Contains(t, env, "SERVICE_DESK_PASSWORD="+creds.ServiceDesk.Password)
+}
+
+// Supplied passwords are already known to the operator, so they are passed on but not repeated.
+func TestQuickstartAccounts_KeepsSuppliedPasswords(t *testing.T) {
+	t.Setenv("THUNDERID_SERVICE_DESK_USERNAME", "desk")
+	t.Setenv("THUNDERID_SERVICE_DESK_PASSWORD", "desk-pass1!")
+
+	adminPass, env, creds := quickstartAccounts("admin", "admin-pass1!")
+
+	assert.Equal(t, "admin-pass1!", adminPass)
+	assert.Nil(t, creds)
+	assert.Contains(t, env, "SERVICE_DESK_USERNAME=desk")
+	assert.Contains(t, env, "SERVICE_DESK_PASSWORD=desk-pass1!")
+}

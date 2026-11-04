@@ -242,17 +242,19 @@ jobs:
           fi
           echo "✅ Every composite action this workflow uses is present and compatible"
 
-      # Branches that predate tests/e2e-cli cannot run the CLI release gate.
+      # Branches that predate tests/e2e-cli still get the CLI release gate. The CLI is released from
+      # main, apart from the product, so main's CLI and suite are what users run against this
+      # release: the gate takes them from this workflow's own commit instead of skipping.
       - name: 🔎 Detect the CLI End-to-End Suite
         id: cli_suite
         run: |
           if [ -f tests/e2e-cli/package.json ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
-            echo "✅ tests/e2e-cli is present, so the CLI release gate runs"
+            echo "✅ tests/e2e-cli is present, so the CLI release gate runs it from the release commit"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "⏭️ tests/e2e-cli is absent on '${RELEASE_BRANCH}', so the CLI release gate is skipped"
-            echo "⏭️ \`tests/e2e-cli\` is absent on \`${RELEASE_BRANCH}\`, so the CLI release gate did not run." \
+            echo "ℹ️ tests/e2e-cli is absent on '${RELEASE_BRANCH}', so the CLI release gate runs main's"
+            echo "ℹ️ \`tests/e2e-cli\` is absent on \`${RELEASE_BRANCH}\`, so the CLI release gate ran main's CLI and suite." \
               >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -636,7 +638,6 @@ jobs:
   test-cli:
     name: 🎭 Verify the CLI Installs This Release
     needs: [resolve, build]
-    if: ${{ needs.resolve.outputs.cli_suite == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout the Release Commit
@@ -653,6 +654,24 @@ jobs:
             echo "::error::Workspace is at $ACTUAL but the release commit is $EXPECTED"
             exit 1
           fi
+
+      # The release branch predates the suite, so the CLI and the suite come from this workflow's
+      # commit on main, which is where the CLI is released from. The product under test is still
+      # the distribution this run built from the release commit.
+      - name: 📥 Take the CLI and Its Suite From main
+        if: ${{ needs.resolve.outputs.cli_suite != 'true' }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git checkout FETCH_HEAD -- tests/e2e-cli tools/cli tools/npx
+          echo "✅ Using tests/e2e-cli, tools/cli and tools/npx from $GITHUB_SHA"
+
+      # global-setup.ts builds the CLI binary that the npx wrapper resolves.
+      - name: ⚙️ Set up Go Environment
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/cli/go.mod
+          cache-dependency-path: tools/cli/go.sum
 
       - name: 📥 Download the Release Distribution
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

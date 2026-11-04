@@ -4,6 +4,7 @@
 package release
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/thunder-id/thunderid/tools/cli/internal/plane"
 )
 
 // A download cut off mid-transfer used to leave its partial file on disk — tens of
@@ -279,31 +282,32 @@ func TestFindAsset_MatchesTheLatestReleaseByVersion(t *testing.T) {
 
 // Once a gateway-named release is the latest, the manifest still lists v1.1.0 and older under the
 // older name, so whether that name applies has to be decided for the requested release alone.
-func TestFindDataPlaneAsset_DecidesTheNamePerRelease(t *testing.T) {
+func TestFindPlaneAsset_DecidesTheNamePerRelease(t *testing.T) {
 	latest := releaseEntry{
 		TagName: "v1.2.0",
 		Assets: []releaseAsset{
-			{Name: "thunderid-1.2.0-linux-x64.zip", DownloadURL: "https://example.com/1.2.0/quickstart"},
-			{Name: "thunderid-gateway-1.2.0-linux-x64.zip", DownloadURL: "https://example.com/1.2.0/gateway"},
+			{Name: assetName(t, "thunderid", "1.2.0"), DownloadURL: "https://example.com/1.2.0/quickstart"},
+			{Name: assetName(t, "thunderid-gateway", "1.2.0"), DownloadURL: "https://example.com/1.2.0/gateway"},
 		},
 	}
 	data := &releasesData{
 		LatestRelease: latest,
 		Releases: []releaseEntry{latest, {
 			TagName: "v1.1.0",
-			Assets:  []releaseAsset{{Name: "thunderid-1.1.0-linux-x64.zip", DownloadURL: "https://example.com/1.1.0"}},
+			Assets:  []releaseAsset{{Name: assetName(t, "thunderid", "1.1.0"), DownloadURL: "https://example.com/1.1.0"}},
 		}},
 	}
 
-	found, name := findDataPlaneAsset(data, "1.2.0", "thunderid-gateway-1.2.0-linux-x64.zip")
-	require.NotNil(t, found)
+	c := &Client{Plane: plane.Data}
+	found, name, err := c.findPlaneAsset(data, "1.2.0")
+	require.NoError(t, err)
 	assert.Equal(t, "https://example.com/1.2.0/gateway", found.DownloadURL)
-	assert.Equal(t, "thunderid-gateway-1.2.0-linux-x64.zip", name)
+	assert.Equal(t, assetName(t, "thunderid-gateway", "1.2.0"), name)
 
-	found, name = findDataPlaneAsset(data, "1.1.0", "thunderid-gateway-1.1.0-linux-x64.zip")
-	require.NotNil(t, found)
+	found, name, err = c.findPlaneAsset(data, "1.1.0")
+	require.NoError(t, err)
 	assert.Equal(t, "https://example.com/1.1.0", found.DownloadURL)
-	assert.Equal(t, "thunderid-1.1.0-linux-x64.zip", name)
+	assert.Equal(t, assetName(t, "thunderid", "1.1.0"), name)
 }
 
 // A custom source is authoritative: reaching for the public GitHub API behind the operator's back
@@ -312,4 +316,187 @@ func TestFetchReleasesData_NoFallbackWhenDisabled(t *testing.T) {
 	_, err := fetchReleasesDataFrom("http://127.0.0.1:1/releases.json", "")
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "fallback", "an empty fallback must not be attempted")
+}
+
+// releaseWithPacks builds a manifest whose only release ships the packs named by stem for this
+// platform.
+func releaseWithPacks(t *testing.T, version string, stems ...string) *releasesData {
+	t.Helper()
+	entry := releaseEntry{TagName: "v" + version}
+	for _, stem := range stems {
+		name, err := PlatformAssetName(stem, version)
+		require.NoError(t, err)
+		entry.Assets = append(entry.Assets, releaseAsset{Name: name, DownloadURL: "https://example.com/" + name})
+	}
+	return &releasesData{LatestRelease: entry}
+}
+
+func assetName(t *testing.T, stem, version string) string {
+	t.Helper()
+	name, err := PlatformAssetName(stem, version)
+	require.NoError(t, err)
+	return name
+}
+
+// A 2.x release names its Data Plane pack thunderid-gateway and gives the product's name to the
+// quickstart, which is what a run without --plane installs.
+func TestFindPlaneAsset_AutoPrefersTheQuickstart(t *testing.T) {
+	data := releaseWithPacks(t, "2.0.0", gatewayStem, "thunderid")
+
+	found, name, err := (&Client{}).findPlaneAsset(data, "2.0.0")
+	require.NoError(t, err)
+	assert.Equal(t, assetName(t, "thunderid", "2.0.0"), name)
+	assert.Equal(t, "https://example.com/"+name, found.DownloadURL)
+}
+
+func TestFindPlaneAsset_DataPlaneOfA2xReleaseIsTheGateway(t *testing.T) {
+	data := releaseWithPacks(t, "2.0.0", gatewayStem, "thunderid")
+
+	_, name, err := (&Client{Plane: plane.Data}).findPlaneAsset(data, "2.0.0")
+	require.NoError(t, err)
+	assert.Equal(t, assetName(t, gatewayStem, "2.0.0"), name)
+}
+
+// A 1.x release ships only the Data Plane, under the product's name, so the same name that is the
+// quickstart in 2.x is the Data Plane here.
+func TestFindPlaneAsset_A1xReleaseIsTheDataPlane(t *testing.T) {
+	data := releaseWithPacks(t, "1.1.0", "thunderid")
+
+	for _, c := range []*Client{{}, {Plane: plane.Data}} {
+		_, name, err := c.findPlaneAsset(data, "1.1.0")
+		require.NoError(t, err)
+		assert.Equal(t, assetName(t, "thunderid", "1.1.0"), name)
+	}
+}
+
+// Asking for a plane the release does not ship names the ones it does, rather than installing
+// another plane under the name of the one asked for.
+func TestFindPlaneAsset_MissingPlaneListsTheAvailableOnes(t *testing.T) {
+	data := releaseWithPacks(t, "1.1.0", "thunderid")
+
+	_, _, err := (&Client{Plane: plane.Quickstart}).findPlaneAsset(data, "1.1.0")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no quickstart")
+	assert.Contains(t, err.Error(), "it ships: dp")
+}
+
+func TestFindPlaneAsset_MissingReleaseNamesTheVersions(t *testing.T) {
+	data := releaseWithPacks(t, "1.1.0", "thunderid")
+
+	_, _, err := (&Client{ManifestURL: "https://example.com/releases.json"}).findPlaneAsset(data, "9.9.9")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "available: v1.1.0")
+}
+
+// A stable CLI keeps prereleases out of the versions it names, so a milestone stays unannounced;
+// a next-channel CLI names them.
+func TestAvailableVersions_PrereleasesOnlyOnTheNextChannel(t *testing.T) {
+	data := &releasesData{
+		LatestRelease: releaseEntry{TagName: "v1.1.0"},
+		Releases: []releaseEntry{
+			{TagName: "v2.0.0-m1", IsPrerelease: true},
+			{TagName: "v1.1.0"},
+		},
+	}
+
+	assert.Equal(t, " (available: v1.1.0)", (&Client{}).availableVersions(data))
+	assert.Equal(t, " (available: v1.1.0, v2.0.0-m1)", (&Client{Prereleases: true}).availableVersions(data))
+}
+
+// A release read from a GitHub release page offers its own assets, and the plane is picked from
+// them like from any manifest.
+func TestGitHubRelease_ResolvesThePlaneFromTheRelease(t *testing.T) {
+	quickstart := assetName(t, "thunderid", "2.0.0-m1")
+	dataPlane := assetName(t, gatewayStem, "2.0.0-m1")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"v2.0.0-m1","assets":[` +
+			`{"name":"` + dataPlane + `","browser_download_url":"https://example.com/dp.zip"},` +
+			`{"name":"` + quickstart + `","browser_download_url":"https://example.com/qs.zip"}]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := &Client{ManifestURL: srv.URL, GitHubRelease: true, PinnedVersion: "2.0.0-m1"}
+	latest, err := c.LatestVersion()
+	require.NoError(t, err)
+	assert.Equal(t, "2.0.0-m1", latest)
+
+	data, err := c.fetchReleasesData()
+	require.NoError(t, err)
+	found, name, err := c.findPlaneAsset(data, "2.0.0-m1")
+	require.NoError(t, err)
+	assert.Equal(t, quickstart, name)
+	assert.Equal(t, "https://example.com/qs.zip", found.DownloadURL)
+}
+
+// manifestWithPrerelease mirrors releases.json once a milestone is out: the milestone is the newest
+// release, and the latest release is still the newest stable one.
+func manifestWithPrerelease() *releasesData {
+	stable := releaseEntry{TagName: "v1.1.0", IsLatest: true, PublishedAt: "2026-11-02T09:39:35Z"}
+	return &releasesData{
+		LatestRelease: stable,
+		Releases: []releaseEntry{
+			stable,
+			{TagName: "v2.0.0-m1", PublishedAt: "2026-11-04T12:00:00Z"},
+			{TagName: "v1.0.2", PublishedAt: "2026-10-27T07:08:35Z"},
+		},
+	}
+}
+
+func serveManifest(t *testing.T, data *releasesData) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		require.NoError(t, json.NewEncoder(w).Encode(data))
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+func TestLatestVersion_StableChannelSkipsPrereleases(t *testing.T) {
+	c := &Client{ManifestURL: serveManifest(t, manifestWithPrerelease())}
+	got, err := c.LatestVersion()
+	require.NoError(t, err)
+	assert.Equal(t, "1.1.0", got)
+}
+
+func TestLatestVersion_NextChannelTakesTheNewestRelease(t *testing.T) {
+	c := &Client{ManifestURL: serveManifest(t, manifestWithPrerelease()), Prereleases: true}
+	got, err := c.LatestVersion()
+	require.NoError(t, err)
+	assert.Equal(t, "2.0.0-m1", got)
+}
+
+// Once the final release ships after its milestones, the next channel moves to it too.
+func TestLatestVersion_NextChannelTakesAStableReleaseNewerThanThePrereleases(t *testing.T) {
+	data := manifestWithPrerelease()
+	final := releaseEntry{TagName: "v2.0.0", IsLatest: true, PublishedAt: "2026-12-01T00:00:00Z"}
+	data.LatestRelease = final
+	data.Releases = append([]releaseEntry{final}, data.Releases...)
+
+	c := &Client{ManifestURL: serveManifest(t, data), Prereleases: true}
+	got, err := c.LatestVersion()
+	require.NoError(t, err)
+	assert.Equal(t, "2.0.0", got)
+}
+
+// The GitHub fallback carries no publish dates and lists stable releases only, so the next channel
+// reports that it cannot find a prerelease rather than quietly moving onto the stable line.
+func TestLatestVersion_NextChannelWithoutDatesFails(t *testing.T) {
+	data := &releasesData{LatestRelease: releaseEntry{TagName: "v1.1.0"}}
+	c := &Client{ManifestURL: serveManifest(t, data), Prereleases: true}
+	_, err := c.LatestVersion()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "newest prerelease")
+}
+
+// A release page names one release, so the next channel takes it as it is.
+func TestLatestVersion_NextChannelReadsAReleasePageAsIs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"v2.0.0-m1","assets":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := &Client{ManifestURL: srv.URL, GitHubRelease: true, Prereleases: true}
+	got, err := c.LatestVersion()
+	require.NoError(t, err)
+	assert.Equal(t, "2.0.0-m1", got)
 }

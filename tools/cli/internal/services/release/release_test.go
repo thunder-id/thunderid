@@ -17,18 +17,25 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/thunder-id/thunderid/tools/cli/internal/plane"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/release"
 )
 
 func TestPlatformAssetName_Format(t *testing.T) {
-	name, err := release.PlatformAssetName("1.2.3")
+	name, err := release.PlatformAssetName("thunderid", "1.2.3")
 	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(name, "thunderid-gateway-1.2.3-"), "got %q", name)
+	assert.True(t, strings.HasPrefix(name, "thunderid-1.2.3-"), "got %q", name)
 	assert.True(t, strings.HasSuffix(name, ".zip"), "got %q", name)
 }
 
+func TestPlatformAssetName_UsesTheStem(t *testing.T) {
+	name, err := release.PlatformAssetName("thunderid-gateway", "2.0.0")
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(name, "thunderid-gateway-2.0.0-"), "got %q", name)
+}
+
 func TestPlatformAssetName_ContainsPlatformAndArch(t *testing.T) {
-	name, err := release.PlatformAssetName("0.5.0")
+	name, err := release.PlatformAssetName("thunderid", "0.5.0")
 	require.NoError(t, err)
 
 	// Must contain one of the known platform names.
@@ -73,7 +80,7 @@ func TestSampleAssetName_DifferentSamples(t *testing.T) {
 // that second name.
 func packNames(t *testing.T, version string) (gateway, legacy string) {
 	t.Helper()
-	gateway, err := release.PlatformAssetName(version)
+	gateway, err := release.PlatformAssetName("thunderid-gateway", version)
 	require.NoError(t, err)
 	return gateway, "thunderid-" + strings.TrimPrefix(gateway, "thunderid-gateway-")
 }
@@ -126,10 +133,11 @@ func installedPack(t *testing.T, destDir string) string {
 }
 
 // A release that names the Data Plane pack thunderid-gateway-* also lists the quickstart pack as
-// thunderid-<version>-*, which must not be what gets installed.
+// thunderid-<version>-*, which must not be what gets installed when the Data Plane is asked for.
 func TestDownload_InstallsTheGatewayPack(t *testing.T) {
 	gateway, quickstart := packNames(t, "1.2.0")
 	client := serveRelease(t, "1.2.0", quickstart, gateway, "sample-app-wayfinder-1.2.0.zip")
+	client.Plane = plane.Data
 	dest := filepath.Join(t.TempDir(), "install")
 
 	require.NoError(t, client.Download("1.2.0", dest, nil))
@@ -151,22 +159,23 @@ func TestDownload_InstallsTheDataPlanePackOfAReleaseWithoutTheGatewayName(t *tes
 // missing this platform's gateway pack has to fail rather than install the quickstart pack, which
 // runs a different product under the name of the one asked for.
 func TestDownload_DoesNotInstallTheQuickstartPackWhenTheGatewayPackIsMissing(t *testing.T) {
-	gateway, quickstart := packNames(t, "1.2.0")
+	_, quickstart := packNames(t, "1.2.0")
 	client := serveRelease(t, "1.2.0", quickstart, "thunderid-gateway-1.2.0-other-x64.zip")
+	client.Plane = plane.Data
 	dest := filepath.Join(t.TempDir(), "install")
 
 	err := client.Download("1.2.0", dest, nil)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), gateway)
+	assert.Contains(t, err.Error(), "it ships: quickstart")
 	_, statErr := os.Stat(dest)
 	assert.True(t, os.IsNotExist(statErr), "nothing should have been installed")
 }
 
-// The error names the asset the CLI looked for: the older name for a release that lists no
-// gateway asset, and the gateway name otherwise, including for a version the manifest lacks.
+// The error names the asset the CLI looked for. A release without the gateway name, or a version
+// the manifest lacks, has nothing to tell the layout by, so it names the product's own pack.
 func TestDownload_FailsWhenNeitherNameIsListed(t *testing.T) {
 	_, legacy := packNames(t, "1.1.0")
-	unlisted, _ := packNames(t, "9.9.9")
+	_, unlisted := packNames(t, "9.9.9")
 	client := serveRelease(t, "1.1.0", "sample-app-wayfinder-1.1.0.zip")
 
 	tests := []struct {
