@@ -28,6 +28,8 @@ The endpoint follows the [MCP Authorization Specification](https://modelcontextp
 
 Access requires the `system` scope, and permissions come from the signed-in user, so sign in with an administrator account.
 
+To protect against DNS rebinding, the endpoint also checks the `Origin` header that browsers send. It accepts a request only from the origin of the <ProductName /> server URL (`server.public_url` when set) or from an origin allowed in the CORS configuration. It rejects any other origin with `403 Forbidden` before checking the token. Requests without an `Origin` header are not affected.
+
 ## Prerequisites
 
 - <ProductName /> server running (default: `https://localhost:8090`)
@@ -270,7 +272,7 @@ In the <ProductName /> Console, register an application for MCP Inspector.
 
 ### Allow the MCP Inspector Origin
 
-MCP Inspector runs in the browser at `http://localhost:6274` and calls <ProductName /> cross-origin, so its origin must be allowed in the CORS configuration.
+MCP Inspector runs in the browser at `http://localhost:6274` and calls <ProductName /> cross-origin, so its origin must be allowed in the CORS configuration. The MCP endpoint rejects requests from origins that this configuration does not allow.
 
 Create or update `config/resources/server_configs/cors.yaml` in your <ProductName /> distribution, or use `PUT /server-config/cors` after startup:
 
@@ -331,6 +333,13 @@ The Inspector origin is missing from the CORS configuration.
 
 1. Re-check the `cors.yaml` step under [Allow the MCP Inspector Origin](#allow-the-mcp-inspector-origin).
 2. Restart <ProductName /> after saving the change.
+
+### MCP endpoint returns 403 with "origin not allowed"
+
+The request came from a browser origin that is neither the <ProductName /> server URL nor allowed in the CORS configuration.
+
+1. Add the client origin to `allowedOrigins`, as described under [Allow the MCP Inspector Origin](#allow-the-mcp-inspector-origin).
+2. If <ProductName /> runs behind a reverse proxy, set `server.public_url` to the external URL that browsers use.
 
 ### Certificate or TLS errors
 

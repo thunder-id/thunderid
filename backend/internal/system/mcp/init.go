@@ -25,10 +25,10 @@ func NewServer() *mcpsdk.Server {
 	return newServer()
 }
 
-// Initialize mounts mcpServer's routes on mux, securing them with the given guard. resourceMeta, if
-// non-nil, is published at OAuthProtectedResourceMetadataPath for MCP client discovery; callers
-// that pass a guard with no discoverable authorization server (e.g. one that accepts every
-// request) should pass nil.
+// Initialize mounts mcpServer's routes on mux, securing them with an Origin check and the given
+// guard. resourceMeta, if non-nil, is published at OAuthProtectedResourceMetadataPath for MCP client
+// discovery; callers that pass a guard with no discoverable authorization server (e.g. one that
+// accepts every request) should pass nil.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcpsdk.Server,
@@ -47,9 +47,11 @@ func Initialize(
 		mux.Handle(OAuthProtectedResourceMetadataPath, auth.ProtectedResourceMetadataHandler(resourceMeta))
 	}
 
-	// Register MCP routes
-	mux.Handle(MCPEndpointPath, securedHandler)
-	mux.Handle(MCPEndpointPath+"/", securedHandler)
+	// Register MCP routes. The Origin check runs before the guard, so a request from an untrusted
+	// origin is refused whether or not it carries a valid token.
+	mcpHandler := requireAllowedOrigin(serverOrigin(), securedHandler)
+	mux.Handle(MCPEndpointPath, mcpHandler)
+	mux.Handle(MCPEndpointPath+"/", mcpHandler)
 }
 
 // DefaultGuard builds the bearer-token guard and resource metadata for a binary that runs its own

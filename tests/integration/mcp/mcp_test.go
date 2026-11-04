@@ -37,6 +37,10 @@ const (
 	adminGroupOUID = "01900000-0000-7000-8000-000000000001"
 
 	systemActionHandle = "system"
+
+	// declarativeCORSOrigin is the origin the declarative CORS fixture allows
+	// (tests/integration/resources/declarative_resources/server_configs/cors.yaml).
+	declarativeCORSOrigin = "https://declarative.example.com"
 )
 
 var revokeEndpoint = testServerURL + "/oauth2/revoke"
@@ -233,6 +237,12 @@ func (ts *MCPTestSuite) TestInitialize_ValidMCPScopedToken_Succeeds() {
 // _meta instead of a prior "initialize" handshake, and the Streamable HTTP transport mirrors the
 // method into the required Mcp-Method header (see mcp.Initialize's Stateless: true wiring).
 func (ts *MCPTestSuite) discoverMCP(token string) *http.Response {
+	return ts.discoverMCPFromOrigin(token, "")
+}
+
+// discoverMCPFromOrigin sends the request discoverMCP sends, with origin as its Origin header when
+// origin is not empty.
+func (ts *MCPTestSuite) discoverMCPFromOrigin(token, origin string) *http.Response {
 	body := `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{` +
 		`"_meta":{` +
 		`"io.modelcontextprotocol/protocolVersion":"` + mcpProtocolVersion20260728 + `",` +
@@ -248,6 +258,9 @@ func (ts *MCPTestSuite) discoverMCP(token string) *http.Response {
 	req.Header.Set("Mcp-Method", "server/discover")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if origin != "" {
+		req.Header.Set("Origin", origin)
 	}
 
 	resp, err := ts.client.Do(req)
@@ -271,6 +284,43 @@ func (ts *MCPTestSuite) TestDiscover_ValidMCPScopedToken_StatelessSucceeds() {
 		"server/discover should advertise support for the requested protocol version")
 	ts.Assert().Empty(resp.Header.Get("Mcp-Session-Id"),
 		"a stateless server must not establish a session")
+}
+
+// MCP Streamable HTTP requires a request whose Origin header is present and untrusted to be refused
+// with 403, to prevent DNS rebinding. The check runs before authentication, so it holds with or
+// without a valid token.
+func (ts *MCPTestSuite) TestDiscover_UntrustedOrigin_Forbidden() {
+	cases := []struct {
+		name  string
+		token string
+	}{
+		{name: "valid token", token: ts.mcpScopedAdminToken()},
+		{name: "no token"},
+	}
+	for _, tc := range cases {
+		ts.Run(tc.name, func() {
+			resp := ts.discoverMCPFromOrigin(tc.token, "https://evil.example")
+			defer resp.Body.Close()
+
+			body, _ := io.ReadAll(resp.Body)
+			ts.Assert().Equalf(http.StatusForbidden, resp.StatusCode, "response: %s", string(body))
+		})
+	}
+}
+
+// The server's own origin and an origin the CORS configuration allows are trusted.
+func (ts *MCPTestSuite) TestDiscover_TrustedOrigin_Succeeds() {
+	token := ts.mcpScopedAdminToken()
+
+	for _, origin := range []string{testServerURL, declarativeCORSOrigin} {
+		ts.Run(origin, func() {
+			resp := ts.discoverMCPFromOrigin(token, origin)
+			defer resp.Body.Close()
+
+			body, _ := io.ReadAll(resp.Body)
+			ts.Assert().Equalf(http.StatusOK, resp.StatusCode, "server/discover failed: %s", string(body))
+		})
+	}
 }
 
 // A required standard header (Mcp-Method) missing from an otherwise well-formed 2026-07-28 request
