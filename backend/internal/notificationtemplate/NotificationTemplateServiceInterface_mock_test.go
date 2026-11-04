@@ -497,6 +497,94 @@ func (_c *NotificationTemplateServiceInterfaceMock_ListTemplates_Call) RunAndRet
 	return _c
 }
 
+// ListTemplatesByOUID provides a mock function for the type NotificationTemplateServiceInterfaceMock
+func (_mock *NotificationTemplateServiceInterfaceMock) ListTemplatesByOUID(ctx context.Context, channel ChannelType, ouID string, limit int, offset int) (*TemplateListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, channel, ouID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListTemplatesByOUID")
+	}
+
+	var r0 *TemplateListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ChannelType, string, int, int) (*TemplateListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, channel, ouID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ChannelType, string, int, int) *TemplateListResponse); ok {
+		r0 = returnFunc(ctx, channel, ouID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*TemplateListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ChannelType, string, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, channel, ouID, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// NotificationTemplateServiceInterfaceMock_ListTemplatesByOUID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListTemplatesByOUID'
+type NotificationTemplateServiceInterfaceMock_ListTemplatesByOUID_Call struct {
+	*mock.Call
+}
+
+// ListTemplatesByOUID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - channel ChannelType
+//   - ouID string
+//   - limit int
+//   - offset int
+func (_e *NotificationTemplateServiceInterfaceMock_Expecter) ListTemplatesByOUID(ctx any, channel any, ouID any, limit any, offset any) *NotificationTemplateServiceInterfaceMock_ListTemplatesByOUID_Call {
+	return &NotificationTemplateServiceInterfaceMock_ListTemplatesByOUID_Call{Call: _e.mock.On("ListTemplatesByOUID", ctx, channel, ouID, limit, offset)}
+}
+
+func (_c *NotificationTemplateServiceInterfaceMock_ListTemplatesByOUID_Call) Run(run func(ctx context.Context, channel ChannelType, ouID string, limit int, offset int)) *NotificationTemplateServiceInterfaceMock_ListTemplatesByOUID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ChannelType
+		if args[1] != nil {
+			arg1 = args[1].(ChannelType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *NotificationTemplateServiceInterfaceMock_ListTemplatesByOUID_Call) Return(templateListResponse *TemplateListResponse, serviceError *common.ServiceError) *NotificationTemplateServiceInterfaceMock_ListTemplatesByOUID_Call {
+	_c.Call.Return(templateListResponse, serviceError)
+	return _c
+}
+
+func (_c *NotificationTemplateServiceInterfaceMock_ListTemplatesByOUID_Call) RunAndReturn(run func(ctx context.Context, channel ChannelType, ouID string, limit int, offset int) (*TemplateListResponse, *common.ServiceError)) *NotificationTemplateServiceInterfaceMock_ListTemplatesByOUID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetDependencyRegistry provides a mock function for the type NotificationTemplateServiceInterfaceMock
 func (_mock *NotificationTemplateServiceInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
 	_mock.Called(r)

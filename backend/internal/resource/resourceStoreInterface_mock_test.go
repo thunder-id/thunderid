@@ -1771,6 +1771,86 @@ func (_c *resourceStoreInterfaceMock_GetResourceServerList_Call) RunAndReturn(ru
 	return _c
 }
 
+// GetResourceServerListByOUID provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetResourceServerListByOUID(ctx context.Context, ouID string, limit int, offset int) ([]providers.ResourceServer, error) {
+	ret := _mock.Called(ctx, ouID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceServerListByOUID")
+	}
+
+	var r0 []providers.ResourceServer
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) ([]providers.ResourceServer, error)); ok {
+		return returnFunc(ctx, ouID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) []providers.ResourceServer); ok {
+		r0 = returnFunc(ctx, ouID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.ResourceServer)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) error); ok {
+		r1 = returnFunc(ctx, ouID, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetResourceServerListByOUID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceServerListByOUID'
+type resourceStoreInterfaceMock_GetResourceServerListByOUID_Call struct {
+	*mock.Call
+}
+
+// GetResourceServerListByOUID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ouID string
+//   - limit int
+//   - offset int
+func (_e *resourceStoreInterfaceMock_Expecter) GetResourceServerListByOUID(ctx any, ouID any, limit any, offset any) *resourceStoreInterfaceMock_GetResourceServerListByOUID_Call {
+	return &resourceStoreInterfaceMock_GetResourceServerListByOUID_Call{Call: _e.mock.On("GetResourceServerListByOUID", ctx, ouID, limit, offset)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListByOUID_Call) Run(run func(ctx context.Context, ouID string, limit int, offset int)) *resourceStoreInterfaceMock_GetResourceServerListByOUID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListByOUID_Call) Return(resourceServers []providers.ResourceServer, err error) *resourceStoreInterfaceMock_GetResourceServerListByOUID_Call {
+	_c.Call.Return(resourceServers, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListByOUID_Call) RunAndReturn(run func(ctx context.Context, ouID string, limit int, offset int) ([]providers.ResourceServer, error)) *resourceStoreInterfaceMock_GetResourceServerListByOUID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResourceServerListCount provides a mock function for the type resourceStoreInterfaceMock
 func (_mock *resourceStoreInterfaceMock) GetResourceServerListCount(ctx context.Context) (int, error) {
 	ret := _mock.Called(ctx)
@@ -1827,6 +1907,72 @@ func (_c *resourceStoreInterfaceMock_GetResourceServerListCount_Call) Return(n i
 }
 
 func (_c *resourceStoreInterfaceMock_GetResourceServerListCount_Call) RunAndReturn(run func(ctx context.Context) (int, error)) *resourceStoreInterfaceMock_GetResourceServerListCount_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetResourceServerListCountByOUID provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetResourceServerListCountByOUID(ctx context.Context, ouID string) (int, error) {
+	ret := _mock.Called(ctx, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceServerListCountByOUID")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int, error)); ok {
+		return returnFunc(ctx, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int); ok {
+		r0 = returnFunc(ctx, ouID)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, ouID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetResourceServerListCountByOUID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceServerListCountByOUID'
+type resourceStoreInterfaceMock_GetResourceServerListCountByOUID_Call struct {
+	*mock.Call
+}
+
+// GetResourceServerListCountByOUID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ouID string
+func (_e *resourceStoreInterfaceMock_Expecter) GetResourceServerListCountByOUID(ctx any, ouID any) *resourceStoreInterfaceMock_GetResourceServerListCountByOUID_Call {
+	return &resourceStoreInterfaceMock_GetResourceServerListCountByOUID_Call{Call: _e.mock.On("GetResourceServerListCountByOUID", ctx, ouID)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByOUID_Call) Run(run func(ctx context.Context, ouID string)) *resourceStoreInterfaceMock_GetResourceServerListCountByOUID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByOUID_Call) Return(n int, err error) *resourceStoreInterfaceMock_GetResourceServerListCountByOUID_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByOUID_Call) RunAndReturn(run func(ctx context.Context, ouID string) (int, error)) *resourceStoreInterfaceMock_GetResourceServerListCountByOUID_Call {
 	_c.Call.Return(run)
 	return _c
 }

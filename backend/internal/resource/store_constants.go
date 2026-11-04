@@ -87,6 +87,24 @@ var (
 			LIMIT 1
 		) as dependencies`,
 	}
+
+	// queryGetResourceServerListByOUID retrieves a list of resource servers owned by an organization unit
+	// with pagination.
+	queryGetResourceServerListByOUID = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-41",
+		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+			FROM "RESOURCE_SERVER"
+			WHERE OU_ID = $1 AND DEPLOYMENT_ID = $4
+			ORDER BY CREATED_AT DESC, ID DESC
+			LIMIT $2 OFFSET $3`,
+	}
+
+	// queryGetResourceServerListCountByOUID retrieves the total count of resource servers owned by an
+	// organization unit.
+	queryGetResourceServerListCountByOUID = dbmodel.DBQuery{
+		ID:    "RSQ-RES_MGT-42",
+		Query: `SELECT COUNT(*) as total FROM "RESOURCE_SERVER" WHERE OU_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
 )
 
 // providers.Resource Queries

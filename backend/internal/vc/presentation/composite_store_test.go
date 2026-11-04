@@ -221,3 +221,48 @@ func (s *CompositeDefinitionStoreTestSuite) TestIsDeclarative() {
 	s.Require().NoError(err)
 	s.False(isDeclarative)
 }
+
+func (s *CompositeDefinitionStoreTestSuite) TestListSummariesByOUIDMergesAndDeduplicates() {
+	storer := &definitionStorer{store: s.fileStore}
+	for _, dto := range []PresentationDefinitionDTO{
+		{ID: "db-1", Handle: "db-1", VCT: "v", OUID: "ou-1"},
+		{ID: "dup", Handle: "db-dup", VCT: "v", OUID: "ou-1"},
+		{ID: "db-2", Handle: "db-2", VCT: "v", OUID: "ou-2"},
+	} {
+		s.Require().NoError(s.dbStore.CreatePresentationDefinition(s.ctx, dto))
+	}
+	for _, dto := range []PresentationDefinitionDTO{
+		{ID: "file-1", Handle: "file-1", VCT: "v", OUID: "ou-1"},
+		{ID: "dup", Handle: "file-dup", VCT: "v", OUID: "ou-1"},
+		{ID: "file-2", Handle: "file-2", VCT: "v", OUID: "ou-2"},
+	} {
+		s.Require().NoError(storer.Create(dto.ID, &dto))
+	}
+
+	summaries, err := s.composite.ListPresentationDefinitionSummariesByOUID(s.ctx, "ou-1")
+	s.Require().NoError(err)
+	s.Require().Len(summaries, 3)
+	byID := make(map[string]PresentationDefinitionList, len(summaries))
+	for _, summary := range summaries {
+		byID[summary.ID] = summary
+	}
+	s.Contains(byID, "db-1")
+	s.Contains(byID, "file-1")
+	s.Equal("db-dup", byID["dup"].Handle)
+}
+
+func (s *CompositeDefinitionStoreTestSuite) TestListSummariesByOUIDStoreErrors() {
+	dbStore := newDefinitionStoreInterfaceMock(s.T())
+	dbStore.EXPECT().ListPresentationDefinitionSummariesByOUID(mock.Anything, "ou-1").
+		Return(nil, errors.New("db boom"))
+	_, err := newCompositeDefinitionStore(s.fileStore, dbStore).
+		ListPresentationDefinitionSummariesByOUID(s.ctx, "ou-1")
+	s.Error(err)
+
+	fileStore := newDefinitionStoreInterfaceMock(s.T())
+	fileStore.EXPECT().ListPresentationDefinitionSummariesByOUID(mock.Anything, "ou-1").
+		Return(nil, errors.New("file boom"))
+	_, err = newCompositeDefinitionStore(fileStore, s.dbStore).
+		ListPresentationDefinitionSummariesByOUID(s.ctx, "ou-1")
+	s.Error(err)
+}

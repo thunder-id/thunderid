@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -56,6 +57,9 @@ type ResourceServiceInterface interface {
 	) (*providers.ResourceServer, *tidcommon.ServiceError)
 	GetResourceServer(ctx context.Context, id string) (*providers.ResourceServer, *tidcommon.ServiceError)
 	GetResourceServerList(ctx context.Context, limit, offset int) (*ResourceServerList, *tidcommon.ServiceError)
+	GetResourceServerListByOUID(
+		ctx context.Context, ouID string, limit, offset int,
+	) (*ResourceServerList, *tidcommon.ServiceError)
 	UpdateResourceServer(
 		ctx context.Context, id string, rs providers.ResourceServer,
 	) (*providers.ResourceServer, *tidcommon.ServiceError)
@@ -436,10 +440,51 @@ func (rs *resourceService) GetResourceServerList(
 		ResourceServers: resourceServers,
 		StartIndex:      offset + 1,
 		Count:           len(resourceServers),
-		Links:           buildPaginationLinks("/resource-servers", limit, offset, totalCount),
+		Links:           utils.BuildPaginationLinks("/resource-servers", limit, offset, totalCount, ""),
 	}
 
 	return response, nil
+}
+
+// GetResourceServerListByOUID retrieves a paginated list of the resource servers an organization unit owns.
+func (rs *resourceService) GetResourceServerListByOUID(
+	ctx context.Context, ouID string, limit, offset int,
+) (*ResourceServerList, *tidcommon.ServiceError) {
+	if ouID == "" {
+		return nil, &ErrorInvalidRequestFormat
+	}
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+
+	totalCount, err := rs.resourceStore.GetResourceServerListCountByOUID(ctx, ouID)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to get resource server count in organization unit",
+			log.String("ouID", ouID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	resourceServers, err := rs.resourceStore.GetResourceServerListByOUID(ctx, ouID, limit, offset)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to list resource servers in organization unit",
+			log.String("ouID", ouID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	return &ResourceServerList{
+		TotalResults:    totalCount,
+		ResourceServers: resourceServers,
+		StartIndex:      offset + 1,
+		Count:           len(resourceServers),
+		Links: utils.BuildPaginationLinks("/resource-servers", limit, offset, totalCount,
+			utils.FilterQueryParam(map[string]any{filter.AttributeOUID: ouID})),
+	}, nil
 }
 
 // UpdateResourceServer updates a resource server.
@@ -772,7 +817,7 @@ func (rs *resourceService) GetResourceList(
 		Resources:    resources,
 		StartIndex:   offset + 1,
 		Count:        len(resources),
-		Links:        buildPaginationLinks(baseURL, limit, offset, totalCount),
+		Links:        utils.BuildPaginationLinks(baseURL, limit, offset, totalCount, ""),
 	}
 
 	return response, nil
@@ -1135,7 +1180,7 @@ func (rs *resourceService) GetActionList(
 		Actions:      actions,
 		StartIndex:   offset + 1,
 		Count:        len(actions),
-		Links:        buildPaginationLinks(baseURL, limit, offset, totalCount),
+		Links:        utils.BuildPaginationLinks(baseURL, limit, offset, totalCount, ""),
 	}
 
 	return response, nil
@@ -1576,45 +1621,6 @@ func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 	}
 
 	return nil
-}
-
-// buildPaginationLinks constructs pagination links for a paginated response.
-func buildPaginationLinks(base string, limit, offset, totalCount int) []Link {
-	links := make([]Link, 0)
-
-	if offset > 0 {
-		links = append(links, Link{
-			Href: fmt.Sprintf("%s?offset=0&limit=%d", base, limit),
-			Rel:  "first",
-		})
-
-		prevOffset := offset - limit
-		if prevOffset < 0 {
-			prevOffset = 0
-		}
-		links = append(links, Link{
-			Href: fmt.Sprintf("%s?offset=%d&limit=%d", base, prevOffset, limit),
-			Rel:  "prev",
-		})
-	}
-
-	if offset+limit < totalCount {
-		nextOffset := offset + limit
-		links = append(links, Link{
-			Href: fmt.Sprintf("%s?offset=%d&limit=%d", base, nextOffset, limit),
-			Rel:  "next",
-		})
-	}
-
-	lastPageOffset := ((totalCount - 1) / limit) * limit
-	if offset < lastPageOffset {
-		links = append(links, Link{
-			Href: fmt.Sprintf("%s?offset=%d&limit=%d", base, lastPageOffset, limit),
-			Rel:  "last",
-		})
-	}
-
-	return links
 }
 
 // isValidPermissionCharacter checks if a character is valid for permission strings.

@@ -682,6 +682,37 @@ func (s *FileBasedResourceStoreTestSuite) TestCreateAndGetResourceServer() {
 	assert.Equal(s.T(), "test-server", rs.Identifier)
 }
 
+func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerListByOUID() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	s.Require().True(ok)
+	s.Require().NoError(fileStore.Create("rs-ou1-a", &providers.ResourceServer{ID: "rs-ou1-a", OUID: "ou1"}))
+	s.Require().NoError(fileStore.Create("rs-ou1-b", &providers.ResourceServer{ID: "rs-ou1-b", OUID: "ou1"}))
+	s.Require().NoError(fileStore.Create("rs-ou2", &providers.ResourceServer{ID: "rs-ou2", OUID: "ou2"}))
+
+	count, err := s.store.GetResourceServerListCountByOUID(s.ctx, "ou1")
+	s.NoError(err)
+	s.Equal(2, count)
+
+	servers, err := s.store.GetResourceServerListByOUID(s.ctx, "ou1", 10, 0)
+	s.NoError(err)
+	s.Len(servers, 2)
+	for _, rs := range servers {
+		s.Equal("ou1", rs.OUID)
+	}
+
+	servers, err = s.store.GetResourceServerListByOUID(s.ctx, "ou1", 1, 1)
+	s.NoError(err)
+	s.Len(servers, 1)
+
+	servers, err = s.store.GetResourceServerListByOUID(s.ctx, "ou1", 10, 5)
+	s.NoError(err)
+	s.Empty(servers)
+
+	count, err = s.store.GetResourceServerListCountByOUID(s.ctx, "ou-none")
+	s.NoError(err)
+	s.Zero(count)
+}
+
 func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerList_WithData() {
 	fileStore, ok := s.store.(*fileBasedResourceStore)
 	assert.True(s.T(), ok)

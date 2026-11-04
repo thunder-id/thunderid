@@ -166,3 +166,21 @@ func (s *DefinitionFileBasedStoreTestSuite) TestGetByHandleReturnsIsolatedCopy()
 	s.Require().NoError(err)
 	s.Equal("urn:eudi:pid:1", second.VCT)
 }
+
+func (s *DefinitionFileBasedStoreTestSuite) TestListSummariesByOUID() {
+	for _, dto := range []PresentationDefinitionDTO{
+		{ID: "id-1", Handle: "h1", VCT: "v1", OUID: "ou-1"},
+		{ID: "id-2", Handle: "h2", VCT: "v2", OUID: "ou-2"},
+	} {
+		s.Require().NoError(s.storer.Create(dto.ID, &dto))
+	}
+
+	summaries, err := s.store.ListPresentationDefinitionSummariesByOUID(s.ctx, "ou-1")
+	s.Require().NoError(err)
+	s.Require().Len(summaries, 1)
+	s.Equal("id-1", summaries[0].ID)
+
+	summaries, err = s.store.ListPresentationDefinitionSummariesByOUID(s.ctx, "ou-missing")
+	s.Require().NoError(err)
+	s.Empty(summaries)
+}

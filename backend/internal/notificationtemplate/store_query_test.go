@@ -194,6 +194,77 @@ func (s *NotificationTemplateStoreTestSuite) TestGetTemplate_QueryError() {
 	s.Require().Error(err)
 }
 
+func (s *NotificationTemplateStoreTestSuite) TestListTemplatesByOUID() {
+	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", mock.Anything, queryListTemplatesByOUID, "email", "ou-1", 10, 0,
+		"test-deployment").
+		Return([]map[string]interface{}{
+			{"id": "a", "channel": "email", "handle": "a", "ou_id": "ou-1", "display_name": "A"},
+		}, nil)
+
+	list, err := s.store.ListTemplatesByOUID(depCtx("test-deployment"), ChannelTypeEmail, "ou-1", 10, 0)
+	s.Require().NoError(err)
+	s.Require().Len(list, 1)
+	s.Require().Equal("ou-1", list[0].OUID)
+}
+
+func (s *NotificationTemplateStoreTestSuite) TestListTemplatesByOUID_Errors() {
+	s.Run("DBClientError", func() {
+		s.SetupTest()
+		s.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("connection error"))
+
+		_, err := s.store.ListTemplatesByOUID(depCtx("test-deployment"), ChannelTypeEmail, "ou-1", 10, 0)
+		s.Require().Error(err)
+	})
+	s.Run("QueryError", func() {
+		s.SetupTest()
+		s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+		s.mockDBClient.On("QueryContext", mock.Anything, queryListTemplatesByOUID, "email", "ou-1", 10, 0,
+			"test-deployment").Return(nil, errors.New("query failed"))
+
+		_, err := s.store.ListTemplatesByOUID(depCtx("test-deployment"), ChannelTypeEmail, "ou-1", 10, 0)
+		s.Require().Error(err)
+	})
+	s.Run("InvalidRow", func() {
+		s.SetupTest()
+		s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+		s.mockDBClient.On("QueryContext", mock.Anything, queryListTemplatesByOUID, "email", "ou-1", 10, 0,
+			"test-deployment").Return([]map[string]interface{}{{"id": 1}}, nil)
+
+		_, err := s.store.ListTemplatesByOUID(depCtx("test-deployment"), ChannelTypeEmail, "ou-1", 10, 0)
+		s.Require().Error(err)
+	})
+}
+
+func (s *NotificationTemplateStoreTestSuite) TestCountTemplatesByOUID() {
+	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", mock.Anything, queryCountTemplatesByOUID, "email", "ou-1",
+		"test-deployment").Return([]map[string]interface{}{{"total": int64(4)}}, nil)
+
+	count, err := s.store.CountTemplatesByOUID(depCtx("test-deployment"), ChannelTypeEmail, "ou-1")
+	s.Require().NoError(err)
+	s.Require().Equal(4, count)
+}
+
+func (s *NotificationTemplateStoreTestSuite) TestCountTemplatesByOUID_Errors() {
+	s.Run("DBClientError", func() {
+		s.SetupTest()
+		s.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("connection error"))
+
+		_, err := s.store.CountTemplatesByOUID(depCtx("test-deployment"), ChannelTypeEmail, "ou-1")
+		s.Require().Error(err)
+	})
+	s.Run("QueryError", func() {
+		s.SetupTest()
+		s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+		s.mockDBClient.On("QueryContext", mock.Anything, queryCountTemplatesByOUID, "email", "ou-1",
+			"test-deployment").Return(nil, errors.New("query failed"))
+
+		_, err := s.store.CountTemplatesByOUID(depCtx("test-deployment"), ChannelTypeEmail, "ou-1")
+		s.Require().Error(err)
+	})
+}
+
 func (s *NotificationTemplateStoreTestSuite) TestListTemplates_DBClientError() {
 	s.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("connection error"))
 

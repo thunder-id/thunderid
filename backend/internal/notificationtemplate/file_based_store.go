@@ -89,6 +89,30 @@ func (f *templateFileBasedStore) CountTemplates(_ context.Context, channel Chann
 	return len(filtered), nil
 }
 
+// ListTemplatesByOUID returns a page of the declared templates of a channel an organization unit owns.
+func (f *templateFileBasedStore) ListTemplatesByOUID(_ context.Context, channel ChannelType, ouID string,
+	limit, offset int) ([]templateDAO, error) {
+	filtered, err := f.listByChannelAndOU(channel, ouID)
+	if err != nil {
+		return nil, err
+	}
+	if offset >= len(filtered) {
+		return []templateDAO{}, nil
+	}
+	end := min(offset+limit, len(filtered))
+	return filtered[offset:end], nil
+}
+
+// CountTemplatesByOUID returns the number of declared templates of a channel an organization unit owns.
+func (f *templateFileBasedStore) CountTemplatesByOUID(_ context.Context, channel ChannelType, ouID string) (
+	int, error) {
+	filtered, err := f.listByChannelAndOU(channel, ouID)
+	if err != nil {
+		return 0, err
+	}
+	return len(filtered), nil
+}
+
 // UpdateTemplate refuses; declared templates are read-only.
 func (f *templateFileBasedStore) UpdateTemplate(_ context.Context, _ templateDAO) error {
 	return errDeclarativeTemplate
@@ -150,6 +174,22 @@ func (f *templateFileBasedStore) listAll() ([]templateDAO, error) {
 		templates = append(templates, *t)
 	}
 	return templates, nil
+}
+
+// listByChannelAndOU returns the declared templates of a channel an organization unit owns, ordered by
+// handle for stable pagination.
+func (f *templateFileBasedStore) listByChannelAndOU(channel ChannelType, ouID string) ([]templateDAO, error) {
+	inChannel, err := f.listByChannel(channel)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]templateDAO, 0, len(inChannel))
+	for _, t := range inChannel {
+		if t.OUID == ouID {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered, nil
 }
 
 // listByChannel returns a channel's declared templates, ordered by handle for stable pagination.

@@ -3402,6 +3402,88 @@ func (suite *ResourceServiceTestSuite) TestGetResourceServerList_ListError() {
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOUID_Success() {
+	resourceServers := []providers.ResourceServer{
+		{ID: "rs-1", OUID: "ou-1"},
+		{ID: "rs-2", OUID: "ou-1"},
+	}
+	suite.mockStore.On("GetResourceServerListCountByOUID", mock.Anything, "ou-1").Return(5, nil)
+	suite.mockStore.On("GetResourceServerListByOUID", mock.Anything, "ou-1", 2, 2).Return(resourceServers, nil)
+
+	result, err := suite.service.GetResourceServerListByOUID(context.Background(), "ou-1", 2, 2)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(5, result.TotalResults)
+	suite.Equal(2, result.Count)
+	suite.Equal(3, result.StartIndex)
+	suite.Equal(resourceServers, result.ResourceServers)
+	suite.NotEmpty(result.Links)
+	for _, link := range result.Links {
+		suite.Contains(link.Href, "&filter=ouId+eq+%22ou-1%22")
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOUID_InvalidInput() {
+	testCases := []struct {
+		name         string
+		ouID         string
+		limit        int
+		offset       int
+		expectedCode string
+	}{
+		{name: "EmptyOUID", ouID: "", limit: 10, offset: 0, expectedCode: ErrorInvalidRequestFormat.Code},
+		{name: "InvalidLimit", ouID: "ou-1", limit: 0, offset: 0, expectedCode: ErrorInvalidLimit.Code},
+		{name: "InvalidOffset", ouID: "ou-1", limit: 10, offset: -1, expectedCode: ErrorInvalidOffset.Code},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			result, err := suite.service.GetResourceServerListByOUID(
+				context.Background(), tc.ouID, tc.limit, tc.offset)
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOUID_StoreErrors() {
+	testCases := []struct {
+		name         string
+		countErr     error
+		listErr      error
+		expectedCode string
+	}{
+		{name: "CountError", countErr: errors.New("database error"),
+			expectedCode: tidcommon.InternalServerError.Code},
+		{name: "CountLimitExceeded", countErr: errResultLimitExceededInCompositeMode,
+			expectedCode: ErrResultLimitExceededInCompositeMode.Code},
+		{name: "ListError", listErr: errors.New("database error"),
+			expectedCode: tidcommon.InternalServerError.Code},
+		{name: "ListLimitExceeded", listErr: errResultLimitExceededInCompositeMode,
+			expectedCode: ErrResultLimitExceededInCompositeMode.Code},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockStore.On("GetResourceServerListCountByOUID", mock.Anything, "ou-1").Return(2, tc.countErr)
+			if tc.countErr == nil {
+				suite.mockStore.On("GetResourceServerListByOUID", mock.Anything, "ou-1", 10, 0).
+					Return(nil, tc.listErr)
+			}
+
+			result, err := suite.service.GetResourceServerListByOUID(context.Background(), "ou-1", 10, 0)
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+		})
+	}
+}
+
 func (suite *ResourceServiceTestSuite) TestGetActionAtResourceServer_ResourceServerNotFound() {
 	suite.mockStore.On("GetResourceServer", mock.Anything,
 		"rs-123").Return(providers.ResourceServer{}, errResourceServerNotFound)
@@ -4406,154 +4488,6 @@ func (suite *ResourceServiceTestSuite) TestValidatePaginationParams() {
 	err = validatePaginationParams(30, -1)
 	suite.NotNil(err)
 	suite.Equal(ErrorInvalidOffset.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestBuildPaginationLinks() {
-	testCases := []struct {
-		name          string
-		base          string
-		limit         int
-		offset        int
-		totalCount    int
-		expectedLinks []Link
-		description   string
-	}{
-		{
-			name:        "FirstPage_HasMorePages",
-			base:        "/test",
-			limit:       10,
-			offset:      0,
-			totalCount:  25,
-			description: "First page (offset=0) with more pages available",
-			expectedLinks: []Link{
-				{Href: "/test?offset=10&limit=10", Rel: "next"},
-				{Href: "/test?offset=20&limit=10", Rel: "last"},
-			},
-		},
-		{
-			name:        "MiddlePage_WithPrevOffset_Negative",
-			base:        "/test",
-			limit:       10,
-			offset:      5,
-			totalCount:  30,
-			description: "Middle page where prevOffset calculation goes negative (line 924-926)",
-			expectedLinks: []Link{
-				{Href: "/test?offset=0&limit=10", Rel: "first"},
-				{Href: "/test?offset=0&limit=10", Rel: "prev"}, // prevOffset = 5-10 = -5, becomes 0
-				{Href: "/test?offset=15&limit=10", Rel: "next"},
-				{Href: "/test?offset=20&limit=10", Rel: "last"},
-			},
-		},
-		{
-			name:        "MiddlePage_NormalPrevOffset",
-			base:        "/test",
-			limit:       10,
-			offset:      20,
-			totalCount:  50,
-			description: "Middle page with normal prevOffset calculation",
-			expectedLinks: []Link{
-				{Href: "/test?offset=0&limit=10", Rel: "first"},
-				{Href: "/test?offset=10&limit=10", Rel: "prev"}, // prevOffset = 20-10 = 10
-				{Href: "/test?offset=30&limit=10", Rel: "next"},
-				{Href: "/test?offset=40&limit=10", Rel: "last"},
-			},
-		},
-		{
-			name:        "LastPage_NoNext",
-			base:        "/test",
-			limit:       10,
-			offset:      20,
-			totalCount:  25,
-			description: "Last page (offset+limit >= totalCount), no next link",
-			expectedLinks: []Link{
-				{Href: "/test?offset=0&limit=10", Rel: "first"},
-				{Href: "/test?offset=10&limit=10", Rel: "prev"},
-				// No next link because offset(20) + limit(10) >= totalCount(25)
-				// No last link because offset(20) >= lastPageOffset(20)
-			},
-		},
-		{
-			name:          "SinglePage_NoLinks",
-			base:          "/test",
-			limit:         10,
-			offset:        0,
-			totalCount:    5,
-			description:   "Single page (totalCount <= limit), no pagination links",
-			expectedLinks: []Link{
-				// No links at all
-			},
-		},
-		{
-			name:          "ExactlyOnePage_OnLastPage",
-			base:          "/test",
-			limit:         10,
-			offset:        0,
-			totalCount:    10,
-			description:   "Exactly one page of results, on last page (offset+limit == totalCount)",
-			expectedLinks: []Link{
-				// No next because offset(0) + limit(10) >= totalCount(10)
-				// No last because offset(0) >= lastPageOffset(0)
-			},
-		},
-		{
-			name:        "LastPageOffset_EqualToOffset",
-			base:        "/test",
-			limit:       10,
-			offset:      30,
-			totalCount:  35,
-			description: "On last page where offset equals lastPageOffset (line 942)",
-			expectedLinks: []Link{
-				{Href: "/test?offset=0&limit=10", Rel: "first"},
-				{Href: "/test?offset=20&limit=10", Rel: "prev"},
-				// No next because offset(30) + limit(10) > totalCount(35)
-				// No last because offset(30) >= lastPageOffset(30)
-			},
-		},
-		{
-			name:        "SecondToLastPage_HasLastLink",
-			base:        "/test",
-			limit:       10,
-			offset:      20,
-			totalCount:  35,
-			description: "Second to last page, has last link",
-			expectedLinks: []Link{
-				{Href: "/test?offset=0&limit=10", Rel: "first"},
-				{Href: "/test?offset=10&limit=10", Rel: "prev"},
-				{Href: "/test?offset=30&limit=10", Rel: "next"},
-				{Href: "/test?offset=30&limit=10", Rel: "last"},
-			},
-		},
-		{
-			name:        "ExactlyAtBoundary_OffsetPlusLimitEqualsTotalCount",
-			base:        "/test",
-			limit:       10,
-			offset:      10,
-			totalCount:  20,
-			description: "Exactly at boundary where offset+limit == totalCount (line 933)",
-			expectedLinks: []Link{
-				{Href: "/test?offset=0&limit=10", Rel: "first"},
-				{Href: "/test?offset=0&limit=10", Rel: "prev"},
-				// No next because offset(10) + limit(10) == totalCount(20), not < totalCount
-				// No last because offset(10) >= lastPageOffset(10)
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		suite.Run(tc.name, func() {
-			links := buildPaginationLinks(tc.base, tc.limit, tc.offset, tc.totalCount)
-
-			suite.Equal(len(tc.expectedLinks), len(links),
-				"Expected %d links but got %d for: %s", len(tc.expectedLinks), len(links), tc.description)
-
-			for i, expectedLink := range tc.expectedLinks {
-				suite.Equal(expectedLink.Href, links[i].Href,
-					"Link %d: Expected href %s but got %s", i, expectedLink.Href, links[i].Href)
-				suite.Equal(expectedLink.Rel, links[i].Rel,
-					"Link %d: Expected rel %s but got %s", i, expectedLink.Rel, links[i].Rel)
-			}
-		})
-	}
 }
 
 func (suite *ResourceServiceTestSuite) TestListMethods_PaginationValidationErrors() {

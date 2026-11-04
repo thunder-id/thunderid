@@ -96,6 +96,24 @@ func (f *credentialFileBasedStore) ListCredentialConfigurationSummaries(
 	return summaries, nil
 }
 
+// ListCredentialConfigurationSummariesByOUID retrieves minimal listing data for the credential configurations an
+// organization unit owns from the file-based store.
+func (f *credentialFileBasedStore) ListCredentialConfigurationSummariesByOUID(
+	ctx context.Context, ouID string,
+) ([]CredentialConfigurationList, error) {
+	summaries, err := f.ListCredentialConfigurationSummaries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	owned := make([]CredentialConfigurationList, 0, len(summaries))
+	for _, summary := range summaries {
+		if summary.OUID == ouID {
+			owned = append(owned, summary)
+		}
+	}
+	return owned, nil
+}
+
 // List retrieves all credential configurations from the file-based store.
 func (f *credentialFileBasedStore) ListCredentialConfigurations(
 	_ context.Context,

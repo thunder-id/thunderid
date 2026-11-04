@@ -104,6 +104,32 @@ func (f *fileBasedResourceStore) GetResourceServerListCount(ctx context.Context)
 	return f.GenericFileBasedStore.Count()
 }
 
+// GetResourceServerListByOUID returns a page of the declarative resource servers an organization unit owns.
+func (f *fileBasedResourceStore) GetResourceServerListByOUID(
+	ctx context.Context, ouID string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	servers, err := f.resourceServersByOUID(ouID)
+	if err != nil {
+		return nil, err
+	}
+
+	start := max(offset, 0)
+	if start >= len(servers) {
+		return []providers.ResourceServer{}, nil
+	}
+	end := min(start+max(limit, 0), len(servers))
+	return servers[start:end], nil
+}
+
+// GetResourceServerListCountByOUID returns the number of declarative resource servers an organization unit owns.
+func (f *fileBasedResourceStore) GetResourceServerListCountByOUID(ctx context.Context, ouID string) (int, error) {
+	servers, err := f.resourceServersByOUID(ouID)
+	if err != nil {
+		return 0, err
+	}
+	return len(servers), nil
+}
+
 func (f *fileBasedResourceStore) UpdateResourceServer(
 	ctx context.Context,
 	id string,
@@ -638,4 +664,20 @@ func (f *fileBasedResourceStore) ValidatePermissions(
 		}
 	}
 	return invalidList, nil
+}
+
+// resourceServersByOUID returns every declarative resource server an organization unit owns.
+func (f *fileBasedResourceStore) resourceServersByOUID(ouID string) ([]providers.ResourceServer, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	servers := make([]providers.ResourceServer, 0, len(list))
+	for _, item := range list {
+		if rs, ok := item.Data.(*providers.ResourceServer); ok && rs.OUID == ouID {
+			servers = append(servers, *rs)
+		}
+	}
+	return servers, nil
 }

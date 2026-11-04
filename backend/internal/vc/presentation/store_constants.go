@@ -50,4 +50,9 @@ var (
 		ID:    "OVPQ-PD_MGT-06",
 		Query: `DELETE FROM "PRESENTATION_DEFINITION" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
+	queryListDefinitionSummariesByOUID = dbmodel.DBQuery{
+		ID: "OVPQ-PD_MGT-08",
+		Query: `SELECT ID, HANDLE, OU_ID, NAME, VCT, FORMAT ` +
+			`FROM "PRESENTATION_DEFINITION" WHERE OU_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
 )

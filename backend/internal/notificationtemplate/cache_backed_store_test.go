@@ -242,6 +242,25 @@ func (s *CacheBackedStoreTestSuite) TestCountTemplates_Delegates() {
 	s.mockStore.AssertExpectations(s.T())
 }
 
+func (s *CacheBackedStoreTestSuite) TestListTemplatesByOUID_Delegates() {
+	s.mockStore.On("ListTemplatesByOUID", mock.Anything, ChannelTypeEmail, "ou-1", 10, 0).
+		Return([]templateDAO{emailDAO("t1", "A")}, nil).Once()
+
+	out, err := s.store.ListTemplatesByOUID(s.ctx, ChannelTypeEmail, "ou-1", 10, 0)
+	s.NoError(err)
+	s.Len(out, 1)
+	s.mockStore.AssertExpectations(s.T())
+}
+
+func (s *CacheBackedStoreTestSuite) TestCountTemplatesByOUID_Delegates() {
+	s.mockStore.On("CountTemplatesByOUID", mock.Anything, ChannelTypeEmail, "ou-1").Return(3, nil).Once()
+
+	n, err := s.store.CountTemplatesByOUID(s.ctx, ChannelTypeEmail, "ou-1")
+	s.NoError(err)
+	s.Equal(3, n)
+	s.mockStore.AssertExpectations(s.T())
+}
+
 func (s *CacheBackedStoreTestSuite) TestIsHandleExists_Delegates() {
 	s.mockStore.On("IsHandleExists", mock.Anything, ChannelTypeEmail, "otp-verification").Return(true, nil).Once()
 

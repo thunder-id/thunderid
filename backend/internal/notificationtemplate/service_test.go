@@ -593,6 +593,67 @@ func (s *NotificationTemplateServiceTestSuite) TestListTemplates_InvalidPaginati
 	s.Require().Equal(ErrorInvalidOffset.Code, err.Code)
 }
 
+func (s *NotificationTemplateServiceTestSuite) TestListTemplatesByOUID() {
+	daos := []templateDAO{
+		{ID: "a", Channel: ChannelTypeEmail, Handle: "a", OUID: "ou-1", DisplayName: "a"},
+		{ID: "b", Channel: ChannelTypeEmail, Handle: "b", OUID: "ou-1", DisplayName: "b"},
+	}
+	s.mockStore.On("CountTemplatesByOUID", mock.Anything, ChannelTypeEmail, "ou-1").Return(3, nil)
+	s.mockStore.On("ListTemplatesByOUID", mock.Anything, ChannelTypeEmail, "ou-1", 2, 0).Return(daos, nil)
+
+	page, err := s.svc.ListTemplatesByOUID(s.ctx, ChannelTypeEmail, "ou-1", 2, 0)
+	s.Require().Nil(err)
+	s.Require().Equal(3, page.TotalResults)
+	s.Require().Equal(2, page.Count)
+	s.Require().Equal([]string{"a", "b"}, []string{page.Templates[0].ID, page.Templates[1].ID})
+	s.Require().NotEmpty(page.Links)
+	for _, link := range page.Links {
+		s.Require().Contains(link.Href, "&filter=ouId+eq+%22ou-1%22")
+	}
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestListTemplatesByOUID_InvalidInput() {
+	_, err := s.svc.ListTemplatesByOUID(s.ctx, ChannelTypeEmail, "", 10, 0)
+	s.Require().Equal(ErrorInvalidOU.Code, err.Code)
+
+	_, err = s.svc.ListTemplatesByOUID(s.ctx, ChannelType("push"), "ou-1", 10, 0)
+	s.Require().Equal(ErrorInvalidChannel.Code, err.Code)
+
+	_, err = s.svc.ListTemplatesByOUID(s.ctx, ChannelTypeEmail, "ou-1", 0, 0)
+	s.Require().Equal(ErrorInvalidLimit.Code, err.Code)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestListTemplatesByOUID_StoreErrors() {
+	testCases := []struct {
+		name         string
+		countErr     error
+		listErr      error
+		expectedCode string
+	}{
+		{name: "CountError", countErr: errors.New("db down"), expectedCode: tidcommon.InternalServerError.Code},
+		{name: "CountLimitExceeded", countErr: errResultLimitExceededInCompositeMode,
+			expectedCode: ErrorResultLimitExceededInCompositeMode.Code},
+		{name: "ListError", listErr: errors.New("db down"), expectedCode: tidcommon.InternalServerError.Code},
+		{name: "ListLimitExceeded", listErr: errResultLimitExceededInCompositeMode,
+			expectedCode: ErrorResultLimitExceededInCompositeMode.Code},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.mockStore.On("CountTemplatesByOUID", mock.Anything, ChannelTypeEmail, "ou-1").Return(2, tc.countErr)
+			if tc.countErr == nil {
+				s.mockStore.On("ListTemplatesByOUID", mock.Anything, ChannelTypeEmail, "ou-1", 10, 0).
+					Return(nil, tc.listErr)
+			}
+
+			_, err := s.svc.ListTemplatesByOUID(s.ctx, ChannelTypeEmail, "ou-1", 10, 0)
+			s.Require().NotNil(err)
+			s.Require().Equal(tc.expectedCode, err.Code)
+		})
+	}
+}
+
 func (s *NotificationTemplateServiceTestSuite) TestDeleteTemplate() {
 	// Idempotent: deleting an absent template succeeds with no error (204).
 	s.mockStore.On("GetTemplate", mock.Anything, ChannelTypeEmail, "missing").

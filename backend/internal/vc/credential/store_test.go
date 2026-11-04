@@ -637,3 +637,60 @@ func loadRuntimeForScope() {
 		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
 	})
 }
+
+func (suite *CredentialStoreTestSuite) TestListSummariesByOUID() {
+	testCases := []struct {
+		name       string
+		setupMocks func()
+		shouldErr  bool
+	}{
+		{
+			name: "ReturnsOwnedRows",
+			setupMocks: func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("QueryContext", mock.Anything, queryListConfigurationSummariesByOUID,
+					"ou-1", testDeploymentID).
+					Return([]map[string]interface{}{
+						{
+							"id": "id-1", "handle": "h1", "ou_id": "ou-1",
+							"name": "N1", "vct": "v1", "format": "f",
+						},
+					}, nil)
+			},
+		},
+		{
+			name: "QueryError",
+			setupMocks: func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("QueryContext", mock.Anything, queryListConfigurationSummariesByOUID,
+					"ou-1", testDeploymentID).
+					Return(nil, errors.New("query failed"))
+			},
+			shouldErr: true,
+		},
+		{
+			name: "DBClientError",
+			setupMocks: func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("db error"))
+			},
+			shouldErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.refreshMocks()
+			tc.setupMocks()
+			summaries, err := suite.store.ListCredentialConfigurationSummariesByOUID(context.Background(), "ou-1")
+			if tc.shouldErr {
+				suite.Error(err)
+				suite.Nil(summaries)
+				return
+			}
+			suite.NoError(err)
+			suite.Require().Len(summaries, 1)
+			suite.Equal("id-1", summaries[0].ID)
+			suite.Equal("ou-1", summaries[0].OUID)
+		})
+	}
+}

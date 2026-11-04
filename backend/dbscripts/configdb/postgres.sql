@@ -417,6 +417,9 @@ CREATE TABLE "PRESENTATION_DEFINITION" (
 -- Each presentation definition handle is unique per deployment.
 CREATE UNIQUE INDEX idx_openid4vp_pd_handle ON "PRESENTATION_DEFINITION" (DEPLOYMENT_ID, HANDLE);
 
+-- Supports listing the presentation definitions an organization unit owns.
+CREATE INDEX idx_openid4vp_pd_ou ON "PRESENTATION_DEFINITION" (DEPLOYMENT_ID, OU_ID);
+
 -- Table to store OpenID4VCI credential configurations.
 CREATE TABLE "CREDENTIAL_CONFIGURATION" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
@@ -437,6 +440,9 @@ CREATE TABLE "CREDENTIAL_CONFIGURATION" (
 
 -- Each credential configuration handle is unique per deployment.
 CREATE UNIQUE INDEX idx_openid4vci_cc_handle ON "CREDENTIAL_CONFIGURATION" (DEPLOYMENT_ID, HANDLE);
+
+-- Supports listing the credential configurations an organization unit owns.
+CREATE INDEX idx_openid4vci_cc_ou ON "CREDENTIAL_CONFIGURATION" (DEPLOYMENT_ID, OU_ID);
 
 -- Table to store server-wide configuration
 CREATE TABLE "SERVER_CONFIG" (

@@ -398,6 +398,105 @@ func (suite *ResourceStoreTestSuite) TestGetResourceServerList() {
 	}
 }
 
+func (suite *ResourceStoreTestSuite) TestGetResourceServerListByOUID() {
+	testCases := []struct {
+		name        string
+		rows        []map[string]interface{}
+		queryErr    error
+		expectedIDs []string
+		shouldErr   bool
+	}{
+		{
+			name: "Success",
+			rows: []map[string]interface{}{
+				{"id": "rs1", "ou_id": "ou1", "name": "Server 1", "identifier": "identifier-1"},
+				{"id": "rs2", "ou_id": "ou1", "name": "Server 2", "identifier": "identifier-2"},
+			},
+			expectedIDs: []string{"rs1", "rs2"},
+		},
+		{
+			name:      "QueryError",
+			queryErr:  errors.New("query error"),
+			shouldErr: true,
+		},
+		{
+			name:      "InvalidRowData",
+			rows:      []map[string]interface{}{{"id": 123, "ou_id": "ou1", "name": "Server 1"}},
+			shouldErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
+			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
+			suite.store = &resourceStore{dbProvider: suite.mockDBProvider}
+
+			suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+			suite.mockDBClient.On("QueryContext", context.Background(),
+				queryGetResourceServerListByOUID, "ou1", 10, 5, "test-deployment").
+				Return(tc.rows, tc.queryErr)
+
+			servers, err := suite.store.GetResourceServerListByOUID(context.Background(), "ou1", 10, 5)
+
+			if tc.shouldErr {
+				suite.Error(err)
+				suite.Nil(servers)
+				return
+			}
+			suite.NoError(err)
+			suite.Len(servers, len(tc.expectedIDs))
+			for i, id := range tc.expectedIDs {
+				suite.Equal(id, servers[i].ID)
+				suite.Equal("ou1", servers[i].OUID)
+			}
+		})
+	}
+}
+
+func (suite *ResourceStoreTestSuite) TestGetResourceServerListCountByOUID() {
+	testCases := []struct {
+		name          string
+		rows          []map[string]interface{}
+		queryErr      error
+		expectedCount int
+		shouldErr     bool
+	}{
+		{
+			name:          "Success",
+			rows:          []map[string]interface{}{{"total": int64(3)}},
+			expectedCount: 3,
+		},
+		{
+			name:      "QueryError",
+			queryErr:  errors.New("query error"),
+			shouldErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
+			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
+			suite.store = &resourceStore{dbProvider: suite.mockDBProvider}
+
+			suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+			suite.mockDBClient.On("QueryContext", context.Background(),
+				queryGetResourceServerListCountByOUID, "ou1", "test-deployment").
+				Return(tc.rows, tc.queryErr)
+
+			count, err := suite.store.GetResourceServerListCountByOUID(context.Background(), "ou1")
+
+			if tc.shouldErr {
+				suite.Error(err)
+				return
+			}
+			suite.NoError(err)
+			suite.Equal(tc.expectedCount, count)
+		})
+	}
+}
+
 func (suite *ResourceStoreTestSuite) TestGetResourceServerListCount() {
 	testCases := []struct {
 		name          string

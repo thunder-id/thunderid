@@ -20,6 +20,8 @@ type resourceStoreInterface interface {
 	GetResourceServer(ctx context.Context, id string) (providers.ResourceServer, error)
 	GetResourceServerList(ctx context.Context, limit, offset int) ([]providers.ResourceServer, error)
 	GetResourceServerListCount(ctx context.Context) (int, error)
+	GetResourceServerListByOUID(ctx context.Context, ouID string, limit, offset int) ([]providers.ResourceServer, error)
+	GetResourceServerListCountByOUID(ctx context.Context, ouID string) (int, error)
 	UpdateResourceServer(ctx context.Context, id string, rs providers.ResourceServer) error
 	DeleteResourceServer(ctx context.Context, id string) error
 	CheckResourceServerNameExists(ctx context.Context, name string) (bool, error)
@@ -177,6 +179,50 @@ func (s *resourceStore) GetResourceServerListCount(ctx context.Context) (int, er
 		results, err := dbClient.QueryContext(ctx, queryGetResourceServerListCount, s.scope(ctx))
 		if err != nil {
 			return fmt.Errorf("failed to get resource server count: %w", err)
+		}
+
+		count, err = parseCountResult(results)
+		return err
+	})
+	return count, err
+}
+
+// GetResourceServerListByOUID retrieves the resource servers owned by an organization unit with pagination.
+func (s *resourceStore) GetResourceServerListByOUID(
+	ctx context.Context, ouID string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	var resourceServers []providers.ResourceServer
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(
+			ctx, queryGetResourceServerListByOUID, ouID, limit, offset, s.scope(ctx))
+		if err != nil {
+			return fmt.Errorf("failed to get resource server list by organization unit: %w", err)
+		}
+
+		resourceServers = make([]providers.ResourceServer, 0, len(results))
+		for _, row := range results {
+			rs, err := buildResourceServerFromResultRow(row)
+			if err != nil {
+				return fmt.Errorf("failed to build resource server: %w", err)
+			}
+			resourceServers = append(resourceServers, rs)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resourceServers, nil
+}
+
+// GetResourceServerListCountByOUID retrieves the total count of resource servers owned by an organization unit.
+func (s *resourceStore) GetResourceServerListCountByOUID(ctx context.Context, ouID string) (int, error) {
+	var count int
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(ctx, queryGetResourceServerListCountByOUID, ouID, s.scope(ctx))
+		if err != nil {
+			return fmt.Errorf("failed to get resource server count by organization unit: %w", err)
 		}
 
 		count, err = parseCountResult(results)

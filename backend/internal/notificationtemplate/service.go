@@ -20,6 +20,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -28,6 +29,8 @@ import (
 // NotificationTemplateServiceInterface defines the notification template management operations.
 type NotificationTemplateServiceInterface interface {
 	ListTemplates(ctx context.Context, channel ChannelType, limit, offset int) (
+		*TemplateListResponse, *tidcommon.ServiceError)
+	ListTemplatesByOUID(ctx context.Context, channel ChannelType, ouID string, limit, offset int) (
 		*TemplateListResponse, *tidcommon.ServiceError)
 	CreateTemplate(ctx context.Context, channel ChannelType, request CreateTemplateRequest) (
 		*Template, *tidcommon.ServiceError)
@@ -69,49 +72,16 @@ func newNotificationTemplateService(store notificationTemplateStoreInterface,
 // ListTemplates lists a page of templates of a channel.
 func (ts *notificationTemplateService) ListTemplates(ctx context.Context, channel ChannelType, limit, offset int) (
 	*TemplateListResponse, *tidcommon.ServiceError) {
-	if svcErr := validateChannel(channel); svcErr != nil {
-		return nil, svcErr
-	}
-	if svcErr := validatePagination(limit, offset); svcErr != nil {
-		return nil, svcErr
-	}
+	return ts.listTemplates(ctx, channel, "", limit, offset)
+}
 
-	total, err := ts.store.CountTemplates(ctx, channel)
-	if err != nil {
-		if errors.Is(err, errResultLimitExceededInCompositeMode) {
-			return nil, &ErrorResultLimitExceededInCompositeMode
-		}
-		ts.logger.Error(ctx, "Failed to count notification templates", log.Error(err))
-		return nil, &tidcommon.InternalServerError
+// ListTemplatesByOUID lists a page of the templates of a channel an organization unit owns.
+func (ts *notificationTemplateService) ListTemplatesByOUID(ctx context.Context, channel ChannelType, ouID string,
+	limit, offset int) (*TemplateListResponse, *tidcommon.ServiceError) {
+	if ouID == "" {
+		return nil, &ErrorInvalidOU
 	}
-
-	templates, err := ts.store.ListTemplates(ctx, channel, limit, offset)
-	if err != nil {
-		if errors.Is(err, errResultLimitExceededInCompositeMode) {
-			return nil, &ErrorResultLimitExceededInCompositeMode
-		}
-		ts.logger.Error(ctx, "Failed to list notification templates", log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-
-	summaries := make([]TemplateSummary, 0, len(templates))
-	for _, t := range templates {
-		summaries = append(summaries, TemplateSummary{
-			ID:          t.ID,
-			Handle:      t.Handle,
-			DisplayName: t.DisplayName,
-			Description: t.Description,
-			Self:        buildSelf(channel, t.ID),
-		})
-	}
-
-	return &TemplateListResponse{
-		TotalResults: total,
-		StartIndex:   offset + 1,
-		Count:        len(summaries),
-		Templates:    summaries,
-		Links:        utils.BuildPaginationLinks(buildCollectionSelf(channel), limit, offset, total, ""),
-	}, nil
+	return ts.listTemplates(ctx, channel, ouID, limit, offset)
 }
 
 // CreateTemplate creates a new template with a server-assigned id. The handle-uniqueness check and the
@@ -385,6 +355,68 @@ func (ts *notificationTemplateService) GetResourceDependencies(
 	}
 
 	return usages, nil
+}
+
+// listTemplates lists a page of templates of a channel, only the ones an organization unit owns when
+// an organization unit is given.
+func (ts *notificationTemplateService) listTemplates(ctx context.Context, channel ChannelType, ouID string,
+	limit, offset int) (*TemplateListResponse, *tidcommon.ServiceError) {
+	if svcErr := validateChannel(channel); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := validatePagination(limit, offset); svcErr != nil {
+		return nil, svcErr
+	}
+
+	var total int
+	var err error
+	if ouID == "" {
+		total, err = ts.store.CountTemplates(ctx, channel)
+	} else {
+		total, err = ts.store.CountTemplatesByOUID(ctx, channel, ouID)
+	}
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrorResultLimitExceededInCompositeMode
+		}
+		ts.logger.Error(ctx, "Failed to count notification templates", log.String("ouID", ouID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	var templates []templateDAO
+	extraQuery := ""
+	if ouID == "" {
+		templates, err = ts.store.ListTemplates(ctx, channel, limit, offset)
+	} else {
+		templates, err = ts.store.ListTemplatesByOUID(ctx, channel, ouID, limit, offset)
+		extraQuery = utils.FilterQueryParam(map[string]any{filter.AttributeOUID: ouID})
+	}
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrorResultLimitExceededInCompositeMode
+		}
+		ts.logger.Error(ctx, "Failed to list notification templates", log.String("ouID", ouID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	summaries := make([]TemplateSummary, 0, len(templates))
+	for _, t := range templates {
+		summaries = append(summaries, TemplateSummary{
+			ID:          t.ID,
+			Handle:      t.Handle,
+			DisplayName: t.DisplayName,
+			Description: t.Description,
+			Self:        buildSelf(channel, t.ID),
+		})
+	}
+
+	return &TemplateListResponse{
+		TotalResults: total,
+		StartIndex:   offset + 1,
+		Count:        len(summaries),
+		Templates:    summaries,
+		Links:        utils.BuildPaginationLinks(buildCollectionSelf(channel), limit, offset, total, extraQuery),
+	}, nil
 }
 
 // persistUniqueHandle runs write inside a transaction after checking that handle is free in the
