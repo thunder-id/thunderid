@@ -115,7 +115,7 @@ func (ts *SSOLogoutTestSuite) tokenFamily(token string) string {
 // participantRows returns the session's participants as rows of participantRow.
 func (ts *SSOLogoutTestSuite) participantRows(sessionID string) []string {
 	out, err := testutils.QueryRuntimeDB(fmt.Sprintf(
-		`SELECT APP_ID || '|' || OU_ID || '|' || COALESCE(TFID, '') FROM "SSO_SESSION_PARTICIPANT" `+
+		`SELECT APP_ID || '|' || OU_ID || '|' || COALESCE(TFID, '') FROM "SESSION_PARTICIPANT" `+
 			`WHERE SESSION_ID = '%s';`, sessionID))
 	ts.Require().NoError(err, "read the session's participants")
 	if out == "" {

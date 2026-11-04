@@ -213,6 +213,14 @@ describe('FlowCreatePage', () => {
     fireEvent.click(screen.getByText('Continue'));
   };
 
+  const navigateToDeviceGrantConfigureStep = (): void => {
+    act(() => {
+      (capturedTypeProps['onTypeChange'] as (type: string) => void)('DEVICE_GRANT');
+      (capturedTypeProps['onReadyChange'] as (ready: boolean) => void)(true);
+    });
+    fireEvent.click(screen.getByText('Continue'));
+  };
+
   describe('Step Navigation', () => {
     it('should advance to Template step when Continue is clicked after selecting a type', () => {
       render(<FlowCreatePage />);
@@ -274,9 +282,83 @@ describe('FlowCreatePage', () => {
 
       expect(screen.getByText('Create')).toBeInTheDocument();
     });
+
+    it('skips the template step for Device Authorization and goes to Configure', () => {
+      render(<FlowCreatePage />);
+
+      navigateToDeviceGrantConfigureStep();
+
+      expect(screen.getByTestId('configure-flow-name')).toBeInTheDocument();
+      expect(screen.queryByTestId('select-flow-template')).not.toBeInTheDocument();
+      expect(screen.queryByText('Template')).not.toBeInTheDocument();
+    });
+
+    it('goes back to Flow Type from Configure for Device Authorization', () => {
+      render(<FlowCreatePage />);
+
+      navigateToDeviceGrantConfigureStep();
+      fireEvent.click(screen.getByText('Back'));
+
+      expect(screen.getByTestId('select-flow-type')).toBeInTheDocument();
+      expect(screen.queryByTestId('select-flow-template')).not.toBeInTheDocument();
+    });
+
+    it('keeps the template step in the Back path for other flow types', () => {
+      render(<FlowCreatePage />);
+
+      navigateToConfigureStep();
+      fireEvent.click(screen.getByText('Back'));
+
+      expect(screen.getByTestId('select-flow-template')).toBeInTheDocument();
+    });
   });
 
   describe('Flow Creation', () => {
+    it('opens the Device Grant draft in the builder without creating it yet', () => {
+      render(<FlowCreatePage />);
+
+      navigateToDeviceGrantConfigureStep();
+      act(() => {
+        (capturedConfigureProps['onChange'] as (v: {name: string; handle: string}) => void)({
+          name: 'Device Flow',
+          handle: 'device-flow',
+        });
+        (capturedConfigureProps['onReadyChange'] as (ready: boolean) => void)(true);
+      });
+
+      fireEvent.click(screen.getByText('Create'));
+
+      expect(mockMutate).not.toHaveBeenCalled();
+      const navigateArgs = mockNavigate.mock.calls.at(-1) as
+        | [
+            string,
+            {
+              state: {
+                draftFlow: {
+                  name: string;
+                  handle: string;
+                  flowType: string;
+                  ouId: string;
+                  nodes: {id: string; executor?: {name: string}}[];
+                };
+              };
+            },
+          ]
+        | undefined;
+      expect(navigateArgs?.[0]).toBe('/flows/new');
+      expect(navigateArgs?.[1].state.draftFlow).toMatchObject({
+        name: 'Device Flow',
+        handle: 'device-flow',
+        flowType: 'DEVICE_GRANT',
+        ouId: 'ou-root',
+      });
+      expect(
+        navigateArgs?.[1].state.draftFlow.nodes.some(
+          (node) => node.id === 'verify-user-code' && node.executor?.name === 'DeviceCodeExecutor',
+        ),
+      ).toBe(true);
+    });
+
     it('should call createFlow.mutate when Create is clicked', () => {
       render(<FlowCreatePage />);
 

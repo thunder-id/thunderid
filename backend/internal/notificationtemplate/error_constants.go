@@ -403,4 +403,34 @@ var (
 			DefaultValue: "The ouId is set at creation and cannot be changed for an existing template",
 		},
 	}
+
+	// ErrorSubjectTooLong is returned when the template subject exceeds the maximum length. The limit is
+	// interpolated into the description via {{param(maxLength)}} by the caller.
+	ErrorSubjectTooLong = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.subject_too_long",
+			DefaultValue: "Subject too long",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.subject_too_long_description",
+			DefaultValue: "The template subject exceeds the maximum allowed length of {{param(maxLength)}} characters",
+		},
+	}
+
+	// ErrorBodyTooLong is returned when the template body exceeds the per-channel maximum length. The
+	// limit is interpolated into the description via {{param(maxLength)}} by the caller.
+	ErrorBodyTooLong = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1028",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.body_too_long",
+			DefaultValue: "Body too long",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.body_too_long_description",
+			DefaultValue: "The template body exceeds the maximum allowed length of {{param(maxLength)}} characters",
+		},
+	}
 )

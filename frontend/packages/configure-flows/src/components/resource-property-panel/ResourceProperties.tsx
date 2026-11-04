@@ -184,7 +184,7 @@ function ResourceProperties({
         return (
           <>
             {renderElementId()}
-            <CallProperties resource={resource} onChange={handleChange} />
+            <CallProperties key={resource.id} resource={resource} onChange={handleChange} />
           </>
         );
       }

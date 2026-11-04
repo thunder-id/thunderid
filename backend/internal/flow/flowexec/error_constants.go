@@ -163,6 +163,20 @@ var ErrorRecoveryFlowDisabled = tidcommon.ServiceError{
 	},
 }
 
+// ErrorDeviceGrantFlowDisabled defines the error response when Device Grant is not configured.
+var ErrorDeviceGrantFlowDisabled = tidcommon.ServiceError{
+	Code: "FES-1024",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.device_grant_not_allowed",
+		DefaultValue: "Device Grant not allowed",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.device_grant_not_allowed_description",
+		DefaultValue: "Device Grant flow is not configured for the application",
+	},
+}
+
 // ErrorDirectFlowInitiationNotPermitted defines the error for applications that do not allow
 // direct flow initiation via the HTTP endpoint (e.g. authorization_code grant type apps).
 var ErrorDirectFlowInitiationNotPermitted = tidcommon.ServiceError{
@@ -360,7 +374,7 @@ var ErrorInvalidOrganizationUnit = tidcommon.ServiceError{
 // ErrorInvitationOUMissing is returned when an invitation flow is started with a token that names no
 // organization unit.
 var ErrorInvitationOUMissing = tidcommon.ServiceError{
-	Code: "FES-1024",
+	Code: "FES-1027",
 	Type: tidcommon.ClientErrorType,
 	Error: tidcommon.I18nMessage{
 		Key:          "error.flowexecservice.invitation_ou_missing",

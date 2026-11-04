@@ -68,7 +68,7 @@ describe('SelectFlowType', () => {
     it('should render icons for both options', () => {
       render(<SelectFlowType {...defaultProps} />);
 
-      expect(screen.getByTestId('icon-key-round')).toBeInTheDocument();
+      expect(screen.getAllByTestId('icon-key-round')).toHaveLength(2);
       expect(screen.getByTestId('icon-user-plus')).toBeInTheDocument();
     });
 

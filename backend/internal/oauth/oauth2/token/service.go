@@ -288,9 +288,10 @@ func (ts *tokenService) verifyDPoPProof(ctx *context.Context, oauthApp *provider
 		HTU:   ts.expectedHTU(*ctx),
 	})
 	if err != nil {
+		log.GetLogger().Debug(*ctx, "DPoP proof verification failed", log.Error(err))
 		return &model.ErrorResponse{
 			Error:            constants.ErrorInvalidDPoPProof,
-			ErrorDescription: err.Error(),
+			ErrorDescription: "Invalid DPoP proof",
 		}
 	}
 	*ctx = dpop.WithJkt(*ctx, result.JKT)

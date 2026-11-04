@@ -19,44 +19,28 @@ function CallProperties({resource, onChange}: CallPropertiesPropsInterface): Rea
   const {flowId} = useParams<{flowId: string}>();
   const {data, isLoading, error} = useGetFlows({limit: 100});
 
-  const currentRef = useMemo<string>(() => {
-    const stepData = resource?.data as (StepData & {flow?: {ref?: string}}) | undefined;
-    return stepData?.flow?.ref ?? '';
-  }, [resource]);
+  const flowData = resource?.data as (StepData & {flow?: {ref?: string; filterFlowType?: string}}) | undefined;
+  const currentRef = flowData?.flow?.ref ?? '';
+  const filterFlowType = flowData?.flow?.filterFlowType;
 
-  // Widget-seeded UI hint: when a call step is inserted via a composite widget
-  // (e.g. Sign In Link), the widget pins a preferred flow type so the dropdown
-  // only lists flows of that type. Purely presentational — the backend still
-  // accepts any flow ref, so re-dropping the widget or picking again from a
-  // generic Call step lifts the filter.
-  const filterFlowType: string | undefined = useMemo<string | undefined>(() => {
-    const stepData = resource?.data as (StepData & {flow?: {filterFlowType?: string}}) | undefined;
-    return stepData?.flow?.filterFlowType;
-  }, [resource]);
-
-  // Sign-out flows are excluded as call targets: terminating an SSO session part-way through another
-  // flow (e.g. a login flow) is not a meaningful composition, so they are not offered here.
-  const flows: BasicFlowDefinition[] = useMemo<BasicFlowDefinition[]>(() => {
+  const flows: BasicFlowDefinition[] = useMemo(() => {
     const list = data?.flows ?? [];
     return list.filter(
-      (f: BasicFlowDefinition) =>
-        f.id !== flowId && f.flowType !== FlowType.SIGNOUT && (!filterFlowType || f.flowType === filterFlowType),
+      (flow: BasicFlowDefinition) =>
+        flow.id !== flowId &&
+        flow.flowType !== FlowType.SIGNOUT &&
+        flow.flowType !== FlowType.DEVICE_GRANT &&
+        (!filterFlowType || flow.flowType === filterFlowType),
     );
   }, [data, flowId, filterFlowType]);
 
-  const isRefKnown: boolean = useMemo<boolean>(
-    () => Boolean(currentRef) && flows.some((f: BasicFlowDefinition) => f.id === currentRef),
-    [currentRef, flows],
-  );
-
-  const validatorMessage: string = useResourceFieldError(resource?.id, 'data.flow.ref');
-
-  const staleRefMessage: string =
+  const isRefKnown = Boolean(currentRef) && flows.some((flow) => flow.id === currentRef);
+  const validatorMessage = useResourceFieldError(resource?.id, 'data.flow.ref');
+  const staleRefMessage =
     !validatorMessage && currentRef && !isLoading && !isRefKnown
       ? t('flows:core.call.properties.flow.error.unknown', 'The referenced flow no longer exists. Pick a valid flow.')
       : '';
-
-  const errorMessage: string = validatorMessage || staleRefMessage;
+  const errorMessage = validatorMessage || staleRefMessage;
 
   const handleChange = (selected: string): void => {
     onChange('data.flow', filterFlowType ? {ref: selected, filterFlowType} : {ref: selected}, resource);
@@ -84,7 +68,7 @@ function CallProperties({resource, onChange}: CallPropertiesPropsInterface): Rea
           data-testid="call-flow-ref-select"
           value={isRefKnown ? currentRef : ''}
           disabled={isLoading || flows.length === 0}
-          onChange={(e) => handleChange(String(e.target.value))}
+          onChange={(event) => handleChange(String(event.target.value))}
           displayEmpty
           fullWidth
         >
@@ -93,9 +77,9 @@ function CallProperties({resource, onChange}: CallPropertiesPropsInterface): Rea
               ? t('flows:core.call.properties.flow.loading', 'Loading flows…')
               : t('flows:core.call.properties.flow.placeholder', 'Select a flow')}
           </MenuItem>
-          {flows.map((f: BasicFlowDefinition) => (
-            <MenuItem key={f.id} value={f.id}>
-              {f.name} ({f.flowType})
+          {flows.map((flow) => (
+            <MenuItem key={flow.id} value={flow.id}>
+              {flow.name} ({flow.flowType})
             </MenuItem>
           ))}
         </Select>

@@ -6511,6 +6511,15 @@ translations:
     forms.credentials.links.sign_up.label: Sign up
     forms.schema_attrs.title: Tell us about you
     forms.schema_attrs.actions.continue.label: Continue
+  deviceGrant:
+    forms.user_code.title: Enter the code shown on your device
+    forms.user_code.fields.code.label: Verification code
+    forms.user_code.fields.code.placeholder: ABCD-EFGH
+    forms.user_code.actions.submit.label: Continue
+    forms.success.title: Device authorized
+    forms.success.description: You can return to your device.
+    forms.failure.title: Device authorization failed
+    forms.failure.description: Return to your device and start again.
   signup:
     images.app_logo.alt: Application logo
     forms.credentials.title: Sign Up
@@ -7771,3 +7780,91 @@ content:
       <p>{{t(accountUnlocked.email.intro)}}</p>
     </body>
     </html>
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000008a
+ouHandle: default
+name: Default Device Grant Flow
+handle: default-device-grant-flow
+flowType: DEVICE_GRANT
+nodes:
+  - id: start
+    type: START
+    onSuccess: verify-user-code
+    layout:
+      size: {width: 101, height: 34}
+      position: {x: 80, y: 313}
+  - id: verify-user-code
+    type: TASK_EXECUTION
+    executor:
+      name: DeviceCodeExecutor
+    onSuccess: call-authentication-flow
+    onIncomplete: prompt-user-code
+    layout:
+      size: {width: 200, height: 100}
+      position: {x: 330, y: 280}
+  - id: prompt-user-code
+    type: PROMPT
+    meta:
+      components:
+        - type: TEXT
+          id: device-code-heading
+          label: '{{ t(deviceGrant:forms.user_code.title) }}'
+          variant: HEADING_2
+        - type: BLOCK
+          id: device-code-block
+          components:
+            - type: OTP_INPUT
+              id: device-code-input
+              ref: user_code
+              label: '{{ t(deviceGrant:forms.user_code.fields.code.label) }}'
+              placeholder: '{{ t(deviceGrant:forms.user_code.fields.code.placeholder) }}'
+              required: true
+            - type: ACTION
+              id: device-code-submit
+              label: '{{ t(deviceGrant:forms.user_code.actions.submit.label) }}'
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: device-code-input
+            identifier: user_code
+            type: TEXT_INPUT
+            required: true
+        action:
+          ref: device-code-submit
+          nextNode: verify-user-code
+    layout:
+      size: {width: 350, height: 320}
+      position: {x: 330, y: 540}
+  - id: call-authentication-flow
+    type: CALL
+    flow:
+      ref: 01900000-0000-7000-8000-000000000061
+    onSuccess: authorization-succeeded
+    layout:
+      size: {width: 260, height: 120}
+      position: {x: 740, y: 270}
+  - id: authorization-succeeded
+    type: PROMPT
+    message: '{{ t(deviceGrant:forms.success.title) }}'
+    next: end
+    meta:
+      components:
+        - type: TEXT
+          id: success-title
+          label: '{{ t(deviceGrant:forms.success.title) }}'
+          variant: HEADING_1
+          color: SUCCESS
+        - type: TEXT
+          id: success-description
+          label: '{{ t(deviceGrant:forms.success.description) }}'
+          variant: BODY_1
+    layout:
+      size: {width: 350, height: 220}
+      position: {x: 1170, y: 220}
+  - id: end
+    type: END
+    layout:
+      size: {width: 85, height: 34}
+      position: {x: 1620, y: 313}

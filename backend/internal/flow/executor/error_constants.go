@@ -1816,7 +1816,7 @@ var (
 	// authorized by someone other than the caller who started it.
 	ErrShareNotAuthorized = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1131",
+		Code: "FET-1137",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.share_not_authorized",
 			DefaultValue: "Sharing not authorized",
@@ -1896,6 +1896,20 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.not_the_inviter_desc",
 			DefaultValue: "Only the admin who started this invitation can complete this step",
+		},
+	}
+
+	// ErrInvalidDeviceUserCode is returned when a submitted Device Grant user code cannot be used.
+	ErrInvalidDeviceUserCode = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1131",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.invalid_device_user_code",
+			DefaultValue: "This code is invalid or no longer available. Try again.",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.invalid_device_user_code_desc",
+			DefaultValue: "The submitted user code is invalid or can no longer be used for this application.",
 		},
 	}
 )

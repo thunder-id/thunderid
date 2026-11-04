@@ -30,6 +30,7 @@ describe('useGetFlows', () => {
     flows: [
       {
         id: 'flow-1',
+        ouId: 'ou-1',
         flowType: FlowType.AUTHENTICATION,
         name: 'Basic Login Flow',
         handle: 'basic-login-flow',
@@ -39,6 +40,7 @@ describe('useGetFlows', () => {
       },
       {
         id: 'flow-2',
+        ouId: 'ou-1',
         flowType: FlowType.REGISTRATION,
         name: 'User Registration Flow',
         handle: 'user-registration-flow',
@@ -132,6 +134,48 @@ describe('useGetFlows', () => {
         'Content-Type': 'application/json',
       },
     });
+  });
+
+  it('should fetch all pages when requested', async () => {
+    const firstPage: FlowListResponse = {
+      ...mockFlowListResponse,
+      totalResults: 101,
+      count: 100,
+      flows: Array.from({length: 100}, (_, index) => ({
+        ...mockFlowListResponse.flows[0],
+        id: `flow-${index + 1}`,
+      })),
+    };
+    const secondPage: FlowListResponse = {
+      ...mockFlowListResponse,
+      totalResults: 101,
+      startIndex: 101,
+      count: 1,
+      flows: [
+        {
+          ...mockFlowListResponse.flows[0],
+          id: 'default-device-grant-id',
+          flowType: FlowType.DEVICE_GRANT,
+          handle: 'default-device-grant-flow',
+        },
+      ],
+    };
+    mockHttpRequest.mockResolvedValueOnce({data: firstPage}).mockResolvedValueOnce({data: secondPage});
+
+    const {result} = renderHook(() => useGetFlows({flowType: FlowType.DEVICE_GRANT, limit: 100, fetchAllPages: true}));
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(result.current.data?.flows).toHaveLength(101);
+    expect(result.current.data?.flows.find((flow) => flow.handle === 'default-device-grant-flow')?.id).toBe(
+      'default-device-grant-id',
+    );
+    expect(mockHttpRequest).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({url: 'https://localhost:8090/flows?limit=100&offset=100&flowType=DEVICE_GRANT'}),
+    );
   });
 
   it('should show loading state initially', async () => {

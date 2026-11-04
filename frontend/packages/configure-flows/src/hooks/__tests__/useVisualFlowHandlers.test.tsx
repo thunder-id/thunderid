@@ -16,6 +16,15 @@ const mockGetNodes = vi.fn();
 const mockGetEdges = vi.fn();
 const mockUpdateNodeData = vi.fn();
 
+const {mockT} = vi.hoisted(() => ({
+  mockT: vi.fn((key: string) => key),
+}));
+
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
+  useTranslation: () => ({t: mockT}),
+}));
+
 vi.mock('@xyflow/react', () => ({
   useReactFlow: () => ({
     getNodes: mockGetNodes,
@@ -64,6 +73,7 @@ vi.mock('../useFlowPlugins', () => ({
 
 describe('useVisualFlowHandlers', () => {
   const mockSetEdges = vi.fn();
+  const mockSetNodes = vi.fn();
 
   const defaultFlowConfigValue: FlowConfigContextProps = {
     ElementFactory: () => null,
@@ -103,7 +113,7 @@ describe('useVisualFlowHandlers', () => {
 
   describe('Hook Interface', () => {
     it('should return handleConnect function', () => {
-      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
         wrapper: createWrapper(),
       });
 
@@ -111,7 +121,7 @@ describe('useVisualFlowHandlers', () => {
     });
 
     it('should return handleNodesDelete function', () => {
-      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
         wrapper: createWrapper(),
       });
 
@@ -119,7 +129,7 @@ describe('useVisualFlowHandlers', () => {
     });
 
     it('should return handleEdgesDelete function', () => {
-      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
         wrapper: createWrapper(),
       });
 
@@ -127,9 +137,12 @@ describe('useVisualFlowHandlers', () => {
     });
 
     it('should return stable function references across renders', () => {
-      const {result, rerender} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
-        wrapper: createWrapper(),
-      });
+      const {result, rerender} = renderHook(
+        () => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}),
+        {
+          wrapper: createWrapper(),
+        },
+      );
 
       const initialConnect = result.current.handleConnect;
       const initialNodesDelete = result.current.handleNodesDelete;
@@ -147,7 +160,7 @@ describe('useVisualFlowHandlers', () => {
     it('should add edge with default edge style when no onEdgeResolve provided', () => {
       mockGetNodes.mockReturnValue([{id: 'node-1'}, {id: 'node-2'}]);
 
-      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
         wrapper: createWrapper(),
       });
 
@@ -189,9 +202,12 @@ describe('useVisualFlowHandlers', () => {
 
       const onEdgeResolve = vi.fn().mockReturnValue(customEdge);
 
-      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, onEdgeResolve}), {
-        wrapper: createWrapper(),
-      });
+      const {result} = renderHook(
+        () => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes, onEdgeResolve}),
+        {
+          wrapper: createWrapper(),
+        },
+      );
 
       const connection: Connection = {
         source: 'node-1',
@@ -227,7 +243,7 @@ describe('useVisualFlowHandlers', () => {
       it('should populate RichText action.ref when edge is drawn from its next handle', () => {
         mockGetNodes.mockReturnValue([buildRichTextNode(''), {id: 'target-1', data: {}}]);
 
-        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
           wrapper: createWrapper(),
         });
 
@@ -275,7 +291,7 @@ describe('useVisualFlowHandlers', () => {
         };
         mockGetNodes.mockReturnValue([nested, {id: 'target-2'}]);
 
-        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
           wrapper: createWrapper(),
         });
 
@@ -297,7 +313,7 @@ describe('useVisualFlowHandlers', () => {
       it('should not call updateNodeData when RichText already has the target ref', () => {
         mockGetNodes.mockReturnValue([buildRichTextNode('target-1'), {id: 'target-1'}]);
 
-        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
           wrapper: createWrapper(),
         });
 
@@ -323,7 +339,7 @@ describe('useVisualFlowHandlers', () => {
           {id: 'target-1'},
         ]);
 
-        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
           wrapper: createWrapper(),
         });
 
@@ -342,7 +358,7 @@ describe('useVisualFlowHandlers', () => {
       it('should ignore connections whose sourceHandle does not end with _NEXT', () => {
         mockGetNodes.mockReturnValue([buildRichTextNode(''), {id: 'target-1'}]);
 
-        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
           wrapper: createWrapper(),
         });
 
@@ -361,7 +377,7 @@ describe('useVisualFlowHandlers', () => {
       it('should skip auto-population when source node has no components (non-step data)', () => {
         mockGetNodes.mockReturnValue([{id: 'view-1', data: {}}, {id: 'target-1'}]);
 
-        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
           wrapper: createWrapper(),
         });
 
@@ -389,7 +405,7 @@ describe('useVisualFlowHandlers', () => {
         };
         mockGetNodes.mockReturnValue([sourceNode, {id: 'target-1'}]);
 
-        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+        const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
           wrapper: createWrapper(),
         });
 
@@ -417,7 +433,7 @@ describe('useVisualFlowHandlers', () => {
         const connectTo = (target: string, node: {id: string; data: unknown}): SyncedComponent => {
           mockGetNodes.mockReturnValue([node, {id: target}]);
 
-          const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+          const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
             wrapper: createWrapper(),
           });
 
@@ -524,7 +540,7 @@ describe('useVisualFlowHandlers', () => {
             {id: 'target-1'},
           ]);
 
-          const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+          const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
             wrapper: createWrapper(),
           });
 
@@ -545,7 +561,7 @@ describe('useVisualFlowHandlers', () => {
     it('should use current edgeStyle from context', () => {
       mockGetNodes.mockReturnValue([{id: 'node-1'}, {id: 'node-2'}]);
 
-      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
         wrapper: createWrapper({edgeStyle: EdgeStyleTypes.Bezier}),
       });
 
@@ -578,7 +594,7 @@ describe('useVisualFlowHandlers', () => {
       mockGetNodes.mockReturnValue(nodes);
       mockGetEdges.mockReturnValue(edges);
 
-      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
         wrapper: createWrapper(),
       });
 
@@ -598,7 +614,7 @@ describe('useVisualFlowHandlers', () => {
 
       mockGetNodes.mockReturnValue(nodes);
 
-      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
         wrapper: createWrapper(),
       });
 
@@ -626,7 +642,7 @@ describe('useVisualFlowHandlers', () => {
       mockGetNodes.mockReturnValue(nodes);
       mockGetEdges.mockReturnValue([]);
 
-      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
         wrapper: createWrapper(),
       });
 
@@ -659,7 +675,7 @@ describe('useVisualFlowHandlers', () => {
       mockGetNodes.mockReturnValue(nodes);
       mockGetEdges.mockReturnValue(edges);
 
-      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
         wrapper: createWrapper(),
       });
 
@@ -679,7 +695,7 @@ describe('useVisualFlowHandlers', () => {
 
       mockGetNodes.mockReturnValue(nodes);
 
-      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
         wrapper: createWrapper({edgeStyle: EdgeStyleTypes.Step}),
       });
 
@@ -692,11 +708,166 @@ describe('useVisualFlowHandlers', () => {
 
       expect(resultEdges[0].type).toBe(EdgeStyleTypes.Step);
     });
+
+    describe('condition onSkip', () => {
+      const condition = {key: '{{ctx(eligible)}}', value: 'true', onSkip: 'node-2'};
+      const buildNodes = (): Node[] =>
+        [
+          {id: 'node-1', data: {condition}},
+          {id: 'node-2', data: {}},
+          {id: 'node-3', data: {}},
+          {id: 'node-4', data: {}},
+        ] as Node[];
+
+      const renderHandlers = (overrides: Partial<Parameters<typeof useVisualFlowHandlers>[0]> = {}) =>
+        renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes, ...overrides}), {
+          wrapper: createWrapper(),
+        }).result;
+
+      const applySetNodes = (nodes: Node[]): Node[] => {
+        expect(mockSetNodes).toHaveBeenCalledTimes(1);
+        const setterFn = mockSetNodes.mock.calls[0][0];
+        return setterFn(nodes) as Node[];
+      };
+
+      it('should move onSkip to the deleted target successor', () => {
+        mockGetNodes.mockReturnValue(buildNodes());
+        mockGetEdges.mockReturnValue([
+          {id: 'edge-1', source: 'node-1', target: 'node-2'},
+          {id: 'edge-2', source: 'node-2', target: 'node-3'},
+        ] as Edge[]);
+
+        const result = renderHandlers();
+
+        act(() => {
+          result.current.handleNodesDelete([{id: 'node-2'} as Node]);
+        });
+
+        const updated = applySetNodes(buildNodes());
+        expect(updated[0].data).toEqual({condition: {...condition, onSkip: 'node-3'}});
+        expect(updated.slice(1)).toEqual(buildNodes().slice(1));
+      });
+
+      it('should follow onSkip through a chain of deleted nodes', () => {
+        mockGetNodes.mockReturnValue(buildNodes());
+        mockGetEdges.mockReturnValue([
+          {id: 'edge-1', source: 'node-1', target: 'node-2'},
+          {id: 'edge-2', source: 'node-2', target: 'node-3'},
+          {id: 'edge-3', source: 'node-3', target: 'node-4'},
+        ] as Edge[]);
+
+        const result = renderHandlers();
+
+        act(() => {
+          result.current.handleNodesDelete([{id: 'node-2'} as Node, {id: 'node-3'} as Node]);
+        });
+
+        expect(applySetNodes(buildNodes())[0].data).toEqual({condition: {...condition, onSkip: 'node-4'}});
+      });
+
+      it('should resolve against the source graph when the canvas shows compact stacks', () => {
+        // The canvas hides node-1 inside a stack and routes node-2 to the stack id.
+        mockGetNodes.mockReturnValue([
+          {id: 'node-2', data: {}},
+          {id: 'execution-stack_node-3', data: {}},
+        ] as Node[]);
+        mockGetEdges.mockReturnValue([{id: 'edge-2', source: 'node-2', target: 'execution-stack_node-3'}] as Edge[]);
+
+        const result = renderHandlers({
+          sourceNodes: buildNodes(),
+          sourceEdges: [
+            {id: 'edge-2', source: 'node-2', target: 'node-3'},
+            {id: 'edge-3', source: 'node-3', target: 'node-4'},
+          ] as Edge[],
+        });
+
+        act(() => {
+          result.current.handleNodesDelete([{id: 'node-2'} as Node]);
+        });
+
+        expect(applySetNodes(buildNodes())[0].data).toEqual({condition: {...condition, onSkip: 'node-3'}});
+      });
+
+      it('should not update nodes when no onSkip points at a deleted node', () => {
+        mockGetNodes.mockReturnValue(buildNodes());
+        mockGetEdges.mockReturnValue([{id: 'edge-3', source: 'node-3', target: 'node-4'}] as Edge[]);
+
+        const result = renderHandlers();
+
+        act(() => {
+          result.current.handleNodesDelete([{id: 'node-3'} as Node]);
+        });
+
+        expect(mockSetNodes).not.toHaveBeenCalled();
+      });
+
+      describe('handleBeforeDelete', () => {
+        it('should allow a deletion whose skip target can be moved', async () => {
+          mockGetNodes.mockReturnValue(buildNodes());
+          mockGetEdges.mockReturnValue([{id: 'edge-2', source: 'node-2', target: 'node-3'}] as Edge[]);
+          const onDeleteRefused = vi.fn();
+          const deleted = {nodes: [{id: 'node-2'} as Node], edges: []};
+
+          const result = renderHandlers({onDeleteRefused});
+
+          await expect(result.current.handleBeforeDelete(deleted)).resolves.toEqual(deleted);
+          expect(onDeleteRefused).not.toHaveBeenCalled();
+        });
+
+        it('should refuse a deletion when the skip target has several successors', async () => {
+          mockGetNodes.mockReturnValue(buildNodes());
+          mockGetEdges.mockReturnValue([
+            {id: 'edge-2', source: 'node-2', target: 'node-3'},
+            {id: 'edge-3', source: 'node-2', target: 'node-4'},
+          ] as Edge[]);
+          const onDeleteRefused = vi.fn();
+
+          const result = renderHandlers({onDeleteRefused});
+
+          await expect(result.current.handleBeforeDelete({nodes: [{id: 'node-2'} as Node], edges: []})).resolves.toBe(
+            false,
+          );
+          expect(onDeleteRefused).toHaveBeenCalledTimes(1);
+          expect(mockT).toHaveBeenCalledWith('flows:core.canvas.errors.skipTargetDelete', {
+            defaultValue: expect.any(String) as string,
+            nodes: 'node-1',
+          });
+          expect(onDeleteRefused).toHaveBeenCalledWith('flows:core.canvas.errors.skipTargetDelete');
+        });
+
+        it('should refuse a deletion when the skip target has no successor', async () => {
+          mockGetNodes.mockReturnValue(buildNodes());
+          mockGetEdges.mockReturnValue([]);
+          const onDeleteRefused = vi.fn();
+
+          const result = renderHandlers({onDeleteRefused});
+
+          await expect(result.current.handleBeforeDelete({nodes: [{id: 'node-2'} as Node], edges: []})).resolves.toBe(
+            false,
+          );
+          expect(onDeleteRefused).toHaveBeenCalledTimes(1);
+        });
+
+        it('should check hidden stack members through the source graph', async () => {
+          // node-1 is hidden in a stack, so the canvas alone shows no condition on node-2.
+          mockGetNodes.mockReturnValue([{id: 'node-2', data: {}}] as Node[]);
+          mockGetEdges.mockReturnValue([]);
+          const onDeleteRefused = vi.fn();
+
+          const result = renderHandlers({onDeleteRefused, sourceNodes: buildNodes(), sourceEdges: []});
+
+          await expect(result.current.handleBeforeDelete({nodes: [{id: 'node-2'} as Node], edges: []})).resolves.toBe(
+            false,
+          );
+          expect(onDeleteRefused).toHaveBeenCalledTimes(1);
+        });
+      });
+    });
   });
 
   describe('handleEdgesDelete', () => {
     it('should call emitEdgeDelete with deleted edges', () => {
-      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
         wrapper: createWrapper(),
       });
 
@@ -713,7 +884,7 @@ describe('useVisualFlowHandlers', () => {
     });
 
     it('should handle empty deleted edges array', () => {
-      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges, setNodes: mockSetNodes}), {
         wrapper: createWrapper(),
       });
 
@@ -732,7 +903,7 @@ describe('useVisualFlowHandlers', () => {
       const mockSetEdges1 = vi.fn();
       const mockSetEdges2 = vi.fn();
 
-      const {result, rerender} = renderHook(({setEdges}) => useVisualFlowHandlers({setEdges}), {
+      const {result, rerender} = renderHook(({setEdges}) => useVisualFlowHandlers({setEdges, setNodes: mockSetNodes}), {
         wrapper: createWrapper(),
         initialProps: {setEdges: mockSetEdges1},
       });

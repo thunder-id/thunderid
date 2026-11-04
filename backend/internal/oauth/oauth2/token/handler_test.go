@@ -128,6 +128,14 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_ServiceErrors() {
 			expectedCode:  http.StatusBadRequest,
 			expectedError: "unauthorized_client",
 		},
+		{
+			name:          "DeviceGrantServerErrorIsInternalServerError",
+			grantType:     string(providers.GrantTypeDeviceCode),
+			errCode:       constants.ErrorServerError,
+			errDesc:       "Failed to process token request",
+			expectedCode:  http.StatusInternalServerError,
+			expectedError: "server_error",
+		},
 	}
 	for _, tc := range tests {
 		suite.Run(tc.name, func() {

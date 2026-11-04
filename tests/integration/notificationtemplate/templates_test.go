@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -323,6 +324,38 @@ func (ts *TemplatesTestSuite) TestGetAndPutNotFound() {
 	})
 	ts.Require().Equal(http.StatusNotFound, status)
 	ts.Require().Equal("NTM-1004", errorCode(body))
+}
+
+// TestContentLengthLimits locks the per-channel length bounds: a subject over its limit is NTM-1027 and
+// a body over its per-channel limit is NTM-1028. Lengths use the default config limits (subject 1000,
+// email body 50000, SMS body 4096).
+func (ts *TemplatesTestSuite) TestContentLengthLimits() {
+	// Email subject over the limit.
+	status, body := ts.create("email", map[string]interface{}{
+		"handle":      "it-subject-too-long",
+		"displayName": "Subject Too Long",
+		"content":     map[string]string{"subject": strings.Repeat("s", 1001), "body": "<p>b</p>"},
+	})
+	ts.Require().Equal(http.StatusBadRequest, status)
+	ts.Require().Equal("NTM-1027", errorCode(body))
+
+	// Email body over the limit.
+	status, body = ts.create("email", map[string]interface{}{
+		"handle":      "it-email-body-too-long",
+		"displayName": "Email Body Too Long",
+		"content":     map[string]string{"subject": "s", "body": strings.Repeat("b", 50001)},
+	})
+	ts.Require().Equal(http.StatusBadRequest, status)
+	ts.Require().Equal("NTM-1028", errorCode(body))
+
+	// SMS body over the limit.
+	status, body = ts.create("sms", map[string]interface{}{
+		"handle":      "it-sms-body-too-long",
+		"displayName": "SMS Body Too Long",
+		"content":     map[string]string{"body": strings.Repeat("b", 4097)},
+	})
+	ts.Require().Equal(http.StatusBadRequest, status)
+	ts.Require().Equal("NTM-1028", errorCode(body))
 }
 
 // TestInvalidColorScheme confirms an email design with an unknown color scheme is rejected.

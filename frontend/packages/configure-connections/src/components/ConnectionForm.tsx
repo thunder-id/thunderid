@@ -159,7 +159,7 @@ export default function ConnectionForm({
               />
               {field.hintKey && (
                 <Typography variant="caption" color="text.secondary" sx={{display: 'block', ml: '52px'}}>
-                  {t(field.hintKey)}
+                  {t(field.hintKey, {productName})}
                 </Typography>
               )}
             </Box>
@@ -176,7 +176,7 @@ export default function ConnectionForm({
               onReplacingChange={onSecretReplacingChange}
               required={mode === 'create' && field.required}
               error={fieldError(field)}
-              hint={field.hintKey ? t(field.hintKey) : undefined}
+              hint={field.hintKey ? t(field.hintKey, {productName}) : undefined}
             />
           );
         } else if (field.kind === 'key-value') {
@@ -217,7 +217,7 @@ export default function ConnectionForm({
               {error ? (
                 <FormHelperText>{error}</FormHelperText>
               ) : (
-                field.hintKey && <FormHelperText>{t(field.hintKey)}</FormHelperText>
+                field.hintKey && <FormHelperText>{t(field.hintKey, {productName})}</FormHelperText>
               )}
             </FormControl>
           );

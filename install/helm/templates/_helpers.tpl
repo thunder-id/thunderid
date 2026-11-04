@@ -181,6 +181,51 @@ Injects CACHE_REDIS_PASSWORD from auto-generated database credentials Secret whe
 {{- end }}
 
 {{/*
+Volume mounts for the Redis TLS Secrets, shared by the server deployment and the setup job.
+Mounts one Secret per Redis connection (runtime-transient database, cache) that has TLS enabled with a secretName.
+*/}}
+{{- define "thunderid.redisTLSVolumeMounts" -}}
+{{- $configuration := default dict .Values.configuration -}}
+{{- $database := default dict $configuration.database -}}
+{{- $runtimeTransient := default dict $database.runtime_transient -}}
+{{- $rtTLS := default dict (default dict $runtimeTransient.redis).tls -}}
+{{- $cache := default dict $configuration.cache -}}
+{{- $cacheTLS := default dict (default dict $cache.redis).tls -}}
+{{- if and (eq $runtimeTransient.type "redis") $rtTLS.enabled $rtTLS.secretName }}
+- name: redis-tls-runtime-transient
+  mountPath: /opt/thunderid/config/redis-tls/runtime-transient
+  readOnly: true
+{{- end }}
+{{- if and (eq $cache.type "redis") $cacheTLS.enabled $cacheTLS.secretName }}
+- name: redis-tls-cache
+  mountPath: /opt/thunderid/config/redis-tls/cache
+  readOnly: true
+{{- end }}
+{{- end }}
+
+{{/*
+Volumes backing the Redis TLS volume mounts.
+*/}}
+{{- define "thunderid.redisTLSVolumes" -}}
+{{- $configuration := default dict .Values.configuration -}}
+{{- $database := default dict $configuration.database -}}
+{{- $runtimeTransient := default dict $database.runtime_transient -}}
+{{- $rtTLS := default dict (default dict $runtimeTransient.redis).tls -}}
+{{- $cache := default dict $configuration.cache -}}
+{{- $cacheTLS := default dict (default dict $cache.redis).tls -}}
+{{- if and (eq $runtimeTransient.type "redis") $rtTLS.enabled $rtTLS.secretName }}
+- name: redis-tls-runtime-transient
+  secret:
+    secretName: {{ $rtTLS.secretName }}
+{{- end }}
+{{- if and (eq $cache.type "redis") $cacheTLS.enabled $cacheTLS.secretName }}
+- name: redis-tls-cache
+  secret:
+    secretName: {{ $cacheTLS.secretName }}
+{{- end }}
+{{- end }}
+
+{{/*
 Validate and echo a resource store mode.
 Expected input:
   - value: the configured mode

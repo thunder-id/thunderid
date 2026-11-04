@@ -185,6 +185,21 @@ database:
       password: {{ "{{.DB_RUNTIME_TRANSIENT_REDIS_PASSWORD}}" | quote }}
       db: {{ .Values.configuration.database.runtime_transient.redis.db }}
       key_prefix: {{ .Values.configuration.database.runtime_transient.redis.key_prefix | quote }}
+      {{- with .Values.configuration.database.runtime_transient.redis.tls }}
+      {{- if .enabled }}
+      tls:
+        enabled: true
+        {{- if .secretName }}
+        ca_file: "config/redis-tls/runtime-transient/ca.crt"
+        {{- if .clientAuth }}
+        cert_file: "config/redis-tls/runtime-transient/tls.crt"
+        key_file: "config/redis-tls/runtime-transient/tls.key"
+        {{- end }}
+        {{- end }}
+        server_name: {{ .serverName | quote }}
+        insecure_skip_verify: {{ .insecureSkipVerify | default false }}
+      {{- end }}
+      {{- end }}
     {{- else }}
     postgres:
       hostname: {{ .Values.configuration.database.runtime_transient.postgres.hostname | quote }}
@@ -269,6 +284,21 @@ cache:
     password: {{ "{{.CACHE_REDIS_PASSWORD}}" | quote }}
     db: {{ .Values.configuration.cache.redis.db }}
     key_prefix: {{ .Values.configuration.cache.redis.keyPrefix | quote }}
+    {{- with .Values.configuration.cache.redis.tls }}
+    {{- if .enabled }}
+    tls:
+      enabled: true
+      {{- if .secretName }}
+      ca_file: "config/redis-tls/cache/ca.crt"
+      {{- if .clientAuth }}
+      cert_file: "config/redis-tls/cache/tls.crt"
+      key_file: "config/redis-tls/cache/tls.key"
+      {{- end }}
+      {{- end }}
+      server_name: {{ .serverName | quote }}
+      insecure_skip_verify: {{ .insecureSkipVerify | default false }}
+    {{- end }}
+    {{- end }}
   {{- end }}
 
 jwt:
@@ -540,12 +570,24 @@ account_access:
 identity_governance_provider:
   type: {{ $governanceProviderType | quote }}
 {{- end }}
-{{- /* Notification template store lives under the nested notification.template path. */}}
-{{- if $stores.notification_template }}
+{{- /* Notification template store and content-length limits live under the notification.template path. */}}
+{{- $ntTemplate := default dict (default dict .Values.configuration.notification).template }}
+{{- if or $stores.notification_template $ntTemplate.maxSubjectLength $ntTemplate.maxEmailBodyLength $ntTemplate.maxSmsBodyLength }}
 
 notification:
   template:
+{{- if $stores.notification_template }}
     store: {{ include "thunderid.validateStoreMode" (dict "value" $stores.notification_template "field" "configuration.stores.notification_template") | quote }}
+{{- end }}
+{{- if $ntTemplate.maxSubjectLength }}
+    max_subject_length: {{ $ntTemplate.maxSubjectLength | int64 }}
+{{- end }}
+{{- if $ntTemplate.maxEmailBodyLength }}
+    max_email_body_length: {{ $ntTemplate.maxEmailBodyLength | int64 }}
+{{- end }}
+{{- if $ntTemplate.maxSmsBodyLength }}
+    max_sms_body_length: {{ $ntTemplate.maxSmsBodyLength | int64 }}
+{{- end }}
 {{- end }}
 
 declarative_resources:

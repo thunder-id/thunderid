@@ -941,6 +941,7 @@ func RestartServerWithResourcesFile(resourcesFilePath string) error {
 
 func StopServer() {
 	log.Println("Stopping server...")
+	stopping := serverCmd != nil || serverPid != 0
 
 	if serverCmd != nil {
 		// Normal case: we started this process and hold its Cmd handle.
@@ -1010,10 +1011,23 @@ func StopServer() {
 		}
 		removePidFile()
 	}
+
+	// Callers start a new server or run the setup script next, and both need the port free.
+	if stopping {
+		if err := waitForPortClosed(serverPort, 10*time.Second); err != nil {
+			log.Printf("Warning: %v", err)
+		}
+	}
 }
 
 // RestartServer stops the current server and starts a new one with the same configuration.
 func RestartServer() error {
+	return RestartServerWithTimeout(30 * time.Second)
+}
+
+// RestartServerWithTimeout stops the current server and starts a new one, waiting up to timeout
+// for its health endpoint to become ready.
+func RestartServerWithTimeout(timeout time.Duration) error {
 	ensureInitialized()
 	log.Println("Restarting server...")
 
@@ -1031,7 +1045,7 @@ func RestartServer() error {
 		return fmt.Errorf("failed to restart server: %v", err)
 	}
 
-	if err := WaitForServerReady(30 * time.Second); err != nil {
+	if err := WaitForServerReady(timeout); err != nil {
 		return fmt.Errorf("server did not become ready after restart: %w", err)
 	}
 

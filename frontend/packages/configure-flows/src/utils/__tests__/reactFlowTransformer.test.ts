@@ -2236,6 +2236,34 @@ describe('reactFlowTransformer', () => {
 
       expect(errors).toContain('Node prompt-1, action button-1: nextNode references non-existent node non-existent');
     });
+
+    describe('condition onSkip', () => {
+      const layout = {size: {width: 100, height: 50}, position: {x: 0, y: 0}};
+
+      const flowGraphSkippingTo = (onSkip: string): FlowGraph => ({
+        nodes: [
+          {id: 'start-1', type: 'START', layout, onSuccess: 'exec-1'},
+          {
+            id: 'exec-1',
+            type: 'TASK_EXECUTION',
+            layout,
+            condition: {key: '{{ctx(userEligibleForProvisioning)}}', value: 'true', onSkip},
+            onSuccess: 'end-1',
+          },
+          {id: 'end-1', type: 'END', layout},
+        ],
+      });
+
+      it('should detect invalid condition onSkip reference', () => {
+        expect(validateFlowGraph(flowGraphSkippingTo('non-existent'))).toContain(
+          'Node exec-1: condition.onSkip references non-existent node non-existent',
+        );
+      });
+
+      it('should accept a condition onSkip that references an existing node', () => {
+        expect(validateFlowGraph(flowGraphSkippingTo('end-1'))).toHaveLength(0);
+      });
+    });
   });
 
   describe('createFlowConfiguration', () => {
@@ -2376,6 +2404,43 @@ describe('reactFlowTransformer', () => {
     });
   });
 
+  describe('Node condition', () => {
+    const condition = {key: '{{ctx(userEligibleForProvisioning)}}', value: 'true', onSkip: 'skip-1'};
+
+    it('should write the condition of a node back as it was read', () => {
+      const canvasData: ReactFlowCanvasData = {
+        nodes: [
+          createNode(
+            'exec-1',
+            StepTypes.Execution,
+            {x: 0, y: 0},
+            {
+              action: {type: 'EXECUTOR', executor: {name: 'ProvisioningExecutor'}},
+              condition,
+            },
+          ),
+          createNode('skip-1', StepTypes.Execution),
+          createNode('end-1', StepTypes.End),
+        ],
+        edges: [createEdge('e-success', 'exec-1', 'end-1')],
+      };
+
+      const execNode = transformReactFlow(canvasData).nodes.find((n) => n.id === 'exec-1');
+
+      expect(execNode?.condition).toEqual(condition);
+      expect(execNode?.onSuccess).toBe('end-1');
+    });
+
+    it('should not add a condition to a node that has none', () => {
+      const canvasData: ReactFlowCanvasData = {
+        nodes: [createNode('exec-1', StepTypes.Execution), createNode('end-1', StepTypes.End)],
+        edges: [createEdge('e-success', 'exec-1', 'end-1')],
+      };
+
+      expect(transformReactFlow(canvasData).nodes.find((n) => n.id === 'exec-1')).not.toHaveProperty('condition');
+    });
+  });
+
   describe('CALL node transformation', () => {
     it('should map CALL step type to CALL flow node type', () => {
       const canvasData: ReactFlowCanvasData = {
@@ -2403,22 +2468,7 @@ describe('reactFlowTransformer', () => {
       expect(result.nodes[0].flow).toEqual({ref: 'referenced-flow-id'});
     });
 
-    it('should fall back to data.action.flow.ref when data.flow is absent', () => {
-      const canvasData: ReactFlowCanvasData = {
-        nodes: [
-          createNode('call-1', StepTypes.Call, {x: 0, y: 0}, {
-            action: {type: 'CALL', flow: {ref: 'flow-from-action'}},
-          } as unknown as StepData),
-        ],
-        edges: [],
-      };
-
-      const result = transformReactFlow(canvasData);
-
-      expect(result.nodes[0].flow).toEqual({ref: 'flow-from-action'});
-    });
-
-    it('should omit flow when neither data.flow nor data.action.flow provides a ref', () => {
+    it('should omit flow when data.flow has no ref', () => {
       const canvasData: ReactFlowCanvasData = {
         nodes: [createNode('call-1', StepTypes.Call)],
         edges: [],

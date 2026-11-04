@@ -166,6 +166,24 @@ describe('useFlowSave', () => {
       expect(mockUpdateFlowMutate).not.toHaveBeenCalled();
     });
 
+    it('includes the organization unit and reports the created flow ID', () => {
+      mockCreateFlowMutate.mockImplementation((_, options: {onSuccess: (flow: {id: string}) => void}) => {
+        options.onSuccess({id: 'created-flow-id'});
+      });
+      const onCreated = vi.fn();
+      const {result} = renderUseFlowSave({onCreated, ouId: 'ou-device-grant'});
+
+      act(() => {
+        result.current.handleSave(createMockCanvasData());
+      });
+
+      expect(mockCreateFlowMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ouId: 'ou-device-grant'}),
+        expect.any(Object),
+      );
+      expect(onCreated).toHaveBeenCalledWith('created-flow-id');
+    });
+
     it('should show success message on create success', () => {
       mockCreateFlowMutate.mockImplementation((_, options: {onSuccess: () => void}) => {
         options.onSuccess();

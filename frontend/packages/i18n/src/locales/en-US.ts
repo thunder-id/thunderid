@@ -2209,7 +2209,7 @@ const translations = {
   connections: {
     // Listing page
     'listing.title': 'Connections',
-    'listing.subtitle': 'Configure the external services ThunderID connects to.',
+    'listing.subtitle': 'Configure the external services {{productName}} connects to.',
     'listing.search.placeholder': 'Search connections',
     'listing.showingCount': 'Showing {{count}} connections',
     'listing.loading': 'Loading connections...',
@@ -2333,20 +2333,20 @@ const translations = {
     'detail.credentials.title': 'Credentials',
     'detail.credentials.description': 'Credentials and endpoints for this connection. Secrets are stored write-only.',
     'detail.configuration.title': 'Connection configuration',
-    'detail.configuration.description': 'Provide the details ThunderID needs to connect to this service.',
+    'detail.configuration.description': 'Provide the details {{productName}} needs to connect to this service.',
     'detail.authentication.title': 'Authentication',
     'detail.authentication.endpointChanged': 'The PDP endpoint changed. Enter fresh credentials before saving.',
     'detail.authentication.gatewayUrlChanged': 'The SMS gateway URL changed. Enter fresh credentials before saving.',
     'detail.authentication.description':
-      'Configure how ThunderID authenticates requests sent to this policy decision point.',
+      'Configure how {{productName}} authenticates requests sent to this policy decision point.',
     'detail.authentication.gatewayDescription':
-      'Configure how ThunderID authenticates requests sent to this SMS gateway.',
+      'Configure how {{productName}} authenticates requests sent to this SMS gateway.',
     'detail.authentication.originChanged':
       'The URL origin changed. Enter the credentials again under Authentication before saving.',
     'detail.authentication.method.label': 'Authentication method',
     'detail.authentication.method.none': 'None',
     'detail.outboundAuthentication.description':
-      'Credentials ThunderID uses to sign in to this provider. Secrets are stored write-only.',
+      'Credentials {{productName}} uses to sign in to this provider. Secrets are stored write-only.',
     'detail.usages.title': 'Usages',
     'detail.usages.description':
       'Resources that use this connection. A connection cannot be deleted while a resource uses it.',
@@ -2360,6 +2360,14 @@ const translations = {
     'detail.dangerZone.delete.title': 'Delete connection',
     'detail.dangerZone.delete.description':
       'Permanently delete this connection and all associated data. Any application relying on it will stop accepting logins through this provider. This action cannot be undone.',
+    'detail.dangerZone.delete.emailDescription':
+      'Permanently delete this email provider and all associated data. It cannot be deleted while a flow sends email through it. If it is the default email sender, system-generated emails are not sent until another sender is set as the default. This action cannot be undone.',
+    'detail.dangerZone.delete.smsDescription':
+      'Permanently delete this SMS provider and all associated data. It cannot be deleted while a flow sends SMS through it. This action cannot be undone.',
+    'detail.dangerZone.delete.pdpDescription':
+      'Permanently delete this policy decision point and all associated data. It cannot be deleted while a resource server uses it for authorization. This action cannot be undone.',
+    'detail.dangerZone.delete.httpDescription':
+      'Permanently delete this service endpoint and all associated data. It cannot be deleted while a flow calls it. This action cannot be undone.',
     'detail.saveBar.unsaved': 'You have unsaved changes',
     'detail.saveBar.save': 'Save changes',
     'detail.saveBar.saving': 'Saving...',
@@ -2369,7 +2377,7 @@ const translations = {
     'form.chrome.configure': 'Configure connection',
     'form.configureTitle': 'Configure {{vendor}}',
     'form.fields.name.label': 'Connection name',
-    'form.fields.name.hint': 'Friendly name used to identify this connection in ThunderID.',
+    'form.fields.name.hint': 'Friendly name used to identify this connection in {{productName}}.',
     'form.fields.name.placeholder': 'e.g. {{example}}',
     'form.fields.clientId.label': 'Client ID',
     'form.fields.clientId.hint': 'OAuth2 client identifier used for authentication.',
@@ -2416,7 +2424,7 @@ const translations = {
     'form.fields.issuer.hint': 'Issuer identifier expected in tokens from this provider.',
     'form.fields.tokenExchangeEnabled.label': 'Enable token exchange',
     'form.fields.tokenExchangeEnabled.hint':
-      "Let backend services exchange this provider's tokens for ThunderID access tokens.",
+      "Let backend services exchange this provider's tokens for {{productName}} access tokens.",
     'form.fields.trustedTokenAudience.label': 'Trusted token audience',
     'form.fields.trustedTokenAudience.hint': 'Accepted audience value for external tokens during token exchange.',
     'form.fields.accountSid.label': 'Account SID',
@@ -2430,7 +2438,7 @@ const translations = {
     'form.fields.senderId.label': 'Sender ID',
     'form.fields.senderId.hint': 'Phone number or alphanumeric sender ID messages are sent from.',
     'form.fields.smsGatewayUrl.label': 'Gateway URL',
-    'form.fields.smsGatewayUrl.hint': 'HTTP endpoint ThunderID calls to send an SMS.',
+    'form.fields.smsGatewayUrl.hint': 'HTTP endpoint {{productName}} calls to send an SMS.',
     'form.fields.httpMethod.label': 'HTTP method',
     'form.fields.httpMethod.hint': 'Method used to call the gateway URL.',
     'form.fields.contentType.label': 'Content type',
@@ -2447,7 +2455,7 @@ const translations = {
     'form.fields.authzenEndpoint.label': 'AuthZEN evaluation endpoint',
     'form.fields.authzenBatchEndpoint.label': 'AuthZEN batch evaluation endpoint',
     'form.fields.timeoutMs.label': 'Timeout in milliseconds',
-    'form.fields.timeoutMs.hint': 'Maximum time ThunderID waits for one PDP request.',
+    'form.fields.timeoutMs.hint': 'Maximum time {{productName}} waits for one PDP request.',
     'form.fields.httpEndpointDescription.label': 'Description',
     'form.fields.httpEndpointDescription.hint': 'Optional note about what this endpoint does, up to 500 characters.',
     'form.fields.httpEndpointUrl.label': 'Endpoint URL',
@@ -2477,10 +2485,10 @@ const translations = {
       'Select known subject attributes or type custom runtime attributes. Leave empty to send only the default subject fields.',
     'subjectMapping.mappings.title': 'Attribute mappings',
     'subjectMapping.mappings.description':
-      'Map ThunderID subject attribute names to the attribute names expected by the PDP.',
+      'Map {{productName}} subject attribute names to the attribute names expected by the PDP.',
     'subjectMapping.mappings.hint':
       'Select extra user or agent attributes to include in the PDP request. The PDP attribute is optional and is only needed when the PDP expects a different name.',
-    'subjectMapping.mappings.thunderIdAttribute': 'ThunderID attribute',
+    'subjectMapping.mappings.thunderIdAttribute': '{{productName}} attribute',
     'subjectMapping.mappings.pdpAttribute': 'PDP attribute',
     'subjectMapping.mappings.pdpAttributeOptional': 'PDP attribute (optional)',
     'subjectMapping.mappings.mapPdpAttribute': 'Map to a different PDP attribute',
@@ -2494,7 +2502,7 @@ const translations = {
     'subjectMapping.mappings.loadTypesError': 'Failed to load user and agent types.',
     'subjectMapping.mappings.remove': 'Remove',
     'subjectMapping.mappings.duplicateAttribute':
-      'Each ThunderID attribute can be mapped only once for an entity type.',
+      'Each {{productName}} attribute can be mapped only once for an entity type.',
     'subjectMapping.mappings.unresolved.warning':
       'These mappings could not be matched to exactly one user or agent type. Remove them before saving this connection.',
     'subjectMapping.mappings.unresolved.entityType': 'Entity type: {{entityType}}',
@@ -2764,7 +2772,7 @@ const translations = {
     // Create form
     'create.title': 'Add trusted issuer',
     'create.subtitle':
-      'Register an external identity provider whose identity assertions ThunderID can exchange for access tokens.',
+      'Register an external identity provider whose identity assertions {{productName}} can exchange for access tokens.',
     'create.duplicateName': 'A trusted issuer with this name already exists.',
     'create.form.name.label': 'Name',
     'create.form.issuer.label': 'Issuer URI',
@@ -4840,6 +4848,8 @@ const translations = {
     // Canvas hints and tips
     'core.canvas.hints.autoLayout': 'Tip: Use auto-layout to organize your flow',
     'core.canvas.buttons.autoLayout': 'Auto layout',
+    'core.canvas.errors.skipTargetDelete':
+      'Cannot delete this step: a condition on {{nodes}} skips to it and no single next step can replace it.',
 
     // Steps - end
     'core.steps.end.flowCompletionProperties': 'Flow completion properties',
