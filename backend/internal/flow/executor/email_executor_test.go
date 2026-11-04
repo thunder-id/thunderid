@@ -566,6 +566,9 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ClientError() {
 	suite.NoError(err)
 	suite.Equal(providers.ExecFailure, resp.Status)
 	suite.Equal(ErrEmailProviderNotConfigured.Error.DefaultValue, resp.Error.Error.DefaultValue)
+	// Undelivered, the invite link goes to the screen that shows it instead.
+	suite.Equal("https://localhost:5190/gate/invite?executionId=test&inviteToken=abc",
+		resp.AdditionalData[common.DataInviteLink])
 }
 
 // bestEffortContext is a send-mode node with a recipient and the named properties.

@@ -6408,6 +6408,38 @@ translations:
     errors.failed.description: An error occurred. Please try again.
     goToSignIn: Go to Sign In
     signIn: Sign In
+  invitation:
+    forms.email.title: Invite a User
+    forms.email.subtitle: Enter the email of the user to bring into your organization.
+    forms.email.fields.email.label: Email
+    forms.email.fields.email.placeholder: Enter email
+    forms.email.actions.next.label: Next
+    forms.new_user.title: No Account Found
+    forms.new_user.description: No user has this email. Invite them to create an account?
+    forms.new_user.actions.invite.label: Invite
+    forms.new_user.actions.change_email.label: Use Another Email
+    forms.roles.title: Select Roles
+    forms.roles.subtitle: Choose the roles the user gets in your organization once they accept.
+    forms.roles.fields.roles.label: Roles
+    forms.roles.actions.invite.label: Send Invite
+    forms.invite_sent.title: Invitation Sent
+    forms.invite_sent.description: The user can accept the invitation using the link in the email.
+    forms.invite_email_unavailable.title: Email Delivery Failed
+    forms.invite_email_unavailable.description: The invitation email could not be delivered. Share the link below with the user.
+    forms.invite_email_unavailable.link_label: Invite Link
+    forms.accept.title: Join the Organization
+    forms.accept.description: You have been invited to join an organization. Do you want to accept?
+    forms.accept.actions.accept.label: Accept
+    forms.accept.actions.decline.label: Decline
+    forms.user_details.title: Complete Your Account
+    forms.user_details.subtitle: Enter your details to create your account.
+    forms.user_details.actions.submit.label: Continue
+    forms.complete.title: You Have Joined
+    forms.complete.description: You can now sign in to the organization.
+    forms.complete_without_roles.title: You Have Joined
+    forms.complete_without_roles.description: Your roles could not be assigned. Contact your administrator.
+    forms.declined.title: Invitation Declined
+    forms.declined.description: You declined the invitation. Nothing was changed.
   signin:
     images.app_logo.alt: Application logo
     forms.credentials.title: Sign In
@@ -6654,6 +6686,12 @@ translations:
     userInvite.email.linkFallback: "If the button above doesn't work, copy and paste the following link into your browser:"
     userInvite.email.ignore: "If you did not expect this invitation, you can safely ignore this email."
     userInvite.sms.body: "You've been invited to register. Complete your account setup here: {{ctx(inviteLink)}}"
+    invitation.email.subject: "You're Invited to Join an Organization"
+    invitation.email.heading: "You've Been Invited!"
+    invitation.email.intro: "An administrator invited you to join their organization. Open the invitation to accept or decline it."
+    invitation.email.cta: "View Invitation"
+    invitation.email.linkFallback: "If the button above does not work, copy and paste the following link into your browser:"
+    invitation.email.ignore: "If you did not expect this invitation, you can safely ignore this email. Nothing changes unless you accept it."
     selfRegistration.email.subject: "Complete Your Registration for {{ctx(appName)}}"
     selfRegistration.email.heading: "Complete Your Registration for {{ctx(appName)}}"
     selfRegistration.email.intro: "You recently started the registration process for <strong>{{ctx(appName)}}</strong>. Click the link below to complete your account setup:"
@@ -7395,6 +7433,30 @@ content:
       <p>{{t(userInvite.email.linkFallback)}}</p>
       <p><a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a></p>
       <p>{{t(userInvite.email.ignore)}}</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000b1
+channel: email
+handle: invitation
+ouHandle: default
+displayName: Invitation Email
+description: Sent to invite a user into an organization unit through an invitation flow.
+content:
+  subject: "{{t(invitation.email.subject)}}"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(invitation.email.heading)}}</h2>
+      <p>{{t(invitation.email.intro)}}</p>
+      <p><a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 10px 20px;
+        background-color: {{design(palette.primary.main)}}; color: {{design(palette.primary.contrastText)}}; text-decoration: none;
+        border-radius: 4px;">{{t(invitation.email.cta)}}</a></p>
+      <p>{{t(invitation.email.linkFallback)}}</p>
+      <p><a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a></p>
+      <p>{{t(invitation.email.ignore)}}</p>
     </body>
     </html>
 ---

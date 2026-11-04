@@ -6,6 +6,7 @@ package flowmgt
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -1553,6 +1554,80 @@ func (s *ValidatorTestSuite) TestValidateModeFlowTypes_IdentityGovernance() {
 			s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)
 		})
 	}
+}
+
+// The role executor changes roles from a revocation plan only in an administration flow, and selects and assigns
+// roles only in an invitation flow. A node that names no mode runs role deletion.
+func (s *ValidatorTestSuite) TestValidateModeFlowTypes_RoleExecutor() {
+	cases := []struct {
+		mode     string
+		flowType providers.FlowType
+		allowed  bool
+	}{
+		{executor.ExecutorModeRoleSelection, providers.FlowTypeInvitation, true},
+		{executor.ExecutorModeRoleAssignment, providers.FlowTypeInvitation, true},
+		{executor.ExecutorModeRoleDeletion, providers.FlowTypeAdministration, true},
+		{executor.ExecutorModeRoleSelection, providers.FlowTypeAdministration, false},
+		{executor.ExecutorModeRoleAssignment, providers.FlowTypeAdministration, false},
+		{executor.ExecutorModeRoleDeletion, providers.FlowTypeInvitation, false},
+		{executor.ExecutorModeRoleAssignmentRemoval, providers.FlowTypeInvitation, false},
+		{executor.ExecutorModeRolePermissionRemoval, providers.FlowTypeInvitation, false},
+	}
+	for _, tc := range cases {
+		s.Run(tc.mode+"/"+string(tc.flowType), func() {
+			nodes := companionNodes(executor.ExecutorNameRole)
+			nodes[1].Executor.Mode = tc.mode
+
+			err := s.v.validateModeFlowTypes(tc.flowType, nodes)
+
+			if tc.allowed {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)
+		})
+	}
+}
+
+// The sharing executor authorizes a share only in an invitation flow, and applies one there or, for what a
+// sign-up created, in a sign-in or registration flow.
+func (s *ValidatorTestSuite) TestValidateModeFlowTypes_SharingExecutor() {
+	allowedIn := map[string][]providers.FlowType{
+		executor.ExecutorModeValidate: {providers.FlowTypeInvitation},
+		executor.ExecutorModeShare: {providers.FlowTypeInvitation, providers.FlowTypeAuthentication,
+			providers.FlowTypeRegistration},
+	}
+	flowTypes := []providers.FlowType{providers.FlowTypeInvitation, providers.FlowTypeAuthentication,
+		providers.FlowTypeRegistration}
+	for mode, allowed := range allowedIn {
+		for _, flowType := range flowTypes {
+			nodes := companionNodes(executor.ExecutorNameSharing)
+			nodes[1].Executor.Mode = mode
+
+			err := s.v.validateModeFlowTypes(flowType, nodes)
+
+			if slices.Contains(allowed, flowType) {
+				s.Nil(err, "%s in %s", mode, flowType)
+				continue
+			}
+			s.Require().NotNil(err, "%s in %s", mode, flowType)
+			s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)
+		}
+	}
+}
+
+// A role node that names no mode is refused at save, as before the role executor gained its invitation modes.
+func (s *ValidatorTestSuite) TestValidateExecutorMode_RoleExecutorRequiresAMode() {
+	meta, ok := executormeta.MetaFor(executormeta.ExecutorNameRole)
+	s.Require().True(ok)
+	node := companionNodes(executor.ExecutorNameRole)[1]
+
+	err := s.v.validateExecutorMode(&node, &meta)
+
+	s.Require().NotNil(err)
+	s.Equal("error.flowmgtservice.executor_mode_required_description", err.ErrorDescription.Key)
 }
 
 // ---------------------------------------------------------------------------

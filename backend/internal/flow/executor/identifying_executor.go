@@ -67,6 +67,8 @@ func newIdentifyingExecutor(
 			SupportedModes: []string{ExecutorModeIdentify, ExecutorModeResolve, ExecutorModeCheckState},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: propertyKeyLoginHintAttribute},
+				{Property: propertyKeyBoundToUserType},
+				{Property: propertyKeyContinueOnNoMatch},
 			},
 		})
 	return &identifyingExecutor{
@@ -182,13 +184,44 @@ func (i *identifyingExecutor) Execute(ctx *providers.NodeContext) (*providers.Ex
 	default:
 		// Default identify behavior (including explicit "identify" mode and unset).
 		// Fails if zero or more than one user matches.
-		return i.executeIdentify(ctx, execResp)
+		return i.applyIdentifyProperties(ctx, i.executeIdentify(ctx, execResp))
 	}
+}
+
+// applyIdentifyProperties applies the node's properties to the identify outcome: boundToUserType fails a match of
+// another user type than the one the flow resolved, and continueOnNoMatch turns no match into an onIncomplete with
+// no error, so the engine keeps the identifier and shows nothing.
+func (i *identifyingExecutor) applyIdentifyProperties(ctx *providers.NodeContext,
+	resp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
+	if bound, _ := ctx.NodeProperties[propertyKeyBoundToUserType].(bool); bound &&
+		resp.Status == providers.ExecComplete {
+		userType := ctx.RuntimeData[categoryTypeKey]
+		if userType == "" {
+			return nil, errors.New("identify is bound to a user type, but the flow resolved none")
+		}
+		entity, epErr := i.entityProvider.GetEntityProfile(ctx.Context, resp.RuntimeData[userAttributeUserID])
+		if epErr != nil {
+			return nil, fmt.Errorf("failed to read the identified user: %s", epErr.Message)
+		}
+		if entity.Type != userType {
+			resp.RuntimeData[userAttributeUserID] = ""
+			resp.Status = providers.ExecFailure
+			resp.Error = errForEntityCategory(ErrUserTypeNotAllowed, categoryUnscoped)
+		}
+	}
+	if noMatchContinues, _ := ctx.NodeProperties[propertyKeyContinueOnNoMatch].(bool); noMatchContinues &&
+		resp.Error != nil && resp.Error.Code == ErrEntityNotFound.Code {
+		resp.Status = providers.ExecUserInputRequired
+		resp.Error = nil
+		resp.Inputs = nil
+		resp.RuntimeData[userAttributeUserID] = ""
+	}
+	return resp, nil
 }
 
 // executeIdentify handles the default identify mode which expects exactly one user match.
 func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
-	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
+	execResp *providers.ExecutorResponse) *providers.ExecutorResponse {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	userSearchAttributes := i.buildSearchAttributes(ctx)
@@ -198,7 +231,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 		logger.Debug(ctx.Context, "Failed to identify user due to error: "+err.Error())
 		execResp.Status = providers.ExecFailure
 		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
-		return execResp, nil
+		return execResp
 	}
 
 	// Only promote ExecFailure to ExecUserInputRequired for recoverable user-input
@@ -214,10 +247,10 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 			log.Int("searchAttributeCount", len(userSearchAttributes)))
 		execResp.Status = providers.ExecUserInputRequired
 		execResp.Inputs = i.GetRequiredInputs(ctx)
-		return execResp, nil
+		return execResp
 	}
 	if execResp.Status == providers.ExecFailure {
-		return execResp, nil
+		return execResp
 	}
 
 	if userID == nil || *userID == "" {
@@ -229,7 +262,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 			execResp.Status = providers.ExecFailure
 		}
 		execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
-		return execResp, nil
+		return execResp
 	}
 
 	// A recovery flow never reaches the assertion check, so a held account is refused here.
@@ -240,14 +273,14 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 			// Answered as a failed account lookup.
 			execResp.Status = providers.ExecFailure
 			execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
-			return execResp, nil
+			return execResp
 		}
 		if held {
 			// A refusal that names no hold takes the unknown-user branch.
 			if stated != nil {
 				execResp.Status = providers.ExecFailure
 				execResp.Error = stated
-				return execResp, nil
+				return execResp
 			}
 			if loginHintAttr == "" {
 				execResp.Status = providers.ExecUserInputRequired
@@ -256,7 +289,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 				execResp.Status = providers.ExecFailure
 			}
 			execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
-			return execResp, nil
+			return execResp
 		}
 	}
 
@@ -266,7 +299,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 	logger.Debug(ctx.Context, "Identifying executor completed successfully",
 		log.MaskedString(log.LoggerKeyUserID, *userID))
 
-	return execResp, nil
+	return execResp
 }
 
 // executeResolve handles the resolve mode for user disambiguation.

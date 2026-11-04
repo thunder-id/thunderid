@@ -84,6 +84,7 @@ paths:
             enum:
               - AUTHENTICATION
               - REGISTRATION
+              - INVITATION
         - name: limit
           in: query
           description: Maximum number of flows to return
@@ -1598,6 +1599,7 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - INVITATION
         name:
           type: string
           description: Name of the flow
@@ -1660,6 +1662,7 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - INVITATION
           description: |
             Type of flow
           example: AUTHENTICATION
@@ -1915,6 +1918,7 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - INVITATION
           description: |
             Type of flow
           example: AUTHENTICATION
@@ -1995,6 +1999,7 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - INVITATION
           description: |
             Type of flow
           example: AUTHENTICATION
@@ -2507,6 +2512,7 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - INVITATION
           example: AUTHENTICATION
         ouId:
           type: string

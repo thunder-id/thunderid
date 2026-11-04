@@ -71,6 +71,7 @@ const (
 	ExecutorNameIdentityGovernance           = executormeta.ExecutorNameIdentityGovernance
 	ExecutorNamePreSuspend                   = executormeta.ExecutorNamePreSuspend
 	ExecutorNameExtension                    = executormeta.ExecutorNameExtension
+	ExecutorNameSharing                      = executormeta.ExecutorNameSharing
 )
 
 // Executor mode constants
@@ -85,6 +86,8 @@ const (
 	ExecutorModeRoleAssignmentRemoval  = executormeta.ExecutorModeRoleAssignmentRemoval
 	ExecutorModeRoleDeletion           = executormeta.ExecutorModeRoleDeletion
 	ExecutorModeRolePermissionRemoval  = executormeta.ExecutorModeRolePermissionRemoval
+	ExecutorModeRoleSelection          = executormeta.ExecutorModeRoleSelection
+	ExecutorModeRoleAssignment         = executormeta.ExecutorModeRoleAssignment
 	ExecutorModeGroupDeletion          = executormeta.ExecutorModeGroupDeletion
 	ExecutorModeGroupMembershipRemoval = executormeta.ExecutorModeGroupMembershipRemoval
 	ExecutorModeActionDeletion         = executormeta.ExecutorModeActionDeletion
@@ -95,6 +98,9 @@ const (
 	ExecutorModeUnlock    = executormeta.ExecutorModeUnlock
 	ExecutorModeSuspend   = executormeta.ExecutorModeSuspend
 	ExecutorModeUnsuspend = executormeta.ExecutorModeUnsuspend
+
+	ExecutorModeValidate = executormeta.ExecutorModeValidate
+	ExecutorModeShare    = executormeta.ExecutorModeShare
 )
 
 // defaultProvisioningCategory is the entity default category a provisioning node works on when no
@@ -122,6 +128,7 @@ const (
 	userInputOuHandle          = "ouHandle"
 	userInputOuDesc            = "ouDescription"
 	userInputInviteToken       = "inviteToken"
+	userInputRoles             = "roles"
 	userInputOTP               = "otp"
 	userInputMagicLinkToken    = "token"
 	userInputConsentDecisions  = "consent_decisions"
@@ -219,9 +226,13 @@ const (
 	propertyKeyPresentationDefinitionID                = "presentation_definition_id"
 	propertyKeyCallbackType                            = "callbackType"
 	propertyKeyLoginHintAttribute                      = "loginHintAttribute"
-	propertyKeyOTPLength                               = "otpLength"
-	propertyKeyOTPUseNumericOnly                       = "otpUseNumericOnly"
-	propertyKeyOTPValidityPeriodSeconds                = "otpValidityPeriodSeconds"
+	// propertyKeyBoundToUserType makes identify accept only a user of the user type the flow resolved.
+	propertyKeyBoundToUserType = "boundToUserType"
+	// propertyKeyContinueOnNoMatch makes identify continue on onIncomplete without an error when no user matches.
+	propertyKeyContinueOnNoMatch        = "continueOnNoMatch"
+	propertyKeyOTPLength                = "otpLength"
+	propertyKeyOTPUseNumericOnly        = "otpUseNumericOnly"
+	propertyKeyOTPValidityPeriodSeconds = "otpValidityPeriodSeconds"
 	// propertyKeyPromptOnSignOut, when set to boolean true on a session sign-out node, makes the executor
 	// confirm the logout with the End-User (via the node's onIncomplete prompt) whenever the RP-initiated
 	// logout was not accompanied by a valid id_token_hint (RuntimeKeyLogoutPromptRequired).
@@ -231,6 +242,25 @@ const (
 	// the Deny button or by letting the prompt time out. This applies even when every prompted
 	// element is optional.
 	propertyKeyConsentFailOnDeny = "failOnDeny"
+
+	propertyKeyResourceType = "resourceType"
+	propertyKeyResourceID   = "resourceId"
+	propertyKeyOwningOUID   = "owningOuId"
+	propertyKeyTargetOUID   = "targetOuId"
+	// propertyKeyRoles names, separated by spaces, the roles role selection records instead of prompting for them.
+	propertyKeyRoles = "roles"
+	// propertyKeyProvisioningOU names the organization unit provisioning creates the entity in: the resolved one
+	// (the default) or, with provisioningOUUserType, the one the flow's user type belongs to.
+	propertyKeyProvisioningOU = "provisioningOU"
+)
+
+// provisioningOU is a value of propertyKeyProvisioningOU.
+type provisioningOU string
+
+// Values of propertyKeyProvisioningOU.
+const (
+	provisioningOUResolved provisioningOU = "resolved"
+	provisioningOUUserType provisioningOU = "userType"
 )
 
 // suspensionRevocationTTL is how long a suspension's revocation rows are kept.

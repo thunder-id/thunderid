@@ -24,6 +24,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -61,6 +62,14 @@ type SharingServiceInterface interface {
 	// DeletePolicy removes a policy and cleans up the state of every organization unit that loses
 	// visibility as a result.
 	DeletePolicy(ctx context.Context, policyID string) *tidcommon.ServiceError
+	// ValidateShareIntoChildOU checks, as the caller, that a resource may be shared into a direct child of its
+	// owner, and writes nothing. With resourceID empty the resource is about to be created in owningOUID.
+	ValidateShareIntoChildOU(
+		ctx context.Context, rt ResourceType, resourceID, owningOUID, targetOUID string,
+	) *tidcommon.ServiceError
+	// ShareIntoChildOU shares a resource into a direct child of its owner, on the owner's authority. It does not
+	// authorize the caller: callers check first with ValidateShareIntoChildOU.
+	ShareIntoChildOU(ctx context.Context, rt ResourceType, resourceID, targetOUID string) *tidcommon.ServiceError
 
 	// GetPolicy returns one policy by id.
 	GetPolicy(ctx context.Context, policyID string) (Policy, *tidcommon.ServiceError)
@@ -2090,6 +2099,113 @@ func (s *sharingService) IsVisible(
 		}
 	}
 	return visible, nil
+}
+
+// ValidateShareIntoChildOU checks, as the caller, that a resource may be shared into a direct child of its owner.
+func (s *sharingService) ValidateShareIntoChildOU(
+	ctx context.Context, rt ResourceType, resourceID, owningOUID, targetOUID string,
+) *tidcommon.ServiceError {
+	authorizer, svcErr := s.shareAuthorizer(rt)
+	if svcErr != nil {
+		return svcErr
+	}
+	if resourceID != "" {
+		owner, known, svcErr := s.ownerOf(ctx, rt, resourceID)
+		if svcErr != nil {
+			return svcErr
+		}
+		if !known {
+			return withDetail(ErrorInvalidRequestFormat, "the resource has no owning organization unit")
+		}
+		owningOUID = owner
+	}
+	if svcErr := s.requireDirectChild(ctx, owningOUID, targetOUID); svcErr != nil {
+		return svcErr
+	}
+	return authorizer.AuthorizeShareInto(ctx, resourceID, targetOUID)
+}
+
+// ShareIntoChildOU shares a resource into a direct child of its owner, on the owner's authority.
+func (s *sharingService) ShareIntoChildOU(
+	ctx context.Context, rt ResourceType, resourceID, targetOUID string,
+) *tidcommon.ServiceError {
+	if _, svcErr := s.shareAuthorizer(rt); svcErr != nil {
+		return svcErr
+	}
+	owner, known, svcErr := s.ownerOf(ctx, rt, resourceID)
+	if svcErr != nil {
+		return svcErr
+	}
+	if !known {
+		return withDetail(ErrorInvalidRequestFormat, "the resource has no owning organization unit")
+	}
+	if svcErr := s.requireDirectChild(ctx, owner, targetOUID); svcErr != nil {
+		return svcErr
+	}
+	ctx = security.WithRuntimeContext(ctx)
+	// A concurrent edit of the owner's policy moves its version; the share is worked out again once against it.
+	svcErr = s.shareIntoChild(ctx, rt, resourceID, owner, targetOUID)
+	if svcErr != nil && svcErr.Code == ErrorVersionMismatch.Code {
+		svcErr = s.shareIntoChild(ctx, rt, resourceID, owner, targetOUID)
+	}
+	return svcErr
+}
+
+// shareIntoChild adds the child to the owner's policy, or creates one naming it, unless the child already sees it.
+func (s *sharingService) shareIntoChild(
+	ctx context.Context, rt ResourceType, resourceID, owner, childOUID string,
+) *tidcommon.ServiceError {
+	visible, svcErr := s.IsVisible(ctx, rt, resourceID, childOUID)
+	if svcErr != nil || visible {
+		return svcErr
+	}
+	policies, svcErr := s.ListPolicies(ctx, rt, resourceID)
+	if svcErr != nil {
+		return svcErr
+	}
+	var ownerPolicy *Policy
+	for i := range policies {
+		if policies[i].InitiatingOUID == owner {
+			ownerPolicy = &policies[i]
+			break
+		}
+	}
+	req, create, svcErr := childUnitShareRequest(ownerPolicy, childOUID)
+	if svcErr != nil {
+		return svcErr
+	}
+	if create {
+		_, svcErr = s.CreatePolicy(ctx, rt, resourceID, owner, req)
+		return svcErr
+	}
+	_, svcErr = s.UpdatePolicy(ctx, ownerPolicy.ID, req)
+	return svcErr
+}
+
+// shareAuthorizer returns the declaration's ShareAuthorizer, refusing a type that cannot be shared into a child unit.
+func (s *sharingService) shareAuthorizer(rt ResourceType) (ShareAuthorizer, *tidcommon.ServiceError) {
+	decl, ok := s.registry.get(rt)
+	if !ok {
+		return nil, &ErrorResourceTypeNotShareable
+	}
+	_, ownerKnown := decl.(OwnerResolver)
+	authorizer, ok := decl.(ShareAuthorizer)
+	if !ok || !ownerKnown {
+		return nil, &ErrorResourceTypeNotShareable
+	}
+	return authorizer, nil
+}
+
+// requireDirectChild refuses a target whose nearest ancestor is not the owner.
+func (s *sharingService) requireDirectChild(ctx context.Context, owner, targetOUID string) *tidcommon.ServiceError {
+	ancestors, svcErr := s.ouHierarchyResolver.GetAncestorOUIDs(ctx, targetOUID)
+	if svcErr != nil {
+		return svcErr
+	}
+	if owner == "" || len(ancestors) == 0 || ancestors[0] != owner {
+		return &ErrorTargetNotDirectChild
+	}
+	return nil
 }
 
 // ownerOf asks a resource type which organization unit owns one of its resources.

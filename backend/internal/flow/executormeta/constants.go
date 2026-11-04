@@ -57,6 +57,7 @@ const (
 	ExecutorNamePreSuspend                   = "PreSuspendExecutor"
 	ExecutorNameExtension                    = "ExtensionExecutor"
 	ExecutorNameAuthorizationDetail          = "AuthorizationDetailExecutor"
+	ExecutorNameSharing                      = "SharingExecutor"
 )
 
 // Executor mode constants
@@ -71,6 +72,8 @@ const (
 	ExecutorModeRoleAssignmentRemoval  = "role_assignment_removal"
 	ExecutorModeRoleDeletion           = "role_deletion"
 	ExecutorModeRolePermissionRemoval  = "role_permission_removal"
+	ExecutorModeRoleSelection          = "role_selection"
+	ExecutorModeRoleAssignment         = "role_assignment"
 	ExecutorModeGroupDeletion          = "group_deletion"
 	ExecutorModeGroupMembershipRemoval = "group_membership_removal"
 	ExecutorModeActionDeletion         = "action_deletion"
@@ -81,4 +84,7 @@ const (
 	ExecutorModeUnlock    = "unlock"
 	ExecutorModeSuspend   = "suspend"
 	ExecutorModeUnsuspend = "unsuspend"
+
+	ExecutorModeValidate = "validate"
+	ExecutorModeShare    = "share"
 )

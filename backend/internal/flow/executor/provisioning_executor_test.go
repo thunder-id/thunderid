@@ -24,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/tests/mocks/agentmgtprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -1329,8 +1330,9 @@ func (suite *ProvisioningExecutorTestSuite) TestGetOUID() {
 				UserInputs:  tt.userInputs,
 			}
 
-			ouID := suite.executor.getOUID(ctx)
+			ouID, err := suite.executor.getOUID(ctx)
 
+			assert.NoError(suite.T(), err)
 			assert.Equal(suite.T(), tt.expected, ouID)
 		})
 	}
@@ -5760,4 +5762,97 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_ExistenceLookupIsDeploym
 	suite.Require().NotNil(lookupCtx)
 	_, bounded := authnprovidercm.SignInBoundaryFrom(lookupCtx)
 	assert.False(suite.T(), bounded)
+}
+
+// placementContext provisions a user in a flow that resolved ou-a, whose user type lives in root-ou.
+func (suite *ProvisioningExecutorTestSuite) placementContext(flowType providers.FlowType,
+	properties map[string]interface{}) *providers.NodeContext {
+	suite.expectSchemaForProvisioning()
+	attrs := map[string]interface{}{"username": "newuser", attributeEmail: "new@example.com"}
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(
+		nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", "")).Maybe()
+	return &providers.NodeContext{
+		Context:     adminContext(),
+		ExecutionID: "flow-123",
+		FlowType:    flowType,
+		UserInputs:  map[string]string{"username": "newuser", attributeEmail: "new@example.com"},
+		RuntimeData: map[string]string{ouIDKey: "ou-a", defaultOUIDKey: "root-ou", categoryTypeKey: testUserType},
+		NodeInputs: []providers.Input{
+			{Identifier: "username", Type: "string", Required: true},
+			{Identifier: attributeEmail, Type: "string", Required: true},
+		},
+		NodeProperties: properties,
+	}
+}
+
+// expectCreateUserIn expects the user created in ouID on the caller's own authority.
+func (suite *ProvisioningExecutorTestSuite) expectCreateUserIn(ouID string) {
+	suite.mockUserMgtProvider.On("CreateUser",
+		mock.MatchedBy(func(ctx context.Context) bool { return !security.IsRuntimeContext(ctx) }),
+		mock.MatchedBy(func(u *providers.User) bool { return u.OUID == ouID && u.Type == testUserType })).
+		Return(&providers.User{ID: testNewUserID, OUID: ouID, Type: testUserType}, nil).Once()
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestExecute_ProvisioningOUUserTypeCreatesInTheUserTypesOU() {
+	ctx := suite.placementContext(providers.FlowTypeRegistration,
+		map[string]interface{}{propertyKeyProvisioningOU: string(provisioningOUUserType)})
+	suite.expectCreateUserIn("root-ou")
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(testNewUserID, resp.RuntimeData[userAttributeUserID])
+}
+
+// A sign-in flow runs no type resolver, so the user type's unit is the one the provisioned type belongs to.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_ProvisioningOUUserTypeWithoutAResolverUsesTheTypesOwnOU() {
+	ctx := suite.placementContext(providers.FlowTypeAuthentication,
+		map[string]interface{}{propertyKeyProvisioningOU: string(provisioningOUUserType)})
+	delete(ctx.RuntimeData, defaultOUIDKey)
+	ctx.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, testUserType).
+		Return(&entitytype.EntityType{Handle: testUserType, OUID: "type-ou"}, (*tidcommon.ServiceError)(nil))
+	suite.expectCreateUserIn("type-ou")
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestExecute_ProvisioningOUDefaultsToTheResolvedOU() {
+	ctx := suite.placementContext(providers.FlowTypeInvitation, nil)
+	suite.expectCreateUserIn("ou-a")
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(testNewUserID, resp.RuntimeData[userAttributeUserID])
+}
+
+// Placed in the user type's unit when no type resolves, the user is not created in the resolved unit instead.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_ProvisioningOUUserTypeWithoutTheTypesOUFails() {
+	ctx := suite.placementContext(providers.FlowTypeInvitation,
+		map[string]interface{}{propertyKeyProvisioningOU: string(provisioningOUUserType)})
+	delete(ctx.RuntimeData, defaultOUIDKey)
+	delete(ctx.RuntimeData, categoryTypeKey)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "CreateUser", mock.Anything, mock.Anything)
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestExecute_ProvisioningOURejectsAnUnknownValue() {
+	ctx := suite.placementContext(providers.FlowTypeInvitation,
+		map[string]interface{}{propertyKeyProvisioningOU: "elsewhere"})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "CreateUser", mock.Anything, mock.Anything)
 }

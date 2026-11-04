@@ -32,9 +32,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/user"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -254,6 +256,8 @@ type ExecutorDependencies struct {
 	IdentityGovernance     providers.IdentityGovernanceProvider
 	ArtifactLifetime       artifactLifetimeResolver
 	AuthzDetailProvider    providers.AuthorizationDetailProvider
+	SharingService         sharing.SharingServiceInterface
+	PermissionResolver     entityPermissionResolver
 	tokenLeeway            time.Duration
 }
 
@@ -403,7 +407,8 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameRole: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameRole,
-				newRoleExecutor(deps.FlowFactory, deps.RoleService, deps.RoleAssignmentService))
+				newRoleExecutor(deps.FlowFactory, deps.RoleService, deps.RoleAssignmentService,
+					deps.PermissionResolver))
 		},
 		ExecutorNameGroup: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameGroup,
@@ -455,6 +460,9 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			reg.RegisterExecutor(ExecutorNameExtension,
 				newExtensionExecutor(deps.FlowFactory, deps.HTTPConnectionProvider, deps.ExtensionHTTPClient,
 					deps.ObservabilitySvc))
+		},
+		ExecutorNameSharing: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameSharing, newSharingExecutor(deps.FlowFactory, deps.SharingService))
 		},
 		ExecutorNameAccountLinking: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAccountLinking,
@@ -568,11 +576,27 @@ type roleAdminProvider interface {
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 }
 
+// entityPermissionResolver resolves the permissions an entity holds now, directly and through its groups.
+type entityPermissionResolver interface {
+	ResolveForEntity(ctx context.Context, entityID string) (security.PermissionSet, error)
+}
+
 // roleAssignmentAdminProvider is the assignment seam the access change validator and role executor consume.
 type roleAssignmentAdminProvider interface {
 	ValidateRemoveAssignment(ctx context.Context, id, ouID, assigneeID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	RemoveAssignments(ctx context.Context, id, ouID string, assignments []role.RoleAssignment) *tidcommon.ServiceError
+	ListAssignableRoles(ctx context.Context, ouID string) ([]role.Role, *tidcommon.ServiceError)
+	AddAssigneesToRoles(ctx context.Context, assignments []role.RoleAssignment,
+		roleIDs []string) *tidcommon.ServiceError
+}
+
+// sharingAdminProvider is the sharing seam the sharing executor consumes.
+type sharingAdminProvider interface {
+	ValidateShareIntoChildOU(ctx context.Context, rt sharing.ResourceType,
+		resourceID, owningOUID, targetOUID string) *tidcommon.ServiceError
+	ShareIntoChildOU(ctx context.Context, rt sharing.ResourceType,
+		resourceID, targetOUID string) *tidcommon.ServiceError
 }
 
 // groupAdminProvider is the group seam the group executor consumes.

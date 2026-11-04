@@ -81,6 +81,8 @@ type FlowMgtServiceInterface interface {
 	// GetFlowForOU returns a flow as one organization unit sees it: whole when it owns it, its variables when the
 	// flow was shared with it.
 	GetFlowForOU(ctx context.Context, flowID, ouID string) (*FlowView, *tidcommon.ServiceError)
+	// IsFlowVisible reports whether an organization unit owns a flow or was shared it.
+	IsFlowVisible(ctx context.Context, flowID, ouID string) (bool, *tidcommon.ServiceError)
 	// UpdateFlowWithSharing updates a flow and replaces its sharing policies with the ones a document carries, in one
 	// transaction. The policies are checked against the new definition, in place of the policies the flow had, so a
 	// document whose definition and policies agree with each other is accepted whatever the flow held before.
@@ -1313,6 +1315,16 @@ func (s *flowMgtService) requireVisibleFlow(
 		return nil, &ErrorFlowNotFound
 	}
 	return flow, nil
+}
+
+// IsFlowVisible reports whether an organization unit owns a flow or was shared it. It asks as the runtime, as the
+// caller may not read the units above its own.
+func (s *flowMgtService) IsFlowVisible(ctx context.Context, flowID, ouID string) (bool, *tidcommon.ServiceError) {
+	visible, svcErr := s.sharingSvc.IsVisible(security.WithRuntimeContext(ctx), FlowSharingType, flowID, ouID)
+	if svcErr != nil {
+		return false, translateSharingError(svcErr)
+	}
+	return visible, nil
 }
 
 // GetFlowForOU returns a flow as one organization unit sees it. The one that owns it sees the whole definition; one

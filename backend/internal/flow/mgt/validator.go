@@ -253,10 +253,24 @@ var companionExecutors = map[string][]companionExecutor{
 
 // modeFlowTypes limits an executor mode to fewer flow types than the executor supports. Identity
 // governance suspends and unsuspends only in an administration flow; a recovery flow runs only unlock.
+// The role executor applies a revocation plan only in an administration flow, and selects and assigns
+// roles only in an invitation flow. The sharing executor authorizes a share only in an invitation flow.
 var modeFlowTypes = map[string]map[string][]providers.FlowType{
 	executormeta.ExecutorNameIdentityGovernance: {
 		executormeta.ExecutorModeSuspend:   {providers.FlowTypeAdministration},
 		executormeta.ExecutorModeUnsuspend: {providers.FlowTypeAdministration},
+	},
+	executormeta.ExecutorNameRole: {
+		executormeta.ExecutorModeRoleAssignmentRemoval: {providers.FlowTypeAdministration},
+		executormeta.ExecutorModeRoleDeletion:          {providers.FlowTypeAdministration},
+		executormeta.ExecutorModeRolePermissionRemoval: {providers.FlowTypeAdministration},
+		executormeta.ExecutorModeRoleSelection:         {providers.FlowTypeInvitation},
+		executormeta.ExecutorModeRoleAssignment:        {providers.FlowTypeInvitation},
+	},
+	executormeta.ExecutorNameSharing: {
+		executormeta.ExecutorModeValidate: {providers.FlowTypeInvitation},
+		executormeta.ExecutorModeShare: {providers.FlowTypeInvitation, providers.FlowTypeAuthentication,
+			providers.FlowTypeRegistration},
 	},
 }
 
@@ -326,7 +340,12 @@ func (v *flowValidator) validateModeFlowTypes(
 		if node.Type != string(common.NodeTypeTaskExecution) || node.Executor == nil {
 			continue
 		}
-		flowTypes, ok := modeFlowTypes[node.Executor.Name][node.Executor.Mode]
+		mode := node.Executor.Mode
+		if mode == "" {
+			meta, _ := executormeta.MetaFor(node.Executor.Name)
+			mode = meta.DefaultMode
+		}
+		flowTypes, ok := modeFlowTypes[node.Executor.Name][mode]
 		if !ok || slices.Contains(flowTypes, flowType) {
 			continue
 		}
@@ -337,7 +356,7 @@ func (v *flowValidator) validateModeFlowTypes(
 			Params: map[string]string{
 				"nodeID":       node.ID,
 				"executorName": node.Executor.Name,
-				"mode":         node.Executor.Mode,
+				"mode":         mode,
 				"flowType":     string(flowType),
 			},
 		})

@@ -121,6 +121,7 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 		}
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrEmailRecipientMissing
+		withUndeliveredInviteLink(ctx, execResp)
 		return execResp, nil
 	}
 
@@ -174,6 +175,7 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 			execResp.AdditionalData[common.DataEmailSent] = dataValueFalse
 			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrEmailProviderNotConfigured
+			withUndeliveredInviteLink(ctx, execResp)
 			return execResp, nil
 		}
 		return failOrSkip(fmt.Errorf("email send failed: %s", notifSvcErr.Code))
@@ -184,6 +186,13 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 	execResp.AdditionalData[common.DataEmailSent] = dataValueTrue
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
+}
+
+// withUndeliveredInviteLink hands an invite link the email could not carry to the screen that shows it instead.
+func withUndeliveredInviteLink(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) {
+	if link := ctx.RuntimeData[common.RuntimeKeyInviteLink]; link != "" {
+		execResp.AdditionalData[common.DataInviteLink] = link
+	}
 }
 
 // bestEffortResponse completes a node that sent nothing, with emailSent set to false.

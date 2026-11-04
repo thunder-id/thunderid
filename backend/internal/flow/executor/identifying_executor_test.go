@@ -1545,3 +1545,108 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_RecoveryTargetGovernanceF
 	suite.Equal(ErrFailedToIdentifyEntity.Code, resp.Error.Code)
 	suite.Empty(resp.RuntimeData[userAttributeUserID])
 }
+
+// identifyByEmail identifies by email in a flow that resolved the Person type, after an earlier attempt found
+// user-0, with the given node properties.
+func (suite *IdentifyingExecutorTestSuite) identifyByEmail(flowType providers.FlowType,
+	properties map[string]interface{}, found *string,
+	epErr *entityprovider.EntityProviderError) *providers.NodeContext {
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
+	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]providers.Input{
+		{Identifier: userAttributeEmail, Type: providers.InputTypeEmail, Required: true},
+	})
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
+		map[string]interface{}{userAttributeEmail: "a@example.com"}).Return(found, epErr)
+	return &providers.NodeContext{
+		ExecutionID:    "flow-123",
+		FlowType:       flowType,
+		NodeProperties: properties,
+		UserInputs:     map[string]string{userAttributeEmail: "a@example.com"},
+		RuntimeData:    map[string]string{categoryTypeKey: "Person", userAttributeUserID: "user-0"},
+	}
+}
+
+func (suite *IdentifyingExecutorTestSuite) TestExecute_BoundToUserTypeIdentifiesAUserOfTheType() {
+	userID := linkingCandidateID
+	ctx := suite.identifyByEmail(providers.FlowTypeAuthentication,
+		map[string]interface{}{propertyKeyBoundToUserType: true}, &userID, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, userID).
+		Return(&providers.Entity{ID: userID, Type: "Person"}, (*entityprovider.EntityProviderError)(nil))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(userID, resp.RuntimeData[userAttributeUserID])
+}
+
+func (suite *IdentifyingExecutorTestSuite) TestExecute_BoundToUserTypeRefusesAUserOfAnotherType() {
+	userID := linkingCandidateID
+	ctx := suite.identifyByEmail(providers.FlowTypeAuthentication,
+		map[string]interface{}{propertyKeyBoundToUserType: true}, &userID, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, userID).
+		Return(&providers.Entity{ID: userID, Type: "Customer"}, (*entityprovider.EntityProviderError)(nil))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrUserTypeNotAllowed.Code, resp.Error.Code)
+	suite.Empty(resp.RuntimeData[userAttributeUserID])
+}
+
+// A failed read of the identified user fails the flow rather than letting the user through unchecked.
+func (suite *IdentifyingExecutorTestSuite) TestExecute_BoundToUserTypeFailsWhenTheUserCannotBeRead() {
+	userID := linkingCandidateID
+	ctx := suite.identifyByEmail(providers.FlowTypeAuthentication,
+		map[string]interface{}{propertyKeyBoundToUserType: true}, &userID, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, userID).
+		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "store down", ""))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().Error(err)
+	suite.Nil(resp)
+}
+
+// Bound to a user type the flow never resolved, the node is misconfigured.
+func (suite *IdentifyingExecutorTestSuite) TestExecute_BoundToUserTypeWithoutAResolvedTypeFails() {
+	userID := linkingCandidateID
+	ctx := suite.identifyByEmail(providers.FlowTypeAuthentication,
+		map[string]interface{}{propertyKeyBoundToUserType: true}, &userID, nil)
+	delete(ctx.RuntimeData, categoryTypeKey)
+
+	_, err := suite.executor.Execute(ctx)
+
+	suite.Error(err)
+}
+
+// No match continues on onIncomplete without an error, so the engine keeps the email and shows no error.
+func (suite *IdentifyingExecutorTestSuite) TestExecute_ContinueOnNoMatchRaisesNoError() {
+	ctx := suite.identifyByEmail(providers.FlowTypeAuthentication,
+		map[string]interface{}{propertyKeyContinueOnNoMatch: true}, nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, resp.Status)
+	suite.Nil(resp.Error)
+	suite.Empty(resp.Inputs)
+	suite.Contains(resp.RuntimeData, userAttributeUserID)
+	suite.Empty(resp.RuntimeData[userAttributeUserID], "an earlier match must not carry over")
+}
+
+// The flow type alone changes nothing: without the properties an invitation flow identifies as any other.
+func (suite *IdentifyingExecutorTestSuite) TestExecute_InvitationFlowWithoutThePropertiesIdentifiesAsUsual() {
+	ctx := suite.identifyByEmail(providers.FlowTypeInvitation, nil, nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, resp.Status)
+	suite.Equal(ErrEntityNotFound.Code, resp.Error.Code)
+	suite.NotEmpty(resp.Inputs)
+}

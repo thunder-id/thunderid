@@ -47,6 +47,8 @@ const (
 	FlowTypeSignOut FlowType = "SIGNOUT"
 	// FlowTypeAdministration represents an administrator-designed operational flow.
 	FlowTypeAdministration FlowType = "ADMINISTRATION"
+	// FlowTypeInvitation represents a flow that brings a user into the caller's organization unit by invite.
+	FlowTypeInvitation FlowType = "INVITATION"
 	// FlowTypeSystem represents a flow a service runs in process, such as revoking what a change
 	// invalidates. It is left out of ValidFlowTypes, so no API creates or starts one.
 	FlowTypeSystem FlowType = "SYSTEM"
@@ -60,6 +62,7 @@ var ValidFlowTypes = []FlowType{
 	FlowTypeRecovery,
 	FlowTypeSignOut,
 	FlowTypeAdministration,
+	FlowTypeInvitation,
 }
 
 // NodeVariant identifies a PROMPT node sub-type that activates a variant-specific code path.
@@ -541,6 +544,9 @@ const (
 	// InputTypeUserTypeSelect represents a user type selection input type. As with USER_SELECT the
 	// client sources the candidates, and the value submitted is a user type handle.
 	InputTypeUserTypeSelect = "USER_TYPE_SELECT"
+	// InputTypeRoleSelect represents a role selection input type. The server supplies the candidates as role
+	// identifiers, and the value submitted is one or more of them, separated by spaces.
+	InputTypeRoleSelect = "ROLE_SELECT"
 	// InputTypeNumber represents a numeric input type.
 	InputTypeNumber = "NUMBER_INPUT"
 	// InputTypeDate represents a date input type.
@@ -572,6 +578,7 @@ var ValidInputTypes = map[string]bool{
 	InputTypeUserSelect:     true,
 	InputTypeAuthFlowSelect: true,
 	InputTypeUserTypeSelect: true,
+	InputTypeRoleSelect:     true,
 	InputTypeNumber:         true,
 	InputTypeDate:           true,
 	InputTypeBoolean:        true,

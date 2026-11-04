@@ -33,12 +33,13 @@ paths:
         their Flow Secret in the `Flow-Secret` header (see the `FlowSecret` security scheme) when
         initiating a new flow; the header is ignored for other application types.
 
-        A flow is initiated either by `applicationId` and `flowType`, or, for administration flows
-        only, by `flowId`. Initiating by `flowId` requires an access token carrying the `system`
-        scope, and the referenced flow must be of type `ADMINISTRATION`; any other flow type is
-        rejected with `403`. Supplying the step's inputs on the initiating request runs the flow
-        through to its terminal state in a single call; omitting them returns the required inputs and
-        an `executionId` to continue with.
+        A flow is initiated either by `applicationId` and `flowType`, or, for administration and
+        invitation flows only, by `flowId`. Initiating by `flowId` requires an access token
+        carrying the `system` scope. An `INVITATION` flow also requires the token to be issued for
+        an organization unit, which the flow then acts for, and that organization unit to own the
+        flow or have it shared with it. Any other flow type is rejected with `403`. Supplying the step's inputs on the initiating request runs the flow through to its
+        terminal state in a single call; omitting them returns the required inputs and an
+        `executionId` to continue with.
       tags:
         - Flow Execution
       security:
@@ -261,7 +262,10 @@ paths:
         "403":
           description: >
             Forbidden: Direct flow initiation is not permitted for this application or its OAuth
-            configuration, or the application is suspended.
+            configuration, the application is suspended, or the flow started by `flowId` is not
+            permitted for the caller or its token: an `INVITATION` flow started with a token issued
+            for no organization unit (`FES-1024`), or for one the flow is not shared with
+            (`FES-1025`).
           content:
             application/json:
               schema:
@@ -339,16 +343,18 @@ components:
     AdministrativeFlowRequest:
       type: object
       description: >-
-        Initiates an administration flow by its identifier. Only flows of type `ADMINISTRATION` may
-        be started this way, and the caller must present an access token carrying the `system` scope.
+        Initiates an administration or invitation flow by its identifier. Only flows of type
+        `ADMINISTRATION` or `INVITATION` may be started this way, and the caller must present an
+        access token carrying the `system` scope. An `INVITATION` flow also requires the token to
+        be issued for an organization unit that owns the flow or was shared it.
       required:
         - flowId
       properties:
         flowId:
           type: string
           description: >-
-            Identifier of the administration flow to execute. The flow must be of type
-            `ADMINISTRATION`; any other flow type is rejected.
+            Identifier of the flow to execute. The flow must be of type `ADMINISTRATION` or
+            `INVITATION`; any other flow type is rejected.
           example: "019fd0b5-e8fe-7852-9b5a-1e2757ed85b8"
         inputs:
           type: object

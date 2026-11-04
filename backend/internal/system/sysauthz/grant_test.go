@@ -462,3 +462,111 @@ func TestGrantsNothing(t *testing.T) {
 		})
 	}
 }
+
+// perRoleResolver resolves each role to its own permissions and counts the caller lookups.
+type perRoleResolver struct {
+	stubPermissionResolver
+	roles map[string]security.PermissionSet
+}
+
+func (r *perRoleResolver) ResolveForRole(_ context.Context, roleID string) (security.PermissionSet, error) {
+	r.roleCalls++
+	return r.roles[roleID], r.roleErr
+}
+
+func TestGrantableMemberships(t *testing.T) {
+	// A caller who is not root may grant only the roles whose permissions it holds, and its own permissions are
+	// resolved once for the whole list.
+	t.Run("NonRootCallerGetsOnlyTheRolesItCovers", func(t *testing.T) {
+		resolver := &perRoleResolver{
+			stubPermissionResolver: stubPermissionResolver{
+				entityPerms: security.PermissionSet{escRSSystem: {"system:user"}},
+			},
+			roles: map[string]security.PermissionSet{
+				"user-admin":    {escRSSystem: {"system:user"}},
+				"payroll-admin": {escRSPayroll: {"payroll:write"}},
+				"empty":         {},
+			},
+		}
+		svc := newGuardService(resolver)
+
+		ids, svcErr := svc.GrantableMemberships(callerWith("david", "system:user"), PrincipalTypeRole,
+			[]string{"payroll-admin", "user-admin", "empty"})
+
+		require.Nil(t, svcErr)
+		assert.Equal(t, []string{"user-admin", "empty"}, ids)
+		assert.Equal(t, 1, resolver.entityCalls)
+	})
+
+	t.Run("RootAndRuntimeCallersGetEveryRoleWithoutALookup", func(t *testing.T) {
+		for name, ctx := range map[string]context.Context{
+			"root":    callerWith("root", "system"),
+			"runtime": security.WithRuntimeContext(context.Background()),
+		} {
+			resolver := &stubPermissionResolver{}
+			svc := newGuardService(resolver)
+
+			ids, svcErr := svc.GrantableMemberships(ctx, PrincipalTypeRole, []string{"a", "b"})
+
+			require.Nil(t, svcErr, name)
+			assert.Equal(t, []string{"a", "b"}, ids, name)
+			assert.Zero(t, resolver.entityCalls+resolver.roleCalls, name)
+		}
+	})
+
+	t.Run("AnUnauthenticatedCallerGetsOnlyRolesConferringNothing", func(t *testing.T) {
+		resolver := &perRoleResolver{roles: map[string]security.PermissionSet{
+			"user-admin": {escRSSystem: {"system:user"}},
+			"empty":      {},
+		}}
+		svc := newGuardService(resolver)
+
+		ids, svcErr := svc.GrantableMemberships(context.Background(), PrincipalTypeRole,
+			[]string{"user-admin", "empty"})
+
+		require.Nil(t, svcErr)
+		assert.Equal(t, []string{"empty"}, ids)
+		assert.Zero(t, resolver.entityCalls)
+	})
+
+	t.Run("AnEmptyListLooksNothingUp", func(t *testing.T) {
+		resolver := &stubPermissionResolver{}
+		svc := newGuardService(resolver)
+
+		ids, svcErr := svc.GrantableMemberships(callerWith("david", "system:user"), PrincipalTypeRole, nil)
+
+		require.Nil(t, svcErr)
+		assert.Empty(t, ids)
+		assert.Zero(t, resolver.entityCalls+resolver.roleCalls)
+	})
+
+	t.Run("AFailedLookupFailsTheCheck", func(t *testing.T) {
+		for name, resolver := range map[string]*perRoleResolver{
+			"caller": {
+				stubPermissionResolver: stubPermissionResolver{entityErr: errors.New("store down")},
+				roles:                  map[string]security.PermissionSet{"user-admin": {escRSSystem: {"system:user"}}},
+			},
+			"role": {stubPermissionResolver: stubPermissionResolver{roleErr: errors.New("store down")}},
+		} {
+			svc := newGuardService(resolver)
+
+			ids, svcErr := svc.GrantableMemberships(callerWith("david", "system:user"), PrincipalTypeRole,
+				[]string{"user-admin"})
+
+			assert.Nil(t, ids, name)
+			require.NotNil(t, svcErr, name)
+			assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code, name)
+		}
+	})
+
+	t.Run("WithoutAResolverEveryRoleIsRefused", func(t *testing.T) {
+		svc := newGuardService(nil)
+
+		ids, svcErr := svc.GrantableMemberships(callerWith("david", "system:user"), PrincipalTypeRole,
+			[]string{"user-admin"})
+
+		assert.Nil(t, ids)
+		require.NotNil(t, svcErr)
+		assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+}

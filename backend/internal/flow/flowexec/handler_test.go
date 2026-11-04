@@ -67,6 +67,18 @@ func (s *HandlerTestSuite) TestHandleFlowError_ApplicationNotUsable_Returns403()
 	s.Equal(http.StatusForbidden, w.Code)
 }
 
+func (s *HandlerTestSuite) TestHandleFlowError_InvitationOUMissing_Returns403() {
+	w := httptest.NewRecorder()
+	handleFlowError(context.Background(), w, &ErrorInvitationOUMissing, "")
+	s.Equal(http.StatusForbidden, w.Code)
+}
+
+func (s *HandlerTestSuite) TestHandleFlowError_FlowNotSharedWithOU_Returns403() {
+	w := httptest.NewRecorder()
+	handleFlowError(context.Background(), w, &ErrorFlowNotSharedWithOU, "")
+	s.Equal(http.StatusForbidden, w.Code)
+}
+
 func (s *HandlerTestSuite) TestHandleFlowError_AdministrationAuthenticationRequired_Returns401() {
 	w := httptest.NewRecorder()
 	handleFlowError(context.Background(), w, &ErrorAdministrationAuthenticationRequired, "")

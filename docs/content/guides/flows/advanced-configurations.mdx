@@ -435,6 +435,7 @@ When an executor forwards inputs dynamically to a PROMPT node via its `onIncompl
 | `SELECT` | A dropdown selection field. |
 | `OU_SELECT` | An organization unit selection field. |
 | `USER_SELECT` | A user selection field. The client loads the users page by page and submits the ID of the chosen user. |
+| `ROLE_SELECT` | A role selection field. The executor supplies the role IDs it offers, and the value submitted is one or more of them, separated by spaces. |
 
 ### View and Executor Pairings
 
@@ -1171,6 +1172,7 @@ Without `allowCrossOUProvisioning`, every linked user counts. With it, only link
 | Property | UI Label | Required | Default | Description |
 |---|---|---|---|---|
 | `allowCrossOUProvisioning` | Allow Cross-OU Provisioning | No | `false` | Allow creating the user in a different OU from the default when the user already exists in another OU |
+| `provisioningOU` | Create the user in | No | `resolved` | Where to create the user. `resolved` uses the OU an earlier step resolved, such as an OU resolver or the token's OU in an invitation flow, and falls back to the OU of the user type. `userType` always uses the OU of the user type: the one **User Type Resolver** recorded, otherwise the OU of the user type being provisioned, as in a sign-in flow. It fails when neither resolves. Any other value fails provisioning. The created user's ID is recorded as `userID` in runtime data |
 | `assignGroup` | Assign Group | No | - | Group ID to automatically assign the new user to |
 | `assignRole` | Assign Role | No | - | Role ID to automatically assign the new user to |
 | `includeOptional` | - | No | `false` | Whether to prompt for optional (non-credential) schema attributes |
@@ -1306,6 +1308,13 @@ Looks up an existing user in the store by a submitted identifier (email, usernam
   "onIncomplete": "prompt_identifier"
 }
 ```
+
+**Executor properties (`identify` mode):**
+
+| Property | UI Label | Required | Default | Description |
+|---|---|---|---|---|
+| `boundToUserType` | Bound to the user type | No | `false` | Accept only a user of the user type the flow resolved earlier, for example with **User Type Resolver**. A user of another type fails with `FET-1054`. If the flow resolved no user type, the execution fails with an error instead of following `onFailure` |
+| `continueOnNoMatch` | Continue when no user matches | No | `false` | When no user matches, follow `onIncomplete` without an error, keeping the submitted identifier for later steps. Without it, the prompt shows the "not found" error and the identifier is cleared |
 
 **Failure conditions:**
 - No user found matching the submitted identifier (routes to **incomplete**: use this path to branch to registration)
@@ -1926,6 +1935,8 @@ Sends a transactional email using a configured template. Runs in the background:
 - Template rendering error
 - SMTP server unreachable or rejecting the message (server error)
 
+When the step fails because the provider is not configured or no recipient resolves, and the flow generated an invite link, the step's response carries the link in `additionalData.inviteLink`, for a screen that shows it instead.
+
 With `bestEffort` set to `true`, none of these fail the step.
 
 </details>
@@ -2006,6 +2017,7 @@ Generates an invite token and link for user registration. Typically paired with 
 2. Stores the token for Verify Invite to consume
 3. Generates a full invite link (with token embedded)
 4. Forwards the link to downstream Email or SMS executors via `ForwardedData`
+5. In a user onboarding flow, also returns the link to the admin in the step's `additionalData.inviteLink`. An invitation flow does not, because with the link the admin could accept for an existing user: **Send Email** returns it only when the email cannot be sent
 
 **Input Configuration:** None. The recipient email or phone is resolved from prior user inputs or user store. A **Send Email** or **Send SMS** executor must follow this one to deliver the invite link.
 
@@ -2075,6 +2087,188 @@ Validates an invite token provided by the user and completes the invite verifica
 - Stored invite token not found (Generate Invite did not run)
 - User-provided token does not match stored token
 - Token validation error
+
+</details>
+
+**Invitation flows:** The Sharing and Role executors run in invitation flows. To start and build one, see **Build and configure an invitation flow** in [Build a Flow](build-a-flow.mdx#go-further). **Share** also runs in sign-in and registration flows.
+
+Property values of the Sharing and Role executors resolve from the flow's runtime data only. A `{{ctx(key)}}` placeholder in them never reads a user input, and one that does not resolve fails the flow.
+
+<details>
+<summary>Validate Share</summary>
+
+Authorizes sharing a resource into a child OU as the admin who started the flow, and records what it authorized. It writes nothing.
+
+**When to use:** In the admin's part of an invitation flow, before the invite is sent.
+
+**Prerequisites:** The user ID in runtime data for an existing user (set by the **Identifying** executor), or the user type's OU for a new one (set by **User Type Resolver**).
+
+**How it works:**
+1. Refuses a caller other than the one who started the flow, or a step sent without that caller's access token
+2. Checks that the target OU is a direct child of the OU that owns the resource, or of `owningOuId` for a user the flow creates later
+3. Checks that the caller may create users in the target OU
+4. Records the authorized resource type and target OU for **Share** to read
+
+**Executor properties:**
+
+| Property | UI Label | Required | Default | Description |
+|---|---|---|---|---|
+| `resourceType` | Resource type | Yes | - | Type of resource to share. `user` is the only type shared this way |
+| `resourceId` | Resource ID | No | - | Resource to share. Leave it out for a user the flow creates on acceptance |
+| `owningOuId` | Owning organization unit | No | - | OU that owns a resource the flow creates on acceptance |
+| `targetOuId` | Target organization unit | Yes | - | OU to share into |
+
+**Example:**
+
+```json
+{
+  "id": "validate_existing",
+  "type": "TASK_EXECUTION",
+  "properties": {
+    "resourceType": "user",
+    "resourceId": "{{ctx(userID)}}",
+    "targetOuId": "{{ctx(ouId)}}"
+  },
+  "executor": {
+    "name": "SharingExecutor",
+    "mode": "validate"
+  },
+  "onSuccess": "select_roles_existing",
+  "onFailure": "prompt_email"
+}
+```
+
+**Failure conditions:**
+- The caller is not the one who started the flow (`FET-1136`)
+- The target OU is not a direct child of the owning OU
+- The caller may not create users in the target OU
+
+</details>
+
+<details>
+<summary>Share</summary>
+
+Applies a share on the authority of the OU that owns the resource. In an invitation flow it applies the share **Validate Share** authorized. In a sign-in or registration flow it shares what its properties name. Nobody started such a flow to authorize the share as, so it checks no caller: name only the user the flow just provisioned, as in the example.
+
+**When to use:**
+- In the invitee's part of an invitation flow, after the invitee accepts.
+- In a sign-up that creates an organization and keeps the user in the user type's OU, after **Provisioning** with `provisioningOU` set to `userType`. The user can then be shared into other organizations too, which a user owned by one organization cannot.
+
+**Prerequisites:**
+- In an invitation flow, a **Validate Share** step in the same flow for the same resource type and target OU.
+- In a sign-in or registration flow, none. Place it right after **Provisioning** and set `resourceId` to `{{ctx(userID)}}`, so it shares the user the flow just created. Placed after a step that identifies an existing account, it would share that account instead.
+
+**How it works:**
+1. In an invitation flow, refuses unless runtime data holds the share **Validate Share** recorded for the same resource type and target OU
+2. Adds the target OU to the owner's sharing policy for the resource, creating the policy when there is none
+3. Leaves a resource the target OU already sees as it is
+
+**Executor properties:** `resourceType`, `resourceId`, and `targetOuId`, as for **Validate Share**. `resourceId` is required in this mode.
+
+**Example:** sharing a new user into the organization they created at sign-up.
+
+```json
+{
+  "id": "share_user",
+  "type": "TASK_EXECUTION",
+  "properties": {
+    "resourceType": "user",
+    "resourceId": "{{ctx(userID)}}",
+    "targetOuId": "{{ctx(ouId)}}"
+  },
+  "executor": {
+    "name": "SharingExecutor",
+    "mode": "share"
+  },
+  "onSuccess": "auth_assert"
+}
+```
+
+**Failure conditions:**
+- No matching share was authorized earlier in the invitation flow (`FET-1131`)
+- The target OU is not a direct child of the OU that owns the resource
+- The owner's sharing policy reaches its child OUs as a whole and leaves the target OU out
+
+</details>
+
+<details>
+<summary>Select Roles</summary>
+
+Prompts the admin for the roles to assign, and records them with the admin's identity. This is the `role_selection` mode of the **Role** executor, which runs only in invitation flows. The Role executor also makes the role changes of administration flows. A Role node must name its mode: saving the flow refuses one that does not.
+
+**When to use:** In the admin's part of an invitation flow, after **Validate Share**.
+
+**Prerequisites:** None.
+
+**How it works:**
+1. Lists the roles the admin can assign in the flow's OU: roles the OU owns, and roles shared with it whose assignments it may change, limited to the roles the admin may grant
+2. With the `roles` property set, takes those roles without prompting, and fails with `FET-1133` if the admin cannot assign one of them. A submitted `roles` input is ignored
+3. Otherwise prompts for a `roles` input of type `ROLE_SELECT`. The response carries the role IDs and names, as JSON, in `data.additionalData.roleOptions`
+4. Prompts again with `FET-1133` when a submitted role is not in the list
+5. Records the selected roles and the admin's subject, OU, and permissions
+
+Without the `roles` property and with no role the admin can assign, it completes without recording roles.
+
+**Executor properties:**
+
+| Property | UI Label | Required | Default | Description |
+|---|---|---|---|---|
+| `roles` | Roles | No | - | IDs of the roles to assign, separated by spaces. When set, the admin is not asked to pick roles |
+
+**Example:**
+
+```json
+{
+  "id": "select_roles_existing",
+  "type": "TASK_EXECUTION",
+  "executor": {
+    "name": "RoleExecutor",
+    "mode": "role_selection"
+  },
+  "onSuccess": "invite_generate_existing",
+  "onIncomplete": "prompt_roles_existing"
+}
+```
+
+**Failure conditions:**
+- The caller is not the one who started the flow (`FET-1136`)
+
+</details>
+
+<details>
+<summary>Assign Roles</summary>
+
+Assigns the roles **Select Roles** recorded to the user in the flow's OU, as the recorded admin. The role service checks each assignment as that admin. This is the `role_assignment` mode of the **Role** executor, which runs only in invitation flows.
+
+**When to use:** In the invitee's part of an invitation flow, after **Share**.
+
+**Prerequisites:** **Select Roles** earlier in the same flow. With nothing recorded, it completes without assigning.
+
+**How it works:**
+1. Reads the recorded roles and admin from runtime data, never from user inputs
+2. Keeps the permissions the admin's token carried when they selected the roles that the admin still holds. A permission revoked since then, or a scope no resource server holds, such as `openid`, is left out
+3. Assigns each role to the user in the flow's OU, as the admin with the permissions kept, which the role service checks each assignment against
+4. Assigns every role or none. When an assignment is refused, none is assigned and the share stays in place
+
+**Example:**
+
+```json
+{
+  "id": "assign_roles",
+  "type": "TASK_EXECUTION",
+  "executor": {
+    "name": "RoleExecutor",
+    "mode": "role_assignment"
+  },
+  "onSuccess": "joined",
+  "onFailure": "joined_without_roles"
+}
+```
+
+**Failure conditions:**
+- Roles are recorded without the admin who selected them (`FET-1134`)
+- The admin holds none of the permissions they selected the roles with, or no longer exists (`FET-1134`)
+- A role cannot be assigned (`FET-1134`)
 
 </details>
 

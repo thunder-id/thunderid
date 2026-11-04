@@ -94,6 +94,8 @@ const (
 	DataAgentClientSecret = "clientSecret"
 	// DataRootOUID is the key used to pass the root OU ID to the frontend for the OU tree picker.
 	DataRootOUID = "rootOuId"
+	// DataRoleOptions carries, as JSON, the ID and name of each role a role selection prompt offers.
+	DataRoleOptions = "roleOptions"
 	// DataPromptMessage is the key used to pass a message to be displayed in the prompt node.
 	DataPromptMessage = "message"
 	// DataOpenID4VPClientID is the verifier client_id for the wallet QR / deep link.
@@ -176,6 +178,14 @@ const (
 	// RuntimeKeyOUID holds the organization unit a flow has been asked to act for, such as the one a user picked on a
 	// prompt.
 	RuntimeKeyOUID = "ouId"
+	// RuntimeKeyInviter holds the subject that started an invitation flow.
+	RuntimeKeyInviter = "inviter"
+	// RuntimeKeyAuthorizedShare holds the "resourceType:targetOuId" share an invitation flow authorized.
+	RuntimeKeyAuthorizedShare = "authorizedShare"
+	// RuntimeKeySelectedRoles holds the space-separated IDs of the roles an invitation flow assigns.
+	RuntimeKeySelectedRoles = "selectedRoles"
+	// RuntimeKeyRolesSelectedBy holds, as JSON, the admin an invitation flow assigns its roles as.
+	RuntimeKeyRolesSelectedBy = "rolesSelectedBy"
 	// RuntimeKeyUserAutoProvisioned indicates whether the user was auto-provisioned
 	RuntimeKeyUserAutoProvisioned = "userAutoProvisioned"
 	// RuntimeKeyUserEligibleForProvisioning indicates whether the user is eligible for auto provisioning

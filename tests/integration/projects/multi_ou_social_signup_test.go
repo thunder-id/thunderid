@@ -27,6 +27,7 @@ const (
 	githubClientSecret   = "orgs_test_github_secret"
 	customerTypeHandle   = "federated_customer"
 	loginFlowHandle      = "federated-orgs-login-test"
+	sharedLoginHandle    = "federated-orgs-shared-sign-up-login-test"
 	onboardingFlowHandle = "federated-orgs-user-onboarding-test"
 	googleAction         = "action_google"
 	githubAction         = "action_github"
@@ -397,6 +398,9 @@ type scenarioUsers struct {
 	// selfSignedUp creates selfSignedUpOrg and is then invited to another organization.
 	selfSignedUp    federatedUser
 	selfSignedUpOrg testutils.OrganizationUnit
+	// sharedSignUp signs up through the flow that keeps the account in the root and creates sharedSignUpOrg.
+	sharedSignUp    federatedUser
+	sharedSignUpOrg testutils.OrganizationUnit
 }
 
 var (
@@ -412,6 +416,11 @@ var (
 				Handle: "test-google-self-signed-up-org",
 				Name:   "Google Self Signed Up Org",
 			},
+			sharedSignUp: googleUser("google-shared-sign-up-user", "shared-sign-up@gmail.test", "Shared User"),
+			sharedSignUpOrg: testutils.OrganizationUnit{
+				Handle: "test-google-shared-sign-up-org",
+				Name:   "Google Shared Sign Up Org",
+			},
 		},
 		providerGithub: {
 			invited:      githubUser(91001, "invited-octocat", "invited@github.test", "Invited User"),
@@ -421,6 +430,11 @@ var (
 			selfSignedUpOrg: testutils.OrganizationUnit{
 				Handle: "test-github-self-signed-up-org",
 				Name:   "GitHub Self Signed Up Org",
+			},
+			sharedSignUp: githubUser(91004, "shared-sign-up-octocat", "shared-sign-up@github.test", "Shared User"),
+			sharedSignUpOrg: testutils.OrganizationUnit{
+				Handle: "test-github-shared-sign-up-org",
+				Name:   "GitHub Shared Sign Up Org",
 			},
 		},
 	}
@@ -475,8 +489,10 @@ type MultiOUSocialSignupTestSuite struct {
 	idpIDs       []string
 	userTypeID   string
 	loginFlowID  string
+	sharedFlowID string
 	onboardingID string
 	appID        string
+	sharedAppID  string
 	createdOUIDs []string
 	flowConfig   json.RawMessage
 }
@@ -524,6 +540,10 @@ func (ts *MultiOUSocialSignupTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create login flow")
 	ts.loginFlowID = loginFlowID
 
+	sharedFlowID, err := testutils.CreateFlow(sharedSignUpLoginFlow(loginFlow))
+	ts.Require().NoError(err, "Failed to create the shared sign-up login flow")
+	ts.sharedFlowID = sharedFlowID
+
 	setNodeProperty(onboardingFlow, "google_signup", "idpId", googleIDPID)
 	setNodeProperty(onboardingFlow, "github_signup", "idpId", githubIDPID)
 	setNodeProperty(onboardingFlow, "send_invite_email", "senderId", ts.senderID)
@@ -554,9 +574,28 @@ func (ts *MultiOUSocialSignupTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create application")
 	ts.appID = appID
 
+	sharedAppID, err := testutils.CreateApplication(testutils.Application{
+		OUID:                      rootOUID,
+		Name:                      "Organizations Shared Sign Up Test Application",
+		Description:               "Application whose sign-up keeps accounts in the root and shares them in",
+		IsRegistrationFlowEnabled: false,
+		ClientID:                  "orgs_shared_sign_up_test_client",
+		ClientSecret:              "orgs_shared_sign_up_test_secret",
+		RedirectURIs:              []string{"http://localhost:3000/callback"},
+		AllowedUserTypes:          []string{customerTypeHandle},
+		AuthFlowID:                sharedFlowID,
+		AssertionConfig: map[string]interface{}{
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
+		},
+	})
+	ts.Require().NoError(err, "Failed to create the shared sign-up application")
+	ts.sharedAppID = sharedAppID
+
 	// Users sign in to the organizations beneath the root, which a sign-in reaches only when the
 	// application is shared there.
 	ts.Require().NoError(testutils.ShareApplicationWithChildUnits(appID), "Failed to share application")
+	ts.Require().NoError(testutils.ShareApplicationWithChildUnits(sharedAppID),
+		"Failed to share the shared sign-up application")
 }
 
 func (ts *MultiOUSocialSignupTestSuite) startMockProviders() {
@@ -568,7 +607,7 @@ func (ts *MultiOUSocialSignupTestSuite) startMockProviders() {
 	ts.Require().NoError(err, "Failed to create mock GitHub server")
 
 	for _, users := range usersByProvider {
-		for _, user := range []federatedUser{users.invited, users.newUser, users.selfSignedUp} {
+		for _, user := range []federatedUser{users.invited, users.newUser, users.selfSignedUp, users.sharedSignUp} {
 			switch user.provider {
 			case providerGoogle:
 				ts.mockGoogle.AddUser(&testutils.GoogleUserInfo{
@@ -617,12 +656,15 @@ func (ts *MultiOUSocialSignupTestSuite) TearDownSuite() {
 			ts.T().Logf("teardown: failed to reset the flow server config: %v", err)
 		}
 	}
-	if ts.appID != "" {
-		if err := testutils.DeleteApplication(ts.appID); err != nil {
-			ts.T().Logf("teardown: failed to delete application: %v", err)
+	for _, appID := range []string{ts.appID, ts.sharedAppID} {
+		if appID == "" {
+			continue
+		}
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("teardown: failed to delete application %s: %v", appID, err)
 		}
 	}
-	for _, flowID := range []string{ts.loginFlowID, ts.onboardingID} {
+	for _, flowID := range []string{ts.loginFlowID, ts.sharedFlowID, ts.onboardingID} {
 		if flowID == "" {
 			continue
 		}
@@ -631,7 +673,7 @@ func (ts *MultiOUSocialSignupTestSuite) TearDownSuite() {
 		}
 	}
 	for _, users := range usersByProvider {
-		for _, user := range []federatedUser{users.invited, users.newUser, users.selfSignedUp} {
+		for _, user := range []federatedUser{users.invited, users.newUser, users.selfSignedUp, users.sharedSignUp} {
 			accounts, err := findUsersByEmail(user.email)
 			if err != nil {
 				ts.T().Logf("teardown: failed to find users for %s: %v", user.email, err)
@@ -743,6 +785,41 @@ func (ts *MultiOUSocialSignupTestSuite) TestSelfSignedUpUserInvitedToExistingOrg
 	}
 }
 
+// TestNewUserKeptInTheRootIsSharedIntoTheOrganizationItCreates signs up through a flow that provisions the
+// account in the user type's unit, the root, and shares it into the organization it creates. The account
+// signs in to that organization, now and next time, and never to the root.
+func (ts *MultiOUSocialSignupTestSuite) TestNewUserKeptInTheRootIsSharedIntoTheOrganizationItCreates() {
+	for _, provider := range providers {
+		user, newOrg := usersByProvider[provider].sharedSignUp, usersByProvider[provider].sharedSignUpOrg
+		ts.Run(provider, func() {
+			step := ts.signInTo(ts.sharedAppID, user)
+			ts.Require().Equal("INCOMPLETE", step.FlowStatus, "Expected the flow to ask for an organization")
+
+			step = ts.continueFlow(step, map[string]string{"ouName": newOrg.Name, "ouHandle": newOrg.Handle},
+				createOUAction)
+			ts.Require().Equal("COMPLETE", step.FlowStatus, "Expected sign up to complete: %+v", step.Error)
+			claims, err := testutils.DecodeJWT(step.Assertion)
+			ts.Require().NoError(err)
+			ts.Require().NotEmpty(claims.OUID, "Expected the new organization in the assertion")
+			newOrg.ID = claims.OUID
+			ts.createdOUIDs = append([]string{claims.OUID}, ts.createdOUIDs...)
+			ts.requireSignedInToApp(step, ts.sharedAppID, newOrg, "")
+
+			accounts, err := findUsersByEmail(user.email)
+			ts.Require().NoError(err)
+			ts.Require().Len(accounts, 1, "Expected one account after sign up")
+			ts.Require().Equal(rootOU.ID, accounts[0].OUID, "Expected the account in the user type's unit")
+			ts.Require().Equal(accounts[0].ID, claims.Sub, "Expected the assertion for the new account")
+			shared, err := usersSharedInto(newOrg.ID)
+			ts.Require().NoError(err)
+			ts.Require().Equal([]string{accounts[0].ID}, shared, "Expected the account shared into the new organization")
+
+			step = ts.signInTo(ts.sharedAppID, user)
+			ts.requireSignedInToApp(step, ts.sharedAppID, newOrg, accounts[0].ID)
+		})
+	}
+}
+
 // inviteUser runs the user onboarding flow for an organization: the admin enters the invitee's
 // email, the invitation is sent by email, and the invitee accepts it by signing up with their
 // provider.
@@ -808,7 +885,12 @@ func (ts *MultiOUSocialSignupTestSuite) signUpWithNewOrganization(user federated
 
 // signIn starts the login flow, picks the user's provider and completes the sign-in there.
 func (ts *MultiOUSocialSignupTestSuite) signIn(user federatedUser) *common.FlowStep {
-	step, err := common.InitiateAuthenticationFlow(ts.appID, false, nil, "")
+	return ts.signInTo(ts.appID, user)
+}
+
+// signInTo signs the user in to the application through its own login flow.
+func (ts *MultiOUSocialSignupTestSuite) signInTo(appID string, user federatedUser) *common.FlowStep {
+	step, err := common.InitiateAuthenticationFlow(appID, false, nil, "")
 	ts.Require().NoError(err, "Failed to initiate login flow")
 
 	return ts.completeFederatedSignIn(ts.chooseProvider(step, user), user)
@@ -867,8 +949,13 @@ func (ts *MultiOUSocialSignupTestSuite) requireOrganizationPicker(step *common.F
 
 func (ts *MultiOUSocialSignupTestSuite) requireSignedInTo(step *common.FlowStep, org testutils.OrganizationUnit,
 	userID string) {
-	ts.Require().Equal("COMPLETE", step.FlowStatus, "Expected the login to complete")
-	claims, err := testutils.ValidateJWTAssertionFields(step.Assertion, ts.appID, customerTypeHandle,
+	ts.requireSignedInToApp(step, ts.appID, org, userID)
+}
+
+func (ts *MultiOUSocialSignupTestSuite) requireSignedInToApp(step *common.FlowStep, appID string,
+	org testutils.OrganizationUnit, userID string) {
+	ts.Require().Equal("COMPLETE", step.FlowStatus, "Expected the login to complete: %+v", step.Error)
+	claims, err := testutils.ValidateJWTAssertionFields(step.Assertion, appID, customerTypeHandle,
 		org.ID, org.Name, org.Handle)
 	ts.Require().NoError(err, "Unexpected assertion")
 	if userID != "" {
@@ -955,6 +1042,83 @@ func findUsersByEmail(email string) ([]testutils.User, error) {
 		return nil, err
 	}
 	return list.Users, nil
+}
+
+// usersSharedInto returns the IDs of the users shared into the organization unit, leaving out those it owns.
+func usersSharedInto(ouID string) ([]string, error) {
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+"/organization-units/"+ouID+"/users", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("expected status 200, got %d: %s", resp.StatusCode, respBody)
+	}
+
+	var list struct {
+		Users []struct {
+			ID          string `json:"id"`
+			IsOwnedByOU bool   `json:"isOwnedByOU"`
+		} `json:"users"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		return nil, err
+	}
+	shared := []string{}
+	for _, u := range list.Users {
+		if !u.IsOwnedByOU {
+			shared = append(shared, u.ID)
+		}
+	}
+	return shared, nil
+}
+
+// sharedSignUpLoginFlow is the login flow with a new account provisioned in the user type's unit, the root, and
+// shared into the organization the sign-up creates. The organization picker offers only the root's direct
+// children, so the root the account belongs to is never one to sign in to.
+func sharedSignUpLoginFlow(base testutils.Flow) testutils.Flow {
+	raw, err := json.Marshal(base.Nodes)
+	if err != nil {
+		panic(err)
+	}
+	var nodes []map[string]interface{}
+	if err := json.Unmarshal(raw, &nodes); err != nil {
+		panic(err)
+	}
+	for _, node := range nodes {
+		switch node["id"] {
+		case "provisioning":
+			node["properties"] = map[string]interface{}{"provisioningOU": "userType"}
+			node["onSuccess"] = "share_user"
+		case "resolve_ou":
+			node["properties"].(map[string]interface{})["directChildrenOnly"] = true
+		}
+	}
+	nodes = append(nodes, map[string]interface{}{
+		"id":   "share_user",
+		"type": "TASK_EXECUTION",
+		"properties": map[string]interface{}{
+			"resourceType": "user",
+			"resourceId":   "{{ctx(userID)}}",
+			"targetOuId":   "{{ctx(ouId)}}",
+		},
+		"executor":  map[string]interface{}{"name": "SharingExecutor", "mode": "share"},
+		"onSuccess": "auth_assert",
+	})
+	return testutils.Flow{
+		Name:     "Federated Organizations Shared Sign Up Login Flow",
+		Handle:   sharedLoginHandle,
+		FlowType: "AUTHENTICATION",
+		Nodes:    nodes,
+	}
 }
 
 // setNodeProperty sets a property on the flow node with the given ID.

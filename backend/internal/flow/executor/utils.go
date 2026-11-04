@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"maps"
 	"strconv"
+	"strings"
 	"time"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
@@ -22,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -536,4 +538,24 @@ func requestedAuthorizationDetails(ctx *providers.NodeContext) ([]providers.Auth
 		return nil, fmt.Errorf("authorization details are malformed: %w", err)
 	}
 	return details, nil
+}
+
+// runtimeProperty resolves a node property against the runtime data alone, so no user input, external
+// claim or request value can set it. An unresolved placeholder is an error.
+func runtimeProperty(ctx *providers.NodeContext, key string) (string, error) {
+	value, _ := ctx.NodeProperties[key].(string)
+	resolved := core.ResolvePlaceholder(&providers.NodeContext{RuntimeData: ctx.RuntimeData},
+		value, nil, nil, false, log.GetLogger())
+	if strings.Contains(resolved, "{{") {
+		return "", fmt.Errorf("property %q did not resolve from the runtime data", key)
+	}
+	return resolved, nil
+}
+
+// isInviter reports whether the caller is the one who started the invitation flow,
+// presenting their own token.
+func isInviter(ctx *providers.NodeContext) bool {
+	subject := security.GetSubject(ctx.Context)
+	return !security.IsRuntimeContext(ctx.Context) && subject != "" &&
+		subject == ctx.RuntimeData[common.RuntimeKeyInviter]
 }

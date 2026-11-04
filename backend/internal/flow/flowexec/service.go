@@ -37,6 +37,11 @@ type serverConfigProvider interface {
 	GetMergedConfig(ctx context.Context, name string) (any, *tidcommon.ServiceError)
 }
 
+// flowVisibilityProvider tells whether an organization unit owns a flow or was shared it.
+type flowVisibilityProvider interface {
+	IsFlowVisible(ctx context.Context, flowID, ouID string) (bool, *tidcommon.ServiceError)
+}
+
 // flowExecService is the implementation of FlowExecServiceInterface
 type flowExecService struct {
 	flowEngine          flowEngineInterface
@@ -52,6 +57,7 @@ type flowExecService struct {
 	jwtService          jwt.JWTServiceInterface
 	serverConfigSvc     serverConfigProvider
 	governance          providers.IdentityGovernanceProvider
+	flowVisibility      flowVisibilityProvider
 	cfg                 flowconfig.Config
 	// ssoHandleTTL is how long a handle returned in the response body stays usable.
 	ssoHandleTTL time.Duration
@@ -70,6 +76,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 	jwtService jwt.JWTServiceInterface,
 	serverConfigSvc serverConfigProvider,
 	governance providers.IdentityGovernanceProvider,
+	flowVisibility flowVisibilityProvider,
 	cfg flowconfig.Config,
 	ssoHandleTTL time.Duration) FlowExecServiceInterface {
 	return &flowExecService{
@@ -86,6 +93,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 		jwtService:          jwtService,
 		serverConfigSvc:     serverConfigSvc,
 		governance:          governance,
+		flowVisibility:      flowVisibility,
 		cfg:                 cfg,
 		ssoHandleTTL:        ssoHandleTTL,
 	}
@@ -314,6 +322,31 @@ func validateAdministrationCaller(ctx context.Context, flowType providers.FlowTy
 	return nil
 }
 
+// validateFlowSharedWithCaller requires the organization unit of the caller's token to own the flow or have it
+// shared. Without a way to tell, the flow is refused.
+func (s *flowExecService) validateFlowSharedWithCaller(ctx context.Context, flowID string) *tidcommon.ServiceError {
+	if s.flowVisibility == nil {
+		return &ErrorFlowNotSharedWithOU
+	}
+	visible, svcErr := s.flowVisibility.IsFlowVisible(ctx, flowID, security.GetOUID(ctx))
+	if svcErr != nil && svcErr.Type == tidcommon.ServerErrorType {
+		return svcErr
+	}
+	// A client error, such as the token's OU no longer existing, refuses the flow like one not shared.
+	if svcErr != nil || !visible {
+		return &ErrorFlowNotSharedWithOU
+	}
+	return nil
+}
+
+// validateInvitationCaller requires the caller's token to name the organization unit an invitation flow acts for.
+func validateInvitationCaller(ctx context.Context) *tidcommon.ServiceError {
+	if security.GetOUID(ctx) == "" {
+		return &ErrorInvitationOUMissing
+	}
+	return nil
+}
+
 // applyInboundSSO selects the SSO handle carried for this flow and stashes it on the engine context
 // for the SSO-Check node to consume. A handle the caller sent in the request body wins over the
 // request-scoped transport inputs. It is a no-op when neither carries one.
@@ -371,10 +404,11 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 			return nil, err
 		}
 	} else {
-		// Initiating by flow ID is an administration-only entry point by construction, so the caller is
-		// gated before the flow is resolved. Checking the flow type first would let an unauthenticated
-		// caller on this public path distinguish a missing flow from an existing one, and an
-		// administration flow from any other, purely from the error it gets back.
+		// Initiating by flow ID requires an authenticated caller holding the root permission, checked
+		// before the flow is resolved. Checking the flow type first would let a caller on this public
+		// path distinguish a missing flow from an existing one, and one flow type from another, purely
+		// from the error it gets back. An invitation flow needs the root permission too for now: a
+		// token without it reaches this public path as a runtime caller.
 		if svcErr := validateAdministrationCaller(ctx, providers.FlowTypeAdministration); svcErr != nil {
 			return nil, svcErr
 		}
@@ -382,10 +416,20 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 		if svcErr != nil {
 			return nil, svcErr
 		}
-		// The flow the ID resolves to must itself be an administration flow: the entry point must not
-		// become a way to start an authentication, registration, recovery or sign-out flow directly,
-		// bypassing the application binding and initiation guards those types require.
-		if flow.FlowType != providers.FlowTypeAdministration {
+		// Only administration and invitation flows start by ID: the entry point must not become a
+		// way to start an authentication, registration, recovery or sign-out flow directly, bypassing
+		// the application binding and initiation guards those types require. An administration flow is
+		// gated below.
+		switch flow.FlowType {
+		case providers.FlowTypeAdministration:
+		case providers.FlowTypeInvitation:
+			if svcErr := validateInvitationCaller(ctx); svcErr != nil {
+				return nil, svcErr
+			}
+			if svcErr := s.validateFlowSharedWithCaller(ctx, flow.ID); svcErr != nil {
+				return nil, svcErr
+			}
+		default:
 			return nil, &ErrorFlowIDExecutionNotPermitted
 		}
 		flowType = flow.FlowType
@@ -409,6 +453,11 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 	}
 
 	prepareContext(engineCtx, action, inputs)
+	if flowType == providers.FlowTypeInvitation {
+		// The flow acts for the caller's own unit and remembers who started it; an input cannot change either.
+		engineCtx.RuntimeData[common.RuntimeKeyOUID] = security.GetOUID(ctx)
+		engineCtx.RuntimeData[common.RuntimeKeyInviter] = security.GetSubject(ctx)
+	}
 	return engineCtx, nil
 }
 
@@ -794,6 +843,7 @@ func (s *flowExecService) setApplicationToContext(engineCtx *EngineContext,
 	// Skip application loading for app-independent flows
 	if engineCtx.FlowType == providers.FlowTypeUserOnboarding ||
 		engineCtx.FlowType == providers.FlowTypeAdministration ||
+		engineCtx.FlowType == providers.FlowTypeInvitation ||
 		engineCtx.FlowType == providers.FlowTypeSystem {
 		return nil
 	}
@@ -1330,7 +1380,7 @@ func (s *flowExecService) getFlowExpirySeconds(ctx context.Context, flowType pro
 		return firstPositiveExpiry(cfg.AuthFlow.ExpirySeconds, defaultAuthFlowExpiry)
 	case providers.FlowTypeRegistration:
 		return firstPositiveExpiry(cfg.RegistrationFlow.ExpirySeconds, defaultRegistrationFlowExpiry)
-	case providers.FlowTypeUserOnboarding:
+	case providers.FlowTypeUserOnboarding, providers.FlowTypeInvitation:
 		return firstPositiveExpiry(cfg.UserOnboardingFlow.ExpirySeconds, defaultUserOnboardingFlowExpiry)
 	case providers.FlowTypeRecovery:
 		return firstPositiveExpiry(cfg.RecoveryFlow.ExpirySeconds, defaultRecoveryFlowExpiry)
