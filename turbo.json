@@ -3,6 +3,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
+      "env": ["FRONTEND_BUILD_RUNTIME"],
       "outputs": ["dist/**", "build/**", "modules/**"]
     },
     "@thunderid/docs#build": {
@@ -28,6 +29,7 @@
     },
     "test:coverage": {
       "dependsOn": ["^build"],
+      "env": ["FRONTEND_TEST_RUNTIME"],
       "passThroughEnv": ["PLAYWRIGHT_BROWSERS_PATH", "CI"],
       "outputs": ["coverage/**"]
     },
