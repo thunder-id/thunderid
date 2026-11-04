@@ -118,6 +118,12 @@ func (s *cacheBackedEntityStore) UpdateSystemAttributes(ctx context.Context,
 	return s.store.UpdateSystemAttributes(ctx, entityID, attrs)
 }
 
+func (s *cacheBackedEntityStore) UpdateOwnership(ctx context.Context, entityID, ouID, projectID string) error {
+	s.invalidateEntityByID(ctx, entityID)
+
+	return s.store.UpdateOwnership(ctx, entityID, ouID, projectID)
+}
+
 func (s *cacheBackedEntityStore) UpdateCredentials(ctx context.Context,
 	entityID string, creds json.RawMessage) error {
 	s.invalidateEntityByID(ctx, entityID)
@@ -214,6 +220,20 @@ func (s *cacheBackedEntityStore) GetEntityListByOUIDs(ctx context.Context,
 	category string, ouIDs []string, limit, offset int,
 	filters map[string]interface{}) ([]providers.Entity, error) {
 	return s.store.GetEntityListByOUIDs(ctx, category, ouIDs, limit, offset, filters)
+}
+
+func (s *cacheBackedEntityStore) GetEntityListCountByProject(ctx context.Context,
+	category, projectID string, ouIDs []string) (int, error) {
+	return s.store.GetEntityListCountByProject(ctx, category, projectID, ouIDs)
+}
+
+func (s *cacheBackedEntityStore) GetEntityListByProject(ctx context.Context,
+	category, projectID string, ouIDs []string, limit, offset int) ([]providers.Entity, error) {
+	return s.store.GetEntityListByProject(ctx, category, projectID, ouIDs, limit, offset)
+}
+
+func (s *cacheBackedEntityStore) ProjectHasEntities(ctx context.Context, projectID string) (bool, error) {
+	return s.store.ProjectHasEntities(ctx, projectID)
 }
 
 func (s *cacheBackedEntityStore) GetEntityListCountBySystemAttributes(ctx context.Context,

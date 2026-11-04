@@ -228,3 +228,34 @@ func (ts *ProjectAPITestSuite) projectWithHandle(handle string) *project {
 	}
 	return nil
 }
+
+// An exported application and agent carry their project, so importing the export brings them back in
+// the same project.
+func (ts *ProjectAPITestSuite) TestExportedApplicationAndAgentKeepTheirProject() {
+	created := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Export"}`, ts.handle("export")))
+	app := ts.createApp(ts.appBody("exported", `"projectId":%q`, created.ID))
+	agent := ts.createAgent(ts.agentBody("exported", `"projectId":%q`, created.ID))
+
+	body, err := json.Marshal(map[string]any{"applications": []string{app.ID}, "agents": []string{agent.ID}})
+	ts.Require().NoError(err)
+	status, resp := ts.do(http.MethodPost, "/export", string(body))
+	ts.Require().Equal(http.StatusOK, status, resp)
+	var exported struct {
+		Resources string `json:"resources"`
+	}
+	ts.Require().NoError(json.Unmarshal([]byte(resp), &exported))
+	ts.Equal(2, strings.Count(exported.Resources, "projectId: "+created.ID), exported.Resources)
+
+	status, resp = ts.do(http.MethodDelete, "/applications/"+app.ID, "")
+	ts.Require().Equal(http.StatusNoContent, status, resp)
+	status, resp = ts.do(http.MethodDelete, "/agents/"+agent.ID, "")
+	ts.Require().Equal(http.StatusNoContent, status, resp)
+
+	ts.importContent(exported.Resources)
+	var importedApp projectApplication
+	ts.Require().Equal(http.StatusOK, ts.getJSON("/applications/"+app.ID, &importedApp))
+	ts.Equal(created.ID, importedApp.ProjectID)
+	var importedAgent projectAgent
+	ts.Require().Equal(http.StatusOK, ts.getJSON("/agents/"+agent.ID, &importedAgent))
+	ts.Equal(created.ID, importedAgent.ProjectID)
+}

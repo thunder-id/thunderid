@@ -56,6 +56,40 @@ func (suite *ServiceAdaptersTestSuite) TestImportAgent_PastLifespanIsRestored() 
 	assert.Equal(t, statusSuccess, outcome.Status)
 }
 
+// An exported agent's project reaches the agent service, so the import keeps it in the project.
+func (suite *ServiceAdaptersTestSuite) TestImportAgent_KeepsProject() {
+	t := suite.T()
+	agentSvc := agentmock.NewAgentServiceInterfaceMock(t)
+	agentSvc.On("CreateAgent", mock.Anything, mock.MatchedBy(func(a *providers.Agent) bool {
+		return a.ProjectID == "project-1"
+	})).Return(&agentmodel.AgentCompleteResponse{ID: "agent-1"}, nil).Once()
+	svc := &importService{agentService: agentSvc}
+
+	outcome := svc.importAgent(context.Background(), agentDoc(t,
+		"id: agent-1\ntype: default\nouId: ou-1\nprojectId: project-1\n"), noUpsert(), false, nil)
+
+	assert.Equal(t, statusSuccess, outcome.Status)
+}
+
+// An upsert onto an existing agent keeps the project the document names.
+func (suite *ServiceAdaptersTestSuite) TestImportAgent_UpsertKeepsProject() {
+	t := suite.T()
+	agentSvc := agentmock.NewAgentServiceInterfaceMock(t)
+	agentSvc.On("GetAgent", mock.Anything, "agent-1", false).
+		Return(&agentmodel.AgentGetResponse{ID: "agent-1"}, nil).Once()
+	agentSvc.On("UpdateAgent", mock.Anything, "agent-1", mock.MatchedBy(func(r *agentmodel.UpdateAgentRequest) bool {
+		return r.ProjectID == "project-1"
+	})).Return(&agentmodel.AgentCompleteResponse{ID: "agent-1"}, nil).Once()
+	svc := &importService{agentService: agentSvc}
+	upsert := true
+
+	outcome := svc.importAgent(context.Background(), agentDoc(t,
+		"id: agent-1\ntype: default\nouId: ou-1\nprojectId: project-1\n"),
+		&ImportOptions{Upsert: &upsert}, false, nil)
+
+	assert.Equal(t, statusSuccess, outcome.Status)
+}
+
 // A malformed validUntil is reported by the dry run, rather than only by the import it previews.
 func (suite *ServiceAdaptersTestSuite) TestImportAgent_MalformedLifespanFailsDryRun() {
 	t := suite.T()

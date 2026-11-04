@@ -212,6 +212,7 @@ func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 		ID:          appRequest.ID,
 		OUID:        appRequest.OUID,
 		OUHandle:    appRequest.OUHandle,
+		ProjectID:   appRequest.ProjectID,
 		Name:        appRequest.Name,
 		Description: appRequest.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
@@ -428,6 +429,7 @@ func makeAppEntityParser(
 			Type:             "application",
 			State:            providers.EntityStateActive,
 			OUID:             appDTO.OUID,
+			ProjectID:        appDTO.ProjectID,
 			SystemAttributes: sysAttrsJSON,
 		}
 

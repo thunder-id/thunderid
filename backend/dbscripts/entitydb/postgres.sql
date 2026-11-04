@@ -56,8 +56,8 @@ CREATE INDEX idx_entity_category_deployment ON "ENTITY" (DEPLOYMENT_ID, CATEGORY
 -- Composite index for OU-based entity listing
 CREATE INDEX idx_entity_ou_deployment ON "ENTITY" (DEPLOYMENT_ID, OU_ID);
 
--- Composite index for project-based entity listing
-CREATE INDEX idx_entity_project ON "ENTITY" (DEPLOYMENT_ID, CATEGORY, PROJECT_ID);
+-- Composite index for project-based entity listing and for finding whether a project has entities
+CREATE INDEX idx_entity_project ON "ENTITY" (DEPLOYMENT_ID, PROJECT_ID, CATEGORY);
 
 -- Expression index for looking up agents by their owner
 CREATE INDEX idx_entity_owner ON "ENTITY" (DEPLOYMENT_ID, (SYSTEM_ATTRIBUTES->>'owner'));

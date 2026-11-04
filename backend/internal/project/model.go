@@ -9,7 +9,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
-// Project is a group of identity configuration. Every project includes the default organization unit.
+// Project is a group of identity configuration. Every project includes the system organization unit.
 type Project struct {
 	ID          string    `json:"id"`
 	Handle      string    `json:"handle"`

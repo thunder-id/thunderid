@@ -14,8 +14,9 @@ import (
 
 // projectApplication is the part of an application create or update response these tests read.
 type projectApplication struct {
-	ID   string `json:"id"`
-	OUID string `json:"ouId"`
+	ID        string `json:"id"`
+	OUID      string `json:"ouId"`
+	ProjectID string `json:"projectId"`
 }
 
 // projectApplicationList is the part of an application list response these tests read.
@@ -23,38 +24,58 @@ type projectApplicationList struct {
 	TotalResults int `json:"totalResults"`
 	Applications []struct {
 		ID          string `json:"id"`
+		ProjectID   string `json:"projectId"`
 		IsOwnedByOU *bool  `json:"isOwnedByOU"`
 	} `json:"applications"`
 }
 
+// Projects share the system organization unit, yet each lists only its own applications.
 func (ts *ProjectAPITestSuite) TestCreateApplicationInProject() {
 	shop := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Shop"}`, ts.handle("app-shop")))
-	otherRoot := ts.createRootOU("app-other")
+	other := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Other"}`, ts.handle("app-other")))
 
 	inShop := ts.createApp(ts.appBody("shop", `"projectId":%q`, shop.ID))
 	ts.Equal(defaultOUID, inShop.OUID)
-	inOther := ts.createApp(ts.appBody("other", `"ouId":%q`, otherRoot))
+	ts.Equal(shop.ID, inShop.ProjectID)
+	inOther := ts.createApp(ts.appBody("other", `"projectId":%q`, other.ID))
+	ts.Equal(defaultOUID, inOther.OUID)
+	ts.createApp(ts.appBody("unscoped", `"ouId":%q`, defaultOUID))
 
-	ids := ts.appIDs(ts.listApps("?projectId=" + url.QueryEscape(shop.ID)))
-	ts.Contains(ids, inShop.ID)
-	ts.NotContains(ids, inOther.ID)
+	shopList := ts.listApps("?projectId=" + url.QueryEscape(shop.ID))
+	ts.Equal([]string{inShop.ID}, ts.appIDs(shopList))
+	ts.Equal(shop.ID, shopList.Applications[0].ProjectID)
+	ts.Equal([]string{inOther.ID}, ts.appIDs(ts.listApps("?projectId="+url.QueryEscape(other.ID))))
+
+	var fetched projectApplication
+	ts.Require().Equal(http.StatusOK, ts.getJSON("/applications/"+inShop.ID, &fetched))
+	ts.Equal(shop.ID, fetched.ProjectID)
 }
 
+// An update moves an application into a project, and from one project to another.
 func (ts *ProjectAPITestSuite) TestUpdateApplicationWithProject() {
-	created := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Updated"}`, ts.handle("app-updated")))
-	app := ts.createApp(ts.appBody("updated", `"ouId":%q`, defaultOUID))
+	first := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"First"}`, ts.handle("app-upd-first")))
+	second := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Second"}`, ts.handle("app-upd-second")))
+	otherRoot := ts.createRootOU("app-upd-other")
+	app := ts.createApp(ts.appBody("updated", `"ouId":%q`, otherRoot))
+
+	updated := ts.updateApp(app.ID, ts.appBody("updated", `"projectId":%q`, first.ID))
+	ts.Equal(defaultOUID, updated.OUID)
+	ts.Equal(first.ID, updated.ProjectID)
+	var fetched projectApplication
+	ts.Require().Equal(http.StatusOK, ts.getJSON("/applications/"+app.ID, &fetched))
+	ts.Equal(defaultOUID, fetched.OUID, "the move to the project's organization unit is stored")
+	ts.Equal([]string{app.ID}, ts.appIDs(ts.listApps("?projectId="+url.QueryEscape(first.ID))))
+
+	updated = ts.updateApp(app.ID, ts.appBody("updated", `"ouId":%q`, defaultOUID))
+	ts.Equal(first.ID, updated.ProjectID, "an update without a project keeps it")
+
+	updated = ts.updateApp(app.ID, ts.appBody("updated", `"projectId":%q`, second.ID))
+	ts.Equal(second.ID, updated.ProjectID)
+	ts.Empty(ts.appIDs(ts.listApps("?projectId=" + url.QueryEscape(first.ID))))
+	ts.Equal([]string{app.ID}, ts.appIDs(ts.listApps("?projectId="+url.QueryEscape(second.ID))))
 
 	status, body := ts.do(http.MethodPut, "/applications/"+app.ID,
-		ts.appBody("renamed", `"projectId":%q`, created.ID))
-
-	ts.Require().Equal(http.StatusOK, status, body)
-	var updated projectApplication
-	ts.Require().NoError(json.Unmarshal([]byte(body), &updated))
-	ts.Equal(defaultOUID, updated.OUID)
-	ts.Contains(ts.appIDs(ts.listApps("?projectId="+url.QueryEscape(created.ID))), app.ID)
-
-	status, body = ts.do(http.MethodPut, "/applications/"+app.ID,
-		ts.appBody("renamed", `"projectId":%q`, "019a0000-0000-7000-8000-00000000dead"))
+		ts.appBody("updated", `"projectId":%q`, "019a0000-0000-7000-8000-00000000dead"))
 	ts.Equal(http.StatusBadRequest, status, body)
 	ts.Equal("APP-1063", codeOf(ts.T(), body))
 }
@@ -79,9 +100,8 @@ func (ts *ProjectAPITestSuite) TestApplicationInProjectOrganizationUnit() {
 	ts.Equal(http.StatusBadRequest, status, body)
 	ts.Equal("APP-1018", codeOf(ts.T(), body))
 
-	ids := ts.appIDs(ts.listApps("?projectId=" + url.QueryEscape(shop.ID)))
-	ts.Contains(ids, inDefault.ID)
-	ts.NotContains(ids, inChild.ID)
+	ts.ElementsMatch([]string{inDefault.ID, inChild.ID},
+		ts.appIDs(ts.listApps("?projectId="+url.QueryEscape(shop.ID))))
 
 	list := ts.listApps("?projectId=" + url.QueryEscape(shop.ID) + "&filter=" +
 		url.QueryEscape(fmt.Sprintf("ouId eq %q", childOUID)))
@@ -90,6 +110,20 @@ func (ts *ProjectAPITestSuite) TestApplicationInProjectOrganizationUnit() {
 	list = ts.listApps("?projectId=" + url.QueryEscape(shop.ID) + "&filter=" +
 		url.QueryEscape(fmt.Sprintf("ouId eq %q", otherRoot)))
 	ts.Empty(list.Applications)
+}
+
+// A project is not deleted while an application is still in it.
+func (ts *ProjectAPITestSuite) TestDeleteProjectWithApplicationIsRefused() {
+	created := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Busy"}`, ts.handle("app-busy")))
+	app := ts.createApp(ts.appBody("busy", `"projectId":%q`, created.ID))
+
+	status, body := ts.do(http.MethodDelete, "/projects/"+created.ID, "")
+	ts.Equal(http.StatusConflict, status, body)
+	ts.Equal("PRJ-1013", codeOf(ts.T(), body))
+
+	ts.Require().NoError(testutils.DeleteApplication(app.ID))
+	status, body = ts.do(http.MethodDelete, "/projects/"+created.ID, "")
+	ts.Equal(http.StatusNoContent, status, body)
 }
 
 func (ts *ProjectAPITestSuite) TestApplicationWithUnknownProject() {
@@ -132,7 +166,8 @@ func (ts *ProjectAPITestSuite) TestApplicationMCPToolsInProject() {
 	})
 	ts.Equal(childOUID, inChild["ouId"])
 
-	ts.Contains(ts.listMCPApps(map[string]any{"projectId": shop.ID}), inDefault["id"])
+	ts.ElementsMatch([]string{inDefault["id"].(string), inChild["id"].(string)},
+		ts.listMCPApps(map[string]any{"projectId": shop.ID}))
 	ts.Equal([]string{inChild["id"].(string)},
 		ts.listMCPApps(map[string]any{"projectId": shop.ID, "ouId": childOUID}))
 	ts.Equal([]string{inChild["id"].(string)}, ts.listMCPApps(map[string]any{"ouId": childOUID}))
@@ -180,6 +215,15 @@ func (ts *ProjectAPITestSuite) createApp(body string) projectApplication {
 	ts.Require().NoError(json.Unmarshal([]byte(resp), &created))
 	ts.apps = append(ts.apps, created.ID)
 	return created
+}
+
+// updateApp puts an application and requires a 200.
+func (ts *ProjectAPITestSuite) updateApp(id, body string) projectApplication {
+	status, resp := ts.do(http.MethodPut, "/applications/"+id, body)
+	ts.Require().Equal(http.StatusOK, status, resp)
+	var updated projectApplication
+	ts.Require().NoError(json.Unmarshal([]byte(resp), &updated))
+	return updated
 }
 
 // listApps lists applications with the given query and requires a 200.

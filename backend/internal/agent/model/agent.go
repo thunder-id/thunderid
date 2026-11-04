@@ -22,6 +22,7 @@ type AgentRequestWithID struct {
 	ID          string                 `json:"id"                    yaml:"id"`
 	OUID        string                 `json:"ouId,omitempty"        yaml:"ouId,omitempty"`
 	OUHandle    string                 `json:"ouHandle,omitempty"    yaml:"ouHandle,omitempty"`
+	ProjectID   string                 `json:"projectId,omitempty"   yaml:"projectId,omitempty"`
 	Type        string                 `json:"type"                  yaml:"type"`
 	Description string                 `json:"description,omitempty" yaml:"description,omitempty"`
 	LogoURL     string                 `json:"logoUrl,omitempty"     yaml:"logoUrl,omitempty"`
@@ -75,6 +76,7 @@ type AgentCompleteResponse struct {
 	ID          string          `json:"id,omitempty"`
 	OUID        string          `json:"ouId,omitempty"`
 	OUHandle    string          `json:"ouHandle,omitempty"`
+	ProjectID   string          `json:"projectId,omitempty"`
 	Type        string          `json:"type,omitempty"`
 	Description string          `json:"description,omitempty"`
 	LogoURL     string          `json:"logoUrl,omitempty"`
@@ -96,6 +98,7 @@ type AgentGetResponse struct {
 	ID          string `json:"id,omitempty"          yaml:"id,omitempty"`
 	OUID        string `json:"ouId,omitempty"        yaml:"ouId,omitempty"`
 	OUHandle    string `json:"ouHandle,omitempty"    yaml:"-"`
+	ProjectID   string `json:"projectId,omitempty"   yaml:"projectId,omitempty"`
 	Type        string `json:"type,omitempty"        yaml:"type,omitempty"`
 	Display     string `json:"display,omitempty"     yaml:"-"`
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
@@ -124,6 +127,7 @@ type BasicAgentResponse struct {
 	ID          string          `json:"id,omitempty"`
 	OUID        string          `json:"ouId,omitempty"`
 	OUHandle    string          `json:"ouHandle,omitempty"`
+	ProjectID   string          `json:"projectId,omitempty"`
 	Type        string          `json:"type,omitempty"`
 	Display     string          `json:"display,omitempty"`
 	Description string          `json:"description,omitempty"`

@@ -33,6 +33,7 @@ type ProjectServiceTestSuite struct {
 	suite.Suite
 	mockStore     *projectStoreInterfaceMock
 	mockOUService *oumock.OrganizationUnitServiceInterfaceMock
+	mockEntities  *projectEntityReaderMock
 	service       *projectService
 }
 
@@ -43,10 +44,11 @@ func TestProjectServiceTestSuite(t *testing.T) {
 func (suite *ProjectServiceTestSuite) SetupTest() {
 	suite.mockStore = newProjectStoreInterfaceMock(suite.T())
 	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	suite.mockEntities = newProjectEntityReaderMock(suite.T())
 	mockTx := transactionmock.NewTransactionerMock(suite.T())
 	mockTx.On("Transact", mock.Anything, mock.Anything).
 		Return(func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) }).Maybe()
-	suite.service = newProjectService(suite.mockStore, mockTx, suite.mockOUService)
+	suite.service = newProjectService(suite.mockStore, mockTx, suite.mockOUService, suite.mockEntities)
 }
 
 // project is the project the store holds in these tests.
@@ -362,13 +364,28 @@ func (suite *ProjectServiceTestSuite) TestUpdateProject() {
 func (suite *ProjectServiceTestSuite) TestDeleteProject() {
 	suite.Run("deletes the project and no organization unit", func() {
 		suite.SetupTest()
+		suite.mockEntities.On("ProjectHasEntities", mock.Anything, testProjectID).Return(false, nil)
 		suite.mockStore.On("DeleteProject", mock.Anything, testProjectID).Return(nil)
 
 		suite.Nil(suite.service.DeleteProject(context.Background(), testProjectID))
 		suite.mockOUService.AssertNotCalled(suite.T(), "DeleteOrganizationUnit", mock.Anything, mock.Anything)
 	})
+	suite.Run("refused while resources are in the project", func() {
+		suite.SetupTest()
+		suite.mockEntities.On("ProjectHasEntities", mock.Anything, testProjectID).Return(true, nil)
+
+		suite.Equal(ErrorProjectNotEmpty, *suite.service.DeleteProject(context.Background(), testProjectID))
+		suite.mockStore.AssertNotCalled(suite.T(), "DeleteProject", mock.Anything, mock.Anything)
+	})
+	suite.Run("resource check fails", func() {
+		suite.SetupTest()
+		suite.mockEntities.On("ProjectHasEntities", mock.Anything, testProjectID).Return(false, errors.New("db"))
+
+		suite.Equal(tidcommon.InternalServerError, *suite.service.DeleteProject(context.Background(), testProjectID))
+	})
 	suite.Run("delete fails", func() {
 		suite.SetupTest()
+		suite.mockEntities.On("ProjectHasEntities", mock.Anything, testProjectID).Return(false, nil)
 		suite.mockStore.On("DeleteProject", mock.Anything, testProjectID).Return(errors.New("db"))
 
 		suite.Equal(tidcommon.InternalServerError, *suite.service.DeleteProject(context.Background(), testProjectID))

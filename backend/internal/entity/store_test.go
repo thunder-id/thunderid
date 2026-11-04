@@ -23,6 +23,9 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 )
 
+// testProjectID is the project the entity tests place entities in.
+const testProjectID = "project-1"
+
 type DBStoreTestSuite struct {
 	suite.Suite
 	provider *providermock.DBProviderInterfaceMock
@@ -291,6 +294,176 @@ func (s *DBStoreTestSuite) TestUpdateSystemAttributes_Success() {
 	s.onExecAny(1, nil).Once()                                        // delete identifiers
 	err := s.store.UpdateSystemAttributes(s.ctx, "e1", json.RawMessage(`{}`))
 	s.NoError(err)
+}
+
+func (s *DBStoreTestSuite) TestCreateAndUpdateEntity_WriteTheProject() {
+	for name, tc := range map[string]struct {
+		projectID string
+		expected  interface{}
+	}{
+		"a project":  {projectID: testProjectID, expected: testProjectID},
+		"no project": {expected: nil},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.expectClient()
+			s.client.On("ExecuteContext", mock.Anything, QueryCreateEntity, "e1", mock.Anything, mock.Anything,
+				mock.Anything, "ou-1", tc.expected, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything).Return(int64(1), nil).Once()
+			s.onExecAny(1, nil).Maybe()
+			s.onQueryAny([]map[string]interface{}{dbEntityRow()}, nil).Maybe()
+			s.provider.On("GetEntityDBClient").Return(s.client, nil).Maybe()
+
+			err := s.store.CreateEntity(s.ctx, providers.Entity{
+				ID: "e1", OUID: "ou-1", ProjectID: tc.projectID, Attributes: json.RawMessage(`{}`),
+			}, nil, nil)
+
+			s.NoError(err)
+		})
+	}
+}
+
+func (s *DBStoreTestSuite) TestGetEntity_ReadsTheProject() {
+	row := dbEntityRow()
+	row["project_id"] = testProjectID
+	s.expectClient()
+	s.onQueryAny([]map[string]interface{}{row}, nil)
+
+	entity, err := s.store.GetEntity(s.ctx, "e1")
+
+	s.NoError(err)
+	s.Equal(testProjectID, entity.ProjectID)
+}
+
+func (s *DBStoreTestSuite) TestGetEntityListCountByProject() {
+	s.Run("returns the count", func() {
+		s.SetupTest()
+		s.expectClient()
+		s.onQueryAny([]map[string]interface{}{{"total": int64(3)}}, nil)
+
+		count, err := s.store.GetEntityListCountByProject(s.ctx, "app", testProjectID, []string{"ou-1"})
+
+		s.NoError(err)
+		s.Equal(3, count)
+	})
+	s.Run("provider error", func() {
+		s.SetupTest()
+		s.expectClientError()
+
+		_, err := s.store.GetEntityListCountByProject(s.ctx, "app", testProjectID, nil)
+
+		s.Error(err)
+	})
+}
+
+func (s *DBStoreTestSuite) TestGetEntityListByProject() {
+	s.Run("returns the page", func() {
+		s.SetupTest()
+		s.expectClient()
+		s.onQueryAny([]map[string]interface{}{dbEntityRow()}, nil)
+
+		entities, err := s.store.GetEntityListByProject(s.ctx, "app", testProjectID, nil, 10, 0)
+
+		s.NoError(err)
+		s.Len(entities, 1)
+	})
+	s.Run("query error", func() {
+		s.SetupTest()
+		s.expectClient()
+		s.onQueryAny(nil, s.testErr)
+
+		_, err := s.store.GetEntityListByProject(s.ctx, "app", testProjectID, nil, 10, 0)
+
+		s.Error(err)
+	})
+	s.Run("provider error", func() {
+		s.SetupTest()
+		s.expectClientError()
+
+		_, err := s.store.GetEntityListByProject(s.ctx, "app", testProjectID, nil, 10, 0)
+
+		s.Error(err)
+	})
+}
+
+func (s *DBStoreTestSuite) TestProjectHasEntities() {
+	scope := deployment.Resolve(s.ctx)
+	for name, tc := range map[string]struct {
+		rows     []map[string]interface{}
+		expected bool
+	}{
+		"an entity in the project": {rows: []map[string]interface{}{{"id": "e1"}}, expected: true},
+		"an empty project":         {rows: []map[string]interface{}{}, expected: false},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.expectClient()
+			s.client.On("QueryContext", mock.Anything, QueryFindProjectEntity, testProjectID, scope).
+				Return(tc.rows, nil)
+
+			found, err := s.store.ProjectHasEntities(s.ctx, testProjectID)
+
+			s.NoError(err)
+			s.Equal(tc.expected, found)
+		})
+	}
+	s.Run("query error", func() {
+		s.SetupTest()
+		s.expectClient()
+		s.onQueryAny(nil, s.testErr)
+
+		_, err := s.store.ProjectHasEntities(s.ctx, testProjectID)
+
+		s.Error(err)
+	})
+	s.Run("provider error", func() {
+		s.SetupTest()
+		s.expectClientError()
+
+		_, err := s.store.ProjectHasEntities(s.ctx, testProjectID)
+
+		s.Error(err)
+	})
+}
+
+func (s *DBStoreTestSuite) TestUpdateOwnership() {
+	scope := deployment.Resolve(s.ctx)
+	s.Run("moves the entity", func() {
+		s.SetupTest()
+		s.expectClient()
+		s.client.On("ExecuteContext", mock.Anything, QueryUpdateOwnership, "e1", "ou-2", testProjectID,
+			mock.Anything, scope).Return(int64(1), nil)
+
+		s.NoError(s.store.UpdateOwnership(s.ctx, "e1", "ou-2", testProjectID))
+	})
+	s.Run("leaves no project as NULL", func() {
+		s.SetupTest()
+		s.expectClient()
+		s.client.On("ExecuteContext", mock.Anything, QueryUpdateOwnership, "e1", "ou-2", nil,
+			mock.Anything, scope).Return(int64(1), nil)
+
+		s.NoError(s.store.UpdateOwnership(s.ctx, "e1", "ou-2", ""))
+	})
+	s.Run("not found", func() {
+		s.SetupTest()
+		s.expectClient()
+		s.onExecAny(0, nil)
+
+		s.ErrorIs(s.store.UpdateOwnership(s.ctx, "e1", "ou-2", ""), ErrEntityNotFound)
+	})
+	s.Run("execute error", func() {
+		s.SetupTest()
+		s.expectClient()
+		s.onExecAny(0, s.testErr)
+
+		s.Error(s.store.UpdateOwnership(s.ctx, "e1", "ou-2", ""))
+	})
+	s.Run("provider error", func() {
+		s.SetupTest()
+		s.expectClientError()
+
+		s.Error(s.store.UpdateOwnership(s.ctx, "e1", "ou-2", ""))
+	})
 }
 
 // identifierWrites returns the query IDs of all ExecuteContext calls and the string args of the last one.
