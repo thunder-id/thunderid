@@ -55,6 +55,7 @@ export const INPUT_ELEMENT_TYPES: ReadonlySet<string> = new Set<string>([
   ElementTypes.Checkbox,
   ElementTypes.Dropdown,
   ElementTypes.Select,
+  ElementTypes.UserSelect,
 ]);
 
 /**

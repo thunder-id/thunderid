@@ -44,6 +44,7 @@ describe('componentMutations', () => {
       expect(INPUT_ELEMENT_TYPES.has(ElementTypes.Checkbox)).toBe(true);
       expect(INPUT_ELEMENT_TYPES.has(ElementTypes.Dropdown)).toBe(true);
       expect(INPUT_ELEMENT_TYPES.has(ElementTypes.Select)).toBe(true);
+      expect(INPUT_ELEMENT_TYPES.has(ElementTypes.UserSelect)).toBe(true);
     });
 
     it('should not contain non-input element types', () => {

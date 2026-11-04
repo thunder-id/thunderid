@@ -242,6 +242,7 @@ export const INPUT_TYPES = [
   {value: 'CONSENT_INPUT', translationKey: 'flows:core.executions.inputs.types.consent'},
   {value: 'SELECT', translationKey: 'flows:core.executions.inputs.types.select'},
   {value: 'BOOLEAN_INPUT', translationKey: 'flows:core.executions.inputs.types.boolean'},
+  {value: 'USER_SELECT', translationKey: 'flows:core.executions.inputs.types.userSelect'},
 ] as const;
 
 /**

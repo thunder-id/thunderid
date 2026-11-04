@@ -158,9 +158,12 @@ const translations = {
     'actions.finish': 'Finish',
     'actions.done': 'Done',
     'actions.refresh': 'Refresh',
+    'actions.loadMore': 'Load more',
     'actions.copy': 'Copy',
     'actions.copyId': 'Copy ID',
     'actions.copied': 'Copied!',
+    'actions.show': 'Show',
+    'actions.hide': 'Hide',
     'actions.download': 'Download',
     'actions.upload': 'Upload',
     'actions.export': 'Export',
@@ -240,6 +243,7 @@ const translations = {
     'messages.createError': 'Failed to create',
     'messages.noData': 'No data available',
     'messages.noResults': 'No results found',
+    'messages.noOptions': 'No options available',
     'messages.somethingWentWrong': 'Something went wrong',
     'messages.tryAgain': 'Please try again',
 
@@ -1325,17 +1329,8 @@ const translations = {
     'onboarding.errors.unavailable.title': 'Could not start agent onboarding',
     'onboarding.errors.unavailable.description':
       'The agent onboarding flow could not be loaded. Check that the server is reachable and try again.',
+    'onboarding.errors.optionsFailed': 'Could not load the list. Try again.',
     'onboarding.errors.stepFailed': 'This step could not be completed. Review the values and try again.',
-    'onboarding.selectPlaceholder': 'Select an option',
-    'onboarding.authFlow.loading': 'Loading login flows...',
-    'onboarding.authFlow.error': 'Login flows could not be loaded.',
-    'onboarding.authFlow.empty': 'No login flows are available.',
-    'onboarding.userType.loading': 'Loading user types...',
-    'onboarding.userType.error': 'User types could not be loaded.',
-    'onboarding.userType.empty': 'No user types are available.',
-    'onboarding.user.loading': 'Loading users...',
-    'onboarding.user.error': 'Users could not be loaded.',
-    'onboarding.user.empty': 'No users are available.',
     'onboarding.addAnother': 'Add another agent',
 
     // Add form (native creation, no onboarding flow)
@@ -4788,6 +4783,7 @@ const translations = {
     'core.executions.inputs.types.consent': 'Consent',
     'core.executions.inputs.types.select': 'Select',
     'core.executions.inputs.types.boolean': 'Boolean',
+    'core.executions.inputs.types.userSelect': 'User Select',
 
     // Execution steps - tooltips and messages
     // No-config executors
@@ -4963,6 +4959,14 @@ const translations = {
     'core.elements.text.align.options.right': 'Right',
     'core.elements.text.align.options.justify': 'Justify',
     'core.elements.text.align.options.inherit': 'Inherit',
+
+    // Elements - user select element
+    'core.elements.userSelect.caption': 'Loads the system users, page by page',
+    'core.elements.userSelect.dataSource.title': 'Data source',
+    'core.elements.userSelect.dataSource.hint': 'Loads users from the users API, page by page.',
+    'core.elements.userSelect.submitValue.title': 'Submit value',
+    'core.elements.userSelect.submitValue.value': 'User ID',
+    'core.elements.userSelect.submitValue.hint': 'Sends the ID of the chosen user, not the name.',
 
     // Elements - classes property field
     'core.elements.classesPropertyField.label': 'CSS classes',

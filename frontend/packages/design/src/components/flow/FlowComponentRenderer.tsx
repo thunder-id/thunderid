@@ -70,6 +70,9 @@ export default function FlowComponentRenderer({
   onValidate,
   maxImageSize,
   additionalData,
+  renderField,
+  isSubmitDisabled,
+  rendersInputsWithoutSubmit,
 }: FlowComponentRendererProps): JSX.Element | null {
   const comp = component as FlowComponent;
 
@@ -107,6 +110,9 @@ export default function FlowComponentRenderer({
         onBlur={onBlur}
         onSubmit={onSubmit}
         onValidate={onValidate}
+        renderField={renderField}
+        isSubmitDisabled={isSubmitDisabled}
+        rendersInputsWithoutSubmit={rendersInputsWithoutSubmit}
       />
     );
   }
@@ -164,6 +170,9 @@ export default function FlowComponentRenderer({
             onValidate={onValidate}
             additionalData={additionalData}
             approvalBlocked={isConsentApprovalBlocked(parseConsentPurposes(consentData), values)}
+            renderField={renderField}
+            isSubmitDisabled={isSubmitDisabled}
+            rendersInputsWithoutSubmit={rendersInputsWithoutSubmit}
           />
         </>
       );
@@ -183,6 +192,9 @@ export default function FlowComponentRenderer({
         onSubmit={onSubmit}
         onValidate={onValidate}
         additionalData={additionalData}
+        renderField={renderField}
+        isSubmitDisabled={isSubmitDisabled}
+        rendersInputsWithoutSubmit={rendersInputsWithoutSubmit}
       />
     );
   }

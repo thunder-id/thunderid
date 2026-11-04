@@ -71,9 +71,9 @@ export const VALIDATION_RULES: ValidationRuleDefinition[] = [
     ],
     generalMessageKey: 'flows:core.validation.fields.input.general',
   },
-  // Select
+  // Select and user select
   {
-    match: (r) => r.type === ElementTypes.Select,
+    match: (r) => r.type === ElementTypes.Select || r.type === ElementTypes.UserSelect,
     fields: [
       {name: 'label', errorMessageKey: 'flows:core.validation.fields.input.label'},
       {name: 'ref', errorMessageKey: 'flows:core.validation.fields.input.ref'},

@@ -33,7 +33,8 @@ const DEFAULT_DESIGN_CONTEXT: DesignContextType = {
 };
 
 interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
-  designContext?: Partial<DesignContextType>;
+  /** `null` renders without a design context, as on a page that mounts no DesignProvider. */
+  designContext?: Partial<DesignContextType> | null;
 }
 
 /**
@@ -43,12 +44,12 @@ export default function renderWithProviders(
   ui: ReactNode,
   {designContext = {}, ...renderOptions}: RenderWithProvidersOptions = {},
 ) {
-  const contextValue = {...DEFAULT_DESIGN_CONTEXT, ...designContext};
+  const contextValue = designContext === null ? null : {...DEFAULT_DESIGN_CONTEXT, ...designContext};
 
   function Wrapper({children}: {children: ReactNode}) {
     return (
       <I18nextProvider i18n={i18nInstance}>
-        <DesignContext.Provider value={contextValue}>{children}</DesignContext.Provider>
+        {contextValue ? <DesignContext.Provider value={contextValue}>{children}</DesignContext.Provider> : children}
       </I18nextProvider>
     );
   }

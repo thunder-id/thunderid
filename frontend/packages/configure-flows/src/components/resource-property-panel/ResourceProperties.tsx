@@ -11,6 +11,7 @@ import ButtonExtendedProperties from './extended-properties/ButtonExtendedProper
 import CallProperties from './extended-properties/CallProperties';
 import ExecutionExtendedProperties from './extended-properties/ExecutionExtendedProperties';
 import FieldExtendedProperties from './extended-properties/FieldExtendedProperties';
+import UserSelectExtendedProperties from './extended-properties/UserSelectExtendedProperties';
 import RulesProperties from './nodes/RulesProperties';
 import PropertySection from './PropertySection';
 import ResourcePropertyFactory from './ResourcePropertyFactory';
@@ -154,6 +155,7 @@ function ResourceProperties({
           {renderElementId(true)}
           <FieldExtendedProperties resource={resource} onChange={handleChange} />
           {renderElementPropertyFactory()}
+          {resource.type === ElementTypes.UserSelect && <UserSelectExtendedProperties />}
         </>
       );
     case ElementCategories.Action:
