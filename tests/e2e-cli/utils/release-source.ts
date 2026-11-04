@@ -38,6 +38,13 @@ interface Asset {
 }
 
 /**
+ * A product zip, with the version captured. The version must start with a digit, so the Control
+ * Plane and quickstart packs (`thunderid-cp-*`, `thunderid-quickstart-*`) that share target/dist
+ * are not read as product zips of another version.
+ */
+const PRODUCT_ZIP = /^thunderid-(\d.*)-(?:macos|linux|win)-(?:x64|arm64)\.zip$/;
+
+/**
  * Builds a manifest from the zips present in dir.
  *
  * Naming is the contract: build.sh emits `thunderid-<version>-<platform>-<arch>.zip` and
@@ -48,7 +55,7 @@ interface Asset {
 export function buildManifest(dir: string, baseUrl: string): { version: string; manifest: unknown } {
   const zips = fs.readdirSync(dir).filter(name => name.endsWith(".zip"));
 
-  const productZips = zips.filter(name => /^thunderid-.+-(macos|linux|win)-(x64|arm64)\.zip$/.test(name));
+  const productZips = zips.filter(name => PRODUCT_ZIP.test(name));
   if (productZips.length === 0) {
     throw new Error(
       `No product zips in ${dir}. Expected something like thunderid-1.0.1-linux-x64.zip; found: ${
@@ -57,9 +64,7 @@ export function buildManifest(dir: string, baseUrl: string): { version: string; 
     );
   }
 
-  const versions = new Set(
-    productZips.map(name => /^thunderid-(.+)-(?:macos|linux|win)-(?:x64|arm64)\.zip$/.exec(name)![1])
-  );
+  const versions = new Set(productZips.map(name => PRODUCT_ZIP.exec(name)![1]));
   if (versions.size > 1) {
     throw new Error(`${dir} holds more than one product version: ${[...versions].join(", ")}`);
   }
