@@ -75,6 +75,7 @@ import {ConsoleUrl, WayFinderSampleUrl, WayFinderMailUrl} from '@site/src/compon
 import {McpOAuthFlowDiagram} from '@site/src/components/McpQuickstartFlow';
 import {NextSteps, NextStepsCard} from '@site/src/components/NextSteps';
 import {Pattern, PatternPicker} from '@site/src/components/PatternPicker';
+import {PersonalAssistantSolutionDiagram} from '@site/src/components/PersonalAssistantSolutionDiagram';
 import ProductName from '@site/src/components/ProductName';
 import RepoLink from '@site/src/components/RepoLink';
 import RunThunderID from '@site/src/components/RunThunderID';
@@ -253,6 +254,7 @@ export default {
   SdkQuickstartDownload,
   AgentAuthorityDiagram,
   AgentSolutionArchitectureDiagram,
+  PersonalAssistantSolutionDiagram,
   SolutionArchitectureDiagram,
   UseCaseBranchCards,
   UseCaseStepper,
