@@ -85,33 +85,33 @@ export default function MaskedSecretField({
   }
 
   return (
-    <FormControl fullWidth required={required} error={Boolean(error)}>
-      <FormLabel htmlFor={id}>{label}</FormLabel>
-      <TextField
-        id={id}
-        fullWidth
-        type={visible ? 'text' : 'password'}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        error={Boolean(error)}
-        helperText={error ?? hint}
-        slotProps={{
-          input: {
-            endAdornment: (
-              <InputAdornment position="end">
-                <IconButton
-                  onClick={() => setVisible((prev) => !prev)}
-                  edge="end"
-                  size="small"
-                  aria-label="toggle secret visibility"
-                >
-                  {visible ? <EyeOff size={16} /> : <Eye size={16} />}
-                </IconButton>
-              </InputAdornment>
-            ),
-          },
-        }}
-      />
-    </FormControl>
+    <TextField
+      labelPlacement="top"
+      label={label}
+      required={required}
+      id={id}
+      fullWidth
+      type={visible ? 'text' : 'password'}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      error={Boolean(error)}
+      helperText={error ?? hint}
+      slotProps={{
+        input: {
+          endAdornment: (
+            <InputAdornment position="end">
+              <IconButton
+                onClick={() => setVisible((prev) => !prev)}
+                edge="end"
+                size="small"
+                aria-label="toggle secret visibility"
+              >
+                {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+              </IconButton>
+            </InputAdornment>
+          ),
+        },
+      }}
+    />
   );
 }

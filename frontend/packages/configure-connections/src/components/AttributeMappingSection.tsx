@@ -462,18 +462,16 @@ export default function AttributeMappingSection({
 
             {effectiveResolveDynamic && (
               <>
-                <FormControl sx={{maxWidth: 360}}>
-                  <FormLabel sx={{mb: 0.75}} htmlFor="attribute-mapping-resolution-external">
-                    {t('attributeMapping.externalAttribute.label')}
-                  </FormLabel>
-                  <TextField
-                    id="attribute-mapping-resolution-external"
-                    placeholder={t('attributeMapping.resolution.externalAttribute.placeholder')}
-                    value={externalAttribute}
-                    onChange={(e) => setExternalAttribute(e.target.value)}
-                  />
-                  <FormHelperText>{t('attributeMapping.resolution.externalAttribute.helper')}</FormHelperText>
-                </FormControl>
+                <TextField
+                  labelPlacement="top"
+                  label={t('attributeMapping.externalAttribute.label')}
+                  sx={{maxWidth: 360}}
+                  id="attribute-mapping-resolution-external"
+                  placeholder={t('attributeMapping.resolution.externalAttribute.placeholder')}
+                  value={externalAttribute}
+                  onChange={(e) => setExternalAttribute(e.target.value)}
+                  helperText={t('attributeMapping.resolution.externalAttribute.helper')}
+                />
 
                 <Box>
                   <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">

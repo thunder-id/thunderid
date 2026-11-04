@@ -1,19 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  Box,
-  Button,
-  FormControl,
-  FormHelperText,
-  FormLabel,
-  IconButton,
-  Paper,
-  Stack,
-  TextField,
-  Tooltip,
-  Typography,
-} from '@wso2/oxygen-ui';
+import {Box, Button, FormHelperText, IconButton, Paper, Stack, TextField, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -73,26 +61,24 @@ export default function ClaimsEditor({claims, onChange, nameErrors = {}}: Claims
           </Tooltip>
 
           <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', sm: '1fr 1fr'}, gap: 2}}>
-            <FormControl>
-              <FormLabel>{t('claims.name')}</FormLabel>
-              <TextField
-                size="small"
-                value={claim.name}
-                placeholder="given_name"
-                error={nameErrors[claim.id] !== undefined}
-                helperText={nameErrors[claim.id] ? t(`claims.errors.${nameErrors[claim.id]}`) : undefined}
-                onChange={(e): void => update(claim.id, {name: e.target.value})}
-              />
-            </FormControl>
-            <FormControl>
-              <FormLabel>{t('claims.displayName')}</FormLabel>
-              <TextField
-                size="small"
-                value={claim.displayName}
-                placeholder="Given name"
-                onChange={(e): void => update(claim.id, {displayName: e.target.value})}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('claims.name')}
+              size="small"
+              value={claim.name}
+              placeholder="given_name"
+              error={nameErrors[claim.id] !== undefined}
+              helperText={nameErrors[claim.id] ? t(`claims.errors.${nameErrors[claim.id]}`) : undefined}
+              onChange={(e): void => update(claim.id, {name: e.target.value})}
+            />
+            <TextField
+              labelPlacement="top"
+              label={t('claims.displayName')}
+              size="small"
+              value={claim.displayName}
+              placeholder="Given name"
+              onChange={(e): void => update(claim.id, {displayName: e.target.value})}
+            />
           </Box>
           <FormHelperText>{t('claims.nameHint')}</FormHelperText>
         </Paper>

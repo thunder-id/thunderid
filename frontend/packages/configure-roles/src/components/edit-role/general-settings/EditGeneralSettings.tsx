@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {Stack, TextField, IconButton, InputAdornment, Tooltip, FormControl, FormLabel} from '@wso2/oxygen-ui';
+import {Stack, TextField, IconButton, InputAdornment, Tooltip} from '@wso2/oxygen-ui';
 import {Copy, Check} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, useRef, useEffect, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -47,54 +47,11 @@ export default function EditGeneralSettings({role}: EditGeneralSettingsProps): J
       >
         <Stack spacing={2}>
           {role.ouHandle && (
-            <FormControl fullWidth>
-              <FormLabel htmlFor="ou-handle-input">
-                {t('roles:edit.general.sections.organizationUnit.handleLabel', 'Handle')}
-              </FormLabel>
-              <TextField
-                id="ou-handle-input"
-                value={role.ouHandle}
-                fullWidth
-                size="small"
-                slotProps={{
-                  input: {
-                    readOnly: true,
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <Tooltip
-                          title={
-                            copiedField === 'ouHandle'
-                              ? t('common:actions.copied')
-                              : t('roles:edit.general.sections.organizationUnit.copyHandle', 'Copy handle')
-                          }
-                        >
-                          <IconButton
-                            aria-label={t('roles:edit.general.sections.organizationUnit.copyHandle', 'Copy handle')}
-                            onClick={() => {
-                              handleCopyToClipboard(role.ouHandle!, 'ouHandle').catch(() => {
-                                /* noop */
-                              });
-                            }}
-                            edge="end"
-                          >
-                            {copiedField === 'ouHandle' ? <Check size={16} /> : <Copy size={16} />}
-                          </IconButton>
-                        </Tooltip>
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-                sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-              />
-            </FormControl>
-          )}
-          <FormControl fullWidth>
-            <FormLabel htmlFor="ou-id-input">
-              {t('roles:edit.general.sections.organizationUnit.idLabel', 'ID')}
-            </FormLabel>
             <TextField
-              id="ou-id-input"
-              value={role.ouId}
+              labelPlacement="top"
+              label={t('roles:edit.general.sections.organizationUnit.handleLabel', 'Handle')}
+              id="ou-handle-input"
+              value={role.ouHandle}
               fullWidth
               size="small"
               slotProps={{
@@ -104,21 +61,21 @@ export default function EditGeneralSettings({role}: EditGeneralSettingsProps): J
                     <InputAdornment position="end">
                       <Tooltip
                         title={
-                          copiedField === 'ouId'
+                          copiedField === 'ouHandle'
                             ? t('common:actions.copied')
-                            : t('roles:edit.general.sections.organizationUnit.copyId')
+                            : t('roles:edit.general.sections.organizationUnit.copyHandle', 'Copy handle')
                         }
                       >
                         <IconButton
-                          aria-label={t('roles:edit.general.sections.organizationUnit.copyId')}
+                          aria-label={t('roles:edit.general.sections.organizationUnit.copyHandle', 'Copy handle')}
                           onClick={() => {
-                            handleCopyToClipboard(role.ouId, 'ouId').catch(() => {
+                            handleCopyToClipboard(role.ouHandle!, 'ouHandle').catch(() => {
                               /* noop */
                             });
                           }}
                           edge="end"
                         >
-                          {copiedField === 'ouId' ? <Check size={16} /> : <Copy size={16} />}
+                          {copiedField === 'ouHandle' ? <Check size={16} /> : <Copy size={16} />}
                         </IconButton>
                       </Tooltip>
                     </InputAdornment>
@@ -127,7 +84,44 @@ export default function EditGeneralSettings({role}: EditGeneralSettingsProps): J
               }}
               sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
             />
-          </FormControl>
+          )}
+          <TextField
+            labelPlacement="top"
+            label={t('roles:edit.general.sections.organizationUnit.idLabel', 'ID')}
+            id="ou-id-input"
+            value={role.ouId}
+            fullWidth
+            size="small"
+            slotProps={{
+              input: {
+                readOnly: true,
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Tooltip
+                      title={
+                        copiedField === 'ouId'
+                          ? t('common:actions.copied')
+                          : t('roles:edit.general.sections.organizationUnit.copyId')
+                      }
+                    >
+                      <IconButton
+                        aria-label={t('roles:edit.general.sections.organizationUnit.copyId')}
+                        onClick={() => {
+                          handleCopyToClipboard(role.ouId, 'ouId').catch(() => {
+                            /* noop */
+                          });
+                        }}
+                        edge="end"
+                      >
+                        {copiedField === 'ouId' ? <Check size={16} /> : <Copy size={16} />}
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                ),
+              },
+            }}
+            sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+          />
         </Stack>
       </SettingsCard>
     </Stack>

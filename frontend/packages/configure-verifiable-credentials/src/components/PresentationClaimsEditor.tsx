@@ -89,17 +89,16 @@ export default function ClaimsEditor({claims, onChange, duplicateNames = {}}: Cl
           </Tooltip>
 
           <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', sm: '1fr 220px'}, gap: 2}}>
-            <FormControl>
-              <FormLabel>{t('claims.name')}</FormLabel>
-              <TextField
-                size="small"
-                value={claim.name}
-                placeholder="given_name"
-                error={duplicateNames[claim.id] === true}
-                helperText={duplicateNames[claim.id] ? t('claims.errors.duplicate') : undefined}
-                onChange={(e): void => update(claim.id, {name: e.target.value})}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('claims.name')}
+              size="small"
+              value={claim.name}
+              placeholder="given_name"
+              error={duplicateNames[claim.id] === true}
+              helperText={duplicateNames[claim.id] ? t('claims.errors.duplicate') : undefined}
+              onChange={(e): void => update(claim.id, {name: e.target.value})}
+            />
             <FormControl>
               <FormLabel>{t('claims.requirement')}</FormLabel>
               <Select

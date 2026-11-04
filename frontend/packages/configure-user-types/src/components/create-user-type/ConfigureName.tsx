@@ -4,7 +4,7 @@
 import {NameSuggestion, OrganizationUnitSummaryChip, ToggleCard} from '@thunderid/components';
 import {OrganizationUnitTreeConstants} from '@thunderid/configure-organization-units';
 import {generateHandle} from '@thunderid/utils';
-import {Typography, Stack, TextField, FormControl, FormLabel} from '@wso2/oxygen-ui';
+import {Typography, Stack, TextField} from '@wso2/oxygen-ui';
 import type {ChangeEvent, JSX} from 'react';
 import {useEffect, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -164,9 +164,11 @@ export default function ConfigureName({
         />
       )}
 
-      <FormControl fullWidth required>
-        <FormLabel htmlFor="user-type-name-input">{t('userTypes:createWizard.name.fieldLabel')}</FormLabel>
+      <Stack>
         <TextField
+          labelPlacement="top"
+          label={t('userTypes:createWizard.name.fieldLabel')}
+          required
           fullWidth
           id="user-type-name-input"
           value={name}
@@ -180,31 +182,29 @@ export default function ConfigureName({
         />
 
         <NameSuggestion onSelect={handleSuggestionSelect} />
-      </FormControl>
+      </Stack>
 
-      <FormControl fullWidth required>
-        <FormLabel htmlFor="user-type-handle-input">
-          {t('userTypes:createWizard.handle.fieldLabel', 'Handle')}
-        </FormLabel>
-        <TextField
-          fullWidth
-          id="user-type-handle-input"
-          value={handle}
-          onChange={handleHandleChange}
-          placeholder={t('userTypes:createWizard.handle.placeholder', 'e.g., customer')}
-          error={Boolean(handleError)}
-          helperText={
-            handleError ??
-            t(
-              'userTypes:createWizard.handle.hint',
-              "A unique identifier for this user type. You can't change it once created.",
-            )
-          }
-          inputProps={{
-            'data-testid': 'user-type-handle-input',
-          }}
-        />
-      </FormControl>
+      <TextField
+        labelPlacement="top"
+        label={t('userTypes:createWizard.handle.fieldLabel', 'Handle')}
+        required
+        fullWidth
+        id="user-type-handle-input"
+        value={handle}
+        onChange={handleHandleChange}
+        placeholder={t('userTypes:createWizard.handle.placeholder', 'e.g., customer')}
+        error={Boolean(handleError)}
+        helperText={
+          handleError ??
+          t(
+            'userTypes:createWizard.handle.hint',
+            "A unique identifier for this user type. You can't change it once created.",
+          )
+        }
+        inputProps={{
+          'data-testid': 'user-type-handle-input',
+        }}
+      />
 
       <ToggleCard
         checked={allowSelfRegistration}

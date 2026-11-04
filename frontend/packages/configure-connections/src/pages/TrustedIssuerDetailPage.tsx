@@ -8,8 +8,6 @@ import {
   Alert,
   Box,
   Button,
-  FormControl,
-  FormLabel,
   ListingTable,
   PageContent,
   Skeleton,
@@ -243,62 +241,56 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
               description={t('trustedIssuers:detail.general.description', 'Core identity of this trusted issuer.')}
             >
               <Stack direction="column" spacing={3}>
-                <FormControl fullWidth required error={Boolean(nameError ?? (touched['name'] && errors.name))}>
-                  <FormLabel htmlFor="trusted-issuer-name">
-                    {t('trustedIssuers:create.form.name.label', 'Name')}
-                  </FormLabel>
-                  <TextField
-                    id="trusted-issuer-name"
-                    fullWidth
-                    value={values.name}
-                    error={Boolean(nameError ?? (touched['name'] && errors.name))}
-                    helperText={nameError ?? (touched['name'] ? fieldErrorMessage(errors.name) : undefined)}
-                    onChange={(e) => setField('name', e.target.value)}
-                    onBlur={() => setTouchedField('name')}
-                  />
-                </FormControl>
+                <TextField
+                  labelPlacement="top"
+                  label={t('trustedIssuers:create.form.name.label', 'Name')}
+                  required
+                  id="trusted-issuer-name"
+                  fullWidth
+                  value={values.name}
+                  error={Boolean(nameError ?? (touched['name'] && errors.name))}
+                  helperText={nameError ?? (touched['name'] ? fieldErrorMessage(errors.name) : undefined)}
+                  onChange={(e) => setField('name', e.target.value)}
+                  onBlur={() => setTouchedField('name')}
+                />
 
-                <FormControl fullWidth required error={Boolean(touched['issuer'] && errors.issuer)}>
-                  <FormLabel htmlFor="trusted-issuer-issuer">
-                    {t('trustedIssuers:create.form.issuer.label', 'Issuer URI')}
-                  </FormLabel>
-                  <TextField
-                    id="trusted-issuer-issuer"
-                    fullWidth
-                    value={values.issuer}
-                    error={Boolean(touched['issuer'] && errors.issuer)}
-                    helperText={
-                      (touched['issuer'] ? fieldErrorMessage(errors.issuer) : undefined) ??
-                      t(
-                        'trustedIssuers:create.form.issuer.hint',
-                        "The issuer URI from the external IdP's OpenID Connect discovery document.",
-                      )
-                    }
-                    onChange={(e) => setField('issuer', e.target.value)}
-                    onBlur={() => setTouchedField('issuer')}
-                  />
-                </FormControl>
+                <TextField
+                  labelPlacement="top"
+                  label={t('trustedIssuers:create.form.issuer.label', 'Issuer URI')}
+                  required
+                  id="trusted-issuer-issuer"
+                  fullWidth
+                  value={values.issuer}
+                  error={Boolean(touched['issuer'] && errors.issuer)}
+                  helperText={
+                    (touched['issuer'] ? fieldErrorMessage(errors.issuer) : undefined) ??
+                    t(
+                      'trustedIssuers:create.form.issuer.hint',
+                      "The issuer URI from the external IdP's OpenID Connect discovery document.",
+                    )
+                  }
+                  onChange={(e) => setField('issuer', e.target.value)}
+                  onBlur={() => setTouchedField('issuer')}
+                />
 
-                <FormControl fullWidth required error={Boolean(touched['jwksEndpoint'] && errors.jwksEndpoint)}>
-                  <FormLabel htmlFor="trusted-issuer-jwks-endpoint">
-                    {t('trustedIssuers:create.form.jwksEndpoint.label', 'JWKS endpoint')}
-                  </FormLabel>
-                  <TextField
-                    id="trusted-issuer-jwks-endpoint"
-                    fullWidth
-                    value={values.jwksEndpoint}
-                    error={Boolean(touched['jwksEndpoint'] && errors.jwksEndpoint)}
-                    helperText={
-                      (touched['jwksEndpoint'] ? fieldErrorMessage(errors.jwksEndpoint) : undefined) ??
-                      t(
-                        'trustedIssuers:create.form.jwksEndpoint.hint',
-                        'The JWKS endpoint used to validate the signature of incoming identity assertions.',
-                      )
-                    }
-                    onChange={(e) => setField('jwksEndpoint', e.target.value)}
-                    onBlur={() => setTouchedField('jwksEndpoint')}
-                  />
-                </FormControl>
+                <TextField
+                  labelPlacement="top"
+                  label={t('trustedIssuers:create.form.jwksEndpoint.label', 'JWKS endpoint')}
+                  required
+                  id="trusted-issuer-jwks-endpoint"
+                  fullWidth
+                  value={values.jwksEndpoint}
+                  error={Boolean(touched['jwksEndpoint'] && errors.jwksEndpoint)}
+                  helperText={
+                    (touched['jwksEndpoint'] ? fieldErrorMessage(errors.jwksEndpoint) : undefined) ??
+                    t(
+                      'trustedIssuers:create.form.jwksEndpoint.hint',
+                      'The JWKS endpoint used to validate the signature of incoming identity assertions.',
+                    )
+                  }
+                  onChange={(e) => setField('jwksEndpoint', e.target.value)}
+                  onBlur={() => setTouchedField('jwksEndpoint')}
+                />
               </Stack>
             </SettingsCard>
 
@@ -313,23 +305,20 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
               enabled={values.tokenExchangeEnabled}
               onToggle={(checked) => setField('tokenExchangeEnabled', checked)}
             >
-              <FormControl fullWidth>
-                <FormLabel htmlFor="trusted-issuer-token-audience">
-                  {t('trustedIssuers:detail.tokenExchange.audience.label', 'Trusted token audience')}
-                </FormLabel>
-                <TextField
-                  id="trusted-issuer-token-audience"
-                  fullWidth
-                  placeholder="api://thunderid"
-                  value={values.trustedTokenAudience ?? ''}
-                  helperText={t(
-                    'trustedIssuers:detail.tokenExchange.audience.hint',
-                    "An additional audience value {{productName}} will accept in subject tokens from this issuer. Tokens whose audience is {{productName}}'s own issuer URL are always accepted.",
-                    {productName},
-                  )}
-                  onChange={(e) => setField('trustedTokenAudience', e.target.value || undefined)}
-                />
-              </FormControl>
+              <TextField
+                labelPlacement="top"
+                label={t('trustedIssuers:detail.tokenExchange.audience.label', 'Trusted token audience')}
+                id="trusted-issuer-token-audience"
+                fullWidth
+                placeholder="api://thunderid"
+                value={values.trustedTokenAudience ?? ''}
+                helperText={t(
+                  'trustedIssuers:detail.tokenExchange.audience.hint',
+                  "An additional audience value {{productName}} will accept in subject tokens from this issuer. Tokens whose audience is {{productName}}'s own issuer URL are always accepted.",
+                  {productName},
+                )}
+                onChange={(e) => setField('trustedTokenAudience', e.target.value || undefined)}
+              />
             </SettingsCard>
 
             <SettingsCard

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {Box, FormControl, FormLabel, Stack, Tab, Tabs, TextField} from '@wso2/oxygen-ui';
+import {Box, Stack, Tab, Tabs, TextField} from '@wso2/oxygen-ui';
 import {useState} from 'react';
 import {Controller} from 'react-hook-form';
 import type {Control, FieldErrors} from 'react-hook-form';
@@ -82,26 +82,26 @@ export default function TokenValidationSection({
     fieldName: 'validityPeriod' | 'accessTokenValidity' | 'idTokenValidity' | 'refreshTokenValidity',
     fieldLabel: string = label,
   ) => (
-    <FormControl fullWidth required>
-      <FormLabel htmlFor={`${fieldName}-input`}>{fieldLabel}</FormLabel>
-      <Controller
-        name={fieldName}
-        control={control}
-        render={({field}) => (
-          <TextField
-            id={`${fieldName}-input`}
-            {...field}
-            fullWidth
-            type="number"
-            onChange={(e) => field.onChange(parseInt(e.target.value, 10))}
-            error={!!errors[fieldName]}
-            helperText={errors[fieldName]?.message ?? hint}
-            inputProps={{min: 1}}
-            disabled={disabled}
-          />
-        )}
-      />
-    </FormControl>
+    <Controller
+      name={fieldName}
+      control={control}
+      render={({field}) => (
+        <TextField
+          labelPlacement="top"
+          label={fieldLabel}
+          required
+          id={`${fieldName}-input`}
+          {...field}
+          fullWidth
+          type="number"
+          onChange={(e) => field.onChange(parseInt(e.target.value, 10))}
+          error={!!errors[fieldName]}
+          helperText={errors[fieldName]?.message ?? hint}
+          inputProps={{min: 1}}
+          disabled={disabled}
+        />
+      )}
+    />
   );
 
   // With no tabs to say which token the field is for, its label names the access token.

@@ -254,45 +254,34 @@ export default function IdentityAssertionsSection({
                 />
               </FormControl>
 
-              <FormControl size="small" error={showValidityPeriodError}>
-                <FormLabel htmlFor="idjag_validity_period">
-                  {t('applications:edit.advanced.idJag.labels.validityPeriod', 'Assertion validity')}
-                </FormLabel>
-                <TextField
-                  id="idjag_validity_period"
-                  type="number"
-                  size="small"
-                  disabled={disabled}
-                  value={validityPeriodValue}
-                  error={showValidityPeriodError}
-                  helperText={
-                    showValidityPeriodError
-                      ? t(
-                          'applications:edit.advanced.idJag.validityPeriod.error',
-                          'Enter a value of at least 1 second.',
-                        )
-                      : undefined
-                  }
-                  onChange={(e) => handleValidityPeriodChange(e.target.value)}
-                  inputProps={{min: 1}}
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        {t('applications:edit.advanced.idJag.labels.seconds', 'seconds')}
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{maxWidth: 220}}
-                />
-                {!showValidityPeriodError && (
-                  <Typography variant="caption" color="text.secondary" sx={{mt: 0.5}}>
-                    {t(
-                      'applications:edit.advanced.idJag.validityPeriod.hint',
-                      'How long an issued assertion stays valid. Default 300.',
-                    )}
-                  </Typography>
-                )}
-              </FormControl>
+              <TextField
+                labelPlacement="top"
+                label={t('applications:edit.advanced.idJag.labels.validityPeriod', 'Assertion validity')}
+                id="idjag_validity_period"
+                type="number"
+                size="small"
+                disabled={disabled}
+                value={validityPeriodValue}
+                error={showValidityPeriodError}
+                helperText={
+                  showValidityPeriodError
+                    ? t('applications:edit.advanced.idJag.validityPeriod.error', 'Enter a value of at least 1 second.')
+                    : t(
+                        'applications:edit.advanced.idJag.validityPeriod.hint',
+                        'How long an issued assertion stays valid. Default 300.',
+                      )
+                }
+                onChange={(e) => handleValidityPeriodChange(e.target.value)}
+                inputProps={{min: 1}}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      {t('applications:edit.advanced.idJag.labels.seconds', 'seconds')}
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{'& .MuiInputBase-root': {maxWidth: 220}}}
+              />
             </>
           )}
 

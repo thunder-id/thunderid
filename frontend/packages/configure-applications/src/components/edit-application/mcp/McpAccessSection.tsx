@@ -317,33 +317,30 @@ export default function McpAccessSection({
           </Typography>
         </Box>
 
-        <FormControl fullWidth>
-          <FormLabel htmlFor="mcp-client-uri-input">
-            {t('applications:edit.mcp.connect.clientUri.label', 'Client URI')}
-          </FormLabel>
-          <Controller
-            name="url"
-            control={control}
-            render={({field}) => (
-              <TextField
-                {...field}
-                onChange={(e) => {
-                  field.onChange(e);
-                  onFieldChange('url', e.target.value);
-                }}
-                fullWidth
-                id="mcp-client-uri-input"
-                placeholder="https://example.com"
-                error={!!errors.url}
-                helperText={
-                  errors.url?.message ??
-                  t('applications:edit.mcp.connect.clientUri.hint', 'Public homepage of this client (optional).')
-                }
-                disabled={isReadOnly}
-              />
-            )}
-          />
-        </FormControl>
+        <Controller
+          name="url"
+          control={control}
+          render={({field}) => (
+            <TextField
+              labelPlacement="top"
+              label={t('applications:edit.mcp.connect.clientUri.label', 'Client URI')}
+              {...field}
+              onChange={(e) => {
+                field.onChange(e);
+                onFieldChange('url', e.target.value);
+              }}
+              fullWidth
+              id="mcp-client-uri-input"
+              placeholder="https://example.com"
+              error={!!errors.url}
+              helperText={
+                errors.url?.message ??
+                t('applications:edit.mcp.connect.clientUri.hint', 'Public homepage of this client (optional).')
+              }
+              disabled={isReadOnly}
+            />
+          )}
+        />
 
         <FormControl fullWidth required={isRedirectUriRequired}>
           <FormLabel htmlFor="mcp-redirect-uris-section">

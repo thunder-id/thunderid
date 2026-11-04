@@ -10,7 +10,7 @@ import {
   type AvatarShape,
   type AvatarVariant,
 } from '@thunderid/react';
-import {Box, Button, FormControl, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
+import {Box, Button, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {Shuffle} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -196,17 +196,16 @@ export default function AvatarPicker({value, onChange}: AvatarPickerProps): JSX.
       ) : (
         <>
           {!isBlank && (
-            <FormControl fullWidth>
-              <FormLabel htmlFor="avatar-picker-seed-text">{t('avatar_picker.seed_text.label', 'Seed text')}</FormLabel>
-              <TextField
-                fullWidth
-                size="small"
-                id="avatar-picker-seed-text"
-                placeholder={t('avatar_picker.seed_text.placeholder', 'e.g. your app name')}
-                value={seedText}
-                onChange={(e) => handleSeedChange(e.target.value)}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('avatar_picker.seed_text.label', 'Seed text')}
+              fullWidth
+              size="small"
+              id="avatar-picker-seed-text"
+              placeholder={t('avatar_picker.seed_text.placeholder', 'e.g. your app name')}
+              value={seedText}
+              onChange={(e) => handleSeedChange(e.target.value)}
+            />
           )}
           <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
             <Box

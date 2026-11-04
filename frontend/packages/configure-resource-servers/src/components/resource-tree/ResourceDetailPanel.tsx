@@ -10,8 +10,6 @@ import {
   Button,
   Chip,
   Divider,
-  FormControl,
-  FormLabel,
   IconButton,
   InputAdornment,
   Stack,
@@ -233,120 +231,111 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
       {saveError && <Alert severity="error">{saveError}</Alert>}
 
       <Stack spacing={2}>
-        <FormControl fullWidth>
-          <FormLabel>{t('resourceServers:detail.fields.name', 'Name')}</FormLabel>
-          <TextField
-            value={name}
-            onChange={handleField(setName)}
-            fullWidth
-            size="small"
-            disabled={isReadOnly}
-            helperText={
-              isMcpNonServer
-                ? t('resourceServers:mcp.detail.nameHint', 'A human-readable name for this {{kind}}.', {
-                    kind: kindNoun,
-                  })
-                : undefined
-            }
-          />
-        </FormControl>
+        <TextField
+          labelPlacement="top"
+          label={t('resourceServers:detail.fields.name', 'Name')}
+          value={name}
+          onChange={handleField(setName)}
+          fullWidth
+          size="small"
+          disabled={isReadOnly}
+          helperText={
+            isMcpNonServer
+              ? t('resourceServers:mcp.detail.nameHint', 'A human-readable name for this {{kind}}.', {
+                  kind: kindNoun,
+                })
+              : undefined
+          }
+        />
 
         {isMcpNonServer && (
           <>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="mcp-detail-handle">
-                {t('resourceServers:detail.fields.handle', 'Handle (immutable)')}
-              </FormLabel>
-              <TextField
-                fullWidth
-                id="mcp-detail-handle"
-                value={selectedNode.data.handle}
-                InputProps={{readOnly: true}}
-                size="small"
-                helperText={t(
-                  'resourceServers:mcp.detail.handleHint',
-                  'Stable identifier for this {{kind}}, used to build the permission scope.',
-                  {kind: kindNoun},
-                )}
-                sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('resourceServers:detail.fields.handle', 'Handle (immutable)')}
+              fullWidth
+              id="mcp-detail-handle"
+              value={selectedNode.data.handle}
+              InputProps={{readOnly: true}}
+              size="small"
+              helperText={t(
+                'resourceServers:mcp.detail.handleHint',
+                'Stable identifier for this {{kind}}, used to build the permission scope.',
+                {kind: kindNoun},
+              )}
+              sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+            />
 
-            <FormControl fullWidth>
-              <FormLabel htmlFor="mcp-detail-delimiter">
-                {t('resourceServers:detail.fields.delimiter', 'Delimiter (immutable)')}
-              </FormLabel>
-              <TextField
-                fullWidth
-                id="mcp-detail-delimiter"
-                value={resourceServer.delimiter}
-                InputProps={{readOnly: true}}
-                size="small"
-                helperText={t(
-                  'resourceServers:mcp.detail.delimiterHint',
-                  'Separates segments in the permission scope. Defined by the resource server.',
-                )}
-                sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('resourceServers:detail.fields.delimiter', 'Delimiter (immutable)')}
+              fullWidth
+              id="mcp-detail-delimiter"
+              value={resourceServer.delimiter}
+              InputProps={{readOnly: true}}
+              size="small"
+              helperText={t(
+                'resourceServers:mcp.detail.delimiterHint',
+                'Separates segments in the permission scope. Defined by the resource server.',
+              )}
+              sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+            />
           </>
         )}
 
-        <FormControl fullWidth>
-          <FormLabel>{t('resourceServers:detail.fields.description', 'Description')}</FormLabel>
-          <TextField
-            value={description}
-            onChange={handleField(setDescription)}
-            fullWidth
-            size="small"
-            multiline
-            rows={3}
-            disabled={isReadOnly}
-            placeholder={
-              isMcpNonServer
-                ? t('resourceServers:mcp.detail.descriptionPlaceholder', 'Describe what this {{kind}} is for.', {
-                    kind: kindNoun,
-                  })
-                : undefined
-            }
-          />
-        </FormControl>
+        <TextField
+          labelPlacement="top"
+          label={t('resourceServers:detail.fields.description', 'Description')}
+          value={description}
+          onChange={handleField(setDescription)}
+          fullWidth
+          size="small"
+          multiline
+          rows={3}
+          disabled={isReadOnly}
+          placeholder={
+            isMcpNonServer
+              ? t('resourceServers:mcp.detail.descriptionPlaceholder', 'Describe what this {{kind}} is for.', {
+                  kind: kindNoun,
+                })
+              : undefined
+          }
+        />
       </Stack>
       <Divider sx={{my: 1, borderColor: 'divider', borderBottomWidth: 2}} />
 
       {/* MCP non-server: read-only Permission field */}
       {isMcpNonServer ? (
-        <FormControl fullWidth>
-          <FormLabel htmlFor="mcp-detail-permission">{t('resourceServers:detail.permission', 'Permission')}</FormLabel>
-          <TextField
-            fullWidth
-            id="mcp-detail-permission"
-            value={permission}
-            InputProps={{
-              readOnly: true,
-              endAdornment: (
-                <InputAdornment position="end">
-                  <Tooltip title={copiedPermission ? t('common:copied', 'Copied!') : t('common:copy', 'Copy')}>
-                    <IconButton
-                      edge="end"
-                      size="small"
-                      onClick={handleCopyPermission}
-                      aria-label={t('common:copy', 'Copy')}
-                    >
-                      {copiedPermission ? <Check size={16} /> : <Copy size={16} />}
-                    </IconButton>
-                  </Tooltip>
-                </InputAdornment>
-              ),
-            }}
-            size="small"
-            helperText={t(
-              'resourceServers:mcp.detail.permissionScopeHelp',
-              'Built from the resource path and the name, joined by the delimiter.',
-            )}
-            sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-          />
-        </FormControl>
+        <TextField
+          labelPlacement="top"
+          label={t('resourceServers:detail.permission', 'Permission')}
+          fullWidth
+          id="mcp-detail-permission"
+          value={permission}
+          InputProps={{
+            readOnly: true,
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip title={copiedPermission ? t('common:copied', 'Copied!') : t('common:copy', 'Copy')}>
+                  <IconButton
+                    edge="end"
+                    size="small"
+                    onClick={handleCopyPermission}
+                    aria-label={t('common:copy', 'Copy')}
+                  >
+                    {copiedPermission ? <Check size={16} /> : <Copy size={16} />}
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ),
+          }}
+          size="small"
+          helperText={t(
+            'resourceServers:mcp.detail.permissionScopeHelp',
+            'Built from the resource path and the name, joined by the delimiter.',
+          )}
+          sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+        />
       ) : (
         <>
           {selectedNode.type !== 'server' && (
@@ -399,20 +388,19 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
           )}
 
           {selectedNode.type === 'server' && (
-            <FormControl fullWidth>
-              <FormLabel>{t('resourceServers:detail.fields.identifier', 'Identifier')}</FormLabel>
-              <TextField
-                value={identifier}
-                onChange={handleField(setIdentifier)}
-                fullWidth
-                size="small"
-                helperText={t(
-                  'resourceServers:detail.fields.identifierHint',
-                  'Used as audience parameter in OAuth2 flows.',
-                )}
-                disabled={isReadOnly}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('resourceServers:detail.fields.identifier', 'Identifier')}
+              value={identifier}
+              onChange={handleField(setIdentifier)}
+              fullWidth
+              size="small"
+              helperText={t(
+                'resourceServers:detail.fields.identifierHint',
+                'Used as audience parameter in OAuth2 flows.',
+              )}
+              disabled={isReadOnly}
+            />
           )}
         </>
       )}

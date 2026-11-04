@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {NameSuggestion} from '@thunderid/components';
-import {Checkbox, FormControl, FormControlLabel, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
+import {Checkbox, FormControl, FormControlLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useEffect, type ChangeEvent, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {isDefaultEligibleType, type ResourceServerType} from '../../models/resource-server';
@@ -71,13 +71,15 @@ export default function ConfigureName({
           : t('resourceServers:create.name.title', "Let's collect some details about your resource server")}
       </Typography>
 
-      <FormControl fullWidth required>
-        <FormLabel htmlFor="resource-server-name-input">
-          {selectedType === 'MCP'
-            ? t('resourceServers:create.name.nameLabelMcp', 'MCP server name')
-            : t('resourceServers:create.name.nameLabel', 'Resource server name')}
-        </FormLabel>
+      <Stack>
         <TextField
+          labelPlacement="top"
+          label={
+            selectedType === 'MCP'
+              ? t('resourceServers:create.name.nameLabelMcp', 'MCP server name')
+              : t('resourceServers:create.name.nameLabel', 'Resource server name')
+          }
+          required
           id="resource-server-name-input"
           fullWidth
           value={name}
@@ -86,41 +88,39 @@ export default function ConfigureName({
         />
 
         <NameSuggestion onSelect={onNameChange} />
-      </FormControl>
+      </Stack>
 
-      <FormControl fullWidth required>
-        <FormLabel htmlFor="resource-server-identifier-input">
-          {t('resourceServers:create.name.identifierLabel', 'Identifier')}
-        </FormLabel>
-        <TextField
-          id="resource-server-identifier-input"
-          fullWidth
-          value={identifier}
-          onChange={handleIdentifierChange}
-          placeholder={
-            selectedType === 'MCP'
-              ? t('resourceServers:create.name.identifierPlaceholderMcp', 'https://mcp.example.com/mcp')
-              : t('resourceServers:create.name.identifierPlaceholder', 'https://api.example.com')
-          }
-          error={isIdentifierInvalid}
-          helperText={
-            isIdentifierInvalid
+      <TextField
+        labelPlacement="top"
+        label={t('resourceServers:create.name.identifierLabel', 'Identifier')}
+        required
+        id="resource-server-identifier-input"
+        fullWidth
+        value={identifier}
+        onChange={handleIdentifierChange}
+        placeholder={
+          selectedType === 'MCP'
+            ? t('resourceServers:create.name.identifierPlaceholderMcp', 'https://mcp.example.com/mcp')
+            : t('resourceServers:create.name.identifierPlaceholder', 'https://api.example.com')
+        }
+        error={isIdentifierInvalid}
+        helperText={
+          isIdentifierInvalid
+            ? t(
+                'resourceServers:create.name.identifierInvalidMcp',
+                'Enter an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
+              )
+            : selectedType === 'MCP'
               ? t(
-                  'resourceServers:create.name.identifierInvalidMcp',
-                  'Enter an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
+                  'resourceServers:create.name.identifierHintMcp',
+                  'The URL MCP clients use to reach this server, such as https://mcp.example.com/mcp. MCP clients send it as the resource parameter, and it becomes the token audience.',
                 )
-              : selectedType === 'MCP'
-                ? t(
-                    'resourceServers:create.name.identifierHintMcp',
-                    'The URL MCP clients use to reach this server, such as https://mcp.example.com/mcp. MCP clients send it as the resource parameter, and it becomes the token audience.',
-                  )
-                : t(
-                    'resourceServers:create.name.identifierHint',
-                    'A unique identifier for this resource server. When set as an absolute URI, it becomes the token audience for RFC 8707 resource indicators.',
-                  )
-          }
-        />
-      </FormControl>
+              : t(
+                  'resourceServers:create.name.identifierHint',
+                  'A unique identifier for this resource server. When set as an absolute URI, it becomes the token audience for RFC 8707 resource indicators.',
+                )
+        }
+      />
 
       {isDefaultEligible && (
         <FormControl fullWidth>

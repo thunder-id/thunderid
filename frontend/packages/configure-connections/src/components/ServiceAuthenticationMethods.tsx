@@ -90,25 +90,23 @@ export default function ServiceAuthenticationMethods({
             gap: 2,
           }}
         >
-          <FormControl fullWidth required error={Boolean(errors.basicUsername)}>
-            <FormLabel htmlFor="connection-field-basicUsername">
-              {t('form.fields.basicUsername.label', 'Username')}
-            </FormLabel>
-            <TextField
-              id="connection-field-basicUsername"
-              fullWidth
-              value={basicUsername}
-              disabled={hasStoredSecret && !replacing}
-              onChange={(event) => onChange('basicUsername', event.target.value)}
-              error={Boolean(errors.basicUsername)}
-              helperText={
-                errors.basicUsername ??
-                (hasStoredSecret && !replacing
-                  ? undefined
-                  : t('form.fields.basicUsername.hint', 'Username sent with each PDP request.'))
-              }
-            />
-          </FormControl>
+          <TextField
+            labelPlacement="top"
+            label={t('form.fields.basicUsername.label', 'Username')}
+            required
+            id="connection-field-basicUsername"
+            fullWidth
+            value={basicUsername}
+            disabled={hasStoredSecret && !replacing}
+            onChange={(event) => onChange('basicUsername', event.target.value)}
+            error={Boolean(errors.basicUsername)}
+            helperText={
+              errors.basicUsername ??
+              (hasStoredSecret && !replacing
+                ? undefined
+                : t('form.fields.basicUsername.hint', 'Username sent with each PDP request.'))
+            }
+          />
           <MaskedSecretField
             id="connection-field-basicPassword"
             label={t('form.fields.basicPassword.label', 'Password')}
