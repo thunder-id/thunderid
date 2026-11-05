@@ -365,14 +365,25 @@ describe('GatewayExplorerPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('switches to another gateway and goes back to Deploy', async () => {
+  it('switches to another gateway and goes back home', async () => {
     render(<GatewayExplorerPage />);
     await screen.findByTestId('explorer-node-application/app-1');
 
     await userEvent.click(screen.getByRole('button', {name: 'Prod'}));
     expect(navigate).toHaveBeenCalledWith('/deploy/gateways/gw-prod/explore');
-    await userEvent.click(screen.getByText('Deploy'));
-    expect(navigate).toHaveBeenCalledWith('/deploy');
+    await userEvent.click(screen.getByText('Home'));
+    expect(navigate).toHaveBeenCalledWith('/home');
+  });
+
+  it('goes back to the environment the gateway stands for', async () => {
+    routes['GET /gateways/pipeline'] = {
+      stages: [{name: 'Development', adminConsoleUrl: 'https://dev.test/console', gateway: {id: 'gw-dev'}}],
+    };
+    render(<GatewayExplorerPage />);
+    await screen.findByTestId('explorer-node-application/app-1');
+
+    await userEvent.click(await screen.findByText('Development'));
+    expect(navigate).toHaveBeenCalledWith('/environments/gw-dev');
   });
 
   it('says when nothing is deployed, or the gateway is unknown', async () => {

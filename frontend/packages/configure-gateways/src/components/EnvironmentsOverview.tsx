@@ -23,7 +23,7 @@ import runnersOf from '../utils/runners';
 const STAGES_PER_ROW = 3;
 
 export interface EnvironmentsOverviewProps {
-  /** Opens an environment's own page; absent, the cards offer no Open. */
+  /** Opens an environment's own page; its route otherwise. */
   onOpenEnvironment?: (gatewayId: string) => void;
 }
 
@@ -86,7 +86,9 @@ export default function EnvironmentsOverview({onOpenEnvironment = undefined}: En
           adminConsoleUrl={entry.adminConsoleUrl}
           applied={applied.byGateway[gateway.id]}
           versions={all}
-          onOpen={onOpenEnvironment ? () => onOpenEnvironment(gateway.id) : undefined}
+          onOpen={() =>
+            onOpenEnvironment ? onOpenEnvironment(gateway.id) : void navigate(routes.deploy.environment(gateway.id))
+          }
           onExplore={() => void navigate(routes.deploy.explore(gateway.id))}
           onConfigure={() => void navigate(routes.deploy.values(gateway.id))}
           onRevert={() => panels.revert(gateway)}

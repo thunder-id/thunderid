@@ -27,6 +27,7 @@ import {useDeleteStoredValue, useSetStoredValue} from '../api/useStoredValues';
 import type {StoredValue, ValueKind, ValueReference} from '../models/deploy';
 import groupByResource, {humanize, type ResourceGroup, type TypeGroup} from '../utils/groupByResource';
 import {fromListText, toListText} from '../utils/listValue';
+import {fieldLabel} from '../utils/valueLabels';
 
 /** One name a gateway holds or is asked to hold, with what refers to it. */
 export interface ValueRow {
@@ -98,8 +99,7 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
     resourceType
       ? t(`values.types.${resourceType}`, {defaultValue: TYPE_LABELS[resourceType] ?? humanize(resourceType)})
       : t('values.other', 'Not used by the version this gateway runs');
-  const fieldLabel = (field: string | undefined): string =>
-    field ? t(`values.fields.${field}`, {defaultValue: humanize(field)}) : t('values.value', 'Value');
+  const labelOf = (field: string | undefined): string => fieldLabel(t, field);
 
   const start = (row: ValueRow): void => {
     setError(null);
@@ -154,7 +154,7 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
         row.references
           .slice(1)
           .map((reference: ValueReference) =>
-            [reference.resourceName ?? reference.resourceId, fieldLabel(reference.field)].filter(Boolean).join(' · '),
+            [reference.resourceName ?? reference.resourceId, labelOf(reference.field)].filter(Boolean).join(' · '),
           ),
       ),
     ];
@@ -162,7 +162,7 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
       <Box>
         <Stack direction="row" spacing={1} alignItems="center">
           <Typography variant="body2" sx={{fontWeight: 500}}>
-            {row.references.length > 0 ? fieldLabel(row.references[0].field) : row.name}
+            {row.references.length > 0 ? labelOf(row.references[0].field) : row.name}
           </Typography>
           {others.length > 0 && (
             <Tooltip title={others.join(', ')}>

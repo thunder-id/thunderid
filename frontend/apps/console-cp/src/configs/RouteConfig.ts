@@ -103,6 +103,7 @@ export const ROUTE_SEGMENTS = {
   settings: 'settings',
   gateways: 'gateways',
   deploy: 'deploy',
+  environments: 'environments',
 } as const;
 
 const RouteConfig: RouteConfig = {
@@ -228,6 +229,7 @@ const RouteConfig: RouteConfig = {
     list: () => `/${ROUTE_SEGMENTS.deploy}`,
     explore: (gatewayId: string) => `/${ROUTE_SEGMENTS.deploy}/gateways/${encodeURIComponent(gatewayId)}/explore`,
     values: (gatewayId: string) => `/${ROUTE_SEGMENTS.deploy}/gateways/${encodeURIComponent(gatewayId)}/values`,
+    environment: (gatewayId: string) => `/${ROUTE_SEGMENTS.environments}/${encodeURIComponent(gatewayId)}`,
   },
 };
 

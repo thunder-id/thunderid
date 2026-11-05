@@ -125,7 +125,8 @@ export const LANE_BY_ID: Readonly<Record<LaneId, Lane>> = Object.fromEntries(
   LANES.map((lane) => [lane.id, lane]),
 ) as Record<LaneId, Lane>;
 
-const laneOfType = (resourceType: string): Lane | undefined =>
+/** The lane a resource type is drawn in, if the map shows it. */
+export const laneOfType = (resourceType: string): Lane | undefined =>
   LANES.find((lane: Lane) => lane.resourceTypes.includes(resourceType));
 
 /** The geometry of the stage, from the design: lanes of a fixed height with tiles at a fixed step. */

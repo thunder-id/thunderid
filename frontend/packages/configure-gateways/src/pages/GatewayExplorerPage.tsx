@@ -11,6 +11,7 @@ import {useNavigate, useParams} from 'react-router';
 import useGateways from '../api/useGateways';
 import {useAppliedConfiguration, useRunningReferences} from '../api/useGatewayVersions';
 import {useMaster, useResourceHistory} from '../api/useMaster';
+import {usePipeline} from '../api/usePipeline';
 import {useSetStoredValue, useStoredValues} from '../api/useStoredValues';
 import {useVersions} from '../api/useVersions';
 import ExplorerCanvas from '../components/explorer/ExplorerCanvas';
@@ -22,6 +23,7 @@ import useDeployRoutes from '../hooks/useDeployRoutes';
 import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
 import type {MasterEntry, StoredValue, ValueReference, Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
+import type {PipelineStage} from '../models/pipeline';
 import {versionLabel} from '../utils/format';
 import {fromListText, toListText} from '../utils/listValue';
 
@@ -37,6 +39,9 @@ export default function GatewayExplorerPage(): JSX.Element {
   const tForErrors = useGatewayErrorTranslator();
   const {gatewayId = ''} = useParams<{gatewayId: string}>();
   const gateways = useGateways();
+  const pipeline = usePipeline();
+  // The environment this gateway stands for, which the view returns to.
+  const stage = pipeline.data?.stages.find((entry: PipelineStage) => entry.gateway.id === gatewayId);
   const gateway = gateways.data?.find((entry: Gateway) => entry.id === gatewayId);
   const configuration = useAppliedConfiguration(gatewayId);
   const master = useMaster(gatewayId);
@@ -284,10 +289,17 @@ export default function GatewayExplorerPage(): JSX.Element {
       <DocumentTitle title={gateway?.name ?? t('header.title', 'Deploy')} />
       <FullScreenHeader
         breadcrumbs={[
-          {key: 'deploy', label: t('header.title', 'Deploy'), onClick: () => void navigate(routes.deploy.list())},
-          {key: 'gateway', label: gateway?.name ?? gatewayId},
+          {key: 'home', label: t('explorer.home', 'Home'), onClick: () => void navigate(routes.home.list())},
+          stage
+            ? {
+                key: 'environment',
+                label: stage.name,
+                onClick: () => void navigate(routes.deploy.environment(gatewayId)),
+              }
+            : {key: 'gateway', label: gateway?.name ?? gatewayId},
+          {key: 'explore', label: t('environment.deployed', 'Deployed configuration')},
         ]}
-        onExit={() => void navigate(routes.home.list())}
+        onExit={() => void navigate(stage ? routes.deploy.environment(gatewayId) : routes.home.list())}
       />
       {gateway && (
         <ExplorerToolbar
