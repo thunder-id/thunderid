@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {renderHook} from '@testing-library/react';
@@ -101,6 +101,36 @@ describe('useGetFlowBuilderResources', () => {
       const {data} = result.current;
       expect(Array.isArray(data.executors)).toBe(true);
       expect(data.executors.length).toBeGreaterThan(0);
+    });
+
+    it('should offer the verification executors on the resource panel', () => {
+      const {result} = renderHook(() => useGetFlowBuilderResources());
+
+      const offered = (
+        result.current.data.executors as {
+          display?: {label?: string; showOnResourcePanel?: boolean};
+          data?: {action?: {executor?: {name?: string; mode?: string}}};
+        }[]
+      )
+        .filter((entry) => entry.data?.action?.executor?.name === 'AttributeVerificationExecutor')
+        .map((entry) => ({
+          label: entry.display?.label,
+          executor: entry.data?.action?.executor,
+          showOnResourcePanel: entry.display?.showOnResourcePanel,
+        }));
+
+      expect(offered).toEqual([
+        {
+          label: 'Prepare Verification',
+          executor: {name: 'AttributeVerificationExecutor', mode: 'prepare'},
+          showOnResourcePanel: true,
+        },
+        {
+          label: 'Record Verification',
+          executor: {name: 'AttributeVerificationExecutor', mode: 'record'},
+          showOnResourcePanel: true,
+        },
+      ]);
     });
 
     it('should return all resource types in data object', () => {

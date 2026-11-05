@@ -78,6 +78,15 @@ describe('getSimulationOptions', () => {
     expect(getSimulationOptions('executor-1', nodes, edges)).toHaveLength(0);
   });
 
+  it('should not offer a display-only skip edge', () => {
+    const edges = [
+      createEdge('e1', 'executor-1', 'executor-1_NEXT', 'end-1'),
+      {...createEdge('skip', 'executor-1', 'executor-1_NEXT', 'failure-view'), data: {conditionSkip: true}},
+    ];
+
+    expect(getSimulationOptions('executor-1', nodes, edges).map(({edgeId}) => edgeId)).toEqual(['e1']);
+  });
+
   it('should return an empty list for terminal nodes', () => {
     expect(getSimulationOptions('end-1', nodes, [])).toHaveLength(0);
   });

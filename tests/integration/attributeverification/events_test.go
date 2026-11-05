@@ -68,6 +68,7 @@ func (ts *EventsTestSuite) SetupSuite() {
 
 	ts.reader = testutils.NewEventLogReader(logPath)
 	ts.fixture = newVerificationFixture(t, "events")
+	ts.fixture.createLinkFlow(t)
 	ts.sms = newSMSProvider(t, "Events")
 	ts.fixture.nameSender(t, mobileSendNode, ts.sms.senderID)
 }
@@ -122,6 +123,27 @@ func (ts *EventsTestSuite) TestARefusedRecordingIsPublished() {
 	ts.requireNoSecretsPublished(user.email, changed, code)
 }
 
+// A link for an email changed since it was sent is refused at recording, and the refusal is published
+// as a failure with the user, the attribute and the user as the initiator, and never either address or
+// the link.
+func (ts *EventsTestSuite) TestARefusedLinkRecordingIsPublished() {
+	user := ts.fixture.newUser(ts.T(), "events_refused_link")
+	_, link := ts.fixture.sendLink(ts.T(), user)
+	changed := otherAddress(user)
+	ts.fixture.adminUpdate(ts.T(), user, ts.fixture.userType, profile(user, changed))
+	ts.Require().NoError(ts.reader.Reset())
+
+	done := confirmLink(ts.T(), link)
+	ts.Require().NotNil(done.Error, "precondition: recording refuses the link for the earlier email")
+	ts.Require().Equal(errCodeVerificationRefused, done.Error.Code, "precondition: recording refuses the link")
+
+	refused := ts.awaitEvent(eventVerificationRefused, user.id)
+	ts.Equal("failure", refused.Status)
+	ts.Equal(emailAttribute, refused.Str(eventKeyAttribute), "the attribute must be published")
+	ts.Equal(user.id, refused.Str(eventKeyActorSub), "the user must be act_sub")
+	ts.requireNoSecretsPublished(user.email, changed, link, testutils.ExtractQueryParam(link, "inviteToken"))
+}
+
 // A write that clears a verified email is published once committed, with the reason and the caller
 // of the write, and without the old or the new address.
 func (ts *EventsTestSuite) TestAClearedVerificationIsPublishedWithItsReason() {
@@ -145,6 +167,36 @@ func (ts *EventsTestSuite) TestAClearedVerificationIsPublishedWithItsReason() {
 	removed := ts.awaitEvent(eventVerificationInvalidated, user.id)
 	ts.Equal("removed", removed.Str(eventKeyReason), "the reason must be published")
 	ts.requireNoSecretsPublished(changed.email)
+}
+
+// The link flow returns and publishes neither the link, its token nor the address: not when the link is
+// sent, opened or confirmed.
+func (ts *EventsTestSuite) TestTheLinkFlowDisclosesNoLinkOrAddress() {
+	user := ts.fixture.newUser(ts.T(), "events_link")
+	ts.Require().NoError(ts.reader.Reset())
+
+	sent, link := ts.fixture.sendLink(ts.T(), user)
+	inviteToken := testutils.ExtractQueryParam(link, "inviteToken")
+	ts.Require().NotEmpty(inviteToken, "precondition: the link carries its token")
+	opened := execute(ts.T(), "", map[string]interface{}{
+		"executionId": testutils.ExtractQueryParam(link, "executionId"),
+		"inputs":      map[string]string{"inviteToken": inviteToken},
+	})
+	ts.Require().NotNil(opened.Step, "the link must be answered in the flow: %s", opened.Body)
+	ts.Require().True(common.HasAction(opened.Step.Data.Actions, actionConfirm),
+		"precondition: the link leads to the confirmation: %s", opened.Body)
+	confirmed := continueRaw(ts.T(), opened.Step, actionConfirm, nil)
+	ts.Require().Equal(flowStatusComplete, confirmed.Step.FlowStatus, "precondition: confirming verifies the email: %s",
+		confirmed.Body)
+
+	for name, result := range map[string]*common.FlowExecutionResult{
+		"send": sent, "open": opened, "confirm": confirmed,
+	} {
+		requireNothingDisclosed(ts.T(), name, result, []string{user.email, link, inviteToken}, nil)
+		ts.NotContains(result.Step.Data.AdditionalData, "inviteLink", "the %s response must not return the link", name)
+	}
+	ts.awaitEvent(eventVerificationVerified, user.id)
+	ts.requireNoSecretsPublished(user.email, link, inviteToken)
 }
 
 // The mobile branch returns and publishes neither the number nor any code: not when a code is sent, a

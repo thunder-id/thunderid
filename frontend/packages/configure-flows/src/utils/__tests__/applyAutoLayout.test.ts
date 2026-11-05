@@ -248,6 +248,26 @@ describe('applyAutoLayout', () => {
       expect(byEdgeId.get('e4')?.layoutOptions).toBeUndefined();
     });
 
+    it('should not follow a display-only skip edge when collecting the happy path', async () => {
+      const nodes: Node[] = [
+        createNode('start', 'START'),
+        createNode('exec1', 'TASK_EXECUTION'),
+        createNode('skipTarget', 'TASK_EXECUTION'),
+        createNode('end', 'END'),
+      ];
+      const edges: Edge[] = [
+        createEdge('e1', 'start', 'exec1', 'start_NEXT'),
+        {...createEdge('skip', 'exec1', 'skipTarget', 'exec1_NEXT'), data: {conditionSkip: true}},
+        createEdge('e2', 'exec1', 'end', 'exec1_NEXT'),
+      ];
+
+      await applyAutoLayout(nodes, edges);
+
+      const byEdgeId = new Map(lastGraph?.edges.map((edge) => [edge.id, edge]));
+      expect(byEdgeId.get('skip')?.layoutOptions).toBeUndefined();
+      expect(byEdgeId.get('e2')?.layoutOptions?.['elk.layered.priority.straightness']).toBe('10');
+    });
+
     it('should not follow failure branches when collecting the happy path', async () => {
       const nodes: Node[] = [createNode('start', 'START'), createNode('a', 'TASK_EXECUTION'), createNode('end', 'END')];
       const edges: Edge[] = [createEdge('e1', 'start', 'a', 'failure'), createEdge('e2', 'a', 'end', 'a_NEXT')];

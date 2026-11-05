@@ -43,6 +43,12 @@ export interface User {
   attributes?: Record<string, unknown>;
 
   /**
+   * When each current contact attribute was verified, keyed by attribute. Empty when none is verified; absent when the
+   * server did not read it, so the status is unknown.
+   */
+  readonly verifiedAttributes?: Readonly<Record<string, {readonly verifiedAt: string}>>;
+
+  /**
    * Human-readable display name for the user.
    */
   display?: string;

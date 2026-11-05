@@ -19173,5 +19173,975 @@
         }
       ]
     }
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "STARTER",
+    "type": "BLANK",
+    "flowType": "SELF",
+    "display": {
+      "label": "Blank",
+      "description": "Start from scratch with an empty canvas",
+      "image": "assets/images/icons/refresh-ccw.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "New Self Flow",
+      "handle": "new-self-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "layout": {
+            "size": {
+              "width": 101,
+              "height": 34
+            },
+            "position": {
+              "x": 62,
+              "y": 278
+            }
+          },
+          "onSuccess": "view_prompt"
+        },
+        {
+          "id": "view_prompt",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 466
+            },
+            "position": {
+              "x": 463,
+              "y": 62
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "category": "DISPLAY",
+                "id": "text_heading",
+                "label": "Heading",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "HEADING_3"
+              },
+              {
+                "category": "BLOCK",
+                "components": [
+                  {
+                    "category": "ACTION",
+                    "eventType": "SUBMIT",
+                    "id": "action_continue",
+                    "label": "Continue",
+                    "resourceType": "ELEMENT",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_actions",
+                "resourceType": "ELEMENT",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "ref": "action_continue",
+                "nextNode": "end"
+              }
+            }
+          ]
+        },
+        {
+          "id": "end",
+          "type": "END",
+          "layout": {
+            "size": {
+              "width": 85,
+              "height": 34
+            },
+            "position": {
+              "x": 1657,
+              "y": 278
+            }
+          }
+        }
+      ]
+    },
+    "nodes": []
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "STARTER",
+    "type": "SELF_ATTRIBUTE_VERIFICATION",
+    "flowType": "SELF",
+    "display": {
+      "label": "Self Attribute Verification",
+      "description": "A signed-in user verifies their own email address or mobile number with a one-time code",
+      "image": "assets/images/icons/email-down.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Self Attribute Verification Flow",
+      "handle": "self-attribute-verification-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "prepare_verification",
+          "layout": {
+            "size": {
+              "width": 101,
+              "height": 34
+            },
+            "position": {
+              "x": 62,
+              "y": 530
+            }
+          }
+        },
+        {
+          "id": "prepare_verification",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "AttributeVerificationExecutor",
+            "mode": "prepare"
+          },
+          "onSuccess": "generate_email_otp",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 372,
+              "y": 490
+            }
+          }
+        },
+        {
+          "id": "generate_email_otp",
+          "type": "TASK_EXECUTION",
+          "condition": {
+            "key": "{{ctx(recipientType)}}",
+            "value": "email",
+            "onSkip": "generate_mobile_otp"
+          },
+          "properties": {
+            "maxAttempts": 3,
+            "otpValidityPeriodSeconds": 300
+          },
+          "executor": {
+            "name": "OTPExecutor",
+            "mode": "generate"
+          },
+          "onSuccess": "send_email_otp",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 738,
+              "y": 490
+            }
+          }
+        },
+        {
+          "id": "send_email_otp",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "emailTemplate": "otp"
+          },
+          "executor": {
+            "name": "EmailExecutor",
+            "mode": "send",
+            "inputs": [
+              {
+                "identifier": "email",
+                "type": "EMAIL_INPUT",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "email_code",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 1125,
+              "y": 490
+            }
+          }
+        },
+        {
+          "id": "email_code",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "email_code_heading",
+                "label": "{{ t(verification:self.email.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "email_code_message",
+                "label": "{{ t(verification:self.email.message) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_email_otp",
+                "components": [
+                  {
+                    "type": "OTP_INPUT",
+                    "id": "input_email_otp",
+                    "ref": "otp",
+                    "label": "{{ t(verification:self.email.code.label) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_email_verify",
+                    "label": "{{ t(verification:self.email.verify) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  },
+                  {
+                    "type": "RESEND",
+                    "id": "action_email_resend",
+                    "label": "{{ t(verification:self.email.resend) }}",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_email_otp",
+                  "identifier": "otp",
+                  "type": "OTP_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_email_verify",
+                "nextNode": "verify_email_otp"
+              }
+            },
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_email_resend",
+                "nextNode": "prepare_verification"
+              }
+            }
+          ],
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 1504,
+              "y": 490
+            }
+          }
+        },
+        {
+          "id": "verify_email_otp",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "maxAttempts": 3
+          },
+          "inputs": [
+            {
+              "ref": "input_email_otp",
+              "identifier": "otp",
+              "type": "OTP_INPUT",
+              "required": true
+            }
+          ],
+          "executor": {
+            "name": "OTPExecutor",
+            "mode": "verify"
+          },
+          "onSuccess": "record_verification",
+          "onIncomplete": "email_code",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 1882,
+              "y": 471
+            }
+          }
+        },
+        {
+          "id": "generate_mobile_otp",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "maxAttempts": 3,
+            "otpValidityPeriodSeconds": 300
+          },
+          "executor": {
+            "name": "OTPExecutor",
+            "mode": "generate"
+          },
+          "onSuccess": "send_mobile_otp",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 1125,
+              "y": 277
+            }
+          }
+        },
+        {
+          "id": "send_mobile_otp",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "senderId": "{{SENDER_ID}}",
+            "smsTemplate": "otp"
+          },
+          "executor": {
+            "name": "SMSExecutor",
+            "mode": "send",
+            "inputs": [
+              {
+                "identifier": "mobile_number",
+                "type": "PHONE_INPUT",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "mobile_code",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 1504,
+              "y": 238
+            }
+          }
+        },
+        {
+          "id": "mobile_code",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "mobile_code_heading",
+                "label": "{{ t(verification:self.mobile.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "mobile_code_message",
+                "label": "{{ t(verification:self.mobile.message) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_mobile_otp",
+                "components": [
+                  {
+                    "type": "OTP_INPUT",
+                    "id": "input_mobile_otp",
+                    "ref": "otp",
+                    "label": "{{ t(verification:self.mobile.code.label) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_mobile_verify",
+                    "label": "{{ t(verification:self.mobile.verify) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  },
+                  {
+                    "type": "RESEND",
+                    "id": "action_mobile_resend",
+                    "label": "{{ t(verification:self.mobile.resend) }}",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_mobile_otp",
+                  "identifier": "otp",
+                  "type": "OTP_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_mobile_verify",
+                "nextNode": "verify_mobile_otp"
+              }
+            },
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_mobile_resend",
+                "nextNode": "prepare_verification"
+              }
+            }
+          ],
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 1882,
+              "y": 122
+            }
+          }
+        },
+        {
+          "id": "verify_mobile_otp",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "maxAttempts": 3
+          },
+          "inputs": [
+            {
+              "ref": "input_mobile_otp",
+              "identifier": "otp",
+              "type": "OTP_INPUT",
+              "required": true
+            }
+          ],
+          "executor": {
+            "name": "OTPExecutor",
+            "mode": "verify"
+          },
+          "onSuccess": "record_verification",
+          "onIncomplete": "mobile_code",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 2270,
+              "y": 355
+            }
+          }
+        },
+        {
+          "id": "record_verification",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "AttributeVerificationExecutor",
+            "mode": "record"
+          },
+          "onSuccess": "end",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 2647,
+              "y": 471
+            }
+          }
+        },
+        {
+          "id": "end",
+          "type": "END",
+          "layout": {
+            "size": {
+              "width": 85,
+              "height": 34
+            },
+            "position": {
+              "x": 3013,
+              "y": 511
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "STARTER",
+    "type": "SELF_ATTRIBUTE_VERIFICATION_EMAIL_LINK",
+    "flowType": "SELF",
+    "display": {
+      "label": "Self Attribute Verification with Email Link",
+      "description": "A signed-in user verifies their own email address from a link, or their mobile number with a one-time code",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Self Attribute Verification with Email Link Flow",
+      "handle": "self-attribute-verification-email-link-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "prepare_verification",
+          "layout": {
+            "size": {
+              "width": 101,
+              "height": 34
+            },
+            "position": {
+              "x": 62,
+              "y": 102
+            }
+          }
+        },
+        {
+          "id": "prepare_verification",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "AttributeVerificationExecutor",
+            "mode": "prepare"
+          },
+          "onSuccess": "generate_link",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 358,
+              "y": 62
+            }
+          }
+        },
+        {
+          "id": "generate_link",
+          "type": "TASK_EXECUTION",
+          "condition": {
+            "key": "{{ctx(recipientType)}}",
+            "value": "email",
+            "onSkip": "generate_mobile_otp"
+          },
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "generate"
+          },
+          "onSuccess": "send_link",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 724,
+              "y": 62
+            }
+          }
+        },
+        {
+          "id": "send_link",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "emailTemplate": "self-email-verification"
+          },
+          "executor": {
+            "name": "EmailExecutor",
+            "mode": "send",
+            "inputs": [
+              {
+                "identifier": "email",
+                "type": "EMAIL_INPUT",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "link_sent",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 1113,
+              "y": 62
+            }
+          }
+        },
+        {
+          "id": "link_sent",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "link_sent_heading",
+                "label": "{{ t(verification:self.email.link.sent.title) }}",
+                "variant": "HEADING_1",
+                "color": "SUCCESS"
+              },
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "link_sent_message",
+                "label": "{{ t(verification:self.email.link.sent.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "next": "verify_link",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 1479,
+              "y": 62
+            }
+          }
+        },
+        {
+          "id": "verify_link",
+          "type": "TASK_EXECUTION",
+          "inputs": [
+            {
+              "ref": "input_invite_token",
+              "identifier": "inviteToken",
+              "type": "HIDDEN",
+              "required": true
+            }
+          ],
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "verify"
+          },
+          "onSuccess": "confirm",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 1857,
+              "y": 62
+            }
+          }
+        },
+        {
+          "id": "confirm",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "confirm_heading",
+                "label": "{{ t(verification:self.email.link.confirm.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "confirm_message",
+                "label": "{{ t(verification:self.email.link.confirm.message) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_confirm",
+                "components": [
+                  {
+                    "type": "ACTION",
+                    "id": "action_confirm",
+                    "label": "{{ t(verification:self.email.link.confirm.action) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_confirm",
+                "nextNode": "record_verification"
+              }
+            }
+          ],
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 2233,
+              "y": 62
+            }
+          }
+        },
+        {
+          "id": "generate_mobile_otp",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "maxAttempts": 3,
+            "otpValidityPeriodSeconds": 300
+          },
+          "executor": {
+            "name": "OTPExecutor",
+            "mode": "generate"
+          },
+          "onSuccess": "send_mobile_otp",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 1113,
+              "y": 295
+            }
+          }
+        },
+        {
+          "id": "send_mobile_otp",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "senderId": "{{SENDER_ID}}",
+            "smsTemplate": "otp"
+          },
+          "executor": {
+            "name": "SMSExecutor",
+            "mode": "send",
+            "inputs": [
+              {
+                "identifier": "mobile_number",
+                "type": "PHONE_INPUT",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "mobile_code",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 1479,
+              "y": 295
+            }
+          }
+        },
+        {
+          "id": "mobile_code",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "mobile_code_heading",
+                "label": "{{ t(verification:self.mobile.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "mobile_code_message",
+                "label": "{{ t(verification:self.mobile.message) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_mobile_otp",
+                "components": [
+                  {
+                    "type": "OTP_INPUT",
+                    "id": "input_mobile_otp",
+                    "ref": "otp",
+                    "label": "{{ t(verification:self.mobile.code.label) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_mobile_verify",
+                    "label": "{{ t(verification:self.mobile.verify) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  },
+                  {
+                    "type": "RESEND",
+                    "id": "action_mobile_resend",
+                    "label": "{{ t(verification:self.mobile.resend) }}",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_mobile_otp",
+                  "identifier": "otp",
+                  "type": "OTP_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_mobile_verify",
+                "nextNode": "verify_mobile_otp"
+              }
+            },
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_mobile_resend",
+                "nextNode": "prepare_verification"
+              }
+            }
+          ],
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 1857,
+              "y": 295
+            }
+          }
+        },
+        {
+          "id": "verify_mobile_otp",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "maxAttempts": 3
+          },
+          "inputs": [
+            {
+              "ref": "input_mobile_otp",
+              "identifier": "otp",
+              "type": "OTP_INPUT",
+              "required": true
+            }
+          ],
+          "executor": {
+            "name": "OTPExecutor",
+            "mode": "verify"
+          },
+          "onSuccess": "record_verification",
+          "onIncomplete": "mobile_code",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 2233,
+              "y": 295
+            }
+          }
+        },
+        {
+          "id": "record_verification",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "AttributeVerificationExecutor",
+            "mode": "record"
+          },
+          "onSuccess": "verification_complete",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 2622,
+              "y": 62
+            }
+          }
+        },
+        {
+          "id": "verification_complete",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "verification_complete_heading",
+                "label": "{{ t(verification:self.complete.title) }}",
+                "variant": "HEADING_1",
+                "color": "SUCCESS"
+              },
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "verification_complete_message",
+                "label": "{{ t(verification:self.complete.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "next": "end",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 2988,
+              "y": 62
+            }
+          }
+        },
+        {
+          "id": "end",
+          "type": "END",
+          "layout": {
+            "size": {
+              "width": 85,
+              "height": 34
+            },
+            "position": {
+              "x": 3354,
+              "y": 102
+            }
+          }
+        }
+      ]
+    }
   }
 ]

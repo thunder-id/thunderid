@@ -384,6 +384,8 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Resolve OU** | Resolves or selects an organizational unit based on strategy. | Varies by strategy |
 | **Generate Invite** | Generates an invite link for user registration. | - |
 | **Verify Invite** | Verifies an invite token before completing registration. | Generate Invite must have run |
+| **Prepare Verification** | Pins the user's email address or mobile number to verify, before a code or link is sent. | A Self, Recovery, Registration, or User Onboarding flow |
+| **Record Verification** | Records that the user verified the pinned email address or mobile number. | Prepare Verification, then a code or link that was sent to the pinned value and verified |
 | **Send Email** | Sends email using configured templates. | Email provider configured |
 | **Send SMS** | Sends SMS using configured templates and sender. | SMS sender configured |
 | **Auth Assertion Generator** | Generates the final authentication assertion on successful flow completion. | User authenticated; assertion settings configured |
@@ -980,6 +982,8 @@ The executor resolves the OTP recipient in this order:
 2. **UserID from declared inputs**: if the user is not yet authenticated, the executor uses the declared node inputs (e.g., `mobile_number`) to look up the user in the user store.
 3. **Registration flows**: if no user is found and the flow type is registration, the first declared phone or email input value is used directly as the OTP recipient (since no user exists yet).
 
+**With a pinned contact:** After **Prepare Verification** pins an email address or mobile number, in any flow type, each code this node generates replaces the earlier one for that contact. An automatic lock on the user's one-time password does not hold back the code, and a suspension does. Without a pin, the node behaves as described above.
+
 **Input Configuration:**
 - `mobile_number` (optional): used to look up the user in the user store by their phone number. Required in non-authenticated flows where phone number is the user identifier.
 
@@ -1054,6 +1058,8 @@ Validates the OTP code the user entered against the session token stored by Gene
 - Authentication service error
 
 When the configured limit is reached, the current code becomes invalid. The user needs a newly generated code to try again.
+
+**With a pinned contact:** After **Prepare Verification** pins an email address or mobile number, the code proves control of that contact. It is not a sign-in: a wrong code is not counted toward an account lock, and a correct code does not set the authenticated user. Only the code from the latest Generate OTP after the pin is accepted.
 
 </details>
 
@@ -1902,7 +1908,9 @@ Sends a transactional email using a configured template. Runs in the background:
 - `email` (required): the recipient email address must be resolvable before this executor runs. Not a configurable node input. Resolved in priority order: forwarded data from prior executors (e.g., Generate Invite, Magic Link) → user inputs → user store (looked up via `userID`). The executor fails if none of these resolve to a non-empty address.
 - `senderId` (required at runtime): the ID of the email provider the step sends through. A flow step does not use the server-wide default sender in [Notification Defaults](../../../deployment/configuration#notification-defaults); each step names its own provider. See [Configure an Email Provider](../../notifications/email-providers).
 
-**Skip delivery:** If `skipDelivery` is set to `true`, the executor returns complete immediately without sending anything. Use this in test environments.
+**Skip delivery:** If `skipDelivery` is set to `true`, the executor returns complete immediately without sending anything. Use this in test environments. A skipped delivery does not count as a delivery for **Record Verification**.
+
+**Pinned contact:** After **Prepare Verification** pins an email address, the executor sends to that address before any other source, so an input cannot replace it. The executor records where each email went, so that **Record Verification** can check that the code or link reached the pinned address. Without a pin, the executor resolves the recipient as usual.
 
 **Executor properties:**
 
@@ -1964,6 +1972,8 @@ Sends a transactional SMS using a configured template and sender. Runs in the ba
 2. `mobile_number` from user inputs
 3. Phone attribute from user store (looked up by userID if available)
 
+**Pinned contact:** After **Prepare Verification** pins a mobile number, the executor sends to that number before any other source, so an input cannot replace it. The executor records where each SMS went, so that **Record Verification** can check that the code reached the pinned number. A skipped delivery does not count. Without a pin, the executor resolves the recipient as usual.
+
 **Phone number validation:** Accepts phone numbers in E.164 format and common variations with parentheses, spaces, dashes.
 
 **Executor properties:**
@@ -1997,6 +2007,7 @@ Sends a transactional SMS using a configured template and sender. Runs in the ba
 **Failure conditions:**
 - Phone number not found in context or user store
 - `senderId` not configured in node properties
+- In a User Onboarding or Self flow, `senderId` not the ID of an SMS sender, such as the unreplaced `{{SENDER_ID}}` placeholder (`FET-1042`, SMS notification provider is not configured)
 - Phone number invalid or undeliverable format
 - SMS service error
 
@@ -2022,6 +2033,8 @@ Generates an invite token and link for user registration. Typically paired with 
 3. Generates a full invite link (with token embedded)
 4. Forwards the link to downstream Email or SMS executors via `ForwardedData`
 5. In a user onboarding flow, also returns the link to the admin in the step's `additionalData.inviteLink`. An invitation flow does not, because with the link the admin could accept for an existing user: **Send Email** returns it only when the email cannot be sent
+
+The link is returned in the flow response only in a User Onboarding flow. **Prepare Verification** discards any link issued before the pin, so the first run after it issues a new token.
 
 **Input Configuration:** None. The recipient email or phone is resolved from prior user inputs or user store. A **Send Email** or **Send SMS** executor must follow this one to deliver the invite link.
 
@@ -2061,6 +2074,8 @@ Validates an invite token provided by the user and completes the invite verifica
 1. Reads the user-provided invite token from user inputs
 2. Compares it against the stored token from Generate Invite
 3. Returns `COMPLETE` if tokens match, `FAILURE` if they do not
+
+**Prepare Verification** discards tokens issued before the pin, so only a token issued after it is accepted.
 
 **Input Configuration:**
 - `inviteToken` (required): the token from the invite link URL. Default: `inviteToken`
@@ -2273,6 +2288,112 @@ Assigns the roles **Select Roles** recorded to the user in the flow's OU, as the
 - Roles are recorded without the admin who selected them (`FET-1134`)
 - The admin holds none of the permissions they selected the roles with, or no longer exists (`FET-1134`)
 - A role cannot be assigned (`FET-1134`)
+
+</details>
+
+#### Attribute Verification
+
+Both executors below are `AttributeVerificationExecutor`, selected by the node `mode`. The executor has no default mode. Flow validation accepts it in any flow type, but a flow that has a **Prepare Verification** node must also have a **Record Verification** node, and the reverse. A suspended user fails the node with `FET-1114`, and every other refusal of the user or the value with `FET-1112`. A server error ends the request with a server error instead.
+
+<details>
+<summary>Prepare Verification</summary>
+
+Pins the email address or mobile number to verify, so that every later node acts on the pinned value instead of on inputs. Runs in the background: no user interaction at this step.
+
+**When to use:** Before Generate OTP or Generate Invite, in one of these flow types:
+- **Self:** at the start of the flow. The user is the signed-in user whose access token, issued by this deployment, started the flow.
+- **Recovery:** after Identify User. The user is the one the flow identified.
+- **Registration** and **User Onboarding:** the user is the one the flow established. Before Provisioning creates the user, the node pins the value the flow collected for the attribute, such as the address entered on the sign-up form or the invited address, and **Record Verification** after Provisioning records it for the new user.
+
+A resend action points back at this node, which pins the current value again before the flow issues a new code or link.
+
+Always paired with **Record Verification**: a flow that has one without the other is rejected when you save it.
+
+**Prerequisites:**
+- In a Recovery flow, a user is identified. In a Registration or User Onboarding flow that has not created the user yet, User Type Resolver has run and the flow has collected a value for the attribute.
+- In any other flow type, the node fails.
+
+**Input Configuration:**
+- `attribute` (required): the name of the attribute to verify, such as `email` or `mobile_number`. In a Self flow, supply it when the flow starts, as `default-self-attribute-verification-flow` expects. When it is missing, the node asks for it. In a Recovery, Registration or User Onboarding flow, fix it on the node with a constant input: list `attribute` in the node's executor `inputs` with `defaultValue` set to the attribute name and `constant` set to `true`, so a submitted value cannot change it. See [Default and Constant Input Values](#default-and-constant-input-values).
+
+A `subject` input is ignored: the node never takes the user from an input.
+
+**How it works:**
+1. Reads the user and the attribute. When the flow returns to this node, it keeps the attribute pinned earlier in the execution.
+2. For an existing user, checks that the user is not suspended, then that the user exists and is not a declarative (read-only) user. A user under an automatic sign-in lock can verify.
+3. Checks that the attribute is a top-level `email` or `mobile` attribute of the user's type, is not a credential, and holds a value.
+4. Pins the attribute, its value and channel, and the user when one exists, and discards any code or link issued before.
+5. Writes the attribute's type, `email` or `mobile`, to runtime data as `recipientType`.
+6. Makes the pinned value the recipient of **Send Email** or **Send SMS**, and returns the channel and the masked contact in the `channel` and `maskedDestination` additional data, such as `email` and `a•••@example.com`, or `sms` and `•••67`.
+
+A successful pin for an existing user, on the start and on each resend, publishes the `ATTRIBUTE_VERIFICATION_REQUESTED` event. A pin for a user not created yet publishes no event until it is recorded.
+
+**Executor properties:** None.
+
+**Example:**
+
+```json
+{
+  "id": "prepare_verification",
+  "type": "TASK_EXECUTION",
+  "executor": {
+    "name": "AttributeVerificationExecutor",
+    "mode": "prepare"
+  },
+  "onSuccess": "generate_email_otp"
+}
+```
+
+**Failure conditions:**
+- The flow type is not Self, Recovery, Registration or User Onboarding, a Self flow has no signed-in user, or a Recovery flow has not identified a user (`FET-1132`, Verification not available)
+- The user is suspended (`FET-1114`, Account suspended)
+- The user is not an existing user, or is declarative (`FET-1112`, Operation failed)
+- Attribute is not a top-level `email` or `mobile` attribute of the user's type, is a credential, or holds no value; for a user not created yet, no user type is resolved (`FET-1112`)
+
+</details>
+
+<details>
+<summary>Record Verification</summary>
+
+Records that the user verified the email address or mobile number that **Prepare Verification** pinned. The user API then lists the attribute in the user's `verifiedAttributes`, with the time it was verified. Runs in the background: no user interaction at this step.
+
+**When to use:** After Verify OTP or Verify Invite accepts the code or link. In a Registration or User Onboarding flow that pinned before the user existed, place it after Provisioning. Place a confirmation prompt between Verify Invite and this node, so opening the link alone records nothing, for example when a mail security scanner opens it. <ProductName /> does not check for the prompt. The Console's **Self Attribute Verification with Email Link** template includes one.
+
+**Prerequisites:**
+- **Prepare Verification** pinned a contact earlier in the same execution.
+- After the pin, Generate OTP or Generate Invite issued a code or link. A **Send Email** or **Send SMS** step delivered it to the pinned value, and Verify OTP or Verify Invite accepted it.
+
+**Input Configuration:** None. The user and the value come from the pin only. A pin made before the user existed is recorded for the user the flow created or identified since, and only if that user's stored value is the pinned value.
+
+**How it works:**
+1. Checks that a code or link was verified after the pin, that something was sent since the pin, and that every send since the pin, on either channel, went to the pinned value.
+2. Checks again that the user is not suspended.
+3. Checks that the user still exists and that the stored value still matches the pin.
+4. Records the verification time.
+
+A recorded verification publishes the `ATTRIBUTE_VERIFICATION_VERIFIED` event. A refusal in step 3 publishes `ATTRIBUTE_VERIFICATION_REFUSED`.
+
+**Executor properties:** None.
+
+**Example:**
+
+```json
+{
+  "id": "record_verification",
+  "type": "TASK_EXECUTION",
+  "executor": {
+    "name": "AttributeVerificationExecutor",
+    "mode": "record"
+  },
+  "onSuccess": "end"
+}
+```
+
+**Failure conditions:**
+- No pin, no code or link issued after the pin, the code or link not verified, or a delivery to another value (`FET-1112`, Operation failed)
+- A pin made before the user existed, with no user created or identified since (`FET-1112`)
+- User suspended since the pin (`FET-1114`, Account suspended)
+- User deleted, or the value changed or can no longer be verified, since the pin (`FET-1112`)
 
 </details>
 
@@ -2552,9 +2673,11 @@ When you create or update a flow definition, <ProductName /> validates every TAS
 
 The following rules are enforced for each executor node:
 
-**Mode validation**: If the node specifies an executor `mode`, the server checks that the mode is one of the values the executor supports. For example, `OTPExecutor` supports `"generate"` and `"verify"`; configuring `"mode": "send"` on an `OTPExecutor` node fails validation. When the node omits the `mode` field, the executor's default mode is used; an executor that supports modes but has no default, such as `IdentityGovernanceExecutor`, fails validation. When the executor does not restrict modes, no check is performed.
+**Mode validation**: If the node specifies an executor `mode`, the server checks that the mode is one of the values the executor supports. For example, `OTPExecutor` supports `"generate"` and `"verify"`; configuring `"mode": "send"` on an `OTPExecutor` node fails validation. When the node omits the `mode` field, the executor's default mode is used; an executor that supports modes but has no default, such as `IdentityGovernanceExecutor` or `AttributeVerificationExecutor`, fails validation. When the executor does not restrict modes, no check is performed.
 
 **Flow type validation**: Some executors are restricted to specific flow types. For example, an executor that is only valid in registration flows will cause a validation error if referenced in an authentication flow definition. When the executor does not restrict flow types, the node is accepted in any flow type. Some executors restrict a mode further: `IdentityGovernanceExecutor` runs in administration and recovery flows, but accepts `suspend` and `unsuspend` only in administration flows.
+
+**Companion executors validation**: Some executors must appear together with another executor, in a given mode, in any flow type. A flow with an `AttributeVerificationExecutor` node must contain one in `prepare` mode and one in `record` mode, and a flow with `SessionRevocationExecutor` must contain `CriteriaRevocationExecutor` in `revoke` mode. A flow without the companion is rejected with an error that names the missing executor and mode.
 
 **Required properties validation**: Certain executors require specific keys in the node's `properties` map. For example, federated authentication executors require an `idpId` property. If a required property is missing or empty, the server rejects the flow definition with an error identifying the missing property.
 

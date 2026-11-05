@@ -126,6 +126,7 @@ export const ExecutionTypes = {
   GroupExecutor: 'GroupExecutor',
   ActionDeletion: 'ActionDeletionExecutor',
   IdentityGovernance: 'IdentityGovernanceExecutor',
+  AttributeVerification: 'AttributeVerificationExecutor',
   AuthAssert: 'AuthAssertExecutor',
   Authorization: 'AuthorizationExecutor',
   AccountLinking: 'AccountLinkingExecutor',

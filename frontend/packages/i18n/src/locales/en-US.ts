@@ -951,6 +951,11 @@ const translations = {
     'manageUser.sections.credentials.info':
       'Credential values are write-only and cannot be viewed. You can set new values below.',
 
+    // Contact verification
+    'verification.verified': 'Verified',
+    'verification.unverified': 'Unverified',
+    'verification.verifiedAt': 'Verified on {{date}}',
+
     // Update credentials
     'updateCredentials.button': 'Update credentials',
     'updateCredentials.hint': 'Fill in only the credentials you want to update. Empty fields will be skipped.',
@@ -4399,6 +4404,8 @@ const translations = {
     'create.type.recovery.description': 'Let users recover their password or account',
     'create.type.onboarding.label': 'Onboarding',
     'create.type.onboarding.description': 'Onboard invited users to your organization',
+    'create.type.self.label': 'Self',
+    'create.type.self.description': 'Let signed-in users manage their own account, such as verifying an email address',
     'create.template.title': 'Choose a starting template',
     'create.template.recommended': 'Recommended',
     'create.template.search': 'Search templates...',
@@ -4847,6 +4854,7 @@ const translations = {
     // Canvas hints and tips
     'core.canvas.hints.autoLayout': 'Tip: Use auto-layout to organize your flow',
     'core.canvas.buttons.autoLayout': 'Auto layout',
+    'core.canvas.edges.onSkip': 'On skip',
     'core.canvas.errors.skipTargetDelete':
       'Cannot delete this step: a condition on {{nodes}} skips to it and no single next step can replace it.',
 

@@ -847,6 +847,17 @@ describe('EditTokenSettings', () => {
         included: ['email', 'security.question'],
         excluded: ['security.secret'],
       },
+      {
+        name: 'verification claims of attributes that are not top-level contacts',
+        schema: {
+          email: {type: 'email'},
+          mobile: {type: 'mobile'},
+          nickname: {type: 'string'},
+          work: {type: 'object', properties: {email: {type: 'email'}}},
+        },
+        included: ['email_verified', 'mobile_verified'],
+        excluded: ['nickname_verified', 'work.email_verified'],
+      },
     ])('should exclude $name', async ({schema, included, excluded}) => {
       mockSchemaRequest(schema);
 
