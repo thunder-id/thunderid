@@ -405,6 +405,7 @@ overrides:
   fast-xml-parser: '>=5.3.6'
   vitest@<4.1.12: ^4.1.12
   colord@<2.9.4: ^2.9.4
+  lib0@<0.2.119: ^0.2.119
   glob: '>=11.1.0'
   storybook: '>=10.1.10'
   minimatch@>=9.0.0 <9.0.7: '>=9.0.7'
@@ -12565,8 +12566,8 @@ packages:
   lexical@0.38.2:
     resolution: {integrity: sha512-JJmfsG3c4gwBHzUGffbV7ifMNkKAWMCnYE3xJl87gty7hjyV5f3xq7eqTjP5HFYvO4XpjJvvWO2/djHp5S10tw==}
 
-  lib0@0.2.117:
-    resolution: {integrity: sha512-DeXj9X5xDCjgKLU/7RR+/HQEVzuuEUiwldwOGsHK/sfAfELGWEyTcf0x+uOvCvK3O2zPmZePXWL85vtia6GyZw==}
+  lib0@0.2.119:
+    resolution: {integrity: sha512-vh+TiejVy8Xm+hCdnRfn9BthGNvNUZdEXltNjVZL3TzRIKP3s1lnQh8pWd/Q0wCgY0FPAGVVjFF4ZiHUV3LFgA==}
     engines: {node: '>=16'}
     hasBin: true
 
@@ -25477,7 +25478,7 @@ snapshots:
 
   lexical@0.38.2: {}
 
-  lib0@0.2.117:
+  lib0@0.2.119:
     dependencies:
       isomorphic.js: 0.2.5
 
@@ -29476,7 +29477,7 @@ snapshots:
 
   yjs@13.6.30:
     dependencies:
-      lib0: 0.2.117
+      lib0: 0.2.119
 
   yocto-queue@0.1.0: {}
 

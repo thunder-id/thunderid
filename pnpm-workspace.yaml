@@ -212,6 +212,13 @@ overrides:
   # their range; `pnpm update` alone does not move the locked 2.9.3, so this entry lifts it.
   # Added 2026-11-05. Remove once cssnano requires colord >=2.9.4.
   colord@<2.9.4: '^2.9.4'
+  # JUSTIFICATION: Fixes GHSA-r5c8-rf4w-qrq8 (readUint8Array reads past the decoder's view, fixed in
+  # 0.2.118) and GHSA-g75x-89c3-rvmr (readFromDataView out-of-bounds read, fixed in 0.2.119) in lib0.
+  # Transitive via the Console and other frontends -> @lexical/react -> @lexical/yjs -> yjs, which
+  # declares lib0 ^0.2.99, so a patched 0.2.x release already fits its range; `pnpm update` alone does
+  # not move the locked 0.2.117, so this entry lifts it. Added 2026-11-05. Remove once yjs requires
+  # lib0 >=0.2.119.
+  lib0@<0.2.119: '^0.2.119'
   # JUSTIFICATION: Fixes command injection vulnerability via -c/--cmd flag in glob CLI.
   glob: '>=11.1.0'
   # JUSTIFICATION: Fixes environment variable exposure in Storybook manager bundle.
