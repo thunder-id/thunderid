@@ -2271,6 +2271,10 @@ switch ($Command) {
         Build-Frontend
         Package
         Package-Sample-App
+        # Package deleted the Data Plane binary, so build it again for the quickstart.
+        Build-Backend
+        Build-CpBackend
+        Package-Quickstart
     }
     'build_backend' {
         Build-Backend
