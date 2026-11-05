@@ -512,3 +512,85 @@ func (ts *UserOUFilterTestSuite) TestAMalformedUnitFilterIsRefused() {
 		})
 	}
 }
+
+// readIn reads a user with ouId and returns the status and, on success, the user.
+func (ts *UserOUFilterTestSuite) readIn(client *http.Client, userID, ouID, query string) (int, testutils.User) {
+	ts.T().Helper()
+	status, raw := sendRequest(ts.T(), client, http.MethodGet,
+		"/users/"+userID+"?ouId="+url.QueryEscape(ouID)+query, nil)
+	var user testutils.User
+	if status == http.StatusOK {
+		ts.Require().NoError(json.Unmarshal(raw, &user), string(raw))
+	}
+	return status, user
+}
+
+// Reading a user with ouId finds the users the unit owns and the ones shared into it, and no other.
+func (ts *UserOUFilterTestSuite) TestReadingAUserInAUnitFollowsWhatItOwnsAndIsShared() {
+	for ouID, want := range ts.expected {
+		for name, userID := range ts.users {
+			status, user := ts.readIn(ts.rootClient, userID, ouID, "")
+			switch {
+			case slices.Contains(want.owned, name), slices.Contains(want.shared, name):
+				ts.Require().Equal(http.StatusOK, status, "%s in %s", name, ts.ouHandleFor[ouID])
+				ts.Equal(userID, user.ID)
+				ts.Equal(ouID, user.OUID, "%s is read under %s", name, ts.ouHandleFor[ouID])
+				ts.Require().NotNil(user.IsOwnedByOU, "%s in %s", name, ts.ouHandleFor[ouID])
+				ts.Equal(slices.Contains(want.owned, name), *user.IsOwnedByOU, "%s in %s", name, ts.ouHandleFor[ouID])
+			default:
+				ts.Equal(http.StatusNotFound, status, "%s in %s", name, ts.ouHandleFor[ouID])
+			}
+		}
+	}
+}
+
+// A shared user read with ouId carries the attributes and display of the user, and the handle of the
+// unit it is shared into.
+func (ts *UserOUFilterTestSuite) TestASharedUserReadInAUnitCarriesThatUnitsHandle() {
+	status, user := ts.readIn(ts.rootClient, ts.users["named-unit"], ts.childOUID, "&include=display")
+
+	ts.Require().Equal(http.StatusOK, status)
+	ts.Equal("ou-filter-child", user.OUHandle)
+	ts.NotEmpty(user.Display)
+	ts.Contains(string(user.Attributes), "ou-filter-named-unit")
+}
+
+// A caller allowed to read users in the child reads a user shared into it, which the read without ouId
+// refuses, since that one is authorized in the unit owning the user.
+func (ts *UserOUFilterTestSuite) TestAScopedCallerReadsAUserSharedIntoItsUnit() {
+	status, user := ts.readIn(ts.childAdmin, ts.users["named-unit"], ts.childOUID, "")
+	ts.Require().Equal(http.StatusOK, status)
+	ts.Require().NotNil(user.IsOwnedByOU)
+	ts.False(*user.IsOwnedByOU)
+
+	status, raw := sendRequest(ts.T(), ts.childAdmin, http.MethodGet, "/users/"+ts.users["named-unit"], nil)
+	ts.Equal(http.StatusForbidden, status, string(raw))
+}
+
+// A caller not allowed to read users in a unit is refused there, even for a user the unit can see.
+func (ts *UserOUFilterTestSuite) TestAScopedCallerCannotReadInAUnitItMayNotRead() {
+	for _, ouID := range []string{ts.parentOUID, ts.grandchildOUID} {
+		status, _ := ts.readIn(ts.childAdmin, ts.users["named-subtree"], ouID, "")
+		ts.Equal(http.StatusForbidden, status, ts.ouHandleFor[ouID])
+	}
+}
+
+// A unit that does not exist sees no user.
+func (ts *UserOUFilterTestSuite) TestReadingInAnUnknownUnitIsNotFound() {
+	status, _ := ts.readIn(ts.rootClient, ts.users["named-unit"], "00000000-0000-0000-0000-000000000000", "")
+	ts.Equal(http.StatusNotFound, status)
+}
+
+// Reading one's own record does not stand in for access to the unit named in ouId. The child admin may
+// read users in the child only, so reading itself in a unit outside that is refused, as reading any
+// other user there is, rather than answering whether it is there.
+func (ts *UserOUFilterTestSuite) TestAScopedCallerCannotReadItselfInAUnitItMayNotRead() {
+	self := ts.users["child-admin"]
+	status, raw := sendRequest(ts.T(), ts.childAdmin, http.MethodGet, "/users/"+self, nil)
+	ts.Require().Equal(http.StatusOK, status, "the child admin reads its own record without ouId: %s", raw)
+
+	for _, ouID := range []string{ts.parentOUID, ts.grandchildOUID, ts.otherRootOUID} {
+		status, _ := ts.readIn(ts.childAdmin, self, ouID, "&include=display")
+		ts.Equal(http.StatusForbidden, status, ts.ouHandleFor[ouID])
+	}
+}

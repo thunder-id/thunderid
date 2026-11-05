@@ -306,6 +306,13 @@ curl -kL -G "https://localhost:8090/users" \
   -H 'Authorization: Bearer <access-token>'
 ```
 
+To check one user, read the user with the OU ID. The request returns the user when the OU owns it or it is shared with the OU, under that OU's ID and with `isOwnedByOU` set. It returns `404` for a user the OU can't see, and `403` if you can't read users in that OU:
+
+```bash
+curl -kL "https://localhost:8090/users/{userId}?ouId={id}" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
 ## List Groups in an Organization Unit
 
 ### Using Organization Unit ID

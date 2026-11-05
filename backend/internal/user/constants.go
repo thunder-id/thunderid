@@ -32,3 +32,6 @@ func (ct CredentialType) IsSystemManaged() bool {
 
 // sharingPoliciesSegment is the path segment the sharing policy routes hang off.
 const sharingPoliciesSegment = "sharing-policies"
+
+// queryParamOUID is the query parameter that names the organization unit a request is about.
+const queryParamOUID = "ouId"
