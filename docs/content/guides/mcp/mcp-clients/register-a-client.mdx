@@ -81,7 +81,7 @@ For a confidential client, the **Connection** card links to the **Credentials** 
 For a user-delegated client, the **General** tab also shows an **Access** card:
 
 - **Allowed user types**: which user types can sign up through this client. Leave it empty if users should not be able to sign up through it.
-- **Enable agent sign-in**: whether agents can sign in to this client through its sign-in flow. See [Agent Sign-In](../../../agents/authentication/agent-sign-in).
+- **Enable agent sign-in**: whether agents of any agent type can sign in to this client through its sign-in flow. If the client allows only specific agent types, set through the API, the card lists them. See [Agent Sign-In](../../../agents/authentication/agent-sign-in).
 - **Client URI**: an optional public homepage for the client.
 - **Authorized redirect URIs**: the same redirect URIs configured during creation, editable here. Each one follows the [redirect URI rules](#redirect-uri-rules) above. At least one is required while the client has the authorization code grant.
 

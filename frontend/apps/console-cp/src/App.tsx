@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {PageLoader} from '@thunderid/components';
+import {AgentTypeCreateProvider} from '@thunderid/configure-agent-types';
 import {ApplicationCreateProvider} from '@thunderid/configure-applications';
 import {LayoutBuilderProvider, ThemeBuilderProvider} from '@thunderid/configure-design';
 import {GroupCreateProvider} from '@thunderid/configure-groups';
@@ -30,6 +31,12 @@ const ProjectsListPage = lazy(() =>
 );
 const ProjectCreatePage = lazy(() =>
   import('@thunderid/configure-projects').then((m) => ({default: m.ProjectCreatePage})),
+);
+const AgentTypesListPage = lazy(() =>
+  import('@thunderid/configure-agent-types').then((m) => ({default: m.AgentTypesListPage})),
+);
+const CreateAgentTypePage = lazy(() =>
+  import('@thunderid/configure-agent-types').then((m) => ({default: m.CreateAgentTypePage})),
 );
 const ViewAgentTypePage = lazy(() =>
   import('@thunderid/configure-agent-types').then((m) => ({default: m.ViewAgentTypePage})),
@@ -228,6 +235,7 @@ export default function App(): JSX.Element {
                   <Route path={`${ROUTE_SEGMENTS.projects}/:projectId`} element={<ProjectHomePage />} />
                   <Route path={ROUTE_SEGMENTS.userTypes} element={<UserTypesListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.userTypes}/:id`} element={<ViewUserTypePage />} />
+                  <Route path={ROUTE_SEGMENTS.agentTypes} element={<AgentTypesListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.agentTypes}/:id`} element={<ViewAgentTypePage />} />
                   <Route path={ROUTE_SEGMENTS.connections} element={<ConnectionsListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.connections}/:type`} element={<ConnectionDetailPage />} />
@@ -402,6 +410,18 @@ export default function App(): JSX.Element {
                   }
                 >
                   <Route index element={<CreateUserTypePage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.agentTypes.create()}
+                  element={
+                    <ProtectedRoute>
+                      <AgentTypeCreateProvider>
+                        <FullScreenLayout />
+                      </AgentTypeCreateProvider>
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<CreateAgentTypePage />} />
                 </Route>
                 <Route
                   path={RouteConfig.verifiablePresentations.create()}

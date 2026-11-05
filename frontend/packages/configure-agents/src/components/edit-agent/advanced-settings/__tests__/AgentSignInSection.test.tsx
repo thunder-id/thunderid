@@ -10,7 +10,8 @@ import AgentSignInSection from '../AgentSignInSection';
 vi.mock('react-i18next', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-i18next')>()),
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (key: string, fallback?: string, options?: Record<string, string>) =>
+      (fallback ?? key).replace(/{{(\w+)}}/g, (_match, name: string) => options?.[name] ?? ''),
   }),
 }));
 
@@ -63,7 +64,9 @@ describe('AgentSignInSection', () => {
     );
 
     expect(screen.getByText('Agent sign-in')).toBeInTheDocument();
-    expect(screen.getByText('Allow agents to sign in through this agent using the sign-in flow.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Allow agents of any agent type to sign in through this agent using the sign-in flow.'),
+    ).toBeInTheDocument();
   });
 
   it('renders the toggle off when no agent type is allowed', () => {
@@ -79,6 +82,20 @@ describe('AgentSignInSection', () => {
     expect(screen.getByLabelText('Enable agent sign-in')).not.toBeChecked();
   });
 
+  it('should render the toggle on when every agent type is allowed', () => {
+    render(
+      <AgentSignInSection
+        agent={{...agent, allowedAgentTypes: ['*']}}
+        editedAgent={{}}
+        oauth2Config={delegationEnabledConfig}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    expect(screen.getByLabelText('Enable agent sign-in')).toBeChecked();
+  });
+
+  // A list saved before the wildcard existed still names the type it allowed, so it shows as on.
   it('renders the toggle on when an agent type is allowed', () => {
     render(
       <AgentSignInSection
@@ -90,6 +107,20 @@ describe('AgentSignInSection', () => {
     );
 
     expect(screen.getByLabelText('Enable agent sign-in')).toBeChecked();
+    expect(screen.getByText(/only agents of these agent types can sign in now: default\./i)).toBeInTheDocument();
+  });
+
+  it('does not list agent types when every agent type is allowed', () => {
+    render(
+      <AgentSignInSection
+        agent={{...agent, allowedAgentTypes: ['*']}}
+        editedAgent={{}}
+        oauth2Config={delegationEnabledConfig}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    expect(screen.queryByText(/only agents of these agent types/i)).not.toBeInTheDocument();
   });
 
   it('prioritizes editedAgent.allowedAgentTypes over agent.allowedAgentTypes', () => {
@@ -105,7 +136,7 @@ describe('AgentSignInSection', () => {
     expect(screen.getByLabelText('Enable agent sign-in')).not.toBeChecked();
   });
 
-  it('allows the default agent type when the toggle is turned on', async () => {
+  it('should allow every agent type when the toggle is turned on', async () => {
     const user = userEvent.setup();
     render(
       <AgentSignInSection
@@ -118,7 +149,7 @@ describe('AgentSignInSection', () => {
 
     await user.click(screen.getByLabelText('Enable agent sign-in'));
 
-    expect(mockOnFieldChange).toHaveBeenCalledWith('allowedAgentTypes', ['default']);
+    expect(mockOnFieldChange).toHaveBeenCalledWith('allowedAgentTypes', ['*']);
   });
 
   it('clears every allowed agent type when the toggle is turned off', async () => {

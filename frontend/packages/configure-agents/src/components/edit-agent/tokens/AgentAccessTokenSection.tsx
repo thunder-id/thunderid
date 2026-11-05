@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
+import {useGetAgentType, useGetAllAgentTypes} from '@thunderid/configure-agent-types';
 import {type InboundAuthConfig, ClientAccessTokenSection, TokenConstants} from '@thunderid/configure-applications';
 import {type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -29,8 +29,8 @@ export default function AgentAccessTokenSection({
 }: AgentAccessTokenSectionProps): JSX.Element {
   const {t} = useTranslation();
 
-  const {data: agentTypesData} = useGetAgentTypes();
-  const matchedSchema = agentTypesData?.types?.find((s) => s.handle === agent.type);
+  const {data: agentTypes} = useGetAllAgentTypes();
+  const matchedSchema = agentTypes?.find((s) => s.handle === agent.type);
   const {data: schemaDetails, isLoading} = useGetAgentType(matchedSchema?.id);
 
   const schemaAttributes = schemaDetails?.schema

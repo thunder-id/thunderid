@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {getInitials} from '@thunderid/components';
+import {BotCogIcon, getInitials} from '@thunderid/components';
 import {
   gatewayColor,
   gatewaySectionOf,
@@ -537,6 +537,13 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
             text: t('navigation:pages.userTypes'),
             icon: <UserRoundCog />,
             path: RouteConfig.userTypes.list(),
+          },
+          {
+            id: 'agent-types',
+            resource: 'agenttype',
+            text: t('navigation:pages.agentTypes', 'Agent types'),
+            icon: <BotCogIcon />,
+            path: RouteConfig.agentTypes.list(),
           },
           roles,
         ],

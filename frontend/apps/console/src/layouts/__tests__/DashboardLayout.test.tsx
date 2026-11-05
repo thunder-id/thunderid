@@ -171,6 +171,25 @@ describe('DashboardLayout', () => {
     expect(screen.getByText('navigation:pages.authorizationDetailTypes')).toBeInTheDocument();
   });
 
+  it('should list Agent types under Identities directly after User types', () => {
+    render(<DashboardLayout />);
+
+    const userTypes = screen.getByRole('button', {name: 'navigation:pages.userTypes'});
+    const agentTypes = screen.getByRole('button', {name: 'navigation:pages.agentTypes'});
+    const items = screen.getAllByRole('button').filter((item) => item.textContent?.startsWith('navigation:pages.'));
+
+    expect(items.indexOf(agentTypes)).toBe(items.indexOf(userTypes) + 1);
+  });
+
+  // Agent types pair with Agents the way User types pair with Users: the bot with a cog, beside the plain bot.
+  it('should mark Agent types with the agent type icon', () => {
+    render(<DashboardLayout />);
+
+    expect(
+      screen.getByRole('button', {name: 'navigation:pages.agentTypes'}).querySelector('svg.lucide-bot-cog'),
+    ).toBeInTheDocument();
+  });
+
   it.each([false, true])('keeps navigation icon sizes consistent when collapseSidebar is %s', (collapseSidebar) => {
     render(<DashboardLayout collapseSidebar={collapseSidebar} />);
 
@@ -196,6 +215,14 @@ describe('DashboardLayout', () => {
       expect(screen.queryByText('navigation:pages.flows')).not.toBeInTheDocument();
       expect(screen.queryByText('navigation:categories.resources')).not.toBeInTheDocument();
       expect(screen.queryByText('navigation:pages.notifications')).not.toBeInTheDocument();
+    });
+
+    it('hides Agent types from admins who cannot view agent types', () => {
+      mockCapabilities = {can: (resource) => resource !== 'agenttype', canManageRoot: false, isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.getByRole('button', {name: 'navigation:pages.userTypes'})).toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'navigation:pages.agentTypes'})).not.toBeInTheDocument();
     });
 
     it('keeps a parent entry while one of its children is visible', () => {

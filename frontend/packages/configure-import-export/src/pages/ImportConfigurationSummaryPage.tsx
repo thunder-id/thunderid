@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {DocumentTitle} from '@thunderid/components';
+import {BotCogIcon, DocumentTitle} from '@thunderid/components';
 import {useToast, useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
@@ -364,7 +364,7 @@ const RESOURCE_VIEWS: ResourceView[] = [
   {
     type: 'agent_type',
     id: 'agent-types',
-    icon: Bot,
+    icon: BotCogIcon,
     getLabel: (t) => t('configureExport.labels.agentTypes'),
     getKey: (item, idx) => item.handle ?? item.name ?? `agent-type-${idx}`,
     getName: (item, t, idx) =>

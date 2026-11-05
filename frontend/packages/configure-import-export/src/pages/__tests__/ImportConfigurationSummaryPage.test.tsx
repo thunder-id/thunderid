@@ -39,9 +39,9 @@ const getImportConfigurationButton = (): HTMLElement =>
 const getImportConfigurationBreadcrumb = (): HTMLElement =>
   screen.getAllByRole('button', {name: 'Import configuration'}).find((el) => el.tagName !== 'BUTTON')!;
 
-const {mockUseGetAgentTypes} = vi.hoisted(() => ({mockUseGetAgentTypes: vi.fn(() => ({data: undefined}))}));
+const {mockUseGetAllAgentTypes} = vi.hoisted(() => ({mockUseGetAllAgentTypes: vi.fn(() => ({data: undefined}))}));
 
-vi.mock('@thunderid/configure-agent-types', () => ({useGetAgentTypes: mockUseGetAgentTypes}));
+vi.mock('@thunderid/configure-agent-types', () => ({useGetAllAgentTypes: mockUseGetAllAgentTypes}));
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
@@ -108,7 +108,7 @@ import ImportConfigurationSummaryPage from '../ImportConfigurationSummaryPage';
 
 afterEach(() => {
   vi.clearAllMocks();
-  mockUseGetAgentTypes.mockReturnValue({data: undefined});
+  mockUseGetAllAgentTypes.mockReturnValue({data: undefined});
 });
 
 describe('ImportConfigurationSummaryPage', () => {
@@ -195,8 +195,8 @@ describe('ImportConfigurationSummaryPage', () => {
     });
 
     it('labels agents from a server type when the bundle contains only agents', () => {
-      mockUseGetAgentTypes.mockReturnValue({
-        data: {types: [{handle: 'default', systemAttributes: {display: 'name'}}]},
+      mockUseGetAllAgentTypes.mockReturnValue({
+        data: [{handle: 'default', systemAttributes: {display: 'name'}}],
       } as never);
 
       withConfig(
@@ -205,7 +205,7 @@ describe('ImportConfigurationSummaryPage', () => {
           render(<ImportConfigurationSummaryPage />);
 
           expect(screen.getByText('Server Resolved')).toBeInTheDocument();
-          expect(mockUseGetAgentTypes).toHaveBeenCalledWith(undefined, {enabled: true});
+          expect(mockUseGetAllAgentTypes).toHaveBeenCalledWith({enabled: true});
         },
       );
     });
@@ -894,6 +894,23 @@ describe('ImportConfigurationSummaryPage', () => {
       expect(screen.getByText('Unnamed translation')).toBeInTheDocument();
       expect(screen.getByText('User 1')).toBeInTheDocument();
       expect(screen.getByText('Unnamed group')).toBeInTheDocument();
+    });
+
+    // Agent types pair with agents the way user types pair with users: the bot with a cog, beside the plain bot.
+    it('marks agent types with the agent type icon and agents with the agent icon', () => {
+      mockLocationState.configData = {
+        agent_type: [{name: 'Enterprise Agent', handle: 'enterprise-agent'}],
+        agent: [{name: 'My Agent'}],
+      } as ProductConfig;
+
+      render(<ImportConfigurationSummaryPage />);
+
+      const agentTypesRow = screen.getByText('Agent types: 1').parentElement!;
+      const agentsRow = screen.getByText('Agents: 1').parentElement!;
+      expect(agentTypesRow.querySelector('svg.lucide-bot-cog')).toBeInTheDocument();
+      expect(agentTypesRow.querySelector('svg.lucide-bot')).not.toBeInTheDocument();
+      expect(agentsRow.querySelector('svg.lucide-bot')).toBeInTheDocument();
+      expect(agentsRow.querySelector('svg.lucide-bot-cog')).not.toBeInTheDocument();
     });
 
     it('renders credential configurations and presentation definitions with chips and detail lines', () => {

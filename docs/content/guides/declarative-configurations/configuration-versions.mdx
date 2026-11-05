@@ -292,11 +292,15 @@ again.
 
 One version cannot replace an organization unit's agent type and move its agents to the new one. The
 new agent type is refused while the old one is in the unit, the agents cannot move to an agent type the
-gateway does not have yet, and the old one cannot be removed while they are of it, so every apply fails
+gateway does not have yet, and the old one cannot be removed while it is in use, so every apply fails
 the same way. Apply a version that moves the old agent type to an organization unit that has no agent
-type first, then a version that adds the new agent type, moves the agents to it, and removes the old
-one. See [Deletion Behavior](./import-resources.mdx#deletion-behavior) for the same rule on a single
-import.
+type first. Then apply a version that adds the new agent type, moves the agents to it, puts the new
+handle in place of the old one in the allowed agent types of applications, agents, and flows, and
+removes the old agent type. This works only when the data plane holds those agent types, agents,
+applications, and flows in its database. Change those that a resource file on the data plane defines
+in that file instead, since an apply cannot change them and the data plane checks agents loaded from
+files against their agent type's organization unit when it starts. See
+[Deletion Behavior](./import-resources.mdx#deletion-behavior) for the same rules on a single import.
 
 These checks read the documents the gateway is left with once the apply's updates, additions and
 removals are made, so a revert that moves an application back to its earlier flow removes the flow it

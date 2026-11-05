@@ -11,7 +11,7 @@ import {
   ResourceDeployStatus,
   UnsavedChangesBar,
 } from '@thunderid/components';
-import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
+import {useGetAgentType, useGetAllAgentTypes} from '@thunderid/configure-agent-types';
 import {
   getBackchannelLogoutUriServerError,
   hasUserAccess,
@@ -117,11 +117,26 @@ export default function AgentEditPage(): JSX.Element {
   const [secretDialogOpen, setSecretDialogOpen] = useState(Boolean(justCreatedSecret));
 
   // The agent's type schema, used to drop stale attribute values on save.
-  const {data: agentTypesData, isLoading: isTypesLoading} = useGetAgentTypes();
-  const matchedSchema = agentTypesData?.types?.find((s) => s.handle === agent?.type);
-  const {data: agentTypeDetails, isLoading: isTypeLoading} = useGetAgentType(matchedSchema?.id);
+  const {
+    data: agentTypes,
+    isLoading: isTypesLoading,
+    error: agentTypesError,
+    refetch: refetchAgentTypes,
+  } = useGetAllAgentTypes();
+  const matchedSchema = agentTypes?.find((s) => s.handle === agent?.type);
+  const {
+    data: agentTypeDetails,
+    isLoading: isTypeLoading,
+    error: agentTypeError,
+    refetch: refetchAgentType,
+  } = useGetAgentType(matchedSchema?.id);
   // Block save until the schema settles, else stale values bypass sanitization.
   const isSchemaResolving = isTypesLoading || isTypeLoading;
+  // A failed read of the schema keeps Save off rather than the whole page: viewing an agent doesn't
+  // need permission to read agent types. A failed refetch of data already read changes nothing.
+  const typeSchemaError =
+    (agentTypesError && !agentTypes ? agentTypesError : null) ??
+    (agentTypeError && !agentTypeDetails ? agentTypeError : null);
 
   // A link can open a tab by its key, such as `?tab=advanced` for the owner; it is shown until another
   // tab is chosen.
@@ -470,6 +485,21 @@ export default function AgentEditPage(): JSX.Element {
           {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
         </Alert>
       )}
+      {typeSchemaError && (
+        <Box sx={{mb: 2}}>
+          <QueryErrorNotice
+            variant="inline"
+            error={typeSchemaError}
+            t={tForErrors}
+            fallbackKey="agents:edit.page.typeSchemaError"
+            fallbackDefaultValue="The agent's type could not be loaded, so changes can't be saved."
+            onRetry={() => {
+              if (agentTypesError) void refetchAgentTypes();
+              if (agentTypeError) void refetchAgentType();
+            }}
+          />
+        </Box>
+      )}
       <AccessStatusBanner status={agent.status} category="agent" sx={{mb: 2}} />
       <ResourceDeployStatus resourceType="agent" id={agent.id} variant="notice" sx={{mb: 2}} />
       <PageTitle>
@@ -596,7 +626,9 @@ export default function AgentEditPage(): JSX.Element {
           saveLabel={t('agents:edit.page.save', 'Save')}
           savingLabel={t('agents:edit.page.saving', 'Saving…')}
           isSaving={updateAgent.isPending}
-          saveDisabled={hasAnyValidationError || agent.isReadOnly === true || !can('agent', 'update')}
+          saveDisabled={
+            hasAnyValidationError || agent.isReadOnly === true || !can('agent', 'update') || typeSchemaError !== null
+          }
           error={
             updateAgent.error
               ? (getBackchannelLogoutUriServerError(updateAgent.error, tForErrors) ??

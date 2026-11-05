@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice, SettingsCard} from '@thunderid/components';
-import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
+import {useGetAgentType, useGetAllAgentTypes} from '@thunderid/configure-agent-types';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {Box, Chip, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {Tag} from '@wso2/oxygen-ui-icons-react';
@@ -41,8 +41,8 @@ export default function AttributesSummarySection({
   const {t, i18n} = useTranslation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
 
-  const {data: agentTypesData} = useGetAgentTypes();
-  const matchedSchema = agentTypesData?.types?.find((s) => s.handle === agent.type);
+  const {data: agentTypes} = useGetAllAgentTypes();
+  const matchedSchema = agentTypes?.find((s) => s.handle === agent.type);
   const {data: schemaDetails, isLoading, error, refetch} = useGetAgentType(matchedSchema?.id);
 
   // Resolves an error through the `agents` catalog. `t` defaults to the `common` namespace, so

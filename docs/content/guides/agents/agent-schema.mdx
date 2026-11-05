@@ -8,11 +8,11 @@ description: The agent schema in {{ProductName}} defines the attributes every ag
 
 # Agent Schema
 
-The agent schema defines the set of attributes an agent carries. Each schema belongs to an agent type, and every agent is of one agent type. <ProductName /> ships one agent type, `default`, in the `default` organization unit. You can create more agent types, one per organization unit, to give a class of agents its own schema. Each agent holds its own values for the attributes its type's schema defines. Attributes describe and classify an agent, for example which model it runs or what function it serves, and any attribute can be added to the agent's tokens for a downstream service to read.
+The agent schema defines the set of attributes an agent carries. Each schema belongs to an agent type, and every agent is of one agent type. <ProductName /> ships one agent type, `default`, in the `default` organization unit. You can create more agent types, one per organization unit, to give a class of agents its own schema. Each agent holds its own values for the attributes its type's schema defines. Attributes describe and classify an agent, for example which model it runs or what function it serves, and any attribute that is not a credential can be added to the agent's tokens for a downstream service to read.
 
-An agent type has a handle and a display name. The built-in agent type has the handle `default` and the display name `Default`. The handle is the identifier that agents and applications use to refer to the agent type. It is unique among agent types and cannot be changed. The display name is free text and can be changed at any time.
+An agent type has a handle and a display name. The built-in agent type has the handle `default` and the display name `Default`. The handle is the identifier that agents and applications use to refer to the agent type. It is unique among agent types and cannot be changed. The display name is free text and can be changed at any time, unless the agent type is read-only because a resource file defines it.
 
-An organization unit can have only one agent type. Creating an agent type in an organization unit that already has one, or moving an agent type into such an organization unit, fails with error `USRS-1021`. When an agent is created, or an update changes its organization unit or type, the agent's organization unit must be its agent type's organization unit or one of its descendants, otherwise the request fails with error `AGT-1053`. In those requests, an agent type that does not exist, or that the caller cannot read, fails with error `AGT-1054`. Moving an agent type to another organization unit does not move its agents or check them again. An agent type can be deleted only when no agent is of that type and no application, agent, or flow lists it in its allowed agent types; otherwise the deletion fails with error `USRS-1022`. Delete those agents or change their `type`, and remove the agent type from those lists, first.
+An organization unit can have only one agent type. Creating an agent type in an organization unit that already has one, or moving an agent type into such an organization unit, fails with error `USRS-1021`. When an agent is created, or an update changes its organization unit or type, the agent's organization unit must be its agent type's organization unit or one of its descendants, otherwise the request fails with error `AGT-1053`. In those requests, an agent type that does not exist, or that the caller cannot read, fails with error `AGT-1054`. Moving an agent type to another organization unit does not move its agents or check them again. The server checks agents that a resource file defines again when it starts, and the start fails if one is outside its agent type's organization unit. An agent type can be deleted only when no agent is of that type and no application, agent, or flow lists it in its allowed agent types; otherwise the deletion fails with error `USRS-1022`. Delete those agents or change their `type`, and remove the agent type from those lists, first.
 
 ## Why an agent has a schema
 
@@ -77,10 +77,28 @@ When adding an attribute, add a field to the flow's attribute form or connect Pr
 
 ## Change the schema
 
-- **Console:** click **Schema** on the **Agents** list. Add or edit attributes, set each one's type, display name, required, unique, and credential flags, a regex pattern (string, email, or mobile) or allowed values (enum), then save from the unsaved-changes bar.
+- **Console:** go to **Agent types** and open the agent type. On the **Schema** tab, add or edit attributes, set each one's type, display name, required, unique, and credential flags, a regex pattern (string, email, or mobile) or allowed values (enum), then save from the unsaved-changes bar.
 - **API:** manage the schema through the agent-type endpoints. An update must send a `displayName`. The `handle` is optional. If sent, it must be the agent type's current handle, otherwise the update fails with error `USRS-1017`. See the [Agent Types section of the API Reference](../../../apis#tag/agent-types).
 
 Because a schema is shared by every agent of its type, a change to it applies to all of those agents at once.
+
+## Create an agent type
+
+An organization unit can have one agent type. To create one in the Console:
+
+1. Go to **Agent types** and click **Create agent type**.
+2. If there is more than one organization unit, choose the one that owns the agent type and click **Continue**.
+3. Enter a name. The Console suggests a handle from the name, which you can edit. The handle must not belong to another agent type, and you cannot change it after the agent type is created. Click **Continue**.
+4. Add the attributes, choose the **Display attribute** that names agents of this type in listings, and click **Create agent type**.
+
+If the organization unit already has an agent type, the Console names that agent type and offers to open it. Choose another organization unit, or edit the existing agent type unless it is read-only.
+
+## Delete an agent type
+
+1. Go to **Agent types** and open the agent type.
+2. On the **Advanced** tab, click **Delete**, then confirm.
+
+You can also click the delete icon on the agent type's row in the list. The delete is refused while agents are of the type, or while applications, agents, or flows list it in their allowed agent types. Delete or change those agents and remove the agent type from those lists first. The **Agent type** column on the **Agents** list shows which agents are of the type. A read-only agent type cannot be edited or deleted.
 
 ## Related Guides
 

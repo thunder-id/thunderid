@@ -16,7 +16,6 @@ export type {RegenerateAgentSecretResult, RegenerateAgentSecretVariables} from '
 export {default as useUpdateAgent} from './api/useUpdateAgent';
 
 // Models & Types
-export {DEFAULT_AGENT_TYPE_HANDLE} from './models/agent';
 export type {
   Agent,
   AgentGroup,

@@ -42,6 +42,8 @@ An application accepts an agent as a sign-in subject only when agent sign-in is 
 2. On the **Access** tab, click on **Enable agent sign-in**.
 3. Save from the unsaved-changes bar.
 
+The toggle allows agents of every agent type to sign in to the application.
+
 </TabItem>
 <TabItem value="api" label="API">
 
@@ -96,7 +98,7 @@ Each agent type carries one schema, shared by every agent of that type. The `def
 <Tabs groupId="agent-config">
 <TabItem value="console" label="Console" default>
 
-1. On the **Agents** list, click **Schema**.
+1. Go to **Agent types** and open the agent type of the agent.
 2. Add a `username` attribute: set **Type** to **String**, and turn on **Required** and **Unique**.
 3. Add a `password` attribute: set **Type** to **String**, and turn on **Required** and **Credential**.
 4. Save from the unsaved-changes bar.
@@ -150,7 +152,7 @@ Each agent type carries one schema, shared by every agent of that type. The `def
 <Tabs groupId="agent-config">
 <TabItem value="console" label="Console" default>
 
-1. On the **Agents** list, click **Schema**.
+1. Go to **Agent types** and open the agent type of the agent.
 2. For an email OTP or magic link, add `email` attribute: set **Type** to **String**, and turn on **Required**.
 3. For SMS OTP, add `mobile_number` attribute: set **Type** to **String**, and turn on **Required**.
 4. Save from the unsaved-changes bar.

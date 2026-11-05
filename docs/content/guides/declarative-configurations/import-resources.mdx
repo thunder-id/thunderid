@@ -137,12 +137,19 @@ types, `user_type` and `agent_type`, as they are in `content`. A `translation` i
   fails with `USRS-1022` while any agent is of that agent type, or while an application, agent, or
   flow lists it in its allowed agent types.
 - **Replace an agent type within one organization unit in two requests.** An organization unit can
-  have only one agent type, and an agent type cannot be removed while agents are of it. So a request
+  have only one agent type, and an agent type cannot be removed while it is in use. So a request
   that adds the new agent type, moves the agents to it, and removes the old one fails the same way
   however often it is sent: the new agent type with `USRS-1021`, the agents with `AGT-1054` because
   their new type does not exist, and the removal with `USRS-1022`. In a first request, move the old
   agent type to an organization unit that has no agent type. In a second, add the new agent type,
-  change the agents' `type` to it, and remove the old one.
+  change the agents' `type` to it, put the new handle in place of the old one wherever an
+  application, agent, or flow lists it in its allowed agent types, and remove the old agent type.
+- **The two requests work only for resources held in the database.** That covers the agent types and
+  every agent, application, and flow the second request changes. An import cannot change one that a
+  resource file defines: the agent type fails with `USRS-1008`, an agent with `AGT-1027`, an
+  application with `APP-1030`, and a flow with `FLM-1017`. The server also checks each agent loaded
+  from a file against its agent type's organization unit when it starts, so moving an agent type away
+  from such agents makes the next start fail. Change those resources in their resource files instead.
 - **A dry run reports what it would remove and removes nothing.**
 - **`deletions` alone is a valid request.** Removing what a configuration dropped does not require
   also restating what it kept.

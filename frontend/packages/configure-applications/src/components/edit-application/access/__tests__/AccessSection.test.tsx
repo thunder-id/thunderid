@@ -214,6 +214,19 @@ describe('AccessSection', () => {
       expect(agentSignInToggle()).not.toBeChecked();
     });
 
+    it('should render the toggle on when every agent type is allowed', () => {
+      render(
+        <AccessSection
+          application={{...mockApplication, allowedAgentTypes: ['*']}}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(agentSignInToggle()).toBeChecked();
+    });
+
+    // A list saved before the wildcard existed still names the type it allowed, so it shows as on.
     it('should render the toggle on when an agent type is allowed', () => {
       render(
         <AccessSection
@@ -224,6 +237,19 @@ describe('AccessSection', () => {
       );
 
       expect(agentSignInToggle()).toBeChecked();
+      expect(screen.getByText(/only agents of these agent types can sign in now: default\./i)).toBeInTheDocument();
+    });
+
+    it('should not list agent types when every agent type is allowed', () => {
+      render(
+        <AccessSection
+          application={{...mockApplication, allowedAgentTypes: ['*']}}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.queryByText(/only agents of these agent types/i)).not.toBeInTheDocument();
     });
 
     it('should prefer the agent types from editedApp over application', () => {
@@ -238,14 +264,14 @@ describe('AccessSection', () => {
       expect(agentSignInToggle()).not.toBeChecked();
     });
 
-    it('should allow the default agent type when enabled', async () => {
+    it('should allow every agent type when enabled', async () => {
       const user = userEvent.setup();
 
       render(<AccessSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
 
       await user.click(agentSignInToggle());
 
-      expect(mockOnFieldChange).toHaveBeenCalledWith('allowedAgentTypes', ['default']);
+      expect(mockOnFieldChange).toHaveBeenCalledWith('allowedAgentTypes', ['*']);
     });
 
     it('should clear every allowed agent type when disabled', async () => {
