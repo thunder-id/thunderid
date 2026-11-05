@@ -94,7 +94,7 @@ paths:
                     ou:
                       id: "fe447a2f-29c5-4e33-ac8f-d77be15fdb32"
                       handle: "default"
-                      name: "Default Organization Unit"
+                      name: "System Organization Unit"
                       logoUrl: "https://myapp.example.com/logo.png"
                       tosUri: "https://myapp.example.com/terms"
                       policyUri: "https://myapp.example.com/privacy"
@@ -131,7 +131,7 @@ paths:
                     ou:
                       id: "fe447a2f-29c5-4e33-ac8f-d77be15fdb32"
                       handle: "default"
-                      name: "Default Organization Unit"
+                      name: "System Organization Unit"
                       logoUrl: "https://myapp.example.com/logo.png"
                     design:
                       theme: {}
@@ -234,11 +234,11 @@ components:
         name:
           type: string
           description: Organization unit name
-          example: "Default Organization Unit"
+          example: "System Organization Unit"
         description:
           type: string
           description: Organization unit description
-          example: "Default organization unit for the deployment"
+          example: "System organization unit for the deployment"
         logoUrl:
           type: string
           format: uri

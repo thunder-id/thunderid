@@ -132,7 +132,7 @@ This sample interacts with the following APIs:
 
 ### Sign Up Flow
 1. User fills in the registration form (username, name, email, password)
-2. Application fetches the default organization unit ID
+2. Application fetches the system organization unit ID
 3. Sends a POST request to `/users` with user attributes and type `customer`
 4. On success, displays confirmation message
 

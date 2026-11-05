@@ -29,7 +29,7 @@ Each call then sends `-H "Authorization: Bearer $TOKEN"`.
 
 1. **Create the `wayfinder-agent` resource server.**
 
-   Invoke the **Resource Management API** to create the resource server. Set the identifier to `http://localhost:8790/chat`, the chat API audience. Replace `<organization-unit-id>` with the ID of your default organization unit (look it up via `GET /organization-units`):
+   Invoke the **Resource Management API** to create the resource server. Set the identifier to `http://localhost:8790/chat`, the chat API audience. Replace `<organization-unit-id>` with the ID of your system organization unit (look it up via `GET /organization-units`):
 
    ```bash
    curl -kL -X POST https://localhost:8090/resource-servers \

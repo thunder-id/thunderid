@@ -3,7 +3,7 @@ id: 019e3a5c-04ea-7d18-8ae6-f828b1f3d60f
 category: user
 handle: customer
 displayName: Customer
-ouHandle: default
+ouHandle: system
 allowSelfRegistration: true
 systemAttributes:
   display: username

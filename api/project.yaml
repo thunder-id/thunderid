@@ -4,7 +4,7 @@ info:
   version: "1.0"
   description: |
     Create and manage projects. A project groups identity configuration. Every project includes the
-    default organization unit, and a resource created in a project is placed in the default
+    system organization unit, and a resource created in a project is placed in the system
     organization unit unless the request names one below it.
 
     Projects are a Control Plane concept: only the Control Plane serves this API. The Data Plane works

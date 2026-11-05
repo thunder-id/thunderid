@@ -163,12 +163,12 @@ func generateUniqueHandle(base string) string {
 	return fmt.Sprintf("%s-%d-%d", base, timestamp, random)
 }
 
-// withOwner returns the flow with the default organization unit as its owner when it names none.
+// withOwner returns the flow with the system organization unit as its owner when it names none.
 func withOwner(flow FlowDefinition) FlowDefinition {
 	if flow.OUID == "" {
 		ouID, err := testutils.DefaultOUID()
 		if err != nil {
-			panic(fmt.Sprintf("failed to resolve the default organization unit: %v", err))
+			panic(fmt.Sprintf("failed to resolve the system organization unit: %v", err))
 		}
 		flow.OUID = ouID
 	}

@@ -27,7 +27,7 @@ id: agent-identity-agent-rs
 name: Agent Access
 description: Controls who may use the Concierge
 identifier: https://agent.travel.example
-ouHandle: default
+ouHandle: system
 delimiter: ":"
 resources:
   - name: Agent
@@ -45,7 +45,7 @@ id: agent-identity-booking-rs
 name: Booking API
 description: The booking API the Concierge and its worker agents call
 identifier: https://api.travel.example/booking
-ouHandle: default
+ouHandle: system
 delimiter: ":"
 resources:
   - name: Booking
@@ -73,7 +73,7 @@ resources:
 
 resource_type: flow
 id: 0193b0a1-2001-7000-8000-000000000001
-ouHandle: default
+ouHandle: system
 name: Agent Identity Playground Authentication Flow
 handle: agent-identity-agent-auth-flow
 flowType: AUTHENTICATION
@@ -216,7 +216,7 @@ nodes:
 resource_type: user
 id: agent-identity-john
 type: person
-ouHandle: default
+ouHandle: system
 attributes:
   username: johndoe
   email: john.doe@travel.example
@@ -242,7 +242,7 @@ credentials:
 resource_type: agent
 id: agent-identity-concierge
 description: The in-app travel assistant that books trips for customers
-ouHandle: default
+ouHandle: system
 type: default
 logoUrl: "emoji:🧭"
 authFlowHandle: agent-identity-agent-auth-flow
@@ -308,7 +308,7 @@ inboundAuthConfig:
 resource_type: agent
 id: agent-identity-flight-search
 description: Worker agent that runs the delegated flight-search sub-task
-ouHandle: default
+ouHandle: system
 type: default
 logoUrl: "emoji:✈️"
 attributes:
@@ -338,7 +338,7 @@ resource_type: role
 id: agent-identity-chat-user
 name: Chat User
 description: Grants access to use the Concierge at all
-ouHandle: default
+ouHandle: system
 permissions:
   - resourceServerId: agent-identity-agent-rs
     permissions:
@@ -352,7 +352,7 @@ resource_type: role
 id: agent-identity-booking-user
 name: Booking User
 description: Grants John the booking permissions the Concierge acts with on his behalf
-ouHandle: default
+ouHandle: system
 permissions:
   - resourceServerId: agent-identity-booking-rs
     permissions:
@@ -367,7 +367,7 @@ resource_type: role
 id: agent-identity-recommender
 name: Recommender
 description: What the Concierge may do on its own behalf, with no user involved
-ouHandle: default
+ouHandle: system
 permissions:
   - resourceServerId: agent-identity-booking-rs
     permissions:
@@ -382,7 +382,7 @@ resource_type: role
 id: agent-identity-flight-searcher
 name: Flight Searcher
 description: The worker's entire authority, deliberately narrower than the Concierge's
-ouHandle: default
+ouHandle: system
 permissions:
   - resourceServerId: agent-identity-booking-rs
     permissions:

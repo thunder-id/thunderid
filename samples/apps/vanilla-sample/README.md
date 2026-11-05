@@ -47,7 +47,7 @@ Then import via the ThunderID Console (`https://localhost:8090/console`):
 - **First time**: a welcome screen appears with an **Open** button to upload the YAML.
 - **Later**: access the same screen from the user profile menu (top-right).
 
-This creates the `Customer` user type and the `Sample App` application (ID: `019e3a5c-0500-7f3e-a66e-66fc7918c3a7`) in the default organization unit. Note the value you set for `SAMPLE_APP_FLOW_SECRET`; you'll need it in the next step.
+This creates the `Customer` user type and the `Sample App` application (ID: `019e3a5c-0500-7f3e-a66e-66fc7918c3a7`) in the system organization unit. Note the value you set for `SAMPLE_APP_FLOW_SECRET`; you'll need it in the next step.
 
 ### 3. Configure the Application
 

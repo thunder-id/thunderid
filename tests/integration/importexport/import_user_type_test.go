@@ -122,9 +122,9 @@ func (suite *ImportExportErrorSuite) deleteImportedUserType(id string) {
 	}
 }
 
-// userTypeDocument builds a user type import document in the default organization unit.
+// userTypeDocument builds a user type import document in the system organization unit.
 func userTypeDocument(id, handle, displayName string) string {
-	return fmt.Sprintf("resource_type: user_type\nid: %s\nhandle: %q\ndisplayName: %q\nouHandle: default\n"+
+	return fmt.Sprintf("resource_type: user_type\nid: %s\nhandle: %q\ndisplayName: %q\nouHandle: system\n"+
 		"schema:\n  email:\n    type: string\n", id, handle, displayName)
 }
 

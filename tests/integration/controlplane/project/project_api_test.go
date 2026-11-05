@@ -193,7 +193,7 @@ func (ts *ProjectAPITestSuite) TestDeleteProject() {
 
 	ts.Equal(http.StatusNotFound, ts.getJSON("/projects/"+created.ID, &project{}))
 	_, err := testutils.GetOrganizationUnit(defaultOUID)
-	ts.NoError(err, "deleting a project leaves the default organization unit")
+	ts.NoError(err, "deleting a project leaves the system organization unit")
 
 	status, _ = ts.do(http.MethodDelete, "/projects/"+created.ID, "")
 	ts.Equal(http.StatusNoContent, status)

@@ -33,7 +33,7 @@ const (
 	// permission on the default System resource server. Reused here so the admin ends up in that
 	// same group for this suite's own resource server too.
 	adminGroupID = "01900000-0000-7000-8000-000000000040"
-	// adminGroupOUID is the bootstrapped default organization unit the admin group belongs to.
+	// adminGroupOUID is the bootstrapped system organization unit the admin group belongs to.
 	adminGroupOUID = "01900000-0000-7000-8000-000000000001"
 
 	systemActionHandle = "system"

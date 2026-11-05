@@ -53,14 +53,14 @@ paths:
                     name: "front-desk-agent"
                     description: "Front desk agent role with booking and customer management permissions"
                     ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
-                    ouHandle: "default"
+                    ouHandle: "system"
                     isReadOnly: false
                     isOwnedByOU: true
                   - id: "257e528f-eb24-48b6-884d-20460e190957"
                     name: "hotel-manager"
                     description: "Hotel manager with full property access"
                     ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
-                    ouHandle: "default"
+                    ouHandle: "system"
                     isReadOnly: true
                     isOwnedByOU: true
                 links:
@@ -174,7 +174,7 @@ paths:
                 name: "front-desk-agent"
                 description: "Front desk agent role with booking and customer management permissions"
                 ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
-                ouHandle: "default"
+                ouHandle: "system"
                 permissions:
                   - resourceServerId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
                     permissions:
@@ -327,7 +327,7 @@ paths:
                 name: "front-desk-agent"
                 description: "Front desk agent role with booking and customer management permissions"
                 ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
-                ouHandle: "default"
+                ouHandle: "system"
                 isOwnedByOU: true
                 permissions:
                   - resourceServerId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
@@ -450,7 +450,7 @@ paths:
                 name: "senior-front-desk-agent"
                 description: "Senior front desk agent with additional permissions"
                 ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
-                ouHandle: "default"
+                ouHandle: "system"
                 permissions:
                   - resourceServerId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
                     permissions:

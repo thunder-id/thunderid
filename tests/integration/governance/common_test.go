@@ -841,7 +841,7 @@ type userFixture struct {
 	typeIDs  []string
 	userIDs  []string
 	// signInClientID is the fixture's own sign-in application, since a sign-in is bounded to its
-	// application's OU and the Console signs in only the default OU's users.
+	// application's OU and the Console signs in only the system OU's users.
 	signInClientID string
 	signInAppID    string
 }
