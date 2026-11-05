@@ -45,8 +45,8 @@ catalog:
   '@playwright/test': 1.60.0
   '@vitejs/plugin-basic-ssl': 2.3.0
   '@vitejs/plugin-react': 6.0.2
-  '@vitest/browser-playwright': 4.1.10
-  '@vitest/coverage-istanbul': 4.1.10
+  '@vitest/browser-playwright': 4.1.12
+  '@vitest/coverage-istanbul': 4.1.12
   '@wso2/oxygen-ui': 0.17.0
   '@wso2/oxygen-ui-icons-react': 0.17.0
   babel-plugin-react-compiler: 19.1.0-rc.3
@@ -68,7 +68,7 @@ catalog:
   react-hook-form: 7.65.0
   react-i18next: 16.0.1
   react-router: 8.3.0
-  rimraf: 6.1.3
+  rimraf: 6.1.4
   rolldown: 1.0.0-beta.45
   rollup-plugin-visualizer: 6.0.5
   tslib: 2.8.1
@@ -77,7 +77,7 @@ catalog:
   typescript-eslint: 8.57.2
   vite: 8.1.6
   vite-plugin-svgr: 5.2.0
-  vitest: 4.1.10
+  vitest: 4.1.12
   zod: 4.6.6
 
 overrides:
@@ -194,8 +194,19 @@ overrides:
   undici: '^6.28.1'
   # JUSTIFICATION: Fixes entity encoding bypass and RCE vulnerabilities in fast-xml-parser.
   fast-xml-parser: '>=5.3.6'
-  # JUSTIFICATION: Fixes arbitrary file read vulnerability in Vitest UI server.
-  vitest: '>=4.1.0'
+  # JUSTIFICATION: Fixes the arbitrary file read vulnerability in the Vitest UI server, plus
+  # GHSA-82fw-gwwq-j7x9 (arbitrary file read through an @vitest/mocker redirect mock) and
+  # GHSA-qxg6-89mg-rqv8 (code injection through manual mock registration in @vitest/mocker), both
+  # fixed in 4.1.12. The catalog pins vitest 4.1.12, which this entry leaves alone; it only lifts
+  # any older vitest onto the patched 4.x line, and the caret keeps it off the untested 5.x major.
+  # Added 2026-07-25, raised 2026-11-05.
+  vitest@<4.1.12: '^4.1.12'
+  # JUSTIFICATION: Fixes GHSA-2wm5-q62r-hmrv, slow rejection of oversized malformed color strings
+  # in colord, fixed in 2.9.4. Transitive via docs -> Docusaurus -> cssnano -> postcss-colormin and
+  # postcss-minify-gradients, which declare colord ^2.9.3, so a patched 2.x release already fits
+  # their range; `pnpm update` alone does not move the locked 2.9.3, so this entry lifts it.
+  # Added 2026-11-05. Remove once cssnano requires colord >=2.9.4.
+  colord@<2.9.4: '^2.9.4'
   # JUSTIFICATION: Fixes command injection vulnerability via -c/--cmd flag in glob CLI.
   glob: '>=11.1.0'
   # JUSTIFICATION: Fixes environment variable exposure in Storybook manager bundle.
