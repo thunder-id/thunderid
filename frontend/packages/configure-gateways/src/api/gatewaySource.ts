@@ -9,18 +9,30 @@ import type {
   AppliedVersion,
   ApplyRequest,
   ApplyResult,
+  Master,
+  ResourceHistory,
   StoredValue,
   ValueKind,
   ValueReference,
   Version,
 } from '../models/deploy';
 import type {Gateway} from '../models/gateway';
+import type {AutoApplySetting, Pipeline} from '../models/pipeline';
 
 /** How many values a gateway's store answers with in one page. */
 const PAGE_SIZE = 100;
 
 const gateway = (id: string): string => `/gateways/${encodeURIComponent(id)}`;
 const collectionOf = (kind: ValueKind): string => (kind === 'secret' ? 'secrets' : 'variables');
+
+/** The server configuration section that says how this control plane deploys. */
+const SETTINGS_SECTION = '/server-config/gateway';
+
+/** The gateway section's layers, as the server configuration API reads them. */
+interface SettingsLayers {
+  readOnly?: {autoApply?: boolean} | null;
+  merged?: {autoApply?: boolean} | null;
+}
 
 /** The control plane's own source: its gateways and the configuration versions it captures. */
 export default function useGatewaySource(): DeploySource {
@@ -46,6 +58,14 @@ export default function useGatewaySource(): DeploySource {
       appliedVersion,
       appliedConfiguration: (targetId: string): Promise<AppliedConfiguration> =>
         request<AppliedConfiguration>('GET', `${gateway(targetId)}/applied-configuration`),
+      master: (targetId: string): Promise<Master> => request<Master>('GET', `${gateway(targetId)}/master`),
+      masterHistory: (targetId: string): Promise<Master[]> =>
+        request<Master[]>('GET', `${gateway(targetId)}/master/history`),
+      resourceHistory: (targetId: string, key: string): Promise<ResourceHistory> =>
+        request<ResourceHistory>(
+          'GET',
+          `${gateway(targetId)}/master/resources/${key.split('/').map(encodeURIComponent).join('/')}`,
+        ),
       applyCheck: (targetId: string, ref: string): Promise<ApplyResult> =>
         request<ApplyResult>('POST', `${gateway(targetId)}/apply`, {
           version: ref,
@@ -84,6 +104,20 @@ export default function useGatewaySource(): DeploySource {
         const applied = await appliedVersion(targetId);
         if (!applied.appliedVersion) return [];
         return (await version(applied.appliedVersion)).references ?? [];
+      },
+      pipeline: async (): Promise<Pipeline> => {
+        const answer = await request<Pipeline>('GET', '/gateways/pipeline');
+        return {stages: answer.stages ?? []};
+      },
+      autoApply: async (): Promise<AutoApplySetting> => {
+        const layers = await request<SettingsLayers>('GET', SETTINGS_SECTION);
+        return {
+          enabled: layers.merged?.autoApply ?? false,
+          locked: layers.readOnly?.autoApply !== undefined && layers.readOnly?.autoApply !== null,
+        };
+      },
+      setAutoApply: async (enabled: boolean): Promise<void> => {
+        await request<unknown>('PUT', SETTINGS_SECTION, {autoApply: enabled});
       },
     };
   }, [request]);

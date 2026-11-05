@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {AccessStatusIndicator, QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
+import {AccessStatusIndicator, QueryErrorNotice, ResourceAvatar, ResourceDeployStatus} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
@@ -127,6 +127,16 @@ export default function ApplicationsList(): JSX.Element {
         sortable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<BasicApplication>): JSX.Element => (
           <AccessStatusIndicator status={params.row.status} category="application" tabIndex={params.tabIndex} />
+        ),
+      },
+      {
+        field: 'deployment',
+        headerName: t('applications:listing.columns.deployment', 'Deployment'),
+        flex: 0.6,
+        minWidth: 150,
+        sortable: false,
+        renderCell: (params: DataGrid.GridRenderCellParams<BasicApplication>): JSX.Element => (
+          <ResourceDeployStatus resourceType="application" id={params.row.id} />
         ),
       },
       {

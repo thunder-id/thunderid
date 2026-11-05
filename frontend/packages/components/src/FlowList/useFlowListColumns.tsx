@@ -5,6 +5,7 @@ import {Chip, DataGrid, IconButton, ListingTable, Tooltip} from '@wso2/oxygen-ui
 import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import ResourceDeployStatus from '../ResourceDeployStatus/ResourceDeployStatus';
 
 /**
  * The fields of a flow a flow list shows.
@@ -82,6 +83,15 @@ export default function useFlowListColumns<T extends FlowListRow>({
             minute: '2-digit',
           });
         },
+      },
+      {
+        field: 'deployment',
+        headerName: t('flows:listing.columns.deployment', 'Deployment'),
+        width: 170,
+        sortable: false,
+        renderCell: (params: DataGrid.GridRenderCellParams<T>): JSX.Element => (
+          <ResourceDeployStatus resourceType="flow" id={params.row.id} />
+        ),
       },
       {
         field: 'actions',

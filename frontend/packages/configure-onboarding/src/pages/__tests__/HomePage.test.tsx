@@ -34,6 +34,26 @@ describe('HomePage', () => {
     vi.clearAllMocks();
   });
 
+  it('shows what it leads with between the greeting and what to build', () => {
+    render(<HomePage lead={<div data-testid="lead" />} />);
+
+    const lead = screen.getByTestId('lead');
+    expect(
+      screen.getByRole('heading', {level: 1}).compareDocumentPosition(lead) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      lead.compareDocumentPosition(screen.getByTestId('start-building-section')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('leaves out the getting started sections when asked to', () => {
+    render(<HomePage lead={<div data-testid="lead" />} showGettingStarted={false} />);
+
+    expect(screen.getByTestId('lead')).toBeInTheDocument();
+    expect(screen.queryByTestId('start-building-section')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('next-steps-section')).not.toBeInTheDocument();
+  });
+
   it('sets the document title to the product name', async () => {
     render(<HomePage />);
 

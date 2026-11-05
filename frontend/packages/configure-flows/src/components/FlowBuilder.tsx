@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {GradientBorderButton, QueryErrorNotice} from '@thunderid/components';
+import {GradientBorderButton, QueryErrorNotice, ResourceDeployStatus} from '@thunderid/components';
 import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
 import {Alert, Box, Snackbar, Stack} from '@wso2/oxygen-ui';
 import type {Edge, Node, NodeChange} from '@xyflow/react';
@@ -748,6 +748,7 @@ function FlowBuilder() {
             onEdgesChange={onEdgesChange}
             onEdgeClick={sso.handleEdgeClick}
             flowTitle={flowName}
+            flowStatus={flowId ? <ResourceDeployStatus resourceType="flow" id={flowId} /> : undefined}
             flowHandle={flowHandle}
             onFlowTitleChange={handleFlowNameChange}
             triggerAutoLayoutOnLoad={needsAutoLayout}

@@ -45,6 +45,9 @@ export {default as ChangeLines} from './components/ChangeLines';
 export {default as MissingValuesFields} from './components/MissingValuesFields';
 export {default as ValuesTable} from './components/ValuesTable';
 export {default as GatewayStage} from './components/GatewayStage';
+export {default as EnvironmentsOverview} from './components/EnvironmentsOverview';
+export type {EnvironmentsOverviewProps} from './components/EnvironmentsOverview';
+export {default as AutoApplySwitch} from './components/AutoApplySwitch';
 export {default as ActorName} from './components/ActorName';
 export {default as useActorName} from './hooks/useActorName';
 
@@ -52,8 +55,13 @@ export type {DeploySource, StoredValueInput} from './api/source';
 export {DeploySourceProvider, default as useDeploySource} from './api/source';
 export {default as useGatewaySource} from './api/gatewaySource';
 export {default as useGateways} from './api/useGateways';
+export {usePipeline, useAutoApply, useSetAutoApply} from './api/usePipeline';
+export {default as useDeployPanels} from './hooks/useDeployPanels';
+export type {DeployPanels} from './hooks/useDeployPanels';
+export {default as runnersOf} from './utils/runners';
 export {default as useAppliedVersions} from './api/useAppliedVersions';
-export {default as useHeldBack} from './api/useHeldBack';
+export {useMaster, useMasterHistory, useResourceHistory, useRefused} from './api/useMaster';
+export {withNeeded} from './utils/needs';
 export {default as useChangedValues, changedCount} from './api/useChangedValues';
 export {useVersions, useVersion} from './api/useVersions';
 export {
@@ -73,4 +81,5 @@ export {fromListText, parseListValue, toListText} from './utils/listValue';
 export type {MissingField} from './utils/missingValues';
 
 export * from './models/deploy';
+export * from './models/pipeline';
 export * from './explorer/model';

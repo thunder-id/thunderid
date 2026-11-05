@@ -145,7 +145,7 @@ describe('DashboardLayout', () => {
     render(<DashboardLayout />);
 
     // Check for navigation items using translation keys
-    expect(screen.getByText('navigation:pages.users')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.administrators')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.userTypes')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.applications')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.connections')).toBeInTheDocument();

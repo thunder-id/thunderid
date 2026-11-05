@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, waitFor} from '@testing-library/react';
-import {afterEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import App from '../App';
 
 vi.mock('@thunderid/react-router', () => ({
@@ -27,7 +27,6 @@ vi.mock('@thunderid/configure-onboarding', async (importOriginal) => ({
   TryoutSecuringApplicationPage: () => <div data-testid="tryout-securing-application-page" />,
   TryoutSecuringAIAgentsPage: () => <div data-testid="tryout-ai-agents-page" />,
   TryoutSecuringMCPPage: () => <div data-testid="tryout-mcp-page" />,
-  WelcomeRedirect: () => null,
 }));
 
 vi.mock('@thunderid/configure-gateways', () => ({
@@ -36,6 +35,7 @@ vi.mock('@thunderid/configure-gateways', () => ({
   DeployPage: () => <div data-testid="deploy-page">Deploy Page</div>,
   GatewayExplorerPage: () => <div data-testid="gateway-explorer-page">Gateway Explorer Page</div>,
   GatewayValuesPage: () => <div data-testid="gateway-values-page">Gateway Values Page</div>,
+  EnvironmentsOverview: () => <div data-testid="environments-overview" />,
 }));
 
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
@@ -160,6 +160,12 @@ vi.mock('../layouts/FullScreenLayout', async () => {
 });
 
 describe('App', () => {
+  // Nothing imports the import and export package up front, so the first page that lazily needs it would
+  // wait for the whole package to load. Loading it once here keeps each lazy route to its own render.
+  beforeAll(async () => {
+    await import('@thunderid/configure-import-export');
+  }, 60000);
+
   afterEach(() => {
     window.history.pushState({}, '', '/');
   });

@@ -3,6 +3,7 @@
 
 // Pages
 export {default as HomePage} from './pages/HomePage';
+export type {HomePageProps} from './pages/HomePage';
 export {default as WelcomePage} from './pages/WelcomePage';
 export {default as GetStartedPage} from './pages/GetStartedPage';
 export {default as CreateProjectPage} from './pages/CreateProjectPage';

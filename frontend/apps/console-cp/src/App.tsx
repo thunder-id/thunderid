@@ -6,7 +6,6 @@ import {ApplicationCreateProvider} from '@thunderid/configure-applications';
 import {LayoutBuilderProvider, ThemeBuilderProvider} from '@thunderid/configure-design';
 import {GroupCreateProvider} from '@thunderid/configure-groups';
 import type {NotificationChannel} from '@thunderid/configure-notification-templates';
-import {WelcomeRedirect} from '@thunderid/configure-onboarding';
 import {OrganizationUnitProvider} from '@thunderid/configure-organization-units';
 import {RoleCreateProvider} from '@thunderid/configure-roles';
 import {TranslationCreateProvider} from '@thunderid/configure-translations';
@@ -62,7 +61,7 @@ const NotificationTemplateCreatePage = lazy(() =>
 );
 const UserAddPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserAddPage})));
 const UserEditPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserEditPage})));
-const UsersListPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UsersListPage})));
+const UsersListPage = lazy(() => import('./pages/AdministratorsListPage'));
 const ResourceServersListPage = lazy(() =>
   import('@thunderid/configure-resource-servers').then((m) => ({default: m.ResourceServersListPage})),
 );
@@ -107,7 +106,7 @@ const FlowsListPage = lazy(() => import('@thunderid/configure-flows').then((m) =
 const CreateGroupPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.CreateGroupPage})));
 const GroupEditPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.GroupEditPage})));
 const GroupsListPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.GroupsListPage})));
-const HomePage = lazy(() => import('@thunderid/configure-onboarding').then((m) => ({default: m.HomePage})));
+const HomePage = lazy(() => import('./pages/ControlPlaneHomePage'));
 const ExportPage = lazy(() =>
   import('./lib/monaco-setup').then(() =>
     import('@thunderid/configure-import-export').then((m) => ({default: m.ExportPage})),
@@ -210,7 +209,6 @@ export default function App(): JSX.Element {
       <RoutesProvider paths={RouteConfig}>
         <AdministrationProvider administration={CONTROL_PLANE_ADMINISTRATION}>
           <ToastProvider>
-            <WelcomeRedirect />
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 <Route

@@ -7,14 +7,17 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   MenuItem,
   Select,
   Stack,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import {Rocket} from '@wso2/oxygen-ui-icons-react';
@@ -23,15 +26,18 @@ import {useTranslation} from 'react-i18next';
 import ChangedValuesNotice from './ChangedValuesNotice';
 import ChangeList from './ChangeList';
 import MissingValuesFields from './MissingValuesFields';
-import {changedCount} from '../api/useChangedValues';
+import RefusedFixes from './RefusedFixes';
 import {useApplyCheck, useApplyVersion} from '../api/useGatewayVersions';
-import {useSetStoredValue} from '../api/useStoredValues';
+import {useRefused} from '../api/useMaster';
+import {useSetStoredValue, useStoredValues} from '../api/useStoredValues';
+import {useVersion} from '../api/useVersions';
 import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
-import type {ApplyResult, Change, Version} from '../models/deploy';
+import type {ApplyResult, Change, MasterEntry, Refusal, StoredValue, ValueReference, Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
 import {errorCodeOf, isForbidden, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
-import {fromListText} from '../utils/listValue';
-import {fieldKey, missingFields, type MissingField} from '../utils/missingValues';
+import {fromListText, toListText} from '../utils/listValue';
+import {fieldKey, missingFields, type MissingField, type RefusedFix} from '../utils/missingValues';
+import {withNeeded} from '../utils/needs';
 
 export interface ApplyPanelProps {
   version: Version;
@@ -40,6 +46,11 @@ export interface ApplyPanelProps {
   gateways: Gateway[];
   /** The gateway chosen to begin with; the first otherwise. */
   gatewayId?: string;
+  /**
+   * The keys of the changes ticked to begin with, every change otherwise: the resources the gateway
+   * refused, to fix and deploy them again.
+   */
+  only?: string[];
   onClose: () => void;
   /** Called once the version is written, with what the gateway reported. */
   onDeployed: (gateway: Gateway, result: ApplyResult) => void;
@@ -48,13 +59,15 @@ export interface ApplyPanelProps {
 /**
  * Deploys a version to a gateway in a dialog over the Deploy page: what the write would do is read as
  * soon as the panel opens, so the resources can be left out one by one and the values the gateway
- * lacks set in place, and one button then writes everything.
+ * lacks set in place, and one button then writes what is ticked, along with what it needs. Nothing
+ * about the choice is kept: what is left out stays on offer.
  */
 export default function ApplyPanel({
   version,
   label,
   gateways,
   gatewayId = undefined,
+  only = undefined,
   onClose,
   onDeployed,
 }: ApplyPanelProps): JSX.Element {
@@ -66,8 +79,10 @@ export default function ApplyPanel({
   const apply = useApplyVersion();
   const setVariable = useSetStoredValue(target, 'variable');
   const setSecret = useSetStoredValue(target, 'secret');
-  // Null until the user ticks or unticks something, so the changes the gateway holds back start excluded.
+  // Null until the user ticks or unticks something, so every change starts ticked.
   const [chosen, setChosen] = useState<Set<string> | null>(null);
+  // Whether what is ticked brings along what it needs that the gateway lacks.
+  const [includeNeeded, setIncludeNeeded] = useState(true);
   const [values, setValues] = useState<Record<string, string>>({});
   const [isWriting, setIsWriting] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -75,43 +90,119 @@ export default function ApplyPanel({
   // removals are then pointed out, and the next click confirms them.
   const [confirmRemovals, setConfirmRemovals] = useState(false);
 
+  const refusedEntries = useRefused(target);
+  const references = useVersion(version.version, true, target).data?.references;
+  const storedVariables = useStoredValues(target, 'variable').data;
+  // What was typed over a value a refused resource uses, by its field key.
+  const [fixValues, setFixValues] = useState<Record<string, string>>({});
+  // Only the panel opened to retry what was refused starts with just those ticked; another gateway
+  // chosen in it starts over with everything.
+  const [startWith, setStartWith] = useState<string[] | undefined>(only);
+
   const changes: Change[] = useMemo(() => check.data?.diff.changes ?? [], [check.data]);
   const active = useMemo(() => changes.filter((change: Change) => change.change !== 'unchanged'), [changes]);
 
-  const heldBack = useMemo(
-    () => new Set(active.filter((change: Change) => change.excluded).map((change: Change) => change.key)),
-    [active],
+  // What starts unticked: with a retry, all but what it retries; otherwise what an earlier deploy left
+  // out for the deploys after it.
+  const excluded = useMemo(
+    () =>
+      chosen ??
+      (startWith
+        ? new Set(active.map((change: Change) => change.key).filter((key: string) => !startWith.includes(key)))
+        : new Set(active.filter((change: Change) => change.heldBack === true).map((change: Change) => change.key))),
+    [chosen, startWith, active],
   );
-  const excluded = chosen ?? heldBack;
 
-  // A new target starts over from what that gateway holds back, with nothing typed. Nothing else
-  // resets them, so a refetch of the same target keeps what the user chose and typed.
+  // A new target starts over with everything ticked and nothing typed. Nothing else resets them, so a
+  // refetch of the same target keeps what the user chose and typed.
   const chooseTarget = (next: string): void => {
     setTarget(next);
     setChosen(null);
+    setStartWith(undefined);
     setValues({});
+    setFixValues({});
     setError(null);
     setConfirmRemovals(false);
   };
 
-  const selected = useMemo(
+  const ticked = useMemo(
     () => new Set(active.map((change: Change) => change.key).filter((key: string) => !excluded.has(key))),
     [active, excluded],
   );
+  // What the ticked changes bring along, as the control plane widens the selection; shown ticked and
+  // marked, not chosen by hand.
+  const required = useMemo(
+    () => (includeNeeded ? withNeeded(ticked, changes) : new Map<string, string>()),
+    [includeNeeded, ticked, changes],
+  );
+  const selected = useMemo(() => new Set([...ticked, ...required.keys()]), [ticked, required]);
   const fields: MissingField[] = useMemo(() => missingFields(check.data?.missing), [check.data?.missing]);
+  // What the check, a dry run with the values the gateway holds, says the gateway would refuse, by key.
+  const predicted = useMemo(() => {
+    const byKey = new Map<string, Refusal>();
+    for (const result of check.data?.import?.results ?? []) {
+      if (result.status === 'failed' && result.resourceId) {
+        byKey.set(`${result.resourceType}/${result.resourceId}`, {
+          code: result.code,
+          message: result.message,
+          description: result.description,
+        });
+      }
+    }
+    return byKey;
+  }, [check.data]);
+  // The ticked resources the gateway refused last time or would refuse now, each with why and the
+  // values it uses that the gateway holds, which can be set right first. A value the gateway lacks is
+  // asked for above instead.
+  const fixes: RefusedFix[] = useMemo(() => {
+    const lacking = new Set(fields.map(fieldKey));
+    return active
+      .filter((change: Change) => (change.failed === true || predicted.has(change.key)) && ticked.has(change.key))
+      .map((change: Change) => {
+        const own = (references ?? []).filter(
+          (reference: ValueReference) =>
+            reference.resourceType === change.resourceType && reference.resourceId === change.id,
+        );
+        const byKey = new Map<string, MissingField>();
+        for (const reference of own) {
+          const key = `${reference.kind}:${reference.name}`;
+          if (lacking.has(key)) continue;
+          const field = byKey.get(key) ?? {kind: reference.kind, name: reference.name, list: false, references: []};
+          field.references.push(reference);
+          field.list = field.list || reference.list === true;
+          byKey.set(key, field);
+        }
+        const entry = refusedEntries.find((refused: MasterEntry) => refused.key === change.key);
+        return {change, failure: entry?.failure, predicted: predicted.get(change.key), fields: [...byKey.values()]};
+      });
+  }, [active, ticked, references, fields, refusedEntries, predicted]);
+  const heldValue = (field: MissingField): string => {
+    if (field.kind === 'secret') return '';
+    const held = storedVariables?.find((stored: StoredValue) => stored.name === field.name)?.value ?? '';
+    return field.list ? toListText(held) : held;
+  };
+  const fixValueOf = (field: MissingField): string => fixValues[fieldKey(field)] ?? heldValue(field);
+  // Each value typed over, once per name, that differs from what the gateway holds.
+  const fixed: MissingField[] = [
+    ...new Map(
+      fixes
+        .flatMap((fix: RefusedFix) => fix.fields)
+        .filter((field: MissingField) => {
+          const typed = fixValues[fieldKey(field)];
+          return typed !== undefined && (field.kind === 'secret' ? typed !== '' : typed !== heldValue(field));
+        })
+        .map((field: MissingField) => [fieldKey(field), field]),
+    ).values(),
+  ];
   const unfilled = fields.filter((field: MissingField) => (values[fieldKey(field)] ?? '').trim() === '');
-  // A deploy carries the changes ticked, or, with none, takes up the values set on the gateway since
-  // its version was deployed: the version is sent whole either way, so the gateway fills them in again.
-  const owed = changedCount(check.data?.changed);
-  const canDeploy =
-    Boolean(gateway) && check.isSuccess && (selected.size > 0 || owed > 0) && unfilled.length === 0 && !isWriting;
+  const canDeploy = Boolean(gateway) && check.isSuccess && selected.size > 0 && unfilled.length === 0 && !isWriting;
   const removals = active.filter((change: Change) => change.change === 'deleted' && selected.has(change.key)).length;
 
   // A confirmation covers the removals the user was warned about, so changing what is ticked drops it.
   const toggle = (key: string): void => {
     setConfirmRemovals(false);
     setChosen((previous: Set<string> | null) => {
-      const next = new Set(previous ?? heldBack);
+      const next = new Set(previous ?? excluded);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
@@ -128,19 +219,29 @@ export default function ApplyPanel({
     setError(null);
     try {
       // Values first, one at a time, so a refusal names the value and leaves the rest unsent.
-      for (const field of fields) {
-        const entered = values[fieldKey(field)] ?? '';
+      const write = async (field: MissingField, entered: string): Promise<void> => {
         const value = field.list ? fromListText(entered) : entered;
         if (field.kind === 'secret') await setSecret.mutateAsync({name: field.name, value});
         else await setVariable.mutateAsync({name: field.name, value});
-      }
-      // The selection is always sent, so what is ticked is exactly what is applied: left to the
-      // gateway's standing choice, a change it holds back would stay held back though ticked.
+      };
+      for (const field of fields) await write(field, values[fieldKey(field)] ?? '');
+      for (const field of fixed) await write(field, fixValues[fieldKey(field)] ?? '');
+      // What is ticked is sent as the selection; the control plane brings along what it needs when
+      // asked to, so the two agree on what is deployed.
+      // What is left unticked stays out of later deploys too, until one ticks it. A retry unticks the
+      // rest only to send what was refused, so it leaves that choice as it was.
+      const leaveOut = startWith
+        ? []
+        : active
+            .filter((change: Change) => !change.sourceExcluded && !selected.has(change.key))
+            .map((change: Change) => change.key);
       const result = await apply.mutateAsync({
         gatewayId: gateway.id,
         data: {
           version: version.version,
-          selection: [...selected],
+          selection: [...ticked],
+          ...(leaveOut.length > 0 ? {leaveOut} : {}),
+          ...(includeNeeded ? {} : {withDependencies: false}),
           ...(confirmRemovals ? {confirmRemovals: true} : {}),
         },
       });
@@ -249,6 +350,16 @@ export default function ApplyPanel({
                 disabled={isWriting}
               />
             )}
+            {check.isSuccess && fixes.length > 0 && (
+              <RefusedFixes
+                fixes={fixes}
+                target={gateway?.name ?? ''}
+                checked={check.isSuccess}
+                valueOf={fixValueOf}
+                onChange={(field, value) => setFixValues((previous) => ({...previous, [fieldKey(field)]: value}))}
+                disabled={isWriting}
+              />
+            )}
             {check.isSuccess && (
               <ChangeList
                 changes={changes}
@@ -256,7 +367,36 @@ export default function ApplyPanel({
                 onToggle={toggle}
                 onToggleAll={toggleAll}
                 target={gateway?.name}
+                required={required}
               />
+            )}
+            {check.isSuccess && active.length > 0 && (
+              <Tooltip
+                title={t(
+                  'applyPanel.includeNeededHint',
+                  'A resource names the flows, units and other resources it needs. Ticked, deploying one brings along what it needs that {{gateway}} lacks.',
+                  {gateway: gateway?.name ?? ''},
+                )}
+              >
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={includeNeeded}
+                      onChange={(_event, checked: boolean) => {
+                        setConfirmRemovals(false);
+                        setIncludeNeeded(checked);
+                      }}
+                      data-testid="deploy-include-needed"
+                    />
+                  }
+                  label={
+                    <Typography variant="body2">
+                      {t('applyPanel.includeNeeded', 'Also deploy what these need')}
+                    </Typography>
+                  }
+                />
+              </Tooltip>
             )}
             {error && (
               <Alert severity="error">
