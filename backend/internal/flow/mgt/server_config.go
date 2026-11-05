@@ -85,7 +85,6 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 		{cfg.RolePermissionRemovalFlow, providers.FlowTypeAdministration, "rolePermissionRemovalFlow"},
 		{cfg.GroupDeletionFlow, providers.FlowTypeAdministration, "groupDeletionFlow"},
 		{cfg.GroupMembershipRemovalFlow, providers.FlowTypeAdministration, "groupMembershipRemovalFlow"},
-		{cfg.ActionDeletionFlow, providers.FlowTypeAdministration, "actionDeletionFlow"},
 		{cfg.UserUnlockFlow, providers.FlowTypeAdministration, "userUnlockFlow"},
 		{cfg.UserSuspendFlow, providers.FlowTypeAdministration, "userSuspendFlow"},
 		{cfg.UserUnsuspendFlow, providers.FlowTypeAdministration, "userUnsuspendFlow"},
@@ -137,8 +136,6 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 			ro.GroupDeletionFlow, wr.GroupDeletionFlow),
 		GroupMembershipRemovalFlow: mergeFlowTypeConfig(
 			ro.GroupMembershipRemovalFlow, wr.GroupMembershipRemovalFlow),
-		ActionDeletionFlow: mergeFlowTypeConfig(
-			ro.ActionDeletionFlow, wr.ActionDeletionFlow),
 
 		UserUnlockFlow:         mergeFlowTypeConfig(ro.UserUnlockFlow, wr.UserUnlockFlow),
 		UserSuspendFlow:        mergeFlowTypeConfig(ro.UserSuspendFlow, wr.UserSuspendFlow),

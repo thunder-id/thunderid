@@ -19,6 +19,7 @@ Access tokens are self-contained JWTs, so a resource server that validates them 
 | **Grant** | Every token of one authorization grant, by its `tfid` | Sign-out, refresh-token replay, authorization-code replay |
 | **Subject** | Every token issued to one user, agent, or application, by its `sub` | A user is deleted; a user, agent, or application is suspended |
 | **Client** | Every token issued through one OAuth client, by its client ID | An application, or an agent with an OAuth client, is suspended; an application is deleted or its client secret is replaced |
+| **Permission** | Every token carrying one permission for one resource server's audience, whoever holds it | An action is deleted |
 
 A token is rejected if **any** of these matches.
 
@@ -121,6 +122,14 @@ The revocation runs before the change is written, and if it fails nothing is wri
 The Console's secret regeneration flow revokes until the new secret is written, as the API does.
 
 The revocation runs as two **system flows**: flows built into the <ProductName /> binary, one that a service runs before it writes the change and one it runs after. They are not resources: they are never stored, they cannot be edited or started through any API, and they never ask for input. A failure before the write leaves the application as it was. A failure after it is reported as an error: a deletion keeps the application's record, so deleting it again revokes and removes it, and a secret replacement keeps the new secret, which the refresh grant already enforces by refusing the refresh tokens issued before it.
+
+## Action Deletion
+
+Deleting an action revokes every token that carries the action's permission for the resource server's audience, whoever holds it, and then removes the action. This happens whichever way the action is deleted: from the Console, or through the `DELETE /resource-servers/{id}/actions/{actionId}` or `DELETE /resource-servers/{id}/resources/{resourceId}/actions/{actionId}` API. Deleting an action that does not exist revokes nothing.
+
+The revocation runs as two system flows, as for [application deletion](#application-deletion-and-secret-regeneration): one before the action is removed and one after. A failure before the write leaves the action as it was. Once the removal is committed, the second flow moves the cutoff to the time it runs, so a token issued while the action was being removed is revoked too. If that second flow fails, the failure is reported as an error, but the action is already removed: the tokens the first flow revoked stay revoked, and deleting the action again finds nothing to delete and revokes nothing more. No API reruns the second flow or revokes a permission on its own, so a token issued while the action was being removed stays valid until it expires, unless it is revoked through `/oauth2/revoke`.
+
+Action deletion has no administration flow. The `actionDeletionFlow` flow configuration key, its `default-action-deletion-flow` default, and the **Delete Action** executor (`ActionDeletionExecutor`) are removed, so a custom flow that used them no longer runs. Remove the `actionDeletionFlow` entry from the flow configuration and the executor from custom flows, and delete actions from the Console or through the API above.
 
 ## Where Revocation Is Enforced
 

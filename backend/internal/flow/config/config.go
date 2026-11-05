@@ -52,7 +52,6 @@ type FlowSectionConfig struct {
 	RolePermissionRemovalFlow  FlowTypeConfig `json:"rolePermissionRemovalFlow"`
 	GroupDeletionFlow          FlowTypeConfig `json:"groupDeletionFlow"`
 	GroupMembershipRemovalFlow FlowTypeConfig `json:"groupMembershipRemovalFlow"`
-	ActionDeletionFlow         FlowTypeConfig `json:"actionDeletionFlow"`
 
 	UserUnlockFlow           FlowTypeConfig `json:"userUnlockFlow"`
 	UserSuspendFlow          FlowTypeConfig `json:"userSuspendFlow"`

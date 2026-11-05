@@ -21,16 +21,12 @@ const (
 	rolePermissionRemovalFlowHandle  = "default-role-permission-removal-flow"
 	groupDeletionFlowHandle          = "default-group-deletion-flow"
 	groupMembershipRemovalFlowHandle = "default-group-membership-removal-flow"
-	actionDeletionFlowHandle         = "default-action-deletion-flow"
 )
 
 const (
 	groupTargetInput          = "targetGroupId"
 	memberTargetInput         = "targetMemberId"
 	permissionsTargetInput    = "targetPermissions"
-	resourceServerTargetInput = "targetResourceServerId"
-	resourceTargetInput       = "targetResourceId"
-	actionTargetInput         = "targetActionId"
 )
 
 const (
@@ -98,9 +94,6 @@ const (
 	errCodeInvalidGroupMember       = "GRP-1007"
 	errCodeImmutableGroup           = "GRP-1015"
 	errCodeGroupNestingTooDeep      = "GRP-1017"
-	errCodeResourceServerNotFound   = "RES-1003"
-	errCodeResourceNotFound         = "RES-1008"
-	errCodeActionNotFound           = "RES-1009"
 	errCodeImmutableAction          = "RES-1020"
 	errCodeMalformedRolePermissions = "FET-1110"
 	errCodeRequiredInputEmpty       = "FET-1111"
@@ -170,7 +163,7 @@ func (ts *AuthorizationAdministrationFlowTestSuite) SetupSuite() {
 
 	for _, handle := range []string{
 		roleDeletionFlowHandle, rolePermissionRemovalFlowHandle, groupDeletionFlowHandle,
-		groupMembershipRemovalFlowHandle, actionDeletionFlowHandle, roleAssignmentRemovalFlowHandle,
+		groupMembershipRemovalFlowHandle, roleAssignmentRemovalFlowHandle,
 	} {
 		flowID, flowErr := testutils.GetFlowIDByHandle(handle, administrationFlowType)
 		ts.Require().NoError(flowErr, "Failed to resolve the shipped %s", handle)
@@ -463,32 +456,23 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupMembershipRemovalFl
 		"A scope held through an ancestor group must be revoked when the path to it is cut")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestActionDeletionFlow_RevokesTheScopeAndDeletesTheAction() {
+// Deleting an action through the management API revokes every token carrying its scope, and leaves
+// tokens carrying another scope alone.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteAction_RevokesTheScopeAndDeletesTheAction() {
 	ts.createRole("Authz Flow Retiring Administrator", []string{scopeRetired, scopeRetiredNeighbor},
 		testutils.Assignment{ID: ts.appID, Type: "app"})
 	retired := grantedToken(&ts.Suite, authzFlowClient, scopeRetired)
 	neighbor := grantedToken(&ts.Suite, authzFlowClient, scopeRetiredNeighbor)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[actionDeletionFlowHandle], map[string]string{
-		resourceServerTargetInput: ts.resourceServerID,
-		actionTargetInput:         ts.actionIDs[scopeRetired],
-	})
+	status, body := ts.adminDelete(
+		fmt.Sprintf("/resource-servers/%s/actions/%s", ts.resourceServerID, ts.actionIDs[scopeRetired]))
 
-	requireCompleted(&ts.Suite, step)
+	ts.Require().Equal(http.StatusNoContent, status, "Action delete response: %s", string(body))
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, retired), "A token carrying the retired scope must be rejected")
 	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, neighbor),
 		"The row is keyed on one scope, so a token carrying a different one must be untouched")
 	ts.False(ts.actionExists(ts.actionIDs[scopeRetired]), "The action must be deleted")
 	delete(ts.actionIDs, scopeRetired)
-}
-
-func (ts *AuthorizationAdministrationFlowTestSuite) TestActionDeletionFlow_MissingTargetDoesNotComplete() {
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[actionDeletionFlowHandle], map[string]string{
-		actionTargetInput: ts.actionIDs[scopeRetiredNeighbor],
-	})
-
-	ts.NotEqual("COMPLETE", step.FlowStatus, "A flow with no resource server must not complete")
-	ts.True(ts.actionExists(ts.actionIDs[scopeRetiredNeighbor]), "The action must be untouched")
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_RejectAnonymousCallers() {
@@ -502,10 +486,6 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_RejectAnonymousCal
 		rolePermissionRemovalFlowHandle:  {roleTargetInput: roleID, permissionsTargetInput: "[]"},
 		groupDeletionFlowHandle:          {groupTargetInput: groupID},
 		groupMembershipRemovalFlowHandle: {groupTargetInput: groupID, memberTargetInput: ts.appID},
-		actionDeletionFlowHandle: {
-			resourceServerTargetInput: ts.resourceServerID,
-			actionTargetInput:         ts.actionIDs[scopeRetiredNeighbor],
-		},
 	}
 	for handle, inputs := range cases {
 		ts.Run(handle, func() {
@@ -942,55 +922,36 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupMembershipRemovalFl
 	ts.Equal([]string{ts.appID}, ts.groupMemberIDs(childID), "The removed group must keep its own members")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestActionDeletionFlow_RefusalsLeaveTheActionInPlace() {
-	actionID := ts.actionIDs[scopeRetiredNeighbor]
-	cases := []struct {
-		name   string
-		inputs map[string]string
-		code   string
-	}{
-		{"resource server that does not exist", map[string]string{
-			resourceServerTargetInput: unknownID,
-			actionTargetInput:         actionID,
-		}, errCodeResourceServerNotFound},
-		{"action the resource server does not define", map[string]string{
-			resourceServerTargetInput: ts.resourceServerID,
-			actionTargetInput:         unknownID,
-		}, errCodeActionNotFound},
-		{"declarative resource server", map[string]string{
-			resourceServerTargetInput: declarativeResourceServerID,
-			actionTargetInput:         actionID,
-		}, errCodeImmutableAction},
-	}
-	for _, tc := range cases {
-		ts.Run(tc.name, func() {
-			step := executeAsAdmin(&ts.Suite, ts.flowIDs[actionDeletionFlowHandle], tc.inputs)
-			ts.requireRefused(step, tc.code, tc.name)
-		})
-	}
+// An action of a declarative resource server is owned by its file, so deleting it is refused before
+// anything is revoked.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteAction_DeclarativeResourceServerIsRefused() {
+	status, body := ts.adminDelete(fmt.Sprintf("/resource-servers/%s/actions/%s",
+		declarativeResourceServerID, ts.actionIDs[scopeRetiredNeighbor]))
 
-	ts.True(ts.actionExists(actionID), "No refused deletion may remove the action")
+	ts.Equal(http.StatusBadRequest, status, "Action delete response: %s", string(body))
+	var apiErr testutils.ErrorResponse
+	ts.Require().NoError(json.Unmarshal(body, &apiErr), "Action delete response: %s", string(body))
+	ts.Equal(errCodeImmutableAction, apiErr.Code, "The immutable-action refusal must reach the caller")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestActionDeletionFlow_UnknownResourceIsRefused() {
+// A delete naming a resource that does not exist finds no action, so it succeeds without revoking
+// anything and leaves the action where it is.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteAction_UnknownResourceRevokesNothing() {
 	actionID := ts.nestedActionIDs[authzFlowNestedKeepAction]
 	permission := ts.nestedPermissions[authzFlowNestedKeepAction]
 	ts.createRole("Authz Flow Unknown Resource Administrator", []string{permission},
 		testutils.Assignment{ID: ts.appID, Type: "app"})
 	token := grantedToken(&ts.Suite, authzFlowClient, permission)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[actionDeletionFlowHandle], map[string]string{
-		resourceServerTargetInput: ts.resourceServerID,
-		resourceTargetInput:       unknownID,
-		actionTargetInput:         actionID,
-	})
+	status, body := ts.adminDelete(fmt.Sprintf("/resource-servers/%s/resources/%s/actions/%s",
+		ts.resourceServerID, unknownID, actionID))
 
-	ts.requireRefused(step, errCodeResourceNotFound, "the resource does not exist")
+	ts.Equal(http.StatusNoContent, status, "Action delete response: %s", string(body))
 	ts.True(ts.resourceActionExists(actionID), "The action must be untouched")
-	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, token), "A refused deletion must not retire the scope")
+	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, token), "A delete that found nothing must not retire the scope")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestActionDeletionFlow_RetiresAnActionDefinedOnAResource() {
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteAction_RetiresAnActionDefinedOnAResource() {
 	retiredPermission := ts.nestedPermissions[authzFlowNestedRetireAction]
 	keptPermission := ts.nestedPermissions[authzFlowNestedKeepAction]
 	ts.createRole("Authz Flow Resource Action Administrator", []string{retiredPermission, keptPermission},
@@ -998,13 +959,9 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestActionDeletionFlow_Retir
 	retired := grantedToken(&ts.Suite, authzFlowClient, retiredPermission)
 	kept := grantedToken(&ts.Suite, authzFlowClient, keptPermission)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[actionDeletionFlowHandle], map[string]string{
-		resourceServerTargetInput: ts.resourceServerID,
-		resourceTargetInput:       ts.nestedResourceID,
-		actionTargetInput:         ts.nestedActionIDs[authzFlowNestedRetireAction],
-	})
+	status, body := ts.adminDelete(ts.resourceActionPath(ts.nestedActionIDs[authzFlowNestedRetireAction]))
 
-	requireCompleted(&ts.Suite, step)
+	ts.Require().Equal(http.StatusNoContent, status, "Resource action delete response: %s", string(body))
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, retired),
 		"A token carrying the retired resource action's scope must be rejected")
 	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, kept),
@@ -1050,6 +1007,21 @@ func (ts *AuthorizationAdministrationFlowTestSuite) adminGet(path string) (int, 
 
 	resp, err := testutils.GetHTTPClient().Do(req)
 	ts.Require().NoError(err, "Administrative read failed")
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	return resp.StatusCode, body
+}
+
+func (ts *AuthorizationAdministrationFlowTestSuite) adminDelete(path string) (int, []byte) {
+	ts.T().Helper()
+
+	req, err := http.NewRequest(http.MethodDelete, testServerURL+path, nil)
+	ts.Require().NoError(err)
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Administrative delete failed")
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)

@@ -265,9 +265,6 @@ var catalog = map[string]providers.ExecutorMeta{
 		SupportedModes:     []string{ExecutorModeGroupDeletion, ExecutorModeGroupMembershipRemoval},
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
 	},
-	ExecutorNameActionDeletion: {
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
-	},
 	ExecutorNameSharing: {
 		SupportedModes:     []string{ExecutorModeShare, ExecutorModeValidate},
 		SupportedFlowTypes: []providers.FlowType{"INVITATION", "AUTHENTICATION", "REGISTRATION"},

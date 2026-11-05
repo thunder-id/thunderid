@@ -420,10 +420,6 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			reg.RegisterExecutor(ExecutorNameGroup,
 				newGroupExecutor(deps.FlowFactory, deps.GroupService))
 		},
-		ExecutorNameActionDeletion: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameActionDeletion,
-				newActionDeletionExecutor(deps.FlowFactory, deps.ResourceMgtService))
-		},
 		ExecutorNameSessionRevocation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSessionRevocation,
 				newSessionRevocationExecutor(deps.FlowFactory, deps.SessionService))
@@ -612,5 +608,4 @@ type groupAdminProvider interface {
 type resourceAdminProvider interface {
 	ValidateDeleteAction(ctx context.Context, resourceServerID string, resourceID *string, id string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
-	DeleteAction(ctx context.Context, resourceServerID string, resourceID *string, id string) *tidcommon.ServiceError
 }

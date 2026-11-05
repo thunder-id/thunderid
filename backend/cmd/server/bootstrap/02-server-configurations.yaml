@@ -30,8 +30,6 @@ value:
     defaultHandle: default-group-deletion-flow
   groupMembershipRemovalFlow:
     defaultHandle: default-group-membership-removal-flow
-  actionDeletionFlow:
-    defaultHandle: default-action-deletion-flow
   userUnlockFlow:
     defaultHandle: default-user-unlock-flow
   userSuspendFlow:
