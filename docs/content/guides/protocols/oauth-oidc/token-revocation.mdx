@@ -7,7 +7,7 @@ description: RFC 7009 token revocation in {{ProductName}}, from revoking a singl
 
 # Token Revocation
 
-**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, an application deletion, a role deletion, a group deletion, a role assignment removal, or a role permission removal can invalidate many tokens at once.
+**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, an application deletion, a role deletion, a group deletion, a role assignment removal, a role permission removal, or an action deletion can invalidate many tokens at once.
 
 Access tokens are self-contained JWTs, so a resource server that validates them locally has no way to know a token was revoked. <ProductName /> solves this with a denylist that both the authorization server and resource servers consult. The scopes below differ only in what goes on that list.
 
@@ -20,6 +20,7 @@ Access tokens are self-contained JWTs, so a resource server that validates them 
 | **Subject** | Every token issued to one user, agent, or application, by its `sub` | A user is deleted; a user, agent, or application is suspended |
 | **Client** | Every token issued through one OAuth client, by its client ID | An application, or an agent with an OAuth client, is suspended; an application is deleted or its client secret is replaced |
 | **Subject and permission** | Every token issued to one user, agent, or application that carries one of the given permissions for its audience | A group whose roles grant those permissions is deleted, for each of its members, or a member is removed from it; a role stops granting a permission, for each of its holders |
+| **Permission** | Every token carrying one permission for one resource server's audience, whoever holds it | An action is deleted |
 
 A token is rejected if **any** of these matches.
 
@@ -185,6 +186,14 @@ The revocation runs as two system flows, as an application change does. The firs
 When the server reads roles from both files and the database, an update that drops a permission from a role with more assignments than it can read in that mode is refused with `ROL-1017`, and the role is left as it was. Remove some of the role's assignments first, each of which revokes only that assignee's tokens, then update the role.
 
 The role permission removal administration flow (`default-role-permission-removal-flow`), its `rolePermissionRemovalFlow` server configuration entry, and the `role_permission_removal` mode of the Role executor are removed, since every way of updating a role now revokes on its own. Drop any `rolePermissionRemovalFlow` entry from the `flow` server configuration, delete the stored `default-role-permission-removal-flow` from a deployment bootstrapped before this change (`DELETE /flows/{id}`, or from the Console's flows page), and update roles through the Console or `PUT /roles/{id}`. A custom flow that uses the removed executor mode no longer loads.
+
+## Action Deletion
+
+Deleting an action revokes every token that carries the action's permission for the resource server's audience, whoever holds it, and then removes the action. This happens whichever way the action is deleted: from the Console, or through the `DELETE /resource-servers/{id}/actions/{actionId}` or `DELETE /resource-servers/{id}/resources/{resourceId}/actions/{actionId}` API. Deleting an action that does not exist revokes nothing.
+
+The revocation runs as two system flows, as for [application deletion](#application-deletion-and-secret-regeneration): one before the action is removed and one after. A failure before the write leaves the action as it was. Once the removal is committed, the second flow moves the cutoff to the time it runs, so a token issued while the action was being removed is revoked too. If that second flow fails, the failure is reported as an error, but the action is already removed: the tokens the first flow revoked stay revoked, and deleting the action again finds nothing to delete and revokes nothing more. No API reruns the second flow or revokes a permission on its own, so a token issued while the action was being removed stays valid until it expires, unless it is revoked through `/oauth2/revoke`.
+
+Action deletion has no administration flow. The `actionDeletionFlow` server configuration entry, its `default-action-deletion-flow` default, and the **Delete Action** executor (`ActionDeletionExecutor`) are removed, so a custom flow that used them no longer runs. Drop any `actionDeletionFlow` entry from the `flow` server configuration, delete the stored `default-action-deletion-flow` from a deployment bootstrapped before this change (`DELETE /flows/{id}`, or from the Console's flows page), remove the executor from custom flows, and delete actions from the Console or through the API above.
 
 ## Where Revocation Is Enforced
 

@@ -110,7 +110,6 @@ export const FLOW_PAGE_SIZE = 100;
  */
 export const AdministrationFlowConfigKey = {
   SECRET_REGENERATION: 'secretRegenerationFlow',
-  ACTION_DELETION: 'actionDeletionFlow',
   USER_UNLOCK: 'userUnlockFlow',
   USER_SUSPEND: 'userSuspendFlow',
   USER_UNSUSPEND: 'userUnsuspendFlow',
@@ -129,12 +128,9 @@ export type AdministrationFlowConfigKeyValue =
  * the wrong place.
  */
 export const AdministrationFlowInput = {
-  ACTION: 'targetActionId',
   APPLICATION: 'targetApplicationId',
   GROUP: 'targetGroupId',
   OPERATOR_NOTE: 'operatorNote',
-  RESOURCE: 'targetResourceId',
-  RESOURCE_SERVER: 'targetResourceServerId',
   ROLE: 'targetRoleId',
   SUBJECT: 'subject',
 } as const;

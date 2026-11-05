@@ -2002,8 +2002,6 @@ var defaultMessages = map[string]string{
 	"flows.executor.errors.account_locked_description": "Sign-in is locked. Try again later or contact an administrator.",
 	"flows.executor.errors.account_suspended": "Account suspended",
 	"flows.executor.errors.account_suspended_description": "This account is suspended. Contact an administrator",
-	"flows.executor.errors.action_deletion_failed": "Action deletion failed",
-	"flows.executor.errors.action_deletion_failed_desc": "The action may already be deleted, or it changed after the request was validated",
 	"flows.executor.errors.action_deletion_not_allowed": "Action deletion not allowed",
 	"flows.executor.errors.action_deletion_not_allowed_desc": "The resource server is declarative, or the resource server, resource or action no longer exists",
 	"flows.executor.errors.ambiguous_entity_identity": "Ambiguous {{param(entity)}} identity",

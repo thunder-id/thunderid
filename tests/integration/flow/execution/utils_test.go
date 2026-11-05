@@ -12,7 +12,6 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
@@ -83,20 +82,6 @@ func updateRolePermissions(roleID, ouID, resourceServerID, name string, permissi
 		}
 	}
 	return testutils.UpdateRole(roleID, role)
-}
-
-func executeAsAdmin(s *suite.Suite, flowID string, inputs map[string]string) *common.FlowStep {
-	s.T().Helper()
-
-	result, err := common.ExecuteAdministrationFlow(flowID, inputs, true)
-	s.Require().NoError(err, "Failed to execute administration flow %s", flowID)
-	s.Require().Equal(http.StatusOK, result.StatusCode, "Flow error response: %+v", result.Error)
-	return result.Step
-}
-
-func requireCompleted(s *suite.Suite, step *common.FlowStep) {
-	s.T().Helper()
-	s.Require().Equal("COMPLETE", step.FlowStatus, "Flow response: %+v", step)
 }
 
 // removeAssignmentThroughAPI removes the assignment through the management API, in the organization unit

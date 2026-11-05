@@ -2042,8 +2042,6 @@ value:
     defaultHandle: default-role-deletion-flow
   rolePermissionRemovalFlow:
     defaultHandle: default-role-permission-removal-flow
-  actionDeletionFlow:
-    defaultHandle: default-action-deletion-flow
   userUnlockFlow:
     defaultHandle: default-user-unlock-flow
   userSuspendFlow:
