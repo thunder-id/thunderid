@@ -177,7 +177,7 @@ export default function ShowClientSecret({
               <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
                 {t(
                   'applications:clientSecret.purpose',
-                  'Used to authenticate your application at the OAuth 2 token endpoint.',
+                  'Used to authenticate your application at the OAuth 2.0 token endpoint.',
                 )}
               </Typography>
               <TextField
