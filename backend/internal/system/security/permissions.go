@@ -235,6 +235,17 @@ const (
 	// ActionListNotificationTemplates lists notification templates.
 	ActionListNotificationTemplates Action = "notificationtemplate:list"
 
+	// ActionCreateApplication creates a new application.
+	ActionCreateApplication Action = "app:create"
+	// ActionReadApplication reads an application.
+	ActionReadApplication Action = "app:read"
+	// ActionUpdateApplication updates an application.
+	ActionUpdateApplication Action = "app:update"
+	// ActionDeleteApplication deletes an application.
+	ActionDeleteApplication Action = "app:delete"
+	// ActionListApplications lists applications.
+	ActionListApplications Action = "app:list"
+
 	// ActionCreateFlow creates a new flow.
 	ActionCreateFlow Action = "flow:create"
 	// ActionReadFlow reads a flow.
@@ -434,6 +445,10 @@ type SystemPermissions struct {
 	AuthzDetailCreate          string
 	AuthzDetailUpdate          string
 	AuthzDetailDelete          string
+	AppView                    string
+	AppCreate                  string
+	AppUpdate                  string
+	AppDelete                  string
 	// Catalog holds every permission declared under Root, in declaration order: each resource
 	// followed by its actions.
 	Catalog []string
@@ -539,6 +554,10 @@ func InitSystemPermissions(handle string) {
 		AuthzDetailCreate:          buildPermission(handle, "system", "authzdetail", catalogActionCreate),
 		AuthzDetailUpdate:          buildPermission(handle, "system", "authzdetail", catalogActionUpdate),
 		AuthzDetailDelete:          buildPermission(handle, "system", "authzdetail", catalogActionDelete),
+		AppView:                    buildPermission(handle, "system", "app", catalogActionView),
+		AppCreate:                  buildPermission(handle, "system", "app", catalogActionCreate),
+		AppUpdate:                  buildPermission(handle, "system", "app", catalogActionUpdate),
+		AppDelete:                  buildPermission(handle, "system", "app", catalogActionDelete),
 	}
 	for _, entry := range systemCatalog {
 		p.Catalog = append(p.Catalog, buildPermission(handle, "system", string(entry.resource)))
@@ -598,6 +617,13 @@ func InitSystemPermissions(handle string) {
 		ActionUpdateNotificationTemplate: p.NotificationTemplateUpdate,
 		ActionDeleteNotificationTemplate: p.NotificationTemplateDelete,
 		ActionListNotificationTemplates:  p.NotificationTemplateView,
+
+		// Application actions.
+		ActionCreateApplication: p.AppCreate,
+		ActionReadApplication:   p.AppView,
+		ActionUpdateApplication: p.AppUpdate,
+		ActionDeleteApplication: p.AppDelete,
+		ActionListApplications:  p.AppView,
 
 		// Flow actions.
 		ActionCreateFlow: p.FlowCreate,
@@ -683,6 +709,8 @@ func InitSystemPermissions(handle string) {
 		{"POST /users/me/update-credentials", ""},
 		{"GET /register/passkey/**", ""},
 		{"POST /register/passkey/**", ""},
+		// MCP checks each tool call against the permission the tool is mapped to, so a token reaches it as its caller.
+		{"* /mcp/**", ""},
 
 		// Organization unit APIs. "/tree/{path...}" addresses an organization unit by its handle path.
 		{"GET /organization-units", p.OUView},
@@ -877,6 +905,19 @@ func InitSystemPermissions(handle string) {
 		{"PUT /projects/**", p.ProjectUpdate},
 		{"DELETE /projects/**", p.ProjectDelete},
 
+		// Application APIs. A sharing policy is part of the application it governs, so changing one
+		// updates the application. Sharing policy rules are listed before the "**" rules.
+		{"GET /applications", p.AppView},
+		{"POST /applications", p.AppCreate},
+		{"POST /applications/*/sharing-policies", p.AppUpdate},
+		{"DELETE /applications/*/sharing-policies/**", p.AppUpdate},
+		{"GET /applications/**", p.AppView},
+		{"PUT /applications/**", p.AppUpdate},
+		{"DELETE /applications/**", p.AppDelete},
+		// CIMD preview is a step of creating an application. When another resource uses CIMD, give
+		// each its own route on the shared CIMD service, gated by that resource's create permission.
+		{"POST /cimd/preview", p.AppCreate},
+
 		// Variable store APIs. The whole surface requires root rather than a narrower permission:
 		// the store holds credentials, and even the list of names is sensitive. This matches the
 		// default for an unlisted path, and says so rather than relying on it.
@@ -949,6 +990,14 @@ func InitSystemPermissions(handle string) {
 		"get_authorization_detail_type_by_id": p.AuthzDetailView,
 		"create_authorization_detail_type":    p.AuthzDetailCreate,
 		"update_authorization_detail_type":    p.AuthzDetailUpdate,
+
+		// Application tools.
+		"list_applications":            p.AppView,
+		"get_application_by_id":        p.AppView,
+		"get_application_by_client_id": p.AppView,
+		"get_application_templates":    p.AppView,
+		"create_application":           p.AppCreate,
+		"update_application":           p.AppUpdate,
 	}
 }
 
@@ -1018,6 +1067,20 @@ func HasSystemPermission(permissions []string) bool {
 	}
 	for _, p := range permissions {
 		if p == sysPerms.Root {
+			return true
+		}
+	}
+	return false
+}
+
+// HasAnySystemPermission reports whether permissions include the root system permission or any permission
+// under it.
+func HasAnySystemPermission(permissions []string) bool {
+	if sysPerms == nil {
+		return false
+	}
+	for _, p := range permissions {
+		if p == sysPerms.Root || strings.HasPrefix(p, sysPerms.Root+":") {
 			return true
 		}
 	}

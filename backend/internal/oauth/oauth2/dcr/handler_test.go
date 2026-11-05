@@ -317,12 +317,14 @@ func TestHandleDCRRegistration_ClosedDCR_NoToken(t *testing.T) {
 	mockService.AssertNotCalled(t, "RegisterClient")
 }
 
-// TestHandleDCRRegistration_ClosedDCR_InsufficientPermissions tests that a token without 'system'
-// permission is rejected when insecure=false.
+// TestHandleDCRRegistration_ClosedDCR_InsufficientPermissions tests that a token without the
+// application create permission is rejected when insecure=false.
 // Uses the default config where Insecure defaults to false (secure by default).
 func TestHandleDCRRegistration_ClosedDCR_InsufficientPermissions(t *testing.T) {
 	_ = config.InitializeServerRuntime("test", &config.Config{})
 	defer config.ResetServerRuntime()
+	security.InitSystemPermissions("")
+	defer security.InitSystemPermissions("")
 
 	mockService := NewDCRServiceInterfaceMock(t)
 	handler := newDCRHandler(mockService, testhelpers.OAuthConfig())
@@ -345,9 +347,17 @@ func TestHandleDCRRegistration_ClosedDCR_InsufficientPermissions(t *testing.T) {
 }
 
 // TestHandleDCRRegistration_ClosedDCR_WithSystemPermission tests that a token with the 'system'
-// permission is accepted when insecure=false.
+// permission, or the application create permission under it, is accepted when insecure=false.
 // Uses the default config where Insecure defaults to false (secure by default).
 func TestHandleDCRRegistration_ClosedDCR_WithSystemPermission(t *testing.T) {
+	for _, perm := range []string{"system", "system:app", "system:app:create"} {
+		t.Run(perm, func(t *testing.T) { assertClosedDCRRegistrationAllowed(t, perm) })
+	}
+}
+
+// TestHandleDCRRegistration_ClosedDCR_OtherAppPermission tests that an application permission
+// other than create does not allow registration.
+func TestHandleDCRRegistration_ClosedDCR_OtherAppPermission(t *testing.T) {
 	_ = config.InitializeServerRuntime("test", &config.Config{})
 	defer config.ResetServerRuntime()
 	security.InitSystemPermissions("")
@@ -356,7 +366,28 @@ func TestHandleDCRRegistration_ClosedDCR_WithSystemPermission(t *testing.T) {
 	mockService := NewDCRServiceInterfaceMock(t)
 	handler := newDCRHandler(mockService, testhelpers.OAuthConfig())
 
-	secCtx := security.NewSecurityContextForTest("admin", "ou1", "tok", []string{"system"}, nil)
+	secCtx := security.NewSecurityContextForTest("user1", "ou1", "tok", []string{"system:app:view"}, nil)
+	req := httptest.NewRequest(http.MethodPost, "/oauth2/dcr/register", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(security.WithSecurityContextTest(context.Background(), secCtx))
+	rr := httptest.NewRecorder()
+
+	handler.HandleDCRRegistration(rr, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	mockService.AssertNotCalled(t, "RegisterClient")
+}
+
+func assertClosedDCRRegistrationAllowed(t *testing.T, perm string) {
+	_ = config.InitializeServerRuntime("test", &config.Config{})
+	defer config.ResetServerRuntime()
+	security.InitSystemPermissions("")
+	defer security.InitSystemPermissions("")
+
+	mockService := NewDCRServiceInterfaceMock(t)
+	handler := newDCRHandler(mockService, testhelpers.OAuthConfig())
+
+	secCtx := security.NewSecurityContextForTest("admin", "ou1", "tok", []string{perm}, nil)
 	ctx := security.WithSecurityContextTest(context.Background(), secCtx)
 
 	request := &DCRRegistrationRequest{
@@ -576,4 +607,51 @@ func (s *DCRHandlerTestSuite) TestGet_MissingClientIDIsNotFound() {
 	s.handler.HandleGetClientConfiguration(rr, req)
 
 	s.Equal(http.StatusNotFound, rr.Code)
+}
+
+// Each client configuration operation accepts its own application permission and refuses another.
+func (s *DCRHandlerTestSuite) TestClientConfiguration_RequiresMatchingAppPermission() {
+	putBody := []byte(`{"client_id":"` + testClientID + `"}`)
+	cases := []struct {
+		name    string
+		method  string
+		allowed string
+		denied  string
+		body    []byte
+		setup   func()
+		handle  func(http.ResponseWriter, *http.Request)
+		success int
+	}{
+		{"get", http.MethodGet, "system:app:view", "system:app:update", nil,
+			func() {
+				s.mockService.On("GetClient", mock.Anything, testClientID).
+					Return(&DCRRegistrationResponse{ClientID: testClientID}, (*tidcommon.ServiceError)(nil)).Once()
+			},
+			s.handler.HandleGetClientConfiguration, http.StatusOK},
+		{"put", http.MethodPut, "system:app:update", "system:app:view", putBody,
+			func() {
+				s.mockService.On("UpdateClient", mock.Anything, testClientID, mock.Anything).
+					Return(&DCRRegistrationResponse{ClientID: testClientID}, (*tidcommon.ServiceError)(nil)).Once()
+			},
+			s.handler.HandleUpdateClientConfiguration, http.StatusOK},
+		{"delete", http.MethodDelete, "system:app:delete", "system:app:update", nil,
+			func() {
+				s.mockService.On("DeleteClient", mock.Anything, testClientID).
+					Return((*tidcommon.ServiceError)(nil)).Once()
+			},
+			s.handler.HandleDeleteClientConfiguration, http.StatusNoContent},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			rr := httptest.NewRecorder()
+			tc.handle(rr, s.newRequestWithPermissions(tc.method, tc.body, []string{tc.denied}))
+			s.Equal(http.StatusUnauthorized, rr.Code)
+
+			tc.setup()
+			rr = httptest.NewRecorder()
+			tc.handle(rr, s.newRequestWithPermissions(tc.method, tc.body, []string{tc.allowed}))
+			s.Equal(tc.success, rr.Code)
+		})
+	}
+	s.mockService.AssertExpectations(s.T())
 }

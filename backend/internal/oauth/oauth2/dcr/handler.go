@@ -64,10 +64,11 @@ func (dh *dcrHandler) HandleDCRRegistration(w http.ResponseWriter, r *http.Reque
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, dcrResponse)
 }
 
-// checkDCRAuthorization verifies that the caller holds required permission.
+// checkDCRAuthorization verifies that the caller holds the application create permission.
 // Returns true if authorized, false (and writes an HTTP 401) otherwise.
 func (dh *dcrHandler) checkDCRAuthorization(r *http.Request, w http.ResponseWriter) bool {
-	if security.HasSystemPermission(security.GetPermissions(r.Context())) {
+	if security.HasSufficientPermission(security.GetPermissions(r.Context()),
+		security.GetSystemPermissions().AppCreate) {
 		return true
 	}
 	sysutils.WriteJSONError(r.Context(), w, ErrorUnauthorized.Code,
@@ -78,7 +79,7 @@ func (dh *dcrHandler) checkDCRAuthorization(r *http.Request, w http.ResponseWrit
 // HandleGetClientConfiguration handles an RFC 7592 read of a client's registration.
 func (dh *dcrHandler) HandleGetClientConfiguration(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	clientID, ok := dh.authorizeClientConfigurationRequest(r, w)
+	clientID, ok := dh.authorizeClientConfigurationRequest(r, w, security.GetSystemPermissions().AppView)
 	if !ok {
 		return
 	}
@@ -97,7 +98,7 @@ func (dh *dcrHandler) HandleGetClientConfiguration(w http.ResponseWriter, r *htt
 // HandleUpdateClientConfiguration handles an RFC 7592 update of a client's registration.
 func (dh *dcrHandler) HandleUpdateClientConfiguration(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	clientID, ok := dh.authorizeClientConfigurationRequest(r, w)
+	clientID, ok := dh.authorizeClientConfigurationRequest(r, w, security.GetSystemPermissions().AppUpdate)
 	if !ok {
 		return
 	}
@@ -131,7 +132,7 @@ func (dh *dcrHandler) HandleUpdateClientConfiguration(w http.ResponseWriter, r *
 // HandleDeleteClientConfiguration handles an RFC 7592 deletion of a client's registration.
 func (dh *dcrHandler) HandleDeleteClientConfiguration(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	clientID, ok := dh.authorizeClientConfigurationRequest(r, w)
+	clientID, ok := dh.authorizeClientConfigurationRequest(r, w, security.GetSystemPermissions().AppDelete)
 	if !ok {
 		return
 	}
@@ -145,12 +146,12 @@ func (dh *dcrHandler) HandleDeleteClientConfiguration(w http.ResponseWriter, r *
 }
 
 // authorizeClientConfigurationRequest resolves the client ID from the request path and authorizes
-// the caller by the system permission. Management is administrative: a caller holding that
-// permission may manage any registration, which is what lets one operator credential govern every
+// the caller by the required application permission. Management is administrative: a caller holding
+// that permission may manage any registration, which is what lets one operator credential govern every
 // dynamically registered client. It returns the client ID and true when the request may proceed;
 // otherwise it writes the error response and returns false.
 func (dh *dcrHandler) authorizeClientConfigurationRequest(
-	r *http.Request, w http.ResponseWriter) (string, bool) {
+	r *http.Request, w http.ResponseWriter, required string) (string, bool) {
 	ctx := r.Context()
 
 	clientID := r.PathValue("client_id")
@@ -160,7 +161,7 @@ func (dh *dcrHandler) authorizeClientConfigurationRequest(
 		return "", false
 	}
 
-	if security.HasSystemPermission(security.GetPermissions(ctx)) {
+	if security.HasSufficientPermission(security.GetPermissions(ctx), required) {
 		return clientID, true
 	}
 

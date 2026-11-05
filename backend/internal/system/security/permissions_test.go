@@ -70,6 +70,20 @@ func (s *SecurityContextTestSuite) TestHasSystemPermission() {
 	}
 }
 
+func (s *SecurityContextTestSuite) TestHasAnySystemPermission() {
+	InitSystemPermissions("")
+
+	s.True(HasAnySystemPermission([]string{"system"}))
+	s.True(HasAnySystemPermission([]string{"openid", "system:user:create"}))
+	s.False(HasAnySystemPermission([]string{"openid", "systemx", "app:system"}))
+	s.False(HasAnySystemPermission(nil))
+
+	InitSystemPermissions("mgmt")
+	s.True(HasAnySystemPermission([]string{"mgmt:system:group:view"}))
+	s.False(HasAnySystemPermission([]string{"system:group:view"}))
+	InitSystemPermissions("")
+}
+
 // ---------------------------------------------------------------------------
 // HasSufficientPermission
 // ---------------------------------------------------------------------------
@@ -288,6 +302,13 @@ func (s *SecurityContextTestSuite) TestResolveActionPermission() {
 		{name: "UpdateAuthzDetail", action: ActionUpdateAuthzDetail, wantPerm: p.AuthzDetailUpdate},
 		{name: "DeleteAuthzDetail", action: ActionDeleteAuthzDetail, wantPerm: p.AuthzDetailDelete},
 		{name: "ListAuthzDetails", action: ActionListAuthzDetails, wantPerm: p.AuthzDetailView},
+
+		// Application actions.
+		{name: "CreateApplication", action: ActionCreateApplication, wantPerm: p.AppCreate},
+		{name: "ReadApplication", action: ActionReadApplication, wantPerm: p.AppView},
+		{name: "UpdateApplication", action: ActionUpdateApplication, wantPerm: p.AppUpdate},
+		{name: "DeleteApplication", action: ActionDeleteApplication, wantPerm: p.AppDelete},
+		{name: "ListApplications", action: ActionListApplications, wantPerm: p.AppView},
 
 		// Unmapped action falls back to Root (system).
 		{name: "UnmappedAction_FallsBackToSystem", action: Action("custom:unknown"), wantPerm: p.Root},
@@ -717,6 +738,44 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			method: http.MethodDelete, path: "/flows/f-1/sharing-policies/p-1", wantPerm: p.FlowUpdate,
 		},
 
+		// ---- Application APIs ----
+		{name: "GET /applications", method: http.MethodGet, path: "/applications", wantPerm: p.AppView},
+		{name: "POST /applications", method: http.MethodPost, path: "/applications", wantPerm: p.AppCreate},
+		{name: "GET application", method: http.MethodGet, path: "/applications/app-1", wantPerm: p.AppView},
+		{name: "PUT application", method: http.MethodPut, path: "/applications/app-1", wantPerm: p.AppUpdate},
+		{
+			name:   "DELETE application",
+			method: http.MethodDelete, path: "/applications/app-1", wantPerm: p.AppDelete,
+		},
+		{
+			name:   "GET application sharing policies",
+			method: http.MethodGet, path: "/applications/app-1/sharing-policies", wantPerm: p.AppView,
+		},
+		{
+			name:   "POST application sharing policy updates the application",
+			method: http.MethodPost, path: "/applications/app-1/sharing-policies", wantPerm: p.AppUpdate,
+		},
+		{
+			name:   "PUT application sharing policy updates the application",
+			method: http.MethodPut, path: "/applications/app-1/sharing-policies/p-1", wantPerm: p.AppUpdate,
+		},
+		{
+			name:   "DELETE application sharing policy updates the application",
+			method: http.MethodDelete, path: "/applications/app-1/sharing-policies/p-1", wantPerm: p.AppUpdate,
+		},
+		{
+			name:   "GET application overlay rules",
+			method: http.MethodGet, path: "/applications/app-1/overlay-rules", wantPerm: p.AppView,
+		},
+		{
+			name:   "POST CIMD preview needs app create",
+			method: http.MethodPost, path: "/cimd/preview", wantPerm: p.AppCreate,
+		},
+		{
+			name:   "PATCH application has no rule and falls back to system",
+			method: http.MethodPatch, path: "/applications/app-1", wantPerm: p.Root,
+		},
+
 		// ---- Self-service paths (empty permission = any authenticated user) ----
 		{name: "GET /users/me self-service", method: http.MethodGet, path: "/users/me", wantPerm: ""},
 		{name: "PUT /users/me self-service", method: http.MethodPut, path: "/users/me", wantPerm: ""},
@@ -793,7 +852,7 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		// ---- Unmapped paths fall back to Root ----
 		{
 			name:   "Unmapped path falls back to system",
-			method: http.MethodGet, path: "/applications", wantPerm: p.Root,
+			method: http.MethodGet, path: "/unknown-resources", wantPerm: p.Root,
 		},
 		{name: "Root path falls back to system", method: http.MethodGet, path: "/", wantPerm: p.Root},
 		{
@@ -1123,6 +1182,7 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"GET /users/me": true, "PUT /users/me": true, "GET /users/me/**": true, "PUT /users/me/**": true,
 		"POST /users/me/update-credentials": true,
 		"GET /register/passkey/**":          true, "POST /register/passkey/**": true,
+		"* /mcp/**":       true,
 		"GET /scim/v2/Me": true, "PUT /scim/v2/Me": true,
 		"GET /scim/v2/Schemas": true, "GET /scim/v2/Schemas/**": true,
 		"GET /scim/v2/ResourceTypes": true, "GET /scim/v2/ResourceTypes/**": true,
@@ -1171,6 +1231,7 @@ func TestResourceRoutesUseResourcePermissions(t *testing.T) {
 		{ResourceTypeUserType, []string{" /user-types"}},
 		{ResourceTypeAgentType, []string{" /agent-types"}},
 		{ResourceTypeNotificationTemplate, []string{" /notification-templates"}},
+		{ResourceTypeApplication, []string{" /applications", " /cimd/"}},
 		{ResourceTypeRole, []string{" /roles"}},
 		{ResourceTypeResourceServer, []string{" /resource-servers"}},
 		{ResourceTypeConnection, []string{" /connections"}},
