@@ -4,7 +4,7 @@
 import {fireEvent, render, screen} from '@testing-library/react';
 import type {JSX, ReactNode} from 'react';
 import {MemoryRouter, Route, Routes, useLocation} from 'react-router';
-import {describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
 import {AgentsListPage, AgentCreateDialog, AgentDetailsPage} from '../../index';
 
 vi.mock('@thunderid/react', () => ({
@@ -61,6 +61,21 @@ vi.mock('@thunderid/react', () => ({
   ),
 }));
 
+const administrationMode = vi.hoisted(() => ({current: 'native'}));
+
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useAdministrationOperation: () => administrationMode.current,
+}));
+
+vi.mock('@thunderid/configure-agents', () => ({
+  AgentOnboardFlowPage: ({embedded, onClose}: {embedded: boolean; onClose: () => void}): JSX.Element => (
+    <button type="button" onClick={onClose}>
+      onboarding flow {embedded ? 'embedded' : 'full'}
+    </button>
+  ),
+}));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({t: (key: string, fallback?: string) => (typeof fallback === 'string' ? fallback : key)}),
 }));
@@ -101,6 +116,18 @@ describe('AgentsListPage', () => {
 });
 
 describe('AgentCreateDialog', () => {
+  afterEach(() => {
+    administrationMode.current = 'native';
+  });
+
+  it('runs the configured onboarding flow when creation is not native', () => {
+    administrationMode.current = 'flow';
+    renderAt('/agents/new', <AgentCreateDialog />);
+    expect(screen.queryByRole('button', {name: 'create'})).toBeNull();
+    fireEvent.click(screen.getByRole('button', {name: 'onboarding flow embedded'}));
+    expect(screen.getByTestId('location').textContent).toBe('/agents');
+  });
+
   it('opens the new agent once it is created', () => {
     renderAt('/agents/new', <AgentCreateDialog />);
     fireEvent.click(screen.getByRole('button', {name: 'create'}));
