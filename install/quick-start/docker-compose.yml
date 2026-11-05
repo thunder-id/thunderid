@@ -4,7 +4,7 @@
 services:
   # Initialize database from the image
   thunderid-db-init:
-    image: ghcr.io/thunder-id/thunderid:latest
+    image: ghcr.io/thunder-id/thunderid-gateway:latest
     command: sh -c "cp -r /opt/thunderid/database/* /data/"
     volumes:
       - thunderid-db:/data
@@ -12,7 +12,7 @@ services:
 
   # Run setup once with the shared database
   thunderid-setup:
-    image: ghcr.io/thunder-id/thunderid:latest
+    image: ghcr.io/thunder-id/thunderid-gateway:latest
     command: ./setup.sh
     volumes:
       - thunderid-db:/opt/thunderid/database
@@ -27,7 +27,7 @@ services:
 
   # Run ThunderID server with the shared database
   thunderid:
-    image: ghcr.io/thunder-id/thunderid:latest
+    image: ghcr.io/thunder-id/thunderid-gateway:latest
     depends_on:
       thunderid-setup:
         condition: service_completed_successfully

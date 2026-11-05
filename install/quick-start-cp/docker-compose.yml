@@ -8,7 +8,7 @@
 # after upgrading the image.
 services:
   thunderid-quickstart:
-    image: ghcr.io/thunder-id/thunderid-quickstart:latest
+    image: ghcr.io/thunder-id/thunderid:latest
     ports:
       # Data Plane and its Admin Console
       - "8090:8090"
