@@ -21,10 +21,16 @@ export {default as useVerificationStatus} from './api/useVerificationStatus';
 export {default as CredentialOfferDialog} from './components/CredentialOfferDialog';
 export {default as VerifiableCredentialDeleteDialog} from './components/VerifiableCredentialDeleteDialog';
 export {default as VerifiableCredentialForm} from './components/VerifiableCredentialForm';
-export {default as VerifiableCredentialsList} from './components/VerifiableCredentialsList';
+export {
+  default as VerifiableCredentialsList,
+  type VerifiableCredentialsListProps,
+} from './components/VerifiableCredentialsList';
 export {default as VerifiablePresentationDeleteDialog} from './components/VerifiablePresentationDeleteDialog';
 export {default as VerifiablePresentationForm} from './components/VerifiablePresentationForm';
-export {default as VerifiablePresentationsList} from './components/VerifiablePresentationsList';
+export {
+  default as VerifiablePresentationsList,
+  type VerifiablePresentationsListProps,
+} from './components/VerifiablePresentationsList';
 export {default as VerificationDialog} from './components/VerificationDialog';
 
 // Constants
@@ -43,10 +49,16 @@ export type {
 // Pages
 export {default as VerifiableCredentialCreatePage} from './pages/VerifiableCredentialCreatePage';
 export {default as VerifiableCredentialEditPage} from './pages/VerifiableCredentialEditPage';
-export {default as VerifiableCredentialsListPage} from './pages/VerifiableCredentialsListPage';
+export {
+  default as VerifiableCredentialsListPage,
+  type VerifiableCredentialsListPageProps,
+} from './pages/VerifiableCredentialsListPage';
 export {default as VerifiablePresentationCreatePage} from './pages/VerifiablePresentationCreatePage';
 export {default as VerifiablePresentationEditPage} from './pages/VerifiablePresentationEditPage';
-export {default as VerifiablePresentationsListPage} from './pages/VerifiablePresentationsListPage';
+export {
+  default as VerifiablePresentationsListPage,
+  type VerifiablePresentationsListPageProps,
+} from './pages/VerifiablePresentationsListPage';
 
 // Routes
 export type {VerifiableCredentialRoutePaths} from './hooks/useVerifiableCredentialRoutes';

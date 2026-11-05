@@ -8,10 +8,14 @@ import {Plus} from '@wso2/oxygen-ui-icons-react';
 import {type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
-import VerifiableCredentialsList from '../components/VerifiableCredentialsList';
+import VerifiableCredentialsList, {type VerifiableCredentialsListProps} from '../components/VerifiableCredentialsList';
 import useVerifiableCredentialRoutes from '../hooks/useVerifiableCredentialRoutes';
 
-export default function VerifiableCredentialsListPage(): JSX.Element {
+export type VerifiableCredentialsListPageProps = VerifiableCredentialsListProps;
+
+export default function VerifiableCredentialsListPage({
+  showWalletQr = false,
+}: VerifiableCredentialsListPageProps): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('VerifiableCredentialsListPage');
@@ -45,7 +49,7 @@ export default function VerifiableCredentialsListPage(): JSX.Element {
         </PageTitle.Actions>
       </PageTitle>
 
-      <VerifiableCredentialsList />
+      <VerifiableCredentialsList showWalletQr={showWalletQr} />
     </PageContent>
   );
 }
