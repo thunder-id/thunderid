@@ -7,7 +7,7 @@ description: RFC 7009 token revocation in {{ProductName}}, from revoking a singl
 
 # Token Revocation
 
-**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, or an application deletion can invalidate many tokens at once.
+**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, an application deletion, or a role assignment removal can invalidate many tokens at once.
 
 Access tokens are self-contained JWTs, so a resource server that validates them locally has no way to know a token was revoked. <ProductName /> solves this with a denylist that both the authorization server and resource servers consult. The scopes below differ only in what goes on that list.
 
@@ -121,6 +121,14 @@ The revocation runs before the change is written, and if it fails nothing is wri
 The Console's secret regeneration flow revokes until the new secret is written, as the API does.
 
 The revocation runs as two **system flows**: flows built into the <ProductName /> binary, one that a service runs before it writes the change and one it runs after. They are not resources: they are never stored, they cannot be edited or started through any API, and they never ask for input. A failure before the write leaves the application as it was. A failure after it is reported as an error: a deletion keeps the application's record, so deleting it again revokes and removes it, and a secret replacement keeps the new secret, which the refresh grant already enforces by refusing the refresh tokens issued before it.
+
+## Role Assignment Removal
+
+Removing a role from a user, group, agent, or application revokes the tokens that assignee carries with the role's permissions, and then removes the assignment. For a group, it revokes those tokens for every member of the group. This happens whichever way the assignment is removed: from the Console, or through the `POST /roles/{id}/assignments/remove` API. A token that carries none of the role's permission scopes is not affected, and the assignee's other roles are not affected.
+
+Removing an assignment the role does not have changes nothing and revokes nothing. Removing a direct assignment that a sharing policy also mandates revokes nothing either, because the assignee keeps the role through the mandate.
+
+The revocation runs as the same two system flows as [application deletion](#application-deletion-and-secret-regeneration): one before each assignment is removed, which revokes the tokens issued up to that point, and one after the removal is written, which moves the cutoff past it so a token issued while the removal ran is revoked too. If the first fails, no assignment is removed. If the second fails, the request returns an error even though the assignments are already removed. A token issued after the removal is valid, so assigning the role again restores the assignee's access for the tokens it requests from then on.
 
 ## Where Revocation Is Enforced
 

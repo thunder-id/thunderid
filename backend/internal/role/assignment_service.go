@@ -81,6 +81,8 @@ type roleAssignmentService struct {
 	sharingService    sharing.SharingServiceInterface
 	bus               eventbus.EventBusInterface
 	logger            *log.Logger
+	// systemFlows is nil where system flows are off.
+	systemFlows systemFlowProvider
 }
 
 // newRoleAssignmentService creates a new instance of roleAssignmentService.
@@ -418,8 +420,12 @@ func (as *roleAssignmentService) modifyAssignments(
 	if svcErr != nil {
 		return svcErr
 	}
+	var revocations []assignmentRevocation
 	if !adding {
 		if svcErr := as.requireDirectRemoval(ctx, id, normalized); svcErr != nil {
+			return svcErr
+		}
+		if revocations, svcErr = as.revokeRemovedAssignments(ctx, id, normalized); svcErr != nil {
 			return svcErr
 		}
 	}
@@ -443,10 +449,65 @@ func (as *roleAssignmentService) modifyAssignments(
 			log.String("action", action), log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
+	// A token issued while the assignments were being removed is revoked too. Every post flow runs, so
+	// one assignee's failure does not leave another's revocation unfinished.
+	var postErr *tidcommon.ServiceError
+	for _, revoked := range revocations {
+		if _, svcErr := runSystemFlow(ctx, as.systemFlows, systemFlowRevocationPost, revoked.inputs,
+			revoked.shared); svcErr != nil {
+			logger.Error(ctx, "Failed to run the revocation post flow", log.String("id", id),
+				log.String("assignee", revoked.inputs[systemFlowInputAssignee]), log.String("code", svcErr.Code))
+			if postErr == nil {
+				postErr = svcErr
+			}
+		}
+	}
+	if postErr != nil {
+		return postErr
+	}
 
 	logger.Debug(ctx, "Successfully modified role assignments",
 		log.String("action", successAction), log.String("id", id))
 	return nil
+}
+
+// assignmentRevocation is a removed assignment's revocation: the inputs its flows run with and what its
+// pre flow shared, for the post flow.
+type assignmentRevocation struct {
+	inputs map[string]string
+	shared map[string]string
+}
+
+// revokeRemovedAssignments revokes what each removed assignment granted before the removal is written.
+// An assignment the role does not hold directly changes nothing, so it revokes nothing, and a retry does
+// not revoke again. A refusal leaves every assignment as it was. It returns each revocation, for its
+// post flow to run once the removal is written. With system flows off it runs nothing.
+func (as *roleAssignmentService) revokeRemovedAssignments(ctx context.Context, id string,
+	normalized []RoleAssignment) ([]assignmentRevocation, *tidcommon.ServiceError) {
+	if as.systemFlows == nil {
+		return nil, nil
+	}
+	ouID := normalized[0].OUID
+	direct, svcErr := as.directAssignees(ctx, id, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	var revocations []assignmentRevocation
+	for _, assignment := range normalized {
+		if !direct[assignment.ID] {
+			continue
+		}
+		delete(direct, assignment.ID)
+		inputs := map[string]string{
+			systemFlowInputRole: id, systemFlowInputAssignee: assignment.ID, systemFlowInputAssignmentOU: ouID,
+		}
+		shared, svcErr := runSystemFlow(ctx, as.systemFlows, systemFlowRoleAssignmentRemovalPre, inputs, nil)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		revocations = append(revocations, assignmentRevocation{inputs: inputs, shared: shared})
+	}
+	return revocations, nil
 }
 
 // AddAssigneesToRoles adds assignees to multiple roles in a single transaction.

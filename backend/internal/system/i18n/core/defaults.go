@@ -2168,8 +2168,6 @@ var defaultMessages = map[string]string{
 	"flows.executor.errors.required_input_empty_desc": "The {{param(input)}} input is required and must not be empty",
 	"flows.executor.errors.role_assignment_failed": "Role assignment failed",
 	"flows.executor.errors.role_assignment_failed_desc": "The share was applied, but the selected roles could not be assigned",
-	"flows.executor.errors.role_assignment_removal_failed": "Role assignment removal failed",
-	"flows.executor.errors.role_assignment_removal_failed_desc": "The assignment may already be gone, or the caller may no longer change who holds the role",
 	"flows.executor.errors.role_assignment_removal_not_allowed": "Role assignment removal not allowed",
 	"flows.executor.errors.role_assignment_removal_not_allowed_desc": "The role or the assignee may not exist, or the caller may not change who holds the role",
 	"flows.executor.errors.role_deletion_failed": "Role deletion failed",

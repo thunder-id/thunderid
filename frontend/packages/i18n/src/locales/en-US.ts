@@ -275,7 +275,6 @@ const translations = {
     'errors.FET-1088': 'This application authenticates without a client secret, so there is none to regenerate.',
     'errors.FET-1089': 'The client secret could not be regenerated. Please try again.',
     'errors.FET-1098': 'This role assignment cannot be removed in its current state.',
-    'errors.FET-1099': 'The role assignment could not be removed. Please try again.',
     'errors.FET-1100': 'This role cannot be deleted in its current state.',
     'errors.FET-1101': 'The role could not be deleted. Please try again.',
     'errors.FET-1102': 'The permissions of this role cannot be changed in its current state.',
@@ -4282,7 +4281,6 @@ const translations = {
       'Validate an access change and plan the revocation of the scopes it takes away, carried out by the executors that follow.',
 
     // Role executor modes
-    'core.executions.roleExecutor.mode.roleAssignmentRemoval': 'Remove role assignment',
     'core.executions.roleExecutor.mode.roleDeletion': 'Delete role',
     'core.executions.roleExecutor.mode.rolePermissionRemoval': 'Change role permissions',
     'core.executions.roleExecutor.mode.roleSelection': 'Select roles',

@@ -62,34 +62,6 @@ export async function removeRoleAssignmentNatively(
 }
 
 /**
- * Unassigns a role from one assignee through the configured flow, falling back to the native endpoint.
- *
- * Only the flow revokes the scopes the assignment conveyed; a configured flow that cannot be resolved
- * refuses.
- */
-export async function removeRoleAssignmentViaFlow(
-  http: HttpLike,
-  serverUrl: string,
-  roleId: string,
-  assignment: RoleAssignment,
-): Promise<void> {
-  const result = await runAdministrationFlow(
-    http,
-    serverUrl,
-    AdministrationFlowConfigKey.ROLE_ASSIGNMENT_REMOVAL,
-    {
-      [AdministrationFlowInput.ASSIGNEE]: assignment.id,
-      [AdministrationFlowInput.ROLE]: roleId,
-    },
-    'role assignment removal',
-  );
-
-  if (result === null) {
-    await removeRoleAssignmentNatively(http, serverUrl, roleId, assignment);
-  }
-}
-
-/**
  * Reports whether the new permission set removes any permission. Only a removal has anything to revoke.
  */
 export function permissionsRemoved(
