@@ -47,15 +47,17 @@ You can use `*` to match a single path segment or part of a hostname label, and 
 
 When the authorization request included a `redirect_uri`, the token endpoint validates it with exact matching per [RFC 6749 §4.1.3](https://www.rfc-editor.org/rfc/rfc6749#section-4.1.3): wildcard expansion does not apply at the token endpoint.
 
-## Configure Sign-In, Registration, and Recovery Flows
+## Configure Sign-In, Registration, Recovery, and Device Authorization Flows
 
-On the **Flows** tab, choose the flows that drive sign-in, sign-up, and password recovery for this application.
+On the **Flows** tab, choose the flows that drive sign-in, sign-up, password recovery, and Device Authorization for this application.
 
 **Authentication Flow** - select the flow users follow to sign in. You can assign a custom flow built with the Flow Designer or use the deployment default. Use the **open the flow builder** link to edit the selected flow directly.
 
 **Registration Flow** - toggle the switch to enable or disable self-registration. When enabled, select a flow that defines what information users must provide to create an account.
 
 **Recovery flow** - toggle the switch to enable or disable password recovery. When enabled, select a flow that guides users through the password reset process.
+
+**Device Grant flow** - when the Device Code grant is enabled, select the flow that verifies the user's device code and calls this application's Authentication flow. The Console selects the default flow when you enable the grant. See the [Device Authorization Grant](../../protocols/oauth-oidc/device-authorization) for setup details.
 
 ## Customize the Appearance
 
@@ -136,7 +138,7 @@ This section applies to OAuth 2.0 / OIDC applications only.
 The **Advanced** tab shows the OAuth 2.0 settings configured at creation.
 | Setting | Description |
 |---------|-------------|
-| **Grant types** | The OAuth 2.0 flows this application can use. Supported values: `authorization_code`, `refresh_token`, `client_credentials`, `urn:ietf:params:oauth:grant-type:token-exchange`, `urn:ietf:params:oauth:grant-type:jwt-bearer`. Whether this application can initiate flows directly via `POST /flow/execute` depends on its [application type](../manage-applications#application-types) and, for Full-stack, Custom, and MCP Client applications, its grant configuration. See [Direct Initiation Restriction](../../key-concepts/authentication/integration-models.mdx#app-native) for the full rule. |
+| **Grant types** | The OAuth 2.0 flows this application can use. Supported values: `authorization_code`, `refresh_token`, `client_credentials`, `urn:ietf:params:oauth:grant-type:device_code`, `urn:ietf:params:oauth:grant-type:token-exchange`, `urn:ietf:params:oauth:grant-type:jwt-bearer`. Whether this application can initiate flows directly via `POST /flow/execute` depends on its [application type](../manage-applications#application-types) and, for Full-stack, Custom, and MCP Client applications, its grant configuration. See [Direct Initiation Restriction](../../key-concepts/authentication/integration-models.mdx#app-native) for the full rule. |
 | **Response types** | The response types the application can request (for example, `code`). |
 | **Client authentication method** | How the application authenticates at <ProductName />'s client-authenticated endpoints (token, introspection, revocation, PAR, and CIBA): `client_secret_basic` (default), `client_secret_post`, `private_key_jwt`, or `none` (public clients). See [Client Authentication Methods](../../protocols/oauth-oidc/client-authentication-methods). |
 | **Public client** | Whether this is a public client that cannot securely store a client secret. |
