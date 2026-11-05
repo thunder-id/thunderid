@@ -37,6 +37,7 @@ vi.mock('@thunderid/configure-gateways', () => ({
   GatewayExplorerPage: () => <div data-testid="gateway-explorer-page">Gateway Explorer Page</div>,
   GatewayValuesPage: () => <div data-testid="gateway-values-page">Gateway Values Page</div>,
   EnvironmentsOverview: () => <div data-testid="environments-overview" />,
+  EnvironmentPage: () => <div data-testid="environment-page" />,
 }));
 
 vi.mock('@thunderid/contexts', async (importOriginal) => ({

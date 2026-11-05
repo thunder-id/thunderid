@@ -74,6 +74,14 @@ describe('EnvironmentsOverview', () => {
     expect(navigate).toHaveBeenCalledWith('gw-prod');
   });
 
+  it('opens an environment on its own page', async () => {
+    render(<EnvironmentsOverview />);
+
+    await userEvent.click(within(await screen.findByTestId('deploy-stage-gw-dev')).getByTestId('stage-open'));
+
+    expect(navigate).toHaveBeenCalledWith('/environments/gw-dev');
+  });
+
   it('offers auto-sync on the first environment only, and turns it on', async () => {
     render(<EnvironmentsOverview />);
 

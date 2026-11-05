@@ -15,6 +15,8 @@ export interface DeployRoutePaths {
     explore: (gatewayId: string) => string;
     /** The variables and secrets one gateway holds. */
     values: (gatewayId: string) => string;
+    /** One environment's own page: what it runs, its endpoints and its values. */
+    environment: (gatewayId: string) => string;
   };
 }
 
@@ -26,6 +28,7 @@ export const defaultDeployRoutePaths: DeployRoutePaths = {
     list: () => '/deploy',
     explore: (gatewayId: string) => `/deploy/gateways/${encodeURIComponent(gatewayId)}/explore`,
     values: (gatewayId: string) => `/deploy/gateways/${encodeURIComponent(gatewayId)}/values`,
+    environment: (gatewayId: string) => `/environments/${encodeURIComponent(gatewayId)}`,
   },
 };
 

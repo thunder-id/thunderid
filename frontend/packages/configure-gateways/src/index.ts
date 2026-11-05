@@ -27,6 +27,7 @@ export {default as useDeployRoutes, defaultDeployRoutePaths} from './hooks/useDe
 export {default as DeployPage} from './pages/DeployPage';
 export {default as GatewayExplorerPage} from './pages/GatewayExplorerPage';
 export {default as GatewayValuesPage} from './pages/GatewayValuesPage';
+export {default as EnvironmentPage} from './pages/EnvironmentPage';
 export {default as FullScreenHeader} from './components/FullScreenHeader';
 export {default as DeployCard} from './components/DeployCard';
 export {default as DEPLOY_CARD_HEIGHT} from './constants/layout';
