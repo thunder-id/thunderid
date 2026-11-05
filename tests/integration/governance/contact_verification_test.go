@@ -145,7 +145,7 @@ func (ts *ContactVerificationTestSuite) newUser(label string) contactUser {
 func (ts *ContactVerificationTestSuite) token(u contactUser) string {
 	ts.T().Helper()
 
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword("CONSOLE", boundaryConsoleURI,
+	tokenResp, err := testutils.ObtainAccessTokenWithPassword(ts.users.signInClientID, testutils.OUSignInRedirectURI,
 		"openid", u.username, u.password, true)
 	ts.Require().NoError(err, "failed to sign %s in", u.username)
 	return tokenResp.AccessToken

@@ -5,22 +5,24 @@ package sso
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
-	lastUsedFlowHandle = "auth_flow_sso_last_used_ou"
-	lastUsedUsername   = "sso_last_used_user"
-	lastUsedC1Handle   = "sso-last-used-c1"
-	lastUsedC2Handle   = "sso-last-used-c2"
-	lastUsedC3Handle   = "sso-last-used-c3"
-	lastUsedA3ClientID = "sso_last_used_a3"
-	lastUsedA1ClientID = "sso_last_used_a1"
-	lastUsedA2ClientID = "sso_last_used_a2"
-	lastUsedBClientID  = "sso_last_used_b"
+	lastUsedFlowHandle       = "auth_flow_sso_last_used_ou"
+	lastUsedUsername         = "sso_last_used_user"
+	lastUsedC1Handle         = "sso-last-used-c1"
+	lastUsedC2Handle         = "sso-last-used-c2"
+	lastUsedC3Handle         = "sso-last-used-c3"
+	lastUsedA3ClientIDPrefix = "sso_last_used_a3"
+	lastUsedA1ClientIDPrefix = "sso_last_used_a1"
+	lastUsedA2ClientIDPrefix = "sso_last_used_a2"
+	lastUsedBClientIDPrefix  = "sso_last_used_b"
 )
 
 // lastUsedOUFixture holds the organization units of the last-used OU tests:
@@ -35,6 +37,10 @@ type lastUsedOUFixture struct {
 	c1     string
 	c2     string
 	flowID string
+	// The client ids of apps A1, A2 and B.
+	a1ClientID string
+	a2ClientID string
+	bClientID  string
 }
 
 // lastUsedOUFlow returns the sign-in flow every app of the fixture uses, with Resolve OU between the sign-in step
@@ -126,11 +132,20 @@ func (ts *SSOLogoutTestSuite) newLastUsedOUFixture() *lastUsedOUFixture {
 	ts.T().Cleanup(func() { ts.deleteOUExchangeFixture("user", userID, testutils.DeleteUser) })
 	ts.shareUserInto(userID, f.c1, f.c2)
 
-	ts.createLastUsedApp(lastUsedA1ClientID, f.c1, flowID)
-	ts.createLastUsedApp(lastUsedA2ClientID, f.c2, flowID)
-	appB := ts.createLastUsedApp(lastUsedBClientID, testOUID, flowID)
+	f.a1ClientID = lastUsedClientID(lastUsedA1ClientIDPrefix)
+	f.a2ClientID = lastUsedClientID(lastUsedA2ClientIDPrefix)
+	f.bClientID = lastUsedClientID(lastUsedBClientIDPrefix)
+	ts.createLastUsedApp(f.a1ClientID, f.c1, flowID)
+	ts.createLastUsedApp(f.a2ClientID, f.c2, flowID)
+	appB := ts.createLastUsedApp(f.bClientID, testOUID, flowID)
 	ts.shareAppWith(appB, f.c1)
 	return f
+}
+
+// lastUsedClientID returns a client id of its own for one registration of an app: deleting an application revokes
+// what its client id issued up to the deletion and for a grace past it, so the next test must not reuse the id.
+func lastUsedClientID(prefix string) string {
+	return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
 }
 
 // createLastUsedOU creates a child of the suite's OU, deleted when the test ends.
@@ -266,10 +281,10 @@ func (ts *SSOLogoutTestSuite) TestLastUsedOU_AnotherAppFollowsIt() {
 	f := ts.newLastUsedOUFixture()
 	client := ts.newSessionClient()
 
-	first := ts.lastUsedSignIn(client, lastUsedA1ClientID, "openid", "last_used_first")
+	first := ts.lastUsedSignIn(client, f.a1ClientID, "openid", "last_used_first")
 	ts.Require().Equal(f.c1, ts.tokenOUID(first.AccessToken), "A1 signs in under its own OU")
 
-	joined := ts.lastUsedJoin(client, "", lastUsedBClientID, "last_used_join")
+	joined := ts.lastUsedJoin(client, "", f.bClientID, "last_used_join")
 	ts.Equal(f.c1, ts.tokenOUID(joined.AccessToken), "B follows the OU the user last used")
 }
 
@@ -279,18 +294,18 @@ func (ts *SSOLogoutTestSuite) TestLastUsedOU_FollowsAnOrgSwitch() {
 	f := ts.newLastUsedOUFixture()
 	client := ts.newSessionClient()
 
-	first := ts.lastUsedSignIn(client, lastUsedA1ClientID, deviceSSOScope, "last_used_switch_first")
+	first := ts.lastUsedSignIn(client, f.a1ClientID, deviceSSOScope, "last_used_switch_first")
 	ts.Require().NotEmpty(first.DeviceSecret, "the sign-in should return a device secret")
-	before := ts.lastUsedJoin(client, "", lastUsedBClientID, "last_used_before_switch")
+	before := ts.lastUsedJoin(client, "", f.bClientID, "last_used_before_switch")
 	ts.Require().Equal(f.c1, ts.tokenOUID(before.AccessToken), "before the switch B lands in c1")
 
-	status, switched := ts.exchangeDeviceSecretAt("/ou/"+testOUID+"/oauth2/token", lastUsedBClientID,
+	status, switched := ts.exchangeDeviceSecretAt("/ou/"+testOUID+"/oauth2/token", f.bClientID,
 		clientSecret, first.DeviceSecret, "openid")
 	ts.Require().Equal(http.StatusOK, status, "the switch should succeed: %v", switched)
 	switchedToken, _ := switched["access_token"].(string)
 	ts.Require().Equal(testOUID, ts.tokenOUID(switchedToken), "the switch signs B in to the OU on the route")
 
-	after := ts.lastUsedJoin(client, "", lastUsedBClientID, "last_used_after_switch")
+	after := ts.lastUsedJoin(client, "", f.bClientID, "last_used_after_switch")
 	ts.Equal(testOUID, ts.tokenOUID(after.AccessToken), "after the switch B lands in the OU switched to")
 }
 
@@ -302,10 +317,10 @@ func (ts *SSOLogoutTestSuite) TestLastUsedOU_UnusableForTheAppTakesTheFreshPath(
 
 	ts.Run("the user signs in and picks", func() {
 		client := ts.newSessionClient()
-		first := ts.lastUsedSignIn(client, lastUsedA2ClientID, "openid", "last_used_fresh_first")
+		first := ts.lastUsedSignIn(client, f.a2ClientID, "openid", "last_used_fresh_first")
 		ts.Require().Equal(f.c2, ts.tokenOUID(first.AccessToken), "A2 signs in under its own OU")
 
-		authID, executionID := ts.lastUsedStart(client, "", lastUsedBClientID, "openid", "last_used_fresh")
+		authID, executionID := ts.lastUsedStart(client, "", f.bClientID, "openid", "last_used_fresh")
 		prompt := ts.flowExecute(client, map[string]interface{}{"executionId": executionID})
 		ts.Require().NotEqual("COMPLETE", prompt.FlowStatus, "B is not shared into c2, so the session is not reused")
 		ts.Empty(prompt.Assertion)
@@ -344,15 +359,15 @@ func (ts *SSOLogoutTestSuite) TestLastUsedOU_UnusableForTheAppTakesTheFreshPath(
 			"challengeToken": choice.ChallengeToken,
 		})
 		ts.Require().Equal("COMPLETE", chosen.FlowStatus, "the pick completes the sign-in")
-		token := ts.lastUsedRedeem(client, authID, chosen.Assertion, nil, lastUsedBClientID)
+		token := ts.lastUsedRedeem(client, authID, chosen.Assertion, nil, f.bClientID)
 		ts.Equal(f.c1, ts.tokenOUID(token.AccessToken), "B signs in to the OU picked")
 	})
 
 	ts.Run("prompt=none needs the user", func() {
 		client := ts.newSessionClient()
-		ts.lastUsedSignIn(client, lastUsedA2ClientID, "openid", "last_used_silent_first")
+		ts.lastUsedSignIn(client, f.a2ClientID, "openid", "last_used_silent_first")
 
-		resp := ts.lastUsedAuthorize(client, "", lastUsedBClientID, "openid", "last_used_silent",
+		resp := ts.lastUsedAuthorize(client, "", f.bClientID, "openid", "last_used_silent",
 			map[string]string{"prompt": "none"})
 		defer resp.Body.Close()
 		query := ts.redirectQuery(resp)
@@ -367,10 +382,10 @@ func (ts *SSOLogoutTestSuite) TestLastUsedOU_OUPathWins() {
 	f := ts.newLastUsedOUFixture()
 	client := ts.newSessionClient()
 
-	first := ts.lastUsedSignIn(client, lastUsedA1ClientID, "openid", "last_used_path_first")
+	first := ts.lastUsedSignIn(client, f.a1ClientID, "openid", "last_used_path_first")
 	ts.Require().Equal(f.c1, ts.tokenOUID(first.AccessToken))
 
-	joined := ts.lastUsedJoin(client, testOUID, lastUsedBClientID, "last_used_path_join")
+	joined := ts.lastUsedJoin(client, testOUID, f.bClientID, "last_used_path_join")
 	ts.Equal(testOUID, ts.tokenOUID(joined.AccessToken), "the OU in the path is used, not the last-used c1")
 }
 
@@ -382,10 +397,10 @@ func (ts *SSOLogoutTestSuite) TestLastUsedOU_PlainRouteDeviceSecretExchange() {
 	f := ts.newLastUsedOUFixture()
 
 	ts.Run("eligible in the last-used OU", func() {
-		first := ts.lastUsedSignIn(ts.newSessionClient(), lastUsedA1ClientID, deviceSSOScope,
+		first := ts.lastUsedSignIn(ts.newSessionClient(), f.a1ClientID, deviceSSOScope,
 			"last_used_plain_eligible")
 
-		status, token := ts.exchangeDeviceSecret(lastUsedBClientID, clientSecret, first.DeviceSecret, "openid")
+		status, token := ts.exchangeDeviceSecret(f.bClientID, clientSecret, first.DeviceSecret, "openid")
 
 		ts.Require().Equal(http.StatusOK, status, "the exchange should succeed: %v", token)
 		accessToken, _ := token["access_token"].(string)
@@ -393,10 +408,10 @@ func (ts *SSOLogoutTestSuite) TestLastUsedOU_PlainRouteDeviceSecretExchange() {
 	})
 
 	ts.Run("not eligible in the last-used OU", func() {
-		first := ts.lastUsedSignIn(ts.newSessionClient(), lastUsedA2ClientID, deviceSSOScope,
+		first := ts.lastUsedSignIn(ts.newSessionClient(), f.a2ClientID, deviceSSOScope,
 			"last_used_plain_ineligible")
 
-		status, token := ts.exchangeDeviceSecret(lastUsedBClientID, clientSecret, first.DeviceSecret, "openid")
+		status, token := ts.exchangeDeviceSecret(f.bClientID, clientSecret, first.DeviceSecret, "openid")
 
 		ts.Equal(http.StatusBadRequest, status)
 		ts.Equal("interaction_required", token["error"], "B is not shared into c2: %v", token)
@@ -404,11 +419,12 @@ func (ts *SSOLogoutTestSuite) TestLastUsedOU_PlainRouteDeviceSecretExchange() {
 	})
 
 	ts.Run("an unshared app in an OU the user is not in", func() {
-		ts.createLastUsedApp(lastUsedA3ClientID, ts.createLastUsedOU(lastUsedC3Handle), f.flowID)
-		first := ts.lastUsedSignIn(ts.newSessionClient(), lastUsedA1ClientID, deviceSSOScope,
+		a3ClientID := lastUsedClientID(lastUsedA3ClientIDPrefix)
+		ts.createLastUsedApp(a3ClientID, ts.createLastUsedOU(lastUsedC3Handle), f.flowID)
+		first := ts.lastUsedSignIn(ts.newSessionClient(), f.a1ClientID, deviceSSOScope,
 			"last_used_plain_unshared")
 
-		status, token := ts.exchangeDeviceSecret(lastUsedA3ClientID, clientSecret, first.DeviceSecret, "openid")
+		status, token := ts.exchangeDeviceSecret(a3ClientID, clientSecret, first.DeviceSecret, "openid")
 
 		ts.Equal(http.StatusBadRequest, status)
 		ts.Equal("interaction_required", token["error"], "the user is not in c3, so a sign-in is needed: %v", token)

@@ -2885,6 +2885,72 @@ func (_c *EntityServiceInterfaceMock_ProjectHasEntities_Call) RunAndReturn(run f
 	return _c
 }
 
+// RecordAttributeVerification provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) RecordAttributeVerification(ctx context.Context, record entity.AttributeVerificationRecord) (bool, error) {
+	ret := _mock.Called(ctx, record)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RecordAttributeVerification")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entity.AttributeVerificationRecord) (bool, error)); ok {
+		return returnFunc(ctx, record)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, entity.AttributeVerificationRecord) bool); ok {
+		r0 = returnFunc(ctx, record)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, entity.AttributeVerificationRecord) error); ok {
+		r1 = returnFunc(ctx, record)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_RecordAttributeVerification_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RecordAttributeVerification'
+type EntityServiceInterfaceMock_RecordAttributeVerification_Call struct {
+	*mock.Call
+}
+
+// RecordAttributeVerification is a helper method to define mock.On call
+//   - ctx context.Context
+//   - record entity.AttributeVerificationRecord
+func (_e *EntityServiceInterfaceMock_Expecter) RecordAttributeVerification(ctx any, record any) *EntityServiceInterfaceMock_RecordAttributeVerification_Call {
+	return &EntityServiceInterfaceMock_RecordAttributeVerification_Call{Call: _e.mock.On("RecordAttributeVerification", ctx, record)}
+}
+
+func (_c *EntityServiceInterfaceMock_RecordAttributeVerification_Call) Run(run func(ctx context.Context, record entity.AttributeVerificationRecord)) *EntityServiceInterfaceMock_RecordAttributeVerification_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 entity.AttributeVerificationRecord
+		if args[1] != nil {
+			arg1 = args[1].(entity.AttributeVerificationRecord)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_RecordAttributeVerification_Call) Return(b bool, err error) *EntityServiceInterfaceMock_RecordAttributeVerification_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_RecordAttributeVerification_Call) RunAndReturn(run func(ctx context.Context, record entity.AttributeVerificationRecord) (bool, error)) *EntityServiceInterfaceMock_RecordAttributeVerification_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RecordLogin provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) RecordLogin(ctx context.Context, entityID string, at time.Time, notBefore time.Time) error {
 	ret := _mock.Called(ctx, entityID, at, notBefore)
@@ -3856,72 +3922,6 @@ func (_c *EntityServiceInterfaceMock_ValidateEntityIDsInOUs_Call) Return(strings
 }
 
 func (_c *EntityServiceInterfaceMock_ValidateEntityIDsInOUs_Call) RunAndReturn(run func(ctx context.Context, entityIDs []string, ouIDs []string) ([]string, error)) *EntityServiceInterfaceMock_ValidateEntityIDsInOUs_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// RecordAttributeVerification provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) RecordAttributeVerification(ctx context.Context, record entity.AttributeVerificationRecord) (bool, error) {
-	ret := _mock.Called(ctx, record)
-
-	if len(ret) == 0 {
-		panic("no return value specified for RecordAttributeVerification")
-	}
-
-	var r0 bool
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entity.AttributeVerificationRecord) (bool, error)); ok {
-		return returnFunc(ctx, record)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, entity.AttributeVerificationRecord) bool); ok {
-		r0 = returnFunc(ctx, record)
-	} else {
-		r0 = ret.Get(0).(bool)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, entity.AttributeVerificationRecord) error); ok {
-		r1 = returnFunc(ctx, record)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// EntityServiceInterfaceMock_RecordAttributeVerification_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RecordAttributeVerification'
-type EntityServiceInterfaceMock_RecordAttributeVerification_Call struct {
-	*mock.Call
-}
-
-// RecordAttributeVerification is a helper method to define mock.On call
-//   - ctx context.Context
-//   - record entity.AttributeVerificationRecord
-func (_e *EntityServiceInterfaceMock_Expecter) RecordAttributeVerification(ctx any, record any) *EntityServiceInterfaceMock_RecordAttributeVerification_Call {
-	return &EntityServiceInterfaceMock_RecordAttributeVerification_Call{Call: _e.mock.On("RecordAttributeVerification", ctx, record)}
-}
-
-func (_c *EntityServiceInterfaceMock_RecordAttributeVerification_Call) Run(run func(ctx context.Context, record entity.AttributeVerificationRecord)) *EntityServiceInterfaceMock_RecordAttributeVerification_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 entity.AttributeVerificationRecord
-		if args[1] != nil {
-			arg1 = args[1].(entity.AttributeVerificationRecord)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *EntityServiceInterfaceMock_RecordAttributeVerification_Call) Return(b bool, err error) *EntityServiceInterfaceMock_RecordAttributeVerification_Call {
-	_c.Call.Return(b, err)
-	return _c
-}
-
-func (_c *EntityServiceInterfaceMock_RecordAttributeVerification_Call) RunAndReturn(run func(ctx context.Context, record entity.AttributeVerificationRecord) (bool, error)) *EntityServiceInterfaceMock_RecordAttributeVerification_Call {
 	_c.Call.Return(run)
 	return _c
 }

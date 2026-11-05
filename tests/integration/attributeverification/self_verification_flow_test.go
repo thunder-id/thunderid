@@ -356,7 +356,16 @@ func (ts *SelfVerificationFlowTestSuite) TestAnEmailLinkVerifiesOnlyOnceConfirme
 
 // A declarative user is refused at preparation, and nothing is sent.
 func (ts *SelfVerificationFlowTestSuite) TestADeclarativeUserIsRefusedBeforeSending() {
-	result := ts.fixture.startVerification(ts.T(), ts.fixture.token(ts.T(), declarativeUser),
+	// The declarative user lives in its own organization unit, and a sign-in is bounded to its application's
+	// unit, so it signs in through an application there rather than the Console.
+	var signInApps testutils.OUSignInApps
+	defer func() { _ = signInApps.DeleteAll() }()
+	user := declarativeUser
+	var err error
+	user.signInClientID, err = signInApps.ClientID(declarativeUserOUID)
+	ts.Require().NoError(err, "failed to create the declarative user's sign-in application")
+
+	result := ts.fixture.startVerification(ts.T(), ts.fixture.token(ts.T(), user),
 		map[string]string{"attribute": emailAttribute})
 
 	requireRefused(ts.T(), result, errCodeVerificationRefused, "preparation must refuse a declarative user")
@@ -382,8 +391,8 @@ func (ts *SelfVerificationFlowTestSuite) TestAUserHoldingTheSystemPermissionVeri
 			ts.T().Logf("cleanup: failed to delete role %s: %v", roleID, err)
 		}
 	})
-	token, err := testutils.ObtainAccessTokenWithPassword("CONSOLE", consoleRedirectURI, "system",
-		user.username, user.password, true)
+	token, err := testutils.ObtainAccessTokenWithPassword(user.signInClientID, testutils.OUSignInRedirectURI,
+		"system", user.username, user.password, true, "", testutils.SystemResourceIdentifier)
 	ts.Require().NoError(err, "the user must sign in with the system permission")
 	started := time.Now()
 

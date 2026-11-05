@@ -199,7 +199,9 @@ func (a *OUSignInApps) ClientID(ouID string) (string, error) {
 	if clientID, ok := a.clientIDs[ouID]; ok {
 		return clientID, nil
 	}
-	clientID := "ou_sign_in_" + ouID
+	// Each registration takes a client id of its own: deleting an application revokes what its client id
+	// issued up to the deletion and for a grace past it, so a later suite must not reuse the id.
+	clientID := fmt.Sprintf("ou_sign_in_%s_%d", ouID, time.Now().UnixNano())
 	appID, err := CreateOUSignInApplication(ouID, clientID)
 	if err != nil {
 		return "", err
