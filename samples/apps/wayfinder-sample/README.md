@@ -151,6 +151,7 @@ The agent's client secret defaults to `wayfinder-agent-secret` (set in `thunderi
 | Variable | Required | Description |
 |---|---|---|
 | `WAYFINDER_CLIENT_ID` | Yes | Client ID for the `WAYFINDER` application |
+| `AGENT_OWNER_ID` | Yes | ID of the user that owns both agents. It must exist on the server you import into and, on the quickstart pack, on the Data Plane it syncs to; otherwise the import or the sync fails with `Owner not found`. The default is the quickstart pack's Service Desk Admin (`01900000-0000-7000-8000-0000000000f3`). On a standalone Data Plane, set it to the default admin (`01900000-0000-7000-8000-000000000030`). `app-native/thunderid.env` sets the same variable. |
 | `AGENT_CLIENT_ID` | Yes | Client ID for the `WAYFINDER-CONCIERGE` agent |
 | `AGENT_CLIENT_SECRET` | Yes | Client secret for the Wayfinder Concierge |
 | `UPGRADE_AGENT_CLIENT_ID` | Yes | Client ID for the `WAYFINDER-UPGRADE-AGENT` |

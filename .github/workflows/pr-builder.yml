@@ -1548,6 +1548,7 @@ jobs:
           variables-json: |
             {
               "WAYFINDER_CLIENT_ID": "WAYFINDER",
+              "AGENT_OWNER_ID": "01900000-0000-7000-8000-0000000000f3",
               "AGENT_CLIENT_ID": "WAYFINDER-CONCIERGE",
               "AGENT_CLIENT_SECRET": "wayfinder-agent-secret",
               "UPGRADE_AGENT_CLIENT_ID": "WAYFINDER-UPGRADE-AGENT",
