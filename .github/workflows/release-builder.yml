@@ -353,17 +353,19 @@ jobs:
           SEMVER="${SEMVER#v}"
           missing=0
           for target in linux-x64 linux-arm64 macos-x64 macos-arm64 win-x64; do
-            archive="target/dist/${PRODUCT_NAME_LOWER}-${SEMVER}-${target}.zip"
-            if [ ! -f "$archive" ]; then
-              echo "::error::Expected distribution $archive was not produced"
-              missing=1
-            fi
+            for name in "${PRODUCT_NAME_LOWER}" "${PRODUCT_NAME_LOWER}-cp"; do
+              archive="target/dist/${name}-${SEMVER}-${target}.zip"
+              if [ ! -f "$archive" ]; then
+                echo "::error::Expected distribution $archive was not produced"
+                missing=1
+              fi
+            done
           done
           if [ "$missing" -ne 0 ]; then
             ls -l target/dist/
             exit 1
           fi
-          echo "✅ All five distributions carry version $SEMVER"
+          echo "✅ All Data Plane and Control Plane distributions carry version $SEMVER"
           ls -l target/dist/
 
           {
@@ -429,9 +431,9 @@ jobs:
 
       - name: 🔍 Verify the Distribution Under Test
         run: |
-          archive="$(ls target/dist/${PRODUCT_NAME_LOWER}-*-linux-x64.zip 2>/dev/null | head -1)"
+          archive="$(ls target/dist/${PRODUCT_NAME_LOWER}-[0-9]*-linux-x64.zip 2>/dev/null | head -1)"
           if [ -z "$archive" ]; then
-            echo "::error::no ${PRODUCT_NAME_LOWER}-*-linux-x64.zip in the release artifact"
+            echo "::error::no ${PRODUCT_NAME_LOWER}-[0-9]*-linux-x64.zip in the release artifact"
             ls -l target/dist/
             exit 1
           fi
@@ -458,7 +460,7 @@ jobs:
           Write-Host "📂 Extracting build..."
 
           # Find the zip file
-          $zipFile = Get-ChildItem -Filter "$env:PRODUCT_NAME_LOWER-*-win-*.zip" | Select-Object -First 1
+          $zipFile = Get-ChildItem -Filter "$env:PRODUCT_NAME_LOWER-*-win-*.zip" | Where-Object { $_.Name -match "^$($env:PRODUCT_NAME_LOWER)-\d" } | Select-Object -First 1
 
           if (-not $zipFile) {
             Write-Host "❌ No distribution zip found"
@@ -471,7 +473,7 @@ jobs:
           Expand-Archive -Path $zipFile.FullName -DestinationPath "." -Force
 
           # Find the extracted directory
-          $extractedDir = Get-ChildItem -Directory -Filter "$env:PRODUCT_NAME_LOWER-*-win-*" | Select-Object -First 1
+          $extractedDir = Get-ChildItem -Directory -Filter "$env:PRODUCT_NAME_LOWER-*-win-*" | Where-Object { $_.Name -match "^$($env:PRODUCT_NAME_LOWER)-\d" } | Select-Object -First 1
 
           if (-not $extractedDir) {
             Write-Host "❌ No extracted directory found"
@@ -739,9 +741,9 @@ jobs:
           # .dockerignore (which excludes target) does not apply.
           rm -rf target/docker && mkdir -p target/docker
           for arch in x64 arm64; do
-            archive="$(ls target/dist/${PRODUCT_NAME_LOWER}-*-linux-${arch}.zip 2>/dev/null | head -1)"
+            archive="$(ls target/dist/${PRODUCT_NAME_LOWER}-[0-9]*-linux-${arch}.zip 2>/dev/null | head -1)"
             if [ -z "$archive" ]; then
-              echo "::error::no ${PRODUCT_NAME_LOWER}-*-linux-${arch}.zip in the release artifact"
+              echo "::error::no ${PRODUCT_NAME_LOWER}-[0-9]*-linux-${arch}.zip in the release artifact"
               ls -l target/dist/
               exit 1
             fi
@@ -783,6 +785,42 @@ jobs:
             target/docker
 
           echo "✅ Docker image pushed successfully!"
+          echo "📦 Image available at: ${IMAGE_NAME}:${DOCKER_VERSION}"
+
+      - name: 📦 Stage the Control Plane Docker Build Context
+        run: |
+          rm -rf target/docker-cp && mkdir -p target/docker-cp
+          for arch in x64 arm64; do
+            archive="$(ls target/dist/${PRODUCT_NAME_LOWER}-cp-*-linux-${arch}.zip 2>/dev/null | head -1)"
+            if [ -z "$archive" ]; then
+              echo "::error::no ${PRODUCT_NAME_LOWER}-cp-*-linux-${arch}.zip in the release artifact"
+              ls -l target/dist/
+              exit 1
+            fi
+            cp "$archive" target/docker-cp/
+          done
+
+      - name: 🐳 Build and Push Multi-Arch Control Plane Docker Image
+        run: |
+          OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_NAME="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}-cp"
+
+          DOCKER_VERSION="${{ needs.resolve.outputs.version }}"
+          if [[ $DOCKER_VERSION == v* ]]; then
+            DOCKER_VERSION="${DOCKER_VERSION#v}"
+          fi
+
+          echo "🐳 Building and pushing Docker image: ${IMAGE_NAME}:${DOCKER_VERSION}"
+
+          # Versioned tag only, for the same reason as the Data Plane image above.
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --file .github/docker/Dockerfile.release.cp \
+            --tag "${IMAGE_NAME}:${DOCKER_VERSION}" \
+            --push \
+            target/docker-cp
+
+          echo "✅ Control Plane Docker image pushed successfully!"
           echo "📦 Image available at: ${IMAGE_NAME}:${DOCKER_VERSION}"
 
   release:
@@ -918,12 +956,14 @@ jobs:
 
           echo "📦 Renaming distributions from $BUILT_VERSION to $RELEASE_VERSION"
           RENAMED=0
-          for zip in target/dist/${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-*.zip; do
-            [ -e "$zip" ] || continue
-            SUFFIX="${zip#target/dist/${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-}"
-            mv "$zip" "target/dist/${PRODUCT_NAME_LOWER}-${RELEASE_VERSION}-${SUFFIX}"
-            echo "  ${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-${SUFFIX} -> ${PRODUCT_NAME_LOWER}-${RELEASE_VERSION}-${SUFFIX}"
-            RENAMED=$((RENAMED + 1))
+          for name in "${PRODUCT_NAME_LOWER}" "${PRODUCT_NAME_LOWER}-cp"; do
+            for zip in target/dist/${name}-${BUILT_VERSION}-*.zip; do
+              [ -e "$zip" ] || continue
+              SUFFIX="${zip#target/dist/${name}-${BUILT_VERSION}-}"
+              mv "$zip" "target/dist/${name}-${RELEASE_VERSION}-${SUFFIX}"
+              echo "  ${name}-${BUILT_VERSION}-${SUFFIX} -> ${name}-${RELEASE_VERSION}-${SUFFIX}"
+              RENAMED=$((RENAMED + 1))
+            done
           done
 
           if [ "$RENAMED" -eq 0 ]; then
@@ -1241,6 +1281,13 @@ jobs:
             "${IMAGE_NAME}:${DOCKER_VERSION}"
 
           echo "✅ ${IMAGE_NAME}:latest now points at ${DOCKER_VERSION}"
+
+          CP_IMAGE_NAME="${IMAGE_NAME}-cp"
+          docker buildx imagetools create \
+            --tag "${CP_IMAGE_NAME}:latest" \
+            "${CP_IMAGE_NAME}:${DOCKER_VERSION}"
+
+          echo "✅ ${CP_IMAGE_NAME}:latest now points at ${DOCKER_VERSION}"
 
       - name: 📦 Publish Docker Compose (Quick Start) to GHCR
         run: |

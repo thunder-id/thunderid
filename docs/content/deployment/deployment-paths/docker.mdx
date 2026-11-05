@@ -122,6 +122,29 @@ docker run -d \
 
 The mounted files provide the server TLS certificate; the JWT signing and encryption keys still come from the `thunderid-certs` volume that setup populated.
 
+## Run the Control Plane with Docker
+
+The Control Plane, where configuration is authored and deployed to Data Planes, has its own image, `ghcr.io/thunder-id/thunderid-cp`. It serves the Control Plane console and the management APIs on port `8095` and handles no sign-in traffic. Like the Data Plane image, it needs a one-time setup before it starts:
+
+```bash
+docker run -it --rm \
+  -v thunderid-cp-data:/opt/thunderid-cp/database \
+  -v thunderid-cp-certs:/opt/thunderid-cp/config/certs \
+  ghcr.io/thunder-id/thunderid-cp:<version> \
+  ./setup-cp.sh
+
+docker run -d \
+  --name thunderid-cp \
+  --restart unless-stopped \
+  -p 8095:8095 \
+  -v thunderid-cp-data:/opt/thunderid-cp/database \
+  -v thunderid-cp-certs:/opt/thunderid-cp/config/certs \
+  -v $(pwd)/deployment.yaml:/opt/thunderid-cp/deployment.yaml:ro \
+  ghcr.io/thunder-id/thunderid-cp:<version>
+```
+
+The Control Plane console is then available at `https://localhost:8095/console`. The Control Plane does not issue tokens itself. It accepts management tokens only from an issuer you configure, so the mounted `deployment.yaml` needs a `server.security.trusted_issuer` block, as described in [Trusted Issuer](../../../guides/trusted-issuer). Without it, the Control Plane rejects every management request.
+
 ## Access <ProductName />
 
 Once the container is running, access <ProductName /> at the following endpoints:
