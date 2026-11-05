@@ -4193,6 +4193,16 @@ func TestMapOUServiceError_UnmappedClientError(t *testing.T) {
 	require.Equal(t, tidcommon.InternalServerError.Code, result.Code)
 }
 
+// TestMapOUServiceError_Unauthorized verifies that an OU authorization refusal is returned as is
+// rather than mapped to an internal server error.
+func TestMapOUServiceError_Unauthorized(t *testing.T) {
+	result := mapOUServiceError(context.Background(), &tidcommon.ErrorUnauthorized, log.GetLogger(),
+		"performing an operation", map[string]*tidcommon.ServiceError{})
+
+	require.NotNil(t, result)
+	require.Equal(t, tidcommon.ErrorUnauthorized.Code, result.Code)
+}
+
 // TestUserDeclarativeYAML_OUHandleParsed verifies that ou_handle is parsed off the YAML
 // document into the user declarative resource.
 func TestUserDeclarativeYAML_OUHandleParsed(t *testing.T) {

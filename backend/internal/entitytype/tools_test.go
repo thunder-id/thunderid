@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 type EntityTypeToolsTestSuite struct {
@@ -102,4 +104,31 @@ func (suite *EntityTypeToolsTestSuite) TestListUserTypes_ServiceError() {
 	assert.Contains(suite.T(), err.Error(), "failed to list user types")
 
 	mockService.AssertExpectations(suite.T())
+}
+
+// TestRegisteredToolsRequireUserTypePermissions verifies that every user type MCP tool is mapped to a user type
+// catalog permission, so none falls back to root by accident.
+func (suite *EntityTypeToolsTestSuite) TestRegisteredToolsRequireUserTypePermissions() {
+	security.InitSystemPermissions("")
+	p := security.GetSystemPermissions()
+	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
+	registerMCPTools(server, NewEntityTypeServiceInterfaceMock(suite.T()))
+
+	ctx := context.Background()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	_, err := server.Connect(ctx, serverTransport, nil)
+	suite.Require().NoError(err)
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil).
+		Connect(ctx, clientTransport, nil)
+	suite.Require().NoError(err)
+	defer func() { _ = session.Close() }()
+	tools, err := session.ListTools(ctx, nil)
+	suite.Require().NoError(err)
+
+	suite.Require().NotEmpty(tools.Tools)
+	for _, registered := range tools.Tools {
+		suite.Contains([]string{p.UserTypeView, p.UserTypeCreate, p.UserTypeUpdate, p.UserTypeDelete},
+			security.ResolveMCPToolPermission(registered.Name),
+			"tool %q must require a user type permission", registered.Name)
+	}
 }

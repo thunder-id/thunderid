@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 type OUToolsTestSuite struct {
@@ -104,4 +106,31 @@ func (suite *OUToolsTestSuite) TestListOrganizationUnits_Error() {
 	assert.Contains(suite.T(), err.Error(), "failed to list organization units")
 
 	mockService.AssertExpectations(suite.T())
+}
+
+// TestRegisteredToolsRequireOUPermissions verifies that every organization unit MCP tool is mapped to an
+// organization unit catalog permission, so none falls back to root by accident.
+func (suite *OUToolsTestSuite) TestRegisteredToolsRequireOUPermissions() {
+	security.InitSystemPermissions("")
+	p := security.GetSystemPermissions()
+	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
+	registerMCPTools(server, NewOrganizationUnitServiceInterfaceMock(suite.T()))
+
+	ctx := context.Background()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	_, err := server.Connect(ctx, serverTransport, nil)
+	suite.Require().NoError(err)
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil).
+		Connect(ctx, clientTransport, nil)
+	suite.Require().NoError(err)
+	defer func() { _ = session.Close() }()
+	tools, err := session.ListTools(ctx, nil)
+	suite.Require().NoError(err)
+
+	suite.Require().NotEmpty(tools.Tools)
+	for _, registered := range tools.Tools {
+		suite.Contains([]string{p.OUView, p.OUCreate, p.OUUpdate, p.OUDelete},
+			security.ResolveMCPToolPermission(registered.Name),
+			"tool %q must require an organization unit permission", registered.Name)
+	}
 }
