@@ -23,6 +23,8 @@ export interface ConfigurePropertiesProps {
   onEnumInputChange: (enumInput: Record<string, string>) => void;
   displayAttribute: string;
   onDisplayAttributeChange: (displayAttribute: string) => void;
+  pictureAttribute: string;
+  onPictureAttributeChange: (pictureAttribute: string) => void;
   onReadyChange?: (isReady: boolean) => void;
   userTypeHandle?: string;
 }
@@ -39,6 +41,8 @@ export default function ConfigureProperties({
   onEnumInputChange,
   displayAttribute,
   onDisplayAttributeChange,
+  pictureAttribute,
+  onPictureAttributeChange,
   onReadyChange = undefined,
   userTypeHandle = undefined,
 }: ConfigurePropertiesProps): JSX.Element {
@@ -54,6 +58,11 @@ export default function ConfigureProperties({
           !p.credential &&
           p.name.trim().length > 0,
       ),
+    [properties],
+  );
+
+  const eligiblePictureProperties = useMemo(
+    () => properties.filter((property) => property.type === 'string' && !property.credential && property.name.trim()),
     [properties],
   );
 
@@ -77,6 +86,13 @@ export default function ConfigureProperties({
       onDisplayAttributeChange('');
     }
   }, [eligibleDisplayProperties, displayAttribute, onDisplayAttributeChange]);
+
+  useEffect((): void => {
+    const eligibleNames = eligiblePictureProperties.map((property) => property.name.trim());
+    if (pictureAttribute && !eligibleNames.includes(pictureAttribute)) {
+      onPictureAttributeChange('');
+    }
+  }, [eligiblePictureProperties, pictureAttribute, onPictureAttributeChange]);
 
   // Broadcast readiness - ready when at least one property has a name
   useEffect((): void => {
@@ -108,51 +124,97 @@ export default function ConfigureProperties({
         onEnumInputChange={onEnumInputChange}
         userTypeHandle={userTypeHandle}
         footer={
-          eligibleDisplayProperties.length > 0 ? (
+          eligibleDisplayProperties.length > 0 || eligiblePictureProperties.length > 0 ? (
             <Paper variant="outlined" sx={{px: 3, py: 3, borderRadius: 2}}>
-              <FormControl fullWidth>
-                <FormLabel>{t('userTypes:displayAttribute', 'Display attribute')}</FormLabel>
-                <Typography variant="body2" color="text.secondary" sx={{mb: 1}}>
-                  {t(
-                    'userTypes:displayAttributeHint',
-                    'The property used to display user names in listings and references',
-                  )}
-                </Typography>
-                <Select
-                  value={displayAttribute}
-                  onChange={(e) => handleDisplayAttributeChange(e.target.value)}
-                  size="small"
-                  displayEmpty
-                  renderValue={(selected) => {
-                    const value = typeof selected === 'string' ? selected : '';
-                    if (!value) {
+              {eligibleDisplayProperties.length > 0 && (
+                <FormControl fullWidth>
+                  <FormLabel>{t('userTypes:displayAttribute', 'Display attribute')}</FormLabel>
+                  <Typography variant="body2" color="text.secondary" sx={{mb: 1}}>
+                    {t(
+                      'userTypes:displayAttributeHint',
+                      'The property used to display user names in listings and references',
+                    )}
+                  </Typography>
+                  <Select
+                    value={displayAttribute}
+                    onChange={(e) => handleDisplayAttributeChange(e.target.value)}
+                    size="small"
+                    displayEmpty
+                    renderValue={(selected) => {
+                      const value = typeof selected === 'string' ? selected : '';
+                      if (!value) {
+                        return (
+                          <Typography variant="body2" color="text.secondary">
+                            {t('userTypes:selectDisplayAttribute', 'Select a display attribute')}
+                          </Typography>
+                        );
+                      }
+                      const matchedProp = eligibleDisplayProperties.find((p) => p.name.trim() === value);
+                      const resolved = matchedProp?.displayName ? resolveDisplayName(matchedProp.displayName) : '';
+                      return resolved && resolved !== value ? `${resolved} (${value})` : value;
+                    }}
+                  >
+                    <MenuItem value="">
+                      <Typography variant="body2" color="text.secondary">
+                        {t('common:none', 'None')}
+                      </Typography>
+                    </MenuItem>
+                    {eligibleDisplayProperties.map((prop) => {
+                      const name = prop.name.trim();
+                      const resolved = prop.displayName ? resolveDisplayName(prop.displayName) : '';
                       return (
-                        <Typography variant="body2" color="text.secondary">
-                          {t('userTypes:selectDisplayAttribute', 'Select a display attribute')}
-                        </Typography>
+                        <MenuItem key={prop.id} value={name}>
+                          {resolved && resolved !== name ? `${resolved} (${name})` : name}
+                        </MenuItem>
                       );
-                    }
-                    const matchedProp = eligibleDisplayProperties.find((p) => p.name.trim() === value);
-                    const resolved = matchedProp?.displayName ? resolveDisplayName(matchedProp.displayName) : '';
-                    return resolved && resolved !== value ? `${resolved} (${value})` : value;
-                  }}
-                >
-                  <MenuItem value="">
-                    <Typography variant="body2" color="text.secondary">
-                      {t('common:none', 'None')}
-                    </Typography>
-                  </MenuItem>
-                  {eligibleDisplayProperties.map((prop) => {
-                    const name = prop.name.trim();
-                    const resolved = prop.displayName ? resolveDisplayName(prop.displayName) : '';
-                    return (
-                      <MenuItem key={prop.id} value={name}>
-                        {resolved && resolved !== name ? `${resolved} (${name})` : name}
-                      </MenuItem>
-                    );
-                  })}
-                </Select>
-              </FormControl>
+                    })}
+                  </Select>
+                </FormControl>
+              )}
+              {eligiblePictureProperties.length > 0 && (
+                <FormControl fullWidth sx={{mt: eligibleDisplayProperties.length > 0 ? 3 : 0}}>
+                  <FormLabel>{t('userTypes:pictureAttribute', 'Profile image attribute')}</FormLabel>
+                  <Typography variant="body2" color="text.secondary" sx={{mb: 1}}>
+                    {t('userTypes:pictureAttributeHint', 'The property containing the image URL for user avatars')}
+                  </Typography>
+                  <Select
+                    value={pictureAttribute}
+                    onChange={(event) => onPictureAttributeChange(event.target.value)}
+                    size="small"
+                    displayEmpty
+                    renderValue={(selected) => {
+                      const value = typeof selected === 'string' ? selected : '';
+                      if (!value) {
+                        return (
+                          <Typography variant="body2" color="text.secondary">
+                            {t('userTypes:selectPictureAttribute', 'Select a profile image attribute')}
+                          </Typography>
+                        );
+                      }
+                      const matchedProperty = eligiblePictureProperties.find(
+                        (property) => property.name.trim() === value,
+                      );
+                      const resolved = matchedProperty?.displayName ? resolveDisplayName(matchedProperty.displayName) : '';
+                      return resolved && resolved !== value ? `${resolved} (${value})` : value;
+                    }}
+                  >
+                    <MenuItem value="">
+                      <Typography variant="body2" color="text.secondary">
+                        {t('common:none', 'None')}
+                      </Typography>
+                    </MenuItem>
+                    {eligiblePictureProperties.map((property) => {
+                      const name = property.name.trim();
+                      const resolved = property.displayName ? resolveDisplayName(property.displayName) : '';
+                      return (
+                        <MenuItem key={property.id} value={name}>
+                          {resolved && resolved !== name ? `${resolved} (${name})` : name}
+                        </MenuItem>
+                      );
+                    })}
+                  </Select>
+                </FormControl>
+              )}
             </Paper>
           ) : undefined
         }

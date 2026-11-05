@@ -91,6 +91,7 @@ export type UserTypeDefinition = Record<string, PropertyDefinition>;
  */
 export interface SystemAttributes {
   display?: string;
+  picture?: string;
   primaryEmail?: string;
   primaryMobile?: string;
 }

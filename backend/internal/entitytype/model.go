@@ -34,6 +34,7 @@ func (c TypeCategory) IsValid() bool {
 // Stored as a JSON column for extensibility — new fields can be added without DB migrations.
 type SystemAttributes struct {
 	Display       string `json:"display,omitempty" yaml:"display,omitempty"`
+	Picture       string `json:"picture,omitempty" yaml:"picture,omitempty"`
 	PrimaryEmail  string `json:"primaryEmail,omitempty" yaml:"primaryEmail,omitempty"`
 	PrimaryMobile string `json:"primaryMobile,omitempty" yaml:"primaryMobile,omitempty"`
 }

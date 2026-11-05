@@ -467,7 +467,7 @@ func TestHandleEntityTypeListRequest_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestSanitizeSystemAttributes_KeepsPrimaryContacts(t *testing.T) {
-	attrs := &SystemAttributes{Display: "work", PrimaryEmail: "work", PrimaryMobile: "phone"}
+func TestSanitizeSystemAttributes_KeepsConfiguredAttributes(t *testing.T) {
+	attrs := &SystemAttributes{Display: "work", Picture: "profilePhoto", PrimaryEmail: "work", PrimaryMobile: "phone"}
 	assert.Equal(t, attrs, sanitizeSystemAttributes(attrs))
 }
