@@ -1,7 +1,7 @@
 # OIDC Back-Channel Logout Specification
 
 - **Status:** Final
-- **Version:** 0.5
+- **Version:** 0.6
 - **Related documents:** [threat-model.md](threat-model.md), [#5233](https://github.com/thunder-id/thunderid/issues/5233), [#5258](https://github.com/thunder-id/thunderid/discussions/5258), [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html), [OpenID Connect RP-Initiated Logout 1.0](https://openid.net/specs/openid-connect-rpinitiated-1_0.html), [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)
 
 ## Summary
@@ -113,7 +113,7 @@ The mechanics of announcing a state change to listeners are generic and live in 
 
 | Aspect | Contract |
 |---|---|
-| Payload | The session identifier, the subject id, the participant list, and the termination reason, which is either sign-out or subject revocation |
+| Payload | The session identifier, the subject id, the participant list, and the termination reason, which is sign-out, subject revocation, or session revocation |
 | When called | After the terminating transaction has committed, never inside it |
 | Context | Carries the terminating request's values, such as the trace id, but is never cancelled, so a listener may hand it to work that outlives the request |
 | Obligation | Return promptly and perform no I/O |
@@ -143,7 +143,7 @@ The dispatcher is the one new runtime component. It turns a terminated session i
 
 | Part | Role |
 |---|---|
-| Termination event | What the listener receives: session id, subject id, participant list, and the reason (`sign_out` or `subject_revocation`). Copied, never referenced, so the caller's data is not shared with a goroutine |
+| Termination event | What the listener receives: session id, subject id, participant list, and the reason (`sign_out`, `subject_revocation`, or `session_revocation`). Copied, never referenced, so the caller's data is not shared with a goroutine |
 | Intake queue | A bounded channel of termination events, sized by `queue_size`. The listener offers to it without blocking |
 | Worker pool | A fixed set of goroutines that take events off the queue, expand each into jobs, and run deliveries |
 | Job | One participating application of one event: application id, session id, subject id, the attempt number, and the time the next attempt is due. The attempt number starts at 1 and goes up with each retry; once it reaches `max_attempts` the job is not retried again, and it is recorded on every outcome as `attempt_number`. The dispatcher's unit of work |
@@ -542,3 +542,4 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 | 0.3 | 2026-10-05 | Delivery and the discovery flags depend only on the back-channel flag, not on the logout endpoint, as reviewed in #5630. |
 | 0.4 | 2026-10-26 | A 2xx other than 200 and 204 is classified as rejected, matching the dispatcher, as reviewed in #5777. |
 | 0.5 | 2026-10-31 | Participants are recorded per application and organization unit; the dispatcher notifies each application once. |
+| 0.6 | 2026-11-05 | Added the `session_revocation` reason, for sessions revoked through the session management API in #6152. |

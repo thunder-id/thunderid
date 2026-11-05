@@ -131,3 +131,22 @@ func (s *ParticipantSchemaTestSuite) TestDeleteParticipantRemovesOneOU() {
 	s.Require().Len(got, 1)
 	s.Equal("ou-y", got[0].OUID)
 }
+
+// An application signed in under two organization units is two participant rows, but its session is
+// counted once.
+func (s *ParticipantSchemaTestSuite) TestASessionIsCountedOnceForAnApplicationUnderTwoOUs() {
+	joined := time.Unix(1700000000, 0).UTC()
+	_, err := s.db.Exec(`INSERT INTO "SESSION" (SESSION_ID, DEPLOYMENT_ID, TYPE, SUBJECT_ID, FLOW_ID, `+
+		`FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, AUTHENTICATED_AT, LAST_ACTIVE_AT, STATE, VERSION) `+
+		`VALUES ('sess-1', ?, 'SSO', 'user-1', 'flow-1', 1, 'exec-1', 'handle-1', ?, ?, 'ACTIVE', 1)`,
+		testDeploymentID, joined, joined)
+	s.Require().NoError(err)
+	s.record("ou-x", "tfid-x", joined)
+	s.record("ou-y", "tfid-y", joined.Add(time.Minute))
+
+	var total int
+	s.Require().NoError(s.db.QueryRow(queryCountLiveSessionsByApp.Query,
+		"app-1", joined, testDeploymentID).Scan(&total))
+
+	s.Equal(1, total)
+}
