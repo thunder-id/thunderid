@@ -2536,3 +2536,168 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_ValuesAtLimitAccepted() {
 
 	s.NoError(svc.UpdateSystemAttributes(s.ctx, "e1", attrs))
 }
+
+// declaresCredentials sets the attributes an entity type declares as credentials.
+func declaresCredentials(ets *entitytypemock.EntityTypeServiceInterfaceMock, category entitytype.TypeCategory,
+	entityType string, attributes ...string) {
+	infos := make([]entitytype.AttributeInfo, 0, len(attributes))
+	for _, attribute := range attributes {
+		infos = append(infos, entitytype.AttributeInfo{Attribute: attribute, Credential: true})
+	}
+	ets.On("GetAttributes", mock.Anything, category, entityType,
+		entitytype.AttributeFilter{AllowCredential: true}).Return(infos, (*tidcommon.ServiceError)(nil))
+}
+
+// Only what the type declares and the entity holds is reported, whichever column holds it. A client
+// secret the entity also holds is not a declared credential.
+func (s *ServiceTestSuite) TestGetHeldCredentialTypes_ReportsTheDeclaredCredentialsHeld() {
+	svc, ets := s.newSvcWithEntityType()
+	e := testEntity("e-held")
+	e.Category = providers.EntityCategoryAgent
+	e.Type = "default"
+	declaresCredentials(ets, entitytype.TypeCategoryAgent, "default", "pin", "password", "otp")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).Return(&entityWithCredentials{
+		Entity:            e,
+		SchemaCredentials: json.RawMessage(`{"password":[{"value":"h1"}],"otp":[]}`),
+		SystemCredentials: json.RawMessage(`{"clientSecret":[{"value":"h2"}],"pin":[{"value":"h3"}]}`),
+	}, nil)
+
+	types, err := svc.GetHeldCredentialTypes(s.ctx, e.ID)
+
+	s.NoError(err)
+	s.ElementsMatch([]string{"pin", "password"}, types)
+}
+
+func (s *ServiceTestSuite) TestGetHeldCredentialTypes_NoneDeclared() {
+	svc, ets := s.newSvcWithEntityType()
+	e := testEntity("e-none")
+	declaresCredentials(ets, entitytype.TypeCategoryUser, e.Type)
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).Return(&entityWithCredentials{
+		Entity: e, SchemaCredentials: json.RawMessage(`{"password":[{"value":"h1"}]}`),
+	}, nil)
+
+	types, err := svc.GetHeldCredentialTypes(s.ctx, e.ID)
+
+	s.NoError(err)
+	s.Empty(types)
+}
+
+// An application has no type to declare credentials, so it holds none an export could carry.
+func (s *ServiceTestSuite) TestGetHeldCredentialTypes_CategoryWithoutATypeHoldsNone() {
+	svc, _ := s.newSvcWithEntityType()
+	e := testEntity("e-app")
+	e.Category = providers.EntityCategoryApp
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).Return(&entityWithCredentials{
+		Entity: e, SystemCredentials: json.RawMessage(`{"clientSecret":[{"value":"h1"}]}`),
+	}, nil)
+
+	types, err := svc.GetHeldCredentialTypes(s.ctx, e.ID)
+
+	s.NoError(err)
+	s.Empty(types)
+}
+
+func (s *ServiceTestSuite) TestGetHeldCredentialTypes_Failures() {
+	cases := []struct {
+		name  string
+		setup func(svc *entityService, ets *entitytypemock.EntityTypeServiceInterfaceMock) string
+		want  error
+	}{
+		{name: "store error", setup: func(_ *entityService, _ *entitytypemock.EntityTypeServiceInterfaceMock) string {
+			s.store.On("GetEntityWithCredentials", mock.Anything, "e-store").Return(nil, s.testErr).Once()
+			return "e-store"
+		}, want: s.testErr},
+		{name: "no entity", setup: func(_ *entityService, _ *entitytypemock.EntityTypeServiceInterfaceMock) string {
+			s.store.On("GetEntityWithCredentials", mock.Anything, "e-nil").
+				Return(&entityWithCredentials{}, nil).Once()
+			return "e-nil"
+		}, want: ErrEntityNotFound},
+		{name: "type error", setup: func(_ *entityService, ets *entitytypemock.EntityTypeServiceInterfaceMock) string {
+			e := testEntity("e-type")
+			s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+				Return(&entityWithCredentials{Entity: e}, nil).Once()
+			ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, e.Type,
+				entitytype.AttributeFilter{AllowCredential: true}).
+				Return(nil, &tidcommon.ServiceError{Code: "ETS-5000", Type: tidcommon.ServerErrorType}).Once()
+			return e.ID
+		}},
+		{name: "type not found", setup: func(
+			_ *entityService, ets *entitytypemock.EntityTypeServiceInterfaceMock) string {
+			e := testEntity("e-gone")
+			s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+				Return(&entityWithCredentials{Entity: e}, nil).Once()
+			ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, e.Type,
+				entitytype.AttributeFilter{AllowCredential: true}).
+				Return(nil, &tidcommon.ServiceError{Code: "USRS-1002", Type: tidcommon.ClientErrorType}).Once()
+			return e.ID
+		}, want: ErrSchemaValidationFailed},
+		{name: "malformed column", setup: func(
+			_ *entityService, ets *entitytypemock.EntityTypeServiceInterfaceMock) string {
+			e := testEntity("e-bad")
+			declaresCredentials(ets, entitytype.TypeCategoryUser, e.Type, "password")
+			s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).Return(&entityWithCredentials{
+				Entity: e, SchemaCredentials: json.RawMessage(`{"password":"not-a-list"}`),
+			}, nil).Once()
+			return e.ID
+		}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			svc, ets := s.newSvcWithEntityType()
+			id := tc.setup(svc, ets)
+
+			types, err := svc.GetHeldCredentialTypes(s.ctx, id)
+
+			s.Error(err)
+			if tc.want != nil {
+				s.ErrorIs(err, tc.want)
+			}
+			s.Nil(types)
+		})
+	}
+}
+
+// The values come from the declared credentials alone; an empty one and an undeclared attribute are
+// left out.
+func (s *ServiceTestSuite) TestGetDeclaredCredentialValues_ReadsTheDeclaredCredentials() {
+	svc, ets := s.newSvcWithEntityType()
+	declaresCredentials(ets, entitytype.TypeCategoryAgent, "default", "password", "pin", "otp")
+
+	values, err := svc.GetDeclaredCredentialValues(s.ctx, providers.EntityCategoryAgent, "default",
+		json.RawMessage(`{"name":"bot","password":"s3cret","pin":"","otp":7,"secret":"not declared"}`))
+
+	s.NoError(err)
+	s.Equal(map[string]string{"password": "s3cret"}, values)
+}
+
+func (s *ServiceTestSuite) TestGetDeclaredCredentialValues_NoAttributesAskNothing() {
+	svc, _ := s.newSvcWithEntityType()
+
+	values, err := svc.GetDeclaredCredentialValues(s.ctx, providers.EntityCategoryUser, "employee", nil)
+
+	s.NoError(err)
+	s.Empty(values)
+}
+
+func (s *ServiceTestSuite) TestGetDeclaredCredentialValues_Failures() {
+	s.Run("type error", func() {
+		svc, ets := s.newSvcWithEntityType()
+		ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "employee",
+			entitytype.AttributeFilter{AllowCredential: true}).
+			Return(nil, &tidcommon.ServiceError{Code: "ETS-1001"})
+
+		_, err := svc.GetDeclaredCredentialValues(s.ctx, providers.EntityCategoryUser, "employee",
+			json.RawMessage(`{"password":"s3cret"}`))
+
+		s.Error(err)
+	})
+	s.Run("malformed attributes", func() {
+		svc, ets := s.newSvcWithEntityType()
+		declaresCredentials(ets, entitytype.TypeCategoryUser, "employee", "password")
+
+		_, err := svc.GetDeclaredCredentialValues(s.ctx, providers.EntityCategoryUser, "employee",
+			json.RawMessage(`[1]`))
+
+		s.Error(err)
+	})
+}

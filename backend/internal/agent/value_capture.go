@@ -5,28 +5,62 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // captureValues hands a written agent to the value capturer, in the shape its exporter reads back.
 // The export names each value by where it sits in that shape, so a capture handed any other shape
-// would name nothing the export refers to. The export names an agent by its display value, so the
-// capture resolves the same one.
+// would name nothing the export refers to.
 //
 // It is given what the write returns rather than what a read returns, because only the write still
-// holds a client secret: it is hashed when stored and no read gives it back.
-func (s *agentService) captureValues(ctx context.Context, agent *model.AgentCompleteResponse) {
+// holds a client secret: it is hashed when stored and no read gives it back. The credentials the
+// agent's type declares are read from the attributes as submitted, for the same reason.
+func (s *agentService) captureValues(ctx context.Context, agent *model.AgentCompleteResponse,
+	submitted json.RawMessage) {
 	if s.valueCapturer == nil || agent == nil {
 		return
 	}
-	displayPaths := s.resolveDisplayPaths(ctx, []string{agent.Type})
-	s.valueCapturer.CaptureValues(ctx, resourceTypeAgent, &model.AgentGetResponse{
+	credentials, err := s.entityService.GetDeclaredCredentialValues(ctx, providers.EntityCategoryAgent,
+		agent.Type, submitted)
+	if err != nil {
+		s.logger.Warn(ctx, "Failed to read which attributes are credentials, so none were captured",
+			log.MaskedString("agentID", agent.ID), log.Error(err))
+		credentials = nil
+	}
+	s.capture(ctx, &model.AgentGetResponse{
 		ID:                agent.ID,
 		OUID:              agent.OUID,
 		Type:              agent.Type,
-		Display:           sysutils.ResolveDisplay(agent.ID, agent.Type, agent.Attributes, displayPaths),
 		InboundAuthConfig: agent.InboundAuthConfig,
-	})
+	}, agent.Attributes, credentials)
+}
+
+// captureCredentials hands the credentials just set on an agent to the value capturer.
+func (s *agentService) captureCredentials(ctx context.Context, agent *providers.Entity,
+	credentials map[string]string) {
+	if s.valueCapturer == nil || agent == nil || len(credentials) == 0 {
+		return
+	}
+	s.capture(ctx, &model.AgentGetResponse{ID: agent.ID, OUID: agent.OUID, Type: agent.Type},
+		agent.Attributes, credentials)
+}
+
+// capture names an agent by its display value, as the export does, and hands it to the value capturer
+// with its credentials.
+func (s *agentService) capture(ctx context.Context, resource *model.AgentGetResponse,
+	attributes json.RawMessage, credentials map[string]string) {
+	displayPaths := s.resolveDisplayPaths(ctx, []string{resource.Type})
+	resource.Display = sysutils.ResolveDisplay(resource.ID, resource.Type, attributes, displayPaths)
+	if len(credentials) > 0 {
+		resource.Credentials = make(map[string]interface{}, len(credentials))
+		for credType, value := range credentials {
+			resource.Credentials[credType] = value
+		}
+	}
+	s.valueCapturer.CaptureValues(ctx, resourceTypeAgent, resource)
 }

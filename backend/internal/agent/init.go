@@ -66,7 +66,7 @@ func Initialize(
 	handler := newAgentHandler(service)
 	registerRoutes(mux, handler)
 
-	exporter := newAgentExporter(service)
+	exporter := newAgentExporter(service, entityService)
 	return service, exporter, nil
 }
 

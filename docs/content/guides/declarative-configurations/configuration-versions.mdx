@@ -283,7 +283,7 @@ curl -k https://localhost:8095/gateways/{id}/applied-configuration \
 
 - A value the version refers to, such as `var:APPLICATION_ORDERS_CLIENT_ID`, is returned as the reference:
   the version does not hold the value. A secret the resource's own read masks is masked the same way, and
-  user credentials are never returned.
+  the credentials of users and agents are never returned.
 - `parts` carries the collections a resource's own API serves apart from it, as one page holding every
   item: a group's `members`, a role's `assignments`, a resource server's `resources` and `actions`, and a
   translation's namespaces under `ns/{namespace}`.

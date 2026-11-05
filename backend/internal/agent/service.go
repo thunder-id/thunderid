@@ -50,6 +50,7 @@ type AgentServiceInterface interface {
 		filters map[string]interface{}, includeDisplay bool) (*model.AgentListResponse, *tidcommon.ServiceError)
 	UpdateAgent(ctx context.Context, agentID string, req *model.UpdateAgentRequest) (
 		*model.AgentCompleteResponse, *tidcommon.ServiceError)
+	UpdateAgentCredentials(ctx context.Context, agentID string, credentials json.RawMessage) *tidcommon.ServiceError
 	DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError
 	GetAgentGroups(ctx context.Context, agentID string, limit, offset int) (
 		*model.AgentGroupListResponse, *tidcommon.ServiceError)
@@ -209,7 +210,7 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 	resp.OUID = agent.OUID
 	resp.ValidUntil, resp.Lifespan = lifespanView(&validUntil, now)
 	s.populateOUHandleForComplete(ctx, resp)
-	s.captureValues(ctx, resp)
+	s.captureValues(ctx, resp, agent.Attributes)
 	s.publishLifespanSet(ctx, agentID, validUntil)
 	return resp, nil
 }
@@ -586,8 +587,52 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 	resp.LastLoginAt = access.LastLoginAt
 	resp.ValidUntil, resp.Lifespan = lifespanView(currentValidUntil, now)
 	s.populateOUHandleForComplete(ctx, resp)
-	s.captureValues(ctx, resp)
+	s.captureValues(ctx, resp, req.Attributes)
 	return resp, nil
+}
+
+// UpdateAgentCredentials sets the given credentials of an agent, each a plaintext value of a credential
+// the agent's type declares, and keeps the ones not given as they are.
+func (s *agentService) UpdateAgentCredentials(ctx context.Context, agentID string,
+	credentials json.RawMessage) *tidcommon.ServiceError {
+	if agentID == "" {
+		return &ErrorMissingAgentID
+	}
+	var values map[string]string
+	if err := json.Unmarshal(credentials, &values); err != nil || len(values) == 0 {
+		return &ErrorInvalidRequestFormat
+	}
+	existing, err := s.entityService.GetEntityProfile(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, entity.ErrEntityNotFound) {
+			return &ErrorAgentNotFound
+		}
+		s.logger.Error(ctx, "Failed to retrieve agent entity for a credential update",
+			log.MaskedString("agentID", agentID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if existing.Category != providers.EntityCategoryAgent {
+		return &ErrorAgentNotFound
+	}
+	if existing.IsReadOnly {
+		return &ErrorCannotModifyDeclarativeResource
+	}
+	if svcErr := s.checkAgentAccess(
+		ctx, security.ActionUpdateAgent, existing.OUID, agentID); svcErr != nil {
+		return svcErr
+	}
+
+	// The entity service refuses a credential the type does not declare, or an empty one.
+	if err = s.entityService.UpdateCredentials(ctx, agentID, credentials); err != nil {
+		if mapped := mapEntityError(err); mapped != nil {
+			return mapped
+		}
+		s.logger.Error(ctx, "Failed to update agent credentials", log.MaskedString("agentID", agentID),
+			log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	s.captureCredentials(ctx, existing, values)
+	return nil
 }
 
 // DeleteAgent removes the agent and its associated inbound client.
