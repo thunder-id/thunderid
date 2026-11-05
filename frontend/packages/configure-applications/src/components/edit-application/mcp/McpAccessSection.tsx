@@ -117,8 +117,8 @@ export default function McpAccessSection({
   const userTypeOptions = userTypesData?.types.map((schema) => schema.handle) ?? [];
   const getLabel = (handle: string): string => getUserTypeLabel(userTypesData?.types ?? [], handle);
 
-  // Agent access is a single on/off choice in the console for now: on means the default agent type
-  // (which is the only one) is the only allowed one, off means no agent type is allowed.
+  // Agent access is a single on/off choice in the console: on allows every agent type, off allows
+  // none. Any non-empty list, such as an older `['default']`, shows as on.
   // Held locally because `application` carries saved values only, so the switch would otherwise
   // snap back until the edit is saved; the section is remounted on Save/Reset to reseed it.
   const [isAgentSignInEnabled, setIsAgentSignInEnabled] = useState<boolean>(
@@ -127,7 +127,7 @@ export default function McpAccessSection({
 
   const handleAgentSignInToggle = (enabled: boolean): void => {
     setIsAgentSignInEnabled(enabled);
-    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.DEFAULT_AGENT_TYPE_HANDLE] : []);
+    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.ALL_AGENT_TYPES] : []);
   };
 
   const agentSignInLabel = t('applications:edit.access.agentSignIn.toggle.label', 'Enable agent sign-in');

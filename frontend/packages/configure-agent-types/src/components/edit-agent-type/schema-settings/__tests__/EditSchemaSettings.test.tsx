@@ -459,4 +459,22 @@ describe('EditSchemaSettings (agent-type)', () => {
 
     expect(mockOnPropertiesChange).not.toHaveBeenCalled();
   });
+
+  it('offers no editing when disabled', () => {
+    render(
+      <EditSchemaSettings
+        properties={[...baseProperties, {...baseProperties[1], id: '2', name: 'tier', type: 'enum', enum: ['gold']}]}
+        onPropertiesChange={mockOnPropertiesChange}
+        agentTypeHandle="test"
+        disabled
+      />,
+    );
+
+    expect(screen.getByDisplayValue('email')).toBeDisabled();
+    screen.getAllByRole('checkbox').forEach((checkbox) => expect(checkbox).toBeDisabled());
+    expect(screen.getByRole('button', {name: /^add$/i})).toBeDisabled();
+    expect(screen.queryByRole('button', {name: 'Add property'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Remove property'})).not.toBeInTheDocument();
+    expect(screen.getByText('gold').closest('.MuiChip-root')?.querySelector('.MuiChip-deleteIcon')).toBeNull();
+  });
 });

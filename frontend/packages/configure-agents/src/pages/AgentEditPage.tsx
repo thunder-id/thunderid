@@ -10,7 +10,7 @@ import {
   ResourceAvatar,
   UnsavedChangesBar,
 } from '@thunderid/components';
-import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
+import {useGetAgentType, useGetAllAgentTypes} from '@thunderid/configure-agent-types';
 import {
   getBackchannelLogoutUriServerError,
   hasUserAccess,
@@ -107,8 +107,8 @@ export default function AgentEditPage(): JSX.Element {
   const [secretDialogOpen, setSecretDialogOpen] = useState(Boolean(justCreatedSecret));
 
   // The agent's type schema, used to drop stale attribute values on save.
-  const {data: agentTypesData, isLoading: isTypesLoading} = useGetAgentTypes();
-  const matchedSchema = agentTypesData?.types?.find((s) => s.handle === agent?.type);
+  const {data: agentTypes, isLoading: isTypesLoading} = useGetAllAgentTypes();
+  const matchedSchema = agentTypes?.find((s) => s.handle === agent?.type);
   const {data: agentTypeDetails, isLoading: isTypeLoading} = useGetAgentType(matchedSchema?.id);
   // Block save until the schema settles, else stale values bypass sanitization.
   const isSchemaResolving = isTypesLoading || isTypeLoading;

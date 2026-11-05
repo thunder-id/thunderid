@@ -4,18 +4,18 @@
 import {renderHook} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 
-const {mockUseGetAgentTypes} = vi.hoisted(() => ({mockUseGetAgentTypes: vi.fn()}));
+const {mockUseGetAllAgentTypes} = vi.hoisted(() => ({mockUseGetAllAgentTypes: vi.fn()}));
 
-vi.mock('@thunderid/configure-agent-types', () => ({useGetAgentTypes: mockUseGetAgentTypes}));
+vi.mock('@thunderid/configure-agent-types', () => ({useGetAllAgentTypes: mockUseGetAllAgentTypes}));
 
 import useAgentLabels from '../useAgentLabels';
 
-const serverTypes = {data: {types: [{handle: 'default', systemAttributes: {display: 'name'}}]}};
+const serverTypes = {data: [{handle: 'default', systemAttributes: {display: 'name'}}]};
 
 describe('useAgentLabels', () => {
   beforeEach(() => {
-    mockUseGetAgentTypes.mockReset();
-    mockUseGetAgentTypes.mockReturnValue({data: undefined});
+    mockUseGetAllAgentTypes.mockReset();
+    mockUseGetAllAgentTypes.mockReturnValue({data: undefined});
   });
 
   it('resolves from a bundled type without querying the server', () => {
@@ -27,17 +27,17 @@ describe('useAgentLabels', () => {
     const {result} = renderHook(() => useAgentLabels(configData));
 
     expect(result.current(configData.agent[0])).toBe('Bundled');
-    expect(mockUseGetAgentTypes).toHaveBeenCalledWith(undefined, {enabled: false});
+    expect(mockUseGetAllAgentTypes).toHaveBeenCalledWith({enabled: false});
   });
 
   it('resolves an agents-only bundle through the server type', () => {
-    mockUseGetAgentTypes.mockReturnValue(serverTypes);
+    mockUseGetAllAgentTypes.mockReturnValue(serverTypes);
     const configData = {agent: [{id: 'a1', type: 'default', attributes: {name: 'From Server'}}]};
 
     const {result} = renderHook(() => useAgentLabels(configData));
 
     expect(result.current(configData.agent[0])).toBe('From Server');
-    expect(mockUseGetAgentTypes).toHaveBeenCalledWith(undefined, {enabled: true});
+    expect(mockUseGetAllAgentTypes).toHaveBeenCalledWith({enabled: true});
   });
 
   it('makes a single lookup for many agents that share a missing type', () => {
@@ -50,11 +50,11 @@ describe('useAgentLabels', () => {
 
     renderHook(() => useAgentLabels(configData));
 
-    expect(mockUseGetAgentTypes).toHaveBeenCalledTimes(1);
+    expect(mockUseGetAllAgentTypes).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to the ID while the lookup is pending or after it fails', () => {
-    mockUseGetAgentTypes.mockReturnValue({data: undefined, isError: true});
+    mockUseGetAllAgentTypes.mockReturnValue({data: undefined, isError: true});
     const configData = {agent: [{id: 'a1', type: 'default', attributes: {name: 'Hidden'}}]};
 
     const {result} = renderHook(() => useAgentLabels(configData));
@@ -71,7 +71,7 @@ describe('useAgentLabels', () => {
     const {result} = renderHook(() => useAgentLabels(configData));
 
     expect(result.current(configData.agent[0])).toBe('a1');
-    expect(mockUseGetAgentTypes).toHaveBeenCalledWith(undefined, {enabled: true});
+    expect(mockUseGetAllAgentTypes).toHaveBeenCalledWith({enabled: true});
   });
 
   it('recomputes when the configuration changes', () => {
@@ -93,6 +93,6 @@ describe('useAgentLabels', () => {
     const {result} = renderHook(() => useAgentLabels(null));
 
     expect(result.current({id: 'a1'})).toBe('a1');
-    expect(mockUseGetAgentTypes).toHaveBeenCalledWith(undefined, {enabled: false});
+    expect(mockUseGetAllAgentTypes).toHaveBeenCalledWith({enabled: false});
   });
 });

@@ -194,6 +194,7 @@ const translations = {
     save: 'Save',
     cancel: 'Cancel',
     or: 'or',
+    none: 'None',
 
     // Page names (for breadcrumbs and navigation)
     home: 'Home',
@@ -1222,29 +1223,37 @@ const translations = {
     'types.array': 'Array',
     'types.object': 'Object',
     'validationErrors.nameRequired': 'Please enter an agent type name',
+    'validationErrors.handleRequired': 'Please enter an agent type handle',
+    'validationErrors.handleInvalid':
+      'Handle must start and end with a lowercase letter or number, and may contain only lowercase letters, numbers, hyphens, and underscores',
     'validationErrors.ouIdRequired': 'Please provide an organization unit ID',
     'validationErrors.propertiesRequired': 'Please add at least one property',
     'validationErrors.duplicateProperties': 'Duplicate property names found: {{duplicates}}',
     'errors.organizationUnitsFailedTitle': 'Failed to load organization units',
     noAgentTypes: 'No agent types found',
+    'listing.error': 'Failed to load agent types',
     'listing.columns.name': 'Name',
     'listing.columns.id': 'Agent type ID',
     'listing.columns.organizationUnit': 'Organization unit',
     'listing.columns.actions': 'Actions',
     noOrganizationUnits: 'No organization units available',
     confirmDeleteAgentType: 'Are you sure you want to delete this agent type?',
+    displayAttribute: 'Display attribute',
+    displayAttributeHint: 'The property used to display agent names in listings and references',
+    selectDisplayAttribute: 'Select a display attribute',
 
     // Edit page
     'manageAgentType.title': 'Manage agent type',
     'manageAgentType.subtitle': 'View and manage agent type information',
 
     // Edit page (new UI)
-    'edit.back': 'Back to agents',
-    'edit.title': 'Agent schema',
+    'edit.back': 'Back to agent types',
     'edit.editName': 'Edit agent type name',
     'edit.copyId': 'Copy agent type ID',
     'edit.tabs.general': 'General',
     'edit.tabs.schema': 'Schema',
+    'edit.tabs.advanced': 'Advanced',
+    'edit.tabs.ariaLabel': 'Agent type settings tabs',
     'edit.unsavedChanges': 'You have unsaved changes',
     'edit.loadError': 'Failed to load agent type information',
     'edit.loadErrorTitle': 'Failed to load agent type',
@@ -1270,12 +1279,26 @@ const translations = {
     'createAgentType.subtitle': 'Add a new agent type to your organization',
 
     // Create wizard steps
-    'createWizard.steps.name': 'Create an agent type',
+    'createWizard.steps.organizationUnit': 'Organization unit',
+    'createWizard.steps.name': 'Details',
     'createWizard.steps.general': 'General',
     'createWizard.steps.properties': 'Properties',
-    'createWizard.name.title': "Let's name your agent type",
+    'createWizard.onlyOrganizationUnitTaken':
+      'The only organization unit already has an agent type. Create another organization unit first, or edit the existing agent type.',
+    'createWizard.organizationUnit.title': 'Where should this agent type belong?',
+    'createWizard.organizationUnit.subtitle':
+      "Choose the organization unit that will own this agent type. You can't change this once created.",
+    'createWizard.organizationUnit.fieldLabel': 'Organization unit',
+    'createWizard.name.title': "Let's collect some details about your agent type",
     'createWizard.name.fieldLabel': 'Agent type name',
     'createWizard.name.placeholder': 'Enter your agent type name',
+    'createWizard.name.maxLength': 'Agent type name cannot exceed {{max}} characters',
+    'createWizard.handle.fieldLabel': 'Handle',
+    'createWizard.handle.placeholder': 'e.g., assistant',
+    'createWizard.handle.hint': "A unique identifier for this agent type. You can't change it once created.",
+    'createWizard.handle.invalid':
+      'Handle must start and end with a lowercase letter or number, and may contain only lowercase letters, numbers, hyphens, and underscores',
+    'createWizard.handle.maxLength': 'Handle cannot exceed {{max}} characters',
     'createWizard.general.title': 'Configure general settings',
     'createWizard.general.subtitle': 'Choose an organization unit and set registration preferences',
     'createWizard.properties.title': 'Define your schema properties',
@@ -1284,6 +1307,8 @@ const translations = {
     'create.error': 'Failed to create agent type. Please try again.',
     'update.success': 'Agent type updated successfully.',
     'update.error': 'Failed to update agent type. Please try again.',
+    'delete.title': 'Delete agent type',
+    'delete.message': 'Are you sure you want to delete this agent type? This action cannot be undone.',
     'delete.disclaimer': 'All associated schema definitions will be permanently removed.',
     'delete.success': 'Agent type deleted successfully.',
     'delete.error': 'Failed to delete agent type. Please try again.',
@@ -1294,11 +1319,19 @@ const translations = {
 
     // Backend error code translations (per entitytype service error envelope, agent-type wording).
     'errors.USRS-1002': 'This agent type no longer exists. It may have already been deleted.',
+    'errors.USRS-1003': 'An agent type with the same handle already exists.',
     'errors.USRS-1004': 'The agent type request is missing required fields or contains invalid data.',
     'errors.USRS-1008': 'This agent type is managed by the system and cannot be modified or deleted.',
     'errors.USRS-1011': 'Display attribute must reference an attribute defined in the schema.',
     'errors.USRS-1012': 'Display attribute must reference a string, email, mobile, or number type.',
     'errors.USRS-1013': 'Display attribute cannot reference a credential attribute.',
+    'errors.USRS-1016':
+      'The handle is invalid. It must start and end with a lowercase letter or number, and may contain only lowercase letters, numbers, hyphens, and underscores.',
+    'errors.USRS-1017': 'The handle of an agent type cannot be changed.',
+    'errors.USRS-1021':
+      'This organization unit already has an agent type. Choose another organization unit, or edit the existing agent type.',
+    'errors.USRS-1022':
+      'This agent type is in use. Delete or change the agents of this type, and remove it from the allowed agent types of applications, agents, and flows, before deleting it.',
   },
 
   // ============================================================================
@@ -1310,7 +1343,6 @@ const translations = {
     'listing.title': 'Agents',
     'listing.subtitle': 'Manage service identities and machine clients',
     'listing.addAgent': 'Add agent',
-    'listing.schema': 'Schema',
     'listing.search.placeholder': 'Search agents',
     'listing.loadError': 'Failed to load agents',
     'listing.columns.name': 'Name',
@@ -1648,6 +1680,7 @@ const translations = {
       'A delegated agent needs at least one grant type that lets it act for a user, such as authorization code.',
     'errors.AGT-1045': 'The lifespan end must be a valid date and time.',
     'errors.AGT-1046': 'The lifespan end must be in the future.',
+    'errors.AGT-1049': "The organization unit must be the agent type's organization unit or one below it.",
   },
 
   // ============================================================================

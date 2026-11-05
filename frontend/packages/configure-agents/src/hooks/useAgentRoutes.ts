@@ -5,8 +5,8 @@ import {useRoutes} from '@thunderid/contexts';
 import {useMemo} from 'react';
 
 /**
- * Route paths this package needs from the host application, including the agent type, group,
- * role, and onboarding destinations the agent pages link to.
+ * Route paths this package needs from the host application, including the group, role, and
+ * onboarding destinations the agent pages link to.
  *
  * The host supplies these via `@thunderid/contexts`'s `RoutesProvider`. When absent (e.g. this
  * package rendered standalone in a unit test), `useAgentRoutes` falls back to
@@ -19,9 +19,6 @@ export interface AgentRoutePaths {
     list: () => string;
     detail: (id: string) => string;
     create: () => string;
-  };
-  agentTypes: {
-    detail: (id: string) => string;
   };
   groups: {
     list: () => string;
@@ -46,9 +43,6 @@ export const defaultAgentRoutePaths: AgentRoutePaths = {
     detail: (id) => `/agents/${id}`,
     create: () => '/agents/create',
   },
-  agentTypes: {
-    detail: (id) => `/agent-types/${id}`,
-  },
   groups: {
     list: () => '/groups',
   },
@@ -68,15 +62,14 @@ export const defaultAgentRoutePaths: AgentRoutePaths = {
  * @public
  */
 export default function useAgentRoutes(): AgentRoutePaths {
-  const {agents, agentTypes, groups, roles, welcome} = useRoutes<Partial<AgentRoutePaths>>();
+  const {agents, groups, roles, welcome} = useRoutes<Partial<AgentRoutePaths>>();
   return useMemo(
     () => ({
       agents: agents ?? defaultAgentRoutePaths.agents,
-      agentTypes: agentTypes ?? defaultAgentRoutePaths.agentTypes,
       groups: groups ?? defaultAgentRoutePaths.groups,
       roles: roles ?? defaultAgentRoutePaths.roles,
       welcome: welcome ?? defaultAgentRoutePaths.welcome,
     }),
-    [agents, agentTypes, groups, roles, welcome],
+    [agents, groups, roles, welcome],
   );
 }

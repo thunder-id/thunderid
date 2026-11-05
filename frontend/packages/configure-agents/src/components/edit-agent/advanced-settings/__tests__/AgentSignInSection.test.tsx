@@ -79,6 +79,20 @@ describe('AgentSignInSection', () => {
     expect(screen.getByLabelText('Enable agent sign-in')).not.toBeChecked();
   });
 
+  it('should render the toggle on when every agent type is allowed', () => {
+    render(
+      <AgentSignInSection
+        agent={{...agent, allowedAgentTypes: ['*']}}
+        editedAgent={{}}
+        oauth2Config={delegationEnabledConfig}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    expect(screen.getByLabelText('Enable agent sign-in')).toBeChecked();
+  });
+
+  // A list saved before the wildcard existed still names the type it allowed, so it shows as on.
   it('renders the toggle on when an agent type is allowed', () => {
     render(
       <AgentSignInSection
@@ -105,7 +119,7 @@ describe('AgentSignInSection', () => {
     expect(screen.getByLabelText('Enable agent sign-in')).not.toBeChecked();
   });
 
-  it('allows the default agent type when the toggle is turned on', async () => {
+  it('should allow every agent type when the toggle is turned on', async () => {
     const user = userEvent.setup();
     render(
       <AgentSignInSection
@@ -118,7 +132,7 @@ describe('AgentSignInSection', () => {
 
     await user.click(screen.getByLabelText('Enable agent sign-in'));
 
-    expect(mockOnFieldChange).toHaveBeenCalledWith('allowedAgentTypes', ['default']);
+    expect(mockOnFieldChange).toHaveBeenCalledWith('allowedAgentTypes', ['*']);
   });
 
   it('clears every allowed agent type when the toggle is turned off', async () => {

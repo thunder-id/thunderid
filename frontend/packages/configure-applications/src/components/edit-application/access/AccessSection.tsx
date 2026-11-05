@@ -70,12 +70,12 @@ export default function AccessSection({
   const userTypeOptions = userTypesData?.types.map((schema) => schema.handle) ?? [];
   const getLabel = (handle: string): string => getUserTypeLabel(userTypesData?.types ?? [], handle);
 
-  // Agent access is a single on/off choice in the console for now: on means the default agent type (only type)
-  // is the only allowed one, off means no agent type is allowed.
+  // Agent access is a single on/off choice in the console: on allows every agent type, off allows none.
+  // Any non-empty list, such as an older `['default']`, shows as on.
   const isAgentSignInEnabled = (editedApp.allowedAgentTypes ?? application.allowedAgentTypes ?? []).length > 0;
 
   const handleAgentSignInToggle = (enabled: boolean): void => {
-    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.DEFAULT_AGENT_TYPE_HANDLE] : []);
+    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.ALL_AGENT_TYPES] : []);
   };
 
   const agentSignInLabel = t('applications:edit.access.agentSignIn.toggle.label', 'Enable agent sign-in');

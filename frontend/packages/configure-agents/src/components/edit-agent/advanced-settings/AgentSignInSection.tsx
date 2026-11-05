@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {deriveOAuth2Flags} from '@thunderid/configure-applications';
+import {ApplicationConstants, deriveOAuth2Flags} from '@thunderid/configure-applications';
 import {Switch} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {DEFAULT_AGENT_TYPE_HANDLE, type Agent, type OAuthAgentConfig} from '../../../models/agent';
+import type {Agent, OAuthAgentConfig} from '../../../models/agent';
 
 interface AgentSignInSectionProps {
   agent: Agent;
@@ -29,12 +29,12 @@ export default function AgentSignInSection({
 
   if (!isApplicable) return null;
 
-  // Agent access is a single on/off choice in the console for now: on means the default agent type
-  // (the only type) is the only allowed one, off means no agent type is allowed.
+  // Agent access is a single on/off choice in the console: on allows every agent type, off allows
+  // none. Any non-empty list, such as an older `['default']`, shows as on.
   const isEnabled = (editedAgent.allowedAgentTypes ?? agent.allowedAgentTypes ?? []).length > 0;
 
   const handleToggle = (enabled: boolean): void => {
-    onFieldChange('allowedAgentTypes', enabled ? [DEFAULT_AGENT_TYPE_HANDLE] : []);
+    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.ALL_AGENT_TYPES] : []);
   };
 
   const toggleLabel = t('agents:edit.advanced.agentSignIn.toggle.label', 'Enable agent sign-in');

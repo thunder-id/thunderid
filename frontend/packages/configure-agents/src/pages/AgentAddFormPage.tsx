@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, FullScreenCreationWizardLayout, QueryErrorNotice} from '@thunderid/components';
-import {useGetAgentType, useGetAgentTypes, type AgentTypeListItem} from '@thunderid/configure-agent-types';
+import {useGetAgentType, useGetAllAgentTypes, type AgentTypeListItem} from '@thunderid/configure-agent-types';
 import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
 import {renderSchemaField, useGetUsers} from '@thunderid/configure-users';
 import {useResolveDisplayName} from '@thunderid/hooks';
@@ -67,7 +67,7 @@ export default function AgentAddFormPage(): JSX.Element {
   const [issueCredentials, setIssueCredentials] = useState<boolean>(true);
   // The created agent whose secret is being shown; the agent's page opens once the secret is closed.
   const [created, setCreated] = useState<{id: string; clientSecret: string} | null>(null);
-  const {data: typeList, isLoading: typesLoading} = useGetAgentTypes({limit: 100, offset: 0});
+  const {data: typeList, isLoading: typesLoading} = useGetAllAgentTypes();
   const {data: agentType} = useGetAgentType(typeId || undefined);
   const {
     data: userList,
@@ -84,7 +84,7 @@ export default function AgentAddFormPage(): JSX.Element {
     reset,
   } = useForm<AttributeFormData>({mode: 'onBlur', shouldUnregister: true});
 
-  const types: AgentTypeListItem[] = typeList?.types ?? [];
+  const types: AgentTypeListItem[] = typeList ?? [];
   const selectedType: AgentTypeListItem | undefined = types.find((type) => type.id === typeId);
   const users = userList?.users ?? [];
   // Two users can share a display name, so the option shows the user's ID as well when they do.
