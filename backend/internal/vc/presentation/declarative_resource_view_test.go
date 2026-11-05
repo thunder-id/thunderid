@@ -28,7 +28,7 @@ func TestViewResourceShowsAnExportedDefinitionAsItsRead(t *testing.T) {
 		RequestedClaims: []string{"email"}, MandatoryClaims: []string{"email"}, OptionalClaims: []string{"name"},
 		ClaimValues:          map[string][]string{"department": {"engineering"}},
 		EnforceTrustedIssuer: &enforce,
-		TrustedAuthorities:   []string{"corp-ca"},
+		TrustedAuthorities:   []TrustedAuthority{{Name: "corp-ca", Certificate: "pem"}},
 	}
 	exported, err := yaml.Marshal(dto)
 	require.NoError(t, err)

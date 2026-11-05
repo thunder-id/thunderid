@@ -473,8 +473,8 @@ func (ts *GatewayVersionsTestSuite) TestAppliedFlowsDesignTranslationsAndServerC
 	}
 }
 
-// A credential configuration shows as its own read returns it. A presentation definition writes its
-// trusted authorities as a template range even when there are none, so it is skipped as not readable.
+// A credential configuration and a presentation definition show as their own reads return them. The
+// presentation definition's trusted authorities show by name, without their certificates.
 func (ts *GatewayVersionsTestSuite) TestAppliedCredentialsShowAsTheirReads() {
 	suffix := uniqueSuffix()
 	ouHandle := "viewed-credentials-" + suffix
@@ -489,11 +489,15 @@ func (ts *GatewayVersionsTestSuite) TestAppliedCredentialsShowAsTheirReads() {
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteCredentialConfiguration(configurationID) }()
+	certificate, err := testutils.NewSelfSignedCertificatePEM("Viewed Issuer CA", time.Now().Add(24*time.Hour))
+	ts.Require().NoError(err)
+	enforce := true
 	definitionID, err := testutils.CreatePresentationDefinition(testutils.PresentationDefinition{
 		Handle: "viewed-presentation-" + suffix, OUID: ouID, Name: "Viewed Presentation", Description: "Viewed",
 		VCT: "urn:viewed:credential:" + suffix, Format: "dc+sd-jwt",
 		RequestedClaims: []string{"given_name", "email"}, MandatoryClaims: []string{"given_name"},
-		OptionalClaims: []string{"email"},
+		OptionalClaims: []string{"email"}, EnforceTrustedIssuer: &enforce,
+		TrustedAuthorities: []testutils.TrustedAuthority{{Name: "viewed-issuer", Certificate: certificate}},
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeletePresentationDefinition(definitionID) }()
@@ -508,7 +512,13 @@ func (ts *GatewayVersionsTestSuite) TestAppliedCredentialsShowAsTheirReads() {
 	ts.Equal(live, configuration.Resource)
 	ts.Empty(configuration.Parts)
 
-	ts.Equal("GTW-1022", ts.skipped(applied, "presentation_definition", definitionID).Code)
+	liveDefinition := ts.read("/openid4vp/presentation-definitions/" + definitionID)
+	ts.Equal(ouHandle, liveDefinition["ouHandle"])
+	delete(liveDefinition, "ouHandle")
+	definition := ts.shown(applied, "presentation_definition", definitionID)
+	ts.Equal(liveDefinition, definition.Resource)
+	ts.Equal([]any{"viewed-issuer"}, definition.Resource["trustedAuthorities"])
+	ts.Empty(definition.Parts)
 }
 
 func uniqueSuffix() string {

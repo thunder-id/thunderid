@@ -19,11 +19,10 @@ const requestObjectContentType = "application/oauth-authz-req+jwt"
 
 // Route paths for the OpenID4VP endpoints.
 const (
-	requestURIPath      = "/openid4vp/request"
-	responseURIPath     = "/openid4vp/response"
-	apiTrustAnchorsPath = "/openid4vp/trust-anchors"
-	initiateURIPath     = "/openid4vp/initiate"
-	statusURIPath       = "/openid4vp/status/{txn_id}"
+	requestURIPath  = "/openid4vp/request"
+	responseURIPath = "/openid4vp/response"
+	initiateURIPath = "/openid4vp/initiate"
+	statusURIPath   = "/openid4vp/status/{txn_id}"
 )
 
 // openID4VPHandler serves the OpenID4VP endpoints.
@@ -105,11 +104,6 @@ func (h *openID4VPHandler) HandleResponse(w http.ResponseWriter, r *http.Request
 		body["redirect_uri"] = redirect
 	}
 	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusOK, body)
-}
-
-// HandleTrustAnchors returns the configured trust anchors (root CAs) as JSON.
-func (h *openID4VPHandler) HandleTrustAnchors(w http.ResponseWriter, r *http.Request) {
-	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusOK, h.walletSvc.GetTrustAnchors())
 }
 
 // initiateRequestDTO is the request body for POST /openid4vp/initiate.

@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"math/big"
@@ -143,6 +144,32 @@ func CreatePresentationDefinition(def PresentationDefinition) (string, error) {
 		return "", fmt.Errorf("response does not contain id or id is not a string. Response: %s", string(bodyBytes))
 	}
 	return id, nil
+}
+
+// UpdatePresentationDefinition replaces the presentation definition with the given ID via API.
+func UpdatePresentationDefinition(id string, def PresentationDefinition) error {
+	defJSON, err := json.Marshal(def)
+	if err != nil {
+		return fmt.Errorf("failed to marshal presentation definition: %w", err)
+	}
+
+	req, err := http.NewRequest("PUT", TestServerURL+presentationDefinitionsEndpoint+"/"+id, bytes.NewReader(defJSON))
+	if err != nil {
+		return fmt.Errorf("failed to create update request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send update request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
 }
 
 // DeletePresentationDefinition deletes a presentation definition by ID.
@@ -419,8 +446,9 @@ func lengthPrefixed(data []byte) []byte {
 
 // OpenID4VP wallet simulator.
 
-// vpWalletIssuer is the "iss" claim placed in the self-signed SD-JWT VC. Trust
-// is not enforced in the test definitions, so any non-empty issuer is accepted.
+// vpWalletIssuer is the "iss" claim placed in the self-signed SD-JWT VC. Issuer
+// trust is established by pinning the wallet's issuer certificate on a definition,
+// so any non-empty issuer is accepted.
 const vpWalletIssuer = "https://integration-test-issuer.thunderid.local"
 
 // VPWallet is a self-contained OpenID4VP wallet. It owns a self-signed issuer
@@ -439,6 +467,10 @@ func NewVPWallet() (*VPWallet, error) {
 	if err != nil {
 		return nil, fmt.Errorf("generate issuer key: %w", err)
 	}
+	ski := make([]byte, 20)
+	if _, err := rand.Read(ski); err != nil {
+		return nil, fmt.Errorf("generate issuer key id: %w", err)
+	}
 	tmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		Subject:               pkix.Name{CommonName: "ThunderID Integration Test Issuer"},
@@ -446,6 +478,7 @@ func NewVPWallet() (*VPWallet, error) {
 		NotAfter:              time.Now().Add(24 * time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		BasicConstraintsValid: true,
+		SubjectKeyId:          ski,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &issuerKey.PublicKey, issuerKey)
 	if err != nil {
@@ -460,6 +493,49 @@ func NewVPWallet() (*VPWallet, error) {
 
 // HolderKey exposes the wallet's holder key (for tests that need its JWK).
 func (w *VPWallet) HolderKey() *DPoPKey { return w.holderKey }
+
+// IssuerCertificatePEM returns the wallet's issuer certificate as PEM, for pinning
+// as a trusted authority on a presentation definition.
+func (w *VPWallet) IssuerCertificatePEM() string {
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: w.issuerCertDER}))
+}
+
+// IssuerKeyID returns the base64url SubjectKeyId of the wallet's issuer certificate,
+// the value a verifier advertises as a DCQL "aki" trusted authority.
+func (w *VPWallet) IssuerKeyID() (string, error) {
+	cert, err := x509.ParseCertificate(w.issuerCertDER)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(cert.SubjectKeyId), nil
+}
+
+// NewSelfSignedCertificatePEM mints a self-signed ES256 CA certificate valid until
+// notAfter and returns it PEM-encoded.
+func NewSelfSignedCertificatePEM(commonName string, notAfter time.Time) (string, error) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return "", fmt.Errorf("generate key: %w", err)
+	}
+	serial, err := rand.Int(rand.Reader, big.NewInt(1<<62))
+	if err != nil {
+		return "", fmt.Errorf("generate serial: %w", err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: commonName},
+		NotBefore:             notAfter.Add(-48 * time.Hour),
+		NotAfter:              notAfter,
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		return "", fmt.Errorf("create certificate: %w", err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), nil
+}
 
 // VPRequestObject is the decoded authorization request the wallet fetches from
 // /openid4vp/request. Only the fields a wallet needs are surfaced.
@@ -792,6 +868,54 @@ func PollVPStatusUntilTerminal(txnID string, attempts int, interval time.Duratio
 		time.Sleep(interval)
 	}
 	return last, nil
+}
+
+// VPVerificationResult is the outcome of a full OpenID4VP verification run by RunVPVerification.
+type VPVerificationResult struct {
+	// Request is the request object the wallet received.
+	Request *VPRequestObject
+	// SubmitStatusCode is the HTTP status of the wallet's response submission.
+	SubmitStatusCode int
+	// Status is the terminal status of the verification session.
+	Status *VPStatusResponse
+}
+
+// RunVPVerification drives a verification for definitionID end to end: it initiates a session,
+// fetches the request object, submits the wallet's encrypted presentation of claims, and polls
+// the session to a terminal status.
+func RunVPVerification(definitionID string, wallet *VPWallet, claims map[string]any) (*VPVerificationResult, error) {
+	res, init, err := InitiateVP(definitionID)
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("initiate returned %d: %s", res.StatusCode, string(res.Body))
+	}
+	_, jar, _, err := FetchVPRequestObject(init.TxnID)
+	if err != nil {
+		return nil, err
+	}
+	req, err := ParseVPRequestObject(jar)
+	if err != nil {
+		return nil, err
+	}
+	presentation, err := wallet.BuildPresentation(req, claims)
+	if err != nil {
+		return nil, err
+	}
+	response, err := wallet.EncryptResponse(req, presentation)
+	if err != nil {
+		return nil, err
+	}
+	submitRes, err := SubmitVPResponse(init.TxnID, response)
+	if err != nil {
+		return nil, err
+	}
+	status, err := PollVPStatusUntilTerminal(init.TxnID, 10, 200*time.Millisecond)
+	if err != nil {
+		return nil, err
+	}
+	return &VPVerificationResult{Request: req, SubmitStatusCode: submitRes.StatusCode, Status: status}, nil
 }
 
 // Shared low-level helpers.
