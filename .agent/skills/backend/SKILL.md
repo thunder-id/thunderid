@@ -19,5 +19,6 @@ Read every reference file whose row matches the change:
 | Adds any new code: scope, constants, types, helpers, names, comments, user-facing text | `idiom.md` |
 | Adds a management resource, or a store mode, export, or import to one | `resource.md` |
 | Adds or changes a server configuration key | `config.md` |
+| Wires anything in `cmd/server/servicemanager.go`, or touches `cmd/cpserver`, `internal/gateway`, `internal/variablestore`, value references, or import deletions | the `control-plane` skill |
 
 Before adding anything, open the closest existing package and match its shape. When a rule here and an older package disagree, follow the rule.

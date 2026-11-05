@@ -63,7 +63,8 @@ Also add:
 |---|---|
 | Declarative or composite store mode | a fixture under `tests/integration/resources/declarative_resources/<type>/` and a declarative test in the area (Ex: `tests/integration/group/group_declarative_test.go`) |
 | An exportable resource | coverage in `tests/integration/importexport` |
-| Control Plane only code | tests in `tests/integration/controlplane`, run with `make test_integration_cp` |
+| Control Plane only code | tests in `tests/integration/controlplane`, run with `make test_integration_cp` (see the `control-plane` skill) |
+| Gateway, version, or value reference behaviour on the server | tests in `tests/integration/gateway` or `tests/integration/variablestore` |
 
 ## E2E Tests
 
