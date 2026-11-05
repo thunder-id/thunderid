@@ -234,7 +234,10 @@ func (ts *ProjectAPITestSuite) projectWithHandle(handle string) *project {
 func (ts *ProjectAPITestSuite) TestExportedApplicationAndAgentKeepTheirProject() {
 	created := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Export"}`, ts.handle("export")))
 	app := ts.createApp(ts.appBody("exported", `"projectId":%q`, created.ID))
-	agent := ts.createAgent(ts.agentBody("exported", `"projectId":%q`, created.ID))
+	// The agent is owned by the application, which the import restores first. Without an owner it is
+	// owned by the caller, a user of the token issuer that the Control Plane does not hold, and the
+	// import refuses an owner it cannot find.
+	agent := ts.createAgent(ts.agentBody("exported", `"projectId":%q,"owner":%q`, created.ID, app.ID))
 
 	body, err := json.Marshal(map[string]any{"applications": []string{app.ID}, "agents": []string{agent.ID}})
 	ts.Require().NoError(err)
