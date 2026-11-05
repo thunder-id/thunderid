@@ -55,7 +55,7 @@ prepare:
 clean:
 	./build.sh clean $(OS) $(ARCH)
 
-build: build_frontend build_backend build_cp_backend package_samples build_quickstart
+build: build_frontend build_backend package_samples build_quickstart
 
 build_backend:
 	./build.sh build_backend $(OS) $(ARCH)
@@ -252,7 +252,7 @@ help:
 	@echo "  all                           - Clean, build, and test the project."
 	@echo "  backend                       - Clean, build, and test only the backend."
 	@echo "  clean                         - Remove build artifacts."
-	@echo "  build                         - Build $(PRODUCT_NAME) (backend + frontend + samples)."
+	@echo "  build                         - Build the Data Plane and quickstart packs, plus the sample apps."
 	@echo "  build_backend                 - Build the backend Go application."
 	@echo "  build_cp_backend              - Build and package the Control Plane server (backend/cmd/cpserver)."
 	@echo "  build_quickstart              - Build and package a combined Control Plane + Data Plane quickstart, pre-wired together."
