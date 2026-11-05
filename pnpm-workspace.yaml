@@ -281,14 +281,6 @@ peerDependencyRules:
 
 auditConfig:
   ignoreGhsas:
-    # JUSTIFICATION: image-size ICNS parser infinite-loop DoS, transitive via docusaurus mdx-loader.
-    # No patched release exists on npm yet (advisory lists "Patched: None"); revisit and add an
-    # override once image-size ships a fix.
-    - GHSA-w3rx-r6r6-pgpr
-    # JUSTIFICATION: image-size JXL/HEIF parser infinite-loop DoS, transitive via docusaurus
-    # mdx-loader. No patched release exists on npm yet (advisory lists "Patched: None"); revisit
-    # and add an override once image-size ships a fix.
-    - GHSA-5p2g-fcmc-qvqq
     # JUSTIFICATION: GHSA-qxc2-j82w-r537 — arbitrary code execution via faker's `helpers.fake`.
     # Transitive via docs -> openapi-to-postmanv2 -> postman-collection, which depends on the
     # deprecated @faker-js/faker@5.5.3. Not overridable: the fix landed in faker 10.5.0 (the
@@ -303,15 +295,6 @@ auditConfig:
     # build-time only, run against this repo's own OpenAPI specs. Revisit once postman-collection
     # upgrades its faker dependency.
     - GHSA-qxc2-j82w-r537
-    # JUSTIFICATION: http-cache-semantics max-stale handling can disclose a cached response to
-    # another user of a shared cache. Transitive via docs -> @docusaurus/core -> update-notifier ->
-    # latest-version -> package-json -> got -> cacheable-request. No patched release exists on npm
-    # yet (the advisory lists "Patched: None"; 4.2.0 is the latest), and the latest Docusaurus
-    # (3.10.2) still depends on update-notifier, so neither an upgrade nor an override can fix it.
-    # Not exploitable here: the only use is the Docusaurus CLI's own update check on a developer
-    # machine or CI runner, never a cache shared between users. Revisit once http-cache-semantics
-    # ships a fix.
-    - GHSA-ch52-4w7c-c8xp
     # JUSTIFICATION: braces stack exhaustion through deeply nested brace patterns. Transitive via
     # docs -> @docusaurus/core -> chokidar@3 and webpack-dev-server -> http-proxy-middleware ->
     # micromatch. No patched release exists on npm yet (the advisory lists "Patched: None"; 3.0.3
