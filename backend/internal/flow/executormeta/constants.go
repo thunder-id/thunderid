@@ -58,6 +58,7 @@ const (
 	ExecutorNamePreSuspend                   = "PreSuspendExecutor"
 	ExecutorNameExtension                    = "ExtensionExecutor"
 	ExecutorNameAuthorizationDetail          = "AuthorizationDetailExecutor"
+	ExecutorNameExtensionAuthResolver        = "ExtensionAuthResolver"
 	ExecutorNameDeviceCode                   = "DeviceCodeExecutor"
 )
 

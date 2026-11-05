@@ -500,8 +500,12 @@ func (p *defaultAuthnProvider) authenticateWithCredential(
 	ctx context.Context,
 	identifiers, credentials map[string]interface{},
 ) (*authncommon.AuthnResult, providers.AuthenticationMethod, *attributedFailure, *tidcommon.ServiceError) {
-	if provisioned, ok := credentials[authnprovidercm.CredentialTypeProvisionedEntityID]; ok {
-		res, svcErr := p.authenticateForProvisioning(provisioned)
+	bound, ok := credentials[authnprovidercm.CredentialTypeProvisionedEntityID]
+	if !ok {
+		bound, ok = credentials[authnprovidercm.CredentialTypeExtensionVerifiedEntityID]
+	}
+	if ok {
+		res, svcErr := p.authenticateBoundEntity(bound)
 		// An entity the flow bound by ID checks no secret, so it is admitted as a federated sign-in.
 		return res, providers.AuthenticationMethodFederated, nil, svcErr
 	}
@@ -534,20 +538,20 @@ func (p *defaultAuthnProvider) authenticateWithCredential(
 	return res, method, failure, svcErr
 }
 
-// authenticateForProvisioning simulates a successful authentication for a provisioned entity.
-// The raw credential is expected to be a non-empty userID string.
-func (p *defaultAuthnProvider) authenticateForProvisioning(
+// authenticateBoundEntity simulates a successful authentication for an entity the flow bound by ID.
+// The raw credential is expected to be a non-empty entity ID string.
+func (p *defaultAuthnProvider) authenticateBoundEntity(
 	raw interface{},
 ) (*authncommon.AuthnResult, *tidcommon.ServiceError) {
-	userID, ok := raw.(string)
-	if !ok || userID == "" {
+	entityID, ok := raw.(string)
+	if !ok || entityID == "" {
 		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
-			"Invalid provisioning credential payload",
-			"The provided provisioning credential must be a non-empty userID string")
+			"Invalid entity credential payload",
+			"The provided entity credential must be a non-empty entity ID string")
 	}
 	return &authncommon.AuthnResult{
-		Token:               map[string]interface{}{authnprovidercm.UserAttributeUserID: userID},
-		AuthenticatedClaims: map[string]interface{}{authnprovidercm.UserAttributeUserID: userID},
+		Token:               map[string]interface{}{authnprovidercm.UserAttributeUserID: entityID},
+		AuthenticatedClaims: map[string]interface{}{authnprovidercm.UserAttributeUserID: entityID},
 	}, nil
 }
 

@@ -1702,6 +1702,21 @@ var (
 		},
 	}
 
+	// ErrExtensionReturnNotVerified is returned when the flow resumes after an extension step sent the
+	// user to its service's page, without the code the page returned.
+	ErrExtensionReturnNotVerified = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1126",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_return_not_verified",
+			DefaultValue: "Return not verified",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_return_not_verified_desc",
+			DefaultValue: "Continue where the external service's page was completed",
+		},
+	}
+
 	// ErrAuthorizationDetailsRefused is returned when the processor of an authorization details type
 	// refuses the requested details.
 	ErrAuthorizationDetailsRefused = tidcommon.ServiceError{

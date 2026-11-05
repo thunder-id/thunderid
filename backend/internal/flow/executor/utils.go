@@ -313,7 +313,16 @@ func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorRe
 // provider's error as is, and ErrEntityAuthFailed when the AuthUser comes back unauthenticated.
 func authenticateEntityByID(ctx *providers.NodeContext, authnProvider providers.AuthnProviderManager,
 	entityID string, base providers.AuthUser, execResp *providers.ExecutorResponse) *tidcommon.ServiceError {
-	credential := map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: entityID}
+	return authenticateTrustedEntity(ctx, authnProvider, authnprovidercm.CredentialTypeProvisionedEntityID,
+		entityID, base, execResp)
+}
+
+// authenticateTrustedEntity signs in an entity by ID as authenticateEntityByID does, through
+// credentialType, the internal credential type that names how the flow came to trust the entity.
+func authenticateTrustedEntity(ctx *providers.NodeContext, authnProvider providers.AuthnProviderManager,
+	credentialType, entityID string, base providers.AuthUser,
+	execResp *providers.ExecutorResponse) *tidcommon.ServiceError {
+	credential := map[string]interface{}{credentialType: entityID}
 	authUser, authenticatedClaims, svcErr := authnProvider.AuthenticateUser(ctx.Context, nil, credential,
 		nil, nil, base)
 	if svcErr != nil {
@@ -623,4 +632,16 @@ func pinnedVerificationEvidence(ctx *providers.NodeContext) (*verificationEviden
 	}
 
 	return &proof, nil
+}
+
+// extensionAttemptCountKey scopes common.RuntimeKeyExtensionAttemptCount to an extension step's node ID,
+// so two extension steps in one flow count separately.
+func extensionAttemptCountKey(nodeID string) string {
+	return common.RuntimeKeyExtensionAttemptCount + ":" + nodeID
+}
+
+// extensionRedirectPendingKey scopes common.RuntimeKeyExtensionRedirectPending to an extension step's
+// node ID.
+func extensionRedirectPendingKey(nodeID string) string {
+	return common.RuntimeKeyExtensionRedirectPending + ":" + nodeID
 }

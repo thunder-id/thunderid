@@ -6,6 +6,7 @@ package controlplane
 import (
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +22,20 @@ import (
 // captureGatewayKey is the key the control plane presents to the gateway that receives captures.
 const captureGatewayKey = "capture-gateway-key"
 
+const (
+	// captureRetryDelay is how long the control plane waits before writing a failed value again.
+	captureRetryDelay = 2 * time.Second
+	// stallLimit bounds how long a stalled write waits to be resumed, well inside the control plane's
+	// own bound on a write.
+	stallLimit = 5 * time.Second
+	// removalRefusal is the error a store answers a removal it will not make with.
+	removalRefusal = `{"code":"VS-1000","message":"The secret cannot be removed"}`
+	// unreadableCiphertext replaces a stored secret's ciphertext, so the secret cannot be decrypted.
+	unreadableCiphertext = "cp-unreadable-ciphertext"
+	// storedPasswordProperty is the stored property that holds an HTTP connection's password.
+	storedPasswordProperty = "authentication_password"
+)
+
 // capturingGateway stands in for a data plane's variable store: it keeps every value the control
 // plane sets in it, by collection and name, and refuses a call without the key it was registered with.
 type capturingGateway struct {
@@ -32,16 +47,33 @@ type capturingGateway struct {
 	attempts    map[string]int
 	// written records each value that received an accepted write.
 	written map[string]bool
+	// refuseFirstRemoval makes the first removal of each value fail; removals counts the removals each
+	// value received, failed ones included.
+	refuseFirstRemoval bool
+	removals           map[string]int
+	// refuseRemovals makes the store refuse every removal with an error of its own.
+	refuseRemovals bool
+	// stallKey holds the first write of that value until resume is closed, closing stalled once the
+	// write arrives, so a test can write again while that write is in flight.
+	stallKey        string
+	stalled, resume chan struct{}
+	// accepted records, in order, the values each key received in accepted writes.
+	accepted map[string][]string
 }
 
 func newCapturingGateway() *capturingGateway {
-	g := &capturingGateway{values: map[string]string{}, attempts: map[string]int{}, written: map[string]bool{}}
+	g := &capturingGateway{values: map[string]string{}, attempts: map[string]int{}, written: map[string]bool{},
+		removals: map[string]int{}, accepted: map[string][]string{}}
 	g.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("API-Key") != captureGatewayKey {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if r.Method == http.MethodDelete && len(parts) == 2 {
+			g.remove(w, parts[0]+"/"+parts[1])
+			return
+		}
 		if r.Method != http.MethodPut || len(parts) != 2 {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -61,14 +93,101 @@ func newCapturingGateway() *capturingGateway {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		if key == g.stallKey && g.attempts[key] == 1 {
+			stalled, resume := g.stalled, g.resume
+			g.mu.Unlock()
+			close(stalled)
+			select {
+			case <-resume:
+			case <-time.After(stallLimit):
+			}
+			g.mu.Lock()
+		}
 		g.values[key] = body.Value
 		g.written[key] = true
+		g.accepted[key] = append(g.accepted[key], body.Value)
 		g.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"name":"` + parts[1] + `"}`))
 	}))
 	return g
+}
+
+// remove removes the value under key, as a store removes a value whether or not it holds one.
+func (g *capturingGateway) remove(w http.ResponseWriter, key string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.removals[key]++
+	if g.refuseFirstRemoval && g.removals[key] == 1 {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if g.refuseRemovals {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(removalRefusal))
+		return
+	}
+	delete(g.values, key)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// stallFirstWrite holds the first write of the value under a name in a collection until the returned
+// resume is called, and returns a channel closed once that write arrives.
+func (g *capturingGateway) stallFirstWrite(collection, name string) (<-chan struct{}, func()) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.stallKey = collection + "/" + name
+	g.stalled, g.resume = make(chan struct{}), make(chan struct{})
+	return g.stalled, sync.OnceFunc(func() { close(g.resume) })
+}
+
+// acceptedAt returns, in order, the values a name in a collection received in accepted writes.
+func (g *capturingGateway) acceptedAt(collection, name string) []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return slices.Clone(g.accepted[collection+"/"+name])
+}
+
+// attemptsSoon waits for a value to have received at least n writes, failed ones included.
+func (g *capturingGateway) attemptsSoon(collection, name string, n int) bool {
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if g.attemptsAt(collection, name) >= n || time.Now().After(deadline) {
+			return g.attemptsAt(collection, name) >= n
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// removalsSoon waits for a value to have received at least n removals, failed ones included.
+func (g *capturingGateway) removalsSoon(collection, name string, n int) bool {
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if g.removalsAt(collection, name) >= n || time.Now().After(deadline) {
+			return g.removalsAt(collection, name) >= n
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// goneSoon waits for the value under a name in a collection to be removed, and reports whether it was.
+func (g *capturingGateway) goneSoon(collection, name string) bool {
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, ok := g.held(collection, name); !ok || time.Now().After(deadline) {
+			return !ok
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// removalsAt counts the removals a value received, failed ones included.
+func (g *capturingGateway) removalsAt(collection, name string) int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.removals[collection+"/"+name]
 }
 
 // heldSoon waits for a value to be set under a name in a collection, since the control plane writes
@@ -131,6 +250,14 @@ func (g *capturingGateway) holdsValue(collection, value string) bool {
 // withDefaultGateway registers a capturing gateway as this control plane's default for one test.
 func (ts *ControlPlaneTestSuite) withDefaultGateway() *capturingGateway {
 	ts.T().Helper()
+	g, _ := ts.registerCapturingGateway(true)
+	return g
+}
+
+// registerCapturingGateway registers a capturing gateway, the default or not, for one test and returns
+// it with its id.
+func (ts *ControlPlaneTestSuite) registerCapturingGateway(isDefault bool) (*capturingGateway, string) {
+	ts.T().Helper()
 	g := newCapturingGateway()
 	ts.T().Cleanup(g.server.Close)
 	certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: g.server.Certificate().Raw})
@@ -144,12 +271,12 @@ func (ts *ControlPlaneTestSuite) withDefaultGateway() *capturingGateway {
 		"baseUrl":       g.server.URL,
 		"key":           captureGatewayKey,
 		"caCertificate": string(certificate),
-		"isDefault":     true,
+		"isDefault":     isDefault,
 	}, &registered)
 	ts.Require().Equal(http.StatusCreated, status, string(raw))
-	ts.Require().True(registered.IsDefault, "the capturing gateway is not the default")
+	ts.Require().Equal(isDefault, registered.IsDefault, "the capturing gateway's default flag is not as asked")
 	ts.T().Cleanup(func() { ts.call(http.MethodDelete, "/gateways/"+registered.ID, nil, nil) })
-	return g
+	return g, registered.ID
 }
 
 // variableName is how an export names a resource's value: its type, its name and the field.
@@ -545,4 +672,309 @@ func (ts *ControlPlaneTestSuite) TestAnHTTPConnectionWithAHeaderAnExportCannotNa
 
 	barrier := ts.captureBarrier(g)
 	ts.Equal([]string{barrier}, g.writtenNames(), "a value of the connection was written to the gateway's store")
+}
+
+// basicAuthentication is the authentication of a connection that signs in with a username and password.
+func basicAuthentication(password string) map[string]any {
+	return map[string]any{"type": "basic", "properties": map[string]any{"username": "cp-user", "password": password}}
+}
+
+// Deleting an HTTP connection removes the copy of its secret from the default gateway.
+func (ts *ControlPlaneTestSuite) TestDeletingAnHTTPConnectionReleasesItsSecret() {
+	g := ts.withDefaultGateway()
+	name := unique("cp-http-release")
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-http-release.example.com/hook",
+		"authentication": basicAuthentication(unique("cp-http-release-secret"))})
+	secret := variableName("CONNECTION", name, "PASSWORD")
+	_, ok := g.heldSoon("secrets", secret)
+	ts.Require().True(ok, "the password was not captured")
+
+	status, raw := ts.call(http.MethodDelete, "/connections/http/"+id, nil, nil)
+	ts.Require().Equal(http.StatusNoContent, status, string(raw))
+
+	ts.True(g.goneSoon("secrets", secret), "the deleted connection's password is still in the gateway's store")
+}
+
+// An update that drops one of a connection's secrets removes that secret's copy and keeps the
+// others.
+func (ts *ControlPlaneTestSuite) TestAnHTTPUpdateDroppingASecretReleasesOnlyThatSecret() {
+	g := ts.withDefaultGateway()
+	name := unique("cp-http-drop")
+	const url = "https://cp-http-drop.example.com/hook"
+	primary := unique("cp-http-drop-primary")
+	apiKeys := func(keys map[string]any) map[string]any {
+		return map[string]any{"name": name, "url": url,
+			"authentication": map[string]any{"type": "api_key", "properties": keys}}
+	}
+	id := ts.createHTTPConnection(apiKeys(map[string]any{"Primary": primary,
+		"Secondary": unique("cp-http-drop-secondary")}))
+	kept, dropped := variableName("CONNECTION", name, "PRIMARY"), variableName("CONNECTION", name, "SECONDARY")
+	_, ok := g.heldSoon("secrets", dropped)
+	ts.Require().True(ok, "the secondary key was not captured")
+
+	status, raw := ts.call(http.MethodPut, "/connections/http/"+id, apiKeys(map[string]any{"Primary": primary}), nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+
+	ts.True(g.goneSoon("secrets", dropped), "the dropped key is still in the gateway's store")
+	held, ok := g.held("secrets", kept)
+	ts.True(ok, "the key the connection kept was removed")
+	ts.Equal(primary, held)
+}
+
+// A connection of another type with the same name refers to the same copy, so deleting the HTTP
+// connection leaves it for the other.
+func (ts *ControlPlaneTestSuite) TestDeletingAnHTTPConnectionKeepsASecretAnotherConnectionRefersTo() {
+	g := ts.withDefaultGateway()
+	name := unique("cp-shared")
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-shared.example.com/hook",
+		"authentication": basicAuthentication(unique("cp-shared-http"))})
+	smtpPassword := unique("cp-shared-smtp")
+	var smtp struct {
+		ID string `json:"id"`
+	}
+	status, raw := ts.call(http.MethodPost, "/connections/email-smtp", map[string]any{"name": name, "ouId": ts.ouID,
+		"host": "smtp.cp-shared.example.com", "port": 587, "fromAddress": "noreply@cp-shared.example.com",
+		"authentication": basicAuthentication(smtpPassword)}, &smtp)
+	ts.Require().Equal(http.StatusCreated, status, string(raw))
+	ts.T().Cleanup(func() { ts.call(http.MethodDelete, "/connections/email-smtp/"+smtp.ID, nil, nil) })
+	secret := variableName("CONNECTION", name, "PASSWORD")
+	ts.Require().True(g.holdsValueSoon("secrets", smtpPassword), "the SMTP password was not captured")
+
+	status, raw = ts.call(http.MethodDelete, "/connections/http/"+id, nil, nil)
+	ts.Require().Equal(http.StatusNoContent, status, string(raw))
+
+	ts.captureBarrier(g)
+	held, ok := g.held("secrets", secret)
+	ts.True(ok, "the copy the SMTP connection refers to was removed")
+	ts.Equal(smtpPassword, held)
+	ts.Zero(g.removalsAt("secrets", secret), "the gateway was asked to remove a copy another connection refers to")
+}
+
+// A removal the gateway fails does not fail the delete; it is tried again until the copy is gone.
+func (ts *ControlPlaneTestSuite) TestARemovalTheGatewayFailsIsTriedAgain() {
+	g := ts.withDefaultGateway()
+	g.mu.Lock()
+	g.refuseFirstRemoval = true
+	g.mu.Unlock()
+	name := unique("cp-http-retry")
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-http-retry.example.com/hook",
+		"authentication": basicAuthentication(unique("cp-http-retry-secret"))})
+	secret := variableName("CONNECTION", name, "PASSWORD")
+	_, ok := g.heldSoon("secrets", secret)
+	ts.Require().True(ok, "the password was not captured")
+
+	status, raw := ts.call(http.MethodDelete, "/connections/http/"+id, nil, nil)
+	ts.Require().Equal(http.StatusNoContent, status, string(raw))
+
+	ts.True(g.goneSoon("secrets", secret), "the removal was not tried again")
+	ts.GreaterOrEqual(g.removalsAt("secrets", secret), 2)
+}
+
+// A removal the gateway's store refuses with an error of its own is final: it is not tried again, the
+// copy stays, and the delete still succeeds. TestARemovalTheGatewayFailsIsTriedAgain is the control: a
+// failure that is not a refusal is tried again.
+func (ts *ControlPlaneTestSuite) TestARemovalTheGatewayRefusesIsNotTriedAgain() {
+	g := ts.withDefaultGateway()
+	name := unique("cp-http-refused")
+	password := unique("cp-http-refused-secret")
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-http-refused.example.com/hook",
+		"authentication": basicAuthentication(password)})
+	secret := variableName("CONNECTION", name, "PASSWORD")
+	_, ok := g.heldSoon("secrets", secret)
+	ts.Require().True(ok, "the password was not captured")
+	g.mu.Lock()
+	g.refuseRemovals = true
+	g.mu.Unlock()
+
+	status, raw := ts.call(http.MethodDelete, "/connections/http/"+id, nil, nil)
+	ts.Require().Equal(http.StatusNoContent, status, "a refused removal must not fail the delete: %s", raw)
+	ts.Require().True(g.removalsSoon("secrets", secret, 1), "the gateway was not asked to remove the copy")
+
+	// A retry would follow the refusal after the retry delay, so only waiting past it shows none came.
+	time.Sleep(captureRetryDelay + time.Second)
+	ts.Equal(1, g.removalsAt("secrets", secret), "a refused removal was tried again")
+	held, ok := g.held("secrets", secret)
+	ts.True(ok, "the store refused the removal, so the copy should still be held")
+	ts.Equal(password, held)
+}
+
+// A value given while an earlier write of it is still in flight follows that write, so the gateway
+// ends with the newer value rather than the one the in-flight write carried.
+func (ts *ControlPlaneTestSuite) TestAValueGivenWhileItsWriteIsInFlightFollowsIt() {
+	g := ts.withDefaultGateway()
+	name := unique("cp-http-inflight")
+	const url = "https://cp-http-inflight.example.com/hook"
+	secret := variableName("CONNECTION", name, "PASSWORD")
+	stalled, resume := g.stallFirstWrite("secrets", secret)
+	defer resume()
+
+	created := unique("cp-http-inflight-created")
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": url,
+		"authentication": basicAuthentication(created)})
+	select {
+	case <-stalled:
+	case <-time.After(10 * time.Second):
+		ts.Require().Fail("the password's first write never reached the gateway")
+	}
+
+	updated := unique("cp-http-inflight-updated")
+	status, raw := ts.call(http.MethodPut, "/connections/http/"+id, map[string]any{"name": name, "url": url,
+		"authentication": basicAuthentication(updated)}, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	resume()
+
+	ts.True(g.holdsValueSoon("secrets", updated), "the value given during the in-flight write was lost")
+	ts.Equal([]string{created, updated}, g.acceptedAt("secrets", secret),
+		"the newer value should be written once, after the write that was in flight")
+}
+
+// A newer value replaces one still waiting to be written again after a failure, so the older value
+// never reaches the gateway.
+func (ts *ControlPlaneTestSuite) TestANewerValueReplacesOneWaitingToBeWrittenAgain() {
+	g := ts.withDefaultGateway()
+	g.mu.Lock()
+	g.refuseFirst = true
+	g.mu.Unlock()
+	name := unique("cp-http-replaced")
+	const url = "https://cp-http-replaced.example.com/hook"
+	secret := variableName("CONNECTION", name, "PASSWORD")
+
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": url,
+		"authentication": basicAuthentication(unique("cp-http-replaced-created"))})
+	ts.Require().True(g.attemptsSoon("secrets", secret, 1), "the password's first write never reached the gateway")
+
+	// The failed write waits captureRetryDelay before it is tried again; the update lands inside that wait.
+	updated := unique("cp-http-replaced-updated")
+	status, raw := ts.call(http.MethodPut, "/connections/http/"+id, map[string]any{"name": name, "url": url,
+		"authentication": basicAuthentication(updated)}, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+
+	ts.True(g.holdsValueSoon("secrets", updated), "the newer password was not captured")
+	ts.Equal([]string{updated}, g.acceptedAt("secrets", secret),
+		"the value waiting to be written again should have been replaced, never written")
+}
+
+// makeStoredSecretUnreadable replaces the stored ciphertext of an HTTP connection's password, so the
+// server can no longer decrypt it.
+func (ts *ControlPlaneTestSuite) makeStoredSecretUnreadable(id string) {
+	ts.T().Helper()
+	if testutils.GetDBType() != "sqlite" {
+		ts.T().Skip("the stored connection can only be changed in a SQLite configuration database")
+	}
+	// id is a server-generated UUID, so it is safe to inline.
+	raw, err := testutils.QueryConfigDB(fmt.Sprintf(`SELECT PROPERTIES FROM "HTTP_CONNECTION" WHERE ID = '%s';`, id))
+	ts.Require().NoError(err, "Failed to read the stored connection")
+	var stored map[string]any
+	ts.Require().NoError(json.Unmarshal([]byte(raw), &stored), raw)
+	authentication, _ := stored["authentication"].([]any)
+	replaced := false
+	for _, entry := range authentication {
+		if property, ok := entry.(map[string]any); ok && property["name"] == storedPasswordProperty {
+			ts.Require().Equal(true, property["isSecret"], "the password is not stored as a secret: %s", raw)
+			property["value"] = unreadableCiphertext
+			replaced = true
+		}
+	}
+	ts.Require().True(replaced, "the connection stores no password: %s", raw)
+	encoded, err := json.Marshal(stored)
+	ts.Require().NoError(err)
+	changed, err := testutils.QueryConfigDB(fmt.Sprintf(
+		`UPDATE "HTTP_CONNECTION" SET PROPERTIES = '%s' WHERE ID = '%s'; SELECT changes();`,
+		strings.ReplaceAll(string(encoded), "'", "''"), id))
+	ts.Require().NoError(err, "Failed to change the stored connection")
+	ts.Require().Equal("1", changed, "the stored connection was not changed")
+}
+
+// A connection whose stored secret cannot be read is still deleted, and since what its export referred
+// to cannot be worked out, no copy is removed.
+func (ts *ControlPlaneTestSuite) TestDeletingAConnectionWhoseSecretCannotBeReadReleasesNothing() {
+	g := ts.withDefaultGateway()
+	name := unique("cp-http-unreadable")
+	password := unique("cp-http-unreadable-secret")
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-http-unreadable.example.com/hook",
+		"authentication": basicAuthentication(password)})
+	secret := variableName("CONNECTION", name, "PASSWORD")
+	_, ok := g.heldSoon("secrets", secret)
+	ts.Require().True(ok, "the password was not captured")
+	ts.makeStoredSecretUnreadable(id)
+
+	status, raw := ts.call(http.MethodDelete, "/connections/http/"+id, nil, nil)
+	ts.Require().Equal(http.StatusNoContent, status, "an unreadable secret must not fail the delete: %s", raw)
+
+	ts.captureBarrier(g)
+	held, ok := g.held("secrets", secret)
+	ts.True(ok, "a copy was removed although the connection's secrets could not be read")
+	ts.Equal(password, held)
+	ts.Zero(g.removalsAt("secrets", secret), "the gateway was asked to remove a copy")
+}
+
+// assertADeleteReleasesNothing deletes a captured HTTP connection while something stored keeps the
+// secrets stored connections refer to from being worked out, and checks that the delete succeeds and
+// its copy stays, since a copy removed in error would break whatever still refers to it.
+func (ts *ControlPlaneTestSuite) assertADeleteReleasesNothing(g *capturingGateway) {
+	ts.T().Helper()
+	name := unique("cp-http-kept")
+	password := unique("cp-http-kept-secret")
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-http-kept.example.com/hook",
+		"authentication": basicAuthentication(password)})
+	secret := variableName("CONNECTION", name, "PASSWORD")
+	_, ok := g.heldSoon("secrets", secret)
+	ts.Require().True(ok, "the password was not captured")
+
+	status, raw := ts.call(http.MethodDelete, "/connections/http/"+id, nil, nil)
+	ts.Require().Equal(http.StatusNoContent, status, string(raw))
+
+	ts.captureBarrier(g)
+	held, ok := g.held("secrets", secret)
+	ts.True(ok, "a copy was removed although what stored connections refer to could not be worked out")
+	ts.Equal(password, held)
+	ts.Zero(g.removalsAt("secrets", secret), "the gateway was asked to remove a copy")
+}
+
+// While a stored connection cannot be read, the secrets stored connections refer to cannot be worked
+// out, so deleting another connection removes none of its copies.
+func (ts *ControlPlaneTestSuite) TestNoCopyIsReleasedWhileAStoredConnectionCannotBeRead() {
+	g := ts.withDefaultGateway()
+	name := unique("cp-http-blocker")
+	blocker := ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-http-blocker.example.com/hook",
+		"authentication": basicAuthentication(unique("cp-http-blocker-secret"))})
+	_, ok := g.heldSoon("secrets", variableName("CONNECTION", name, "PASSWORD"))
+	ts.Require().True(ok, "the blocking connection's password was not captured")
+	ts.makeStoredSecretUnreadable(blocker)
+
+	ts.assertADeleteReleasesNothing(g)
+}
+
+// A credential holding a variable reference cannot be exported, so while one is stored the secrets
+// stored connections refer to cannot be worked out, and deleting another connection removes none of
+// its copies.
+func (ts *ControlPlaneTestSuite) TestNoCopyIsReleasedWhileAStoredCredentialRefersToAVariable() {
+	g := ts.withDefaultGateway()
+	name := unique("cp-http-variable")
+	reference := "var:" + variableName("CONNECTION", name, "PASSWORD")
+	ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-http-variable.example.com/hook",
+		"authentication": basicAuthentication(reference)})
+
+	ts.assertADeleteReleasesNothing(g)
+}
+
+// Only the default gateway receives values. With no gateway the default, a connection's secret is
+// neither captured in nor released from any gateway's store.
+func (ts *ControlPlaneTestSuite) TestNoGatewayIsAskedToReleaseWhenNoneIsTheDefault() {
+	_, defaultID := ts.registerCapturingGateway(true)
+	other, _ := ts.registerCapturingGateway(false)
+	status, raw := ts.call(http.MethodDelete, "/gateways/"+defaultID, nil, nil)
+	ts.Require().Equal(http.StatusNoContent, status, string(raw))
+
+	name := unique("cp-http-nodefault")
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-http-nodefault.example.com/hook",
+		"authentication": basicAuthentication(unique("cp-http-nodefault-secret"))})
+	status, raw = ts.call(http.MethodDelete, "/connections/http/"+id, nil, nil)
+	ts.Require().Equal(http.StatusNoContent, status, string(raw))
+
+	// A barrier needs a default gateway, so one is registered only once the delete has been answered.
+	ts.captureBarrier(ts.withDefaultGateway())
+	ts.Empty(other.writtenNames(), "a gateway that is not the default received a value")
+	ts.Zero(other.removalsAt("secrets", variableName("CONNECTION", name, "PASSWORD")),
+		"a gateway that is not the default was asked to remove a copy")
 }

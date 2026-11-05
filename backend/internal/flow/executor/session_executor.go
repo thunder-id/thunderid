@@ -399,11 +399,12 @@ func sanitizeSnapshotRuntimeData(rd map[string]string) map[string]string {
 		if _, denied := requestScopedSnapshotDenyList[k]; denied {
 			continue
 		}
-		if k == common.RuntimeKeySSOSessionHandle ||
+		if k == common.RuntimeKeySSOSessionHandle || k == common.RuntimeKeyExtensionVerifiedAttribute ||
 			strings.HasPrefix(k, common.RuntimeKeySSOSessionPresent+":") ||
 			strings.HasPrefix(k, common.RuntimeKeySSOSessionSaved+":") ||
 			strings.HasPrefix(k, common.ExtensionDataKeyPrefix) ||
-			strings.HasPrefix(k, common.RuntimeKeyExtensionAttemptCount+":") {
+			strings.HasPrefix(k, common.RuntimeKeyExtensionAttemptCount+":") ||
+			strings.HasPrefix(k, common.RuntimeKeyExtensionRedirectPending+":") {
 			continue
 		}
 		out[k] = v

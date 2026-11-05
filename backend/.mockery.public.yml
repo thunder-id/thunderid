@@ -816,6 +816,15 @@ packages:
           pkgname: resourcedependencymock
           filename: "Registry_mock.go"
 
+  github.com/thunder-id/thunderid/internal/system/declarative_resource:
+    interfaces:
+      ValueReleaser:
+        config:
+          dir: tests/mocks/declarativeresourcemock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: declarativeresourcemock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/system/transaction:
     config:
       all: true

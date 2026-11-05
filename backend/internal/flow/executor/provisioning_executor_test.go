@@ -575,6 +575,76 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Ext
 	assert.Empty(suite.T(), credentials)
 }
 
+// extensionResolverRuntimeData runs an extension auth resolver whose service verified the username
+// alice, who has no local user, and returns the runtime data it leaves for provisioning.
+func (suite *ProvisioningExecutorTestSuite) extensionResolverRuntimeData() map[string]string {
+	factory := coremock.NewFlowFactoryInterfaceMock(suite.T())
+	factory.On("CreateExecutor", ExecutorNameExtensionAuthResolver, providers.ExecutorTypeAuthentication,
+		[]providers.Input{}, []providers.Input{}, mock.Anything).
+		Return(newMockExecutor(ExecutorNameExtensionAuthResolver, providers.ExecutorTypeAuthentication,
+			[]providers.Input{}, []providers.Input{}))
+	entities := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	entities.On("IdentifyEntity", mock.Anything, map[string]interface{}{userAttributeUsername: "alice"}).
+		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", "")).Once()
+	resolver := newExtensionAuthResolver(factory, entities, managermock.NewAuthnProviderManagerMock(suite.T()))
+
+	execResp, err := resolver.Execute(&providers.NodeContext{
+		FlowType: providers.FlowTypeAuthentication,
+		RuntimeData: map[string]string{
+			"extension.pin_check.verifiedUsername": "alice",
+			"extension.pin_check.email":            "alice@example.com",
+		},
+		NodeProperties: map[string]interface{}{
+			common.NodePropertySourceKey:                           "extension.pin_check.verifiedUsername",
+			common.NodePropertyAllowAuthenticationWithoutLocalUser: true,
+			common.NodePropertyAttributeMapping: map[string]interface{}{
+				attributeEmail: "extension.pin_check.email"},
+		},
+	})
+	suite.Require().NoError(err)
+	suite.Require().Equal(providers.ExecComplete, execResp.Status)
+	execResp.RuntimeData[categoryTypeKey] = testUserType
+	return execResp.RuntimeData
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_ExtensionVerifiedAttribute() {
+	cases := map[string]struct {
+		dropMarker       bool
+		expectedUsername string
+	}{
+		"verified username wins over the submitted and stored ones": {expectedUsername: "alice"},
+		"without the marker a submitted username wins":              {dropMarker: true, expectedUsername: "bob"},
+	}
+	for name, tc := range cases {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+				model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+				Return([]model.AttributeInfo{
+					{Attribute: userAttributeUsername, Type: model.TypeString, Required: true},
+					{Attribute: attributeEmail, Type: model.TypeString},
+				}, nil).Once()
+			runtimeData := suite.extensionResolverRuntimeData()
+			runtimeData[userAttributeUsername] = "carol"
+			if tc.dropMarker {
+				delete(runtimeData, common.RuntimeKeyExtensionVerifiedAttribute)
+			}
+			ctx := &providers.NodeContext{
+				UserInputs:  map[string]string{userAttributeUsername: "bob", attributeEmail: "bob@example.com"},
+				RuntimeData: runtimeData,
+				NodeInputs:  []providers.Input{},
+			}
+
+			identifying, _, err := suite.executor.getAttributesForProvisioning(ctx, entitytype.TypeCategoryUser)
+
+			suite.NoError(err)
+			suite.Equal(tc.expectedUsername, identifying[userAttributeUsername])
+			suite.Equal("bob@example.com", identifying[attributeEmail],
+				"a claim for another attribute still gives way to a submitted value")
+		})
+	}
+}
+
 // A claim never stands in for a credential, so a password the flow has not collected is still prompted
 // even when the external identity asserts one.
 func (suite *ProvisioningExecutorTestSuite) TestBuildMissingInputs_ExternalClaimDoesNotSatisfyCredential() {

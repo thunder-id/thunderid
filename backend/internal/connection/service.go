@@ -19,6 +19,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/filter"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -36,8 +37,9 @@ type service struct {
 	resourceService     resource.ResourceServiceInterface
 	authZENPDPService   authzenpdp.AuthZENPDPServiceInterface
 	httpService         httpconnection.HTTPConnectionServiceInterface
-	valueCapturer       declarativeresource.ValueCapturer
+	valueReleaser       declarativeresource.ValueReleaser
 	sharingService      sharing.SharingServiceInterface
+	logger              *log.Logger
 }
 
 // newService creates a connection service over the given identity-provider and
@@ -53,6 +55,7 @@ func newService(idpService idp.IDPServiceInterface,
 		resourceService:     resourceService,
 		authZENPDPService:   authZENPDPService,
 		httpService:         httpService,
+		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConnectionService")),
 	}
 }
 
@@ -620,6 +623,7 @@ func (s *service) updateStoredHTTP(ctx context.Context, existing *httpconnection
 	updated, svcErr := s.httpService.UpdateHTTPConnection(ctx, existing.ID, connection)
 	if svcErr == nil {
 		s.captureHTTPValues(ctx, updated)
+		s.releaseHTTPSecrets(ctx, existing, updated)
 	}
 	return updated, svcErr
 }
@@ -654,9 +658,9 @@ func (s *service) deleteHTTP(ctx context.Context, id string) *tidcommon.ServiceE
 	if s.httpService == nil {
 		return &tidcommon.InternalServerError
 	}
-	// The HTTP connection service treats deleting a connection it does not hold as success, so the lookup has to
-	// come first: a delete naming a connection of another kind must not reach the policy cleanup.
-	if _, svcErr := s.httpService.GetHTTPConnection(ctx, id); svcErr != nil {
+	// Looked up first: a delete naming a connection of another kind must not reach the policy cleanup.
+	existing, svcErr := s.httpService.GetHTTPConnection(ctx, id)
+	if svcErr != nil {
 		if svcErr.Code == httpconnection.ErrorNotFound.Code {
 			return s.purgeOrphanedPolicies(ctx, id, nil)
 		}
@@ -665,6 +669,7 @@ func (s *service) deleteHTTP(ctx context.Context, id string) *tidcommon.ServiceE
 	if svcErr := s.httpService.DeleteHTTPConnection(ctx, id); svcErr != nil {
 		return svcErr
 	}
+	s.releaseHTTPSecrets(ctx, existing, nil)
 	return s.deleteSharingPolicies(ctx, id)
 }
 
@@ -678,7 +683,7 @@ func (s *service) usagesHTTP(ctx context.Context, id string) (
 }
 
 // HTTPConnectionWriterInterface writes HTTP connections under the rules the connection API applies:
-// the retention rule on update, and capturing the values an export refers to.
+// the retention rule on update, and capturing and releasing the values an export refers to.
 type HTTPConnectionWriterInterface interface {
 	CreateHTTPConnection(ctx context.Context, connection httpconnection.HTTPConnection) (
 		*httpconnection.HTTPConnection, *tidcommon.ServiceError)

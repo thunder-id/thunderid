@@ -72,6 +72,7 @@ const (
 	ExecutorNameIdentityGovernance           = executormeta.ExecutorNameIdentityGovernance
 	ExecutorNamePreSuspend                   = executormeta.ExecutorNamePreSuspend
 	ExecutorNameExtension                    = executormeta.ExecutorNameExtension
+	ExecutorNameExtensionAuthResolver        = executormeta.ExecutorNameExtensionAuthResolver
 	ExecutorNameDeviceCode                   = executormeta.ExecutorNameDeviceCode
 )
 
@@ -113,7 +114,7 @@ const categoryUnscoped = entitytype.TypeCategoryUser
 
 // User attribute and input constants
 const (
-	userAttributeUsername = "username"
+	userAttributeUsername = common.UserAttributeUsername
 	userAttributePassword = "password"
 	userAttributeUserID   = "userID"
 	userAttributeEmail    = "email"

@@ -6,11 +6,13 @@ package flowmgt
 import (
 	"context"
 	"fmt"
+	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
@@ -1305,6 +1307,196 @@ func (s *ValidatorTestSuite) TestValidateFlowDefinition_ExtensionStepWithAnUnusa
 			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
 			s.Equal(tc.property, err.ErrorDescription.Params["propertyKey"])
 			s.mockConnections.AssertNotCalled(s.T(), "GetHTTPConnection", mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func resolverFlow(resolverProperties map[string]interface{}) *FlowDefinition {
+	return &FlowDefinition{
+		Handle:   "resolver-flow",
+		Name:     "Resolver Flow",
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
+			{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "pin_check"},
+			{
+				ID: "pin_check", Type: string(common.NodeTypeTaskExecution),
+				Executor:   &providers.ExecutorDefinition{Name: executormeta.ExecutorNameExtension},
+				Properties: map[string]interface{}{common.NodePropertyConnectionID: "conn-1"},
+				OnSuccess:  "resolve_user",
+			},
+			{
+				ID: "resolve_user", Type: string(common.NodeTypeTaskExecution),
+				Executor:   &providers.ExecutorDefinition{Name: executormeta.ExecutorNameExtensionAuthResolver},
+				Properties: resolverProperties,
+				OnSuccess:  "auth_assert",
+			},
+			{
+				ID: "auth_assert", Type: string(common.NodeTypeTaskExecution),
+				Executor:  &providers.ExecutorDefinition{Name: executormeta.ExecutorNameAuthAssert},
+				OnSuccess: "end",
+			},
+			{ID: "end", Type: string(common.NodeTypeEnd)},
+		},
+	}
+}
+
+func (s *ValidatorTestSuite) expectResolverFlowMeta() {
+	s.mockExecutorRegistry.EXPECT().IsRegistered(executormeta.ExecutorNameAuthAssert).Return(true).Maybe()
+	s.mockExecutorRegistry.EXPECT().GetExecutorMeta(executormeta.ExecutorNameAuthAssert).Return(nil, nil).Maybe()
+	for _, name := range []string{executormeta.ExecutorNameExtension, executormeta.ExecutorNameExtensionAuthResolver} {
+		meta, ok := executormeta.MetaFor(name)
+		s.Require().True(ok)
+		s.mockExecutorRegistry.EXPECT().IsRegistered(name).Return(true).Maybe()
+		s.mockExecutorRegistry.EXPECT().GetExecutorMeta(name).Return(&meta, nil).Maybe()
+	}
+	s.mockConnections.EXPECT().GetHTTPConnection(mock.Anything, "conn-1").
+		Return(&httpconnection.HTTPConnection{ID: "conn-1"}, nil).Maybe()
+	s.mockGraphBuilder.EXPECT().ValidateGraph(mock.Anything, mock.Anything).Return(nil).Maybe()
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowDefinition_ResolverReadingItsExtensionsAnswer() {
+	for _, matchAttribute := range []interface{}{nil, "username", "userID"} {
+		s.Run(fmt.Sprint(matchAttribute), func() {
+			s.SetupTest()
+			s.expectResolverFlowMeta()
+			properties := map[string]interface{}{common.NodePropertySourceKey: "extension.pin_check.verifiedUserId"}
+			if matchAttribute != nil {
+				properties[common.NodePropertyMatchAttribute] = matchAttribute
+			}
+
+			s.Nil(s.v.ValidateFlowDefinition(context.Background(), resolverFlow(properties)))
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowDefinition_ResolverNotBoundToItsExtensionIsRefused() {
+	cases := []struct {
+		name     string
+		adjust   func(fd *FlowDefinition)
+		property string
+	}{
+		{name: "another step's namespace", property: common.NodePropertySourceKey, adjust: func(fd *FlowDefinition) {
+			fd.Nodes[2].Properties[common.NodePropertySourceKey] = "extension.risk_check.verifiedUserId"
+		}},
+		{name: "a key outside the extension namespace", property: common.NodePropertySourceKey,
+			adjust: func(fd *FlowDefinition) { fd.Nodes[2].Properties[common.NodePropertySourceKey] = "userID" }},
+		{name: "reached without an extension", property: common.NodePropertySourceKey,
+			adjust: func(fd *FlowDefinition) {
+				fd.Nodes[0].OnSuccess = "resolve_user"
+				fd.Nodes[2].OnSuccess = "pin_check"
+				fd.Nodes[1].OnSuccess = "auth_assert"
+			}},
+		{name: "reached from a prompt too", property: common.NodePropertySourceKey,
+			adjust: func(fd *FlowDefinition) {
+				fd.Nodes[1].OnFailure = "retry"
+				fd.Nodes = append(fd.Nodes, providers.NodeDefinition{
+					ID: "retry", Type: string(common.NodeTypePrompt),
+					Prompts: []providers.PromptDefinition{{
+						Inputs: []providers.InputDefinition{{Identifier: "code", Type: providers.InputTypeText}},
+						Action: &providers.ActionDefinition{Ref: "action_retry", NextNode: "resolve_user"},
+					}},
+				})
+			}},
+		{name: "a match attribute other than username or userID", property: common.NodePropertyMatchAttribute,
+			adjust: func(fd *FlowDefinition) { fd.Nodes[2].Properties[common.NodePropertyMatchAttribute] = "email" }},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.expectResolverFlowMeta()
+			fd := resolverFlow(map[string]interface{}{
+				common.NodePropertySourceKey: "extension.pin_check.verifiedUserId",
+			})
+			tc.adjust(fd)
+
+			err := s.v.ValidateFlowDefinition(context.Background(), fd)
+
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal("resolve_user", err.ErrorDescription.Params["nodeID"])
+			s.Equal(tc.property, err.ErrorDescription.Params["propertyKey"])
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowDefinition_ResolverOutsideAnAuthenticationFlowIsRefused() {
+	for _, flowType := range []providers.FlowType{providers.FlowTypeRegistration, providers.FlowTypeAdministration,
+		providers.FlowTypeRecovery, providers.FlowTypeSignOut} {
+		s.Run(string(flowType), func() {
+			s.SetupTest()
+			s.expectResolverFlowMeta()
+			fd := resolverFlow(map[string]interface{}{
+				common.NodePropertySourceKey: "extension.pin_check.verifiedUserId",
+			})
+			fd.FlowType = flowType
+			// The executors a flow type requires are placed before the end, so the refusal is the resolver's.
+			last := &fd.Nodes[len(fd.Nodes)-2]
+			for _, name := range requiredExecutorsByFlowType[flowType] {
+				s.mockExecutorRegistry.EXPECT().IsRegistered(name).Return(true).Maybe()
+				s.mockExecutorRegistry.EXPECT().GetExecutorMeta(name).Return(nil, nil).Maybe()
+				last.OnSuccess = name
+				fd.Nodes = append(fd.Nodes, providers.NodeDefinition{ID: name,
+					Type: string(common.NodeTypeTaskExecution), Executor: &providers.ExecutorDefinition{Name: name},
+					OnSuccess: "end"})
+				last = &fd.Nodes[len(fd.Nodes)-1]
+			}
+
+			err := s.v.ValidateFlowDefinition(context.Background(), fd)
+
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal("resolve_user", err.ErrorDescription.Params["nodeID"])
+			s.Equal(string(flowType), err.ErrorDescription.Params["flowType"])
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowDefinition_ResolverProvisioningPropertiesWithUserIDAreRefused() {
+	cases := map[string]map[string]interface{}{
+		common.NodePropertyAllowAuthenticationWithoutLocalUser: {
+			common.NodePropertyAllowAuthenticationWithoutLocalUser: true},
+		common.NodePropertyAttributeMapping: {
+			common.NodePropertyAttributeMapping: map[string]interface{}{"email": "extension.pin_check.email"}},
+	}
+	for property, extra := range cases {
+		s.Run(property, func() {
+			s.SetupTest()
+			s.expectResolverFlowMeta()
+			properties := map[string]interface{}{
+				common.NodePropertySourceKey:      "extension.pin_check.verifiedUserId",
+				common.NodePropertyMatchAttribute: authnprovidercm.UserAttributeUserID,
+			}
+			maps.Copy(properties, extra)
+
+			err := s.v.ValidateFlowDefinition(context.Background(), resolverFlow(properties))
+
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal(property, err.ErrorDescription.Params["propertyKey"])
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowDefinition_CredentialsStepAskingForAnInternalCredentialIsRefused() {
+	for _, identifier := range []string{"extensionVerifiedEntityID", "provisionedEntityID", "clientSecret"} {
+		s.Run(identifier, func() {
+			s.SetupTest()
+			s.mockExecutorRegistry.EXPECT().IsRegistered(mock.Anything).Return(true).Maybe()
+			s.mockExecutorRegistry.EXPECT().GetExecutorMeta(mock.Anything).Return(nil, nil).Maybe()
+			fd := minimalValidFlow()
+			fd.Nodes[1].Executor = &providers.ExecutorDefinition{
+				Name: executormeta.ExecutorNameCredentialsAuth,
+				Inputs: []providers.InputDefinition{
+					{Identifier: "username", Type: providers.InputTypeText, Required: true},
+					{Identifier: identifier, Type: providers.InputTypePassword, Required: true},
+				},
+			}
+
+			err := s.v.ValidateFlowDefinition(context.Background(), fd)
+
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal(identifier, err.ErrorDescription.Params["inputIdentifier"])
 		})
 	}
 }

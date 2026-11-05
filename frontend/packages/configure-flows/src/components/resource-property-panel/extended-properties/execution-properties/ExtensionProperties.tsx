@@ -19,7 +19,7 @@ import {useMemo, type ReactNode, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
-import {clampToInteger} from './utils';
+import {clampToInteger, omitProperty} from './utils';
 import useResourceFieldError from '../../../../hooks/useResourceFieldError';
 import type {StepData} from '../../../../models/steps';
 
@@ -130,11 +130,7 @@ function ExtensionProperties({resource, onChange}: CommonResourcePropertiesProps
       onChange(`data.properties.${property}`, keys, resource);
       return;
     }
-    onChange(
-      'data.properties',
-      Object.fromEntries(Object.entries(properties).filter(([key]) => key !== property)),
-      resource,
-    );
+    onChange('data.properties', omitProperty(properties, property), resource);
   };
 
   return (

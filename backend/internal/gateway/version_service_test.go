@@ -437,8 +437,11 @@ func (f *fakeVersionStore) DeleteMasters(_ context.Context, gatewayID string) er
 	return nil
 }
 
-// fakeExporter answers a capture with canned files, and a value capture with canned values.
+// fakeExporter answers a capture with canned files, and a value capture with canned values. The
+// embedded mock answers a release's read of what stored resources refer to.
 type fakeExporter struct {
+	*placeholderValuerMock
+
 	response *export.ExportResponse
 	err      *tidcommon.ServiceError
 	asked    *export.ExportRequest

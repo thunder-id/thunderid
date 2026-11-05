@@ -108,6 +108,20 @@ type ValueCapturer interface {
 	CaptureValues(ctx context.Context, resourceType string, resource interface{})
 }
 
+// ValueReleaser is a ValueCapturer that also removes what it kept once nothing refers to it. Like a
+// capture, a release is best-effort and never fails the write.
+type ValueReleaser interface {
+	ValueCapturer
+	ReleaseSecrets(ctx context.Context, resourceType string, resource interface{})
+}
+
+// ReferringResourceLister is implemented by an exporter whose GetAllResourceIDs leaves out resources
+// that still refer to values by name, such as ones declared in a file. GetReferringResourceIDs lists
+// those too; it never selects what an export writes.
+type ReferringResourceLister interface {
+	GetReferringResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError)
+}
+
 // ResourceViewer is implemented by an exporter that can show a document it exported the way the
 // resource's own read returns it, so a resource kept in a configuration version can be shown as that
 // read would show it. A value reference such as "var:NAME" is shown as it is, not resolved. An error

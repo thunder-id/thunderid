@@ -1082,3 +1082,8 @@ func mobilePin() *providers.AttributeVerificationPin {
 	return &providers.AttributeVerificationPin{Subject: "user-a", Attribute: "mobile_number",
 		Value: testPinnedMobile, Channel: providers.VerificationChannelSMS}
 }
+
+func (s *UtilsTestSuite) TestExtensionKeysAreScopedToTheNode() {
+	s.Equal("extensionAttemptCount:pin_check", extensionAttemptCountKey("pin_check"))
+	s.Equal("extensionRedirectPending:pin_check", extensionRedirectPendingKey("pin_check"))
+}

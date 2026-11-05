@@ -1078,6 +1078,54 @@ func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDsListsMutableHTTPConn
 	s.ElementsMatch([]string{"idp-1", "mutable"}, ids, "a declared HTTP connection is not exported")
 }
 
+func (s *DeclarativeResourceTestSuite) TestGetReferringResourceIDsListsDeclaredConnections() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).
+		Return([]idp.BasicIDPDTO{{ID: "idp-1", Type: providers.IDPTypeGoogle}}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSenders", mock.Anything).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
+	pdpService := authzenpdpmock.NewAuthZENPDPServiceInterfaceMock(s.T())
+	pdpService.On("ListAuthZENPDPs", mock.Anything).Return([]authzenpdp.AuthZENPDPConnection{
+		{ID: "mutable-pdp", Name: "Mutable PDP"},
+		{ID: "declarative-pdp", Name: "Declarative PDP", IsReadOnly: true},
+	}, (*tidcommon.ServiceError)(nil))
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	httpService.On("ListHTTPConnections", mock.Anything).Return([]httpconnection.HTTPConnection{
+		{ID: "mutable", Name: "Mutable", OUID: "ou-1"},
+		{ID: "declarative", Name: "Declarative", OUID: "ou-1", IsReadOnly: true},
+	}, (*tidcommon.ServiceError)(nil))
+	var exporter declarativeresource.ResourceExporter = newConnectionExporter(s.mockIDP, s.mockNotif, pdpService,
+		httpService)
+	lister, ok := exporter.(declarativeresource.ReferringResourceLister)
+	s.Require().True(ok)
+
+	ids, svcErr := lister.GetReferringResourceIDs(context.Background())
+
+	s.Require().Nil(svcErr)
+	s.ElementsMatch([]string{"idp-1", "mutable-pdp", "declarative-pdp", "mutable", "declarative"}, ids)
+}
+
+func (s *DeclarativeResourceTestSuite) TestADeclaredHTTPConnectionsSecretIsStillReferred() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).
+		Return([]idp.BasicIDPDTO{}, (*tidcommon.ServiceError)(nil))
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, mock.Anything).Return(nil, &idp.ErrorIDPNotFound)
+	s.mockNotif.On("ListSenders", mock.Anything).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("GetSender", mock.Anything, mock.Anything).Return(nil, &notification.ErrorSenderNotFound)
+	declared := s.httpConnectionWithBasicAuth()
+	declared.IsReadOnly = true
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	httpService.On("ListHTTPConnections", mock.Anything).
+		Return([]httpconnection.HTTPConnection{declared}, (*tidcommon.ServiceError)(nil))
+	httpService.On("GetHTTPConnection", mock.Anything, declared.ID).Return(&declared, (*tidcommon.ServiceError)(nil))
+	values := export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{
+		newConnectionExporter(s.mockIDP, s.mockNotif, nil, httpService)}, export.ValueReferences)
+
+	referenced, err := values.ReferencedSecretNames(context.Background(), resourceTypeConnection)
+
+	s.Require().NoError(err)
+	s.Equal(map[string]bool{"CONNECTION_RISK_ENGINE_PASSWORD": true}, referenced)
+}
+
 func (s *DeclarativeResourceTestSuite) TestGetResourceByIDFallsBackToHTTP() {
 	s.mockIDP.On("GetIdentityProvider", mock.Anything, mock.Anything).
 		Return(nil, &idp.ErrorIDPNotFound)

@@ -6,6 +6,7 @@ package common
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -37,4 +38,9 @@ func ValidUntilOf(systemAttributes json.RawMessage) (validUntil time.Time, bound
 		return time.Time{}, false, fmt.Errorf("invalid %s system attribute: %w", SystemAttrValidUntil, err)
 	}
 	return parsed.UTC(), true, nil
+}
+
+// IsReservedCredentialType reports whether name is a credential type reserved for internal use.
+func IsReservedCredentialType(name string) bool {
+	return slices.Contains(InternalCredentialTypes, name) || slices.Contains(SystemCredentialTypes, name)
 }

@@ -13,11 +13,22 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 )
+
+type ValueCaptureTestSuite struct {
+	suite.Suite
+}
+
+func TestValueCaptureTestSuite(t *testing.T) {
+	suite.Run(t, new(ValueCaptureTestSuite))
+}
 
 type captureFixture struct {
 	capture  *ValueCapture
@@ -46,7 +57,7 @@ func newCaptureFixture(t *testing.T) *captureFixture {
 		require.NoError(t, err)
 		return sealed
 	}
-	f := &captureFixture{exporter: &fakeExporter{}}
+	f := &captureFixture{exporter: &fakeExporter{placeholderValuerMock: newPlaceholderValuerMock(t)}}
 	record := func(into *[]storeCall) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			raw, _ := io.ReadAll(r.Body)
@@ -82,6 +93,11 @@ func newCaptureFixture(t *testing.T) *captureFixture {
 	f.capture.attempts = 1
 	f.capture.bind(f.exporter, f.gateways, newStoreService(f.gateways, newGatewayClient()))
 	return f
+}
+
+// refersTo makes every read of what the stored connections refer to answer names and err.
+func (f *captureFixture) refersTo(names map[string]bool, err error) {
+	f.exporter.EXPECT().ReferencedSecretNames(mock.Anything, "connection").Return(names, err)
 }
 
 // settle waits for every value on its way to have arrived or been given up on.
@@ -277,4 +293,198 @@ func TestACaptureGivesUpAfterItsAttempts(t *testing.T) {
 	f.settle(t)
 
 	assert.Equal(t, []string{"/variables/A", "/variables/A"}, f.paths())
+}
+
+var _ declarativeresource.ValueReleaser = (*ValueCapture)(nil)
+
+func (s *ValueCaptureTestSuite) TestAReleaseRemovesTheSecretsNothingRefersTo() {
+	f := newCaptureFixture(s.T())
+	f.exporter.variables = map[string]string{"CONNECTION_A_URL": "u"}
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "p", "CONNECTION_A_TOKEN": "t"}
+	f.refersTo(map[string]bool{"CONNECTION_B_PASSWORD": true}, nil)
+
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.settle(s.T())
+
+	calls, others := f.received()
+	s.ElementsMatch([]storeCall{
+		{method: http.MethodDelete, path: "/secrets/CONNECTION_A_PASSWORD", key: "the-key"},
+		{method: http.MethodDelete, path: "/secrets/CONNECTION_A_TOKEN", key: "the-key"},
+	}, calls)
+	s.Empty(others, "a secret was removed from a gateway that is not the default")
+	s.Require().Len(f.exporter.valuesOf, 1)
+	s.Equal(valuesRequest{resourceType: "connection", resource: "deleted"}, f.exporter.valuesOf[0])
+}
+
+func (s *ValueCaptureTestSuite) TestAReleaseKeepsASecretAStoredResourceRefersTo() {
+	f := newCaptureFixture(s.T())
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "p", "CONNECTION_A_TOKEN": "t"}
+	f.refersTo(map[string]bool{"CONNECTION_A_PASSWORD": true}, nil)
+
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.settle(s.T())
+
+	s.Equal([]string{"/secrets/CONNECTION_A_TOKEN"}, f.paths())
+}
+
+// When what stored resources refer to cannot be worked out, nothing is removed: a copy left behind is
+// replaced by its next capture, while one removed in error breaks whatever refers to it.
+func (s *ValueCaptureTestSuite) TestAReleaseWhoseReferencesFailRemovesNothing() {
+	f := newCaptureFixture(s.T())
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "p"}
+	f.refersTo(nil, errors.New("the database is down"))
+
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.settle(s.T())
+
+	s.Empty(f.paths())
+	s.Empty(f.capture.scans)
+}
+
+func (s *ValueCaptureTestSuite) TestAReleaseWithNoSecretsRemovesNothing() {
+	f := newCaptureFixture(s.T())
+	f.exporter.variables = map[string]string{"CONNECTION_A_URL": "u"}
+
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "p"}
+	f.exporter.valuesErr = errors.New("no exporter")
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.settle(s.T())
+
+	s.Empty(f.paths())
+	f.exporter.AssertNotCalled(s.T(), "ReferencedSecretNames", mock.Anything, mock.Anything)
+}
+
+func (s *ValueCaptureTestSuite) TestAReleaseWithoutADefaultGatewayRemovesNothing() {
+	f := newCaptureFixture(s.T())
+	f.gateways.gateways[1].IsDefault = false
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "p"}
+
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.settle(s.T())
+
+	calls, others := f.received()
+	s.Empty(calls)
+	s.Empty(others)
+	s.NotPanics(func() {
+		NewValueCapture().ReleaseSecrets(context.Background(), "connection", "deleted")
+		var none *ValueCapture
+		none.ReleaseSecrets(context.Background(), "connection", "deleted")
+	})
+}
+
+func (s *ValueCaptureTestSuite) TestASecretCapturedAfterItsReleaseIsWhatRemains() {
+	f := newCaptureFixture(s.T())
+	f.refersTo(nil, nil)
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "old"}
+
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "new"}
+	f.capture.CaptureValues(context.Background(), "connection", "created")
+	f.settle(s.T())
+
+	calls, _ := f.received()
+	s.Require().NotEmpty(calls)
+	last := calls[len(calls)-1]
+	s.Equal(http.MethodPut, last.method, "the removal arrived after the newer secret")
+	s.Equal(`{"value":"new"}`, last.body)
+}
+
+func (s *ValueCaptureTestSuite) TestARemovalIsTriedAgainUntilItsAttemptsRunOut() {
+	f := newCaptureFixture(s.T())
+	f.refersTo(nil, nil)
+	f.capture.attempts = 2
+	f.hangUp = true
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "p"}
+
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.settle(s.T())
+
+	s.Equal([]string{"/secrets/CONNECTION_A_PASSWORD", "/secrets/CONNECTION_A_PASSWORD"}, f.paths())
+}
+
+// startBlockedRelease starts a release that waits in its read of the stored resources, and returns once
+// the read began, with what lets the read go on and what is closed when the release returns.
+func (s *ValueCaptureTestSuite) startBlockedRelease(f *captureFixture) (chan struct{}, chan struct{}) {
+	started, proceed := make(chan struct{}), make(chan struct{})
+	f.exporter.EXPECT().ReferencedSecretNames(mock.Anything, "connection").
+		Run(func(context.Context, string) {
+			close(started)
+			<-proceed
+		}).Return(nil, nil).Once()
+	released := make(chan struct{})
+	go func() {
+		defer close(released)
+		f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		s.FailNow("the release never read the stored resources")
+	}
+	return proceed, released
+}
+
+func (s *ValueCaptureTestSuite) finishRelease(proceed, released chan struct{}) {
+	close(proceed)
+	select {
+	case <-released:
+	case <-time.After(5 * time.Second):
+		s.FailNow("the release never returned")
+	}
+}
+
+// A secret captured while a release reads the stored resources, which the read may miss, is left to
+// that capture rather than removed after it.
+func (s *ValueCaptureTestSuite) TestASecretCapturedDuringAReleaseReadIsNotRemoved() {
+	f := newCaptureFixture(s.T())
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "old"}
+
+	proceed, released := s.startBlockedRelease(f)
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "new"}
+	f.capture.CaptureValues(context.Background(), "connection", "created")
+	s.finishRelease(proceed, released)
+	f.settle(s.T())
+
+	calls, _ := f.received()
+	s.Equal([]storeCall{{method: http.MethodPut, path: "/secrets/CONNECTION_A_PASSWORD", key: "the-key",
+		body: `{"value":"new"}`}}, calls)
+	s.Empty(f.capture.scans, "a finished release is still recorded as reading")
+}
+
+func (s *ValueCaptureTestSuite) TestASecretCapturedDuringAReleaseReadKeepsOnlyItsOwnName() {
+	f := newCaptureFixture(s.T())
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "a"}
+
+	proceed, released := s.startBlockedRelease(f)
+	f.exporter.secrets = map[string]string{"CONNECTION_B_PASSWORD": "b"}
+	f.capture.CaptureValues(context.Background(), "connection", "created")
+	s.finishRelease(proceed, released)
+	f.settle(s.T())
+
+	calls, _ := f.received()
+	s.ElementsMatch([]storeCall{
+		{method: http.MethodPut, path: "/secrets/CONNECTION_B_PASSWORD", key: "the-key", body: `{"value":"b"}`},
+		{method: http.MethodDelete, path: "/secrets/CONNECTION_A_PASSWORD", key: "the-key"},
+	}, calls)
+	s.Empty(f.capture.scans)
+}
+
+// A release reading the stored resources holds up no capture: one is queued, written and settled
+// while the read waits.
+func (s *ValueCaptureTestSuite) TestAReleaseReadDoesNotHoldUpCaptures() {
+	f := newCaptureFixture(s.T())
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "a"}
+
+	proceed, released := s.startBlockedRelease(f)
+	f.exporter.variables = map[string]string{"CONNECTION_B_URL": "u"}
+	f.exporter.secrets = nil
+	f.capture.CaptureValues(context.Background(), "connection", "created")
+	f.settle(s.T())
+	s.Equal([]string{"/variables/CONNECTION_B_URL"}, f.paths())
+	s.finishRelease(proceed, released)
+	f.settle(s.T())
+
+	s.Equal([]string{"/variables/CONNECTION_B_URL", "/secrets/CONNECTION_A_PASSWORD"}, f.paths())
+	s.Empty(f.capture.scans)
 }

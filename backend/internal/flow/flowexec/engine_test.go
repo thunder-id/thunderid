@@ -316,6 +316,19 @@ func (s *EngineTestSuite) TestResolveStepForRedirection_NoAdditionalData() {
 	s.Nil(flowStep.Data.AdditionalData)
 }
 
+func (s *EngineTestSuite) TestResolveStepForRedirection_CarriesTheNodeError() {
+	fe := &flowEngine{}
+	nodeErr := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "FET-1126"}
+	flowStep := &FlowStep{}
+
+	err := fe.resolveStepForRedirection(&EngineContext{}, &common.NodeResponse{
+		RedirectURL: "https://example.com/auth", Error: nodeErr}, flowStep)
+
+	s.NoError(err)
+	s.Equal(common.StepTypeRedirection, flowStep.Type)
+	s.Equal(nodeErr, flowStep.Error)
+}
+
 func (s *EngineTestSuite) TestResolveStepForRedirection_NilNodeResponse() {
 	fe := &flowEngine{}
 	ctx := &EngineContext{}
@@ -5038,6 +5051,41 @@ func TestNodeExecutionCompletedEvent_SubjectComesFromTheNodeResponse(t *testing.
 		event.DataKey.NodeID:      "credentials_auth",
 		event.DataKey.Subject:     "user-777",
 		event.DataKey.SubjectType: event.PrincipalTypeUser,
+	})
+}
+
+func (s *EngineTestSuite) TestNodeExecutionCompletedEvent_NamesTheExecutor() {
+	mockObs, captured := setupCapturingObservability(s.T())
+	defer config.ResetServerRuntime()
+
+	node := coremock.NewNodeInterfaceMock(s.T())
+	node.On("GetID").Return("resolve_user")
+	node.On("GetType").Return(common.NodeTypeTaskExecution)
+	ctx := &EngineContext{
+		ExecutionID:      "flow-exec-5",
+		FlowType:         providers.FlowTypeAuthentication,
+		AppID:            "app-5",
+		ExecutionHistory: make(map[string]*providers.NodeExecutionRecord),
+	}
+	recordNodeExecution(ctx, node, &common.NodeResponse{Status: common.NodeStatusComplete}, nil, 0, 1)
+	ctx.ExecutionHistory["resolve_user"].ExecutorName = "ExtensionAuthResolver"
+	ctx.ExecutionHistory["resolve_user"].ExecutorType = providers.ExecutorTypeAuthentication
+	nodeResp := &common.NodeResponse{Status: common.NodeStatusComplete}
+	nodeResp.AuthUser.SetStateFor("default", providers.AuthState{
+		EntityReference: &providers.EntityReference{
+			EntityID:       "user-778",
+			EntityCategory: string(providers.EntityCategoryUser),
+		},
+	})
+
+	publishNodeExecutionCompletedEvent(ctx, node, nodeResp, nil, 0, 1, mockObs)
+
+	s.Require().Len(*captured, 1)
+	assertEventData(s.T(), (*captured)[0], map[string]interface{}{
+		event.DataKey.NodeID:       "resolve_user",
+		event.DataKey.ExecutorName: "ExtensionAuthResolver",
+		event.DataKey.ExecutorType: string(providers.ExecutorTypeAuthentication),
+		event.DataKey.Subject:      "user-778",
 	})
 }
 
