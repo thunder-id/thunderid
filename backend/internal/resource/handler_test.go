@@ -92,6 +92,131 @@ func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_Error() {
 	suite.Equal(http.StatusInternalServerError, w.Code)
 }
 
+// TestHandleResourceServerListRequest_ByIdentifier_Success tests listing resource servers filtered by identifier when a match is found.
+func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_ByIdentifier_Success() {
+	rs := &providers.ResourceServer{
+		ID:         "rs-1",
+		Name:       "RS 1",
+		Identifier: "https://api.example.com",
+	}
+	suite.mockService.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com").
+		Return(rs, nil)
+
+	req := httptest.NewRequest("GET", "/resource-servers?identifier=https%3A%2F%2Fapi.example.com", nil)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerListRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	var resp ResourceServerListResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	suite.NoError(err)
+	suite.Equal(1, resp.TotalResults)
+	suite.Equal(1, resp.Count)
+	suite.Equal(1, resp.StartIndex)
+	suite.Equal(1, len(resp.ResourceServers))
+	suite.Equal("rs-1", resp.ResourceServers[0].ID)
+	suite.Equal("https://api.example.com", resp.ResourceServers[0].Identifier)
+}
+
+// TestHandleResourceServerListRequest_ByIdentifier_NotFound tests listing resource servers filtered by identifier when no match is found.
+func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_ByIdentifier_NotFound() {
+	suite.mockService.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com").
+		Return(nil, &ErrorResourceServerNotFound)
+
+	req := httptest.NewRequest("GET", "/resource-servers?identifier=https%3A%2F%2Fapi.example.com", nil)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerListRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	var resp ResourceServerListResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	suite.NoError(err)
+	suite.Equal(0, resp.TotalResults)
+	suite.Equal(0, resp.Count)
+	suite.Equal(1, resp.StartIndex)
+	suite.Empty(resp.ResourceServers)
+}
+
+// TestHandleResourceServerListRequest_ByIdentifier_Error tests handling an internal error when filtering resource servers by identifier.
+func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_ByIdentifier_Error() {
+	suite.mockService.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com").
+		Return(nil, &tidcommon.InternalServerError)
+
+	req := httptest.NewRequest("GET", "/resource-servers?identifier=https%3A%2F%2Fapi.example.com", nil)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerListRequest(w, req)
+
+	suite.Equal(http.StatusInternalServerError, w.Code)
+}
+
+// TestHandleResourceServerListRequest_ByIdentifier_InvalidLimit tests that an invalid limit parameter returns a bad request error when filtering by identifier.
+func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_ByIdentifier_InvalidLimit() {
+	req := httptest.NewRequest("GET", "/resource-servers?identifier=https%3A%2F%2Fapi.example.com&limit=0", nil)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerListRequest(w, req)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+}
+
+// TestHandleResourceServerListRequest_ByIdentifier_PaginationOffset tests pagination offset behavior when filtering resource servers by identifier.
+func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_ByIdentifier_PaginationOffset() {
+	rs := &providers.ResourceServer{
+		ID:         "rs-1",
+		Name:       "RS 1",
+		Identifier: "https://api.example.com",
+	}
+	suite.mockService.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com").
+		Return(rs, nil)
+
+	req := httptest.NewRequest("GET", "/resource-servers?identifier=https%3A%2F%2Fapi.example.com&offset=1&limit=10", nil)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerListRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	var resp ResourceServerListResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	suite.NoError(err)
+	suite.Equal(1, resp.TotalResults)
+	suite.Equal(0, resp.Count)
+	suite.Equal(2, resp.StartIndex)
+	suite.Empty(resp.ResourceServers)
+	suite.Require().Len(resp.Links, 2)
+	suite.Equal("/resource-servers?identifier=https%3A%2F%2Fapi.example.com&offset=0&limit=10", resp.Links[0].Href)
+	suite.Equal("first", resp.Links[0].Rel)
+	suite.Equal("/resource-servers?identifier=https%3A%2F%2Fapi.example.com&offset=0&limit=10", resp.Links[1].Href)
+	suite.Equal("prev", resp.Links[1].Rel)
+}
+
+// TestHandleResourceServerListRequest_ByIdentifier_NotFound_PaginationOffset tests pagination links when filtering resource servers by non-existent identifier with offset.
+func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_ByIdentifier_NotFound_PaginationOffset() {
+	suite.mockService.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com").
+		Return(nil, &ErrorResourceServerNotFound)
+
+	req := httptest.NewRequest("GET", "/resource-servers?identifier=https%3A%2F%2Fapi.example.com&offset=1&limit=10", nil)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerListRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	var resp ResourceServerListResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	suite.NoError(err)
+	suite.Equal(0, resp.TotalResults)
+	suite.Equal(0, resp.Count)
+	suite.Equal(2, resp.StartIndex)
+	suite.Empty(resp.ResourceServers)
+	suite.Require().Len(resp.Links, 2)
+	suite.Equal("/resource-servers?identifier=https%3A%2F%2Fapi.example.com&offset=0&limit=10", resp.Links[0].Href)
+	suite.Equal("first", resp.Links[0].Rel)
+	suite.Equal("/resource-servers?identifier=https%3A%2F%2Fapi.example.com&offset=0&limit=10", resp.Links[1].Href)
+	suite.Equal("prev", resp.Links[1].Rel)
+}
+
 func (suite *HandlerTestSuite) TestHandleResourceServerPostRequest_Success() {
 	reqBody := CreateResourceServerRequest{
 		Name:        "test-rs",
