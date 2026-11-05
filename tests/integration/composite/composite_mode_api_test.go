@@ -291,6 +291,48 @@ func (suite *CompositeModeSuite) TestAgentDeclarativeVisibilityConfidential() {
 	resp.Body.Close()
 }
 
+// A declarative agent signs in with the password its document declares, and still with its client
+// secret beside it. A read never returns the password.
+func (suite *CompositeModeSuite) TestAgentDeclarativeCredentialsSignIn() {
+	client := testutils.GetHTTPClient()
+	authenticate := func(password string) int {
+		payload, err := json.Marshal(map[string]interface{}{
+			"identifiers": map[string]interface{}{"name": "Declarative Credential Test Agent"},
+			"credentials": map[string]interface{}{"password": password},
+		})
+		suite.Require().NoError(err)
+		resp, err := client.Post(testutils.TestServerURL+"/auth/credentials/authenticate", "application/json",
+			bytes.NewReader(payload))
+		suite.Require().NoError(err)
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	suite.Equal(http.StatusOK, authenticate("Decl-Agent-Pass1!"),
+		"the declarative agent cannot sign in with its declared password")
+	suite.NotEqual(http.StatusOK, authenticate("Not-The-Pass1!"))
+
+	tokenReq, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/oauth2/token",
+		strings.NewReader("grant_type=client_credentials"))
+	suite.Require().NoError(err)
+	tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	tokenReq.SetBasicAuth("decl-agent-cred-client-1", "decl-agent-cred-secret-1")
+	tokenResp, err := testutils.GetNoRedirectHTTPClient().Do(tokenReq)
+	suite.Require().NoError(err)
+	tokenBody, err := io.ReadAll(tokenResp.Body)
+	_ = tokenResp.Body.Close()
+	suite.Require().NoError(err)
+	suite.Equal(http.StatusOK, tokenResp.StatusCode, "the declarative agent's client secret was lost: %s", tokenBody)
+
+	resp, err := client.Get(fmt.Sprintf("%s/agents/decl-agent-credentials-1", testutils.TestServerURL))
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	suite.Equal(http.StatusOK, resp.StatusCode, string(body))
+	suite.NotContains(string(body), "Decl-Agent-Pass1!", "a read must not return the password")
+}
+
 func (suite *CompositeModeSuite) TestRoleDeclarativeVisibility() {
 	client := testutils.GetHTTPClient()
 	resp, err := client.Get(fmt.Sprintf("%s/roles/decl-role-1", testutils.TestServerURL))

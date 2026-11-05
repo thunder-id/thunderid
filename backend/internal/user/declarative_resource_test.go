@@ -24,7 +24,6 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
-	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
@@ -174,8 +173,7 @@ func (suite *DeclarativeResourceTestSuite) TestParseToUserWrapper() {
 
 func (suite *DeclarativeResourceTestSuite) TestUserExporter_Metadata() {
 	exporter := newUserExporter(
-		NewUserServiceInterfaceMock(suite.T()), entitymock.NewEntityServiceInterfaceMock(suite.T()),
-		entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T()), nil)
+		NewUserServiceInterfaceMock(suite.T()), entitymock.NewEntityServiceInterfaceMock(suite.T()), nil)
 
 	suite.Equal(resourceTypeUser, exporter.GetResourceType())
 	suite.Equal(paramTypeUser, exporter.GetParameterizerType())
@@ -186,7 +184,7 @@ func (suite *DeclarativeResourceTestSuite) TestUserExporter_GetAllResourceIDs() 
 	mockSvc := NewUserServiceInterfaceMock(suite.T())
 	entityServiceMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
 	exporter := newUserExporter(
-		mockSvc, entityServiceMock, entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T()), nil)
+		mockSvc, entityServiceMock, nil)
 
 	users := []providers.User{{ID: "user-1"}, {ID: "user-2"}}
 	mockSvc.On("GetUserList", ctx, serverconst.MaxPageSize, 0, mock.Anything, false).
@@ -234,8 +232,7 @@ func (suite *DeclarativeResourceTestSuite) TestMakeUserParser_ParsesYAMLToEntity
 
 func (suite *DeclarativeResourceTestSuite) TestGetResourceRules_IncludesCredentials() {
 	exporter := newUserExporter(
-		NewUserServiceInterfaceMock(suite.T()), entitymock.NewEntityServiceInterfaceMock(suite.T()),
-		entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T()), nil)
+		NewUserServiceInterfaceMock(suite.T()), entitymock.NewEntityServiceInterfaceMock(suite.T()), nil)
 
 	rules := exporter.GetResourceRules()
 	suite.Contains(rules.DynamicPropertyFields, "Credentials")
@@ -243,8 +240,7 @@ func (suite *DeclarativeResourceTestSuite) TestGetResourceRules_IncludesCredenti
 
 func (suite *DeclarativeResourceTestSuite) TestValidateResource_MissingUsername() {
 	exporter := newUserExporter(
-		NewUserServiceInterfaceMock(suite.T()), entitymock.NewEntityServiceInterfaceMock(suite.T()),
-		entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T()), nil)
+		NewUserServiceInterfaceMock(suite.T()), entitymock.NewEntityServiceInterfaceMock(suite.T()), nil)
 
 	resource := &userDeclarativeResource{
 		ID:         "user-1",
@@ -481,7 +477,7 @@ func (c *credentialExport) sharingAnswers(
 ) {
 	t.Helper()
 	c.sharing = sharingmock.NewSharingServiceInterfaceMock(t)
-	c.exporter = newUserExporter(c.users, c.entities, c.entityTypes, c.sharing)
+	c.exporter = newUserExporter(c.users, c.entities, c.sharing)
 	c.sharing.On("ExportPolicies", context.Background(), UserSharingType, "user-1").
 		Return(replayable, svcErr).Once()
 }
@@ -490,7 +486,7 @@ func (c *credentialExport) sharingAnswers(
 // shares it the same way.
 func TestAUsersSharingPoliciesAreExported(t *testing.T) {
 	c := newCredentialExport(t, "alice")
-	c.typeDeclaresCredentials()
+	c.userHolds()
 	share := sharing.PolicyRequest{ChildUnits: &sharing.ChildUnitsRequest{
 		Mode:  sharing.ChildUnitsSelected,
 		Units: []sharing.ChildUnitRequest{{OUID: "ou-eu", Reach: sharing.ReachUnit}},
@@ -512,7 +508,7 @@ func TestAUsersSharingPoliciesAreExported(t *testing.T) {
 // The roles a share mandates travel with the user's export, in the shape an import replays.
 func (suite *DeclarativeResourceTestSuite) TestAUsersMandatedRolesAreExported() {
 	c := newCredentialExport(suite.T(), "alice")
-	c.typeDeclaresCredentials()
+	c.userHolds()
 	roles := []string{"role-a"}
 	share := sharing.PolicyRequest{ChildUnits: &sharing.ChildUnitsRequest{
 		Mode: sharing.ChildUnitsSelected,
@@ -540,7 +536,7 @@ func (suite *DeclarativeResourceTestSuite) TestAUsersMandatedRolesAreExported() 
 // A user shared nowhere is exported with no sharing section.
 func TestAUserSharedNowhereExportsNoSharingPolicies(t *testing.T) {
 	c := newCredentialExport(t, "alice")
-	c.typeDeclaresCredentials()
+	c.userHolds()
 
 	user := c.exportUser(t)
 
@@ -551,7 +547,7 @@ func TestAUserSharedNowhereExportsNoSharingPolicies(t *testing.T) {
 // re-import shared nowhere.
 func TestUnreadableSharingFailsTheUsersExport(t *testing.T) {
 	c := newCredentialExport(t, "alice")
-	c.typeDeclaresCredentials()
+	c.userHolds()
 	c.sharingAnswers(t, nil, &tidcommon.InternalServerError)
 
 	_, _, svcErr := c.exporter.GetResourceByID(context.Background(), "user-1")

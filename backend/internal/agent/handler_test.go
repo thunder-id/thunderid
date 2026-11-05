@@ -57,6 +57,12 @@ func (s *InlineStubAgentService) CreateAgent(
 	return &model.AgentCompleteResponse{}, nil
 }
 
+func (s *InlineStubAgentService) UpdateAgentCredentials(
+	context.Context, string, json.RawMessage,
+) *tidcommon.ServiceError {
+	return nil
+}
+
 func (s *InlineStubAgentService) UpdateAgent(
 	ctx context.Context, id string, req *model.UpdateAgentRequest,
 ) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {

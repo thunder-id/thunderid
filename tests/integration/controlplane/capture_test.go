@@ -6,6 +6,7 @@ package controlplane
 import (
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -348,6 +349,74 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAgentsCredentialsReachTheDefaultGat
 	held, ok = g.heldSoon("secrets", variableName("AGENT", name, "CLIENT_SECRET"))
 	ts.True(ok, "the agent's client secret was not captured")
 	ts.Equal(clientSecret, held)
+}
+
+// An agent's password reaches the default gateway's secrets, never its variables, under the name the
+// control plane's export refers to it by, and a password set later replaces it there. That is what a
+// Data Plane signs the agent in with.
+func (ts *ControlPlaneTestSuite) TestAWrittenAgentsPasswordReachesTheDefaultGatewaysSecrets() {
+	g := ts.withDefaultGateway()
+	snapshot, err := testutils.SnapshotAgentType()
+	ts.Require().NoError(err)
+	defer func() { ts.NoError(testutils.RestoreAgentType(snapshot)) }()
+	_, err = testutils.CreateAgentType(testutils.UserType{
+		Handle:           "default",
+		DisplayName:      "Default",
+		OUID:             ts.ouID,
+		SystemAttributes: &testutils.UserTypeSystemAttributes{Display: "name"},
+		Schema: map[string]interface{}{
+			"name":     map[string]interface{}{"type": "string"},
+			"password": map[string]interface{}{"type": "string", "credential": true},
+		},
+	})
+	ts.Require().NoError(err)
+	name := unique("CP Capture Password Agent")
+	secretName := variableName("AGENT", name, "PASSWORD")
+	password := unique("Cp-Agent-Pass1!")
+
+	agentID, err := testutils.CreateAgent(testutils.Agent{
+		OUID:       ts.ouID,
+		Type:       "default",
+		Attributes: map[string]interface{}{"name": name, "password": password},
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteAgent(agentID) }()
+
+	held, ok := g.heldSoon("secrets", secretName)
+	ts.True(ok, "the agent's password was not captured")
+	ts.Equal(password, held)
+	ts.False(g.holdsValue("variables", password), "the password was captured as a variable")
+
+	var exported struct {
+		Resources string `json:"resources"`
+	}
+	status, raw := ts.call(http.MethodPost, "/export", map[string]any{"agents": []string{agentID}}, &exported)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Contains(exported.Resources, `password: "sec:`+secretName+`"`,
+		"the export does not refer to the captured password")
+	ts.NotContains(exported.Resources, password)
+
+	rotated := unique("Cp-Agent-Rotated1!")
+	status, raw = ts.call(http.MethodPut, "/agents/"+agentID, map[string]any{
+		"ouId":       ts.ouID,
+		"type":       "default",
+		"attributes": map[string]any{"name": name, "password": rotated},
+	}, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.True(g.holdsValueSoon("secrets", rotated), "the replaced password was not captured")
+	held, _ = g.held("secrets", secretName)
+	ts.Equal(rotated, held)
+
+	// An import onto the control plane sets the password through the agent service, which captures it too.
+	imported := unique("Cp-Agent-Imported1!")
+	status, raw = ts.call(http.MethodPost, "/import", map[string]any{
+		"content": fmt.Sprintf("resource_type: agent\nid: %s\ntype: default\nouId: %s\nattributes:\n  name: %s\n"+
+			"credentials:\n  password: \"{{.PASSWORD}}\"\n", agentID, ts.ouID, name),
+		"variables": map[string]any{"PASSWORD": imported},
+		"options":   map[string]any{"target": "runtime", "upsert": true},
+	}, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.True(g.holdsValueSoon("secrets", imported), "the imported password was not captured: %s", raw)
 }
 
 // createResourceServer creates a resource server on the control plane and returns its id.

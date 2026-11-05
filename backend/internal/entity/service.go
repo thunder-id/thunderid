@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -34,6 +35,13 @@ type EntityServiceInterface interface {
 	GetEntityProfile(ctx context.Context, entityID string) (*providers.Entity, error)
 	GetCredentialsByType(ctx context.Context, entityID string,
 		credType string) ([]StoredCredential, error)
+	// GetHeldCredentialTypes returns the credentials the entity's type declares that the entity holds a
+	// value for.
+	GetHeldCredentialTypes(ctx context.Context, entityID string) ([]string, error)
+	// GetDeclaredCredentialValues returns the value that attributes, as written to an entity, hold for
+	// each credential the entity type declares. A credential with no value there is left out.
+	GetDeclaredCredentialValues(ctx context.Context, category providers.EntityCategory, entityType string,
+		attributes json.RawMessage) (map[string]string, error)
 	UpdateEntity(ctx context.Context, entityID string, entity *providers.Entity) (*providers.Entity, error)
 	DeleteEntity(ctx context.Context, entityID string) error
 
@@ -328,6 +336,66 @@ func (s *entityService) GetCredentialsByType(
 		}
 	}
 	return creds, nil
+}
+
+// GetHeldCredentialTypes returns the credentials the entity's type declares that the entity holds a
+// value for. A credential the type does not declare, such as a client secret or a passkey, is left
+// out.
+func (s *entityService) GetHeldCredentialTypes(ctx context.Context, entityID string) ([]string, error) {
+	result, err := s.store.GetEntityWithCredentials(ctx, entityID)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil || result.Entity == nil {
+		return nil, ErrEntityNotFound
+	}
+	declared, err := s.declaredCredentialTypes(ctx, result.Entity.Category, result.Entity.Type)
+	if err != nil || len(declared) == 0 {
+		return nil, err
+	}
+
+	held := map[string]bool{}
+	for _, stored := range []json.RawMessage{result.SchemaCredentials, result.SystemCredentials} {
+		if len(stored) == 0 {
+			continue
+		}
+		var byType map[string][]StoredCredential
+		if err = json.Unmarshal(stored, &byType); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal stored credentials: %w", err)
+		}
+		for credType, values := range byType {
+			if len(values) > 0 {
+				held[credType] = true
+			}
+		}
+	}
+
+	var types []string
+	for _, credType := range declared {
+		if held[credType] {
+			types = append(types, credType)
+		}
+	}
+	return types, nil
+}
+
+// GetDeclaredCredentialValues returns the value that attributes, as written to an entity, hold for
+// each credential the entity type declares. A credential with no value there, or an empty one, is
+// left out, as is any attribute the type does not declare as a credential.
+func (s *entityService) GetDeclaredCredentialValues(ctx context.Context, category providers.EntityCategory,
+	entityType string, attributes json.RawMessage) (map[string]string, error) {
+	if len(attributes) == 0 {
+		return map[string]string{}, nil
+	}
+	declared, err := s.declaredCredentialTypes(ctx, category, entityType)
+	if err != nil {
+		return nil, err
+	}
+	var attrsMap map[string]interface{}
+	if err := json.Unmarshal(attributes, &attrsMap); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal entity attributes: %w", err)
+	}
+	return credentialValues(declared, attrsMap), nil
 }
 
 // UpdateEntity updates an entity.
@@ -1071,17 +1139,12 @@ func (s *entityService) validateCredentialKeys(
 		return nil
 	}
 
-	credInfos, svcErr := s.entityTypeService.GetAttributes(ctx,
-		entitytype.TypeCategory(category), entityType, entitytype.AttributeFilter{AllowCredential: true})
-	if svcErr != nil {
-		return fmt.Errorf("failed to get credential attributes from schema: %s", svcErr.ErrorDescription)
-	}
-	allowed := make(map[string]struct{}, len(credInfos))
-	for _, a := range credInfos {
-		allowed[a.Attribute] = struct{}{}
+	declared, err := s.declaredCredentialTypes(ctx, category, entityType)
+	if err != nil {
+		return err
 	}
 	for key := range updates {
-		if _, ok := allowed[key]; !ok {
+		if !slices.Contains(declared, key) {
 			return fmt.Errorf("%w: %q is not a declared credential", ErrInvalidCredential, key)
 		}
 	}
@@ -1560,23 +1623,13 @@ func mergeCredentialJSON(existing, updates json.RawMessage) json.RawMessage {
 func (s *entityService) extractAndHashSchemaCredentials(
 	ctx context.Context, entity *providers.Entity,
 ) (json.RawMessage, error) {
-	// User and agent entities both use schema-defined credentials for now.
-	if !usesEntityType(entity.Category) {
+	if len(entity.Attributes) == 0 {
 		return nil, nil
 	}
 
-	if s.entityTypeService == nil || len(entity.Attributes) == 0 {
-		return nil, nil
-	}
-
-	credentialInfos, svcErr := s.entityTypeService.GetAttributes(ctx,
-		entitytype.TypeCategory(entity.Category), entity.Type, entitytype.AttributeFilter{AllowCredential: true})
-	if svcErr != nil {
-		return nil, fmt.Errorf("failed to get credential attributes from schema: %s", svcErr.ErrorDescription)
-	}
-
-	if len(credentialInfos) == 0 {
-		return nil, nil
+	declared, err := s.declaredCredentialTypes(ctx, entity.Category, entity.Type)
+	if err != nil || len(declared) == 0 {
+		return nil, err
 	}
 
 	var attrsMap map[string]interface{}
@@ -1584,12 +1637,9 @@ func (s *entityService) extractAndHashSchemaCredentials(
 		return nil, fmt.Errorf("failed to unmarshal entity attributes: %w", err)
 	}
 
-	plaintextCreds := make(map[string]string)
-	for _, info := range credentialInfos {
-		if val, ok := attrsMap[info.Attribute].(string); ok && val != "" {
-			plaintextCreds[info.Attribute] = val
-			delete(attrsMap, info.Attribute)
-		}
+	plaintextCreds := credentialValues(declared, attrsMap)
+	for credType := range plaintextCreds {
+		delete(attrsMap, credType)
 	}
 
 	if len(plaintextCreds) == 0 {
@@ -1610,6 +1660,41 @@ func (s *entityService) extractAndHashSchemaCredentials(
 	}
 
 	return s.hashPlaintextCredentials(plaintextJSON)
+}
+
+// declaredCredentialTypes returns the attributes an entity type declares as credentials. Only user and
+// agent entities have a type to declare them. A type the lookup refuses, such as one that no longer
+// exists, fails schema validation, as it does when an entity of that type is written.
+func (s *entityService) declaredCredentialTypes(
+	ctx context.Context, category providers.EntityCategory, entityType string,
+) ([]string, error) {
+	if !usesEntityType(category) || s.entityTypeService == nil {
+		return nil, nil
+	}
+	credentialInfos, svcErr := s.entityTypeService.GetAttributes(ctx,
+		entitytype.TypeCategory(category), entityType, entitytype.AttributeFilter{AllowCredential: true})
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ClientErrorType {
+			return nil, fmt.Errorf("%w: %s", ErrSchemaValidationFailed, svcErr.ErrorDescription)
+		}
+		return nil, fmt.Errorf("failed to get credential attributes from schema: %s", svcErr.ErrorDescription)
+	}
+	types := make([]string, 0, len(credentialInfos))
+	for _, info := range credentialInfos {
+		types = append(types, info.Attribute)
+	}
+	return types, nil
+}
+
+// credentialValues returns the non-empty string value attributes hold for each declared credential.
+func credentialValues(declared []string, attributes map[string]interface{}) map[string]string {
+	values := make(map[string]string, len(declared))
+	for _, credType := range declared {
+		if value, ok := attributes[credType].(string); ok && value != "" {
+			values[credType] = value
+		}
+	}
+	return values
 }
 
 // hashPlaintextCredentials processes system credentials JSON, hashing any plaintext values.

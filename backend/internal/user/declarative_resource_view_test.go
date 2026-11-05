@@ -31,7 +31,7 @@ func TestViewResourceShowsAnExportedUserAsItsRead(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	view, err := newUserExporter(nil, nil, nil, nil).ViewResource(context.Background(),
+	view, err := newUserExporter(nil, nil, nil).ViewResource(context.Background(),
 		viewDocument(t, "resource_type: user\n"+string(exported)))
 
 	require.NoError(t, err)
@@ -46,7 +46,7 @@ func TestViewResourceShowsAnExportedUserAsItsRead(t *testing.T) {
 
 // A document that is not a user is refused.
 func TestViewResourceRefusesAnUnreadableDocument(t *testing.T) {
-	exporter := newUserExporter(nil, nil, nil, nil)
+	exporter := newUserExporter(nil, nil, nil)
 
 	_, err := exporter.ViewResource(context.Background(), viewDocument(t, "id: [not, an, id]"))
 	assert.Error(t, err)

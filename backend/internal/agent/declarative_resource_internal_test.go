@@ -325,3 +325,62 @@ func (s *MakeAgentInboundConfigTestSuite) TestValidator_ValidInboundClient() {
 	err := cfg.Validator(&inboundmodel.InboundClient{ID: "client-1"})
 	assert.NoError(s.T(), err)
 }
+
+// A declarative agent's credentials are held beside its client secret, as plaintext the loader hashes.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_WithCredentials() {
+	yamlData := []byte(`
+id: cred-agent
+ouId: ou-1
+type: service-agent
+attributes:
+  name: Credential Agent
+credentials:
+  password: s3cret
+`)
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "cred-agent").
+		Return("cred-client-id", "cred-client-secret", inboundmodel.InboundClient{}, nil).Once()
+
+	parser := makeAgentEntityParser(mockSvc)
+	e, _, sysCredsJSON, err := parser(yamlData)
+
+	s.Require().NoError(err)
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(e.Attributes, &attrs))
+	assert.NotContains(s.T(), attrs, "password", "a credential is never kept as an attribute")
+	var sysCreds map[string]string
+	s.Require().NoError(json.Unmarshal(sysCredsJSON, &sysCreds))
+	assert.Equal(s.T(), map[string]string{fieldClientSecret: "cred-client-secret", "password": "s3cret"}, sysCreds)
+}
+
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_RefusesAMalformedCredential() {
+	for name, credentials := range map[string]string{
+		"not a string":      "  password:\n    - one\n",
+		"the client secret": "  " + fieldClientSecret + ": s3cret\n",
+		"the flow secret":   "  flowSecret: s3cret\n",
+		"a passkey":         "  passkey: s3cret\n",
+	} {
+		s.Run(name, func() {
+			mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+			mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "bad-cred-agent").
+				Return("", "", inboundmodel.InboundClient{}, nil).Once()
+
+			_, _, _, err := makeAgentEntityParser(mockSvc)([]byte(
+				"id: bad-cred-agent\nouId: ou-1\ntype: service-agent\ncredentials:\n" + credentials))
+
+			assert.ErrorContains(s.T(), err, "credentials of agent 'bad-cred-agent'")
+		})
+	}
+}
+
+func (s *MakeAgentEntityParserTestSuite) TestWithDeclarativeCredentials_KeepsWhatHasNoCredentials() {
+	sysCreds := json.RawMessage(`{"clientSecret":"x"}`)
+
+	merged, err := withDeclarativeCredentials(sysCreds, nil)
+
+	s.NoError(err)
+	s.Equal(sysCreds, merged)
+
+	_, err = withDeclarativeCredentials(json.RawMessage(`[1]`), map[string]interface{}{"password": "s3cret"})
+	s.Error(err)
+}

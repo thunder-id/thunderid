@@ -170,7 +170,7 @@ func TestPlaceholderValuesLeaveOutAStoredReference(t *testing.T) {
 
 // An agent is named under its own type, so it cannot collide with an application of the same name.
 func TestPlaceholderValuesOfAnAgent(t *testing.T) {
-	svc := referenceExportService(t, agent.NewAgentExporterForTest(nil))
+	svc := referenceExportService(t, agent.NewAgentExporterForTest(nil, nil))
 
 	variables, secrets, err := svc.PlaceholderValues(context.Background(), resourceTypeAgent,
 		&agentmodel.AgentGetResponse{
@@ -297,7 +297,7 @@ func TestSecretFieldsMatchWhereTheExportWritesSecrets(t *testing.T) {
 		model    interface{}
 	}{
 		"application": {application.NewApplicationExporterForTest(nil, nil), &providers.Application{}},
-		"agent":       {agent.NewAgentExporterForTest(nil), &agentmodel.AgentGetResponse{}},
+		"agent":       {agent.NewAgentExporterForTest(nil, nil), &agentmodel.AgentGetResponse{}},
 	} {
 		lister, ok := tc.exporter.(declarativeresource.SecretFieldLister)
 		require.True(t, ok, name)

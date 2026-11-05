@@ -104,16 +104,7 @@ func (s *AgentImportExportSuite) SetupSuite() {
 	s.Require().NoError(err, "failed to snapshot the default agent type")
 	s.agentTypeSnapshot = snapshot
 
-	_, err = testutils.CreateAgentType(testutils.UserType{
-		Handle:      "default",
-		DisplayName: "Default",
-		OUID:        s.ouID,
-		Schema: map[string]interface{}{
-			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
-			"description": map[string]interface{}{"type": "string"},
-		},
-	})
-	s.Require().NoError(err, "failed to ensure default agent type exists")
+	s.Require().NoError(s.installAgentType(nil), "failed to ensure default agent type exists")
 
 	authFlowID, err := testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
 	s.Require().NoError(err, "failed to get default auth flow ID")
@@ -182,6 +173,7 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_EntityOnlyAgent() {
 	s.Assert().Contains(yamlContent, "attributes:")
 	s.Assert().Contains(yamlContent, `name: "`+agentName+`"`)
 	s.Assert().Contains(yamlContent, "description: Round-trip entity-only agent")
+	s.Assert().NotContains(yamlContent, "credentials:", "an agent with no password set exports none")
 
 	s.Require().NoError(s.deleteAgent(createdID))
 
@@ -458,9 +450,262 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_AgentWithAllFields() 
 	s.Assert().Contains(cfg.GrantTypes, "client_credentials")
 }
 
+// An agent's password is exported as a placeholder, never as its value or its hash, and an import
+// that fills the placeholder leaves the agent able to sign in with the value given.
+func (s *AgentImportExportSuite) TestExportImportRoundTrip_AgentWithPassword() {
+	agentName := "Agent RT Password " + s.handleSuffix
+	original := "Original-Pass1!" + s.handleSuffix
+	imported := "Imported-Pass1!" + s.handleSuffix
+
+	createdID, err := s.createAgent(Agent{
+		OUID:       s.ouID,
+		Type:       "default",
+		Attributes: agentAttrs(agentName, map[string]interface{}{"password": original}),
+	})
+	s.Require().NoError(err)
+	defer func() { _ = s.deleteAgent(createdID) }()
+	s.Require().Equal(http.StatusOK, s.authenticateAgent(agentName, original),
+		"the agent cannot sign in with the password it was created with")
+
+	exportResp, err := s.exportAgents(agentExportRequest{Agents: []string{createdID}})
+	s.Require().NoError(err)
+	yamlContent := exportResp.Resources
+	s.Assert().Contains(yamlContent, "credentials:", "an agent with a password must export its credentials")
+	s.Assert().NotContains(yamlContent, original, "the password must not appear in the export")
+	s.Assert().NotContains(yamlContent, "storageAlgo", "the stored hash must not appear in the export")
+	vars := s.extractTemplateVariables(yamlContent, map[string]interface{}{"password": imported})
+	s.Require().Len(vars, 1, "the password is not a template variable: %s", yamlContent)
+	for name := range vars {
+		s.Assert().Contains(exportResp.EnvironmentVariables, name)
+	}
+
+	s.Require().NoError(s.deleteAgent(createdID))
+	importResp, err := s.importAgents(agentImportRequest{
+		Content:   yamlContent,
+		Options:   agentImportOptions{Upsert: true, Target: "runtime"},
+		Variables: vars,
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(1, importResp.Summary.Imported, "import results: %+v", importResp.Results)
+	importedID := importResp.Results[0].ResourceID
+	defer func() { _ = s.deleteAgent(importedID) }()
+
+	s.Equal(http.StatusOK, s.authenticateAgent(agentName, imported),
+		"the imported agent cannot sign in with the password the import gave it")
+	s.NotEqual(http.StatusOK, s.authenticateAgent(agentName, original))
+	restored, err := s.agentGet(importedID)
+	s.Require().NoError(err)
+	s.NotContains(string(restored.Attributes), imported, "a read must not return the password")
+}
+
+// Importing onto an agent that is already there replaces its password. A placeholder filled with
+// nothing is refused: the profile is written, and the agent keeps the password it has.
+func (s *AgentImportExportSuite) TestImportAgent_UpsertReplacesThePassword() {
+	agentName := "Agent Upsert Password " + s.handleSuffix
+	original := "Original-Pass2!" + s.handleSuffix
+	rotated := "Rotated-Pass2!" + s.handleSuffix
+
+	createdID, err := s.createAgent(Agent{
+		OUID:       s.ouID,
+		Type:       "default",
+		Attributes: agentAttrs(agentName, map[string]interface{}{"password": original}),
+	})
+	s.Require().NoError(err)
+	defer func() { _ = s.deleteAgent(createdID) }()
+	exportResp, err := s.exportAgents(agentExportRequest{Agents: []string{createdID}})
+	s.Require().NoError(err)
+	importWith := func(password string) *agentImportResponse {
+		importResp, err := s.importAgents(agentImportRequest{
+			Content: exportResp.Resources,
+			Options: agentImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+			Variables: s.extractTemplateVariables(exportResp.Resources,
+				map[string]interface{}{"password": password}),
+		})
+		s.Require().NoError(err)
+		s.Require().Len(importResp.Results, 1)
+		s.Equal("update", importResp.Results[0].Operation)
+		return importResp
+	}
+
+	importResp := importWith(rotated)
+	s.Require().Equal(1, importResp.Summary.Imported, "import results: %+v", importResp.Results)
+	s.Equal(http.StatusOK, s.authenticateAgent(agentName, rotated),
+		"the agent cannot sign in with the password the import gave it")
+	s.NotEqual(http.StatusOK, s.authenticateAgent(agentName, original),
+		"the replaced password still signs the agent in")
+
+	importResp = importWith("")
+	s.Equal("failed", importResp.Results[0].Status)
+	s.Equal("AGT-1016", importResp.Results[0].Code, importResp.Results[0].Message)
+	s.Contains(importResp.Results[0].Message, "credential update failed")
+	s.Equal(http.StatusOK, s.authenticateAgent(agentName, rotated),
+		"an empty password replaced the one the agent had")
+}
+
+// A Data Plane imports what a Control Plane exports: a password named as a secret the Data Plane
+// holds, which the import fills in before the agent service stores it.
+func (s *AgentImportExportSuite) TestImportAgent_ResolvesAPasswordFromTheSecretStore() {
+	agentName := "Agent Secret Password " + s.handleSuffix
+	secretName := "AGENT_SECRET_PASSWORD_" + s.handleSuffix
+	password := "Secret-Pass3!" + s.handleSuffix
+	s.Require().Equal(http.StatusCreated, s.send(http.MethodPost, "/secrets",
+		map[string]interface{}{"name": secretName, "value": password}))
+	defer func() { _ = s.send(http.MethodDelete, "/secrets/"+secretName, nil) }()
+
+	importResp, err := s.importAgents(agentImportRequest{
+		Content: fmt.Sprintf("resource_type: agent\ntype: default\nouId: %s\nattributes:\n  name: %s\n"+
+			"credentials:\n  password: sec:%s\n", s.ouID, agentName, secretName),
+		Options: agentImportOptions{Upsert: true, Target: "runtime"},
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(1, importResp.Summary.Imported, "import results: %+v", importResp.Results)
+	defer func() { _ = s.deleteAgent(importResp.Results[0].ResourceID) }()
+
+	s.Equal(http.StatusOK, s.authenticateAgent(agentName, password),
+		"the agent cannot sign in with the password the secret holds")
+}
+
+// A credential the agent's type does not declare is refused, so a secret the document names is never
+// stored where a read returns it. A new agent refused one is not left behind.
+func (s *AgentImportExportSuite) TestImportAgent_RefusesACredentialTheTypeDoesNotDeclare() {
+	agentName := "Agent Undeclared Credential " + s.handleSuffix
+	agentID := "01900000-0000-7000-8000-" + s.handleSuffix[len(s.handleSuffix)-12:]
+	content := fmt.Sprintf("resource_type: agent\nid: %s\ntype: default\nouId: %s\nattributes:\n  name: %s\n"+
+		"credentials:\n  pin: \"1234\"\n", agentID, s.ouID, agentName)
+
+	importResp, err := s.importAgents(agentImportRequest{
+		Content: content,
+		Options: agentImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(importResp.Results, 1)
+	s.Equal("failed", importResp.Results[0].Status)
+	s.Equal("AGT-1016", importResp.Results[0].Code, importResp.Results[0].Message)
+	_, err = s.agentGet(agentID)
+	s.Error(err, "the agent refused its credentials was left behind")
+
+	createdID, err := s.createAgent(Agent{OUID: s.ouID, Type: "default", Attributes: agentAttrs(agentName, nil)})
+	s.Require().NoError(err)
+	defer func() { _ = s.deleteAgent(createdID) }()
+	content = strings.Replace(content, "id: "+agentID, "id: "+createdID, 1)
+
+	importResp, err = s.importAgents(agentImportRequest{
+		Content: content,
+		Options: agentImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(importResp.Results, 1)
+	s.Equal("failed", importResp.Results[0].Status)
+	s.Equal("update", importResp.Results[0].Operation)
+	s.Equal("AGT-1016", importResp.Results[0].Code)
+	s.Contains(importResp.Results[0].Message, "credential update failed")
+}
+
+// A credential is a string, and a new agent needs a value for each credential its document names. A
+// new agent refused either is not left behind.
+func (s *AgentImportExportSuite) TestImportAgent_RefusesANewAgentsUnusableCredential() {
+	for i, tc := range []struct {
+		name, value, code string
+	}{
+		{name: "not a string", value: "1234", code: "AGT-1001"},
+		{name: "empty", value: `""`, code: "AGT-1016"},
+	} {
+		s.Run(tc.name, func() {
+			agentID := fmt.Sprintf("01900000-0000-7000-9000-%011d%d", time.Now().UnixNano()%1e11, i)
+			importResp, err := s.importAgents(agentImportRequest{
+				Content: fmt.Sprintf("resource_type: agent\nid: %s\ntype: default\nouId: %s\n"+
+					"attributes:\n  name: %s\ncredentials:\n  password: %s\n",
+					agentID, s.ouID, "Agent Unusable Password "+tc.name+" "+s.handleSuffix, tc.value),
+				Options: agentImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+			})
+			s.Require().NoError(err)
+			s.Require().Len(importResp.Results, 1)
+			s.Equal("failed", importResp.Results[0].Status)
+			s.Equal(tc.code, importResp.Results[0].Code, importResp.Results[0].Message)
+			_, err = s.agentGet(agentID)
+			s.Error(err, "the agent refused its credentials was left behind")
+		})
+	}
+}
+
+// Two agents whose display names normalize alike would claim one password variable, and so one
+// password, so the export holding both is refused rather than written.
+func (s *AgentImportExportSuite) TestExportAgent_RefusesTwoAgentsWithOnePasswordVariable() {
+	// Without a display attribute an agent is named by its ID, which no other agent shares.
+	s.Require().NoError(s.installAgentType(&testutils.UserTypeSystemAttributes{Display: "name"}))
+	defer func() { s.NoError(s.installAgentType(nil)) }()
+	var ids []string
+	for _, name := range []string{"Agent Clash " + s.handleSuffix, "Agent-Clash-" + s.handleSuffix} {
+		id, err := s.createAgent(Agent{
+			OUID:       s.ouID,
+			Type:       "default",
+			Attributes: agentAttrs(name, map[string]interface{}{"password": "Clash-Pass1!" + s.handleSuffix}),
+		})
+		s.Require().NoError(err)
+		defer func() { _ = s.deleteAgent(id) }()
+		ids = append(ids, id)
+	}
+
+	_, err := s.exportAgents(agentExportRequest{Agents: ids})
+
+	s.Require().Error(err, "expected the export to be refused")
+	s.Contains(err.Error(), "EXP-1003", "the refusal must name the duplicate template variable error")
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// installAgentType points the default agent type at the suite's unit, with a password credential and
+// the given system attributes.
+func (s *AgentImportExportSuite) installAgentType(systemAttributes *testutils.UserTypeSystemAttributes) error {
+	_, err := testutils.CreateAgentType(testutils.UserType{
+		Handle:           "default",
+		DisplayName:      "Default",
+		OUID:             s.ouID,
+		SystemAttributes: systemAttributes,
+		Schema: map[string]interface{}{
+			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
+			"description": map[string]interface{}{"type": "string"},
+			"password":    map[string]interface{}{"type": "string", "credential": true},
+		},
+	})
+	return err
+}
+
+// send sends a JSON request to the server under test and returns the status.
+func (s *AgentImportExportSuite) send(method, path string, body interface{}) int {
+	var reader io.Reader
+	if body != nil {
+		payload, err := json.Marshal(body)
+		s.Require().NoError(err)
+		reader = bytes.NewReader(payload)
+	}
+	req, err := http.NewRequest(method, testServerURL+path, reader)
+	s.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	s.Require().NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+	return resp.StatusCode
+}
+
+// authenticateAgent signs an agent in by its name and password and returns the status.
+func (s *AgentImportExportSuite) authenticateAgent(name, password string) int {
+	payload, err := json.Marshal(map[string]interface{}{
+		"identifiers": map[string]interface{}{"name": name},
+		"credentials": map[string]interface{}{"password": password},
+	})
+	s.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/auth/credentials/authenticate",
+		bytes.NewReader(payload))
+	s.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	s.Require().NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+	return resp.StatusCode
+}
 
 func (s *AgentImportExportSuite) createAgent(a Agent) (string, error) {
 	payload, err := json.Marshal(a)

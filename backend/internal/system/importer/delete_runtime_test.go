@@ -73,7 +73,10 @@ func (f *fakeRoleService) DeleteRole(_ context.Context, id string) *tidcommon.Se
 
 func (f *fakeGroupService) DeleteGroup(context.Context, string) *tidcommon.ServiceError { return nil }
 
-func (f *fakeAgentService) DeleteAgent(context.Context, string) *tidcommon.ServiceError { return nil }
+func (f *fakeAgentService) DeleteAgent(_ context.Context, id string) *tidcommon.ServiceError {
+	f.deleted = append(f.deleted, id)
+	return f.deleteErr
+}
 
 func (f *errAgentService) DeleteAgent(context.Context, string) *tidcommon.ServiceError { return nil }
 

@@ -45,16 +45,30 @@ func (r *recordingCapturer) captured(t *testing.T) *userDeclarativeResource {
 	return user
 }
 
-func declaresPassword(t *testing.T) *entitytypemock.EntityTypeServiceInterfaceMock {
+func knowsTheUserType(t *testing.T) *entitytypemock.EntityTypeServiceInterfaceMock {
 	t.Helper()
 	entityTypes := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	entityTypes.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Maybe()
-	entityTypes.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testUserType,
-		entitytype.AttributeFilter{AllowCredential: true}).
-		Return([]entitytype.AttributeInfo{{Attribute: "password", Credential: true}},
-			(*tidcommon.ServiceError)(nil)).Maybe()
 	return entityTypes
+}
+
+// declaresPassword makes the entity service read a password, the one credential the user type
+// declares, from the attributes a user is written with.
+func declaresPassword(entities *entitymock.EntityServiceInterfaceMock) {
+	entities.EXPECT().GetDeclaredCredentialValues(mock.Anything, providers.EntityCategoryUser, testUserType,
+		mock.Anything).RunAndReturn(func(_ context.Context, _ providers.EntityCategory, _ string,
+		attributes json.RawMessage) (map[string]string, error) {
+		var attrs map[string]interface{}
+		if err := json.Unmarshal(attributes, &attrs); err != nil {
+			return nil, err
+		}
+		values := map[string]string{}
+		if password, ok := attrs["password"].(string); ok {
+			values["password"] = password
+		}
+		return values, nil
+	}).Maybe()
 }
 
 func newCapturingUserService(t *testing.T, capturer declarativeresource.ValueCapturer,
@@ -63,10 +77,11 @@ func newCapturingUserService(t *testing.T, capturer declarativeresource.ValueCap
 	ouService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouService.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
 		Return(true, (*tidcommon.ServiceError)(nil)).Maybe()
+	declaresPassword(entities)
 	return &userService{
 		entityService:     entities,
 		ouService:         ouService,
-		entityTypeService: declaresPassword(t),
+		entityTypeService: knowsTheUserType(t),
 		authzService:      newAllowAllAuthz(t),
 		uuidGenerator:     utils.GenerateUUIDv7,
 		valueCapturer:     capturer,
@@ -149,8 +164,8 @@ func TestUpdateUserCredentials_CapturesTheNewCredential(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"password": "rotated"}, user.Credentials)
 }
 
-// Without a capturer, which is every plane but a control plane, nothing is captured and the user
-// type is not asked which attributes are credentials.
+// Without a capturer, which is every plane but a control plane, nothing is captured and the entity
+// service is not asked which attributes are credentials.
 func TestCaptureWithoutACapturerDoesNothing(t *testing.T) {
 	service := &userService{}
 
@@ -163,8 +178,7 @@ func TestCaptureWithoutACapturerDoesNothing(t *testing.T) {
 // The name a user's credential is captured under is the one its export writes the placeholder with.
 func TestACapturedCredentialIsNamedAsTheExportNamesIt(t *testing.T) {
 	c := newCredentialExport(t, "alice")
-	c.typeDeclaresCredentials("password")
-	c.userHasCredential("password", true)
+	c.userHolds("password")
 	exported := c.exportUser(t)
 
 	capturer := &recordingCapturer{}
