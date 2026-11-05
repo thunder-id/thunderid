@@ -219,8 +219,8 @@ describe('steps models', () => {
       expect(ExecutionTypes.ExtensionExecutor).toBe('ExtensionExecutor');
     });
 
-    it('should have exactly 41 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(41);
+    it('should have exactly 40 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(40);
     });
   });
 

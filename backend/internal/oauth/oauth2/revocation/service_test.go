@@ -306,7 +306,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_RequestedTTLExtends
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{{
 		Criterion: Criterion{Type: CriterionTypeApplicationKey, Value: "client-long-lived"},
 		Mode:      RevocationModeAll,
-		Reason:    RevocationReasonApplicationDeleted,
+		Reason:    RevocationReasonUserDeleted,
 		TTL:       requested,
 	}})
 
@@ -325,7 +325,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_ShorterRequestedTTL
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{{
 		Criterion: Criterion{Type: CriterionTypeApplicationKey, Value: "client-short-lived"},
 		Mode:      RevocationModeAll,
-		Reason:    RevocationReasonApplicationDeleted,
+		Reason:    RevocationReasonUserDeleted,
 		TTL:       time.Minute,
 	}})
 
@@ -410,7 +410,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_WritesEveryEntryInO
 	revoker := newRevocationService(nil, store, time.Hour, 0, false, nil, testMaxEntriesPerChange)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{
 		{Criterion: Criterion{Type: CriterionTypeApplicationKey, Value: "client-1"},
-			Mode: RevocationModeAll, Reason: RevocationReasonApplicationDeleted},
+			Mode: RevocationModeAll, Reason: RevocationReasonUserDeleted},
 		{Criterion: Criterion{Type: CriterionTypeEntityScope, Value: "digest-1"},
 			Mode: RevocationModeBeforeAction, Cutoff: boundaryCutoff,
 			Reason: RevocationReasonRoleAssignmentRemoved},

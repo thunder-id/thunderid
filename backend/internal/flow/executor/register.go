@@ -454,10 +454,6 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			reg.RegisterExecutor(ExecutorNameApplicationActionValidator,
 				newApplicationActionValidator(deps.FlowFactory))
 		},
-		ExecutorNameApplicationDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameApplicationDelete,
-				newApplicationDeleteExecutor(deps.FlowFactory))
-		},
 		ExecutorNameClientSecret: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameClientSecret,
 				newClientSecretExecutor(deps.FlowFactory))
@@ -557,7 +553,6 @@ func registerBuiltInExecutor(
 type applicationAdminProvider interface {
 	ValidateDeleteApplication(ctx context.Context, appID string) (
 		*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
-	DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError
 	ValidateCredentialAction(ctx context.Context, appID string, action appmodel.CredentialAction) (
 		*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
 	ApplyCredentialAction(ctx context.Context, appID string, action appmodel.CredentialAction) (

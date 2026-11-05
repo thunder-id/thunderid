@@ -283,7 +283,7 @@ func (suite *RevocationStoreTestSuite) TestInsertCriteria_EmptySliceSkipsTheClie
 func (suite *RevocationStoreTestSuite) TestInsertCriteria_GeneratesIDsForRowsWithoutOne() {
 	suite.expectNoOpTransaction()
 	rows := []revocationCriterion{
-		{Type: CriterionTypeApplicationKey, Value: "client-1", Reason: RevocationReasonApplicationDeleted,
+		{Type: CriterionTypeApplicationKey, Value: "client-1", Reason: RevocationReasonUserDeleted,
 			RevokedAt: suite.testCriterion.RevokedAt, ExpiryTime: suite.testCriterion.ExpiryTime},
 		{ID: "already-set", Type: CriterionTypeSubject, Value: "user-1",
 			Reason:    RevocationReasonUserDeleted,
@@ -624,7 +624,7 @@ func (suite *RevocationStoreTestSuite) TestBuildInsertRevocationCriteriaQuery_Wr
 	rows := []revocationCriterion{
 		// A fresh key: must simply be inserted.
 		{ID: "fresh-1", Type: CriterionTypeApplicationKey, Value: "client-1",
-			Reason: RevocationReasonApplicationDeleted, RevokedAt: now, ExpiryTime: now.Add(time.Hour)},
+			Reason: RevocationReasonUserDeleted, RevokedAt: now, ExpiryTime: now.Add(time.Hour)},
 		// Conflicts with the pre-existing terminal row.
 		{ID: "conflict-terminal", Type: CriterionTypeSubject, Value: "user-1",
 			Reason: RevocationReasonRoleAssignmentRemoved, RevokedAt: now.Add(2 * time.Hour),
@@ -644,7 +644,7 @@ func (suite *RevocationStoreTestSuite) TestBuildInsertRevocationCriteriaQuery_Wr
 		WHERE DEPLOYMENT_ID = ? AND CRITERION_TYPE = ? AND CRITERION_VALUE = ?`,
 		"deployment-1", "app.key", "client-1").Scan(&reason, &revokedAt)
 	suite.Require().NoError(err, "the fresh row must have been written")
-	suite.Equal(string(RevocationReasonApplicationDeleted), reason)
+	suite.Equal(string(RevocationReasonUserDeleted), reason)
 
 	err = db.QueryRow(`SELECT REASON, REVOKED_AT FROM "REVOCATION_CRITERIA"
 		WHERE DEPLOYMENT_ID = ? AND CRITERION_TYPE = ? AND CRITERION_VALUE = ?`,

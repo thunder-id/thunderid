@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {describe, expect, it, vi} from 'vitest';
-import {deleteApplicationViaFlow, regenerateClientSecretViaFlow, type HttpLike} from '../applicationAdministrationFlow';
+import {regenerateClientSecretViaFlow, type HttpLike} from '../applicationAdministrationFlow';
 
 const SERVER = 'https://localhost:8090';
 const APP_ID = '01a03248-56f6-75a8-a821-eb93cd60fc7b';
-const DELETION_FLOW_ID = '01900000-0000-7000-8000-000000000079';
 const ROTATION_FLOW_ID = '01900000-0000-7000-8000-00000000007a';
-const DELETION_HANDLE = 'default-application-deletion-flow';
 const ROTATION_HANDLE = 'default-secret-regeneration-flow';
 const NEW_SECRET = 'KdJL7PrfDTh-XwT8kGtg1nMydcDQg_L5an25vV52Ej8';
 
@@ -44,71 +42,6 @@ function makeHttp(routes: Record<string, unknown>, onRequest?: (config: Recorded
     }),
   };
 }
-
-describe('deleteApplicationViaFlow', () => {
-  it('should delete through the configured flow', async () => {
-    const seen: RecordedRequest[] = [];
-    const http = makeHttp(
-      {
-        '/flow/execute': {flowStatus: 'COMPLETE'},
-        '/flows': {flows: [{flowType: 'ADMINISTRATION', handle: DELETION_HANDLE, id: DELETION_FLOW_ID}]},
-        '/server-config/flow': {merged: {applicationDeletionFlow: {defaultHandle: DELETION_HANDLE}}},
-      },
-      (config) => seen.push(config),
-    );
-
-    await deleteApplicationViaFlow(http, SERVER, APP_ID);
-
-    expect(seen.some((request) => request.method === 'DELETE')).toBe(false);
-    expect(seen.at(-1)?.url).toBe(`${SERVER}/flow/execute`);
-    expect(seen.at(-1)?.data).toMatchObject({inputs: {targetApplicationId: APP_ID}});
-  });
-
-  it('should fall back to the native endpoint when no handle is configured', async () => {
-    const seen: RecordedRequest[] = [];
-    const http = makeHttp({'/applications/': {}, '/server-config/flow': {merged: {}}}, (config) => seen.push(config));
-
-    await deleteApplicationViaFlow(http, SERVER, APP_ID);
-
-    expect(seen.at(-1)).toMatchObject({method: 'DELETE', url: `${SERVER}/applications/${APP_ID}`});
-  });
-
-  // A configured handle naming a flow that no longer exists is not the same as none configured: the
-  // deployment asked for flow-based revocation. Deleting through the native endpoint would strip the
-  // application while leaving every token it issued valid, and report that as a success.
-  it('should refuse rather than fall back when the configured handle resolves to nothing', async () => {
-    const seen: RecordedRequest[] = [];
-    const http = makeHttp(
-      {
-        '/applications/': {},
-        '/flows': {flows: []},
-        '/server-config/flow': {merged: {applicationDeletionFlow: {defaultHandle: DELETION_HANDLE}}},
-      },
-      (config) => seen.push(config),
-    );
-
-    await expect(deleteApplicationViaFlow(http, SERVER, APP_ID)).rejects.toThrow(DELETION_HANDLE);
-    expect(seen.some((request) => request.method === 'DELETE')).toBe(false);
-  });
-
-  // A flow that exists but fails must never be downgraded to a native delete: that would remove the
-  // application while leaving every token it issued valid.
-  it('should not fall back when the flow itself fails', async () => {
-    const seen: RecordedRequest[] = [];
-    const http = makeHttp(
-      {
-        '/applications/': {},
-        '/flow/execute': new Error('flow exploded'),
-        '/flows': {flows: [{flowType: 'ADMINISTRATION', handle: DELETION_HANDLE, id: DELETION_FLOW_ID}]},
-        '/server-config/flow': {merged: {applicationDeletionFlow: {defaultHandle: DELETION_HANDLE}}},
-      },
-      (config) => seen.push(config),
-    );
-
-    await expect(deleteApplicationViaFlow(http, SERVER, APP_ID)).rejects.toThrow('flow exploded');
-    expect(seen.some((request) => request.method === 'DELETE')).toBe(false);
-  });
-});
 
 describe('regenerateClientSecretViaFlow', () => {
   it('should return the secret the flow generated', async () => {

@@ -784,6 +784,27 @@ func (ts *RefreshSecurityTestSuite) TestRefresh_ClientSecretRotated_RejectsToken
 	ts.Assert().Contains(err.Error(), "invalid_grant", "Rejection should be invalid_grant")
 }
 
+// An update that carries the secret the application already has, as every apply of a configuration
+// version does, is not a rotation: the refresh tokens issued before it still work after it.
+func (ts *RefreshSecurityTestSuite) TestRefresh_SameSecretUpdate_KeepsToken() {
+	const (
+		sameClientID     = "refresh_security_same_secret_client"
+		sameClientSecret = "refresh_security_same_secret_secret"
+	)
+	appID := ts.createApplication("RefreshSecuritySameSecretApp", sameClientID, sameClientSecret)
+	userID := ts.createUser("refresh_sec_same_secret")
+	ts.createRole("RefreshSec_SameSecret", userID, []string{"read"})
+
+	tokens := ts.obtainTokens(sameClientID, sameClientSecret, "refresh_sec_same_secret", "openid read")
+
+	ts.Require().NoError(ts.updateApplication(appID, "RefreshSecuritySameSecretApp", sameClientID, sameClientSecret),
+		"Failed to update the application with the secret it already has")
+
+	refreshed, err := testutils.RefreshAccessToken(sameClientID, sameClientSecret, tokens.RefreshToken)
+	ts.Require().NoError(err, "A refresh token issued before an update with the same secret must still work")
+	ts.NotEmpty(refreshed.AccessToken, "The refresh should issue a new access token")
+}
+
 // An unrelated application edit rebuilds the whole system-attribute blob, so the marker written by a
 // secret rotation must survive it. Losing it would revive the refresh tokens the rotation invalidated.
 func (ts *RefreshSecurityTestSuite) TestRefresh_ClientSecretRotatedThenAppRenamed_StillRejectsToken() {

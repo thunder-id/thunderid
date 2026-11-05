@@ -38,8 +38,9 @@ const (
 	// RevocationReasonExplicitTokenFamily denotes family revocation triggered by an explicit (RFC 7009)
 	// revocation of a token that carries a token family id.
 	RevocationReasonExplicitTokenFamily = sharedrevocation.ReasonExplicitTokenFamily
-	// RevocationReasonApplicationDeleted permanently revokes artifacts issued to a deleted application.
-	RevocationReasonApplicationDeleted = sharedrevocation.ReasonApplicationDeleted
+	// RevocationReasonApplicationRemoved revokes artifacts established before an application was removed,
+	// so one registered again under the same client id stands.
+	RevocationReasonApplicationRemoved = sharedrevocation.ReasonApplicationRemoved
 	// RevocationReasonApplicationSecretRegenerated revokes artifacts established before secret regeneration.
 	RevocationReasonApplicationSecretRegenerated = sharedrevocation.ReasonApplicationSecretRegenerated
 	// RevocationReasonRoleAssignmentRemoved revokes artifacts established before a role assignment was removed.

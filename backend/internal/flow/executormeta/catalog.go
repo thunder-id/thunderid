@@ -21,11 +21,8 @@ var catalog = map[string]providers.ExecutorMeta{
 		SupportedFlowTypes: []providers.FlowType{"AUTHENTICATION", "REGISTRATION"},
 	},
 	ExecutorNameApplicationActionValidator: {
-		SupportedModes:     []string{"revoke_all", "revoke_before_action"},
+		SupportedModes:     []string{ExecutorModeRevokeBeforeAction, ExecutorModeRevokeBeforeRemoval},
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "SYSTEM"},
-	},
-	ExecutorNameApplicationDelete: {
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
 	},
 	ExecutorNameAttributeCollect:             {},
 	ExecutorNameAttributeUniquenessValidator: {},

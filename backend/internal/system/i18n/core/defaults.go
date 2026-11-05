@@ -1910,8 +1910,6 @@ var defaultMessages = map[string]string{
 	"flows.executor.errors.action_deletion_not_allowed_desc": "The resource server is declarative, or the resource server, resource or action no longer exists",
 	"flows.executor.errors.ambiguous_entity_identity": "Ambiguous {{param(entity)}} identity",
 	"flows.executor.errors.ambiguous_entity_identity_desc": "The {{param(entity)}} identity is ambiguous and cannot be determined",
-	"flows.executor.errors.application_deletion_failed": "Application deletion failed",
-	"flows.executor.errors.application_deletion_failed_desc": "The application could not be deleted",
 	"flows.executor.errors.application_deletion_not_allowed": "Application deletion not allowed",
 	"flows.executor.errors.application_deletion_not_allowed_desc": "The application cannot be deleted in the current state",
 	"flows.executor.errors.attribute_collect_failed": "Failed to update user attributes",

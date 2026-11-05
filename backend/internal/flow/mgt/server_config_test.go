@@ -312,7 +312,6 @@ func everyAdministrationFlow(prefix string) flowconfig.FlowSectionConfig {
 	}
 	return flowconfig.FlowSectionConfig{
 		UserDeletionFlow:           handle("user-deletion"),
-		ApplicationDeletionFlow:    handle("application-deletion"),
 		SecretRegenerationFlow:     handle("secret-regeneration"),
 		RoleAssignmentRemovalFlow:  handle("role-assignment-removal"),
 		RoleDeletionFlow:           handle("role-deletion"),

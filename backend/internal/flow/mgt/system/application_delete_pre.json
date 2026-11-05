@@ -14,7 +14,7 @@
       "type": "TASK_EXECUTION",
       "executor": {
         "name": "ApplicationActionValidator",
-        "mode": "revoke_all"
+        "mode": "revoke_before_removal"
       },
       "onSuccess": "revoke_tokens"
     },

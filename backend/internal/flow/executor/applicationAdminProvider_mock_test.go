@@ -122,65 +122,6 @@ func (_c *applicationAdminProviderMock_ApplyCredentialAction_Call) RunAndReturn(
 	return _c
 }
 
-// DeleteApplication provides a mock function for the type applicationAdminProviderMock
-func (_mock *applicationAdminProviderMock) DeleteApplication(ctx context.Context, appID string) *common.ServiceError {
-	ret := _mock.Called(ctx, appID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for DeleteApplication")
-	}
-
-	var r0 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
-		r0 = returnFunc(ctx, appID)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*common.ServiceError)
-		}
-	}
-	return r0
-}
-
-// applicationAdminProviderMock_DeleteApplication_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteApplication'
-type applicationAdminProviderMock_DeleteApplication_Call struct {
-	*mock.Call
-}
-
-// DeleteApplication is a helper method to define mock.On call
-//   - ctx context.Context
-//   - appID string
-func (_e *applicationAdminProviderMock_Expecter) DeleteApplication(ctx any, appID any) *applicationAdminProviderMock_DeleteApplication_Call {
-	return &applicationAdminProviderMock_DeleteApplication_Call{Call: _e.mock.On("DeleteApplication", ctx, appID)}
-}
-
-func (_c *applicationAdminProviderMock_DeleteApplication_Call) Run(run func(ctx context.Context, appID string)) *applicationAdminProviderMock_DeleteApplication_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *applicationAdminProviderMock_DeleteApplication_Call) Return(serviceError *common.ServiceError) *applicationAdminProviderMock_DeleteApplication_Call {
-	_c.Call.Return(serviceError)
-	return _c
-}
-
-func (_c *applicationAdminProviderMock_DeleteApplication_Call) RunAndReturn(run func(ctx context.Context, appID string) *common.ServiceError) *applicationAdminProviderMock_DeleteApplication_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // ValidateCredentialAction provides a mock function for the type applicationAdminProviderMock
 func (_mock *applicationAdminProviderMock) ValidateCredentialAction(ctx context.Context, appID string, action model.CredentialAction) (*model.ApplicationArtifactProfile, *common.ServiceError) {
 	ret := _mock.Called(ctx, appID, action)

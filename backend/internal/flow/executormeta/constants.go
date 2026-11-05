@@ -48,7 +48,6 @@ const (
 	ExecutorNameSessionRevocation            = "SessionRevocationExecutor"
 	ExecutorNameUserDelete                   = "UserDeleteExecutor"
 	ExecutorNameApplicationActionValidator   = "ApplicationActionValidator"
-	ExecutorNameApplicationDelete            = "ApplicationDeleteExecutor"
 	ExecutorNameClientSecret                 = "ClientSecretExecutor"
 	ExecutorNameAccessChangeValidator        = "AccessChangeValidator"
 	ExecutorNameRole                         = "RoleExecutor"
@@ -77,8 +76,10 @@ const (
 	ExecutorModeGroupMembershipRemoval = "group_membership_removal"
 	ExecutorModeActionDeletion         = "action_deletion"
 
-	ExecutorModeRevoke        = "revoke"
-	ExecutorModeAdvanceCutoff = "advance_cutoff"
+	ExecutorModeRevoke              = "revoke"
+	ExecutorModeAdvanceCutoff       = "advance_cutoff"
+	ExecutorModeRevokeBeforeAction  = "revoke_before_action"
+	ExecutorModeRevokeBeforeRemoval = "revoke_before_removal"
 
 	ExecutorModeUnlock    = "unlock"
 	ExecutorModeSuspend   = "suspend"

@@ -13,7 +13,6 @@ import (
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -49,9 +48,9 @@ func (s *ApplicationActionValidatorTestSuite) nodeContext(inputs, shared map[str
 // modeContext is nodeContext for the validator, whose action the node's revocation mode selects. It is
 // always the first node in its flow, so it carries no shared runtime data.
 func (s *ApplicationActionValidatorTestSuite) modeContext(
-	mode revocation.Mode, inputs map[string]string) *providers.NodeContext {
+	mode string, inputs map[string]string) *providers.NodeContext {
 	ctx := s.nodeContext(inputs, nil)
-	ctx.ExecutorMode = string(mode)
+	ctx.ExecutorMode = mode
 	return ctx
 }
 
@@ -70,8 +69,8 @@ func (s *ApplicationActionValidatorTestSuite) TestPreApplicationDelete_RefusalPu
 	s.apps.EXPECT().ValidateDeleteApplication(mock.Anything, "app-declarative").Return(
 		nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "APP-1030"})
 
-	resp, err := s.validator().Execute(
-		s.modeContext(revocation.ModeAll, map[string]string{revocationInputApplication: "app-declarative"}))
+	resp, err := s.validator().Execute(s.modeContext(ExecutorModeRevokeBeforeRemoval,
+		map[string]string{revocationInputApplication: "app-declarative"}))
 
 	s.Require().NoError(err)
 	s.Equal(providers.ExecFailure, resp.Status)
@@ -86,7 +85,7 @@ func (s *ApplicationActionValidatorTestSuite) TestPreApplicationDelete_UncodedRe
 		nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
 
 	resp, err := s.validator().Execute(
-		s.modeContext(revocation.ModeAll, map[string]string{revocationInputApplication: "app-uncoded"}))
+		s.modeContext(ExecutorModeRevokeBeforeRemoval, map[string]string{revocationInputApplication: "app-uncoded"}))
 
 	s.Require().NoError(err)
 	s.Equal(providers.ExecFailure, resp.Status)
@@ -100,7 +99,7 @@ func (s *ApplicationActionValidatorTestSuite) TestPreSecretRegeneration_ServerEr
 		nil, &tidcommon.InternalServerError)
 
 	_, err := s.validator().Execute(
-		s.modeContext(revocation.ModeBeforeAction, map[string]string{revocationInputApplication: "app-1"}))
+		s.modeContext(ExecutorModeRevokeBeforeAction, map[string]string{revocationInputApplication: "app-1"}))
 
 	s.Require().Error(err)
 }
@@ -108,7 +107,7 @@ func (s *ApplicationActionValidatorTestSuite) TestPreSecretRegeneration_ServerEr
 // The target is a declared required input, so omitting it asks for it rather than acting on nothing.
 func (s *ApplicationActionValidatorTestSuite) TestPreApplicationDelete_MissingInputAsksForIt() {
 	resp, err := s.validator().Execute(
-		s.modeContext(revocation.ModeAll, map[string]string{}))
+		s.modeContext(ExecutorModeRevokeBeforeRemoval, map[string]string{}))
 
 	s.Require().NoError(err)
 	s.Equal(providers.ExecUserInputRequired, resp.Status)

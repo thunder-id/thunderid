@@ -64,7 +64,7 @@ func (suite *DBSourceTestSuite) TestSnapshot_Success() {
 		Return([]map[string]interface{}{
 			{"criterion_value": "client-1", "reason": "application_secret_regenerated",
 				"revoked_at": revokedAt, "expiry_time": expiry},
-			{"criterion_value": "client-2", "reason": "application_deleted",
+			{"criterion_value": "client-2", "reason": "user_deleted",
 				"revoked_at": revokedAt, "expiry_time": expiry},
 		}, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,

@@ -22,25 +22,23 @@ import (
 type applicationValidator func(ctx context.Context, appID string) (
 	*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
 
-// applicationAction is what the validator does for one revocation mode: which validation runs, which
-// reason is recorded, and which refusal is reported when the validator names none.
+// applicationAction is what the validator does for one node mode: which validation runs, the reason of
+// the bounded revocation it plans, and which refusal is reported when the validator names none.
 type applicationAction struct {
 	validate func(applicationAdminProvider) applicationValidator
 	reason   revocation.Reason
 	notFound tidcommon.ServiceError
 }
 
-// applicationActionsByMode maps the node's revocation mode to the action it prepares. The mode states
-// the breadth of the revocation, and each breadth belongs to exactly one application action: a deletion
-// retires the client id, so every artifact it ever carried is denied; a secret regeneration denies only
-// what was issued before the rotation.
-var applicationActionsByMode = map[revocation.Mode]applicationAction{
-	revocation.ModeAll: {
+// applicationActionsByMode maps the node's mode to the action it prepares. Both plan a revocation
+// bounded at the validation, which the post flow moves past the write.
+var applicationActionsByMode = map[string]applicationAction{
+	ExecutorModeRevokeBeforeRemoval: {
 		validate: func(p applicationAdminProvider) applicationValidator { return p.ValidateDeleteApplication },
-		reason:   revocation.ReasonApplicationDeleted,
+		reason:   revocation.ReasonApplicationRemoved,
 		notFound: ErrApplicationDeletionNotAllowed,
 	},
-	revocation.ModeBeforeAction: {
+	ExecutorModeRevokeBeforeAction: {
 		validate: func(p applicationAdminProvider) applicationValidator {
 			return func(ctx context.Context, appID string) (
 				*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError) {
@@ -70,7 +68,7 @@ func newApplicationActionValidator(
 	factory core.FlowFactoryInterface) *applicationActionValidator {
 	modes := make([]string, 0, len(applicationActionsByMode))
 	for mode := range applicationActionsByMode {
-		modes = append(modes, string(mode))
+		modes = append(modes, mode)
 	}
 	sort.Strings(modes)
 	base := factory.CreateExecutor(ExecutorNameApplicationActionValidator, providers.ExecutorTypeUtility,
@@ -90,11 +88,10 @@ func (e *applicationActionValidator) setApplicationProvider(
 }
 
 // Execute validates the target application and publishes the trusted plan the later nodes act on. The
-// node's revocation mode selects which action is prepared.
+// node's mode selects which action is prepared.
 func (e *applicationActionValidator) Execute(ctx *providers.NodeContext) (
 	*providers.ExecutorResponse, error) {
-	mode := revocation.Mode(ctx.ExecutorMode)
-	action, ok := applicationActionsByMode[mode]
+	action, ok := applicationActionsByMode[ctx.ExecutorMode]
 	if !ok {
 		return nil, fmt.Errorf("unsupported revocation mode for %s: %q",
 			ExecutorNameApplicationActionValidator, ctx.ExecutorMode)
@@ -132,7 +129,8 @@ func (e *applicationActionValidator) Execute(ctx *providers.NodeContext) (
 		return execResp, nil
 	}
 
-	plan, err := encodeRevocationPlan(e.buildPlan(mode, action.reason, appID, profile))
+	built := e.buildPlan(action.reason, appID, profile)
+	plan, err := encodeRevocationPlan(built)
 	if err != nil {
 		return nil, err
 	}
@@ -140,13 +138,13 @@ func (e *applicationActionValidator) Execute(ctx *providers.NodeContext) (
 	return execResp, nil
 }
 
-// buildPlan records the trusted intent for this action. An application with no OAuth client
-// publishes no criteria and says so explicitly, which keeps it distinguishable from a plan that lost its
-// criteria.
-func (e *applicationActionValidator) buildPlan(mode revocation.Mode, reason revocation.Reason,
+// buildPlan records the trusted intent for this action, bounded at now. An application with no OAuth
+// client publishes no criteria and says so explicitly, which keeps it distinguishable from a plan that
+// lost its criteria.
+func (e *applicationActionValidator) buildPlan(reason revocation.Reason,
 	appID string, profile *appmodel.ApplicationArtifactProfile) revocationPlan {
 	plan := revocationPlan{
-		Mode:     mode,
+		Mode:     revocation.ModeBeforeAction,
 		Reason:   reason,
 		TargetID: appID,
 	}
@@ -158,8 +156,6 @@ func (e *applicationActionValidator) buildPlan(mode revocation.Mode, reason revo
 		{Type: revocation.CriterionTypeApplicationKey, Value: profile.ClientKey},
 	}
 	plan.TTLSeconds = profile.MaxLifetimeSeconds
-	if mode == revocation.ModeBeforeAction {
-		plan.Cutoff = time.Now().UTC()
-	}
+	plan.Cutoff = time.Now().UTC()
 	return plan
 }

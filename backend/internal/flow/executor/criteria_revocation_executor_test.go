@@ -91,7 +91,7 @@ func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceCutoff_SkipsTerminalPla
 	resp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(
 		withRevocationPlan(s.T(), ExecutorModeAdvanceCutoff, revocationPlan{
 			Mode:     revocation.ModeAll,
-			Reason:   revocation.ReasonApplicationDeleted,
+			Reason:   revocation.ReasonUserDeleted,
 			TargetID: "app-1",
 			Criteria: []revocation.Criterion{{Type: revocation.CriterionTypeApplicationKey, Value: "client-1"}},
 		}))
