@@ -65,6 +65,15 @@ const ClientAssertionTypeParamName = "client_assertion_type"
 // AuthorizationDetailsParamName is the RFC 9396 authorization_details request parameter.
 const AuthorizationDetailsParamName = "authorization_details"
 
+// SubClaimName, ActClaimName and SubTypeClaimName are the token claims that name the subject, the actor
+// it delegated to (RFC 8693) and the subject's identity class. Defined here (not in oauth2 constants)
+// because the audit package, which the Control Plane links, reads them and must not import OAuth.
+const (
+	SubClaimName     = "sub"
+	ActClaimName     = "act"
+	SubTypeClaimName = "sub_type"
+)
+
 // CRLF is the carriage return and line feed sequence that ends a line in text-based wire protocols
 // such as SMTP and HTTP.
 const CRLF = "\r\n"

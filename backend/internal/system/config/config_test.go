@@ -4,6 +4,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -2042,5 +2043,53 @@ func TestApplyAndImportTimeoutsAreSeconds(t *testing.T) {
 	if (GatewayConfig{ApplyTimeoutSeconds: math.MaxInt}).ApplyTimeout() != 0 ||
 		(ImportConfig{TimeoutSeconds: 9223372037}).Timeout() != 0 {
 		t.Error("a timeout too large for a duration should be zero rather than wrap around")
+	}
+}
+
+// A deployment turns audit off, and an omitted value keeps the shipped default.
+func (suite *ConfigTestSuite) TestAuditEnabledOverridesTheShippedDefault() {
+	base := &Config{Audit: AuditConfig{Enabled: boolPtr(true)}}
+	mergeConfigs(base, &Config{Audit: AuditConfig{Enabled: boolPtr(false)}})
+	assert.False(suite.T(), base.Audit.IsEnabled(), "false must override the true default")
+
+	kept := &Config{Audit: AuditConfig{Enabled: boolPtr(true)}}
+	mergeConfigs(kept, &Config{})
+	assert.True(suite.T(), kept.Audit.IsEnabled(), "an omitted value keeps the default")
+
+	assert.False(suite.T(), AuditConfig{}.IsEnabled(), "a configuration without the key writes no audit")
+}
+
+func (suite *ConfigTestSuite) TestTheShippedDefaultsTurnAuditOn() {
+	data, err := os.ReadFile("../../../cmd/server/config/default.json")
+	suite.Require().NoError(err)
+	var defaults Config
+	suite.Require().NoError(json.Unmarshal(data, &defaults))
+
+	assert.Equal(suite.T(), AuditConfig{Enabled: boolPtr(true)}, defaults.Audit)
+}
+
+// audit.enabled is the only audit key, so the strict deployment file refuses any other.
+func (suite *ConfigTestSuite) TestLoadConfigReadsAuditEnabledAndRefusesAnyOtherAuditKey() {
+	const prefix = `
+server:
+  hostname: "user-host"
+  port: 8095
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	tempDir := suite.T().TempDir()
+
+	cfg, err := LoadConfig(suite.createTempFile(tempDir, "audit*.yaml", prefix+"audit:\n  enabled: false\n"), "",
+		tempDir)
+	suite.Require().NoError(err)
+	assert.Equal(suite.T(), AuditConfig{Enabled: boolPtr(false)}, cfg.Audit)
+
+	for _, unknown := range []string{"audit:\n  queue_size: 32\n", "log:\n  type:\n    key: \"kind\"\n"} {
+		cfg, err := LoadConfig(suite.createTempFile(tempDir, "audit-unknown*.yaml", prefix+unknown), "", tempDir)
+		assert.Nil(suite.T(), cfg, unknown)
+		assert.Error(suite.T(), err, unknown)
 	}
 }

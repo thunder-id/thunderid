@@ -637,6 +637,17 @@ type LogConfig struct {
 	Access LogAccessConfig `yaml:"access" json:"access"`
 }
 
+// AuditConfig holds the audit event settings.
+type AuditConfig struct {
+	// Enabled writes audit events to stdout. With audit off, events are still validated, then dropped.
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+}
+
+// IsEnabled reports whether audit events are written.
+func (c AuditConfig) IsEnabled() bool {
+	return derefBool(c.Enabled)
+}
+
 // LogAccessConfig holds the access log settings.
 type LogAccessConfig struct {
 	// ExcludePaths lists extra path prefixes whose requests are served without an access log line.
@@ -865,6 +876,7 @@ type Config struct {
 	AuthZENPDP                 AuthZENPDPConfig                  `yaml:"authzen_pdp"           json:"authzen_pdp"`
 	HTTPConnection             HTTPConnectionConfig              `yaml:"http_connection"       json:"http_connection"`
 	Log                        LogConfig                         `yaml:"log"                   json:"log"`
+	Audit                      AuditConfig                       `yaml:"audit"                 json:"audit"`
 	GateClient                 engineconfig.GateClientConfig     `yaml:"gate_client"           json:"gate_client"`
 	TLS                        TLSConfig                         `yaml:"tls"                   json:"tls"`
 	Database                   DatabaseConfig                    `yaml:"database"              json:"database"`

@@ -694,6 +694,11 @@ configuration:
     #   excludePaths:
     #     - /health
 
+  # Audit events. Each is written to stdout as one JSON line that starts with "log_type":"AUDIT",
+  # whatever the log level or format. Omitted, audit stays on.
+  # audit:
+  #   enabled: true
+
   # Storage mode per resource type: "mutable", "declarative", or "composite".
   # Only set these when declarativeResources.enabled=true and the resource should be
   # sourced from mounted files. An unset key inherits the global setting.

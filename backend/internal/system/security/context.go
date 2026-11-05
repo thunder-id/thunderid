@@ -94,6 +94,14 @@ func GetOUID(ctx context.Context) string {
 	return ""
 }
 
+// IsManagementAPIKey reports whether the context was authenticated by the management API key. Only
+// that authenticator builds a context with its subject and no token, so a bearer token whose sub
+// claim carries the same string is not taken for the key.
+func IsManagementAPIKey(ctx context.Context) bool {
+	authCtx := getSecurityContext(ctx)
+	return authCtx != nil && authCtx.subject == managementAPIKeySubject && authCtx.token == ""
+}
+
 // GetPermissions retrieves the granted permissions for the authenticated caller from the context.
 // Returns a defensive copy to prevent callers from modifying the underlying permissions data.
 func GetPermissions(ctx context.Context) []string {
