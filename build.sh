@@ -978,14 +978,21 @@ function stage_quickstart_pack() {
     # /oauth2/token calls there, while every management-API call it makes (applications, roles,
     # users, ...) is automatically repointed back to wherever the console itself is served from —
     # see frontend/packages/contexts/src/Config/ConfigProvider.tsx and withConfig.tsx. Inserted
-    # right before the file's closing "};" so it lands inside the top-level config object.
-    awk -v port="$QUICKSTART_AUTH_DP_PORT" '
+    # right before the file's closing "};" so it lands inside the top-level config object. The
+    # same block adds gate_client naming the managed Data Plane: the CP serves no Gate app, so
+    # without it the console would build redirect URIs (e.g. for Google and GitHub connections)
+    # on its own origin instead of the Data Plane's.
+    awk -v port="$QUICKSTART_AUTH_DP_PORT" -v dp_port="$QUICKSTART_DP_PORT" '
         /^};$/ {
             print "  trusted_issuer: {"
             print "    hostname: \"localhost\","
             print "    port: " port ","
             print "    http_only: false,"
             print "    client_id: \"CP_CONSOLE\","
+            print "  },"
+            print "  gate_client: {"
+            print "    hostname: \"localhost\","
+            print "    port: " dp_port ","
             print "  },"
         }
         { print }
@@ -1029,6 +1036,7 @@ function stage_quickstart_pack() {
     assert_patched "$dp_dir/deployment.yaml" "  security:"
     assert_patched "$cp_dir/deployment.yaml" "issuer: \"https://localhost:$QUICKSTART_AUTH_DP_PORT\""
     assert_patched "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js" "trusted_issuer"
+    assert_patched "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js" "  gate_client: {"
     assert_patched "$cp_dir/config/resources/server_configs/csp.yaml" "https://localhost:$QUICKSTART_AUTH_DP_PORT"
 
     if [ "$GO_OS" = "windows" ]; then
