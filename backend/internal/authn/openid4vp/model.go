@@ -21,10 +21,8 @@ type policy struct {
 	Leeway          time.Duration
 	// KeyBindingMaxAge rejects KB-JWTs older than this (replay protection). 0 = disabled.
 	KeyBindingMaxAge time.Duration
-	// EnforceTrustedIssuer requires the issuer to be in the trust store.
+	// EnforceTrustedIssuer requires the issuer's x5c chain to verify against the definition's trust anchors.
 	EnforceTrustedIssuer bool
-	// TrustedAuthorities restricts acceptable trust anchors by name; empty means any.
-	TrustedAuthorities []string
 	// EnforceKeyBinding requires a Key Binding JWT proving holder possession.
 	EnforceKeyBinding bool
 	// ClaimValues constrains specific claims to an allowed set of values.
@@ -57,12 +55,18 @@ type presentationDefinition struct {
 	DCQL          dcqlConfig
 	policy        policy
 	DeriveSubject subjectDeriver
+	// trust holds the definition's trusted issuer certificates; nil when it has none.
+	trust *trustAnchorStore
 }
 
 // dtoToDefinition converts a managed presentation definition DTO into the verifier engine's representation.
 func dtoToDefinition(
 	dto presentation.PresentationDefinitionDTO, clientID string, enforceKB bool,
-) *presentationDefinition {
+) (*presentationDefinition, error) {
+	trust, err := buildTrustStore(dto.TrustedAuthorities)
+	if err != nil {
+		return nil, err
+	}
 	allClaims := dto.RequestedClaims
 	if len(allClaims) == 0 {
 		allClaims = slices.Concat(dto.MandatoryClaims, dto.OptionalClaims)
@@ -71,14 +75,18 @@ func dtoToDefinition(
 	if dto.EnforceTrustedIssuer != nil {
 		enforceTrustedIssuer = *dto.EnforceTrustedIssuer
 	}
+	var keyIDs []string
+	if enforceTrustedIssuer && trust != nil {
+		keyIDs = trust.keyIDs()
+	}
 	return &presentationDefinition{
 		ID: dto.Handle,
 		DCQL: dcqlConfig{
-			CredentialID:       dto.Handle,
-			VCT:                dto.VCT,
-			Claims:             allClaims,
-			ClaimValues:        dto.ClaimValues,
-			TrustedAuthorities: dto.TrustedAuthorities,
+			CredentialID:           dto.Handle,
+			VCT:                    dto.VCT,
+			Claims:                 allClaims,
+			ClaimValues:            dto.ClaimValues,
+			TrustedAuthorityKeyIDs: keyIDs,
 		},
 		policy: policy{
 			ExpectedVCT:          dto.VCT,
@@ -86,12 +94,12 @@ func dtoToDefinition(
 			RequestedClaims:      allClaims,
 			MandatoryClaims:      dto.MandatoryClaims,
 			EnforceTrustedIssuer: enforceTrustedIssuer,
-			TrustedAuthorities:   dto.TrustedAuthorities,
 			EnforceKeyBinding:    enforceKB,
 			ClaimValues:          dto.ClaimValues,
 		},
 		DeriveSubject: defaultSubjectDeriver(),
-	}
+		trust:         trust,
+	}, nil
 }
 
 // dcqlConfig describes the credential query to build.
@@ -101,9 +109,7 @@ type dcqlConfig struct {
 	Claims       []string
 	// ClaimValues maps a claim path to its allowed values (DCQL "values").
 	ClaimValues map[string][]string
-	// TrustedAuthorities names the trust anchors this definition restricts to.
-	TrustedAuthorities []string
-	// TrustedAuthorityKeyIDs holds the resolved base64url SubjectKeyIds, emitted as DCQL trusted_authorities.
+	// TrustedAuthorityKeyIDs holds the trust anchors' base64url SubjectKeyIds, emitted as DCQL trusted_authorities.
 	TrustedAuthorityKeyIDs []string
 }
 
@@ -194,14 +200,6 @@ type Initiation struct {
 	WalletURI string
 	// ExpiresAt is when the request state expires.
 	ExpiresAt time.Time
-}
-
-// TrustAnchorInfo is the public view of a configured trust anchor.
-type TrustAnchorInfo struct {
-	Name     string    `json:"name"`
-	Subject  string    `json:"subject"`
-	SKI      string    `json:"ski"`
-	NotAfter time.Time `json:"not_after"`
 }
 
 // Status is the lifecycle status of an OpenID4VP request.

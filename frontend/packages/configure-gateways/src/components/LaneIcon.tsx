@@ -10,9 +10,11 @@ import {
   Lock,
   Mail,
   Code2,
+  IdCard,
   Palette,
   Phone,
   Shield,
+  ShieldCheck,
   User,
   UserCog,
   Users,
@@ -38,6 +40,8 @@ const ICONS: Readonly<Record<string, ComponentType<LucideProps>>> = {
   phone: Phone,
   mail: Mail,
   lock: Lock,
+  idCard: IdCard,
+  shieldCheck: ShieldCheck,
 };
 
 export interface LaneIconProps {

@@ -29,6 +29,8 @@ type exportRequest struct {
 	Layouts           []string `json:"layouts,omitempty"`
 	ServerConfigs     []string `json:"serverConfigs,omitempty"`
 	Connections       []string `json:"connections,omitempty"`
+
+	PresentationDefinitions []string `json:"presentationDefinitions,omitempty"`
 }
 
 type createThemeRequest struct {
@@ -488,6 +490,67 @@ func (suite *ImportExportFreshPackSuite) TestExportImportAcrossFreshPack() {
 				"the imported flow must keep the input default and constant")
 		}
 	}
+}
+
+// TestPresentationDefinitionTrustedAuthorityRoundTrip exports a presentation definition that pins
+// a trusted issuer certificate, deletes it, imports the export, and verifies a credential from that
+// issuer against the restored definition: the certificate survives export and import.
+func (suite *ImportExportFreshPackSuite) TestPresentationDefinitionTrustedAuthorityRoundTrip() {
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "import-vp-trust-ou-" + suffix,
+		Name:   "Import VP Trust OU " + suffix,
+	})
+	suite.Require().NoError(err)
+	defer func() {
+		if err := testutils.DeleteOrganizationUnit(ouID); err != nil {
+			suite.T().Logf("failed to delete VP trust import OU %s: %v", ouID, err)
+		}
+	}()
+
+	wallet, err := testutils.NewVPWallet()
+	suite.Require().NoError(err)
+	handle := "import_vp_trust_" + suffix
+	enforce := true
+	id, err := testutils.CreatePresentationDefinition(testutils.PresentationDefinition{
+		Handle:               handle,
+		OUID:                 ouID,
+		VCT:                  "https://credentials.thunderid.local/ImportTrustedPresentation",
+		Format:               "dc+sd-jwt",
+		RequestedClaims:      []string{"given_name", "family_name"},
+		MandatoryClaims:      []string{"given_name"},
+		EnforceTrustedIssuer: &enforce,
+		TrustedAuthorities: []testutils.TrustedAuthority{
+			{Name: "wallet-issuer", Certificate: wallet.IssuerCertificatePEM()},
+		},
+	})
+	suite.Require().NoError(err)
+	defer func() {
+		if err := testutils.DeletePresentationDefinition(id); err != nil {
+			suite.T().Logf("failed to delete presentation definition %s: %v", id, err)
+		}
+	}()
+
+	exported, err := suite.exportResources(exportRequest{PresentationDefinitions: []string{id}})
+	suite.Require().NoError(err)
+	suite.Contains(exported, "wallet-issuer")
+	suite.Contains(exported, "BEGIN CERTIFICATE", "the export must carry the trusted authority certificate")
+
+	suite.Require().NoError(testutils.DeletePresentationDefinition(id))
+	suite.assertNotFound("/openid4vp/presentation-definitions/" + id)
+
+	response, err := suite.importResources(testutils.ImportRequest{
+		Content: exported,
+		Options: testutils.ImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+	})
+	suite.Require().NoError(err)
+	suite.Require().Equalf(1, response.Summary.Imported, "import results: %+v", response.Results)
+	suite.assertFound("/openid4vp/presentation-definitions/" + id)
+
+	result, err := testutils.RunVPVerification(handle, wallet,
+		map[string]any{"given_name": "Ada", "family_name": "Lovelace"})
+	suite.Require().NoError(err)
+	suite.Equalf("COMPLETED", result.Status.Status, "error=%q", result.Status.Error)
 }
 
 // TestImportVCResourcesResolveOUHandle verifies runtime imports resolve a full

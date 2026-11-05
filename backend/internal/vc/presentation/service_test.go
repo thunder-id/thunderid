@@ -6,7 +6,9 @@ package presentation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -529,7 +531,10 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateInvalidReque
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateValidationFails() {
 	svc, _ := newTestDefinitionService(suite.T())
-	_, svcErr := svc.UpdatePresentationDefinition(context.Background(), "id-1",
+	created, svcErr := svc.CreatePresentationDefinition(context.Background(),
+		&PresentationDefinitionDTO{Handle: "h", VCT: "v"})
+	suite.Require().Nil(svcErr)
+	_, svcErr = svc.UpdatePresentationDefinition(context.Background(), created.ID,
 		&PresentationDefinitionDTO{Handle: "", VCT: "v"})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionInvalidRequest.Code, svcErr.Code)
@@ -736,4 +741,143 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceAcceptsRequestedCl
 	})
 	suite.Require().Nil(svcErr)
 	suite.Equal([]string{"tier", "full_name"}, created.RequestedClaims)
+}
+
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateTrustedAuthorities() {
+	svc, store := newTestDefinitionService(suite.T())
+	ctx := context.Background()
+	enforce := true
+	certA := validTestCertificatePEM(suite.T(), "root-a")
+
+	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "h", VCT: "v", EnforceTrustedIssuer: &enforce,
+		TrustedAuthorities: []TrustedAuthority{{Name: "root-a", Certificate: certA}},
+	})
+	suite.Require().Nil(svcErr)
+
+	stored, err := store.GetPresentationDefinitionByID(ctx, created.ID)
+	suite.Require().NoError(err)
+	suite.Equal([]TrustedAuthority{{Name: "root-a", Certificate: certA}}, stored.TrustedAuthorities)
+}
+
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateTrustedAuthorityValidation() {
+	enforce := true
+	certA := validTestCertificatePEM(suite.T(), "root-a")
+	expired := newTestCertificatePEM(suite.T(), "expired", time.Now().Add(-time.Hour))
+	tooMany := make([]TrustedAuthority, 0, maxTrustedAuthorities+1)
+	for i := range maxTrustedAuthorities + 1 {
+		tooMany = append(tooMany, TrustedAuthority{
+			Name: fmt.Sprintf("root-%d", i), Certificate: validTestCertificatePEM(suite.T(), "root"),
+		})
+	}
+
+	cases := []struct {
+		name        string
+		authorities []TrustedAuthority
+		enforce     *bool
+		wantCode    string
+	}{
+		{"missing certificate", []TrustedAuthority{{Name: "root-a"}}, nil,
+			ErrorDefinitionInvalidTrustedAuthorityCertificate.Code},
+		{"invalid certificate", []TrustedAuthority{{Name: "root-a", Certificate: "not pem"}}, nil,
+			ErrorDefinitionInvalidTrustedAuthorityCertificate.Code},
+		{"expired certificate", []TrustedAuthority{{Name: "old", Certificate: expired}}, nil,
+			ErrorDefinitionExpiredTrustedAuthorityCertificate.Code},
+		{"empty name", []TrustedAuthority{{Name: "  ", Certificate: certA}}, nil,
+			ErrorDefinitionEmptyTrustedAuthorityName.Code},
+		{"duplicate name", []TrustedAuthority{
+			{Name: "root-a", Certificate: certA},
+			{Name: "root-a", Certificate: validTestCertificatePEM(suite.T(), "root-b")},
+		}, nil, ErrorDefinitionDuplicateTrustedAuthority.Code},
+		{"duplicate certificate", []TrustedAuthority{
+			{Name: "root-a", Certificate: certA}, {Name: "root-a-again", Certificate: certA},
+		}, nil, ErrorDefinitionDuplicateTrustedAuthority.Code},
+		{"too many", tooMany, nil, ErrorDefinitionTooManyTrustedAuthorities.Code},
+		{"enforced without authorities", nil, &enforce, ErrorDefinitionTrustedIssuerWithoutAuthorities.Code},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, _ := newTestDefinitionService(suite.T())
+			_, svcErr := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
+				Handle: "h", VCT: "v", EnforceTrustedIssuer: tc.enforce, TrustedAuthorities: tc.authorities,
+			})
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.wantCode, svcErr.Code)
+		})
+	}
+}
+
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateCarriesStoredCertificates() {
+	svc, store := newTestDefinitionService(suite.T())
+	ctx := context.Background()
+	certA := validTestCertificatePEM(suite.T(), "root-a")
+	certB := validTestCertificatePEM(suite.T(), "root-b")
+	certC := validTestCertificatePEM(suite.T(), "root-c")
+
+	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "h", VCT: "v",
+		TrustedAuthorities: []TrustedAuthority{
+			{Name: "root-a", Certificate: certA}, {Name: "root-b", Certificate: certB},
+		},
+	})
+	suite.Require().Nil(svcErr)
+
+	// root-a is kept by name, root-b is dropped by omission, and root-c is added.
+	_, svcErr = svc.UpdatePresentationDefinition(ctx, created.ID, &PresentationDefinitionDTO{
+		Handle: "h", VCT: "v",
+		TrustedAuthorities: []TrustedAuthority{{Name: "root-a"}, {Name: "root-c", Certificate: certC}},
+	})
+	suite.Require().Nil(svcErr)
+
+	stored, err := store.GetPresentationDefinitionByID(ctx, created.ID)
+	suite.Require().NoError(err)
+	suite.Equal([]TrustedAuthority{{Name: "root-a", Certificate: certA}, {Name: "root-c", Certificate: certC}},
+		stored.TrustedAuthorities)
+}
+
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateKeepsStoredExpiredCertificate() {
+	store := newDefinitionStoreInterfaceMock(suite.T())
+	expired := newTestCertificatePEM(suite.T(), "expired", time.Now().Add(-time.Hour))
+	store.EXPECT().GetPresentationDefinitionByID(mock.Anything, "id-1").Return(&PresentationDefinitionDTO{
+		ID: "id-1", Handle: "h", VCT: "v",
+		TrustedAuthorities: []TrustedAuthority{{Name: "old", Certificate: expired}},
+	}, nil)
+	store.EXPECT().UpdatePresentationDefinition(mock.Anything, mock.MatchedBy(func(dto PresentationDefinitionDTO) bool {
+		return len(dto.TrustedAuthorities) == 1 && dto.TrustedAuthorities[0].Certificate == expired
+	})).Return(nil)
+	svc := newPresentationDefinitionService(store, nil)
+
+	_, svcErr := svc.UpdatePresentationDefinition(context.Background(), "id-1", &PresentationDefinitionDTO{
+		Handle: "h", VCT: "v", Name: "renamed", TrustedAuthorities: []TrustedAuthority{{Name: "old"}},
+	})
+	suite.Nil(svcErr)
+}
+
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateTrustedAuthorityValidation() {
+	expired := newTestCertificatePEM(suite.T(), "expired", time.Now().Add(-time.Hour))
+	cases := []struct {
+		name        string
+		authorities []TrustedAuthority
+		wantCode    string
+	}{
+		{"unknown name without certificate", []TrustedAuthority{{Name: "unknown"}},
+			ErrorDefinitionInvalidTrustedAuthorityCertificate.Code},
+		{"expired new certificate", []TrustedAuthority{{Name: "old", Certificate: expired}},
+			ErrorDefinitionExpiredTrustedAuthorityCertificate.Code},
+		{"invalid new certificate", []TrustedAuthority{{Name: "bad", Certificate: "not pem"}},
+			ErrorDefinitionInvalidTrustedAuthorityCertificate.Code},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, _ := newTestDefinitionService(suite.T())
+			created, svcErr := svc.CreatePresentationDefinition(context.Background(),
+				&PresentationDefinitionDTO{Handle: "h", VCT: "v"})
+			suite.Require().Nil(svcErr)
+
+			_, svcErr = svc.UpdatePresentationDefinition(context.Background(), created.ID,
+				&PresentationDefinitionDTO{Handle: "h", VCT: "v", TrustedAuthorities: tc.authorities})
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.wantCode, svcErr.Code)
+		})
+	}
 }

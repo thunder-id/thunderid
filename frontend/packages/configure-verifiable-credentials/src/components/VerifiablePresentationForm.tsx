@@ -1,10 +1,9 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
+import {SettingsCard, UnsavedChangesBar} from '@thunderid/components';
 import {OrganizationUnitTreePicker, useHasMultipleOUs} from '@thunderid/configure-organization-units';
 import {
-  Autocomplete,
   Box,
   Button,
   Chip,
@@ -14,6 +13,8 @@ import {
   FormLabel,
   IconButton,
   InputAdornment,
+  List,
+  ListItem,
   ListItemText,
   MenuItem,
   Select,
@@ -25,7 +26,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import {Check, Copy} from '@wso2/oxygen-ui-icons-react';
+import {Check, Copy, Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {
   useCallback,
   useEffect,
@@ -38,16 +39,16 @@ import {
   type SyntheticEvent,
 } from 'react';
 import {useTranslation} from 'react-i18next';
+import AddTrustedIssuerCertificateDialog from './AddTrustedIssuerCertificateDialog';
 import ClaimsEditor from './PresentationClaimsEditor';
-import useGetTrustAnchors from '../api/useGetTrustAnchors';
 import {
   claimRowsToRequest,
   definitionToClaimRows,
   findDuplicateClaimNames,
   type ClaimRow,
 } from '../models/presentation-claims';
-import type {CreateVerifiablePresentationRequest} from '../models/presentation-requests';
-import type {TrustAnchor, VerifiablePresentation} from '../models/vp';
+import type {CreateVerifiablePresentationRequest, TrustedAuthorityInput} from '../models/presentation-requests';
+import type {VerifiablePresentation} from '../models/vp';
 
 export interface VerifiablePresentationFormProps {
   initial?: VerifiablePresentation;
@@ -83,6 +84,14 @@ function TabPanel({children, value, index}: TabPanelProps): JSX.Element {
 }
 
 /**
+ * Seeds the trusted issuer certificate entries from a stored definition. Stored entries carry only
+ * their name, since the server never returns a certificate.
+ */
+function toTrustedAuthorityInputs(initial?: VerifiablePresentation): TrustedAuthorityInput[] {
+  return (initial?.trustedAuthorities ?? []).map((name: string): TrustedAuthorityInput => ({name}));
+}
+
+/**
  * Tabbed create/edit form for an OpenID4VP presentation definition: a General
  * tab (identity + credential type) and a Claims tab (the unified claim editor).
  */
@@ -110,20 +119,27 @@ export default function VerifiablePresentationForm({
   const [format, setFormat] = useState<string>(initial?.format ?? 'dc+sd-jwt');
   const [claims, setClaims] = useState<ClaimRow[]>(definitionToClaimRows(initial));
   const [enforceTrustedIssuer, setEnforceTrustedIssuer] = useState<boolean>(initial?.enforceTrustedIssuer ?? false);
-  const [trustedAuthorities, setTrustedAuthorities] = useState<string[]>(initial?.trustedAuthorities ?? []);
+  const [trustedAuthorities, setTrustedAuthorities] = useState<TrustedAuthorityInput[]>(
+    toTrustedAuthorityInputs(initial),
+  );
+  const [addCertificateOpen, setAddCertificateOpen] = useState<boolean>(false);
 
-  const {
-    data: trustAnchors = [],
-    isLoading: trustAnchorsLoading,
-    error: trustAnchorsError,
-    refetch: refetchTrustAnchors,
-  } = useGetTrustAnchors();
+  // Once a save succeeds the new certificates are stored on the server, so keep only their names: a
+  // name-only entry keeps the stored certificate, and it matches the refreshed definition so the form
+  // is no longer dirty (state-during-render, not an effect).
+  const [wasSubmitting, setWasSubmitting] = useState<boolean>(submitting);
+  if (submitting !== wasSubmitting) {
+    setWasSubmitting(submitting);
+    if (!submitting && !error) {
+      setTrustedAuthorities((prev: TrustedAuthorityInput[]) =>
+        prev.map(({name: certificateName}: TrustedAuthorityInput): TrustedAuthorityInput => ({name: certificateName})),
+      );
+    }
+  }
 
-  // Issuer-trust enforcement is only meaningful when trust anchors exist; without
-  // any, the verifier rejects every presentation, so the toggle is disabled. Guard
-  // only once the anchors have loaded, so an existing enforce=true value is not
-  // spuriously cleared during the initial fetch.
-  const noTrustAnchors = !trustAnchorsLoading && trustAnchors.length === 0;
+  // Enforcing issuer trust without any certificate would reject every presentation, so the toggle
+  // is disabled until a certificate is added.
+  const noCertificates = trustedAuthorities.length === 0;
 
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -163,7 +179,7 @@ export default function VerifiablePresentationForm({
     f: string,
     cl: ClaimRow[],
     enforce: boolean,
-    authorities: string[],
+    authorities: TrustedAuthorityInput[],
   ): string =>
     JSON.stringify({
       handle: h.trim(),
@@ -186,13 +202,13 @@ export default function VerifiablePresentationForm({
         initial?.vct ?? '',
         initial?.format ?? 'dc+sd-jwt',
         definitionToClaimRows(initial),
-        initial?.enforceTrustedIssuer ?? false,
-        initial?.trustedAuthorities ?? [],
+        (initial?.enforceTrustedIssuer ?? false) && (initial?.trustedAuthorities?.length ?? 0) > 0,
+        toTrustedAuthorityInputs(initial),
       ),
     [initial],
   );
-  // Never enforce issuer trust when no anchors exist (it would reject everything).
-  const effectiveEnforce = enforceTrustedIssuer && !noTrustAnchors;
+  // Never enforce issuer trust without a certificate (it would reject everything).
+  const effectiveEnforce = enforceTrustedIssuer && !noCertificates;
   const dirty =
     snapshot(handle, effectiveOuId, name, description, vct, format, claims, effectiveEnforce, trustedAuthorities) !==
     initialSnapshot;
@@ -220,8 +236,22 @@ export default function VerifiablePresentationForm({
     setFormat(initial?.format ?? 'dc+sd-jwt');
     setClaims(definitionToClaimRows(initial));
     setEnforceTrustedIssuer(initial?.enforceTrustedIssuer ?? false);
-    setTrustedAuthorities(initial?.trustedAuthorities ?? []);
+    setTrustedAuthorities(toTrustedAuthorityInputs(initial));
     onErrorClear?.();
+  };
+
+  const handleAddCertificate = (entry: TrustedAuthorityInput): void => {
+    onErrorClear?.();
+    setTrustedAuthorities((prev: TrustedAuthorityInput[]) => [...prev, entry]);
+  };
+
+  const handleRemoveCertificate = (certificateName: string): void => {
+    onErrorClear?.();
+    const remaining = trustedAuthorities.filter((entry: TrustedAuthorityInput) => entry.name !== certificateName);
+    setTrustedAuthorities(remaining);
+    if (remaining.length === 0) {
+      setEnforceTrustedIssuer(false);
+    }
   };
 
   const text = (
@@ -454,20 +484,12 @@ export default function VerifiablePresentationForm({
       <TabPanel value={tab} index={3}>
         <SettingsCard title={t('form.issuerTrust.title')} description={t('form.issuerTrust.description')}>
           <Stack spacing={3}>
-            {trustAnchorsError && (
-              <QueryErrorNotice
-                error={trustAnchorsError}
-                t={t}
-                variant="inline"
-                onRetry={() => void refetchTrustAnchors()}
-              />
-            )}
             <Box>
               <FormControlLabel
                 control={
                   <Switch
                     checked={effectiveEnforce}
-                    disabled={trustAnchorsLoading || noTrustAnchors}
+                    disabled={noCertificates}
                     onChange={(e: ChangeEvent<HTMLInputElement>): void => {
                       onErrorClear?.();
                       setEnforceTrustedIssuer(e.target.checked);
@@ -477,51 +499,68 @@ export default function VerifiablePresentationForm({
                 label={t('form.issuerTrust.enforce.label')}
               />
               <FormHelperText>
-                {noTrustAnchors ? t('form.issuerTrust.enforce.noAnchorsHint') : t('form.issuerTrust.enforce.hint')}
+                {noCertificates
+                  ? t(
+                      'form.issuerTrust.enforce.noCertificatesHint',
+                      'Add a trusted issuer certificate before enforcing issuer trust.',
+                    )
+                  : t('form.issuerTrust.enforce.hint')}
               </FormHelperText>
             </Box>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="vp-trusted-authorities">{t('form.issuerTrust.authorities.label')}</FormLabel>
-              <Autocomplete<TrustAnchor, true, false, false>
-                multiple
-                fullWidth
-                disabled={!enforceTrustedIssuer}
-                loading={trustAnchorsLoading}
-                options={trustAnchors}
-                value={trustAnchors.filter((anchor: TrustAnchor): boolean => trustedAuthorities.includes(anchor.name))}
-                isOptionEqualToValue={(option: TrustAnchor, val: TrustAnchor): boolean => option.name === val.name}
-                getOptionLabel={(option: TrustAnchor): string => option.name}
-                onChange={(_event: SyntheticEvent, newValue: TrustAnchor[]): void => {
-                  onErrorClear?.();
-                  setTrustedAuthorities(newValue.map((anchor: TrustAnchor): string => anchor.name));
-                }}
-                renderOption={(props, option: TrustAnchor) => (
-                  <li {...props} key={option.name}>
-                    <ListItemText
-                      primary={option.name}
-                      secondary={t('form.issuerTrust.authorities.optionSecondary', {
-                        subject: option.subject,
-                        notAfter: option.not_after,
-                      })}
-                    />
-                  </li>
+            <Box>
+              <FormLabel sx={{fontWeight: 600, fontSize: (theme) => theme.typography.body1.fontSize}}>
+                {t('form.issuerTrust.certificates.title', 'Trusted issuer certificates')}
+              </FormLabel>
+              <Typography variant="body2" color="text.secondary">
+                {t(
+                  'form.issuerTrust.certificates.hint',
+                  'Certificates of the issuers, or of the CAs that sign them, that this presentation definition trusts.',
                 )}
-                renderTags={(value: TrustAnchor[], getTagProps) =>
-                  value.map((option: TrustAnchor, index: number) => {
-                    const {key, ...tagProps} = getTagProps({index});
-
-                    return <Chip key={key} label={option.name} {...tagProps} />;
-                  })
-                }
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    id="vp-trusted-authorities"
-                    helperText={t('form.issuerTrust.authorities.hint')}
-                  />
-                )}
-              />
-            </FormControl>
+              </Typography>
+              {noCertificates ? (
+                <Typography variant="body2" color="text.secondary" sx={{mt: 2}}>
+                  {t('form.issuerTrust.certificates.empty', 'No trusted issuer certificates added yet.')}
+                </Typography>
+              ) : (
+                <List aria-label={t('form.issuerTrust.certificates.title', 'Trusted issuer certificates')} sx={{mt: 1}}>
+                  {trustedAuthorities.map((entry: TrustedAuthorityInput) => (
+                    <ListItem
+                      key={entry.name}
+                      divider
+                      secondaryAction={
+                        <Tooltip title={t('common:actions.remove')}>
+                          <IconButton
+                            edge="end"
+                            color="error"
+                            aria-label={t('form.issuerTrust.certificates.remove', {
+                              name: entry.name,
+                              defaultValue: 'Remove certificate {{name}}',
+                            })}
+                            onClick={(): void => handleRemoveCertificate(entry.name)}
+                          >
+                            <Trash2 size={16} />
+                          </IconButton>
+                        </Tooltip>
+                      }
+                    >
+                      <ListItemText primary={entry.name} />
+                      {entry.certificate !== undefined && (
+                        <Chip size="small" label={t('form.issuerTrust.certificates.unsaved', 'Unsaved')} sx={{mr: 2}} />
+                      )}
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </Box>
+            <Box>
+              <Button
+                variant="outlined"
+                startIcon={<Plus size={16} />}
+                onClick={(): void => setAddCertificateOpen(true)}
+              >
+                {t('form.issuerTrust.certificates.add', 'Add certificate')}
+              </Button>
+            </Box>
           </Stack>
         </SettingsCard>
       </TabPanel>
@@ -541,6 +580,13 @@ export default function VerifiablePresentationForm({
           </SettingsCard>
         </TabPanel>
       )}
+
+      <AddTrustedIssuerCertificateDialog
+        open={addCertificateOpen}
+        existingNames={trustedAuthorities.map((entry: TrustedAuthorityInput): string => entry.name)}
+        onClose={(): void => setAddCertificateOpen(false)}
+        onAdd={handleAddCertificate}
+      />
 
       {dirty && (
         <UnsavedChangesBar

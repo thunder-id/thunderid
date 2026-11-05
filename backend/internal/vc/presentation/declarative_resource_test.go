@@ -133,7 +133,7 @@ func (s *DefinitionExporterTestSuite) TestGetResourceRules() {
 	rules := s.exporter.GetResourceRules()
 
 	s.Require().NotNil(rules)
-	s.Contains(rules.ArrayVariables, "TrustedAuthorities")
+	s.Empty(rules.ArrayVariables)
 	s.Contains(rules.DynamicPropertyFields, "ClaimValues")
 }
 
@@ -155,8 +155,13 @@ claimValues:
     - AT
 enforceTrustedIssuer: true
 trustedAuthorities:
-  - root-a
-  - root-b
+  - name: root-a
+    certificate: |
+      -----BEGIN CERTIFICATE-----
+      AAAA
+      -----END CERTIFICATE-----
+  - name: root-b
+    certificate: pem-b
 `)
 
 	dto, err := parseToDefinitionDTO(yamlDoc)
@@ -169,7 +174,10 @@ trustedAuthorities:
 	s.Equal([]string{"DE", "AT"}, dto.ClaimValues["address.country"])
 	s.Require().NotNil(dto.EnforceTrustedIssuer)
 	s.True(*dto.EnforceTrustedIssuer)
-	s.Equal([]string{"root-a", "root-b"}, dto.TrustedAuthorities)
+	s.Equal([]TrustedAuthority{
+		{Name: "root-a", Certificate: "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"},
+		{Name: "root-b", Certificate: "pem-b"},
+	}, dto.TrustedAuthorities)
 }
 
 func (s *DefinitionExporterTestSuite) TestLoadResourcesThroughStorer() {
@@ -207,7 +215,10 @@ func (s *DefinitionExporterTestSuite) TestExportImportRoundTrip() {
 		OptionalClaims:       []string{"birthdate"},
 		ClaimValues:          map[string][]string{"address.country": {"DE", "AT"}},
 		EnforceTrustedIssuer: &enforce,
-		TrustedAuthorities:   []string{"root-a", "root-b"},
+		TrustedAuthorities: []TrustedAuthority{
+			{Name: "root-a", Certificate: "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"},
+			{Name: "root-b", Certificate: "pem-b"},
+		},
 	}
 
 	exported, err := yaml.Marshal(original)
