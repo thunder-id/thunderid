@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -127,16 +126,14 @@ func parsePaginationParams(r *http.Request) (int, int, *tidcommon.ServiceError) 
 	return limit, offset, nil
 }
 
-// writeProjectError maps a service error to an HTTP status and writes the error response. Errors
-// from the organization unit service, raised while managing the root organization unit, pass through.
+// writeProjectError maps a service error to an HTTP status and writes the error response.
 func writeProjectError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	status := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
 		case ErrorProjectNotFound.Code:
 			status = http.StatusNotFound
-		case ErrorProjectIDConflict.Code,
-			ou.ErrorOrganizationUnitHandleConflict.Code, ou.ErrorOrganizationUnitNameConflict.Code:
+		case ErrorProjectIDConflict.Code, ErrorHandleConflict.Code, ErrorProjectNotEmpty.Code:
 			status = http.StatusConflict
 		case tidcommon.ErrorUnauthorized.Code:
 			status = http.StatusForbidden

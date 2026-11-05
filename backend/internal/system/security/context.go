@@ -150,6 +150,16 @@ func WithSecurityContext(ctx context.Context, sc *SecurityContext) context.Conte
 	return withSecurityContext(ctx, sc)
 }
 
+// WithRecordedCaller rebuilds a caller recorded earlier in the same flow, for a step that caller started but
+// does not send. The result is never a runtime context.
+func WithRecordedCaller(ctx context.Context, subject, ouID string, permissions []string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx = context.WithValue(ctx, runtimeContextKey, false)
+	return withSecurityContext(ctx, newSecurityContext(subject, ouID, "", permissions, nil))
+}
+
 // WithRuntimeContext marks the context as an internal runtime caller.
 // Runtime contexts bypass standard subject-based authorization checks without requiring an
 // authenticated subject. This is intended for internal system operations initiated from public

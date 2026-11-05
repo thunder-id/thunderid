@@ -1468,6 +1468,335 @@ func (s *ServiceTestSuite) TestSearchEntities_Error() {
 	s.Error(err)
 }
 
+// testAppSharingType is the sharing resource type the boundary tests give applications.
+const testAppSharingType sharing.ResourceType = "application"
+
+// withBoundarySharing makes users and applications shareable through a sharing service mock, which the
+// caller sets up.
+func (s *ServiceTestSuite) withBoundarySharing() *sharingmock.SharingServiceInterfaceMock {
+	sharingService := s.withUserSharing()
+	s.svc.RegisterSharedCategory(providers.EntityCategoryApp, testAppSharingType)
+	app := userIn("app-1", "ou-app")
+	app.Category = providers.EntityCategoryApp
+	s.store.On("GetEntity", mock.Anything, "app-1").Return(app, nil).Maybe()
+	return sharingService
+}
+
+// inBoundary returns the suite context carrying a sign-in boundary for the application app-1.
+func (s *ServiceTestSuite) inBoundary(ouID string) context.Context {
+	return authnprovidercm.WithSignInBoundary(s.ctx, authnprovidercm.SignInBoundary{OUID: ouID, ApplicationID: "app-1"})
+}
+
+// boolPtr returns a pointer to b.
+func boolPtr(b bool) *bool { return &b }
+
+// userIn returns a user an organization unit owns.
+func userIn(id, ouID string) providers.Entity {
+	e := testEntity(id)
+	e.OUID = ouID
+	return *e
+}
+
+var aliceFilters = map[string]interface{}{"username": "alice"}
+
+func (s *ServiceTestSuite) TestIdentifyEntity_WithoutBoundaryAsksTheStoreOnly() {
+	s.withBoundarySharing()
+	id := "u1"
+	s.store.On("IdentifyEntity", mock.Anything, aliceFilters).Return(&id, nil).Once()
+
+	got, err := s.svc.IdentifyEntity(s.ctx, aliceFilters)
+
+	s.NoError(err)
+	s.Equal(&id, got)
+	s.store.AssertNotCalled(s.T(), "SearchEntities", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestSearchEntities_WithoutBoundaryKeepsEveryUser() {
+	s.withBoundarySharing()
+	users := []providers.Entity{userIn("u1", "ou-a"), userIn("u2", "ou-b")}
+	s.store.On("SearchEntities", mock.Anything, aliceFilters).Return(users, nil).Once()
+
+	got, err := s.svc.SearchEntities(s.ctx, aliceFilters)
+
+	s.NoError(err)
+	s.Len(got, 2)
+}
+
+func (s *ServiceTestSuite) TestSearchEntities_FixedOUBoundary() {
+	cases := []struct {
+		name   string
+		user   providers.Entity
+		shared *bool
+		kept   bool
+	}{
+		{"owned is kept", userIn("u1", "ou-a"), nil, true},
+		{"shared in is kept", userIn("u2", "ou-b"), boolPtr(true), true},
+		{"foreign is dropped", userIn("u3", "ou-c"), boolPtr(false), false},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			sharingService := s.withBoundarySharing()
+			s.store.On("SearchEntities", mock.Anything, aliceFilters).Return([]providers.Entity{tc.user}, nil).Once()
+			if tc.shared != nil {
+				sharingService.On("IsVisible", mock.Anything, testUserSharingType, tc.user.ID, "ou-a").
+					Return(*tc.shared, nil).Once()
+			}
+
+			got, err := s.svc.SearchEntities(s.inBoundary("ou-a"), aliceFilters)
+
+			if tc.kept {
+				s.NoError(err)
+				s.Equal([]string{tc.user.ID}, entityIDs(got))
+				return
+			}
+			s.ErrorIs(err, ErrEntityNotFound)
+		})
+	}
+}
+
+// A sign-in that has not fixed its OU searches deployment-wide; the OU resolver or the assertion step refuses a
+// user the application can't be used with.
+func (s *ServiceTestSuite) TestSearchEntities_BoundaryWithoutAFixedOUKeepsEveryUser() {
+	s.withBoundarySharing()
+	users := []providers.Entity{userIn("u1", "ou-a"), userIn("u2", "ou-b")}
+	s.store.On("SearchEntities", mock.Anything, aliceFilters).Return(users, nil).Once()
+
+	got, err := s.svc.SearchEntities(s.inBoundary(""), aliceFilters)
+
+	s.NoError(err)
+	s.Equal([]string{"u1", "u2"}, entityIDs(got))
+}
+
+func (s *ServiceTestSuite) TestIdentifyEntity_BoundaryWithoutAFixedOUAsksTheStore() {
+	s.withBoundarySharing()
+	id := "u1"
+	s.store.On("IdentifyEntity", mock.Anything, aliceFilters).Return(&id, nil).Once()
+
+	got, err := s.svc.IdentifyEntity(s.inBoundary(""), aliceFilters)
+
+	s.NoError(err)
+	s.Equal(&id, got)
+	s.store.AssertNotCalled(s.T(), "SearchEntities", mock.Anything, mock.Anything)
+}
+
+// Every category is kept to the boundary's OU: an entity of a shareable category also where it is shared, one of
+// any other category (an agent) in its own OU only.
+func (s *ServiceTestSuite) TestSearchEntities_BoundaryKeepsEveryCategoryToTheOU() {
+	sharingService := s.withBoundarySharing()
+	sharedApp := userIn("app-x", "ou-z")
+	sharedApp.Category = providers.EntityCategoryApp
+	agentElsewhere := userIn("agent-x", "ou-z")
+	agentElsewhere.Category = providers.EntityCategoryAgent
+	agentInOU := userIn("agent-a", "ou-a")
+	agentInOU.Category = providers.EntityCategoryAgent
+	user := userIn("u1", "ou-z")
+	s.store.On("SearchEntities", mock.Anything, aliceFilters).
+		Return([]providers.Entity{sharedApp, agentElsewhere, agentInOU, user}, nil).Once()
+	sharingService.On("IsVisible", mock.Anything, testAppSharingType, sharedApp.ID, "ou-a").Return(true, nil).Once()
+	sharingService.On("IsVisible", mock.Anything, testUserSharingType, user.ID, "ou-a").Return(false, nil).Once()
+
+	got, err := s.svc.SearchEntities(s.inBoundary("ou-a"), aliceFilters)
+
+	s.NoError(err)
+	s.Equal([]string{sharedApp.ID, agentInOU.ID}, entityIDs(got))
+}
+
+func (s *ServiceTestSuite) TestIdentifyEntity_SameUsernameInTwoOUsResolvesInsideTheBoundary() {
+	sharingService := s.withBoundarySharing()
+	outside, inside := userIn("u1", "ou-a"), userIn("u2", "ou-b")
+	s.store.On("SearchEntities", mock.Anything, aliceFilters).
+		Return([]providers.Entity{outside, inside}, nil).Once()
+	sharingService.On("IsVisible", mock.Anything, testUserSharingType, outside.ID, "ou-b").Return(false, nil).Once()
+
+	got, err := s.svc.IdentifyEntity(s.inBoundary("ou-b"), aliceFilters)
+
+	s.NoError(err)
+	s.Equal(inside.ID, *got)
+	s.store.AssertNotCalled(s.T(), "IdentifyEntity", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestIdentifyEntity_BoundaryJudgesWhatRemains() {
+	cases := []struct {
+		name    string
+		filters map[string]interface{}
+		arrange func(*sharingmock.SharingServiceInterfaceMock)
+		wantErr error
+	}{
+		{
+			name:    "nothing matches",
+			filters: aliceFilters,
+			arrange: func(*sharingmock.SharingServiceInterfaceMock) {
+				s.store.On("SearchEntities", mock.Anything, aliceFilters).Return(nil, ErrEntityNotFound).Once()
+			},
+			wantErr: ErrEntityNotFound,
+		},
+		{
+			name:    "every match is outside",
+			filters: aliceFilters,
+			arrange: func(sharingService *sharingmock.SharingServiceInterfaceMock) {
+				s.store.On("SearchEntities", mock.Anything, aliceFilters).
+					Return([]providers.Entity{userIn("u1", "ou-c")}, nil).Once()
+				sharingService.On("IsVisible", mock.Anything, testUserSharingType, "u1", "ou-a").
+					Return(false, nil).Once()
+			},
+			wantErr: ErrEntityNotFound,
+		},
+		{
+			name:    "two remain",
+			filters: aliceFilters,
+			arrange: func(sharingService *sharingmock.SharingServiceInterfaceMock) {
+				s.store.On("SearchEntities", mock.Anything, aliceFilters).
+					Return([]providers.Entity{userIn("u1", "ou-a"), userIn("u2", "ou-b")}, nil).Once()
+				sharingService.On("IsVisible", mock.Anything, testUserSharingType, "u2", "ou-a").
+					Return(true, nil).Once()
+			},
+			wantErr: ErrAmbiguousEntity,
+		},
+		{
+			name:    "no filters identify nobody",
+			filters: map[string]interface{}{},
+			arrange: func(*sharingmock.SharingServiceInterfaceMock) {},
+			wantErr: ErrEntityNotFound,
+		},
+		{
+			name:    "a sharing check failure is returned",
+			filters: aliceFilters,
+			arrange: func(sharingService *sharingmock.SharingServiceInterfaceMock) {
+				s.store.On("SearchEntities", mock.Anything, aliceFilters).
+					Return([]providers.Entity{userIn("u1", "ou-c")}, nil).Once()
+				sharingService.On("IsVisible", mock.Anything, testUserSharingType, "u1", "ou-a").
+					Return(false, &tidcommon.InternalServerError).Once()
+			},
+		},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			tc.arrange(s.withBoundarySharing())
+
+			got, err := s.svc.IdentifyEntity(s.inBoundary("ou-a"), tc.filters)
+
+			s.Nil(got)
+			if tc.wantErr == nil {
+				s.Error(err)
+				return
+			}
+			s.ErrorIs(err, tc.wantErr)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestEntityOUs_OwnFirstThenSharedInSorted() {
+	sharingService := s.withUserSharing()
+	s.store.On("GetEntity", mock.Anything, "u1").Return(userIn("u1", "ou-own"), nil).Once()
+	sharingService.On("ListResourceSharedOUIDs", mock.Anything, testUserSharingType, "u1").
+		Return([]string{"ou-c", "ou-b"}, nil).Once()
+
+	got, found, err := s.svc.EntityOUs(s.ctx, "u1")
+
+	s.NoError(err)
+	s.True(found)
+	s.Equal([]string{"ou-own", "ou-b", "ou-c"}, got)
+}
+
+func (s *ServiceTestSuite) TestEntityOUs_UnshareableUsersHaveTheirOwnOUOnly() {
+	s.store.On("GetEntity", mock.Anything, "u1").Return(userIn("u1", "ou-own"), nil).Once()
+
+	got, found, err := s.svc.EntityOUs(s.ctx, "u1")
+
+	s.NoError(err)
+	s.True(found)
+	s.Equal([]string{"ou-own"}, got)
+}
+
+func (s *ServiceTestSuite) TestEntityOUs_AnEntityTheStoreDoesNotHoldIsNotFound() {
+	sharingService := s.withUserSharing()
+	s.store.On("GetEntity", mock.Anything, "u1").Return(providers.Entity{}, ErrEntityNotFound).Once()
+
+	got, found, err := s.svc.EntityOUs(s.ctx, "u1")
+
+	s.NoError(err)
+	s.False(found)
+	s.Nil(got)
+	sharingService.AssertNotCalled(s.T(), "ListResourceSharedOUIDs", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// An agent cannot be shared, so it is in its own organization unit only.
+func (s *ServiceTestSuite) TestEntityOUs_AnAgentIsInItsOwnOUOnly() {
+	sharingService := s.withUserSharing()
+	agent := userIn("agent-1", "ou-a")
+	agent.Category = providers.EntityCategoryAgent
+	s.store.On("GetEntity", mock.Anything, "agent-1").Return(agent, nil).Once()
+
+	got, found, err := s.svc.EntityOUs(s.ctx, "agent-1")
+
+	s.NoError(err)
+	s.True(found)
+	s.Equal([]string{"ou-a"}, got)
+	sharingService.AssertNotCalled(s.T(), "ListResourceSharedOUIDs", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestEntityOUs_Failures() {
+	cases := []struct {
+		name    string
+		arrange func(*sharingmock.SharingServiceInterfaceMock)
+	}{
+		{"the user lookup fails", func(*sharingmock.SharingServiceInterfaceMock) {
+			s.store.On("GetEntity", mock.Anything, "u1").Return(providers.Entity{}, s.testErr).Once()
+		}},
+		{"the sharing lookup fails", func(sharingService *sharingmock.SharingServiceInterfaceMock) {
+			s.store.On("GetEntity", mock.Anything, "u1").Return(userIn("u1", "ou-own"), nil).Once()
+			sharingService.On("ListResourceSharedOUIDs", mock.Anything, testUserSharingType, "u1").
+				Return(nil, &tidcommon.InternalServerError).Once()
+		}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			tc.arrange(s.withUserSharing())
+
+			got, found, err := s.svc.EntityOUs(s.ctx, "u1")
+
+			s.Error(err)
+			s.False(found)
+			s.Nil(got)
+		})
+	}
+}
+
+// Uniqueness spans every organization unit, so a sign-in boundary does not hide a conflicting user.
+func (s *ServiceTestSuite) TestValidateEntityType_UniquenessIgnoresTheSignInBoundary() {
+	svc, ets := s.newSvcWithEntityType()
+	attrs := json.RawMessage(`{"username":"alice"}`)
+	taken := "u-elsewhere"
+	ets.On("ValidateEntity", mock.Anything, entitytype.TypeCategoryUser, "employee", attrs, false).
+		Return(true, nil).Once()
+	ets.On("ValidateEntityUniqueness", mock.Anything, entitytype.TypeCategoryUser, "employee", attrs, mock.Anything).
+		Return(func(_ context.Context, _ entitytype.TypeCategory, _ string, _ json.RawMessage,
+			exists func(map[string]interface{}) (bool, error)) (bool, *tidcommon.ServiceError) {
+			found, err := exists(aliceFilters)
+			s.NoError(err)
+			return !found, nil
+		}).Once()
+	s.store.On("IdentifyEntity", mock.Anything, aliceFilters).Return(&taken, nil).Once()
+
+	err := svc.validateEntityType(s.inBoundary("ou-a"), providers.EntityCategoryUser, "employee",
+		attrs, "", false)
+
+	s.ErrorIs(err, ErrAttributeConflict)
+	s.store.AssertNotCalled(s.T(), "SearchEntities", mock.Anything, mock.Anything)
+}
+
+// entityIDs returns the IDs of entities in order.
+func entityIDs(entities []providers.Entity) []string {
+	ids := make([]string, 0, len(entities))
+	for _, e := range entities {
+		ids = append(ids, e.ID)
+	}
+	return ids
+}
+
 func testCredentialsJSON() json.RawMessage {
 	return json.RawMessage(`{"password":[{` +
 		`"value":"testhash","storageAlgo":"PBKDF2",` +
@@ -1612,6 +1941,61 @@ func (s *ServiceTestSuite) TestGetTransitiveEntityGroups_ProviderError() {
 
 	s.svc.SetGroupMembershipProvider(provider)
 	_, err := s.svc.GetTransitiveEntityGroups(s.ctx, "user1")
+
+	s.ErrorIs(err, s.testErr)
+}
+
+func (s *ServiceTestSuite) TestGetTransitiveEntityGroups_BoundaryKeepsOnlyTheOUsGroups() {
+	ctx := s.inBoundary("ou-decided")
+	provider := NewGroupMembershipProviderMock(s.T())
+	provider.On("GetTransitiveGroupsForEntity", ctx, "user1").Return([]providers.EntityGroup{
+		{ID: "grp-home", Name: "Admins", OUID: "ou-home"},
+		{ID: "grp-decided", Name: "Editors", OUID: "ou-decided"},
+	}, nil).Once()
+
+	s.svc.SetGroupMembershipProvider(provider)
+	groups, err := s.svc.GetTransitiveEntityGroups(ctx, "user1")
+
+	s.NoError(err)
+	s.Equal([]providers.EntityGroup{{ID: "grp-decided", Name: "Editors", OUID: "ou-decided"}}, groups)
+}
+
+func (s *ServiceTestSuite) TestGetTransitiveEntityGroups_BoundaryWithNoGroupInTheOUReturnsNone() {
+	ctx := s.inBoundary("ou-decided")
+	provider := NewGroupMembershipProviderMock(s.T())
+	provider.On("GetTransitiveGroupsForEntity", ctx, "user1").
+		Return([]providers.EntityGroup{{ID: "grp-home", Name: "Admins", OUID: "ou-home"}}, nil).Once()
+
+	s.svc.SetGroupMembershipProvider(provider)
+	groups, err := s.svc.GetTransitiveEntityGroups(ctx, "user1")
+
+	s.NoError(err)
+	s.Empty(groups)
+}
+
+func (s *ServiceTestSuite) TestGetTransitiveEntityGroups_BoundaryWithoutADecidedOUKeepsEveryGroup() {
+	ctx := s.inBoundary("")
+	expected := []providers.EntityGroup{
+		{ID: "grp-home", Name: "Admins", OUID: "ou-home"},
+		{ID: "grp-other", Name: "Editors", OUID: "ou-other"},
+	}
+	provider := NewGroupMembershipProviderMock(s.T())
+	provider.On("GetTransitiveGroupsForEntity", ctx, "user1").Return(expected, nil).Once()
+
+	s.svc.SetGroupMembershipProvider(provider)
+	groups, err := s.svc.GetTransitiveEntityGroups(ctx, "user1")
+
+	s.NoError(err)
+	s.Equal(expected, groups)
+}
+
+func (s *ServiceTestSuite) TestGetTransitiveEntityGroups_BoundaryProviderError() {
+	ctx := s.inBoundary("ou-decided")
+	provider := NewGroupMembershipProviderMock(s.T())
+	provider.On("GetTransitiveGroupsForEntity", ctx, "user1").Return(nil, s.testErr).Once()
+
+	s.svc.SetGroupMembershipProvider(provider)
+	_, err := s.svc.GetTransitiveEntityGroups(ctx, "user1")
 
 	s.ErrorIs(err, s.testErr)
 }
@@ -2085,6 +2469,51 @@ func (s *ServiceTestSuite) TestGetLinkedEntities_GetEntitiesFails() {
 
 	_, err := s.svc.GetLinkedEntities(s.ctx, "idp-a", "sub-1")
 	s.ErrorIs(err, s.testErr)
+}
+
+// linkHoldersInsideAndOutside links sub-1 to a user ou-a owns and to a user only ou-c holds.
+func (s *ServiceTestSuite) linkHoldersInsideAndOutside() {
+	sharingService := s.withBoundarySharing()
+	inside, outside := userIn("u-inside", "ou-a"), userIn("u-outside", "ou-c")
+	s.store.On("ResolveLinkedAccounts", mock.Anything, "idp-a", "sub-1").
+		Return([]string{inside.ID, outside.ID}, nil).Once()
+	s.store.On("GetEntitiesByIDs", mock.Anything, []string{inside.ID, outside.ID}).
+		Return([]providers.Entity{inside, outside}, nil).Once()
+	sharingService.On("IsVisible", mock.Anything, testUserSharingType, outside.ID, "ou-a").Return(false, nil).Once()
+}
+
+func (s *ServiceTestSuite) TestGetLinkedEntities_BoundaryLeavesOutHoldersOutside() {
+	s.linkHoldersInsideAndOutside()
+	s.store.On("GetEntitiesByIDs", mock.Anything, []string{"u-inside"}).
+		Return([]providers.Entity{userIn("u-inside", "ou-a")}, nil).Once()
+
+	got, err := s.svc.GetLinkedEntities(s.inBoundary("ou-a"), "idp-a", "sub-1")
+
+	s.Require().NoError(err)
+	s.Equal([]string{"u-inside"}, entityIDs(got))
+}
+
+func (s *ServiceTestSuite) TestResolveLinkedAccounts_BoundaryLeavesOutHoldersOutside() {
+	s.linkHoldersInsideAndOutside()
+
+	got, err := s.svc.ResolveLinkedAccounts(s.inBoundary("ou-a"), "idp-a", "sub-1")
+
+	s.Require().NoError(err)
+	s.Equal([]string{"u-inside"}, got)
+}
+
+func (s *ServiceTestSuite) TestResolveLinkedAccounts_BoundaryWithEveryHolderOutsideFindsNone() {
+	sharingService := s.withBoundarySharing()
+	outside := userIn("u-outside", "ou-c")
+	s.store.On("ResolveLinkedAccounts", mock.Anything, "idp-a", "sub-1").Return([]string{outside.ID}, nil).Once()
+	s.store.On("GetEntitiesByIDs", mock.Anything, []string{outside.ID}).
+		Return([]providers.Entity{outside}, nil).Once()
+	sharingService.On("IsVisible", mock.Anything, testUserSharingType, outside.ID, "ou-a").Return(false, nil).Once()
+
+	got, err := s.svc.ResolveLinkedAccounts(s.inBoundary("ou-a"), "idp-a", "sub-1")
+
+	s.Require().NoError(err)
+	s.Empty(got)
 }
 
 // An entity with no marker recorded is written through untouched.
@@ -2591,6 +3020,49 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_ValuesAtLimitAccepted() {
 	s.NoError(svc.UpdateSystemAttributes(s.ctx, "e1", attrs))
 }
 
+func (s *ServiceTestSuite) TestProjectMethods_Delegate() {
+	e := testEntity("project-entity")
+	s.store.On("GetEntityListCountByProject", mock.Anything, "app", testProjectID, []string(nil)).Return(1, nil)
+	s.store.On("GetEntityListByProject", mock.Anything, "app", testProjectID, []string(nil), 10, 0).
+		Return([]providers.Entity{*e}, nil)
+	s.store.On("ProjectHasEntities", mock.Anything, testProjectID).Return(true, nil)
+	s.store.On("UpdateOwnership", mock.Anything, e.ID, "ou-2", testProjectID).Return(nil)
+
+	count, err := s.svc.GetEntityListCountByProject(s.ctx, providers.EntityCategoryApp, testProjectID, nil)
+	s.NoError(err)
+	s.Equal(1, count)
+	list, err := s.svc.GetEntityListByProject(s.ctx, providers.EntityCategoryApp, testProjectID, nil, 10, 0)
+	s.NoError(err)
+	s.Len(list, 1)
+	found, err := s.svc.ProjectHasEntities(s.ctx, testProjectID)
+	s.NoError(err)
+	s.True(found)
+	s.NoError(s.svc.UpdateOwnership(s.ctx, e.ID, "ou-2", testProjectID))
+}
+
+func (s *ServiceTestSuite) TestGetEntityListByProject_Errors() {
+	s.Run("store error", func() {
+		s.SetupTest()
+		s.store.On("GetEntityListByProject", mock.Anything, "app", testProjectID, []string(nil), 10, 0).
+			Return(nil, s.testErr)
+
+		_, err := s.svc.GetEntityListByProject(s.ctx, providers.EntityCategoryApp, testProjectID, nil, 10, 0)
+
+		s.ErrorIs(err, s.testErr)
+	})
+	s.Run("runtime read error", func() {
+		s.SetupTest()
+		svc, runtime := s.newServiceWithRuntimeMock()
+		e := testEntity("project-runtime")
+		s.store.On("GetEntityListByProject", mock.Anything, "app", testProjectID, []string(nil), 10, 0).
+			Return([]providers.Entity{*e}, nil)
+		runtime.On("GetRuntimeData", mock.Anything, []string{e.ID}).Return(nil, s.testErr)
+
+		_, err := svc.GetEntityListByProject(s.ctx, providers.EntityCategoryApp, testProjectID, nil, 10, 0)
+
+		s.ErrorIs(err, s.testErr)
+	})
+}
 func (s *ServiceTestSuite) TestCreateEntityDropsIncomingVerification() {
 	e := testEntity("create-verification")
 	e.SystemAttributes = json.RawMessage(`{"keep":true,"attributeVerification":` +

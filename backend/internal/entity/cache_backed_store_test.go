@@ -244,6 +244,36 @@ func (s *CacheBackedEntityStoreTestSuite) TestResolveLinkedAccounts_PassesThroug
 
 // UpdateSystemAttributes tests
 
+func (s *CacheBackedEntityStoreTestSuite) TestUpdateOwnership_InvalidatesEntityCache() {
+	entity := s.makeEntity(testEntityID, "client")
+	s.entityByIDData[entity.ID] = &entity
+	s.mockStore.On("UpdateOwnership", mock.Anything, entity.ID, "ou-2", testProjectID).Return(nil).Once()
+
+	s.Nil(s.cachedStore.UpdateOwnership(context.Background(), entity.ID, "ou-2", testProjectID))
+
+	_, ok := s.entityByIDCache.Get(context.Background(), cache.CacheKey{Key: entity.ID})
+	s.False(ok)
+}
+
+func (s *CacheBackedEntityStoreTestSuite) TestProjectReads_Delegate() {
+	ctx := context.Background()
+	s.mockStore.On("GetEntityListCountByProject", mock.Anything, "app", testProjectID, []string{"ou-1"}).
+		Return(2, nil).Once()
+	s.mockStore.On("GetEntityListByProject", mock.Anything, "app", testProjectID, []string{"ou-1"}, 10, 0).
+		Return([]providers.Entity{{ID: "a1"}}, nil).Once()
+	s.mockStore.On("ProjectHasEntities", mock.Anything, testProjectID).Return(true, nil).Once()
+
+	count, err := s.cachedStore.GetEntityListCountByProject(ctx, "app", testProjectID, []string{"ou-1"})
+	s.NoError(err)
+	s.Equal(2, count)
+	list, err := s.cachedStore.GetEntityListByProject(ctx, "app", testProjectID, []string{"ou-1"}, 10, 0)
+	s.NoError(err)
+	s.Len(list, 1)
+	found, err := s.cachedStore.ProjectHasEntities(ctx, testProjectID)
+	s.NoError(err)
+	s.True(found)
+}
+
 func (s *CacheBackedEntityStoreTestSuite) TestUpdateSystemAttributes_InvalidatesEntityCache() {
 	entity := s.makeEntity(testEntityID, "old-client")
 	s.entityByIDData[entity.ID] = &entity

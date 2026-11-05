@@ -21,6 +21,16 @@ vi.mock('react-i18next', async (importOriginal) => ({
   }),
 }));
 
+// The flow has not loaded, so a flow-aware selector offers every mode.
+vi.mock('react-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-router')>()),
+  useParams: () => ({flowId: 'flow-1'}),
+}));
+
+vi.mock('../../../../../api/useGetFlowById', () => ({
+  default: (): unknown => ({data: undefined}),
+}));
+
 const MODES = [
   {value: 'first_mode', translationKey: 'flows:test.mode.first', displayLabel: 'First Mode'},
   {value: 'second_mode', translationKey: 'flows:test.mode.second', displayLabel: 'Second Mode'},
@@ -189,7 +199,7 @@ describe.each<[string, (props: CommonResourcePropertiesPropsInterface) => ReactN
   [
     'RoleExecutor',
     RoleExecutorProperties,
-    ['role_assignment_removal', 'role_deletion', 'role_permission_removal'],
+    ['role_assignment_removal', 'role_deletion', 'role_permission_removal', 'role_selection', 'role_assignment'],
     true,
   ],
   ['GroupExecutor', GroupExecutorProperties, ['group_deletion', 'group_membership_removal'], true],
@@ -214,7 +224,13 @@ describe('executor mode constants', () => {
   it('should use the same names for a validator mode and the executor mode it pairs with', () => {
     const validatorModes: string[] = ACCESS_CHANGE_VALIDATOR_MODES.map((mode) => mode.value);
 
-    for (const mode of [...ROLE_EXECUTOR_MODES, ...GROUP_EXECUTOR_MODES]) {
+    // Selecting and assigning roles serve invitation flows, which run no access change validator.
+    const invitationModes: string[] = ['role_selection', 'role_assignment'];
+    const pairedModes = [...ROLE_EXECUTOR_MODES, ...GROUP_EXECUTOR_MODES].filter(
+      (mode) => !invitationModes.includes(mode.value),
+    );
+
+    for (const mode of pairedModes) {
       expect(validatorModes).toContain(mode.value);
     }
   });

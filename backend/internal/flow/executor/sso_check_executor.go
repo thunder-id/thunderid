@@ -85,7 +85,7 @@ func (e *ssoCheckExecutor) Execute(ctx *providers.NodeContext) (*providers.Execu
 
 	var snapshot *session.SessionContext
 	if resolved != nil && checkpoint != "" {
-		if snapshot, err = e.sso.FindCheckpoint(ctx.Context, resolved.SessionID, checkpoint); err != nil {
+		if snapshot, err = e.sso.FindCheckpoint(ctx.Context, resolved, checkpoint); err != nil {
 			return execResp, err
 		}
 	}

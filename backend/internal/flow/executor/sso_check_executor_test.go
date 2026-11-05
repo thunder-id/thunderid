@@ -41,6 +41,12 @@ func (suite *SSOCheckExecutorTestSuite) newExecutor(sso session.Service) *ssoChe
 	return newSSOCheckExecutor(flowFactory, sso)
 }
 
+// resolvedSession matches the session liveSession resolves to.
+func resolvedSession() any {
+	want := liveSession().SessionID
+	return mock.MatchedBy(func(sess *session.Session) bool { return sess != nil && sess.SessionID == want })
+}
+
 func ssoNodeContext() *providers.NodeContext {
 	return &providers.NodeContext{
 		Context: session.WithSSOInputs(context.Background(), session.SSOInputs{
@@ -82,7 +88,7 @@ func (suite *SSOCheckExecutorTestSuite) assertAbsent(resp *providers.ExecutorRes
 func (suite *SSOCheckExecutorTestSuite) TestPresent() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().Resolve(mock.Anything, "handle-abc", "flow-1", 3, mock.Anything).Return(liveSession(), nil)
-	sso.EXPECT().FindCheckpoint(mock.Anything, "sess-1", "session").
+	sso.EXPECT().FindCheckpoint(mock.Anything, resolvedSession(), "session").
 		Return(&session.SessionContext{SessionID: "sess-1", CheckpointID: "session"}, nil)
 	exec := suite.newExecutor(sso)
 
@@ -110,7 +116,7 @@ func (suite *SSOCheckExecutorTestSuite) TestAbsentCheckpointNotPresent() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().Resolve(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(liveSession(), nil)
-	sso.EXPECT().FindCheckpoint(mock.Anything, "sess-1", "session").Return(nil, nil)
+	sso.EXPECT().FindCheckpoint(mock.Anything, resolvedSession(), "session").Return(nil, nil)
 	exec := suite.newExecutor(sso)
 
 	resp, err := exec.Execute(ssoNodeContext())

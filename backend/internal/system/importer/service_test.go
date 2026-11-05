@@ -1080,6 +1080,14 @@ func TestImportResources_CreateApplication(t *testing.T) {
 	assert.Equal(t, operationCreate, resp.Results[0].Operation)
 }
 
+// An exported application's project reaches the application service, so the import keeps it in the
+// project.
+func TestApplicationRequestToDTO_KeepsProject(t *testing.T) {
+	dto := applicationRequestToDTO(&model.ApplicationRequestWithID{ID: "app-1", ProjectID: "project-1"})
+
+	assert.Equal(t, "project-1", dto.ProjectID)
+}
+
 func TestImportApplicationRemapsDeviceGrantFlowID(t *testing.T) {
 	appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
 	svc := newTestImportService(appSvc)
@@ -5681,7 +5689,7 @@ func (f *fakeProjectService) ProjectExists(_ context.Context, id string) (bool, 
 	return exists, nil
 }
 
-func (f *fakeProjectService) ImportProject(_ context.Context, id, rootOUID, handle, displayName,
+func (f *fakeProjectService) ImportProject(_ context.Context, id, handle, displayName,
 	description string, upsert bool) (bool, *tidcommon.ServiceError) {
 	if f.importErr != nil {
 		return false, f.importErr
@@ -5691,7 +5699,7 @@ func (f *fakeProjectService) ImportProject(_ context.Context, id, rootOUID, hand
 		f.projects = map[string]projectDocument{}
 	}
 	f.projects[id] = projectDocument{
-		ID: id, RootOUID: rootOUID, Handle: handle, DisplayName: displayName, Description: description,
+		ID: id, Handle: handle, DisplayName: displayName, Description: description,
 	}
 	f.imported = append(f.imported, id)
 	f.upserts = append(f.upserts, upsert)
@@ -5731,7 +5739,6 @@ func TestImportResources_RootOrganizationUnitIsImportedWithoutAProject(t *testin
 
 const importedProjectDocuments = `resource_type: project
 id: 019a3000-0000-7000-8000-0000000000p1
-rootOuId: root-ou
 handle: shop
 displayName: Shop
 description: Online shop
@@ -5763,7 +5770,7 @@ func TestImportResources_ProjectIsSkippedWhereProjectsAreNotServed(t *testing.T)
 	assert.Equal(t, "root-ou", ouSvc.created[0].ID)
 }
 
-func TestImportResources_ProjectIsImportedAfterItsRootOrganizationUnit(t *testing.T) {
+func TestImportResources_ProjectIsImportedAfterTheOrganizationUnits(t *testing.T) {
 	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
 	projectSvc := &fakeProjectService{}
 
@@ -5779,7 +5786,7 @@ func TestImportResources_ProjectIsImportedAfterItsRootOrganizationUnit(t *testin
 	assert.Equal(t, operationCreate, resp.Results[1].Operation)
 	assert.Equal(t, "019a3000-0000-7000-8000-0000000000p1", resp.Results[1].ResourceID)
 	assert.Equal(t, projectDocument{
-		ID: "019a3000-0000-7000-8000-0000000000p1", RootOUID: "root-ou", Handle: "shop", DisplayName: "Shop",
+		ID: "019a3000-0000-7000-8000-0000000000p1", Handle: "shop", DisplayName: "Shop",
 		Description: "Online shop",
 	}, projectSvc.projects["019a3000-0000-7000-8000-0000000000p1"])
 	assert.Equal(t, []bool{true}, projectSvc.upserts)
@@ -5804,7 +5811,7 @@ func TestImportResources_ProjectDryRun(t *testing.T) {
 	projectSvc := &fakeProjectService{projects: map[string]projectDocument{
 		"019a3000-0000-7000-8000-0000000000p1": {ID: "019a3000-0000-7000-8000-0000000000p1"},
 	}}
-	content := "resource_type: project\nid: 019a3000-0000-7000-8000-0000000000p1\nrootOuId: root-ou\n" +
+	content := "resource_type: project\nid: 019a3000-0000-7000-8000-0000000000p1\n" +
 		"handle: shop\ndisplayName: Shop\n---\nresource_type: project\nid: 019a3000-0000-7000-8000-0000000000p2\n" +
 		"handle: other\ndisplayName: Other\n"
 
@@ -5822,9 +5829,9 @@ func TestImportResources_ProjectFailureIsReported(t *testing.T) {
 	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
 	projectSvc := &fakeProjectService{importErr: &tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType, Code: "PRJ-1012",
-		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "in use"},
+		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "handle in use"},
 	}}
-	content := "resource_type: project\nid: 019a3000-0000-7000-8000-0000000000p1\nrootOuId: root-ou\n" +
+	content := "resource_type: project\nid: 019a3000-0000-7000-8000-0000000000p1\n" +
 		"handle: shop\ndisplayName: Shop\n"
 
 	resp, err := newImportServiceWithProjects(ouSvc, projectSvc).ImportResources(context.Background(),

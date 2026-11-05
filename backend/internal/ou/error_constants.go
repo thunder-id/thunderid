@@ -177,6 +177,20 @@ var (
 			DefaultValue: "The filter parameter is invalid. Use format: attribute (eq|gt|lt) \"value\"",
 		},
 	}
+	// ErrorSignedInUserRequired is the error returned when the organization units a sign-in may land in are
+	// asked for without a signed-in user the entity store holds.
+	ErrorSignedInUserRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "OU-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.ouservice.signed_in_user_required",
+			DefaultValue: "Signed-in user required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.ouservice.signed_in_user_required_description",
+			DefaultValue: "Organization units are listed only for a signed-in user",
+		},
+	}
 )
 
 // Error variables

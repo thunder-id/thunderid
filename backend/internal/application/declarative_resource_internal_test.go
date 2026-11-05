@@ -363,6 +363,27 @@ inboundAuthConfig:
 	assert.Equal(s.T(), "public-client-id-123", sysAttrs[fieldClientID])
 }
 
+// A declared application keeps its project, which a Data Plane stores without checking.
+func (s *ParseToApplicationDTOTestSuite) TestMakeAppEntityParser_KeepsProject() {
+	yamlData := []byte(`
+id: project-app
+name: Project Application
+ouId: ou-1
+projectId: project-1
+`)
+
+	mockAppService := NewApplicationServiceInterfaceMock(s.T())
+	mockAppService.EXPECT().ValidateApplication(mock.Anything,
+		mock.MatchedBy(func(dto *model.ApplicationDTO) bool { return dto.ProjectID == testProjectID })).Return(
+		&model.ApplicationProcessedDTO{ID: "project-app", Name: "Project Application"}, nil, nil)
+
+	entityObj, _, _, err := makeAppEntityParser(mockAppService)(yamlData)
+
+	s.Require().NoError(err)
+	assert.Equal(s.T(), testProjectID, entityObj.ProjectID)
+	assert.Equal(s.T(), "ou-1", entityObj.OUID)
+}
+
 func (s *ParseToApplicationDTOTestSuite) TestMakeAppEntityParser_ConfidentialClientStoresSecretAndClientID() {
 	yamlData := []byte(`
 id: confidential-oauth-app

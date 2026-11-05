@@ -232,10 +232,10 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.interceptorRegistry, graphCache)
 
 	engineCtx.flowExecService, err = flowexec.Initialize(mux, engineCtx.flowProvider, engineCtx.actorProvider,
-		engineCtx.execRegistry, engineCtx.interceptorRegistry, engineCtx.observabilitySvc,
+		engineCtx.ouProvider, engineCtx.execRegistry, engineCtx.interceptorRegistry, engineCtx.observabilitySvc,
 		engineCtx.runtimeCryptoSvc, engineCtx.attestationProvider, engineCtx.graphBuilder,
 		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, nil,
-		engineCtx.identityGovernance, nil, flowConfig)
+		engineCtx.identityGovernance, nil, nil, flowConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
 	}

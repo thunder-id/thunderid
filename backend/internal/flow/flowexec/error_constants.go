@@ -37,6 +37,20 @@ var APIErrorInvalidSessionData = apierror.ErrorResponse{
 	},
 }
 
+// APIErrorOUIDNotAllowed defines the error response for an organization unit named on a request that does
+// not start a sign-in flow.
+var APIErrorOUIDNotAllowed = apierror.ErrorResponse{
+	Code: "FES-1026",
+	Message: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.ou_id_not_allowed",
+		DefaultValue: "Invalid request",
+	},
+	Description: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.ou_id_not_allowed_description",
+		DefaultValue: "An organization unit can be named only on a request that starts a sign-in flow",
+	},
+}
+
 // ErrorNodeResponse defines the error response for errors received from nodes.
 var ErrorNodeResponse = tidcommon.ServiceError{
 	Code: "FES-1002",
@@ -339,6 +353,51 @@ var ErrorFlowConnectionNotSet = tidcommon.ServiceError{
 	ErrorDescription: tidcommon.I18nMessage{
 		Key:          "error.flowexecservice.connection_not_set_description",
 		DefaultValue: "The flow is not available for this organization yet. Contact your administrator",
+	},
+}
+
+// ErrorInvalidOrganizationUnit is returned when a sign-in names an organization unit the application is
+// not accessible from. It does not say whether the organization unit exists.
+var ErrorInvalidOrganizationUnit = tidcommon.ServiceError{
+	Code: "FES-1028",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.invalid_organization_unit",
+		DefaultValue: "Invalid organization unit",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.invalid_organization_unit_description",
+		DefaultValue: "The application cannot be used to sign in to the requested organization unit",
+	},
+}
+
+// ErrorInvitationOUMissing is returned when an invitation flow is started with a token that names no
+// organization unit.
+var ErrorInvitationOUMissing = tidcommon.ServiceError{
+	Code: "FES-1027",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.invitation_ou_missing",
+		DefaultValue: "Organization unit required",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.invitation_ou_missing_description",
+		DefaultValue: "An invitation flow requires a token issued for an organization unit",
+	},
+}
+
+// ErrorFlowNotSharedWithOU is returned when an invitation flow is started from an organization unit that neither
+// owns the flow nor was shared it.
+var ErrorFlowNotSharedWithOU = tidcommon.ServiceError{
+	Code: "FES-1029",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_not_shared_with_ou",
+		DefaultValue: "Flow not shared",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_not_shared_with_ou_description",
+		DefaultValue: "The flow is not shared with the organization unit the token was issued for",
 	},
 }
 

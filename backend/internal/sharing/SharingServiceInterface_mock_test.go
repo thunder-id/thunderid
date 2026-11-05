@@ -1863,6 +1863,77 @@ func (_c *SharingServiceInterfaceMock_SetOverlayValue_Call) RunAndReturn(run fun
 	return _c
 }
 
+// ShareIntoChildOU provides a mock function for the type SharingServiceInterfaceMock
+func (_mock *SharingServiceInterfaceMock) ShareIntoChildOU(ctx context.Context, rt ResourceType, resourceID string, targetOUID string) *common.ServiceError {
+	ret := _mock.Called(ctx, rt, resourceID, targetOUID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ShareIntoChildOU")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, rt, resourceID, targetOUID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// SharingServiceInterfaceMock_ShareIntoChildOU_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ShareIntoChildOU'
+type SharingServiceInterfaceMock_ShareIntoChildOU_Call struct {
+	*mock.Call
+}
+
+// ShareIntoChildOU is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+//   - targetOUID string
+func (_e *SharingServiceInterfaceMock_Expecter) ShareIntoChildOU(ctx any, rt any, resourceID any, targetOUID any) *SharingServiceInterfaceMock_ShareIntoChildOU_Call {
+	return &SharingServiceInterfaceMock_ShareIntoChildOU_Call{Call: _e.mock.On("ShareIntoChildOU", ctx, rt, resourceID, targetOUID)}
+}
+
+func (_c *SharingServiceInterfaceMock_ShareIntoChildOU_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string, targetOUID string)) *SharingServiceInterfaceMock_ShareIntoChildOU_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ShareIntoChildOU_Call) Return(serviceError *common.ServiceError) *SharingServiceInterfaceMock_ShareIntoChildOU_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ShareIntoChildOU_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string, targetOUID string) *common.ServiceError) *SharingServiceInterfaceMock_ShareIntoChildOU_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdatePolicy provides a mock function for the type SharingServiceInterfaceMock
 func (_mock *SharingServiceInterfaceMock) UpdatePolicy(ctx context.Context, policyID string, req PolicyRequest) (Policy, *common.ServiceError) {
 	ret := _mock.Called(ctx, policyID, req)
@@ -1933,6 +2004,83 @@ func (_c *SharingServiceInterfaceMock_UpdatePolicy_Call) Return(policy Policy, s
 }
 
 func (_c *SharingServiceInterfaceMock_UpdatePolicy_Call) RunAndReturn(run func(ctx context.Context, policyID string, req PolicyRequest) (Policy, *common.ServiceError)) *SharingServiceInterfaceMock_UpdatePolicy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateShareIntoChildOU provides a mock function for the type SharingServiceInterfaceMock
+func (_mock *SharingServiceInterfaceMock) ValidateShareIntoChildOU(ctx context.Context, rt ResourceType, resourceID string, owningOUID string, targetOUID string) *common.ServiceError {
+	ret := _mock.Called(ctx, rt, resourceID, owningOUID, targetOUID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateShareIntoChildOU")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, rt, resourceID, owningOUID, targetOUID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// SharingServiceInterfaceMock_ValidateShareIntoChildOU_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateShareIntoChildOU'
+type SharingServiceInterfaceMock_ValidateShareIntoChildOU_Call struct {
+	*mock.Call
+}
+
+// ValidateShareIntoChildOU is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+//   - owningOUID string
+//   - targetOUID string
+func (_e *SharingServiceInterfaceMock_Expecter) ValidateShareIntoChildOU(ctx any, rt any, resourceID any, owningOUID any, targetOUID any) *SharingServiceInterfaceMock_ValidateShareIntoChildOU_Call {
+	return &SharingServiceInterfaceMock_ValidateShareIntoChildOU_Call{Call: _e.mock.On("ValidateShareIntoChildOU", ctx, rt, resourceID, owningOUID, targetOUID)}
+}
+
+func (_c *SharingServiceInterfaceMock_ValidateShareIntoChildOU_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string, owningOUID string, targetOUID string)) *SharingServiceInterfaceMock_ValidateShareIntoChildOU_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ValidateShareIntoChildOU_Call) Return(serviceError *common.ServiceError) *SharingServiceInterfaceMock_ValidateShareIntoChildOU_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ValidateShareIntoChildOU_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string, owningOUID string, targetOUID string) *common.ServiceError) *SharingServiceInterfaceMock_ValidateShareIntoChildOU_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -46,6 +46,10 @@ import (
 type SCIMAuthzTestSuite struct {
 	suite.Suite
 
+	// Users here live outside the default OU, and a sign-in is bounded to its application's OU, so each
+	// signs in through an application in its own OU rather than the Console.
+	signIn testutils.OUSignInApps
+
 	ou1ID string
 	ou2ID string
 
@@ -74,8 +78,6 @@ type SCIMAuthzTestSuite struct {
 }
 
 const (
-	scimAuthzDevelopClientID = "CONSOLE"
-
 	scimAuthzMgrUsername = "scim-authz-manager"
 	scimAuthzMgrPassword = "ScimAuthzMgr@123"
 	scimAuthzMgrRoleName = "SCIM Authz Manager (scim-authz-test)"
@@ -226,16 +228,9 @@ func (ts *SCIMAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create scim-manager role")
 	ts.roleID = roleID
 
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
-		scimAuthzDevelopClientID,
-		scimAuthzDevelopRedirectURI,
+	tokenResp, err := ts.signIn.ObtainAccessToken(ts.ou1ID,
 		"system system:user system:user:view system:usertype:view system:group system:group:view",
-		scimAuthzMgrUsername,
-		scimAuthzMgrPassword,
-		true,
-		"",
-		scopedRSIdentifier,
-	)
+		scimAuthzMgrUsername, scimAuthzMgrPassword, scopedRSIdentifier)
 	ts.Require().NoError(err, "obtain scim-manager token")
 	ts.Require().NotEmpty(tokenResp.AccessToken, "scim-manager token must be non-empty")
 
@@ -248,6 +243,9 @@ func (ts *SCIMAuthzTestSuite) SetupSuite() {
 
 // TearDownSuite cleans up the test suite environment.
 func (ts *SCIMAuthzTestSuite) TearDownSuite() {
+	if err := ts.signIn.DeleteAll(); err != nil {
+		ts.T().Logf("teardown: delete sign-in applications: %v", err)
+	}
 	if ts.roleID != "" {
 		if err := testutils.DeleteRole(ts.roleID); err != nil {
 			ts.T().Logf("teardown: delete scim-manager role: %v", err)

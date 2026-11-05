@@ -617,6 +617,53 @@ func TestHandleUserGetRequest_IncludeDisplay(t *testing.T) {
 	mockSvc.AssertExpectations(t)
 }
 
+func TestHandleUserGetRequest_InOU(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	userID := testUserID123
+	ouID := "ou-1"
+	mockSvc.On("GetUserInOU", mock.Anything, userID, ouID, true).
+		Return(&providers.User{ID: userID, OUID: ouID, IsOwnedByOU: new(false)}, nil).Once()
+
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/users/"+userID+"?ouId="+ouID+"&include=display", nil)
+	req.SetPathValue("id", userID)
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserGetRequest(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var resp providers.User
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.Equal(t, ouID, resp.OUID)
+	require.NotNil(t, resp.IsOwnedByOU)
+	require.False(t, *resp.IsOwnedByOU)
+}
+
+func TestHandleUserGetRequest_InOUErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		svcErr *tidcommon.ServiceError
+		status int
+	}{
+		{name: "NotInOU", svcErr: &ErrorUserNotFound, status: http.StatusNotFound},
+		{name: "NoAccessInOU", svcErr: &tidcommon.ErrorUnauthorized, status: http.StatusForbidden},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockSvc := NewUserServiceInterfaceMock(t)
+			mockSvc.On("GetUserInOU", mock.Anything, "u1", "ou-1", false).Return(nil, tc.svcErr).Once()
+			handler := newUserHandler(mockSvc)
+			req := httptest.NewRequest(http.MethodGet, "/users/u1?ouId=ou-1", nil)
+			req.SetPathValue("id", "u1")
+			rr := httptest.NewRecorder()
+
+			handler.HandleUserGetRequest(rr, req)
+
+			require.Equal(t, tc.status, rr.Code)
+		})
+	}
+}
+
 func TestHandleUserPutRequest_Success(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	userID := testUserID123

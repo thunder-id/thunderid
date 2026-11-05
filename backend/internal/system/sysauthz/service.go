@@ -51,6 +51,12 @@ type SystemAuthorizationServiceInterface interface {
 	CanGrantMembership(ctx context.Context, principalType PrincipalType,
 		containerID string) *tidcommon.ServiceError
 
+	// GrantableMemberships returns, in the given order, the containers whose membership the caller may grant, as
+	// CanGrantMembership decides for each, resolving the caller's permissions once for the whole list. A
+	// server error fails the whole check.
+	GrantableMemberships(ctx context.Context, principalType PrincipalType,
+		containerIDs []string) ([]string, *tidcommon.ServiceError)
+
 	// SetPermissionResolver injects the effective-permission resolver used by the two checks above.
 	// It must be called once at startup after the role and group packages are initialized,
 	// completing the same two-phase initialization used by SetOUHierarchyResolver. Until it is

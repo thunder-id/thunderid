@@ -7,12 +7,14 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -397,6 +399,36 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_NoUniqueAttribut
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything, mock.Anything)
+}
+
+// A sign-in boundary on the step must not narrow the lookup: uniqueness stays deployment wide.
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_SignInBoundary_LookupIsNotBounded() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		Context: authnprovidercm.WithSignInBoundary(context.Background(),
+			authnprovidercm.SignInBoundary{OUID: "ou-1", ApplicationID: "app-1"}),
+		UserInputs: map[string]string{"email": "taken@example.com"},
+		RuntimeData: map[string]string{
+			categoryNameKey: string(entitytype.TypeCategoryUser),
+			categoryTypeKey: testUniquenessUserType,
+		},
+	}
+
+	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, mock.Anything, testUniquenessUserType).
+		Return([]string{"email"}, nil)
+	existingID := testExistingUserID
+	suite.mockEntityProvider.On("IdentifyEntity",
+		mock.MatchedBy(func(c context.Context) bool {
+			_, bounded := authnprovidercm.SignInBoundaryFrom(c)
+			return !bounded
+		}), map[string]interface{}{"email": "taken@example.com"}).
+		Return(&existingID, nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
 func TestAttributeUniquenessValidatorSuite(t *testing.T) {

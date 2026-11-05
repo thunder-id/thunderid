@@ -68,6 +68,18 @@ To build this flow:
 
 The first time a user signs in, the flow takes the **Authenticate** path and **Save / Load Session** establishes the session. On the next sign-in through the same flow, **Check SSO Session** finds the session and takes the **Skip to** path.
 
+## Organization Units and Single Sign-On
+
+A sign-in lands in one organization unit (OU) where both the user and the application are found. See [Sign Users In to Organization Units](../organization-units/sign-in-to-organization-units.mdx). Single sign-on keeps to it:
+
+- A sign-in that has already decided its OU reuses a session only when the session's user can sign in to that OU. Otherwise the flow takes the **Authenticate** path, so another user of that OU can sign in, and a `prompt=none` request gets `login_required`.
+- A sign-in that reaches **Check SSO Session** with no OU decided follows the OU the user last signed in to with that session. If the user cannot sign in to the application from that OU, or the session has no such OU, the flow takes the **Authenticate** path. The user signs in again, and the flow decides the OU. A `prompt=none` request cannot ask the user, so it gets `login_required` instead.
+
+**Resolve OU** cannot come after **Save / Load Session**. Saving a sign-in flow that can reach a **Resolve OU** node from a **Save / Load Session** node is refused with `FLM-1044`. Place the node in one of two places:
+
+- **Sign in first.** Place a **Resolve OU** node with the `prompt` strategy on the **Authenticate** path, between the sign-in step and **Save / Load Session**. A fresh sign-in decides the OU there, from the OUs the user can sign in to. A sign-in that reuses the session skips it and follows the last-used OU.
+- **Pick first.** Place a **Resolve OU** node with the `prompt` strategy before **Check SSO Session**. Both the fresh and the reused path pass through it, and a reused session is checked again against the OU the user chose.
+
 ## Configure Session Lifetime
 
 Two timeouts bound every flow SSO session:

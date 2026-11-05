@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -26,6 +27,7 @@ const (
 	errCodeOUNotFound            = "FET-1030"
 	errCodeUserTypeNotAllowed    = "FET-1054"
 	errCodeUserTypeNotValidForOU = "FET-1058"
+	errCodeUserAlreadyExists     = "FET-1007"
 )
 
 // onboardingDynamicFlow has no inputs of its own on the details prompt, so every field it shows is a
@@ -553,6 +555,60 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_UserTypeNotValidForSelectedOUR
 	ts.Require().NotNil(step.Error, "A user type invalid for the selected OU must be reported")
 	ts.Equal(errCodeUserTypeNotValidForOU, step.Error.Code,
 		"A user type attached below the selected OU must be refused for it")
+}
+
+// An onboarding flow has no sign-in boundary: its existence check finds a user who lives in another OU, so
+// onboarding that user's username and email into the child OU is refused and asked for again, and no second
+// user is created.
+func (ts *UserOnboardingTestSuite) TestOnboarding_ExistingUserInAnotherOUIsFound() {
+	username := common.GenerateUniqueUsername("onboard_existing")
+	email := username + "@onboarding.test"
+	// The flow fills in the department and faculty, and the existence check matches on them too.
+	attributes, err := json.Marshal(map[string]string{
+		"username": username, "email": email, "department": "Computer Science", "faculty": "Engineering",
+	})
+	ts.Require().NoError(err)
+	userID, err := testutils.CreateUser(testutils.User{Type: ts.rootTypeName, OUID: ts.rootOUID, Attributes: attributes})
+	ts.Require().NoError(err, "Failed to create the existing user in the root OU")
+	ts.config.CreatedUserIDs = append(ts.config.CreatedUserIDs, userID)
+
+	step := ts.initiateOnboarding(nil)
+	step, err = common.CompleteFlow(step.ExecutionID,
+		map[string]string{"ouId": ts.childOUID}, "action_ou", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OU selection")
+	step, err = common.CompleteFlow(step.ExecutionID,
+		map[string]string{"userType": ts.childTypeName}, "action_usertype", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the user type selection")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "username"), "The flow should ask for the user details")
+
+	refused, err := common.CompleteFlow(step.ExecutionID,
+		map[string]string{"username": username, "email": email}, "action_details", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit user details")
+
+	ts.Equal("INCOMPLETE", refused.FlowStatus, "The details are asked for again")
+	ts.Require().NotNil(refused.Error, "The existing user in the root OU must be found: %+v", refused)
+	ts.Equal(errCodeUserAlreadyExists, refused.Error.Code)
+	ts.True(common.HasInput(refused.Data.Inputs, "username"), "The details are asked for again")
+	ts.Equal([]string{userID}, ts.usersNamed(username), "No second user is created")
+}
+
+// usersNamed returns the IDs of the users with the given username.
+func (ts *UserOnboardingTestSuite) usersNamed(username string) []string {
+	ts.T().Helper()
+	req, err := http.NewRequest(http.MethodGet,
+		testServerURL+"/users?filter="+url.QueryEscape(`username eq "`+username+`"`), nil)
+	ts.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+	var list testutils.UserListResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&list))
+	ids := make([]string, 0, len(list.Users))
+	for _, user := range list.Users {
+		ids = append(ids, user.ID)
+	}
+	return ids
 }
 
 // userAttribute reads one attribute of a provisioned user.

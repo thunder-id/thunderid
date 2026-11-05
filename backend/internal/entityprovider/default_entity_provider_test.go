@@ -194,32 +194,41 @@ func (suite *DefaultEntityProviderTestSuite) TestUpdateEntity() {
 	suite.Equal(ErrorCodeInvalidRequestFormat, err.Code)
 }
 
-//nolint:dupl // Testing the same error mapping for different credential operations
 func (suite *DefaultEntityProviderTestSuite) TestUpdateCredentials() {
-	creds := json.RawMessage(`{"password":"newpassword"}`)
+	cases := []struct {
+		method string
+		creds  json.RawMessage
+		update func(context.Context, string, json.RawMessage) *EntityProviderError
+	}{
+		{"UpdateCredentials", json.RawMessage(`{"password":"newpassword"}`), suite.provider.UpdateCredentials},
+		{"UpdateSystemCredentials", json.RawMessage(`{"clientSecret":"secret"}`),
+			suite.provider.UpdateSystemCredentials},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.method, func() {
+			// Test Success
+			suite.mockService.On(tc.method, mock.Anything, testEntityID, tc.creds).Return(nil).Once()
 
-	// Test Success
-	suite.mockService.On("UpdateCredentials", mock.Anything, testEntityID, creds).
-		Return(nil).Once()
+			err := tc.update(context.Background(), testEntityID, tc.creds)
+			suite.Nil(err)
 
-	err := suite.provider.UpdateCredentials(context.Background(), testEntityID, creds)
-	suite.Nil(err)
+			// Test Not Found
+			suite.mockService.On(tc.method, mock.Anything, testEntityID, tc.creds).
+				Return(entity.ErrEntityNotFound).Once()
 
-	// Test Not Found
-	suite.mockService.On("UpdateCredentials", mock.Anything, testEntityID, creds).
-		Return(entity.ErrEntityNotFound).Once()
+			err = tc.update(context.Background(), testEntityID, tc.creds)
+			suite.NotNil(err)
+			suite.Equal(ErrorCodeEntityNotFound, err.Code)
 
-	err = suite.provider.UpdateCredentials(context.Background(), testEntityID, creds)
-	suite.NotNil(err)
-	suite.Equal(ErrorCodeEntityNotFound, err.Code)
+			// Test Invalid Credential
+			suite.mockService.On(tc.method, mock.Anything, testEntityID, tc.creds).
+				Return(entity.ErrInvalidCredential).Once()
 
-	// Test Invalid Credential
-	suite.mockService.On("UpdateCredentials", mock.Anything, testEntityID, creds).
-		Return(entity.ErrInvalidCredential).Once()
-
-	err = suite.provider.UpdateCredentials(context.Background(), testEntityID, creds)
-	suite.NotNil(err)
-	suite.Equal(ErrorCodeInvalidRequestFormat, err.Code)
+			err = tc.update(context.Background(), testEntityID, tc.creds)
+			suite.NotNil(err)
+			suite.Equal(ErrorCodeInvalidRequestFormat, err.Code)
+		})
+	}
 }
 
 func (suite *DefaultEntityProviderTestSuite) TestDeleteEntity() {
@@ -276,34 +285,6 @@ func (suite *DefaultEntityProviderTestSuite) TestUpdateSystemAttributes() {
 		Return(entity.ErrBadAttributesInRequest).Once()
 
 	err = suite.provider.UpdateSystemAttributes(context.Background(), testEntityID, attrs)
-	suite.NotNil(err)
-	suite.Equal(ErrorCodeInvalidRequestFormat, err.Code)
-}
-
-//nolint:dupl // Testing the same error mapping for different credential operations
-func (suite *DefaultEntityProviderTestSuite) TestUpdateSystemCredentials() {
-	creds := json.RawMessage(`{"clientSecret":"secret"}`)
-
-	// Test Success
-	suite.mockService.On("UpdateSystemCredentials", mock.Anything, testEntityID, creds).
-		Return(nil).Once()
-
-	err := suite.provider.UpdateSystemCredentials(context.Background(), testEntityID, creds)
-	suite.Nil(err)
-
-	// Test Not Found
-	suite.mockService.On("UpdateSystemCredentials", mock.Anything, testEntityID, creds).
-		Return(entity.ErrEntityNotFound).Once()
-
-	err = suite.provider.UpdateSystemCredentials(context.Background(), testEntityID, creds)
-	suite.NotNil(err)
-	suite.Equal(ErrorCodeEntityNotFound, err.Code)
-
-	// Test Invalid Credential
-	suite.mockService.On("UpdateSystemCredentials", mock.Anything, testEntityID, creds).
-		Return(entity.ErrInvalidCredential).Once()
-
-	err = suite.provider.UpdateSystemCredentials(context.Background(), testEntityID, creds)
 	suite.NotNil(err)
 	suite.Equal(ErrorCodeInvalidRequestFormat, err.Code)
 }

@@ -1524,5 +1524,107 @@
         "onFailure": ""
       }
     }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Sharing Executor",
+      "label": "Validate Share",
+      "description": "Authorize sharing a resource into a child organization unit, as the admin",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "SharingExecutor",
+          "mode": "validate"
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      },
+      "properties": {
+        "resourceType": "user",
+        "resourceId": "{{ctx(userID)}}",
+        "targetOuId": "{{ctx(ouId)}}"
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Sharing Executor",
+      "label": "Share",
+      "description": "Share the resource the flow authorized, once the invitee accepts",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "SharingExecutor",
+          "mode": "share"
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      },
+      "properties": {
+        "resourceType": "user",
+        "resourceId": "{{ctx(userID)}}",
+        "targetOuId": "{{ctx(ouId)}}"
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Role Selection Executor",
+      "label": "Select Roles",
+      "description": "Offer the roles the admin can assign and record the choice",
+      "image": "assets/images/icons/user.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "RoleExecutor",
+          "mode": "role_selection"
+        },
+        "onSuccess": "",
+        "onIncomplete": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Role Assignment Executor",
+      "label": "Assign Roles",
+      "description": "Assign the recorded roles as the admin who chose them",
+      "image": "assets/images/icons/user.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "RoleExecutor",
+          "mode": "role_assignment"
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
   }
 ]

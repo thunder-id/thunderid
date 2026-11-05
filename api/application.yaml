@@ -34,9 +34,8 @@ paths:
       summary: List applications
       description: |
         Retrieve a list of all applications. An `ouId` filter lists the applications the organization
-        unit owns, followed by the applications shared into it. A `projectId` lists the same for the
-        project's root organization unit, or for the organization unit in the `ouId` filter when it
-        belongs to the project.
+        unit owns, followed by the applications shared into it. A `projectId` lists the project's
+        applications, narrowed to the organization unit in the `ouId` filter when one is given.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -300,7 +299,7 @@ paths:
                       defaultValue: "Organization unit not in project"
                     description:
                       key: "error.applicationservice.ou_not_in_project_description"
-                      defaultValue: "The organization unit must be the project's root organization unit or one below it"
+                      defaultValue: "The organization unit must belong to the project"
                 invalid-redirect-uri:
                   summary: Invalid redirect URI
                   value:
@@ -686,7 +685,7 @@ paths:
                       defaultValue: "Organization unit not in project"
                     description:
                       key: "error.applicationservice.ou_not_in_project_description"
-                      defaultValue: "The organization unit must be the project's root organization unit or one below it"
+                      defaultValue: "The organization unit must belong to the project"
                 invalid-redirect-uri:
                   summary: Invalid redirect URI
                   value:
@@ -1175,10 +1174,9 @@ components:
       name: projectId
       required: false
       description: |
-        Lists the applications the project's root organization unit owns, followed by the
-        applications shared into it. With an `ouId` filter, lists that organization unit instead
-        when it is the project's root organization unit or one below it. A project that does not
-        exist, or an organization unit outside it, has no applications.
+        Lists the applications of the project. With an `ouId` filter, lists only the project's
+        applications that organization unit owns. A project that does not exist has no
+        applications.
       schema:
         type: string
       example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
@@ -1512,8 +1510,10 @@ components:
           type: string
           description: |
             The ID of the project this application belongs to. Without `ouId`, the application is
-            placed in the project's root organization unit. With `ouId`, that organization unit
-            must be the project's root organization unit or one below it.
+            placed in the system organization unit. With `ouId`, that organization unit
+            must belong to the project. On update, leaving it out keeps the application in its
+            project, and a different project moves it unless the application is shared. An
+            application can't be taken out of a project.
           example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         name:
           type: string
@@ -1666,6 +1666,11 @@ components:
           type: string
           description: The ID of the organization unit this application belongs to.
           example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this application belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         name:
           type: string
           description: The name of the application.
@@ -1817,6 +1822,11 @@ components:
           type: string
           description: The ID of the organization unit this application belongs to.
           example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this application belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         name:
           type: string
           description: The name of the application.
@@ -1952,6 +1962,11 @@ components:
           format: uuid
           description: The unique identifier of the application.
           example: "550e8400-e29b-41d4-a716-446655440000"
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this application belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         name:
           type: string
           description: The name of the application.

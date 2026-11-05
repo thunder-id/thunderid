@@ -143,6 +143,10 @@ describe('steps models', () => {
       expect(ExecutionTypes.AttributeUniquenessValidator).toBe('AttributeUniquenessValidator');
     });
 
+    it('should have SharingExecutor type', () => {
+      expect(ExecutionTypes.SharingExecutor).toBe('SharingExecutor');
+    });
+
     it('should have PermissionValidator type', () => {
       expect(ExecutionTypes.PermissionValidator).toBe('PermissionValidator');
     });
@@ -219,8 +223,8 @@ describe('steps models', () => {
       expect(ExecutionTypes.ExtensionExecutor).toBe('ExtensionExecutor');
     });
 
-    it('should have exactly 40 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(40);
+    it('should have exactly 41 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(41);
     });
   });
 

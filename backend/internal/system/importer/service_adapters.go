@@ -1244,6 +1244,7 @@ func (s *importService) importAgent(
 		ID:          req.ID,
 		OUID:        req.OUID,
 		OUHandle:    req.OUHandle,
+		ProjectID:   req.ProjectID,
 		Type:        req.Type,
 		Description: req.Description,
 		LogoURL:     req.LogoURL,
@@ -1274,6 +1275,7 @@ func (s *importService) importAgent(
 	updateReq := &agentmodel.UpdateAgentRequest{
 		OUID:                  req.OUID,
 		OUHandle:              req.OUHandle,
+		ProjectID:             req.ProjectID,
 		Type:                  req.Type,
 		Description:           req.Description,
 		LogoURL:               req.LogoURL,

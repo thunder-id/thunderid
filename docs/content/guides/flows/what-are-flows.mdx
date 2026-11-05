@@ -18,6 +18,7 @@ A **flow** defines the step-by-step journey a user takes during a specific inter
 | **Registration** | Controls how new users create accounts and provide profile data | Application → Registration Flow (toggle must be enabled) |
 | **Recovery** | Controls how users regain access to their account, such as resetting a forgotten password | Application → Recovery Flow (toggle must be enabled) |
 | **User Onboarding** | Controls how admins create and onboard new users, directly or via an invite link | System-level |
+| **Invitation** | Lets an organization unit admin invite a user into their unit and assign roles once the user accepts | Started by flow ID ([build one](build-a-flow.mdx#go-further)) |
 | **Self** | Controls an operation a signed-in user performs on their own account, such as verifying their email address or mobile number | Started by its handle with the user's access token |
 
 Each flow is a **named, versioned definition**. One flow can be assigned to multiple applications. Every time you save a flow, <ProductName /> creates a new version. The version number appears in the Version column on the Flows list page; previous versions are preserved and can be restored via API. See [Flow Versioning API Reference](../../../apis#tag/flow-versioning).

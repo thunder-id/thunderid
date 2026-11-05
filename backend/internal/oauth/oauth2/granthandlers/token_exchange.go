@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -75,6 +76,14 @@ func (h *tokenExchangeGrantHandler) ValidateGrant(ctx context.Context, tokenRequ
 		return &model.ErrorResponse{
 			Error:            constants.ErrorUnsupportedGrantType,
 			ErrorDescription: "Unsupported grant type",
+		}
+	}
+
+	// The organization-unit-scoped endpoint exchanges a device secret only.
+	if syscontext.GetAccessingOUID(ctx) != "" && !isDeviceSecretSubjectToken(tokenRequest) {
+		return &model.ErrorResponse{
+			Error:            constants.ErrorInvalidRequest,
+			ErrorDescription: constants.OUScopedGrantRefusal,
 		}
 	}
 

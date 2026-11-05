@@ -32,9 +32,8 @@ paths:
       summary: List agents
       description: |
         Retrieve a paginated list of agents. An `ouId` filter lists the agents the organization unit
-        owns, followed by the agents shared into it. A `projectId` lists the same for the project's
-        root organization unit, or for the organization unit in the `ouId` filter when it belongs to
-        the project.
+        owns, followed by the agents shared into it. A `projectId` lists the project's agents,
+        narrowed to the organization unit in the `ouId` filter when one is given.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -407,7 +406,7 @@ paths:
                       defaultValue: "Organization unit not in project"
                     description:
                       key: "error.agentservice.ou_not_in_project_description"
-                      defaultValue: "The organization unit must be the project's root organization unit or one below it"
+                      defaultValue: "The organization unit must belong to the project"
                 ou-not-found:
                   summary: Organization unit not found
                   value:
@@ -985,7 +984,7 @@ paths:
                       defaultValue: "Organization unit not in project"
                     description:
                       key: "error.agentservice.ou_not_in_project_description"
-                      defaultValue: "The organization unit must be the project's root organization unit or one below it"
+                      defaultValue: "The organization unit must belong to the project"
                 ou-not-found:
                   summary: New organization unit not found
                   value:
@@ -1908,11 +1907,9 @@ components:
       name: projectId
       required: false
       description: |
-        Lists the agents the project's root organization unit owns, followed by the agents shared
-        into it. With an `ouId` filter, lists that organization unit instead when it is the
-        project's root organization unit or one below it. No other filter expression can be
-        combined with it. A project that does not exist, or an organization unit outside it, has no
-        agents.
+        Lists the agents of the project. With an `ouId` filter, lists only the project's agents that
+        organization unit owns. No other filter expression can be combined with it. A project that
+        does not exist has no agents.
       schema:
         type: string
     agentFilterParam:
@@ -1952,6 +1949,11 @@ components:
           type: string
           format: uuid
           example: "456e8400-e29b-41d4-a716-446655440001"
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this agent belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         ouHandle:
           type: string
           readOnly: true
@@ -2082,8 +2084,8 @@ components:
           type: string
           description: |
             The ID of the project the agent belongs to. Without `ouId`, the agent is created in the
-            project's root organization unit. With `ouId`, that organization unit must be the
-            project's root organization unit or one below it.
+            system organization unit. With `ouId`, that organization unit must belong to
+            the project.
           example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         type:
           type: string
@@ -2203,9 +2205,10 @@ components:
         projectId:
           type: string
           description: |
-            The ID of the project the agent belongs to. The agent's organization unit, the new one
-            when `ouId` is given or the current one otherwise, must be the project's root
-            organization unit or one below it. A project never moves the agent on its own.
+            The ID of the project the agent belongs to. Leaving it out keeps the agent in its project,
+            and an agent can't be taken out of a project.
+            The agent's organization unit, the new one when `ouId` is given or the current one
+            otherwise, must belong to the project. A project never moves the agent on its own.
           example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         type:
           type: string
@@ -2297,6 +2300,11 @@ components:
           type: string
           format: uuid
           example: "456e8400-e29b-41d4-a716-446655440001"
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this agent belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         ouHandle:
           type: string
           readOnly: true
@@ -2393,6 +2401,11 @@ components:
           type: string
           format: uuid
           example: "456e8400-e29b-41d4-a716-446655440001"
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this agent belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         ouHandle:
           type: string
           readOnly: true

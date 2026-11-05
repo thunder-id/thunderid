@@ -103,6 +103,10 @@ type TokenResponseDTO struct {
 	// SessionID is the SSO session id (sid) of the grant, when it has one, so the refresh token issued
 	// alongside is stamped with it. Access tokens never carry it. Never returned to the client.
 	SessionID string
+	// OUID is the organization unit the grant was issued in, when known, so the refresh token issued
+	// alongside is stamped with it. Taken from the access token's ouId claim when unset. Never returned to the
+	// client.
+	OUID string
 	// DeviceSecret is the token carrying the SSO sessions the code kept, returned on a code exchange.
 	DeviceSecret TokenDTO
 	// IssuesRefreshToken marks a response whose grant path issues a refresh token although its grant

@@ -244,6 +244,7 @@ func makeAgentEntityParser(
 			ID:          req.ID,
 			OUID:        req.OUID,
 			OUHandle:    req.OUHandle,
+			ProjectID:   req.ProjectID,
 			Type:        req.Type,
 			Description: req.Description,
 			LogoURL:     req.LogoURL,
@@ -290,6 +291,7 @@ func makeAgentEntityParser(
 		if buildErr != nil {
 			return nil, nil, nil, fmt.Errorf("failed to build agent entity for '%s': %w", req.ID, buildErr)
 		}
+		e.ProjectID = agent.ProjectID
 
 		return e, nil, sysCredsJSON, nil
 	}

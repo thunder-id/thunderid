@@ -39,6 +39,9 @@ type UserMandatedRolesTestSuite struct {
 
 	client *http.Client
 
+	// The admin signing in lives in the parent, and a sign-in is bounded to its application's OU.
+	signIn testutils.OUSignInApps
+
 	// What the running test created. Users go first, since a role a share mandates cannot be deleted.
 	userIDs []string
 	roleIDs []string
@@ -93,6 +96,9 @@ func (ts *UserMandatedRolesTestSuite) SetupSuite() {
 }
 
 func (ts *UserMandatedRolesTestSuite) TearDownSuite() {
+	if err := ts.signIn.DeleteAll(); err != nil {
+		ts.T().Logf("teardown: delete sign-in applications: %v", err)
+	}
 	if ts.userTypeID != "" {
 		if err := testutils.DeleteUserType(ts.userTypeID); err != nil {
 			ts.T().Logf("teardown: delete user type: %v", err)
@@ -934,7 +940,7 @@ func (ts *UserMandatedRolesTestSuite) TestARoleTheIssuerCannotSeeIsRefused() {
 func (ts *UserMandatedRolesTestSuite) TestMandatingARoleTheCallerCannotGrantIsRefused() {
 	const adminName = "mandate-parent-admin"
 	adminID := ts.newUserIn(ts.parentOUID, adminName, sharingTestPassword)
-	admin, adminRSID, adminRoleID := scopedAdminClient(ts.T(), ts.parentOUID, adminID, adminName,
+	admin, adminRSID, adminRoleID := scopedAdminClient(ts.T(), &ts.signIn, ts.parentOUID, adminID, adminName,
 		"User Mandate Test", "https://user-mandate-test.example.com/parent")
 	ts.rsIDs = append(ts.rsIDs, adminRSID)
 	ts.roleIDs = append(ts.roleIDs, adminRoleID)

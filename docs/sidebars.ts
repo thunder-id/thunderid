@@ -795,6 +795,11 @@ const sidebars: SidebarsConfig = {
               id: 'guides/organization-units/machine-to-machine-access',
               label: 'Machine-to-Machine (M2M) Access for Organization Units',
             },
+            {
+              type: 'doc',
+              id: 'guides/organization-units/sign-in-to-organization-units',
+              label: 'Sign Users In to Organization Units',
+            },
           ],
         },
         {

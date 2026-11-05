@@ -232,7 +232,7 @@ func (ts *GovernanceEventsTestSuite) TestAnOverLongOperatorNoteIsRefusedBeforeCo
 // holderStatus signs the account in and returns a probe of the status /users/me answers its token with.
 func (ts *GovernanceEventsTestSuite) holderStatus(username, password string) func() int {
 	ts.T().Helper()
-	holder, err := testutils.GetHTTPClientForUser(username, password)
+	holder, err := testutils.GetHTTPClientForOUUser(ts.fixture.signInClientID, username, password)
 	ts.Require().NoError(err, "the holder must sign in")
 	probe := func() int {
 		status, _ := getWith(ts.T(), holder, "/users/me")

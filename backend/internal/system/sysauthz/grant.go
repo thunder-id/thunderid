@@ -5,6 +5,7 @@ package sysauthz
 
 import (
 	"context"
+	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -86,6 +87,55 @@ func (s *systemAuthorizationService) CanGrantMembership(
 	}
 
 	return s.requireCoverage(ctx, conferred)
+}
+
+// GrantableMemberships returns the containers whose membership the caller may grant, resolving what each confers
+// and, once, what the caller holds.
+func (s *systemAuthorizationService) GrantableMemberships(
+	ctx context.Context, principalType PrincipalType, containerIDs []string,
+) ([]string, *tidcommon.ServiceError) {
+	if len(containerIDs) == 0 {
+		return nil, nil
+	}
+	if decision, decided := s.shortCircuitGrant(ctx); decided {
+		if decision != nil {
+			return nil, decision
+		}
+		return slices.Clone(containerIDs), nil
+	}
+
+	subject := security.GetSubject(ctx)
+	var actorPermissions security.PermissionSet
+	grantable := make([]string, 0, len(containerIDs))
+	for _, containerID := range containerIDs {
+		conferred, svcErr := s.resolveConferredPermissions(ctx, principalType, containerID)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		if grantsNothing(conferred) {
+			grantable = append(grantable, containerID)
+			continue
+		}
+		if subject == "" {
+			continue
+		}
+		if actorPermissions == nil {
+			resolved, err := s.permissionResolver.ResolveForEntity(ctx, subject)
+			if err != nil {
+				s.logger.Error(ctx, "Failed to resolve caller permissions for grant check",
+					log.MaskedString("subject", subject), log.Error(err))
+				return nil, &tidcommon.InternalServerError
+			}
+			actorPermissions = resolved
+			if actorPermissions == nil {
+				actorPermissions = security.PermissionSet{}
+			}
+		}
+		if security.Covers(actorPermissions, conferred) {
+			grantable = append(grantable, containerID)
+		}
+	}
+	return grantable, nil
 }
 
 // shortCircuitGrant decides the cases that need no stored lookup. The boolean reports whether a

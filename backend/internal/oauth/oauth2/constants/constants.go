@@ -312,6 +312,8 @@ const (
 	ClaimAccessTokenSubject     string = "access_token_sub"
 	// ClaimAccessTokenAudience carries the audience of a refresh token's access tokens.
 	ClaimAccessTokenAudience string = "access_token_aud"
+	// ClaimAccessTokenOUID carries the organization unit a refresh token's access tokens are issued in.
+	ClaimAccessTokenOUID string = "access_token_ou_id"
 
 	// ClaimAuthorizationDetails carries the granted RFC 9396 authorization details on an access token.
 	ClaimAuthorizationDetails string = "authorization_details"
@@ -446,11 +448,16 @@ func GetStandardClaims() []string {
 	}
 }
 
-// Refusals an organization-unit-scoped token request can receive. OUAccessRefusal is deliberately
+// Refusals an organization-unit-scoped request can receive. OUAccessRefusal is deliberately
 // the same answer whether the unit does not exist or the client has no standing in it.
 const (
 	OUAccessRefusal = "Client is not authorized for the requested organization unit"
 
 	OUScopedGrantRefusal = "The grant type is not supported on the organization unit scoped " +
 		"token endpoint"
+
+	OUSignInRefusal  = "The subject cannot sign in to the requested organization unit"
+	AppSignInRefusal = "The subject cannot sign in to this application"
+
+	OUCodeRefusal = "The authorization code was not issued for the requested organization unit"
 )

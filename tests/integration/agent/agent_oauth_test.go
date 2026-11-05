@@ -372,6 +372,124 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentAuthCode_RefreshToken() {
 	ts.Assert().NotEmpty(refreshed.AccessToken)
 }
 
+// TestAgentAuthCode_ReachableOnlyFromItsOwnOU verifies that an agent signing users in with the authorization
+// code grant is used from its own OU only: a user of a child OU is not found, the child OU's authorize route
+// refuses the agent, and its own OU's route signs its own user in.
+func (ts *AgentOAuthFlowsTestSuite) TestAgentAuthCode_ReachableOnlyFromItsOwnOU() {
+	const agentClientID = "authcode_own_ou_agent_client"
+	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "agent-oauth-flows-child", Name: "Agent OAuth Flows Child", Parent: &ts.ouID,
+	})
+	ts.Require().NoError(err, "Failed to create the child OU")
+	defer func() {
+		if err := testutils.DeleteOrganizationUnit(childOUID); err != nil {
+			ts.T().Logf("teardown: delete the child OU: %v", err)
+		}
+	}()
+	childUserAttributes, err := json.Marshal(map[string]interface{}{
+		"username": "agent-oauth-flow-child-user",
+		"password": oauthFlowsTestPassword,
+	})
+	ts.Require().NoError(err)
+	childUserID, err := testutils.CreateUser(testutils.User{
+		Type: "agent-oauth-flow-person", OUID: childOUID, Attributes: childUserAttributes,
+	})
+	ts.Require().NoError(err, "Failed to create the child OU's user")
+	defer func() {
+		if err := testutils.DeleteUser(childUserID); err != nil {
+			ts.T().Logf("teardown: delete the child OU's user: %v", err)
+		}
+	}()
+
+	agentID, err := createAgent(Agent{
+		OUID:             ts.ouID,
+		Type:             "default",
+		Attributes:       agentAttrs("authcode-own-ou-agent", nil),
+		AuthFlowID:       ts.authFlowID,
+		AllowedUserTypes: []string{"agent-oauth-flow-person"},
+		InboundAuthConfig: []InboundAuthConfig{
+			{
+				Type: "oauth2",
+				Config: &OAuthAgentConfig{
+					ClientID:                agentClientID,
+					ClientSecret:            "authcode_own_ou_agent_secret",
+					RedirectURIs:            []string{oauthFlowsRedirectURI},
+					GrantTypes:              []string{"authorization_code"},
+					ResponseTypes:           []string{"code"},
+					TokenEndpointAuthMethod: "client_secret_post",
+				},
+			},
+		},
+	})
+	ts.Require().NoError(err)
+	defer func() {
+		if err := deleteAgent(agentID); err != nil {
+			ts.T().Logf("teardown: delete the agent: %v", err)
+		}
+	}()
+
+	ts.Run("a user of a child OU is not found", func() {
+		step := ts.agentCredentialSignIn(ts.agentAuthorize("", agentClientID), "agent-oauth-flow-child-user")
+		ts.Empty(step.Assertion, "a user outside the agent's OU gets no assertion")
+		ts.Require().NotNil(step.Error, "the sign-in is refused: %+v", step)
+		ts.Equal("FET-1001", step.Error.Code, "a user outside the agent's OU is not found")
+	})
+	ts.Run("the child OU's route refuses the agent", func() {
+		resp := ts.agentAuthorize(childOUID, agentClientID)
+		defer resp.Body.Close()
+		ts.Require().Equal(http.StatusFound, resp.StatusCode)
+		redirect, err := url.Parse(resp.Header.Get("Location"))
+		ts.Require().NoError(err)
+		ts.Equal(oauthFlowsRedirectURI, redirect.Scheme+"://"+redirect.Host+redirect.Path,
+			"the refusal goes back to the client")
+		ts.Equal("unauthorized_client", redirect.Query().Get("error"))
+	})
+	ts.Run("its own OU's route signs its user in", func() {
+		step := ts.agentCredentialSignIn(ts.agentAuthorize(ts.ouID, agentClientID), oauthFlowsTestUsername)
+		ts.Require().Equal("COMPLETE", step.FlowStatus, "%+v", step.Error)
+		claims, err := testutils.DecodeJWT(step.Assertion)
+		ts.Require().NoError(err)
+		ts.Equal(ts.userID, claims.Sub)
+	})
+}
+
+// agentAuthorize sends an authorization request as the agent client, to the OU path when ouID is set.
+func (ts *AgentOAuthFlowsTestSuite) agentAuthorize(ouID, clientID string) *http.Response {
+	params := url.Values{}
+	params.Set("client_id", clientID)
+	params.Set("redirect_uri", oauthFlowsRedirectURI)
+	params.Set("response_type", "code")
+	params.Set("scope", "openid")
+	params.Set("state", "agent-own-ou-state")
+	path := "/oauth2/authorize"
+	if ouID != "" {
+		path = "/ou/" + ouID + path
+	}
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+path+"?"+params.Encode(), nil)
+	ts.Require().NoError(err)
+	client, err := testutils.NewSessionClient()
+	ts.Require().NoError(err)
+	resp, err := client.Do(req)
+	ts.Require().NoError(err)
+	return resp
+}
+
+// agentCredentialSignIn follows the authorize redirect to the sign-in and submits the user's credentials.
+func (ts *AgentOAuthFlowsTestSuite) agentCredentialSignIn(resp *http.Response, username string) *testutils.FlowStep {
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusFound, resp.StatusCode)
+	_, executionID, err := testutils.ExtractAuthData(resp.Header.Get("Location"))
+	ts.Require().NoError(err, "authorize redirects to the sign-in: %s", resp.Header.Get("Location"))
+	prompt, err := testutils.ExecuteAuthenticationFlow(executionID, nil, "")
+	ts.Require().NoError(err)
+	step, err := testutils.ExecuteAuthenticationFlow(executionID, map[string]string{
+		"username": username,
+		"password": oauthFlowsTestPassword,
+	}, "action_001", prompt.ChallengeToken)
+	ts.Require().NoError(err)
+	return step
+}
+
 // --- duplicate clientID ---
 
 // TestAgentCreate_DuplicateClientID verifies that creating an agent with a taken clientId returns 409.

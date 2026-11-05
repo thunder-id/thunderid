@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -149,6 +150,19 @@ func (h *authorizationCodeGrantHandler) issueTokens(ctx context.Context, tokenRe
 			}
 		}
 		attrs = userAttributes.Attributes
+	}
+
+	// The organization unit scoped endpoint redeems only a code issued for that unit, which the sign-in records
+	// as its ouId attribute when the application asks for it.
+	if accessingOUID := syscontext.GetAccessingOUID(ctx); accessingOUID != "" &&
+		grantType == providers.GrantTypeAuthorizationCode {
+		if ouID, _ := attrs[constants.ClaimOUID].(string); ouID != accessingOUID {
+			logger.Debug(ctx, "Authorization code was not issued for the requested organization unit")
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorInvalidGrant,
+				ErrorDescription: constants.OUCodeRefusal,
+			}
+		}
 	}
 
 	// Bind the token to a single target resource server. Prefer the token request's resource

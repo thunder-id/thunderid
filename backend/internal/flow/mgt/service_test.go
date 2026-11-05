@@ -3047,6 +3047,35 @@ func (s *FlowMgtServiceTestSuite) withSharing(sharingSvc *sharingmock.SharingSer
 	impl.sharingSvc = sharingSvc
 }
 
+// The sharing framework answers for owner and sharee alike, asked as the runtime: the caller may not read the
+// units above its own.
+func (s *FlowMgtServiceTestSuite) TestIsFlowVisible_AsksTheSharingFrameworkAsTheRuntime() {
+	for _, visible := range []bool{true, false} {
+		sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+		s.withSharing(sharingSvc)
+		sharingSvc.EXPECT().IsVisible(mock.MatchedBy(security.IsRuntimeContext), FlowSharingType, testFlowIDService,
+			"ou-child").Return(visible, nil).Once()
+
+		got, err := s.service.IsFlowVisible(context.Background(), testFlowIDService, "ou-child")
+
+		s.Nil(err)
+		s.Equal(visible, got)
+	}
+}
+
+func (s *FlowMgtServiceTestSuite) TestIsFlowVisible_TranslatesASharingError() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	sharingSvc.EXPECT().IsVisible(mock.Anything, FlowSharingType, testFlowIDService, "ou-child").
+		Return(false, &tidcommon.InternalServerError).Once()
+
+	got, err := s.service.IsFlowVisible(context.Background(), testFlowIDService, "ou-child")
+
+	s.False(got)
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
 func (s *FlowMgtServiceTestSuite) TestUpdateFlow_AFlowSharedWithTheUnitInTheRequestIsReadOnlyThroughIt() {
 	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
 	s.withSharing(sharingSvc)

@@ -95,12 +95,15 @@ type Session struct {
 
 // Participant records an application that has used (joined) an SSO session. A session is shared
 // across the applications that authenticate through its flow; each such application is tracked so
-// the session's audience is known — the basis for logout and subject-scoped revocation.
+// the session's audience is known — the basis for logout and subject-scoped revocation. An application
+// signed in under several organization units is one participant per unit, each with its own token family.
 type Participant struct {
 	// SessionID is the owning session's internal id.
 	SessionID string
 	// AppID is the participating application's id.
 	AppID string
+	// OUID is the organization unit the application signed in under, or empty when the sign-in had none.
+	OUID string
 	// TokenFamilyID is the token family id (tfid) minted for this application's most recent grant in
 	// the session. It links the session to the grant's tokens so logout can revoke the whole family.
 	// Refreshed on each re-authorization (latest grant wins); empty for participants recorded before

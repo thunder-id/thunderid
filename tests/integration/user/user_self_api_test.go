@@ -17,6 +17,9 @@ import (
 
 type SelfUserEndpointsSuite struct {
 	suite.Suite
+	// The user lives outside the default OU, and a sign-in is bounded to its application's OU, so it signs in
+	// through an application in its own OU rather than the Console.
+	signIn     testutils.OUSignInApps
 	ouID       string
 	schemaID   string
 	userClient *http.Client
@@ -74,12 +77,13 @@ func (s *SelfUserEndpointsSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.userID = userID
 
-	client, err := testutils.GetHTTPClientForUser(s.username, s.password)
+	client, err := s.signIn.HTTPClientForUser(s.ouID, s.username, s.password)
 	s.Require().NoError(err)
 	s.userClient = client
 }
 
 func (s *SelfUserEndpointsSuite) TearDownSuite() {
+	s.Require().NoError(s.signIn.DeleteAll())
 	if s.userID != "" {
 		s.Require().NoError(testutils.DeleteUser(s.userID))
 	}
@@ -192,7 +196,7 @@ func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentials() {
 
 	s.Require().Equal(http.StatusNoContent, resp.StatusCode)
 
-	client, err := testutils.GetHTTPClientForUser(s.username, newPassword)
+	client, err := s.signIn.HTTPClientForUser(s.ouID, s.username, newPassword)
 	s.Require().NoError(err)
 	s.userClient = client
 	s.password = newPassword
@@ -330,7 +334,7 @@ func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsMissingAttributesR
 	s.requireSelfError(resp, http.StatusBadRequest, "USR-1017")
 
 	// The rejected call must not have rotated or cleared the password.
-	client, err := testutils.GetHTTPClientForUser(s.username, s.password)
+	client, err := s.signIn.HTTPClientForUser(s.ouID, s.username, s.password)
 	s.Require().NoError(err, "the existing password must still authenticate")
 
 	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+"/users/me", nil)

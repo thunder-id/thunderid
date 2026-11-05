@@ -15,11 +15,13 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
+	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
@@ -845,6 +847,124 @@ func (suite *AuthorizeServiceTestSuite) TestAuthorizeWithSSOSession_CodeNotMinte
 			suite.Equal(tc.wantCode, authErr.Code)
 		})
 	}
+}
+
+// TestAuthorizeWithSSOSession_FlowStartsInTheRequestedUnit: the organization unit the request names reaches
+// the flow start, which bounds the sign-in to it.
+func (suite *AuthorizeServiceTestSuite) TestAuthorizeWithSSOSession_FlowStartsInTheRequestedUnit() {
+	svc := suite.wirePromptNone(promptNoneSession(time.Minute))
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.MatchedBy(func(ctx context.Context) bool {
+		return sysContext.GetAccessingOUID(ctx) == "ou-child"
+	}), mock.Anything).Return("exec-1", nil)
+	suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
+		string(providers.FlowTypeAuthentication), "", false, "", mock.Anything, "", "", "", mock.Anything).
+		Return(&flowexec.FlowStep{Status: providers.FlowStatusComplete, Assertion: svcJWTWithIat}, nil)
+	suite.mockAuthReqStore.EXPECT().GetRequest(mock.Anything, testAuthID).Return(true, authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{ClientID: "client-1", StandardScopes: []string{"openid"}},
+	}, nil)
+	suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, testAuthID).Return(nil)
+
+	code, authErr := svc.AuthorizeWithSSOSession(sysContext.WithAccessingOUID(context.Background(), "ou-child"),
+		promptNoneApp(), ssoSessionRequest())
+
+	suite.Require().Nil(authErr)
+	suite.Require().NotNil(code)
+}
+
+// TestAuthorizeWithSSOSession_SignInBoundaryRefusal: a silent flow the sign-in boundary refuses, at its start
+// or at its end, is an invalid grant that names no organization unit, never a server error or a prompt. Only
+// a request that named an organization unit is told the refusal is about one.
+func (suite *AuthorizeServiceTestSuite) TestAuthorizeWithSSOSession_SignInBoundaryRefusal() {
+	cases := []struct {
+		name        string
+		ouID        string
+		startErr    *tidcommon.ServiceError
+		stepErr     *tidcommon.ServiceError
+		wantMessage string
+	}{
+		{"the unit refuses the start", "ou-child", &flowexec.ErrorInvalidOrganizationUnit, nil,
+			oauth2const.OUSignInRefusal},
+		{"no unit was decided", "ou-child", nil, &executor.ErrOrganizationNotResolved,
+			oauth2const.OUSignInRefusal},
+		{"the subject is not eligible in the unit", "ou-child", nil, &executor.ErrNoAccessToApplication,
+			oauth2const.OUSignInRefusal},
+		{"no unit named and none decided", "", nil, &executor.ErrOrganizationNotResolved,
+			oauth2const.AppSignInRefusal},
+		{"no unit named and the subject not eligible", "", nil, &executor.ErrNoAccessToApplication,
+			oauth2const.AppSignInRefusal},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc := suite.wirePromptNone(promptNoneSession(time.Minute))
+			suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil).Once()
+			if tc.startErr != nil {
+				suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).
+					Return("", tc.startErr).Once()
+			} else {
+				suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).
+					Return("exec-1", nil).Once()
+				suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
+					string(providers.FlowTypeAuthentication), "", false, "", mock.Anything, "", "", "", mock.Anything).
+					Return(&flowexec.FlowStep{Status: providers.FlowStatusError, Error: tc.stepErr,
+						ErrorAssertion: "error-assertion"}, nil).Once()
+				suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, testAuthID).Return(nil).Once()
+			}
+			ctx := context.Background()
+			if tc.ouID != "" {
+				ctx = sysContext.WithAccessingOUID(ctx, tc.ouID)
+			}
+
+			code, authErr := svc.AuthorizeWithSSOSession(ctx, promptNoneApp(), ssoSessionRequest())
+
+			suite.Nil(code)
+			suite.Require().NotNil(authErr)
+			suite.Equal(oauth2const.ErrorInvalidGrant, authErr.Code)
+			suite.Equal(tc.wantMessage, authErr.Message)
+			suite.False(authErr.SendErrorToClient)
+		})
+	}
+}
+
+// TestStartAuthorizationFlow_NoRefusalFailsClosed: an organization unit refusal with no answer supplied by the
+// caller is a server error, never an empty start.
+func (suite *AuthorizeServiceTestSuite) TestStartAuthorizationFlow_NoRefusalFailsClosed() {
+	svc := suite.newService()
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).
+		Return("", &flowexec.ErrorInvalidOrganizationUnit)
+	oauthParams := &oauth2model.OAuthParameters{
+		ClientID: "client-1", RedirectURI: "https://client.example.com/callback", State: "test-state",
+	}
+
+	authID, executionID, authErr := svc.startAuthorizationFlow(
+		sysContext.WithAccessingOUID(context.Background(), "ou-child"), oauthParams, promptNoneApp(), nil, nil, nil)
+
+	suite.Empty(authID)
+	suite.Empty(executionID)
+	suite.Require().NotNil(authErr)
+	suite.Equal(oauth2const.ErrorServerError, authErr.Code)
+	suite.Equal("test-state", authErr.State)
+}
+
+// TestAuthorizeWithSSOSession_OtherFlowErrorNeedsTheUser: a flow that ends in an error the boundary did not
+// raise still needs the user.
+func (suite *AuthorizeServiceTestSuite) TestAuthorizeWithSSOSession_OtherFlowErrorNeedsTheUser() {
+	svc := suite.wirePromptNone(promptNoneSession(time.Minute))
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).Return("exec-1", nil)
+	suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
+		string(providers.FlowTypeAuthentication), "", false, "", mock.Anything, "", "", "", mock.Anything).
+		Return(&flowexec.FlowStep{Status: providers.FlowStatusError,
+			Error: &flowexec.ErrorNodeResponse}, nil)
+	suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, testAuthID).Return(nil)
+
+	code, authErr := svc.AuthorizeWithSSOSession(context.Background(), promptNoneApp(), ssoSessionRequest())
+
+	suite.Nil(code)
+	suite.Require().NotNil(authErr)
+	suite.Equal(oauth2const.ErrorLoginRequired, authErr.Code)
 }
 
 // TestAuthorizeWithSSOSession_SingleResourceOnly: a token is bound to one resource server, so more than

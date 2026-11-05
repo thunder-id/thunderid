@@ -416,8 +416,11 @@ func (ts *MCPTestSuite) TestInitialize_SuspendedOperatorToken_Rejected() {
 	ts.Require().NoError(err, "failed to grant the operator the system permission")
 	defer func() { _ = testutils.DeleteRole(roleID) }()
 
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword("CONSOLE", testServerURL+"/console", "system",
-		username, password, true, "", mcpResourceIdentifier)
+	// The operator lives in the suite's OU, and a sign-in is bounded to its application's OU, so it signs in
+	// through an application there rather than the Console.
+	var signIn testutils.OUSignInApps
+	defer func() { _ = signIn.DeleteAll() }()
+	tokenResp, err := signIn.ObtainAccessToken(ts.ouID, "system", username, password, mcpResourceIdentifier)
 	ts.Require().NoError(err, "the operator must sign in")
 	resp := ts.initializeMCPSession(tokenResp.AccessToken)
 	resp.Body.Close()
@@ -520,10 +523,14 @@ const (
 // tokens live for a few seconds, and it is accepted before it expires, so expiry is the only reason
 // left to reject it.
 func (ts *MCPTestSuite) TestInitialize_ExpiredToken_Rejected() {
+	// The administrator signs in, and a sign-in is bounded to its application's OU, so the application lives
+	// in the administrator's OU.
+	adminOUID, err := testutils.DefaultOUID()
+	ts.Require().NoError(err, "failed to find the administrator's organization unit")
 	appID, err := testutils.CreateApplication(testutils.Application{
 		Name:        "MCP Short-Lived Token Test App",
 		Description: "Application whose access tokens expire seconds after they are issued",
-		OUID:        ts.ouID,
+		OUID:        adminOUID,
 		Type:        "fullstack",
 		InboundAuthConfig: []map[string]interface{}{
 			{
@@ -612,8 +619,11 @@ func (ts *MCPTestSuite) TestInitialize_TokenWithoutSystemPermission_Forbidden() 
 	)
 	ts.createOperator(username, password)
 
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword("CONSOLE", testServerURL+"/console", "system",
-		username, password, true, "", mcpResourceIdentifier)
+	// The operator lives in the suite's OU, and a sign-in is bounded to its application's OU, so it signs in
+	// through an application there rather than the Console.
+	var signIn testutils.OUSignInApps
+	defer func() { _ = signIn.DeleteAll() }()
+	tokenResp, err := signIn.ObtainAccessToken(ts.ouID, "system", username, password, mcpResourceIdentifier)
 	ts.Require().NoError(err, "the operator must sign in")
 
 	resp := ts.initializeMCPSession(tokenResp.AccessToken)
@@ -684,10 +694,14 @@ const (
 // at the REST gate. Deletion revokes the application's OAuth client, so the token's subject is still
 // valid and only the client check refuses it.
 func (ts *MCPTestSuite) TestInitialize_DeletedApplicationToken_Rejected() {
+	// The administrator signs in, and a sign-in is bounded to its application's OU, so the application lives
+	// in the administrator's OU.
+	adminOUID, err := testutils.DefaultOUID()
+	ts.Require().NoError(err, "failed to find the administrator's organization unit")
 	appID, err := testutils.CreateApplication(testutils.Application{
 		Name:        "MCP App Revocation Test App",
 		Description: "Application whose token is used at /mcp before and after deletion",
-		OUID:        ts.ouID,
+		OUID:        adminOUID,
 		Type:        "fullstack",
 		InboundAuthConfig: []map[string]interface{}{
 			{

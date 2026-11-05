@@ -14923,6 +14923,902 @@
   {
     "resourceType": "TEMPLATE",
     "category": "STARTER",
+    "type": "DEFAULT",
+    "flowType": "INVITATION",
+    "display": {
+      "label": "Invite into Organization",
+      "description": "Invite a user of one user type into your organization unit and assign roles once they accept",
+      "image": "assets/images/icons/user-plus.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Invitation Flow",
+      "handle": "invitation-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "permission_validator"
+        },
+        {
+          "id": "permission_validator",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "requiredScopes": ["system"]
+          },
+          "executor": {
+            "name": "PermissionValidator"
+          },
+          "onSuccess": "resolve_user_type"
+        },
+        {
+          "id": "resolve_user_type",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "allowedUserTypes": []
+          },
+          "executor": {
+            "name": "UserTypeResolver"
+          },
+          "onSuccess": "prompt_email"
+        },
+        {
+          "id": "prompt_email",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_header_email",
+                "label": "{{ t(invitation:forms.email.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_subtitle_email",
+                "label": "{{ t(invitation:forms.email.subtitle) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_email",
+                "components": [
+                  {
+                    "id": "input_prompt_email",
+                    "ref": "email",
+                    "type": "EMAIL_INPUT",
+                    "label": "{{ t(invitation:forms.email.fields.email.label) }}",
+                    "required": true,
+                    "placeholder": "{{ t(invitation:forms.email.fields.email.placeholder) }}"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_submit_email",
+                    "label": "{{ t(invitation:forms.email.actions.next.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_prompt_email",
+                  "identifier": "email",
+                  "type": "EMAIL_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_submit_email",
+                "nextNode": "identify_user"
+              }
+            }
+          ]
+        },
+        {
+          "id": "identify_user",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "boundToUserType": true,
+            "continueOnNoMatch": true
+          },
+          "executor": {
+            "name": "IdentifyingExecutor",
+            "mode": "identify",
+            "inputs": [
+              {
+                "identifier": "email",
+                "type": "EMAIL_INPUT",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "validate_existing",
+          "onIncomplete": "prompt_new_user",
+          "onFailure": "prompt_email"
+        },
+        {
+          "id": "prompt_new_user",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_new_user",
+                "label": "{{ t(invitation:forms.new_user.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "description_new_user",
+                "label": "{{ t(invitation:forms.new_user.description) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_new_user",
+                "components": [
+                  {
+                    "type": "STACK",
+                    "id": "stack_new_user_actions",
+                    "direction": "row",
+                    "justify": "center",
+                    "components": [
+                      {
+                        "type": "ACTION",
+                        "id": "action_invite_new",
+                        "label": "{{ t(invitation:forms.new_user.actions.invite.label) }}",
+                        "variant": "PRIMARY",
+                        "eventType": "SUBMIT"
+                      },
+                      {
+                        "type": "ACTION",
+                        "id": "action_change_email",
+                        "label": "{{ t(invitation:forms.new_user.actions.change_email.label) }}",
+                        "variant": "OUTLINED",
+                        "eventType": "SUBMIT"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "ref": "action_invite_new",
+                "nextNode": "validate_new"
+              }
+            },
+            {
+              "action": {
+                "ref": "action_change_email",
+                "nextNode": "prompt_email"
+              }
+            }
+          ]
+        },
+        {
+          "id": "validate_existing",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "resourceType": "user",
+            "resourceId": "{{ctx(userID)}}",
+            "targetOuId": "{{ctx(ouId)}}"
+          },
+          "executor": {
+            "name": "SharingExecutor",
+            "mode": "validate"
+          },
+          "onSuccess": "select_roles_existing",
+          "onFailure": "prompt_email"
+        },
+        {
+          "id": "select_roles_existing",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "RoleExecutor",
+            "mode": "role_selection"
+          },
+          "onSuccess": "invite_generate_existing",
+          "onIncomplete": "prompt_roles_existing"
+        },
+        {
+          "id": "prompt_roles_existing",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_roles_existing",
+                "label": "{{ t(invitation:forms.roles.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "subtitle_roles_existing",
+                "label": "{{ t(invitation:forms.roles.subtitle) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_roles_existing",
+                "components": [
+                  {
+                    "type": "ROLE_SELECT",
+                    "id": "roles_input_existing",
+                    "ref": "roles",
+                    "label": "{{ t(invitation:forms.roles.fields.roles.label) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_roles_existing",
+                    "label": "{{ t(invitation:forms.roles.actions.invite.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "roles_input_existing",
+                  "identifier": "roles",
+                  "type": "ROLE_SELECT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_roles_existing",
+                "nextNode": "select_roles_existing"
+              }
+            }
+          ]
+        },
+        {
+          "id": "invite_generate_existing",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "generate"
+          },
+          "onSuccess": "send_invite_email_existing"
+        },
+        {
+          "id": "send_invite_email_existing",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "emailTemplate": "invitation"
+          },
+          "executor": {
+            "name": "EmailExecutor",
+            "mode": "send",
+            "inputs": [
+              {
+                "identifier": "email",
+                "type": "EMAIL_INPUT",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "invite_sent_existing",
+          "onFailure": "invite_email_unavailable_existing"
+        },
+        {
+          "id": "invite_sent_existing",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_sent_existing_icon",
+                "label": "✅",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_sent_existing_heading",
+                "label": "{{ t(invitation:forms.invite_sent.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_sent_existing_message",
+                "label": "{{ t(invitation:forms.invite_sent.description) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Invitation sent",
+          "next": "invite_verify_existing"
+        },
+        {
+          "id": "invite_email_unavailable_existing",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_email_unavailable_existing_icon",
+                "label": "⚠️",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_email_unavailable_existing_heading",
+                "label": "{{ t(invitation:forms.invite_email_unavailable.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_email_unavailable_existing_message",
+                "label": "{{ t(invitation:forms.invite_email_unavailable.description) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "COPYABLE_TEXT",
+                "id": "invite_link_copyable_existing",
+                "label": "{{ t(invitation:forms.invite_email_unavailable.link_label) }}",
+                "source": "inviteLink"
+              }
+            ]
+          },
+          "message": "Email delivery failed",
+          "next": "invite_verify_existing"
+        },
+        {
+          "id": "invite_verify_existing",
+          "type": "TASK_EXECUTION",
+          "inputs": [
+            {
+              "ref": "input_invite_token_existing",
+              "identifier": "inviteToken",
+              "type": "HIDDEN",
+              "required": true
+            }
+          ],
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "verify"
+          },
+          "onSuccess": "prompt_accept_existing"
+        },
+        {
+          "id": "prompt_accept_existing",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_accept_existing",
+                "label": "{{ t(invitation:forms.accept.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "description_accept_existing",
+                "label": "{{ t(invitation:forms.accept.description) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_accept_existing",
+                "components": [
+                  {
+                    "type": "STACK",
+                    "id": "stack_accept_actions_existing",
+                    "direction": "row",
+                    "justify": "center",
+                    "components": [
+                      {
+                        "type": "ACTION",
+                        "id": "action_accept_existing",
+                        "label": "{{ t(invitation:forms.accept.actions.accept.label) }}",
+                        "variant": "PRIMARY",
+                        "eventType": "SUBMIT"
+                      },
+                      {
+                        "type": "ACTION",
+                        "id": "action_decline_existing",
+                        "label": "{{ t(invitation:forms.accept.actions.decline.label) }}",
+                        "variant": "OUTLINED",
+                        "eventType": "SUBMIT"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "ref": "action_accept_existing",
+                "nextNode": "share_user"
+              }
+            },
+            {
+              "action": {
+                "ref": "action_decline_existing",
+                "nextNode": "declined"
+              }
+            }
+          ]
+        },
+        {
+          "id": "validate_new",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "resourceType": "user",
+            "owningOuId": "{{ctx(defaultOUID)}}",
+            "targetOuId": "{{ctx(ouId)}}"
+          },
+          "executor": {
+            "name": "SharingExecutor",
+            "mode": "validate"
+          },
+          "onSuccess": "select_roles_new",
+          "onFailure": "prompt_email"
+        },
+        {
+          "id": "select_roles_new",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "RoleExecutor",
+            "mode": "role_selection"
+          },
+          "onSuccess": "invite_generate_new",
+          "onIncomplete": "prompt_roles_new"
+        },
+        {
+          "id": "prompt_roles_new",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_roles_new",
+                "label": "{{ t(invitation:forms.roles.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "subtitle_roles_new",
+                "label": "{{ t(invitation:forms.roles.subtitle) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_roles_new",
+                "components": [
+                  {
+                    "type": "ROLE_SELECT",
+                    "id": "roles_input_new",
+                    "ref": "roles",
+                    "label": "{{ t(invitation:forms.roles.fields.roles.label) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_roles_new",
+                    "label": "{{ t(invitation:forms.roles.actions.invite.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "roles_input_new",
+                  "identifier": "roles",
+                  "type": "ROLE_SELECT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_roles_new",
+                "nextNode": "select_roles_new"
+              }
+            }
+          ]
+        },
+        {
+          "id": "invite_generate_new",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "generate"
+          },
+          "onSuccess": "send_invite_email_new"
+        },
+        {
+          "id": "send_invite_email_new",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "emailTemplate": "invitation"
+          },
+          "executor": {
+            "name": "EmailExecutor",
+            "mode": "send",
+            "inputs": [
+              {
+                "identifier": "email",
+                "type": "EMAIL_INPUT",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "invite_sent_new",
+          "onFailure": "invite_email_unavailable_new"
+        },
+        {
+          "id": "invite_sent_new",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_sent_new_icon",
+                "label": "✅",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_sent_new_heading",
+                "label": "{{ t(invitation:forms.invite_sent.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_sent_new_message",
+                "label": "{{ t(invitation:forms.invite_sent.description) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Invitation sent",
+          "next": "invite_verify_new"
+        },
+        {
+          "id": "invite_email_unavailable_new",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_email_unavailable_new_icon",
+                "label": "⚠️",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_email_unavailable_new_heading",
+                "label": "{{ t(invitation:forms.invite_email_unavailable.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_email_unavailable_new_message",
+                "label": "{{ t(invitation:forms.invite_email_unavailable.description) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "COPYABLE_TEXT",
+                "id": "invite_link_copyable_new",
+                "label": "{{ t(invitation:forms.invite_email_unavailable.link_label) }}",
+                "source": "inviteLink"
+              }
+            ]
+          },
+          "message": "Email delivery failed",
+          "next": "invite_verify_new"
+        },
+        {
+          "id": "invite_verify_new",
+          "type": "TASK_EXECUTION",
+          "inputs": [
+            {
+              "ref": "input_invite_token_new",
+              "identifier": "inviteToken",
+              "type": "HIDDEN",
+              "required": true
+            }
+          ],
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "verify"
+          },
+          "onSuccess": "prompt_accept_new"
+        },
+        {
+          "id": "prompt_accept_new",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_accept_new",
+                "label": "{{ t(invitation:forms.accept.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "description_accept_new",
+                "label": "{{ t(invitation:forms.accept.description) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_accept_new",
+                "components": [
+                  {
+                    "type": "STACK",
+                    "id": "stack_accept_actions_new",
+                    "direction": "row",
+                    "justify": "center",
+                    "components": [
+                      {
+                        "type": "ACTION",
+                        "id": "action_accept_new",
+                        "label": "{{ t(invitation:forms.accept.actions.accept.label) }}",
+                        "variant": "PRIMARY",
+                        "eventType": "SUBMIT"
+                      },
+                      {
+                        "type": "ACTION",
+                        "id": "action_decline_new",
+                        "label": "{{ t(invitation:forms.accept.actions.decline.label) }}",
+                        "variant": "OUTLINED",
+                        "eventType": "SUBMIT"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "ref": "action_accept_new",
+                "nextNode": "create_user"
+              }
+            },
+            {
+              "action": {
+                "ref": "action_decline_new",
+                "nextNode": "declined"
+              }
+            }
+          ]
+        },
+        {
+          "id": "create_user",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "provisioningOU": "userType",
+            "includeOptional": true,
+            "includeOptionalCredentials": true
+          },
+          "executor": {
+            "name": "ProvisioningExecutor"
+          },
+          "onSuccess": "share_user",
+          "onIncomplete": "prompt_new_user_details"
+        },
+        {
+          "id": "prompt_new_user_details",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_user_details",
+                "label": "{{ t(invitation:forms.user_details.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "subtitle_user_details",
+                "label": "{{ t(invitation:forms.user_details.subtitle) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_user_details",
+                "components": [
+                  {
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs_user_details"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_user_details",
+                    "label": "{{ t(invitation:forms.user_details.actions.submit.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_user_details",
+                "nextNode": "create_user"
+              }
+            }
+          ]
+        },
+        {
+          "id": "share_user",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "resourceType": "user",
+            "resourceId": "{{ctx(userID)}}",
+            "targetOuId": "{{ctx(ouId)}}"
+          },
+          "executor": {
+            "name": "SharingExecutor",
+            "mode": "share"
+          },
+          "onSuccess": "assign_roles"
+        },
+        {
+          "id": "assign_roles",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "RoleExecutor",
+            "mode": "role_assignment"
+          },
+          "onSuccess": "joined",
+          "onFailure": "joined_without_roles"
+        },
+        {
+          "id": "joined",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "joined_icon",
+                "label": "✅",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "joined_heading",
+                "label": "{{ t(invitation:forms.complete.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "joined_message",
+                "label": "{{ t(invitation:forms.complete.description) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Invitation accepted",
+          "next": "end"
+        },
+        {
+          "id": "joined_without_roles",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "joined_without_roles_icon",
+                "label": "⚠️",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "joined_without_roles_heading",
+                "label": "{{ t(invitation:forms.complete_without_roles.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "joined_without_roles_message",
+                "label": "{{ t(invitation:forms.complete_without_roles.description) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Invitation accepted without roles",
+          "next": "end"
+        },
+        {
+          "id": "declined",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "declined_icon",
+                "label": "ℹ️",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "declined_heading",
+                "label": "{{ t(invitation:forms.declined.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "declined_message",
+                "label": "{{ t(invitation:forms.declined.description) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Invitation declined",
+          "next": "end"
+        },
+        {
+          "id": "end",
+          "type": "END"
+        }
+      ]
+    },
+    "nodes": []
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "STARTER",
     "type": "BLANK",
     "flowType": "RECOVERY",
     "display": {

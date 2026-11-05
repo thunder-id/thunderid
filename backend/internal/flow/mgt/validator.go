@@ -270,10 +270,24 @@ var companionExecutors = map[string][]companionExecutor{
 
 // modeFlowTypes limits an executor mode to fewer flow types than the executor supports. Identity
 // governance suspends and unsuspends only in an administration flow; a recovery flow runs only unlock.
+// The role executor applies a revocation plan only in an administration flow, and selects and assigns
+// roles only in an invitation flow. The sharing executor authorizes a share only in an invitation flow.
 var modeFlowTypes = map[string]map[string][]providers.FlowType{
 	executormeta.ExecutorNameIdentityGovernance: {
 		executormeta.ExecutorModeSuspend:   {providers.FlowTypeAdministration},
 		executormeta.ExecutorModeUnsuspend: {providers.FlowTypeAdministration},
+	},
+	executormeta.ExecutorNameRole: {
+		executormeta.ExecutorModeRoleAssignmentRemoval: {providers.FlowTypeAdministration},
+		executormeta.ExecutorModeRoleDeletion:          {providers.FlowTypeAdministration},
+		executormeta.ExecutorModeRolePermissionRemoval: {providers.FlowTypeAdministration},
+		executormeta.ExecutorModeRoleSelection:         {providers.FlowTypeInvitation},
+		executormeta.ExecutorModeRoleAssignment:        {providers.FlowTypeInvitation},
+	},
+	executormeta.ExecutorNameSharing: {
+		executormeta.ExecutorModeValidate: {providers.FlowTypeInvitation},
+		executormeta.ExecutorModeShare: {providers.FlowTypeInvitation, providers.FlowTypeAuthentication,
+			providers.FlowTypeRegistration},
 	},
 }
 
@@ -288,12 +302,55 @@ func (v *flowValidator) validateFlowTypeBasedConstraints(
 	if svcErr := v.validateModeFlowTypes(flowType, nodes); svcErr != nil {
 		return svcErr
 	}
+	if svcErr := validateOUResolverPlacement(flowType, nodes); svcErr != nil {
+		return svcErr
+	}
 	if flowType == providers.FlowTypeDeviceGrant {
 		if svcErr := validateDeviceGrantAuthenticationCall(nodes); svcErr != nil {
 			return svcErr
 		}
 	}
 	return v.validateCompanionExecutors(nodes)
+}
+
+// validateOUResolverPlacement refuses an authentication flow that can reach an OU resolver node from a session
+// node, where a reused session has already signed in without the organization unit the resolver decides.
+func validateOUResolverPlacement(
+	flowType providers.FlowType, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	if flowType != providers.FlowTypeAuthentication {
+		return nil
+	}
+	executors := make(map[string]string, len(nodes))
+	for _, node := range nodes {
+		if node.Type == string(common.NodeTypeTaskExecution) && node.Executor != nil {
+			executors[node.ID] = node.Executor.Name
+		}
+	}
+	adjacency := buildAdjacencyList(nodes)
+	for _, node := range nodes {
+		if executors[node.ID] != executormeta.ExecutorNameSession {
+			continue
+		}
+		visited := map[string]bool{node.ID: true}
+		queue := slices.Clone(adjacency[node.ID])
+		for len(queue) > 0 {
+			current := queue[0]
+			queue = queue[1:]
+			if visited[current] {
+				continue
+			}
+			visited[current] = true
+			if executors[current] == executormeta.ExecutorNameOUResolver {
+				return ErrorOUResolverAfterSession.WithParams(map[string]string{
+					"nodeID":        current,
+					"sessionNodeID": node.ID,
+				})
+			}
+			queue = append(queue, adjacency[current]...)
+		}
+	}
+	return nil
 }
 
 // validateModeFlowTypes returns an error when a node runs an executor in a mode the flow type cannot
@@ -305,7 +362,12 @@ func (v *flowValidator) validateModeFlowTypes(
 		if node.Type != string(common.NodeTypeTaskExecution) || node.Executor == nil {
 			continue
 		}
-		flowTypes, ok := modeFlowTypes[node.Executor.Name][node.Executor.Mode]
+		mode := node.Executor.Mode
+		if mode == "" {
+			meta, _ := executormeta.MetaFor(node.Executor.Name)
+			mode = meta.DefaultMode
+		}
+		flowTypes, ok := modeFlowTypes[node.Executor.Name][mode]
 		if !ok || slices.Contains(flowTypes, flowType) {
 			continue
 		}
@@ -316,7 +378,7 @@ func (v *flowValidator) validateModeFlowTypes(
 			Params: map[string]string{
 				"nodeID":       node.ID,
 				"executorName": node.Executor.Name,
-				"mode":         node.Executor.Mode,
+				"mode":         mode,
 				"flowType":     string(flowType),
 			},
 		})

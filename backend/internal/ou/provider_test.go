@@ -4,12 +4,16 @@
 package ou
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -207,4 +211,237 @@ func (suite *OUProviderTestSuite) TestGetOrganizationUnitChildrenHandlesNilPage(
 // NewOrganizationUnitProvider returns a provider backed by the given service.
 func (suite *OUProviderTestSuite) TestNewProviderReturnsProvider() {
 	suite.NotNil(NewOrganizationUnitProvider(suite.mockService))
+}
+
+const (
+	signInAppID  = "app-1"
+	signInUserID = "user-1"
+)
+
+// eligibilityProvider returns a provider whose sign-in eligibility the returned resolvers answer.
+func (suite *OUProviderTestSuite) eligibilityProvider() (providers.OrganizationUnitProvider,
+	*entityEligibilityResolverMock, *applicationAccessResolverMock) {
+	users := newEntityEligibilityResolverMock(suite.T())
+	applications := newApplicationAccessResolverMock(suite.T())
+	provider := NewOrganizationUnitProvider(suite.mockService)
+	provider.SetSignInEligibilityResolvers(users, applications)
+	return provider, users, applications
+}
+
+// boolPtr returns a pointer to b.
+func boolPtr(b bool) *bool { return &b }
+
+// signInCtx returns a context carrying the sign-in boundary of signInAppID with the given signed-in subject.
+func (suite *OUProviderTestSuite) signInCtx(entityID string) context.Context {
+	return authnprovidercm.WithSignInBoundary(suite.T().Context(),
+		authnprovidercm.SignInBoundary{ApplicationID: signInAppID, EntityID: entityID})
+}
+
+// A provider whose resolvers were never injected refuses every eligibility question.
+func (suite *OUProviderTestSuite) TestEligibilityIsRefusedUntilTheResolversAreSet() {
+	provider := NewOrganizationUnitProvider(suite.mockService)
+	ctx := suite.signInCtx(signInUserID)
+
+	ouIDs, svcErr := provider.GetEligibleOUs(ctx)
+	suite.Equal(&tidcommon.InternalServerError, svcErr)
+	suite.Nil(ouIDs)
+
+	eligible, svcErr := provider.IsEligibleOU(ctx, providerTestOUID)
+	suite.Equal(&tidcommon.InternalServerError, svcErr)
+	suite.False(eligible)
+
+	shared, svcErr := provider.IsApplicationShared(ctx)
+	suite.Equal(&tidcommon.InternalServerError, svcErr)
+	suite.False(shared)
+}
+
+// The signed-in user's organization units are kept where the application is usable.
+func (suite *OUProviderTestSuite) TestGetEligibleOUsListsTheSignedInUsersOUsTheApplicationIsUsableFrom() {
+	provider, users, applications := suite.eligibilityProvider()
+	ctx := suite.signInCtx(signInUserID)
+	users.EXPECT().EntityOUs(ctx, signInUserID).Return([]string{"ou-a", "ou-b", "ou-c"}, true, nil).Once()
+	applications.EXPECT().IsClientAccessibleFromOUByEntityID(ctx, signInAppID, "ou-a").Return(true, nil).Once()
+	applications.EXPECT().IsClientAccessibleFromOUByEntityID(ctx, signInAppID, "ou-b").Return(false, nil).Once()
+	applications.EXPECT().IsClientAccessibleFromOUByEntityID(ctx, signInAppID, "ou-c").
+		Return(false, &ErrorOrganizationUnitNotFound).Once()
+
+	ouIDs, svcErr := provider.GetEligibleOUs(ctx)
+
+	suite.Nil(svcErr)
+	suite.Equal([]string{"ou-a"}, ouIDs)
+}
+
+// A sign-in that fixed its organization unit lists that one alone, when the user is in it.
+func (suite *OUProviderTestSuite) TestGetEligibleOUsKeepsTheFixedOU() {
+	provider, users, applications := suite.eligibilityProvider()
+	ctx := authnprovidercm.WithSignInBoundary(suite.T().Context(),
+		authnprovidercm.SignInBoundary{OUID: "ou-b", ApplicationID: signInAppID, EntityID: signInUserID})
+	users.EXPECT().EntityOUs(ctx, signInUserID).Return([]string{"ou-a", "ou-b"}, true, nil).Once()
+	applications.EXPECT().IsClientAccessibleFromOUByEntityID(ctx, signInAppID, "ou-b").Return(true, nil).Once()
+
+	ouIDs, svcErr := provider.GetEligibleOUs(ctx)
+
+	suite.Nil(svcErr)
+	suite.Equal([]string{"ou-b"}, ouIDs)
+}
+
+// Without a signed-in user the entity store holds, no organization unit is listed.
+func (suite *OUProviderTestSuite) TestGetEligibleOUsListsNothingWithoutAUser() {
+	cases := []struct {
+		name    string
+		ctx     func() context.Context
+		arrange func(users *entityEligibilityResolverMock)
+	}{
+		{"no sign-in boundary", suite.T().Context, func(*entityEligibilityResolverMock) {}},
+		{"no signed-in user", func() context.Context { return suite.signInCtx("") },
+			func(*entityEligibilityResolverMock) {}},
+		{"a user the entity store does not hold", func() context.Context { return suite.signInCtx(signInUserID) },
+			func(users *entityEligibilityResolverMock) {
+				users.EXPECT().EntityOUs(mock.Anything, signInUserID).Return(nil, false, nil).Once()
+			}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			provider, users, _ := suite.eligibilityProvider()
+			tc.arrange(users)
+
+			ouIDs, svcErr := provider.GetEligibleOUs(tc.ctx())
+
+			suite.Equal(&ErrorSignedInUserRequired, svcErr)
+			suite.Nil(ouIDs)
+		})
+	}
+}
+
+func (suite *OUProviderTestSuite) TestGetEligibleOUsResolverFailureIsAServerError() {
+	provider, users, _ := suite.eligibilityProvider()
+	users.EXPECT().EntityOUs(mock.Anything, signInUserID).Return(nil, false, errors.New("store down")).Once()
+
+	ouIDs, svcErr := provider.GetEligibleOUs(suite.signInCtx(signInUserID))
+
+	suite.Equal(&tidcommon.InternalServerError, svcErr)
+	suite.Nil(ouIDs)
+}
+
+// With a signed-in user the entity store holds, the organization unit must be one the user is in and the
+// application is usable from.
+func (suite *OUProviderTestSuite) TestIsEligibleOUAsksTheUsersOUsAndTheApplication() {
+	cases := []struct {
+		name      string
+		userOUIDs []string
+		usable    *bool
+		want      bool
+	}{
+		{"the user is in it and the application is usable", []string{"ou-other", providerTestOUID},
+			boolPtr(true), true},
+		{"the user is in it and the application is not usable", []string{providerTestOUID}, boolPtr(false), false},
+		{"the user is not in it", []string{"ou-other"}, nil, false},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			provider, users, applications := suite.eligibilityProvider()
+			users.EXPECT().EntityOUs(mock.Anything, signInUserID).Return(tc.userOUIDs, true, nil).Once()
+			if tc.usable != nil {
+				applications.EXPECT().IsClientAccessibleFromOUByEntityID(mock.Anything, signInAppID, providerTestOUID).
+					Return(*tc.usable, nil).Once()
+			}
+
+			eligible, svcErr := provider.IsEligibleOU(suite.signInCtx(signInUserID), providerTestOUID)
+
+			suite.Nil(svcErr)
+			suite.Equal(tc.want, eligible)
+		})
+	}
+}
+
+// Before sign-in, or for a user the entity store does not hold, the organization unit must be one the
+// application is usable from.
+func (suite *OUProviderTestSuite) TestIsEligibleOUAsksTheApplicationWithoutAUserTheStoreHolds() {
+	cases := []struct {
+		name     string
+		entityID string
+	}{
+		{"before sign-in", ""},
+		{"a user the entity store does not hold", signInUserID},
+	}
+	for _, tc := range cases {
+		for _, usable := range []bool{true, false} {
+			suite.Run(fmt.Sprintf("%s, usable %t", tc.name, usable), func() {
+				provider, users, applications := suite.eligibilityProvider()
+				if tc.entityID != "" {
+					users.EXPECT().EntityOUs(mock.Anything, tc.entityID).Return(nil, false, nil).Once()
+				}
+				applications.EXPECT().IsClientAccessibleFromOUByEntityID(mock.Anything, signInAppID, providerTestOUID).
+					Return(usable, nil).Once()
+
+				eligible, svcErr := provider.IsEligibleOU(suite.signInCtx(tc.entityID), providerTestOUID)
+
+				suite.Nil(svcErr)
+				suite.Equal(usable, eligible)
+			})
+		}
+	}
+}
+
+// An organization unit the application check cannot resolve, such as one that does not exist, is not eligible.
+func (suite *OUProviderTestSuite) TestIsEligibleOUClientErrorIsNotEligible() {
+	provider, _, applications := suite.eligibilityProvider()
+	applications.EXPECT().IsClientAccessibleFromOUByEntityID(mock.Anything, signInAppID, providerTestOUID).
+		Return(false, &ErrorOrganizationUnitNotFound).Once()
+
+	eligible, svcErr := provider.IsEligibleOU(suite.signInCtx(""), providerTestOUID)
+
+	suite.Nil(svcErr)
+	suite.False(eligible)
+}
+
+func (suite *OUProviderTestSuite) TestIsEligibleOUFailuresAreServerErrors() {
+	suite.Run("user eligibility", func() {
+		provider, users, _ := suite.eligibilityProvider()
+		users.EXPECT().EntityOUs(mock.Anything, signInUserID).Return(nil, false, errors.New("store down")).Once()
+
+		eligible, svcErr := provider.IsEligibleOU(suite.signInCtx(signInUserID), providerTestOUID)
+
+		suite.Equal(&tidcommon.InternalServerError, svcErr)
+		suite.False(eligible)
+	})
+	suite.Run("application access", func() {
+		provider, _, applications := suite.eligibilityProvider()
+		applications.EXPECT().IsClientAccessibleFromOUByEntityID(mock.Anything, signInAppID, providerTestOUID).
+			Return(false, &tidcommon.InternalServerError).Once()
+
+		eligible, svcErr := provider.IsEligibleOU(suite.signInCtx(""), providerTestOUID)
+
+		suite.Equal(&tidcommon.InternalServerError, svcErr)
+		suite.False(eligible)
+	})
+}
+
+// No organization unit is not one a sign-in may land in, and nothing is asked.
+func (suite *OUProviderTestSuite) TestIsEligibleOUWithoutAnOUIsNotEligible() {
+	provider, _, _ := suite.eligibilityProvider()
+
+	eligible, svcErr := provider.IsEligibleOU(suite.signInCtx(signInUserID), "")
+
+	suite.Nil(svcErr)
+	suite.False(eligible)
+}
+
+func (suite *OUProviderTestSuite) TestIsApplicationSharedAsksForTheSignInsApplication() {
+	for _, tc := range []struct {
+		shared bool
+		svcErr *tidcommon.ServiceError
+	}{
+		{shared: true},
+		{shared: false},
+		{svcErr: &tidcommon.InternalServerError},
+	} {
+		provider, _, applications := suite.eligibilityProvider()
+		applications.EXPECT().IsClientShared(mock.Anything, signInAppID).Return(tc.shared, tc.svcErr).Once()
+
+		shared, svcErr := provider.IsApplicationShared(suite.signInCtx(signInUserID))
+
+		suite.Equal(tc.svcErr, svcErr)
+		suite.Equal(tc.shared, shared)
+	}
 }

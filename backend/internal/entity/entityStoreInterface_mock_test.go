@@ -566,6 +566,98 @@ func (_c *entityStoreInterfaceMock_GetEntityListByOUIDs_Call) RunAndReturn(run f
 	return _c
 }
 
+// GetEntityListByProject provides a mock function for the type entityStoreInterfaceMock
+func (_mock *entityStoreInterfaceMock) GetEntityListByProject(ctx context.Context, category string, projectID string, ouIDs []string, limit int, offset int) ([]providers.Entity, error) {
+	ret := _mock.Called(ctx, category, projectID, ouIDs, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEntityListByProject")
+	}
+
+	var r0 []providers.Entity
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, []string, int, int) ([]providers.Entity, error)); ok {
+		return returnFunc(ctx, category, projectID, ouIDs, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, []string, int, int) []providers.Entity); ok {
+		r0 = returnFunc(ctx, category, projectID, ouIDs, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.Entity)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, []string, int, int) error); ok {
+		r1 = returnFunc(ctx, category, projectID, ouIDs, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// entityStoreInterfaceMock_GetEntityListByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntityListByProject'
+type entityStoreInterfaceMock_GetEntityListByProject_Call struct {
+	*mock.Call
+}
+
+// GetEntityListByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - category string
+//   - projectID string
+//   - ouIDs []string
+//   - limit int
+//   - offset int
+func (_e *entityStoreInterfaceMock_Expecter) GetEntityListByProject(ctx any, category any, projectID any, ouIDs any, limit any, offset any) *entityStoreInterfaceMock_GetEntityListByProject_Call {
+	return &entityStoreInterfaceMock_GetEntityListByProject_Call{Call: _e.mock.On("GetEntityListByProject", ctx, category, projectID, ouIDs, limit, offset)}
+}
+
+func (_c *entityStoreInterfaceMock_GetEntityListByProject_Call) Run(run func(ctx context.Context, category string, projectID string, ouIDs []string, limit int, offset int)) *entityStoreInterfaceMock_GetEntityListByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 []string
+		if args[3] != nil {
+			arg3 = args[3].([]string)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		var arg5 int
+		if args[5] != nil {
+			arg5 = args[5].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+			arg5,
+		)
+	})
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_GetEntityListByProject_Call) Return(entitys []providers.Entity, err error) *entityStoreInterfaceMock_GetEntityListByProject_Call {
+	_c.Call.Return(entitys, err)
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_GetEntityListByProject_Call) RunAndReturn(run func(ctx context.Context, category string, projectID string, ouIDs []string, limit int, offset int) ([]providers.Entity, error)) *entityStoreInterfaceMock_GetEntityListByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetEntityListBySystemAttributes provides a mock function for the type entityStoreInterfaceMock
 func (_mock *entityStoreInterfaceMock) GetEntityListBySystemAttributes(ctx context.Context, category string, sysQuery SystemAttributeQuery, limit int, offset int) ([]providers.Entity, error) {
 	ret := _mock.Called(ctx, category, sysQuery, limit, offset)
@@ -890,6 +982,84 @@ func (_c *entityStoreInterfaceMock_GetEntityListCountByOUIDs_Call) Return(n int,
 }
 
 func (_c *entityStoreInterfaceMock_GetEntityListCountByOUIDs_Call) RunAndReturn(run func(ctx context.Context, category string, ouIDs []string, filters map[string]interface{}) (int, error)) *entityStoreInterfaceMock_GetEntityListCountByOUIDs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetEntityListCountByProject provides a mock function for the type entityStoreInterfaceMock
+func (_mock *entityStoreInterfaceMock) GetEntityListCountByProject(ctx context.Context, category string, projectID string, ouIDs []string) (int, error) {
+	ret := _mock.Called(ctx, category, projectID, ouIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEntityListCountByProject")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, []string) (int, error)); ok {
+		return returnFunc(ctx, category, projectID, ouIDs)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, []string) int); ok {
+		r0 = returnFunc(ctx, category, projectID, ouIDs)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, []string) error); ok {
+		r1 = returnFunc(ctx, category, projectID, ouIDs)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// entityStoreInterfaceMock_GetEntityListCountByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntityListCountByProject'
+type entityStoreInterfaceMock_GetEntityListCountByProject_Call struct {
+	*mock.Call
+}
+
+// GetEntityListCountByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - category string
+//   - projectID string
+//   - ouIDs []string
+func (_e *entityStoreInterfaceMock_Expecter) GetEntityListCountByProject(ctx any, category any, projectID any, ouIDs any) *entityStoreInterfaceMock_GetEntityListCountByProject_Call {
+	return &entityStoreInterfaceMock_GetEntityListCountByProject_Call{Call: _e.mock.On("GetEntityListCountByProject", ctx, category, projectID, ouIDs)}
+}
+
+func (_c *entityStoreInterfaceMock_GetEntityListCountByProject_Call) Run(run func(ctx context.Context, category string, projectID string, ouIDs []string)) *entityStoreInterfaceMock_GetEntityListCountByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 []string
+		if args[3] != nil {
+			arg3 = args[3].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_GetEntityListCountByProject_Call) Return(n int, err error) *entityStoreInterfaceMock_GetEntityListCountByProject_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_GetEntityListCountByProject_Call) RunAndReturn(run func(ctx context.Context, category string, projectID string, ouIDs []string) (int, error)) *entityStoreInterfaceMock_GetEntityListCountByProject_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1475,6 +1645,72 @@ func (_c *entityStoreInterfaceMock_LockEntity_Call) RunAndReturn(run func(ctx co
 	return _c
 }
 
+// ProjectHasEntities provides a mock function for the type entityStoreInterfaceMock
+func (_mock *entityStoreInterfaceMock) ProjectHasEntities(ctx context.Context, projectID string) (bool, error) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ProjectHasEntities")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, error)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// entityStoreInterfaceMock_ProjectHasEntities_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProjectHasEntities'
+type entityStoreInterfaceMock_ProjectHasEntities_Call struct {
+	*mock.Call
+}
+
+// ProjectHasEntities is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *entityStoreInterfaceMock_Expecter) ProjectHasEntities(ctx any, projectID any) *entityStoreInterfaceMock_ProjectHasEntities_Call {
+	return &entityStoreInterfaceMock_ProjectHasEntities_Call{Call: _e.mock.On("ProjectHasEntities", ctx, projectID)}
+}
+
+func (_c *entityStoreInterfaceMock_ProjectHasEntities_Call) Run(run func(ctx context.Context, projectID string)) *entityStoreInterfaceMock_ProjectHasEntities_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_ProjectHasEntities_Call) Return(b bool, err error) *entityStoreInterfaceMock_ProjectHasEntities_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_ProjectHasEntities_Call) RunAndReturn(run func(ctx context.Context, projectID string) (bool, error)) *entityStoreInterfaceMock_ProjectHasEntities_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ResolveLinkedAccounts provides a mock function for the type entityStoreInterfaceMock
 func (_mock *entityStoreInterfaceMock) ResolveLinkedAccounts(ctx context.Context, idpID string, sub string) ([]string, error) {
 	ret := _mock.Called(ctx, idpID, sub)
@@ -1796,6 +2032,75 @@ func (_c *entityStoreInterfaceMock_UpdateEntity_Call) Return(err error) *entityS
 }
 
 func (_c *entityStoreInterfaceMock_UpdateEntity_Call) RunAndReturn(run func(ctx context.Context, entity *providers.Entity) error) *entityStoreInterfaceMock_UpdateEntity_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateOwnership provides a mock function for the type entityStoreInterfaceMock
+func (_mock *entityStoreInterfaceMock) UpdateOwnership(ctx context.Context, entityID string, ouID string, projectID string) error {
+	ret := _mock.Called(ctx, entityID, ouID, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateOwnership")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) error); ok {
+		r0 = returnFunc(ctx, entityID, ouID, projectID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// entityStoreInterfaceMock_UpdateOwnership_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateOwnership'
+type entityStoreInterfaceMock_UpdateOwnership_Call struct {
+	*mock.Call
+}
+
+// UpdateOwnership is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - ouID string
+//   - projectID string
+func (_e *entityStoreInterfaceMock_Expecter) UpdateOwnership(ctx any, entityID any, ouID any, projectID any) *entityStoreInterfaceMock_UpdateOwnership_Call {
+	return &entityStoreInterfaceMock_UpdateOwnership_Call{Call: _e.mock.On("UpdateOwnership", ctx, entityID, ouID, projectID)}
+}
+
+func (_c *entityStoreInterfaceMock_UpdateOwnership_Call) Run(run func(ctx context.Context, entityID string, ouID string, projectID string)) *entityStoreInterfaceMock_UpdateOwnership_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_UpdateOwnership_Call) Return(err error) *entityStoreInterfaceMock_UpdateOwnership_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_UpdateOwnership_Call) RunAndReturn(run func(ctx context.Context, entityID string, ouID string, projectID string) error) *entityStoreInterfaceMock_UpdateOwnership_Call {
 	_c.Call.Return(run)
 	return _c
 }

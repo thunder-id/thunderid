@@ -38,6 +38,11 @@ type serverConfigProvider interface {
 	GetMergedConfig(ctx context.Context, name string) (any, *tidcommon.ServiceError)
 }
 
+// flowVisibilityProvider tells whether an organization unit owns a flow or was shared it.
+type flowVisibilityProvider interface {
+	IsFlowVisible(ctx context.Context, flowID, ouID string) (bool, *tidcommon.ServiceError)
+}
+
 // flowExecService is the implementation of FlowExecServiceInterface
 type flowExecService struct {
 	flowEngine          flowEngineInterface
@@ -45,6 +50,7 @@ type flowExecService struct {
 	graphBuilder        graphbuilder.GraphBuilderInterface
 	flowStore           flowStoreInterface
 	actorProvider       providers.ActorProvider
+	ouProvider          providers.OrganizationUnitProvider
 	observabilitySvc    providers.ObservabilityProvider
 	transactioner       providers.Transactioner
 	cryptoSvc           providers.RuntimeCryptoProvider
@@ -52,6 +58,7 @@ type flowExecService struct {
 	jwtService          jwt.JWTServiceInterface
 	serverConfigSvc     serverConfigProvider
 	governance          providers.IdentityGovernanceProvider
+	flowVisibility      flowVisibilityProvider
 	cfg                 flowconfig.Config
 	// ssoHandleTTL is how long a handle returned in the response body stays usable.
 	ssoHandleTTL time.Duration
@@ -61,6 +68,7 @@ type flowExecService struct {
 func newFlowExecService(flowProvider providers.FlowProvider,
 	flowStore flowStoreInterface, flowEngine flowEngineInterface,
 	actorProvider providers.ActorProvider,
+	ouProvider providers.OrganizationUnitProvider,
 	observabilitySvc providers.ObservabilityProvider,
 	transactioner providers.Transactioner,
 	cryptoSvc providers.RuntimeCryptoProvider,
@@ -69,6 +77,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 	jwtService jwt.JWTServiceInterface,
 	serverConfigSvc serverConfigProvider,
 	governance providers.IdentityGovernanceProvider,
+	flowVisibility flowVisibilityProvider,
 	cfg flowconfig.Config,
 	ssoHandleTTL time.Duration) FlowExecServiceInterface {
 	return &flowExecService{
@@ -76,6 +85,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 		flowStore:           flowStore,
 		flowEngine:          flowEngine,
 		actorProvider:       actorProvider,
+		ouProvider:          ouProvider,
 		observabilitySvc:    observabilitySvc,
 		transactioner:       transactioner,
 		cryptoSvc:           cryptoSvc,
@@ -84,6 +94,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 		jwtService:          jwtService,
 		serverConfigSvc:     serverConfigSvc,
 		governance:          governance,
+		flowVisibility:      flowVisibility,
 		cfg:                 cfg,
 		ssoHandleTTL:        ssoHandleTTL,
 	}
@@ -121,10 +132,16 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 		engineCtx, loadErr = s.loadNewContext(ctx, flowID, appID, flowType, handle, verbose, action, inputs,
 			flowSecret, attestationToken, logger)
 		if loadErr != nil {
-			logger.Error(ctx, "Failed to load new flow context",
-				log.String("appID", appID),
-				log.String("flowType", flowType),
-				log.String("error", loadErr.Error.DefaultValue))
+			// A refused organization unit is caller input any anonymous caller can send, not a failure.
+			if loadErr.Code == ErrorInvalidOrganizationUnit.Code {
+				logger.Debug(ctx, "Refused to start a flow for the requested organization unit",
+					log.String("appID", appID))
+			} else {
+				logger.Error(ctx, "Failed to load new flow context",
+					log.String("appID", appID),
+					log.String("flowType", flowType),
+					log.String("error", loadErr.Error.DefaultValue))
+			}
 
 			if s.observabilitySvc.IsEnabled() {
 				evt := event.NewEvent(
@@ -331,6 +348,31 @@ func validateAdministrationCaller(ctx context.Context, flowType providers.FlowTy
 	return nil
 }
 
+// validateFlowSharedWithCaller requires the organization unit of the caller's token to own the flow or have it
+// shared. Without a way to tell, the flow is refused.
+func (s *flowExecService) validateFlowSharedWithCaller(ctx context.Context, flowID string) *tidcommon.ServiceError {
+	if s.flowVisibility == nil {
+		return &ErrorFlowNotSharedWithOU
+	}
+	visible, svcErr := s.flowVisibility.IsFlowVisible(ctx, flowID, security.GetOUID(ctx))
+	if svcErr != nil && svcErr.Type == tidcommon.ServerErrorType {
+		return svcErr
+	}
+	// A client error, such as the token's OU no longer existing, refuses the flow like one not shared.
+	if svcErr != nil || !visible {
+		return &ErrorFlowNotSharedWithOU
+	}
+	return nil
+}
+
+// validateInvitationCaller requires the caller's token to name the organization unit an invitation flow acts for.
+func validateInvitationCaller(ctx context.Context) *tidcommon.ServiceError {
+	if security.GetOUID(ctx) == "" {
+		return &ErrorInvitationOUMissing
+	}
+	return nil
+}
+
 // validateSelfFlowCaller gates the start of a self flow on a bearer access token this
 // deployment issued, with a subject. A runtime context is not refused: on this public path a user's
 // token arrives as one that still carries its subject.
@@ -402,10 +444,11 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 			return nil, err
 		}
 	} else {
-		// Initiating by flow ID is an administration-only entry point by construction, so the caller is
-		// gated before the flow is resolved. Checking the flow type first would let an unauthenticated
-		// caller on this public path distinguish a missing flow from an existing one, and an
-		// administration flow from any other, purely from the error it gets back.
+		// Initiating by flow ID requires an authenticated caller holding the root permission, checked
+		// before the flow is resolved. Checking the flow type first would let a caller on this public
+		// path distinguish a missing flow from an existing one, and one flow type from another, purely
+		// from the error it gets back. An invitation flow needs the root permission too for now: a
+		// token without it reaches this public path as a runtime caller.
 		if svcErr := validateAdministrationCaller(ctx, providers.FlowTypeAdministration); svcErr != nil {
 			return nil, svcErr
 		}
@@ -413,10 +456,20 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 		if svcErr != nil {
 			return nil, svcErr
 		}
-		// The flow the ID resolves to must itself be an administration flow: the entry point must not
-		// become a way to start an authentication, registration, recovery or sign-out flow directly,
-		// bypassing the application binding and initiation guards those types require.
-		if flow.FlowType != providers.FlowTypeAdministration {
+		// Only administration and invitation flows start by ID: the entry point must not become a
+		// way to start an authentication, registration, recovery or sign-out flow directly, bypassing
+		// the application binding and initiation guards those types require. An administration flow is
+		// gated below.
+		switch flow.FlowType {
+		case providers.FlowTypeAdministration:
+		case providers.FlowTypeInvitation:
+			if svcErr := validateInvitationCaller(ctx); svcErr != nil {
+				return nil, svcErr
+			}
+			if svcErr := s.validateFlowSharedWithCaller(ctx, flow.ID); svcErr != nil {
+				return nil, svcErr
+			}
+		default:
 			return nil, &ErrorFlowIDExecutionNotPermitted
 		}
 		flowType = flow.FlowType
@@ -446,13 +499,18 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 		return nil, svcErr
 	}
 
-	engineCtx, err := s.initContext(ctx, flowID, appID, flowType, resolvedFlow, verbose, logger)
+	engineCtx, err := s.initContext(ctx, flowID, appID, flowType, resolvedFlow, nil, verbose, logger)
 	if err != nil {
 		return nil, err
 	}
 	engineCtx.boundSubject = boundSubject
 
 	prepareContext(engineCtx, action, inputs)
+	if flowType == providers.FlowTypeInvitation {
+		// The flow acts for the caller's own unit and remembers who started it; an input cannot change either.
+		engineCtx.RuntimeData[common.RuntimeKeyOUID] = security.GetOUID(ctx)
+		engineCtx.RuntimeData[common.RuntimeKeyInviter] = security.GetSubject(ctx)
+	}
 	return engineCtx, nil
 }
 
@@ -629,7 +687,7 @@ func (s *flowExecService) resolveFlowInitiationModeFromProfile(
 
 // initContext initializes a new flow context with the given details.
 func (s *flowExecService) initContext(ctx context.Context, requestedFlowID, appID string, flowType providers.FlowType,
-	resolvedFlow *providers.CompleteFlowDefinition, verbose bool,
+	resolvedFlow *providers.CompleteFlowDefinition, runtimeData map[string]string, verbose bool,
 	logger *log.Logger) (*EngineContext, *tidcommon.ServiceError) {
 	graphID := requestedFlowID
 	if graphID == "" {
@@ -676,13 +734,85 @@ func (s *flowExecService) initContext(ctx context.Context, requestedFlowID, appI
 	engineCtx.Context = ctx
 	engineCtx.AppID = appID
 	engineCtx.Verbose = verbose
+	engineCtx.RuntimeData = runtimeData
 
 	// Set application context if required
 	if err := s.setApplicationToContext(&engineCtx, logger); err != nil {
 		return nil, err
 	}
 
+	if err := s.boundSignIn(ctx, &engineCtx, logger); err != nil {
+		return nil, err
+	}
+
 	return &engineCtx, nil
+}
+
+// boundSignIn marks a sign-in flow as bounded and fixes its organization unit: the one the request names,
+// or the application's own when the application is not shared.
+func (s *flowExecService) boundSignIn(ctx context.Context, engineCtx *EngineContext,
+	logger *log.Logger) *tidcommon.ServiceError {
+	if engineCtx.FlowType != providers.FlowTypeAuthentication {
+		return nil
+	}
+	engineCtx.SignInBounded = true
+
+	ouID := sysContext.GetAccessingOUID(ctx)
+	if ouID != "" {
+		accessible, svcErr := s.ouProvider.IsEligibleOU(signInBoundaryContext(engineCtx), ouID)
+		if svcErr != nil && svcErr.Type != tidcommon.ClientErrorType {
+			logger.Error(ctx, "Failed to resolve application access for an organization unit",
+				log.String("appID", engineCtx.AppID), log.String("errorCode", svcErr.Code))
+			return &tidcommon.InternalServerError
+		}
+		// An organization unit that does not exist comes back as a client error, and is refused like one
+		// the application is not shared with so the answer does not reveal which.
+		if svcErr != nil || !accessible {
+			logger.Debug(ctx, "Application is not accessible from the requested organization unit",
+				log.String("appID", engineCtx.AppID), log.String("ouID", ouID))
+			return &ErrorInvalidOrganizationUnit
+		}
+	} else {
+		var svcErr *tidcommon.ServiceError
+		if ouID, svcErr = unsharedAppOUID(s.ouProvider, engineCtx, logger); svcErr != nil {
+			return svcErr
+		}
+	}
+
+	if ouID != "" {
+		engineCtx.mergeRuntimeData(map[string]string{common.RuntimeKeyOUID: ouID})
+	}
+	return nil
+}
+
+// unsharedAppOUID returns the application's own organization unit when the application is not shared, or "".
+func unsharedAppOUID(ouProvider providers.OrganizationUnitProvider, engineCtx *EngineContext,
+	logger *log.Logger) (string, *tidcommon.ServiceError) {
+	shared, svcErr := ouProvider.IsApplicationShared(signInBoundaryContext(engineCtx))
+	if svcErr != nil {
+		logger.Error(engineCtx.Context, "Failed to resolve whether the application is shared",
+			log.String("appID", engineCtx.AppID), log.String("errorCode", svcErr.Code))
+		return "", &tidcommon.InternalServerError
+	}
+	if shared {
+		return "", nil
+	}
+	return engineCtx.Application.OUID, nil
+}
+
+// signInBoundary returns the sign-in boundary of a bounded flow: its application, its ouId and its signed-in subject.
+func signInBoundary(engineCtx *EngineContext) authnprovidercm.SignInBoundary {
+	subject, _ := authenticatedSubject(engineCtx.AuthUser)
+	return authnprovidercm.SignInBoundary{
+		OUID:          engineCtx.RuntimeData[common.RuntimeKeyOUID],
+		ApplicationID: engineCtx.AppID,
+		EntityID:      subject,
+	}
+}
+
+// signInBoundaryContext returns the flow's request context carrying its sign-in boundary.
+func signInBoundaryContext(engineCtx *EngineContext) context.Context {
+	return authnprovidercm.WithSignInBoundary(engineCtx.Context, signInBoundary(engineCtx))
 }
 
 // fallbackToDefaultFlow attempts to recover from a failure to retrieve the configured flow.
@@ -793,6 +923,7 @@ func (s *flowExecService) setApplicationToContext(engineCtx *EngineContext,
 	if engineCtx.FlowType == providers.FlowTypeUserOnboarding ||
 		engineCtx.FlowType == providers.FlowTypeSelf ||
 		engineCtx.FlowType == providers.FlowTypeAdministration ||
+		engineCtx.FlowType == providers.FlowTypeInvitation ||
 		engineCtx.FlowType == providers.FlowTypeSystem {
 		return nil
 	}
@@ -1122,12 +1253,19 @@ func (s *flowExecService) InitiateFlow(ctx context.Context,
 
 	// Initialize the engine context
 	// This uses verbose true to ensure step layouts are returned during execution
-	engineCtx, err := s.initContext(ctx, "", initContext.ApplicationID, flowType, nil, true, logger)
+	engineCtx, err := s.initContext(ctx, "", initContext.ApplicationID, flowType, nil,
+		initContext.RuntimeData, true, logger)
 	if err != nil {
-		logger.Error(ctx, "Failed to initialize flow context",
-			log.String("appID", initContext.ApplicationID),
-			log.String("flowType", initContext.FlowType),
-			log.String("error", err.Error.DefaultValue))
+		// A refused organization unit is caller input any anonymous caller can send, not a failure.
+		if err.Code == ErrorInvalidOrganizationUnit.Code {
+			logger.Debug(ctx, "Refused to start a flow for the requested organization unit",
+				log.String("appID", initContext.ApplicationID))
+		} else {
+			logger.Error(ctx, "Failed to initialize flow context",
+				log.String("appID", initContext.ApplicationID),
+				log.String("flowType", initContext.FlowType),
+				log.String("error", err.Error.DefaultValue))
+		}
 		return "", err
 	}
 
@@ -1135,8 +1273,6 @@ func (s *flowExecService) InitiateFlow(ctx context.Context,
 		return "", svcErr
 	}
 
-	// Replace the RuntimeData with initContext RuntimeData
-	engineCtx.RuntimeData = initContext.RuntimeData
 	engineCtx.SetInitiatorRequest(initContext.InitiatorRequest)
 
 	// Store the context without executing the flow
@@ -1182,7 +1318,8 @@ func (s *flowExecService) InitiateAndExecute(ctx context.Context,
 		return nil, &ErrorInvalidFlowInitContext
 	}
 
-	engineCtx, err := s.initContext(ctx, "", initContext.ApplicationID, flowType, nil, true, logger)
+	engineCtx, err := s.initContext(ctx, "", initContext.ApplicationID, flowType, nil,
+		initContext.RuntimeData, true, logger)
 	if err != nil {
 		logger.Error(ctx, "Failed to initialize flow context",
 			log.String("appID", initContext.ApplicationID),
@@ -1196,7 +1333,6 @@ func (s *flowExecService) InitiateAndExecute(ctx context.Context,
 	}
 
 	engineCtx.TraceID = sysContext.GetTraceID(ctx)
-	engineCtx.RuntimeData = initContext.RuntimeData
 	engineCtx.SetInitiatorRequest(initContext.InitiatorRequest)
 	prepareContext(engineCtx, "", initContext.InitialInputs)
 
@@ -1230,7 +1366,7 @@ func (s *flowExecService) ExecuteSystemFlow(ctx context.Context, sysCtx *common.
 		return nil, &tidcommon.InternalServerError
 	}
 
-	engineCtx, svcErr := s.initContext(ctx, flow.ID, "", providers.FlowTypeSystem, flow, false, logger)
+	engineCtx, svcErr := s.initContext(ctx, flow.ID, "", providers.FlowTypeSystem, flow, nil, false, logger)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1349,7 +1485,7 @@ func (s *flowExecService) getFlowExpirySeconds(ctx context.Context, flowType pro
 		return firstPositiveExpiry(cfg.AuthFlow.ExpirySeconds, defaultAuthFlowExpiry)
 	case providers.FlowTypeRegistration:
 		return firstPositiveExpiry(cfg.RegistrationFlow.ExpirySeconds, defaultRegistrationFlowExpiry)
-	case providers.FlowTypeUserOnboarding:
+	case providers.FlowTypeUserOnboarding, providers.FlowTypeInvitation:
 		return firstPositiveExpiry(cfg.UserOnboardingFlow.ExpirySeconds, defaultUserOnboardingFlowExpiry)
 	case providers.FlowTypeSelf:
 		return firstPositiveExpiry(cfg.SelfFlow.ExpirySeconds, defaultSelfFlowExpiry)

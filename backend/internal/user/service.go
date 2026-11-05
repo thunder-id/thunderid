@@ -47,6 +47,8 @@ type UserServiceInterface interface {
 	CreateUserByPath(ctx context.Context, handlePath string,
 		request CreateUserByPathRequest) (*providers.User, *tidcommon.ServiceError)
 	GetUser(ctx context.Context, userID string, includeDisplay bool) (*providers.User, *tidcommon.ServiceError)
+	GetUserInOU(ctx context.Context, userID, ouID string,
+		includeDisplay bool) (*providers.User, *tidcommon.ServiceError)
 	GetUserGroups(ctx context.Context, userID string,
 		limit, offset int) (*UserGroupListResponse, *tidcommon.ServiceError)
 	UpdateUser(ctx context.Context, userID string, user *providers.User) (*providers.User, *tidcommon.ServiceError)
@@ -95,6 +97,7 @@ type userService struct {
 	valueCapturer      declarativeresource.ValueCapturer
 	sharingService     sharing.SharingServiceInterface
 	sharingDeclaration *userSharingDeclaration
+	logger             *log.Logger
 }
 
 // newUserService creates a new instance of userService with injected dependencies.
@@ -118,8 +121,9 @@ func newUserService(
 		uuidGenerator:     utils.GenerateUUIDv7,
 		valueCapturer:     valueCapturer,
 		sharingService:    sharingService,
+		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
-	us.sharingDeclaration = newUserSharingDeclaration(us, sharingService)
+	us.sharingDeclaration = newUserSharingDeclaration(us, sharingService, us.authorizeShareInto)
 	return us
 }
 
@@ -425,6 +429,75 @@ func (us *userService) GetUser(
 		return nil, &ErrorMissingUserID
 	}
 
+	e, svcErr := us.getUserEntity(ctx, userID, logger)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	user := entityToUser(e)
+
+	// Check authz using the user's OU ID (fetched from store).
+	if svcErr := us.checkUserAccess(ctx, security.ActionReadUser, user.OUID, userID); svcErr != nil {
+		return nil, svcErr
+	}
+	us.completeUserRead(ctx, e, &user, includeDisplay, logger)
+
+	logger.Debug(ctx, "Successfully retrieved user", log.MaskedString(log.LoggerKeyUserID, userID))
+	return &user, nil
+}
+
+// GetUserInOU retrieves a user as an organization unit sees it: one the unit owns, or one shared into it.
+func (us *userService) GetUserInOU(
+	ctx context.Context, userID, ouID string, includeDisplay bool,
+) (*providers.User, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	logger.Debug(ctx, "Retrieving user in organization unit", log.MaskedString(log.LoggerKeyUserID, userID),
+		log.String("ouID", ouID))
+
+	if userID == "" {
+		return nil, &ErrorMissingUserID
+	}
+	// Names no user, so the self-service rule does not stand in for access to the organization unit.
+	if svcErr := us.checkUserAccess(ctx, security.ActionReadUser, ouID, ""); svcErr != nil {
+		return nil, svcErr
+	}
+
+	e, svcErr := us.getUserEntity(ctx, userID, logger)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	owned := e.OUID == ouID
+	if !owned {
+		// Asked as the runtime, as the caller may not read the organization units above its own.
+		visible, svcErr := us.sharingService.IsVisible(
+			security.WithRuntimeContext(ctx), UserSharingType, userID, ouID)
+		if svcErr != nil {
+			if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+				return nil, &ErrorUserNotFound
+			}
+			logger.Error(ctx, "Failed to check whether the user is shared into the organization unit",
+				log.MaskedString(log.LoggerKeyUserID, userID), log.String("ouID", ouID), log.Any("error", svcErr))
+			return nil, &tidcommon.InternalServerError
+		}
+		if !visible {
+			return nil, &ErrorUserNotFound
+		}
+	}
+
+	user := entityToUser(e)
+	user.IsOwnedByOU = new(owned)
+	// A shared user is read under the organization unit it is shared into, as the user list does.
+	user.OUID = ouID
+	us.completeUserRead(ctx, e, &user, includeDisplay, logger)
+
+	logger.Debug(ctx, "Successfully retrieved user in organization unit",
+		log.MaskedString(log.LoggerKeyUserID, userID), log.String("ouID", ouID))
+	return &user, nil
+}
+
+// getUserEntity reads the entity behind a user ID, answering ErrorUserNotFound for any other category.
+func (us *userService) getUserEntity(
+	ctx context.Context, userID string, logger *log.Logger,
+) (*providers.Entity, *tidcommon.ServiceError) {
 	e, err := us.entityService.GetEntity(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
@@ -437,12 +510,14 @@ func (us *userService) GetUser(
 	if e.Category != providers.EntityCategoryUser {
 		return nil, &ErrorUserNotFound
 	}
-	user := entityToUser(e)
+	return e, nil
+}
 
-	// Check authz using the user's OU ID (fetched from store).
-	if svcErr := us.checkUserAccess(ctx, security.ActionReadUser, user.OUID, userID); svcErr != nil {
-		return nil, svcErr
-	}
+// completeUserRead adds the access status a read reports and, with includeDisplay, the display name
+// and organization unit handle.
+func (us *userService) completeUserRead(
+	ctx context.Context, e *providers.Entity, user *providers.User, includeDisplay bool, logger *log.Logger,
+) {
 	access := us.governance.ReadEntityAccess(ctx, *e)
 	user.Status = &access.Status
 	user.LastLoginAt = access.LastLoginAt
@@ -462,9 +537,6 @@ func (us *userService) GetUser(
 			user.OUHandle = handle
 		}
 	}
-
-	logger.Debug(ctx, "Successfully retrieved user", log.MaskedString(log.LoggerKeyUserID, userID))
-	return &user, nil
 }
 
 // GetUserMetadata retrieves the schema metadata for the authenticated user's type.
@@ -1325,6 +1397,21 @@ func (us *userService) checkUserDeclarative(
 		return &ErrorCannotModifyDeclarativeResource
 	}
 	return nil
+}
+
+// authorizeShareInto refuses unless the caller may create users in targetOUID. Users that load from resource files,
+// and a declared user, keep their sharing there. userID is empty for a user about to be created.
+func (us *userService) authorizeShareInto(ctx context.Context, userID, targetOUID string) *tidcommon.ServiceError {
+	if svcErr := us.checkUserAccess(ctx, security.ActionCreateUser, targetOUID, ""); svcErr != nil {
+		return svcErr
+	}
+	if isDeclarativeModeEnabled() {
+		return &ErrorCannotModifyDeclarativeResource
+	}
+	if userID == "" {
+		return nil
+	}
+	return us.checkUserDeclarative(ctx, userID, us.logger)
 }
 
 // checkUserAccess validates that the caller is authorized to perform the given action on a user.

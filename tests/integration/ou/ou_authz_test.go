@@ -45,6 +45,10 @@ import (
 type OUAuthzTestSuite struct {
 	suite.Suite
 
+	// Users here live outside the default OU, and a sign-in is bounded to its application's OU, so each
+	// signs in through an application in its own OU rather than the Console.
+	signIn testutils.OUSignInApps
+
 	// Admin-created fixtures
 	ou1ID  string
 	ou2ID  string
@@ -66,8 +70,6 @@ const (
 
 	ouAdminUsername = "ou-authz-admin"
 	ouAdminPassword = "OUAdmin@123"
-
-	developClientID = "CONSOLE"
 
 	// Name of the role created in SetupSuite. Using a unique name avoids
 	// collisions when tests run multiple times without a clean DB.
@@ -171,16 +173,8 @@ func (ts *OUAuthzTestSuite) SetupSuite() {
 	ts.ouAdminRoleID = roleID
 
 	// ---- 6. Obtain a scoped access token for the OU-admin user ----
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
-		developClientID,
-		developRedirectURI,
-		"system system:ou:view",
-		ouAdminUsername,
-		ouAdminPassword,
-		true,
-		"",
-		scopedRSIdentifier,
-	)
+	tokenResp, err := ts.signIn.ObtainAccessToken(ts.ou1ID,
+		"system system:ou:view", ouAdminUsername, ouAdminPassword, scopedRSIdentifier)
 	ts.Require().NoError(err, "obtain ou-admin scoped token")
 	ts.Require().NotEmpty(tokenResp.AccessToken, "ou-admin token must be non-empty")
 	ts.Require().Equal("system:ou:view", tokenResp.Scope, "token must carry exactly the requested scope")
@@ -193,6 +187,9 @@ func (ts *OUAuthzTestSuite) SetupSuite() {
 // ---------------------------------------------------------------------------
 
 func (ts *OUAuthzTestSuite) TearDownSuite() {
+	if err := ts.signIn.DeleteAll(); err != nil {
+		ts.T().Logf("teardown: delete sign-in applications: %v", err)
+	}
 	if ts.ouAdminRoleID != "" {
 		if err := testutils.DeleteRole(ts.ouAdminRoleID); err != nil {
 			ts.T().Logf("teardown: delete role: %v", err)

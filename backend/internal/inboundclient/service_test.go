@@ -4351,3 +4351,134 @@ func (s *AccessingOUTestSuite) TestLookupFailureIsNotARefusal() {
 	s.Require().NotNil(svcErr, "a broken dependency must not read as a policy decision")
 	s.False(accessible)
 }
+
+// An organization unit that does not exist comes back as the client error it is, for the caller to refuse.
+func (s *AccessingOUTestSuite) TestUnknownUnitIsReturnedAsAClientError() {
+	ctx := syscontext.WithAccessingOUID(context.Background(), "no-such-ou")
+	notFound := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1003"}
+	s.sharingSvc.EXPECT().IsVisible(mock.Anything, appSharingType, admittedAppID, "no-such-ou").
+		Return(false, notFound).Once()
+
+	accessible, svcErr := s.check(ctx, s.sharingSvc, providers.EntityCategoryApp)
+
+	s.Equal(notFound, svcErr)
+	s.False(accessible)
+}
+
+// serviceForEntity returns a service whose entity provider finds admittedAppID, owned by ownerOUID, of
+// the given category, or answers with entityErr.
+func (s *AccessingOUTestSuite) serviceForEntity(
+	category providers.EntityCategory, entityErr *entityprovider.EntityProviderError,
+) *inboundClientService {
+	sharedTypes := NewSharedTypeResolverMock(s.T())
+	sharedTypes.EXPECT().GetSharedResourceType(mock.Anything).RunAndReturn(
+		func(category providers.EntityCategory) (sharing.ResourceType, bool) {
+			return appSharingType, category == providers.EntityCategoryApp
+		}).Maybe()
+	ep := entityprovidermock.NewEntityProviderInterfaceMock(s.T())
+	if entityErr != nil {
+		ep.EXPECT().GetEntityProfile(mock.Anything, admittedAppID).Return(nil, entityErr).Maybe()
+	} else {
+		ep.EXPECT().GetEntityProfile(mock.Anything, admittedAppID).Return(
+			&providers.Entity{ID: admittedAppID, OUID: ownerOUID, Category: category}, nil).Maybe()
+	}
+	return &inboundClientService{
+		entityProvider: ep,
+		sharingService: s.sharingSvc,
+		sharedTypes:    sharedTypes,
+		logger:         log.GetLogger(),
+	}
+}
+
+// The entity-addressed check answers the same rule from the client's entity, so it serves clients
+// with no OAuth configuration.
+func (s *AccessingOUTestSuite) TestAccessByEntityIDFollowsTheSameRule() {
+	s.Run("no unit named", func() {
+		s.admits(s.serviceForEntity(providers.EntityCategoryApp, nil).
+			IsClientAccessibleFromOUByEntityID(context.Background(), admittedAppID, ""))
+	})
+	s.Run("its own unit", func() {
+		s.admits(s.serviceForEntity(providers.EntityCategoryApp, nil).
+			IsClientAccessibleFromOUByEntityID(context.Background(), admittedAppID, ownerOUID))
+	})
+	s.Run("a unit a policy reached", func() {
+		s.sharingSvc.EXPECT().IsVisible(mock.Anything, appSharingType, admittedAppID, otherOUID).
+			Return(true, nil).Once()
+		s.admits(s.serviceForEntity(providers.EntityCategoryApp, nil).
+			IsClientAccessibleFromOUByEntityID(context.Background(), admittedAppID, otherOUID))
+	})
+	s.Run("a unit no policy reached", func() {
+		s.sharingSvc.EXPECT().IsVisible(mock.Anything, appSharingType, admittedAppID, otherOUID).
+			Return(false, nil).Once()
+		s.refuses(s.serviceForEntity(providers.EntityCategoryApp, nil).
+			IsClientAccessibleFromOUByEntityID(context.Background(), admittedAppID, otherOUID))
+	})
+	s.Run("an unshareable kind", func() {
+		s.refuses(s.serviceForEntity(providers.EntityCategoryAgent, nil).
+			IsClientAccessibleFromOUByEntityID(context.Background(), admittedAppID, otherOUID))
+	})
+}
+
+// An entity that does not exist is accessible from no unit; one that cannot be read is a failure.
+func (s *AccessingOUTestSuite) TestAccessByEntityIDOfAMissingOrUnreadableEntity() {
+	s.refuses(s.serviceForEntity(providers.EntityCategoryApp, &entityprovider.EntityProviderError{
+		Code: entityprovider.ErrorCodeEntityNotFound,
+	}).IsClientAccessibleFromOUByEntityID(context.Background(), admittedAppID, otherOUID))
+
+	accessible, svcErr := s.serviceForEntity(providers.EntityCategoryApp, &entityprovider.EntityProviderError{
+		Code: entityprovider.ErrorCodeSystemError,
+	}).IsClientAccessibleFromOUByEntityID(context.Background(), admittedAppID, otherOUID)
+	s.False(accessible)
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+	s.sharingSvc.AssertNotCalled(s.T(), "IsVisible", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A client is shared exactly when its resource type holds a policy for it.
+func (s *AccessingOUTestSuite) TestClientIsSharedWhenAPolicyExists() {
+	s.Run("a policy exists", func() {
+		s.sharingSvc.EXPECT().ListPolicies(mock.Anything, appSharingType, admittedAppID).
+			Return([]sharing.Policy{{ID: "policy-1"}}, nil).Once()
+		shared, svcErr := s.serviceForEntity(providers.EntityCategoryApp, nil).
+			IsClientShared(context.Background(), admittedAppID)
+		s.Require().Nil(svcErr)
+		s.True(shared)
+	})
+	s.Run("no policy exists", func() {
+		s.sharingSvc.EXPECT().ListPolicies(mock.Anything, appSharingType, admittedAppID).
+			Return([]sharing.Policy{}, nil).Once()
+		shared, svcErr := s.serviceForEntity(providers.EntityCategoryApp, nil).
+			IsClientShared(context.Background(), admittedAppID)
+		s.Require().Nil(svcErr)
+		s.False(shared)
+	})
+}
+
+// A client that cannot hold a policy is not shared, and nothing is asked of the sharing framework.
+func (s *AccessingOUTestSuite) TestClientThatCannotHoldAPolicyIsNotShared() {
+	cases := map[string]*inboundClientService{
+		"an unshareable kind": s.serviceForEntity(providers.EntityCategoryAgent, nil),
+		"an entity that does not exist": s.serviceForEntity(providers.EntityCategoryApp,
+			&entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound}),
+		"no sharing framework": {logger: log.GetLogger()},
+	}
+	for name, svc := range cases {
+		s.Run(name, func() {
+			shared, svcErr := svc.IsClientShared(context.Background(), admittedAppID)
+			s.Require().Nil(svcErr)
+			s.False(shared)
+		})
+	}
+	s.sharingSvc.AssertNotCalled(s.T(), "ListPolicies", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A failed lookup is a failure, not an answer that the client is unshared.
+func (s *AccessingOUTestSuite) TestSharedLookupFailureIsNotAnAnswer() {
+	s.sharingSvc.EXPECT().ListPolicies(mock.Anything, appSharingType, admittedAppID).
+		Return(nil, &tidcommon.InternalServerError).Once()
+
+	shared, svcErr := s.serviceForEntity(providers.EntityCategoryApp, nil).
+		IsClientShared(context.Background(), admittedAppID)
+
+	s.False(shared)
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+}

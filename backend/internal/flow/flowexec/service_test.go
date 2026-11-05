@@ -9,6 +9,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -33,6 +36,7 @@ import (
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -50,9 +54,11 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
 )
 
 const existingExecutionID = "existing-execution-id"
+
 const testAppID = "test-app-123"
 
 // txMarkerKey is an unexported type used as a context key for the transaction marker in tests.
@@ -67,6 +73,7 @@ func (s *stubTransactioner) Transact(ctx context.Context, txFunc func(context.Co
 }
 
 const testUserOnboardingFlowHandle = "onboarding-handle"
+
 const testDefaultAuthFlowHandle = "default-auth-handle"
 
 var testFlowConfig = engineconfig.FlowConfig{}
@@ -607,12 +614,14 @@ func TestInitiateFlowFallsBackToDefaultFlow(t *testing.T) {
 		mockCrypto := cryptomock.NewRuntimeCryptoProviderMock(t)
 		mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]byte("encrypted-ctx"), nil, nil)
+		mockOU := ouprovidermock.NewOrganizationUnitProviderMock(t)
 
 		service := &flowExecService{
 			graphBuilder:  mockGraphBuilder,
 			flowProvider:  mockFlowProvider,
 			flowStore:     mockStore,
 			actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr(), nil, nil),
+			ouProvider:    mockOU,
 			transactioner: &stubTransactioner{},
 			cryptoSvc:     mockCrypto,
 			cfg:           testFlowExecCfg,
@@ -626,6 +635,7 @@ func TestInitiateFlowFallsBackToDefaultFlow(t *testing.T) {
 		mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).
 			Return(&providers.Entity{ID: appID, Category: providers.EntityCategoryApp},
 				(*entityprovider.EntityProviderError)(nil))
+		mockOU.EXPECT().IsApplicationShared(mock.Anything).Return(true, nil)
 
 		// The referenced flow was deleted.
 		mockFlowProvider.EXPECT().GetFlow(mock.Anything, "stale-auth-graph").
@@ -744,6 +754,11 @@ func TestGetFlowExpirySeconds(t *testing.T) {
 		{
 			name:     "User onboarding flow",
 			flowType: providers.FlowTypeUserOnboarding,
+			expected: 86400,
+		},
+		{
+			name:     "Invitation flow",
+			flowType: providers.FlowTypeInvitation,
 			expected: 86400,
 		},
 		{
@@ -1868,64 +1883,6 @@ func (s *ServiceTestSuite) TestInitiationRefusesAHeldApplication() {
 	})
 }
 
-func TestInitiateAndExecute_SetsTraceID(t *testing.T) {
-	appID := "test-app-trace-id"
-
-	testConfig := &config.Config{}
-	_ = config.InitializeServerRuntime("/tmp/test-ia-trace", testConfig)
-	defer config.ResetServerRuntime()
-
-	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
-	testGraph := flowFactory.CreateGraph("auth-graph-trace", providers.FlowTypeAuthentication, 1)
-
-	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
-	mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
-	mockFlowProvider := NewFlowProviderMock(t)
-	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
-	mockCrypto := cryptomock.NewRuntimeCryptoProviderMock(t)
-	mockStore := newFlowStoreInterfaceMock(t)
-	mockEngineInner := newFlowEngineInterfaceMock(t)
-
-	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
-		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-trace"}, nil)
-	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
-		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
-	mockFlowProvider.EXPECT().
-		GetFlow(mock.Anything, "auth-graph-trace").
-		Return(&providers.CompleteFlowDefinition{ID: "auth-graph-trace"}, nil)
-	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
-	mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return([]byte("encrypted"), nil, nil)
-
-	mockStore.EXPECT().StoreFlowContext(mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	var capturedTraceID string
-	mockEngineInner.EXPECT().Execute(mock.Anything).
-		RunAndReturn(func(engineCtx *EngineContext) (FlowStep, *tidcommon.ServiceError) {
-			capturedTraceID = engineCtx.TraceID
-			return FlowStep{Status: providers.FlowStatusIncomplete}, nil
-		})
-
-	svc := &flowExecService{
-		flowStore:     mockStore,
-		graphBuilder:  mockGraphBuilder,
-		flowProvider:  mockFlowProvider,
-		flowEngine:    mockEngineInner,
-		actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr(), nil, nil),
-		transactioner: &stubTransactioner{},
-		cryptoSvc:     mockCrypto,
-		cfg:           testFlowExecCfg,
-	}
-
-	step, err := svc.InitiateAndExecute(sysContext.WithTraceID(context.Background(), "trace-abcd"), &FlowInitContext{
-		ApplicationID: appID,
-		FlowType:      "AUTHENTICATION",
-	})
-
-	assert.Nil(t, err)
-	assert.NotNil(t, step)
-	assert.Equal(t, "trace-abcd", capturedTraceID)
-}
-
 func TestInitiateAndExecute_ZeroExpiryUsesDefault(t *testing.T) {
 	appID := "test-app-default-expiry"
 
@@ -2615,6 +2572,173 @@ func (s *ServiceTestSuite) TestLoadNewContext_ByIDWithoutInputsStartsEmpty() {
 	s.Require().NotNil(engineCtx)
 	s.NotNil(engineCtx.UserInputs, "an empty input map must still be initialized for the engine")
 	s.Empty(engineCtx.UserInputs)
+}
+
+// An invitation flow acts for the caller's own unit: an ouId sent as an input must not move it.
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDLoadsInvitationFlowInTheTokensOU() {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	graph := flowFactory.CreateGraph("invitation-1", providers.FlowTypeInvitation, 1)
+	flow := &providers.CompleteFlowDefinition{
+		ID: "invitation-1", FlowType: providers.FlowTypeInvitation, ActiveVersion: 1,
+	}
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(flow, nil).Once()
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(s.T())
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, flow).Return(graph, nil)
+	mockVisibility := newFlowVisibilityProviderMock(s.T())
+	mockVisibility.EXPECT().IsFlowVisible(mock.Anything, "invitation-1", "ou-1").Return(true, nil).Once()
+	service := &flowExecService{
+		flowProvider: mockFlowProvider, graphBuilder: mockGraphBuilder, flowVisibility: mockVisibility,
+		cfg: testFlowExecCfg,
+		actorProvider: actorprovider.Initialize(inboundclientmock.NewInboundClientServiceInterfaceMock(s.T()),
+			entityprovidermock.NewEntityProviderInterfaceMock(s.T()), noopAuthnMgr(), nil, nil),
+	}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}),
+		"invitation-1", "", "", "", false, "", map[string]string{"ouId": "ou-x"}, "", "", log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Require().NotNil(engineCtx)
+	s.Equal(providers.FlowTypeInvitation, engineCtx.FlowType)
+	s.Equal("ou-1", engineCtx.RuntimeData[common.RuntimeKeyOUID])
+	s.Equal("admin-1", engineCtx.RuntimeData[common.RuntimeKeyInviter])
+	s.Empty(engineCtx.Application.ID)
+}
+
+// An organization unit runs an invitation flow only when it owns the flow or was shared it.
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesInvitationFlowNotSharedWithTheTokensOU() {
+	security.InitSystemPermissions("")
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(
+		&providers.CompleteFlowDefinition{ID: "invitation-1", FlowType: providers.FlowTypeInvitation, OUID: "ou-root"},
+		nil)
+	mockVisibility := newFlowVisibilityProviderMock(s.T())
+	mockVisibility.EXPECT().IsFlowVisible(mock.Anything, "invitation-1", "ou-1").Return(false, nil).Once()
+	service := &flowExecService{flowProvider: mockFlowProvider, flowVisibility: mockVisibility, cfg: testFlowExecCfg}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}),
+		"invitation-1", "", "", "", false, "", nil, "", "", log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowNotSharedWithOU.Code, svcErr.Code)
+}
+
+// Without flow management to say whether the flow is shared, an invitation flow is refused.
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesInvitationWithoutAVisibilityProvider() {
+	security.InitSystemPermissions("")
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(
+		&providers.CompleteFlowDefinition{ID: "invitation-1", FlowType: providers.FlowTypeInvitation}, nil)
+	service := &flowExecService{flowProvider: mockFlowProvider, cfg: testFlowExecCfg}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}),
+		"invitation-1", "", "", "", false, "", nil, "", "", log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowNotSharedWithOU.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDReturnsTheErrorOfTheShareLookup() {
+	security.InitSystemPermissions("")
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(
+		&providers.CompleteFlowDefinition{ID: "invitation-1", FlowType: providers.FlowTypeInvitation}, nil)
+	mockVisibility := newFlowVisibilityProviderMock(s.T())
+	mockVisibility.EXPECT().IsFlowVisible(mock.Anything, "invitation-1", "ou-1").
+		Return(false, &tidcommon.InternalServerError).Once()
+	service := &flowExecService{flowProvider: mockFlowProvider, flowVisibility: mockVisibility, cfg: testFlowExecCfg}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}),
+		"invitation-1", "", "", "", false, "", nil, "", "", log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A client error from the share lookup, such as the token's OU no longer existing, is a refusal like an unshared
+// flow, not a sharing policy error.
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesAShareLookupClientErrorAsNotShared() {
+	security.InitSystemPermissions("")
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(
+		&providers.CompleteFlowDefinition{ID: "invitation-1", FlowType: providers.FlowTypeInvitation}, nil)
+	mockVisibility := newFlowVisibilityProviderMock(s.T())
+	mockVisibility.EXPECT().IsFlowVisible(mock.Anything, "invitation-1", "ou-1").
+		Return(false, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "FLM-1034"}).Once()
+	service := &flowExecService{flowProvider: mockFlowProvider, flowVisibility: mockVisibility, cfg: testFlowExecCfg}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}),
+		"invitation-1", "", "", "", false, "", nil, "", "", log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowNotSharedWithOU.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesInvitationWithoutTokenOU() {
+	security.InitSystemPermissions("")
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(
+		&providers.CompleteFlowDefinition{ID: "invitation-1", FlowType: providers.FlowTypeInvitation}, nil)
+	service := &flowExecService{flowProvider: mockFlowProvider, cfg: testFlowExecCfg}
+	ctx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin-1", "", "token", []string{"system"}, map[string]interface{}{}))
+
+	engineCtx, svcErr := service.loadNewContext(ctx,
+		"invitation-1", "", "", "", false, "", map[string]string{"ouId": "ou-x"}, "", "", log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvitationOUMissing.Code, svcErr.Code)
+}
+
+// Every flow started by ID needs the root permission for now, checked before the flow is resolved.
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesCallerWithoutRootPermission() {
+	security.InitSystemPermissions("")
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	service := &flowExecService{flowProvider: mockFlowProvider, cfg: testFlowExecCfg}
+
+	for _, flowID := range []string{"administration-1", "invitation-1"} {
+		engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system:user"}),
+			flowID, "", "", "", false, "", nil, "", "", log.GetLogger())
+
+		s.Nil(engineCtx)
+		s.Require().NotNil(svcErr)
+		s.Equal(ErrorAdministrationPermissionRequired.Code, svcErr.Code)
+	}
+	mockFlowProvider.AssertNotCalled(s.T(), "GetFlow", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestLoadNewContext_ByTypeRefusesInvitationFlow() {
+	service := &flowExecService{cfg: testFlowExecCfg}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext(nil), "", "",
+		string(providers.FlowTypeInvitation), "", false, "", nil, "", "", log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidFlowType.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestValidateInvitationCaller() {
+	s.Run("RejectsTokenWithoutOU", func() {
+		ctx := security.WithSecurityContextTest(context.Background(),
+			security.NewSecurityContextForTest("admin-1", "", "token", nil, map[string]interface{}{}))
+
+		svcErr := validateInvitationCaller(ctx)
+
+		s.Require().NotNil(svcErr)
+		s.Equal(ErrorInvitationOUMissing.Code, svcErr.Code)
+	})
+
+	s.Run("AllowsCallerWithTokenOU", func() {
+		s.Nil(validateInvitationCaller(authenticatedAdminContext([]string{"system"})))
+	})
 }
 
 // authenticatedAdminContext returns a context carrying an authenticated caller with the permissions
@@ -3333,6 +3457,53 @@ func (s *ServiceTestSuite) TestExecute_ContinuationFlow_AuthCodeApp_NotBlocked()
 
 	flowStep, svcErr := service.Execute(context.Background(), "test-app", "existing-execution-id",
 		string(providers.FlowTypeAuthentication), "", false, "submit", map[string]string{}, "valid-token", "", "", nil)
+
+	s.Nil(svcErr)
+	s.NotNil(flowStep)
+}
+
+// The invitee continues an invitation flow without a token; the invite token carries the step instead.
+func (s *ServiceTestSuite) TestExecute_ContinuationOfInvitationFlowWithoutToken() {
+	t := s.T()
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime(t.TempDir(), &config.Config{}))
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	testGraph := flowFactory.CreateGraph("invitation-1", providers.FlowTypeInvitation, 1)
+
+	mockStore := newFlowStoreInterfaceMock(t)
+	mockFlowProvider := NewFlowProviderMock(t)
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+	mockEngine := newFlowEngineInterfaceMock(t)
+
+	storedCtx := &FlowContextDB{}
+	s.NoError(storedCtx.FromEngineContext(EngineContext{
+		ExecutionID:      "existing-execution-id",
+		FlowType:         providers.FlowTypeInvitation,
+		Graph:            testGraph,
+		UserInputs:       map[string]string{},
+		RuntimeData:      map[string]string{common.RuntimeKeyOUID: "ou-1"},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+	}))
+	mockStore.EXPECT().GetFlowContext(mock.Anything, "existing-execution-id").Return(storedCtx, nil)
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(
+		&providers.CompleteFlowDefinition{ID: "invitation-1", FlowType: providers.FlowTypeInvitation}, nil)
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
+	mockEngine.EXPECT().Execute(mock.Anything).Return(
+		FlowStep{Status: providers.FlowStatusComplete}, (*tidcommon.ServiceError)(nil))
+	mockStore.EXPECT().DeleteFlowContext(mock.Anything, "existing-execution-id").Return(nil)
+
+	service := &flowExecService{
+		flowStore:    mockStore,
+		graphBuilder: mockGraphBuilder,
+		flowProvider: mockFlowProvider,
+		flowEngine:   mockEngine,
+		actorProvider: actorprovider.Initialize(inboundclientmock.NewInboundClientServiceInterfaceMock(t),
+			entityprovidermock.NewEntityProviderInterfaceMock(t), noopAuthnMgr(), nil, nil),
+		transactioner: &stubTransactioner{},
+	}
+
+	flowStep, svcErr := service.Execute(security.WithRuntimeContext(context.Background()), "",
+		"existing-execution-id", "", "", false, "accept", map[string]string{}, "", "", "", nil)
 
 	s.Nil(svcErr)
 	s.NotNil(flowStep)
@@ -4160,6 +4331,415 @@ func (s *ServiceTestSuite) TestExecutionAPIRefusesSystemFlows() {
 	_, svcErr := validateFlowType(string(providers.FlowTypeSystem))
 
 	s.Equal(&ErrorInvalidFlowType, svcErr)
+}
+
+const (
+	boundaryAppID      = "boundary-app"
+	boundaryAppOUID    = "boundary-app-ou"
+	boundaryNamedOUID  = "boundary-named-ou"
+	boundaryAuthFlowID = "boundary-auth-flow"
+	boundaryRegFlowID  = "boundary-registration-flow"
+	boundaryUserID     = "boundary-user"
+)
+
+// inStartingSignInBoundary matches a context carrying the sign-in boundary of boundaryAppID before an ouId or a
+// subject is set.
+func inStartingSignInBoundary() any {
+	return mock.MatchedBy(func(c context.Context) bool {
+		b, ok := authnprovidercm.SignInBoundaryFrom(c)
+		return ok && b == authnprovidercm.SignInBoundary{ApplicationID: boundaryAppID}
+	})
+}
+
+// boundaryFixture is a service that starts flows for boundaryAppID, an application owned by
+// boundaryAppOUID, with the mocks a test states the sharing answers and outcomes on.
+type boundaryFixture struct {
+	service *flowExecService
+	actor   *actorprovidermock.ActorProviderMock
+	ou      *ouprovidermock.OrganizationUnitProviderMock
+	engine  *flowEngineInterfaceMock
+	crypto  *cryptomock.RuntimeCryptoProviderMock
+	jwt     *jwtmock.JWTServiceInterfaceMock
+	store   *flowStoreInterfaceMock
+	graph   core.GraphInterface
+}
+
+// newBoundaryFixture returns a fixture whose application starts a flow of the given type. Its store
+// has no expectations, so a test fails if any flow context is stored it did not allow.
+func (s *ServiceTestSuite) newBoundaryFixture(flowType providers.FlowType) *boundaryFixture {
+	config.ResetServerRuntime()
+	s.T().Cleanup(config.ResetServerRuntime)
+	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+
+	flowID := boundaryAuthFlowID
+	if flowType == providers.FlowTypeRegistration {
+		flowID = boundaryRegFlowID
+	}
+	actor := actorprovidermock.NewActorProviderMock(s.T())
+	actor.EXPECT().GetInboundClientByID(mock.Anything, boundaryAppID).Return(&providers.InboundClient{
+		ID: boundaryAppID, AuthFlowID: boundaryAuthFlowID,
+		RegistrationFlowID: boundaryRegFlowID, IsRegistrationFlowEnabled: true,
+	}, nil)
+	actor.EXPECT().GetActor(mock.Anything, boundaryAppID).Return(&providers.Entity{
+		ID: boundaryAppID, OUID: boundaryAppOUID, Category: providers.EntityCategoryApp,
+	}, nil)
+	flowProvider := NewFlowProviderMock(s.T())
+	flowProvider.EXPECT().GetFlow(mock.Anything, flowID).
+		Return(&providers.CompleteFlowDefinition{ID: flowID, FlowType: flowType}, nil)
+	graph := flowFactory.CreateGraph(flowID, flowType, 1)
+	graphBuilder := NewGraphBuilderInterfaceMock(s.T())
+	graphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(graph, nil)
+	observability := observabilitymock.NewObservabilityServiceInterfaceMock(s.T())
+	observability.EXPECT().IsEnabled().Return(false).Maybe()
+
+	f := &boundaryFixture{
+		actor:  actor,
+		ou:     ouprovidermock.NewOrganizationUnitProviderMock(s.T()),
+		engine: newFlowEngineInterfaceMock(s.T()),
+		crypto: cryptomock.NewRuntimeCryptoProviderMock(s.T()),
+		jwt:    jwtmock.NewJWTServiceInterfaceMock(s.T()),
+		store:  newFlowStoreInterfaceMock(s.T()),
+		graph:  graph,
+	}
+	f.service = &flowExecService{
+		flowProvider:     flowProvider,
+		graphBuilder:     graphBuilder,
+		flowStore:        f.store,
+		flowEngine:       f.engine,
+		actorProvider:    actor,
+		ouProvider:       f.ou,
+		observabilitySvc: observability,
+		transactioner:    &stubTransactioner{},
+		cryptoSvc:        f.crypto,
+		jwtService:       f.jwt,
+		cfg:              testFlowExecCfg,
+	}
+	return f
+}
+
+// initContext starts a flow of the fixture's type the way every entry point does.
+func (f *boundaryFixture) initContext(ctx context.Context, flowType providers.FlowType) (
+	*EngineContext, *tidcommon.ServiceError) {
+	return f.service.initContext(ctx, "", boundaryAppID, flowType, nil, nil, true, log.GetLogger())
+}
+
+// The start fixes the organization unit when it can: the one the request names, or the application's
+// own when it is not shared. A shared application with no unit named leaves it open.
+func (s *ServiceTestSuite) TestBoundSignIn_FixesTheOrganizationUnitAtStart() {
+	cases := []struct {
+		name      string
+		namedOUID string
+		arrange   func(ou *ouprovidermock.OrganizationUnitProviderMock)
+		wantOUID  string
+	}{
+		{
+			name:      "a named unit the application is accessible from",
+			namedOUID: boundaryNamedOUID,
+			arrange: func(ou *ouprovidermock.OrganizationUnitProviderMock) {
+				ou.EXPECT().IsEligibleOU(inStartingSignInBoundary(), boundaryNamedOUID).Return(true, nil).Once()
+			},
+			wantOUID: boundaryNamedOUID,
+		},
+		{
+			name: "no unit named and the application not shared",
+			arrange: func(ou *ouprovidermock.OrganizationUnitProviderMock) {
+				ou.EXPECT().IsApplicationShared(inStartingSignInBoundary()).Return(false, nil).Once()
+			},
+			wantOUID: boundaryAppOUID,
+		},
+		{
+			name: "no unit named and the application shared",
+			arrange: func(ou *ouprovidermock.OrganizationUnitProviderMock) {
+				ou.EXPECT().IsApplicationShared(inStartingSignInBoundary()).Return(true, nil).Once()
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+			tc.arrange(f.ou)
+			ctx := context.Background()
+			if tc.namedOUID != "" {
+				ctx = sysContext.WithAccessingOUID(ctx, tc.namedOUID)
+			}
+
+			engineCtx, svcErr := f.initContext(ctx, providers.FlowTypeAuthentication)
+
+			s.Require().Nil(svcErr)
+			s.True(engineCtx.SignInBounded)
+			ouID, fixed := engineCtx.RuntimeData[common.RuntimeKeyOUID]
+			s.Equal(tc.wantOUID != "", fixed)
+			s.Equal(tc.wantOUID, ouID)
+		})
+	}
+}
+
+// A unit the application is not accessible from is refused at every entry point before any flow
+// context exists, with one answer whether the unit is not shared with or does not exist.
+func (s *ServiceTestSuite) TestBoundSignIn_RefusesAUnitTheApplicationIsNotAccessibleFrom() {
+	answers := map[string]*tidcommon.ServiceError{
+		"not shared with the unit": nil,
+		"unit does not exist":      {Type: tidcommon.ClientErrorType, Code: "OU-1003"},
+	}
+	for name, lookupErr := range answers {
+		refuse := func(f *boundaryFixture) {
+			f.ou.EXPECT().IsEligibleOU(inStartingSignInBoundary(), boundaryNamedOUID).Return(false, lookupErr).Once()
+		}
+		ctx := sysContext.WithAccessingOUID(context.Background(), boundaryNamedOUID)
+
+		s.Run(name+" via authorize", func() {
+			f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+			refuse(f)
+
+			executionID, svcErr := f.service.InitiateFlow(ctx, &FlowInitContext{
+				ApplicationID: boundaryAppID, FlowType: string(providers.FlowTypeAuthentication),
+			})
+
+			s.Empty(executionID)
+			s.Equal(&ErrorInvalidOrganizationUnit, svcErr)
+		})
+
+		s.Run(name+" via flow execute", func() {
+			f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+			refuse(f)
+			f.actor.EXPECT().GetOAuthProfileByID(mock.Anything, boundaryAppID).Return(nil, nil)
+			f.actor.EXPECT().AuthenticateActor(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+			step, svcErr := f.service.Execute(ctx, boundaryAppID, "", string(providers.FlowTypeAuthentication),
+				"", false, "", nil, "", "flow-secret", "", nil)
+
+			s.Nil(step)
+			s.Equal(&ErrorInvalidOrganizationUnit, svcErr)
+		})
+	}
+}
+
+// The unit a flow execution request names reaches the start rule, and its refusal is the request's answer.
+func (s *ServiceTestSuite) TestBoundSignIn_FlowExecuteRequestNamingAnInaccessibleUnitIsRefused() {
+	f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+	f.ou.EXPECT().IsEligibleOU(inStartingSignInBoundary(), boundaryNamedOUID).Return(false, nil).Once()
+	f.actor.EXPECT().GetOAuthProfileByID(mock.Anything, boundaryAppID).Return(nil, nil)
+	f.actor.EXPECT().AuthenticateActor(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	body := `{"applicationId":"` + boundaryAppID + `","flowType":"AUTHENTICATION","ouId":"` + boundaryNamedOUID + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/flow/execute", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(serverconst.FlowSecretHeaderName, "flow-secret")
+	w := httptest.NewRecorder()
+
+	newFlowExecutionHandler(f.service, nil, 0).HandleFlowExecutionRequest(w, req)
+
+	s.Equal(http.StatusBadRequest, w.Code)
+	s.Contains(w.Body.String(), ErrorInvalidOrganizationUnit.Code)
+}
+
+// A failed sharing lookup is a server error, not a refusal or an open boundary.
+func (s *ServiceTestSuite) TestBoundSignIn_LookupFailureIsAServerError() {
+	s.Run("access from the named unit", func() {
+		f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+		f.ou.EXPECT().IsEligibleOU(mock.Anything, boundaryNamedOUID).
+			Return(false, &tidcommon.InternalServerError).Once()
+
+		engineCtx, svcErr := f.initContext(
+			sysContext.WithAccessingOUID(context.Background(), boundaryNamedOUID), providers.FlowTypeAuthentication)
+
+		s.Nil(engineCtx)
+		s.Equal(&tidcommon.InternalServerError, svcErr)
+	})
+
+	s.Run("whether the application is shared", func() {
+		f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+		f.ou.EXPECT().IsApplicationShared(mock.Anything).Return(false, &tidcommon.InternalServerError).Once()
+
+		engineCtx, svcErr := f.initContext(context.Background(), providers.FlowTypeAuthentication)
+
+		s.Nil(engineCtx)
+		s.Equal(&tidcommon.InternalServerError, svcErr)
+	})
+}
+
+// Only sign-in is bounded: another flow type asks nothing about sharing, even with a unit named.
+func (s *ServiceTestSuite) TestBoundSignIn_OtherFlowTypesAreNotBounded() {
+	f := s.newBoundaryFixture(providers.FlowTypeRegistration)
+
+	engineCtx, svcErr := f.initContext(
+		sysContext.WithAccessingOUID(context.Background(), boundaryNamedOUID), providers.FlowTypeRegistration)
+
+	s.Require().Nil(svcErr)
+	s.False(engineCtx.SignInBounded)
+	s.NotContains(engineCtx.RuntimeData, common.RuntimeKeyOUID)
+}
+
+// The authorize entry point stores the boundary with the context, beside the runtime data it passed.
+func (s *ServiceTestSuite) TestBoundSignIn_InitiateFlowStoresTheBoundary() {
+	f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+	f.ou.EXPECT().IsApplicationShared(inStartingSignInBoundary()).Return(false, nil).Once()
+	var stored flowContextContent
+	f.crypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, _ *providers.KeyRef, _ string, _ map[string]interface{}, content []byte) {
+			s.Require().NoError(json.Unmarshal(content, &stored))
+		}).Return([]byte("encrypted-ctx"), nil, nil).Once()
+	f.service.flowStore.(*flowStoreInterfaceMock).EXPECT().
+		StoreFlowContext(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+
+	executionID, svcErr := f.service.InitiateFlow(context.Background(), &FlowInitContext{
+		ApplicationID: boundaryAppID,
+		FlowType:      string(providers.FlowTypeAuthentication),
+		RuntimeData:   map[string]string{common.RuntimeKeyClientID: "boundary-client"},
+	})
+
+	s.Require().Nil(svcErr)
+	s.NotEmpty(executionID)
+	s.True(stored.SignInBounded)
+	s.Require().NotNil(stored.RuntimeData)
+	var runtimeData map[string]string
+	s.Require().NoError(json.Unmarshal([]byte(*stored.RuntimeData), &runtimeData))
+	s.Equal(map[string]string{
+		common.RuntimeKeyClientID: "boundary-client",
+		common.RuntimeKeyOUID:     boundaryAppOUID,
+	}, runtimeData)
+}
+
+// The flow execution entry point runs the flow with the boundary and the unit it named.
+func (s *ServiceTestSuite) TestBoundSignIn_ExecuteRunsTheFlowBounded() {
+	f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+	f.ou.EXPECT().IsEligibleOU(inStartingSignInBoundary(), boundaryNamedOUID).Return(true, nil).Once()
+	f.actor.EXPECT().GetOAuthProfileByID(mock.Anything, boundaryAppID).Return(nil, nil)
+	f.actor.EXPECT().AuthenticateActor(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	var ran *EngineContext
+	f.engine.EXPECT().Execute(mock.Anything).Run(func(ctx *EngineContext) { ran = ctx }).
+		Return(FlowStep{Status: providers.FlowStatusComplete}, nil).Once()
+
+	_, svcErr := f.service.Execute(sysContext.WithAccessingOUID(context.Background(), boundaryNamedOUID),
+		boundaryAppID, "", string(providers.FlowTypeAuthentication), "", false, "", nil, "", "flow-secret", "", nil)
+
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(ran)
+	s.True(ran.SignInBounded)
+	s.Equal(boundaryNamedOUID, ran.RuntimeData[common.RuntimeKeyOUID])
+}
+
+// boundaryAuthUser is boundaryUserID as the default provider signed it in.
+func boundaryAuthUser() providers.AuthUser {
+	var authUser providers.AuthUser
+	authUser.SetStateFor("default", providers.AuthState{
+		EntityReference: &providers.EntityReference{EntityID: boundaryUserID, EntityCategory: "user"},
+		AttributeToken:  "attributes",
+	})
+	return authUser
+}
+
+// completedSignIn is the step the engine completes a sign-in with: an assertion and a new SSO session.
+func completedSignIn() FlowStep {
+	return FlowStep{
+		Status:       providers.FlowStatusComplete,
+		Assertion:    "success-assertion",
+		SSOHandleOut: "sso-handle",
+		SSOFlowID:    boundaryAuthFlowID,
+	}
+}
+
+// continueStoredFlow stores a flow the engine ends with step on the next request, and expects its context removed.
+func (s *ServiceTestSuite) continueStoredFlow(f *boundaryFixture, flowType providers.FlowType, bounded bool,
+	runtimeData map[string]string, step FlowStep) {
+	stored := &FlowContextDB{}
+	s.Require().NoError(stored.FromEngineContext(EngineContext{
+		ExecutionID:       existingExecutionID,
+		AppID:             boundaryAppID,
+		FlowType:          flowType,
+		SignInBounded:     bounded,
+		AuthenticatedUser: authncm.AuthenticatedUser{Attributes: map[string]interface{}{}},
+		AuthUser:          boundaryAuthUser(),
+		UserInputs:        map[string]string{},
+		RuntimeData:       runtimeData,
+		ExecutionHistory:  map[string]*providers.NodeExecutionRecord{},
+		Graph:             f.graph,
+	}))
+	f.store.EXPECT().GetFlowContext(mock.Anything, existingExecutionID).Return(stored, nil).Once()
+	f.engine.EXPECT().Execute(mock.Anything).Return(step, nil).Once()
+	f.store.EXPECT().DeleteFlowContext(mock.Anything, existingExecutionID).Return(nil).Once()
+}
+
+// execute continues the stored flow.
+func (f *boundaryFixture) execute(flowType providers.FlowType) (*FlowStep, *tidcommon.ServiceError) {
+	return f.service.Execute(context.Background(), boundaryAppID, existingExecutionID, string(flowType),
+		"", false, "", nil, "", "", "", nil)
+}
+
+// The service returns a bounded completion as the engine made it, since the assertion step checks the boundary.
+func (s *ServiceTestSuite) TestExecute_BoundedCompletionIsNotCheckedAgain() {
+	f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+	s.continueStoredFlow(f, providers.FlowTypeAuthentication, true,
+		map[string]string{common.RuntimeKeyOUID: boundaryNamedOUID}, completedSignIn())
+
+	step, svcErr := f.execute(providers.FlowTypeAuthentication)
+
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(step)
+	s.Equal(providers.FlowStatusComplete, step.Status)
+	s.Nil(step.Error)
+	s.Equal("success-assertion", step.Assertion)
+	s.Require().Len(step.SessionData, 1)
+	s.Equal("sso-handle", step.SessionData[0].SessionHandle)
+}
+
+func TestInitiateAndExecute_SetsTraceID(t *testing.T) {
+	appID := "test-app-trace-id"
+
+	testConfig := &config.Config{}
+	_ = config.InitializeServerRuntime("/tmp/test-ia-trace", testConfig)
+	defer config.ResetServerRuntime()
+
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	testGraph := flowFactory.CreateGraph("auth-graph-trace", providers.FlowTypeAuthentication, 1)
+
+	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
+	mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
+	mockFlowProvider := NewFlowProviderMock(t)
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+	mockCrypto := cryptomock.NewRuntimeCryptoProviderMock(t)
+	mockStore := newFlowStoreInterfaceMock(t)
+	mockEngineInner := newFlowEngineInterfaceMock(t)
+
+	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
+		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-trace"}, nil)
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
+		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
+	mockFlowProvider.EXPECT().
+		GetFlow(mock.Anything, "auth-graph-trace").
+		Return(&providers.CompleteFlowDefinition{ID: "auth-graph-trace"}, nil)
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
+	mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]byte("encrypted"), nil, nil)
+
+	mockStore.EXPECT().StoreFlowContext(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	var capturedTraceID string
+	mockEngineInner.EXPECT().Execute(mock.Anything).
+		RunAndReturn(func(engineCtx *EngineContext) (FlowStep, *tidcommon.ServiceError) {
+			capturedTraceID = engineCtx.TraceID
+			return FlowStep{Status: providers.FlowStatusIncomplete}, nil
+		})
+
+	svc := &flowExecService{
+		flowStore:     mockStore,
+		graphBuilder:  mockGraphBuilder,
+		flowProvider:  mockFlowProvider,
+		flowEngine:    mockEngineInner,
+		actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr(), nil, nil),
+		transactioner: &stubTransactioner{},
+		cryptoSvc:     mockCrypto,
+		cfg:           testFlowExecCfg,
+	}
+
+	step, err := svc.InitiateAndExecute(sysContext.WithTraceID(context.Background(), "trace-abcd"), &FlowInitContext{
+		ApplicationID: appID,
+		FlowType:      "AUTHENTICATION",
+	})
+
+	assert.Nil(t, err)
+	assert.NotNil(t, step)
+	assert.Equal(t, "trace-abcd", capturedTraceID)
 }
 
 const (

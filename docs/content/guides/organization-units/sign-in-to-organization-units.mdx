@@ -1,0 +1,156 @@
+---
+title: Sign Users In to Organization Units
+docType: guide
+sidebar_position: 3
+persona: iam
+description: Bound each sign-in to one organization unit where both the user and the application are found, and choose it from the request or after sign-in.
+---
+
+# Sign Users In to Organization Units
+
+Every sign-in lands in exactly one organization unit (OU), where both the user and the application are found. The organization claims in the assertion and the tokens name that OU, and authorization counts only the roles assigned there.
+
+Use this guide to choose the OU a sign-in lands in, and to let users of other OUs sign in to an application.
+
+## Prerequisites
+
+- <ProductName /> running locally. See [Get <ProductName />](../../getting-started/get-thunderid.mdx).
+- The organization units your users and applications belong to. See [Manage Organization Units](manage-organization-units.mdx).
+
+## How the Sign-In Boundary Works
+
+A user is in an OU when the user lives there or is shared into it. An agent cannot be shared, so it is in its own OU only. An application can be used from an OU when the OU owns the application or a sharing policy shares the application with it. A sign-in lands only in an OU where both hold.
+
+| The sign-in request | The application | The sign-in lands in |
+|---|---|---|
+| Names an OU | Can be used from that OU | The named OU |
+| Names an OU | Cannot be used from that OU | Nowhere: the sign-in is refused before it starts |
+| Names no OU | Is not shared | The application's own OU |
+| Names no OU | Is shared | The OU the flow decides, from the user's choice before sign-in or after the user signs in |
+
+When a user stored in <ProductName /> signs in, a user who is in none of the OUs the sign-in can land in is not found, before any credential is checked. Before the sign-in issues its assertion, <ProductName /> refuses it unless it landed in an OU the user is in.
+
+The boundary applies to sign-in flows only. Registration, recovery, user onboarding, and administration flows are unchanged.
+
+:::warning
+A user can sign in to an unshared application only when the user lives in the application's OU or is shared into it. For example, the Console belongs to the **Default** OU, so a user who lives in another OU cannot sign in to the Console. To let users of other OUs sign in to an application, share the application with their OUs, or share the users into the application's OU.
+:::
+
+## Share an Application With Other Organization Units
+
+A sharing policy names the OUs an application can be used from. Declare it in the application's resource file, through the [Application Sharing API](../../apis.mdx#tag/application-sharing), or on the application's **Organization Access** tab in the Console:
+
+```yaml title="applications/customer-portal.yaml"
+resource_type: application
+id: customer-portal
+name: Customer Portal
+ouId: acme-root
+sharingPolicies:
+  - id: customer-portal-all-customers
+    childUnits:
+      mode: all
+```
+
+This policy lets users of every OU beneath `acme-root` sign in to the application. See [Grant an Application Access to Organization Units](machine-to-machine-access.mdx#grant-an-application-access-to-organization-units) for where policies are declared, and [Resource Sharing Across Organization Units](../../key-concepts/resource-sharing.mdx) for every mode.
+
+A shared application's sign-in must decide its OU: name it in the request, let the user pick it before signing in, or decide it in the flow after the user signs in.
+
+## Name the Organization Unit in the Request
+
+Name the OU by its ID. The request does not resolve handles. With the OU named, an OU resolver in the flow keeps it and asks the user nothing.
+
+### Redirect-Based Sign-In
+
+Send the authorization request to `/ou/{ouId}/oauth2/authorize`. It takes the same query parameters and gives the same answers as `/oauth2/authorize`:
+
+```text
+https://localhost:8090/ou/019f8c21-4b7e-7a39-b5d0-6e2c91f4a8b7/oauth2/authorize?response_type=code&client_id=customer-portal-client&redirect_uri=https%3A%2F%2Fportal.example.com%2Fcallback&scope=openid&state=af0ifjsldkj
+```
+
+An OU the application cannot be used from and an OU that does not exist both redirect back to the client with `error=unauthorized_client`, so the answer does not reveal which OUs exist.
+
+Exchange the code at `/oauth2/token`, or at `/ou/{ouId}/oauth2/token` for the same OU. The OU token endpoint redeems only a code whose sign-in landed in that OU, which the sign-in records when the application's token configuration includes the `ouId` attribute. A code without it, or one for another OU, is refused with `invalid_grant`.
+
+### App-Native Sign-In
+
+Add `ouId` to the request that starts the sign-in on the Flow Execution API:
+
+```http
+POST /flow/execute
+Content-Type: application/json
+Flow-Secret: <flow-secret>
+
+{
+  "applicationId": "<application-id>",
+  "flowType": "AUTHENTICATION",
+  "ouId": "019f8c21-4b7e-7a39-b5d0-6e2c91f4a8b7"
+}
+```
+
+`ouId` is accepted only on a request that starts an `AUTHENTICATION` flow. See [App-Native Integration](../../key-concepts/authentication/integration-models.mdx#app-native) for starting a flow.
+
+### Sign-In With a Device Secret
+
+A client that holds a device secret signs the user in to an OU without a redirect. A code exchange returns the device secret when the authorization request asked for the `device_sso` scope. Exchange it at `/ou/{ouId}/oauth2/token`:
+
+```bash
+curl -X POST https://localhost:8090/ou/019f8c21-4b7e-7a39-b5d0-6e2c91f4a8b7/oauth2/token \
+  -u 'customer-portal-client:<client-secret>' \
+  -d 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
+  -d 'subject_token=<device-secret>' \
+  -d 'subject_token_type=urn:ietf:params:oauth:token-type:jwt' \
+  -d 'scope=openid'
+```
+
+The client's flow runs without the user on the session the device secret carries, and the sign-in is bounded to the named OU. The client needs the token exchange grant, its login flow must be the one the session started on, and it must be usable from the OU. A user who is not in the OU is refused with `invalid_grant`. The OU token endpoint exchanges only a device secret and refuses any other token exchange with `invalid_request`.
+
+## Decide the Organization Unit After Sign-In
+
+When a shared application's sign-in names no OU, add a **Resolve OU** node with the `prompt` strategy after the step that signs the user in. Once the user has signed in, the node offers the OUs the user can sign in to among **Parent OU ID** (`parentOuId`) and the OUs beneath it:
+
+- One is chosen without asking.
+- Several are offered as a selection. Each option is the OU's handle path, such as `acme/engineering`. With **Limit to direct children** (`directChildrenOnly`), only the parent's direct children are offered, each by its own handle, such as `engineering`.
+- None refuses the sign-in with `FET-1122`.
+
+See [Resolve OU](../flows/advanced-configurations.mdx#identity-and-user-resolution) for every property.
+
+A shared application's flow that never decides the OU is refused at its assertion step, with `FET-1124`.
+
+Place **Resolve OU** before the **Authorization** node. **Authorization** counts only the roles assigned in the decided OU, and one that runs before the OU is decided counts the roles assigned in every OU.
+
+If the flow uses single sign-on, place the **Resolve OU** node between the step that signs the user in and the **Save / Load Session** node. **Resolve OU** cannot come after **Save / Load Session**, and saving a flow that places it there is refused with `FLM-1044`. The same applies when a node after **Save / Load Session** routes back to a step before it: if a **Resolve OU** node sits between that step and **Save / Load Session**, the node is reachable from **Save / Load Session** and the flow is refused. A sign-in that reuses a session skips the node and follows the OU the user last signed in to with that session. If the user cannot sign in to the application from that OU, the user signs in again and the node decides the OU. See [Single Sign-On for Flows](../flows/single-sign-on.mdx#organization-units-and-single-sign-on).
+
+### Let the User Pick the Organization Unit First
+
+To have the user choose the OU before signing in, place a **Resolve OU** node with the `prompt` strategy and **Parent OU ID** (`parentOuId`) before the step that signs the user in. The sign-in is then bounded to the chosen OU, so a user who is not in it leaves the user not found.
+
+Set `directChildrenOnly` on the node and ask for an `ouHandle` input, so the user types the handle of one of the parent's direct children instead of picking from a tree. A handle that names no direct child is asked for again.
+
+An organization the application is not available in is refused at the pick, before the user is asked for credentials. The flow asks for the organization again and shows "This application isn't available in that organization" (`FET-1123`), so the user can check the organization name. The check after sign-in still applies. If the flow uses single sign-on, place this node before the **Check SSO Session** node, so both the fresh and the reused path pass through it.
+
+## What the Sign-In Carries
+
+- **Organization claims.** The `ouId`, `ouName`, and `ouHandle` claims, when the application asks for them, name the OU the sign-in landed in rather than the user's own. A user shared into that OU acts in it, while self-service calls such as `GET /users/me` still read and update the user's own profile.
+- **Permissions and roles.** Authorization counts only the role assignments made in the OU the sign-in landed in, and the `roles` claim lists only those roles. A refresh token records that OU when its access token carries the `ouId` claim, and a refresh checks permissions again in it. A refresh is refused once the user can no longer sign in to that OU, for example after the user's share into it is removed. Without the claim, a refresh counts role assignments made in every OU.
+- **Groups.** The `groups` claim lists only the groups the OU the sign-in landed in owns. A user shared into that OU can belong to groups in its own OU too, and those are left out. A refresh keeps the groups the sign-in listed.
+
+## Refusals
+
+| Answer | Cause |
+|---|---|
+| Redirect with `error=unauthorized_client` | `/ou/{ouId}/oauth2/authorize` named an OU the application cannot be used from, or one that does not exist. |
+| `400` with `FES-1028` | `ouId` on `/flow/execute` named an OU the application cannot be used from, or one that does not exist. |
+| `400` with `FES-1026` | `ouId` was sent on a request that does not start an `AUTHENTICATION` flow. |
+| `400 invalid_grant` | An authorization code redeemed at `/ou/{ouId}/oauth2/token` was not issued for that OU, or a refresh token was issued in an OU its user can no longer sign in to. |
+| `400 interaction_required` | A device secret exchanged at `/ou/{ouId}/oauth2/token`, or for an application that is not shared, names a user who cannot sign in to that OU. The session cannot be used there, so the user has to sign in. |
+| `FET-1001` | The sign-in is bounded to an OU the user is not in, so the user is not found. A sign-in that has not decided its OU looks the user up across every OU. |
+| `FET-1122` | A **Resolve OU** node after sign-in found no OU the user can sign in to, or the sign-in reached its assertion step in an OU the user is not in. |
+| `FET-1124` | The sign-in reached its assertion step without deciding its OU. |
+
+## Related Guides
+
+- [Manage Organization Units](manage-organization-units.mdx)
+- [Machine-to-Machine (M2M) Access for Organization Units](machine-to-machine-access.mdx)
+- [Resource Sharing Across Organization Units](../../key-concepts/resource-sharing.mdx)
+- [Advanced Flow Configurations](../flows/advanced-configurations.mdx)
+- [Single Sign-On for Flows](../flows/single-sign-on.mdx)

@@ -15,17 +15,24 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// errProjectNotFound is the store-level not-found sentinel.
-var errProjectNotFound = errors.New("project not found")
+var (
+	// errProjectNotFound is the store-level not-found sentinel.
+	errProjectNotFound = errors.New("project not found")
+	// errProjectIDConflict is returned when another project already has the ID.
+	errProjectIDConflict = errors.New("a project with the same ID already exists")
+	// errProjectHandleConflict is returned when another project already has the handle.
+	errProjectHandleConflict = errors.New("a project with the same handle already exists")
+)
 
-// projectStoreInterface persists project records in the entity database, next to their root
-// organization units.
+// projectStoreInterface persists projects in the entity database, next to the organization
+// units they own.
 type projectStoreInterface interface {
-	CreateProject(ctx context.Context, record projectRecord) error
-	GetProject(ctx context.Context, id string) (projectRecord, error)
-	GetProjectByRootOUID(ctx context.Context, rootOUID string) (projectRecord, error)
-	GetProjectList(ctx context.Context, limit, offset int) ([]projectRecord, error)
+	CreateProject(ctx context.Context, project Project) error
+	GetProject(ctx context.Context, id string) (Project, error)
+	GetProjectByHandle(ctx context.Context, handle string) (Project, error)
+	GetProjectList(ctx context.Context, limit, offset int) ([]Project, error)
 	GetProjectListCount(ctx context.Context) (int, error)
+	UpdateProject(ctx context.Context, project Project) error
 	DeleteProject(ctx context.Context, id string) error
 }
 
@@ -44,32 +51,39 @@ func newProjectStore() (projectStoreInterface, providers.Transactioner, error) {
 	return &projectStore{dbProvider: dbProvider}, transactioner, nil
 }
 
-// CreateProject inserts a project record.
-func (s *projectStore) CreateProject(ctx context.Context, record projectRecord) error {
+// CreateProject inserts a project, returning errProjectIDConflict when the ID is taken and
+// errProjectHandleConflict when the handle is.
+func (s *projectStore) CreateProject(ctx context.Context, project Project) error {
 	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
-	if _, err := dbClient.ExecuteContext(ctx, queryCreateProject, record.ID, record.RootOUID,
-		record.CreatedAt, s.scope(ctx)); err != nil {
+	_, err = dbClient.ExecuteContext(ctx, queryCreateProject, project.ID, project.Handle,
+		project.DisplayName, project.Description, project.CreatedAt, s.scope(ctx))
+	switch {
+	case err == nil:
+		return nil
+	case provider.IsUniqueIndexViolation(err, primaryKeyName, primaryKeyColumns):
+		return fmt.Errorf("%w: %w", errProjectIDConflict, err)
+	case provider.IsUniqueIndexViolation(err, handleIndexName, handleIndexColumns):
+		return fmt.Errorf("%w: %w", errProjectHandleConflict, err)
+	default:
 		return fmt.Errorf("failed to create project: %w", err)
 	}
-	return nil
 }
 
-// GetProject returns the project record with the given ID, or errProjectNotFound.
-func (s *projectStore) GetProject(ctx context.Context, id string) (projectRecord, error) {
+// GetProject returns the project with the given ID, or errProjectNotFound.
+func (s *projectStore) GetProject(ctx context.Context, id string) (Project, error) {
 	return s.getOne(ctx, queryGetProjectByID, id)
 }
 
-// GetProjectByRootOUID returns the project record backed by the given root organization unit, or
-// errProjectNotFound.
-func (s *projectStore) GetProjectByRootOUID(ctx context.Context, rootOUID string) (projectRecord, error) {
-	return s.getOne(ctx, queryGetProjectByRootOUID, rootOUID)
+// GetProjectByHandle returns the project with the given handle, or errProjectNotFound.
+func (s *projectStore) GetProjectByHandle(ctx context.Context, handle string) (Project, error) {
+	return s.getOne(ctx, queryGetProjectByHandle, handle)
 }
 
-// GetProjectList returns a page of project records, oldest first.
-func (s *projectStore) GetProjectList(ctx context.Context, limit, offset int) ([]projectRecord, error) {
+// GetProjectList returns a page of projects, oldest first.
+func (s *projectStore) GetProjectList(ctx context.Context, limit, offset int) ([]Project, error) {
 	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
@@ -78,15 +92,15 @@ func (s *projectStore) GetProjectList(ctx context.Context, limit, offset int) ([
 	if err != nil {
 		return nil, fmt.Errorf("failed to list projects: %w", err)
 	}
-	records := make([]projectRecord, 0, len(results))
+	projects := make([]Project, 0, len(results))
 	for _, row := range results {
-		record, err := buildProjectRecord(row)
+		project, err := buildProject(row)
 		if err != nil {
 			return nil, err
 		}
-		records = append(records, record)
+		projects = append(projects, project)
 	}
-	return records, nil
+	return projects, nil
 }
 
 // GetProjectListCount returns the number of projects.
@@ -102,7 +116,20 @@ func (s *projectStore) GetProjectListCount(ctx context.Context) (int, error) {
 	return parseTotal(results)
 }
 
-// DeleteProject removes the project record with the given ID.
+// UpdateProject replaces the display name and description of a project.
+func (s *projectStore) UpdateProject(ctx context.Context, project Project) error {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return fmt.Errorf("failed to get database client: %w", err)
+	}
+	if _, err := dbClient.ExecuteContext(ctx, queryUpdateProject, project.ID, project.DisplayName,
+		project.Description, s.scope(ctx)); err != nil {
+		return fmt.Errorf("failed to update project: %w", err)
+	}
+	return nil
+}
+
+// DeleteProject removes the project with the given ID.
 func (s *projectStore) DeleteProject(ctx context.Context, id string) error {
 	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
@@ -120,31 +147,33 @@ func (s *projectStore) scope(ctx context.Context) string {
 }
 
 // getOne runs a single-row project query with the given identifier.
-func (s *projectStore) getOne(ctx context.Context, query dbmodel.DBQuery, identifier string) (projectRecord, error) {
+func (s *projectStore) getOne(ctx context.Context, query dbmodel.DBQuery, identifier string) (Project, error) {
 	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
-		return projectRecord{}, fmt.Errorf("failed to get database client: %w", err)
+		return Project{}, fmt.Errorf("failed to get database client: %w", err)
 	}
 	results, err := dbClient.QueryContext(ctx, query, identifier, s.scope(ctx))
 	if err != nil {
-		return projectRecord{}, fmt.Errorf("failed to get project: %w", err)
+		return Project{}, fmt.Errorf("failed to get project: %w", err)
 	}
 	if len(results) == 0 {
-		return projectRecord{}, errProjectNotFound
+		return Project{}, errProjectNotFound
 	}
-	return buildProjectRecord(results[0])
+	return buildProject(results[0])
 }
 
-// buildProjectRecord maps a result row to a project record.
-func buildProjectRecord(row map[string]interface{}) (projectRecord, error) {
+// buildProject maps a result row to a project.
+func buildProject(row map[string]interface{}) (Project, error) {
 	createdAt, err := utils.ParseDBTimeField(row["created_at"], "created_at")
 	if err != nil {
-		return projectRecord{}, err
+		return Project{}, err
 	}
-	return projectRecord{
-		ID:        columnString(row["id"]),
-		RootOUID:  columnString(row["root_ou_id"]),
-		CreatedAt: createdAt,
+	return Project{
+		ID:          columnString(row["id"]),
+		Handle:      columnString(row["handle"]),
+		DisplayName: columnString(row["display_name"]),
+		Description: columnString(row["description"]),
+		CreatedAt:   createdAt,
 	}, nil
 }
 

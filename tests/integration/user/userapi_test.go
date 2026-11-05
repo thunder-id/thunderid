@@ -968,7 +968,11 @@ func (ts *UserAPITestSuite) newVerificationContactUser(name string) verification
 	ts.T().Cleanup(func() { ts.NoError(deleteUser(user.id)) })
 	ts.Empty(verifiedAttributesIn(ts.T(), body), "the create response must report nothing verified")
 
-	user.client, err = testutils.GetHTTPClientForUser(user.username, user.password)
+	// The user lives outside the default OU, and a sign-in is bounded to its application's OU, so it signs in
+	// through an application in its own OU rather than the Console.
+	var signIn testutils.OUSignInApps
+	ts.T().Cleanup(func() { ts.NoError(signIn.DeleteAll()) })
+	user.client, err = signIn.HTTPClientForUser(testOUID, user.username, user.password)
 	ts.Require().NoError(err)
 	return user
 }

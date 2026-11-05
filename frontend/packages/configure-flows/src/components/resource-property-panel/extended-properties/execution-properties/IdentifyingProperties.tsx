@@ -1,9 +1,10 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
 import {useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
+import CheckboxWithHint from './CheckboxWithHint';
 import {IDENTIFYING_MODES} from './constants';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import type {StepData} from '../../../../models/steps';
@@ -15,6 +16,12 @@ function IdentifyingProperties({resource, onChange}: CommonResourcePropertiesPro
     const stepData = resource?.data as StepData | undefined;
     return (stepData?.action?.executor as {mode?: string})?.mode ?? '';
   }, [resource]);
+
+  const properties = useMemo(() => (resource?.data as StepData | undefined)?.properties ?? {}, [resource]);
+
+  const handleBooleanPropertyChange = (propertyName: string, value: boolean): void => {
+    onChange(`data.properties.${propertyName}`, value, resource);
+  };
 
   const handleIdentifyingModeChange = (selectedMode: string): void => {
     const modeConfig = IDENTIFYING_MODES.find((mode) => mode.value === selectedMode);
@@ -62,6 +69,29 @@ function IdentifyingProperties({resource, onChange}: CommonResourcePropertiesPro
           ))}
         </Select>
       </div>
+
+      {(currentMode === '' || currentMode === 'identify') && (
+        <>
+          <CheckboxWithHint
+            checked={properties['boundToUserType'] === true}
+            label={t('flows:core.executions.identifying.boundToUserType.label', 'Bound to the user type')}
+            hint={t(
+              'flows:core.executions.identifying.boundToUserType.hint',
+              'Accept only a user of the user type the flow resolved. A user of another type fails the step.',
+            )}
+            onChange={(checked) => handleBooleanPropertyChange('boundToUserType', checked)}
+          />
+          <CheckboxWithHint
+            checked={properties['continueOnNoMatch'] === true}
+            label={t('flows:core.executions.identifying.continueOnNoMatch.label', 'Continue when no user matches')}
+            hint={t(
+              'flows:core.executions.identifying.continueOnNoMatch.hint',
+              'Follow the incomplete path without an error when no user matches, keeping the entered value.',
+            )}
+            onChange={(checked) => handleBooleanPropertyChange('continueOnNoMatch', checked)}
+          />
+        </>
+      )}
     </Stack>
   );
 }

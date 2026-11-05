@@ -29,6 +29,7 @@ import PreDeleteProperties from './execution-properties/PreDeleteProperties';
 import ProvisioningProperties from './execution-properties/ProvisioningProperties';
 import RoleExecutorProperties from './execution-properties/RoleExecutorProperties';
 import SessionSignOutProperties from './execution-properties/SessionSignOutProperties';
+import SharingExecutorProperties from './execution-properties/SharingExecutorProperties';
 import SmsProperties from './execution-properties/SmsProperties';
 import SsoCheckProperties from './execution-properties/SsoCheckProperties';
 import UserTypeResolverProperties from './execution-properties/UserTypeResolverProperties';
@@ -118,6 +119,9 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
       break;
     case ExecutionTypes.GroupExecutor:
       executorSpecificProperties = <GroupExecutorProperties resource={resource} onChange={onChange} />;
+      break;
+    case ExecutionTypes.SharingExecutor:
+      executorSpecificProperties = <SharingExecutorProperties resource={resource} onChange={onChange} />;
       break;
     case ExecutionTypes.IdentityGovernance:
       executorSpecificProperties = <IdentityGovernanceProperties resource={resource} onChange={onChange} />;

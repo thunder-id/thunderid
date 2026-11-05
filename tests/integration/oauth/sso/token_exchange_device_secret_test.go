@@ -186,19 +186,31 @@ func (ts *SSOLogoutTestSuite) createTokenExchangeApp(appClientID, flowID string,
 // given scope (none when empty), and returns the status and the decoded response body.
 func (ts *SSOLogoutTestSuite) exchangeDeviceSecret(appClientID, secret, deviceSecret, scope string) (
 	int, map[string]interface{}) {
+	return ts.exchangeDeviceSecretAt("/oauth2/token", appClientID, secret, deviceSecret, scope)
+}
+
+// exchangeDeviceSecretAt is exchangeDeviceSecret at the token endpoint at path.
+func (ts *SSOLogoutTestSuite) exchangeDeviceSecretAt(path, appClientID, secret, deviceSecret, scope string) (
+	int, map[string]interface{}) {
 	ts.Require().NotEmpty(deviceSecret, "the first login should have returned a device secret")
+	return ts.requestTokenExchange(path, appClientID, secret, deviceSecret, jwtTokenType, scope)
+}
+
+// requestTokenExchange sends a token exchange to the token endpoint at path as the given client, requesting
+// the given scope (none when empty), and returns the status and the decoded response body.
+func (ts *SSOLogoutTestSuite) requestTokenExchange(path, appClientID, secret, subjectToken, subjectTokenType,
+	scope string) (int, map[string]interface{}) {
 	form := url.Values{}
 	form.Set("grant_type", tokenExchangeGrant)
-	form.Set("subject_token", deviceSecret)
-	form.Set("subject_token_type", jwtTokenType)
+	form.Set("subject_token", subjectToken)
+	form.Set("subject_token_type", subjectTokenType)
 	if scope != "" {
 		form.Set("scope", scope)
 	}
 	if secret == "" {
 		form.Set("client_id", appClientID)
 	}
-	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/oauth2/token",
-		strings.NewReader(form.Encode()))
+	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+path, strings.NewReader(form.Encode()))
 	ts.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if secret != "" {

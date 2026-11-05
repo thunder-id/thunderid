@@ -412,6 +412,52 @@ export const ssoPairingRule: GraphValidationRule = (nodes: Node[]): Notification
 };
 
 /**
+ * Mirrors the server's save check on where a Resolve OU step may sit: none may be reachable from a
+ * session step, since a sign-in that reuses the session has already signed in by then. A warning
+ * rather than an error, like the linking rules: the server refuses the save either way, so this must
+ * not block the author mid-draw.
+ */
+export const ouResolverAfterSessionRule: GraphValidationRule = (nodes: Node[], edges: Edge[]): Notification[] => {
+  const notifications: Notification[] = [];
+  const reported = new Set<string>();
+
+  for (const session of nodes.filter((node) => getNodeExecutorName(node) === ExecutionTypes.Session)) {
+    const visited = new Set<string>([session.id]);
+    const pending = edges.filter((edge) => edge.source === session.id).map((edge) => edge.target);
+
+    while (pending.length > 0) {
+      const current = pending.pop()!;
+
+      if (!visited.has(current)) {
+        visited.add(current);
+        edges.filter((edge) => edge.source === current).forEach((edge) => pending.push(edge.target));
+      }
+    }
+
+    nodes
+      .filter(
+        (node) =>
+          visited.has(node.id) &&
+          !reported.has(node.id) &&
+          getNodeExecutorName(node) === ExecutionTypes.OUResolverExecutor,
+      )
+      .forEach((node) => {
+        reported.add(node.id);
+        notifications.push(
+          createGraphErrorNotification(
+            `${node.id}_OU_RESOLVER_AFTER_SESSION`,
+            'flows:core.validation.ouResolver.afterSession',
+            node,
+            NotificationType.WARNING,
+          ),
+        );
+      });
+  }
+
+  return notifications;
+};
+
+/**
  * Collects every element in a step that raises the sign-out confirmation
  * action, including ones nested inside containers such as a form block.
  */
@@ -753,6 +799,7 @@ export const COMMON_GRAPH_VALIDATION_RULES: GraphValidationRule[] = [
 
 export const GRAPH_VALIDATION_RULES: GraphValidationRule[] = [
   ssoPairingRule,
+  ouResolverAfterSessionRule,
   linkingRejectActionRule,
   linkingExecutorWiringRule,
   ...COMMON_GRAPH_VALIDATION_RULES,

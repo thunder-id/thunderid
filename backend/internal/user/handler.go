@@ -138,8 +138,14 @@ func (uh *userHandler) HandleUserGetRequest(w http.ResponseWriter, r *http.Reque
 	// Parse include parameter to check if display name should be included.
 	includeDisplay := r.URL.Query().Get(sysutils.QueryParamInclude) == sysutils.IncludeValueDisplay
 
-	// Get the user using the user service.
-	user, svcErr := uh.userService.GetUser(ctx, id, includeDisplay)
+	// With an organization unit, the user is read as that unit sees it.
+	var user *providers.User
+	var svcErr *tidcommon.ServiceError
+	if ouID := r.URL.Query().Get(queryParamOUID); ouID != "" {
+		user, svcErr = uh.userService.GetUserInOU(ctx, id, ouID, includeDisplay)
+	} else {
+		user, svcErr = uh.userService.GetUser(ctx, id, includeDisplay)
+	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -825,7 +831,7 @@ func (uh *userHandler) HandleSharingPolicyDeleteRequest(w http.ResponseWriter, r
 func (uh *userHandler) HandleOverlayRuleGetRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	overlay, svcErr := uh.userService.ResolveSharingOverlay(ctx, r.PathValue("id"), r.URL.Query().Get("ouId"))
+	overlay, svcErr := uh.userService.ResolveSharingOverlay(ctx, r.PathValue("id"), r.URL.Query().Get(queryParamOUID))
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return

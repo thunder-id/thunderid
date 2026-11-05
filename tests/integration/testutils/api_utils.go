@@ -829,6 +829,32 @@ func DeleteApplication(appID string) error {
 	return nil
 }
 
+// ShareApplicationWithChildUnits shares an application with every organization unit beneath its owner.
+func ShareApplicationWithChildUnits(appID string) error {
+	body, err := json.Marshal(map[string]interface{}{"childUnits": map[string]interface{}{"mode": "all"}})
+	if err != nil {
+		return fmt.Errorf("failed to marshal sharing policy: %w", err)
+	}
+	req, err := http.NewRequest("POST", TestServerURL+"/applications/"+appID+"/sharing-policies",
+		bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create sharing request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to share application: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
+}
+
 // CreateOrganizationUnit creates an organization unit via API and returns the OU ID
 func CreateOrganizationUnit(ou OrganizationUnit) (string, error) {
 	ouJSON, err := json.Marshal(ou)

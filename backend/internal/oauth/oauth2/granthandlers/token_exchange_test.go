@@ -26,6 +26,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -4075,6 +4076,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_DeviceSecretAut
 		{"a flow that needs the user", constants.ErrorLoginRequired, constants.ErrorInteractionRequired},
 		{"a server failure", constants.ErrorServerError, constants.ErrorServerError},
 		{"a request error passes through", constants.ErrorInvalidTarget, constants.ErrorInvalidTarget},
+		{"a sign-in boundary refusal passes through", constants.ErrorInvalidGrant, constants.ErrorInvalidGrant},
 	}
 
 	for _, tc := range cases {
@@ -4618,4 +4620,76 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestExchangedTokenFamilyID() {
 			suite.Equal(tc.want, got)
 		})
 	}
+}
+
+// The organization-unit-scoped endpoint exchanges a device secret only; the bare endpoint is unchanged.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_OrganizationUnitRoute() {
+	deviceSecret := suite.createTestJWTWithTyp(jwt.TokenTypeDeviceSecret, map[string]interface{}{})
+	cases := []struct {
+		name      string
+		ouID      string
+		tokenType constants.TokenTypeIdentifier
+		token     string
+		requested constants.TokenTypeIdentifier
+		refused   bool
+	}{
+		{"a device secret on the unit's endpoint", "ou-1", constants.TokenTypeIdentifierJWT, deviceSecret, "",
+			false},
+		{"an access token on the unit's endpoint", "ou-1", constants.TokenTypeIdentifierAccessToken,
+			suite.createTestJWT(map[string]interface{}{}), "", true},
+		{"a JWT of another type on the unit's endpoint", "ou-1", constants.TokenTypeIdentifierJWT,
+			suite.createTestJWTWithTyp(jwt.TokenTypeJWT, map[string]interface{}{}), "", true},
+		{"a device secret declared as an access token on the unit's endpoint", "ou-1",
+			constants.TokenTypeIdentifierAccessToken, deviceSecret, "", true},
+		{"no subject token on the unit's endpoint", "ou-1", constants.TokenTypeIdentifierJWT, "", "", true},
+		{"an ID-JAG request on the unit's endpoint", "ou-1", constants.TokenTypeIdentifierIDToken,
+			suite.createTestJWTWithTyp(jwt.TokenTypeJWT, map[string]interface{}{}),
+			constants.TokenTypeIdentifierIDJAG, true},
+		{"a device secret on the bare endpoint", "", constants.TokenTypeIdentifierJWT, deviceSecret, "", false},
+		{"an access token on the bare endpoint", "", constants.TokenTypeIdentifierAccessToken,
+			suite.createTestJWT(map[string]interface{}{}), "", false},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			ctx := context.Background()
+			if tc.ouID != "" {
+				ctx = syscontext.WithAccessingOUID(ctx, tc.ouID)
+			}
+			req := suite.createBasicTokenRequest(tc.token)
+			req.SubjectTokenType = string(tc.tokenType)
+			req.RequestedTokenType = string(tc.requested)
+
+			errResp := suite.handler.ValidateGrant(ctx, req, suite.oauthApp)
+
+			if !tc.refused {
+				suite.Nil(errResp)
+				return
+			}
+			suite.Require().NotNil(errResp)
+			suite.Equal(constants.ErrorInvalidRequest, errResp.Error)
+			suite.Equal(constants.OUScopedGrantRefusal, errResp.ErrorDescription)
+		})
+	}
+}
+
+// The organization unit the request names reaches the silent flow, which bounds the sign-in to it.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_DeviceSecretCarriesTheUnitToTheSilentFlow() {
+	authorizer, req := suite.deviceSecretGrant()
+	req.Scope = ""
+	suite.mockTokenValidator.EXPECT().ValidateDeviceSecret(mock.Anything, req.SubjectToken).
+		Return(&tokenservice.DeviceSecretClaims{Subject: testUserID, SessionData: deviceSecretSessions}, nil)
+	authorizer.EXPECT().AuthorizeWithSSOSession(mock.MatchedBy(func(ctx context.Context) bool {
+		return syscontext.GetAccessingOUID(ctx) == "ou-1"
+	}), suite.oauthApp, mock.Anything).Return(&authz.AuthorizationCode{
+		ClientID: testClientID, AuthorizedUserID: testUserID, SubjectID: testUserID, TimeCreated: time.Now(),
+	}, nil)
+	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "access-token"}, nil)
+
+	result, errResp := suite.handler.HandleGrant(syscontext.WithAccessingOUID(context.Background(), "ou-1"), req,
+		suite.oauthApp)
+
+	suite.Require().Nil(errResp)
+	suite.Equal("access-token", result.AccessToken.Token)
 }

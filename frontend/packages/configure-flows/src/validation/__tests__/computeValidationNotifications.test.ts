@@ -872,6 +872,74 @@ describe('computeValidationNotifications', () => {
     });
   });
 
+  describe('Resolve OU placement rule', () => {
+    const executorNode = (id: string, name: string): Node =>
+      createNode({
+        id,
+        type: 'TASK_EXECUTION',
+        data: {action: {type: 'EXECUTOR', executor: {name}}} as unknown as StepData,
+      });
+
+    const edge = (source: string, target: string, sourceHandle: string | null = null) =>
+      ({id: `${source}-${target}`, source, sourceHandle, target}) as Edge;
+
+    // START -> [resolve before] -> sso_check -> (failure) login -> credentials -> [resolve between] -> session
+    // -> [resolve after] -> assert, with the Resolve OU step wired in at one place.
+    const flow = (placement: 'before' | 'between' | 'after'): {nodes: Node[]; edges: Edge[]} => {
+      const nodes = [
+        createNode({id: 'start', type: 'START'}),
+        executorNode('sso_check', 'SSOCheckExecutor'),
+        createNode({id: 'login'}),
+        executorNode('credentials', 'CredentialsAuthExecutor'),
+        executorNode('session', 'SessionExecutor'),
+        executorNode('resolve_ou', 'OUResolverExecutor'),
+        executorNode('assert', 'AuthAssertExecutor'),
+      ];
+      const chain = {
+        before: ['start', 'resolve_ou', 'sso_check'],
+        between: ['credentials', 'resolve_ou', 'session'],
+        after: ['session', 'resolve_ou', 'assert'],
+      }[placement];
+      const edges = [
+        edge('start', 'sso_check'),
+        edge('sso_check', 'session'),
+        edge('sso_check', 'login', 'failure'),
+        edge('login', 'credentials', 'action_submit_NEXT'),
+        edge('credentials', 'session'),
+        edge('session', 'assert'),
+      ].filter((e) => !(e.source === chain[0] && e.target === chain[2]));
+
+      return {nodes, edges: [...edges, edge(chain[0], chain[1]), edge(chain[1], chain[2])]};
+    };
+
+    it.each(['before', 'between'] as const)('should accept a Resolve OU step %s the session', (placement) => {
+      const {nodes, edges} = flow(placement);
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t, GRAPH_VALIDATION_RULES, edges);
+
+      expect(result.has('resolve_ou_OU_RESOLVER_AFTER_SESSION')).toBe(false);
+    });
+
+    it('should report a Resolve OU step after the session', () => {
+      const {nodes, edges} = flow('after');
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t, GRAPH_VALIDATION_RULES, edges);
+
+      const notification = result.get('resolve_ou_OU_RESOLVER_AFTER_SESSION')!;
+      expect(notification).toBeDefined();
+      expect(notification.getType()).toBe(NotificationType.WARNING);
+      expect(notification.hasResource('resolve_ou')).toBe(true);
+    });
+
+    it('should not apply outside sign-in flows', () => {
+      const {nodes, edges} = flow('after');
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t, COMMON_GRAPH_VALIDATION_RULES, edges);
+
+      expect(result.has('resolve_ou_OU_RESOLVER_AFTER_SESSION')).toBe(false);
+    });
+  });
+
   describe('Account linking reject action rule', () => {
     const rejectButtonNode = (nodeId: string, buttonId: string): Node =>
       createNode({

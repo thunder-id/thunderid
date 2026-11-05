@@ -22,9 +22,6 @@ import (
 
 var testServerURL = testutils.TestServerURL
 
-// consoleRedirectURI is the Console redirect URI on this group's server.
-var consoleRedirectURI = testServerURL + "/console"
-
 // The shipped self attribute verification flow, its send nodes, and the actions of its code prompts.
 // The email node ships without a sender and the SMS node with a placeholder, so each suite runs a copy
 // that names its own.
@@ -89,6 +86,9 @@ const (
 // completes before the flow answers the request, so a sent message is normally there at once.
 const deliveryWait = 5 * time.Second
 
+// declarativeUserOUID is the organization unit the declarative user lives in.
+const declarativeUserOUID = "decl-ou-1"
+
 // The declarative user the integration resources ship: a Person, whose email is a contact. It is read
 // only, never changed.
 var declarativeUser = testUser{id: "decl-user-1", username: "decl-user-1", password: "TempPassword123!",
@@ -124,6 +124,9 @@ type verificationFixture struct {
 	suffix     string
 	mobileStem int64
 	mobiles    int
+	// signInClientID is the fixture's own sign-in application, since a sign-in is bounded to its
+	// application's OU and the Console signs in only the default OU's users.
+	signInClientID string
 }
 
 // testUser is an account a test created, with what it signs in with.
@@ -133,6 +136,8 @@ type testUser struct {
 	password string
 	email    string
 	mobile   string
+	// signInClientID is the application the user signs in through, in the user's organization unit.
+	signInClientID string
 }
 
 // newVerificationFixture stands the fixture up and removes it when t ends, a failed setup included.
@@ -154,6 +159,16 @@ func newVerificationFixture(t *testing.T, name string) *verificationFixture {
 	t.Cleanup(func() {
 		if err := testutils.DeleteOrganizationUnit(ouID); err != nil {
 			t.Logf("cleanup: failed to delete the organization unit: %v", err)
+		}
+	})
+
+	f.signInClientID = "verification_" + name + "_sign_in_" + f.suffix
+	signInAppID, err := testutils.CreateOUSignInApplication(ouID, f.signInClientID)
+	require.NoError(t, err, "failed to create the fixture's sign-in application")
+	// The application goes before the organization unit it lives in.
+	t.Cleanup(func() {
+		if err := testutils.DeleteApplication(signInAppID); err != nil {
+			t.Logf("cleanup: failed to delete the sign-in application: %v", err)
 		}
 	})
 
@@ -270,6 +285,8 @@ func (f *verificationFixture) newUserOfType(t *testing.T, name, userType string)
 		password: "Correct-Horse-" + name + "1!",
 		email:    fmt.Sprintf("%s.%s@example.com", name, f.suffix),
 		mobile:   f.uniqueMobile(),
+
+		signInClientID: f.signInClientID,
 	}
 	attributes, err := json.Marshal(map[string]interface{}{
 		"username":      u.username,
@@ -333,11 +350,11 @@ func (f *verificationFixture) token(t *testing.T, u testUser) string {
 	return signIn(t, u).AccessToken
 }
 
-// signIn signs the user in through the Console application and returns the tokens.
+// signIn signs the user in through its sign-in application and returns the tokens.
 func signIn(t *testing.T, u testUser) *testutils.TokenResponse {
 	t.Helper()
 
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword("CONSOLE", consoleRedirectURI,
+	tokenResp, err := testutils.ObtainAccessTokenWithPassword(u.signInClientID, testutils.OUSignInRedirectURI,
 		"openid", u.username, u.password, true)
 	require.NoError(t, err, "failed to sign %s in", u.username)
 	require.NotEmpty(t, tokenResp.AccessToken)

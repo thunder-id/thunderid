@@ -1979,3 +1979,148 @@ func (suite *RoleAssignmentServiceTestSuite) TestReconcileMandatedAssignments_De
 
 	suite.mockStore.AssertNotCalled(suite.T(), "ListMandatedRoleUnits", mock.Anything)
 }
+
+// assignableIn stubs testShareeOU owning owned-1 and owned-ungrantable, with shared-open and shared-closed
+// shared with it, only shared-open with its assignments editable there.
+func (suite *RoleAssignmentServiceTestSuite) assignableIn() *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authz := suite.withGrantChecks()
+	suite.mockStore.On("GetRoleListCountByOUID", mock.Anything, testShareeOU).Return(2, nil)
+	suite.mockStore.On("GetRoleListByOUID", mock.Anything, testShareeOU, 2, 0).Return([]Role{
+		{ID: "owned-1", OUID: testShareeOU}, {ID: "owned-ungrantable", OUID: testShareeOU},
+	}, nil)
+	suite.mockSharingService.EXPECT().ListVisibleResourceIDs(mock.Anything, RoleSharingType, testShareeOU).
+		Return([]string{"shared-closed", "shared-open"}, nil)
+	for id, editable := range map[string]bool{"shared-open": true, "shared-closed": false} {
+		suite.mockSharingService.EXPECT().ResolveOverlayRules(mock.Anything, RoleSharingType, id, testShareeOU).
+			Return(sharing.ResolvedOverlay{
+				OUID: testShareeOU, Visible: true,
+				Rules: map[string]sharing.OverlayRule{roleAssignmentsFieldKey: {Editable: editable}},
+			}, nil)
+	}
+	suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"shared-open"}).
+		Return([]Role{{ID: "shared-open", OUID: testOwnerOU}}, nil)
+	return authz
+}
+
+// A unit is offered the roles it owns and the shared ones whose assignments it may change, as far as the
+// caller may grant them.
+func (suite *RoleAssignmentServiceTestSuite) TestListAssignableRoles() {
+	authz := suite.assignableIn()
+	authz.On("GrantableMemberships", mock.Anything, sysauthz.PrincipalTypeRole,
+		[]string{"owned-1", "owned-ungrantable", "shared-open"}).
+		Return([]string{"owned-1", "shared-open"}, (*tidcommon.ServiceError)(nil)).Once()
+
+	roles, svcErr := suite.service.ListAssignableRoles(context.Background(), testShareeOU)
+
+	suite.Nil(svcErr)
+	ids := make([]string, 0, len(roles))
+	for _, r := range roles {
+		ids = append(ids, r.ID)
+	}
+	suite.Equal([]string{"owned-1", "shared-open"}, ids)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestListAssignableRoles_GrantCheckServerError() {
+	authz := suite.assignableIn()
+	authz.On("GrantableMemberships", mock.Anything, sysauthz.PrincipalTypeRole, mock.Anything).
+		Return([]string(nil), &tidcommon.InternalServerError)
+
+	roles, svcErr := suite.service.ListAssignableRoles(context.Background(), testShareeOU)
+
+	suite.Nil(roles)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A unit's roles are read once: a failed count, a failed page, and composite mode's cap each end the listing.
+func (suite *RoleAssignmentServiceTestSuite) TestListAssignableRoles_StoreErrors() {
+	cases := map[string]struct {
+		countErr, listErr error
+		want              string
+	}{
+		"count":     {countErr: errors.New("store down"), want: tidcommon.InternalServerError.Code},
+		"page":      {listErr: errors.New("store down"), want: tidcommon.InternalServerError.Code},
+		"composite": {countErr: errResultLimitExceededInCompositeMode, want: ResultLimitExceededInCompositeMode.Code},
+	}
+	for name, tc := range cases {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.withGrantChecks()
+			suite.mockStore.On("GetRoleListCountByOUID", mock.Anything, testShareeOU).Return(1, tc.countErr)
+			suite.mockStore.On("GetRoleListByOUID", mock.Anything, testShareeOU, 1, 0).
+				Return([]Role(nil), tc.listErr).Maybe()
+
+			roles, svcErr := suite.service.ListAssignableRoles(context.Background(), testShareeOU)
+
+			suite.Nil(roles)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.want, svcErr.Code)
+		})
+	}
+}
+
+// A unit that does not exist has nothing shared with it, so only what it owns is offered.
+func (suite *RoleAssignmentServiceTestSuite) TestListAssignableRoles_UnknownUnitHasNothingShared() {
+	authz := suite.withGrantChecks()
+	suite.mockStore.On("GetRoleListCountByOUID", mock.Anything, testShareeOU).Return(1, nil)
+	suite.mockStore.On("GetRoleListByOUID", mock.Anything, testShareeOU, 1, 0).
+		Return([]Role{{ID: "owned-1", OUID: testShareeOU}}, nil)
+	suite.mockSharingService.EXPECT().ListVisibleResourceIDs(mock.Anything, RoleSharingType, testShareeOU).
+		Return(nil, &oupkg.ErrorOrganizationUnitNotFound)
+	authz.On("GrantableMemberships", mock.Anything, sysauthz.PrincipalTypeRole, []string{"owned-1"}).
+		Return([]string{"owned-1"}, (*tidcommon.ServiceError)(nil)).Once()
+
+	roles, svcErr := suite.service.ListAssignableRoles(context.Background(), testShareeOU)
+
+	suite.Nil(svcErr)
+	suite.Equal([]Role{{ID: "owned-1", OUID: testShareeOU}}, roles)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestListAssignableRoles_SharedRoleLookupErrors() {
+	suite.Run("visible roles", func() {
+		suite.SetupTest()
+		suite.withGrantChecks()
+		suite.mockStore.On("GetRoleListCountByOUID", mock.Anything, testShareeOU).Return(0, nil)
+		suite.mockSharingService.EXPECT().ListVisibleResourceIDs(mock.Anything, RoleSharingType, testShareeOU).
+			Return(nil, &tidcommon.InternalServerError)
+
+		roles, svcErr := suite.service.ListAssignableRoles(context.Background(), testShareeOU)
+
+		suite.Nil(roles)
+		suite.Require().NotNil(svcErr)
+		suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+	suite.Run("overlay rules", func() {
+		suite.SetupTest()
+		suite.withGrantChecks()
+		suite.mockStore.On("GetRoleListCountByOUID", mock.Anything, testShareeOU).Return(0, nil)
+		suite.mockSharingService.EXPECT().ListVisibleResourceIDs(mock.Anything, RoleSharingType, testShareeOU).
+			Return([]string{"shared-open"}, nil)
+		suite.mockSharingService.EXPECT().ResolveOverlayRules(mock.Anything, RoleSharingType, "shared-open",
+			testShareeOU).Return(sharing.ResolvedOverlay{}, &tidcommon.InternalServerError)
+
+		roles, svcErr := suite.service.ListAssignableRoles(context.Background(), testShareeOU)
+
+		suite.Nil(roles)
+		suite.Require().NotNil(svcErr)
+		suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+	suite.Run("shared roles", func() {
+		suite.SetupTest()
+		suite.withGrantChecks()
+		suite.mockStore.On("GetRoleListCountByOUID", mock.Anything, testShareeOU).Return(0, nil)
+		suite.mockSharingService.EXPECT().ListVisibleResourceIDs(mock.Anything, RoleSharingType, testShareeOU).
+			Return([]string{"shared-open"}, nil)
+		suite.mockSharingService.EXPECT().ResolveOverlayRules(mock.Anything, RoleSharingType, "shared-open",
+			testShareeOU).Return(sharing.ResolvedOverlay{OUID: testShareeOU, Visible: true,
+			Rules: map[string]sharing.OverlayRule{roleAssignmentsFieldKey: {Editable: true}}}, nil)
+		suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"shared-open"}).
+			Return([]Role(nil), errors.New("store down"))
+
+		roles, svcErr := suite.service.ListAssignableRoles(context.Background(), testShareeOU)
+
+		suite.Nil(roles)
+		suite.Require().NotNil(svcErr)
+		suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+}
