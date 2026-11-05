@@ -953,6 +953,86 @@ func (_c *roleStoreInterfaceMock_GetAuthorizedPermissionsByResourceServer_Call) 
 	return _c
 }
 
+// GetDirectAssignments provides a mock function for the type roleStoreInterfaceMock
+func (_mock *roleStoreInterfaceMock) GetDirectAssignments(ctx context.Context, roleID string, ouID string, assigneeIDs []string) ([]RoleAssignment, error) {
+	ret := _mock.Called(ctx, roleID, ouID, assigneeIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetDirectAssignments")
+	}
+
+	var r0 []RoleAssignment
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, []string) ([]RoleAssignment, error)); ok {
+		return returnFunc(ctx, roleID, ouID, assigneeIDs)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, []string) []RoleAssignment); ok {
+		r0 = returnFunc(ctx, roleID, ouID, assigneeIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]RoleAssignment)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, []string) error); ok {
+		r1 = returnFunc(ctx, roleID, ouID, assigneeIDs)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// roleStoreInterfaceMock_GetDirectAssignments_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetDirectAssignments'
+type roleStoreInterfaceMock_GetDirectAssignments_Call struct {
+	*mock.Call
+}
+
+// GetDirectAssignments is a helper method to define mock.On call
+//   - ctx context.Context
+//   - roleID string
+//   - ouID string
+//   - assigneeIDs []string
+func (_e *roleStoreInterfaceMock_Expecter) GetDirectAssignments(ctx any, roleID any, ouID any, assigneeIDs any) *roleStoreInterfaceMock_GetDirectAssignments_Call {
+	return &roleStoreInterfaceMock_GetDirectAssignments_Call{Call: _e.mock.On("GetDirectAssignments", ctx, roleID, ouID, assigneeIDs)}
+}
+
+func (_c *roleStoreInterfaceMock_GetDirectAssignments_Call) Run(run func(ctx context.Context, roleID string, ouID string, assigneeIDs []string)) *roleStoreInterfaceMock_GetDirectAssignments_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 []string
+		if args[3] != nil {
+			arg3 = args[3].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *roleStoreInterfaceMock_GetDirectAssignments_Call) Return(roleAssignments []RoleAssignment, err error) *roleStoreInterfaceMock_GetDirectAssignments_Call {
+	_c.Call.Return(roleAssignments, err)
+	return _c
+}
+
+func (_c *roleStoreInterfaceMock_GetDirectAssignments_Call) RunAndReturn(run func(ctx context.Context, roleID string, ouID string, assigneeIDs []string) ([]RoleAssignment, error)) *roleStoreInterfaceMock_GetDirectAssignments_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetEntityRoleIDs provides a mock function for the type roleStoreInterfaceMock
 func (_mock *roleStoreInterfaceMock) GetEntityRoleIDs(ctx context.Context, entityID string, groupIDs []string, assignmentOUID string) ([]string, error) {
 	ret := _mock.Called(ctx, entityID, groupIDs, assignmentOUID)

@@ -1208,26 +1208,6 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "Role Assignment Removal Executor",
-      "label": "Remove Role Assignment",
-      "description": "Unassign the role named by the trusted revocation plan",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "RoleExecutor", "mode": "role_assignment_removal"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
       "header": "Role Permission Removal Validator",
       "label": "Validate and Plan Permission Change",
       "description": "Validate the new permission set and plan revocation of the scopes it drops",

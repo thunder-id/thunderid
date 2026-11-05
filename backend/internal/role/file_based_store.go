@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -403,6 +404,29 @@ func (f *fileBasedStore) GetRoleAssignmentsCountByType(
 	}
 
 	return len(declaredAssignments(roleData, ouID, assigneeType)), nil
+}
+
+// GetDirectAssignments returns the declared role's assignments in ouID to any of assigneeIDs.
+func (f *fileBasedStore) GetDirectAssignments(
+	_ context.Context, roleID, ouID string, assigneeIDs []string) ([]RoleAssignment, error) {
+	data, err := f.GenericFileBasedStore.Get(roleID)
+	if err != nil {
+		if isEntityNotFoundError(err) {
+			return []RoleAssignment{}, nil
+		}
+		return nil, err
+	}
+	roleData, err := roleFromDeclarativeData(roleID, data)
+	if err != nil {
+		return nil, err
+	}
+	assignments := []RoleAssignment{}
+	for _, a := range declaredAssignments(roleData, ouID, "") {
+		if slices.Contains(assigneeIDs, a.ID) {
+			assignments = append(assignments, a)
+		}
+	}
+	return assignments, nil
 }
 
 // declaredAssignments returns a declared role's assignments of one type made in ouID, or in every

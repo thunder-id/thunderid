@@ -556,6 +556,19 @@ var (
 			DefaultValue: "A role in a project must be in the system organization unit",
 		},
 	}
+	// ErrorTooManyAssignments is returned when a removal request names more assignments than allowed.
+	ErrorTooManyAssignments = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1042",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.too_many_assignments",
+			DefaultValue: "Too many assignments",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.too_many_assignments_description",
+			DefaultValue: "A request can remove at most 100 assignments",
+		},
+	}
 )
 
 // Internal error constants for role management operations.

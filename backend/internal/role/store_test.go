@@ -2855,3 +2855,57 @@ func (suite *RoleStoreTestSuite) TestCreateAndUpdateRoleStoreTheProject() {
 		Name: "Shop Admin", OUID: "ou1", ProjectID: "proj2",
 	}))
 }
+
+func (suite *RoleStoreTestSuite) TestBuildGetDirectAssignmentsQuery() {
+	query, args, err := buildGetDirectAssignmentsQuery("role1", "ou1", []string{"a", "b"}, testDeploymentID)
+
+	suite.Require().NoError(err)
+	suite.Equal("RLQ-ROLE_MGT-48", query.ID)
+	suite.Contains(query.PostgresQuery, "WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND SHARING_POLICY_ID = '' "+
+		"AND ASSIGNEE_ID IN ($3,$4) AND DEPLOYMENT_ID = $5")
+	suite.Contains(query.SQLiteQuery, "WHERE ROLE_ID = ? AND ASSIGNMENT_OU_ID = ? AND SHARING_POLICY_ID = '' "+
+		"AND ASSIGNEE_ID IN (?,?) AND DEPLOYMENT_ID = ?")
+	suite.Equal([]interface{}{"role1", "ou1", "a", "b", testDeploymentID}, args)
+
+	_, _, err = buildGetDirectAssignmentsQuery("role1", "ou1", nil, testDeploymentID)
+	suite.Error(err)
+}
+
+func (suite *RoleStoreTestSuite) TestGetDirectAssignments() {
+	suite.Run("returns the named assignees' direct assignments", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, mock.MatchedBy(func(q dbmodel.DBQuery) bool {
+			return q.ID == "RLQ-ROLE_MGT-48"
+		}), "role1", "ou1", "user1", "user2", testDeploymentID).
+			Return([]map[string]interface{}{{"assignee_id": "user1", "assignee_type": "entity",
+				"assignment_ou_id": "ou1", "sharing_policy_id": ""}}, nil).Once()
+
+		assignments, err := suite.store.GetDirectAssignments(context.Background(), "role1", "ou1",
+			[]string{"user1", "user2"})
+
+		suite.NoError(err)
+		suite.Equal([]RoleAssignment{{ID: "user1", Type: assigneeTypeEntity, OUID: "ou1"}}, assignments)
+	})
+	suite.Run("no assignees reads nothing", func() {
+		assignments, err := suite.store.GetDirectAssignments(context.Background(), "role1", "ou1", nil)
+
+		suite.NoError(err)
+		suite.Empty(assignments)
+	})
+	suite.Run("query error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, mock.Anything, "role1", "ou1", "user3",
+			testDeploymentID).Return(nil, errors.New("db error")).Once()
+
+		_, err := suite.store.GetDirectAssignments(context.Background(), "role1", "ou1", []string{"user3"})
+
+		suite.Error(err)
+	})
+	suite.Run("client error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("client error")).Once()
+
+		_, err := suite.store.GetDirectAssignments(context.Background(), "role1", "ou1", []string{"user5"})
+
+		suite.Error(err)
+	})
+}

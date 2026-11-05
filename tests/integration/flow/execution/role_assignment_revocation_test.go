@@ -13,21 +13,13 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const roleAssignmentRemovalFlowHandle = "default-role-assignment-removal-flow"
-
-const (
-	roleTargetInput           = "targetRoleId"
-	assigneeTargetInput       = "targetAssigneeId"
-	assignmentOUIDTargetInput = "targetAssignmentOuId"
-)
+const roleTargetInput = "targetRoleId"
 
 const (
 	errCodeRoleNotFound                         = "ROL-1003"
-	errCodeRoleAssignmentNotFound               = "ROL-1020"
 	errCodeAdministrationAuthenticationRequired = "FES-1017"
 )
 
@@ -72,15 +64,16 @@ var allRoleFlowScopes = []string{
 
 var roleAdminFlowTestOU = testutils.OrganizationUnit{
 	Handle:      "role_admin_flow_test_ou",
-	Name:        "Test OU for Role Administration Flows",
-	Description: "Organization unit created for role administration flow testing",
+	Name:        "Test OU for Role Assignment Revocation",
+	Description: "Organization unit created for role assignment revocation testing",
 	Parent:      nil,
 }
 
-type RoleAdministrationFlowTestSuite struct {
+// RoleAssignmentRevocationTestSuite removes role assignments through the management API, which revokes
+// what each removed assignment granted.
+type RoleAssignmentRevocationTestSuite struct {
 	suite.Suite
 	ouID             string
-	flowID           string
 	resourceServerID string
 	resourceIDs      []string
 	appID            string
@@ -89,19 +82,14 @@ type RoleAdministrationFlowTestSuite struct {
 	otherAppID       string
 }
 
-func TestRoleAdministrationFlowTestSuite(t *testing.T) {
-	suite.Run(t, new(RoleAdministrationFlowTestSuite))
+func TestRoleAssignmentRevocationTestSuite(t *testing.T) {
+	suite.Run(t, new(RoleAssignmentRevocationTestSuite))
 }
 
-func (ts *RoleAdministrationFlowTestSuite) SetupSuite() {
+func (ts *RoleAssignmentRevocationTestSuite) SetupSuite() {
 	ouID, err := testutils.CreateOrganizationUnit(roleAdminFlowTestOU)
 	ts.Require().NoError(err, "Failed to create test organization unit")
 	ts.ouID = ouID
-
-	flowID, err := testutils.GetFlowIDByHandle(roleAssignmentRemovalFlowHandle, administrationFlowType)
-	ts.Require().NoError(err, "Failed to resolve the shipped role assignment removal flow")
-	ts.Require().NotEmpty(flowID, "The shipped role assignment removal flow must be present")
-	ts.flowID = flowID
 
 	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
 		Name:        "Role Flow DMV API",
@@ -158,7 +146,7 @@ func (ts *RoleAdministrationFlowTestSuite) SetupSuite() {
 	ts.otherAppID = otherAppID
 }
 
-func (ts *RoleAdministrationFlowTestSuite) TearDownSuite() {
+func (ts *RoleAssignmentRevocationTestSuite) TearDownSuite() {
 	for _, roleID := range ts.createdRoleIDs {
 		if err := testutils.DeleteRole(roleID); err != nil {
 			ts.T().Logf("Failed to delete test role %s during teardown: %v", roleID, err)
@@ -197,24 +185,22 @@ func (ts *RoleAdministrationFlowTestSuite) TearDownSuite() {
 	}
 }
 
-func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_RevokesTokenAndRemovesAssignment() {
+func (ts *RoleAssignmentRevocationTestSuite) TestRemoveAssignment_RevokesTokenAndRemovesAssignment() {
 	roleID := ts.createRoleAssignedToApp("Role Flow Revoking Administrator", []string{scopeRevocation})
 
 	token := grantedToken(&ts.Suite, roleFlowClient, scopeRevocation)
 
-	step := ts.executeRoleFlow(roleID, ts.appID)
+	ts.removeAssignment(roleID, "", testutils.Assignment{ID: ts.appID, Type: "app"})
 
-	ts.Equal("COMPLETE", step.FlowStatus, "The flow must complete")
 	ts.False(tokenIsActive(&ts.Suite, roleFlowClient, token), "The token carrying the lost scope must be rejected")
 	ts.Equal(0, ts.assignmentCount(roleID), "The assignment must be removed")
 }
 
-func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_LaterTokenIsUnaffected() {
+func (ts *RoleAssignmentRevocationTestSuite) TestRemoveAssignment_LaterTokenIsUnaffected() {
 	roleID := ts.createRoleAssignedToApp("Role Flow Reassigned Administrator", []string{scopeRegrant})
 	firstToken := grantedToken(&ts.Suite, roleFlowClient, scopeRegrant)
 
-	step := ts.executeRoleFlow(roleID, ts.appID)
-	ts.Require().Equal("COMPLETE", step.FlowStatus)
+	ts.removeAssignment(roleID, "", testutils.Assignment{ID: ts.appID, Type: "app"})
 	ts.Require().False(tokenIsActive(&ts.Suite, roleFlowClient, firstToken),
 		"The token issued before the unassignment must be rejected")
 
@@ -228,51 +214,24 @@ func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_LaterTo
 	grantedToken(&ts.Suite, roleFlowClient, scopeRegrant)
 }
 
-func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_RoleWithoutPermissions() {
+func (ts *RoleAssignmentRevocationTestSuite) TestRemoveAssignment_RoleWithoutPermissions() {
 	roleID := ts.createRoleAssignedToApp("Role Flow Empty Administrator", nil)
 	ts.Require().Equal(1, ts.assignmentCount(roleID))
 
-	step := ts.executeRoleFlow(roleID, ts.appID)
+	ts.removeAssignment(roleID, "", testutils.Assignment{ID: ts.appID, Type: "app"})
 
-	ts.Equal("COMPLETE", step.FlowStatus, "A role granting nothing must still be unassigned")
-	ts.Equal(0, ts.assignmentCount(roleID))
+	ts.Equal(0, ts.assignmentCount(roleID), "A role granting nothing must still be unassigned")
 }
 
-func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_UnknownRoleCarriesValidatorCode() {
-	step := ts.executeRoleFlow("01900000-0000-7000-8000-0000000000ff", ts.appID)
+func (ts *RoleAssignmentRevocationTestSuite) TestRemoveAssignment_UnknownRoleIsNotFound() {
+	status, code := removeAssignmentThroughAPI(&ts.Suite, "01900000-0000-7000-8000-0000000000ff", "",
+		testutils.Assignment{ID: ts.appID, Type: "app"})
 
-	ts.NotEqual("COMPLETE", step.FlowStatus, "An unknown role must not complete")
-	ts.Require().NotNil(step.Error, "The refusal must be reported in the error envelope")
-	ts.Equal(errCodeRoleNotFound, step.Error.Code,
-		"The validator's own code must reach the caller, not the executor's generic one")
+	ts.Equal(http.StatusNotFound, status, "An unknown role must be reported as not found")
+	ts.Equal(errCodeRoleNotFound, code)
 }
 
-func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_MissingTargetDoesNotComplete() {
-	roleID := ts.createRoleAssignedToApp("Role Flow Untouched Administrator", []string{scopeUntouched})
-
-	step := executeAsAdmin(&ts.Suite, ts.flowID, map[string]string{})
-
-	ts.NotEqual("COMPLETE", step.FlowStatus, "A flow with no target must not complete")
-	ts.Equal(1, ts.assignmentCount(roleID), "The assignment must be untouched")
-}
-
-func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_RejectsAnonymousCaller() {
-	roleID := ts.createRoleAssignedToApp("Role Flow Protected Administrator", []string{scopeProtected})
-
-	result, err := common.ExecuteAdministrationFlow(ts.flowID, map[string]string{
-		roleTargetInput: roleID, assigneeTargetInput: ts.appID,
-	}, false)
-	ts.Require().NoError(err, "Failed to execute the role assignment removal flow anonymously")
-
-	ts.Equal(http.StatusUnauthorized, result.StatusCode, "An anonymous caller must be refused as unauthenticated")
-	ts.Nil(result.Step, "An anonymous caller must not be given a flow step")
-	ts.Require().NotNil(result.Error, "The refusal must be reported as an API error")
-	ts.Equal(errCodeAdministrationAuthenticationRequired, result.Error.Code,
-		"The refusal must be the missing-authentication one, not a refusal for any other reason")
-	ts.Equal(1, ts.assignmentCount(roleID), "The assignment must be untouched")
-}
-
-func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_LeavesOtherAssigneesAlone() {
+func (ts *RoleAssignmentRevocationTestSuite) TestRemoveAssignment_LeavesOtherAssigneesAlone() {
 	roleID := ts.createRoleAssignedToApps("Role Flow Shared Administrator",
 		[]string{scopeOtherAssignee},
 		testutils.Assignment{ID: ts.appID, Type: "app"},
@@ -281,40 +240,36 @@ func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_LeavesO
 	departing := grantedToken(&ts.Suite, roleFlowClient, scopeOtherAssignee)
 	remaining := grantedToken(&ts.Suite, roleFlowOtherClient, scopeOtherAssignee)
 
-	step := ts.executeRoleFlow(roleID, ts.appID)
+	ts.removeAssignment(roleID, "", testutils.Assignment{ID: ts.appID, Type: "app"})
 
-	ts.Require().Equal("COMPLETE", step.FlowStatus)
 	ts.False(tokenIsActive(&ts.Suite, roleFlowClient, departing), "The unassigned principal's token must be rejected")
 	ts.True(tokenIsActive(&ts.Suite, roleFlowOtherClient, remaining),
 		"An assignee that keeps the role must keep the scope it conveys")
 	ts.Equal(1, ts.assignmentCount(roleID), "Only the named assignment may be removed")
 }
 
-func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_UnassignedPrincipalIsRefused() {
+// Removing an assignment the role does not have changes nothing, so it revokes nothing.
+func (ts *RoleAssignmentRevocationTestSuite) TestRemoveAssignment_UnassignedPrincipalRevokesNothing() {
 	roleID := ts.createRoleAssignedToApps("Role Flow Other Only Administrator",
 		[]string{scopeNotAssigned}, testutils.Assignment{ID: ts.otherAppID, Type: "app"})
 	// The principal holds the scope through another role, so a wrongly planned revocation would reject this token.
 	ts.createRoleAssignedToApp("Role Flow Other Path Administrator", []string{scopeNotAssigned})
 	named := grantedToken(&ts.Suite, roleFlowClient, scopeNotAssigned)
 
-	step := ts.executeRoleFlow(roleID, ts.appID)
+	ts.removeAssignment(roleID, "", testutils.Assignment{ID: ts.appID, Type: "app"})
 
-	ts.NotEqual("COMPLETE", step.FlowStatus, "Removing an assignment that does not exist must not complete")
-	ts.Require().NotNil(step.Error, "The refusal must be reported in the error envelope")
-	ts.Equal(errCodeRoleAssignmentNotFound, step.Error.Code,
-		"The validator's own code must reach the caller, not the executor's generic one")
 	ts.True(tokenIsActive(&ts.Suite, roleFlowClient, named),
-		"A refused unassignment must not revoke the scope the named principal holds through another role")
+		"Removing an assignment the role does not have must not revoke the scope held through another role")
 	assignments, err := testutils.GetRoleAssignments(roleID)
 	ts.Require().NoError(err, "Failed to read role assignments")
-	ts.Require().Len(assignments, 1, "A refused unassignment must leave the role's assignments as they were")
+	ts.Require().Len(assignments, 1, "The role's assignments must be left as they were")
 	ts.Equal(ts.otherAppID, assignments[0].ID, "The role's actual assignee must remain assigned")
 }
 
-func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_GroupAssigneeRevokesItsMembers() {
+func (ts *RoleAssignmentRevocationTestSuite) TestRemoveAssignment_GroupAssigneeRevokesItsMembers() {
 	groupID, err := testutils.CreateGroup(testutils.Group{
 		Name:        "Role Flow Assigned Group",
-		Description: "Group created for role administration flow testing",
+		Description: "Group created for role assignment revocation testing",
 		OUID:        ts.ouID,
 		Members:     []testutils.Member{{Id: ts.appID, Type: "app"}},
 	})
@@ -325,9 +280,8 @@ func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_GroupAs
 
 	token := grantedToken(&ts.Suite, roleFlowClient, scopeGroupAssignee)
 
-	step := ts.executeRoleFlow(roleID, groupID)
+	ts.removeAssignment(roleID, "", testutils.Assignment{ID: groupID, Type: "group"})
 
-	ts.Equal("COMPLETE", step.FlowStatus, "The flow must complete")
 	ts.False(tokenIsActive(&ts.Suite, roleFlowClient, token),
 		"A member of the unassigned group must lose the scope the role conveyed")
 	ts.Equal(0, ts.assignmentCount(roleID), "The group's assignment must be removed")
@@ -337,12 +291,13 @@ func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_GroupAs
 }
 
 // An assignment made in an organization unit the role is shared with is removed where it was made, and
-// only when the flow names that unit: without it the flow looks in the role's owner and finds nothing.
-func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_RemovesAnAssignmentMadeInASharedOU() {
+// only when the request names that unit: without it the removal looks in the role's owner and finds
+// nothing to remove or revoke.
+func (ts *RoleAssignmentRevocationTestSuite) TestRemoveAssignment_RemovesAnAssignmentMadeInASharedOU() {
 	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle:      "role_admin_flow_child_ou",
-		Name:        "Child OU for Role Administration Flows",
-		Description: "Organization unit a role is shared with, for role administration flow testing",
+		Name:        "Child OU for Role Assignment Revocation",
+		Description: "Organization unit a role is shared with, for role assignment revocation testing",
 		Parent:      &ts.ouID,
 	})
 	ts.Require().NoError(err, "Failed to create the child organization unit")
@@ -377,7 +332,7 @@ func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_Removes
 
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name:        "Role Flow Shared OU Administrator",
-		Description: "Role created for flow execution testing",
+		Description: "Role created for role assignment revocation testing",
 		OUID:        ts.ouID,
 		Permissions: []testutils.ResourcePermissions{
 			{ResourceServerID: ts.resourceServerID, Permissions: []string{scopeSharedOU}},
@@ -399,26 +354,22 @@ func (ts *RoleAdministrationFlowTestSuite) TestRoleAssignmentRemovalFlow_Removes
 	})
 
 	token := grantedToken(&ts.Suite, roleFlowChildClient, scopeSharedOU)
+	child := testutils.Assignment{ID: childAppID, Type: "app"}
 
-	step := ts.executeRoleFlow(roleID, childAppID)
+	ts.removeAssignment(roleID, "", child)
 
-	ts.NotEqual("COMPLETE", step.FlowStatus, "Without the organization unit the flow looks in the role's owner")
-	ts.Require().NotNil(step.Error, "The refusal must be reported in the error envelope")
-	ts.Equal(errCodeRoleAssignmentNotFound, step.Error.Code)
-	ts.True(tokenIsActive(&ts.Suite, roleFlowChildClient, token), "A refused unassignment must not revoke")
-	ts.Equal(1, ts.assignmentCount(roleID), "A refused unassignment must leave the assignment")
+	ts.True(tokenIsActive(&ts.Suite, roleFlowChildClient, token),
+		"Without the organization unit nothing is removed, so nothing may be revoked")
+	ts.Equal(1, ts.assignmentCount(roleID), "The assignment made in the shared organization unit must remain")
 
-	step = executeAsAdmin(&ts.Suite, ts.flowID, map[string]string{
-		roleTargetInput: roleID, assigneeTargetInput: childAppID, assignmentOUIDTargetInput: childOUID,
-	})
+	ts.removeAssignment(roleID, childOUID, child)
 
-	ts.Equal("COMPLETE", step.FlowStatus, "The flow must complete")
 	ts.False(tokenIsActive(&ts.Suite, roleFlowChildClient, token), "The token carrying the lost scope must be rejected")
 	ts.Equal(0, ts.assignmentCount(roleID), "The assignment made in the shared organization unit must be removed")
 }
 
 // postRoleJSON posts body to a path beneath the role and requires the given status.
-func (ts *RoleAdministrationFlowTestSuite) postRoleJSON(roleID, path string, status int, body interface{}) {
+func (ts *RoleAssignmentRevocationTestSuite) postRoleJSON(roleID, path string, status int, body interface{}) {
 	ts.T().Helper()
 
 	payload, err := json.Marshal(body)
@@ -433,19 +384,19 @@ func (ts *RoleAdministrationFlowTestSuite) postRoleJSON(roleID, path string, sta
 	ts.Require().Equal(status, resp.StatusCode, "POST /roles/%s/%s", roleID, path)
 }
 
-func (ts *RoleAdministrationFlowTestSuite) createRoleAssignedToApp(
+func (ts *RoleAssignmentRevocationTestSuite) createRoleAssignedToApp(
 	name string, permissions []string) string {
 	ts.T().Helper()
 	return ts.createRoleAssignedToApps(name, permissions, testutils.Assignment{ID: ts.appID, Type: "app"})
 }
 
-func (ts *RoleAdministrationFlowTestSuite) createRoleAssignedToApps(
+func (ts *RoleAssignmentRevocationTestSuite) createRoleAssignedToApps(
 	name string, permissions []string, assignments ...testutils.Assignment) string {
 	ts.T().Helper()
 	return createRole(&ts.Suite, &ts.createdRoleIDs, ts.ouID, ts.resourceServerID, name, permissions, assignments...)
 }
 
-func (ts *RoleAdministrationFlowTestSuite) assignmentCount(roleID string) int {
+func (ts *RoleAssignmentRevocationTestSuite) assignmentCount(roleID string) int {
 	ts.T().Helper()
 
 	assignments, err := testutils.GetRoleAssignments(roleID)
@@ -453,8 +404,10 @@ func (ts *RoleAdministrationFlowTestSuite) assignmentCount(roleID string) int {
 	return len(assignments)
 }
 
-func (ts *RoleAdministrationFlowTestSuite) executeRoleFlow(roleID, assigneeID string) *common.FlowStep {
+// removeAssignment removes the assignment through the management API and requires it to succeed.
+func (ts *RoleAssignmentRevocationTestSuite) removeAssignment(roleID, ouID string, assignee testutils.Assignment) {
 	ts.T().Helper()
-	return executeAsAdmin(&ts.Suite, ts.flowID,
-		map[string]string{roleTargetInput: roleID, assigneeTargetInput: assigneeID})
+
+	status, code := removeAssignmentThroughAPI(&ts.Suite, roleID, ouID, assignee)
+	ts.Require().Equal(http.StatusNoContent, status, "Removing the assignment failed with %s", code)
 }

@@ -442,3 +442,34 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleListCountByProject_FileErro
 	_, err = suite.store.GetRoleListByProject(context.Background(), "big", "", 5, 0)
 	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
 }
+
+func (suite *CompositeRoleStoreTestSuite) TestGetDirectAssignments_MergesBothStores() {
+	named := []string{"user1", "user2", "user3"}
+	user := func(id string) RoleAssignment { return RoleAssignment{ID: id, Type: assigneeTypeEntity, OUID: "ou1"} }
+	suite.mockDBStore.On("GetDirectAssignments", mock.Anything, "role1", "ou1", named).
+		Return([]RoleAssignment{user("user1"), user("user2")}, nil).Once()
+	suite.mockFileStore.On("GetDirectAssignments", mock.Anything, "role1", "ou1", named).
+		Return([]RoleAssignment{user("user2"), user("user3")}, nil).Once()
+
+	assignments, err := suite.store.GetDirectAssignments(context.Background(), "role1", "ou1", named)
+
+	suite.NoError(err)
+	suite.Equal([]RoleAssignment{user("user1"), user("user2"), user("user3")}, assignments)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetDirectAssignments_StoreErrors() {
+	named := []string{"user1"}
+	suite.mockDBStore.On("GetDirectAssignments", mock.Anything, "role1", "ou1", named).
+		Return(nil, errors.New("db error")).Once()
+
+	_, err := suite.store.GetDirectAssignments(context.Background(), "role1", "ou1", named)
+	suite.Error(err)
+
+	suite.mockDBStore.On("GetDirectAssignments", mock.Anything, "role2", "ou1", named).
+		Return([]RoleAssignment{}, nil).Once()
+	suite.mockFileStore.On("GetDirectAssignments", mock.Anything, "role2", "ou1", named).
+		Return(nil, errors.New("file error")).Once()
+
+	_, err = suite.store.GetDirectAssignments(context.Background(), "role2", "ou1", named)
+	suite.Error(err)
+}

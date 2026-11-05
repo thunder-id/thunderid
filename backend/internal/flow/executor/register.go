@@ -586,7 +586,6 @@ type entityPermissionResolver interface {
 type roleAssignmentAdminProvider interface {
 	ValidateRemoveAssignment(ctx context.Context, id, ouID, assigneeID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
-	RemoveAssignments(ctx context.Context, id, ouID string, assignments []role.RoleAssignment) *tidcommon.ServiceError
 	ListAssignableRoles(ctx context.Context, ouID string) ([]role.Role, *tidcommon.ServiceError)
 	AddAssigneesToRoles(ctx context.Context, assignments []role.RoleAssignment,
 		roleIDs []string) *tidcommon.ServiceError

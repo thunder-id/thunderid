@@ -520,6 +520,21 @@ func (c *compositeRoleStore) ListMandatedAssignmentsForRole(
 	return c.dbStore.ListMandatedAssignmentsForRole(ctx, roleID, ouID)
 }
 
+// GetDirectAssignments returns the direct assignments of the role in ouID to any of assigneeIDs from
+// both stores.
+func (c *compositeRoleStore) GetDirectAssignments(
+	ctx context.Context, roleID, ouID string, assigneeIDs []string) ([]RoleAssignment, error) {
+	dbAssignments, err := c.dbStore.GetDirectAssignments(ctx, roleID, ouID, assigneeIDs)
+	if err != nil {
+		return nil, err
+	}
+	fileAssignments, err := c.fileStore.GetDirectAssignments(ctx, roleID, ouID, assigneeIDs)
+	if err != nil {
+		return nil, err
+	}
+	return mergeAssignments(dbAssignments, fileAssignments), nil
+}
+
 // CheckRoleNameExists checks if a role with the given name exists in either store.
 func (c *compositeRoleStore) CheckRoleNameExists(ctx context.Context, ouID, name string) (bool, error) {
 	return declarativeresource.CompositeBooleanCheckHelper(

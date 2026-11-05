@@ -2038,8 +2038,6 @@ value:
     defaultHandle: default-secret-regeneration-flow
   agentOnboardingFlow:
     defaultHandle: default-agent-onboarding-flow
-  roleAssignmentRemovalFlow:
-    defaultHandle: default-role-assignment-removal-flow
   roleDeletionFlow:
     defaultHandle: default-role-deletion-flow
   rolePermissionRemovalFlow:

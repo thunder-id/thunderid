@@ -31,18 +31,6 @@ type roleAction struct {
 
 // roleActionsByMode maps the node's mode to the role change it makes.
 var roleActionsByMode = map[string]roleAction{
-	ExecutorModeRoleAssignmentRemoval: {
-		reason: revocation.ReasonRoleAssignmentRemoved,
-		failed: ErrRoleAssignmentRemovalFailed,
-		act: func(ctx context.Context, e *roleExecutor, plan revocationPlan) (*tidcommon.ServiceError, error) {
-			if plan.AssigneeID == "" || plan.AssigneeType == "" {
-				return nil, errors.New("trusted revocation plan has no target assignee")
-			}
-			assignee := role.RoleAssignment{ID: plan.AssigneeID, Type: role.AssigneeType(plan.AssigneeType)}
-			return e.assignments.RemoveAssignments(ctx, plan.TargetID,
-				plan.ActionArgs[revocationInputAssignmentOU], []role.RoleAssignment{assignee}), nil
-		},
-	},
 	ExecutorModeRolePermissionRemoval: {
 		reason: revocation.ReasonRolePermissionRemoved,
 		failed: ErrRolePermissionRemovalFailed,
@@ -71,7 +59,6 @@ var roleActionsByMode = map[string]roleAction{
 // and role selection and assignment invitation flows.
 var roleModeFlowTypes = map[string][]providers.FlowType{
 	ExecutorModeRoleAssignment:        {providers.FlowTypeInvitation},
-	ExecutorModeRoleAssignmentRemoval: {providers.FlowTypeAdministration},
 	ExecutorModeRolePermissionRemoval: {providers.FlowTypeAdministration},
 	ExecutorModeRoleSelection:         {providers.FlowTypeInvitation},
 }
@@ -149,7 +136,7 @@ func (e *roleExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorR
 // applyRevocationPlan performs the change identified by the trusted revocation plan.
 func (e *roleExecutor) applyRevocationPlan(ctx *providers.NodeContext,
 	action roleAction) (*providers.ExecutorResponse, error) {
-	if e.roles == nil || e.assignments == nil {
+	if e.roles == nil {
 		return nil, errors.New("role service is not configured")
 	}
 	plan, err := revocationPlanFor(ctx.SharedRuntimeData, action.reason)
