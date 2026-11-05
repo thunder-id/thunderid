@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/attributeverification"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
@@ -32,12 +33,13 @@ func Initialize(
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
+	verification attributeverification.AttributeVerificationServiceInterface,
 	sharingService sharing.SharingServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 ) (ConfigurableUserService, oupkg.OUUserResolver, declarativeresource.ResourceExporter, error) {
 	// Step 1: Create service with entity service
 	userService := newUserService(authzService, entityService, ouService, entityTypeService, governance,
-		valueCapturer, sharingService)
+		verification, valueCapturer, sharingService)
 	sharingService.RegisterResourceType(userService.sharingDeclaration)
 	entityService.RegisterSharedCategory(providers.EntityCategoryUser, UserSharingType)
 

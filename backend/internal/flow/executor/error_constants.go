@@ -1780,6 +1780,21 @@ var (
 			DefaultValue: "The submitted user code is invalid or can no longer be used for this application.",
 		},
 	}
+
+	// ErrVerificationChannelUnavailable is returned when a contact cannot be verified where it is asked
+	// because the flow has no user to verify.
+	ErrVerificationChannelUnavailable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1132",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.verification_channel_unavailable",
+			DefaultValue: "Verification not available",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.verification_channel_unavailable_description",
+			DefaultValue: "This contact cannot be verified here",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

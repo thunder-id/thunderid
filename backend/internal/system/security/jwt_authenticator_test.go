@@ -908,8 +908,38 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenSuccess()
 
 	baseCtx := withSecurityContext(context.Background(), authCtx)
 	assert.Equal(suite.T(), "federated-user", GetSubject(baseCtx))
+	assert.False(suite.T(), IsSelfIssued(baseCtx), "a trusted issuer's token is not self-issued")
 	mockJWT.AssertExpectations(suite.T())
 	mockJWT.AssertNotCalled(suite.T(), "VerifyJWTSignature")
+}
+
+func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_TrustedIssuerSharingLocalIssuerIsNotSelfIssued() {
+	// A token verified through the trusted issuer's JWKS is not self-issued, even when that issuer
+	// names this server's own JWT issuer.
+	config.ResetServerRuntime()
+	defer config.ResetServerRuntime()
+	cfg := federatedConfigWithLocalIssuer()
+	cfg.Server.SecurityConfig.TrustedIssuer.Issuer = testLocalIssuer
+	_ = config.InitializeServerRuntime("", cfg)
+
+	token := buildFakeJWT(
+		map[string]interface{}{"alg": "RS256", "kid": "test-kid"},
+		map[string]interface{}{"sub": "federated-user", "iss": testLocalIssuer, "scope": "system"},
+	)
+
+	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
+	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, testFederatedJWKSURL, testFederatedAudience,
+		testLocalIssuer).Return(nil)
+	auth := newJWTAuthenticator(mockJWT, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/users", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	authCtx, err := auth.Authenticate(req)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), authCtx)
+	assert.False(suite.T(), IsSelfIssued(withSecurityContext(context.Background(), authCtx)))
+	mockJWT.AssertNotCalled(suite.T(), "VerifyJWT")
 }
 
 // federatedConfigWithLocalIssuer returns a config where a trusted issuer is
@@ -963,6 +993,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_SelfIssuedTokenUnderFed
 
 	baseCtx := withSecurityContext(context.Background(), authCtx)
 	assert.Equal(suite.T(), "service-app", GetSubject(baseCtx))
+	assert.True(suite.T(), IsSelfIssued(baseCtx))
 	assert.Equal(suite.T(), "user-123", authCtx.revocationSubject)
 	assert.Equal(suite.T(), time.Unix(1_700_000_000, 0).UTC(), authCtx.establishedAt)
 	mockJWT.AssertExpectations(suite.T())

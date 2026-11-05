@@ -11,6 +11,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/notification"
@@ -157,6 +158,11 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 		return failOrSkip(fmt.Errorf("failed to render email template: %s", svcErr.Code))
 	}
 
+	delivered, err := withDeliveredRecipient(ctx, recipient)
+	if err != nil {
+		return failOrSkip(err)
+	}
+
 	notifSvcErr := e.notifSenderSvc.SendEmail(ctx.Context, senderID, notifcm.EmailData{
 		To:      []string{recipient},
 		Subject: rendered.Subject,
@@ -181,6 +187,7 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 
 	logger.Debug(ctx.Context, "Email sent successfully", log.MaskedString("recipient", recipient))
 
+	execResp.SharedRuntimeData = delivered
 	execResp.AdditionalData[common.DataEmailSent] = dataValueTrue
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
@@ -208,8 +215,15 @@ func (e *emailExecutor) resolveSenderID(ctx *providers.NodeContext) (string, err
 	return senderID, nil
 }
 
-// resolveRecipientEmail retrieves the recipient email from user inputs, runtime data, or forwarded data.
+// resolveRecipientEmail retrieves the recipient email from the email recipient an earlier node set, user
+// inputs, runtime data, or forwarded data.
 func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, logger *log.Logger) (string, error) {
+	if ctx.RuntimeData[common.RuntimeKeyRecipientType] == entitytypemodel.TypeEmail {
+		if recipientEmail := ctx.RuntimeData[common.RuntimeKeyExpectedRecipient]; recipientEmail != "" {
+			return recipientEmail, nil
+		}
+	}
+
 	emailAttr := resolveInputIdentifierByType(ctx, providers.InputTypeEmail, userAttributeEmail)
 
 	if isConstantNodeInput(ctx, emailAttr) && ctx.UserInputs[emailAttr] != "" {

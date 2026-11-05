@@ -365,3 +365,26 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_PassesRequestContextToHandleVa
 	s.Require().NoError(s.handler.Validate(ctx, cfg, nil, nil))
 	s.Equal("org-deployment", got.Value(ctxKey{}))
 }
+
+// Attribute verification configures expiry; each self flow request names its flow.
+func (s *FlowConfigHandlerTestSuite) TestSelfFlowConfiguration() {
+	decoded, err := s.handler.Decode(json.RawMessage(`{"selfFlow":{"expirySeconds":600}}`))
+	s.Require().NoError(err)
+	cfg := decoded.(flowconfig.FlowSectionConfig)
+	s.Equal(int64(600), cfg.SelfFlow.ExpirySeconds)
+	s.NoError(s.handler.Validate(context.Background(), cfg, nil, nil))
+
+	merged := s.handler.Merge(cfg, flowconfig.FlowSectionConfig{
+		SelfFlow: flowconfig.FlowTypeConfig{ExpirySeconds: 1200}}).(flowconfig.FlowSectionConfig)
+	s.Equal(int64(1200), merged.SelfFlow.ExpirySeconds)
+	merged = s.handler.Merge(cfg, flowconfig.FlowSectionConfig{}).(flowconfig.FlowSectionConfig)
+	s.Equal(int64(600), merged.SelfFlow.ExpirySeconds)
+
+	s.ErrorContains(s.handler.Validate(context.Background(), flowconfig.FlowSectionConfig{
+		SelfFlow: flowconfig.FlowTypeConfig{ExpirySeconds: -1}}, nil, nil),
+		"selfFlow.expirySeconds must be >= 0")
+	s.ErrorContains(s.handler.Validate(context.Background(), flowconfig.FlowSectionConfig{
+		SelfFlow: flowconfig.FlowTypeConfig{
+			DefaultHandle: "default-self-attribute-verification-flow"}},
+		nil, nil), "selfFlow.defaultHandle is not supported")
+}

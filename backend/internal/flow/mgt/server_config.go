@@ -62,6 +62,10 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 		return fmt.Errorf("flow: unexpected config type %T", incoming)
 	}
 
+	if cfg.SelfFlow.DefaultHandle != "" {
+		return fmt.Errorf("flow: selfFlow.defaultHandle is not supported")
+	}
+
 	type entry struct {
 		tc       flowconfig.FlowTypeConfig
 		flowType providers.FlowType
@@ -73,6 +77,7 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 		{cfg.UserOnboardingFlow, providers.FlowTypeUserOnboarding, "userOnboardingFlow"},
 		{cfg.RecoveryFlow, providers.FlowTypeRecovery, "recoveryFlow"},
 		{cfg.SignOutFlow, providers.FlowTypeSignOut, "signOutFlow"},
+		{cfg.SelfFlow, providers.FlowTypeSelf, "selfFlow"},
 		{cfg.UserDeletionFlow, providers.FlowTypeAdministration, "userDeletionFlow"},
 		{cfg.ApplicationDeletionFlow, providers.FlowTypeAdministration, "applicationDeletionFlow"},
 		{cfg.SecretRegenerationFlow, providers.FlowTypeAdministration, "secretRegenerationFlow"},
@@ -120,6 +125,7 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 		UserOnboardingFlow: mergeFlowTypeConfig(ro.UserOnboardingFlow, wr.UserOnboardingFlow),
 		RecoveryFlow:       mergeFlowTypeConfig(ro.RecoveryFlow, wr.RecoveryFlow),
 		SignOutFlow:        mergeFlowTypeConfig(ro.SignOutFlow, wr.SignOutFlow),
+		SelfFlow:           mergeFlowTypeConfig(ro.SelfFlow, wr.SelfFlow),
 		UserDeletionFlow:   mergeFlowTypeConfig(ro.UserDeletionFlow, wr.UserDeletionFlow),
 		ApplicationDeletionFlow: mergeFlowTypeConfig(
 			ro.ApplicationDeletionFlow, wr.ApplicationDeletionFlow),

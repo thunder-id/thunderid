@@ -39,6 +39,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/attestationprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/attributeverificationprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/providermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/captchamock"
@@ -817,4 +818,63 @@ func (suite *EngineTestSuite) TestIdentityGovernanceOption() {
 	suite.Same(provider, ctx.identityGovernance)
 	WithIdentityGovernanceProvider(nil)(&ctx)
 	suite.Nil(ctx.identityGovernance)
+}
+
+// selfVerificationContext is a prepare node of a self flow bound to u1, asking for its email.
+func selfVerificationContext() *providers.NodeContext {
+	ctx := &providers.NodeContext{
+		Context:           context.Background(),
+		FlowType:          providers.FlowTypeSelf,
+		ExecutorMode:      executor.ExecutorModePrepare,
+		UserInputs:        map[string]string{"attribute": "email"},
+		RuntimeData:       map[string]string{},
+		SharedRuntimeData: map[string]string{},
+	}
+	ctx.SetBoundSubject("u1")
+	return ctx
+}
+
+// The supplied provider pins the contact, and verification runs without a governance provider.
+func (suite *EngineTestSuite) TestNew_PassesAttributeVerificationToTheExecutors() {
+	t := suite.T()
+	verification := attributeverificationprovidermock.NewAttributeVerificationProviderMock(t)
+	verification.EXPECT().PrepareAttributeVerification(mock.Anything,
+		providers.AttributeVerificationRequest{EntityID: "u1", Attribute: "email"}).
+		Return(&providers.AttributeVerificationPin{Subject: "u1", Attribute: "email", Value: "u1@example.com",
+			Channel: providers.VerificationChannelEmail}, nil).Once()
+
+	eng := newTestEngine(t, WithAttributeVerificationProvider(verification), WithIdentityGovernanceProvider(nil),
+		WithFlowConfig(engineconfig.FlowConfig{Executors: []string{executor.ExecutorNameAttributeVerification}}))
+	require.NotNil(t, eng)
+	verificationExecutor, err := eng.engineCtx.execRegistry.GetExecutor(executor.ExecutorNameAttributeVerification)
+	require.NoError(t, err)
+
+	execResp, err := verificationExecutor.Execute(selfVerificationContext())
+
+	require.NoError(t, err)
+	assert.Equal(t, providers.ExecComplete, execResp.Status)
+}
+
+// Without the provider, a verification node is misconfigured.
+func (suite *EngineTestSuite) TestNew_WithoutAttributeVerificationTheExecutorFails() {
+	t := suite.T()
+	eng := newTestEngine(t,
+		WithFlowConfig(engineconfig.FlowConfig{Executors: []string{executor.ExecutorNameAttributeVerification}}))
+	require.NotNil(t, eng)
+	verificationExecutor, err := eng.engineCtx.execRegistry.GetExecutor(executor.ExecutorNameAttributeVerification)
+	require.NoError(t, err)
+
+	execResp, err := verificationExecutor.Execute(selfVerificationContext())
+
+	require.Error(t, err)
+	assert.Nil(t, execResp)
+}
+
+func (suite *EngineTestSuite) TestAttributeVerificationOption() {
+	provider := attributeverificationprovidermock.NewAttributeVerificationProviderMock(suite.T())
+	var ctx engineContext
+	WithAttributeVerificationProvider(provider)(&ctx)
+	suite.Same(provider, ctx.attributeVerification)
+	WithAttributeVerificationProvider(nil)(&ctx)
+	suite.Nil(ctx.attributeVerification)
 }

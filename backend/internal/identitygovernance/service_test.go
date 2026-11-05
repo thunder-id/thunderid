@@ -140,7 +140,8 @@ func (s *ServiceTestSuite) TestIdentityHoldAppliesAtEveryPlane() {
 
 	for _, plane := range []providers.AccessPlane{
 		providers.AccessPlaneAuthentication, providers.AccessPlaneDispatch, providers.AccessPlaneRecovery,
-		providers.AccessPlaneSession, providers.AccessPlaneIssuance, providers.AccessPlaneApplication,
+		providers.AccessPlaneVerification, providers.AccessPlaneSession, providers.AccessPlaneIssuance,
+		providers.AccessPlaneApplication,
 	} {
 		decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, plane, testMethod)
 		s.Require().Nil(err)
@@ -804,7 +805,8 @@ func (s *ServiceTestSuite) TestASuspensionRefusesAtEveryPlane() {
 
 	for _, plane := range []providers.AccessPlane{
 		providers.AccessPlaneAuthentication, providers.AccessPlaneDispatch, providers.AccessPlaneRecovery,
-		providers.AccessPlaneSession, providers.AccessPlaneIssuance, providers.AccessPlaneApplication,
+		providers.AccessPlaneVerification, providers.AccessPlaneSession, providers.AccessPlaneIssuance,
+		providers.AccessPlaneApplication,
 	} {
 		decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, plane, testMethod)
 		s.Require().Nil(err)
@@ -2330,6 +2332,53 @@ func (s *ServiceTestSuite) TestAFailureOnAHeldIdentityIsRefusedWithoutCounting()
 
 	s.Require().Nil(err)
 	s.Equal(providers.AccessDecision{Reason: providers.AccessRefusalReasonLocked}, decision)
+	s.port.AssertNotCalled(s.T(), "IncrementFailure",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A contact proof is not a sign-in: an automatic lock on any method gives way at the verification
+// plane, the account-wide lock included.
+func (s *ServiceTestSuite) TestAtTheVerificationPlaneALockGivesWay() {
+	entity := s.activeEntity()
+	putLockEntry(&entity.AccessState, testMethod, LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
+	putLockEntry(&entity.AccessState, providers.AuthenticationMethodOTP,
+		LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
+	putLockEntry(&entity.AccessState, AuthenticationMethodAccount,
+		LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
+	s.expectRead(entity)
+	s.expectConfig(methodGranularityConfig())
+
+	for _, method := range []providers.AuthenticationMethod{testMethod, providers.AuthenticationMethodOTP} {
+		decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, providers.AccessPlaneVerification, method)
+		s.Require().Nil(err)
+		s.True(decision.Admitted, string(method))
+	}
+}
+
+func (s *ServiceTestSuite) TestAtTheVerificationPlaneASuspensionRefuses() {
+	entity := s.activeEntity()
+	entity.State = providers.EntityStateSuspended
+	s.expectRead(entity)
+	s.expectConfig(methodGranularityConfig())
+
+	decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, providers.AccessPlaneVerification,
+		providers.AuthenticationMethodOTP)
+
+	s.Require().Nil(err)
+	s.False(decision.Admitted)
+	s.Equal(providers.AccessRefusalReasonSuspended, decision.Reason)
+}
+
+// A wrong verification code counts nothing and reads nothing, so it can neither form nor reveal a lock.
+func (s *ServiceTestSuite) TestAWrongVerificationCodeIsNotCounted() {
+	entity := s.activeEntity()
+
+	for _, method := range []providers.AuthenticationMethod{providers.AuthenticationMethodOTP, testMethod} {
+		decision, err := s.svc.RecordFailure(s.ctx, entity.ID, providers.AccessPlaneVerification, method)
+		s.Require().Nil(err)
+		s.True(decision.Admitted, string(method))
+	}
+	s.port.AssertNotCalled(s.T(), "GetGovernedEntity", mock.Anything, mock.Anything, mock.Anything)
 	s.port.AssertNotCalled(s.T(), "IncrementFailure",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }

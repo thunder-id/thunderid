@@ -25,6 +25,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/agent"
 	"github.com/thunder-id/thunderid/internal/application"
+	"github.com/thunder-id/thunderid/internal/attributeverification"
 	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/cimd"
@@ -182,10 +183,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	exporters = append(exporters, agentTypeExporter)
 
 	entityService, err := entity.Initialize(cacheManager, hashService, entityTypeService, ouService,
-		sharingService)
+		sharingService, observabilitySvc)
 	fatalOnError(ctx, logger, err, "Failed to initialize EntityService")
 
 	entityProvider := entityprovider.InitializeEntityProvider(entityService)
+
+	attributeVerificationService := attributeverification.Initialize(entityService, entityTypeService,
+		observabilitySvc)
 
 	// The accountAccess handler is built over the deployment policy, which must be valid on its own.
 	governanceCfg := identitygovernance.FromServerRuntime()
@@ -244,8 +248,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize IdentityGovernanceService")
 
 	userService, ouUserResolver, userExporter, err := user.Initialize(
-		mux, entityService, ouService, entityTypeService, ouAuthzService, governanceService, sharingService,
-		valueCapture,
+		mux, entityService, ouService, entityTypeService, ouAuthzService, governanceService,
+		attributeVerificationService, sharingService, valueCapture,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize UserService")
 	exporters = append(exporters, userExporter)

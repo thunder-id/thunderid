@@ -33,19 +33,20 @@ paths:
         their Flow Secret in the `Flow-Secret` header (see the `FlowSecret` security scheme) when
         initiating a new flow; the header is ignored for other application types.
 
-        A flow is initiated either by `applicationId` and `flowType`, or, for administration flows
-        only, by `flowId`. Initiating by `flowId` requires an access token carrying the `system`
-        scope, and the referenced flow must be of type `ADMINISTRATION`; any other flow type is
-        rejected with `403`. A `DEVICE_GRANT` request starts the Device Grant flow assigned to the
-        specified application. Supplying the step's inputs on the initiating request runs the flow
-        through to its terminal state in a single call; omitting them returns the required inputs and
-        an `executionId` to continue with.
+        A flow is initiated by `applicationId` and `flowType`, by `flowType` and `handle` for a
+        `SELF` flow, or, for administration flows only, by `flowId`. Initiating by `flowId` requires
+        an access token carrying the `system` scope, and the referenced flow must be of type
+        `ADMINISTRATION`; any other flow type is rejected with `403`. A `DEVICE_GRANT` request
+        starts the Device Grant flow assigned to the specified application. Supplying the step's
+        inputs on the initiating request runs the flow through to its terminal state in a single call; omitting
+        them returns the required inputs and an `executionId` to continue with.
       tags:
         - Flow Execution
       security:
         - {}
         - FlowSecret: []
         - OAuth2: [system]
+        - OAuth2: []
       parameters:
         - in: header
           name: Attestation-Token
@@ -63,6 +64,7 @@ paths:
             schema:
               oneOf:
                 - $ref: '#/components/schemas/InitialFlowRequest'
+                - $ref: '#/components/schemas/SelfFlowRequest'
                 - $ref: '#/components/schemas/AdministrativeFlowRequest'
                 - $ref: '#/components/schemas/SubSequentFlowRequest'
             examples:
@@ -88,6 +90,15 @@ paths:
                   flowType: "DEVICE_GRANT"
                   inputs: {}
                   verbose: true
+              selfFlowRequest:
+                summary: Self flow started with the signed-in user's bearer token
+                value:
+                  flowType: "SELF"
+                  handle: "default-self-attribute-verification-flow"
+                  verbose: true
+                  inputs: {
+                    "attribute": "email"
+                  }
               administrativeFlowSingleCall:
                 summary: Administration flow run to completion in one call (inputs supplied up front)
                 value:
@@ -254,11 +265,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              examples:
+                flowHandleNotFound:
+                  value:
+                    code: FES-1025
+                    message:
+                      key: error.flowexecservice.flow_handle_not_found
+                      defaultValue: Flow not found
+                    description:
+                      key: error.flowexecservice.flow_handle_not_found_description
+                      defaultValue: No flow matches the specified handle and flow type
         "401":
           description: >
             Unauthorized: The application must present a valid credential to initiate a new flow —
             a Flow Secret for backend applications, or a platform attestation token for mobile
-            applications — and the presented credential was missing or invalid.
+            applications — and the presented credential was missing or invalid, or the flow runs for a
+            signed-in user and the user's access token was missing or invalid.
           content:
             application/json:
               schema:
@@ -293,8 +315,8 @@ components:
     OAuth2:
       type: oauth2
       description: >-
-        Access token used to authenticate the administrator initiating an administration flow by
-        `flowId`. The token must carry the `system` scope.
+        Access token. An administration flow initiated by `flowId` requires a token carrying the
+        `system` scope; a `SELF` flow requires the signed-in user's token.
       flows:
         authorizationCode:
           authorizationUrl: https://localhost:8090/oauth2/authorize
@@ -332,6 +354,36 @@ components:
           example: false
         sessionData:
           $ref: '#/components/schemas/FlowRequestSessionData'
+
+    SelfFlowRequest:
+      type: object
+      description: >-
+        Initiates a `SELF` flow by its handle. The caller must present the signed-in user's access
+        token.
+      required:
+        - flowType
+        - handle
+      properties:
+        flowType:
+          type: string
+          enum: [SELF]
+        handle:
+          type: string
+          description: Handle of the `SELF` flow to execute
+          example: "default-self-attribute-verification-flow"
+        inputs:
+          type: object
+          description: Input data for the flow
+          additionalProperties:
+            type: string
+          example: {attribute: "email"}
+        action:
+          type: string
+          description: Reference of the action to execute in the flow
+        verbose:
+          type: boolean
+          description: When true, the response includes full UI metadata (meta/components) for prompt nodes
+          example: false
 
     AdministrativeFlowRequest:
       type: object

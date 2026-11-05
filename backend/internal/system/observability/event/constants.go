@@ -23,6 +23,10 @@ const (
 	ComponentServerConfig = "ServerConfig"
 	// ComponentAgentService identifies events from the agent management service.
 	ComponentAgentService = "AgentService"
+	// ComponentEntityService identifies events from the entity service.
+	ComponentEntityService = "EntityService"
+	// ComponentAttributeVerification identifies the attribute verification service.
+	ComponentAttributeVerification = "AttributeVerification"
 )
 
 // Authentication and Authorization Event Types
@@ -75,6 +79,14 @@ const (
 	EventTypeServerConfigUpdated providers.EventType = "SERVER_CONFIG_UPDATED"
 	// EventTypeServerConfigUpdateFailed is triggered when a server-config write is rejected or fails.
 	EventTypeServerConfigUpdateFailed providers.EventType = "SERVER_CONFIG_UPDATE_FAILED"
+	// EventTypeAttributeVerificationRequested is triggered when a contact verification is started.
+	EventTypeAttributeVerificationRequested providers.EventType = "ATTRIBUTE_VERIFICATION_REQUESTED"
+	// EventTypeAttributeVerificationVerified is triggered when a verification proof is recorded.
+	EventTypeAttributeVerificationVerified providers.EventType = "ATTRIBUTE_VERIFICATION_VERIFIED"
+	// EventTypeAttributeVerificationRefused is triggered when a verification proof is stale or ineligible.
+	EventTypeAttributeVerificationRefused providers.EventType = "ATTRIBUTE_VERIFICATION_REFUSED"
+	// EventTypeAttributeVerificationInvalidated is triggered when a write clears a verified contact.
+	EventTypeAttributeVerificationInvalidated providers.EventType = "ATTRIBUTE_VERIFICATION_INVALIDATED"
 
 	// Back-Channel Logout Events
 	// EventTypeBackchannelLogoutDelivered is triggered when a relying party accepts a logout token.

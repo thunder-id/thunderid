@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/application"
 	"github.com/thunder-id/thunderid/internal/attestation"
 	"github.com/thunder-id/thunderid/internal/attributecache"
+	"github.com/thunder-id/thunderid/internal/attributeverification"
 	"github.com/thunder-id/thunderid/internal/authn"
 	authnAssert "github.com/thunder-id/thunderid/internal/authn/assert"
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
@@ -210,11 +211,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize entity service
 	entityService, err := entity.Initialize(cacheManager, hashService, entityTypeService, ouService,
-		sharingService)
+		sharingService, observabilitySvc)
 	fatalOnError(ctx, logger, err, "Failed to initialize EntityService")
 
 	// Initialize entity provider
 	entityProvider := entityprovider.InitializeEntityProvider(entityService)
+
+	attributeVerificationService := attributeverification.Initialize(entityService, entityTypeService,
+		observabilitySvc)
 
 	// The notification services are built before governance, which sends the lock email through them.
 	notifSenderMgtSvc, notifOTPService, notifSenderSvc, notificationConfigHandler, err :=
@@ -292,7 +296,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		runtime.Config.IdentityGovernanceProvider)
 
 	userService, ouUserResolver, userExporter, err := user.Initialize(
-		mux, entityService, ouService, entityTypeService, ouAuthzService, governanceService, sharingService, nil,
+		mux, entityService, ouService, entityTypeService, ouAuthzService, governanceService,
+		attributeVerificationService, sharingService, nil,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize UserService")
 	exporters = append(exporters, userExporter)
@@ -391,7 +396,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			ouService, runtimeStoreProvider, exporters)
 
 	defaultProvider := defaultprovider.Initialize(entityService, passkeyService,
-		otpCoreService, magicLinkService, openid4vpSvc, federatedAuths, governanceService)
+		otpCoreService, magicLinkService, openid4vpSvc, federatedAuths, governanceService,
+		attributeVerificationService)
 
 	customProviders := map[string]providers.CustomAuthnProvider{}
 	restCfg := runtime.Config.AuthnProvider.Rest
@@ -467,12 +473,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			// A redirect would resend the connection's credential to another host. Each call is bounded
 			// by its connection's timeout, and private addresses are allowed since administrators set
 			// the endpoint.
-			ExtensionHTTPClient: httpservice.NewHTTPClientWithoutRedirects(0, false),
-			ObservabilitySvc:    observabilitySvc,
-			IdentityGovernance:  governanceProvider,
-			ArtifactLifetime:    artifactLifetime,
-			AuthzDetailProvider: authzDetailService,
-			DeviceCodeVerifier:  deviceCodeVerifier,
+			ExtensionHTTPClient:   httpservice.NewHTTPClientWithoutRedirects(0, false),
+			ObservabilitySvc:      observabilitySvc,
+			IdentityGovernance:    governanceProvider,
+			AttributeVerification: attributeVerificationService,
+			ArtifactLifetime:      artifactLifetime,
+			AuthzDetailProvider:   authzDetailService,
+			DeviceCodeVerifier:    deviceCodeVerifier,
 		},
 		interceptor.InterceptorDependencies{},
 		flowConfig,

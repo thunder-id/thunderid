@@ -184,21 +184,22 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 			engineCtx.oauthConfig.AuthorizationDetails.ProcessorTimeoutOrDefault())
 	}
 	execDeps := executor.ExecutorDependencies{
-		FlowFactory:        engineCtx.flowFactory,
-		AttributeCacheSvc:  engineCtx.attributeCacheService,
-		AuthZService:       engineCtx.authzProvider,
-		ConsentEnforcer:    engineCtx.consentProvider,
-		AuthnProvider:      authnProviderManager,
-		OUService:          engineCtx.ouProvider,
-		IDPService:         engineCtx.idpProvider,
-		JWTService:         engineCtx.jwtService,
-		AuthAssertGen:      engineCtx.authAssertGen,
-		ResourceService:    engineCtx.resourceProvider,
-		UserMgtProvider:    engineCtx.userMgtProvider,
-		AgentMgtProvider:   engineCtx.agentMgtProvider,
-		ObservabilitySvc:   engineCtx.observabilitySvc,
-		IdentityGovernance: engineCtx.identityGovernance,
-		DeviceCodeVerifier: deviceauth.NewUserCodeVerifier(engineCtx.runtimeStoreProvider),
+		FlowFactory:           engineCtx.flowFactory,
+		AttributeCacheSvc:     engineCtx.attributeCacheService,
+		AuthZService:          engineCtx.authzProvider,
+		ConsentEnforcer:       engineCtx.consentProvider,
+		AuthnProvider:         authnProviderManager,
+		OUService:             engineCtx.ouProvider,
+		IDPService:            engineCtx.idpProvider,
+		JWTService:            engineCtx.jwtService,
+		AuthAssertGen:         engineCtx.authAssertGen,
+		ResourceService:       engineCtx.resourceProvider,
+		UserMgtProvider:       engineCtx.userMgtProvider,
+		AgentMgtProvider:      engineCtx.agentMgtProvider,
+		ObservabilitySvc:      engineCtx.observabilitySvc,
+		IdentityGovernance:    engineCtx.identityGovernance,
+		AttributeVerification: engineCtx.attributeVerification,
+		DeviceCodeVerifier:    deviceauth.NewUserCodeVerifier(engineCtx.runtimeStoreProvider),
 		ArtifactLifetime: func(client *providers.OAuthClient) time.Duration {
 			return tokenservice.ArtifactLifetime(oauthConfig, client)
 		},
@@ -438,6 +439,7 @@ type engineContext struct {
 	attestationProvider       providers.AttestationProvider
 	captchaValidationProvider providers.CaptchaValidationProvider
 	identityGovernance        providers.IdentityGovernanceProvider
+	attributeVerification     providers.AttributeVerificationProvider
 
 	transactioner        providers.Transactioner
 	runtimeStoreProvider providers.RuntimeStoreProvider
@@ -568,6 +570,12 @@ func WithDesignResolveProvider(provider providers.DesignProvider) Option {
 // WithFlowProvider supplies the flow provider.
 func WithFlowProvider(provider providers.FlowProvider) Option {
 	return func(c *engineContext) { c.flowProvider = provider }
+}
+
+// WithAttributeVerificationProvider supplies the attribute verification provider. Without it, a flow
+// node that verifies a contact attribute fails.
+func WithAttributeVerificationProvider(provider providers.AttributeVerificationProvider) Option {
+	return func(c *engineContext) { c.attributeVerification = provider }
 }
 
 // WithI18nProvider supplies the i18n provider.

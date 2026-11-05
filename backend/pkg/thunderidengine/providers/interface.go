@@ -163,6 +163,17 @@ type FlowProvider interface {
 	GetSystemFlow(ctx context.Context, handle string) (*CompleteFlowDefinition, *common.ServiceError)
 }
 
+// AttributeVerificationProvider pins a contact attribute before a challenge and records it as verified
+// after the challenge is passed. It makes no scope or access check; the caller makes both.
+type AttributeVerificationProvider interface {
+	// PrepareAttributeVerification pins the requested contact without writing. A pin for an entity
+	// pending creation names no subject until the contact is recorded.
+	PrepareAttributeVerification(ctx context.Context, request AttributeVerificationRequest) (
+		*AttributeVerificationPin, *common.ServiceError)
+	// RecordAttributeVerification records the pinned contact as verified if it is still current.
+	RecordAttributeVerification(ctx context.Context, pin AttributeVerificationPin) *common.ServiceError
+}
+
 // ResourceServerProvider defines the interface for the resource provider.
 type ResourceServerProvider interface {
 	GetResourceServerByIdentifier(

@@ -28,13 +28,18 @@ type UserTypeSystemAttributes struct {
 
 // User represents a user in the system
 type User struct {
-	ID         string          `json:"id"`
-	OUID       string          `json:"ouId"`
-	OUHandle   string          `json:"ouHandle,omitempty"`
-	Type       string          `json:"type"`
-	Display    string          `json:"display,omitempty"`
-	Attributes json.RawMessage `json:"attributes"`
-	IsOwnedByOU    *bool           `json:"isOwnedByOU,omitempty"`
+	ID          string          `json:"id"`
+	OUID        string          `json:"ouId"`
+	OUHandle    string          `json:"ouHandle,omitempty"`
+	Type        string          `json:"type"`
+	Display     string          `json:"display,omitempty"`
+	Attributes  json.RawMessage `json:"attributes"`
+	IsOwnedByOU *bool           `json:"isOwnedByOU,omitempty"`
+}
+
+// VerifiedAttribute is one entry of a user response's verifiedAttributes.
+type VerifiedAttribute struct {
+	VerifiedAt string `json:"verifiedAt"`
 }
 
 // Application represents an application in the system

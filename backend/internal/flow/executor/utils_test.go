@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package executor
@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
@@ -15,6 +16,8 @@ import (
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/system/cache"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -1017,4 +1020,65 @@ func (s *UtilsTestSuite) TestStatedDecision_StatesOnlyANamedHold() {
 	s.Equal(&ErrAccountLocked, statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonLocked}))
 	s.Equal(&ErrAccountSuspended,
 		statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}))
+}
+
+// Evidence that has no pin is an error rather than an absent proof.
+func (s *UtilsTestSuite) TestCorruptVerificationEvidenceIsAnError() {
+	for _, raw := range []string{"{", `{"passed":true}`} {
+		_, err := pinnedVerificationEvidence(&providers.NodeContext{
+			SharedRuntimeData: map[string]string{common.RuntimeKeyAttributeVerificationEvidence: raw}})
+		s.Error(err, raw)
+	}
+	proof, err := pinnedVerificationEvidence(&providers.NodeContext{})
+	s.NoError(err)
+	s.Nil(proof)
+}
+
+// newVerificationTestFactory returns a flow factory over a fresh server runtime.
+func newVerificationTestFactory(t *testing.T) core.FlowFactoryInterface {
+	if err := config.InitializeServerRuntime(t.TempDir(), &config.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(config.ResetServerRuntime)
+	factory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "verification-test"))
+	return factory
+}
+
+// verificationEvidenceData returns shared runtime data holding the given evidence.
+func verificationEvidenceData(t *testing.T, proof *verificationEvidence) map[string]string {
+	t.Helper()
+	data, err := sharedVerificationEvidence(*proof)
+	require.NoError(t, err)
+	return data
+}
+
+// deliveredTo encodes the recipients as senders record them.
+func deliveredTo(t *testing.T, recipients ...string) string {
+	encoded, err := json.Marshal(recipients)
+	require.NoError(t, err)
+	return string(encoded)
+}
+
+// emailPin is a pinned email contact for user-a.
+func emailPin() *providers.AttributeVerificationPin {
+	return &providers.AttributeVerificationPin{Subject: "user-a", Attribute: "email",
+		Value: "User@example.com", Channel: providers.VerificationChannelEmail}
+}
+
+// evidenceIn decodes the evidence a response wrote to shared runtime data.
+func evidenceIn(t *testing.T, shared map[string]string) *verificationEvidence {
+	t.Helper()
+	proof, err := pinnedVerificationEvidence(&providers.NodeContext{SharedRuntimeData: shared})
+	require.NoError(t, err)
+	require.NotNil(t, proof)
+	return proof
+}
+
+// testPinnedMobile is the number a mobile verification test pins.
+const testPinnedMobile = "+94714627887"
+
+// mobilePin is a pinned mobile contact for user-a.
+func mobilePin() *providers.AttributeVerificationPin {
+	return &providers.AttributeVerificationPin{Subject: "user-a", Attribute: "mobile_number",
+		Value: testPinnedMobile, Channel: providers.VerificationChannelSMS}
 }

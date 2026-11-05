@@ -191,7 +191,7 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 	}
 	// A recovery flow is marked too, so the default provider checks its proofs at the recovery plane.
 	if ctx.FlowType == providers.FlowTypeRecovery {
-		nodeCtxContext = authnprovidercm.WithRecoveryFlow(nodeCtxContext)
+		nodeCtxContext = authnprovidercm.WithRecoveryProof(nodeCtxContext)
 	}
 	fe.replayPromptInputs(ctx)
 
@@ -213,6 +213,7 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 		ExecutionHistory:  ctx.ExecutionHistory,
 	}
 	nodeCtx.SetInitiatorRequest(ctx.GetInitiatorRequest())
+	nodeCtx.SetBoundSubject(ctx.boundSubject)
 	if nodeCtx.NodeInputs == nil {
 		nodeCtx.NodeInputs = make([]providers.Input, 0)
 	}

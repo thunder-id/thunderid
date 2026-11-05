@@ -1768,8 +1768,9 @@ func seedIDTokenUserAttributes(oauthProfile *providers.OAuthProfile, validAttrs 
 }
 
 // resolveValidUserAttributes returns the union of non-credential attribute names declared in the
-// schemas of the given allowed user types. Returns (nil, nil) when there are no allowed types or the
-// entity-type service is unavailable, signaling callers to skip attribute reconciliation.
+// schemas of the given allowed user types, with the verification claim of each email or mobile
+// attribute. Returns (nil, nil) when there are no allowed types or the entity-type service is
+// unavailable, signaling callers to skip attribute reconciliation.
 func (s *inboundClientService) resolveValidUserAttributes(
 	ctx context.Context,
 	allowedEntityTypes []string,
@@ -1790,6 +1791,9 @@ func (s *inboundClientService) resolveValidUserAttributes(
 		}
 		for _, info := range attrInfos {
 			validAttrs[info.Attribute] = true
+		}
+		for claim := range entitytypemodel.VerificationClaims(attrInfos) {
+			validAttrs[claim] = true
 		}
 	}
 	return validAttrs, nil

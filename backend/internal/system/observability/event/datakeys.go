@@ -70,6 +70,9 @@ var DataKey = struct {
 	// Lifespan Keys
 	ValidUntil         string
 	PreviousValidUntil string
+	// Attribute Verification Keys. Names the verified attribute, never its value.
+	Attribute          string
+	InvalidationReason string
 
 	// Session & Delivery Keys
 	SessionID  string
@@ -140,6 +143,9 @@ var DataKey = struct {
 	// Lifespan Keys
 	ValidUntil:         "valid_until",
 	PreviousValidUntil: "previous_valid_until",
+	// Attribute Verification Keys
+	Attribute:          "attribute",
+	InvalidationReason: "invalidation_reason",
 
 	// Session & Delivery Keys
 	SessionID:  "session_id",

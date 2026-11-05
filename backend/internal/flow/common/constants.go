@@ -113,6 +113,10 @@ const (
 	// DataLinkingPromptDetails holds the matched account-linking attribute values for the linking
 	// prompt, as a JSON array of {"label","value"} objects.
 	DataLinkingPromptDetails = "linkingPromptDetails"
+	// DataVerificationChannel is the channel an attribute verification challenge is sent on.
+	DataVerificationChannel = "channel"
+	// DataMaskedDestination is the masked contact an attribute verification challenge is sent to.
+	DataMaskedDestination = "maskedDestination"
 )
 
 // Error assertion claims.
@@ -167,7 +171,7 @@ const (
 	// NodePropertyResponseKeys restricts the response fields an extension step stores.
 	NodePropertyResponseKeys = "responseKeys"
 	// NodePropertyMaxAttempts bounds the attempts a step accepts in one flow execution, such as OTP
-	// sends or an extension step's FAILED and INCOMPLETE answers.
+	// sends, wrong codes for one OTP, or an extension step's FAILED and INCOMPLETE answers.
 	NodePropertyMaxAttempts = "maxAttempts"
 )
 
@@ -264,6 +268,8 @@ const (
 	RuntimeKeyOTPSessionToken = "otpSessionToken"
 	// RuntimeKeyOTPAttemptCount holds the number of OTP generation attempts for the current flow execution.
 	RuntimeKeyOTPAttemptCount = "attemptCount"
+	// RuntimeKeyOTPFailedVerifyCount holds the number of wrong codes entered for the current OTP.
+	RuntimeKeyOTPFailedVerifyCount = "otpFailedVerifyCount"
 	// RuntimeKeyMagicLinkUsedJti is the JWT ID claim value of a magic link token that has already been used.
 	RuntimeKeyMagicLinkUsedJti = "magicLinkUsedJti"
 	// RuntimeKeyOAuthState holds the generated OAuth state parameter for CSRF validation.
@@ -363,6 +369,16 @@ const (
 	// RuntimeKeyExtensionAttemptCount holds the number of FAILED and INCOMPLETE answers an extension
 	// step has had in the current flow execution, scoped to the step by ExtensionAttemptCountKey.
 	RuntimeKeyExtensionAttemptCount = "extensionAttemptCount"
+	// RuntimeKeyAttributeVerificationEvidence holds the attribute verification evidence on shared runtime
+	// data: the pinned contact and whether a challenge issued for it was passed.
+	RuntimeKeyAttributeVerificationEvidence = "attributeVerificationEvidence"
+	// RuntimeKeyRecipientType holds the type of the expected recipient, email or mobile.
+	RuntimeKeyRecipientType = "recipientType"
+	// RuntimeKeyExpectedRecipient holds the recipient an earlier node set for sends of the recipient type.
+	RuntimeKeyExpectedRecipient = "expectedRecipient"
+	// RuntimeKeyDeliveredRecipients holds, on shared runtime data, the JSON list of distinct recipients
+	// sent to since an earlier node cleared it.
+	RuntimeKeyDeliveredRecipients = "deliveredRecipients"
 )
 
 // ExtensionDataKeyPrefix starts every runtime-data key an extension step stores from its service's
