@@ -1346,12 +1346,11 @@ const translations = {
     'addForm.secretIssued.subtitle':
       "Copy the client secret and store it somewhere safe. It won't be shown again; the agent's page can only regenerate it.",
     'addForm.noAgentTypes': 'No agent types are defined yet. Create one before adding an agent.',
+    'addForm.noOwner': 'No owner',
     'addForm.owner': 'Owner',
-    'addForm.ownerDefault': 'Me (default)',
     'addForm.ownerTruncated': 'Showing the first {{shown}} of {{total}} users.',
     'addForm.ownersError': 'The users to choose an owner from could not be loaded.',
-    'addForm.ownerHint':
-      'Defaults to you. Choose a user created here if the agent is applied to a gateway, which needs an owner it can find.',
+    'addForm.ownerHint': 'Optional. The user accountable for this agent.',
     'addForm.organizationUnit': 'Organization unit',
     'addForm.selectAgentType': 'Select an agent type',
     'addForm.submit': 'Create agent',
@@ -1649,6 +1648,7 @@ const translations = {
       'A delegated agent needs at least one grant type that lets it act for a user, such as authorization code.',
     'errors.AGT-1045': 'The lifespan end must be a valid date and time.',
     'errors.AGT-1046': 'The lifespan end must be in the future.',
+    'errors.AGT-1049': "An agent's owner must be a user this deployment holds.",
   },
 
   // ============================================================================

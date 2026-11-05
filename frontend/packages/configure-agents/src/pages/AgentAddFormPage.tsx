@@ -45,8 +45,11 @@ const AGENT_CREDENTIALS: AgentInboundAuthConfig = {
  * Used when agent creation runs natively, for example on a deployment that holds configuration
  * only and so has no /flow/execute for the onboarding flow to call. It asks for an agent type, an
  * organization unit and what the type's schema holds, the agent's name among it, and posts them to
- * the agents API. An owner can be chosen from the users that exist here; without one the API makes the
- * caller the owner. OAuth client credentials are issued with the agent unless switched off: the API
+ * the agents API.
+ *
+ * The owner is optional and chosen from the deployment's users. The signed-in user of such a
+ * deployment comes from a trusted issuer and is not one of its users, so it is not offered as the
+ * owner, and an agent created without one has none. OAuth client credentials are issued with the agent unless switched off: the API
  * generates the client ID and secret, and the secret is shown once here, since the agent's page
  * can only regenerate it afterwards.
  */
@@ -232,8 +235,8 @@ export default function AgentAddFormPage(): JSX.Element {
             <FormControl fullWidth>
               <FormLabel htmlFor="agent-owner">{t('agents:addForm.owner', 'Owner')}</FormLabel>
               {usersError ? (
-                // A failed read is shown in place of the picker, not as an empty one: the agent would
-                // otherwise be owned by the caller with nothing said about the owners that did not load.
+                // A failed read is shown in place of the picker, not as an empty one, so it is not taken
+                // for a deployment that holds no users.
                 <QueryErrorNotice
                   variant="inline"
                   error={usersError}
@@ -253,7 +256,7 @@ export default function AgentAddFormPage(): JSX.Element {
                   onChange={(event) => setOwnerId(String(event.target.value))}
                 >
                   <MenuItem value="">
-                    <em>{t('agents:addForm.ownerDefault', 'Me (default)')}</em>
+                    <em>{t('agents:addForm.noOwner', 'No owner')}</em>
                   </MenuItem>
                   {users.map((user) => (
                     <MenuItem key={user.id} value={user.id}>
@@ -270,12 +273,11 @@ export default function AgentAddFormPage(): JSX.Element {
                   })}
                 </Typography>
               )}
-              <Typography variant="caption" color="text.secondary">
-                {t(
-                  'agents:addForm.ownerHint',
-                  'Defaults to you. Choose a user created here if the agent is applied to a gateway, which needs an owner it can find.',
-                )}
-              </Typography>
+              {!usersError && (
+                <Typography variant="caption" color="text.secondary">
+                  {t('agents:addForm.ownerHint', 'Optional. The user accountable for this agent.')}
+                </Typography>
+              )}
             </FormControl>
 
             {Object.entries(agentType?.schema ?? {}).map(([fieldName, fieldDef]) =>

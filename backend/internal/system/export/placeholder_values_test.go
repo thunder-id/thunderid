@@ -176,6 +176,7 @@ func TestPlaceholderValuesOfAnAgent(t *testing.T) {
 		&agentmodel.AgentGetResponse{
 			ID:      "agent-1",
 			Display: "My App",
+			Owner:   "user-1",
 			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
 				Type: providers.OAuthInboundAuthType,
 				OAuthConfig: &providers.OAuthConfigWithSecret{
@@ -186,8 +187,36 @@ func TestPlaceholderValuesOfAnAgent(t *testing.T) {
 		})
 	require.NoError(t, err)
 
-	assert.Equal(t, map[string]string{"AGENT_MY_APP_CLIENT_ID": "agent-id"}, variables)
+	assert.Equal(t, map[string]string{"AGENT_MY_APP_OWNER": "user-1", "AGENT_MY_APP_CLIENT_ID": "agent-id"},
+		variables)
 	assert.Equal(t, map[string]string{"AGENT_MY_APP_CLIENT_SECRET": "agent-secret"}, secrets)
+}
+
+// An agent's owner is referred to when it has one, so a deployment holds the owner the agent has
+// there. An owner is optional: an agent without one exports none, and a deployment is given nothing.
+func TestReferenceExportRefersToAnAgentsOwner(t *testing.T) {
+	exporter := agent.NewAgentExporterForTest(nil)
+	p := newParameterizer(templatingRules{}, ValueReferences)
+	for owner, wantVariables := range map[string]map[string]string{
+		"user-1": {"AGENT_MY_APP_OWNER": "user-1"},
+		"":       {},
+	} {
+		a := &agentmodel.AgentGetResponse{ID: "agent-1", Display: "My App", Owner: owner}
+		rules := exporter.GetResourceRulesForResource(a)
+
+		document, _, _, err := p.ToParameterizedYAML(context.Background(), a, resourceTypeAgent, a.Display, rules)
+		require.NoError(t, err)
+		if owner == "" {
+			assert.NotContains(t, document, "owner:", "an agent without an owner exported one")
+		} else {
+			assert.Contains(t, document, "owner: var:AGENT_MY_APP_OWNER")
+			assert.NotContains(t, document, owner)
+		}
+
+		variables, _, err := p.PlaceholderValues(context.Background(), a, resourceTypeAgent, a.Display, rules)
+		require.NoError(t, err)
+		assert.Equal(t, wantVariables, variables, owner)
+	}
 }
 
 // A resource of a type nothing exports has no export to name its values after.

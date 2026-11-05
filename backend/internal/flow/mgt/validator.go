@@ -272,7 +272,13 @@ var companionExecutors = map[string][]companionExecutor{
 // governance suspends and unsuspends only in an administration flow; a recovery flow runs only unlock.
 // The role executor applies a revocation plan only in an administration flow, and selects and assigns
 // roles only in an invitation flow. The sharing executor authorizes a share only in an invitation flow.
+// The owner resolver asks for an owner only where someone can answer, and takes the caller as the
+// owner only in a system flow, whose caller is the one creating the entity.
 var modeFlowTypes = map[string]map[string][]providers.FlowType{
+	executormeta.ExecutorNameOwnerResolver: {
+		executormeta.ExecutorModeOwnerSelect: {providers.FlowTypeAdministration, providers.FlowTypeRegistration},
+		executormeta.ExecutorModeOwnerCaller: {providers.FlowTypeSystem},
+	},
 	executormeta.ExecutorNameIdentityGovernance: {
 		executormeta.ExecutorModeSuspend:   {providers.FlowTypeAdministration},
 		executormeta.ExecutorModeUnsuspend: {providers.FlowTypeAdministration},

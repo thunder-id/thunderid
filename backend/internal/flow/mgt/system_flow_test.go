@@ -64,7 +64,8 @@ func (s *SystemFlowTestSuite) TestBuiltInSystemFlowsAreValid() {
 	// write, and the one post flow takes the step those flows run after the write. An application
 	// deletion is the exception: its administration flow deletes the application within the flow, so
 	// it revokes everything, while a service deletes it after the flow and runs the post flow, so its pre
-	// flow revokes what was issued before the deletion.
+	// flow revokes what was issued before the deletion. An agent creation's pre flow makes the caller the
+	// owner when none is requested.
 	expected := map[string][]string{
 		"system-application-delete-pre": {
 			"ApplicationActionValidator:revoke_before_removal", "CriteriaRevocationExecutor:revoke",
@@ -89,6 +90,7 @@ func (s *SystemFlowTestSuite) TestBuiltInSystemFlowsAreValid() {
 		},
 		"system-action-delete-pre": {"AccessChangeValidator:action_deletion", "CriteriaRevocationExecutor:revoke"},
 		"system-revocation-post":   {"CriteriaRevocationExecutor:advance_cutoff"},
+		"system-agent-create-pre":  {"OwnerResolver:caller"},
 	}
 	s.Len(flows, len(expected))
 	for handle, steps := range expected {

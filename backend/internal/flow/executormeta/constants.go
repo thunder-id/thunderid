@@ -84,6 +84,9 @@ const (
 	ExecutorModeRevokeBeforeAction  = "revoke_before_action"
 	ExecutorModeRevokeBeforeRemoval = "revoke_before_removal"
 
+	ExecutorModeOwnerSelect = "select"
+	ExecutorModeOwnerCaller = "caller"
+
 	ExecutorModeUnlock    = "unlock"
 	ExecutorModeSuspend   = "suspend"
 	ExecutorModeUnsuspend = "unsuspend"

@@ -5,6 +5,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/entity"
@@ -20,6 +21,17 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/observability"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
+
+// Option configures the agent service for the plane it runs on.
+type Option func(*agentService)
+
+// OwnedByUsersHeld is for a control plane. Its caller signs in through a trusted issuer and is no user
+// any deployment holds, so an owner given must be a user the control plane holds, whose ID each data
+// plane is given through the reference the export writes. An owner that is already such a reference,
+// as configuration imported into the control plane carries, is kept as it is.
+func OwnedByUsersHeld() Option {
+	return func(s *agentService) { s.ownedByUsersHeld = true }
+}
 
 // Initialize wires the agent service, registers HTTP routes and returns the service and exporter.
 //
@@ -40,6 +52,7 @@ func Initialize(
 	dbProvider dbprovider.DBProviderInterface,
 	observabilitySvc observability.ObservabilityServiceInterface,
 	projectResolver projectOUResolver,
+	options ...Option,
 ) (AgentServiceInterface, declarativeresource.ResourceExporter, error) {
 	transactioner, err := dbProvider.GetEntityDBTransactioner()
 	if err != nil {
@@ -47,6 +60,9 @@ func Initialize(
 	}
 	service := newAgentService(authzService, entityService, inboundClientService, ouService, roleService,
 		governance, valueCapturer, entityTypeService, transactioner, observabilitySvc, projectResolver)
+	for _, option := range options {
+		option(service)
+	}
 
 	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {
 		return nil, nil, err
@@ -108,4 +124,16 @@ func registerRoutes(mux *http.ServeMux, h *agentHandler) {
 		h.HandleAgentGroupsRequest, groupsOpts))
 	mux.HandleFunc(middleware.WithCORS("GET /agents/{id}/roles",
 		h.HandleAgentRolesRequest, groupsOpts))
+}
+
+// SetSystemFlowProvider gives the agent service the engine that runs the system flows around its writes.
+// It is bound after the service, once the engine exists, and only on a server that runs system flows. A
+// service that cannot take it is reported rather than left without one.
+func SetSystemFlowProvider(service AgentServiceInterface, provider systemFlowProvider) error {
+	as, ok := service.(*agentService)
+	if !ok {
+		return fmt.Errorf("agent service does not support system flow provider injection")
+	}
+	as.systemFlows = provider
+	return nil
 }

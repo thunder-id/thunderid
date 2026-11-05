@@ -1235,6 +1235,25 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributes_EmptyWhe
 	assert.Nil(suite.T(), claims)
 }
 
+// An agent without an owner still gets its token when the owner is requested: the claim is left out
+// rather than issued empty.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentWithoutOwner_OmitsOwnerClaim() {
+	actors := actorprovidermock.NewActorProviderMock(suite.T())
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
+		ID:               testBCCAppID,
+		Category:         providers.EntityCategoryAgent,
+		Attributes:       []byte(`{"name":"Ledger Agent"}`),
+		SystemAttributes: []byte(`{"clientId":"cid"}`),
+	}, (*tidcommon.ServiceError)(nil))
+
+	app := newOAuthAppForOwnAttributes([]string{"name", "owner"})
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "Ledger Agent", claims["name"])
+	assert.NotContains(suite.T(), claims, "owner")
+}
+
 func (suite *UtilsTestSuite) TestBuildClientAttributes_StaleSystemNameDoesNotOverrideSchemaName() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
 	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{

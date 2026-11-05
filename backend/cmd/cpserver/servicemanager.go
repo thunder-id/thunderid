@@ -361,7 +361,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,
 		roleService, ouAuthzService, governanceService, valueCapture, entityTypeService,
-		dbprovider.GetDBProvider(), observabilitySvc, projectService)
+		dbprovider.GetDBProvider(), observabilitySvc, projectService,
+		agent.OwnedByUsersHeld())
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
 

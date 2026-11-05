@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
@@ -36,6 +37,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
 
 // AgentServiceInterface defines the operations exposed by the agent service.
@@ -84,6 +86,17 @@ type agentService struct {
 	observabilitySvc observability.ObservabilityServiceInterface
 	// projectResolver is nil on a deployment that serves no projects.
 	projectResolver projectOUResolver
+	// systemFlows is nil where system flows are off.
+	systemFlows systemFlowProvider
+	// ownedByUsersHeld takes only a user as an owner, and keeps an owner that is a value reference. See
+	// OwnedByUsersHeld.
+	ownedByUsersHeld bool
+}
+
+// systemFlowProvider runs a system flow to completion. The flow engine implements it.
+type systemFlowProvider interface {
+	ExecuteSystemFlow(ctx context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
+		*tidcommon.ServiceError)
 }
 
 func newAgentService(
@@ -98,7 +111,7 @@ func newAgentService(
 	transactioner providers.Transactioner,
 	observabilitySvc observability.ObservabilityServiceInterface,
 	projectResolver projectOUResolver,
-) AgentServiceInterface {
+) *agentService {
 	return &agentService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
 		authzService:         authzService,
@@ -155,10 +168,8 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 		}
 	}
 
-	owner := agent.Owner
-	if owner == "" {
-		owner = security.GetSubject(ctx)
-	} else if svcErr := s.validateOwnerExists(ctx, owner); svcErr != nil {
+	owner, svcErr := s.resolveCreateOwner(ctx, agent.Owner)
+	if svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -1070,6 +1081,35 @@ func (s *agentService) resolveProjectOU(
 	}
 }
 
+// resolveCreateOwner returns the owner of an agent being created, which is optional. Without one
+// requested, the agent creation system flow resolves it, and the agent may be left without one: the
+// server's flow makes the caller the owner, while a control plane runs no system flows and resolves
+// none. A requested owner must exist, unless it is a reference a control plane keeps for each data
+// plane to resolve.
+func (s *agentService) resolveCreateOwner(ctx context.Context, requested string) (
+	string, *tidcommon.ServiceError) {
+	if s.systemFlows != nil {
+		result, svcErr := s.systemFlows.ExecuteSystemFlow(ctx, &flowcommon.SystemFlowContext{
+			Handle: systemFlowAgentCreate, Inputs: map[string]string{fieldOwner: requested}})
+		if svcErr != nil {
+			return "", svcErr
+		}
+		if requested == "" {
+			return result.RuntimeData[flowcommon.RuntimeKeyOwner], nil
+		}
+	}
+	if requested == "" {
+		return "", nil
+	}
+	if s.keepsOwnerReference(requested) {
+		return requested, nil
+	}
+	if svcErr := s.validateOwnerExists(ctx, requested); svcErr != nil {
+		return "", svcErr
+	}
+	return requested, nil
+}
+
 // resolveUpdateOUID picks the organization unit and project for an update: the requested ones, or the
 // existing ones the request leaves out. The organization unit must belong to the project.
 func (s *agentService) resolveUpdateOUID(
@@ -1110,6 +1150,13 @@ func (s *agentService) resolveUpdateOUID(
 	return ouID, projectID, nil
 }
 
+// keepsOwnerReference reports whether owner is a reference to a variable that a control plane keeps
+// as it is rather than looking it up: the owner configuration imported into it names for each data
+// plane.
+func (s *agentService) keepsOwnerReference(owner string) bool {
+	return s.ownedByUsersHeld && valueref.IsWellFormedReference(owner) && !valueref.IsSecretReference(owner)
+}
+
 // resolveUpdateOwner picks the effective owner for an update — either the requested owner or the
 // existing one — and validates it exists when the owner is changing.
 func (s *agentService) resolveUpdateOwner(
@@ -1119,7 +1166,7 @@ func (s *agentService) resolveUpdateOwner(
 	if owner == "" {
 		owner = currentOwner
 	}
-	if owner != currentOwner {
+	if owner != currentOwner && !s.keepsOwnerReference(owner) {
 		if svcErr := s.validateOwnerExists(ctx, owner); svcErr != nil {
 			return "", svcErr
 		}
@@ -1128,11 +1175,13 @@ func (s *agentService) resolveUpdateOwner(
 }
 
 // validateOwnerExists returns an error when the given owner ID does not resolve to an existing entity.
+// On a control plane it must be a user, since only a user is held for each data plane to own the agent
+// there.
 func (s *agentService) validateOwnerExists(ctx context.Context, ownerID string) *tidcommon.ServiceError {
 	if ownerID == "" {
 		return nil
 	}
-	_, err := s.entityService.GetEntityProfile(ctx, ownerID)
+	owner, err := s.entityService.GetEntityProfile(ctx, ownerID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			return &ErrorOwnerNotFound
@@ -1140,6 +1189,9 @@ func (s *agentService) validateOwnerExists(ctx context.Context, ownerID string) 
 		s.logger.Error(ctx, "Failed to verify owner existence",
 			log.String("ownerID", ownerID), log.Error(err))
 		return &tidcommon.InternalServerError
+	}
+	if s.ownedByUsersHeld && owner.Category != providers.EntityCategoryUser {
+		return &ErrorOwnerNotAUser
 	}
 	return nil
 }
