@@ -18,6 +18,8 @@ type sessionStore interface {
 	// GetByHandle fetches a session by its opaque handle ID. It returns (nil, nil) when no
 	// session matches; liveness checks are the resolver's responsibility.
 	GetByHandle(ctx context.Context, handleID string) (*Session, error)
+	// GetBySessionID fetches a session by its ID. It returns (nil, nil) when no session matches.
+	GetBySessionID(ctx context.Context, sessionID string) (*Session, error)
 	// GetByExecutionID fetches the session established by the given flow execution, or (nil, nil)
 	// when that execution has not established one.
 	GetByExecutionID(ctx context.Context, flowExecutionID string) (*Session, error)

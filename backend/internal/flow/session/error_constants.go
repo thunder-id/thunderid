@@ -13,4 +13,8 @@ var (
 	// errSessionContextTooLarge is returned when a serialized session context exceeds
 	// MaxSessionContextBytes. The bounded snapshot keeps the sibling row small.
 	errSessionContextTooLarge = errors.New("session context exceeds maximum size")
+
+	// ErrTokenFamilyNotInSession is returned by RevokeSubjectSessions when the session to keep can't
+	// be found, because no session of the subject holds the token family.
+	ErrTokenFamilyNotInSession = errors.New("token family not held by any session of the subject")
 )
