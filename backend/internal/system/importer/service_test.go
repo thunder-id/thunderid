@@ -2758,18 +2758,22 @@ func TestImportResources_CarriesOAuthTokenBindingFlags(t *testing.T) {
 
 func TestOrderDocumentsByDependencies(t *testing.T) {
 	docs := []parsedDocument{
+		{ResourceType: resourceTypeAgent, Sequence: 4},
 		{ResourceType: resourceTypeApplication, Sequence: 3},
 		{ResourceType: resourceTypeFlow, Sequence: 2},
 		{ResourceType: resourceTypeResourceServer, Sequence: 1},
 		{ResourceType: resourceTypeConnection, Sequence: 0},
+		{ResourceType: resourceTypeUser, Sequence: 5},
 	}
 
 	ordered := orderDocumentsByDependencies(docs)
-	require.Len(t, ordered, 4)
+	require.Len(t, ordered, 6)
 	assert.Equal(t, resourceTypeConnection, ordered[0].ResourceType)
 	assert.Equal(t, resourceTypeResourceServer, ordered[1].ResourceType)
 	assert.Equal(t, resourceTypeFlow, ordered[2].ResourceType)
 	assert.Equal(t, resourceTypeApplication, ordered[3].ResourceType)
+	assert.Equal(t, resourceTypeUser, ordered[4].ResourceType)
+	assert.Equal(t, resourceTypeAgent, ordered[5].ResourceType)
 }
 
 func TestImportResources_FileTargetReturnsError(t *testing.T) {
