@@ -30,7 +30,6 @@ type walletInterface interface {
 		*VerifiedPresentation, string, *tidcommon.ServiceError,
 	)
 	SubmitError(ctx context.Context, state, code, description string) *tidcommon.ServiceError
-	GetTrustAnchors() []TrustAnchorInfo
 }
 
 // OpenID4VP protocol constants.
@@ -56,18 +55,13 @@ func (s *openid4vpService) GetRequestObject(ctx context.Context, state string) (
 		return "", toServiceError(err)
 	}
 
-	dcql := def.DCQL
-	if s.trust != nil {
-		dcql.TrustedAuthorityKeyIDs = s.trust.skisFor(dcql.TrustedAuthorities)
-	}
-
 	claims, err := buildRequestObject(requestConfig{
 		ClientID:          s.clientID,
 		ResponseURI:       s.responseURI(state),
 		ResponseMode:      ResponseModeDirectPostJWT,
 		Audience:          s.cfg.RequestAudience,
 		Validity:          s.cfg.RequestValidity,
-		DCQL:              dcql,
+		DCQL:              def.DCQL,
 		ResponseEncValues: s.cfg.ResponseEncValues,
 		VerifierInfo:      s.cfg.VerifierInfo,
 	}, requestParams{
@@ -135,8 +129,8 @@ func (s *openid4vpService) SubmitResponse(
 	var lastErr error
 	for _, presentation := range candidates {
 		cred, verr := verifySDJWTPresentation(
-			presentation, s.trust, policy.Audience, rs.Nonce, policy.Leeway, policy.KeyBindingMaxAge,
-			policy.EnforceTrustedIssuer, policy.EnforceKeyBinding, policy.TrustedAuthorities)
+			presentation, def.trust, policy.Audience, rs.Nonce, policy.Leeway, policy.KeyBindingMaxAge,
+			policy.EnforceTrustedIssuer, policy.EnforceKeyBinding)
 		if verr != nil {
 			lastErr = verr
 			continue
@@ -185,24 +179,6 @@ func (s *openid4vpService) SubmitError(
 	}
 	_ = s.fail(ctx, rs, fmt.Errorf("wallet reported error: %s", reason))
 	return nil
-}
-
-// GetTrustAnchors returns the configured trust anchors (root CAs).
-func (s *openid4vpService) GetTrustAnchors() []TrustAnchorInfo {
-	if s.trust == nil {
-		return []TrustAnchorInfo{}
-	}
-	anchors := s.trust.list()
-	out := make([]TrustAnchorInfo, 0, len(anchors))
-	for _, a := range anchors {
-		out = append(out, TrustAnchorInfo{
-			Name:     a.Name,
-			Subject:  a.Subject,
-			SKI:      a.SKI,
-			NotAfter: a.NotAfter,
-		})
-	}
-	return out
 }
 
 func (s *openid4vpService) requestURI(state string) string {
@@ -466,7 +442,7 @@ func (r *authorizationResponse) presentationsFor(credentialID string) ([]string,
 func verifySDJWTPresentation(
 	presentation string, trust *trustAnchorStore,
 	expectedAudience, expectedNonce string, leeway, maxIATAge time.Duration,
-	enforceTrustedIssuer, enforceKeyBinding bool, allowedAnchors []string,
+	enforceTrustedIssuer, enforceKeyBinding bool,
 ) (*verifiedCredential, error) {
 	p, err := sdjwt.Parse(presentation)
 	if err != nil {
@@ -489,10 +465,10 @@ func verifySDJWTPresentation(
 	issuerLeaf := chain[0]
 	if enforceTrustedIssuer {
 		if trust == nil {
-			return nil, fmt.Errorf("%w: no trust anchors configured", ErrUntrustedIssuer)
+			return nil, fmt.Errorf("%w: presentation definition has no trusted authorities", ErrUntrustedIssuer)
 		}
 		var err error
-		issuerLeaf, err = trust.verifyChain(chain, time.Now(), allowedAnchors)
+		issuerLeaf, err = trust.verifyChain(chain, time.Now())
 		if err != nil {
 			return nil, err
 		}

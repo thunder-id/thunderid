@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -138,6 +140,9 @@ func (s *definitionService) CreatePresentationDefinition(
 		return nil, &ErrorDefinitionDeclarativeModeCreateNotAllowed
 	}
 	if svcErr := validateDefinition(dto); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rejectExpiredCertificates(dto.TrustedAuthorities); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := s.resolveOU(ctx, dto); svcErr != nil {
@@ -274,13 +279,10 @@ func (s *definitionService) populateSummaryOUHandles(ctx context.Context, summar
 func (s *definitionService) UpdatePresentationDefinition(
 	ctx context.Context, id string, dto *PresentationDefinitionDTO,
 ) (*PresentationDefinitionDTO, *tidcommon.ServiceError) {
-	if strings.TrimSpace(id) == "" {
+	if strings.TrimSpace(id) == "" || dto == nil {
 		return nil, &ErrorDefinitionInvalidRequest
 	}
-	if svcErr := validateDefinition(dto); svcErr != nil {
-		return nil, svcErr
-	}
-	if svcErr := s.resolveOU(ctx, dto); svcErr != nil {
+	if svcErr := rejectExpiredCertificates(dto.TrustedAuthorities); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -291,6 +293,16 @@ func (s *definitionService) UpdatePresentationDefinition(
 		}
 		s.logger.Error(ctx, "Failed to load presentation definition", log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+
+	if svcErr := carryStoredCertificates(dto.TrustedAuthorities, existing.TrustedAuthorities); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := validateDefinition(dto); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := s.resolveOU(ctx, dto); svcErr != nil {
+		return nil, svcErr
 	}
 
 	if existing.Handle != dto.Handle {
@@ -363,7 +375,10 @@ func validateDefinition(dto *PresentationDefinitionDTO) *tidcommon.ServiceError 
 	if svcErr := validateClaimNames(dto.RequestedClaims); svcErr != nil {
 		return svcErr
 	}
-	return validateClaimNames(slices.Concat(dto.MandatoryClaims, dto.OptionalClaims))
+	if svcErr := validateClaimNames(slices.Concat(dto.MandatoryClaims, dto.OptionalClaims)); svcErr != nil {
+		return svcErr
+	}
+	return validateTrustedAuthorities(dto)
 }
 
 // validateClaimNames enforces non-empty, unique claim names within one requested list. The
@@ -381,6 +396,85 @@ func validateClaimNames(claims []string) *tidcommon.ServiceError {
 			return ErrorDefinitionDuplicateClaim.WithParams(map[string]string{"claim": name})
 		}
 		seen[name] = true
+	}
+	return nil
+}
+
+// validateTrustedAuthorities enforces named, unique trusted authorities that each carry one parsable
+// certificate, within the supported limit, and requires at least one when issuer trust is enforced.
+func validateTrustedAuthorities(dto *PresentationDefinitionDTO) *tidcommon.ServiceError {
+	authorities := dto.TrustedAuthorities
+	if len(authorities) > maxTrustedAuthorities {
+		return ErrorDefinitionTooManyTrustedAuthorities.WithParams(
+			map[string]string{"max": strconv.Itoa(maxTrustedAuthorities)})
+	}
+	if len(authorities) == 0 {
+		if dto.EnforceTrustedIssuer != nil && *dto.EnforceTrustedIssuer {
+			return &ErrorDefinitionTrustedIssuerWithoutAuthorities
+		}
+		return nil
+	}
+	names := make(map[string]bool, len(authorities))
+	certificates := make(map[string]bool, len(authorities))
+	for _, authority := range authorities {
+		name := strings.TrimSpace(authority.Name)
+		if name == "" {
+			return &ErrorDefinitionEmptyTrustedAuthorityName
+		}
+		if names[name] {
+			return ErrorDefinitionDuplicateTrustedAuthority.WithParams(map[string]string{"name": name})
+		}
+		names[name] = true
+		cert, err := ParseTrustedAuthorityCertificate(authority.Certificate)
+		if err != nil {
+			return ErrorDefinitionInvalidTrustedAuthorityCertificate.WithParams(map[string]string{"name": name})
+		}
+		if certificates[string(cert.Raw)] {
+			return ErrorDefinitionDuplicateTrustedAuthority.WithParams(map[string]string{"name": name})
+		}
+		certificates[string(cert.Raw)] = true
+	}
+	return nil
+}
+
+// rejectExpiredCertificates rejects an expired certificate among the trusted authorities a request
+// supplies. Stored and declarative certificates are not checked here; an expired one fails verification.
+func rejectExpiredCertificates(authorities []TrustedAuthority) *tidcommon.ServiceError {
+	now := time.Now()
+	for _, authority := range authorities {
+		if authority.Certificate == "" {
+			continue
+		}
+		cert, err := ParseTrustedAuthorityCertificate(authority.Certificate)
+		if err != nil {
+			return ErrorDefinitionInvalidTrustedAuthorityCertificate.WithParams(
+				map[string]string{"name": authority.Name})
+		}
+		if now.After(cert.NotAfter) {
+			return ErrorDefinitionExpiredTrustedAuthorityCertificate.WithParams(
+				map[string]string{"name": authority.Name})
+		}
+	}
+	return nil
+}
+
+// carryStoredCertificates fills in the certificate of each requested trusted authority that is named
+// without one, from the stored authority of the same name. A name with no stored certificate is rejected.
+func carryStoredCertificates(requested, stored []TrustedAuthority) *tidcommon.ServiceError {
+	storedByName := make(map[string]string, len(stored))
+	for _, authority := range stored {
+		storedByName[authority.Name] = authority.Certificate
+	}
+	for i, authority := range requested {
+		if authority.Certificate != "" {
+			continue
+		}
+		certificate, ok := storedByName[authority.Name]
+		if !ok {
+			return ErrorDefinitionInvalidTrustedAuthorityCertificate.WithParams(
+				map[string]string{"name": authority.Name})
+		}
+		requested[i].Certificate = certificate
 	}
 	return nil
 }

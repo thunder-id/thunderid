@@ -145,7 +145,7 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/VPError'}
     VPInvalidRequest:
-      description: The request is malformed, omits a required field, uses an unsupported format, references an invalid organization unit, or contains invalid claim definitions.
+      description: The request is malformed, omits a required field, uses an unsupported format, references an invalid organization unit, contains invalid claim definitions, or contains an invalid, expired, or duplicate trusted authority.
       content:
         application/json:
           schema: {$ref: '#/components/schemas/VPError'}
@@ -183,7 +183,7 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/VPError'}
   schemas:
-    VPPresentationDefinitionRequest:
+    VPPresentationDefinitionBase:
       type: object
       required: [handle, ouId, vct]
       properties:
@@ -201,16 +201,47 @@ components:
           additionalProperties:
             type: array
             items: {type: string}
-        enforceTrustedIssuer: {type: boolean, nullable: true}
-        trustedAuthorities: {type: array, items: {type: string}}
+        enforceTrustedIssuer:
+          type: boolean
+          nullable: true
+          description: >-
+            Requires the credential issuer's x5c certificate chain to verify against one of the
+            definition's trusted authorities. Requires at least one trusted authority.
+    VPTrustedAuthority:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, description: Name of the trusted authority, unique within the definition.}
+        certificate:
+          type: string
+          writeOnly: true
+          description: >-
+            PEM-encoded X.509 certificate of the issuer, or of a CA that signs it. Required when adding
+            a trusted authority. On update, omit it to keep the certificate stored under the same name.
+    VPPresentationDefinitionRequest:
+      allOf:
+        - $ref: '#/components/schemas/VPPresentationDefinitionBase'
+        - type: object
+          properties:
+            trustedAuthorities:
+              type: array
+              maxItems: 10
+              description: >-
+                Trusted issuer certificates of this definition. The list replaces the stored one:
+                a trusted authority left out is removed.
+              items: {$ref: '#/components/schemas/VPTrustedAuthority'}
     VPPresentationDefinition:
       allOf:
-        - $ref: '#/components/schemas/VPPresentationDefinitionRequest'
+        - $ref: '#/components/schemas/VPPresentationDefinitionBase'
         - type: object
           required: [id, format]
           properties:
             id: {type: string, description: Presentation definition ID.}
             ouHandle: {type: string, readOnly: true, description: Resolved organization-unit handle returned for display.}
+            trustedAuthorities:
+              type: array
+              description: Names of the definition's trusted authorities. Certificates are not returned.
+              items: {type: string}
     VPPresentationDefinitionList:
       type: array
       items:

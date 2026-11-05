@@ -31,8 +31,7 @@ func TestOpenID4VPHandlerTestSuite(t *testing.T) {
 
 func (suite *OpenID4VPHandlerTestSuite) TestHandleRequestObject() {
 	t := suite.T()
-	b := newPIDBuilder(t)
-	svc, _ := newTestService(t, b)
+	svc, _ := newTestService(t)
 	h := newOpenID4VPHandler(svc, svc)
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
@@ -69,7 +68,7 @@ func (suite *OpenID4VPHandlerTestSuite) TestHandleRequestObject() {
 func (suite *OpenID4VPHandlerTestSuite) TestHandleResponse() {
 	t := suite.T()
 	b := newPIDBuilder(t)
-	svc, store := newTestService(t, b)
+	svc, store := newTestService(t)
 	svc.cfg.ResultRedirectURIBase = resultRedirectURIBase
 	h := newOpenID4VPHandler(svc, svc)
 
@@ -107,7 +106,7 @@ func (suite *OpenID4VPHandlerTestSuite) TestHandleResponse() {
 func (suite *OpenID4VPHandlerTestSuite) TestHandleResponseVerificationFailure() {
 	t := suite.T()
 	b := newPIDBuilder(t)
-	svc, store := newTestService(t, b)
+	svc, store := newTestService(t)
 	h := newOpenID4VPHandler(svc, svc)
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
@@ -128,28 +127,9 @@ func (suite *OpenID4VPHandlerTestSuite) TestHandleResponseVerificationFailure() 
 	suite.Equal(ErrorVerificationFailed.Code, decodeErrorCode(suite.T(), rec))
 }
 
-func (suite *OpenID4VPHandlerTestSuite) TestHandleTrustAnchors() {
-	t := suite.T()
-	b := newPIDBuilder(t)
-	svc, _ := newTestService(t, b)
-	h := newOpenID4VPHandler(svc, svc)
-
-	req := httptest.NewRequest(http.MethodGet, apiTrustAnchorsPath, nil)
-	rec := httptest.NewRecorder()
-	h.HandleTrustAnchors(rec, req)
-
-	suite.Require().Equal(http.StatusOK, rec.Code)
-	var anchors []TrustAnchorInfo
-	suite.Require().NoError(json.Unmarshal(rec.Body.Bytes(), &anchors))
-	suite.Require().Len(anchors, 1)
-	suite.Equal("test-root", anchors[0].Name)
-	suite.NotEmpty(anchors[0].Subject)
-}
-
 func (suite *OpenID4VPHandlerTestSuite) TestHandleRequestObjectWriteError() {
 	t := suite.T()
-	b := newPIDBuilder(t)
-	svc, _ := newTestService(t, b)
+	svc, _ := newTestService(t)
 	h := newOpenID4VPHandler(svc, svc)
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
@@ -165,8 +145,7 @@ func (suite *OpenID4VPHandlerTestSuite) TestHandleRequestObjectWriteError() {
 
 func (suite *OpenID4VPHandlerTestSuite) TestHandleResponseParseFormError() {
 	t := suite.T()
-	b := newPIDBuilder(t)
-	svc, _ := newTestService(t, b)
+	svc, _ := newTestService(t)
 	h := newOpenID4VPHandler(svc, svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/openid4vp/response", strings.NewReader("%zz"))

@@ -7,7 +7,6 @@ export {default as useCreateVerifiableCredential} from './api/useCreateVerifiabl
 export {default as useCreateVerifiablePresentation} from './api/useCreateVerifiablePresentation';
 export {default as useDeleteVerifiableCredential} from './api/useDeleteVerifiableCredential';
 export {default as useDeleteVerifiablePresentation} from './api/useDeleteVerifiablePresentation';
-export {default as useGetTrustAnchors} from './api/useGetTrustAnchors';
 export {default as useGetVerifiableCredential} from './api/useGetVerifiableCredential';
 export {default as useGetVerifiableCredentials} from './api/useGetVerifiableCredentials';
 export {default as useGetVerifiablePresentation} from './api/useGetVerifiablePresentation';
@@ -43,6 +42,7 @@ export * from './models/vp';
 export type {CreateVerifiableCredentialRequest, UpdateVerifiableCredentialRequest} from './models/credential-requests';
 export type {
   CreateVerifiablePresentationRequest,
+  TrustedAuthorityInput,
   UpdateVerifiablePresentationRequest,
 } from './models/presentation-requests';
 

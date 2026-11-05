@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * An OpenID4VP presentation definition managed in the console. Trusted issuers
- * and the verifier identity are deployment-level configuration shared by all
- * definitions (global trust) and are not part of this model.
+ * An OpenID4VP presentation definition managed in the console. The verifier
+ * identity is deployment-level configuration shared by all definitions, while
+ * the trusted issuer certificates belong to each definition.
  */
 export interface VerifiablePresentation {
   id: string;
@@ -23,13 +23,13 @@ export interface VerifiablePresentation {
    */
   claimValues?: Record<string, string[]>;
   /**
-   * When set, overrides the deployment default for whether issuer trust is
-   * enforced for this definition. Omitted means inherit the default.
+   * When true, the issuer's x5c chain must verify against one of the trusted
+   * issuer certificates of this definition. Omitted means not enforced.
    */
   enforceTrustedIssuer?: boolean;
   /**
-   * Names of the trust anchors accepted for this definition. Empty or omitted
-   * means accept any configured trust anchor.
+   * Names of the trusted issuer certificates registered on this definition.
+   * The certificates themselves are never returned.
    */
   trustedAuthorities?: string[];
 }
@@ -64,12 +64,4 @@ export interface VerificationStatusResponse {
   status: string;
   result_token?: string;
   error?: string;
-}
-
-/** A registered trust anchor (issuer trust) returned by the server. */
-export interface TrustAnchor {
-  name: string;
-  subject: string;
-  ski: string;
-  not_after: string;
 }

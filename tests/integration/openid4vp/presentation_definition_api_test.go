@@ -37,6 +37,12 @@ const (
 	codeDefinitionEmptyClaimName    = "VP-2008"
 	codeDefinitionDuplicateClaim    = "VP-2009"
 
+	codeDefinitionEmptyTrustedAuthorityName          = "VP-2011"
+	codeDefinitionDuplicateTrustedAuthority          = "VP-2012"
+	codeDefinitionInvalidTrustedAuthorityCertificate = "VP-2013"
+	codeDefinitionExpiredTrustedAuthorityCertificate = "VP-2014"
+	codeDefinitionTrustedIssuerWithoutAuthorities    = "VP-2016"
+
 	// Declarative (file-backed) definitions seeded from
 	// resources/declarative_resources/presentation_definitions. They are
 	// immutable: the management API must reject updates and deletes.
@@ -59,6 +65,10 @@ type PresentationDefinitionAPITestSuite struct {
 	suite.Suite
 	ouID      string
 	createdID []string
+	// certA, certB and certExpired are PEM certificates used as trusted authorities.
+	certA       string
+	certB       string
+	certExpired string
 }
 
 // TestPresentationDefinitionAPITestSuite is the single entrypoint that runs every Test* method.
@@ -70,6 +80,14 @@ func (ts *PresentationDefinitionAPITestSuite) SetupSuite() {
 	ouID, err := testutils.CreateOrganizationUnit(crudDefinitionOU)
 	ts.Require().NoError(err, "create test OU")
 	ts.ouID = ouID
+
+	validUntil := time.Now().Add(24 * time.Hour)
+	ts.certA, err = testutils.NewSelfSignedCertificatePEM("Integration Root A", validUntil)
+	ts.Require().NoError(err)
+	ts.certB, err = testutils.NewSelfSignedCertificatePEM("Integration Root B", validUntil)
+	ts.Require().NoError(err)
+	ts.certExpired, err = testutils.NewSelfSignedCertificatePEM("Integration Expired Root", time.Now().Add(-time.Hour))
+	ts.Require().NoError(err)
 }
 
 func (ts *PresentationDefinitionAPITestSuite) TearDownSuite() {
@@ -162,7 +180,9 @@ func (ts *PresentationDefinitionAPITestSuite) baseDefinition(handle string) test
 		OptionalClaims:       []string{"email"},
 		ClaimValues:          map[string][]string{"country": {"LK", "US"}},
 		EnforceTrustedIssuer: &enforceTrustedIssuer,
-		TrustedAuthorities:   []string{"integration-test-anchor"},
+		TrustedAuthorities: []testutils.TrustedAuthority{
+			{Name: "integration-test-anchor", Certificate: ts.certA},
+		},
 	}
 }
 
@@ -171,6 +191,8 @@ func (ts *PresentationDefinitionAPITestSuite) baseDefinition(handle string) test
 func (ts *PresentationDefinitionAPITestSuite) TestCreateAndGet() {
 	res, created := ts.createDefinition(ts.baseDefinition(crudDefinitionHandle))
 	ts.Require().Equalf(http.StatusCreated, res.StatusCode, "create: %s", string(res.Body))
+	// Trusted authority certificates are write-only: neither the create nor the read returns them.
+	ts.NotContains(string(res.Body), "BEGIN CERTIFICATE")
 
 	id, _ := created["id"].(string)
 	ts.Require().NotEmpty(id, "created id missing")
@@ -200,6 +222,7 @@ func (ts *PresentationDefinitionAPITestSuite) TestCreateAndGet() {
 	authorities, ok := fetched["trustedAuthorities"].([]any)
 	ts.Require().Truef(ok, "trustedAuthorities missing: %s", string(getRes.Body))
 	ts.Equal([]any{"integration-test-anchor"}, authorities)
+	ts.NotContains(string(getRes.Body), "BEGIN CERTIFICATE")
 
 	claimValues, ok := fetched["claimValues"].(map[string]any)
 	ts.Require().Truef(ok, "claimValues missing: %s", string(getRes.Body))
@@ -334,7 +357,9 @@ func (ts *PresentationDefinitionAPITestSuite) TestUpdate() {
 	updated.MandatoryClaims = []string{"email"}
 	updated.OptionalClaims = nil
 	updated.EnforceTrustedIssuer = &enforceTrustedIssuer
-	updated.TrustedAuthorities = []string{"anchor-one", "anchor-two"}
+	updated.TrustedAuthorities = []testutils.TrustedAuthority{
+		{Name: "integration-test-anchor"}, {Name: "anchor-two", Certificate: ts.certB},
+	}
 
 	updateRes := ts.definitionRequest(http.MethodPut, definitionAPIBasePath+"/"+id, updated)
 	ts.Require().Equalf(http.StatusOK, updateRes.StatusCode, "update: %s", string(updateRes.Body))
@@ -359,7 +384,40 @@ func (ts *PresentationDefinitionAPITestSuite) TestUpdate() {
 
 	authorities, ok := fetched["trustedAuthorities"].([]any)
 	ts.Require().True(ok, "trustedAuthorities missing after update")
-	ts.Equal([]any{"anchor-one", "anchor-two"}, authorities)
+	ts.Equal([]any{"integration-test-anchor", "anchor-two"}, authorities)
+}
+
+// TestUpdate_TrustedAuthorities verifies a trusted authority named without a certificate keeps the
+// stored one, an omitted one is removed, and a name with no stored certificate is rejected.
+func (ts *PresentationDefinitionAPITestSuite) TestUpdate_TrustedAuthorities() {
+	def := ts.baseDefinition("pd_crud_trusted_authorities")
+	def.TrustedAuthorities = []testutils.TrustedAuthority{
+		{Name: "root-a", Certificate: ts.certA}, {Name: "root-b", Certificate: ts.certB},
+	}
+	res, created := ts.createDefinition(def)
+	ts.Require().Equalf(http.StatusCreated, res.StatusCode, "create: %s", string(res.Body))
+	path := definitionAPIBasePath + "/" + created["id"].(string)
+
+	def.TrustedAuthorities = []testutils.TrustedAuthority{{Name: "root-a"}}
+	updateRes := ts.definitionRequest(http.MethodPut, path, def)
+	ts.Require().Equalf(http.StatusOK, updateRes.StatusCode, "update: %s", string(updateRes.Body))
+	ts.Equal([]any{"root-a"}, ts.decode(updateRes.Body)["trustedAuthorities"])
+
+	getRes := ts.definitionRequest(http.MethodGet, path, nil)
+	ts.Require().Equal(http.StatusOK, getRes.StatusCode)
+	ts.Equal([]any{"root-a"}, ts.decode(getRes.Body)["trustedAuthorities"])
+
+	// root-b was removed, so naming it without a certificate has nothing to keep.
+	def.TrustedAuthorities = []testutils.TrustedAuthority{{Name: "root-a"}, {Name: "root-b"}}
+	rejected := ts.definitionRequest(http.MethodPut, path, def)
+	ts.Equalf(http.StatusBadRequest, rejected.StatusCode, "body: %s", string(rejected.Body))
+	ts.Equal(codeDefinitionInvalidTrustedAuthorityCertificate, ts.errorCodeOf(rejected.Body))
+
+	// Removing every trusted authority while enforcing issuer trust is rejected.
+	def.TrustedAuthorities = nil
+	rejected = ts.definitionRequest(http.MethodPut, path, def)
+	ts.Equalf(http.StatusBadRequest, rejected.StatusCode, "body: %s", string(rejected.Body))
+	ts.Equal(codeDefinitionTrustedIssuerWithoutAuthorities, ts.errorCodeOf(rejected.Body))
 }
 
 // TestUpdateCanChangeOUID verifies updates continue to validate and persist a
@@ -567,6 +625,50 @@ func (ts *PresentationDefinitionAPITestSuite) TestCreate_ValidationErrors() {
 			},
 			wantCode: codeDefinitionDuplicateClaim,
 		},
+		{
+			name: "trusted authority without certificate",
+			mutate: func(d *testutils.PresentationDefinition) {
+				d.TrustedAuthorities = []testutils.TrustedAuthority{{Name: "root-a"}}
+			},
+			wantCode: codeDefinitionInvalidTrustedAuthorityCertificate,
+		},
+		{
+			name: "trusted authority with invalid certificate",
+			mutate: func(d *testutils.PresentationDefinition) {
+				d.TrustedAuthorities = []testutils.TrustedAuthority{{Name: "root-a", Certificate: "not a pem"}}
+			},
+			wantCode: codeDefinitionInvalidTrustedAuthorityCertificate,
+		},
+		{
+			name: "trusted authority with expired certificate",
+			mutate: func(d *testutils.PresentationDefinition) {
+				d.TrustedAuthorities = []testutils.TrustedAuthority{{Name: "old", Certificate: ts.certExpired}}
+			},
+			wantCode: codeDefinitionExpiredTrustedAuthorityCertificate,
+		},
+		{
+			name: "trusted authority without name",
+			mutate: func(d *testutils.PresentationDefinition) {
+				d.TrustedAuthorities = []testutils.TrustedAuthority{{Name: " ", Certificate: ts.certA}}
+			},
+			wantCode: codeDefinitionEmptyTrustedAuthorityName,
+		},
+		{
+			name: "duplicate trusted authority name",
+			mutate: func(d *testutils.PresentationDefinition) {
+				d.TrustedAuthorities = []testutils.TrustedAuthority{
+					{Name: "root", Certificate: ts.certA}, {Name: "root", Certificate: ts.certB},
+				}
+			},
+			wantCode: codeDefinitionDuplicateTrustedAuthority,
+		},
+		{
+			name: "enforced issuer trust without trusted authorities",
+			mutate: func(d *testutils.PresentationDefinition) {
+				d.TrustedAuthorities = nil
+			},
+			wantCode: codeDefinitionTrustedIssuerWithoutAuthorities,
+		},
 	}
 
 	for i, tc := range cases {
@@ -626,6 +728,10 @@ func (ts *PresentationDefinitionAPITestSuite) TestDeclarativeVisibility() {
 	claimValues, ok := fetched["claimValues"].(map[string]any)
 	ts.Require().Truef(ok, "claimValues missing: %s", string(res.Body))
 	ts.Equal([]any{"LK", "US"}, claimValues["country"])
+
+	// The declared trusted authority loads, and its certificate is not returned.
+	ts.Equal([]any{"decl-issuer-ca"}, fetched["trustedAuthorities"])
+	ts.NotContains(string(res.Body), "BEGIN CERTIFICATE")
 }
 
 // TestDeclarativeOUHandleResolvesToOUID verifies startup resolves the declarative

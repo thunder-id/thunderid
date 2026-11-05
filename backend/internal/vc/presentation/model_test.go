@@ -24,7 +24,9 @@ func TestToResponse(t *testing.T) {
 		OptionalClaims:       []string{"birthdate"},
 		ClaimValues:          map[string][]string{"address.country": {"DE"}},
 		EnforceTrustedIssuer: &enforce,
-		TrustedAuthorities:   []string{"root-a"},
+		TrustedAuthorities: []TrustedAuthority{
+			{Name: "root-a", Certificate: "pem-a"}, {Name: "root-b", Certificate: "pem-b"},
+		},
 	}
 
 	resp := toResponse(dto)
@@ -41,7 +43,11 @@ func TestToResponse(t *testing.T) {
 	assert.Equal(t, dto.OptionalClaims, resp.OptionalClaims)
 	assert.Equal(t, dto.ClaimValues, resp.ClaimValues)
 	assert.Equal(t, dto.EnforceTrustedIssuer, resp.EnforceTrustedIssuer)
-	assert.Equal(t, dto.TrustedAuthorities, resp.TrustedAuthorities)
+	assert.Equal(t, []string{"root-a", "root-b"}, resp.TrustedAuthorities)
+}
+
+func TestToResponseOmitsEmptyTrustedAuthorities(t *testing.T) {
+	assert.Nil(t, toResponse(PresentationDefinitionDTO{ID: "def-1"}).TrustedAuthorities)
 }
 
 func TestToSummary(t *testing.T) {

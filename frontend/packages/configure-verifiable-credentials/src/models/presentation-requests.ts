@@ -1,6 +1,17 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+/**
+ * A trusted issuer certificate entry sent with a presentation definition. An
+ * entry without a certificate keeps the certificate already stored under that name.
+ */
+export interface TrustedAuthorityInput {
+  /** Label of the certificate, unique within the definition. */
+  name: string;
+  /** PEM-encoded X.509 certificate. Required when the entry is newly added. */
+  certificate?: string;
+}
+
 /** Request body for creating a presentation definition. */
 export interface CreateVerifiablePresentationRequest {
   handle: string;
@@ -13,7 +24,7 @@ export interface CreateVerifiablePresentationRequest {
   optionalClaims?: string[];
   claimValues?: Record<string, string[]>;
   enforceTrustedIssuer?: boolean;
-  trustedAuthorities?: string[];
+  trustedAuthorities?: TrustedAuthorityInput[];
 }
 
 /** Request body for updating a presentation definition. */

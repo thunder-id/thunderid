@@ -18,3 +18,17 @@ claimValues:
     - LK
     - US
 enforceTrustedIssuer: false
+trustedAuthorities:
+  - name: decl-issuer-ca
+    certificate: |
+      -----BEGIN CERTIFICATE-----
+      MIIBoTCCAUegAwIBAgIUdkoZQ4jMyJ7nESmgpI/zd+L7YRIwCgYIKoZIzj0EAwIw
+      JTEjMCEGA1UEAwwaRGVjbGFyYXRpdmUgVGVzdCBJc3N1ZXIgQ0EwIBcNMjYxMTA1
+      MTMwOTU1WhgPMjEyNjEwMTIxMzA5NTVaMCUxIzAhBgNVBAMMGkRlY2xhcmF0aXZl
+      IFRlc3QgSXNzdWVyIENBMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAESg4ipczj
+      Rl/suVJvuATor/gGJSj2eFpVNUvmNBgFKXu3pmhItoL//PcfsM1HStmpV0RKUl3i
+      OgmDj+PA3GsYtaNTMFEwHQYDVR0OBBYEFJ6sVW3IduB9x4vmrmOcu5uUEFQTMB8G
+      A1UdIwQYMBaAFJ6sVW3IduB9x4vmrmOcu5uUEFQTMA8GA1UdEwEB/wQFMAMBAf8w
+      CgYIKoZIzj0EAwIDSAAwRQIhALqy/o5RC8Doei+jyMDLDFCx47OE/IEDfU8+YmCk
+      Sw+jAiA/Vp2/isHGmXeF/dz+Ty8Rvq2Mwh6PkmySUk7CTU1wKg==
+      -----END CERTIFICATE-----
