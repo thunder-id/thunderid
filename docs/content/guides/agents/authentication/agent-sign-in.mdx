@@ -24,6 +24,8 @@ An application accepts an agent as a sign-in subject only when agent sign-in is 
 2. On the **Access** tab, click on **Enable agent sign-in**.
 3. Save from the unsaved-changes bar.
 
+The toggle allows agents of every agent type to sign in to the application.
+
 </TabItem>
 <TabItem value="api" label="API">
 
@@ -47,7 +49,14 @@ curl -X PUT https://localhost:8090/applications/<application-id> \
   }'
 ```
 
-`allowedAgentTypes` and `allowedUserTypes` list agent type and user type handles. The only agent type handle is `default`.
+`allowedAgentTypes` and `allowedUserTypes` list agent type and user type handles. The built-in agent type handle is `default`. To let an agent of any agent type sign in, set `allowedAgentTypes` to `["*"]`. The `*` entry must be the only entry: a list that combines it with other entries is rejected. `*` applies to `allowedAgentTypes` only, not to `allowedUserTypes`.
+
+In a declarative or imported YAML resource, quote the entry. A bare `*` starts a YAML alias, so the file fails to parse:
+
+```yaml
+allowedAgentTypes:
+  - "*"
+```
 
 See the [Applications API Reference](../../../../apis#tag/applications).
 
@@ -66,12 +75,12 @@ An agent can have multiple methods of authentication to sign in to an applicatio
 
 ### Add the attributes to the agent schema
 
-<ProductName /> agents carry one schema per organization unit, shared by every agent in it. See [Agent Schema](../../agent-schema) for the full attribute model.
+Each agent type carries one schema, shared by every agent of that type. See [Agent Schema](../../agent-schema) for the full attribute model.
 
 <Tabs groupId="agent-config">
 <TabItem value="console" label="Console" default>
 
-1. On the **Agents** list, click **Schema**.
+1. Go to **Agent types** and open the agent type of the agent.
 2. Add a `username` attribute: set **Type** to **String**, and turn on **Required** and **Unique**.
 3. Add a `password` attribute: set **Type** to **String**, and turn on **Required** and **Credential**.
 4. Save from the unsaved-changes bar.
@@ -130,12 +139,12 @@ See [Authenticate the Agent](../../../../use-cases/ai-agents/solve-sign-in) for 
 
 ### Add the attributes to the agent schema
 
-<ProductName /> agents carry one schema per organization unit, shared by every agent in it. See [Agent Schema](../../agent-schema) for the full attribute model.
+Each agent type carries one schema, shared by every agent of that type. See [Agent Schema](../../agent-schema) for the full attribute model.
 
 <Tabs groupId="agent-config">
 <TabItem value="console" label="Console" default>
 
-1. On the **Agents** list, click **Schema**.
+1. Go to **Agent types** and open the agent type of the agent.
 2. For an email OTP or magic link, add `email` attribute: set **Type** to **String**, and turn on **Required**.
 3. For SMS OTP, add `mobile_number` attribute: set **Type** to **String**, and turn on **Required**.
 4. Save from the unsaved-changes bar.

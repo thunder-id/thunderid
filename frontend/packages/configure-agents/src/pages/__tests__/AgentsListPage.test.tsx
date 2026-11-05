@@ -1,7 +1,6 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-/* eslint-disable @typescript-eslint/no-unsafe-return */
 import userEvent from '@testing-library/user-event';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -28,12 +27,6 @@ vi.mock('react-router', async () => {
   };
 });
 
-const mockUseGetAgentTypes = vi.fn();
-vi.mock('@thunderid/configure-agent-types', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/configure-agent-types')>()),
-  useGetAgentTypes: () => mockUseGetAgentTypes(),
-}));
-
 // Mock translations
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -42,7 +35,6 @@ vi.mock('react-i18next', () => ({
         'agents:listing.title': 'Agents',
         'agents:listing.subtitle': 'Manage service identities and machine clients',
         'agents:listing.addAgent': 'Add Agent',
-        'agents:listing.schema': 'Schema',
         'agents:listing.search.placeholder': 'Search agents',
       };
       return translations[key] ?? fallback ?? key;
@@ -53,10 +45,6 @@ vi.mock('react-i18next', () => ({
 describe('AgentsListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseGetAgentTypes.mockReturnValue({
-      data: {types: [{id: 'schema-1', handle: 'default', displayName: 'Default', ouId: 'ou-1'}]},
-      isLoading: false,
-    });
   });
 
   it('renders the page title and subtitle', () => {
@@ -72,11 +60,18 @@ describe('AgentsListPage', () => {
     await waitFor(() => expect(document.title).toBe('Agents | ThunderID'));
   });
 
-  it('renders the Schema and Add agent buttons', () => {
+  it('should render the Add agent button', () => {
     render(<AgentsListPage />);
 
-    expect(screen.getByTestId('agent-schema-button')).toBeInTheDocument();
-    expect(screen.getByTestId('agent-add-button')).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Add Agent'})).toBeInTheDocument();
+  });
+
+  // Agent types are reached from the sidebar, as user types are, so the list has no Schema button.
+  it('should not render a Schema button', () => {
+    render(<AgentsListPage />);
+
+    expect(screen.queryByRole('button', {name: 'Schema'})).not.toBeInTheDocument();
+    expect(screen.queryByTestId('agent-schema-button')).not.toBeInTheDocument();
   });
 
   it('renders the AgentsList component', () => {
@@ -94,29 +89,6 @@ describe('AgentsListPage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/agents/create');
   });
 
-  it('navigates to the schema page when Schema is clicked', async () => {
-    const user = userEvent.setup();
-    render(<AgentsListPage />);
-
-    await user.click(screen.getByTestId('agent-schema-button'));
-
-    expect(mockNavigate).toHaveBeenCalledWith('/agent-types/schema-1');
-  });
-
-  it('disables the Schema button while agent types are loading', () => {
-    mockUseGetAgentTypes.mockReturnValue({data: undefined, isLoading: true});
-    render(<AgentsListPage />);
-
-    expect(screen.getByTestId('agent-schema-button')).toBeDisabled();
-  });
-
-  it('disables the Schema button when no default agent type exists', () => {
-    mockUseGetAgentTypes.mockReturnValue({data: {types: []}, isLoading: false});
-    render(<AgentsListPage />);
-
-    expect(screen.getByTestId('agent-schema-button')).toBeDisabled();
-  });
-
   it('handles navigation errors gracefully when Add agent navigation fails', async () => {
     const user = userEvent.setup();
     mockNavigate.mockRejectedValueOnce(new Error('Navigation failed'));
@@ -127,30 +99,5 @@ describe('AgentsListPage', () => {
 
     expect(mockNavigate).toHaveBeenCalledWith('/agents/create');
     await vi.waitFor(() => expect(mockLogger.error).toHaveBeenCalled());
-  });
-
-  it('handles navigation errors gracefully when Schema navigation fails', async () => {
-    const user = userEvent.setup();
-    mockNavigate.mockRejectedValueOnce(new Error('Navigation failed'));
-
-    render(<AgentsListPage />);
-
-    await user.click(screen.getByTestId('agent-schema-button'));
-
-    expect(mockNavigate).toHaveBeenCalledWith('/agent-types/schema-1');
-    await vi.waitFor(() => expect(mockLogger.error).toHaveBeenCalled());
-  });
-
-  it('does not navigate when Schema is clicked but no default type exists', async () => {
-    mockUseGetAgentTypes.mockReturnValue({data: {types: []}, isLoading: false});
-    const user = userEvent.setup();
-
-    render(<AgentsListPage />);
-
-    // Button is disabled but force-click via direct invocation in handler not possible
-    // Verify navigation is not called when button is disabled
-    expect(screen.getByTestId('agent-schema-button')).toBeDisabled();
-    await user.click(screen.getByTestId('agent-schema-button')).catch(() => null);
-    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });

@@ -21,6 +21,7 @@ import {
 import {
   Bot,
   Building,
+  FileCog,
   Group,
   Home,
   IdCard,
@@ -246,6 +247,12 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
             text: t('navigation:pages.userTypes'),
             icon: <UserRoundCog />,
             path: RouteConfig.userTypes.list(),
+          },
+          {
+            id: 'agent-types',
+            text: t('navigation:pages.agentTypes', 'Agent types'),
+            icon: <FileCog />,
+            path: RouteConfig.agentTypes.list(),
           },
         ],
       },

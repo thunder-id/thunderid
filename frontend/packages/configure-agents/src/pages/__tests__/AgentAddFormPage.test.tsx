@@ -343,6 +343,65 @@ describe('AgentAddFormPage', () => {
     expect(requests().some((request) => /\/agent-types\?.*limit=100/.test(request.url))).toBe(true);
   });
 
+  // An agent must sit in its type's organization unit or one below it, so an organization unit picked
+  // under one type is never posted with another.
+  it('should clear the organization unit and scope the picker to the new type when the type changes', async () => {
+    const twoTypes = {
+      ...agentTypes,
+      totalResults: 2,
+      count: 2,
+      types: [...agentTypes.types, {id: 'type-2', handle: 'assistant', displayName: 'Assistant', ouId: 'ou-other'}],
+    };
+    const assistantType = {
+      ...defaultType,
+      id: 'type-2',
+      handle: 'assistant',
+      displayName: 'Assistant',
+      ouId: 'ou-other',
+    };
+    h.http.request.mockImplementation((config: unknown) => {
+      const {url} = config as RecordedRequest;
+      if (url.includes('/users')) return Promise.resolve({data: users});
+      if (url.includes('/agent-types/type-1')) return Promise.resolve({data: defaultType});
+      if (url.includes('/agent-types/type-2')) return Promise.resolve({data: assistantType});
+      return Promise.resolve({data: twoTypes});
+    });
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await chooseOption(user, 0, 'Default');
+    await user.click(await screen.findByTestId('ou-picker'));
+    await screen.findByRole('textbox', {name: /llmModel/});
+    const submit = screen.getByRole('button', {name: 'agents:addForm.submit'});
+    expect(submit).toBeEnabled();
+
+    await chooseOption(user, 0, 'Assistant');
+
+    expect(await screen.findByTestId('ou-picker')).toHaveAttribute('data-root', 'ou-other');
+    expect(submit).toBeDisabled();
+  });
+
+  it('should explain an organization unit outside the agent type when the server refuses it', async () => {
+    h.http.request.mockImplementation((config: unknown) => {
+      const {url, method} = config as RecordedRequest;
+      if (method === 'POST') {
+        return Promise.reject(Object.assign(new Error('Bad request'), {response: {data: {code: 'AGT-1049'}}}));
+      }
+      if (url.includes('/users')) return Promise.resolve({data: users});
+      if (url.includes('/agent-types/type-1')) return Promise.resolve({data: defaultType});
+      return Promise.resolve({data: agentTypes});
+    });
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillRequired(user);
+    await user.type(await screen.findByRole('textbox', {name: /llmModel/}), 'claude');
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+
+    expect(await screen.findByText('agents:errors.AGT-1049')).toBeInTheDocument();
+    expect(h.navigate).not.toHaveBeenCalled();
+  });
+
   it('keeps submit disabled until a type and an organization unit are given', async () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);

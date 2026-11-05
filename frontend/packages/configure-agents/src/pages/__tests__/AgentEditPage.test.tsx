@@ -15,7 +15,7 @@ const {
   mockUseGetAgent,
   mockUseUpdateAgent,
   mockMutateAsync,
-  mockUseGetAgentTypes,
+  mockUseGetAllAgentTypes,
   mockUseGetAgentType,
   mockUseLocation,
   stagingCallbackIdentities,
@@ -30,7 +30,7 @@ const {
   mockUseGetAgent: vi.fn(),
   mockUseUpdateAgent: vi.fn(),
   mockMutateAsync: vi.fn(),
-  mockUseGetAgentTypes: vi.fn(),
+  mockUseGetAllAgentTypes: vi.fn(),
   mockUseGetAgentType: vi.fn(),
   mockUseLocation: vi.fn(
     (): {
@@ -41,7 +41,7 @@ const {
 
 vi.mock('@thunderid/configure-agent-types', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-agent-types')>()),
-  useGetAgentTypes: () => mockUseGetAgentTypes(),
+  useGetAllAgentTypes: () => mockUseGetAllAgentTypes(),
   useGetAgentType: () => mockUseGetAgentType(),
 }));
 
@@ -293,8 +293,8 @@ describe('AgentEditPage', () => {
     }));
     mockMutateAsync.mockResolvedValue(undefined);
     mockRefetch.mockResolvedValue({});
-    mockUseGetAgentTypes.mockReturnValue({
-      data: {types: [{id: 'default-type', handle: 'default', displayName: 'Default'}]},
+    mockUseGetAllAgentTypes.mockReturnValue({
+      data: [{id: 'default-type', handle: 'default', displayName: 'Default'}],
       isLoading: false,
       error: null,
     });

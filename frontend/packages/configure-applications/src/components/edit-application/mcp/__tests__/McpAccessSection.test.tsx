@@ -68,6 +68,19 @@ describe('McpAccessSection', () => {
     expect(screen.getByLabelText('Enable agent sign-in')).not.toBeChecked();
   });
 
+  it('should render the agent sign-in toggle on when every agent type is allowed', () => {
+    render(
+      <McpAccessSection
+        application={{...mockApplication, allowedAgentTypes: ['*']}}
+        onFieldChange={mockOnFieldChange}
+        isReadOnly={false}
+      />,
+    );
+
+    expect(screen.getByLabelText('Enable agent sign-in')).toBeChecked();
+  });
+
+  // A list saved before the wildcard existed still names the type it allowed, so it shows as on.
   it('renders the agent sign-in toggle on when an agent type is allowed', () => {
     render(
       <McpAccessSection
@@ -80,13 +93,13 @@ describe('McpAccessSection', () => {
     expect(screen.getByLabelText('Enable agent sign-in')).toBeChecked();
   });
 
-  it('allows the default agent type when agent sign-in is enabled', async () => {
+  it('should allow every agent type when agent sign-in is enabled', async () => {
     const user = userEvent.setup();
     render(<McpAccessSection application={mockApplication} onFieldChange={mockOnFieldChange} isReadOnly={false} />);
 
     await user.click(screen.getByLabelText('Enable agent sign-in'));
 
-    expect(mockOnFieldChange).toHaveBeenCalledWith('allowedAgentTypes', ['default']);
+    expect(mockOnFieldChange).toHaveBeenCalledWith('allowedAgentTypes', ['*']);
   });
 
   it('clears every allowed agent type when agent sign-in is disabled', async () => {

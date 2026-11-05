@@ -16,10 +16,10 @@ const ApplicationConstants = {
   DUPLICATE_APP_NAME_ERROR_CODE: 'APP-1020',
 
   /**
-   * The only agent type the API accepts, written to `allowedAgentTypes` when agent sign-in is
-   * enabled for an application. Keep in sync with `backend/internal/entitytype/model.go`.
+   * The `allowedAgentTypes` entry that allows every agent type, written when agent sign-in is
+   * enabled for an application or an agent.
    */
-  DEFAULT_AGENT_TYPE_HANDLE: 'default',
+  ALL_AGENT_TYPES: '*',
 
   /**
    * Length rules the API enforces on the application name, mirrored here so the console can

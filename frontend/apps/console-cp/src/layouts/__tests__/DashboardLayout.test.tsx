@@ -153,6 +153,16 @@ describe('DashboardLayout', () => {
     expect(screen.getByText('navigation:pages.gateways')).toBeInTheDocument();
   });
 
+  it('should list Agent types under Identities directly after User types', () => {
+    render(<DashboardLayout />);
+
+    const userTypes = screen.getByRole('button', {name: 'navigation:pages.userTypes'});
+    const agentTypes = screen.getByRole('button', {name: 'navigation:pages.agentTypes'});
+    const items = screen.getAllByRole('button').filter((item) => item.textContent?.startsWith('navigation:pages.'));
+
+    expect(items.indexOf(agentTypes)).toBe(items.indexOf(userTypes) + 1);
+  });
+
   it.each([false, true])('keeps navigation icon sizes consistent when collapseSidebar is %s', (collapseSidebar) => {
     render(<DashboardLayout collapseSidebar={collapseSidebar} />);
 

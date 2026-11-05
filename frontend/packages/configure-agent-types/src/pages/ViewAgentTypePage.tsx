@@ -7,15 +7,17 @@ import {useLogger} from '@thunderid/logger/react';
 import {
   getContactTypesMissingRegex,
   getErrorMessage,
-  isContactAttributeType,
   isEqualIgnoringEmpty,
   resolveAttributeRegex,
 } from '@thunderid/utils';
 import {
+  Box,
   Stack,
   Typography,
   Button,
   Alert,
+  Tabs,
+  Tab,
   PageContent,
   PageTitle,
   Dialog,
@@ -24,20 +26,40 @@ import {
   DialogActions,
 } from '@wso2/oxygen-ui';
 import {ArrowLeft} from '@wso2/oxygen-ui-icons-react';
-import type {JSX} from 'react';
+import type {ReactNode, SyntheticEvent, JSX} from 'react';
 import {useState, useMemo, useCallback} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate, useParams} from 'react-router';
 import useGetAgentType from '../api/useGetAgentType';
+import useGetAllAgentTypes from '../api/useGetAllAgentTypes';
 import useUpdateAgentType from '../api/useUpdateAgentType';
+import EditAdvancedSettings from '../components/edit-agent-type/advanced-settings/EditAdvancedSettings';
+import AgentTypeDeleteDialog from '../components/edit-agent-type/AgentTypeDeleteDialog';
 import EditSchemaSettings from '../components/edit-agent-type/schema-settings/EditSchemaSettings';
 import useAgentTypeRoutes from '../hooks/useAgentTypeRoutes';
-import type {
-  AgentTypeDefinition,
-  PropertyDefinition,
-  PropertyType,
-  SchemaPropertyInput,
-} from '../models/property-definition';
+import type {AgentTypeDefinition, SchemaPropertyInput} from '../models/property-definition';
+import convertPropertiesToSchema from '../utils/convertPropertiesToSchema';
+import isDisplayAttributeAvailable from '../utils/isDisplayAttributeAvailable';
+
+interface TabPanelProps {
+  children?: ReactNode;
+  index: number;
+  value: number;
+}
+
+function TabPanel({children = null, value, index, ...other}: TabPanelProps): JSX.Element {
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`agenttype-tabpanel-${index}`}
+      aria-labelledby={`agenttype-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{py: 3}}>{children}</Box>}
+    </div>
+  );
+}
 
 /**
  * Convert API schema to editable property inputs.
@@ -61,64 +83,23 @@ function convertSchemaToProperties(schema: AgentTypeDefinition): SchemaPropertyI
   }));
 }
 
-/**
- * Convert editable property inputs back to API schema format.
- */
-function convertPropertiesToSchema(properties: SchemaPropertyInput[]): AgentTypeDefinition {
-  const schema: AgentTypeDefinition = {};
-
-  properties
-    .filter((prop) => prop.name.trim())
-    .forEach((prop) => {
-      const actualType: PropertyType = prop.type === 'enum' ? 'string' : prop.type;
-
-      const propDef: Partial<PropertyDefinition> = {
-        type: actualType,
-        required: prop.required,
-        ...(prop.displayName.trim() ? {displayName: prop.displayName.trim()} : {}),
-      };
-
-      if (prop.unique) {
-        (propDef as {unique?: boolean}).unique = true;
-      }
-
-      if ((prop.type === 'string' || prop.type === 'number' || prop.type === 'enum') && prop.credential) {
-        (propDef as {credential?: boolean}).credential = true;
-      }
-
-      if (prop.type === 'string' || isContactAttributeType(prop.type) || prop.type === 'enum') {
-        if (prop.enum.length > 0) {
-          (propDef as {enum?: string[]}).enum = prop.enum;
-        }
-        if (prop.regex.trim() || isContactAttributeType(prop.type)) {
-          (propDef as {regex?: string}).regex = prop.regex;
-        }
-      }
-
-      if (prop.type === 'array') {
-        (propDef as {items?: {type: string}}).items = prop.items ?? {type: 'string'};
-      } else if (prop.type === 'object') {
-        (propDef as {properties?: Record<string, PropertyDefinition>}).properties = prop.properties ?? {};
-      }
-
-      schema[prop.name.trim()] = propDef as PropertyDefinition;
-    });
-
-  return schema;
-}
-
 export default function ViewAgentTypePage(): JSX.Element {
   const navigate = useNavigate();
   const routes = useAgentTypeRoutes();
   const {t} = useTranslation();
   const logger = useLogger('ViewAgentTypePage');
   const {id} = useParams<{id: string}>();
-  // Agent types are restricted to a single `default` schema; there is no agent-types listing
-  // page anymore, so the back button returns to the agent listing.
-  const listUrl = routes.agents.list();
+  const listUrl = routes.list();
 
   const {data: agentType, isLoading, error: fetchError, refetch} = useGetAgentType(id);
   const updateAgentTypeMutation = useUpdateAgentType();
+
+  // The detail response has no read-only flag, so it is read from the agent type list. Delete stays
+  // hidden until the list answers. If the list fails, the page stays editable and the server refuses
+  // to change or delete a declarative type with USRS-1008.
+  const {data: agentTypes, isLoading: isAgentTypesLoading} = useGetAllAgentTypes();
+  const isReadOnly = agentTypes?.find((listedType) => listedType.id === id)?.isReadOnly === true;
+  const canDelete = !isAgentTypesLoading && !isReadOnly;
 
   // Resolves an error through the `agentTypes` catalog. `t` defaults to the `common` namespace, so
   // this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `agentTypes:`, per
@@ -129,11 +110,17 @@ export default function ViewAgentTypePage(): JSX.Element {
     [t],
   );
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState(0);
+
   // Edited schema properties (null = no changes, non-null = user edited)
   const [editedProperties, setEditedProperties] = useState<SchemaPropertyInput[] | null>(null);
 
   // Validation error from the last save attempt. Takes precedence over the mutation's own error.
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Delete dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Schema-change warning confirmation
   const [showSchemaWarning, setShowSchemaWarning] = useState(false);
@@ -156,6 +143,10 @@ export default function ViewAgentTypePage(): JSX.Element {
 
   const handleBack = async (): Promise<void> => {
     await navigate(listUrl);
+  };
+
+  const handleTabChange = (_event: SyntheticEvent, newValue: number): void => {
+    setActiveTab(newValue);
   };
 
   const handlePropertiesChange = useCallback(
@@ -186,12 +177,13 @@ export default function ViewAgentTypePage(): JSX.Element {
     const schema = convertPropertiesToSchema(effectiveProperties);
 
     try {
-      // The display attribute is preserved verbatim if the server returned one, but the agent UI
-      // never consumes it (agents always render their `name` field), so we don't expose it as an
-      // editable control.
-      const preservedSystemAttributes = agentType.systemAttributes?.display
-        ? {systemAttributes: {display: agentType.systemAttributes.display}}
-        : {};
+      // Agents are listed by the property the display attribute names. This page has no control for
+      // it, so the server's value is kept while the edited schema still has that property, and is
+      // dropped otherwise: the API rejects a display attribute that names a missing or ineligible
+      // property, which would leave a renamed or removed property impossible to save.
+      const display = agentType.systemAttributes?.display;
+      const preservedSystemAttributes =
+        display && isDisplayAttributeAvailable(display, effectiveProperties) ? {systemAttributes: {display}} : {};
       await updateAgentTypeMutation.mutateAsync({
         agentTypeId: id,
         data: {
@@ -262,13 +254,21 @@ export default function ViewAgentTypePage(): JSX.Element {
     void performSave();
   }, [performSave]);
 
-  const pageTitle = t('agentTypes:edit.title', 'Agent schema');
+  const handleDeleteSuccess = (): void => {
+    (async (): Promise<void> => {
+      await navigate(listUrl);
+    })().catch((error: unknown) => {
+      logger.error('Failed to navigate after deleting agent type', {error});
+    });
+  };
+
+  const resourceTypeTitle = t('navigation:pages.agentTypes', 'Agent types');
 
   // Loading state
   if (isLoading) {
     return (
       <>
-        <DocumentTitle title={pageTitle} />
+        <DocumentTitle title={resourceTypeTitle} />
         <PageLoadingAnimation />
       </>
     );
@@ -278,7 +278,7 @@ export default function ViewAgentTypePage(): JSX.Element {
   if (fetchError) {
     return (
       <PageContent>
-        <DocumentTitle title={pageTitle} />
+        <DocumentTitle title={resourceTypeTitle} />
         <QueryErrorNotice
           error={fetchError}
           t={tForErrors}
@@ -294,7 +294,7 @@ export default function ViewAgentTypePage(): JSX.Element {
               }}
               startIcon={<ArrowLeft size={16} />}
             >
-              {t('agentTypes:edit.back', 'Back to agents')}
+              {t('agentTypes:edit.back', 'Back to agent types')}
             </Button>
           }
         />
@@ -306,7 +306,7 @@ export default function ViewAgentTypePage(): JSX.Element {
   if (!agentType) {
     return (
       <PageContent>
-        <DocumentTitle title={pageTitle} />
+        <DocumentTitle title={resourceTypeTitle} />
         <Alert severity="warning" sx={{mb: 2}}>
           {t('agentTypes:edit.notFound', 'Agent type not found')}
         </Alert>
@@ -316,7 +316,7 @@ export default function ViewAgentTypePage(): JSX.Element {
           }}
           startIcon={<ArrowLeft size={16} />}
         >
-          {t('agentTypes:edit.back', 'Back to agents')}
+          {t('agentTypes:edit.back', 'Back to agent types')}
         </Button>
       </PageContent>
     );
@@ -324,26 +324,65 @@ export default function ViewAgentTypePage(): JSX.Element {
 
   return (
     <PageContent>
-      <DocumentTitle title={pageTitle} />
+      <DocumentTitle title={agentType.displayName} />
+      {isReadOnly && (
+        <Alert severity="info" sx={{mb: 2}}>
+          {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+        </Alert>
+      )}
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to={listUrl} />}>
-          {t('agentTypes:edit.back', 'Back to agents')}
+          {t('agentTypes:edit.back', 'Back to agent types')}
         </PageTitle.BackButton>
         <PageTitle.Header>
           <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-            <Typography variant="h3">{t('agentTypes:edit.title', 'Agent schema')}</Typography>
+            <Typography variant="h3">{agentType.displayName}</Typography>
           </Stack>
         </PageTitle.Header>
       </PageTitle>
 
-      <Stack spacing={3} mt={3}>
+      {/* Tabs */}
+      <Tabs
+        value={activeTab}
+        onChange={handleTabChange}
+        aria-label={t('agentTypes:edit.tabs.ariaLabel', 'Agent type settings tabs')}
+      >
+        <Tab
+          label={t('agentTypes:edit.tabs.schema', 'Schema')}
+          id="agenttype-tab-0"
+          aria-controls="agenttype-tabpanel-0"
+          sx={{textTransform: 'none'}}
+        />
+        <Tab
+          label={t('agentTypes:edit.tabs.advanced', 'Advanced')}
+          id="agenttype-tab-1"
+          aria-controls="agenttype-tabpanel-1"
+          sx={{textTransform: 'none'}}
+        />
+      </Tabs>
+
+      {/* Tab Panels */}
+      <TabPanel value={activeTab} index={0}>
         <EditSchemaSettings
           properties={effectiveProperties}
           onPropertiesChange={handlePropertiesChange}
           agentTypeHandle={agentTypeHandle}
+          disabled={isReadOnly}
         />
-      </Stack>
+      </TabPanel>
+
+      <TabPanel value={activeTab} index={1}>
+        <EditAdvancedSettings onDeleteClick={canDelete ? () => setDeleteDialogOpen(true) : undefined} />
+      </TabPanel>
+
+      {/* Delete Dialog */}
+      <AgentTypeDeleteDialog
+        open={deleteDialogOpen}
+        agentTypeId={id ?? null}
+        onClose={() => setDeleteDialogOpen(false)}
+        onSuccess={handleDeleteSuccess}
+      />
 
       {/* Schema-change warning */}
       <Dialog open={showSchemaWarning} onClose={() => setShowSchemaWarning(false)}>
@@ -385,6 +424,7 @@ export default function ViewAgentTypePage(): JSX.Element {
           saveLabel={t('common:actions.save', 'Save')}
           savingLabel={t('common:status.saving', 'Saving...')}
           isSaving={updateAgentTypeMutation.isPending}
+          saveDisabled={isReadOnly}
           error={
             validationError ??
             (updateAgentTypeMutation.error
