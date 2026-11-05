@@ -43,13 +43,6 @@ var roleActionsByMode = map[string]roleAction{
 				plan.ActionArgs[revocationInputAssignmentOU], []role.RoleAssignment{assignee}), nil
 		},
 	},
-	ExecutorModeRoleDeletion: {
-		reason: revocation.ReasonRoleDeleted,
-		failed: ErrRoleDeletionFailed,
-		act: func(ctx context.Context, e *roleExecutor, plan revocationPlan) (*tidcommon.ServiceError, error) {
-			return e.roles.DeleteRole(ctx, plan.TargetID), nil
-		},
-	},
 	ExecutorModeRolePermissionRemoval: {
 		reason: revocation.ReasonRolePermissionRemoved,
 		failed: ErrRolePermissionRemovalFailed,
@@ -79,7 +72,6 @@ var roleActionsByMode = map[string]roleAction{
 var roleModeFlowTypes = map[string][]providers.FlowType{
 	ExecutorModeRoleAssignment:        {providers.FlowTypeInvitation},
 	ExecutorModeRoleAssignmentRemoval: {providers.FlowTypeAdministration},
-	ExecutorModeRoleDeletion:          {providers.FlowTypeAdministration},
 	ExecutorModeRolePermissionRemoval: {providers.FlowTypeAdministration},
 	ExecutorModeRoleSelection:         {providers.FlowTypeInvitation},
 }

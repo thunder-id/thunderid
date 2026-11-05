@@ -73,7 +73,7 @@ func (s *RoleExecutorTestSuite) TestMetaDeclaresEveryModeAndNoDefault() {
 	s.Require().True(ok)
 	s.Empty(catalogMeta.DefaultMode)
 	s.Equal([]string{
-		ExecutorModeRoleAssignment, ExecutorModeRoleAssignmentRemoval, ExecutorModeRoleDeletion,
+		ExecutorModeRoleAssignment, ExecutorModeRoleAssignmentRemoval,
 		ExecutorModeRolePermissionRemoval, ExecutorModeRoleSelection,
 	}, meta.SupportedModes)
 	s.Equal([]providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeInvitation},
@@ -81,8 +81,7 @@ func (s *RoleExecutorTestSuite) TestMetaDeclaresEveryModeAndNoDefault() {
 }
 
 func (s *RoleExecutorTestSuite) TestARevocationModeOutsideAnAdministrationFlowIsAnError() {
-	for _, mode := range []string{ExecutorModeRoleAssignmentRemoval, ExecutorModeRoleDeletion,
-		ExecutorModeRolePermissionRemoval} {
+	for _, mode := range []string{ExecutorModeRoleAssignmentRemoval, ExecutorModeRolePermissionRemoval} {
 		s.Run(mode, func() {
 			ctx := withRevocationPlan(s.T(), mode, rolePlan(revocation.ReasonRoleDeleted))
 			ctx.FlowType = providers.FlowTypeInvitation
@@ -93,7 +92,7 @@ func (s *RoleExecutorTestSuite) TestARevocationModeOutsideAnAdministrationFlowIs
 			s.Contains(err.Error(), "is not supported in INVITATION flows")
 		})
 	}
-	s.roles.AssertNotCalled(s.T(), "DeleteRole", mock.Anything, mock.Anything)
+	s.roles.AssertNotCalled(s.T(), "UpdateRoleWithPermissions", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (s *RoleExecutorTestSuite) TestAnInvitationModeOutsideAnInvitationFlowIsAnError() {
@@ -128,7 +127,8 @@ func (s *RoleExecutorTestSuite) TestUnknownModeIsAnError() {
 			s.Contains(err.Error(), "unsupported mode")
 		})
 	}
-	s.roles.AssertNotCalled(s.T(), "DeleteRole", mock.Anything, mock.Anything)
+	s.assignments.AssertNotCalled(s.T(), "RemoveAssignments", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything)
 }
 
 func (s *RoleExecutorTestSuite) TestRemoveAssignment_ConsumesTheValidatorPlan() {
@@ -211,16 +211,6 @@ func (s *RoleExecutorTestSuite) TestRemovePermissions_CarriesARefusedRoleRead() 
 	s.roles.AssertNotCalled(s.T(), "UpdateRoleWithPermissions", mock.Anything, mock.Anything, mock.Anything)
 }
 
-func (s *RoleExecutorTestSuite) TestDelete_DeletesTheRole() {
-	s.roles.On("DeleteRole", mock.Anything, testRoleID).Return(nil)
-
-	resp, err := s.executor().Execute(
-		withRevocationPlan(s.T(), ExecutorModeRoleDeletion, rolePlan(revocation.ReasonRoleDeleted)))
-
-	s.Require().NoError(err)
-	s.Equal(providers.ExecComplete, resp.Status)
-}
-
 func (s *RoleExecutorTestSuite) TestRemovePermissions_AppliesTheCarriedSet() {
 	s.roles.On("GetRoleWithPermissions", mock.Anything, testRoleID).Return(&role.RoleWithPermissions{
 		ID: testRoleID, Name: "DMV Clerk", Description: "Counter staff", OUID: "ou-1",
@@ -282,7 +272,6 @@ func (s *RoleExecutorTestSuite) TestRemovePermissions_MalformedCarriedSetIsAnErr
 func (s *RoleExecutorTestSuite) TestEveryModeRejectsAForeignPlan() {
 	foreign := map[string]revocation.Reason{
 		ExecutorModeRoleAssignmentRemoval: revocation.ReasonRoleDeleted,
-		ExecutorModeRoleDeletion:          revocation.ReasonRoleAssignmentRemoved,
 		ExecutorModeRolePermissionRemoval: revocation.ReasonUserDeleted,
 	}
 	s.Len(foreign, len(roleActionsByMode), "every mode must be covered")
@@ -300,7 +289,6 @@ func (s *RoleExecutorTestSuite) TestEveryModeRejectsAForeignPlan() {
 func (s *RoleExecutorTestSuite) TestUncodedRefusalFallsBackToTheModeError() {
 	uncoded := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType}
 	s.assignments.On("RemoveAssignments", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(uncoded)
-	s.roles.On("DeleteRole", mock.Anything, mock.Anything).Return(uncoded)
 	s.roles.On("GetRoleWithPermissions", mock.Anything, mock.Anything).
 		Return(&role.RoleWithPermissions{ID: testRoleID}, nil)
 	s.roles.On("UpdateRoleWithPermissions", mock.Anything, mock.Anything, mock.Anything).Return(nil, uncoded)
@@ -316,7 +304,6 @@ func (s *RoleExecutorTestSuite) TestUncodedRefusalFallsBackToTheModeError() {
 		want tidcommon.ServiceError
 	}{
 		{ExecutorModeRoleAssignmentRemoval, assignment, ErrRoleAssignmentRemovalFailed},
-		{ExecutorModeRoleDeletion, rolePlan(revocation.ReasonRoleDeleted), ErrRoleDeletionFailed},
 		{ExecutorModeRolePermissionRemoval, permissions, ErrRolePermissionRemovalFailed},
 	}
 	for _, tc := range cases {
@@ -332,10 +319,13 @@ func (s *RoleExecutorTestSuite) TestUncodedRefusalFallsBackToTheModeError() {
 }
 
 func (s *RoleExecutorTestSuite) TestServerErrorFailsTheFlow() {
-	s.roles.On("DeleteRole", mock.Anything, testRoleID).Return(&tidcommon.InternalServerError)
+	s.assignments.On("RemoveAssignments", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(&tidcommon.InternalServerError)
+	plan := rolePlan(revocation.ReasonRoleAssignmentRemoved)
+	plan.AssigneeID = testAssigneeID
+	plan.AssigneeType = string(role.AssigneeTypeUser)
 
-	_, err := s.executor().Execute(
-		withRevocationPlan(s.T(), ExecutorModeRoleDeletion, rolePlan(revocation.ReasonRoleDeleted)))
+	_, err := s.executor().Execute(withRevocationPlan(s.T(), ExecutorModeRoleAssignmentRemoval, plan))
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "failed to perform")
@@ -343,7 +333,7 @@ func (s *RoleExecutorTestSuite) TestServerErrorFailsTheFlow() {
 
 func (s *RoleExecutorTestSuite) TestRefusesWithoutItsSeam() {
 	_, err := newRoleExecutor(s.factory, nil, nil, nil).Execute(
-		administrationNodeContext(ExecutorModeRoleDeletion, nil))
+		administrationNodeContext(ExecutorModeRolePermissionRemoval, nil))
 
 	s.Require().Error(err)
 	s.EqualError(err, "role service is not configured")

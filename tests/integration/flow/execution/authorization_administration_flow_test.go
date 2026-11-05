@@ -17,7 +17,6 @@ import (
 )
 
 const (
-	roleDeletionFlowHandle           = "default-role-deletion-flow"
 	rolePermissionRemovalFlowHandle  = "default-role-permission-removal-flow"
 	groupDeletionFlowHandle          = "default-group-deletion-flow"
 	groupMembershipRemovalFlowHandle = "default-group-membership-removal-flow"
@@ -169,7 +168,7 @@ func (ts *AuthorizationAdministrationFlowTestSuite) SetupSuite() {
 	ts.ouID = ouID
 
 	for _, handle := range []string{
-		roleDeletionFlowHandle, rolePermissionRemovalFlowHandle, groupDeletionFlowHandle,
+		rolePermissionRemovalFlowHandle, groupDeletionFlowHandle,
 		groupMembershipRemovalFlowHandle, actionDeletionFlowHandle, roleAssignmentRemovalFlowHandle,
 	} {
 		flowID, flowErr := testutils.GetFlowIDByHandle(handle, administrationFlowType)
@@ -330,28 +329,17 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TearDownSuite() {
 	}
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_RevokesTokenAndDeletesRole() {
+// Deleting a role through the management API revokes the scopes it granted before the role is removed.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteRole_RevokesTokenAndDeletesRole() {
 	roleID := ts.createRole("Authz Flow Deleted Administrator", []string{scopeRoleDeletion},
 		testutils.Assignment{ID: ts.appID, Type: "app"})
 	token := grantedToken(&ts.Suite, authzFlowClient, scopeRoleDeletion)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[roleDeletionFlowHandle], map[string]string{roleTargetInput: roleID})
+	ts.deleteRole(roleID)
 
-	requireCompleted(&ts.Suite, step)
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
 		"The token carrying the deleted role's scope must be rejected")
 	ts.False(ts.roleExists(roleID), "The role must be deleted")
-}
-
-func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_UnknownRoleCarriesValidatorCode() {
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[roleDeletionFlowHandle], map[string]string{
-		roleTargetInput: "01900000-0000-7000-8000-0000000000fe",
-	})
-
-	ts.NotEqual("COMPLETE", step.FlowStatus, "An unknown role must not complete")
-	ts.Require().NotNil(step.Error, "The refusal must be reported in the error envelope")
-	ts.Equal(errCodeRoleNotFound, step.Error.Code,
-		"The validator's own code must reach the caller, not the executor's generic one")
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlow_RevokesOnlyTheDroppedPermission() {
@@ -498,7 +486,6 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_RejectAnonymousCal
 	roleID := ts.createRole("Authz Flow Protected Administrator", nil)
 
 	cases := map[string]map[string]string{
-		roleDeletionFlowHandle:           {roleTargetInput: roleID},
 		rolePermissionRemovalFlowHandle:  {roleTargetInput: roleID, permissionsTargetInput: "[]"},
 		groupDeletionFlowHandle:          {groupTargetInput: groupID},
 		groupMembershipRemovalFlowHandle: {groupTargetInput: groupID, memberTargetInput: ts.appID},
@@ -538,7 +525,6 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_EmptyRequiredInput
 		handle string
 		inputs map[string]string
 	}{
-		{"role deletion naming no role", roleDeletionFlowHandle, map[string]string{roleTargetInput: ""}},
 		{"permission change carrying no permission set", rolePermissionRemovalFlowHandle,
 			map[string]string{roleTargetInput: roleID, permissionsTargetInput: ""}},
 		{"group deletion naming no group", groupDeletionFlowHandle, map[string]string{groupTargetInput: ""}},
@@ -556,7 +542,7 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_EmptyRequiredInput
 	ts.Equal([]string{ts.appID}, ts.groupMemberIDs(groupID), "A refused change must leave the membership intact")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_LeavesAnotherRoleOfTheSamePrincipalAlone() {
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteRole_LeavesAnotherRoleOfTheSamePrincipalAlone() {
 	doomed := ts.createRole("Authz Flow Doomed Administrator", []string{scopeDoomedRole},
 		testutils.Assignment{ID: ts.appID, Type: "app"})
 	ts.createRole("Authz Flow Surviving Administrator", []string{scopeUntouchedByRoleDeletion},
@@ -565,15 +551,14 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_LeavesA
 	target := grantedToken(&ts.Suite, authzFlowClient, scopeDoomedRole)
 	bystander := grantedToken(&ts.Suite, authzFlowClient, scopeUntouchedByRoleDeletion)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[roleDeletionFlowHandle], map[string]string{roleTargetInput: doomed})
+	ts.deleteRole(doomed)
 
-	requireCompleted(&ts.Suite, step)
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, target), "The deleted role's scope must be revoked")
 	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, bystander),
 		"A scope the same principal holds through another role must survive")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_LeavesTheSameScopeOnAnotherAudienceAlone() {
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteRole_LeavesTheSameScopeOnAnotherAudienceAlone() {
 	doomed := ts.createRoleOn("Authz Flow Two Audience Doomed", ts.resourceServerID,
 		[]string{scopeTwoAudiences}, testutils.Assignment{ID: ts.appID, Type: "app"})
 	ts.createRoleOn("Authz Flow Two Audience Surviving", ts.otherResourceServerID,
@@ -582,9 +567,8 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_LeavesT
 	onFirst := grantedToken(&ts.Suite, authzFlowClient, scopeTwoAudiences)
 	onSecond := grantedToken(&ts.Suite, authzFlowClientOnOtherAudience, scopeTwoAudiences)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[roleDeletionFlowHandle], map[string]string{roleTargetInput: doomed})
+	ts.deleteRole(doomed)
 
-	requireCompleted(&ts.Suite, step)
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, onFirst),
 		"The scope must be revoked on the audience the role granted it")
 	ts.True(tokenIsActive(&ts.Suite, authzFlowClientOnOtherAudience, onSecond),
@@ -706,12 +690,11 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleFlows_DeclarativeRol
 	before := ts.declarativeRolePermissions()
 	ts.Require().NotEmpty(before, "The declarative role must grant permissions for the comparison to mean anything")
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[roleDeletionFlowHandle],
-		map[string]string{roleTargetInput: declarativeRoleID})
-	ts.requireRefused(step, errCodeImmutableRole, "a declarative role cannot be deleted")
+	ts.requireAPIRefused(http.MethodDelete, "/roles/"+declarativeRoleID, errCodeImmutableRole,
+		"a declarative role cannot be deleted")
 	ts.True(ts.roleExists(declarativeRoleID), "The declarative role must survive the refused deletion")
 
-	step = executeAsAdmin(&ts.Suite, ts.flowIDs[rolePermissionRemovalFlowHandle], map[string]string{
+	step := executeAsAdmin(&ts.Suite, ts.flowIDs[rolePermissionRemovalFlowHandle], map[string]string{
 		roleTargetInput:        declarativeRoleID,
 		permissionsTargetInput: "[]",
 	})
@@ -831,8 +814,8 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_NestingBeyondTheDe
 	ts.requireRefused(step, errCodeGroupNestingTooDeep, "the departing group's members cannot all be reached")
 	ts.Equal([]string{top}, ts.groupMemberIDs(parentID), "A refused removal must leave the membership intact")
 
-	step = executeAsAdmin(&ts.Suite, ts.flowIDs[roleDeletionFlowHandle], map[string]string{roleTargetInput: roleID})
-	ts.requireRefused(step, errCodeGroupNestingTooDeep, "the role's holders cannot all be reached")
+	ts.requireAPIRefused(http.MethodDelete, "/roles/"+roleID, errCodeGroupNestingTooDeep,
+		"the role's holders cannot all be reached")
 	ts.True(ts.roleExists(roleID), "A refused deletion must leave the role in place")
 
 	step = executeAsAdmin(&ts.Suite, ts.flowIDs[roleAssignmentRemovalFlowHandle], map[string]string{
@@ -869,7 +852,7 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletionFlow_Revoke
 	}
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_RevokesHoldersReachedThroughNestedGroups() {
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteRole_RevokesHoldersReachedThroughNestedGroups() {
 	childID := ts.createGroup("Authz Flow Nested Holder Child",
 		testutils.Member{Id: ts.appID, Type: "app"})
 	parentID := ts.createGroup("Authz Flow Nested Holder Parent",
@@ -878,15 +861,14 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_Revokes
 		testutils.Assignment{ID: parentID, Type: "group"})
 	token := grantedToken(&ts.Suite, authzFlowClient, scopeHeldThroughNesting)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[roleDeletionFlowHandle], map[string]string{roleTargetInput: roleID})
+	ts.deleteRole(roleID)
 
-	requireCompleted(&ts.Suite, step)
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
 		"A principal holding the role only through a nested group must lose the scope with the role")
 	ts.False(ts.roleExists(roleID), "The role must be deleted")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_RevokesAScopeHeldThroughTwoPaths() {
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteRole_RevokesAScopeHeldThroughTwoPaths() {
 	groupID := ts.createGroup("Authz Flow Two Paths Group",
 		testutils.Member{Id: ts.appID, Type: "app"})
 	roleID := ts.createRole("Authz Flow Two Paths Administrator", []string{scopeHeldTwice},
@@ -894,9 +876,8 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_Revokes
 		testutils.Assignment{ID: groupID, Type: "group"})
 	token := grantedToken(&ts.Suite, authzFlowClient, scopeHeldTwice)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[roleDeletionFlowHandle], map[string]string{roleTargetInput: roleID})
+	ts.deleteRole(roleID)
 
-	requireCompleted(&ts.Suite, step)
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
 		"The scope must be revoked although the principal held it twice")
 	ts.False(ts.roleExists(roleID), "The role must be deleted")
@@ -1055,6 +1036,43 @@ func (ts *AuthorizationAdministrationFlowTestSuite) adminGet(path string) (int, 
 	body, err := io.ReadAll(resp.Body)
 	ts.Require().NoError(err)
 	return resp.StatusCode, body
+}
+
+// deleteRole deletes the role through the management API, which revokes what the role granted before
+// removing it. The assignments are left in place, unlike testutils.DeleteRole, so the revocation reaches
+// the role's holders.
+func (ts *AuthorizationAdministrationFlowTestSuite) deleteRole(roleID string) {
+	ts.T().Helper()
+
+	req, err := http.NewRequest(http.MethodDelete, testServerURL+"/roles/"+roleID, nil)
+	ts.Require().NoError(err)
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to delete the role")
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusNoContent, resp.StatusCode, "Role deletion response: %s", string(body))
+}
+
+// requireAPIRefused sends an administrative request and requires the server to refuse it with the code.
+func (ts *AuthorizationAdministrationFlowTestSuite) requireAPIRefused(method, path, code, why string) {
+	ts.T().Helper()
+
+	req, err := http.NewRequest(method, testServerURL+path, nil)
+	ts.Require().NoError(err)
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Administrative request failed")
+	defer resp.Body.Close()
+
+	var refusal struct {
+		Code string `json:"code"`
+	}
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&refusal), "The refusal must carry an error body")
+	ts.Equal(http.StatusBadRequest, resp.StatusCode, why)
+	ts.Equal(code, refusal.Code, why)
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) rolePermissions(roleID string) []string {

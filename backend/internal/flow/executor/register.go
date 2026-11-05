@@ -566,7 +566,6 @@ type applicationAdminProvider interface {
 // roleAdminProvider is the role seam the access change validator and the role executor consume.
 type roleAdminProvider interface {
 	ValidateDeleteRole(ctx context.Context, id string) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
-	DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError
 	ValidateUpdateRolePermissions(ctx context.Context, id string, permissions []role.ResourcePermissions) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	GetRoleWithPermissions(ctx context.Context, id string) (*role.RoleWithPermissions, *tidcommon.ServiceError)

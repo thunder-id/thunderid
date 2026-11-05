@@ -1951,7 +1951,7 @@ describe('ExecutionExtendedProperties', () => {
 
     it.each([
       [ExecutionTypes.AccessChangeValidator, 'role_deletion', 'accessChangeValidator'],
-      [ExecutionTypes.RoleExecutor, 'role_deletion', 'roleExecutor'],
+      [ExecutionTypes.RoleExecutor, 'role_permission_removal', 'roleExecutor'],
       [ExecutionTypes.GroupExecutor, 'group_membership_removal', 'groupExecutor'],
       [ExecutionTypes.CriteriaRevocation, 'advance_cutoff', 'criteriaRevocation'],
       [ExecutionTypes.IdentityGovernance, 'unlock', 'identityGovernance'],

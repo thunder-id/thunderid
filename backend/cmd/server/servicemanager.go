@@ -643,6 +643,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the application service")
 	err = user.SetSystemFlowProvider(userService, flowExecService)
 	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the user service")
+	err = role.SetSystemFlowProvider(roleService, flowExecService)
+	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the role service")
 
 	// Initialize OAuth services.
 	tokenValidator, dispatcher, err := oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,

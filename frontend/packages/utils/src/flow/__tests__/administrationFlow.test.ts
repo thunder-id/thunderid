@@ -35,21 +35,21 @@ function httpFor(routes: Record<string, unknown>, onRequest?: (config: {url: str
 }
 
 function configuring(handle: string) {
-  return {[`${SERVER}/server-config/flow`]: {merged: {roleDeletionFlow: {defaultHandle: handle}}}};
+  return {[`${SERVER}/server-config/flow`]: {merged: {groupDeletionFlow: {defaultHandle: handle}}}};
 }
 
 describe('resolveAdministrationFlowHandle', () => {
   it('reads the handle from the merged layer, which is the effective configuration', async () => {
     const http = httpFor({
       [`${SERVER}/server-config/flow`]: {
-        readOnly: {roleDeletionFlow: {defaultHandle: 'declared'}},
-        writable: {roleDeletionFlow: {defaultHandle: 'written'}},
-        merged: {roleDeletionFlow: {defaultHandle: 'effective'}},
+        readOnly: {groupDeletionFlow: {defaultHandle: 'declared'}},
+        writable: {groupDeletionFlow: {defaultHandle: 'written'}},
+        merged: {groupDeletionFlow: {defaultHandle: 'effective'}},
       },
     });
 
     await expect(
-      resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.ROLE_DELETION),
+      resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.GROUP_DELETION),
     ).resolves.toBe('effective');
   });
 
@@ -57,7 +57,7 @@ describe('resolveAdministrationFlowHandle', () => {
     const http = httpFor({[`${SERVER}/server-config/flow`]: {merged: {}}});
 
     await expect(
-      resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.ROLE_DELETION),
+      resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.GROUP_DELETION),
     ).resolves.toBe('');
   });
 
@@ -65,7 +65,7 @@ describe('resolveAdministrationFlowHandle', () => {
     const http = {request: vi.fn(() => Promise.reject(new Error('server-config unreachable')))};
 
     await expect(
-      resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.ROLE_DELETION),
+      resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.GROUP_DELETION),
     ).rejects.toThrow('server-config unreachable');
   });
 
@@ -73,9 +73,9 @@ describe('resolveAdministrationFlowHandle', () => {
     const denied = Object.assign(new Error('Forbidden'), {response: {status: 403}});
     const http = {request: vi.fn(() => Promise.reject(denied))};
 
-    await expect(resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.ROLE_DELETION)).rejects.toBe(
-      denied,
-    );
+    await expect(
+      resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.GROUP_DELETION),
+    ).rejects.toBe(denied);
   });
 
   it('does not run the native fallback when the flow configuration read is denied', async () => {
@@ -83,7 +83,7 @@ describe('resolveAdministrationFlowHandle', () => {
     const http = {request: vi.fn(() => Promise.reject(denied))};
 
     await expect(
-      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.ROLE_DELETION, {}, 'role deletion'),
+      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.GROUP_DELETION, {}, 'group deletion'),
     ).rejects.toBe(denied);
   });
 });
@@ -122,13 +122,13 @@ describe('resolveAdministrationFlowId', () => {
       [`${SERVER}/flows`]: {flows: [{id: 'flow-1', handle: 'wanted', flowType: 'ADMINISTRATION'}]},
     });
 
-    await expect(resolveAdministrationFlowId(http, SERVER, 'wanted', 'role deletion')).resolves.toBe('flow-1');
+    await expect(resolveAdministrationFlowId(http, SERVER, 'wanted', 'group deletion')).resolves.toBe('flow-1');
   });
 
   it('refuses when the handle names no existing flow, without reading the flow configuration', async () => {
     const http = httpFor({[`${SERVER}/flows`]: {flows: []}});
 
-    await expect(resolveAdministrationFlowId(http, SERVER, 'stale-handle', 'role deletion')).rejects.toThrow(
+    await expect(resolveAdministrationFlowId(http, SERVER, 'stale-handle', 'group deletion')).rejects.toThrow(
       'no longer exists',
     );
     expect(http.request).toHaveBeenCalledTimes(1);
@@ -140,7 +140,7 @@ describe('runAdministrationFlow', () => {
     const http = httpFor({[`${SERVER}/server-config/flow`]: {merged: {}}});
 
     await expect(
-      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.ROLE_DELETION, {}, 'role deletion'),
+      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.GROUP_DELETION, {}, 'group deletion'),
     ).resolves.toBeNull();
   });
 
@@ -148,7 +148,7 @@ describe('runAdministrationFlow', () => {
     const http = httpFor({...configuring('stale-handle'), [`${SERVER}/flows`]: {flows: []}});
 
     await expect(
-      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.ROLE_DELETION, {}, 'role deletion'),
+      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.GROUP_DELETION, {}, 'group deletion'),
     ).rejects.toThrow('no longer exists');
   });
 
@@ -156,9 +156,9 @@ describe('runAdministrationFlow', () => {
     const seen: {url: string}[] = [];
     const http = httpFor(
       {
-        ...configuring('default-role-deletion-flow'),
+        ...configuring('default-group-deletion-flow'),
         [`${SERVER}/flows`]: {
-          flows: [{id: 'flow-1', handle: 'default-role-deletion-flow', flowType: 'ADMINISTRATION'}],
+          flows: [{id: 'flow-1', handle: 'default-group-deletion-flow', flowType: 'ADMINISTRATION'}],
         },
         [`${SERVER}/flow/execute`]: {flowStatus: 'COMPLETE', data: {additionalData: {ok: 'yes'}}},
       },
@@ -169,9 +169,9 @@ describe('runAdministrationFlow', () => {
       runAdministrationFlow(
         http,
         SERVER,
-        AdministrationFlowConfigKey.ROLE_DELETION,
-        {targetRoleId: 'role-1'},
-        'role deletion',
+        AdministrationFlowConfigKey.GROUP_DELETION,
+        {targetGroupId: 'group-1'},
+        'group deletion',
       ),
     ).resolves.toEqual({ok: 'yes'});
 
@@ -181,38 +181,38 @@ describe('runAdministrationFlow', () => {
 
     expect((execution?.[0] as {data: unknown}).data).toEqual({
       flowId: 'flow-1',
-      inputs: {targetRoleId: 'role-1'},
+      inputs: {targetGroupId: 'group-1'},
     });
   });
 
   it('carries a refusal code out, so the feature can localize it', async () => {
     const http = httpFor({
-      ...configuring('default-role-deletion-flow'),
+      ...configuring('default-group-deletion-flow'),
       [`${SERVER}/flows`]: {
-        flows: [{id: 'flow-1', handle: 'default-role-deletion-flow', flowType: 'ADMINISTRATION'}],
+        flows: [{id: 'flow-1', handle: 'default-group-deletion-flow', flowType: 'ADMINISTRATION'}],
       },
       [`${SERVER}/flow/execute`]: {
         flowStatus: 'ERROR',
-        error: {code: 'ROL-1013', message: {defaultValue: 'Cannot modify declarative role'}},
+        error: {code: 'GRP-1015', message: {defaultValue: 'Cannot modify declarative group'}},
       },
     });
 
     await expect(
-      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.ROLE_DELETION, {}, 'role deletion'),
-    ).rejects.toMatchObject({code: 'ROL-1013'});
+      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.GROUP_DELETION, {}, 'group deletion'),
+    ).rejects.toMatchObject({code: 'GRP-1015'});
   });
 
   it('treats a paused flow as an error, not a success that did nothing', async () => {
     const http = httpFor({
-      ...configuring('default-role-deletion-flow'),
+      ...configuring('default-group-deletion-flow'),
       [`${SERVER}/flows`]: {
-        flows: [{id: 'flow-1', handle: 'default-role-deletion-flow', flowType: 'ADMINISTRATION'}],
+        flows: [{id: 'flow-1', handle: 'default-group-deletion-flow', flowType: 'ADMINISTRATION'}],
       },
       [`${SERVER}/flow/execute`]: {flowStatus: 'INCOMPLETE'},
     });
 
     await expect(
-      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.ROLE_DELETION, {}, 'role deletion'),
+      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.GROUP_DELETION, {}, 'group deletion'),
     ).rejects.toThrow('requires additional input');
   });
 });

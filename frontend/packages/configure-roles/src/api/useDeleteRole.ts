@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
-import {AdministrationModes, useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
+import {useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import RoleQueryKeys from '../constants/role-query-keys';
-import {deleteRoleNatively, deleteRoleViaFlow, type HttpLike} from '../utils/roleAdministrationFlow';
+import {deleteRoleNatively, type HttpLike} from '../utils/roleAdministrationFlow';
 
 /**
  * Custom React hook to delete a role.
+ *
+ * The deletion calls `DELETE /roles/{id}`; the server revokes the scopes the role granted its assignees
+ * before the role is removed. A console that declares its own operation runs that instead.
  *
  * @returns TanStack Query mutation object for deleting roles
  */
@@ -29,11 +32,7 @@ export default function useDeleteRole(): UseMutationResult<void, Error, string> 
         await mode(roleId);
         return;
       }
-      if (mode === AdministrationModes.NATIVE) {
-        await deleteRoleNatively(client, getServerUrl(), roleId);
-        return;
-      }
-      await deleteRoleViaFlow(client, getServerUrl(), roleId);
+      await deleteRoleNatively(client, getServerUrl(), roleId);
     },
     onSuccess: (_data, roleId) => {
       queryClient.removeQueries({queryKey: [RoleQueryKeys.ROLE, roleId]});

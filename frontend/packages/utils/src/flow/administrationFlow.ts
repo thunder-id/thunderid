@@ -113,7 +113,6 @@ export const AdministrationFlowConfigKey = {
   SECRET_REGENERATION: 'secretRegenerationFlow',
   GROUP_MEMBERSHIP_REMOVAL: 'groupMembershipRemovalFlow',
   ROLE_ASSIGNMENT_REMOVAL: 'roleAssignmentRemovalFlow',
-  ROLE_DELETION: 'roleDeletionFlow',
   ROLE_PERMISSION_REMOVAL: 'rolePermissionRemovalFlow',
   ACTION_DELETION: 'actionDeletionFlow',
   USER_UNLOCK: 'userUnlockFlow',
