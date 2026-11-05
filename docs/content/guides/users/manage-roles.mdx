@@ -76,12 +76,35 @@ The **System** resource server declares the permissions for managing <ProductNam
 
 Design, translations, gateways, authorization detail types, server configuration, and configuration versions have no owning organization unit, so a change to one affects every organization unit. A configuration version holds a snapshot of the whole deployment, so once a management API accepts `system:configversion:view`, it will expose the configuration of every organization unit. No management API accepts that permission yet.
 
-The management APIs currently accept the following permissions. Every other management API requires the root `system` permission.
+The management APIs and MCP tools accept these permissions for every resource except `app`, which still requires the root `system` permission.
 
 | Permission | Grants |
 |------------|--------|
-| `system:<resource>:view` | Read and list for `ou`, `user`, `group`, `agent`, `usertype`, `agenttype`, and `notificationtemplate`. Listing the child organization units of an organization unit (`GET /organization-units/{id}/ous`) is the exception and requires `system:ou`. |
-| `system:<resource>` | Full management of `ou`, `user`, `group`, `agent`, `usertype`, `agenttype`, and `notificationtemplate`. |
+| `system:<resource>:view` | Read and list the resource. |
+| `system:<resource>:create` | Create the resource. |
+| `system:<resource>:update` | Update the resource and the parts that belong to it. |
+| `system:<resource>:delete` | Delete the resource. |
+| `system:<resource>` | Every action on the resource. |
+
+Changing a part of a resource updates that resource. For example, `system:role:update` covers adding and removing role assignments, `system:rs:update` covers creating and deleting the resources and actions of a resource server, and `system:flow:update` covers restoring a flow version. Changing a sharing policy updates the resource it governs.
+
+The following exceptions apply:
+
+- Reading translations is public. `system:i18n:update` sets translation overrides and `system:i18n:delete` clears them.
+- `system:vc:view` also reads the trust anchors that presentations are verified against.
+- Changing the System resource server itself requires the root `system` permission. `system:rs:view` can read it.
+- The variables and secrets of a gateway require the root `system` permission, as the server's own variable store does.
+- The variable store, import, and export require the root `system` permission.
+
+Only `ou`, `user`, `group`, `agent`, `usertype`, and `agenttype` permissions are confined to an organization unit. The other permissions aren't confined to an organization unit yet. A caller with a `system:role` or `system:flow` permission, for example, can act on the roles or flows of every organization unit.
+
+:::warning
+The `flow`, `role`, `rs`, and `authzdetail` permissions are high impact, and they reach every organization unit. A flow administrator controls how users sign in and register. A role administrator decides who holds which permissions, within the permissions they hold themselves. A resource server administrator defines the permissions that roles grant to applications and APIs. An authorization detail type administrator defines what users consent to. Grant them only to administrators you trust with the whole deployment.
+:::
+
+`system:serverconfig:update` changes deployment-wide security settings such as CORS, the content security policy, and sessions.
+
+The MCP server itself still requires the root `system` permission.
 
 If you set `server.security.system_permission_prefix`, the management APIs expect every system permission to start with that prefix, for example `mgmt:system:user:view`. The permissions declared on the System resource server don't include the prefix. To grant the prefixed permissions, declare them on a resource server of your own, for example with a root resource `mgmt` that holds `system` and its resources, and add them to your roles.
 

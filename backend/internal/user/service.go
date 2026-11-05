@@ -1455,6 +1455,10 @@ func mapOUServiceError(ctx context.Context,
 		return mappedErr
 	}
 
+	if svcErr.Code == tidcommon.ErrorUnauthorized.Code {
+		return &tidcommon.ErrorUnauthorized
+	}
+
 	if svcErr.Type == tidcommon.ClientErrorType {
 		logFields := append([]log.Field{}, fields...)
 		logFields = append(logFields, log.Any("error", svcErr))
