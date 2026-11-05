@@ -305,6 +305,10 @@ const (
 	// RuntimeKeyLinkingCheckpoint holds, as JSON, the RuntimeData and AuthUser from when the linking
 	// executor asked for verification. It lives as long as RuntimeKeyLinkingVerificationRequested.
 	RuntimeKeyLinkingCheckpoint = "linkingCheckpoint"
+	// RuntimeKeyFederatedLoginCompleted marks that a federated identity provider login completed. It
+	// lives in the cross-frame store, so it survives a CALL into another flow. The linking executor
+	// clears it when it asks for verification and reads it to tell whether one completed there.
+	RuntimeKeyFederatedLoginCompleted = "federatedLoginCompleted"
 	// RuntimeKeyAuthorizationRequestID holds the auth request identifier bound to the current flow
 	// execution (the OAuth authorize authId or the CIBA auth_req_id), if applicable.
 	RuntimeKeyAuthorizationRequestID = "authorizationRequestId"
