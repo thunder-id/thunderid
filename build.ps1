@@ -187,6 +187,7 @@ $GATE_APP_DEFAULT_PORT = 5190
 $CONSOLE_APP_DEFAULT_PORT = 5191
 $ADMIN_CONSOLE_APP_DEFAULT_PORT = 5192
 $QUICKSTART_AUTH_DP_PORT = 8091
+$QUICKSTART_DP_PORT = 8090
 $QUICKSTART_CP_PORT = 8095
 $DOCS_DEFAULT_PORT = 3000
 
@@ -1184,13 +1185,19 @@ function Package-Quickstart {
     # copy only, with a trusted_issuer block naming auth-dp: the console SDK then sends the actual
     # /oauth2/authorize and /oauth2/token calls there, while every management-API call it makes is
     # repointed back to wherever the console itself is served from. Inserted right before the
-    # file's closing "};" so it lands inside the top-level config object.
+    # file's closing "};" so it lands inside the top-level config object. The same block adds
+    # gate_client naming the managed Data Plane: the CP serves no Gate app, so without it the
+    # console would build redirect URIs on its own origin instead of the Data Plane's.
     Add-QuickstartLine -Path (Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js") -Pattern '^};$' -Before -Lines @(
         "  trusted_issuer: {",
         "    hostname: `"localhost`",",
         "    port: $QUICKSTART_AUTH_DP_PORT,",
         "    http_only: false,",
         "    client_id: `"CP_CONSOLE`",",
+        "  },",
+        "  gate_client: {",
+        "    hostname: `"localhost`",",
+        "    port: $QUICKSTART_DP_PORT,",
         "  },")
 
     # The browser enforces the CP's own Content-Security-Policy, not auth-dp's, on every fetch the
@@ -1217,6 +1224,7 @@ function Package-Quickstart {
     Assert-QuickstartPatch (Join-Path $dp_dir "deployment.yaml") "  security:"
     Assert-QuickstartPatch (Join-Path $cp_dir "deployment.yaml") "issuer: `"https://localhost:$QUICKSTART_AUTH_DP_PORT`""
     Assert-QuickstartPatch (Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js") "trusted_issuer"
+    Assert-QuickstartPatch (Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js") "  gate_client: {"
     Assert-QuickstartPatch (Join-Path $cp_dir "config/resources/server_configs/csp.yaml") "https://localhost:$QUICKSTART_AUTH_DP_PORT"
 
     if ($GO_OS -eq "windows") {
