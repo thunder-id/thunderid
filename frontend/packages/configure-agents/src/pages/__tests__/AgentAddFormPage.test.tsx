@@ -10,6 +10,9 @@ const h = vi.hoisted(() => ({
   navigate: vi.fn(),
   pathname: {current: '/agents/create'},
   created: {current: {id: 'agent-1', name: 'Calendar Agent'} as Record<string, unknown>},
+  // The signed-in user as the SDK holds them: the ID token's claims, which carry no ID, merged with
+  // the profile /users/me returns, which does, when the caller is a user here.
+  signedIn: {current: {id: 'user-1', username: 'alice'} as Record<string, unknown> | null},
 }));
 
 // Translations are shared across the suite, so keys are asserted rather than English copy.
@@ -30,7 +33,7 @@ vi.mock('react-router', async () => ({
 
 vi.mock('@thunderid/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/react')>()),
-  useThunderID: () => ({http: h.http}),
+  useThunderID: () => ({http: h.http, user: h.signedIn.current}),
 }));
 
 vi.mock('@thunderid/configure-organization-units', async (importOriginal) => ({
@@ -85,6 +88,19 @@ const ISSUED_CREDENTIALS = {
   config: {grantTypes: ['client_credentials'], responseTypes: [], tokenEndpointAuthMethod: 'client_secret_basic'},
 };
 
+// A read of one user, as against the list of users.
+function lookedUpUser(url: string): string | undefined {
+  return /\/users\/([^/?]+)/.exec(url)?.[1];
+}
+
+// Answers a read of one user as the server does: the user when they exist here, and 404 otherwise.
+function answerUserLookup(userId: string): Promise<{data: unknown}> {
+  const found = users.users.find((candidate) => candidate.id === userId);
+  return found
+    ? Promise.resolve({data: found})
+    : Promise.reject(Object.assign(new Error('not found'), {response: {status: 404}}));
+}
+
 function requests(): RecordedRequest[] {
   return h.http.request.mock.calls.map(([config]) => config as RecordedRequest);
 }
@@ -106,11 +122,14 @@ describe('AgentAddFormPage', () => {
     vi.clearAllMocks();
     h.pathname.current = '/agents/create';
     h.created.current = {id: 'agent-1', name: 'Calendar Agent'};
+    h.signedIn.current = {id: 'user-1', username: 'alice'};
     h.http.request.mockImplementation((config: unknown) => {
       const {url, method} = config as RecordedRequest;
       if (method === 'POST' && url.endsWith('/agents')) {
         return Promise.resolve({data: h.created.current});
       }
+      const userId = lookedUpUser(url);
+      if (userId) return answerUserLookup(userId);
       if (url.includes('/users')) {
         return Promise.resolve({data: users});
       }
@@ -173,13 +192,128 @@ describe('AgentAddFormPage', () => {
     });
   });
 
-  // Answers the users request with the given outcome and everything else as the other tests do.
+  // Answers the request for the list of users with the given outcome and everything else as the other
+  // tests do.
   function answerUsersWith(outcome: () => Promise<{data: unknown}>): void {
     const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
+    h.http.request.mockImplementation((config: unknown) => {
+      const {url} = config as RecordedRequest;
+      return url.includes('/users') && !lookedUpUser(url) ? outcome() : base(config);
+    });
+  }
+
+  // Answers a read of one user with the given outcome and everything else as the other tests do.
+  function answerLookupWith(outcome: () => Promise<{data: unknown}>): void {
+    const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
     h.http.request.mockImplementation((config: unknown) =>
-      (config as RecordedRequest).url.includes('/users') ? outcome() : base(config),
+      lookedUpUser((config as RecordedRequest).url) ? outcome() : base(config),
     );
   }
+
+  async function fillAll(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await fillRequired(user);
+    await user.type(await screen.findByRole('textbox', {name: /llmModel/}), 'claude');
+  }
+
+  function posted(): unknown {
+    return requests().find((request) => request.method === 'POST')?.data;
+  }
+
+  it('offers the signed-in user, found here, as the owner it defaults to, and posts none', async () => {
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillAll(user);
+    expect(await screen.findByText('agents:addForm.ownerHint')).toBeInTheDocument();
+    expect(screen.getByText('agents:addForm.ownerDefault')).toBeInTheDocument();
+    const submit = screen.getByRole('button', {name: 'agents:addForm.submit'});
+    await waitFor(() => expect(submit).toBeEnabled());
+    await user.click(submit);
+
+    await waitFor(() => expect(posted()).toBeDefined());
+    expect(posted()).not.toHaveProperty('owner');
+    expect(requests().some((request) => lookedUpUser(request.url) === 'user-1')).toBe(true);
+  });
+
+  it.each([
+    ['carries only the claims of their ID token', {username: 'admin'}],
+    ['names no user at all', null],
+  ])('does not offer a signed-in user whose session %s, and asks for an owner before creating', async (_, signedIn) => {
+    h.signedIn.current = signedIn;
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillAll(user);
+    expect(await screen.findByText('agents:addForm.ownerRequiredHint')).toBeInTheDocument();
+    const submit = screen.getByRole('button', {name: 'agents:addForm.submit'});
+    expect(submit).toBeDisabled();
+
+    await user.click(screen.getAllByRole('combobox')[1]);
+    const listbox = await screen.findByRole('listbox');
+    expect(within(listbox).getByText('agents:addForm.selectOwner')).toBeInTheDocument();
+    expect(within(listbox).queryByText('agents:addForm.ownerDefault')).not.toBeInTheDocument();
+    await user.click(within(listbox).getByText('alice'));
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+
+    await waitFor(() => expect(posted()).toMatchObject({owner: 'user-1'}));
+    expect(requests().some((request) => lookedUpUser(request.url))).toBe(false);
+  });
+
+  it('does not offer a signed-in user this deployment does not find', async () => {
+    h.signedIn.current = {id: 'operator-elsewhere', username: 'admin'};
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillAll(user);
+
+    expect(await screen.findByText('agents:addForm.ownerRequiredHint')).toBeInTheDocument();
+    expect(screen.getByText('agents:addForm.selectOwner')).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'agents:addForm.submit'})).toBeDisabled();
+    expect(requests().some((request) => lookedUpUser(request.url) === 'operator-elsewhere')).toBe(true);
+  });
+
+  it('still offers the signed-in user when looking them up is refused for another reason', async () => {
+    answerLookupWith(() => Promise.reject(Object.assign(new Error('forbidden'), {response: {status: 403}})));
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillAll(user);
+    const submit = screen.getByRole('button', {name: 'agents:addForm.submit'});
+    await waitFor(() => expect(submit).toBeEnabled());
+    expect(screen.getByText('agents:addForm.ownerDefault')).toBeInTheDocument();
+    expect(screen.getByText('agents:addForm.ownerHint')).toBeInTheDocument();
+    await user.click(submit);
+
+    await waitFor(() => expect(posted()).toBeDefined());
+    expect(posted()).not.toHaveProperty('owner');
+  });
+
+  it('creates nothing by default while the signed-in user is being looked up, but takes a chosen owner', async () => {
+    answerLookupWith(() => new Promise(() => undefined));
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillAll(user);
+    const submit = screen.getByRole('button', {name: 'agents:addForm.submit'});
+    expect(submit).toBeDisabled();
+    expect(screen.queryByText('agents:addForm.ownerRequiredHint')).not.toBeInTheDocument();
+
+    await chooseOption(user, 1, 'alice');
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+
+    await waitFor(() => expect(posted()).toMatchObject({owner: 'user-1'}));
+  });
+
+  it('says there are no users to own the agent when one is needed and none exist', async () => {
+    h.signedIn.current = {username: 'admin'};
+    answerUsersWith(() => Promise.resolve({data: {totalResults: 0, startIndex: 1, count: 0, users: []}}));
+    render(<AgentAddFormPage />);
+
+    expect(await screen.findByText('agents:addForm.ownerNoUsers')).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'agents:addForm.submit'})).toBeDisabled();
+  });
 
   it('tells two users with the same display name apart by their IDs', async () => {
     answerUsersWith(() =>
@@ -277,6 +411,8 @@ describe('AgentAddFormPage', () => {
     h.http.request.mockImplementation((config: unknown) => {
       const {url, method} = config as RecordedRequest;
       if (method === 'POST') return Promise.resolve({data: {id: 'agent-2'}});
+      const userId = lookedUpUser(url);
+      if (userId) return answerUserLookup(userId);
       if (url.includes('/agent-types/type-1')) {
         return Promise.resolve({data: {...defaultType, schema: {name: {type: 'string'}}}});
       }
@@ -311,6 +447,8 @@ describe('AgentAddFormPage', () => {
     h.http.request.mockImplementation((config: unknown) => {
       const {url, method} = config as RecordedRequest;
       if (method === 'POST') return Promise.resolve({data: {id: 'agent-3'}});
+      const userId = lookedUpUser(url);
+      if (userId) return answerUserLookup(userId);
       if (url.includes('/agent-types/type-1')) return Promise.resolve({data: defaultType});
       if (url.includes('/agent-types/type-2')) return Promise.resolve({data: assistantType});
       return Promise.resolve({data: twoTypes});

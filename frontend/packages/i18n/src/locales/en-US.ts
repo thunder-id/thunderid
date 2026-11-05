@@ -1351,6 +1351,10 @@ const translations = {
     'addForm.ownersError': 'The users to choose an owner from could not be loaded.',
     'addForm.ownerHint':
       'Defaults to you. Choose a user created here if the agent is applied to a gateway, which needs an owner it can find.',
+    'addForm.ownerNoUsers': 'There are no users here to own the agent. Add a user, then add the agent.',
+    'addForm.ownerRequiredHint':
+      'Choose a user created here. A gateway the agent is applied to needs an owner it can find, and the account you signed in with is not a user here.',
+    'addForm.selectOwner': 'Select an owner',
     'addForm.organizationUnit': 'Organization unit',
     'addForm.selectAgentType': 'Select an agent type',
     'addForm.submit': 'Create agent',
