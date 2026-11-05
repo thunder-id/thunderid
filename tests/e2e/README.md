@@ -56,8 +56,8 @@ Extract the quickstart pack, run setup (which bootstraps all three deployments a
 
 ```bash
 mkdir -p tests/e2e/server
-unzip "target/dist/thunderid-quickstart-*.zip" -d tests/e2e/server
-cd tests/e2e/server/thunderid-quickstart-* && SERVICE_DESK_USERNAME=admin SERVICE_DESK_PASSWORD=admin ./setup.sh
+unzip "target/dist/thunderid-[0-9]*.zip" -d tests/e2e/server
+cd tests/e2e/server/thunderid-[0-9]* && SERVICE_DESK_USERNAME=admin SERVICE_DESK_PASSWORD=admin ./setup.sh
 ./start.sh &
 ```
 

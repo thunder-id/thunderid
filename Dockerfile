@@ -62,9 +62,9 @@ ARG TARGETARCH
 COPY --from=builder /app/target/dist/ /tmp/dist/
 RUN cd /tmp/dist && \
     if [ "$TARGETARCH" = "amd64" ]; then \
-        find . -name "thunderid-*-linux-x64.zip" | grep -E '^.*/thunderid-v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(-[A-Z]+)?)?-linux-x64\.zip$' | xargs -I{} cp {} /tmp/ ; \
+        find . -name "thunderid-gateway-*-linux-x64.zip" | grep -E '^.*/thunderid-gateway-v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(-[A-Z]+)?)?-linux-x64\.zip$' | xargs -I{} cp {} /tmp/ ; \
     else \
-        find . -name "thunderid-*-linux-arm64.zip" | grep -E '^.*/thunderid-v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(-[A-Z]+)?)?-linux-arm64\.zip$' | xargs -I{} cp {} /tmp/ ; \
+        find . -name "thunderid-gateway-*-linux-arm64.zip" | grep -E '^.*/thunderid-gateway-v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(-[A-Z]+)?)?-linux-arm64\.zip$' | xargs -I{} cp {} /tmp/ ; \
     fi && \
     cd /tmp && \
     unzip thunderid-*.zip && \
