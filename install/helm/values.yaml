@@ -24,7 +24,7 @@ deployment:
     # -- Container image registry host name
     registry: "ghcr.io/thunder-id"
     # -- Container image repository name
-    repository: "thunderid"
+    repository: "thunderid-gateway"
     # -- Container image digest
     digest: ""
     # -- Container image tag. Either "tag" or "digest" should be defined

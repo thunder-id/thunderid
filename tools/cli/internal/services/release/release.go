@@ -46,7 +46,7 @@ type releasesData struct {
 	Releases      []releaseEntry `json:"releases"`
 }
 
-// PlatformAssetName returns the platform-specific ZIP name for the product binary.
+// PlatformAssetName returns the platform-specific ZIP name for the Data Plane product binary.
 func PlatformAssetName(version string) (string, error) {
 	platform, ok := platformMap[runtime.GOOS]
 	if !ok {
@@ -56,7 +56,7 @@ func PlatformAssetName(version string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("unsupported architecture: %s", runtime.GOARCH)
 	}
-	return fmt.Sprintf("%s-%s-%s-%s.zip", product.Slug, version, platform, arch), nil
+	return fmt.Sprintf("%s-gateway-%s-%s-%s.zip", product.Slug, version, platform, arch), nil
 }
 
 func fetchJSON(url string, dest any) error {

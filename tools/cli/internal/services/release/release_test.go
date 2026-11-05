@@ -16,7 +16,7 @@ import (
 func TestPlatformAssetName_Format(t *testing.T) {
 	name, err := release.PlatformAssetName("1.2.3")
 	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(name, "thunderid-1.2.3-"), "got %q", name)
+	assert.True(t, strings.HasPrefix(name, "thunderid-gateway-1.2.3-"), "got %q", name)
 	assert.True(t, strings.HasSuffix(name, ".zip"), "got %q", name)
 }
 

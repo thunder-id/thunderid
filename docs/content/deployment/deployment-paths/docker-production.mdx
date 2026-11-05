@@ -18,10 +18,10 @@ Always pin to a specific release tag rather than `latest`:
 
 ```bash
 # Avoid: resolves to a different image after each release
-ghcr.io/thunder-id/thunderid:latest
+ghcr.io/thunder-id/thunderid-gateway:latest
 
 # Prefer: explicit and reproducible
-ghcr.io/thunder-id/thunderid:<version>
+ghcr.io/thunder-id/thunderid-gateway:<version>
 ```
 
 Pinning ensures upgrades are intentional and your deployment is reproducible across environments.
@@ -67,7 +67,7 @@ docker run -d \
   --mount type=bind,src="$(pwd)/config/secrets",dst=/opt/thunderid/config/secrets,readonly \
   --mount type=bind,src="$(pwd)/config/resources/server_configs/cors.yaml",dst=/opt/thunderid/config/resources/server_configs/cors.yaml,readonly \
   --mount type=bind,src="$(pwd)/config/resources/server_configs/csp.yaml",dst=/opt/thunderid/config/resources/server_configs/csp.yaml,readonly \
-  ghcr.io/thunder-id/thunderid:<version>
+  ghcr.io/thunder-id/thunderid-gateway:<version>
 ```
 
 The certs directory must contain the TLS pair, RSA and ECDSA signing pairs, and encryption key referenced by `deployment.yaml`. The secrets directory must contain the Direct Auth Secret when it uses the default file reference. See [Mount Production Configuration](../../production-guidelines#mount-production-configuration) for the complete file inventory and permission requirements.
@@ -113,7 +113,7 @@ services:
       - thunderid
 
   thunderid:
-    image: ghcr.io/thunder-id/thunderid:<version>
+    image: ghcr.io/thunder-id/thunderid-gateway:<version>
     restart: unless-stopped
     expose:
       - "8090"
@@ -132,7 +132,7 @@ Prevent a runaway container from exhausting host resources by setting CPU and me
 ```yaml
 services:
   thunderid:
-    image: ghcr.io/thunder-id/thunderid:<version>
+    image: ghcr.io/thunder-id/thunderid-gateway:<version>
     deploy:
       resources:
         limits:
@@ -152,7 +152,7 @@ Add a health check so Docker can detect and restart an unhealthy container autom
 ```yaml
 services:
   thunderid:
-    image: ghcr.io/thunder-id/thunderid:<version>
+    image: ghcr.io/thunder-id/thunderid-gateway:<version>
     healthcheck:
       test: ["CMD", "curl", "-fsk", "https://localhost:8090/health/liveness"]
       interval: 30s

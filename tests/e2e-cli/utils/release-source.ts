@@ -44,12 +44,6 @@ interface Asset {
 const PRODUCT_ZIP = /^thunderid-gateway-(\d.*)-(?:macos|linux|win)-(?:x64|arm64)\.zip$/;
 
 /**
- * The CLI still asks for `thunderid-<version>-*` until it moves to the gateway name, which waits for
- * a published release under that name. Until then the Data Plane zip is listed under that name.
- */
-const toCliAssetName = (name: string): string => name.replace(/^thunderid-gateway-/, "thunderid-");
-
-/**
  * Builds a manifest from the zips present in dir.
  *
  * Naming is the contract: build.sh emits `thunderid-gateway-<version>-<platform>-<arch>.zip` and
@@ -79,7 +73,7 @@ export function buildManifest(dir: string, baseUrl: string): { version: string; 
   // product's version.
   const assets: Asset[] = zips
     .filter(name => productZips.includes(name) || name.startsWith("sample-app-"))
-    .map(name => ({ name: toCliAssetName(name), downloadUrl: `${baseUrl}/${name}` }));
+    .map(name => ({ name, downloadUrl: `${baseUrl}/${name}` }));
 
   const release = { tagName: `v${version}`, isLatest: true, assets };
   return { version, manifest: { latestRelease: release, releases: [release] } };
