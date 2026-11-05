@@ -616,6 +616,9 @@ importers:
       '@fontsource-variable/inter':
         specifier: 5.2.8
         version: 5.2.8
+      '@hookform/resolvers':
+        specifier: 'catalog:'
+        version: 5.2.2(react-hook-form@7.65.0(react@19.2.3))(zod@4.6.6)
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.90.5(react@19.2.3)
@@ -625,30 +628,39 @@ importers:
       '@thunderid/components':
         specifier: workspace:^
         version: link:../../packages/components
+      '@thunderid/configure-agent-types':
+        specifier: workspace:^
+        version: link:../../packages/configure-agent-types
+      '@thunderid/configure-agents':
+        specifier: workspace:^
+        version: link:../../packages/configure-agents
+      '@thunderid/configure-groups':
+        specifier: workspace:^
+        version: link:../../packages/configure-groups
+      '@thunderid/configure-organization-units':
+        specifier: workspace:^
+        version: link:../../packages/configure-organization-units
+      '@thunderid/configure-roles':
+        specifier: workspace:^
+        version: link:../../packages/configure-roles
+      '@thunderid/configure-users':
+        specifier: workspace:^
+        version: link:../../packages/configure-users
       '@thunderid/contexts':
         specifier: workspace:^
         version: link:../../packages/contexts
       '@thunderid/design':
         specifier: workspace:^
         version: link:../../packages/design
+      '@thunderid/hooks':
+        specifier: workspace:^
+        version: link:../../packages/hooks
       '@thunderid/i18n':
         specifier: workspace:^
         version: link:../../packages/i18n
       '@thunderid/logger':
         specifier: workspace:^
         version: link:../../packages/logger
-      '@thunderid/manage-agents':
-        specifier: workspace:^
-        version: link:../../packages/manage-agents
-      '@thunderid/manage-groups':
-        specifier: workspace:^
-        version: link:../../packages/manage-groups
-      '@thunderid/manage-roles':
-        specifier: workspace:^
-        version: link:../../packages/manage-roles
-      '@thunderid/manage-users':
-        specifier: workspace:^
-        version: link:../../packages/manage-users
       '@thunderid/react':
         specifier: 'catalog:'
         version: 1.15.1(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
@@ -664,6 +676,12 @@ importers:
       '@wso2/oxygen-ui-icons-react':
         specifier: 'catalog:'
         version: 0.20.0(react@19.2.3)
+      dompurify:
+        specifier: '>=3.4.13'
+        version: 3.4.17
+      framer-motion:
+        specifier: 'catalog:'
+        version: 12.39.0(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       i18next:
         specifier: 25.6.0
         version: 25.6.0(typescript@5.9.3)
@@ -673,12 +691,18 @@ importers:
       react-dom:
         specifier: 'catalog:'
         version: 19.2.3(react@19.2.3)
+      react-hook-form:
+        specifier: 'catalog:'
+        version: 7.65.0(react@19.2.3)
       react-i18next:
         specifier: 'catalog:'
         version: 16.0.1(i18next@25.6.0(typescript@5.9.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.9.3)
       react-router:
         specifier: 'catalog:'
         version: 8.3.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.6
     devDependencies:
       '@codecov/vite-plugin':
         specifier: 'catalog:'
