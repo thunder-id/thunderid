@@ -1,7 +1,7 @@
 # Agent Onboarding Flow Specification
 
 - **Status:** Draft
-- **Version:** 0.2
+- **Version:** 0.3
 
 ## Summary
 
@@ -116,7 +116,7 @@ The resolver will handle the remaining candidates as follows:
 | One | Resolve the type without displaying a selection screen. |
 | Several | Request a selection and provide the eligible options. |
 
-A submitted selection must be checked again for category, allowed-list membership, and OU compatibility. The resolver will publish the type name and its owning OU into runtime state. The default flow will resolve the type first, then use `OUResolverExecutor` to choose a compatible target OU.
+A submitted selection must be checked again for category, allowed-list membership, and OU compatibility. The resolver will publish the type name and its owning OU into runtime state. The default flow will resolve the type first, then use `OUResolverExecutor` to choose a compatible target OU. The agent service enforces the same placement on every create path, so a flow that skips the OU resolver cannot place an agent outside its type's OU tree: the agent's OU must be the type's OU or one below it, otherwise provisioning fails with `AGT-1049`.
 
 Administration type selection will use the node's allowed list. An application's `allowedAgentTypes` controls application behavior and will not limit what a system administrator may create through this resolver. In authentication flows, `AgentTypeResolver` will reject an application with an empty allowed-agent-type list. This check must not be presented as enforcement across OAuth grants that do not execute the flow.
 
@@ -304,7 +304,7 @@ flowchart TD
 The flow keeps orchestration in the executor layer and creation ownership in the management layer. `ProvisioningExecutor` collects the flow result and calls `AgentMgtProvider` only when the required information is available. The provider delegates to the agent service, which validates the management fields and coordinates the entity, inbound client, and authentication profile. A successful service result supplies the identifiers and secret used by the credentials prompt.
 
 1. Validate the administrator's permission.
-2. Resolve the agent schema type, initially restricted to the `default` agent type.
+2. Resolve the agent schema type from the agent types the administrator can read, up to the first 100.
 3. Resolve the target OU.
 4. Resolve the owner.
 5. Run agent provisioning, which asks for the name and the other schema attributes through the details prompt, carrying the choices of enumerated attributes.
@@ -380,7 +380,7 @@ The template is a starting point, not a runnable onboarding flow. It omits agent
 | `user_mgt_provider.type` | Default service-backed provider | Deployment | `disabled` must reject user provisioning. |
 | `agent_mgt_provider.type` | Default service-backed provider | Deployment | `disabled` must reject agent provisioning. |
 | Provisioning or uniqueness node `mode` | `user` when absent or empty | Flow node | Accept `user` or `agent`; reject unknown category names. |
-| Agent resolver `allowedAgentTypes` | `default` in the shipped flow | Flow node | Restrict the candidate schema types; an empty list adds no restriction. |
+| Agent resolver `allowedAgentTypes` | Unset in the shipped flow | Flow node | Restrict the candidate schema types; an empty list adds no restriction. |
 | Provisioning `includeOptional` | `true` in the shipped flow | Flow node | Include optional schema attributes in collection. |
 
 The Console must read the `merged` configuration layer. A missing handle, a handle that does not resolve to an administration flow, and a configuration request failure are distinct conditions. Missing configuration will identify the setting to configure; a missing flow will identify the configured handle. A request failure must not be reported as an empty setting.
@@ -529,3 +529,4 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 |---|---|---|
 | 0.1 | 2026-09-07 | Initial specification. |
 | 0.2 | 2026-10-26 | Every flow is owned by exactly one organization unit. A flow names its owner with `ouId` on create, or with `ouId` or `ouHandle` in a bootstrap or declarative file, and the default onboarding flow carries `ouHandle: default` (AC11.6). |
+| 0.3 | 2026-11-05 | The shipped flow no longer restricts `AgentTypeResolver` to the `default` agent type, since a deployment can hold one agent type per organization unit, and the agent service rejects an agent outside its agent type's organization unit tree (#6020). |

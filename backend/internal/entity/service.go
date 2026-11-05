@@ -82,6 +82,8 @@ type EntityServiceInterface interface {
 		sysQuery SystemAttributeQuery, ouIDs []string) (int, error)
 	GetEntityListBySystemAttributesAndOUIDs(ctx context.Context, category providers.EntityCategory,
 		sysQuery SystemAttributeQuery, ouIDs []string, limit, offset int) ([]providers.Entity, error)
+	GetEntityListByType(ctx context.Context, category providers.EntityCategory, entityType string,
+		limit int) ([]providers.Entity, error)
 
 	// Bulk
 	ValidateEntityIDs(ctx context.Context, entityIDs []string) ([]string, error)
@@ -808,6 +810,19 @@ func (s *entityService) GetEntityListBySystemAttributesAndOUIDs(ctx context.Cont
 	[]providers.Entity, error) {
 	entities, err := s.store.GetEntityListBySystemAttributesAndOUIDs(
 		ctx, string(category), sysQuery, ouIDs, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.populateRuntime(ctx, entities); err != nil {
+		return nil, err
+	}
+	return entities, nil
+}
+
+// GetEntityListByType retrieves up to limit entities of a category that are of the given type.
+func (s *entityService) GetEntityListByType(ctx context.Context, category providers.EntityCategory,
+	entityType string, limit int) ([]providers.Entity, error) {
+	entities, err := s.store.GetEntityListByType(ctx, string(category), entityType, limit)
 	if err != nil {
 		return nil, err
 	}

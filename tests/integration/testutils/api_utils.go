@@ -112,11 +112,11 @@ func CreateUserType(schema UserType) (string, error) {
 	return schemaID, nil
 }
 
-// CreateAgentType ensures the single allowed `default` agent type exists with the given schema
-// and returns its ID. The server restricts agent types to one `default` schema and rejects
-// deletion, so suites share the singleton: this helper creates it on first call and updates
-// it (PUT) on subsequent calls so each suite's schema fixture takes effect. The caller's
-// `Handle` is ignored. It is always coerced to `default`.
+// CreateAgentType installs the given schema on the bootstrap `default` agent type and returns its ID.
+// Suites share that agent type: this helper creates it when it is absent and otherwise updates it
+// (PUT), which also moves it to the schema's organization unit, so each suite's schema fixture takes
+// effect. The caller's `Handle` is ignored. It is always coerced to `default`. A suite that needs an
+// agent type of its own creates one with CreateNewAgentType instead.
 func CreateAgentType(schema UserType) (string, error) {
 	schema.Handle = "default"
 
@@ -138,7 +138,35 @@ func CreateAgentType(schema UserType) (string, error) {
 	return existingID, nil
 }
 
-// AgentTypeSnapshot captures the singleton `default` agent type so a suite that mutates it can put
+// CreateNewAgentType creates an agent type with the schema's own handle in the schema's organization
+// unit and returns its ID. It neither coerces the handle nor updates an existing agent type, so the
+// caller owns the agent type and removes it with DeleteAgentType. An organization unit can have only one
+// agent type, so the schema's organization unit must not have one yet.
+func CreateNewAgentType(schema UserType) (string, error) {
+	return postAgentType(schema)
+}
+
+// DeleteAgentType deletes an agent type by ID.
+func DeleteAgentType(agentTypeID string) error {
+	req, err := http.NewRequest("DELETE", TestServerURL+"/agent-types/"+agentTypeID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete agent type: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 204, got %d. Response: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
+}
+
+// AgentTypeSnapshot captures the shared `default` agent type so a suite that mutates it can put
 // it back. It holds every mutable field, not just the schema: an entity-type update replaces the
 // whole record, so any field left out of the restore payload is silently reset to its zero value.
 // The schema in particular cannot come from the list endpoint, which omits it.
@@ -152,8 +180,8 @@ type AgentTypeSnapshot struct {
 }
 
 // SnapshotAgentType reads the current `default` agent type from the detail endpoint. Suites that
-// call CreateAgentType mutate a singleton every other suite shares, so they must snapshot before
-// and RestoreAgentType after, otherwise the schema and OU they installed leak into later packages.
+// call CreateAgentType mutate the `default` agent type every other suite shares, so they must snapshot
+// before and RestoreAgentType after, otherwise the schema and OU they installed leak into later packages.
 func SnapshotAgentType() (*AgentTypeSnapshot, error) {
 	id, err := findDefaultAgentTypeID()
 	if err != nil {
@@ -203,7 +231,7 @@ func SnapshotAgentType() (*AgentTypeSnapshot, error) {
 }
 
 // RestoreAgentType puts a snapshot back, then re-reads the type to confirm its OU resolves. If the
-// snapshot's OU no longer exists, because a suite pointed the singleton at an OU it then deleted,
+// snapshot's OU no longer exists, because a suite pointed the `default` agent type at an OU it then deleted,
 // the type is restored against the bootstrap `default` OU instead so the PUT cannot fail on a
 // dangling reference.
 func RestoreAgentType(snapshot *AgentTypeSnapshot) error {

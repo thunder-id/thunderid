@@ -90,6 +90,7 @@ var (
 	testAgentID  string
 	sharedRoleID string // Shared role created in SetupSuite for tests that need a pre-existing role
 	entityTypeID string
+	agentTypeID  string
 
 	// Resource servers for permission testing
 	testResourceServer1ID string
@@ -108,6 +109,19 @@ type RoleAPITestSuite struct {
 
 func TestRoleAPITestSuite(t *testing.T) {
 	suite.Run(t, new(RoleAPITestSuite))
+}
+
+// roleTestAgentType is the agent type of the test OU, which the suite's test agent is of.
+const roleTestAgentType = "role-test-agents"
+
+// roleAgentType builds an agent type in the given organization unit whose schema declares the name, which
+// is the agent's display attribute.
+func roleAgentType(handle, ouID string) testutils.UserType {
+	return testutils.UserType{
+		Handle: handle, DisplayName: handle, OUID: ouID,
+		SystemAttributes: &testutils.UserTypeSystemAttributes{Display: "name"},
+		Schema:           map[string]interface{}{"name": map[string]interface{}{"type": "string", "required": true}},
+	}
 }
 
 func (suite *RoleAPITestSuite) SetupSuite() {
@@ -156,9 +170,12 @@ func (suite *RoleAPITestSuite) SetupSuite() {
 	suite.Require().NoError(err, "Failed to create test application")
 	testAppID = appID
 
-	// Create test agent (agent entity), using the bootstrapped `default` agent type
+	// Create test agent (agent entity), of an agent type of the test OU, since an agent is placed within
+	// its agent type's organization unit tree.
+	agentTypeID, err = testutils.CreateNewAgentType(roleAgentType(roleTestAgentType, testOUID))
+	suite.Require().NoError(err, "Failed to create test agent type")
 	agentID, err := testutils.CreateAgent(testutils.Agent{
-		Type:        "default",
+		Type:        roleTestAgentType,
 		Description: "Agent for role assignment testing",
 		OUID:        testOUID,
 		Attributes:  map[string]interface{}{"name": testAgentName},
@@ -232,6 +249,9 @@ func (suite *RoleAPITestSuite) TearDownSuite() {
 	}
 	if testAgentID != "" {
 		_ = testutils.DeleteAgent(testAgentID)
+	}
+	if agentTypeID != "" {
+		_ = testutils.DeleteAgentType(agentTypeID)
 	}
 	if testAppID != "" {
 		_ = testutils.DeleteApplication(testAppID)
@@ -3434,8 +3454,12 @@ func (suite *RoleAPITestSuite) TestSharedRole_AssignedToEveryKindOfAssigneeInThe
 	suite.Require().NoError(err)
 	defer func() { suite.NoError(testutils.DeleteGroup(groupID)) }()
 
+	childAgentTypeID, err := testutils.CreateNewAgentType(roleAgentType("shared-role-child-agents", declSharedChildA))
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.DeleteAgentType(childAgentTypeID)) }()
 	agentID, err := testutils.CreateAgent(testutils.Agent{
-		Type: "default", OUID: declSharedChildA, Attributes: map[string]interface{}{"name": "shared-role-agent"},
+		Type: "shared-role-child-agents", OUID: declSharedChildA,
+		Attributes: map[string]interface{}{"name": "shared-role-agent"},
 	})
 	suite.Require().NoError(err)
 	defer func() { suite.NoError(testutils.DeleteAgent(agentID)) }()

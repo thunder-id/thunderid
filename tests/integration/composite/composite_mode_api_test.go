@@ -27,42 +27,20 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
+// compositeAgentType is the declarative agent type of decl-ou-1 (agenttype-declarative-1.yaml), which the
+// declarative agents are of and the runtime agents this suite creates in decl-ou-1 use.
+const compositeAgentType = "declarative-agents"
+
 type CompositeModeSuite struct {
 	suite.Suite
-	createdResources  map[string][]string
-	agentTypeSnapshot *testutils.AgentTypeSnapshot
+	createdResources map[string][]string
 }
 
 func (suite *CompositeModeSuite) SetupSuite() {
 	suite.createdResources = make(map[string][]string)
-
-	// The "default" agent type is a singleton shared with every other suite. Snapshot it before
-	// pointing it at the declarative OU, so teardown can put it back.
-	snapshot, err := testutils.SnapshotAgentType()
-	suite.Require().NoError(err, "Failed to snapshot the default agent type")
-	suite.agentTypeSnapshot = snapshot
-
-	// Ensure the singleton "default" agent type exists so composite agent tests can create runtime agents.
-	_, err = testutils.CreateAgentType(testutils.UserType{
-		Handle:      "default",
-		DisplayName: "Default",
-		OUID:        "decl-ou-1",
-		Schema: map[string]interface{}{
-			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
-			"description": map[string]interface{}{"type": "string"},
-		},
-	})
-	suite.Require().NoError(err, "Failed to ensure default agent type exists")
 }
 
 func (suite *CompositeModeSuite) TearDownSuite() {
-	// Restore the shared agent type before deleting any runtime resources it may reference.
-	if suite.agentTypeSnapshot != nil {
-		if err := testutils.RestoreAgentType(suite.agentTypeSnapshot); err != nil {
-			suite.T().Errorf("teardown: failed to restore the default agent type: %v", err)
-		}
-	}
-
 	// Delete only runtime resources (not declarative)
 	for module, ids := range suite.createdResources {
 		for _, id := range ids {
@@ -235,7 +213,7 @@ func (suite *CompositeModeSuite) TestDeclaredUserListedInTheUnitsItIsSharedInto(
 
 func (suite *CompositeModeSuite) TestAgentCreate() {
 	agent := map[string]interface{}{
-		"type":       "default",
+		"type":       compositeAgentType,
 		"ouId":       "decl-ou-1",
 		"attributes": map[string]interface{}{"name": "Test Runtime Agent"},
 	}
@@ -1197,7 +1175,7 @@ func (suite *CompositeModeSuite) TestUserDeclarativeDeleteReject() {
 func (suite *CompositeModeSuite) TestAgentDeclarativeUpdateReject() {
 	client := testutils.GetHTTPClient()
 	payload := map[string]interface{}{
-		"type":       "default",
+		"type":       compositeAgentType,
 		"ouId":       "decl-ou-1",
 		"attributes": map[string]interface{}{"name": "Updated"},
 	}

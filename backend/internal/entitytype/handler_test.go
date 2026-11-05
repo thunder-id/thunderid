@@ -132,6 +132,8 @@ func (s *InlineStubEntityTypeService) GetResourceDependencies(
 	return nil, nil
 }
 
+func (s *InlineStubEntityTypeService) SetDependencyRegistry(_ resourcedependency.Registry) {}
+
 // --- POST ENDPOINT TESTS ---
 
 func TestHandleEntityTypePostRequest_Success(t *testing.T) {

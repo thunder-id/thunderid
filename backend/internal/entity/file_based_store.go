@@ -345,6 +345,24 @@ func (f *entityFileBasedStore) GetEntityListBySystemAttributesAndOUIDs(ctx conte
 	return applyPagination(entities, limit, offset), nil
 }
 
+// GetEntityListByType retrieves up to limit entities of a category that are of the given type from the
+// file store.
+func (f *entityFileBasedStore) GetEntityListByType(ctx context.Context, category, entityType string,
+	limit int) ([]providers.Entity, error) {
+	resources, err := f.listEntityResources()
+	if err != nil {
+		return nil, err
+	}
+
+	entities := make([]providers.Entity, 0)
+	for _, resource := range resources {
+		if string(resource.Entity.Category) == category && resource.Entity.Type == entityType {
+			entities = append(entities, resource.Entity)
+		}
+	}
+	return applyPagination(entities, limit, 0), nil
+}
+
 // listBySystemAttributesInOUs returns the entities a system attribute query selects that belong to one
 // of the given organization units.
 func (f *entityFileBasedStore) listBySystemAttributesInOUs(category string,

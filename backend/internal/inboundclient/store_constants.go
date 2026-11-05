@@ -122,4 +122,27 @@ var (
 			`(AUTH_FLOW_ID = $1 OR DEVICE_GRANT_FLOW_ID = $2 OR REGISTRATION_FLOW_ID = $3 OR ` +
 			`RECOVERY_FLOW_ID = $4 OR SIGNOUT_FLOW_ID = $5) AND DEPLOYMENT_ID = $6`,
 	}
+
+	// queryGetEntityIDsByAllowedAgentType retrieves paginated entity IDs for inbound clients whose allowed
+	// agent types name a specific agent type handle.
+	queryGetEntityIDsByAllowedAgentType = dbmodel.DBQuery{
+		ID: "ASQ-INBC_MGT-19",
+		PostgresQuery: `SELECT ENTITY_ID FROM "INBOUND_CLIENT" ` +
+			`WHERE (PROPERTIES -> 'allowedAgentTypes') @> jsonb_build_array($1::text) AND DEPLOYMENT_ID = $2 ` +
+			`ORDER BY ENTITY_ID ASC LIMIT $3 OFFSET $4`,
+		SQLiteQuery: `SELECT ENTITY_ID FROM "INBOUND_CLIENT" ` +
+			`WHERE EXISTS (SELECT 1 FROM json_each("INBOUND_CLIENT".PROPERTIES, '$.allowedAgentTypes') ` +
+			`WHERE json_each.value = $1) AND DEPLOYMENT_ID = $2 ORDER BY ENTITY_ID ASC LIMIT $3 OFFSET $4`,
+	}
+
+	// queryGetEntityIDsByAllowedAgentTypeCount retrieves the total count of inbound clients whose allowed agent
+	// types name a specific agent type handle.
+	queryGetEntityIDsByAllowedAgentTypeCount = dbmodel.DBQuery{
+		ID: "ASQ-INBC_MGT-20",
+		PostgresQuery: `SELECT COUNT(*) as total FROM "INBOUND_CLIENT" ` +
+			`WHERE (PROPERTIES -> 'allowedAgentTypes') @> jsonb_build_array($1::text) AND DEPLOYMENT_ID = $2`,
+		SQLiteQuery: `SELECT COUNT(*) as total FROM "INBOUND_CLIENT" ` +
+			`WHERE EXISTS (SELECT 1 FROM json_each("INBOUND_CLIENT".PROPERTIES, '$.allowedAgentTypes') ` +
+			`WHERE json_each.value = $1) AND DEPLOYMENT_ID = $2`,
+	}
 )

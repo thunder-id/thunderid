@@ -479,3 +479,26 @@ func (s *FileBasedStoreTestSuite) TestSearchEntities_MultipleMatches() {
 	s.NoError(err)
 	s.Len(got, 2)
 }
+
+func (s *FileBasedStoreTestSuite) TestGetEntityListByType() {
+	ofType := func(e providers.Entity, entityType string) providers.Entity {
+		e.Type = entityType
+		return e
+	}
+	s.seedEntity(ofType(makeTestEntity("tool1", "agent", "ou-A"), "tools"))
+	s.seedEntity(ofType(makeTestEntity("tool2", "agent", "ou-B"), "tools"))
+	s.seedEntity(ofType(makeTestEntity("other", "agent", "ou-A"), "default"))
+	s.seedEntity(ofType(makeTestEntity("user1", "user", "ou-A"), "tools"))
+
+	list, err := s.store.GetEntityListByType(s.ctx, "agent", "tools", 10)
+	s.NoError(err)
+	s.Len(list, 2, "only the category's entities of the type are listed")
+
+	list, err = s.store.GetEntityListByType(s.ctx, "agent", "tools", 1)
+	s.NoError(err)
+	s.Len(list, 1, "capped at the limit")
+
+	list, err = s.store.GetEntityListByType(s.ctx, "agent", "unknown", 10)
+	s.NoError(err)
+	s.Empty(list)
+}

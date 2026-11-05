@@ -2805,9 +2805,6 @@ nodes:
       y: 1089
 - id: agent_type_resolution
   type: TASK_EXECUTION
-  properties:
-    allowedAgentTypes:
-    - default
   executor:
     name: AgentTypeResolver
   onSuccess: ou_selection

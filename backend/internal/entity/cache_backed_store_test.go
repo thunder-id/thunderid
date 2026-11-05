@@ -767,3 +767,12 @@ func (s *CacheBackedEntityStoreTestSuite) TestGetEntityListBySystemAttributesAnd
 	s.NoError(err)
 	s.Len(list, 1)
 }
+
+func (s *CacheBackedEntityStoreTestSuite) TestGetEntityListByType_PassThrough() {
+	s.mockStore.On("GetEntityListByType", mock.Anything, "agent", "tools", 10).
+		Return([]providers.Entity{{ID: "e1"}}, nil)
+
+	list, err := s.cachedStore.GetEntityListByType(context.Background(), "agent", "tools", 10)
+	s.NoError(err)
+	s.Len(list, 1)
+}

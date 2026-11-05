@@ -356,8 +356,9 @@ var (
 			DefaultValue: "Invalid agent type",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.agentservice.invalid_allowed_agent_type_description",
-			DefaultValue: "One or more specified allowed agent types are invalid",
+			Key: "error.agentservice.invalid_allowed_agent_type_description",
+			DefaultValue: "One or more agent types in allowedAgentTypes do not exist in the system, " +
+				"or * is combined with other entries",
 		},
 	}
 
@@ -573,6 +574,22 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.agentservice.ou_not_in_project_description",
 			DefaultValue: "The organization unit must be the project's root organization unit or one below it",
+		},
+	}
+
+	// ErrorOrganizationUnitMismatch is returned when an agent's organization unit is outside the
+	// organization unit tree of its agent type.
+	ErrorOrganizationUnitMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1049",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.organization_unit_mismatch",
+			DefaultValue: "Organization unit mismatch",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.agentservice.organization_unit_mismatch_description",
+			DefaultValue: "The organization unit does not match the agent type configuration: it must be " +
+				"the agent type's organization unit or one below it",
 		},
 	}
 )

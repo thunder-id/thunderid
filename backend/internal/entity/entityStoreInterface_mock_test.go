@@ -744,6 +744,86 @@ func (_c *entityStoreInterfaceMock_GetEntityListBySystemAttributesAndOUIDs_Call)
 	return _c
 }
 
+// GetEntityListByType provides a mock function for the type entityStoreInterfaceMock
+func (_mock *entityStoreInterfaceMock) GetEntityListByType(ctx context.Context, category string, entityType string, limit int) ([]providers.Entity, error) {
+	ret := _mock.Called(ctx, category, entityType, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEntityListByType")
+	}
+
+	var r0 []providers.Entity
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int) ([]providers.Entity, error)); ok {
+		return returnFunc(ctx, category, entityType, limit)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int) []providers.Entity); ok {
+		r0 = returnFunc(ctx, category, entityType, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.Entity)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, int) error); ok {
+		r1 = returnFunc(ctx, category, entityType, limit)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// entityStoreInterfaceMock_GetEntityListByType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntityListByType'
+type entityStoreInterfaceMock_GetEntityListByType_Call struct {
+	*mock.Call
+}
+
+// GetEntityListByType is a helper method to define mock.On call
+//   - ctx context.Context
+//   - category string
+//   - entityType string
+//   - limit int
+func (_e *entityStoreInterfaceMock_Expecter) GetEntityListByType(ctx any, category any, entityType any, limit any) *entityStoreInterfaceMock_GetEntityListByType_Call {
+	return &entityStoreInterfaceMock_GetEntityListByType_Call{Call: _e.mock.On("GetEntityListByType", ctx, category, entityType, limit)}
+}
+
+func (_c *entityStoreInterfaceMock_GetEntityListByType_Call) Run(run func(ctx context.Context, category string, entityType string, limit int)) *entityStoreInterfaceMock_GetEntityListByType_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_GetEntityListByType_Call) Return(entitys []providers.Entity, err error) *entityStoreInterfaceMock_GetEntityListByType_Call {
+	_c.Call.Return(entitys, err)
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_GetEntityListByType_Call) RunAndReturn(run func(ctx context.Context, category string, entityType string, limit int) ([]providers.Entity, error)) *entityStoreInterfaceMock_GetEntityListByType_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetEntityListCount provides a mock function for the type entityStoreInterfaceMock
 func (_mock *entityStoreInterfaceMock) GetEntityListCount(ctx context.Context, category string, filters map[string]interface{}) (int, error) {
 	ret := _mock.Called(ctx, category, filters)

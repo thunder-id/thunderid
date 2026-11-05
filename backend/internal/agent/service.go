@@ -127,9 +127,20 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 		return nil, svcErr
 	}
 
-	// ValidateAgent resolves ouHandle to an OU ID, so the authz check runs after it to evaluate
-	// against the resolved target OU.
-	clientID, clientSecret, _, svcErr := s.ValidateAgent(ctx, agent, "")
+	if svcErr := validateBaseFields(agent.Type); svcErr != nil {
+		return nil, svcErr
+	}
+	// The authz check evaluates the resolved target OU, so resolving it comes first and reports an OU or
+	// project that does not exist. The check runs before the rest of the validation, so a caller learns
+	// nothing about the agent types of an OU it cannot create agents in.
+	if svcErr := s.resolveAgentOU(ctx, agent); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := s.checkAgentAccess(ctx, security.ActionCreateAgent, agent.OUID, ""); svcErr != nil {
+		return nil, svcErr
+	}
+
+	clientID, clientSecret, _, svcErr := s.validatePlacedAgent(ctx, agent, "")
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -137,11 +148,6 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 	now := time.Now()
 	validUntil, svcErr := resolveRequestedValidUntil(agent.ValidUntil, now, isLifespanRestore(ctx))
 	if svcErr != nil {
-		return nil, svcErr
-	}
-
-	// Check if caller is authorized to create agents in the target OU.
-	if svcErr := s.checkAgentAccess(ctx, security.ActionCreateAgent, agent.OUID, ""); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -521,6 +527,10 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 		}
 	}
 
+	if svcErr := s.validateUpdatedPlacement(ctx, existing, req.Type, ouID); svcErr != nil {
+		return fail(svcErr)
+	}
+
 	resolvedClient, resolvedOAuth, svcErr := s.reconcileInboundForUpdate(
 		ctx, agentID, req, clientID, clientSecret)
 	if svcErr != nil {
@@ -661,16 +671,54 @@ func (s *agentService) DeleteAgent(ctx context.Context, agentID string) *tidcomm
 // GetResourceDependencies returns the agents that reference the resource identified by
 // (resourceType, id). It implements the resourcedependency.Provider interface.
 //
-// Agents reference a user through their owner attribute, which lives on the agent entity rather
-// than in the inbound-client store, so user dependencies are resolved separately. All other
-// reference types are resolved via the inbound-client store, which decides what is tracked. The
-// number of referencing entities is bounded by MaxCompositeStoreRecords.
+// Agents reference a user through their owner attribute and an agent type through their type, both
+// of which live on the agent entity rather than in the inbound-client store, so these dependencies
+// are resolved separately. All other reference types, and the agent types an agent allows to sign in,
+// are resolved via the inbound-client store, which decides what is tracked. An agent type target is
+// named by its handle, which is what agents hold, while the dependencies reported for it carry the
+// agents' IDs. The number of referencing entities is bounded by MaxCompositeStoreRecords.
 func (s *agentService) GetResourceDependencies(
 	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
-	if resourceType == resourcedependency.ResourceTypeUser {
+	switch resourceType {
+	case resourcedependency.ResourceTypeUser:
 		return s.getAgentsByOwner(ctx, id)
+	case resourcedependency.ResourceTypeAgentType:
+		return s.getAgentTypeUsages(ctx, id)
+	}
+	return s.getAgentsByReference(ctx, resourceType, id, resourcedependency.BehaviorFallback)
+}
+
+// getAgentTypeUsages returns the agents that block the deletion of an agent type: the agents of that type,
+// and the agents that allow it to sign in, since a deleted handle could be recreated in another
+// organization unit and inherit the allowance. An agent that does both is listed once.
+func (s *agentService) getAgentTypeUsages(
+	ctx context.Context, agentType string) ([]resourcedependency.ResourceDependency, error) {
+	usages, err := s.getAgentsByType(ctx, agentType)
+	if err != nil {
+		return nil, err
+	}
+	allowing, err := s.getAgentsByReference(
+		ctx, resourcedependency.ResourceTypeAgentType, agentType, resourcedependency.BehaviorRestrict)
+	if err != nil {
+		return nil, err
 	}
 
+	listed := make(map[string]struct{}, len(usages))
+	for _, usage := range usages {
+		listed[usage.ID] = struct{}{}
+	}
+	for _, usage := range allowing {
+		if _, ok := listed[usage.ID]; !ok {
+			usages = append(usages, usage)
+		}
+	}
+	return usages, nil
+}
+
+// getAgentsByReference returns the agents whose inbound client references the resource, reported with
+// the given behavior on delete.
+func (s *agentService) getAgentsByReference(ctx context.Context, resourceType, id, behavior string) (
+	[]resourcedependency.ResourceDependency, error) {
 	ids, _, err := s.inboundClientService.GetEntityIDsByReference(
 		ctx, resourceType, id, serverconst.MaxCompositeStoreRecords, 0)
 	if err != nil {
@@ -698,7 +746,7 @@ func (s *agentService) GetResourceDependencies(
 			ResourceType:     resourcedependency.ResourceTypeAgent,
 			ID:               e.ID,
 			DisplayName:      sysutils.ResolveDisplay(e.ID, e.Type, e.Attributes, displayPaths),
-			BehaviorOnDelete: resourcedependency.BehaviorFallback,
+			BehaviorOnDelete: behavior,
 		})
 	}
 	return usages, nil
@@ -720,6 +768,34 @@ func (s *agentService) getAgentsByOwner(
 	usages := make([]resourcedependency.ResourceDependency, 0)
 	for _, e := range entities {
 		// An agent cannot exist without its owner, so ownership blocks the owner's deletion.
+		usages = append(usages, resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeAgent,
+			ID:               e.ID,
+			DisplayName:      sysutils.ResolveDisplay(e.ID, e.Type, e.Attributes, displayPaths),
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		})
+	}
+	return usages, nil
+}
+
+// getAgentsByType returns the agents of the given agent type. An agent cannot exist without its agent
+// type, so each blocks the agent type's deletion. The number of agents returned is bounded by
+// MaxCompositeStoreRecords.
+func (s *agentService) getAgentsByType(
+	ctx context.Context, agentType string) ([]resourcedependency.ResourceDependency, error) {
+	entities, err := s.entityService.GetEntityListByType(ctx, providers.EntityCategoryAgent, agentType,
+		serverconst.MaxCompositeStoreRecords)
+	if err != nil {
+		// The registry logs provider errors; don't double-log here.
+		return nil, err
+	}
+	if len(entities) == 0 {
+		return []resourcedependency.ResourceDependency{}, nil
+	}
+
+	displayPaths := s.resolveDisplayPaths(ctx, []string{agentType})
+	usages := make([]resourcedependency.ResourceDependency, 0, len(entities))
+	for _, e := range entities {
 		usages = append(usages, resourcedependency.ResourceDependency{
 			ResourceType:     resourcedependency.ResourceTypeAgent,
 			ID:               e.ID,
@@ -881,30 +957,20 @@ func (s *agentService) ValidateAgent(ctx context.Context, agent *providers.Agent
 	if svcErr := validateBaseFields(agent.Type); svcErr != nil {
 		return "", "", inboundmodel.InboundClient{}, svcErr
 	}
+	if svcErr := s.resolveAgentOU(ctx, agent); svcErr != nil {
+		return "", "", inboundmodel.InboundClient{}, svcErr
+	}
+	return s.validatePlacedAgent(ctx, agent, excludeID)
+}
+
+// validatePlacedAgent validates an Agent whose organization unit is already resolved, as ValidateAgent
+// does after resolving it.
+func (s *agentService) validatePlacedAgent(ctx context.Context, agent *providers.Agent, excludeID string) (
+	string, string, inboundmodel.InboundClient, *tidcommon.ServiceError) {
 	if svcErr := validateLogoURL(agent.LogoURL); svcErr != nil {
 		return "", "", inboundmodel.InboundClient{}, svcErr
 	}
-	if agent.OUID == "" && agent.OUHandle != "" {
-		ou, svcErr := s.ouService.GetOrganizationUnitByPath(ctx, agent.OUHandle)
-		if svcErr != nil {
-			if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
-				return "", "", inboundmodel.InboundClient{}, &ErrorOrganizationUnitNotFound
-			}
-			s.logger.Error(ctx, "Failed to resolve OU handle", log.Any("error", svcErr))
-			return "", "", inboundmodel.InboundClient{}, &tidcommon.InternalServerError
-		}
-		agent.OUID = ou.ID
-	}
-	// A project places the agent in its root organization unit, or checks that the one named
-	// belongs to it.
-	if agent.ProjectID != "" {
-		ouID, svcErr := s.resolveProjectOU(ctx, agent.ProjectID, agent.OUID)
-		if svcErr != nil {
-			return "", "", inboundmodel.InboundClient{}, svcErr
-		}
-		agent.OUID = ouID
-	}
-	if svcErr := s.validateOUExists(ctx, agent.OUID); svcErr != nil {
+	if svcErr := s.validateOrganizationUnitForAgentType(ctx, agent.Type, agent.OUID); svcErr != nil {
 		return "", "", inboundmodel.InboundClient{}, svcErr
 	}
 
@@ -1007,6 +1073,79 @@ func (s *agentService) validateOUExists(ctx context.Context, ouID string) *tidco
 	}
 	if !exists {
 		return &ErrorOrganizationUnitNotFound
+	}
+	return nil
+}
+
+// resolveAgentOU resolves the agent's organization unit in place, from its ouHandle and its project, and
+// checks that it exists. A resolved agent resolves to the same organization unit again.
+func (s *agentService) resolveAgentOU(ctx context.Context, agent *providers.Agent) *tidcommon.ServiceError {
+	if agent.OUID == "" && agent.OUHandle != "" {
+		ou, svcErr := s.ouService.GetOrganizationUnitByPath(ctx, agent.OUHandle)
+		if svcErr != nil {
+			if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+				return &ErrorOrganizationUnitNotFound
+			}
+			s.logger.Error(ctx, "Failed to resolve OU handle", log.Any("error", svcErr))
+			return &tidcommon.InternalServerError
+		}
+		agent.OUID = ou.ID
+	}
+	// A project places the agent in its root organization unit, or checks that the one named
+	// belongs to it.
+	if agent.ProjectID != "" {
+		ouID, svcErr := s.resolveProjectOU(ctx, agent.ProjectID, agent.OUID)
+		if svcErr != nil {
+			return svcErr
+		}
+		agent.OUID = ouID
+	}
+	return s.validateOUExists(ctx, agent.OUID)
+}
+
+// validateUpdatedPlacement checks the agent type placement of an update. Placement is checked only when the
+// update changes the organization unit or the type, so an agent placed before the rule existed can still be
+// edited in other ways.
+func (s *agentService) validateUpdatedPlacement(
+	ctx context.Context, existing *providers.Entity, agentType, ouID string,
+) *tidcommon.ServiceError {
+	if ouID == existing.OUID && agentType == existing.Type {
+		return nil
+	}
+	return s.validateOrganizationUnitForAgentType(ctx, agentType, ouID)
+}
+
+// validateOrganizationUnitForAgentType ensures the organization unit is the agent type's organization unit
+// or one below it. The agent type is read with the caller's access, and a type the caller cannot read is
+// reported the way an unknown type is, so the check reveals nothing about agent types out of the caller's
+// reach.
+func (s *agentService) validateOrganizationUnitForAgentType(
+	ctx context.Context, agentType, ouID string,
+) *tidcommon.ServiceError {
+	entityType, svcErr := s.entityTypeService.GetEntityTypeByHandle(ctx, entitytype.TypeCategoryAgent, agentType)
+	if svcErr != nil {
+		if svcErr.Code == entitytype.ErrorEntityTypeNotFound.Code || svcErr.Code == tidcommon.ErrorUnauthorized.Code {
+			return &ErrorSchemaValidationFailed
+		}
+		s.logger.Error(ctx, "Failed to retrieve agent type", log.String("agentType", agentType),
+			log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+
+	if entityType.OUID == ouID {
+		return nil
+	}
+
+	isParent, svcErr := s.ouService.IsParent(ctx, entityType.OUID, ouID)
+	if svcErr != nil {
+		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+			return &ErrorOrganizationUnitNotFound
+		}
+		s.logger.Error(ctx, "Failed to validate the organization unit hierarchy", log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !isParent {
+		return &ErrorOrganizationUnitMismatch
 	}
 	return nil
 }

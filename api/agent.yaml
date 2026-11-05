@@ -130,6 +130,11 @@ paths:
         An inbound auth profile is created when any inbound auth config fields are supplied.
         An OAuth profile is created when `inboundAuthConfig` is supplied.
 
+        The agent's organization unit must be the organization unit of its agent type (`type`) or one
+        below it; otherwise the request is rejected with `AGT-1049`. The check reads the agent type, so the
+        caller also needs permission to view it (`system:agenttype:view`). An agent type the caller cannot
+        read is reported as an unknown type.
+
         The `clientSecret` is returned once in the response and never again — store it securely.
       requestBody:
         required: true
@@ -408,6 +413,16 @@ paths:
                     description:
                       key: "error.agentservice.ou_not_in_project_description"
                       defaultValue: "The organization unit must be the project's root organization unit or one below it"
+                ou-mismatch:
+                  summary: The organization unit is outside the agent type's organization unit tree
+                  value:
+                    code: "AGT-1049"
+                    message:
+                      key: "error.agentservice.organization_unit_mismatch"
+                      defaultValue: "Organization unit mismatch"
+                    description:
+                      key: "error.agentservice.organization_unit_mismatch_description"
+                      defaultValue: "The organization unit does not match the agent type configuration: it must be the agent type's organization unit or one below it"
                 ou-not-found:
                   summary: Organization unit not found
                   value:
@@ -775,7 +790,10 @@ paths:
         CreateAgentRequest. Omitting an inbound auth or OAuth field clears it.
 
         If `ouId` is provided and differs from the current value, the agent is moved to the
-        new organization unit (which must exist).
+        new organization unit (which must exist). When the update changes the organization unit or the
+        `type`, the organization unit must be the agent type's organization unit or one below it;
+        otherwise the request is rejected with `AGT-1049`. As on create, the caller also needs permission
+        to view the agent type (`system:agenttype:view`).
       parameters:
         - in: path
           name: id
@@ -986,6 +1004,16 @@ paths:
                     description:
                       key: "error.agentservice.ou_not_in_project_description"
                       defaultValue: "The organization unit must be the project's root organization unit or one below it"
+                ou-mismatch:
+                  summary: The organization unit is outside the agent type's organization unit tree
+                  value:
+                    code: "AGT-1049"
+                    message:
+                      key: "error.agentservice.organization_unit_mismatch"
+                      defaultValue: "Organization unit mismatch"
+                    description:
+                      key: "error.agentservice.organization_unit_mismatch_description"
+                      defaultValue: "The organization unit does not match the agent type configuration: it must be the agent type's organization unit or one below it"
                 ou-not-found:
                   summary: New organization unit not found
                   value:
@@ -1440,8 +1468,8 @@ paths:
         - Agent Types
       summary: List agent type schemas
       description: |
-        Retrieves the list of agent type schemas. Agent types are restricted to a single
-        bootstrap-provisioned `default` schema; this endpoint returns that one schema.
+        Retrieves the list of agent type schemas. Each organization unit can have at most one
+        agent type.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -1502,11 +1530,11 @@ paths:
     post:
       tags:
         - Agent Types
-      summary: Create the default agent type schema
+      summary: Create an agent type schema
       description: |
-        Creates the agent type schema. The `handle` must be `default`. Agent types are
-        restricted to a single `default` schema per deployment, so any other handle is
-        rejected with `USRS-1014`.
+        Creates an agent type schema in an organization unit. The `handle` must be unique among
+        agent types. An organization unit can have only one agent type, so creating an agent type
+        in an organization unit that already has one is rejected with `USRS-1021`.
       requestBody:
         required: true
         content:
@@ -1514,9 +1542,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateAgentTypeRequest'
             example:
-              handle: "default"
-              displayName: "Default"
-              ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
+              handle: "support-agents"
+              displayName: "Support Agents"
+              ouId: "7b2c1f3e-4a5d-4e6f-8a9b-0c1d2e3f4a5b"
               allowSelfRegistration: false
               systemAttributes:
                 display: "name"
@@ -1541,9 +1569,9 @@ paths:
                 $ref: '#/components/schemas/AgentType'
               example:
                 id: "880e8400-e29b-41d4-a716-446655440003"
-                handle: "default"
-                displayName: "Default"
-                ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
+                handle: "support-agents"
+                displayName: "Support Agents"
+                ouId: "7b2c1f3e-4a5d-4e6f-8a9b-0c1d2e3f4a5b"
                 allowSelfRegistration: false
                 systemAttributes:
                   display: "name"
@@ -1586,16 +1614,16 @@ paths:
                     description:
                       key: "error.entitytypeservice.invalid_agent_type_request_description"
                       defaultValue: "The agent type request contains invalid or missing required fields"
-                only-default-allowed:
-                  summary: Non-default agent type handle
+                agent-type-exists-in-ou:
+                  summary: Organization unit already has an agent type
                   value:
-                    code: "USRS-1014"
+                    code: "USRS-1021"
                     message:
-                      key: "error.entitytypeservice.agent_type_only_default_allowed"
-                      defaultValue: "Only the default agent type is allowed"
+                      key: "error.entitytypeservice.agent_type_already_exists_in_ou"
+                      defaultValue: "Organization unit already has an agent type"
                     description:
-                      key: "error.entitytypeservice.agent_type_only_default_allowed_description"
-                      defaultValue: "Agent types are restricted to a single 'default' schema; other handles are not permitted"
+                      key: "error.entitytypeservice.agent_type_already_exists_in_ou_description"
+                      defaultValue: "An organization unit can have only one agent type. Choose an organization unit that has no agent type"
         "409":
           description: Conflict
           content:
@@ -1684,10 +1712,13 @@ paths:
     put:
       tags:
         - Agent Types
-      summary: Update the default agent type schema by ID
+      summary: Update an agent type schema by ID
       description: |
-        Updates the agent type schema with new attribute definitions. The `handle` is optional
-        and must be `default` when provided. Sending a different handle is rejected with `USRS-1014`.
+        Updates the agent type schema with new attribute definitions. The `handle` is optional and
+        cannot be changed: sending a different handle is rejected with `USRS-1017`. Moving the agent
+        type to an organization unit that already has another agent type is rejected with `USRS-1021`.
+        Moving the agent type does not move its agents or check their placement again; the placement
+        rule applies when an agent is created, or when an update changes its organization unit or type.
         The `displayName` can be changed at any time. This operation replaces the entire schema
         definition.
       parameters:
@@ -1757,16 +1788,26 @@ paths:
                     description:
                       key: "error.entitytypeservice.invalid_agent_type_request_description"
                       defaultValue: "The agent type request contains invalid or missing required fields"
-                only-default-allowed:
-                  summary: Non-default agent type handle
+                handle-change-not-allowed:
+                  summary: Handle change
                   value:
-                    code: "USRS-1014"
+                    code: "USRS-1017"
                     message:
-                      key: "error.entitytypeservice.agent_type_only_default_allowed"
-                      defaultValue: "Only the default agent type is allowed"
+                      key: "error.entitytypeservice.entity_type_handle_update_not_allowed"
+                      defaultValue: "Entity type handle cannot be changed"
                     description:
-                      key: "error.entitytypeservice.agent_type_only_default_allowed_description"
-                      defaultValue: "Agent types are restricted to a single 'default' schema; other handles are not permitted"
+                      key: "error.entitytypeservice.entity_type_handle_update_not_allowed_description"
+                      defaultValue: "The handle of an entity type cannot be changed once it is created"
+                agent-type-exists-in-ou:
+                  summary: Organization unit already has an agent type
+                  value:
+                    code: "USRS-1021"
+                    message:
+                      key: "error.entitytypeservice.agent_type_already_exists_in_ou"
+                      defaultValue: "Organization unit already has an agent type"
+                    description:
+                      key: "error.entitytypeservice.agent_type_already_exists_in_ou_description"
+                      defaultValue: "An organization unit can have only one agent type. Choose an organization unit that has no agent type"
         "404":
           description: Agent type not found
           content:
@@ -1791,11 +1832,14 @@ paths:
     delete:
       tags:
         - Agent Types
-      summary: Delete an agent type schema by ID (not supported)
+      summary: Delete an agent type schema by ID
       description: |
-        Deleting agent type schemas is not supported. The `default` agent type cannot be
-        removed; agent creation depends on it. Update the schema in place instead.
-        This endpoint always returns `USRS-1015`.
+        Deletes an agent type schema. The deletion is rejected with `USRS-1022` while any agent is of
+        this agent type, or while any application, MCP server, agent or `AgentTypeResolver` flow node lists
+        it in its allowed agent types (an `allowedAgentTypes` of `["*"]` names no type and does not block).
+        Delete or change those agents and remove the type from those lists first. An agent type defined in
+        declarative resources cannot be deleted and is rejected with `403` and `USRS-1008`. Deleting an
+        agent type that does not exist succeeds.
       parameters:
         - in: path
           name: id
@@ -1814,13 +1858,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
-                code: "USRS-1015"
+                code: "USRS-1022"
                 message:
-                  key: "error.entitytypeservice.agent_type_cannot_delete"
-                  defaultValue: "Agent type cannot be deleted"
+                  key: "error.entitytypeservice.agent_type_in_use"
+                  defaultValue: "Agent type is in use"
                 description:
-                  key: "error.entitytypeservice.agent_type_cannot_delete_description"
-                  defaultValue: "The default agent type cannot be deleted. Edit the schema instead"
+                  key: "error.entitytypeservice.agent_type_in_use_description"
+                  defaultValue: "Delete or change the agents of this type, and remove the type from applications', agents' and flows' allowed agent types, first"
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -1959,7 +2003,7 @@ components:
           example: "platform/automations"
         type:
           type: string
-          description: The handle of the agent type. Only `default` is supported.
+          description: The handle of the agent type.
           example: "default"
         display:
           type: string
@@ -2087,7 +2131,7 @@ components:
           example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         type:
           type: string
-          description: The handle of the agent type. Only `default` is supported.
+          description: The handle of the agent type.
           example: "default"
         description:
           type: string
@@ -2172,7 +2216,7 @@ components:
           type: array
           items:
             type: string
-          description: Handles of the agent types allowed to sign in to this agent. An agent can authenticate only when its agent type handle is listed here; when the list is empty no agent can sign in.
+          description: Handles of the agent types allowed to sign in to this agent. An agent can authenticate only when its agent type handle is listed here; when the list is empty no agent can sign in. `["*"]` allows an agent of any agent type; `*` cannot be combined with other entries.
           example: ["default"]
         inboundAuthConfig:
           type: array
@@ -2276,6 +2320,7 @@ components:
           type: array
           items:
             type: string
+          description: Handles of the agent types allowed to sign in to this agent. An agent can authenticate only when its agent type handle is listed here; when the list is empty no agent can sign in. `["*"]` allows an agent of any agent type; `*` cannot be combined with other entries.
           example: ["default"]
         inboundAuthConfig:
           type: array
@@ -2373,6 +2418,7 @@ components:
           type: array
           items:
             type: string
+          description: Handles of the agent types allowed to sign in to this agent. An agent can authenticate only when its agent type handle is listed here; when the list is empty no agent can sign in. `["*"]` allows an agent of any agent type; `*` cannot be combined with other entries.
           example: ["default"]
         inboundAuthConfig:
           type: array
@@ -2469,6 +2515,7 @@ components:
           type: array
           items:
             type: string
+          description: Handles of the agent types allowed to sign in to this agent. An agent can authenticate only when its agent type handle is listed here; when the list is empty no agent can sign in. `["*"]` allows an agent of any agent type; `*` cannot be combined with other entries.
           example: ["default"]
         inboundAuthConfig:
           type: array
@@ -2909,11 +2956,9 @@ components:
           description: "The unique identifier of the agent type"
         handle:
           type: string
-          enum: ["default"]
           description: |
             Unique handle of the agent type (lowercase letters, numbers, hyphens, and underscores only).
-            Restricted to `default`, the only agent type schema permitted. Agents and applications refer to
-            the agent type by this handle.
+            Agents and applications refer to the agent type by this handle.
             Once set, the handle cannot be changed.
           pattern: '^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$'
           maxLength: 100
@@ -3144,11 +3189,9 @@ components:
       properties:
         handle:
           type: string
-          enum: ["default"]
           description: |
             Unique handle for the agent type (lowercase letters, numbers, hyphens, and underscores only).
-            Must be `default`. Agent types are restricted to a single `default` schema and any other
-            handle is rejected. Once set, the handle cannot be changed.
+            Once set, the handle cannot be changed.
           pattern: '^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$'
           maxLength: 100
         displayName:
@@ -3160,7 +3203,9 @@ components:
         ouId:
           type: string
           format: uuid
-          description: "The organization unit ID where this agent type schema is applicable"
+          description: |
+            The organization unit ID where this agent type schema is applicable. An organization unit can
+            have only one agent type.
         allowSelfRegistration:
           type: boolean
           description: "Whether the agent type supports self-initiated registration"
@@ -3179,10 +3224,9 @@ components:
       properties:
         handle:
           type: string
-          enum: ["default"]
           description: |
-            Optional. The handle cannot be changed, so when provided it must be `default`. When omitted,
-            the existing handle is kept.
+            Optional. The handle cannot be changed, so when provided it must be the current handle. When
+            omitted, the existing handle is kept.
           pattern: '^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$'
           maxLength: 100
         displayName:
@@ -3194,7 +3238,9 @@ components:
         ouId:
           type: string
           format: uuid
-          description: "The root organization unit ID where this agent type schema is applicable"
+          description: |
+            The root organization unit ID where this agent type schema is applicable. Moving the agent type
+            to an organization unit that already has another agent type is rejected.
         allowSelfRegistration:
           type: boolean
           description: "Whether the agent type supports self-initiated registration"

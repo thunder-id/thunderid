@@ -17,10 +17,6 @@ const (
 	TypeCategoryAgent TypeCategory = "agent"
 )
 
-// DefaultAgentTypeHandle is the only agent type handle allowed; agent types are restricted
-// to a single 'default' schema.
-const DefaultAgentTypeHandle = "default"
-
 // IsValid reports whether the category is one of the known fixed values.
 func (c TypeCategory) IsValid() bool {
 	return c == TypeCategoryUser || c == TypeCategoryAgent

@@ -19,18 +19,24 @@ const (
 	agentTypeBasePath = "/agent-types"
 	agentBasePath     = "/agents"
 
-	// defaultAgentTypeName is the only handle an agent type is permitted to carry.
+	// defaultAgentTypeName is the handle of the bootstrap agent type.
 	defaultAgentTypeName = "default"
+
+	// agentTypeInOUExistsCode is returned when an organization unit already has an agent type.
+	agentTypeInOUExistsCode = "USRS-1021"
+	// agentTypeInUseCode is returned when an agent type is deleted while agents are of it.
+	agentTypeInUseCode = "USRS-1022"
 )
 
-// AgentTypeAPITestSuite covers the /agent-types API, whose contract differs from /user-types in
-// three ways that had no integration coverage: exactly one type may exist, its handle must be
-// `default`, and it cannot be deleted.
+// AgentTypeAPITestSuite covers the /agent-types API, whose contract differs from /user-types in two
+// ways: an organization unit can have at most one agent type, and an agent type can be deleted only
+// while no agent is of it.
 //
-// The `default` agent type is a singleton shared with every other package. This suite therefore
+// The bootstrap `default` agent type is shared with every other package. This suite therefore
 // snapshots it in setup and restores it in teardown, and every test that mutates the schema
 // restores it in a defer rather than relying on teardown — testify orders suite methods
-// alphabetically, so a lingering edit would silently become another test's precondition.
+// alphabetically, so a lingering edit would silently become another test's precondition. Agent
+// types a test creates are its own, in organization units it creates, and are deleted by the test.
 type AgentTypeAPITestSuite struct {
 	suite.Suite
 	snapshot *testutils.AgentTypeSnapshot
@@ -42,9 +48,8 @@ func TestAgentTypeAPITestSuite(t *testing.T) {
 }
 
 func (s *AgentTypeAPITestSuite) SetupSuite() {
-	// Require the singleton to exist rather than creating it. Agent types cannot be deleted, so
-	// creating one here would be unreversible, and an absent `default` is a broken environment
-	// rather than something a test suite should paper over.
+	// Require the bootstrap agent type to exist rather than creating it: an absent `default` is a
+	// broken environment rather than something a test suite should paper over.
 	snapshot, err := testutils.SnapshotAgentType()
 	s.Require().NoError(err, "the default agent type must exist before this suite runs")
 	s.Require().NotEmpty(snapshot.ID)
@@ -128,7 +133,7 @@ func (s *AgentTypeAPITestSuite) listAgentTypes() AgentTypeListResponse {
 	return list
 }
 
-// getAgentType fetches the singleton from the detail endpoint, which is the only endpoint that
+// getAgentType fetches an agent type from the detail endpoint, which is the only endpoint that
 // carries the schema.
 func (s *AgentTypeAPITestSuite) getAgentType(id string) AgentType {
 	s.T().Helper()
@@ -142,7 +147,7 @@ func (s *AgentTypeAPITestSuite) getAgentType(id string) AgentType {
 	return agentType
 }
 
-// putSchema replaces the singleton's schema, keeping its handle, display name and OU.
+// putSchema replaces the `default` agent type's schema, keeping its handle, display name and OU.
 func (s *AgentTypeAPITestSuite) putSchema(schema interface{}) {
 	s.T().Helper()
 
@@ -170,39 +175,203 @@ func (s *AgentTypeAPITestSuite) restoreSchema() {
 
 func closeBody(resp *http.Response) { _ = resp.Body.Close() }
 
+// createOU creates an organization unit for one test. The caller deletes it.
+func (s *AgentTypeAPITestSuite) createOU(handle string) string {
+	s.T().Helper()
+
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle:      handle,
+		Name:        handle,
+		Description: "OU holding an agent type created by the agent type API suite",
+	})
+	s.Require().NoError(err)
+	return ouID
+}
+
+// deleteOU removes an organization unit a test created.
+func (s *AgentTypeAPITestSuite) deleteOU(ouID string) {
+	s.T().Helper()
+	s.NoError(testutils.DeleteOrganizationUnit(ouID), "cleanup: delete OU %s", ouID)
+}
+
+// createAgentType creates an agent type the test owns and returns its ID. The caller deletes it.
+func (s *AgentTypeAPITestSuite) createAgentType(handle, ouID string) string {
+	s.T().Helper()
+
+	id, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle:      handle,
+		DisplayName: handle,
+		OUID:        ouID,
+		Schema:      map[string]interface{}{"name": map[string]interface{}{"type": "string", "required": true}},
+	})
+	s.Require().NoError(err)
+	return id
+}
+
+// deleteAgentType removes an agent type a test created.
+func (s *AgentTypeAPITestSuite) deleteAgentType(id string) {
+	s.T().Helper()
+	s.NoError(testutils.DeleteAgentType(id), "cleanup: delete agent type %s", id)
+}
+
+// moveAgentType updates an agent type into the given organization unit, keeping its other fields.
+func (s *AgentTypeAPITestSuite) moveAgentType(id, ouID string) *http.Response {
+	s.T().Helper()
+
+	current := s.getAgentType(id)
+	return s.do(http.MethodPut, agentTypeBasePath+"/"+id, AgentTypeRequest{
+		DisplayName: current.DisplayName,
+		OUID:        ouID,
+		Schema:      current.Schema,
+	})
+}
+
+// agentTypeHandles returns the handles in the current agent type list.
+func (s *AgentTypeAPITestSuite) agentTypeHandles() []string {
+	s.T().Helper()
+
+	list := s.listAgentTypes()
+	handles := make([]string, 0, len(list.Types))
+	for _, t := range list.Types {
+		handles = append(handles, t.Handle)
+	}
+	return handles
+}
+
 // ---------------------------------------------------------------------------
-// Scenario 25 — only `default` may be created
+// Any handle, one agent type per organization unit
 // ---------------------------------------------------------------------------
 
-// TestCreateNonDefaultAgentTypeRejected verifies that agent types are restricted to the single
-// `default` schema: a create with any other handle is refused and nothing is persisted.
-func (s *AgentTypeAPITestSuite) TestCreateNonDefaultAgentTypeRejected() {
-	before := s.listAgentTypes()
+// TestCreateAgentTypeWithAnyHandleInAnotherOU verifies that an agent type other than `default` can
+// be created in an organization unit that has no agent type, and that it is persisted there.
+func (s *AgentTypeAPITestSuite) TestCreateAgentTypeWithAnyHandleInAnotherOU() {
+	ouID := s.createOU("agent-type-api-any-handle-ou")
+	defer s.deleteOU(ouID)
 
 	resp := s.do(http.MethodPost, agentTypeBasePath, AgentTypeRequest{
-		Handle:      "custom-agent-type",
-		DisplayName: "Custom Agent Type",
-		OUID:        s.ouID,
-		Schema:      json.RawMessage(`{"description": {"type": "string"}}`),
+		Handle:      "support-agents",
+		DisplayName: "Support Agents",
+		OUID:        ouID,
+		Schema:      json.RawMessage(`{"name": {"type": "string", "required": true}}`),
+	})
+	defer closeBody(resp)
+	body, err := io.ReadAll(resp.Body)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, resp.StatusCode, "create failed: %s", string(body))
+
+	var created AgentType
+	s.Require().NoError(json.Unmarshal(body, &created))
+	defer s.deleteAgentType(created.ID)
+
+	stored := s.getAgentType(created.ID)
+	s.Equal("support-agents", stored.Handle)
+	s.Equal(ouID, stored.OUID)
+	s.Contains(s.agentTypeHandles(), "support-agents")
+}
+
+// TestCreateSecondAgentTypeInSameOURejected verifies that an organization unit holds at most one agent
+// type: a second create in it is refused and nothing is persisted.
+func (s *AgentTypeAPITestSuite) TestCreateSecondAgentTypeInSameOURejected() {
+	ouID := s.createOU("agent-type-api-same-ou")
+	defer s.deleteOU(ouID)
+	firstID := s.createAgentType("same-ou-first", ouID)
+	defer s.deleteAgentType(firstID)
+
+	resp := s.do(http.MethodPost, agentTypeBasePath, AgentTypeRequest{
+		Handle:      "same-ou-second",
+		DisplayName: "Same OU Second",
+		OUID:        ouID,
+		Schema:      json.RawMessage(`{"name": {"type": "string"}}`),
 	})
 	defer closeBody(resp)
 
 	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
-	s.decodeError(resp, "USRS-1014")
+	s.decodeError(resp, agentTypeInOUExistsCode)
+	s.NotContains(s.agentTypeHandles(), "same-ou-second", "a rejected create must not persist a type")
+}
 
-	after := s.listAgentTypes()
-	s.Equal(before.TotalResults, after.TotalResults, "a rejected create must not persist a type")
-	for _, t := range after.Types {
-		s.NotEqual("custom-agent-type", t.Handle)
-	}
+// TestCreateAgentTypeInDefaultAgentTypeOURejected verifies the rule holds for the organization unit of
+// the bootstrap agent type too.
+func (s *AgentTypeAPITestSuite) TestCreateAgentTypeInDefaultAgentTypeOURejected() {
+	resp := s.do(http.MethodPost, agentTypeBasePath, AgentTypeRequest{
+		Handle:      "beside-default",
+		DisplayName: "Beside Default",
+		OUID:        s.snapshot.OUID,
+		Schema:      json.RawMessage(`{"name": {"type": "string"}}`),
+	})
+	defer closeBody(resp)
+
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+	s.decodeError(resp, agentTypeInOUExistsCode)
+	s.NotContains(s.agentTypeHandles(), "beside-default")
+}
+
+// TestUpdateMovingAgentTypeIntoOccupiedOURejected verifies that an update cannot move an agent type
+// into an organization unit that already has another agent type, and that the type stays where it was.
+func (s *AgentTypeAPITestSuite) TestUpdateMovingAgentTypeIntoOccupiedOURejected() {
+	occupiedOUID := s.createOU("agent-type-api-occupied-ou")
+	defer s.deleteOU(occupiedOUID)
+	movingOUID := s.createOU("agent-type-api-moving-ou")
+	defer s.deleteOU(movingOUID)
+	occupantID := s.createAgentType("occupant-agents", occupiedOUID)
+	defer s.deleteAgentType(occupantID)
+	movingID := s.createAgentType("moving-agents", movingOUID)
+	defer s.deleteAgentType(movingID)
+
+	resp := s.moveAgentType(movingID, occupiedOUID)
+	defer closeBody(resp)
+
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+	s.decodeError(resp, agentTypeInOUExistsCode)
+	s.Equal(movingOUID, s.getAgentType(movingID).OUID, "a rejected move must not change the stored OU")
+}
+
+// TestUpdateMovingAgentTypeIntoEmptyOUSucceeds is the control for the rejected move: an organization
+// unit without an agent type accepts one.
+func (s *AgentTypeAPITestSuite) TestUpdateMovingAgentTypeIntoEmptyOUSucceeds() {
+	fromOUID := s.createOU("agent-type-api-move-from-ou")
+	defer s.deleteOU(fromOUID)
+	toOUID := s.createOU("agent-type-api-move-to-ou")
+	defer s.deleteOU(toOUID)
+	agentTypeID := s.createAgentType("relocated-agents", fromOUID)
+	defer s.deleteAgentType(agentTypeID)
+
+	resp := s.moveAgentType(agentTypeID, toOUID)
+	defer closeBody(resp)
+	body, err := io.ReadAll(resp.Body)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "move failed: %s", string(body))
+
+	s.Equal(toOUID, s.getAgentType(agentTypeID).OUID)
 }
 
 // ---------------------------------------------------------------------------
-// Scenario 26 — `default` is a singleton
+// The handle cannot be changed
 // ---------------------------------------------------------------------------
 
+// TestChangeDefaultAgentTypeHandleRejected verifies that an agent type's handle cannot be changed,
+// and that the stored handle is unchanged.
+func (s *AgentTypeAPITestSuite) TestChangeDefaultAgentTypeHandleRejected() {
+	schema, err := json.Marshal(s.snapshot.Schema)
+	s.Require().NoError(err)
+
+	resp := s.do(http.MethodPut, agentTypeBasePath+"/"+s.snapshot.ID, AgentTypeRequest{
+		Handle:      "renamed-agent-type",
+		DisplayName: "Renamed Agent Type",
+		OUID:        s.snapshot.OUID,
+		Schema:      schema,
+	})
+	defer closeBody(resp)
+
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+	s.decodeError(resp, "USRS-1017")
+
+	s.Equal(defaultAgentTypeName, s.getAgentType(s.snapshot.ID).Handle,
+		"a rejected handle change must not change the stored handle")
+}
+
 // TestCreateDuplicateDefaultAgentTypeRejected verifies that a second `default` agent type is
-// refused as a handle conflict, so the singleton cannot be duplicated.
+// refused as a handle conflict, even in an organization unit without an agent type.
 func (s *AgentTypeAPITestSuite) TestCreateDuplicateDefaultAgentTypeRejected() {
 	before := s.listAgentTypes()
 
@@ -222,45 +391,222 @@ func (s *AgentTypeAPITestSuite) TestCreateDuplicateDefaultAgentTypeRejected() {
 }
 
 // ---------------------------------------------------------------------------
-// Scenario 27: the `default` handle cannot be changed
+// Deletion
 // ---------------------------------------------------------------------------
 
-// TestChangeDefaultAgentTypeHandleRejected verifies that the singleton's handle cannot be changed
-// away from the `default` that agent creation depends on, and that the stored handle is unchanged.
-func (s *AgentTypeAPITestSuite) TestChangeDefaultAgentTypeHandleRejected() {
-	schema, err := json.Marshal(s.snapshot.Schema)
-	s.Require().NoError(err)
+// TestDeleteUnusedAgentTypeSucceeds verifies that an agent type no agent is of can be deleted.
+func (s *AgentTypeAPITestSuite) TestDeleteUnusedAgentTypeSucceeds() {
+	ouID := s.createOU("agent-type-api-delete-ou")
+	defer s.deleteOU(ouID)
+	agentTypeID := s.createAgentType("short-lived-agents", ouID)
 
-	resp := s.do(http.MethodPut, agentTypeBasePath+"/"+s.snapshot.ID, AgentTypeRequest{
-		Handle:      "renamed-agent-type",
-		DisplayName: "Renamed Agent Type",
-		OUID:        s.snapshot.OUID,
-		Schema:      schema,
-	})
+	resp := s.do(http.MethodDelete, agentTypeBasePath+"/"+agentTypeID, nil)
 	defer closeBody(resp)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode)
 
-	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
-	s.decodeError(resp, "USRS-1014")
-
-	s.Equal(defaultAgentTypeName, s.getAgentType(s.snapshot.ID).Handle,
-		"a rejected handle change must not change the stored handle")
+	getResp := s.do(http.MethodGet, agentTypeBasePath+"/"+agentTypeID, nil)
+	defer closeBody(getResp)
+	s.Equal(http.StatusNotFound, getResp.StatusCode, "a deleted agent type must not be readable")
 }
 
-// ---------------------------------------------------------------------------
-// Scenario 28 — `default` cannot be deleted
-// ---------------------------------------------------------------------------
+// TestDeleteAgentTypeInUseRejected verifies that an agent type cannot be deleted while an agent is of
+// it, and can be once that agent is gone.
+func (s *AgentTypeAPITestSuite) TestDeleteAgentTypeInUseRejected() {
+	ouID := s.createOU("agent-type-api-in-use-ou")
+	defer s.deleteOU(ouID)
+	agentTypeID := s.createAgentType("busy-agents", ouID)
+	agentID := s.createAgent(Agent{
+		Type:       "busy-agents",
+		OUID:       ouID,
+		Attributes: json.RawMessage(`{"name": "agent-type-in-use-agent"}`),
+	})
+	agentDeleted := false
+	defer func() {
+		if !agentDeleted {
+			s.deleteAgent(agentID)
+		}
+		closeBody(s.do(http.MethodDelete, agentTypeBasePath+"/"+agentTypeID, nil))
+	}()
 
-// TestDeleteAgentTypeRejected verifies that the agent type survives a delete attempt. Agent
-// creation depends on it, so deletion is refused outright rather than cascading.
-func (s *AgentTypeAPITestSuite) TestDeleteAgentTypeRejected() {
-	resp := s.do(http.MethodDelete, agentTypeBasePath+"/"+s.snapshot.ID, nil)
+	resp := s.do(http.MethodDelete, agentTypeBasePath+"/"+agentTypeID, nil)
 	defer closeBody(resp)
-
 	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
-	s.decodeError(resp, "USRS-1015")
+	s.decodeError(resp, agentTypeInUseCode)
+	s.Equal("busy-agents", s.getAgentType(agentTypeID).Handle, "a refused delete must keep the agent type")
 
-	s.Equal(defaultAgentTypeName, s.getAgentType(s.snapshot.ID).Handle,
-		"the agent type must still exist after a refused delete")
+	s.deleteAgent(agentID)
+	agentDeleted = true
+
+	retry := s.do(http.MethodDelete, agentTypeBasePath+"/"+agentTypeID, nil)
+	defer closeBody(retry)
+	s.Equal(http.StatusNoContent, retry.StatusCode, "the agent type must be deletable once no agent is of it")
+}
+
+// requireDeleteRefusedUntil asserts that the agent type cannot be deleted while a reference holds it, and
+// that it can be once release removes the reference.
+func (s *AgentTypeAPITestSuite) requireDeleteRefusedUntil(agentTypeID string, release func()) {
+	s.T().Helper()
+
+	resp := s.do(http.MethodDelete, agentTypeBasePath+"/"+agentTypeID, nil)
+	defer closeBody(resp)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+	s.decodeError(resp, agentTypeInUseCode)
+
+	release()
+
+	retry := s.do(http.MethodDelete, agentTypeBasePath+"/"+agentTypeID, nil)
+	defer closeBody(retry)
+	s.Equal(http.StatusNoContent, retry.StatusCode, "the agent type must be deletable once nothing lists it")
+}
+
+// TestDeleteAgentTypeListedByApplicationRejected verifies that an application allowing an agent type
+// blocks its deletion: otherwise the handle could be recreated elsewhere and inherit the allowance.
+func (s *AgentTypeAPITestSuite) TestDeleteAgentTypeListedByApplicationRejected() {
+	ouID := s.createOU("agent-type-api-app-ref-ou")
+	defer s.deleteOU(ouID)
+	agentTypeID := s.createAgentType("app-allowed-agents", ouID)
+	defer func() { closeBody(s.do(http.MethodDelete, agentTypeBasePath+"/"+agentTypeID, nil)) }()
+
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name: "Agent Type Reference App", OUID: ouID, Type: "fullstack",
+		AllowedAgentTypes: []string{"app-allowed-agents"},
+	})
+	s.Require().NoError(err)
+	appDeleted := false
+	defer func() {
+		if !appDeleted {
+			s.NoError(testutils.DeleteApplication(appID))
+		}
+	}()
+
+	s.requireDeleteRefusedUntil(agentTypeID, func() {
+		s.Require().NoError(testutils.DeleteApplication(appID))
+		appDeleted = true
+	})
+}
+
+// TestDeleteAgentTypeListedByAgentRejected verifies that an agent allowing an agent type to sign in to it
+// blocks the type's deletion, even though the agent is of another type.
+func (s *AgentTypeAPITestSuite) TestDeleteAgentTypeListedByAgentRejected() {
+	listedOUID := s.createOU("agent-type-api-agent-ref-ou")
+	defer s.deleteOU(listedOUID)
+	listedTypeID := s.createAgentType("agent-allowed-agents", listedOUID)
+	defer func() { closeBody(s.do(http.MethodDelete, agentTypeBasePath+"/"+listedTypeID, nil)) }()
+
+	holderOUID := s.createOU("agent-type-api-agent-holder-ou")
+	defer s.deleteOU(holderOUID)
+	holderTypeID := s.createAgentType("allowing-agents", holderOUID)
+	defer s.deleteAgentType(holderTypeID)
+
+	agentID, err := testutils.CreateAgent(testutils.Agent{
+		Type: "allowing-agents", OUID: holderOUID,
+		Attributes:        map[string]interface{}{"name": "agent-type-allowing-agent"},
+		AllowedAgentTypes: []string{"agent-allowed-agents"},
+	})
+	s.Require().NoError(err)
+	agentDeleted := false
+	defer func() {
+		if !agentDeleted {
+			s.deleteAgent(agentID)
+		}
+	}()
+
+	s.requireDeleteRefusedUntil(listedTypeID, func() {
+		s.deleteAgent(agentID)
+		agentDeleted = true
+	})
+}
+
+// TestDeleteAgentTypeListedByFlowRejected verifies that a flow whose AgentTypeResolver node narrows its
+// candidates to an agent type blocks the type's deletion.
+func (s *AgentTypeAPITestSuite) TestDeleteAgentTypeListedByFlowRejected() {
+	ouID := s.createOU("agent-type-api-flow-ref-ou")
+	defer s.deleteOU(ouID)
+	agentTypeID := s.createAgentType("flow-allowed-agents", ouID)
+	defer func() { closeBody(s.do(http.MethodDelete, agentTypeBasePath+"/"+agentTypeID, nil)) }()
+
+	flowID, err := testutils.CreateFlow(testutils.Flow{
+		Name:     "Agent Type Reference Flow",
+		Handle:   "agent-type-reference-flow",
+		FlowType: "ADMINISTRATION",
+		OUID:     ouID,
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "resolve"},
+			{
+				"id":           "resolve",
+				"type":         "TASK_EXECUTION",
+				"executor":     map[string]interface{}{"name": "AgentTypeResolver"},
+				"properties":   map[string]interface{}{"allowedAgentTypes": []string{"flow-allowed-agents"}},
+				"onSuccess":    "end",
+				"onIncomplete": "prompt_type",
+			},
+			{
+				"id":   "prompt_type",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{{
+					"inputs": []map[string]interface{}{
+						{"ref": "agenttype_input", "identifier": "agentType", "type": "SELECT", "required": true},
+					},
+					"action": map[string]interface{}{"ref": "action_type", "nextNode": "resolve"},
+				}},
+			},
+			{"id": "end", "type": "END"},
+		},
+	})
+	s.Require().NoError(err)
+	flowDeleted := false
+	defer func() {
+		if !flowDeleted {
+			s.NoError(testutils.DeleteFlow(flowID))
+		}
+	}()
+
+	s.requireDeleteRefusedUntil(agentTypeID, func() {
+		s.Require().NoError(testutils.DeleteFlow(flowID))
+		flowDeleted = true
+	})
+}
+
+// TestDeleteAgentTypeNotBlockedByAnyAgentTypeApplication verifies that an application admitting any agent
+// type names no agent type, so it does not block a delete.
+func (s *AgentTypeAPITestSuite) TestDeleteAgentTypeNotBlockedByAnyAgentTypeApplication() {
+	ouID := s.createOU("agent-type-api-any-ref-ou")
+	defer s.deleteOU(ouID)
+	agentTypeID := s.createAgentType("any-allowed-agents", ouID)
+
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name: "Any Agent Type Reference App", OUID: ouID, Type: "fullstack", AllowedAgentTypes: []string{"*"},
+	})
+	s.Require().NoError(err)
+	defer func() { s.NoError(testutils.DeleteApplication(appID)) }()
+
+	resp := s.do(http.MethodDelete, agentTypeBasePath+"/"+agentTypeID, nil)
+	defer closeBody(resp)
+	s.Equal(http.StatusNoContent, resp.StatusCode)
+}
+
+// TestDeleteOUAfterDeletingItsAgentType verifies that an agent type blocks the deletion of its
+// organization unit only until the agent type itself is deleted.
+func (s *AgentTypeAPITestSuite) TestDeleteOUAfterDeletingItsAgentType() {
+	ouID := s.createOU("agent-type-api-ou-delete")
+	ouDeleted := false
+	defer func() {
+		if !ouDeleted {
+			s.deleteOU(ouID)
+		}
+	}()
+	agentTypeID := s.createAgentType("ou-bound-agents", ouID)
+
+	blocked := s.do(http.MethodDelete, "/organization-units/"+ouID, nil)
+	defer closeBody(blocked)
+	s.Require().Equal(http.StatusBadRequest, blocked.StatusCode, "the agent type must block the OU delete")
+
+	s.deleteAgentType(agentTypeID)
+
+	resp := s.do(http.MethodDelete, "/organization-units/"+ouID, nil)
+	defer closeBody(resp)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode, "the OU must be deletable once its agent type is gone")
+	ouDeleted = true
 }
 
 // ---------------------------------------------------------------------------
@@ -282,28 +628,33 @@ func (s *AgentTypeAPITestSuite) TestGetUnknownAgentTypeReturnsAgentSpecificError
 }
 
 // ---------------------------------------------------------------------------
-// Scenario 31 — the list holds exactly the singleton
+// Scenario 31: the list holds the bootstrap agent type
 // ---------------------------------------------------------------------------
 
-// TestListAgentTypesReturnsOnlyTheSingleton verifies the list endpoint reports exactly one agent
-// type, under the `types` key, and that it is the `default` one.
-func (s *AgentTypeAPITestSuite) TestListAgentTypesReturnsOnlyTheSingleton() {
+// TestListAgentTypesIncludesTheDefault verifies the list endpoint reports agent types under the
+// `types` key, including the bootstrap `default` one.
+func (s *AgentTypeAPITestSuite) TestListAgentTypesIncludesTheDefault() {
 	list := s.listAgentTypes()
 
-	s.Equal(1, list.TotalResults)
-	s.Equal(1, list.Count)
-	s.Require().Len(list.Types, 1)
-	s.Equal(defaultAgentTypeName, list.Types[0].Handle)
-	s.Equal(s.snapshot.DisplayName, list.Types[0].DisplayName)
-	s.Equal(s.snapshot.ID, list.Types[0].ID)
+	s.GreaterOrEqual(list.TotalResults, 1)
+	s.Equal(len(list.Types), list.Count)
+	var found *AgentTypeListItem
+	for i := range list.Types {
+		if list.Types[i].Handle == defaultAgentTypeName {
+			found = &list.Types[i]
+		}
+	}
+	s.Require().NotNil(found, "the default agent type must be listed")
+	s.Equal(s.snapshot.DisplayName, found.DisplayName)
+	s.Equal(s.snapshot.ID, found.ID)
 }
 
 // ---------------------------------------------------------------------------
 // Scenario 32 — schema edits persist
 // ---------------------------------------------------------------------------
 
-// TestUpdateAgentTypeSchemaPersists verifies that editing the singleton's schema is the supported
-// way to change it, and that the edit is readable back from the detail endpoint.
+// TestUpdateAgentTypeSchemaPersists verifies that editing an agent type's schema persists, and that
+// the edit is readable back from the detail endpoint.
 func (s *AgentTypeAPITestSuite) TestUpdateAgentTypeSchemaPersists() {
 	defer s.restoreSchema()
 

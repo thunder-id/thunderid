@@ -2403,6 +2403,34 @@ func (suite *InboundClientServiceTestSuite) TestValidateAllowedAgentTypes_Servic
 	assert.ErrorIs(suite.T(), err, ErrAgentSchemaLookupFailed)
 }
 
+func (suite *InboundClientServiceTestSuite) TestValidateAllowedAgentTypes_AnyAgentTypeAccepted() {
+	// No entity type lookup is expected: the wildcard names no handle.
+	us := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	svc := &inboundClientService{entityType: us, logger: log.GetLogger()}
+	assert.NoError(suite.T(), svc.validateAllowedAgentTypes(context.Background(), []string{"*"}))
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateAllowedAgentTypes_AnyAgentTypeWithOtherEntriesRejected() {
+	for _, allowed := range [][]string{{"*", "default"}, {"default", "*"}, {"*", "*"}} {
+		us := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+		svc := &inboundClientService{entityType: us, logger: log.GetLogger()}
+		err := svc.validateAllowedAgentTypes(context.Background(), allowed)
+		assert.ErrorIs(suite.T(), err, ErrFKInvalidAgentType, "allowedAgentTypes %v", allowed)
+	}
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateAllowedUserTypes_AnyAgentTypeIsNotAUserType() {
+	us := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	us.EXPECT().GetEntityTypeList(mock.Anything, entitytypepkg.TypeCategoryUser, mock.Anything, 0, false).Return(
+		&entitytypepkg.EntityTypeListResponse{
+			TotalResults: 1,
+			Types:        []entitytypepkg.EntityTypeListItem{{Handle: "customer"}},
+		}, nil)
+	svc := &inboundClientService{entityType: us, logger: log.GetLogger()}
+	err := svc.validateAllowedUserTypes(context.Background(), []string{"*"})
+	assert.ErrorIs(suite.T(), err, ErrFKInvalidUserType)
+}
+
 // ----- resolveFlowDefaults -----
 
 func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_NilOrNoMgtIsNoOp() {

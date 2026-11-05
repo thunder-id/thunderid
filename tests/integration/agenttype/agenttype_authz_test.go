@@ -59,7 +59,7 @@ func TestAgentTypeAuthzTestSuite(t *testing.T) {
 }
 
 func (s *AgentTypeAuthzTestSuite) SetupSuite() {
-	// Read-only: the suite needs the singleton's ID to address it, and never mutates it.
+	// Read-only: the suite needs the `default` agent type's ID to address it, and never mutates it.
 	snapshot, err := testutils.SnapshotAgentType()
 	s.Require().NoError(err, "the default agent type must exist before this suite runs")
 	s.agentTypeID = snapshot.ID
@@ -234,9 +234,9 @@ func (s *AgentTypeAuthzTestSuite) TestUpdateAgentTypeWithoutCategoryPermissionIs
 	s.NotContains(schema, "injected", "a refused update must not reach the store")
 }
 
-// TestCreateAgentTypeWithoutCategoryPermissionIsRefused verifies the create route is gated, and
-// that the refusal is the permission gate rather than the `default`-only rule — the payload uses a
-// non-`default` handle, which an authorized caller would be told about via USRS-1014 instead.
+// TestCreateAgentTypeWithoutCategoryPermissionIsRefused verifies the create route is gated. The payload
+// is a valid agent type in an organization unit without one, which an authorized caller would create,
+// so the refusal can only be the permission gate.
 func (s *AgentTypeAuthzTestSuite) TestCreateAgentTypeWithoutCategoryPermissionIsRefused() {
 	resp := s.doScoped(http.MethodPost, agentTypeBasePath, AgentTypeRequest{
 		Handle:      "authz-injected-agent-type",
@@ -250,10 +250,9 @@ func (s *AgentTypeAuthzTestSuite) TestCreateAgentTypeWithoutCategoryPermissionIs
 }
 
 // TestDeleteAgentTypeWithoutCategoryPermissionIsRefused verifies the delete route is gated by the
-// permission as well, and that the refusal is the permission gate rather than the never-delete rule.
-// DELETE carries its own entry in the permission table, so this is a distinct middleware rule from
-// the routes above. An authorized caller receives USRS-1015 for the same request, so the code proves
-// which check ran first.
+// permission as well. DELETE carries its own entry in the permission table, so this is a distinct
+// middleware rule from the routes above. The 403 code and the agent type surviving the request prove
+// the permission gate ran before the service's own checks.
 func (s *AgentTypeAuthzTestSuite) TestDeleteAgentTypeWithoutCategoryPermissionIsRefused() {
 	resp := s.doScoped(http.MethodDelete, agentTypeBasePath+"/"+s.agentTypeID, nil)
 	defer closeBody(resp)

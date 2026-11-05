@@ -303,6 +303,22 @@ func (c *entityCompositeStore) GetEntityListBySystemAttributesAndOUIDs(ctx conte
 	return entities, nil
 }
 
+// GetEntityListByType retrieves up to limit entities of a category that are of the given type from both
+// stores. It does not page, so it needs no count of either store: its caller lists the entities of a type up
+// to a bound, such as MaxCompositeStoreRecords, to report what depends on the type.
+func (c *entityCompositeStore) GetEntityListByType(ctx context.Context,
+	category, entityType string, limit int) ([]providers.Entity, error) {
+	dbEntities, err := c.dbStore.GetEntityListByType(ctx, category, entityType, limit)
+	if err != nil {
+		return nil, err
+	}
+	fileEntities, err := c.fileStore.GetEntityListByType(ctx, category, entityType, limit)
+	if err != nil {
+		return nil, err
+	}
+	return applyPagination(mergeAndDeduplicateEntities(dbEntities, fileEntities), limit, 0), nil
+}
+
 // GetEntityListCountByOUIDs retrieves the total count of entities by OU IDs from both stores.
 func (c *entityCompositeStore) GetEntityListCountByOUIDs(ctx context.Context, category string,
 	ouIDs []string, filters map[string]interface{}) (int, error) {

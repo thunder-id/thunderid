@@ -141,6 +141,12 @@ var (
 		ID:    "ASQ-ENTITY_MGT-31",
 		Query: `UPDATE "ENTITY" SET UPDATED_AT = UPDATED_AT WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
+	// queryGetEntityListByType lists up to a limit of the entities of a category that are of the given type.
+	queryGetEntityListByType = model.DBQuery{
+		ID: "ASQ-ENTITY_MGT-36",
+		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" ` +
+			`WHERE CATEGORY = $1 AND TYPE = $2 AND DEPLOYMENT_ID = $3 ORDER BY ID LIMIT $4`,
+	}
 )
 
 // appendOUIDsINClause appends an "AND OU_ID IN (...)" condition to a query for the given OU IDs.

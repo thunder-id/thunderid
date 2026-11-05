@@ -636,3 +636,30 @@ func (s *CompositeStoreTestSuite) TestSearchEntities_FileError() {
 	_, err := s.store.SearchEntities(s.ctx, filters)
 	s.Error(err)
 }
+
+func (s *CompositeStoreTestSuite) TestGetEntityListByType_MergesStores() {
+	e1 := compEntity("e1", "ou1")
+	e2 := compEntity("e2", "ou1")
+	s.dbStore.On("GetEntityListByType", mock.Anything, "agent", "tools", 2).
+		Return([]providers.Entity{e1, e2}, nil)
+	s.fileStore.On("GetEntityListByType", mock.Anything, "agent", "tools", 2).
+		Return([]providers.Entity{e2, compEntity("e3", "ou1")}, nil)
+
+	list, err := s.store.GetEntityListByType(s.ctx, "agent", "tools", 2)
+	s.NoError(err)
+	s.Require().Len(list, 2, "the merged list is capped at the limit")
+	s.Equal("e1", list[0].ID)
+	s.Equal("e2", list[1].ID)
+}
+
+func (s *CompositeStoreTestSuite) TestGetEntityListByType_Errors() {
+	s.dbStore.On("GetEntityListByType", mock.Anything, "agent", "tools", 10).Return(nil, s.testErr).Once()
+	_, err := s.store.GetEntityListByType(s.ctx, "agent", "tools", 10)
+	s.ErrorIs(err, s.testErr, "DB store error")
+
+	s.dbStore.On("GetEntityListByType", mock.Anything, "agent", "tools", 10).
+		Return([]providers.Entity{}, nil).Once()
+	s.fileStore.On("GetEntityListByType", mock.Anything, "agent", "tools", 10).Return(nil, s.testErr).Once()
+	_, err = s.store.GetEntityListByType(s.ctx, "agent", "tools", 10)
+	s.ErrorIs(err, s.testErr, "file store error")
+}
